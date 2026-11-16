@@ -133,7 +133,6 @@ impl OriginReader {
             reqwest::Client::builder()
                 .redirect(policy)
                 .referer(false)
-                .timeout(std::time::Duration::from_secs(15))
                 .build()
         };
         let context_client = context
@@ -1102,6 +1101,32 @@ mod tests {
         assert!(!format!("{error:?}").contains(&url));
         assert!(!format!("{error:?}").contains("grant=private"));
     }
+    #[tokio::test]
+    async fn progressing_http_range_has_no_independent_total_deadline() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/progress", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, Router::new().route("/progress", get(|| async {
+                let body = futures_util::stream::unfold(0u8, |index| async move {
+                    if index == 3 { return None; }
+                    if index > 0 { tokio::time::sleep(Duration::from_secs(8)).await; }
+                    Some((Ok::<_, std::io::Error>(axum::body::Bytes::from(vec![index])), index + 1))
+                });
+                Response::builder().status(206).header("content-range", "bytes 0-2/3")
+                    .header("content-length", 3).body(Body::from_stream(body)).unwrap()
+            }))).await.unwrap();
+        });
+        let (context, _page, _) = context(url, Format::File, Some(3));
+        let (_stop, stopped) = watch::channel(false);
+        let started = Instant::now();
+        let result = tokio::time::timeout(Duration::from_secs(19),
+            OriginReader::read_metadata(context, stopped, 0, 3)).await;
+        server.abort(); let _ = server.await;
+        println!("progressing HTTP range completed after {:?}", started.elapsed());
+        assert_eq!(result.unwrap().unwrap().bytes, vec![0, 1, 2]);
+    }
+
     #[tokio::test]
     async fn request_failures_retain_timeout_and_redirect_causes_without_source_urls() {
         let _ = rustls::crypto::ring::default_provider().install_default();

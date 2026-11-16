@@ -16,7 +16,7 @@ import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 import { debugEvent } from "../lib/debug";
 
-export const APP_PROTOCOL = 16;
+export const APP_PROTOCOL = 17;
 const APP_REQUEST_BYTES = 256 * 1024;
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
@@ -111,11 +111,8 @@ export class AppPage implements AppPagePort {
       byteSource: watchByteSourceSchema.nullable() }).strict().parse(await this.command("page_media_sources"));
   }
   async readMediaMetadata(choiceId: string, offset: number, length: number, signal: AbortSignal): Promise<{ mimeType: string; totalSize: number; bytes: Uint8Array }> {
-    const reading = AbortSignal.any([this.lifetime.signal, signal]);
-    reading.throwIfAborted();
     const range = nativePageMetadataReadSchema.parse({ choiceId, offset, length });
-    const value = await this.request({ type: "page_media_read_metadata", pageId: this.id, ...range }, reading);
-    reading.throwIfAborted();
+    const value = await this.mediaRead("read_metadata", range, signal);
     const result = nativePageMetadataResultSchema.parse(value);
     const bytes = Uint8Array.from(atob(result.bytesBase64), value => value.charCodeAt(0));
     if (bytes.length !== Math.min(length, Math.max(0, result.totalSize - offset))) throw new Error("invalid_app_response");
@@ -123,24 +120,27 @@ export class AppPage implements AppPagePort {
   }
   async prepareMedia(choiceId: string): Promise<WatchByteSource> { return watchByteSourceSchema.parse(await this.command("page_media_prepare", { choiceId })); }
   async readMediaResource(sourceId: string, resourceId: string, offset: number, length: number, signal: AbortSignal): Promise<WatchByteResult> {
+    const range = nativePageResourceReadSchema.parse({ sourceId, resourceId, offset, length });
+    const result = nativePageResourceResultSchema.parse(await this.mediaRead("read", range, signal));
+    const bytes = Uint8Array.from(atob(result.bytesBase64), value => value.charCodeAt(0));
+    if (bytes.length > length || !result.eof && bytes.length !== length
+      || result.totalSize !== null && (offset > result.totalSize || bytes.length !== Math.min(length, result.totalSize - offset)))
+      throw new Error("invalid_app_response");
+    return { bytes, mimeType: result.mimeType, totalSize: result.totalSize, eof: result.eof };
+  }
+  private async mediaRead(action: "read" | "read_metadata", range: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
     const reading = AbortSignal.any([this.lifetime.signal, signal]);
     reading.throwIfAborted();
-    const range = nativePageResourceReadSchema.parse({ sourceId, resourceId, offset, length });
     const readId = crypto.randomUUID();
     const cancel = () => {
       if (!this.lifetime.signal.aborted)
-        void this.command("page_media_resource", { action: "cancel", sourceId, readId }).catch(() => {});
+        void this.command("page_media_resource", { action: "cancel", readId }).catch(() => {});
     };
     reading.addEventListener("abort", cancel, { once: true });
     try {
-      const value = await this.request({ type: "page_media_resource", action: "read", pageId: this.id, readId, ...range }, reading);
+      const value = await this.request({ type: "page_media_resource", action, pageId: this.id, readId, ...range }, reading);
       reading.throwIfAborted();
-      const result = nativePageResourceResultSchema.parse(value);
-      const bytes = Uint8Array.from(atob(result.bytesBase64), value => value.charCodeAt(0));
-      if (bytes.length > length || !result.eof && bytes.length !== length
-        || result.totalSize !== null && (offset > result.totalSize || bytes.length !== Math.min(length, result.totalSize - offset)))
-        throw new Error("invalid_app_response");
-      return { bytes, mimeType: result.mimeType, totalSize: result.totalSize, eof: result.eof };
+      return value;
     } finally { reading.removeEventListener("abort", cancel); }
   }
   async prepareIndexedMedia(selection: NativePageIndexedSelection, signal: AbortSignal): Promise<WatchByteSource> {
@@ -210,7 +210,6 @@ export class ChannelApp {
   private requests = new Map<string, { command: AppCommand; resolve(value: unknown): void; reject(error: Error): void }>();
   readonly ready: Promise<void>;
   private rejectReady!: (error: Error) => void;
-  private timer: ReturnType<typeof setTimeout>;
   private authenticated = false;
   private readonly lifetime = new AbortController();
   private captures = new Map<string, { id: string; kind: "capture" | "external" }>();
@@ -243,7 +242,7 @@ export class ChannelApp {
   }
 
   constructor(verifiedHealth: unknown, channelId: string, userId: string, credential: string, name: string,
-    onClose: () => void, onCaptureState: (publicationId: string, error?: "capture_audio_failed" | "capture_failed") => void,
+    private readonly onClose: () => void, onCaptureState: (publicationId: string, error?: "capture_audio_failed" | "capture_failed") => void,
     onInputState: (publicationId: string, state: ChannelRemoteControlState) => void = () => {},
     private readonly onAudioState: (publicationId: string) => void = () => {},
     onExternalInput: (event: NativeExternalInputState) => void = () => {}) {
@@ -252,19 +251,18 @@ export class ChannelApp {
     this.roomHosting = new NativeRoomHosting(`http://127.0.0.1:${health.port}/rooms/${channelId}/${userId}`,
       { Authorization: `Bearer ${health.token}`, "X-Piik-Credential": credential });
     const socket = this.socket = new WebSocket(`ws://127.0.0.1:${health.port}/rooms`, `piik-channel-rooms.${health.token}`);
-    const lost = (reason: "socketclose" | "hello" | "schema" | "consumer", close?: CloseEvent, timedOut = false) => {
+    const lost = (reason: "socketclose" | "hello" | "schema" | "consumer", close?: CloseEvent) => {
       if (this.lifetime.signal.aborted) return;
       debugEvent("native", "control-closed", {
-        reason, ...(close && { code: close.code, wasClean: close.wasClean }), ...(reason === "hello" && { timedOut }),
+        reason, ...(close && { code: close.code, wasClean: close.wasClean }),
       });
       this.close(); onClose();
     };
-    this.timer = setTimeout(() => lost("hello", undefined, true), 10000);
     this.ready = new Promise((resolve, reject) => {
       this.rejectReady = reject;
       socket.onopen = () => {
         void this.request({ type: "hello", channelId, userId, credential, name }).then(() => {
-          clearTimeout(this.timer);
+          if (this.lifetime.signal.aborted) return;
           this.authenticated = true;
           resolve();
         }, error => { reject(error); lost("hello"); });
@@ -392,6 +390,22 @@ export class ChannelApp {
     if (!this.connected) throw new Error("app_disconnected");
     const { roomId, sessionId, bindingId } = current;
     return nativeRelayCapacitySchema.parse(await this.request({ type: "relay_capacity", action: "set", roomId, sessionId, bindingId, capacity }));
+  }
+
+  async waitReady(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
+    const abort = () => {
+      if (this.connected || this.lifetime.signal.aborted) return;
+      this.close(new DOMException("App connection cancelled", "AbortError"));
+      this.onClose();
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      await this.ready;
+      signal?.throwIfAborted();
+    } finally {
+      signal?.removeEventListener("abort", abort);
+    }
   }
 
   async open(policy: string): Promise<RoomSummary> {
@@ -573,18 +587,16 @@ export class ChannelApp {
     for (const id of new Set([...this.screens, ...this.prepared.keys()])) void this.stopCapture(id).catch(() => {});
   }
 
-  close(): void {
-    this.lifetime.abort();
+  close(error = new Error("app_disconnected")): void {
+    this.lifetime.abort(error);
     this.authenticated = false;
     this.captures.clear();
     this.externalInputs.clear();
     this.audioStates.clear();
     this.prepared.clear();
-    clearTimeout(this.timer);
     this.socket.onclose = null;
     this.socket.close();
     for (const page of this.pages.values()) page.close();
-    const error = new Error("app_disconnected");
     this.rejectReady(error);
     for (const request of this.requests.values()) request.reject(error);
     this.requests.clear();

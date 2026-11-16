@@ -56,8 +56,8 @@ export function ChannelPreviewPage() {
   const onSelect = useCallback((id: string) => { rememberRoom(id); setSelected(id); }, []);
   const channel = useChannel(onSelect);
   return <ChannelRoomPage channel={channel} selected={selected} onSelect={onSelect} layout={layout ?? "workspace"} offerLayout={layout === undefined} onLayoutChange={changeLayout}
-    appControl={<AppConnectionButton discovery={channelAppDiscovery} connected={channel.appConnected} targetURL={targetURL}
-      onConnected={health => { void channel.activateApp(health).catch(() => {}); }} />} />;
+    appControl={<AppConnectionButton discovery={channelAppDiscovery} available={channel.connection === 'connected'} connected={channel.appConnected} targetURL={targetURL}
+      onConnected={(health, signal) => channel.activateApp(health, signal)} />} />;
 }
 
 /** Session and App connection owners supply data; this view keeps one set of room slots. */

@@ -700,7 +700,6 @@ export const zhHant = {
   "client.launch.room": "在這台裝置上啟動 Piik",
   "client.connect.action": "連線 Piik App",
   "client.connect.hint": "連線 App，獲得更完整的體驗。",
-  "client.connect.discovering": "正在尋找 Piik App…",
   "client.connect.wakeApp": "開啟 Piik App",
   "client.connect.returnToBrowser": "開啟 Piik App 後返回此頁，繼續連線。",
   "native.confirmInApp": "前往 App 確認",

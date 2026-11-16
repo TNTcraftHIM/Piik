@@ -1,5 +1,80 @@
 use super::*;
 
+#[tokio::test]
+async fn reader_preserves_rejection_and_malformed_frame_before_close() {
+    use tokio_tungstenite::tungstenite::protocol::Role;
+    for (text, expected) in [
+        (
+            r#"{"type":"error","code":"forbidden"}"#,
+            "admission failed: forbidden",
+        ),
+        ("not-json", "invalid_channel_event"),
+    ] {
+        let (local, remote) = tokio::io::duplex(4096);
+        let mut socket = WebSocketStream::from_raw_socket(local, Role::Client, None).await;
+        let mut peer = WebSocketStream::from_raw_socket(remote, Role::Server, None).await;
+        let mut session = connection_session("ws://memory.invalid".into());
+        let join = Command::Join {
+            protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+            name: "Memory client".into(),
+            credential: None,
+            owner_key: None,
+            session_id: None,
+            signing_key: [1; 32],
+            can_prepare_udp: false,
+            can_receive_video_layers: false,
+        };
+        peer.send(Message::Text(text.into())).await.unwrap();
+        peer.close(None).await.unwrap();
+        let mut stop = std::pin::pin!(std::future::pending());
+        let error = session
+            .connected(&mut socket, join, &mut stop)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains(expected), "{error:#}");
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn reader_services_ping_while_business_has_not_consumed_its_frame() {
+    use tokio_tungstenite::tungstenite::protocol::Role;
+    let (local, remote) = tokio::io::duplex(4096);
+    let mut socket = WebSocketStream::from_raw_socket(local, Role::Client, None).await;
+    let mut peer = WebSocketStream::from_raw_socket(remote, Role::Server, None).await;
+    let (sender, mut incoming) = mpsc::channel(1);
+    let (stop, stopped) = oneshot::channel();
+    let task = tokio::spawn(async move {
+        tokio::select! {
+            _ = stopped => {},
+            result = read_messages(&mut socket, sender) => panic!("reader ended: {result:?}"),
+        }
+    });
+    peer.send(Message::Text(
+        r#"{"type":"ack","requestId":"pending"}"#.into(),
+    ))
+    .await
+    .unwrap();
+    for _ in 0..3 {
+        time::advance(Duration::from_secs(8)).await;
+        peer.send(Message::Ping(vec![1].into())).await.unwrap();
+        assert!(
+            matches!(peer.next().await, Some(Ok(Message::Pong(bytes))) if bytes.as_ref() == [1])
+        );
+        assert!(!task.is_finished());
+    }
+    assert_eq!(incoming.len(), 1, "business work remains queued");
+    stop.send(()).unwrap();
+    task.await.unwrap();
+    let message = incoming.recv().await.unwrap();
+    assert!(message.text.contains("pending"));
+    let budget = message._budget.semaphore().clone();
+    drop(message);
+    assert_eq!(
+        budget.available_permits(),
+        SIGNALING_QUEUE_BYTES + std::mem::size_of::<Incoming>()
+    );
+}
+
 fn connection_session(url: String) -> Session {
     Session {
         config: Config {

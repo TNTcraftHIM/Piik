@@ -167,7 +167,7 @@ export function AppHeader({
   homeHref?: string;
   diagnosticControl?: React.ReactNode;
   appControl?: React.ReactNode;
-  onAppConnected?: () => void;
+  onAppConnected?: ComponentProps<typeof AppConnectionButton>["onConnected"];
   atHome?: boolean;
 }) {
   const { t } = useCopy();

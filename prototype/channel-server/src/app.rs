@@ -67,7 +67,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 16;
+const PROTOCOL: u8 = 17;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -175,6 +175,33 @@ impl App {
         credential: String,
         name: String,
     ) -> Result<mpsc::Sender<HostCommand>> {
+        let (commands, mut ready) = self
+            .ensure_host(site, permission, channel, user, credential, name)
+            .await?;
+        loop {
+            if let Some(result) = ready.borrow().clone() {
+                result.map_err(anyhow::Error::msg)?;
+                return Ok(commands);
+            }
+            ready
+                .changed()
+                .await
+                .map_err(|_| anyhow!("hosting_unavailable"))?;
+        }
+    }
+
+    async fn ensure_host(
+        &self,
+        site: &str,
+        permission: &Arc<Permission>,
+        channel: Uuid,
+        user: Uuid,
+        credential: String,
+        name: String,
+    ) -> Result<(
+        mpsc::Sender<HostCommand>,
+        watch::Receiver<Option<Result<(), String>>>,
+    )> {
         let mut registry = self.registry.lock().await;
         if *self.closing.borrow() {
             bail!("hosting_unavailable");
@@ -244,23 +271,7 @@ impl App {
             );
         }
         let host = registry.hosts.get(&key).unwrap();
-        let commands = host.commands.clone();
-        let mut ready = host.ready.clone();
-        drop(registry);
-        timeout(IO_TIMEOUT, async {
-            loop {
-                let result = ready.borrow().clone();
-                if let Some(result) = result {
-                    return result.map_err(anyhow::Error::msg);
-                }
-                ready
-                    .changed()
-                    .await
-                    .map_err(|_| anyhow!("hosting_unavailable"))?;
-            }
-        })
-        .await??;
-        Ok(commands)
+        Ok((host.commands.clone(), host.ready.clone()))
     }
     async fn shutdown(&self) {
         self.closing.send_replace(true);
@@ -1808,22 +1819,23 @@ async fn connection(
                                     }
                                 } else { Err(anyhow!("hello_required")) }
                             }
-                            Operation::Page(page::Operation::PageMediaReadMetadata { page_id, choice_id, offset, length }) => {
-                                if host.is_none() { Err(anyhow!("hello_required")) }
-                                else {
-                                    let pages = pages.clone();
-                                    operations.push(async move { match pages.read_metadata(page_id, choice_id, offset, length).await {
-                                        Ok(result) => json!({"id":request.id,"result":result}),
-                                        Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                    }}.boxed());
-                                    continue;
-                                }
-                            }
                             Operation::Page(page::Operation::PageMediaResource(resource)) => {
                                 if host.is_none() {
                                     Err(anyhow!("hello_required"))
                                 } else {
                                     match resource {
+                                        page::ResourceRequest::ReadMetadata { page_id, choice_id, read_id, offset, length } => {
+                                            match pages.read_metadata(page_id, choice_id, read_id, offset, length) {
+                                                Ok(work) => {
+                                                    operations.push(async move { match work.await {
+                                                        Ok(result) => json!({"id":request.id,"result":result}),
+                                                        Err(error) => json!({"id":request.id,"error":error.to_string()}),
+                                                    }}.boxed());
+                                                    continue;
+                                                }
+                                                Err(error) => Err(error),
+                                            }
+                                        }
                                         page::ResourceRequest::Read {
                                             page_id,
                                             source_id,
@@ -1852,10 +1864,9 @@ async fn connection(
                                         }
                                         page::ResourceRequest::Cancel {
                                             page_id,
-                                            source_id,
                                             read_id,
                                         } => {
-                                            pages.cancel_resource(page_id, source_id, read_id);
+                                            pages.cancel_resource(page_id, read_id);
                                             Ok(Value::Null)
                                         }
                                     }
@@ -1869,9 +1880,6 @@ async fn connection(
                                 if host.is_none() {
                                     Err(anyhow!("hello_required"))
                                 } else {
-                                    if let page::Operation::PageClose { page_id } = &operation {
-                                        pages.stop_media(*page_id);
-                                    }
                                     let source_page =
                                         if let page::Operation::PageMediaSources { page_id } =
                                             &operation
@@ -2656,6 +2664,148 @@ async fn publish_capture_settings(
 mod lifecycle_tests {
     use super::*;
     #[tokio::test]
+    async fn host_readiness_is_not_an_io_timeout_or_a_restore_barrier() {
+        use tokio_tungstenite::{
+            connect_async,
+            tungstenite::{client::IntoClientRequest, Message as WsMessage},
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let site = "https://owned.test".to_string();
+        let key = (site.clone(), Uuid::from_u128(1), Uuid::from_u128(2));
+        let permission = Arc::new(Permission::new(Uuid::from_u128(3)));
+        let (commands, _receiver) = mpsc::channel(1);
+        let (ready, admitted) = watch::channel(None);
+        let (stop, mut stopped) = watch::channel(false);
+        let host = Host {
+            credential: "owned".into(),
+            commands: commands.clone(),
+            ready: admitted,
+            stop: stop.clone(),
+            task: tokio::spawn(async move {
+                let _ = stopped.changed().await;
+                Ok(())
+            }),
+        };
+        let app = Arc::new(App {
+            config: Config {
+                data_root: directory.path().into(),
+                assets: directory.path().into(),
+                open_browser: false,
+                terminal_notice: None,
+                page_player: None,
+                website_permission_reset: None,
+                window_navigation: None,
+                cloudflared: PathBuf::new(),
+                ice_servers: vec![],
+                update: Default::default(),
+            },
+            port: 0,
+            token: "owned".into(),
+            registry: Mutex::new(Registry {
+                sites: sites::Sites::open(directory.path()).unwrap(),
+                approvals: BTreeMap::from([(site.clone(), permission.clone())]),
+                hosts: BTreeMap::from([(key.clone(), host)]),
+                local: None,
+            }),
+            closing: watch::channel(false).0,
+            launch: Mutex::new(None),
+            desktop: Desktop::new().unwrap(),
+            external_inputs: whip::Inputs::default(),
+            update: update::Owner::disabled(),
+        });
+        // The Native readiness producer is held before Welcome/bindings. Restoring
+        // a retained runtime must not wait for that remote fact in the Domain loop.
+        let (restored, pending) = app
+            .ensure_host(
+                &site,
+                &permission,
+                key.1,
+                key.2,
+                "owned".into(),
+                "Test".into(),
+            )
+            .await
+            .unwrap();
+        assert!(restored.same_channel(&commands));
+        assert!(pending.borrow().is_none());
+        drop(pending);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (stop_server, server_stopped) = oneshot::channel();
+        let router = Router::new()
+            .route("/rooms", get(upgrade))
+            .with_state(app.clone());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router)
+                .with_graceful_shutdown(async {
+                    let _ = server_stopped.await;
+                })
+                .await
+                .unwrap();
+        });
+        let mut request = format!("ws://{address}/rooms")
+            .into_client_request()
+            .unwrap();
+        request
+            .headers_mut()
+            .insert("Origin", site.parse().unwrap());
+        request.headers_mut().insert(
+            "Sec-WebSocket-Protocol",
+            "piik-channel-rooms.owned".parse().unwrap(),
+        );
+        let (mut socket, _) = connect_async(request).await.unwrap();
+        socket
+            .send(WsMessage::Text(
+                json!({"id":"hello","type":"hello","channelId":key.1,
+            "userId":key.2,"credential":"owned","name":"Test"})
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+        timeout(IO_TIMEOUT, async {
+            while ready.receiver_count() != 2 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        // A real upgraded control WebSocket must remain pending beyond the old
+        // five-second admission wrapper while Native readiness is held.
+        assert!(timeout(IO_TIMEOUT + Duration::from_secs(1), socket.next())
+            .await
+            .is_err());
+        socket.close(None).await.unwrap();
+        // The production reader/processor select drops hello on peer close;
+        // its independently retained Host continues to own the only receiver.
+        timeout(IO_TIMEOUT, async {
+            while ready.receiver_count() != 1 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(!*stop.borrow());
+        ready.send_replace(Some(Ok(())));
+        let connected = app
+            .hello(
+                &site,
+                &permission,
+                key.1,
+                key.2,
+                "owned".into(),
+                "Test".into(),
+            )
+            .await
+            .unwrap();
+        assert!(connected.same_channel(&commands));
+        timeout(IO_TIMEOUT, app.shutdown()).await.unwrap();
+        assert!(*stop.borrow());
+        let _ = stop_server.send(());
+        timeout(IO_TIMEOUT, server).await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
     async fn active_resource_websocket_reads_and_cancels_without_blocking_control() {
         use tokio_tungstenite::{
             connect_async,
@@ -2666,6 +2816,11 @@ mod lifecycle_tests {
         let origin = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let media_url = format!("http://{}/file", origin.local_addr().unwrap());
         let (entered, mut slow) = mpsc::unbounded_channel();
+        let (released, mut released_reads) = mpsc::unbounded_channel();
+        struct PendingHttp(mpsc::UnboundedSender<()>);
+        impl Drop for PendingHttp {
+            fn drop(&mut self) { let _ = self.0.send(()); }
+        }
         let http = tokio::spawn(async move {
             axum::serve(
                 origin,
@@ -2673,6 +2828,7 @@ mod lifecycle_tests {
                     "/file",
                     get(move |headers: HeaderMap| {
                         let entered = entered.clone();
+                        let released = released.clone();
                         async move {
                             let value = headers
                                 .get("range")
@@ -2685,6 +2841,7 @@ mod lifecycle_tests {
                             let start = start.parse::<u64>().unwrap();
                             let end = end.parse::<u64>().unwrap().min(131071);
                             if start == 65536 {
+                                let _pending = PendingHttp(released);
                                 entered.send(()).unwrap();
                                 std::future::pending::<()>().await;
                             }
@@ -2826,6 +2983,19 @@ mod lifecycle_tests {
         );
         assert!(receive!()["error"].is_null());
         let page = Uuid::new_v4();
+        let metadata = |id: Uuid, offset: u64| json!({"id":id,"type":"page_media_resource","action":"read_metadata","pageId":page,"choiceId":Uuid::new_v4(),"readId":id,"offset":offset,"length":16});
+        let pending_metadata = Uuid::new_v4();
+        send!(metadata(pending_metadata, 65536));
+        timeout(Duration::from_secs(3), slow.recv()).await.unwrap().unwrap();
+        send!(json!({"id":"cancel-metadata","type":"page_media_resource","action":"cancel","pageId":page,"readId":pending_metadata}));
+        let replies = [receive!(), receive!()];
+        assert!(replies.iter().any(|reply| reply["id"] == "cancel-metadata" && reply["error"].is_null()));
+        assert!(replies.iter().any(|reply| reply["id"] == pending_metadata.to_string() && reply["error"] == "watch_read_cancelled"));
+        timeout(Duration::from_secs(3), released_reads.recv()).await.unwrap().unwrap();
+        send!(metadata(Uuid::new_v4(), 0));
+        let next_metadata = receive!();
+        assert!(next_metadata["error"].is_null(), "{next_metadata}");
+        assert_eq!(next_metadata["result"]["bytesBase64"].as_str().unwrap().len(), 24);
         send!(
             json!({"id":"prepare","type":"page_media_prepare","pageId":page,"choiceId":Uuid::new_v4()})
         );
@@ -2854,7 +3024,7 @@ mod lifecycle_tests {
             .unwrap()
             .unwrap();
         send!(
-            json!({"id":"cancel","type":"page_media_resource","action":"cancel","pageId":page,"sourceId":root,"readId":pending})
+            json!({"id":"cancel","type":"page_media_resource","action":"cancel","pageId":page,"readId":pending})
         );
         let first = receive!();
         let second = receive!();
@@ -2864,6 +3034,7 @@ mod lifecycle_tests {
         assert!([&first, &second]
             .iter()
             .any(|v| v["id"] == pending.to_string() && v["error"] == "watch_read_cancelled"));
+        timeout(Duration::from_secs(3), released_reads.recv()).await.unwrap().unwrap();
         send!(read(Uuid::new_v4(), 0, 1));
         assert!(receive!()["error"].is_null());
         send!(json!({"id":"stop","type":"page_media_stop","pageId":page}));
@@ -2884,9 +3055,19 @@ mod lifecycle_tests {
         send!(read(Uuid::new_v4(),0,1));assert_eq!(receive!()["error"],"watch_source_retired");
         send!(json!({"id":"closing-read","type":"page_media_resource","action":"read","pageId":page,"sourceId":new_root,"resourceId":new_root,"readId":Uuid::new_v4(),"offset":65536,"length":1}));
         timeout(Duration::from_secs(3),slow.recv()).await.unwrap().unwrap();
+        send!(metadata(Uuid::new_v4(), 65536));
+        timeout(Duration::from_secs(3), slow.recv()).await.unwrap().unwrap();
         socket.close(None).await.unwrap();
+        for _ in 0..2 {
+            timeout(Duration::from_secs(3), released_reads.recv()).await.unwrap().unwrap();
+        }
         assert_eq!(timeout(Duration::from_secs(3),revocations.recv()).await.unwrap().unwrap(),new_root);
         assert_eq!(retained.read(new_root,0,1).await.unwrap_err().to_string(),"watch_source_retired");
+        {
+            let registry = app.registry.lock().await;
+            assert_eq!(registry.hosts.len(), 1);
+            assert!(!registry.hosts.values().next().unwrap().task.is_finished());
+        }
         app.registry.lock().await.hosts.values().for_each(|h| {
             h.stop.send_replace(true);
         });

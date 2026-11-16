@@ -776,7 +776,7 @@ export const en: Record<CopyKey, string> = {
   "client.launch.room": "Start Piik on this device",
   "client.connect.action": "Connect Piik App",
   "client.connect.hint": "Connect App for the full Piik experience.",
-  "client.connect.discovering": "Looking for Piik App…",
+  "client.connect.discovering": "Connecting to Piik App…",
   "client.connect.wakeApp": "Open Piik App",
   "client.connect.returnToBrowser": "Return here after opening Piik App to continue connecting.",
   "native.confirmInApp": "Confirm in App",

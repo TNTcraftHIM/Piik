@@ -19,7 +19,6 @@ import { loadRoomHosting, roomDatabaseName } from "./hosting";
 import type { HostedRoom, BrowserRoomSnapshot, BrowserRoomStage, BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
 import type { BackupHistoryImport } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
 import { AppPage, ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState, type NativeRelayCapacity } from "./app-link";
-import { isClientActivated } from "../lib/app-launch";
 import type { NativeCaptureTarget, EncodingExecution, NativePageIndexedSelection } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
@@ -460,7 +459,6 @@ export class ChannelSession {
       this.applyState(event.state, true);
       void this.syncAppWatching(resumed);
       void this.resumeWatches();
-      void this.resumeApp();
       void this.restoreHosts(event.sessionId, skipRestoreRoom).catch(error => {
         if (!this.closed && this.view.sessionId === event.sessionId) this.patch({ error: error instanceof Error ? error.message : "storage_failed" });
       });
@@ -892,20 +890,16 @@ export class ChannelSession {
     this.hostCleanup = Promise.all([this.hostCleanup, ...hosts.map(value => value.host.close())]).then(() => {});
   }
 
-  resumeApp = async (): Promise<void> => {
-    if (this.closed || this.view.connection !== "connected" || !isClientActivated()) return;
-    try { await this.connectApp(); }
-    catch { /* Passive return leaves permission and errors with the explicit App action. */ }
-  };
-
-  private async connectApp(verifiedHealth?: unknown): Promise<ChannelApp> {
+  private async connectApp(verifiedHealth?: unknown, signal?: AbortSignal): Promise<ChannelApp> {
+    signal?.throwIfAborted();
     const state = this.view.state, self = this.view.self;
     if (!state || !self || !this.credential || this.closed) throw new Error("disconnected");
     if (!this.app) {
       if (this.view.connection !== "connected") throw new Error("disconnected");
       // The approval operation already proved this App. A passive permission query
       // can still say "prompt" after a successful request, so do not repeat discovery.
-      const health = verifiedHealth ?? await discoverChannelAppHealth({ waitForPermission: false });
+      const health = verifiedHealth ?? await discoverChannelAppHealth({ waitForPermission: false, signal });
+      signal?.throwIfAborted();
       if (!health) throw new Error("app_disconnected");
       if (this.closed || this.view.connection !== "connected" || this.view.self?.id !== self.id
           || this.view.state?.channel.id !== state.channel.id) throw new Error("disconnected");
@@ -934,17 +928,16 @@ export class ChannelSession {
       }
     }
     const app = this.app;
-    await app.ready;
-    if (this.app === app && !this.closed) {
-      this.patch({});
-      void this.syncAppWatching();
-    }
+    await app.waitReady(signal);
+    if (this.app !== app || this.closed) throw new DOMException("App connection cancelled", "AbortError");
+    this.patch({});
+    void this.syncAppWatching();
     return app;
   }
 
-  activateApp = (verifiedHealth?: unknown): Promise<void> => {
-    if (this.closed || this.view.connection !== "connected") return Promise.resolve();
-    return this.action("app", async () => { await this.connectApp(verifiedHealth); });
+  activateApp = (verifiedHealth?: unknown, signal?: AbortSignal): Promise<void> => {
+    if (this.closed || this.view.connection !== "connected") return Promise.reject(new Error("disconnected"));
+    return this.action("app", async () => { await this.connectApp(verifiedHealth, signal); });
   };
 
   private rememberLocalEndpoint(app: ChannelApp, sessionId: string): void {

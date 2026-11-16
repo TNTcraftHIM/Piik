@@ -700,7 +700,6 @@ export const ja = {
   "client.launch.room": "このデバイスで Piik を起動",
   "client.connect.action": "Piik App に接続",
   "client.connect.hint": "App に接続して Piik の全機能を利用しましょう。",
-  "client.connect.discovering": "Piik App を探しています…",
   "client.connect.wakeApp": "Piik App を開く",
   "client.connect.returnToBrowser": "Piik App を開いた後、ここに戻ると接続を続けられます。",
   "native.confirmInApp": "App で確認",

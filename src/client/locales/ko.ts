@@ -703,7 +703,6 @@ export const ko = {
   "client.launch.room": "이 기기에서 Piik 시작",
   "client.connect.action": "Piik App 연결",
   "client.connect.hint": "App을 연결하면 Piik의 모든 기능을 사용할 수 있어요.",
-  "client.connect.discovering": "Piik App 찾는 중…",
   "client.connect.wakeApp": "Piik App 열기",
   "client.connect.returnToBrowser": "Piik App을 연 뒤 여기로 돌아와 연결을 계속하세요.",
   "native.confirmInApp": "App에서 확인",

@@ -1,7 +1,7 @@
 //! Page players belong to one approved App WebSocket, never to website messages.
 use anyhow::{anyhow, bail, Result};
 use futures_util::{
-    future::{AbortHandle, Abortable, BoxFuture},
+    future::{AbortHandle, AbortRegistration, Abortable, BoxFuture},
     FutureExt,
 };
 use piik_channel_native::session::HostCommand;
@@ -107,12 +107,6 @@ pub enum Operation {
         video: indexed::TrackRecipe,
         audio: Option<indexed::TrackRecipe>,
     },
-    PageMediaReadMetadata {
-        page_id: Uuid,
-        choice_id: Uuid,
-        offset: u64,
-        length: u32,
-    },
     PageMediaResource(ResourceRequest),
     PageMediaStop {
         page_id: Uuid,
@@ -126,6 +120,13 @@ pub enum Operation {
     deny_unknown_fields
 )]
 pub enum ResourceRequest {
+    ReadMetadata {
+        page_id: Uuid,
+        choice_id: Uuid,
+        read_id: Uuid,
+        offset: u64,
+        length: u32,
+    },
     Read {
         page_id: Uuid,
         source_id: Uuid,
@@ -136,7 +137,6 @@ pub enum ResourceRequest {
     },
     Cancel {
         page_id: Uuid,
-        source_id: Uuid,
         read_id: Uuid,
     },
 }
@@ -254,7 +254,7 @@ pub struct Connection {
     overflow: watch::Receiver<bool>,
     media: Mutex<BTreeMap<Uuid, MediaSlot>>,
     media_reads: Arc<tokio::sync::Semaphore>,
-    resource_reads: Mutex<BTreeMap<Uuid, (Uuid, Uuid, AbortHandle)>>,
+    resource_reads: Mutex<BTreeMap<Uuid, (Uuid, AbortHandle)>>,
 }
 struct ResourceRead {
     connection: Arc<Connection>,
@@ -435,6 +435,20 @@ impl Connection {
                 .ok_or_else(|| anyhow!("watch_source_retired"))?;
             active.reader.clone()
         };
+        let (lease, cancelled) = self.begin_read(page_id, read_id)?;
+        Ok(async move {
+            let _lease = lease;
+            use base64ct::{Base64, Encoding};
+            let result = Abortable::new(reader.read(resource_id, offset, length), cancelled).await;
+            let result = result.map_err(|_| anyhow!("watch_read_cancelled"))??;
+            Ok(serde_json::json!({"mimeType":result.mime_type,"totalSize":result.total_size,"bytesBase64":Base64::encode_string(&result.bytes),"eof":result.eof}))
+        }.boxed())
+    }
+    fn begin_read(
+        self: &Arc<Self>,
+        page_id: Uuid,
+        read_id: Uuid,
+    ) -> Result<(ResourceRead, AbortRegistration)> {
         let permit = self
             .media_reads
             .clone()
@@ -444,24 +458,18 @@ impl Connection {
         {
             let mut reads = self.resource_reads.lock().unwrap();
             anyhow::ensure!(!reads.contains_key(&read_id), "watch_read_busy");
-            reads.insert(read_id, (page_id, source_id, cancel));
+            reads.insert(read_id, (page_id, cancel));
         }
         let lease = ResourceRead {
             connection: self.clone(),
             id: read_id,
             _permit: permit,
         };
-        Ok(async move {
-            let _lease = lease;
-            use base64ct::{Base64, Encoding};
-            let result = Abortable::new(reader.read(resource_id, offset, length), cancelled).await;
-            let result = result.map_err(|_| anyhow!("watch_read_cancelled"))??;
-            Ok(serde_json::json!({"mimeType":result.mime_type,"totalSize":result.total_size,"bytesBase64":Base64::encode_string(&result.bytes),"eof":result.eof}))
-        }.boxed())
+        Ok((lease, cancelled))
     }
-    pub fn cancel_resource(&self, page_id: Uuid, source_id: Uuid, read_id: Uuid) {
-        if let Some((page, source, cancel)) = self.resource_reads.lock().unwrap().get(&read_id) {
-            if *page == page_id && *source == source_id {
+    pub fn cancel_resource(&self, page_id: Uuid, read_id: Uuid) {
+        if let Some((page, cancel)) = self.resource_reads.lock().unwrap().get(&read_id) {
+            if *page == page_id {
                 cancel.abort();
             }
         }
@@ -470,14 +478,14 @@ impl Connection {
         let mut failed = self.overflow.clone();
         let _ = failed.wait_for(|value| *value).await;
     }
-    pub async fn read_metadata(
-        &self,
+    pub fn read_metadata(
+        self: &Arc<Self>,
         page_id: Uuid,
         choice_id: Uuid,
+        read_id: Uuid,
         offset: u64,
         length: u32,
-    ) -> Result<Value> {
-        use base64ct::{Base64, Encoding};
+    ) -> Result<BoxFuture<'static, Result<Value>>> {
         anyhow::ensure!(
             length > 0
                 && length as usize <= WATCH_WINDOW_BYTES
@@ -486,33 +494,33 @@ impl Connection {
                     .is_some_and(|end| end <= MAX_METADATA_BYTES),
             "invalid_watch_range"
         );
-        let _permit = self
-            .media_reads
-            .try_acquire()
-            .map_err(|_| anyhow!("watch_read_busy"))?;
-        let dispatch = self
-            .dispatch
-            .as_ref()
-            .ok_or_else(|| anyhow!("page_player_unavailable"))?;
-        let (reply, result) = oneshot::channel();
-        ensure_dispatch(dispatch(Command::Media {
-            owner: self.owner,
-            page_id,
-            choice_id,
-            indexed: true,
-            reply,
-        }))?;
-        let context = tokio::time::timeout(Duration::from_secs(5), result)
-            .await
-            .map_err(|_| anyhow!("page_player_timeout"))??
-            .map_err(anyhow::Error::msg)?;
-        let (_stop, stopped) = watch::channel(false);
-        let result = reader::OriginReader::read_metadata(context, stopped, offset, length).await?;
-        Ok(
-            serde_json::json!({"mimeType":result.mime_type,"totalSize":result.total_size,"bytesBase64":Base64::encode_string(&result.bytes)}),
-        )
+        let (lease, cancelled) = self.begin_read(page_id, read_id)?;
+        Ok(async move {
+            use base64ct::{Base64, Encoding};
+            let connection = &lease.connection;
+            let result = Abortable::new(async {
+                let dispatch = connection.dispatch.as_ref().ok_or_else(|| anyhow!("page_player_unavailable"))?;
+                let (reply, result) = oneshot::channel();
+                ensure_dispatch(dispatch(Command::Media {
+                    owner: connection.owner, page_id, choice_id, indexed: true, reply,
+                }))?;
+                let context = tokio::time::timeout(Duration::from_secs(5), result).await
+                    .map_err(|_| anyhow!("page_player_timeout"))??.map_err(anyhow::Error::msg)?;
+                let (_stop, stopped) = watch::channel(false);
+                reader::OriginReader::read_metadata(context, stopped, offset, length).await
+            }, cancelled).await.map_err(|_| anyhow!("watch_read_cancelled"))??;
+            Ok(serde_json::json!({"mimeType":result.mime_type,"totalSize":result.total_size,"bytesBase64":Base64::encode_string(&result.bytes)}))
+        }.boxed())
     }
     pub async fn request(&self, operation: Operation) -> Result<Value> {
+        if let Operation::PageClose { page_id } = &operation {
+            self.stop_media(*page_id);
+            for (page, cancel) in self.resource_reads.lock().unwrap().values() {
+                if page == page_id {
+                    cancel.abort();
+                }
+            }
+        }
         let Some(dispatch) = &self.dispatch else {
             bail!("page_player_unavailable")
         };
@@ -652,12 +660,12 @@ mod tests {
             .read_resource(page, root, root, Uuid::new_v4(), 0, 1)
             .is_err());
         assert!(connection.media_reads.try_acquire().is_err());
-        connection.cancel_resource(page, Uuid::new_v4(), first);
+        connection.cancel_resource(Uuid::new_v4(), first);
         assert!(!connection.resource_reads.lock().unwrap()[&first]
-            .2
+            .1
             .is_aborted());
         assert!(futures_util::poll!(pending[0].as_mut()).is_pending());
-        connection.cancel_resource(page, root, first);
+        connection.cancel_resource(page, first);
         assert_eq!(
             pending.remove(0).await.unwrap_err().to_string(),
             "watch_read_cancelled"
@@ -682,10 +690,16 @@ mod tests {
     }
     #[test]
     fn active_resource_operation_rejects_urls_and_accepts_cancel() {
-        for action in ["read", "cancel"] {
-            let mut value = serde_json::json!({"type":"page_media_resource","action":action,"pageId":Uuid::new_v4(),"sourceId":Uuid::new_v4(),"readId":Uuid::new_v4()});
+        for action in ["read", "read_metadata", "cancel"] {
+            let mut value = serde_json::json!({"type":"page_media_resource","action":action,"pageId":Uuid::new_v4(),"readId":Uuid::new_v4()});
             if action == "read" {
+                value["sourceId"] = serde_json::json!(Uuid::new_v4());
                 value["resourceId"] = serde_json::json!(Uuid::new_v4());
+                value["offset"] = serde_json::json!(0);
+                value["length"] = serde_json::json!(1);
+            }
+            if action == "read_metadata" {
+                value["choiceId"] = serde_json::json!(Uuid::new_v4());
                 value["offset"] = serde_json::json!(0);
                 value["length"] = serde_json::json!(1);
             }
@@ -748,7 +762,8 @@ mod tests {
             let connection = connection.clone();
             reads.push(tokio::spawn(async move {
                 connection
-                    .read_metadata(Uuid::new_v4(), Uuid::new_v4(), 0, 16)
+                    .read_metadata(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), 0, 16)
+                    .unwrap()
                     .await
             }));
         }
@@ -760,9 +775,9 @@ mod tests {
         }
         assert_eq!(
             connection
-                .read_metadata(Uuid::new_v4(), Uuid::new_v4(), 0, 16)
-                .await
-                .unwrap_err()
+                .read_metadata(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), 0, 16)
+                .err()
+                .unwrap()
                 .to_string(),
             "watch_read_busy"
         );
@@ -781,7 +796,8 @@ mod tests {
         assert_eq!(connection.media_reads.available_permits(), 4);
         assert_eq!(
             connection
-                .read_metadata(Uuid::new_v4(), Uuid::new_v4(), 0, 16)
+                .read_metadata(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), 0, 16)
+                .unwrap()
                 .await
                 .unwrap_err()
                 .to_string(),
@@ -792,19 +808,196 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn metadata_cancel_drops_http_body_and_releases_its_slot_for_the_next_read() {
+        use axum::{
+            body::{Body, Bytes},
+            extract::Request,
+            http::Response,
+            routing::get,
+            Router,
+        };
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!(
+            "http://{}/media?grant=private",
+            listener.local_addr().unwrap()
+        );
+        let (entered, mut requests) = mpsc::unbounded_channel();
+        let (dropped, mut drops) = mpsc::unbounded_channel();
+        struct PendingBody(mpsc::UnboundedSender<()>);
+        impl Drop for PendingBody {
+            fn drop(&mut self) {
+                let _ = self.0.send(());
+            }
+        }
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                Router::new().route(
+                    "/media",
+                    get(move |request: Request| {
+                        let entered = entered.clone();
+                        let dropped = dropped.clone();
+                        async move {
+                            let range = request.headers()["range"].to_str().unwrap();
+                            let start: u64 = range
+                                .strip_prefix("bytes=")
+                                .unwrap()
+                                .split_once('-')
+                                .unwrap()
+                                .0
+                                .parse()
+                                .unwrap();
+                            let body = if start == 0 {
+                                let pending = PendingBody(dropped);
+                                Body::from_stream(futures_util::stream::poll_fn(move |_| {
+                                    let _ = &pending;
+                                    std::task::Poll::Pending::<Option<std::io::Result<Bytes>>>
+                                }))
+                            } else if start == 32 {
+                                Body::from_stream(futures_util::stream::once(async {
+                                    Err::<Bytes, _>(std::io::Error::other("fixture body failed"))
+                                }))
+                            } else {
+                                Body::from(vec![42; 16])
+                            };
+                            entered.send(start).unwrap();
+                            Response::builder()
+                                .status(206)
+                                .header("content-range", format!("bytes {start}-{}/64", start + 15))
+                                .header("content-length", 16)
+                                .body(body)
+                                .unwrap()
+                        }
+                    }),
+                ),
+            )
+            .await
+            .unwrap();
+        });
+        let (_page, retired) = watch::channel(false);
+        let (events, _) = mpsc::channel(8);
+        let connection = Arc::new(Connection::new(
+            Some(Arc::new(move |command| {
+                if let Command::Media { reply, .. } = command {
+                    let _ = reply.send(Ok(MediaContext {
+                        url: url.clone(),
+                        request: None,
+                        format: Format::File,
+                        size: Some(64),
+                        retired: retired.clone(),
+                        cookies: Arc::new(|_| Box::pin(async { Ok(None) })),
+                    }));
+                }
+                true
+            })),
+            events,
+        ));
+        let page = Uuid::new_v4();
+        let choice = Uuid::new_v4();
+        let id = Uuid::new_v4();
+        let reading = tokio::spawn(connection.read_metadata(page, choice, id, 0, 16).unwrap());
+        assert_eq!(requests.recv().await, Some(0));
+        connection.cancel_resource(page, id);
+        assert_eq!(
+            reading.await.unwrap().unwrap_err().to_string(),
+            "watch_read_cancelled"
+        );
+        tokio::time::timeout(Duration::from_secs(1), drops.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(connection.media_reads.available_permits(), MAX_MEDIA_READS);
+        assert!(connection.resource_reads.lock().unwrap().is_empty());
+        let result = connection
+            .read_metadata(page, choice, Uuid::new_v4(), 16, 16)
+            .unwrap()
+            .await
+            .unwrap();
+        use base64ct::{Base64, Encoding};
+        assert_eq!(
+            Base64::decode_vec(result["bytesBase64"].as_str().unwrap()).unwrap(),
+            vec![42; 16]
+        );
+        let error = connection
+            .read_metadata(page, choice, Uuid::new_v4(), 32, 16)
+            .unwrap()
+            .await
+            .unwrap_err();
+        assert!(!format!("{error:?}").contains("grant=private"));
+        assert_eq!(connection.media_reads.available_permits(), MAX_MEDIA_READS);
+        assert!(connection.resource_reads.lock().unwrap().is_empty());
+        connection
+            .read_metadata(page, choice, Uuid::new_v4(), 16, 16)
+            .unwrap()
+            .await
+            .unwrap();
+        server.abort();
+        let _ = server.await;
+    }
+
+    #[tokio::test]
+    async fn page_close_cancels_metadata_before_its_context_arrives() {
+        let replies = Arc::new(Mutex::new(vec![]));
+        let pending = replies.clone();
+        let (events, _) = mpsc::channel(8);
+        let connection = Arc::new(Connection::new(
+            Some(Arc::new(move |command| {
+                match command {
+                    Command::Media { reply, .. } => pending.lock().unwrap().push(reply),
+                    Command::Request { reply, .. } => {
+                        let _ = reply.send(Ok(Value::Null));
+                    }
+                    _ => {}
+                }
+                true
+            })),
+            events,
+        ));
+        let page = Uuid::new_v4();
+        let mut reading = connection
+            .read_metadata(page, Uuid::new_v4(), Uuid::new_v4(), 0, 16)
+            .unwrap();
+        assert!(futures_util::poll!(reading.as_mut()).is_pending());
+        connection
+            .request(Operation::PageClose { page_id: page })
+            .await
+            .unwrap();
+        assert_eq!(
+            reading.await.unwrap_err().to_string(),
+            "watch_read_cancelled"
+        );
+        assert!(replies
+            .lock()
+            .unwrap()
+            .pop()
+            .unwrap()
+            .send(Err("late context".into()))
+            .is_err());
+        assert_eq!(connection.media_reads.available_permits(), MAX_MEDIA_READS);
+        assert!(connection.resource_reads.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn metadata_bounds_reject_before_resolving_a_page_context() {
         let (sent, mut commands) = mpsc::unbounded_channel();
         let (events, _) = mpsc::channel(8);
-        let connection = Connection::new(
+        let connection = Arc::new(Connection::new(
             Some(Arc::new(move |command| sent.send(command).is_ok())),
             events,
-        );
+        ));
         for (offset, length) in [(0, 0), (0, 65537), (1024 * 1024, 1), (u64::MAX, 1)] {
             assert_eq!(
                 connection
-                    .read_metadata(Uuid::new_v4(), Uuid::new_v4(), offset, length)
-                    .await
-                    .unwrap_err()
+                    .read_metadata(
+                        Uuid::new_v4(),
+                        Uuid::new_v4(),
+                        Uuid::new_v4(),
+                        offset,
+                        length
+                    )
+                    .err()
+                    .unwrap()
                     .to_string(),
                 "invalid_watch_range"
             );

@@ -19,36 +19,25 @@ owning room/publication lifetime. The 3.0 section links to its current owners.
 | Text and reactions | `signal/interactions.go`, shared protocol and `RoomInteractionSession` | Current authenticated room session; bounded page-local presentation |
 | Chat panel, optional chat overlay and reaction placement | Shared `RoomInteractions` and `RoomChatOverlay`; `RoomInteractionSession` owns bounded events | Current room UI |
 
-The existing room authority admits interactions through the same authenticated
-WebSocket; there is no second admission or identity system.
+The existing authenticated room WebSocket admits interactions independently of
+media routes, decoded frames and SFU readiness. Pause, source replacement and
+media recovery preserve the conversation; messages neither restart capture nor
+acquire another connection.
 
-Messages do not need a media route, decoded frame, or SFU. They do not mutate the
-media graph, add a port, create an extra connection, or restart capture. Pause,
-source replacement and media recovery keep the current conversation. A capable
-Host explicitly opts into a persistent room session.
-Restoring an existing room connects that session without requesting capture or
-starting media. The capture-ready owner requests publication; merely entering a
-capture picker or awaiting permission cannot publish. Stopping the publication
-retires only its media generation, while the authenticated Host and its
-interaction session remain available. A later `start-sharing` claims a
-fresh generation on that same signaling connection. Room close, access loss,
-session replacement and page teardown still retire the whole session. A Host
-without the capability keeps the existing stop-and-leave behavior.
-
-Room restoration and authority recovery share one awaited owner; connection reuse
-checks the actual room/token binding. Publication acknowledgment precedes media
-effects. A rejected start names its attempted generation, retires only that local
-attempt and keeps room interactions available; it cannot stop another generation.
+A capable Host explicitly opts into a persistent room session. Restoring it
+requests no capture; capture readiness and publication acknowledgment precede
+media effects. One awaited restoration/recovery owner checks the actual room
+and token. A rejected start retires only its attempted generation. Stopping a
+publication keeps the Host's authenticated interactions; room close, access
+loss, session replacement and page teardown retire the whole session. Hosts
+without the capability retain stop-and-leave behavior.
 Opening the Host page alone still does not create an unused room.
 
-The server treats the current Host session's non-empty generation, matched to the
-room's reconnect fence, as the only publishing truth. Room membership and Host
-presence are separate, so a late Viewer in an idle room receives no media route
-even when the Host remains available for room interactions.
-Connected Viewers can continue interacting when the Host disconnects, while the
-room server and their admitted sessions remain available. A departed participant
-cannot receive a targeted reaction. Closing an App that also runs the room server
-ends that service; merely leaving the Host page does not.
+The current non-empty publishing generation, fenced by room reconnect identity,
+is the only publishing truth. Idle Host presence creates no late-Viewer media
+route. Admitted Viewers can still interact after the Host disconnects while the
+room service remains available. Closing an App that runs that service ends it;
+leaving the Host page does not. Departed people cannot receive targeted reactions.
 
 ## Delivery, Compatibility And Bounds
 
@@ -95,129 +84,85 @@ ends that service; merely leaving the Host page does not.
 
 ## Interaction Design
 
-Chat and reactions use an interaction window in the shared `FloatingPanel` shell. The shell
-owns native visibility, placement, movement, resizing and focus return; the
-conversation retains its session, draft, reading position and unread state.
-It opens initially at the lower right, without
-resizing the picture or moving the couch. Drag its title bar or use arrow keys on
-the focused bar. Resize from either diagonal corner or use arrow keys on a resize
-handle. These direct controls also work with touch; there is no separate placement menu.
-Resizing holds the opposite corner steady. Size and position belong to this room
-UI only; viewport and keyboard changes bound them without erasing preferences.
-The native manual
-popover keeps the conversation visible while operating the picture or reactions.
-Close, the entry toggle, or Escape hides it; this preserves the room conversation. Inner
-menus consume Escape first, then the most recently opened utility window, then
-theater mode. Input-method
-composition is not a dismissal request. Opening focuses the panel without opening
-the keyboard; explicit close returns focus to the entry. Nested disclosures
-cannot change panel visibility.
-The visual viewport bounds it above an onscreen keyboard.
-Hidden messages are not marked read. A bounded scrolling log keeps arrivals from
-growing the panel. Consecutive messages from the same sender share visual identity;
-each message retains its accessible author. Hiding and reopening preserves the
-reader's position; a latest-message action resumes following. Sending waits for
-confirmation without locking draft editing or introducing a message queue.
-The conversation entry shares the couch footer with its participant count,
-separate from the Host's sharing controls. Theater hides the seating and count,
-retaining the same compact conversation entry and focus target.
-Selecting a person on the couch opens the reaction palette in the shared floating
-shell, initially beside the selected person (below when space permits). Each
-opening anchors there before allowing free movement. Its portrait and name identify the
-target even after moving the window. Selecting a different participant keeps its
-placement and any manually chosen size; selecting the same person toggles it.
-The default palette height follows its content, bounded by the visible viewport.
-One's own palette expresses a reaction above oneself and holds the local effects switch; other
-people's palettes offer targeted expressions and two throwing props. The props form
-a compact pair of named action buttons beneath the expression grid, using the
-shared button motion.
-Connection details remain secondary when that participant has inspectable data.
-Close or Escape dismisses the palette; it also closes if its participant leaves.
-Sending keeps it open for repeated interaction, with the existing short cooldown.
-Confirmation never changes menu visibility; failure stays visible in the card.
-Opening or closing a reaction card preserves the chat draft and unread state.
-The interaction window uses a compact attached palette beside the chosen chat
-or voice avatar, without replacing or compressing the list and composer. Its
-quick actions are thumbs up/down and the two throwing props; one's own entry
-substitutes laugh and heart. More reactions exposes the full curated palette,
-with a labelled back arrow in its heading. The native
-popover and shared anchored placement own dismissal, focus and viewport fit.
-Clicking the input dismisses it and continues typing; sending keeps it open.
-Changing pages or moving the tool between documents dismisses this brief menu
-without changing the session, draft or reading position. Avatars of departed
-participants remain non-interactive. Both menus use the same target heading,
-reaction buttons and send owner.
-The newest live reaction briefly shows its sender and recipient
-with the same animation renderer.
-It adds neither a message history entry nor an independent expiry timer. Member
-controls and reactions open on demand within the small companion window. Only
-unobscured chat following the latest messages consumes
-unread messages. The detached window uses the same room session, event expiry and
-sending controls as the couch shortcut.
-Self expressions follow the sender's head, including idle and interaction motion.
-Only that sender's newest self expression replaces their earlier one. A targeted
-emoji is a delivery: it travels from sender to recipient, retains a compact
-source label above the centered glyph, and settles separately above the
-recipient's own expression. Late mounts and reduced motion retain that attribution without
-replaying elapsed motion. A gift never replaces the recipient's self expression;
-all delivered events remain in the accessible log.
-Tomato/poop throws require choosing a current participant, land with a small
-character response and settle above the head, keeping the face visible. A tomato
-squashes with a few droplets; poop wobbles with a small puff. Other expressions
-use short gestures and sparse accents. All decorative descendants share the
-event's remaining phase and expiry; event ID and sender identity seed their
-variation. No particles, stains or animation timers outlive the event.
-A departed participant is never silently replaced as target.
-Everyone sees the same server-issued event; placement follows the people in each
-visible surface. Each roster owns its local coordinates and uses the same renderer.
-Effects never become a video overlay or a media status. Impact transforms leave the
-UUID-owned idle animation, names and status indicators alone. Hiding effects or
-retiring the event cancels its own animation; showing a still-live event uses its
-remaining lifetime. Animation scheduling and visibility follow the document
-displaying the surface, so a hidden main page does not freeze its detached window.
-Users can hide effects; reduced motion uses a static stamp.
-Theater mode hides the couch and retains a chat entry, using the same floating
-panel and draft without changing the picture's size. HTML player fullscreen
-keeps the existing danmaku control; it does not include the conversation panel.
-Unread messages advance only while the log is onscreen, the document is visible
-and the reader is following its latest messages. A hidden or scrolled-back log
-does not consume arrivals. These are local unread indicators, not read receipts.
+Chat uses the shared `FloatingPanel`: the shell owns native visibility,
+movement, resizing and focus return; the conversation owns session, draft,
+reading position and unread state. The initially lower-right panel does not
+resize the picture or move the couch. Drag the title bar or use its arrow keys;
+diagonal resize handles support pointer, touch and arrow keys while holding the
+opposite corner steady. The visual viewport keeps it above an onscreen keyboard
+without erasing this room UI's placement preferences.
 
-The optional chat overlay (danmaku) projects newly received chat over the picture;
-it adds no message kind, transport or delivery promise. It defaults off, with the
-same local switch beside the chat composer and Viewer playback bar, including HTML
-fullscreen. At most three single-line comments appear for up to six seconds each.
-Font size follows the picture width. Chat settings can scale it to 80–130% and
-set opacity to 40–100%; defaults are 100%. These local preferences belong to the
-room interaction session, survive its signaling reconnection and reset when that
-session is replaced or the page reloads. Both Host and Viewer use the same owner.
-Adjustments preserve active flights and their shared timing; duration stays fixed.
-The settings view occupies the chat window's existing space and preserves its
-draft and scroll position. Hidden chat is not marked read while adjusting settings.
-Each event's sender and ID choose its lane, and a newer event replaces that lane's
-previous flight. All received text remains in the full chat log, without a playback queue. Text is clipped
-to the picture space above playback controls; smaller spaces show fewer complete
-lanes without restarting their timelines. It does not intercept playback gestures. Showing the overlay
-does not mark the chat log as read. Hidden documents, unavailable pictures,
-source changes and disconnection clear flights; showing or reconnecting never
-replays earlier comments. Reduced motion uses temporary stationary text. Native
-video-only fullscreen and picture in picture cannot include HTML overlays.
+The native manual popover remains usable beside picture controls. Close, the
+entry toggle and Escape hide it without retiring conversation. Inner menus
+consume Escape first, then the newest utility window, then theater; IME
+composition is not dismissal. Opening focuses the panel without summoning the
+keyboard, and explicit close returns focus. Nested disclosures do not own panel
+visibility. A bounded scrolling log preserves reading position and consecutive
+sender grouping; every message keeps its accessible author. Latest resumes
+following, and confirmation does not lock draft editing or add an outbox.
 
-Server confirmation means acceptance, not an acknowledgment from every recipient.
-Delivered chat follows server order; congestion can leave gaps without reordering
-the received subset. The same event retains its lane and time basis even when
-preceding events are missed. Visibility, local switches and missing messages may
-change which effects are shown; geometry and font size follow the local viewport.
+The chat entry and participant count share the couch footer, separate from
+sharing controls. Theater hides seating/count and retains that entry; HTML
+player fullscreen keeps danmaku but not the conversation panel. Only an
+unobscured, visible document following the latest log advances local unread
+state. Hidden/scrolled-back chat, settings and danmaku do not mark messages read.
+These indicators are not recipient read receipts.
 
-Reaction animations are decorative. The same bounded events also provide
-localized sender/action/target descriptions in a polite accessible log, including
-when visual effects are hidden. Reduced motion removes decorative movement from
-both the flight and the picker controls.
+Person actions share one target heading, reaction buttons and send owner:
 
-Chinese, English and visual modes share the component and behavior. Visual mode
-retains user-entered text and participant names, with icon controls and localized
-accessible names. Host identity reuses the existing crown; neither chat colour nor
-reaction motion claims media connectivity, capture permission or delivery status.
+- The couch palette opens beside the selected person (below when space permits)
+  in the floating shell, then allows movement/resizing. Changing person retains
+  its chosen size/placement; choosing the same person toggles it. Portrait/name
+  keep the target explicit. Close/Escape or that person's departure dismisses it;
+  sending and confirmation do not. Failure remains in the card and cooldown
+  permits repeated interaction. Connection details appear only when inspectable.
+  Self offers expressions and the local effects switch; other people also offer
+  the two named throwing props beneath the expression grid.
+- The attached chat/voice palette leaves its list and composer intact. Quick
+  actions are thumbs up/down and throws; self substitutes laugh/heart. More
+  reveals the curated palette with a labelled Back. Native anchored popover
+  placement owns viewport fit and dismissal; clicking the composer continues
+  typing. Page/document moves dismiss this brief menu without changing session,
+  draft or reading position. Departed avatars are noninteractive.
+
+Self expressions follow the sender's head and replace only that sender's prior
+self expression. Targeted delivery retains sender/recipient attribution and
+settles separately above the recipient, never replacing their self expression.
+Throws require a current target, retain its identity and leave its face visible:
+tomato squashes with droplets, poop wobbles with a puff. Other expressions use
+brief gestures and sparse accents. Event ID and actor seed variation; every
+accent shares the event's remaining phase/expiry. Hiding effects cancels its
+animation, and remounting/reduced-motion return uses remaining time rather than
+replay. Each visible roster supplies local coordinates to the same renderer;
+effects do not claim media state or overwrite idle motion, names or status.
+The displaying document owns scheduling, so a hidden opener cannot freeze its
+detached tool. A live-reaction summary reuses that event/renderer without another
+history entry or expiry timer. The polite accessible log retains localized
+sender/action/target descriptions even with effects hidden; reduced motion uses
+static stamps and removes picker movement.
+
+Danmaku is an optional projection of newly received chat, not another transport
+or message kind. It defaults off; composer and playback-bar switches share the
+local owner, including HTML fullscreen. At most three single-line comments last
+up to six seconds. Picture width sizes text; settings scale it to 80–130% and
+opacity 40–100%, default 100%. These session-local preferences survive signaling
+reconnection but reset with session replacement/reload. Editing them preserves
+active flights, draft and scroll position.
+
+Event sender/ID chooses a lane; a new event replaces that lane's flight without
+queuing playback or removing full-log text. Text clips above playback controls,
+showing fewer whole lanes when space shrinks without restarting time. It never
+intercepts playback gestures. Hidden documents, unavailable pictures, source
+change and disconnection clear flights; reopening never replays old comments.
+Reduced motion uses temporary stationary text. Native video-only fullscreen and
+video PiP cannot include HTML overlays.
+
+Server confirmation means acceptance, not receipt by every participant. Received
+chat follows server order; congestion may leave gaps, without changing an
+event's lane/time basis. Chinese, English and visual modes share behavior;
+visual mode keeps names/text and localized accessible labels. Host identity
+reuses its crown; colour and reaction motion do not assert connectivity,
+capture permission or delivery.
 
 ## Presentation Synchronization
 
@@ -289,128 +234,47 @@ in v2.4.0; the dated experiments below describe its earlier design evidence.
 
 #### Historical Prototype Assessment
 
-Reviewed 2026-10-19. The owner requested optional self-hosted voice and assessment
-of App-hosted voice. The local prototype forwards independent Opus publications,
-uses existing room identities, and enforces Host admission and speaking grants.
-It demonstrates decoded voice before, during and after synthetic screen sharing;
-production integration and external-network reachability remain unverified.
+The 2026-10-19 experiments compared a self-hosted Opus SFU, an App voice hub,
+participant mesh and a room-owned bidirectional tree. A picture route did not
+prove a usable voice star: with `Host <-> A <-> B` reachable but `Host <-> B`
+blocked, a Host-App hub left B without voice. Before sharing there might be no
+picture tree at all. The encrypted input channel was rejected as an audio path:
+it provides neither RTP feedback nor jitter-buffer/playout ownership.
 
-The proposed ownership is one room and membership authority, independent screen
-and voice publications. Starting or stopping a share must not create or destroy
-voice membership. The separate-forwarder prototype retires a disconnected voice
-session while approved Viewers can continue talking; explicitly ending the room
-retires all voice sessions. The room-tree experiment below retains healthy media
-during a signaling interruption and separates that from confirmed departure.
-Host-only video and participant-owned voice can
-coexist without turning every speaker into a screen publisher.
+The tree candidate lifted existing graph/connection lifetime to the room while
+keeping one serial prepare/commit operation and independent publications. Shared
+transports support bidirectional tracks through
+[WebRTC transceivers](https://www.w3.org/TR/webrtc/#dom-rtcrtptransceiver) and
+[BUNDLE](https://www.rfc-editor.org/rfc/rfc8843.html). Video stop retires only its
+consumer; mute does not leave voice, and the last consumer/transit demand retires
+the connection. Silent voice cannot depend on an audible sample or decoded video
+frame. Publication and connection generations remain separate.
 
-| Transport | Benefit | Boundary |
-| --- | --- | --- |
-| Self-hosted SFU | Each participant connects to one configured service; independent tracks allow local mute | The service's media endpoint must be reachable; an HTTP connection alone is insufficient |
-| Host App as voice forwarder | The same forwarding module could run locally without a mandatory public media server | Every participant must reach the Host App; existing relayed video does not prove this |
-| Participant mesh | No forwarding process | Pairwise reachability and upload fan-out grow with the room; partial audibility is possible |
-| Room-owned bidirectional tree (candidate) | Reuses reachable neighbors and distributes forwarding upload | Requires room-owned connections, independent voice publications and explicit relay/listening permission; it is not an input-channel extension |
+[RTP forwarding topology](https://www.rfc-editor.org/rfc/rfc7667.html#section-3.7)
+preserves independent speakers and per-person mute without returning ingress
+audio. A single mix would need listener-specific outputs. Payload-only App-star
+upload is 288 kbps for four people with 32 kbps tracks, versus 12.8 Mbps for 21 all
+speaking; neither calculation includes overhead or proves capacity. A relay
+without listening permission needs an explicit authorization/encryption choice.
 
-For example, `Host <-> A <-> B` may carry video and remote input while `Host <-> B`
-cannot connect. A Host-App voice star would leave B without voice. Before sharing,
-there may be no video tree at all. The current `HostPeer` sends one video and one
-source-audio track; `ViewerRelay` uses that same sender. The reverse input channel
-carries bounded encrypted commands, not audio playout, jitter buffering or media
-feedback. Sending audio bytes there would introduce another audio transport stack.
+The isolated Pion/Browser trials demonstrated independent Opus voice, source
+audio and VP8 on the same connections: picture pause/stop/replacement, listener
+revocation/reapproval and candidate preparation preserved publication scopes.
+An edge interruption reused the existing controller's alternate-route and
+decoded-frame commit; signaling reauthentication reconciled the current failure
+instead of adding a retry owner. The separate-forwarder control preserved
+picture while direct voice ICE was blocked and recovered voice after explicit
+rejoin. Worker pipes carried authenticated plans, not room credentials or a
+second planner.
 
-[RTP topology guidance](https://www.rfc-editor.org/rfc/rfc7667.html#section-3.7)
-describes forwarding independent streams without mixing them. This preserves
-per-person mute and avoids returning a speaker's own track. A single mixed
-broadcast would lose that control unless each listener received a separate mix.
-For scale, a four-person App hub forwarding three 32 kbps voice tracks to each
-of three guests sends 288 kbps; 21 participants require 12.8 Mbps in the same
-all-speaking case. These are payload calculations, not measured performance;
-packet overhead and shared-screen upload are additional.
-
-The owner proposed lifting the existing route and connection lifetime to the
-room on 2026-10-19. This is a candidate design, not a published contract: keep
-one graph and one serial operation owner, with video and voice as separate
-consumers. WebRTC already supports bidirectional tracks over shared transports
-([WebRTC transceivers](https://www.w3.org/TR/webrtc/#dom-rtcrtptransceiver),
-[BUNDLE](https://www.rfc-editor.org/rfc/rfc8843.html)). The graph can retain its
-rooted, acyclic orientation for placement while voice travels both ways over an
-edge. Host authority and the single screen source remain unchanged.
-
-Under that design, admitted voice or screen-sharing demand can acquire room
-connections. Stopping video retires its tracks and quality work, not connections
-still serving voice or another participant. Microphone mute does not leave the
-voice session. Once no media consumer or transit demand remains, physical
-connections retire while room chat can continue. Connection epochs are distinct
-from individual publication generations. Route changes retain one prepare/commit
-operation; video still needs decoded-frame proof, while silent voice cannot
-depend on a video frame or audible microphone samples. Current share-wide pause,
-first-frame admission and `HostPeer`/`ViewerRelay` stream ownership are the
-concrete extraction points, rather than reasons to reject transport reuse.
-
-Independent voice tracks retain speaker identity and local mute. Forwarding on
-the committed tree excludes the ingress branch; it need not send every packet
-to the Host and back. Candidate overlap must not create duplicate forwarding or
-let a retired publication survive. A video relay without listening permission
-must not receive decodable voice: relay eligibility or end-to-end encryption
-still needs a deliberate choice. Multi-track congestion and mixed-capability
-production paths remain to be exercised. No generic transport framework, second route
-planner or automatic root migration is implied by this candidate.
-
-The isolated `prototypes/room-media` experiment on `spike/room-voice` reuses the
-production route controller without modifying it. Actual room admission and
-loopback Pion connections carry two independent Opus publications in both
-directions, followed by VP8 video on the same PeerConnections. Video pause,
-stop and replacement preserve voice; an actual edge interruption lets the same
-controller select an available alternate relay. Publication identity survives
-that change, while a replacement source gets a fresh identity. Stopping video
-during candidate preparation also re-evaluates readiness for remaining voice
-demand, rather than waiting for another connection event. Room retirement closes
-the actual connections as well as clearing their plan.
-After signaling loss and physical connection failure coincide, reauthentication
-reconciles the transport's existing failure fact with the controller's current
-session guard. This repairs an experiment caller omission; production Viewer
-reconciliation already has the corresponding behavior. No second retry owner
-or timer is needed.
-
-This experiment excludes nodes without listening permission from voice paths,
-including an unjoined Host. It reports the affected listeners unavailable,
-preserves video, and restores voice on the same connections after approval.
-The Browser follow-up uses independently decoded 330/660 Hz voice, VP8 video and
-separate 880 Hz source audio on the same connections, with either a Browser or
-an independent Pion process as the intermediate participant. Local mute,
-listening revocation/reapproval and relay departure during video preserve the
-publication boundaries; the existing controller commits replacement routes only
-after that candidate's decoded-frame evidence. Stopping sharing retires video
-and source audio while voice continues. Receive bindings include connection and
-publication identity so a candidate cannot replace committed transit media.
-The Pion worker receives only authorized plans and SDP through private inherited
-pipes; it holds neither room credentials nor another route controller.
-
-The existing downstream-copy cap remains a connection bound, not a guarantee
-of balanced multi-track bandwidth. These synthetic loopback results establish
-Browser/Pion decoding and forwarding, not production App control integration,
-public-network reachability, physical echo cancellation or 21-person capacity.
-Production decoded-frame admission remains unchanged.
-
-The current separate-forwarder experiment remains a useful control. It
-uses the same Opus forwarder in a separate local process. Private inherited pipes
-carry already-authenticated commands; the room service remains the identity
-authority. This establishes a replaceable media owner, not an implemented public
-App-to-Site control path or a new accepted product route. The controlled trial
-keeps `Host -> A -> B` video decoding while B's direct voice ICE is denied;
-lifting that denial and explicitly rejoining restores voice. A connected video
-route therefore cannot be displayed as proof of an available voice endpoint.
-
-The earlier prototype trial used one Host microphone publication, moving it out
-of commentary. The current dual-microphone behavior is owned by
-[media quality](../standards/media-quality.md#capture-and-controls), not this
-historical trial. System-audio capture can
-recapture received voices even with headphones; reuse supported audio exclusion
-and validate simultaneous capture/playback before making an echo-free claim.
-In the synthetic sharing trial, moving the Host microphone out of commentary
-removed its frequency from source audio. Deliberately feeding received voice
-into loopback put it back into that source; excluding that input removed it.
-These are routing observations, not physical-device echo-cancellation acceptance.
+These were synthetic local decoding/forwarding results, not production App
+integration, public-NAT reachability, echo cancellation or 21-person acceptance.
+The shipped integration above supersedes their proposed speaking/listening-grant
+policy. Current dual-microphone behavior belongs to
+[media quality](../standards/media-quality.md#capture-and-controls). Deliberately
+recapturing received voice put it into source audio; supported exclusion removed
+it. Headphones alone do not prevent system-loopback recapture, and that routing
+control is not a physical echo-cancellation result.
 
 ## Detached Interaction Window
 
@@ -556,13 +420,12 @@ choice per authenticated user; existing cumulative reaction counts are not ballo
 
 The [independent text example](../../prototype/channel-browser/examples/README.md)
 uses its own ordinary identity with the shared Core signer and reply verifier.
-A real Browser-hosted room verified history, a confirmed reply, socket reconnect,
-host-offline rejection and restored live delivery. A new host binding requires
-reissuing the client's existing Browse intent; reading history does not replay
-old commands. It also supports existing private-room invitations/passwords and
-optional local retention of its own credential. A new process restores that user
-and grants with a fresh session and signing key. Invalid saved credentials fail
-through the shared admission owner without replacing the local file.
+A Browser-hosted room exercised confirmed history/replies, reconnect and
+host-offline rejection. A fresh host binding reissues Browse; history never
+replays old commands. Existing private invitations/passwords and optional local
+credential retention apply unchanged. A restarted process keeps its identity/
+grants but uses a fresh session/signing key. Invalid saved credentials fail
+without replacing the local file.
 
 Shared pads, checklists and watch queues can begin as ordinary links or bot replies.
 Embedding arbitrary web tools adds identity, capability and instance-lifetime work:
@@ -601,16 +464,13 @@ H264 complete access units and Opus RTP retain the existing source clocks and
 Sender Reports. Derived outputs use the existing encoder policy; an externally
 configured source carries no invented capture ceiling. No RTC fork was added.
 
-A Windows control used OBS 33.0.1's generated picture and stereo tones through
-the real App and an independent Browser. H264 pictures decoded and stereo Opus
-retained separate channels without speaker output. OBS stop/restart, old DELETE,
-Piik stop and page closure exercised publication withdrawal, permission revocation
-and UDP release. This establishes the same-machine path, not new cross-NAT or
-other-platform evidence.
-An additional controlled input exercised real derived encoding at constrained,
-partially restored and original demand on the same source/feed/clock. Each phase
-produced decodable frames, and returning to the original feed retired the limited
-encoder. It verifies the adapter's existing output path, not a new congestion policy.
+The Windows same-machine control used OBS 33.0.1 generated picture/stereo tones
+through the real App and independent Browser. H264 decoded; Opus retained stereo
+without speaker output. OBS restart, old DELETE, Piik stop and page close checked
+publication withdrawal, permission revocation and UDP release. Constrained and
+restored demand exercised existing derived encoding on the same source/feed/
+clock, retiring the limited encoder on return. This is neither a new congestion
+policy nor cross-NAT/other-platform acceptance.
 
 ## Attended Remote-Control Prototype
 
@@ -773,21 +633,13 @@ closes the keyboard window. Browsers without this API retain the in-page UI.
 A stalled send queue closes the input channel
 without replacing the media connection. No input history is persisted.
 
-Local acceptance exercised real Windows display capture, Browser and App-assisted viewing,
-native mouse click, keyboard text, wheel, held-key release and the local stop
-shortcut. The consent owner was also checked over real SCTP channels for
-unapproved/stale input, controller replacement, pause, disconnect and source
-retirement. Display → window → display switching retained the channel and
-required fresh approval; the App-assisted path delivered actual mouse/keyboard
-input and released a held key on revocation. Request snapshots and decisions
-are scoped to the owning native share; another session cannot inspect, approve
-or decline them. Real Browser-relay, App-relay and SFU chains also delivered
-video and native key input, released held input on Host revocation, and retired
-control on share stop. Both relay chains recovered viewing and accepted a fresh
-request after their intermediate participant left. These checks do not
-establish remote-network latency, game compatibility, mixed-DPI behavior or
-antivirus classification. The experiment build and disposable UI/input probes
-remain under ignored `build/remote-control-prototype/`.
+Windows local capture and real SCTP controls covered native clicks/text/wheel,
+held-input release, stop shortcuts, stale/unapproved input, pause, source change
+and owning-session request isolation. Browser/App relays and SFU delivered
+picture/input, released grants on revocation/stop and required fresh approval
+after relay departure. This does not establish remote-network latency, game or
+mixed-DPI compatibility, or antivirus classification. Ignored disposable probes
+remain evidence artifacts rather than product procedures.
 
 Touch input uses a relative touchpad over the contained picture: one finger
 moves the cursor, a tap clicks, holding starts a drag, and two fingers scroll
@@ -830,24 +682,17 @@ Quartz Unicode events and Portal keysyms.
 There is no clipboard synchronization. This follows the touchpad conventions in
 [Moonlight's input guide](https://github.com/moonlight-stream/moonlight-docs/wiki/Setup-Guide#keyboardmousegamepad-input-options).
 No game-specific touch layout is added.
-Chromium touch emulation delivered native clicks, scrolling, drag/cancel,
-Chinese/emoji text and shortcuts over the existing P2P route. Narrow layouts,
-DOM fullscreen, zoom/pan coordinate alignment and Host revocation passed;
-physical Android/iOS soft keyboards and Safari's native fullscreen remain device
-checks, not established by emulation.
+Chromium touch emulation covered clicks, wheel, drag/cancel, Chinese/emoji text,
+shortcuts, narrow/fullscreen geometry and revocation. Physical Android/iOS
+keyboards and Safari native fullscreen remain device checks.
 
-Remote control can target an additive 2.x release under the
-[compatibility contract](../standards/versioning.md#extending-interfaces): advertise
-an optional capability, and exchange new commands/events only between supported,
-opted-in sessions. Existing sharing and old command/event shapes remain intact.
-Site capability and App discovery readers already tolerate unknown descriptions;
-this is an extension point, not proof of end-to-end compatibility. Local crossed
-builds of the published 2.1.0 page/App and this prototype completed native window
-sharing and Viewer decoding in both directions, without input opt-in, new input
-events or a remote-control button when either side lacked support. This covers
-those two combinations, not every published Site/App version. Multiple publishers
-are not a prerequisite, and neither feature size nor an internal refactor alone
-requires a major release.
+The additive 2.x compatibility boundary follows
+[interface extension rules](../standards/versioning.md#extending-interfaces):
+advertise an optional capability and exchange input only with supported opted-in
+sessions, preserving existing sharing/message shapes. Published 2.1.0 crossed
+page/App controls retained native sharing and decoding without unsupported input
+events or controls. Those two combinations do not prove every released pairing.
+Feature size or internal refactoring alone does not require a major version.
 
 ### Distribution Risk
 
@@ -946,21 +791,15 @@ input. A one-off neutral reset retries for at most one input frame before
 retiring the grant, so a dropped reset cannot leave a held controller. Device
 closure removes the controller even if a final neutral report cannot be sent.
 
-The Linux prototype uses the stock uinput userspace API, one device per grant,
-without another driver or dependency. Linux amd64/arm64 test binaries
-cross-compile and Linux vet passes. On 2026-10-23, the explicit uinput kernel
-gate passed in an isolated QEMU TCG VM running Alpine 3.24.3 and Linux
-6.18.58-0-virt x86_64: five independent devices exposed correct evdev state,
-neutralized and retired without changing a surviving sibling. Backend shutdown
-removed the remaining devices. The VM and helper were cleaned up without a
-Host installation. Desktop-user device permissions and real-game recognition
-remain acceptance work. The macOS prototype uses native `IOHIDUserDevice` and
-a generic HID gamepad report, with
-device ownership and cleanup in its platform adapter. It requires Apple's
-[`com.apple.developer.hid.virtual.device` entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.hid.virtual.device), separate from
-Accessibility permission. No macOS SDK is available in the current environment,
-so compilation, entitlement admission and desktop-game recognition remain
-unverified. Neither prototype is evidence of a supported shipped platform.
+The Linux prototype uses stock uinput with one device per grant. Its isolated
+kernel control exposed five independent devices, correct evdev reports,
+neutralization and sibling-safe retirement; backend shutdown removed the rest.
+Cross-compilation and kernel checks do not establish desktop-user permissions
+or game recognition. The macOS prototype uses `IOHIDUserDevice` and a generic
+gamepad report, with adapter-owned cleanup. Apple's
+[virtual HID entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.hid.virtual.device)
+is separate from Accessibility. SDK compilation, entitlement admission and game
+recognition remain unverified. Neither prototype establishes a shipped platform.
 
 The candidate path is Browser Gamepad API ->
 existing encrypted input route -> Host-approved player slot -> platform gamepad
@@ -1013,41 +852,17 @@ window so leaving the picture cannot leave a button pressed. Scroll handling
 retains magnitude and fractions across Browser wheel units; the default
 conversion follows [Chromium's wheel mapping](https://github.com/chromium/chromium/blob/main/ui/events/blink/web_input_event_builders_win.cc)
 and [Windows wheel/button semantics](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-mouseinput).
-The Browser input session owns request/grant lifetime separately
-from the React controls and DOM capture. Real SCTP checks cover permission,
-focus suspension, updated geometry and retirement; Browser checks cover window
-capture, consent and pointer lock. Local window move/resize checks matched the
-input owner's live bounds to the decoded WGC aspect ratio, including even-pixel
-encoder rounding. A visible isolated Windows target received native clicks
-before and after movement/resizing, physical-key and relative-mouse input;
-focus suspension/resume and Host revocation also passed. These checks do not
-establish commercial-game compatibility or mixed-DPI behavior.
+The Browser input session owns request/grant lifetime separately from React and
+DOM capture. Local SCTP and isolated Windows-target controls covered permission,
+live window move/resize bounds, WGC even-pixel aspect rounding, physical/relative
+input, focus suspension/resume and retirement. These are not commercial-game or
+mixed-DPI acceptance.
 
-A local Pion/SCTP probe with 40 ms RTT delivered ordered input in about 20 ms
-without loss and about 94 ms at the 95th percentile when every twentieth
-outgoing data packet was dropped. A lost final event, without subsequent input,
-instead waited about 683 ms for retransmission. This synthetic transport probe
-does not establish Browser or game latency. Reliable delivery prevents lost
-key-up events from permanently holding a key, but does not promise immediate
-release during loss. Keep the first prototype on the existing ordered channel;
-desktop acceptance must not be presented as competitive-game readiness. These
-are input semantics and acceptance work, not reasons to replace the media pipeline.
-
-Local component timing on 2026-10-24 used Windows and headless Chrome 155.
-For 200 samples, Browser input dispatch and AES-GCM-to-send each had a 0.1 ms
-95th percentile; ordered Browser SCTP loopback round-trip was 0.8 ms. Across
-100 ten-point mouse bursts, the latest batched point reached send in 5.1 ms
-at the 95th percentile, matching the short timer rather than a rendering-frame
-wait. Encrypted Pion delivery through Host authorization to a recorded input
-sink was 0.13 ms at the 95th percentile. No slow point appeared in these local
-components.
-
-The combined 3.0 Windows candidate completed that path on 2026-10-31: normal
-Host approval, real OS clicks, WGC capture and encoding, P2P delivery and Browser
-decoding. Across 20 clicks, input-to-compositor response was 40.8 ms median and
-53.9 ms at the 95th percentile, measured on the Viewer's single monotonic clock.
-This is local P2P timing through compositor presentation, without physical display
-scanout. The combined candidate's evidence index owns the exact build and samples.
+| Timing control | Result and boundary |
+| --- | --- |
+| Pion/SCTP with 40 ms RTT | Ordered input about 20 ms without loss, 94 ms p95 when every twentieth outgoing packet dropped; a lost final event waited about 683 ms for retransmission. Reliable release is not immediate release under loss. |
+| Windows/Chrome 155 local components, 2026-10-24 | For 200 samples, Browser dispatch and AES-GCM-to-send each 0.1 ms p95; SCTP loopback RTT 0.8 ms. 100 ten-point bursts reached send in 5.1 ms p95, consistent with the batching timer, not rendering. Encrypted Pion→authorized recorded sink was 0.13 ms p95. |
+| Combined 3.0 Windows local P2P, 2026-10-31 | Normal approval→OS click→WGC/encode→Browser compositor: 20 clicks, 40.8 ms median / 53.9 ms p95 on one Viewer monotonic clock. Excludes physical scanout; exact samples/build belong to that candidate's evidence index. |
 
 The reviewed implementation uses WGC capture and the documented Windows input
 API, without game-memory access, injected game code or an input driver.

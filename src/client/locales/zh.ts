@@ -774,7 +774,7 @@ export const zh = {
   "client.launch.room": "在这台设备上启动 Piik",
   "client.connect.action": "连接 Piik App",
   "client.connect.hint": "连接 App，获得更完整的体验。",
-  "client.connect.discovering": "正在查找 Piik App…",
+  "client.connect.discovering": "正在连接 Piik App…",
   "client.connect.wakeApp": "打开 Piik App",
   "client.connect.returnToBrowser": "打开 Piik App 后返回此页，继续连接。",
   "native.confirmInApp": "前往 App 确认",

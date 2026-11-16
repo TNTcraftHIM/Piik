@@ -6,6 +6,9 @@ rust-version = "1.91"
 publish = false
 default-run = "piik-channel-native"
 
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
+
 [workspace]
 
 [features]

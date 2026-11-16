@@ -19,10 +19,12 @@ import { currentTheme, subscribeTheme } from "../../ui/theme";
 import type {} from "../../ui/native-window";
 
 interface AppConnectionProps {
-  onConnected?: (health: NonNullable<Awaited<ReturnType<AppDiscovery["health"]>>>) => void;
+  onConnected?: (health: NonNullable<Awaited<ReturnType<AppDiscovery["health"]>>>, signal: AbortSignal) => void | Promise<void>;
   discovery?: AppDiscovery;
   /** A current control connection, supplied by its owning session. */
   connected?: boolean;
+  /** The owning Site must be admitted before App control can start. */
+  available?: boolean;
   targetURL?: string;
 }
 
@@ -34,7 +36,7 @@ interface ConnectionAttempt {
   cancel?: () => void;
 }
 
-export function AppConnectionButton({ onConnected, discovery = channelAppDiscovery, connected, targetURL }: AppConnectionProps) {
+export function AppConnectionButton({ onConnected, discovery = channelAppDiscovery, connected, available = true, targetURL }: AppConnectionProps) {
   const { lang, t } = useCopy();
   const theme = useSyncExternalStore(subscribeTheme, currentTheme, currentTheme);
   const [state, setState] = useState<"idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible">("idle");
@@ -57,17 +59,24 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
     setBuild(health?.version && health.revision
       ? { version: health.version, revision: health.revision, packageTarget: health.packageTarget } : undefined);
   }
-  useEffect(() => {
-    if (!connected) void connect(false, true);
-    return () => { pending.current?.controller.abort(); pending.current?.popup?.close(); pending.current = null; };
+  useEffect(() => () => {
+    pending.current?.controller.abort(); pending.current?.popup?.close(); pending.current = null;
   }, []);
   useEffect(() => {
+    if (!available) {
+      pending.current?.controller.abort(); pending.current?.popup?.close(); pending.current = null;
+      setState("idle");
+    } else if (!connected && !automaticFailed.current) void connect(false, true);
+  }, [available, connected]);
+  useEffect(() => {
     if (connected === false) rememberBuild(null);
-    const refresh = async () => {
-      if (pending.current || (automaticFailed.current && !connected)) return;
-      if (connected) {
-        setState("ready");
+    const refresh = async (returned = false) => {
+      if (!available || pending.current || (automaticFailed.current && !connected)) return;
+      if (returned && connected === false && isClientActivated()) {
+        await connect(false, true);
+        return;
       }
+      if (connected) setState("ready");
       if (help.current?.matches(":popover-open") || (!connected && !isClientActivated())) return;
       healthCheck.current?.abort();
       const current = healthCheck.current = new AbortController();
@@ -88,12 +97,17 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
     };
     // Launch/remembered activation is intent, not proof of current permission.
     // Recheck on return without keeping a media session or a polling timer alive.
-    const onFocus = () => { void refresh().catch(() => undefined); };
-    onFocus();
+    const onFocus = () => { void refresh(true).catch(() => undefined); };
+    const onVisible = () => { if (document.visibilityState === "visible") onFocus(); };
+    void refresh().catch(() => undefined);
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
     const unwatch = watchClientActivation(onFocus);
-    return () => { healthCheck.current?.abort(); window.removeEventListener("focus", onFocus); unwatch(); };
-  }, [discovery, connected]);
+    return () => {
+      healthCheck.current?.abort(); window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible); unwatch();
+    };
+  }, [discovery, connected, available]);
 
   function showHelp(): void {
     if (trigger.current) help.current?.showPopover({ source: trigger.current });
@@ -108,9 +122,13 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
   }
 
   async function connect(wake = false, automatic = false): Promise<void> {
+    if (!available) return;
     if (!automatic) setAutomaticHint(false);
     if (pending.current) {
-      if (!automatic) pending.current.automatic = false;
+      if (!automatic) {
+        pending.current.automatic = false;
+        if (!pending.current.open) showHelp();
+      }
       pending.current.open?.(); return;
     }
     healthCheck.current?.abort();
@@ -131,9 +149,8 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       approving = false;
       if (health) {
         rememberBuild(health);
-        finish("ready");
-        activateClient();
-        onConnected?.(health);
+        try { await activate(health); }
+        catch (error) { if (!signal.aborted) finish(native?.isIncompatible(error) ? "incompatible" : "unavailable"); }
       } else if (reported) finish("unavailable");
       else if (attempt.popup?.closed) finish("idle");
     };
@@ -159,6 +176,19 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         if (!attempt.automatic && failed) showHelp();
         else help.current?.hidePopover();
       }
+    };
+    const activate = async (health: NonNullable<Awaited<ReturnType<AppDiscovery["health"]>>>) => {
+      if (onConnected) {
+        // One attempt owns discovery, approval and the control handshake.
+        attempt.popup?.close();
+        attempt.popup = null;
+        setState("busy");
+        await onConnected(health, signal);
+        signal.throwIfAborted();
+      }
+      if (pending.current !== attempt) return;
+      activateClient();
+      finish("ready");
     };
     attempt.cancel = () => finish("idle");
     const onFocus = () => {
@@ -190,9 +220,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         if (signal.aborted) return;
         rememberBuild(health);
         if (health) {
-          finish("ready");
-          activateClient();
-          onConnected?.(health);
+          await activate(health);
           return;
         }
         approvalOrigin = new URL(url).origin;
@@ -250,7 +278,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         event.preventDefault();
         checkRelease();
         void connect();
-      }} disabled={busy}>
+      }} disabled={!available}>
       <Glyph name={availableUpdate ? "arrowUp" : ready ? "check" : busy ? "loader" : state === "unavailable" || state === "incompatible" ? "alert" : "window"}
         size={16} className={busy ? "lr-spin" : undefined} />
       <span className="lr-cap">App</span>

@@ -40,9 +40,56 @@ use tokio_tungstenite::{
 use uuid::Uuid;
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type Writer<'a> = dyn futures_util::Sink<Message, Error = tokio_tungstenite::tungstenite::Error>
+    + Send
+    + Unpin
+    + 'a;
+
+// Raw backlog policy: admits one maximum wire frame; decoded state is not queued.
+const SIGNALING_QUEUE_BYTES: usize = 4 * 1024 * 1024;
+
+struct Incoming {
+    text: tokio_tungstenite::tungstenite::Utf8Bytes,
+    _budget: tokio::sync::OwnedSemaphorePermit,
+}
+
+async fn read_messages(
+    reader: &mut (impl futures_util::Stream<
+        Item = std::result::Result<Message, tokio_tungstenite::tungstenite::Error>,
+    > + Unpin),
+    messages: mpsc::Sender<Incoming>,
+) -> Result<()> {
+    // Pending frames and the active raw permit share this connection's byte budget.
+    let budget = Arc::new(tokio::sync::Semaphore::new(
+        SIGNALING_QUEUE_BYTES + std::mem::size_of::<Incoming>(),
+    ));
+    loop {
+        let message = time::timeout(SIGNALING_IDLE_TIMEOUT, reader.next()).await?;
+        match message {
+            Some(Ok(Message::Text(text))) => {
+                let charge = text.len() + std::mem::size_of::<Incoming>();
+                let permit = budget
+                    .clone()
+                    .try_acquire_many_owned(charge.try_into()?)
+                    .map_err(|_| anyhow!("native_signaling_backpressure"))?;
+                messages
+                    .try_send(Incoming {
+                        text,
+                        _budget: permit,
+                    })
+                    .map_err(|_| anyhow!("native_signaling_backpressure"))?;
+            }
+            // tungstenite queues Pong itself; the next read flushes it.
+            Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
+            _ => return Ok(()),
+        }
+    }
+}
 
 const SIGNALING_IDLE_TIMEOUT: Duration = Duration::from_secs(20);
 
+#[cfg(test)]
+mod composition_tests;
 #[cfg(test)]
 mod connection_tests;
 #[cfg(all(test, feature = "capture"))]
@@ -113,7 +160,7 @@ async fn process_peer(
     pairs: &BTreeSet<Uuid>,
     room: &mut RoomTurns,
     peers: &NativePeers,
-    socket: &mut Socket,
+    socket: &mut Writer<'_>,
 ) -> Result<()> {
     match event {
         NativeEvent::Command(command) if current(pairs, &command) => {
@@ -715,10 +762,54 @@ impl Session {
     }
 
     /// true: caller stopped; false: connection lost, attempt the existing resume.
-    async fn connected(
+    async fn connected<S>(
         &mut self,
-        socket: &mut Socket,
+        socket: &mut WebSocketStream<S>,
         join: Command,
+        stop: &mut (impl Future<Output = ()> + Unpin),
+    ) -> Result<bool>
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send,
+    {
+        // Preserve the original initial-command ordering before a split reader
+        // can consume a server rejection followed immediately by Close.
+        tokio::select! {
+            _ = &mut *stop => return Ok(true),
+            _ = recovery_deadline(self.recovery) => {
+                self.release().await?;
+                return Ok(false);
+            },
+            result = write(socket, &join, None) => if let Err(error) = result {
+                return if error.downcast_ref::<tokio_tungstenite::tungstenite::Error>().is_some() {
+                    Ok(false)
+                } else { Err(error) };
+            },
+        }
+        let (mut writer, mut reader) = socket.split();
+        let capacity = SIGNALING_QUEUE_BYTES / std::mem::size_of::<Incoming>() + 1;
+        let (messages, mut incoming) = mpsc::channel(capacity);
+        let (ended, end) = watch::channel(None);
+        let reading = async {
+            let result = read_messages(&mut reader, messages).await;
+            ended.send_replace(Some(Instant::now()));
+            if let Err(error) = result {
+                eprintln!("Native signaling reader stopped: {error}");
+            }
+            // Sender closure is ordered behind accepted application frames. Keep
+            // the reader outcome alive until the business owner retires this turn.
+            std::future::pending::<()>().await;
+        };
+        tokio::select! {
+            _ = reading => unreachable!(),
+            result = self.connected_messages(&mut writer, &mut incoming, end, stop) => result,
+        }
+    }
+
+    async fn connected_messages(
+        &mut self,
+        socket: &mut Writer<'_>,
+        incoming: &mut mpsc::Receiver<Incoming>,
+        carrier_end: watch::Receiver<Option<Instant>>,
         stop: &mut (impl Future<Output = ()> + Unpin),
     ) -> Result<bool> {
         enum Step {
@@ -726,24 +817,17 @@ impl Session {
             Expired,
             Work(Result<bool>),
         }
-        let mut join = Some(join);
         let mut pending = None;
         let mut admitted = false;
         let mut images = piik_channel_core::wire_images::StateImageDecoder::default();
-        let mut last_seen = Instant::now();
         loop {
             let recovery = self.recovery;
-            let idle = last_seen + SIGNALING_IDLE_TIMEOUT;
-            // Stop and connection deadlines cover the whole operation, including
-            // peer negotiation and socket writes. Welcome ends the recovery window
+            // Stop and authority expiry still cover pending business work.
+            // The concurrent reader owns carrier liveness. Welcome ends recovery
             // before its projection starts a peer turn.
             let step = {
                 let work = async {
-                    if let Some(join) = join.take() {
-                        write(socket, &join, None).await?;
-                        return Ok(true);
-                    }
-                    if let Some(event) = pending.take() {
+                    if let Some((event, _budget)) = pending.take() {
                         self.event(event, socket).await?;
                         return Ok(true);
                     }
@@ -791,10 +875,9 @@ impl Session {
                                 process_peer(command, &live.pairs, &mut live.room, &live.peers, socket).await?;
                             }
                         },
-                        message = socket.next() => {
-                            last_seen = Instant::now();
+                        message = incoming.recv() => {
                             match message {
-                                Some(Ok(Message::Text(text))) => {
+                                Some(Incoming { text, _budget }) => {
                                     let event = images.decode(&text).map_err(anyhow::Error::msg)?;
                                     if matches!(event, Event::Welcome { .. }) {
                                         admitted = true;
@@ -803,10 +886,8 @@ impl Session {
                                     if let Event::Error { code, .. } = &event {
                                         if !admitted { bail!("admission failed: {code}"); }
                                     }
-                                    pending = Some(event);
+                                    pending = Some((event, _budget));
                                 },
-                                Some(Ok(Message::Ping(bytes))) => write_frame(socket, Message::Pong(bytes)).await?,
-                                Some(Ok(Message::Pong(_))) => {},
                                 _ => return Ok(false),
                             }
                         },
@@ -814,12 +895,18 @@ impl Session {
                     Ok(true)
                 };
                 tokio::select! {
+                    biased;
                     _ = &mut *stop => Step::Stop,
-                    _ = recovery_deadline(recovery) => Step::Expired,
-                    _ = time::sleep_until(idle) => Step::Work(Ok(false)),
+                    _ = carrier_recovery_deadline(recovery, carrier_end.clone()) => Step::Expired,
                     result = work => Step::Work(result),
                 }
             };
+            if let Some(ended) = *carrier_end.borrow() {
+                if self.live.is_some() {
+                    let expires = ended + Duration::from_millis(RECOVERY_MS);
+                    self.recovery = Some(self.recovery.map_or(expires, |at| at.min(expires)));
+                }
+            }
             match step {
                 Step::Stop => return Ok(true),
                 Step::Expired => {
@@ -872,7 +959,7 @@ impl Session {
         &mut self,
         request: RelayCapacityRequest,
         result: oneshot::Sender<Result<RelayCapacityState, String>>,
-        socket: &mut Socket,
+        socket: &mut Writer<'_>,
     ) -> Result<()> {
         if result.is_closed() {
             return Ok(());
@@ -954,7 +1041,7 @@ impl Session {
         &mut self,
         room_id: &str,
         publication_id: Option<Uuid>,
-        socket: &mut Socket,
+        socket: &mut Writer<'_>,
     ) -> Result<NativeConnectionMetrics> {
         let live = self
             .live
@@ -1029,7 +1116,7 @@ impl Session {
             connections,
         })
     }
-    async fn event(&mut self, event: Event, socket: &mut Socket) -> Result<()> {
+    async fn event(&mut self, event: Event, socket: &mut Writer<'_>) -> Result<()> {
         match event {
             Event::Welcome {
                 credential,
@@ -1533,7 +1620,7 @@ impl Session {
     async fn prepare_capture(
         &mut self,
         request: PrepareCapture,
-        socket: &mut Socket,
+        socket: &mut Writer<'_>,
     ) -> Result<()> {
         if request.result.is_closed() {
             return Ok(());
@@ -1567,7 +1654,7 @@ impl Session {
         publication_id: Uuid,
         room_id: String,
         result: oneshot::Sender<Result<InputAuthority, String>>,
-        socket: &mut Socket,
+        socket: &mut Writer<'_>,
     ) -> Result<()> {
         if result.is_closed() {
             return Ok(());
@@ -1596,7 +1683,7 @@ impl Session {
     async fn prepare_external(
         &mut self,
         request: PrepareExternal,
-        socket: &mut Socket,
+        socket: &mut Writer<'_>,
     ) -> Result<()> {
         if request.result.is_closed() {
             return Ok(());
@@ -1621,7 +1708,7 @@ impl Session {
     async fn prepare_external_source(
         &mut self,
         request: PrepareExternal,
-        socket: &mut Socket,
+        socket: &mut Writer<'_>,
     ) -> Result<()> {
         if request.result.is_closed() {
             return Ok(());
@@ -1660,7 +1747,11 @@ impl Session {
         Ok(())
     }
 
-    async fn prepare_source(&mut self, request: PrepareCapture, socket: &mut Socket) -> Result<()> {
+    async fn prepare_source(
+        &mut self,
+        request: PrepareCapture,
+        socket: &mut Writer<'_>,
+    ) -> Result<()> {
         if request.result.is_closed() {
             return Ok(());
         }
@@ -1704,7 +1795,11 @@ impl Session {
         Ok(())
     }
 
-    async fn commit_capture(&mut self, request: CommitCapture, socket: &mut Socket) -> Result<()> {
+    async fn commit_capture(
+        &mut self,
+        request: CommitCapture,
+        socket: &mut Writer<'_>,
+    ) -> Result<()> {
         if request.result.is_closed() {
             return Ok(());
         }
@@ -1766,7 +1861,7 @@ impl Session {
     async fn transfer_source(
         &mut self,
         request: TransferSource,
-        socket: &mut Socket,
+        socket: &mut Writer<'_>,
     ) -> Result<()> {
         if request.result.is_closed() {
             return Ok(());
@@ -1798,7 +1893,11 @@ impl Session {
         write(socket, &command, Some(&id)).await
     }
 
-    async fn pause_capture(&mut self, request: PauseCapture, socket: &mut Socket) -> Result<()> {
+    async fn pause_capture(
+        &mut self,
+        request: PauseCapture,
+        socket: &mut Writer<'_>,
+    ) -> Result<()> {
         if request.result.is_closed() {
             return Ok(());
         }
@@ -1837,7 +1936,11 @@ impl Session {
         write(socket, &command, Some(&id)).await
     }
 
-    async fn title_capture(&mut self, request: TitleCapture, socket: &mut Socket) -> Result<()> {
+    async fn title_capture(
+        &mut self,
+        request: TitleCapture,
+        socket: &mut Writer<'_>,
+    ) -> Result<()> {
         if request.result.is_closed() {
             return Ok(());
         }
@@ -1879,7 +1982,7 @@ impl Session {
     async fn publish_capture_settings(
         &mut self,
         request: PublishCaptureSettings,
-        socket: &mut Socket,
+        socket: &mut Writer<'_>,
     ) -> Result<()> {
         if request.result.is_closed() {
             return Ok(());
@@ -1940,7 +2043,11 @@ impl Session {
         write(socket, &command, Some(&id)).await
     }
 
-    async fn finish_capture(&mut self, request: CommitCapture, socket: &mut Socket) -> Result<()> {
+    async fn finish_capture(
+        &mut self,
+        request: CommitCapture,
+        socket: &mut Writer<'_>,
+    ) -> Result<()> {
         let publication_id = request.scope.publication_id;
         let live = self
             .live
@@ -2026,7 +2133,7 @@ impl Session {
         }
     }
 
-    async fn open_room(&mut self, request: OpenRoom, socket: &mut Socket) -> Result<()> {
+    async fn open_room(&mut self, request: OpenRoom, socket: &mut Writer<'_>) -> Result<()> {
         let id = request.policy.id.clone();
         let installed = (|| -> Result<RoomSummary> {
             let hosting = self
@@ -2113,7 +2220,7 @@ impl Session {
             .send(result.map_err(|error| error.to_string()));
     }
 
-    async fn restore_room(&mut self, request: RestoreRoom, socket: &mut Socket) -> Result<()> {
+    async fn restore_room(&mut self, request: RestoreRoom, socket: &mut Writer<'_>) -> Result<()> {
         if request.result.is_closed() {
             return Ok(());
         }
@@ -2226,7 +2333,7 @@ impl Session {
         summary: RoomSummary,
         previous_binding: Option<Uuid>,
         reply: OpeningReply,
-        socket: &mut Socket,
+        socket: &mut Writer<'_>,
     ) -> Result<()> {
         let id = summary.id.clone();
         let opening = self
@@ -2258,7 +2365,7 @@ impl Session {
         Ok(())
     }
 
-    async fn state(&mut self, state: Snapshot, socket: &mut Socket) -> Result<()> {
+    async fn state(&mut self, state: Snapshot, socket: &mut Writer<'_>) -> Result<()> {
         if let Some(live) = &mut self.live {
             live.room.rooms.retain(|id, room| {
                 room.binding().is_none()
@@ -2348,7 +2455,11 @@ impl Session {
         Ok(())
     }
 
-    async fn retire_missing_hosts(&mut self, state: &Snapshot, socket: &mut Socket) -> Result<()> {
+    async fn retire_missing_hosts(
+        &mut self,
+        state: &Snapshot,
+        socket: &mut Writer<'_>,
+    ) -> Result<()> {
         let Some(live) = self.live.as_ref() else {
             return Ok(());
         };
@@ -2473,7 +2584,7 @@ async fn await_peer<T>(
     pairs: &BTreeSet<Uuid>,
     room: &mut RoomTurns,
     peers: &NativePeers,
-    socket: &mut Socket,
+    socket: &mut Writer<'_>,
 ) -> Result<T> {
     let mut turn = std::pin::pin!(turn);
     loop {
@@ -2494,6 +2605,29 @@ async fn next_command(live: &mut Option<Live>) -> Option<NativeEvent> {
     }
 }
 
+// The reader reports one physical-carrier end. It cannot grant authority or
+// reset its retained-session deadline; queued Welcome processing cannot either.
+async fn carrier_recovery_deadline(
+    mut deadline: Option<Instant>,
+    mut carrier_end: watch::Receiver<Option<Instant>>,
+) {
+    loop {
+        if let Some(ended) = *carrier_end.borrow_and_update() {
+            let expires = ended + Duration::from_millis(RECOVERY_MS);
+            deadline = Some(deadline.map_or(expires, |at| at.min(expires)));
+        }
+        if deadline.is_some_and(|at| Instant::now() >= at) {
+            return;
+        }
+        tokio::select! {
+            _ = recovery_deadline(deadline) => return,
+            changed = carrier_end.changed() => {
+                if changed.is_err() { recovery_deadline(deadline).await; return; }
+            },
+        }
+    }
+}
+
 async fn recovery_deadline(deadline: Option<Instant>) {
     match deadline {
         Some(deadline) => time::sleep_until(deadline).await,
@@ -2501,7 +2635,7 @@ async fn recovery_deadline(deadline: Option<Instant>) {
     }
 }
 
-async fn write(socket: &mut Socket, command: &Command, request_id: Option<&str>) -> Result<()> {
+async fn write(socket: &mut Writer<'_>, command: &Command, request_id: Option<&str>) -> Result<()> {
     let mut value = serde_json::to_value(command)?;
     if let Some(id) = request_id {
         value
@@ -2512,7 +2646,7 @@ async fn write(socket: &mut Socket, command: &Command, request_id: Option<&str>)
     write_frame(socket, Message::Text(value.to_string().into())).await
 }
 
-async fn write_frame(socket: &mut Socket, frame: Message) -> Result<()> {
+async fn write_frame(socket: &mut Writer<'_>, frame: Message) -> Result<()> {
     time::timeout(Duration::from_secs(5), socket.send(frame))
         .await
         .map_err(|_| {

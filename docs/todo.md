@@ -52,6 +52,11 @@ the feedback period; they do not delay that delivery.
   Windows App/Web package. Cover failed replacement retaining the active source,
   original-page closure, and independent viewer playback with and without
   explicit forwarding. Broader website/live coverage remains below.
+- [ ] **Joining webpage playback near the end.** Allow a viewer with media
+  metadata to follow a shared seek while its old position has no current frame.
+  Keep the sharer's replacement admission separate: a new source must not retire
+  the active share before its required playback preparation succeeds. Preparing a
+  share from an already-ended original page also needs this lifecycle check.
 - [ ] **Native PiP and console/terminal package acceptance.** Verify the new
   integrated-window popup geometry and always-on-top behavior, room-tool return
   with retained activities, and ordinary login popups. Check the same package's

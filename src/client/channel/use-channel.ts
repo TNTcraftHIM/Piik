@@ -21,7 +21,7 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
   useEffect(() => {
     session.start();
     const close = () => session.close();
-    const returned = () => { if (document.visibilityState === "visible") { void session.resumeApp(); void session.resumeWatches(); } };
+    const returned = () => { if (document.visibilityState === "visible") { void session.resumeWatches(); } };
     window.addEventListener("pagehide", close);
     window.addEventListener("focus", returned);
     window.addEventListener("storage", session.refreshReadMarkers);

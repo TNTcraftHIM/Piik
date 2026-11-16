@@ -16,7 +16,6 @@ import { WatchPlayer } from "../src/client/channel/watch-playback";
 import * as watchMedia from "../src/client/channel/watch-media";
 import { PageSuppliedMedia } from "../src/client/channel/watch-page-media";
 import * as nativeActivation from "../src/client/native/activation";
-import * as launchSession from "../src/client/lib/app-launch";
 import * as cameraPreviews from "../src/client/media/camera-previews";
 import { ChannelMedia } from "../src/client/channel/media";
 import { MicrophoneInput } from "../src/client/media/microphone-input";
@@ -81,7 +80,6 @@ beforeEach(() => {
   vi.stubGlobal("history", browserHistory);
   vi.stubGlobal("fetch", vi.fn(async () => new Response(new Uint8Array([0, 0, 0, 16, 102, 116, 121, 112, 105, 115, 111, 109, 0, 0, 0, 0]),
     { status: 206, headers: { "Content-Type": "video/mp4" } })));
-  vi.spyOn(launchSession, "isClientActivated").mockReturnValue(false);
   vi.spyOn(ChannelConversation.prototype, "initialize").mockResolvedValue(testSigningKey);
   vi.stubGlobal("MediaStream", RoomMediaStream);
   vi.stubGlobal("RTCRtpSender", { getCapabilities: () => ({ codecs: [{ mimeType: "video/VP8", clockRate: 90000 }] }) });
@@ -89,6 +87,14 @@ beforeEach(() => {
 });
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
+
+async function startFixtureApp(session: ChannelSession) {
+  const previous = ChannelSocket.current;
+  // The UI owns automatic activation; this non-React fixture starts it explicitly.
+  void session.activateApp().catch(() => {});
+  await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(previous));
+  return ChannelSocket.current;
+}
 
 async function setup(window = 1000, read = true, hash = "room=first", readyInteractions = true, roomIds = ["first", "second"], storage: "saved" | "throws" | "ignores-write" = "saved") {
   vi.stubGlobal("location", new URL(`https://channel.test/__channel-preview${hash ? `#${hash}` : ""}`));
@@ -889,7 +895,6 @@ test("site addresses and room invitations use the current Welcome origin without
 });
 
 test("App hosting uses its own participant while Browser rooms retain their page lifetime", async () => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const localRoom = { id: "saved-browser-room", name: "Browser room", icon: "couch", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false };
   const host = {
@@ -906,7 +911,7 @@ test("App hosting uses its own participant while Browser rooms retain their page
     BrowserRoomHost: { open, storedPolicies },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const { session, socket } = await setup(1000, true, "room=first", true, ["first", "second", localRoom.id]);
-  const app = ChannelSocket.current;
+  const app = await startFixtureApp(session);
   try {
     expect(app).not.toBe(socket);
     await app.onopen?.();
@@ -967,7 +972,7 @@ test("App hosting uses its own participant while Browser rooms retain their page
     expect(host.close).not.toHaveBeenCalled();
     expect(socket.sent.some(command => command.type === "host_stop")).toBe(false);
     const domainCommands = socket.sent.length, identity = session.getSnapshot().sessionId;
-    const resuming = session.resumeApp();
+    const resuming = session.activateApp();
     await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(app));
     const resumedApp = ChannelSocket.current;
     await resumedApp.onopen?.();
@@ -983,7 +988,6 @@ test("App hosting uses its own participant while Browser rooms retain their page
     expect(storedPolicies).toHaveBeenCalledOnce();
     const healthChecks = discovery.mock.calls.length;
     session.close();
-    await session.resumeApp();
     expect(discovery).toHaveBeenCalledTimes(healthChecks);
     expect(ChannelSocket.current).toBe(resumedApp);
     await vi.waitFor(() => expect(host.close).toHaveBeenCalledOnce());
@@ -1253,41 +1257,8 @@ test("an App description completing after unwatch cannot recreate a subscription
   } finally { session.close(); }
 });
 
-test.each(["disconnect", "close"])("pending App health cannot create a control socket after Domain %s", async end => {
-  const { session, socket } = await setup();
-  vi.useFakeTimers();
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  let complete!: (health: Awaited<ReturnType<typeof appLink.discoverChannelAppHealth>>) => void;
-  const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockImplementation(() => new Promise(resolve => { complete = resolve; }));
-  try {
-    const resuming = session.resumeApp();
-    expect(discovery).toHaveBeenCalledOnce();
-    if (end === "close") session.close();
-    else socket.close();
-    complete({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
-    await resuming;
-    expect(ChannelSocket.current).toBe(socket);
-    expect(session.getSnapshot().appConnected).toBe(false);
-  } finally { session.close(); }
-});
-
-test.each(["absent", "rejected"])("passive App resume leaves the page error unchanged when health is %s", async health => {
-  const { session, socket } = await setup();
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  const discovery = vi.spyOn(appLink, "discoverChannelAppHealth");
-  if (health === "absent") discovery.mockResolvedValue(null);
-  else discovery.mockRejectedValue(new Error("local App unavailable"));
-  try {
-    const error = session.getSnapshot().error;
-    await session.resumeApp();
-    expect(session.getSnapshot()).toMatchObject({ appConnected: false, error });
-    expect(ChannelSocket.current).toBe(socket);
-  } finally { session.close(); }
-});
-
 test("verified App approval connects while loopback permission stays prompt and rejection permits a fresh retry", async () => {
   const { session, socket } = await setup();
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://channel.test/") });
   const permission = Object.assign(new EventTarget(), { state: "prompt" });
   const query = vi.fn(async () => permission);
@@ -1301,7 +1272,6 @@ test("verified App approval connects while loopback permission stays prompt and 
   });
   vi.stubGlobal("fetch", fetcher);
   try {
-    await session.resumeApp();
     expect(fetcher).not.toHaveBeenCalled();
     expect(ChannelSocket.current).toBe(socket);
 
@@ -1903,10 +1873,9 @@ test.each([
   vi.stubGlobal("RTCRtpReceiver", { getCapabilities: () => ({ codecs: [receivingH264
     ? { mimeType: "video/H264", clockRate: 90000, sdpFmtpLine: "packetization-mode=1" }
     : { mimeType: "video/VP8", clockRate: 90000 }] }) });
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
-  const app = ChannelSocket.current;
+  const app = await startFixtureApp(session);
   session.setVideoCodecMode(mode);
   try {
     await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null });
@@ -1934,11 +1903,10 @@ test.each([
 });
 
 test("Native capability catalog retains known choices without echoing future descriptions", async () => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
     domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session } = await setup();
-  const app = ChannelSocket.current;
+  const app = await startFixtureApp(session);
   const target = { kind: "window" as const, sourceId: "1", title: "Owned fixture", pid: 42, creationTime: "10" };
   const catalog = { sources: [target], codecs: ["h264"], softwareEncodingCodecs: ["h264"], videoAdaptation: true,
     externalInput: false, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false };
@@ -2272,10 +2240,9 @@ test("Browser source replacement keeps its publication, rejects only the candida
 });
 
 test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-reply", "candidate-ended-before-reply", "app-close-before-state", "app-close-after-state", "transfer-rejected", "audio-stop-before-reply", "mute-during-native-prepare", "mute-during-native-commit", "mute-rejected-during-native-prepare"])("Browser and Native handoffs keep one publication and use the current Native capture lease (%s)", async outcome => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
-  const app = ChannelSocket.current;
+  const app = await startFixtureApp(session);
   const old = remoteTrack("video"), next = remoteTrack("video");
   const muteTransition = outcome.startsWith("mute-");
   const contexts = muteTransition ? microphoneMixer([]) : [];
@@ -2739,10 +2706,9 @@ test("a late source-ceiling rejection cannot configure a stopped capture or its 
 
 test("Native capture previews before its snapshot, keeps picture on audio failure, and stops through its App owner", async () => {
   vi.stubGlobal("navigator", { userAgent: "test", userActivation: { isActive: false } });
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
-  const app = ChannelSocket.current;
+  const app = await startFixtureApp(session);
   try {
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
@@ -3035,12 +3001,11 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
 });
 
 test.each(["before-subscribe", "awaiting-ack", "helper-awaiting-ack"])("committed Native preview resumes its watch intent after Domain recovery (%s)", async interrupted => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const nativeSessionId = crypto.randomUUID();
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: nativeSessionId, roomIds: ["first"] });
   const { session, socket } = await setup();
-  const app = ChannelSocket.current;
+  const app = await startFixtureApp(session);
   try {
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
@@ -3093,11 +3058,10 @@ test.each(["before-subscribe", "awaiting-ack", "helper-awaiting-ack"])("committe
 test.each([
   ["domain-first", false], ["domain-first", true], ["app-first", false], ["app-first", true],
 ] as const)("Native completion preserves replacement ownership and reports only current failures (%s, failed=%s)", async (order, failed) => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockRejectedValue(new Error("Assistance unavailable"));
   const { session, socket } = await setup();
-  const app = ChannelSocket.current;
+  const app = await startFixtureApp(session);
   try {
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
@@ -3156,10 +3120,9 @@ test.each([
 });
 
 test("stopping committed Native capture retires its pending automatic preview error", async () => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
-  const app = ChannelSocket.current;
+  const app = await startFixtureApp(session);
   try {
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
@@ -3191,10 +3154,9 @@ test("stopping committed Native capture retires its pending automatic preview er
 });
 
 test("pending Native capture stays page-owned through same-page stop and close", async () => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
-  const app = ChannelSocket.current;
+  const app = await startFixtureApp(session);
   try {
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
@@ -3256,11 +3218,10 @@ test("pending Native capture stays page-owned through same-page stop and close",
 });
 
 test("external input keeps its waiting activity while each prepared stream uses the existing commit path", async () => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
     domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
-  const app = ChannelSocket.current;
+  const app = await startFixtureApp(session);
   const watch = vi.spyOn(session, "watch").mockResolvedValue();
   try {
     await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null });
@@ -3294,11 +3255,10 @@ test("external input keeps its waiting activity while each prepared stream uses 
 });
 
 test.each(["browser", "camera", "native"] as const)("waiting OBS can switch to %s without transferring an absent producer", async source => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
     domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
-  const app = ChannelSocket.current;
+  const app = await startFixtureApp(session);
   const watch = vi.spyOn(session, "watch").mockResolvedValue();
   const video = remoteTrack("video");
   const capture = vi.fn(async () => remoteStream("replacement", [video]));
@@ -3388,11 +3348,10 @@ test.each(["browser", "camera", "native"] as const)("waiting OBS can switch to %
 });
 
 test("closing the App connection preserves a pending Browser source selection", async () => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
     domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
-  const app = ChannelSocket.current, video = remoteTrack("video");
+  const app = await startFixtureApp(session), video = remoteTrack("video");
   let grant!: (stream: MediaStream) => void;
   vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(() => new Promise<MediaStream>(resolve => { grant = resolve; })) } });
   try {
@@ -3413,11 +3372,10 @@ test("closing the App connection preserves a pending Browser source selection", 
 });
 
 test("arming OBS preserves the current capture controls until the external source commits", async () => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
     domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session } = await setup();
-  const app = ChannelSocket.current;
+  const app = await startFixtureApp(session);
   vi.spyOn(session, "watch").mockResolvedValue();
   try {
     await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null });
@@ -3518,8 +3476,7 @@ test("a room hosted by another page cannot block this page's other rooms from re
   } finally { session.close(); }
 });
 
-test("remembered App intent does not prevent Browser hosting when no App is connected", async () => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
+test("Browser hosting does not depend on automatic App activation", async () => {
   const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue(null);
   const host = {
     roomId: "", summary: () => ({ id: host.roomId, name: "Browser room", icon: "couch", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false }),
@@ -3531,7 +3488,7 @@ test("remembered App intent does not prevent Browser hosting when no App is conn
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const { session, socket } = await setup();
   try {
-    expect(discovery).toHaveBeenCalledOnce();
+    expect(discovery).not.toHaveBeenCalled();
     expect(session.getSnapshot()).toMatchObject({ appConnected: false, error: null });
     const creating = session.createRoom({ name: "Browser room", icon: "couch", access: "public", hidden: false });
     acceptCreatedRoom(socket);
@@ -3543,14 +3500,13 @@ test("remembered App intent does not prevent Browser hosting when no App is conn
     const browse = socket.sent.findLast(command => command.type === "browse" && command.roomId === host.roomId)!;
     socket.receive({ type: "room_reply", roomId: host.roomId, requestId: browse.requestId, result: { type: "done" } });
     await expect(creating).resolves.toBe(host.roomId);
-    expect(discovery).toHaveBeenCalledOnce();
+    expect(discovery).not.toHaveBeenCalled();
     await expect(session.activateApp()).rejects.toThrow("app_disconnected");
     expect(session.getSnapshot().error).toBe("app_disconnected");
   } finally { session.close(); }
 });
 
 test("an App failure during creation does not turn that request into a Browser room", async () => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   let prepared!: (policy: string) => void;
   let policy = "";
@@ -3560,7 +3516,7 @@ test("an App failure during creation does not turn that request into a Browser r
     BrowserRoomHost: { open: browserOpen },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const { session, socket } = await setup();
-  const app = ChannelSocket.current;
+  const app = await startFixtureApp(session);
   try {
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
@@ -7009,11 +6965,10 @@ test("relay overrides persist per room only after acceptance and accompany read 
 });
 
 test("App relay settings target the actual endpoint, preserve webpage settings and reject retired room results", async () => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
     domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
-  const app = ChannelSocket.current;
+  const app = await startFixtureApp(session);
   try {
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
@@ -7838,9 +7793,8 @@ test("portable import validates the full archive before switching accounts and r
 });
 
 test("an approved App exports only rooms positively matched to its Native session", async () => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
-  const { session, socket } = await setup(); const appSocket = ChannelSocket.current;
+  const { session, socket } = await setup(); const appSocket = await startFixtureApp(session);
   const nativeId = crypto.randomUUID();
   const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ sessionId: nativeId, roomIds: ["first"] })))
     .mockResolvedValueOnce(new Response(new Blob(["app-snapshot"])));
@@ -9379,10 +9333,9 @@ test('shared live seek controls select available content while pause keeps its o
 });
 
 test("review capability downgrade retains active Native source and resets a different App catalog", async () => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   const health = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
     domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "strong", pagePlayer: true });
-  const { session } = await setup(); const app = ChannelSocket.current;
+  const { session } = await setup(); const app = await startFixtureApp(session);
   vi.spyOn(session, "watch").mockResolvedValue();
   const target = { kind: "display" as const, sourceId: "1", title: "Owned display" };
   const strong = { sources: [target], codecs: ["h264", "vp8"], softwareEncodingCodecs: ["h264"], videoAdaptation: true,
@@ -9424,9 +9377,8 @@ test("review capability downgrade retains active Native source and resets a diff
 });
 
 test("review pending Native picker disconnect retires only that attempt and a new App can retry", async () => {
-  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink,"discoverChannelAppHealth").mockResolvedValue({service:"piik-channel-app",protocol:appLink.APP_PROTOCOL,domainProtocol:CHANNEL_PROTOCOL,port:8793,token:"approved"});
-  const {session}=await setup();const app=ChannelSocket.current;vi.spyOn(session,"watch").mockResolvedValue();
+  const {session}=await setup();const app = await startFixtureApp(session);vi.spyOn(session,"watch").mockResolvedValue();
   const target={kind:"picker" as const,sourceId:"0",title:"System picker"};
   const catalog={sources:[target],codecs:["h264"],softwareEncodingCodecs:[],videoAdaptation:true,externalInput:false,processAudio:false,processAudioExclusion:false,systemAudio:true,captureBorderControl:false,activationURL:"piik://media"};
   async function connect(socket:ChannelSocket){await socket.onopen?.();socket.receive({id:socket.sent.at(-1)!.id,result:null});await vi.waitFor(()=>expect(session.getSnapshot().appConnected).toBe(true));}
@@ -9590,6 +9542,51 @@ test("leaving one pending voice room preserves a sibling's shared microphone req
   } finally { session.close(); grant(remoteStream("late", [raw])); await Promise.all([first, second]); }
 });
 
+
+test("App admission waits for Native readiness and cancelling the last intent permits retry", async () => {
+  const { session, socket } = await setup();
+  const approved = { service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL, token: "owned", port: 8793 };
+  const attempt = new AbortController();
+  try {
+    vi.useFakeTimers();
+    const connecting = session.activateApp(approved, attempt.signal);
+    const cancelled = expect(connecting).rejects.toMatchObject({ name: "AbortError" });
+    const first = ChannelSocket.current;
+    expect(first).not.toBe(socket);
+    await first.onopen?.();
+    const oldHello = first.sent.at(-1)!.id;
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(session.getSnapshot()).toMatchObject({ appConnected: false, error: null });
+    expect(session.getSnapshot().pending.has("app")).toBe(true);
+    attempt.abort();
+    await cancelled;
+    expect(first.readyState).toBe(3);
+    expect(session.getSnapshot()).toMatchObject({ appConnected: false, error: null });
+    expect(session.getSnapshot().pending.has("app")).toBe(false);
+    const retried = session.activateApp(approved);
+    const next = ChannelSocket.current;
+    expect(next).not.toBe(first);
+    await next.onopen?.();
+    first.receive({ id: oldHello, result: null });
+    expect(session.getSnapshot().appConnected).toBe(false);
+    next.receive({ id: next.sent.at(-1)!.id, result: null });
+    await retried;
+    expect(session.getSnapshot()).toMatchObject({ appConnected: true, error: null });
+    expect(socket.readyState).toBe(ChannelSocket.OPEN);
+  } finally { session.close(); }
+});
+
+
+test("App activation cannot acknowledge success before Domain admission", async () => {
+  const { session, socket } = await setup();
+  try {
+    socket.close();
+    await expect(session.activateApp()).rejects.toThrow("disconnected");
+    expect(ChannelSocket.current).toBe(socket);
+    expect(session.getSnapshot().appConnected).toBe(false);
+  } finally { session.close(); }
+});
 test("one admitted Watch aggregate fits the shared bulk queue while control stays independent", async () => {
   const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
   const { readFile } = await import("node:fs/promises");

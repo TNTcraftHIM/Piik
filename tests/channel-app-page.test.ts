@@ -43,7 +43,7 @@ test('local resource playback uses the prepared root and cancels only its opaque
     expect((await pending).bytes).toEqual(new TextEncoder().encode('data'));
     const abort=new AbortController(),reading=page.readMediaResource(sourceId,resourceId,0,4,abort.signal);
     const request=socket.sent.at(-1)!;const rejected=expect(reading).rejects.toMatchObject({name:'AbortError'});abort.abort();await rejected;
-    expect(socket.sent.at(-1)).toMatchObject({type:'page_media_resource',action:'cancel',pageId:page.id,sourceId,readId:request.readId});socket.reply(null);
+    expect(socket.sent.at(-1)).toMatchObject({type:'page_media_resource',action:'cancel',pageId:page.id,readId:request.readId});socket.reply(null);
     socket.receive({id:request.id,result:{bytesBase64:btoa('late'),mimeType:'video/mp4',totalSize:4,eof:true}});
     await expect(page.readMediaResource(sourceId,resourceId,0,65537,new AbortController().signal)).rejects.toThrow();
   }finally{app.close();}
@@ -165,7 +165,7 @@ test("selected-page metadata reads use opaque IDs and enforce both byte-window b
     const page = await openPage(app, socket), choiceId = crypto.randomUUID(), signal = new AbortController().signal;
     const offset = NATIVE_PAGE_METADATA_PREFIX_BYTES - 3;
     const reading = page.readMediaMetadata(choiceId, offset, 3, signal);
-    expect(socket.sent.at(-1)).toEqual({ id: expect.any(String), type: "page_media_read_metadata", pageId: page.id, choiceId, offset, length: 3 });
+    expect(socket.sent.at(-1)).toEqual({ id: expect.any(String), type: "page_media_resource", action: "read_metadata", readId: expect.any(String), pageId: page.id, choiceId, offset, length: 3 });
     socket.reply({ mimeType: "video/mp4", totalSize: 2000000, bytesBase64: "AP8q" });
     await expect(reading).resolves.toEqual({ mimeType: "video/mp4", totalSize: 2000000, bytes: Uint8Array.of(0, 255, 42) });
     const sent = socket.sent.length;
@@ -206,6 +206,8 @@ test.each(["caller", "page"] as const)("%s retirement cancels metadata reads and
     await rejected;
     socket.receive({ id: command.id, result: { mimeType: "video/mp4", totalSize: 1000000, bytesBase64: "AP8q" } });
     if (owner === "caller") {
+      expect(socket.sent.at(-1)).toMatchObject({ type: "page_media_resource", action: "cancel", pageId: page.id, readId: command.readId });
+      socket.reply(null);
       expect(socket.sent.some(value => value.type === "page_close")).toBe(false);
       const playback = page.read(); socket.reply(state);
       await expect(playback).resolves.toEqual(state);
@@ -269,20 +271,37 @@ test("hiding and refocusing a source page preserves its requests and lifetime", 
 });
 
 
-test("hello timeout and its pending rejection retire the App link once", async () => {
-  vi.useFakeTimers();
+test("socket close and its pending hello rejection retire the App link once", async () => {
   vi.stubGlobal("WebSocket", Socket);
   const closed = vi.fn();
   const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
     token: "test-token", port: 8793 }, "site", "user", "credential", "Me", closed, () => {});
   const failed = expect(app.ready).rejects.toThrow("app_disconnected");
   Socket.current.onopen?.();
+  Socket.current.close();
+  await failed;
+  expect(closed).toHaveBeenCalledOnce();
+});
+
+test("cancelling a pending control intent rejects its dependent callers but preserves ready control", async () => {
+  vi.stubGlobal("WebSocket", Socket);
+  const closed = vi.fn();
+  const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
+    token: "test-token", port: 8793 }, "site", "user", "credential", "Me", closed, () => {});
+  const attempt = new AbortController();
+  const cancelled = expect(app.waitReady(attempt.signal)).rejects.toMatchObject({ name: "AbortError" });
+  const dependent = expect(app.waitReady()).rejects.toMatchObject({ name: "AbortError" });
+  Socket.current.onopen?.();
+  attempt.abort();
+  await Promise.all([cancelled, dependent]);
+  expect(Socket.current.readyState).toBe(3);
+  expect(closed).toHaveBeenCalledOnce();
+
+  const { app: ready } = await setup();
+  const readyAttempt = new AbortController();
   try {
-    await vi.advanceTimersByTimeAsync(10000);
-    await failed;
-    expect(closed).toHaveBeenCalledOnce();
-  } finally {
-    app.close();
-    vi.useRealTimers();
-  }
+    await ready.waitReady(readyAttempt.signal);
+    readyAttempt.abort();
+    expect(ready.connected).toBe(true);
+  } finally { ready.close(); }
 });

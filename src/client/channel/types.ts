@@ -136,7 +136,7 @@ export interface ChannelActions {
   sourceMicrophone(publicationId: string): SourceMicrophoneConfiguration & { browser: boolean; canDisable: boolean; available: boolean; requested: SourceMicrophoneConfiguration } | undefined;
   setSourceMicrophone(publicationId: string, settings: SourceMicrophoneSettings): Promise<void>;
   sourceMicrophones(publicationId: string): Promise<CaptureDevice[]>;
-  activateApp(verifiedHealth?: unknown): Promise<void>;
+  activateApp(verifiedHealth?: unknown, signal?: AbortSignal): Promise<void>;
   browse(roomId: string): void;
   roomTopology(roomId: string, publicationId?: string, signal?: AbortSignal): Promise<ChannelTopology>;
   connectionMetrics(roomId: string, publicationId?: string): Promise<ChannelMediaMetrics>;

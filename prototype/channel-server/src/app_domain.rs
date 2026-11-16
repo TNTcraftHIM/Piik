@@ -400,10 +400,12 @@ async fn run(
                     );
                     progress.send_replace(Progress::Ready(ready.clone()));
                 } else {
+                    // Restore the retained runtimes; their remote readiness must not
+                    // hold the Domain loop or its stop signal after a failed import.
                     for ((site, domain, user), credential) in restart {
                         let permission = app.registry.lock().await.permission(&site).cloned();
                         if let Some(permission) = permission {
-                            if let Err(error) = app.hello(&site, &permission, domain, user, credential, "Piik App".into()).await {
+                            if let Err(error) = app.ensure_host(&site, &permission, domain, user, credential, "Piik App".into()).await {
                                 eprintln!("App hosting restart: {error}");
                             }
                         }
