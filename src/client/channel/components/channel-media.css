@@ -12,6 +12,7 @@
 .c3-watch-shared, .c3-watch-local { display: flex; align-items: center; gap: inherit; min-width: 0; }
 .c3-watch-shared { flex: 1 1 220px; }
 .c3-watch-local { flex: none; }
+.c3-watch-status { flex: none; white-space: nowrap; font-size: 11px; line-height: 1.2; }
 .c3-watch-receiving { width: min(300px, calc(100vw - 16px)); }
 .c3-watch-receiving p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .c3-mini-message .c3-watch-result { flex-direction: column; max-width: min(360px, calc(100% - 24px)); text-align: center; }
@@ -23,7 +24,7 @@
   > .c3-mini-message { position: relative; inset: auto; grid-area: 1 / 1; padding: 16px 8px; }
   > .c3-mini-controls { grid-area: 2 / 1; }
 }
-.c3-watch-shared input { flex: 1 1 140px; min-width: 36px; width: 140px; height: var(--control-dense-size); accent-color: var(--action); }
+.c3-watch-shared input { flex: 1 1 140px; min-width: 36px; width: 140px; height: var(--control-dense-size); margin: 0; accent-color: var(--action); }
 .c3-mini-controls .c3-watch-shared .lr-select { flex: none; min-width: 0; width: auto; min-height: var(--control-dense-size); padding: 0 3px; border: 0; background: transparent; font-size: 12px; }
 .c3-mini-controls .lr-viewer-action-separator { display: block; width: 1px; height: 20px; margin-inline: 2px; background: var(--control-edge); }
 .c3-watch-player[data-thumbnail] .c3-watch-shared { flex: none; }
@@ -51,8 +52,13 @@
   transition: opacity var(--motion-feedback) ease, transform var(--motion-control) ease;
 }
 .c3-mini-controls .lr-btn:not(:where(.c3-mini-controls [popover] *)) { --button-size: var(--control-compact-size); flex: none; min-width: 0; width: var(--button-size); height: var(--button-size); padding: 0; }
+.c3-mini-controls .lr-btn:has(> .lr-cap) { width: auto; padding-inline: 6px; }
+.c3-watch-player[data-thumbnail] .c3-watch-shared > .c3-watch-status,
+.c3-watch-player[data-thumbnail] .c3-watch-shared .lr-cap { display: none; }
 @container (max-width: 520px) {
   .c3-mini-controls .lr-btn:not(:where(.c3-mini-controls [popover] *)) { --button-size: clamp(24px, 8cqi, var(--control-dense-size)); }
+  .c3-mini-controls .lr-btn:has(> .lr-cap) { width: var(--button-size); padding: 0; }
+  .c3-mini-controls .lr-btn > .lr-cap { display: none; }
 }
 .c3-mini-controls .lr-remote-controls { display: inline-flex; align-items: center; flex: none; gap: inherit; }
 .c3-mini-controls .lr-playback-window { gap: inherit; }

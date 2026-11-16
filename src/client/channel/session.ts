@@ -6,7 +6,7 @@ import { limitWatchReads } from "./watch-resource";
 import { WatchBytes } from "./watch-bytes";
 import { z } from "zod";
 import { WatchPlayer } from "./watch-playback";
-import { HTMLVideoMedia, AppPageMedia, createPeerWatchMedia, waitForWatchMedia, type WatchMedia } from "./watch-media";
+import { HTMLVideoMedia, AppPageMedia, createPeerWatchMedia, waitForWatchMedia, watchSeekPosition, type WatchMedia } from "./watch-media";
 import { watchPlaybackSchema, watchSourceSchema, type WatchPlayback, type WatchSource, type WatchMode, type WatchByteSource } from "./protocol";
 import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
@@ -2398,7 +2398,9 @@ export class ChannelSession {
     return player.serialize(async () => {
       if (this.watchPlayers.get(id) !== player) return;
       watchPlaybackSchema.parse({ ...await player.sample(), ...patch });
-      await player.media.patch(patch);
+      const ranges = player.mediaState?.live?.seekable;
+      await player.media.patch(patch.position !== undefined && ranges
+        ? { ...patch, position: watchSeekPosition(patch.position, ranges) } : patch);
     });
   };
   resumeWatch = async (id: string): Promise<void> => {

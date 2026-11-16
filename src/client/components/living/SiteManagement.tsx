@@ -123,7 +123,7 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
         </li>;
       })}</ul> : <p className="lr-site-empty">{t("client.sites.empty")}</p>}
     </>}
-    {ownedStartup && <div className="lr-site-owned-startup lr-site-section"><label className="lr-client-approval-startup"><input type="checkbox" checked disabled={busy} onChange={() => accessAction(onStartup(""))} /><Glyph name="play" size={18} /><span>{t("client.connect.openOwnedOnStart", { mode: t(ownedStartup === "local" ? "client.launch.local" : "client.launch.link") })}</span></label></div>}
+    {ownedStartup && !(selected && ownedSites.includes(selected)) && <div className="lr-site-owned-startup lr-site-section"><label className="lr-client-approval-startup"><input type="checkbox" checked disabled={busy} onChange={() => accessAction(onStartup(""))} /><Glyph name="play" size={18} /><span>{t("client.connect.openOwnedOnStart", { mode: t(ownedStartup === "local" ? "client.launch.local" : "client.launch.link") })}</span></label></div>}
     {accessError && (accessError.site === selected || accessError.site === null && ownedStartup) &&
       <Pill icon="alert" tone="bad" comic="signal-failed" alert label={accessError.message} />}
   </section>;

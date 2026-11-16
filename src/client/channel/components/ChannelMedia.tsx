@@ -60,11 +60,11 @@ function WatchReceivingSettings({ receiving }: { receiving: WatchReceiving }) {
 }
 
 /** The session owns loading and playback; presentation only mounts its existing element. */
-export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled, website, onAppWatch, onFocusWindow, receiving, automaticPlayback = true }: {
+export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled, website, originalPageAvailable, onAppWatch, onFocusWindow, receiving, automaticPlayback = true }: {
   player: WatchPlayer; owned: boolean; paused: boolean; label: string; presentation: "full" | "thumbnail" | "background";
   theaterMode: boolean; onToggleTheater(): void; disabled: boolean;
   onPlayback(patch: Partial<Pick<WatchPlayback, "paused" | "position" | "rate">>): void; onResume(): void;
-  website: boolean; onAppWatch?: () => void; onFocusWindow(): void;
+  website: boolean; originalPageAvailable: boolean; onAppWatch?: () => void; onFocusWindow(): void;
   receiving?: WatchReceiving;
   automaticPlayback?: boolean;
 }) {
@@ -146,7 +146,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       <span>{t("watch.inWindow")}</span><Btn icon="window" title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />
     </div></div>}
     {player.error ? <div className="c3-mini-message" role="alert"><div className="c3-frame-wait c3-watch-result"><span>{failure}</span>
-      {website && surface.kind !== "external" && (onAppWatch ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={onAppWatch} /> : <small>{t("watch.connectApp")}</small>)}
+      {website && originalPageAvailable && surface.kind !== "external" && (onAppWatch ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={onAppWatch} /> : <small>{t("watch.connectApp")}</small>)}
       {receiving && <WatchPeerAction receiving={receiving} />}
     </div></div>
       : player.blocked && <div className="c3-mini-message"><Btn icon="play" title="watch.resume" cap="watch.resume" onClick={onResume} /></div>}
@@ -154,12 +154,12 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       {owned && !embedded && <div className="c3-watch-shared" role="group" aria-label={t("watch.sharedControls")}>
         <Btn icon={paused ? "play" : "pause"} quiet size="dense"
           title={paused ? "watch.play" : "watch.pause"} disabled={disabled} onClick={() => onPlayback({ paused: !paused })} />
-        {live && <span>{t(live.active ? "watch.live" : "watch.liveEnded")}</span>}
+        {live && <span className="c3-watch-status">{t(live.active ? "watch.live" : "watch.liveEnded")}</span>}
         <input type="range" min={seekStart} max={seekEnd || 1} step="0.1" value={Math.max(seekStart, Math.min(media.position, seekEnd || 1))}
           aria-label={t("watch.seek")} disabled={disabled || seekEnd <= seekStart}
           aria-valuetext={live ? t(live.active ? "watch.liveDelay" : "watch.liveRemaining", { seconds: String(Math.max(0, Math.round(seekEnd - media.position))) }) : undefined}
           onChange={event => onPlayback({ position: Number(event.target.value) })} />
-        {live?.active && <Btn icon="play" quiet size="dense" title="watch.goLive" cap="watch.goLive"
+        {live?.active && <Btn icon="arrowRight" quiet size="dense" title="watch.goLive" cap="watch.goLive" textTooltip
           disabled={disabled || live.syncPosition === null} onClick={() => { if (live.syncPosition !== null) onPlayback({ position: live.syncPosition, paused: false }); }} />}
         <select className="lr-select" aria-label={t("watch.rate")} value={media.rate} disabled={disabled}
           onChange={event => onPlayback({ rate: Number(event.target.value) })}>

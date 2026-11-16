@@ -41,7 +41,7 @@ describe("Webpage watch presentation", () => {
     const player = { video: null, presentation: { kind: "external" }, media: {},
       blocked: false, error: "watch_media_decode_failed", mediaState: null } as unknown as WatchPlayer;
     const html = renderToStaticMarkup(createElement(ChannelWatchVideo, {
-      player, owned: false, paused: true, label: "Video", presentation: "full", disabled: false, website: true,
+      player, owned: false, paused: true, label: "Video", presentation: "full", disabled: false, website: true, originalPageAvailable: true,
       theaterMode: false, onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
       receiving: { peerAvailable: true, peerSupported: true, mode: "peer", browserSource: true, onPeer: vi.fn(), onDirect: vi.fn() },
     }));
@@ -70,7 +70,7 @@ describe("Webpage watch presentation", () => {
         return renderToStaticMarkup(createElement(ChannelWatchVideo, {
           player: { ...player, presentation: { kind: "video", element: player.video } } as unknown as WatchPlayer,
           owned: false, paused: true, label: "Preparing", presentation: "full", disabled: false,
-          website: false, theaterMode: false, onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
+          website: false, originalPageAvailable: false, theaterMode: false, onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
         }));
       };
       expect(render()).toContain('role="status"');
@@ -88,7 +88,7 @@ describe("Webpage watch presentation", () => {
       mediaState: { position: 42, duration: 240, paused: true, rate: 1.5, readyState: 4, ended: false, buffered: [[0, 60]] } } as unknown as WatchPlayer;
     const html = renderToStaticMarkup(createElement(ChannelWatchVideo, {
       player, owned, paused: true, label: "video.example/watch/evening", presentation: "full", disabled: false,
-      website: true, theaterMode: false, onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
+      website: true, originalPageAvailable: true, theaterMode: false, onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
     }));
     expect(html).toContain("This video uses a separate webpage window");
     expect(html).toContain('aria-label="Return to playback window"');
@@ -104,7 +104,7 @@ describe("Webpage watch presentation", () => {
   it("offers manual App viewing only when the website has no Browser candidate", () => {
     setCopy({ lang: "en" });
     const source: WatchStageSource = { kind: "watch", id: "activity", userId: "friend", name: "Bo", title: "video.example/watch/evening",
-      roomName: "Friday", audience: [], owned: false, subscribed: false, paused: true, website: true, browserSource: false,
+      roomName: "Friday", audience: [], owned: false, subscribed: false, paused: true, website: true, originalPageAvailable: true, browserSource: false,
       onRoom: vi.fn(), onJoin: vi.fn(), onLeave: vi.fn(), onStop: vi.fn(), onResume: vi.fn(), onPlayback: vi.fn(), onFocusWindow: vi.fn(), onAppWatch: vi.fn() };
     const render = (value: WatchStageSource) => renderToStaticMarkup(createElement(ChannelStage, { sources: [value], focusedId: null, canSubscribe: true,
       onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
@@ -113,6 +113,9 @@ describe("Webpage watch presentation", () => {
     const browser = render({ ...source, browserSource: true });
     expect(browser).toContain('aria-label="Watch"');
     expect(browser).not.toContain('aria-label="Watch in App"');
+    const program = render({ ...source, onAppWatch: undefined, originalPageAvailable: false });
+    expect(program).not.toContain("Connect Piik App");
+    expect(program).not.toContain('aria-label="Watch in App"');
     const disconnected = render({ ...source, onAppWatch: undefined });
     expect(disconnected).toContain("Connect Piik App");
     expect(disconnected).not.toContain('aria-label="Watch in App"');

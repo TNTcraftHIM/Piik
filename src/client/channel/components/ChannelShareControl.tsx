@@ -335,16 +335,16 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
           <BrandLoader /><span>{t("common.loading")}</span>
         </div>}
         {!busy && !pageSources.error && pageSources.choices.length === 0 && pageSources.indexed.length === 0 && <p role="status">{t("watch.waitForVideo")}</p>}
-        {pageSources.choices.length > 0 && <><p>{t("watch.forward.upload")}</p><div className="lr-source-picker-list" data-text-list>
+        {pageSources.choices.length > 0 && <div className="lr-source-picker-list" data-text-list>
           {pageSources.choices.map(choice => {
             const source = new URL(choice.displayURL), name = choice.name || source.host;
-            return <div key={choice.id} className="c3-external-input"><CaptureSourceCard title={name} description={source.host + source.pathname}
+            return <div key={choice.id} className="c3-external-input" role="group" aria-label={name}><CaptureSourceCard title={name} description={source.host + source.pathname}
               action={t("watch.browserSource.selectNamed", { name })} icon="play" hint="hint-source-picker" disabled={busy}
               onSelect={() => { void run(() => channel.selectWatchBrowserSource(roomId, choice.id, false), onClose); }} />
-              <Btn icon="share" quiet title="watch.forward.fromApp" cap="watch.forward.fromApp" disabled={busy}
+              <Btn icon="share" quiet title={{ text: t("watch.forward.enableNamed", { name }) }} cap="watch.forward.fromApp" disabled={busy}
                 onClick={() => { void run(() => channel.selectWatchForwardSource(roomId, choice.id, false), onClose); }} /></div>;
           })}
-        </div></>}
+        </div>}
         {pageSources.indexed.length > 0 && <WatchIndexedTrackPicker choices={pageSources.indexed} busy={busy} mainPlayback
           onConfirm={(videoId, audioId) => { void run(() => channel.selectWatchIndexedSource(roomId, videoId, audioId, false), onClose); }} />}
         <Btn icon="globe" quiet title="watch.browserSource.skip" cap="watch.browserSource.skip" disabled={busy}

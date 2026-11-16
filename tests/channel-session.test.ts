@@ -9009,3 +9009,24 @@ test('an explicit same-mode retry replaces a failed watch player without changin
     expect(socket.sent.some(command => command.type === 'update_watch')).toBe(false);
   } finally { session.close(); }
 });
+
+test('shared live seek controls select available content while pause keeps its original position', async () => {
+ const { session } = await setup(1000, false);
+ const epoch = 1794744000;
+ const state = { position: epoch + 4, duration: null, paused: true, rate: 1, readyState: 4, ended: false,
+   buffered: [[epoch, epoch + 10]] as [number, number][],
+   live: { active: true, seekable: [[epoch, epoch + 10], [epoch + 20, epoch + 30]] as [number, number][], syncPosition: epoch + 26 } };
+ const patch = vi.fn(async () => {});
+ const player = new WatchPlayer('first', true, { read: async () => state, patch, ready: async () => {}, listen: () => () => {}, close: () => {} }, () => {});
+ player.calibrate(1000, 0, 0);
+ (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set('owned-live', player);
+ try {
+   await session.setWatchPlayback('owned-live', { position: epoch + 18 });
+   expect(patch).toHaveBeenLastCalledWith({ position: epoch + 20 });
+   await session.setWatchPlayback('owned-live', { paused: false });
+   expect(patch).toHaveBeenLastCalledWith({ paused: false });
+   state.live.active = false;
+   await session.setWatchPlayback('owned-live', { position: epoch + 40 });
+   expect(patch).toHaveBeenLastCalledWith({ position: epoch + 30 });
+ } finally { session.close(); }
+});

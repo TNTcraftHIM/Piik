@@ -261,3 +261,13 @@ export class AppPageMedia implements WatchMedia {
   listen(changed: (event: WatchMediaEvent) => void): () => void { this.listeners.add(changed); return () => this.listeners.delete(changed); }
   close(): void { this.lifetime.abort(); this.unlisten?.(); this.listeners.clear(); this.page?.close(); }
 }
+
+/** Explicit sharer seeks land on available content without changing received anchors. */
+export function watchSeekPosition(position: number, ranges: readonly (readonly [number, number])[]): number {
+  let nearest = position, distance = Infinity;
+  for (const [start, end] of ranges) {
+    const target = Math.max(start, Math.min(position, end)), delta = Math.abs(target - position);
+    if (delta < distance) { nearest = target; distance = delta; }
+  }
+  return nearest;
+}

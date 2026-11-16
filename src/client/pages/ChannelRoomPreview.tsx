@@ -9,7 +9,7 @@ import { screenVideoSettings } from "../media/quality";
 import type { ChannelController, WatchIndexedChoice } from "../channel/types";
 import type { ChannelRoom, WatchActivity } from "../channel/protocol";
 import { WatchPlayer } from "../channel/watch-playback";
-import { HTMLVideoMedia, AppPageMedia, type WatchMediaEvent } from "../channel/watch-media";
+import { HTMLVideoMedia, AppPageMedia, type WatchMedia, type WatchMediaState, type WatchMediaEvent } from "../channel/watch-media";
 import { useAnchoredPopover } from "../components/living/use-anchored-popover";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import type { AppDiscovery } from "../native/discovery";
@@ -17,6 +17,25 @@ import type { InterfaceLayout } from "../lib/room-preferences";
 import "./channel-room-preview.css";
 
 const screenCounts = [0, 1, 2, 3, 4, 8];
+const sampleProgramStart = 1_700_000_000;
+const watchSamples = [
+  ["off", "关闭", "Off"], ["owner", "分享者", "Sharer"], ["viewer", "观看者", "Viewer"],
+  ["available", "尚未加入", "Available"], ["blocked", "等待手动播放", "Playback blocked"],
+  ["native-owner", "网页窗口", "Webpage window"], ["website-failed", "浏览器播放失败", "Browser playback failed"],
+  ["live-owner", "直播分享者", "Live sharer"], ["live-viewer", "直播观看者", "Live viewer"],
+  ["live-ended", "直播已结束", "Live ended"], ["live-expired", "直播位置已过期", "Live position expired"],
+] as const;
+function sampleWatch(mode: string): WatchActivity | null {
+  if (mode === "off") return null;
+  const live = mode.startsWith("live-"), owner = mode.includes("owner") || mode === "live-ended";
+  const website = mode === "native-owner" || mode === "website-failed";
+  return { id: "sample-watch", roomId: "friday", viewerSessionIds: [],
+    userId: owner ? "sample-ada" : "sample-bo", sessionId: owner ? "sample-ada-session" : "sample-bo-session",
+    source: website ? { kind: "website", url: "https://video.example/watch/evening?private=not-in-title" }
+      : { kind: "media", url: live ? "https://media.example/live.m3u8?private=not-in-title" : "https://media.example/evening.mp4?private=not-in-title" },
+    playback: { timeline: live ? "program" : "media", position: live ? sampleProgramStart + (mode === "live-expired" ? -120 : mode === "live-ended" ? 120 : 100) : 0,
+      paused: true, rate: 1, anchorTime: 0 } };
+}
 const previewAppDiscovery: AppDiscovery = {
   health: async () => null, connect: async () => null, isIncompatible: () => false,
 };
@@ -38,12 +57,11 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const [sharingRoom, setSharingRoom] = useState<string | null>(null);
   const [watchMode, setWatchMode] = useState(new URLSearchParams(location.search).get("watch") ?? "off");
   const watchOnly = new URLSearchParams(location.search).has("watch-only");
-  const [watchActivity, setWatchActivity] = useState<WatchActivity | null>(() => watchMode === "off" ? null : ({
-    id: "sample-watch", roomId: "friday", viewerSessionIds: [], userId: watchMode.includes("owner") ? "sample-ada" : "sample-bo",
-    sessionId: watchMode.includes("owner") ? "sample-ada-session" : "sample-bo-session", source: watchMode === "native-owner" || watchMode === "website-failed" || new URLSearchParams(location.search).has("website-source")
-      ? { kind: "website", url: "https://video.example/watch/evening?private=not-in-title" } : { kind: "media", url: "https://media.example/evening.mp4?private=not-in-title" },
-    playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 0 },
-  }));
+  const [watchActivity, setWatchActivity] = useState<WatchActivity | null>(() => {
+    const activity = sampleWatch(watchMode);
+    return activity && new URLSearchParams(location.search).has("website-source")
+      ? { ...activity, source: { kind: "website", url: "https://video.example/watch/evening?private=not-in-title" } } : activity;
+  });
   const [watchPlayers, setWatchPlayers] = useState(new Map<string, WatchPlayer>());
   const [receiveMode, setReceiveMode] = useState<"direct" | "peer">("direct");
   const [forwarding, setForwarding] = useState(new URLSearchParams(location.search).has("forward"));
@@ -113,18 +131,41 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     if (!stream) return;
     // The real player and controls consume a synthetic picture; no media URL is fetched.
     const media = new HTMLVideoMedia("data:video/webm;base64,");
+    media.video.muted = true;
     media.video.removeAttribute("src"); media.video.srcObject = stream;
     let pageState = { position: 42, paused: true, rate: 1, duration: 240, readyState: 4, ended: false, buffered: [[0, 60]] as [number, number][] };
     const listeners = new Set<(event: WatchMediaEvent) => void>();
     const page = new AppPageMedia({ read: async () => pageState, patch: async patch => {
       pageState = { ...pageState, ...patch }; for (const listener of listeners) listener("pause");
     }, listen: changed => { listeners.add(changed); return () => listeners.delete(changed); }, focus: async () => {}, close: () => {} });
-    const player = new WatchPlayer(watchActivity.roomId, watchMode.includes("owner"), watchMode.startsWith("native") ? page : media, () => setWatchPlayers(previous => new Map(previous)));
+    let liveMedia: WatchMedia | undefined;
+    if (watchMode.startsWith("live-")) {
+      const ended = watchMode === "live-ended", openedAt = performance.now();
+      let state: WatchMediaState = { position: sampleProgramStart + (ended ? 120 : 100), paused: true, rate: 1,
+        duration: null, readyState: 4, ended, buffered: null };
+      let observedAt = openedAt;
+      const read = async (): Promise<WatchMediaState> => {
+        const now = performance.now(), elapsed = ended ? 0 : (now - openedAt) / 1000;
+        state = { ...state, position: state.position + (state.paused ? 0 : (now - observedAt) / 1000 * state.rate) };
+        observedAt = now;
+        return { ...state, buffered: [[sampleProgramStart + elapsed + 90, sampleProgramStart + elapsed + 120]],
+          live: { active: !ended, seekable: [[sampleProgramStart + elapsed, sampleProgramStart + elapsed + 120]],
+            syncPosition: ended ? null : sampleProgramStart + elapsed + 117 } };
+      };
+      // Program timestamps and the available window share one clock, independent of the synthetic picture's currentTime.
+      liveMedia = { presentation: media.presentation, read, ready: async () => {}, close: () => media.close(),
+        listen: changed => { listeners.add(changed); return () => listeners.delete(changed); },
+        patch: async patch => { await read(); state = { ...state, ...patch };
+          for (const listener of listeners) listener(patch.position !== undefined ? "seeked" : "pause"); } };
+    }
+    const player = new WatchPlayer(watchActivity.roomId, watchActivity.sessionId === "sample-ada-session", liveMedia ?? (watchMode.startsWith("native") ? page : media), () => setWatchPlayers(previous => new Map(previous)));
     player.mode = receiveMode;
+    if (liveMedia) { player.calibrate(0, performance.now()); player.update(watchActivity.playback); }
     void player.ready(new AbortController().signal).catch(() => {});
     player.blocked = watchMode === "blocked";
     if (watchMode === "website-failed") player.error = "watch_media_failed";
-    if (!watchMode.startsWith("native") && !player.blocked) void media.video.play().catch(() => {});
+    if (!watchMode.startsWith("native") && !player.blocked)
+      void media.ready(new AbortController().signal).then(() => media.video.play()).catch(() => {});
     setWatchPlayers(new Map([[watchActivity.id, player]]));
     return () => player.close();
   }, [watchActivity?.id, watchMode, streams, receiveMode]);
@@ -234,7 +275,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       setWatchMode("owner"); setWatchActivity({ id: `sample-watch-${crypto.randomUUID()}`, roomId, viewerSessionIds: [], source: { kind: "media", url },
         userId: "sample-ada", sessionId: "sample-ada-session", playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 0 } });
     },
-    joinWatch: async (_id, mode = "direct") => { setReceiveMode(mode); setWatchMode("viewer"); },
+    joinWatch: async (_id, mode = "direct") => { setReceiveMode(mode); setWatchMode(watchActivity?.playback.timeline === "program" ? "live-viewer" : "viewer"); },
     leaveWatch: async () => { setWatchMode("available"); setPageSample(undefined); }, stopWatch: async () => setWatchActivity(null),
     resumeWatch: async id => { const player = watchPlayers.get(id); if (player) { player.blocked = false; await player.play(); setWatchPlayers(new Map(watchPlayers)); } },
     setWatchPlayback: async (_id, patch) => {
@@ -309,13 +350,11 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
               onClick={() => { setCount(value); setSharingRoom(null); setStopped(new Set()); setUnwatched(new Set()); }}>{value}</Chip>)}
           </div></fieldset>
           <fieldset><legend>{zh ? "同步观看" : "Watch together"}</legend><div className="c3-room-preview-tools">
-            {["off", "owner", "viewer", "available", "blocked", "native-owner", "website-failed"].map((mode, index) => <Chip key={mode}
-              title={zh ? ["关闭", "分享者", "观看者", "尚未加入", "等待手动播放", "网页窗口", "浏览器播放失败"][index] : ["Off", "Sharer", "Viewer", "Available", "Playback blocked", "Webpage window", "Browser playback failed"][index]}
+            {watchSamples.map(([mode, chinese, english]) => <Chip key={mode}
+              title={zh ? chinese : english}
               selected={watchMode === mode} onClick={() => {
-                setWatchMode(mode); setWatchActivity(mode === "off" ? null : { id: "sample-watch", roomId: "friday", viewerSessionIds: [],
-                  userId: mode.includes("owner") ? "sample-ada" : "sample-bo", sessionId: mode.includes("owner") ? "sample-ada-session" : "sample-bo-session",
-                  source: mode === "native-owner" || mode === "website-failed" ? { kind: "website", url: "https://video.example/watch/evening" } : { kind: "media", url: "https://media.example/evening.mp4" }, playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 0 } });
-              }}>{zh ? ["关闭", "分享者", "观看者", "尚未加入", "等待手动播放", "网页窗口", "浏览器播放失败"][index] : ["Off", "Sharer", "Viewer", "Available", "Playback blocked", "Webpage window", "Browser playback failed"][index]}</Chip>)}
+                setWatchMode(mode); setWatchActivity(sampleWatch(mode));
+              }}>{zh ? chinese : english}</Chip>)}
           </div></fieldset>
           <div className="c3-room-preview-tools">
             <Chip title={zh ? "横竖混合" : "Mixed orientation"} selected={mixed} onClick={() => {
