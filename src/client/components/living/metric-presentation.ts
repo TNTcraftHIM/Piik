@@ -27,7 +27,7 @@ export const METRIC_PRESENTATION = {
   "stats.dropped": { icon: "frameDrop", hint: "hint-metric-dropped", description: "stats.droppedHint" },
   "stats.decodeMs": { icon: "clock", hint: "hint-metric-decode-time" },
   "stats.freezeCount": { icon: "pause", hint: "hint-metric-freezes" },
-  "stats.freezeDuration": { icon: "clock", hint: "hint-metric-freeze-time" },
+  "stats.freezeDuration": { icon: "clock", hint: "hint-metric-freeze-time", description: "stats.freezeDurationHint" },
   "stats.audio": { icon: "speaker", hint: "hint-metric-audio-bitrate" },
   "stats.group.sourceAudio": { icon: "speaker", hint: "hint-source-audio" },
   "stats.audioLoss": { icon: "packetLoss", hint: "hint-metric-audio-loss" },
@@ -41,8 +41,9 @@ export const METRIC_PRESENTATION = {
 
 export type MetricLabel = keyof typeof METRIC_PRESENTATION;
 
-export function metricHintText(label: MetricLabel, t: (key: CopyKey) => string, value?: string): string {
+export function metricHintText(label: MetricLabel, t: (key: CopyKey) => string, value?: string, description?: CopyKey): string {
   const presentation = METRIC_PRESENTATION[label];
   const heading = value === undefined ? t(label) : `${t(label)} · ${value}`;
-  return "description" in presentation ? `${heading}\n${t(presentation.description)}` : heading;
+  const detail = description ?? ("description" in presentation ? presentation.description : undefined);
+  return detail ? `${heading}\n${t(detail)}` : heading;
 }
