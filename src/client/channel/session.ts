@@ -274,11 +274,9 @@ export class ChannelSession {
     return page;
   }
   queryProfiles = (query: { after?: string; query?: string }, signal?: AbortSignal): Promise<ProfilePage> => this.readProfiles(query, signal);
-  loadProfiles = async (requested: readonly string[], signal?: AbortSignal): Promise<ChannelUser[]> => {
-    signal?.throwIfAborted();
+  loadProfiles = async (requested: readonly string[]): Promise<ChannelUser[]> => {
     const ids = [...new Set(requested)];
     for (let offset = 0; offset < ids.length; offset += PROFILE_PAGE_SIZE) {
-      signal?.throwIfAborted();
       const page = ids.slice(offset, offset + PROFILE_PAGE_SIZE);
       const waiting = new Set(page.flatMap(id => this.profileLoads.get(this.profileKey(id)) ?? []));
       const batch = page.filter(id => !this.profileFresh(id) && !this.missingProfiles.has(this.profileKey(id)) && !this.profileLoads.has(this.profileKey(id)));
@@ -292,7 +290,6 @@ export class ChannelSession {
       for (const key of keys) this.profileLoads.set(key, pending);
       await Promise.all([...waiting, pending]);
     }
-    signal?.throwIfAborted();
     return ids.flatMap(id => this.profileFresh(id) ? [this.view.profiles.get(id)!] : []);
   };
   private historyProfileIds(messages = Object.values(this.view.messagesByRoom).flat()): string[] {
@@ -2443,6 +2440,13 @@ export class ChannelSession {
   private async joinWatchMedia(id: string, media: WatchMedia, mode: WatchMode = "direct"): Promise<void> {
     const activity = this.view.state?.watchActivities.find(value => value.id === id);
     if (!activity) { media.close(); throw new Error("watch_unavailable"); }
+    // Replacing this activity's receiver keeps its personal listening choice before playback starts.
+    const previousVideo = this.watchPlayers.get(id)?.video;
+    const nextVideo = media.presentation?.kind === "video" ? media.presentation.element : null;
+    if (previousVideo && nextVideo) {
+      nextVideo.volume = previousVideo.volume;
+      nextVideo.muted = previousVideo.muted;
+    }
     this.retireWatchPlayer(id);
     const player = this.makeWatchPlayer(id, activity.roomId, false, media);
     player.mode = mode;

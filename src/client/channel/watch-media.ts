@@ -48,7 +48,7 @@ export interface WatchMedia {
 
 export function waitForWatchMedia(media: Pick<WatchMedia, "read" | "listen">, signal: AbortSignal, setup?: Promise<void>): Promise<void> {
   return new Promise((resolve, reject) => {
-    let checking = false, finished = false, prepared = !setup, failed = false;
+    let checking = false, checkAgain = false, finished = false, prepared = !setup, failed = false;
     const finish = (error?: Error) => {
       if (finished) return;
       finished = true;
@@ -57,13 +57,17 @@ export function waitForWatchMedia(media: Pick<WatchMedia, "read" | "listen">, si
     };
     const cancel = () => finish(new DOMException("Cancelled", "AbortError"));
     const check = () => {
-      if (!prepared || checking || finished) return;
+      if (!prepared || finished) return;
+      if (checking) { checkAgain = true; return; }
       checking = true;
       void media.read().then(state => {
         if (failed) finish(new Error("watch_media_failed"));
         else if (state.readyState >= 2) finish();
       }, error => finish(error))
-        .finally(() => { checking = false; });
+        .finally(() => {
+          checking = false;
+          if (checkAgain) { checkAgain = false; check(); }
+        });
     };
     const unlisten = media.listen(event => {
       if (event === "closed") finish(new Error("watch_media_failed"));

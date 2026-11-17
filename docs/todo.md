@@ -53,8 +53,9 @@ the feedback period; they do not delay that delivery.
   ends. Verify explicit new-source preparation and retained short-recovery
   playback; do not automatically republish an expired source.
 - [ ] **Site forwarding package acceptance.** Verify the operator setting,
-  saved room permission and actual fallback through the normal packaged Server,
-  App and Browser entries. Preserve healthy P2P and independent room leases.
+  saved room permission and actual fallback with Windows App endpoints,
+  forwarded pictures/files and independent room leases. Packaged Linux Server
+  and Browser voice fallback are covered in the verification record.
   Fixed UDP reachability remains separate from HTTP access.
 - [ ] **Native console/terminal package acceptance.** Check the matching package's
   silent native entry, explicit Browser terminal, unavailable-WebView fallback,

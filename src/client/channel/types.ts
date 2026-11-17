@@ -121,7 +121,7 @@ export interface ChannelActions {
   resumeWatch(id: string): Promise<void>;
   setScreenBufferTarget(target: number | null): void;
   queryProfiles(query: { after?: string; query?: string }, signal?: AbortSignal): Promise<ProfilePage>;
-  loadProfiles(ids: readonly string[], signal?: AbortSignal): Promise<ChannelUser[]>;
+  loadProfiles(ids: readonly string[]): Promise<ChannelUser[]>;
   setFeedbackSound(patch: Partial<RoomPreferences["feedbackSound"]>): void;
   previewFeedbackSound(cue?: FeedbackCue): void;
   setFeedbackClip(cue: FeedbackCue, file: File | null): Promise<void>;

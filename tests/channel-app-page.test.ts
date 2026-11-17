@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { APP_PROTOCOL, ChannelApp } from "../src/client/channel/app-link";
 import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
 import { NATIVE_PAGE_METADATA_PREFIX_BYTES, NATIVE_PAGE_READ_BYTES, nativePageStateSchema } from "../src/client/native/wire";
+import { waitForWatchMedia } from "../src/client/channel/watch-media";
 
 class Socket {
   static OPEN = 1;
@@ -32,6 +33,67 @@ async function openPage(app: ChannelApp, socket: Socket) {
   return opening;
 }
 const state = { position: 12, paused: false, rate: 1, duration: null, readyState: 4, ended: false, buffered: [[0, 60]] as [number, number][] };
+
+test("page readiness rechecks events delivered before an older read reply", async () => {
+  vi.useFakeTimers();
+  const { app, socket } = await setup(), cancel = new AbortController();
+  let ready: Promise<void> | undefined;
+  try {
+    const page = await openPage(app, socket);
+    ready = waitForWatchMedia(page, cancel.signal);
+    void ready.catch(() => {});
+    let settled = false;
+    void ready.then(() => { settled = true; }, () => { settled = true; });
+    const oldRead = socket.sent.at(-1)!;
+    expect(oldRead.type).toBe("page_read");
+    // Native can drain later samples before sending an already-captured read snapshot.
+    socket.receive({ type: "page_sample", pageId: page.id, event: "loadeddata" });
+    socket.receive({ type: "page_sample", pageId: page.id, event: "playing" });
+    expect(socket.sent.filter(value => value.type === "page_read")).toHaveLength(1);
+    socket.receive({ id: oldRead.id, result: { ...state, readyState: 1 } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(socket.sent.filter(value => value.type === "page_read")).toHaveLength(2);
+    expect(settled).toBe(false);
+    socket.reply({ ...state, readyState: 1 });
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(socket.sent.filter(value => value.type === "page_read")).toHaveLength(2);
+    expect(settled).toBe(false);
+    socket.receive({ type: "page_sample", pageId: page.id, event: "loadeddata" });
+    expect(socket.sent.filter(value => value.type === "page_read")).toHaveLength(3);
+    socket.reply(state);
+    await ready;
+    socket.receive({ type: "page_sample", pageId: page.id, event: "playing" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(socket.sent.filter(value => value.type === "page_read")).toHaveLength(3);
+    expect(app.connected).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { cancel.abort(); await ready?.catch(() => {}); app.close(); vi.useRealTimers(); }
+});
+
+test.each(["abort", "close", "read error", "media error"] as const)("page readiness %s discards an event queued during a read", async outcome => {
+  vi.useFakeTimers();
+  const { app, socket } = await setup(), cancel = new AbortController();
+  try {
+    const page = await openPage(app, socket), ready = waitForWatchMedia(page, cancel.signal);
+    const rejected = outcome === "abort" ? expect(ready).rejects.toMatchObject({ name: "AbortError" })
+      : expect(ready).rejects.toThrow(outcome === "read error" ? "page_player_timeout" : "watch_media_failed");
+    const oldRead = socket.sent.at(-1)!;
+    socket.receive({ type: "page_sample", pageId: page.id, event: "loadeddata" });
+    if (outcome === "abort") cancel.abort();
+    else if (outcome === "close") {
+      socket.receive({ type: "page_closed", pageId: page.id });
+      socket.reply(null);
+    } else if (outcome === "read error") socket.receive({ id: oldRead.id, error: "page_player_timeout" });
+    else socket.receive({ type: "page_sample", pageId: page.id, event: "error" });
+    // A ready result cannot override cancellation, closure or an observed failure.
+    socket.receive({ id: oldRead.id, result: state });
+    await rejected;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(socket.sent.filter(value => value.type === "page_read")).toHaveLength(1);
+    expect(app.connected).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { app.close(); vi.useRealTimers(); }
+});
 
 function mpdCatalog() {
   return { sourceId: crypto.randomUUID(), tracks: [

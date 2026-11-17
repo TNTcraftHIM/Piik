@@ -108,6 +108,14 @@ with advancing received packets and energy from a synthetic microphone.
 Windows Browser camera and Native window checks used owned synthetic inputs.
 These package checks ran on a controlled local network.
 
+The packaged Linux Server also passes optional site forwarding through the
+production Browser UI. A Browser-owned room retains its healthy direct pair
+when the owner enables forwarding. After an isolated UDP interruption, the
+viewer receives advancing synthetic audio through the actual Server Native
+endpoint; disabling the room option removes that service lease. This covers
+the room setting and real audio fallback, not Windows App endpoints, forwarded
+pictures/files or difficult physical NATs.
+
 The newer conversation path passes normal Browser-hosted and App-hosted room
 checks with peer signaling blocked: history, bidirectional messages and saved
 reactions work without RTC connections. Attachment descriptions also arrive

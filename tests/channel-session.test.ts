@@ -10729,3 +10729,63 @@ test("Browser capture feedback retires with the attempt while late grants leave 
     expect(socket.sent.some(command => command.type === "unpublish")).toBe(false);
   } finally { session.close(); }
 });
+
+test.each([{ volume: 0.35, muted: true }, { volume: 0.35, muted: false }, { volume: 0, muted: false }])(
+  "watch replacement preserves local sound before playback and scopes it to an active watch ($volume/$muted)", async intent => {
+    const { session, socket } = await setup(1000, false);
+    const videos: Array<WatchTestVideo & { volume: number; muted: boolean }> = [];
+    const played: Array<{ volume: number; muted: boolean }> = [];
+    vi.stubGlobal("document", { createElement: () => {
+      const video = Object.assign(new WatchTestVideo(), { volume: 1, muted: false });
+      video.play = vi.fn(async () => {
+        played.push({ volume: video.volume, muted: video.muted });
+        video.paused = false;
+        video.dispatchEvent(new Event("play"));
+      });
+      videos.push(video);
+      return video;
+    } });
+    vi.spyOn(watchMedia, "createPeerWatchMedia").mockImplementation(() => new HTMLVideoMedia("https://media.test/peer.mp4"));
+    const activity = { id: "audio-watch", roomId: "first", viewerSessionIds: [], sessionId: "other", userId: "other",
+      source: { kind: "media" as const, url: "https://media.test/direct.mp4" },
+      byteSource: { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "dash" as const },
+      playback: { timeline: "media" as const, position: 0, paused: false, rate: 1, anchorTime: 1000 } };
+    const other = { ...activity, id: "other-audio-watch" };
+    const confirm = () => {
+      const command = socket.sent.findLast(value => value.type === "join_watch")!;
+      socket.receive({ type: "room_reply", roomId: "first", requestId: command.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+    };
+    const join = async (id: string, mode: "direct" | "peer", expected: { volume: number; muted: boolean }) => {
+      const playStart = played.length;
+      const joining = session.joinWatch(id, mode);
+      // Before confirmation/readiness can trigger the new player's first play.
+      const created = { volume: videos.at(-1)!.volume, muted: videos.at(-1)!.muted };
+      confirm();
+      await joining;
+      expect(created).toEqual(expected);
+      await vi.waitFor(() => expect(played.length).toBeGreaterThan(playStart));
+      expect(played.slice(playStart).every(value => value.volume === expected.volume && value.muted === expected.muted)).toBe(true);
+      expect(session.getSnapshot().watchPlayers.get(id)?.error).toBeNull();
+      return videos.at(-1)!;
+    };
+    try {
+      socket.receive({ type: "state", state: { ...session.getSnapshot().state!, watchActivities: [activity, other] } });
+      const defaults = { volume: 1, muted: false };
+      let previous = await join(activity.id, "direct", defaults);
+      Object.assign(previous, intent);
+      for (const mode of ["peer", "direct"] as const) {
+        const current = await join(activity.id, mode, intent);
+        expect(current).not.toBe(previous);
+        expect(previous.src).toBe("");
+        previous = current;
+      }
+      await join(other.id, "direct", defaults);
+      expect(previous).toMatchObject(intent);
+      const leaving = session.leaveWatch(activity.id);
+      confirm();
+      await leaving;
+      expect(previous.src).toBe("");
+      await join(activity.id, "direct", defaults);
+      expect(socket.sent.some(command => command.type === "update_watch")).toBe(false);
+    } finally { session.close(); }
+  });
