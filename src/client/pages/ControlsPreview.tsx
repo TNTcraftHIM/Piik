@@ -96,6 +96,9 @@ export function ControlsPreview() {
   const [sourceOpen, setSourceOpen] = useState(displayPreview);
   const [sourceRevision, setSourceRevision] = useState(0);
   const [systemSourcePicker, setSystemSourcePicker] = useState(false);
+  const [processAudioAvailable, setProcessAudioAvailable] = useState(true);
+  const [systemAudioAvailable, setSystemAudioAvailable] = useState(true);
+  const sourceCapabilities = { ...SOURCES, processAudio: processAudioAvailable, systemAudio: systemAudioAvailable };
   const [browserCaptureSupported, setBrowserCaptureSupported] = useState(true);
   const [nativePermissionPreview, setNativePermissionPreview] = useState(false);
   const sourceTargets: NativeCaptureTarget[] = systemSourcePicker
@@ -332,6 +335,10 @@ export function ControlsPreview() {
       <div className="cp-tools">{(["ready", "loading", "refreshing", "unavailable", "incompatible", "unsupported", "failed", "empty"] as const).map((value, index) => <Chip key={value}
         title={value} selected={sourceState === value} onClick={() => { setSourceState(value); setSourceOpen(true); }}>
         {en ? ["Available", "Loading", "Refreshing", "App unavailable", "Update needed", "Capture unavailable", "Read failed", "Empty list"][index] : ["正常", "读取中", "刷新中", "App 未连接", "需要更新", "无法采集", "读取失败", "空列表"][index]}</Chip>)}
+        <SwitchItem checked={processAudioAvailable} onChange={setProcessAudioAvailable}
+          label={en ? "Window sound capability" : "窗口声音能力"} />
+        <SwitchItem checked={systemAudioAvailable} onChange={setSystemAudioAvailable}
+          label={en ? "System sound capability" : "系统声音能力"} />
         <SwitchItem checked={captureBorderAvailable} onChange={setCaptureBorderAvailable}
           label={en ? "Windows border control" : "Windows 边框控制"} />
         <SwitchItem checked={systemSourcePicker} onChange={value => { setSystemSourcePicker(value); setSourceOpen(true); setSourceRevision(value => value + 1); }}
@@ -347,10 +354,10 @@ export function ControlsPreview() {
       </div>
       <div className="cp-stage"><StageTv hasEntry label={t("host.sourcePicker.title")}>
         <img className="cp-poster" src={POSTER} alt="" />
-        {sourceOpen ? <CaptureSourcePicker key={sourceRevision} nativeSources={sourceState === "empty" ? { ...SOURCES, sources: [], captureBorderControl: captureBorderAvailable }
+        {sourceOpen ? <CaptureSourcePicker key={sourceRevision} nativeSources={sourceState === "empty" ? { ...sourceCapabilities, sources: [], captureBorderControl: captureBorderAvailable }
           : sourceState === "ready" ? systemSourcePicker
-            ? { ...SOURCES, sources: sourceTargets, processAudio: false, processAudioExclusion: false, captureBorderControl: false }
-            : { ...SOURCES, captureBorderControl: captureBorderAvailable }
+            ? { ...sourceCapabilities, sources: sourceTargets, processAudio: false, processAudioExclusion: false, captureBorderControl: false }
+            : { ...sourceCapabilities, captureBorderControl: captureBorderAvailable }
           : sourceState === "refreshing" ? { kind: "loading", appDetected: true, sources: sourceTargets } : { kind: sourceState }}
           initialShowCaptureBorder={showCaptureBorder}
           browserSupported={browserCaptureSupported}

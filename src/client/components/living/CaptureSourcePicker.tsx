@@ -149,7 +149,7 @@ export function CaptureSourcePicker({
   const exclusionUnavailable = activeTab === "display" && shareAudio && !!excludeAudio && (!canExcludeAudio || missingExclusion);
   const refreshing = activeTab === "camera" ? cameraSources.busy : nativeSources.kind === "loading";
   const refreshLabel = t(refreshing ? "host.sourcePicker.loading" : "host.sourcePicker.refresh");
-  const audioAction = t(!anyNativeAudio ? "host.noAudio" : audioLocked
+  const audioAction = t(!anyNativeAudio ? "host.sourcePicker.audioUnavailable" : audioLocked
     ? "host.sourcePicker.audioLocked"
     : shareAudio ? "host.sourcePicker.audioOff" : "host.sourcePicker.audioOn");
   const audioLabel = t(
@@ -186,6 +186,7 @@ export function CaptureSourcePicker({
       role="switch"
       aria-checked={shareAudio && anyNativeAudio}
       aria-label={audioLabel}
+      aria-description={!anyNativeAudio ? audioAction : undefined}
       disabled={audioLocked || !anyNativeAudio}
       onClick={() => setShareAudio((current) => !current)}
     />
@@ -314,7 +315,7 @@ export function CaptureSourcePicker({
                     kind={!anyNativeAudio ? "no-audio" : audioLocked
                       ? (shareAudio ? "hint-share-audio-fixed" : "hint-silent-share-fixed")
                       : shareAudio ? "hint-stop-audio" : "hint-share-audio"}
-                    text={vis ? undefined : `${audioAction}\n${t("host.sourcePicker.audioHint")}`}
+                    text={vis ? undefined : !anyNativeAudio ? audioAction : `${audioAction}\n${t("host.sourcePicker.audioHint")}`}
                     place="below"
                   >
                     {audioSwitch}
