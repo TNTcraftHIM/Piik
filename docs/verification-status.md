@@ -165,6 +165,12 @@ invitation consumption, credential-backed reload and bidirectional chat between
 independent Browser identities. The matched Linux Server passed Native-room,
 signed-confirmation and clean-shutdown checks.
 
+The matching Windows package's no-browser entry serves discovery and the
+launcher with redirected output and no main window. After a Browser share ends
+on its local site, Ctrl+C stops that App and releases its site and
+control listeners. This does not cover the Native GUI, interactive terminal,
+unavailable-WebView fallback or update restart.
+
 The preceding Android candidate passed build, signature, dual-ABI, 16 KiB alignment
 and bundled-Web identity checks. A package matching the newly delivered protocol
 needs its own acceptance; preceding package and emulator results do not establish its
@@ -203,6 +209,14 @@ picture and Opus tracks, publication and transport identities, microphone
 acquisition and drafts. The simple view keeps joined voice visible and permits
 leaving it. Browser and Native first-share checks verify explicit room creation,
 picker cancellation and retry in the same room, then normal capture and stop.
+
+A matching Windows App/Web package also verifies Browser source replacement in
+an App-hosted room with an independent Browser viewer. Rejected replacement
+preserves playback; cancelling preparation stops a late capture without replacing
+the incumbent. Successful replacement retains the publication and receiver
+stream, and explicit stop retires both players and all capture tracks. The input
+is a generated canvas on one machine; this does not establish real system-picker,
+Native capture or difficult-NAT behavior.
 
 A three-Browser run verified picture and voice progress while receiving files
 through the same relay under controlled storage backpressure. Cancelling an

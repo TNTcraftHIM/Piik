@@ -223,9 +223,8 @@ the separate App management/discovery listener is not a site-forwarding endpoint
 Changing the port retains App-hosted rooms but changes the web origin. Browser
 identity, preferences and cached files remain associated with the old address.
 
-Current internal pages require App control protocol 8 and domain signaling
-protocol 17. Build the App, bundled Web files and domain server from the same
-source for internal testing. Incompatible control or signaling protocols are
+Build the App, bundled Web files and domain server from the same source for
+internal testing. Incompatible control or signaling protocols are
 rejected at entry. App discovery advertises both protocol identifiers so the Web
 page checks native control and domain participation before approval. The storage
 format and reset boundary are documented below.

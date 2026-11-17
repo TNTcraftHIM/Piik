@@ -51,7 +51,7 @@ the feedback period; they do not delay that delivery.
   Fixed UDP reachability remains separate from HTTP access.
 - [ ] **Native console/terminal package acceptance.** Check the matching package's
   silent native entry, explicit Browser terminal, unavailable-WebView fallback,
-  redirected output and normal quit/update restart.
+  and interactive quit/update restart.
   Locate the shutdown stall observed after a controlled webpage-recovery run:
   the source App reported stopped but its main window remained unresponsive.
 - [ ] **2.x periodic brief picture stalls.** With a particular Host or Viewer,
