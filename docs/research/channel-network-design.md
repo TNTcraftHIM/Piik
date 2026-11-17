@@ -7,14 +7,11 @@ The [2.x routing contract](../standards/routing-transport.md) remains unchanged.
 
 ## Accepted Direction
 
-The owner defines the room owner as the user who actually operates the room:
-its detailed state, management and distribution belong together. A separate
-configurable file-storage service is not wanted. Ordinary URLs and manual
-bookmarks remain the entry model; automatic address discovery is not planned.
-Both Browser pages and App processes may host rooms. Hosting follows the actual
-runtime: closing its Browser page ends Browser hosting; an App-owned room runs
-until hosting is stopped or the App process ends. Server remains the explicitly
-started service for unattended operation.
+The room owner operates its detailed state, management and distribution. Browser
+hosting ends with its page; App hosting ends when stopped or its process exits.
+Server is explicitly started for unattended operation. Ordinary URLs and manual
+bookmarks are the entry model; no separate file-storage service, automatic address
+discovery or automatic room takeover is selected.
 
 Conversation uses the existing domain WebSocket to reach its actual room owner.
 Use one room routing owner for media and files: a base tree carries voice,
@@ -43,16 +40,11 @@ vocabulary across the UI and guides.
 | Room owner | 房主 | The user operating that room's state, management and base distribution network. |
 | Sharer | 分享者 | The user originating a particular screen, voice publication or file offer. |
 
-Management identities and activities overlap. A room owner can share, watch or
-forward, and an ordinary user can publish without becoming the room owner.
-A file sender supplies that file; sending never transfers room management to them.
-On P2P room paths, a relay is a participating endpoint doing forwarding work,
-not a separately deployed relay server. Sending, receiving and forwarding can
-coexist on the same user endpoint.
-
-The [activity model](#activity-and-lifecycle) separates personal page activities
-from Browser, App and Server hosting lifetimes. Moving a room requires explicit
-transfer of its operation and saved state; automatic takeover is not selected.
+Management and activities overlap: owners and ordinary users can share, watch
+and forward. A file sender supplies bytes, not room management. A P2P relay is a
+participating endpoint, not a separately deployed server; sending, receiving and
+forwarding can coexist. The [activity model](#activity-and-lifecycle) owns runtime
+lifetimes. Moving a room requires explicit transfer of operation and saved state.
 
 ## Authority And Information Boundaries
 
@@ -62,27 +54,21 @@ transfer of its operation and saved state; automatic takeover is not selected.
 | Room runtime, operated by its room owner | Detailed room metadata, room admission and grants, confirmed conversation, file descriptions/available holders, base-tree planning and screen-route scheduling. |
 | Participant runtime | Local captures, playback, file copies and the actual peer transports/forwarding work it has admitted. |
 
-The domain directory is a projection of room details. It does not become a
-second writer of the room name, private-room policy or history. Opening the site
-establishes or restores a personal identity; users may create and manage their own rooms. Room admission permits conversation,
-voice, sharing, watching and interactions without additional role groups or
-participation switches. Site maintenance permits changing site metadata and
-restoring its own data; it does not grant access to other users' private rooms.
-Room owners manage their own rooms. Source owners separately consent to remote
-input. These scopes use the shared authenticated identity and room-access rules.
+The domain directory projects room details; it is not a second writer of room
+metadata, private policy or history. Opening a site establishes or restores a
+personal identity. Users create and manage their own rooms; admission permits
+conversation, voice, sharing, watching and interactions without role groups or
+participation switches.
+Site maintenance grants no access to another user's private room, and source
+owners separately consent to remote input.
 
-Directory visibility and access remain separate. Public rooms admit site
-users; private rooms require their room admission. Hidden private rooms expose
-neither directory details nor activity to unauthorized users. A nickname is not
-identity, and an invitation establishes admission rather than proving that two
-visitors are the same user.
-
-The site has no separate access mode, password or invitation. Public rooms use
-ordinary direct links. Private rooms accept their room invitation or password
-through their actual host after the normal site connection is established.
-An invalid invitation or unavailable room does not retire that site identity.
-The local hosting owner retains its bootstrap key and saved credential for
-maintenance; visiting the same site does not confer that authority.
+Public rooms admit site users through ordinary links. Private rooms require their
+host's invitation or password after the site connection; hidden rooms disclose
+neither details nor activity to unauthorized users. The site has no separate
+access mode, password or invitation. A nickname or shared invitation is not a
+shared identity. Invalid invitations and unavailable rooms do not retire site
+identity. Only the local hosting owner retains its maintenance bootstrap key and
+saved credential; visiting the same site grants no maintenance authority.
 
 The domain directory binds each room to its owner's current authenticated runtime
 connection, separately from the owner's persistent user identity. With no runtime,
@@ -102,10 +88,8 @@ working. The domain forwards these envelopes; the room owner decides room action
 WebRTC leaves the signaling carrier to the application
 ([W3C connection establishment](https://www.w3.org/TR/webrtc/#introduction-1)).
 
-The room owner needs no separate public URL. The App creates these runtimes
-through normal create/join actions; users do not configure a second daemon or
-storage server. Peer delivery preserves this authority and recovery path without
-adding another permission owner.
+The App creates room runtimes through normal create/join actions, without a
+separate public URL, daemon, storage server or permission owner.
 
 After room admission, the room owner confirms room changes and message order.
 Chat, history, message reactions and live room interactions use the existing
@@ -151,15 +135,11 @@ The App's own domain keeps one local identity and storage namespace independent
 of its listener port and temporary public URL. Only its currently bound local
 entry receives automatic App access; this does not merge external site approvals.
 
-A user and a live endpoint are different concepts. An App's Native participant
-and a Browser page are distinct endpoints of the same authenticated user, with
-their own signing identities, transports and activities. One App uses one Native
-endpoint for its rooms in a domain; each room retains its own authority and data.
-An online hosting endpoint proves availability, not that the person is reading,
-watching or participating in voice. Reconnect preserves identity rather than
-matching a nickname or treating a shared invitation as a shared user.
-Browser bookmarks connect independent domains; they do not introduce federation
-or shared authority between those domains.
+A user may have distinct Browser and Native endpoints, each with its own signing
+identity, transports and activities. One App uses one Native endpoint per domain
+for its rooms; each room retains its own authority and data. Hosting availability
+does not imply reading, watching or voice participation. Recovery uses identity,
+not nicknames or shared invitations. Bookmarks do not federate independent sites.
 
 Peer media forwarding terminates hop encryption at admitted relays. Room access
 must cover every relay; this model does not add end-to-end encryption against
@@ -187,15 +167,15 @@ owns current resource values and explicit capacity checks.
 
 ### Choice And Cost
 
-| Model | Benefit | Cost and choice |
-| --- | --- | --- |
-| One tree for peer media and file traffic | One stable set of paths; connected members can exchange media and file bytes. | Some pictures incur extra hops. Use established paths as the baseline; a non-viewing relay can still be essential for connectivity. |
-| A new distribution plan for every source or transfer | Paths can follow each source's recipients. | Repeats planning for room-wide voice and ordinary files. Keep source-specific demand only where it changes useful forwarding work. |
-| Base paths for startup, then selective source-rooted convergence | Reuses room connectivity where media can be admitted; improves affected paths while preserving playback. | Needs distinct viewing/transit demand and temporary transition resources. Selected; both stages use the same admission and transition owner. |
+Use base paths for room-wide voice and files, then converge selected pictures
+towards their sources. A single tree reuses connectivity but may add picture hops;
+a separate plan for every transfer would duplicate ordinary file/voice planning.
+The selected model adds only the viewing/transit demand and overlap resources
+needed for source-specific pictures, under one admission and transition owner.
 
-This compares topology and work, not measured performance. A routing root owns
-coordination; it need not forward every media byte. Only nodes on an admitted
-path incur that path's forwarding work. A star still places that work on its root.
+This is a topology/cost choice, not a performance measurement. Coordination does
+not require the root to forward every byte; only admitted paths incur forwarding
+work, while a star places that work on its root.
 
 ### One Base Tree Per Participating Room
 
@@ -216,16 +196,12 @@ are ready; an open candidate DataChannel alone does not retire active media work
 | File bytes and pull control | Use the existing base paths; the [room-data model](./channel-storage-and-identity.md#shared-delivery-on-existing-room-paths) develops shared range delivery and cached-source selection without another topology planner. |
 | Screen picture and source audio | One distribution plan per publication: start on usable existing paths, then improve affected branches while preserving selected viewers and necessary relays. |
 
-Files use reliable DataChannels; voice stays on WebRTC media tracks.
-Using one tree does not mean putting voice into an ordered file stream.
-The data stack is SCTP over DTLS over ICE/UDP. Configure ordered, fully reliable
-DataChannels for file delivery; SCTP supplies retransmission without adding a
-TCP file connection. Under BUNDLE, data and media can share the selected ICE
-transport for a compatible peer
-pair, as described in [RFC 8831](https://www.rfc-editor.org/rfc/rfc8831.html#section-1).
-An additional logical DataChannel does not require another exposed file port.
-Different peer connections can still use different UDP sockets; this is transport
-reuse within a connection, not a promise of one global socket for the room.
+Files use ordered, fully reliable DataChannels; voice uses WebRTC media tracks.
+SCTP over DTLS over ICE/UDP supplies file retransmission without a TCP file
+connection. Under BUNDLE, media and data can share a compatible pair's selected
+ICE transport ([RFC 8831](https://www.rfc-editor.org/rfc/rfc8831.html#section-1)).
+An extra logical channel needs no exposed file port; this is per-connection
+reuse, not one global UDP socket for the room.
 
 Web delivery and HTTPS/WSS signaling retain their existing control transport;
 UDP-only refers to the selected peer media/data path, not every service in Piik.
@@ -233,14 +209,11 @@ Receivers do not get their own microphone back. Muting local listening does not
 discard an admitted downstream flow; authorized forwarding need not activate
 the local microphone or loudspeaker.
 
-A file hop needs application-level forwarding, finite buffers, cancellation and
-content verification. DataChannel itself joins two endpoints, not a whole tree.
-A forwarding node need not save the complete file. Use negotiated message limits,
-bufferedAmount and bufferedamountlow for bounded sending under the
+File delivery requires content verification; each relay owns forwarding, finite
+buffers and cancellation without saving a complete copy. Use negotiated message limits,
+bufferedAmount and bufferedamountlow under the
 [WebRTC DataChannel API](https://www.w3.org/TR/webrtc/#rtcdatachannel).
-Participant cooperation distributes transfer load and permits path/source repair
-where alternatives exist. Room confirmation and authority still belong to the
-room owner; replicated file bytes do not introduce automatic room-owner takeover.
+Alternative paths and holders permit repair, not automatic room-owner takeover.
 
 ### Synchronized Video Sources
 
@@ -364,38 +337,20 @@ until an admitted replacement is proved. Optional optimization without overlap
 capacity waits or stops; it cannot interrupt working playback.
 Viewing changes alone do not trigger a global rewire or remove a needed bridge.
 
-The room runtime owns one routing controller. Its base topology, voice/file
-flows and screen subscriptions share connection facts, edge admission and repair.
-Each flow retains its own replacement and completion state; it does not get its
-own probing, reconnection or optimization subsystem. The sharer owns capture
-and declares publication demand, while this controller selects distribution.
-An ICE timeout for one picture cannot block another picture or ordinary chat.
+The room's routing controller shares connection facts, admission and repair
+across base, voice/file and screen plans. Flow-specific replacement/completion
+does not create another probing or reconnection subsystem; one picture's ICE
+timeout must not block another picture or chat. The sharer owns capture and
+demand; the controller selects distribution.
 
-The relay candidate pool may include every authorized room participant with the
-required capability and capacity. This does not deliver video to all of them.
-Publication metadata can advertise a share without its bytes, as illustrated by
-[LiveKit's publication/subscription model](https://docs.livekit.io/transport/media/subscribe/).
-For a fixed A-B-C-D tree, if A sends 4 Mbps and only B watches, the needed edge
-carries 4 Mbps; broadcasting to C and D as well adds two copies, making 12 Mbps
-of summed hop traffic. This is an arithmetic example, not a measurement. When D
-also watches, C is necessary transit even if C never displays the picture.
-
-For example, a room's base tree may be:
-
-```text
-Room owner B ── C ── D
-           └── E
-```
-
-C sends a file to E through C-B-E. C and E need not establish a new direct path
-for that transfer. If E shares a picture only with D, E-D can be a shorter
-screen candidate when reachable, rather than a requirement to bypass C or B.
-If it fails, keep the working admitted path. Every admitted hop must have the source
-and enough actual capacity; an existing control link alone does not prove this.
-
-The source and viewers determine a screen plan, while the room owner manages
-the plan's lifecycle. Different publications can reuse a physical pair. Stopping
-one publication removes its work, not an unrelated call, file transfer or base link.
+Every authorized, capable participant with capacity may relay without receiving
+every publication. [LiveKit's publication/subscription model](https://docs.livekit.io/transport/media/subscribe/)
+illustrates metadata without bytes. On A-B-C-D, a picture watched only by B needs
+only A-B; a viewer at D also needs non-viewing C. A file between tree members uses
+their existing unique path. A shorter screen candidate must prove reachability,
+source supply and actual capacity; a control link alone is insufficient.
+Different publications can share a physical pair. Stopping one removes only its
+work, preserving unrelated calls, transfers and base leases.
 
 Playback buffering is a page-local preference, remembered for the Browser origin.
 Automatic leaves the receiver target unset; a custom 0..4000 ms target applies
@@ -462,20 +417,15 @@ the Server's configured UDP entry must also be reachable.
 
 ### Start On Existing Paths, Then Converge
 
-The room tree's root owns coordination. Its edges are bidirectional, so projecting
-a flow from its sharer already makes that sharer the logical media source; no new
-PeerConnection or change of room owner is needed merely to reverse flow direction.
-Renaming the root cannot shorten the tree's unique paths. A shorter path requires
-different, actually usable edges. Reverse flow may use all neighbors of an
-internal base node. The room's default fanout starts at two and can be set from
-one to twenty by its managers. Each endpoint can override it with a positive
-limit, including the room host and publication source. Zero declines forwarding
-for others while retaining the room default for its own source and required
-hosting branches; it does not stop originating voice, pictures or files through
-existing base paths. Necessary reverse-base neighbors and a helper's local display
-link remain distinct from new forwarding branches. This is a room-local topology
-policy, not a total upload-copy or device-capacity promise, and does not divide a
-domain-wide resource budget among rooms.
+Base edges are bidirectional: reversing media direction neither changes room
+ownership nor creates a PeerConnection, and renaming a root cannot shorten a
+path. Reverse flow may use every neighbor of an internal base node.
+Managers set the room's default fanout from one to twenty, initially two.
+Endpoints may set a positive override, including hosts and sources. Zero declines forwarding
+for others but retains the room default for originating media and required hosting
+branches. Necessary reverse-base neighbors and a helper's local display edge are
+distinct from new forwarding branches. This is room-local topology policy, not a
+total upload/device-capacity promise or a domain budget divided among rooms.
 
 Connection settings name the webpage and its connected App separately. The
 Browser retains its per-room preference; the App changes its actual Native
@@ -516,13 +466,11 @@ branch; a participant without a feasible candidate does not block another one.
    publications. They remain available to attempt media recovery, but do not
    continuously carry a second copy of an already-converged picture.
 
-These are stages of one publication plan, not two complete live video networks.
-Fallback after a later failure still needs media preparation on its selected path;
-keeping the base connection is not a promise of instant hot-standby video.
-If a base path lacks the capability or capacity for that picture, retain its
-control traffic and let the same availability planner seek another admitted
-media path. Successful base-path playback is not a prerequisite for trying an
-alternative. A viewer remains connecting until a selected path proves ready.
+Both stages belong to one publication plan. Base connections are not hot-standby
+video: recovery still prepares media. If a base path cannot admit the picture,
+retain its control traffic and seek another path through the same planner;
+base-path playback is not a prerequisite. A viewer stays connecting until its
+selected path proves ready.
 
 Reconcile on relevant demand, connectivity or capacity changes. A new viewer adds
 a branch; stopping viewing removes only demand that no downstream still needs;
@@ -747,15 +695,11 @@ request does not prove a WebRTC media path.
 
 ## Activity And Lifecycle
 
-Room browsing, voice, screen sharing and watching remain independent activities.
-The main picture area follows the browsed room. Existing watches and shares in
-other rooms continue, including listening playback, and appear in an activity
-strip with return-to-room and explicit stop actions. Navigation changes
-presentation without retiring those activities or their media resources.
-Opening another view does not retarget a microphone or stop another room's media.
-A participant retains the room connection while an admitted activity, transfer
-or forwarding duty needs it; changing the highlighted sidebar item is not a
-global media shutdown.
+Browsing, voice, shares and watches have independent lifetimes. The main picture
+area follows the browsed room; other rooms' activities continue in the activity
+strip with return and explicit stop actions. Navigation changes presentation,
+not microphone targets, hosting or admitted activity/transfer/forwarding leases.
+
 Joining voice can be listen-only; opening a room never grants microphone capture.
 Each authorized screen view includes its room-owned audience: actual watch
 intent with current delivery readiness. Pure relays are not viewers. Browser
@@ -785,21 +729,19 @@ Browser preference; the App holds only the current process registration.
 
 | Event | Outcome |
 | --- | --- |
-| Room owner changes views, minimizes the window or closes an in-page panel | Keep the hosting session and its room running. Visibility is not authority. |
-| A Browser page closes | End its personal voice, shares and watches. Its Browser-hosted rooms stop; App-hosted rooms continue without handoff. |
-| A hosting runtime loses domain signaling while it remains alive | Retain the existing session recovery window; expiry pauses its live rooms. |
-| A Browser's local App control connection ends | End native activities owned by that control connection. Browser media and App hosting keep their own lifetimes. |
-| App hosting stops or its process ends | Pause its hosted rooms and release that runtime's activities and connections; saved room data remains. |
-| An administration page closes while Server owns the runtime | The deliberately running service continues; its lifetime is independent of that page. |
-| Browser-owned room runtime closes or expires | The room pauses; Browser hosting must not silently move to the site operator's device. |
-| Room owner stops the hosting runtime | The room becomes unavailable; saved data remains. No automatic replacement is selected. |
-| A manager deletes or removes a room | Retire its activities and bindings; data disposition follows the [room removal scope](./channel-storage-and-identity.md#room-creation-and-removal). Other rooms keep their leases. |
-| Same owner restarts using saved room data | Restore room identity/history and establish new live sessions. Captures require explicit activation; reopening data does not resume a saved call. |
-| Sharer stops or leaves | End that publication, preserving other sources and the room base tree. |
-| A relay leaves | Repair affected paths through the same route owners; keep unrelated flows. |
-| File's original sender leaves | Another online admitted holder may supply its copy. With no holder, the file is unavailable until a source returns. |
-| Room access is removed | Stop that user's affected activities and new delivery; local downloaded bytes cannot be recalled. |
-| Domain authority connection is lost | Retain the bounded authority-recovery rule; do not silently operate indefinitely with an old global permission snapshot. |
+| Room owner changes views, minimizes or closes an in-page panel | Keep hosting; visibility is not authority. |
+| A Browser page closes | End its personal activities and Browser-hosted rooms; App hosting continues without handoff. |
+| A hosting runtime loses domain signaling | Keep its bounded recovery window; expiry pauses its live rooms. |
+| A Browser's local App control connection ends | End that connection's Native activities; Browser media and App hosting remain independent. |
+| App hosting stops or its process ends | Pause its rooms and release runtime activities/connections; saved data remains. |
+| An administration page closes while Server hosts | The explicitly running service continues. |
+| A Browser hosting runtime closes or expires, or its owner stops hosting | The room becomes unavailable; saved data remains. No automatic takeover or replacement. |
+| A manager removes a room | Retire its activities/bindings under the [room removal scope](./channel-storage-and-identity.md#room-creation-and-removal); other rooms keep leases. |
+| The same owner restarts saved room data | Restore identity/history, establish new live sessions; captures and calls require explicit activation. |
+| A sharer stops/leaves, or a relay leaves | Retire the stopped publication or repair the departed relay's paths; keep unrelated flows and the base tree. |
+| A file's original sender leaves | Use another admitted online holder; otherwise wait for a source to return. |
+| Room access is removed | Stop affected activities/new delivery; downloaded bytes cannot be recalled. |
+| Domain authority is lost | Apply bounded recovery, not indefinite use of stale permissions. |
 
 Signaling recovery uses one 20-second deadline. Failure to replace
 a socket does not extend its deadline; successful authenticated reconciliation
