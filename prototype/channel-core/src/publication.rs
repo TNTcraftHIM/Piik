@@ -140,6 +140,7 @@ impl Publication {
         available: &BTreeSet<Uuid>,
         connected: &BTreeSet<Uuid>,
         base: Option<&BaseTree>,
+        service: Option<Uuid>,
         helpers: &BTreeMap<Uuid, Uuid>,
         limits: &RelayLimits,
         now: u64,
@@ -162,7 +163,7 @@ impl Publication {
             for (viewer, helper) in helpers {
                 if let Some(parents) = self
                     .plan
-                    .assisted(*viewer, *helper, connected, helpers, limits)
+                    .through_relay(*viewer, *helper, connected, helpers, limits)
                 {
                     if self
                         .branch(&parents, requested)
@@ -172,6 +173,22 @@ impl Publication {
                         self.plan.parents = parents;
                         self.plan
                             .reconcile(requested, available, connected, base, helpers, limits);
+                    }
+                }
+            }
+            if self.info.kind == Kind::Screen && self.plan.needs_repair(requested, connected) {
+                if let Some(service) = service {
+                    let parents = requested
+                        .iter()
+                        .filter(|viewer| !self.plan.parents.contains_key(viewer))
+                        .find_map(|viewer| {
+                            self.plan
+                                .through_relay(*viewer, service, connected, helpers, limits)
+                        });
+                    if let Some(parents) = parents {
+                        // The service is a required ancestor, not a viewer. Its
+                        // pending input keeps the same lease and frontier deadline.
+                        self.plan.parents = parents;
                     }
                 }
             }
@@ -215,7 +232,7 @@ impl Publication {
                                 helpers.get(root) == Some(helper)
                                     && self
                                         .plan
-                                        .assisted(*root, *helper, connected, helpers, limits)
+                                        .through_relay(*root, *helper, connected, helpers, limits)
                                         .is_some_and(|parents| {
                                             legs.iter().all(|(receiver, leg)| {
                                                 parents.get(receiver) == Some(&leg.flow.sender)
@@ -244,7 +261,7 @@ impl Publication {
         let assisted = helpers.iter().find_map(|(viewer, helper)| {
             let parents = self
                 .plan
-                .assisted(*viewer, *helper, connected, helpers, limits)?;
+                .through_relay(*viewer, *helper, connected, helpers, limits)?;
             let legs = self.branch(&parents, requested);
             (!legs.is_empty() && legs.keys().all(|receiver| connected.contains(receiver)))
                 .then_some((*viewer, Some(*helper), legs))

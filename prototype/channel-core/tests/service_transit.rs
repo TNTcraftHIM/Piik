@@ -648,7 +648,7 @@ fn transit_retirement_keeps_other_room_leases_and_rejects_old_service_outputs() 
 }
 
 #[test]
-fn public_read_alone_does_not_keep_service_work_after_owner_disallows_forwarding() {
+fn public_read_alone_does_not_keep_withdrawn_service_work() {
     let mut net = RoomNetwork::new();
     let [host, viewer, service, operator_page] = std::array::from_fn(|_| Uuid::new_v4());
     let source = join(&mut net, host, false);
@@ -658,7 +658,47 @@ fn public_read_alone_does_not_keep_service_work_after_owner_disallows_forwarding
     let room = net.create(host, RoomAccess::Public, false);
     let effects = register_service(&mut net, Some(relay)).unwrap();
     accepted(net.deliver(effects));
-    bridge(&mut net, host, viewer, service, source, relay, &room);
+    let picture = bridge(&mut net, host, viewer, service, source, relay, &room);
+    let retired_pairs: Vec<_> = net
+        .state(service)
+        .pairs
+        .iter()
+        .map(|pair| pair.id)
+        .collect();
+    let effects = register_service(&mut net, None).unwrap();
+    let states: Vec<_> = effects
+        .events
+        .iter()
+        .filter_map(|(_, event)| match event {
+            Event::State { state } => Some(state),
+            _ => None,
+        })
+        .collect();
+    assert!(!states.is_empty());
+    assert!(
+        states.iter().all(|state| state
+            .pairs
+            .iter()
+            .all(|pair| !retired_pairs.contains(&pair.id))),
+        "the domain must withdraw pure service pairs before the room host replies"
+    );
+    accepted(net.deliver(effects));
+    assert!(net.state(service).pairs.iter().all(|pair| {
+        !pair.rooms.contains(&room)
+            && pair
+                .incoming
+                .iter()
+                .chain(&pair.outgoing)
+                .all(|flow| flow.publication_id != picture)
+    }));
+    let effects = register_service(&mut net, Some(relay)).unwrap();
+    accepted(net.deliver(effects));
+    assert!(net.state(service).pairs.iter().any(|pair| {
+        pair.incoming
+            .iter()
+            .chain(&pair.outgoing)
+            .any(|flow| flow.publication_id == picture)
+    }));
     set_preference(&mut net, host, &room, false);
     assert!(net
         .state(service)
@@ -710,6 +750,24 @@ fn public_read_alone_does_not_keep_service_work_after_owner_disallows_forwarding
             .any(|pair| pair.rooms.contains(&hosted)),
         "an actual room host retains its ordinary base role without the optional relay preference"
     );
+    let hosting_pair = net
+        .state(service)
+        .pairs
+        .iter()
+        .find(|pair| pair.rooms.contains(&hosted))
+        .unwrap()
+        .id;
+    let effects = register_service(&mut net, None).unwrap();
+    assert!(effects.events.iter().any(|(connection, event)| {
+        *connection == service
+            && matches!(event, Event::State { state } if state.pairs.iter().any(|pair| pair.id == hosting_pair))
+    }));
+    accepted(net.deliver(effects));
+    assert!(net
+        .state(service)
+        .pairs
+        .iter()
+        .any(|pair| pair.id == hosting_pair && pair.rooms.contains(&hosted)));
 }
 
 #[test]

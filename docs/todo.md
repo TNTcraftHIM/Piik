@@ -44,8 +44,8 @@ the feedback period; they do not delay that delivery.
   Windows App/Web package. Cover failed replacement retaining the active source,
   original-page closure, and independent viewer playback with and without
   explicit forwarding. Broader website/live coverage remains below.
-- [ ] **Site forwarding package acceptance.** Complete independent room-lease
-  retirement and measure first-picture latency during fallback.
+- [ ] **Site forwarding package acceptance.** Verify screen fallback when the
+  base path remains healthy and measure first-picture latency in matching packages.
   Packaged Windows Native source, Linux Server and
   Browser picture, sound and file delivery are covered in the verification
   record. Fixed UDP reachability remains separate from HTTP access.

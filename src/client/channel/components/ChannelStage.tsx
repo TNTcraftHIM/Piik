@@ -285,19 +285,21 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
                   onClick={() => onRetryPicture(source.id)} />}</div>}
             <footer>
               <div className="c3-monitor-source-row lr-media-overlay" data-tooltip-controls data-playback-controls>
-                <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
-                <div className="c3-monitor-source">
-                  <Tooltip overflow={{ text: title, selector: "strong" }}><strong>{title}</strong></Tooltip>
-                  <Tooltip overflow={{ text: sourceDetail, selector: "small" }}><small>
-                    <span>{source.localSource ? t("screen.localPreview") : source.name}</span><span aria-hidden="true"> / </span>
-                    {source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}
-                  </small></Tooltip>
-                </div>
-                <div className="c3-monitor-social">
-                  <ChannelContentReactions reactions={source.reactions} session={source.interaction ?? null}
-                    target={{ publicationId: source.id }} disabled={source.available === false} effectsEnabled={!source.hidden}
-                    effectAnchor={() => grid.current?.querySelector(`[data-publication-id="${CSS.escape(source.id)}"] .c3-monitor-source-row > .lr-person`) ?? null} />
-                  <SourceAudience people={source.audience} />
+                <div className="c3-monitor-source-info">
+                  <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
+                  <div className="c3-monitor-source">
+                    <Tooltip overflow={{ text: title, selector: "strong" }}><strong>{title}</strong></Tooltip>
+                    <Tooltip overflow={{ text: sourceDetail, selector: "small" }}><small>
+                      <span>{source.localSource ? t("screen.localPreview") : source.name}</span><span aria-hidden="true"> / </span>
+                      {source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}
+                    </small></Tooltip>
+                  </div>
+                  <div className="c3-monitor-social">
+                    <ChannelContentReactions reactions={source.reactions} session={source.interaction ?? null}
+                      target={{ publicationId: source.id }} disabled={source.available === false} effectsEnabled={!source.hidden}
+                      effectAnchor={() => grid.current?.querySelector(`[data-publication-id="${CSS.escape(source.id)}"] .c3-monitor-source-info > .lr-person`) ?? null} />
+                    <SourceAudience people={source.audience} />
+                  </div>
                 </div>
                 <div className="c3-monitor-tile-actions">
                   {active.length > 1 && !isFocused && <Tooltip className="c3-monitor-layout-action" kind="hint-screen-focus"
@@ -395,11 +397,13 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
         {source.receiving && <WatchPeerAction receiving={source.receiving} />}</>
         : <><BrandLoader /><span>{t("watch.waiting")}</span></>}</div>}
     <footer><div className="c3-monitor-source-row lr-media-overlay" data-tooltip-controls data-playback-controls>
-      <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
-      <div className="c3-monitor-source"><Tooltip overflow={{ text: source.title, selector: "strong" }}><strong>{source.title}</strong></Tooltip>
-        <small>{source.name}<span aria-hidden="true"> / </span><button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button></small>
+      <div className="c3-monitor-source-info">
+        <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
+        <div className="c3-monitor-source"><Tooltip overflow={{ text: source.title, selector: "strong" }}><strong>{source.title}</strong></Tooltip>
+          <small>{source.name}<span aria-hidden="true"> / </span><button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button></small>
+        </div>
+        <div className="c3-monitor-social"><SourceAudience people={source.audience} joined /></div>
       </div>
-      <div className="c3-monitor-social"><SourceAudience people={source.audience} joined /></div>
       <div className="c3-monitor-tile-actions">
         {focusable && !focused && <Tooltip className="c3-monitor-layout-action" kind="hint-screen-focus"
           text={t("screen.focusNamed", { title: source.title })}><Btn icon="screenFocus" quiet size="dense"

@@ -1,5 +1,6 @@
 .lr-launcher-page { min-height: 100dvh; }
 .lr-launcher-page > .lr-top { flex: none; width: min(1060px, calc(100% - 32px)); margin-inline: auto; }
+.lr-launcher-page .lr-top-app-identity { display: none; }
 .lr-launcher-page > main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .lr-launcher-shell { flex: 1 0 auto; align-self: center; width: min(1060px, calc(100% - 32px)); margin: 12px auto 20px; display: grid; grid-template-columns: 248px minmax(0, 1fr); background: var(--paper); border: 1px solid var(--line); border-radius: var(--c3-shell-radius); box-shadow: var(--panel-shadow); overflow: clip; }
 .lr-launcher-sidebar { display: flex; flex-direction: column; min-height: 0; padding: clamp(16px, 4vh, 30px) 18px 16px; background: var(--wall); border-right: 1px solid var(--line); }

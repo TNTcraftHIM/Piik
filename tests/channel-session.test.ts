@@ -2367,6 +2367,84 @@ function nextSocketCommand(socket: ChannelSocket, type: string): Promise<Record<
   });
 }
 
+test.each(["ended", "restore-rejected", "accepted", "stopped"] as const)("Browser replacement keeps its current picture and sound until room confirmation (%s)", async outcome => {
+  const { session, socket } = await setup();
+  const oldVideo = remoteTrack("video"), oldSound = remoteTrack("audio");
+  const nextVideo = remoteTrack("video"), nextSound = remoteTrack("audio");
+  Object.defineProperty(oldVideo, "label", { value: "Current notes" });
+  Object.defineProperty(nextVideo, "label", { value: "Next notes" });
+  const oldStream = remoteStream("current-window", [oldVideo, oldSound]);
+  const candidate = remoteStream("next-window", [nextVideo, nextSound]);
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn()
+    .mockResolvedValueOnce(oldStream).mockResolvedValueOnce(candidate) } });
+  session.setVideoCodecMode("vp8");
+  try {
+    const published = nextSocketCommand(socket, "publish");
+    const initial = session.startScreen("first");
+    const publication = await published;
+    socket.receive({ type: "ack", requestId: publication.requestId }); await initial;
+    const description = publication.publication as { id: string; roomId: string; kind: "screen"; source: ScreenSource; videoSettings: VideoSettings };
+    const state = { ...session.getSnapshot().state!, publications: [{ audience: [], title: null, ...description,
+      paused: false, sessionId: "endpoint", userId: "self" }] };
+    socket.receive({ type: "state", state });
+    const transferring = nextSocketCommand(socket, "transfer_source");
+    const replacement = session.startScreen("first").then(() => undefined, error => error);
+    const transfer = await transferring;
+    const updating = nextSocketCommand(socket, "publish");
+    socket.receive({ type: "ack", requestId: transfer.requestId });
+    const update = await updating;
+    const pendingStream = session.getSnapshot().streams.get(description.id);
+    const pendingStops = oldStream.getTracks().map(track => vi.mocked(track.stop).mock.calls.length);
+    const ended = outcome === "ended" || outcome === "restore-rejected";
+    if (ended) {
+      Object.defineProperty(nextVideo, "readyState", { value: "ended" });
+      nextVideo.dispatchEvent(new Event("ended"));
+    }
+    if (outcome === "stopped") {
+      const stopping = session.stopScreen(description.id);
+      socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+      await stopping;
+    }
+    const restoring = ended ? nextSocketCommand(socket, "publish") : undefined;
+    if (outcome !== "stopped") socket.receive({ type: "state", state: { ...state, publications: [{ ...state.publications[0],
+      source: (update.publication as typeof description).source }] } });
+    socket.receive({ type: "ack", requestId: update.requestId });
+    if (restoring) {
+      const restore = await restoring;
+      expect(restore.publication).toMatchObject({ id: description.id, source: description.source });
+      if (outcome === "restore-rejected") socket.receive({ type: "error", requestId: restore.requestId, code: "room_unavailable" });
+      else {
+        socket.receive({ type: "state", state });
+        socket.receive({ type: "ack", requestId: restore.requestId });
+      }
+    }
+    const result = await replacement;
+    expect(pendingStream).toBe(oldStream);
+    expect(pendingStops).toEqual([0, 0]);
+    if (outcome === "accepted") {
+      expect(result).toBeUndefined();
+      expect(session.getSnapshot().streams.get(description.id)).toBe(candidate);
+      expect(oldVideo.stop).toHaveBeenCalledOnce(); expect(oldSound.stop).toHaveBeenCalledOnce();
+      expect(nextVideo.stop).not.toHaveBeenCalled(); expect(nextSound.stop).not.toHaveBeenCalled();
+    } else if (outcome === "stopped") {
+      expect(result).toMatchObject({ name: "AbortError" });
+      expect(session.getSnapshot().streams.has(description.id)).toBe(false);
+      expect(oldVideo.stop).toHaveBeenCalledOnce(); expect(oldSound.stop).toHaveBeenCalled();
+      expect(nextVideo.stop).toHaveBeenCalledOnce(); expect(nextSound.stop).toHaveBeenCalledOnce();
+    } else {
+      expect(result).toMatchObject({ message: outcome === "restore-rejected" ? "room_unavailable" : "capture_unavailable" });
+      expect(session.getSnapshot().streams.get(description.id)).toBe(oldStream);
+      expect(session.getSnapshot().state?.publications[0].source).toEqual(outcome === "restore-rejected"
+        ? (update.publication as typeof description).source : description.source);
+      expect(oldVideo.stop).not.toHaveBeenCalled(); expect(oldSound.stop).not.toHaveBeenCalled();
+      expect(nextVideo.stop).toHaveBeenCalledOnce(); expect(nextSound.stop).toHaveBeenCalledOnce();
+    }
+    expect(socket.sent.some(command => command.type === "unpublish")).toBe(outcome === "stopped");
+    expect(session.getSnapshot().ownedScreens.has(description.id)).toBe(outcome !== "stopped");
+    expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
+  } finally { session.close(); }
+});
+
 test("Browser publication leaves cancellable preparation before requesting room confirmation", async () => {
   const { session, socket } = await setup();
   const video = remoteTrack("video"), stream = remoteStream("first-window", [video]);
@@ -8417,18 +8495,19 @@ test("Browser capture titles use original metadata and confirmed overrides witho
     const update = socket.sent.at(-1)!;
     expect(update.publication).toMatchObject({ id: publication.id, source: { kind: "screen", name: "Updated notes" } });
     expect(update.publication).not.toHaveProperty("title");
-    expect(session.getSnapshot().streams.get(publication.id)).toBe(second);
+    expect(session.getSnapshot().streams.get(publication.id)).toBe(first);
     const rejected = expect(replacing).rejects.toThrow("room_unavailable");
     socket.receive({ type: "error", requestId: update.requestId, code: "room_unavailable" }); await rejected;
-    expect(session.getSnapshot().streams.get(publication.id)).toBe(second);
-    expect(next.stop).not.toHaveBeenCalled();
+    expect(session.getSnapshot().streams.get(publication.id)).toBe(first);
+    expect(old.stop).not.toHaveBeenCalled();
+    expect(next.stop).toHaveBeenCalledOnce();
     expect(session.getSnapshot().state!.publications[0].title).toBe("Weekly review");
     expect(session.getSnapshot().error).toBe("room_unavailable");
     const clearing = session.setScreenTitle(publication.id, "   ");
     expect(socket.sent.at(-1)).toMatchObject({ type: "set_title", title: null });
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await clearing;
     expect(session.getSnapshot().error).toBe("room_unavailable");
-    expect(bind.mock.calls).toHaveLength(bindings + 1);
+    expect(bind.mock.calls).toHaveLength(bindings);
     state = { ...state, publications: [{ ...state.publications[0], sessionId: "other-endpoint" }] };
     socket.receive({ type: "state", state });
     await expect(session.setScreenTitle(publication.id, "Not mine")).rejects.toThrow("not_publication_owner");

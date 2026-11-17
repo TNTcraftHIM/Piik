@@ -1,5 +1,9 @@
 ﻿import Hls, { type LoaderCallbacks, type LoaderConfiguration, type LoaderContext } from "hls.js";
 import { afterEach, expect, test, vi } from "vitest";
+vi.mock("../src/shared/media-resource", () => ({
+  mediaFragmentBytes: () => 60000000,
+  mediaManifestBytes: () => 1048576,
+}));
 import { createWatchHlsLoader, watchHlsUrl } from "../src/client/channel/watch-hls-loader";
 import { type WatchByteReader, type WatchByteResult } from "../src/client/channel/watch-resource";
 
@@ -144,4 +148,35 @@ test("large immutable VOD playlists keep the first window and read only the rema
   await vi.waitFor(() => expect(cb.onSuccess).toHaveBeenCalledOnce());
   expect(read.mock.calls.slice(0, 2).map(([, offset]) => offset)).toEqual([0, 65536]);
   expect(cb.onSuccess.mock.calls[0][0].data).toBe(new TextDecoder().decode(bytes));
+});
+
+test.each([
+  { responseType: "arraybuffer", size: 60000001, statLength: 1 },
+  { responseType: "text", size: 1048577, statLength: 65536 },
+] as const)("HLS rejects an oversized $responseType before reading its body", async ({ responseType, size, statLength }) => {
+  const read = vi.fn<WatchByteReader>(async (_id, _offset, length) => {
+    if (read.mock.calls.length > 1) throw new Error("unexpected_body_read");
+    return { bytes: new Uint8Array(length), totalSize: size, eof: false, mimeType: "application/octet-stream" };
+  });
+  const lifetime = new AbortController(), Loader = createWatchHlsLoader(read, lifetime.signal), cb = callbacks();
+  new Loader(Hls.DefaultConfig).load({ ...context(), responseType }, config(), cb);
+  await vi.waitFor(() => expect(cb.onError).toHaveBeenCalledOnce());
+  expect(cb.onError.mock.calls[0][0]).toEqual({ code: 0, text: "watch_resource_limit" });
+  expect(cb.onSuccess).not.toHaveBeenCalled();
+  expect(read.mock.calls.map(([, offset, length]) => [offset, length])).toEqual([[0, statLength]]);
+});
+
+test("HLS keeps small byte ranges from a file larger than the fragment budget", async () => {
+  const size = 128 * 1024 * 1024;
+  const read = vi.fn<WatchByteReader>(async (_id, offset, length) => ({
+    bytes: Uint8Array.from({ length }, (_, i) => (offset + i) % 251),
+    totalSize: size, eof: offset + length === size, mimeType: "video/mp4",
+  }));
+  const lifetime = new AbortController(), Loader = createWatchHlsLoader(read, lifetime.signal), cb = callbacks();
+  new Loader(Hls.DefaultConfig).load(context(310, 553), config(), cb);
+  await vi.waitFor(() => expect(cb.onSuccess).toHaveBeenCalledOnce());
+  expect(new Uint8Array(cb.onSuccess.mock.calls[0][0].data as ArrayBuffer))
+    .toEqual(Uint8Array.from({ length: 243 }, (_, i) => (310 + i) % 251));
+  expect(read.mock.calls.map(([, offset, length]) => [offset, length])).toEqual([[0, 1], [310, 243]]);
+  expect(cb.onError).not.toHaveBeenCalled();
 });

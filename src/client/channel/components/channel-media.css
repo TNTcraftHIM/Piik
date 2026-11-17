@@ -41,8 +41,9 @@
 .c3-watch-player > .c3-mini-controls { flex-wrap: nowrap; max-width: calc(100% - 20px); gap: clamp(2px, 1cqi, 6px); }
 .c3-mini-controls .lr-viewer-action-separator { display: block; width: 1px; height: 20px; margin-inline: 2px; background: var(--control-edge); }
 .c3-watch-player[data-thumbnail] .c3-watch-shared { flex: none; }
-.c3-watch-player[data-thumbnail] .c3-watch-timeline,
-.c3-watch-player[data-thumbnail] .lr-playback-window { display: none; }
+.c3-watch-player[data-thumbnail] .c3-watch-timeline { display: none; }
+.c3-mini-player[data-thumbnail] .c3-mini-controls > :is(.lr-chat-overlay-toggle, .lr-remote-controls),
+.c3-mini-player[data-thumbnail] .lr-playback-window { display: none; }
 .c3-mini-player[data-thumbnail] > :is(.lr-remote-input-surface, .c3-mini-message) { display: none; }
 .c3-mini-controls {
   z-index: 4;
@@ -80,9 +81,9 @@
 @container (max-width: 280px) {
   .c3-mini-controls { inset-inline: 2px; width: calc(100% - 4px); max-width: calc(100% - 4px); gap: 0; padding: 2px; }
   .c3-mini-controls .c3-mini-space { display: none; }
-  .c3-mini-controls > :is(.lr-chat-overlay-toggle, .lr-remote-controls, .lr-playback-window), .c3-mini-controls .c3-watch-local > .lr-playback-window { display: none; }
-  .c3-mini-controls .lr-btn:not(:where(.c3-mini-controls [popover] *)) { --button-size: var(--control-dense-size); }
 }
+.c3-mini-player[data-thumbnail] .c3-mini-controls { width: fit-content; }
+.c3-mini-player[data-thumbnail] .c3-mini-controls .lr-btn:not(:where(.c3-mini-controls [popover] *)) { --button-size: var(--control-dense-size); }
 .c3-mini-space { flex: 1 1 0; min-width: 4px; }
 .c3-mini-volume {
   flex: 0 1 88px;

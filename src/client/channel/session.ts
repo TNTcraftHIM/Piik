@@ -1986,6 +1986,9 @@ export class ChannelSession {
       if (previous || app?.hasCapture(share.id)) {
         const sessionId = this.view.sessionId;
         if (!sessionId) throw new Error("disconnected");
+        const reportSource = (source = metadata) => this.request({ type: "publish", publication: {
+          id: share.id, roomId, kind: "screen", videoSettings: screenVideoSettings(share.profile), source,
+        } }, undefined, roomId);
         if (previous) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: sessionId }, undefined, roomId);
         else {
           try { await app!.transferSource(share.id, sessionId); }
@@ -2007,6 +2010,19 @@ export class ChannelSession {
           }
           throw new Error("capture_unavailable");
         }
+        if (previous) {
+          // The same endpoint keeps its proven paths and old input until the room accepts the new source.
+          await reportSource();
+          if (!current()) {
+            this.send({ type: "unpublish", publicationId: share.id });
+            throw new DOMException("Capture cancelled", "AbortError");
+          }
+          if (candidate.getVideoTracks()[0]?.readyState !== "live") {
+            await reportSource(captureSource(previous.stream.getVideoTracks()[0], previous.camera));
+            if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+            throw new Error("capture_unavailable");
+          }
+        }
         if (retainedAudio) candidate = retainedAudio.attach(candidate, source);
         const mixed = retainedAudio ?? audio;
         const paused = share.paused = (previous ? share.paused : undefined)
@@ -2020,9 +2036,7 @@ export class ChannelSession {
         candidate = undefined;
         audio = undefined;
         previous?.stream.getVideoTracks().forEach(track => track.stop());
-        const reporting = this.request({ type: "publish", publication: {
-          id: share.id, roomId, kind: "screen", videoSettings: screenVideoSettings(share.profile), source: metadata,
-        } }, undefined, roomId);
+        const reporting = !previous ? reportSource() : undefined;
         const stopping = !previous ? app!.stopCapture(share.id) : undefined;
         if (!previous) {
           const remoteControls = new Map(this.view.remoteControls);

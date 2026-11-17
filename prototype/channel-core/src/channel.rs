@@ -275,7 +275,9 @@ impl Channel {
                 projection
                     .views
                     .retain(|session, _| endpoints.contains_key(session));
+                let mut routable_sessions = BTreeSet::new();
                 for (session, view) in &mut projection.views {
+                    let was_transit = view.transit;
                     view.transit &= view.transit_endpoint == self.service_endpoint
                         && Some(*session) == service_endpoint
                         && (projection
@@ -289,18 +291,28 @@ impl Channel {
                     if !view.transit {
                         view.transit_endpoint = None;
                     }
+                    let ordinary = !was_transit
+                        || room
+                            .binding
+                            .as_ref()
+                            .is_some_and(|binding| binding.session == *session)
+                        || projection.participant_session_ids.contains(session)
+                        || view
+                            .files
+                            .iter()
+                            .any(|file| file.receiving || file.source_id == Some(*session))
+                        || view
+                            .watch_bytes
+                            .iter()
+                            .any(|plan| plan.receiving || plan.source.session_id == *session);
+                    if view.transit || (view.authorized && ordinary) {
+                        routable_sessions.insert(*session);
+                    }
                 }
                 let readable_sessions: BTreeSet<_> = projection
                     .views
                     .iter()
                     .filter_map(|(session, view)| view.authorized.then_some(*session))
-                    .collect();
-                let routable_sessions: BTreeSet<_> = projection
-                    .views
-                    .iter()
-                    .filter_map(|(session, view)| {
-                        (view.authorized || view.transit).then_some(*session)
-                    })
                     .collect();
                 projection
                     .publications
@@ -335,9 +347,9 @@ impl Channel {
                 projection
                     .participant_session_ids
                     .retain(|session| readable_sessions.contains(session));
-                for view in projection.views.values_mut() {
+                for (session, view) in &mut projection.views {
                     view.watch_bytes.retain_mut(|plan| {
-                        if !(view.authorized || view.transit)
+                        if !routable_sessions.contains(session)
                             || !projection.watch_activities.iter().any(|activity| {
                                 activity.id == plan.activity_id
                                     && activity.byte_source.as_ref() == Some(&plan.source)
@@ -355,7 +367,7 @@ impl Channel {
                             .retain(|peer| routable_sessions.contains(peer));
                         true
                     });
-                    if !(view.authorized || view.transit) {
+                    if !routable_sessions.contains(session) {
                         view.files.clear();
                     }
                     for file in &mut view.files {

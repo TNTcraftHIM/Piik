@@ -135,9 +135,12 @@ A matching Windows Native OBS source also delivers H264 pictures and Opus sound
 through the packaged Linux Server to an independent Browser when that viewer's
 direct peer signaling is blocked. A file follows the same service path with an
 exact received digest while video continues. An initial delivery failure keeps
-the subscription and later recovers without another user action; first-picture
-latency and independent room-lease retirement remain open. This uses synthetic
-media and a VM port forward, not difficult physical NATs or an endurance test.
+the subscription and later recovers without another user action. Two Native-owned
+rooms also retain independent leases on one Server pair: revoking one room's
+permission removes its flows while the other retains its connection, flow and
+advancing audio. Leaving both rooms releases the final connection and capture.
+First-picture latency remains open. These checks use synthetic media and a VM
+port forward, not difficult physical NATs or an endurance test.
 
 The newer conversation path passes normal Browser-hosted and App-hosted room
 checks with peer signaling blocked: history, bidirectional messages and saved

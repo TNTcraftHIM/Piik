@@ -1119,6 +1119,8 @@ impl RoomRuntime {
     }
 
     pub fn reconcile(&mut self, endpoints: &BTreeMap<Uuid, Endpoint>, now: u64) {
+        // Keep the retiring service's role while deriving ordinary routing demand.
+        let transit_endpoint = self.transit_endpoint;
         self.transit_endpoint = self.transit_endpoint.filter(|service| {
             endpoints
                 .get(&service.session_id)
@@ -1177,7 +1179,7 @@ impl RoomRuntime {
         demand.extend(self.files.demand());
         let mut routable = readable.clone();
         let service = self.selected_service().map(|service| service.session_id);
-        if let Some(endpoint) = self.transit_endpoint {
+        if let Some(endpoint) = transit_endpoint {
             let session = endpoint.session_id;
             if service.is_none()
                 && !demand.contains(&session)
@@ -1233,6 +1235,7 @@ impl RoomRuntime {
                 &routable,
                 &connected,
                 self.base.as_ref(),
+                service,
                 &helpers,
                 &limits,
                 now,
@@ -1256,6 +1259,7 @@ impl RoomRuntime {
                         &routable,
                         &connected,
                         self.base.as_ref(),
+                        service,
                         &BTreeMap::new(),
                         &limits,
                         now,
@@ -2352,7 +2356,7 @@ mod tests {
                     base.state(parent, child, true);
                     base.state(child, parent, true);
                 }
-                picture.reconcile(&requested, &all, &all, None, &helpers, &limits, 0);
+                picture.reconcile(&requested, &all, &all, None, None, &helpers, &limits, 0);
                 for flow in picture.flows().collect::<Vec<_>>() {
                     picture.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1);
                 }
@@ -2382,11 +2386,11 @@ mod tests {
             base.reconcile(&requested, &all, &all, &limits, 1_000);
             assert_eq!(base.candidate_links(), vec![expected]);
             assert_eq!(base.deadline(), base_deadline);
-            picture.reconcile(&requested, &all, &all, None, &helpers, &limits, 10);
+            picture.reconcile(&requested, &all, &all, None, None, &helpers, &limits, 10);
             let candidate = picture.flows().find(|flow| !flow.selected).unwrap();
             assert_eq!((candidate.sender, candidate.receiver), expected);
             let deadline = picture.deadline();
-            picture.reconcile(&requested, &all, &all, None, &helpers, &limits, 1_000);
+            picture.reconcile(&requested, &all, &all, None, None, &helpers, &limits, 1_000);
             assert_eq!(picture.deadline(), deadline);
             assert!(picture
                 .flows()
@@ -2408,7 +2412,7 @@ mod tests {
                 FlowState::SwitchReady,
                 1_002,
             );
-            picture.reconcile(&requested, &all, &all, None, &helpers, &limits, 1_003);
+            picture.reconcile(&requested, &all, &all, None, None, &helpers, &limits, 1_003);
             assert!(picture
                 .flows()
                 .any(|flow| flow.id == candidate.id && flow.selected));
@@ -3105,6 +3109,185 @@ mod tests {
             .unwrap();
         assert!(room.publication(id(10)).unwrap().video_settings.is_none());
         assert!(room.publication(id(10)).unwrap().paused);
+    }
+
+    #[test]
+    fn screen_repair_admits_service_when_base_uses_a_presentation_leaf() {
+        use crate::transport::TransportBook;
+
+        let id = Uuid::from_u128;
+        let [source, display, viewer, service] = [1, 2, 3, 4].map(id);
+        let publication = id(10);
+        let endpoints: BTreeMap<_, _> = (1..=4)
+            .map(|value| {
+                (
+                    id(value),
+                    Endpoint {
+                        signing_key: [value as u8; 32],
+                        member: Member {
+                            user_id: id(if value == 2 { 1 } else { value }),
+                        },
+                        connected: true,
+                    },
+                )
+            })
+            .collect();
+        let mut room = RoomRuntime::new(
+            RoomState::new(
+                "screen-repair".into(),
+                "Screen repair".into(),
+                Default::default(),
+                source,
+                RoomAccess::Public,
+                false,
+                None,
+            )
+            .unwrap(),
+        );
+        room.set_host_session(source);
+        room.set_service_relay_preference(true);
+        room.service_endpoint(
+            Some(crate::host::ServiceEndpoint {
+                session_id: service,
+                connection_id: id(14),
+            }),
+            &endpoints,
+            0,
+        );
+        for (publication, sender, receiver, helper) in [
+            (publication, source, display, Some(source)),
+            (id(11), display, source, None),
+        ] {
+            room.publish(
+                endpoints[&sender].member,
+                sender,
+                publication,
+                Kind::Screen,
+                screen_settings(),
+                Some(crate::wire::ScreenSource::default()),
+            )
+            .unwrap();
+            room.subscribe(
+                endpoints[&receiver].member,
+                receiver,
+                publication,
+                true,
+                helper.map(|helper| (helper, &endpoints[&helper])),
+            )
+            .unwrap();
+        }
+        room.reconcile(&endpoints, 0);
+        room.base_state(source, display, true).unwrap();
+        room.base_state(display, source, true).unwrap();
+        let previews: Vec<_> = room.flows().collect();
+        for preview in &previews {
+            room.flow_state(
+                preview.id,
+                preview.receiver,
+                preview.sender,
+                FlowState::Decoded,
+                1,
+            )
+            .unwrap();
+        }
+        let previews: Vec<_> = previews.iter().map(|flow| flow.id).collect();
+        room.reconcile(&endpoints, 1);
+        assert!(room.flows().any(|flow| {
+            flow.publication_id == publication && flow.receiver == display && flow.presentation
+        }));
+
+        room.subscribe(endpoints[&viewer].member, viewer, publication, true, None)
+            .unwrap();
+        room.reconcile(&endpoints, 2);
+        assert!(!room.flows().any(|flow| flow.receiver == service));
+        let mut denied = room.clone();
+        denied.set_service_relay_preference(false);
+        denied.failed_pair(source, viewer);
+        denied.reconcile(&endpoints, 3);
+        denied.base_state(display, viewer, true).unwrap();
+        denied.base_state(viewer, display, true).unwrap();
+        denied.reconcile(&endpoints, 4);
+        assert!(!denied
+            .flows()
+            .any(|flow| flow.receiver == viewer || flow.receiver == service));
+        let connected = endpoints.keys().copied().collect();
+        assert!(denied.publications[&publication].needs_repair(&[viewer].into(), &connected));
+        denied.set_service_relay_preference(true);
+        denied.reconcile(&endpoints, 4);
+        assert!(denied
+            .flows()
+            .any(|flow| flow.sender == source && flow.receiver == service));
+
+        room.failed_pair(source, viewer);
+        room.reconcile(&endpoints, 3);
+        room.base_state(display, viewer, true).unwrap();
+        room.base_state(viewer, display, true).unwrap();
+        room.reconcile(&endpoints, 4);
+
+        assert!(room
+            .base_links()
+            .any(|link| { link.parent == display && link.child == viewer && link.ready }));
+        let upstream = room
+            .flows()
+            .find(|flow| flow.sender == source && flow.receiver == service)
+            .expect(
+                "a healthy base through a display leaf must not suppress service screen repair",
+            );
+        assert!(!upstream.presentation);
+        assert!(room.subscriptions(service).is_empty());
+        let deadline = room.publications[&publication].deadline();
+        let mut transports = TransportBook::default();
+        transports.reconcile(room.flows(), room.base_links());
+        let pair = transports
+            .snapshot(source, |_| false, |_| true)
+            .into_iter()
+            .find(|pair| pair.peer_id == service)
+            .unwrap();
+        // Another required path may already have scheduled the shared room wake.
+        room.repair_at = Some(5_003);
+        room.reconcile(&endpoints, 5_003);
+        assert!(room.flows().any(|flow| flow.id == upstream.id));
+        assert_eq!(room.publications[&publication].deadline(), deadline);
+        transports.reconcile(room.flows(), room.base_links());
+        assert_eq!(transports.peer(source, pair.id), Some(service));
+        room.flow_state(upstream.id, service, source, FlowState::Forwardable, 5_004)
+            .unwrap();
+        room.reconcile(&endpoints, 5_004);
+        let downstream = room
+            .flows()
+            .find(|flow| flow.sender == service && flow.receiver == viewer)
+            .expect("the service's forwardable input must admit the waiting viewer");
+        assert_eq!(downstream.input_flow_id, Some(upstream.id));
+        room.flow_state(downstream.id, viewer, service, FlowState::Decoded, 5_005)
+            .unwrap();
+        room.reconcile(&endpoints, 5_005);
+        assert!(room.flows().any(|flow| {
+            flow.id == downstream.id && flow.selected && flow.proof == Some(FlowState::Decoded)
+        }));
+        assert!(room
+            .base_links()
+            .any(|link| { link.parent == display && link.child == viewer && link.ready }));
+        assert!(previews
+            .iter()
+            .all(|id| room.flows().any(|flow| flow.id == *id)));
+        let mut withdrawn = room.clone();
+        withdrawn.set_service_relay_preference(false);
+        withdrawn.reconcile(&endpoints, 5_006);
+        assert!(!withdrawn
+            .flows()
+            .any(|flow| flow.sender == service || flow.receiver == service));
+        assert!(previews
+            .iter()
+            .all(|id| withdrawn.flows().any(|flow| flow.id == *id)));
+        room.subscribe(endpoints[&viewer].member, viewer, publication, false, None)
+            .unwrap();
+        room.reconcile(&endpoints, 5_006);
+        assert!(!room
+            .flows()
+            .any(|flow| flow.sender == service || flow.receiver == service));
+        assert!(previews
+            .iter()
+            .all(|id| room.flows().any(|flow| flow.id == *id)));
     }
 
     #[test]

@@ -1,4 +1,5 @@
 import type { HlsConfig, Loader, LoaderCallbacks, LoaderConfiguration, LoaderContext, LoaderStats } from "hls.js";
+import { mediaFragmentBytes, mediaManifestBytes } from "../../shared/media-resource";
 import { limitWatchReads, type WatchByteReader } from "./watch-resource";
 import { readWatchWindows, WATCH_READ_SIZE } from "./watch-read-windows";
 
@@ -78,6 +79,7 @@ export function createWatchHlsLoader(sourceRead: WatchByteReader, lifetime: Abor
       if (size === null || !Number.isSafeInteger(size) || size < 0) throw new Error("watch_media_size_unavailable");
       const end = requestedEnd ?? size;
       if (end > size || start > end) throw new Error("watch_media_truncated");
+      if (end - start > (text ? mediaManifestBytes() : mediaFragmentBytes())) throw new Error("watch_resource_limit");
       const bytes = new Uint8Array(end - start);
       this.stats.total = bytes.length;
       let next = start;

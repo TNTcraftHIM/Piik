@@ -276,7 +276,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         </>} />
       </div></header>
       <aside id="c3-room-list" className="c3-sidebar" onKeyDown={event => {
-        if (!sidebarsInline && mobilePane === "rooms" && event.key === "Escape" && !event.defaultPrevented) {
+        if (!sidebarsInline && mobilePane === "rooms" && event.key === "Escape" && !event.defaultPrevented && !event.nativeEvent.isComposing &&
+          !event.currentTarget.ownerDocument.querySelector('[popover="auto"]:popover-open, dialog:modal')) {
           event.preventDefault(); setMobilePane("room");
         }
       }} aria-label={t("channel.previewPage.rooms")}>

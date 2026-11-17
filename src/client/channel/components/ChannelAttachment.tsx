@@ -61,9 +61,10 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   const imageDescription = !originalShown && inlineImage ? t("channel.attachment.highQualityPreview") : undefined;
   const previewMessage = channelErrorPresentation(previewError, t, preview ? "channel.attachment.originalUnavailable" : "channel.attachment.previewFailed").message;
   const downloadMessage = channelErrorPresentation(download.error, t, "channel.attachment.downloadFailed").message;
-  const progressLabel = progress && t(progress.state === "waiting-source" ? "channel.attachment.waitingSource"
+  const progressLabel = progress ? t(progress.state === "waiting-source" ? "channel.attachment.waitingSource"
     : progress.state === "waiting" ? "channel.attachment.waitingData" : progress.state === "connecting" ? "channel.attachment.connecting" : progress.state === "finishing"
-    ? "channel.attachment.finishing" : "channel.attachment.receiving");
+    ? "channel.attachment.finishing" : "channel.attachment.receiving")
+    : t(previewBusy ? "channel.attachment.loadingOriginalImage" : "channel.attachment.waitingData");
   const progressBytes = progress ? `${fileSize(progress.received)} / ${fileSize(progress.total)}${progress.total > 0 ? ` · ${Math.floor(progress.received / progress.total * 100)}%` : ""}` : null;
   const imageStatus = previewBusy ? progress ? `${progressLabel} · ${progressBytes}` : t("channel.attachment.loadingOriginalImage")
     : previewMessage ?? imageDescription;
@@ -76,11 +77,11 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
         quiet
         onClick={() => { if (download.busy) client.cancelDownload(key); else { setPreviewError(null); void client.download(key, file, inlineImage, downloadSurface.current ?? undefined).catch(() => {}); } }} />
     </div>
-    {(download.busy || previewBusy) && progress && <div className="c3-attachment-progress">
+    {(download.busy || previewBusy) && <div className="c3-attachment-progress">
       <small role="status">{progressLabel}</small>
-      <progress aria-label={progressLabel!} max={progress.total || undefined}
-        value={progress.total > 0 && progress.received > 0 ? progress.received : undefined} />
-      <small>{progressBytes}</small>
+      <progress aria-label={progressLabel} max={progress?.total || undefined}
+        value={progress && progress.total > 0 && progress.received > 0 ? progress.received : undefined} />
+      {progressBytes && <small>{progressBytes}</small>}
     </div>}
     {saving && <div className="c3-attachment-progress">
       <small role="status">{t("channel.attachment.saving")}</small>

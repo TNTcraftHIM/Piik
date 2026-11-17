@@ -56,7 +56,8 @@ export class ChannelAttachments {
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   status = (key: ChannelFileKey) => {
     const download = this.downloads.get(keyOf(key))?.status, source = this.sources.get(keyOf(key))?.status;
-    return download?.busy ? download : source?.error ? source : download ?? idle;
+    if (download && (download.busy || download.outcome || download.error)) return download;
+    return source?.error ? source : download ?? idle;
   };
   progress = (key: ChannelFileKey): AttachmentProgress | null => this.sinks.get(keyOf(key))?.progress ?? null;
   private changed() { for (const listener of this.listeners) listener(); }
@@ -273,7 +274,7 @@ export class ChannelAttachments {
   }
   download(key: ChannelFileKey, attachment: ChannelAttachment, inlineImage?: ImageRendition, surface?: Element): Promise<void> {
     const id = keyOf(key), previous = this.downloads.get(id);
-    if (previous?.status.busy) return previous.promise;
+    if (previous?.status.busy && !previous.controller.signal.aborted) return previous.promise;
     previous?.controller.abort();
     const download: Download = { controller: new AbortController(), promise: Promise.resolve(), status: { busy: true, error: null } };
     this.downloads.set(id, download); this.changed();
@@ -303,7 +304,16 @@ export class ChannelAttachments {
       if (!sameContent(source.attachment, attachment)) { this.withdraw(source, true); throw new Error("attachment_unavailable"); }
       return source.file;
     }
-    const id = keyOf(key), runtime = await this.ensure();
+    const id = keyOf(key);
+    // Runtime initialization is shared; cancellation only retires this wait.
+    let cancel!: () => void;
+    const cancelled = new Promise<never>((_, reject) => {
+      cancel = () => reject(aborted());
+      signal.addEventListener("abort", cancel, { once: true });
+    });
+    let runtime: Runtime;
+    try { runtime = await Promise.race([this.ensure(), cancelled]); }
+    finally { signal.removeEventListener("abort", cancel); }
     signal.throwIfAborted();
     let entry = this.sinks.get(id);
     if (!entry) {

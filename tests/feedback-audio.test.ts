@@ -114,3 +114,25 @@ test("a pending preview cannot play after mute and a later activation", async ()
   expect(AudioBoundary.instances[1].oscillators).toHaveLength(2);
   audio.close();
 });
+
+test("suspension drops a pending preview while a new preview reuses the decoded sound", async () => {
+  vi.stubGlobal("document", new EventTarget()); vi.stubGlobal("AudioContext", AudioBoundary);
+  const audio = new FeedbackAudio();
+  audio.configure({ enabled: true, volume: 1 }); audio.activate(); await Promise.resolve();
+  const context = AudioBoundary.instances[0];
+  let finishDecode!: (buffer: AudioBuffer) => void;
+  context.decodeAudioData.mockImplementationOnce(() => new Promise(resolve => { finishDecode = resolve; }));
+  audio.configure({ enabled: true, volume: 1, clips: { message: { name: "message.wav", data: "YQ==" } } });
+  audio.preview("message"); await Promise.resolve();
+  context.state = "suspended"; context.onstatechange?.();
+  audio.activate(); await Promise.resolve();
+  finishDecode({ duration: .2 } as AudioBuffer);
+  await Promise.resolve(); await Promise.resolve();
+  expect(context.buffers).toHaveLength(0);
+  audio.preview("message");
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  expect(context.buffers).toHaveLength(1);
+  expect(context.decodeAudioData).toHaveBeenCalledOnce();
+  expect(AudioBoundary.instances).toHaveLength(1);
+  audio.close();
+});

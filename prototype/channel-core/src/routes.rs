@@ -201,9 +201,9 @@ impl Plan {
             .count()
     }
 
-    /// Replace this viewer's forwarding role, retaining its descendants and
-    /// keeping the actual viewer as the helper's local presentation leaf.
-    pub fn assisted(
+    /// Move this receiver and its downstream branches behind a relay. Only
+    /// the helper map gives a presentation edge its local fanout exemption.
+    pub fn through_relay(
         &self,
         viewer: Uuid,
         helper: Uuid,
@@ -1137,7 +1137,7 @@ mod tests {
             plan.mark_ready(child, parent, Readiness::Decoded);
         }
         let candidate = plan
-            .assisted(id(2), id(6), &connected, &helpers, &Default::default())
+            .through_relay(id(2), id(6), &connected, &helpers, &Default::default())
             .unwrap();
         assert_eq!(
             candidate,
@@ -1180,11 +1180,11 @@ mod tests {
             .shortcut_candidates(&helpers, &Default::default())
             .contains(&id(2)));
         assert!(plan
-            .assisted(id(2), id(6), &connected, &helpers, &Default::default())
+            .through_relay(id(2), id(6), &connected, &helpers, &Default::default())
             .is_none());
         let source_helper = BTreeMap::from([(id(2), id(1))]);
         let candidate = plan
-            .assisted(
+            .through_relay(
                 id(2),
                 id(1),
                 &connected,

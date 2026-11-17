@@ -34,6 +34,7 @@ export class FeedbackAudio {
   private gain: GainNode | null = null;
   private activation: AbortController | null = null;
   private stopCue: (() => void) | null = null;
+  private previewRequest: symbol | null = null;
   private enabled = false;
   private volume = 1;
   private clips: FeedbackClips = {};
@@ -74,7 +75,7 @@ export class FeedbackAudio {
         this.gain.connect(context.destination);
         context.onstatechange = () => {
           if (this.context !== context) return;
-          if (context.state !== "running") { this.stopCue?.(); this.stopCue = null; }
+          if (context.state !== "running") { this.previewRequest = null; this.stopCue?.(); this.stopCue = null; }
           if (context.state === "closed") { this.gain?.disconnect(); this.gain = null; this.context = null; this.decoded.clear(); }
           this.armActivation();
         };
@@ -124,16 +125,20 @@ export class FeedbackAudio {
   }
 
   preview = (cue: FeedbackCue = "message"): void => {
+    const request = this.previewRequest = Symbol();
     const clip = this.clips[cue];
     void this.resume().then(async ready => {
       if (!ready) return;
       const context = this.context, entry = this.decoded.get(cue);
       await entry?.ready;
+      if (this.previewRequest !== request) return;
+      this.previewRequest = null;
       if (this.context === context && this.clips[cue] === clip) this.play(cue);
     });
   };
 
   close(): void {
+    this.previewRequest = null;
     this.activation?.abort(); this.activation = null;
     this.stopCue?.(); this.stopCue = null;
     this.gain?.disconnect(); this.gain = null;

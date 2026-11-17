@@ -18,6 +18,7 @@ test.each([
   { code: "watch_path_unavailable", copy: "channel.error.roomCommunicationFailed", connectionHelp: true },
   { code: "watch_source_unavailable", copy: "watch.forward.sourceUnavailable", connectionHelp: false },
   { code: "watch_read_timeout", copy: "watch.forward.readTimeout", connectionHelp: false },
+  { code: "watch_resource_limit", copy: "watch.forward.unsupported", connectionHelp: false },
 ])("a known peer $code stays actionable after the media element reports unsupported source", async value => {
   vi.spyOn(Hls, "isSupported").mockReturnValue(true);
   vi.spyOn(Hls.prototype, "loadSource").mockImplementation(() => {});

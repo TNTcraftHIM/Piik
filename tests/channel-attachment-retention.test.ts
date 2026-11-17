@@ -4,7 +4,8 @@ import { channelErrorPresentation } from "../src/client/channel/error-presentati
 import { t } from "../src/client/ui/copy";
 import { FileStore } from "../src/client/channel/file-store";
 import * as hosting from "../src/client/channel/hosting";
-import type { ChannelAttachment, ChannelMessage, ChannelRoom } from "../src/client/channel/protocol";
+import * as downloads from "../src/client/lib/download";
+import type { ChannelAttachment, ChannelCommand, ChannelMessage, ChannelRoom } from "../src/client/channel/protocol";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -13,12 +14,12 @@ const key = { roomId: "room", messageSeq: 1, attachmentId: attachment.id };
 const inlineImage = { data: btoa("GIF89a"), mediaType: "image/gif" as const, original: true, width: 1, height: 1 };
 const message: ChannelMessage = { id: "message", seq: 1, userId: "self", time: 1, text: "", attachments: [attachment] };
 
-function setup() {
+function setup(command = async (_command: ChannelCommand) => {}) {
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ initializeRuntime: async () => {},
     attachment_limits: () => JSON.stringify({ maxFileBytes: 1024, maxAttachmentsPerMessage: 8, maxRetainedBytes: 1024, maxRetainedFiles: 8, maxInlineImageBytes: 65536 }),
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
-  const files = new ChannelAttachments(async () => {}, async () => {});
+  const files = new ChannelAttachments(command, async () => {});
   files.update("endpoint", { domainId: "domain", userId: "self" }, [],
     [{ id: key.roomId, authorized: true, available: true }] as ChannelRoom[], []);
   return files;
@@ -72,6 +73,56 @@ test("an already cancelled inline read preserves cancellation without opening a 
   const request = new AbortController(); request.abort();
   await expect(files.content(key, attachment, request.signal, inlineImage)).rejects.toMatchObject({ name: "AbortError" });
   expect(command).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled();
+});
+
+test.each(["resolve", "reject"])("cancelling runtime preparation permits an immediate retry and ignores the old %s", async outcome => {
+  const files = setup();
+  let finish!: () => void, fail!: (error: Error) => void;
+  const initialization = new Promise<void>((resolve, reject) => { finish = resolve; fail = reject; });
+  const initializeRuntime = vi.fn(() => initialization), start = vi.fn(() => "[]"), free = vi.fn();
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ initializeRuntime,
+    FileDelivery: class { update() { return "[]"; } next_deadline() { return undefined; } start = start; free = free; },
+  } as never);
+  const save = vi.spyOn(downloads, "downloadBlob").mockImplementation((_file, _name, options) => options?.outcome?.("dispatched"));
+  const first = files.download(key, attachment);
+  void first.catch(() => {});
+  try {
+    await vi.waitFor(() => expect(initializeRuntime).toHaveBeenCalledOnce());
+    expect(files.status(key)).toMatchObject({ busy: true });
+    files.cancelDownload(key);
+    const retry = files.download(key, attachment, inlineImage);
+    expect(retry).not.toBe(first);
+    await expect(first).rejects.toMatchObject({ name: "AbortError" });
+    await retry;
+    expect(files.status(key)).toEqual({ busy: false, error: null, outcome: "dispatched", saveProgress: undefined });
+    expect(save).toHaveBeenCalledOnce();
+    if (outcome === "resolve") finish(); else fail(new Error("runtime_load_failed"));
+    await new Promise(resolve => setImmediate(resolve));
+    expect(files.status(key)).toMatchObject({ busy: false, error: null, outcome: "dispatched" });
+    expect(free).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+    expect(files.progress(key)).toBeNull();
+  } finally { finish(); files.reset(); }
+});
+
+test("a file offer failure keeps its warning until a personal download supplies progress or a result", async () => {
+  const files = setup(async command => { if (command.type === "file_offer") throw new Error("disconnected"); });
+  vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new Error("optional_cache_unavailable"));
+  let report!: NonNullable<Parameters<typeof downloads.downloadBlob>[2]>;
+  vi.spyOn(downloads, "downloadBlob").mockImplementation((_file, _name, options) => { report = options!; report.outcome?.("requested"); });
+  try {
+    files.confirmed(key.roomId, message, [{ id: attachment.id, attachment, file: new File(["GIF89a"], attachment.name) }]);
+    await vi.waitFor(() => expect(files.status(key).error).toBe("file_offer_failed"));
+    await files.download(key, attachment);
+    expect(files.status(key)).toMatchObject({ outcome: "requested", error: null });
+    report.outcome?.("started"); report.progress?.({ received: 3, total: attachment.size });
+    expect(files.status(key)).toMatchObject({ outcome: "started", error: null, saveProgress: { received: 3, total: attachment.size } });
+    report.outcome?.("saved");
+    expect(files.status(key)).toMatchObject({ outcome: "saved", error: null, saveProgress: undefined });
+    await files.download(key, attachment);
+    report.outcome?.("failed");
+    expect(files.status(key)).toMatchObject({ outcome: "failed", error: "download_failed" });
+  } finally { files.reset(); }
 });
 
 test("a generated preview cannot replace the original in the download content path", async () => {

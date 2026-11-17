@@ -128,6 +128,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-home-arrow { transform: rotate(90deg); color: var(--muted); }
 
 .lr-top-right { display: inline-flex; gap: 10px; align-items: center; }
+.lr-top-app-identity { display: inline-flex; flex: none; }
 .lr-top > .lr-top-right { margin-left: auto; min-width: 0; flex: none; justify-content: flex-end; }
 .lr-header-controls { flex: none; }
 .lr-header-controls .lr-btn.is-compact:not([popover] .lr-btn, .lr-app-connect) { width: var(--control-compact-size); padding: 0; }
