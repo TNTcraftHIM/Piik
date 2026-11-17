@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { youtubeVideoId, youtubeSourceId } from "../src/client/channel/watch-youtube-source";
+import { youtubeVideoId, youtubeSourceId, youtubeStartSeconds } from "../src/client/channel/watch-youtube-source";
 
 class Element {
   isConnected = false; children: Element[] = []; src = ""; title = ""; className = "";
@@ -24,7 +24,7 @@ class Player {
   destroy() { this.destroyed=true;this.frame.remove(); }
 }
 let players: Player[] = [];
-async function setup(cold=false) {
+async function setup(cold=false, startSeconds?: number) {
   vi.resetModules();players=[];
   const head=new Element();head.isConnected=true;
   const window: {YT?:object;onYouTubeIframeAPIReady?:()=>void}={};
@@ -32,7 +32,7 @@ async function setup(cold=false) {
   vi.stubGlobal('window',window);vi.stubGlobal('location',{origin:'https://piik.test'});
   vi.stubGlobal('document',{head,documentElement:{moveBefore(){}},createElement:()=>new Element()});
   const {YouTubeMedia}=await import('../src/client/channel/watch-youtube-media');
-  const media=new YouTubeMedia('M7lc1UVf-VE');
+  const media=new YouTubeMedia('M7lc1UVf-VE', startSeconds);
   const mount=async()=>{(media.presentation.element as unknown as Element).isConnected=true;media.presentation.setVisible(true);await Promise.resolve();await Promise.resolve();};
   return {media,mount,head,window};
 }
@@ -114,4 +114,32 @@ test('scripted play waits for observed visible eligibility after focus changes',
   await vi.advanceTimersByTimeAsync(300);expect(play).not.toHaveBeenCalled();
   media.presentation.setVisible(true,true);await vi.advanceTimersByTimeAsync(100);await pending;
   expect(play).toHaveBeenCalledOnce();media.close();
+});
+
+
+test("an explicit embed start initializes the preview without becoming source identity", async () => {
+  const raw = "https://www.youtube.com/embed/M7lc1UVf-VE?start=90&playlist=abcdefghijk&autoplay=1";
+  expect(youtubeVideoId(raw)).toBe("M7lc1UVf-VE");
+  const { media, mount } = await setup(false, 90);
+  try {
+    await mount();
+    const frame = new URL(players[0].frame.src);
+    expect(frame.searchParams.get("start")).toBe("90");
+    expect(frame.searchParams.get("autoplay")).toBe("0");
+    expect(frame.searchParams.has("playlist")).toBe(false);
+    expect(media.sourceURL).toBe("https://www.youtube.com/embed/M7lc1UVf-VE");
+    players[0].position = 88; // The official SDK may start at the preceding keyframe.
+    players[0].fire("onReady"); players[0].playVideo();
+    await media.ready(new AbortController().signal);
+    expect((await media.read()).position).toBe(88);
+  } finally { media.close(); }
+});
+
+test("only an unambiguous documented integer embed start is an initial position", () => {
+  expect(youtubeStartSeconds("https://www.youtube.com/embed/M7lc1UVf-VE?start=90")).toBe(90);
+  for (const tail of ["start=-1", "start=1.5", "start=1&start=2", "start=9007199254740992", "start=not-a-time"])
+    expect(youtubeStartSeconds("https://www.youtube.com/embed/M7lc1UVf-VE?" + tail)).toBeUndefined();
+  expect(youtubeStartSeconds("https://www.youtube.com/embed?list=PLowned&start=90")).toBeUndefined();
+  expect(youtubeVideoId("https://www.youtube.com/embed?listType=playlist&list=PLowned")).toBeNull();
+  expect(youtubeSourceId({ kind: "website", url: "https://www.youtube.com/embed/M7lc1UVf-VE?start=90" })).toBeNull();
 });

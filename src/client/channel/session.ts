@@ -1,6 +1,6 @@
 import { YouTubeMedia } from "./watch-youtube-media";
 import { PageSuppliedMedia, preparePageSuppliedWatchMedia, preparePortableWatchMedia } from "./watch-page-media";
-import { canUseYouTubePlayer, youtubeVideoId, youtubeSourceId, originalWatchURL } from "./watch-youtube-source";
+import { canUseYouTubePlayer, youtubeVideoId, youtubeStartSeconds, youtubeSourceId, originalWatchURL } from "./watch-youtube-source";
 import { inspectIndexedTrack, indexedMediaSelection } from "./watch-indexed-source";
 import { limitWatchReads } from "./watch-resource";
 import { WatchBytes } from "./watch-bytes";
@@ -2086,7 +2086,7 @@ export class ChannelSession {
     const id = youtubeVideoId(rawURL);
     if (!id) throw new Error("invalid_watch_url");
     const selection = this.selectSource(roomId);
-    selection.embed = new YouTubeMedia(id);
+    selection.embed = new YouTubeMedia(id, youtubeStartSeconds(rawURL));
     this.patch({});
   }, reportError);
   confirmWatchEmbed = (roomId: string, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {

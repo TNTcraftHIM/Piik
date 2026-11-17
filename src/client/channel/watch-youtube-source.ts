@@ -13,6 +13,17 @@ export function youtubeVideoId(raw: string): string | null {
   } catch { return null; }
 }
 
+/** Official iframe start is a local initial position, not the selected video's identity. */
+export function youtubeStartSeconds(raw: string): number | undefined {
+  if (!youtubeVideoId(raw)) return;
+  const url = new URL(raw);
+  if (!url.pathname.startsWith("/embed/")) return;
+  const values = url.searchParams.getAll("start");
+  if (values.length !== 1 || !/^\d+$/.test(values[0])) return;
+  const seconds = Number(values[0]);
+  return Number.isSafeInteger(seconds) && seconds > 0 ? seconds : undefined;
+}
+
 export function youtubeEmbedURL(id: string): string { return `https://www.youtube.com/embed/${id}`; }
 export function originalWatchURL(source: { kind: string; url: string }): string {
   const id = youtubeSourceId(source);

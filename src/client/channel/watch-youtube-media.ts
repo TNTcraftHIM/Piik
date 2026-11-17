@@ -77,7 +77,7 @@ export class YouTubeMedia implements WatchMedia {
   private played = false;
   private readonly visibility = new EventTarget();
 
-  constructor(private readonly id: string) {
+  constructor(private readonly id: string, private readonly startSeconds?: number) {
     if (!/^[A-Za-z0-9_-]{11}$/.test(id)) throw new Error("invalid_watch_url");
     this.sdk = loadYouTube();
     this.element.className = "c3-watch-embed";
@@ -129,6 +129,7 @@ export class YouTubeMedia implements WatchMedia {
     const frame = document.createElement("iframe");
     const url = new URL(youtubeEmbedURL(this.id));
     url.search = new URLSearchParams({ enablejsapi: "1", origin: location.origin, playsinline: "1", autoplay: "0", controls: "1" }).toString();
+    if (this.startSeconds !== undefined) url.searchParams.set("start", String(this.startSeconds));
     frame.src = url.href; frame.title = "YouTube";
     frame.referrerPolicy = "strict-origin-when-cross-origin";
     frame.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
