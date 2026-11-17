@@ -520,6 +520,7 @@ export function ChannelAudio({ stream, muted, volume, createContext, label }: {
   const output = useRef<ViewerAudio | null>(null);
   const [blocked, setBlocked] = useState(false);
   const { t } = useCopy();
+  const track = stream.getAudioTracks()[0];
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
@@ -531,8 +532,8 @@ export function ChannelAudio({ stream, muted, volume, createContext, label }: {
     setBlocked(false);
     void element.play().catch(error => { if (current && error?.name !== "AbortError") setBlocked(true); });
     return () => { current = false; playback.dispose(); output.current = null; element.pause(); element.srcObject = null; };
-  }, [stream, createContext]);
-  useEffect(() => { output.current?.setLevel(volume); output.current?.setMuted(muted); }, [stream, volume, muted]);
+  }, [stream, track, createContext]);
+  useEffect(() => { output.current?.setLevel(volume); output.current?.setMuted(muted); }, [stream, track, volume, muted]);
   return <><audio ref={ref} aria-label={label} onPlay={() => setBlocked(false)} />
     {blocked && <ChannelAction icon="speaker" label={t("screen.playNamed", { label })}
       onClick={() => { void ref.current?.play().then(() => setBlocked(false)).catch(() => {}); }} />}</>;

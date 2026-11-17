@@ -330,6 +330,10 @@ call a prerequisite for watching or sharing. View changes and detached tools
 present the existing activities rather than creating another session or
 participant model. [TODO](../todo.md) owns remaining integration work.
 
+Room voice from the same source endpoint plays once locally across joined rooms;
+mute and deafen still apply per room. Different endpoints remain separate,
+including those of one user.
+
 ### Identity And Share Titles
 
 The selected personal-avatar treatment places the image inside the Pawn's body,

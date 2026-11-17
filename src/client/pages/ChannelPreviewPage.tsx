@@ -34,7 +34,8 @@ import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
 import { ChannelCouch } from "../channel/components/ChannelCouch";
 import { ChannelRoomTool, type RoomToolSurface } from "../channel/components/ChannelRoomTool";
 import { ChannelConnections } from "../channel/components/ChannelConnections";
-import { listeningVoicePublications, roomPeople, screenAudience, screenTitle, userProfile, watchAudience } from "../channel/presentation";
+import { roomPeople, screenAudience, screenTitle, userProfile, watchAudience } from "../channel/presentation";
+import { useVoicePlayback } from "../channel/use-voice-playback";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
 import { useClientNavigationTarget } from "../channel/client-navigation";
@@ -195,7 +196,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     onJoin={listenOnly => run(channel.joinVoice(roomId, listenOnly).then(() => setVoiceFocus(roomId)))} /> : null;
   const nameOfRoom = (id: string) => rooms.find(value => value.id === id)?.name ?? id;
   const nameOfUser = (id: string) => state?.users.find(value => value.id === id)?.name ?? t("channel.previewPage.user");
-  const voiceStreams = listeningVoicePublications(state, sessionId, streams);
+  const voiceStreams = useVoicePlayback(state, sessionId, streams);
   const voiceAudioContext = useRef<AudioContext | null>(null);
   const createVoiceAudioContext = useCallback(() => voiceAudioContext.current ??= new AudioContext(), []);
   const closeVoiceAudioContext = useCallback(() => {
@@ -264,7 +265,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         <div className="c3-site-name">{layout !== "quick" && self && self.id === state?.channel.ownerId ? <ChannelSiteSettings channel={channel} />
           : <Tooltip overflow={{ text: state?.channel.name ?? "Piik", selector: "strong" }}><span className="c3-site-name-readonly"><ChannelIdentityMark icon={state?.channel.icon ?? "couch"} size={22} /><strong>{state?.channel.name ?? "Piik"}</strong></span></Tooltip>}</div>
         <LedStrip state={connected ? "live" : connection === "closed" ? "bad" : "busy"}
-          label={connectionLabel} comic={connected ? "signal-connected" : "signal-connecting"} />
+          label={connectionLabel} comic={connected ? "signal-connected" : connection === "closed" ? "signal-failed"
+            : connection === "reconnecting" ? "signal-recovering" : "signal-connecting"} />
         {layout === "quick" && <Btn id="c3-rooms-trigger" icon="couch" quiet size="compact"
           title={{ text: t("channel.previewPage.roomList") }} cap={{ text: t("channel.previewPage.rooms") }} hint="hint-room-list"
           controls="c3-room-list" expanded={mobilePane === "rooms"} onClick={showRooms} />}
@@ -433,7 +435,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           <div ref={mainConversationHome} className="c3-room-slot" />
         </div>
         </div>
-        {voiceStreams.map(publication => <ChannelAudio key={publication.id} stream={streams.get(publication.id)!}
+        {voiceStreams.map(publication => <ChannelAudio key={publication.sessionId} stream={streams.get(publication.id)!}
           volume={channel.listeningVolume * (channel.voicePlaybackByUser.get(publication.userId)?.volume ?? 1)} createContext={createVoiceAudioContext}
           muted={(myVoice.find(value => value.roomId === publication.roomId)?.deafened ?? true) || (channel.voicePlaybackByUser.get(publication.userId)?.muted ?? false)}
           label={`${nameOfUser(publication.userId)} — ${nameOfRoom(publication.roomId)}`} />)}
