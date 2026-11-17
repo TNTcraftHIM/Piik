@@ -10669,3 +10669,25 @@ test("external commit failure retires its committing selection while preserving 
     session.close();
   }
 });
+
+
+test("retired room management failure does not overwrite a fresh identity connection", async () => {
+  const { session, socket } = await setup();
+  try {
+    const denied = session.updateRoom("first", { name: "Denied", icon: "couch", access: "public", hidden: false });
+    const rejectedDenied = expect(denied).rejects.toThrow("forbidden");
+    socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "forbidden" });
+    await rejectedDenied;
+    expect(session.getSnapshot().error).toBe("forbidden");
+    const updating = session.updateRoom("first", { name: "Changed", icon: "couch", access: "public", hidden: false });
+    const rejected = expect(updating).rejects.toThrow("closed");
+    expect(socket.sent.at(-1)).toMatchObject({ type: "update_room", roomId: "first" });
+    session.joinAsNewIdentity();
+    const replacement = ChannelSocket.current;
+    expect(replacement).not.toBe(socket);
+    await rejected;
+    expect(session.getSnapshot().connection).toBe("connecting");
+    expect(session.getSnapshot().error).toBeNull();
+    expect(session.getSnapshot().pending.has("room:first")).toBe(false);
+  } finally { session.close(); }
+});

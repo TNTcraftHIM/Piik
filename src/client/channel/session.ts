@@ -1080,11 +1080,12 @@ export class ChannelSession {
 
   private async action<T>(key: string, work: () => Promise<T>, reportError = true): Promise<T> {
     if (this.view.pending.has(key)) throw new Error("operation_pending");
+    const socket = this.socket;
     this.patch({ pending: new Set([...this.view.pending, key]), ...(reportError ? { error: null } : {}) });
     try { return await work(); }
     catch (error) {
       const code = error instanceof DOMException ? error.name : error instanceof Error ? error.message : "operation_failed";
-      if (reportError && code !== "AbortError") this.patch({ error: code });
+      if (reportError && this.socket === socket && code !== "AbortError") this.patch({ error: code });
       throw error;
     } finally {
       const pending = new Set(this.view.pending);
