@@ -194,9 +194,9 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     return this.request({ type: 'conversation', packet }, true, requestId);
   }
 
-  async chat(text: string, options: ChatOptions = {}): Promise<ChannelMessage> {
+  async chat(text: string, options: ChatOptions & { nonce?: string } = {}): Promise<ChannelMessage> {
     return await this.conversation({ type: 'chat', roomId: this.options.roomId, text,
-      nonce: randomUUID(), attachments: [],
+      nonce: options.nonce === undefined ? randomUUID() : options.nonce, attachments: [],
       ...(options.mentions && { mentions: options.mentions.map(({ userId, start, end }) => ({ userId, start, end })) }),
       ...(options.reply && { reply: { seq: options.reply.seq, notify: options.reply.notify } }),
     }) as ChannelMessage;

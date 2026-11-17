@@ -111,12 +111,34 @@ const confirmed = await participant.chat('@friend Build finished', {
 });
 ```
 
-The optional chat argument uses the same `ChatOptions` as the room UI. Mention
+The optional chat argument uses the room UI's `ChatOptions`, plus an optional
+`nonce` for this Node client's explicit send retries. Mention
 ranges use UTF-16 offsets in the exact message text, including the `@` prefix.
 The room host validates the mentions and resolves the reply from its history;
 the returned confirmation contains the accepted reply details. `notify: false`
-keeps a reply without requesting notification. The client still owns the message
-nonce; these options cannot override the command, room, text or credentials.
+keeps a reply without requesting notification. These options cannot override
+the command, room, text or credentials.
+
+Each `chat` call generates a new nonce unless the caller supplies one. To retry
+one business send, retain its nonce and original text/options before the first
+attempt, then pass them again after explicitly restoring the connection:
+
+```ts
+const nonce = crypto.randomUUID();
+const options = { nonce, reply: { seq: originalMessage.seq, notify: true } };
+const confirmed = await participant.chat('Build finished', options);
+// If an earlier attempt lost its confirmation, reuse that saved nonce/options
+// for the same send. A fresh nonce starts another message.
+```
+
+A timeout or disconnect can occur after the Host committed the message. For the
+same user and room, the same nonce returns the original retained confirmation
+without another message or live broadcast. Each attempt still has a new request
+ID and is signed against the current Host binding. Reusing a nonce with changed
+content does not edit the original message. Core rejects empty or overlong
+nonces using the existing message validation. The client does not automatically
+retry, retain an outbox or replay messages on reconnect; callers own their retry
+decision and any persistence of the original send.
 
 `react(messageSeq, reaction)` adds one counted reaction to a confirmed message:
 

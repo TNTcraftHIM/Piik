@@ -188,14 +188,14 @@ test('text pagination, replies and mentions use signed Core commands and host co
     expect(page).toMatchObject({ hasMore: false, oldestSeq: 1, before: 2 });
     expect(await client.history(1)).toEqual({ messages: [], hasMore: false, oldestSeq: 1, before: 1 });
     const options = { mentions: [{ userId: owner, start: 0, end: 7, extra: 'discard' }],
-      reply: { seq: 2, notify: true, extra: 'discard' }, nonce: 'not-client-owned', text: 'override', extra: 'discard' };
+      reply: { seq: 2, notify: true, extra: 'discard' }, nonce: 'caller-send', text: 'override', extra: 'discard' };
     const confirmed = await client.chat('@friend hi', options);
     expect(confirmed).toMatchObject({ userId: user, text: '@friend hi', mentions: [{ userId: owner, start: 0, end: 7 }],
       reply: { seq: 2, userId: owner, text: 'message 2', notify: true } });
     expect(received[1]).toEqual({ type: 'history', before: 2 });
     expect(received[3]).toEqual({ type: 'chat', text: '@friend hi', attachments: [], nonce: expect.any(String),
       mentions: [{ userId: owner, start: 0, end: 7 }], reply: { seq: 2, notify: true } });
-    expect(received[3].nonce).not.toBe(options.nonce);
+    expect(received[3].nonce).toBe(options.nonce);
     await expect(client.chat('plain', { mentions: [{ userId: owner, start: 0, end: 5 }] })).rejects.toThrow('invalid_mentions');
     await expect(client.chat('reply', { reply: { seq: 99, notify: false } })).rejects.toThrow('message_unavailable');
     malformedPage = 'count';
@@ -206,6 +206,87 @@ test('text pagination, replies and mentions use signed Core commands and host co
     expect(errors).toEqual([]);
   } finally {
     await client.stop(); room.free(); signer.free();
+    for (const socket of server.clients) socket.terminate();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+});
+
+test('text retries keep one nonce across a lost confirmation and sign the current host binding', async () => {
+  const rust = await import('../prototype/channel-browser/pkg/piik_channel_browser.js');
+  await rust.default({ module_or_path: await readFile('prototype/channel-browser/pkg/piik_channel_browser_bg.wasm') });
+  const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
+  const [host, local, user, owner] = Array.from({ length: 4 }, () => randomUUID());
+  const signer = new rust.SessionSigner(randomBytes(32));
+  const policy = rust.create_room_policy(JSON.stringify({ id: 'room', name: 'Room', icon: 'couch',
+    creatorId: owner, access: 'public', hidden: false, password: null }));
+  let room: InstanceType<typeof rust.RoomHost> | undefined, binding: string, loseConfirmation = true;
+  let original: ChannelMessage | undefined;
+  // The fixture supplies stored rows; Core owns validation, confirmations and live records.
+  const stored = new Map<string, string>(), broadcasts: ChannelMessage[] = [], errors: unknown[] = [];
+  const attempts: { requestId: string; bindingId: string; nonce: string }[] = [];
+  const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+  await once(server, 'listening');
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Expected loopback port');
+  const client = new TextParticipant({ url: `ws://127.0.0.1:${address.port}`, origin: 'http://127.0.0.1', roomId: 'room', name: 'Retry fixture' });
+  server.on('connection', socket => socket.on('message', raw => {
+    try {
+      const command = JSON.parse(raw.toString());
+      if (command.type === 'join') {
+        room?.free(); room = new rust.RoomHost(policy); binding = randomUUID();
+        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, hostSessionId: host, revision: 1,
+          endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true } }, action: { type: 'sync' } }));
+        room.finish();
+        socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
+          selfProfile: { id: user }, state: { channel: { rooms: [{ id: 'room', authorized: true, available: true, reading: true,
+            delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()] }] } }));
+      } else if (command.type === 'conversation') {
+        const request = JSON.parse(command.packet.payload);
+        attempts.push({ requestId: request.requestId, bindingId: request.bindingId, nonce: request.command.nonce });
+        const prepared = JSON.parse(room!.prepare_peer(JSON.stringify(command.packet), 10n));
+        let result = prepared.work;
+        if (result.Ok?.type === 'history') {
+          const work = result.Ok.value, key = JSON.stringify([work.roomId, work.draft.userId, work.draft.nonce]);
+          const previous = stored.get(key);
+          const confirmation = JSON.parse(rust.prepare_confirmation(JSON.stringify(work.draft), JSON.stringify(previous
+            ? { type: 'existing', message: JSON.parse(previous) } : { type: 'new', lastSeq: stored.size })));
+          if (confirmation.inserted) stored.set(key, JSON.stringify(confirmation.message));
+          result = { Ok: { type: 'history', value: confirmation } };
+        }
+        const replies = JSON.parse(room!.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)));
+        for (const reply of replies) {
+          const broadcast = JSON.parse(rust.conversation_broadcast(JSON.stringify(reply.record)));
+          if (broadcast?.type === 'live_message') broadcasts.push(broadcast.message);
+          if (reply.record.type === 'confirmed') original ??= reply.record.message;
+        }
+        if (loseConfirmation) { loseConfirmation = false; socket.terminate(); }
+        else for (const reply of replies) socket.send(JSON.stringify({ type: 'conversation',
+          packet: JSON.parse(signer.sign(host, JSON.stringify(reply))) }));
+      } else socket.send(JSON.stringify({ type: 'ack', requestId: command.requestId }));
+    } catch (error) { errors.push(error); socket.terminate(); }
+  }));
+  try {
+    await client.connect();
+    const nonce = randomUUID();
+    await expect(client.chat('one business send', { nonce })).rejects.toThrow('disconnected');
+    expect(stored.size).toBe(1);
+    await client.reconnect();
+    expect(await client.chat('one business send', { nonce })).toEqual(original);
+    expect(attempts.slice(0, 2).map(attempt => attempt.nonce)).toEqual([nonce, nonce]);
+    expect(attempts[1].requestId).not.toBe(attempts[0].requestId);
+    expect(attempts[1].bindingId).not.toBe(attempts[0].bindingId);
+    expect(stored.size).toBe(1);
+    expect(broadcasts).toEqual([original]);
+    const first = await client.chat('ordinary new send'), second = await client.chat('ordinary new send');
+    expect(first.id).not.toBe(second.id);
+    expect(attempts[2].nonce).not.toBe(attempts[3].nonce);
+    for (const invalid of ['', 'n'.repeat(129)])
+      await expect(client.chat('invalid nonce', { nonce: invalid })).rejects.toThrow('invalid_message');
+    expect(stored.size).toBe(3);
+    expect(broadcasts).toHaveLength(3);
+    expect(errors).toEqual([]);
+  } finally {
+    await client.stop(); room?.free(); signer.free();
     for (const socket of server.clients) socket.terminate();
     await new Promise<void>(resolve => server.close(() => resolve()));
   }
