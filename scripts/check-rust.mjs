@@ -31,6 +31,8 @@ function cargo(command, crate, ...args) {
 }
 
 run(process.execPath, ["scripts/build-mpd-resolver.mjs", "--check"]);
+// Android owns a separate lock even though its runtime uses the shared Server.
+cargo("fetch", "android");
 cargo("test", "mpd");
 cargo("test", "core");
 cargo("test", "core", "--features", "sqlite");
