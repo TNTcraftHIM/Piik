@@ -110,7 +110,7 @@ describe("shared App connection entry", () => {
       ...(entry.camera ? { getUserMedia: vi.fn() } : {}),
       ...(entry.display ? { getDisplayMedia: vi.fn() } : {}),
     } });
-    const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined } as unknown as ChannelController;
+    const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), browserCapturePreparation: () => undefined, nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined } as unknown as ChannelController;
     const html = renderToStaticMarkup(createElement(ChannelShareControl, { onWatch() {}, channel, roomId: "room", disabled: false }));
     const button = html.match(/<button\b[^>]*>/)![0];
     expect(button.includes("disabled")).toBe(false);
@@ -134,7 +134,7 @@ describe("shared App connection entry", () => {
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn() } });
     const ownedScreens = new Set(["mine", "voice"]);
     const screenQuality = vi.fn(() => ({ applied: DEFAULT_QUALITY_SETTINGS, requested: DEFAULT_QUALITY_SETTINGS }));
-    const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined,
+    const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), browserCapturePreparation: () => undefined, nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined,
       screenQuality, screenCodecMode: () => undefined, screenEncodingExecution: () => undefined,
       sourceAudio: () => undefined, sourceMicrophone: () => undefined,
       ownedScreens, streams: new Map(), state: { channel: { rooms: [{ id: "room", name: "Friday" }] }, publications: [
@@ -164,13 +164,27 @@ describe("shared App connection entry", () => {
 describe("Native sharing capabilities", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it.each(["picker", "preparing"] as const)("Browser preparation exposes %s as a live status with a scoped Cancel", phase => {
+    setCopy({ lang: "en" });
+    const channel = { quality: DEFAULT_QUALITY_SETTINGS, pending: new Set(["screen:room"]), appConnected: false,
+      browserCapturePreparation: () => phase, sourceSelectionCommitting: () => false,
+      nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined,
+    } as unknown as ChannelController;
+    const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", disabled: false, onWatch() {} }));
+    expect(html).toContain('role="status" aria-live="polite"');
+    expect(html).toContain(t("en", phase === "picker" ? "host.capture.chooseInSystem" : "host.capture.preparingPicture"));
+    expect(html).toContain(t("en", "host.capture.cancelPreparationHint"));
+    const cancel = html.match(/<button\b[^>]*aria-label="Cancel preparation"[^>]*>/)![0];
+    expect(cancel).not.toContain("disabled");
+  });
+
   it("derives Native availability from retained capabilities and the source's codec mode", () => {
     setCopy({ lang: "en" });
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(), getUserMedia: vi.fn() } });
     const sources = { kind: "ready", codecs: ["h264"], softwareEncodingCodecs: ["h264"], processAudio: false, systemAudio: false,
       sources: [{ kind: "window", sourceId: "1", title: "Owned Native window", pid: 1, creationTime: "1" }] };
     const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: true, pending: new Set(),
-      videoCodecMode: "vp8", encodingExecution: "software", screenEncodingExecution: () => "software", nativeCaptureRequest: () => undefined,
+      videoCodecMode: "vp8", encodingExecution: "software", screenEncodingExecution: () => "software", browserCapturePreparation: () => undefined, nativeCaptureRequest: () => undefined,
       nativeCaptureSelection: (): ReturnType<ChannelController["nativeCaptureSelection"]> => undefined,
       externalInput: (): ReturnType<ChannelController["externalInput"]> => undefined,
       screenQuality: () => undefined, screenCodecMode: () => "h264", sourceAudio: () => undefined, sourceMicrophone: () => undefined,
@@ -820,7 +834,7 @@ it("keeps forwarding settings reachable for main playback with a retained Page s
   const source = { sessionId: "provider", resourceId: "root", format: "hls" };
   const activity = { id: "watch", roomId: "room", sessionId: "self", byteSource: source as typeof source | null };
   const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: true, sessionId: "self",
-    pending: new Set(), nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined,
+    pending: new Set(), browserCapturePreparation: () => undefined, nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined,
     state: { publications: [], voice: [], watchActivities: [activity] },
     watchPlayers: new Map([["watch", { video: {}, media: { page: {}, retainedByteSource: source } }]]),
   } as unknown as ChannelController;

@@ -180,6 +180,7 @@ export function useChannelGuideSample(multiRoom = false) {
     },
     nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
     sourceSelectionCommitting: () => false,
+    browserCapturePreparation: () => undefined,
     pagePlayer: false, watchPage: () => undefined, watchEmbed: () => undefined,
     prepareWatchEmbed: async () => { throw new Error("watch_media_unsupported"); },
     confirmWatchEmbed: async () => { throw new Error("watch_source_unavailable"); },

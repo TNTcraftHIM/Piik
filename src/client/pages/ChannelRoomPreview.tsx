@@ -354,6 +354,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     }, enterRoom: async () => sample.received(), revokeRoomAccess: async () => sample.received(),
     restoreDomainBackup: async () => { sample.received(); throw new Error("preview_storage_unavailable"); },
     restoreRoomBackup: async () => { sample.received(); throw new Error("preview_storage_unavailable"); },
+    browserCapturePreparation: () => undefined,
   } satisfies Partial<ChannelController> as unknown as ChannelController;
   return <div className="c3-room-preview">
     <ChannelRoomPage channel={channel} layout={layout} offerLayout={offerLayout} onLayoutChange={changeLayout} selected={selected} onSelect={setSelected}

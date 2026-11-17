@@ -9903,7 +9903,8 @@ test("owned display grant cancels while optional audio resume never settles", as
   const source = remoteStream("owned-granted-window", [video]);
   const resume = vi.fn(() => new Promise<void>(() => {}));
   const close = vi.fn(async () => {});
-  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(async () => source) } });
+  let grant!: (stream: MediaStream) => void;
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(() => new Promise<MediaStream>(resolve => { grant = resolve; })) } });
   vi.stubGlobal("AudioContext", class {
     currentTime = 0;
     resume = resume;
@@ -9914,13 +9915,17 @@ test("owned display grant cancels while optional audio resume never settles", as
   session.setVideoCodecMode("vp8");
   const starting = session.startScreen("first").catch(error => error);
   try {
+    expect(session.browserCapturePreparation("first")).toBe("picker");
+    grant(source);
     await vi.waitFor(() => expect(resume).toHaveBeenCalledOnce());
+    expect(session.browserCapturePreparation("first")).toBe("preparing");
     await session.cancelScreenSelection("first");
     await vi.waitFor(() => expect(video.stop).toHaveBeenCalledOnce(), { timeout: 150 });
     expect(await starting).toMatchObject({ name: "AbortError" });
     expect(audio.stop).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledOnce();
     expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
+    expect(session.browserCapturePreparation("first")).toBeUndefined();
     expect(socket.sent.some(command => command.type === "publish")).toBe(false);
   } finally { session.close(); }
 });
@@ -10207,13 +10212,16 @@ test("stopping an uncommitted OBS permit must leave its incumbent Browser pictur
     };
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await sharing;
+    expect(session.browserCapturePreparation("first")).toBeUndefined();
     const opening = session.startExternalScreen("first");
+    expect(session.browserCapturePreparation("first")).toBeUndefined();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_external_input"));
     app.receive({
       id: app.sent.at(-1)!.id,
       result: { endpoint: "http://127.0.0.1:8793/whip/owned", token: "synthetic-whip-token" },
     });
     await opening;
+    expect(session.browserCapturePreparation("first")).toBeUndefined();
     // ChannelShareControl passes this exact onStop callback to the actual OBS card.
     const stopping = session.cancelExternalScreen("first");
     app.receive({ id: app.sent.at(-1)!.id, result: null });
@@ -10689,5 +10697,35 @@ test("retired room management failure does not overwrite a fresh identity connec
     expect(session.getSnapshot().connection).toBe("connecting");
     expect(session.getSnapshot().error).toBeNull();
     expect(session.getSnapshot().pending.has("room:first")).toBe(false);
+  } finally { session.close(); }
+});
+
+test("Browser capture feedback retires with the attempt while late grants leave the current picture intact", async () => {
+  const { session, socket } = await setup();
+  const current = remoteTrack("video"), late = remoteTrack("video");
+  const original = remoteStream("owned-current", [current]);
+  let grant!: (stream: MediaStream) => void;
+  const getDisplayMedia = vi.fn().mockResolvedValueOnce(original)
+    .mockImplementationOnce(() => new Promise<MediaStream>(resolve => { grant = resolve; }));
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia } });
+  session.setVideoCodecMode("vp8");
+  try {
+    const starting = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const publication = socket.sent.at(-1)!.publication as { id: string };
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await starting;
+    expect(session.browserCapturePreparation("first")).toBeUndefined();
+    const replacement = session.startScreen("first").catch(error => error);
+    expect(session.browserCapturePreparation("first")).toBe("picker");
+    await session.cancelScreenSelection("first");
+    expect(await replacement).toMatchObject({ name: "AbortError" });
+    expect(session.browserCapturePreparation("first")).toBeUndefined();
+    grant(remoteStream("owned-late", [late]));
+    await vi.waitFor(() => expect(late.stop).toHaveBeenCalledOnce());
+    expect(session.browserCapturePreparation("first")).toBeUndefined();
+    expect(current.stop).not.toHaveBeenCalled();
+    expect(session.getSnapshot().streams.get(publication.id)).toBe(original);
+    expect(socket.sent.filter(command => command.type === "publish")).toHaveLength(1);
+    expect(socket.sent.some(command => command.type === "unpublish")).toBe(false);
   } finally { session.close(); }
 });

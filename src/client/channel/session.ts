@@ -76,6 +76,7 @@ interface ScreenWatch {
 interface SourceSelection {
   controller: AbortController;
   committing: boolean;
+  browserCaptureGranted?: boolean;
   page?: AppPage;
   embed?: YouTubeMedia;
   watchSources?: { candidateId: string } & WatchMediaSources;
@@ -1925,6 +1926,10 @@ export class ChannelSession {
   }
 
   sourceSelectionCommitting = (roomId: string): boolean => this.sourceSelections.get(roomId)?.committing ?? false;
+  browserCapturePreparation = (roomId: string): "picker" | "preparing" | undefined => {
+    const granted = this.sourceSelections.get(roomId)?.browserCaptureGranted;
+    return granted === undefined ? undefined : granted ? "preparing" : "picker";
+  };
   cancelScreenSelection = async (roomId: string): Promise<void> => {
     const share = this.screenShares.get(roomId);
     const selection = this.sourceSelections.get(roomId);
@@ -1942,11 +1947,13 @@ export class ChannelSession {
     let candidate: MediaStream | undefined;
     let audio: HostAudio | undefined;
     try {
+      if (source === "browser") { selection.browserCaptureGranted = false; this.patch({}); }
       candidate = await captureBrowserSource(share.profile, source, deviceId, selection.controller.signal);
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       const video = candidate.getVideoTracks()[0];
       const metadata = captureSource(video, source === "camera");
       if (!video || video.readyState !== "live") throw new Error("capture_unavailable");
+      if (source === "browser") { selection.browserCaptureGranted = true; this.patch({}); }
       let codec = share.codec;
       if (!codec) {
         const complete = debugOperation("capture", "codec-selection", { mode: share.codecMode });

@@ -182,6 +182,7 @@ export interface ChannelActions {
   nativeCaptureSelection(roomId: string): { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget; showCaptureBorder: boolean; current: boolean } | undefined;
   startNativeScreen(roomId: string, target: NativeCaptureTarget, audio?: boolean, excludeAudio?: NativeCaptureTarget, showCaptureBorder?: boolean): Promise<void>;
   sourceSelectionCommitting(roomId: string): boolean;
+  browserCapturePreparation(roomId: string): "picker" | "preparing" | undefined;
   cancelScreenSelection(roomId: string): Promise<void>;
   stopScreen(publicationId: string): Promise<void>;
   watch(publicationId: string): Promise<void>;

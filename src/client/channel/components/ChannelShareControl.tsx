@@ -121,6 +121,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const roomMicrophone = channel.state?.voice.some(voice => voice.sessionId === channel.sessionId && !voice.muted);
   const busy = channel.pending.has(`screen:${roomId}`) || !!sharing && channel.pending.has(`source-audio:${sharing.id}`);
   const cancellable = !!captureRequest || channel.pending.has(`screen:${roomId}`) && !channel.sourceSelectionCommitting(roomId);
+  const preparation = channel.browserCapturePreparation(roomId);
   const label = t(sharing || watching ? "host.switchSource" : "host.start");
   const sourceTitle = roomName
     ? t("screen.switchRoomSource", { room: roomName })
@@ -157,7 +158,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     void operation().catch(() => {}); // The session owns the operation's error.
   };
   if (publicationId && !sharing) return null;
-  return <><span className="c3-share-actions" role="group" aria-label={t("screen.screenSharing")}>
+  return <><span className="c3-share-feedback"><span className="c3-share-actions" role="group" aria-label={t("screen.screenSharing")}>
     <span ref={trigger} className="c3-share-control">
       {captureRequest ? <span className="c3-app-confirmation">
           <Btn icon="window" title="native.confirmInApp" cap="native.confirmInApp" size="compact" tone="primary"
@@ -166,8 +167,11 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         hint={sharing || watching ? "hint-switch-source" : "hint-share-start"}
         disabled={disabled || busy || qualityPending || microphonePending} busy={busy || qualityPending} expanded={open}
         controls={id} popoverTarget={id} />}
-      {cancellable && <Btn icon="x" title="common.cancel" cap="common.cancel" size="compact" quiet
-        onClick={() => { void channel.cancelScreenSelection(roomId).catch(() => {}); }} />}
+      {cancellable && <Btn icon="x" title={preparation ? "host.capture.cancelPreparation" : "common.cancel"}
+        cap={preparation ? "host.capture.cancelPreparation" : "common.cancel"} size="compact" quiet
+        onClick={() => { void channel.cancelScreenSelection(roomId).catch(() => {}).finally(() => {
+          trigger.current?.ownerDocument.defaultView?.requestAnimationFrame(() => trigger.current?.querySelector<HTMLButtonElement>("button")?.focus());
+        }); }} />}
     </span>
     {(!watching || sharing || pageWatch) && <span ref={settingsTrigger} className="c3-share-control">
       <Btn icon="sliders" title={{ text: settingsTitle }} cap={compact ? undefined : { text: settingsLabel }} hint="hint-quality" size="compact" quiet
@@ -176,6 +180,9 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     {externalInput && <ChannelAction icon="cast" label={externalInput.state === "live" ? "OBS" : t("screen.obsWaiting")}
       quiet onClick={() => setExternalOpen(true)} />}
     </span>
+    {preparation && <span className="c3-share-wait" role="status" aria-live="polite">
+      <span>{t(preparation === "picker" ? "host.capture.chooseInSystem" : "host.capture.preparingPicture")} {t("host.capture.cancelPreparationHint")}</span>
+    </span>}</span>
     <div ref={settingsPanel} id={`${id}-settings`} popover="auto" role="dialog" aria-label={settingsTitle} className="lr-anchored-card c3-quality-picker"
       onToggle={event => { if (event.target === event.currentTarget) setSettingsOpen(event.newState === "open"); }}>
       {watching ? settingsOpen && <WatchForwardSettings channel={channel} activityId={watching.id} disabled={disabled} /> : <>
