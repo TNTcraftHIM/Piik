@@ -30,6 +30,24 @@ describe("copy catalog", () => {
       expect(html).toContain(`aria-label="${t(selection.lang, "mode.vis")}" aria-checked="${selection.vis}"`);
     }
   });
+  it.each([{ lang: "ja", vis: false, label: "日本語" }, { lang: "en", vis: true, label: "Visual only" }] as const)(
+    "retains the $label shortcut when returning to a primary language", selection => {
+      setCopy(selection);
+      setCopy({ lang: "en", vis: false });
+      const html = renderToStaticMarkup(createElement(LanguageControl));
+      const marker = html.match(/<button[^>]*class="lr-lang-marker[^"]*"[^>]*>/)![0];
+      expect(marker).toContain(`aria-label="${selection.label}"`);
+      expect(marker).toContain('aria-pressed="false"');
+      expect(marker).not.toMatch(/popovertarget=/i);
+      expect(html).toMatch(/class="lr-lang-more"[^>]*popovertarget=/i);
+
+      setCopy(selection);
+      const selected = renderToStaticMarkup(createElement(LanguageControl))
+        .match(/<button[^>]*class="lr-lang-marker[^"]*"[^>]*>/)![0];
+      expect(selected).toContain('aria-pressed="true"');
+      expect(selected).toMatch(/popovertarget=/i);
+    },
+  );
   afterEach(() => {
     vi.unstubAllGlobals();
     setCopy({ lang: "zh", vis: false });

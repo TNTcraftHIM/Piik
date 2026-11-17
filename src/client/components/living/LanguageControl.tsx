@@ -7,27 +7,32 @@ import { useAnchoredPopover } from "./use-anchored-popover";
 // The registry owns languages; the native popover owns visibility and dismissal.
 // This control adds Piik's presentation, viewport placement and menu navigation.
 export function LanguageControl() {
-  const { lang, vis, t, setLang, setVis } = useCopy();
+  const { lang, vis, pinnedChoice, t, setLang, setVis } = useCopy();
   const menuId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLSpanElement>(null);
   const extraLanguages = (Object.keys(locales) as Lang[]).filter((key): boolean => key !== "zh" && key !== "en");
-  const selectedExtra = !vis && extraLanguages.includes(lang) ? locales[lang] : null;
-  const selectedLabel = vis ? t("mode.vis") : selectedExtra?.name;
+  const pinned = pinnedChoice && pinnedChoice !== "vis" ? locales[pinnedChoice] : null;
+  const selected = pinnedChoice === "vis" ? vis : !vis && lang === pinnedChoice;
+  const opensMenu = selected || !pinnedChoice;
+  const pinnedLabel = pinnedChoice === "vis" ? t("mode.vis") : pinned?.name;
   useAnchoredPopover(triggerRef, menuRef, { maxHeight: 360 });
 
   useEffect(() => {
     const menu = menuRef.current;
     const trigger = triggerRef.current;
     if (!menu || !trigger) return;
-    const opened = () => {
-      if (!menu.matches(":popover-open")) return;
+    const toggled = () => {
+      if (!menu.matches(":popover-open")) {
+        if (menu.contains(menu.ownerDocument.activeElement)) trigger.focus();
+        return;
+      }
       const selected = menu.querySelector<HTMLButtonElement>('[aria-checked="true"]');
       (selected ?? menu.querySelector<HTMLButtonElement>("button"))?.focus();
     };
-    menu.addEventListener("toggle", opened);
+    menu.addEventListener("toggle", toggled);
     return () => {
-      menu.removeEventListener("toggle", opened);
+      menu.removeEventListener("toggle", toggled);
     };
   }, [extraLanguages.length]);
 
@@ -68,17 +73,25 @@ export function LanguageControl() {
         >{locales[key].short}</button>
       ))}
       <span className="lr-lang-extra">
-        <button type="button" popoverTarget={menuId} aria-haspopup="menu"
-          aria-label={selectedLabel ?? t("mode.more")} lang={selectedExtra?.tag}
-          className={`lr-lang-marker${selectedLabel ? " is-selected" : ""}`}
+        <button type="button" popoverTarget={opensMenu ? menuId : undefined} aria-haspopup={opensMenu ? "menu" : undefined}
+          aria-label={pinnedLabel ?? t("mode.more")} lang={pinned?.tag}
+          aria-pressed={pinnedChoice ? selected : undefined}
+          className={`lr-lang-marker${selected ? " is-selected" : ""}`}
+          onClick={event => {
+            if (pinnedChoice && !selected) {
+              event.preventDefault();
+              if (pinnedChoice === "vis") setVis(true);
+              else setLang(pinnedChoice);
+            }
+          }}
           onKeyDown={(event) => {
             if (event.key === "ArrowDown") {
               event.preventDefault();
-              event.currentTarget.click();
+              triggerRef.current?.click();
             }
           }}
         >
-          {vis ? "✦" : selectedExtra ? selectedExtra.short : <Glyph name="globe" size={14} />}
+          {pinnedChoice === "vis" ? "✦" : pinned ? pinned.short : <Glyph name="globe" size={14} />}
         </button>
         <button ref={triggerRef} type="button" className="lr-lang-more" popoverTarget={menuId}
           aria-haspopup="menu" aria-label={t("mode.more")}

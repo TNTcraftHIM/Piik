@@ -13,6 +13,7 @@ import {
 
 export type { CopyKey, Lang, TitleFrameKey } from "../locales";
 export type CopyMode = "text" | "vis";
+type ExtraCopyChoice = Lang | "vis";
 
 const LANG_STORAGE_KEY = "piik:ui-lang";
 const MODE_STORAGE_KEY = "piik:ui-mode";
@@ -42,6 +43,7 @@ const state: CopyPrefs = {
   vis: false,
   ...stored,
 };
+let pinnedChoice: ExtraCopyChoice | null = state.vis ? "vis" : state.lang !== "zh" && state.lang !== "en" ? state.lang : null;
 
 function syncDocumentLanguage(): void {
   if (typeof document !== "undefined") {
@@ -58,6 +60,8 @@ const listeners = new Set<() => void>();
 function apply(next: Partial<CopyPrefs>): void {
   if (next.lang) state.lang = next.lang;
   if (next.vis !== undefined) state.vis = next.vis;
+  if (state.vis) pinnedChoice = "vis";
+  else if (state.lang !== "zh" && state.lang !== "en") pinnedChoice = state.lang;
   syncDocumentLanguage();
   listeners.forEach((listener) => listener());
 }
@@ -146,6 +150,7 @@ export function joinItems(lang: Lang, parts: string[]): string {
 export interface Copy {
   lang: Lang;
   vis: boolean;
+  pinnedChoice: ExtraCopyChoice | null;
   t: (key: CopyKey, vars?: Record<string, string>) => string;
   titleFrames: (key: TitleFrameKey) => TitleContent;
   setLang: (lang: Lang) => void;
@@ -153,7 +158,7 @@ export interface Copy {
 }
 
 export function useCopy(): Copy {
-  const snapshot = () => `${state.lang}:${state.vis}`;
+  const snapshot = () => `${state.lang}:${state.vis}:${pinnedChoice ?? ""}`;
   const current = useSyncExternalStore(
     (listener) => {
       listeners.add(listener);
@@ -167,6 +172,7 @@ export function useCopy(): Copy {
   return {
     lang,
     vis: visual,
+    pinnedChoice,
     t: (key, vars) => t(lang, key, vars),
     titleFrames: (key) => getTitleFrames(lang, visual, key),
     setLang: (next) => commit({ lang: next, vis: false }),
