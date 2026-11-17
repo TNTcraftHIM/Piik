@@ -25,6 +25,36 @@ function fakeVideo(stream: MediaStream | null): FakeVideo {
 }
 
 describe("composited video frame proof", () => {
+  it("retains the final composited frame while a paused seek finishes without another frame", () => {
+    const video = fakeVideo(null), callbacks: Array<() => void> = [];
+    video.requestVideoFrameCallback = callback => { callbacks.push(callback); return callbacks.length; };
+    video.cancelVideoFrameCallback = vi.fn();
+    const shown = vi.fn(), stop = observeCompositedVideoFrame(video as unknown as HTMLVideoElement, null, shown);
+    video.readyState = 1; video.decodedFrames = 24;
+    callbacks[0]!();
+    expect(shown).not.toHaveBeenCalled();
+    video.readyState = 4;
+    video.dispatchEvent(new Event("seeked"));
+    video.dispatchEvent(new Event("loadeddata"));
+    expect(shown).toHaveBeenCalledOnce();
+    expect(video.cancelVideoFrameCallback).toHaveBeenCalledWith(2);
+    callbacks[1]!(); stop();
+    expect(shown).toHaveBeenCalledOnce();
+  });
+
+  it.each(["cancel", "replace"])("does not reuse a retained frame after %s", action => {
+    const stream = {} as MediaStream, video = fakeVideo(stream);
+    let callback!: () => void;
+    video.requestVideoFrameCallback = next => { callback = next; return 1; };
+    video.cancelVideoFrameCallback = vi.fn();
+    const shown = vi.fn(), stop = observeCompositedVideoFrame(video as unknown as HTMLVideoElement, stream, shown);
+    video.readyState = 1; callback();
+    if (action === "cancel") stop();
+    else video.srcObject = {} as MediaStream;
+    video.readyState = 4; video.dispatchEvent(new Event("loadeddata"));
+    expect(shown).not.toHaveBeenCalled(); stop();
+  });
+
   it("accepts a preloaded paused URL picture in the decoded-counter fallback", () => {
     const video = fakeVideo(null); video.readyState = 2; video.decodedFrames = 1;
     const frame = vi.fn(), cancel = observeCompositedVideoFrame(video as unknown as HTMLVideoElement, null, frame);

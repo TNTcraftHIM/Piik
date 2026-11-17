@@ -19,23 +19,37 @@ export function observeCompositedVideoFrame(
   const requestVideoFrameCallback =
     frameCallbacks.requestVideoFrameCallback?.bind(video);
   let active = true;
+  let compositedFrameObserved = false;
   let frameCallbackHandle: number | null = null;
-  const fallbackEvents = ["loadeddata", "timeupdate", "playing"] as const;
-  const removeFallbackListeners = (): void => {
-    for (const event of fallbackEvents) {
-      video.removeEventListener(event, checkFallback);
+  const readyEvents = ["loadeddata", "seeked", "timeupdate", "playing"] as const;
+  const removeReadyListeners = (): void => {
+    for (const event of readyEvents) {
+      video.removeEventListener(event, checkReady);
     }
   };
   const initialDecodedFrames = decodedFrameCount(target);
   const baselineDecodedFrames = expectedStream === null && initialDecodedFrames !== null ? 0 : initialDecodedFrames;
   const baselineCurrentTime = video.currentTime;
 
-  function checkFallback(): void {
+  function stop(): void {
+    active = false;
+    removeReadyListeners();
+    if (frameCallbackHandle !== null) {
+      frameCallbacks.cancelVideoFrameCallback?.call(video, frameCallbackHandle);
+      frameCallbackHandle = null;
+    }
+  }
+
+  function checkReady(): void {
     if (
       !active ||
       video.srcObject !== expectedStream ||
       video.readyState < 2
     ) {
+      return;
+    }
+    if (requestVideoFrameCallback) {
+      if (compositedFrameObserved) finish();
       return;
     }
     const currentDecodedFrames = decodedFrameCount(target);
@@ -53,15 +67,13 @@ export function observeCompositedVideoFrame(
       return true;
     }
     if (video.srcObject !== expectedStream) {
-      active = false;
-      removeFallbackListeners();
+      stop();
       return true;
     }
     if (video.readyState < 2) {
       return false;
     }
-    active = false;
-    removeFallbackListeners();
+    stop();
     onFrame();
     return true;
   }
@@ -70,34 +82,21 @@ export function observeCompositedVideoFrame(
     frameCallbackHandle =
       requestVideoFrameCallback?.(() => {
         frameCallbackHandle = null;
+        // A paused seek can finish readiness after its final composited frame.
+        compositedFrameObserved = true;
         if (!finish()) {
           requestNextFrame();
         }
       }) ?? null;
   }
 
-  if (requestVideoFrameCallback) {
-    requestNextFrame();
-    return () => {
-      active = false;
-      if (frameCallbackHandle !== null) {
-        frameCallbacks.cancelVideoFrameCallback?.call(
-          video,
-          frameCallbackHandle,
-        );
-      }
-    };
+  for (const event of readyEvents) {
+    video.addEventListener(event, checkReady);
   }
+  if (requestVideoFrameCallback) requestNextFrame();
+  else checkReady();
 
-  for (const event of fallbackEvents) {
-    video.addEventListener(event, checkFallback);
-  }
-  checkFallback();
-
-  return () => {
-    active = false;
-    removeFallbackListeners();
-  };
+  return stop;
 }
 
 function decodedFrameCount(video: VideoWithFrameCallback): number | null {
