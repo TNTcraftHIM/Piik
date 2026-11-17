@@ -63,12 +63,13 @@ cancellation also pass. Other native-playable containers still need an origin
 that permits Service Workers. These adapter checks cover Chrome; broader
 Browser and website coverage remains open. The official hls.js demo also passes
 Native webpage discovery, controls and peer forwarding.
-Clear static DASH passes the actual App request/reader and Browser player path
-with selected VP9 video and German AAC audio, seeking, failed replacement retaining
-the current player, and source closure cancelling pending reads. The fixture
-supplies the approved source-page context and room confirmation; it does not prove
-WebView discovery, website account access or a new cross-network route. Matching
-package and website acceptance remain open.
+Clear static DASH passes the packaged Windows WebView discovery and explicit
+video/audio selection flow. The App's main player and an independent Browser
+without an App receive VP9 video and German AAC through peer forwarding; shared
+seek and ending the activity retire playback and the provider window. Earlier
+App API controls cover failed replacement and pending-read cancellation. This
+uses a local clear source; first-picture latency, account-backed websites and
+cross-network delivery remain unverified.
 An anonymous HLS webpage also passes Native player selection followed by explicit
 Browser source selection: a delayed manifest is discovered after media readiness,
 and the viewer directly loads and synchronizes it without App access, uploaded

@@ -114,8 +114,9 @@ viewers try its independently usable media URL, or explicitly use their own App
 window. Playback control uses room commands without peer media. Explicit original
 media forwarding now uses the existing room peer paths and Browser media
 adapters for files, HLS VOD and selected clear static DASH tracks. The DASH path
-has controlled App API and Browser playback evidence; matching-package website
-acceptance remains open. Matched Windows checks cover ordinary Bilibili
+has matched Windows WebView discovery and independent Browser playback evidence
+with a local clear source. Broader website acceptance remains open.
+Matched Windows checks cover ordinary Bilibili
 main-player controls, authorized member playback, Native relay overrides and website permission
 reset. [Verification status](./verification-status.md) owns their limits; broader
 website, live-source, cross-network and platform acceptance remain in TODO.

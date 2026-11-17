@@ -47,8 +47,7 @@ the feedback period; they do not delay that delivery.
   playback-control changes on the reported accessible websites in a matching
   Windows App/Web package. Cover failed replacement retaining the active source,
   original-page closure, and independent viewer playback with and without
-  explicit forwarding, including static DASH video/audio selection. Broader
-  website/live coverage remains below.
+  explicit forwarding. Broader website/live coverage remains below.
 - [ ] **Native webpage-reader generation.** Retire the App's page-reader
   registration in matching-package acceptance when its Native media runtime
   ends. Verify explicit new-source preparation and retained short-recovery
