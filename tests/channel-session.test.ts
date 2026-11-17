@@ -1062,7 +1062,7 @@ test.each([false, true])("App viewing assistance withdraws without ending the wa
   } finally { session.close(); }
 });
 
-test("App rewatch admits its current helper in the first subscription without a second lookup", async () => {
+test("remote App rewatch subscribes normally before attaching its current helper", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const helperSessionId = crypto.randomUUID();
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helperSessionId, roomIds: [] });
@@ -1079,15 +1079,54 @@ test("App rewatch admits its current helper in the first subscription without a 
     await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
     for (const round of [1, 2]) {
       const watching = session.watch("screen");
-      await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true, helperSessionId }));
+      expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true });
+      expect(socket.sent.at(-1)).not.toHaveProperty("helperSessionId");
       socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await watching;
+      await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true, helperSessionId }));
+      socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
       expect(description).toHaveBeenCalledTimes(round);
       const stopping = session.unwatch("screen");
       socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await stopping;
     }
     const subscriptions = socket.sent.filter(command => command.type === "subscribe");
-    expect(subscriptions.map(command => command.enabled)).toEqual([true, false, true, false]);
-    expect(subscriptions.filter(command => command.enabled).every(command => command.helperSessionId === helperSessionId)).toBe(true);
+    expect(subscriptions.map(command => command.enabled)).toEqual([true, true, false, true, true, false]);
+    expect(subscriptions.filter(command => command.enabled).map(command => command.helperSessionId)).toEqual([undefined, helperSessionId, undefined, helperSessionId]);
+  } finally { session.close(); }
+});
+
+test("remote Browser watching stays available while the connected App awaits Native admission", async () => {
+  let descriptionSignal: AbortSignal | undefined;
+  const fetcher = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+    descriptionSignal = init.signal!;
+    descriptionSignal.addEventListener("abort", () => reject(descriptionSignal!.reason), { once: true });
+  }));
+  vi.stubGlobal("fetch", fetcher);
+  const { session, socket } = await setup();
+  const state = structuredClone(session.getSnapshot().state!);
+  state.users.push({ id: "friend", name: "Friend", version: profileVersion });
+  state.sessions.push({ id: "source", userId: "friend", online: true, signingKey: testSigningKey },
+    { id: crypto.randomUUID(), userId: "self", online: false, signingKey: testSigningKey });
+  state.publications.push({ audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen",
+    source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false });
+  socket.receive({ type: "state", state });
+  try {
+    const connecting = session.activateApp({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+      domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const app = ChannelSocket.current;
+    await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
+    const watching = session.watch("screen", "first");
+    expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true });
+    expect(socket.sent.at(-1)).not.toHaveProperty("helperSessionId");
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await watching;
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+    expect(session.getSnapshot().appConnected).toBe(true);
+    expect(session.getSnapshot().pending.has("watch:screen")).toBe(false);
+    expect(session.getSnapshot().localScreens.has("screen")).toBe(false);
+    expect(descriptionSignal?.aborted).toBe(false);
+    app.close();
+    expect(descriptionSignal?.aborted).toBe(true);
+    expect(socket.sent.filter(command => command.type === "subscribe")).toHaveLength(1);
   } finally { session.close(); }
 });
 
@@ -1108,8 +1147,11 @@ test("a retained watch re-associates an App endpoint after its current admission
     const app = ChannelSocket.current;
     await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
     const watching = session.watch("screen");
-    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", helperSessionId: previous }));
+    expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", enabled: true });
+    expect(socket.sent.at(-1)).not.toHaveProperty("helperSessionId");
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await watching;
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", helperSessionId: previous }));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
 
     state.sessions = state.sessions.filter(endpoint => endpoint.id !== previous);
     socket.receive({ type: "state", state });
@@ -1122,7 +1164,7 @@ test("a retained watch re-associates an App endpoint after its current admission
     socket.receive({ type: "state", state });
     await new Promise(resolve => setImmediate(resolve));
     expect(description).toHaveBeenCalledTimes(2);
-    expect(socket.sent.filter(command => command.type === "subscribe")).toHaveLength(1);
+    expect(socket.sent.filter(command => command.type === "subscribe")).toHaveLength(2);
     expect(session.getSnapshot().appConnected).toBe(true);
     ready({ sessionId: current, roomIds: [] });
     await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true, helperSessionId: current }));
@@ -1130,7 +1172,7 @@ test("a retained watch re-associates an App endpoint after its current admission
     socket.receive({ type: "state", state });
     await new Promise(resolve => setImmediate(resolve));
     expect(description).toHaveBeenCalledTimes(2);
-    expect(socket.sent.filter(command => command.type === "subscribe").map(command => command.helperSessionId)).toEqual([previous, current]);
+    expect(socket.sent.filter(command => command.type === "subscribe").map(command => command.helperSessionId)).toEqual([undefined, previous, current]);
     expect(session.getSnapshot().state?.subscriptions).toEqual(["screen"]);
     expect(app.readyState).toBe(ChannelSocket.OPEN);
     expect(session.getSnapshot().appConnected).toBe(true);
@@ -1188,7 +1230,7 @@ test.each(["session", "capture", "app", "unwatch", "retirement"])("pending local
   vi.stubGlobal("fetch", fetcher);
   const { session, socket } = await setup();
   const state = { ...session.getSnapshot().state!, publications: [
-    { audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", source: { kind: "screen", name: null }, title: null,
+    { audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "self", kind: "screen", source: { kind: "screen", name: null }, title: null,
       videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
   ] };
   socket.receive({ type: "state", state });

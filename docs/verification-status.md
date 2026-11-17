@@ -102,6 +102,12 @@ Watch audience checks cover direct, peer and Native webpage viewing with the
 same participant identities. Both sides show the shared count and names; joining
 direct viewing still creates no peer connection. Leave, preparation cancellation
 and activity retirement remove only their corresponding audience entries.
+A matching Windows App/Web development package verifies the room list, couch
+and people panel against actual direct-media playback. The local viewer's
+preparing, received and failed states agree across all three surfaces; other
+participants report membership without claiming remote picture delivery.
+Leaving and source retirement clear activity indicators while retaining room
+presence. This covers an owned local source, not physical-network readiness.
 
 Actual website controls have narrower evidence than the local fixtures:
 

@@ -1792,7 +1792,11 @@ export class ChannelSession {
       this.watching.set(publicationId, watch);
       try {
         const app = this.app;
-        if (app?.connected && !this.view.localScreens.has(publicationId)) {
+        const publication = this.view.state?.publications.find(value => value.id === publicationId);
+        const remote = publication && this.view.self && publication.userId !== this.view.self.id;
+        // A known remote source needs no local sound check. Optional App assistance
+        // follows the subscription through syncAppWatching when admission is ready.
+        if (app?.connected && !remote && !this.view.localScreens.has(publicationId)) {
           watch.query = new AbortController();
           const lifetime = AbortSignal.any([watch.query.signal, this.captureLifetime.signal, ...(signal ? [signal] : [])]);
           const description = await app.describeHosting(lifetime).catch(() => undefined);

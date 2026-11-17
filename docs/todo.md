@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-16
+Last reviewed: 2026-11-17
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -33,10 +33,6 @@ the feedback period; they do not delay that delivery.
   across room authority, selected source, forwarding plan and actual receiver.
   Complete the separate Server-transit candidate's authority and matched-runtime
   acceptance before considering it for this report.
-- [ ] **Participant readiness package acceptance.** Verify the shared activity
-  indicators in the room list, couch and people panel with a matching package.
-  Cover a participant with no media, a joined watch, and preparing, received or
-  failed pictures without changing those surfaces' membership rules.
 - [ ] **Native performance under the reported workload.** Measure capture,
   conversion, encoding and decoded cadence on the affected machines during
   normal use and contention. Identify the limiting stage before changing quality
