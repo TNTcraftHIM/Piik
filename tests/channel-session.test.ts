@@ -9145,6 +9145,86 @@ test('watch short recovery keeps its player, samples domain time again, and resp
   } finally { session.close(); }
 });
 
+test("local unwatch removes only this endpoint's audience entry through recovery", async () => {
+  const { session, socket } = await setup(1000, false);
+  const { participantActivity, screenAudience } = await import("../src/client/channel/presentation");
+  const state = structuredClone(session.getSnapshot().state!);
+  state.users.push({ id: "source-user", name: "Source", version: profileVersion });
+  state.sessions.push({ id: "source", userId: "source-user", online: true, signingKey: testSigningKey },
+    { id: "self-other", userId: "self", online: true, signingKey: testSigningKey });
+  state.channel.rooms.forEach(room => {
+    room.participantSessionIds = ["endpoint", "self-other", "source"];
+    room.realtimeSessionIds = ["endpoint", "self-other", "source"];
+  });
+  state.publications = ["first", "second"].map((roomId, index) => ({
+    id: `picture-${index}`, roomId, sessionId: "source", userId: "source-user", kind: "screen" as const,
+    source: { kind: "screen" as const, name: "Owned synthetic" }, title: null, paused: false,
+    audience: index ? [{ sessionId: "endpoint", state: "active" as const }]
+      : [{ sessionId: "endpoint", state: "active" as const }, { sessionId: "self-other", state: "preparing" as const }],
+  }));
+  try {
+    socket.receive({ type: "state", state });
+    for (const publication of state.publications) {
+      const joining = session.watch(publication.id);
+      socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await joining;
+    }
+    state.subscriptions = state.publications.map(publication => publication.id);
+    socket.receive({ type: "state", state });
+    expect(participantActivity(session.getSnapshot().state!, "first", "self").viewing).toBe("active");
+    socket.close(); await session.unwatch("picture-0");
+    const stopped = session.getSnapshot().state!;
+    expect(stopped.subscriptions).toEqual(["picture-1"]);
+    expect(stopped.publications[0].audience).toEqual([{ sessionId: "self-other", state: "preparing" }]);
+    expect(screenAudience(stopped, stopped.publications[0])).toEqual([{ userId: "self", name: "Me", state: "preparing" }]);
+    expect(participantActivity(stopped, "first", "self").viewing).toBe("preparing");
+    expect(participantActivity(stopped, "second", "self").viewing).toBe("active");
+    expect(state.publications[0].audience).toHaveLength(2);
+    session.reconnect();
+    const resumed = ChannelSocket.current; await resumed.onopen?.();
+    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    const recovered = session.getSnapshot().state!;
+    expect(recovered.publications[0].audience).toEqual([{ sessionId: "self-other", state: "preparing" }]);
+    expect(participantActivity(recovered, "second", "self").viewing).toBe("active");
+    expect(resumed.sent).toContainEqual({ type: "subscribe", publicationId: "picture-0", enabled: false });
+  } finally { session.close(); }
+});
+
+test("local video leave clears its audience membership through recovery without removing remote viewers", async () => {
+  const { session, socket } = await setup(1000, false);
+  const { participantActivity, watchAudience } = await import("../src/client/channel/presentation");
+  const video = new WatchTestVideo();
+  vi.stubGlobal("document", { createElement: () => video });
+  const state = structuredClone(session.getSnapshot().state!);
+  state.users.push({ id: "owner", name: "Owner", version: profileVersion }, { id: "other-viewer", name: "Other", version: profileVersion });
+  state.sessions.push({ id: "owner-endpoint", userId: "owner", online: true, signingKey: testSigningKey },
+    { id: "other-endpoint", userId: "other-viewer", online: true, signingKey: testSigningKey });
+  state.channel.rooms[0].participantSessionIds = ["endpoint", "owner-endpoint", "other-endpoint"];
+  state.channel.rooms[0].realtimeSessionIds = ["endpoint", "owner-endpoint", "other-endpoint"];
+  const activity = { id: "owned-watch", roomId: "first", sessionId: "owner-endpoint", userId: "owner",
+    viewerSessionIds: ["endpoint", "other-endpoint"], source: { kind: "media" as const, url: "https://media.test/owned.mp4" },
+    playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 1000 } };
+  state.watchActivities = [activity];
+  try {
+    socket.receive({ type: "state", state });
+    const joining = session.joinWatch(activity.id), command = socket.sent.findLast(command => command.type === "join_watch")!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: command.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+    await joining;
+    state.watchSubscriptions = [{ id: activity.id, mode: "direct" }]; socket.receive({ type: "state", state });
+    socket.close(); await session.leaveWatch(activity.id);
+    const stopped = session.getSnapshot().state!;
+    expect(stopped.watchSubscriptions).toEqual([]); expect(session.getSnapshot().watchPlayers.size).toBe(0);
+    expect(stopped.watchActivities[0].viewerSessionIds).toEqual(["other-endpoint"]);
+    expect(participantActivity(stopped, "first", "self").viewing).toBeUndefined();
+    expect(watchAudience(stopped, stopped.watchActivities[0]).map(person => person.userId)).toEqual(["other-viewer"]);
+    expect(activity.viewerSessionIds).toEqual(["endpoint", "other-endpoint"]);
+    session.reconnect();
+    const resumed = ChannelSocket.current; await resumed.onopen?.();
+    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    expect(session.getSnapshot().state!.watchActivities[0].viewerSessionIds).toEqual(["other-endpoint"]);
+    expect(resumed.sent).toContainEqual({ type: "join_watch", roomId: "first", id: activity.id, mode: null });
+  } finally { session.close(); }
+});
+
 test.each(['activity', 'subscription'] as const)('watch authority %s removal retires playback during another source selection', async removal => {
   const { session, socket } = await setup(1000, false);
   const video = new WatchTestVideo(), candidate = new WatchTestVideo(); candidate.readyState = 0;
@@ -9646,6 +9726,51 @@ test('late clear tracks update the current selection and settings without rechec
     expect(socket.sent.filter(command => command.type === 'start_watch')).toHaveLength(1);
     expect(socket.sent.some(command => command.type === 'set_watch_byte_source')).toBe(false);
   } finally { settings.abort(); session.close(); }
+});
+
+test('active original-page settings reuse discovery and retire it without closing their provider', async () => {
+  const video = indexedInspection('video'), audio = indexedInspection('audio');
+  let candidates = [video.candidate];
+  const inspect = vi.spyOn(indexedSource, 'inspectIndexedTrack').mockImplementation(async candidate => candidate.id === video.candidate.id ? video : audio);
+  const discover = vi.fn(async () => ({ choices: [], indexedCandidates: candidates, byteSource: null }));
+  const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(discover);
+  const settings = new AbortController(), reopened = new AbortController(), published = vi.fn();
+  try {
+    await session.selectWatchPage('first', candidateId);
+    expect(inspect).toHaveBeenCalledOnce();
+    commit.mockRestore();
+    const confirming = session.selectWatchBrowserSource('first', null);
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
+    const start = socket.sent.findLast(command => command.type === 'start_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch')).toBe(true));
+    const update = socket.sent.findLast(command => command.type === 'update_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: update.requestId, result: { type: 'done' } });
+    await confirming;
+    const id = start.id as string;
+    expect(discover).toHaveBeenCalledOnce();
+    await session.watchMediaChoices(id, settings.signal, published);
+    expect(inspect).toHaveBeenCalledTimes(2);
+    candidates = [video.candidate, audio.candidate];
+    page.receive({ type: 'page_media_changed', pageId: page.id });
+    await vi.waitFor(() => expect(published).toHaveBeenLastCalledWith(expect.objectContaining({ indexed: [{ candidate: video.candidate, inspection: video }, { candidate: audio.candidate, inspection: audio }] })));
+    expect(inspect).toHaveBeenCalledTimes(3);
+    const beforeCancel = discover.mock.calls.length;
+    settings.abort();
+    page.receive({ type: 'page_media_changed', pageId: page.id });
+    await Promise.resolve();
+    expect(discover).toHaveBeenCalledTimes(beforeCancel);
+    expect(dispose).not.toHaveBeenCalled();
+    expect(session.getSnapshot().watchPlayers.get(id)?.media.page).toBe(page);
+    await session.watchMediaChoices(id, reopened.signal, published);
+    const beforeClose = discover.mock.calls.length;
+    page.close();
+    page.receive({ type: 'page_media_changed', pageId: page.id });
+    await Promise.resolve();
+    expect(discover).toHaveBeenCalledTimes(beforeClose);
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().watchPlayers.has(id)).toBe(false);
+  } finally { settings.abort(); reopened.abort(); session.close(); }
 });
 
 test('source notifications during the first read coalesce into one follow-up read', async () => {

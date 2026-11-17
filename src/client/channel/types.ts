@@ -1,5 +1,5 @@
-import type { IndexedTrackInspection } from "./watch-indexed-source";
-import type { NativePageCandidate, NativePageMediaChoice, NativePageIndexedCandidate, NativePageIndexedSelection, NativePageMpdCandidate, NativePageMpdCatalog, NativePageMpdSelection } from "../native/wire";
+import type { WatchMediaSources } from "./watch-page-media";
+import type { NativePageCandidate, NativePageIndexedSelection, NativePageMpdCatalog, NativePageMpdSelection } from "../native/wire";
 import type { WatchMedia } from "./watch-media";
 import type { WatchPlayer } from "./watch-playback";
 import type { WatchPlayback, WatchMode } from "./protocol";
@@ -22,10 +22,6 @@ import type { loadCameraPreviews } from "../media/camera-previews";
 import type { CommentaryInput } from "../media/host-audio";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 import type { ConnectionMetrics } from "../types";
-
-export interface WatchIndexedChoice { candidate: NativePageIndexedCandidate; inspection?: IndexedTrackInspection; error?: string }
-export interface WatchMpdChoice { candidate: NativePageMpdCandidate; catalog?: NativePageMpdCatalog; error?: string }
-export interface WatchMediaSources { choices: readonly NativePageMediaChoice[]; indexed: readonly WatchIndexedChoice[]; mpd: readonly WatchMpdChoice[]; error?: string }
 
 export interface ChannelMediaMetric {
   pairId: string;

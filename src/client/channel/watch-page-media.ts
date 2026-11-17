@@ -1,6 +1,79 @@
 import type { AppPage } from "./app-link";
+import type { NativePageMediaChoice, NativePageIndexedCandidate, NativePageMpdCandidate, NativePageMpdCatalog } from "../native/wire";
+import { inspectIndexedTrack, type IndexedTrackInspection } from "./watch-indexed-source";
+import { limitWatchReads } from "./watch-resource";
 import { HTMLVideoMedia, createPeerWatchMedia, type WatchMedia, type WatchMediaEvent, type WatchMediaPatch, type WatchMediaState } from "./watch-media";
 import type { WatchByteSource, WatchFormat } from "./protocol";
+
+export interface WatchIndexedChoice { candidate: NativePageIndexedCandidate; inspection?: IndexedTrackInspection; error?: string }
+export interface WatchMpdChoice { candidate: NativePageMpdCandidate; catalog?: NativePageMpdCatalog; error?: string }
+export interface WatchMediaSources { choices: readonly NativePageMediaChoice[]; indexed: readonly WatchIndexedChoice[]; mpd: readonly WatchMpdChoice[]; error?: string }
+
+/** One page observation owns its resource cache, reads and listener retirement. */
+export function observeWatchSources(page: AppPage, lifetime: AbortSignal, publish: (sources: WatchMediaSources) => void): { ready: Promise<WatchMediaSources>; unsubscribe(): void } {
+  const controller = new AbortController(), signal = AbortSignal.any([lifetime, controller.signal]);
+  let running: Promise<WatchMediaSources> | null = null, dirty = false;
+  let inspecting: AbortController | null = null;
+  let current: WatchMediaSources = { choices: [], indexed: [], mpd: [] };
+  const read = limitWatchReads(async (id, offset, length, signal) => {
+    const result = await page.readMediaMetadata(id, offset, length, signal);
+    return { ...result, eof: offset + result.bytes.length === result.totalSize };
+  });
+  const refresh = (): Promise<WatchMediaSources> => {
+    if (running) return running;
+    running = (async () => {
+      do {
+        dirty = false;
+        try {
+          signal.throwIfAborted();
+          const { choices, indexedCandidates, mpdCandidates } = await page.mediaSources();
+          signal.throwIfAborted();
+          if (dirty) continue;
+          inspecting = new AbortController();
+          const checking = AbortSignal.any([signal, inspecting.signal]);
+          const indexed = await Promise.all(indexedCandidates.map(async candidate => {
+            const previous = current.indexed.find(choice => choice.candidate.id === candidate.id);
+            if (previous && previous.candidate.totalSize === candidate.totalSize && previous.candidate.mimeType === candidate.mimeType)
+              return { ...previous, candidate };
+            try { return { candidate, inspection: await inspectIndexedTrack(candidate, read, checking) }; }
+            catch (error) {
+              checking.throwIfAborted();
+              return { candidate, error: error instanceof Error ? error.message : "watch_indexed_unsupported" };
+            }
+          }));
+          checking.throwIfAborted();
+          const mpd = mpdCandidates.map(candidate => ({ ...current.mpd.find(value => value.candidate.id === candidate.id), candidate }));
+          checking.throwIfAborted();
+          current = { choices, indexed, mpd };
+        } catch (error) {
+          signal.throwIfAborted();
+          if (dirty) continue;
+          current = { ...current, error: error instanceof Error ? error.message : "watch_source_unavailable" };
+        } finally { inspecting = null; }
+        publish(current);
+      } while (dirty && !signal.aborted);
+      return current;
+    })().finally(() => {
+      running = null;
+      if (dirty && !signal.aborted) void refresh().catch(() => {});
+    });
+    return running;
+  };
+  const unlisten = page.listenMediaSources(() => {
+    dirty = true;
+    inspecting?.abort();
+    void refresh().catch(() => {}); // Only retirement rejects; source failures publish above.
+  });
+  const unlistenPage = page.listen(event => { if (event === "closed") unsubscribe(); });
+  const unsubscribe = () => {
+    controller.abort();
+    unlisten(); unlistenPage();
+    lifetime.removeEventListener("abort", unsubscribe);
+  };
+  lifetime.addEventListener("abort", unsubscribe, { once: true });
+  if (lifetime.aborted) unsubscribe();
+  return { ready: refresh(), unsubscribe };
+}
 
 /** Prepare the main player without transferring the selected page's lifetime. */
 async function prepareMainPlayback(page: AppPage, media: HTMLVideoMedia, signal: AbortSignal): Promise<void> {

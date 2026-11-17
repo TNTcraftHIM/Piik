@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { AppPage } from "../src/client/channel/app-link";
-import { PageSuppliedMedia } from "../src/client/channel/watch-page-media";
+import { observeWatchSources, PageSuppliedMedia } from "../src/client/channel/watch-page-media";
+import * as indexedSource from "../src/client/channel/watch-indexed-source";
 import { HTMLVideoMedia } from "../src/client/channel/watch-media";
 class Video extends EventTarget {
   currentTime = 12; duration = 30; paused = true; playbackRate = 1; readyState = 4; ended = false; error = null; src = "";
@@ -21,4 +22,38 @@ test('main media owns state and events while its page owns only resource lifetim
   page.receive({type:'page_closed',pageId:page.id});
   expect(video.src).toBe('');expect(changed).toHaveBeenCalledWith('closed');expect(dispose).toHaveBeenCalledOnce();
   media.close();expect(dispose).toHaveBeenCalledOnce();
+});
+
+test.each(['unsubscribe', 'caller', 'page'] as const)('page-source %s retirement cancels metadata and suppresses its late publication', async retirement => {
+  const candidate = { id: crypto.randomUUID(), name: 'Owned track', hostname: 'source.test', totalSize: 16, mimeType: 'video/mp4' };
+  const dispose = vi.fn(), publish = vi.fn(), lifetime = new AbortController();
+  let complete!: (value: unknown) => void, reading!: AbortSignal;
+  const request = vi.fn(async (command: { type: string; action?: unknown }, signal: AbortSignal): Promise<unknown> => {
+    if (command.type === 'page_media_sources') return { choices: [], indexedCandidates: [candidate], mpdCandidates: [], byteSource: null };
+    if (command.action === 'read_metadata') { reading = signal; return new Promise(resolve => { complete = resolve; }); }
+    return null;
+  });
+  const page = new AppPage(crypto.randomUUID(), 'https://source.test/player', request, dispose, vi.fn());
+  const observeResources = vi.spyOn(page, 'listenMediaSources'), observePage = vi.spyOn(page, 'listen');
+  vi.spyOn(indexedSource, 'inspectIndexedTrack').mockImplementation(async (candidate, read, signal) => {
+    await read(candidate.id, 0, 16, signal);
+    throw new Error('unexpected_late_metadata');
+  });
+  const observer = observeWatchSources(page, lifetime.signal, publish);
+  const retired = expect(observer.ready).rejects.toThrow();
+  try {
+    await vi.waitFor(() => expect(complete).toBeDefined());
+    if (retirement === 'page') page.close();
+    else if (retirement === 'caller') lifetime.abort();
+    else observer.unsubscribe();
+    expect(reading.aborted).toBe(true);
+    complete({ totalSize: 16, mimeType: 'video/mp4', bytesBase64: btoa('0123456789abcdef') });
+    await retired;
+    expect(publish).not.toHaveBeenCalled();
+    expect(dispose).toHaveBeenCalledTimes(retirement === 'page' ? 1 : 0);
+    page.receive({ type: 'page_media_changed', pageId: page.id });
+    await Promise.resolve();
+    expect(request.mock.calls.filter(([command]) => command.type === 'page_media_sources')).toHaveLength(1);
+    expect(observeResources).toHaveBeenCalledOnce(); expect(observePage).toHaveBeenCalledOnce();
+  } finally { observer.unsubscribe(); page.close(); }
 });

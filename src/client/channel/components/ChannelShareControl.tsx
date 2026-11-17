@@ -15,7 +15,8 @@ import { ShareMicrophoneSettings } from "../../components/living/ShareMicrophone
 import { MAX_AUDIO_SEND_BITRATE, QUALITY_PROFILES, VIDEO_CAPTURE_LIMITS, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../../media/quality";
 import { activateNativePicker } from "../../native/activation";
 import type { NativeCaptureSources } from "../app-link";
-import type { ChannelController, WatchMediaSources } from "../types";
+import type { ChannelController } from "../types";
+import type { WatchMediaSources } from "../watch-page-media";
 import { screenTitle } from "../presentation";
 import { channelErrorPresentation } from "../error-presentation";
 import { ChannelSettingsDialog, useSettingsAction } from "./ChannelSettingsDialog";

@@ -3,7 +3,7 @@ import { useCopy } from "../../ui/copy";
 import { Btn } from "../../components/living/primitives";
 import { Glyph } from "../../ui/icons";
 import { CaptureSourceCard } from "../../components/living/CaptureSourceCard";
-import type { WatchIndexedChoice, WatchMpdChoice } from "../types";
+import type { WatchIndexedChoice, WatchMpdChoice } from "../watch-page-media";
 import { formatMediaTime } from "../../media/media-time";
 import { mediaLanguageLabel } from "../../media/media-language";
 
