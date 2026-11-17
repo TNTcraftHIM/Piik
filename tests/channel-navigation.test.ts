@@ -22,6 +22,23 @@ afterEach(() => {
   vi.unstubAllGlobals(); vi.clearAllMocks();
 });
 
+test("a persisted page return restarts the retired session and cleanup removes that listener", () => {
+  vi.stubGlobal("window", new EventTarget());
+  vi.stubGlobal("document", new EventTarget());
+  const shown = (persisted: boolean) => Object.assign(new Event("pageshow"), { persisted });
+  useChannel();
+  expect(session.start).toHaveBeenCalledOnce();
+  window.dispatchEvent(shown(false));
+  expect(session.start).toHaveBeenCalledOnce();
+  window.dispatchEvent(new Event("pagehide"));
+  expect(session.close).toHaveBeenCalledOnce();
+  window.dispatchEvent(shown(true));
+  expect(session.start).toHaveBeenCalledTimes(2);
+  for (const cleanup of cleanups.splice(0)) cleanup();
+  window.dispatchEvent(shown(true));
+  expect(session.start).toHaveBeenCalledTimes(2);
+});
+
 test.each([false, true])("hash navigation stays on the latest room after late admission (History throws: %s)", async historyThrows => {
   vi.stubGlobal("window", new EventTarget());
   vi.stubGlobal("document", new EventTarget());
