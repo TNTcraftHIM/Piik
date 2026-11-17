@@ -316,12 +316,11 @@ impl Channel {
                                 .iter()
                                 .any(|subscription| subscription.id == activity.id)
                     });
-                    if activity.byte_source.as_ref().is_some_and(|source| {
-                        !readable_sessions.contains(&source.session_id)
-                            || !endpoints
-                                .get(&source.session_id)
-                                .is_some_and(|endpoint| endpoint.connected)
-                    }) {
+                    if activity
+                        .byte_source
+                        .as_ref()
+                        .is_some_and(|source| !readable_sessions.contains(&source.session_id))
+                    {
                         activity.byte_source = None;
                     }
                 }
@@ -1129,8 +1128,16 @@ impl Channel {
                 return Err("invalid_room_projection");
             }
             if let Some(source) = &activity.byte_source {
+                // Recovery retains an admitted source, never an offline replacement.
+                let retained = room.projection.as_ref().is_some_and(|previous| {
+                    previous.watch_activities.iter().any(|previous| {
+                        previous.id == activity.id
+                            && previous.session_id == activity.session_id
+                            && previous.byte_source.as_ref() == Some(source)
+                    })
+                });
                 if !endpoints.get(&source.session_id).is_some_and(|endpoint| {
-                    endpoint.connected && endpoint.member.user_id == activity.user_id
+                    endpoint.member.user_id == activity.user_id && (endpoint.connected || retained)
                 }) || !projection
                     .views
                     .get(&source.session_id)

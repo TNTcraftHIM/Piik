@@ -1141,12 +1141,11 @@ impl RoomRuntime {
         self.watch_activities
             .retain(|_, a| readable.contains(&a.session_id));
         for activity in self.watch_activities.values_mut() {
-            if activity.byte_source.as_ref().is_some_and(|source| {
-                !readable.contains(&source.session_id)
-                    || !endpoints
-                        .get(&source.session_id)
-                        .is_some_and(|endpoint| endpoint.connected)
-            }) {
+            if activity
+                .byte_source
+                .as_ref()
+                .is_some_and(|source| !readable.contains(&source.session_id))
+            {
                 activity.byte_source = None;
             }
         }
@@ -1564,6 +1563,10 @@ mod tests {
         .unwrap();
         endpoints.get_mut(&id(4)).unwrap().connected = false;
         room.reconcile(&endpoints, 4);
+        assert!(room.watch_activities[&id(10)].byte_source.is_some());
+        assert_eq!(room.watch_byte_demand(), BTreeSet::from([id(3), id(4)]));
+        endpoints.remove(&id(4));
+        room.reconcile(&endpoints, 5);
         assert!(room.watch_activities[&id(10)].byte_source.is_none());
         assert!(room.watch_byte_demand().is_empty());
         assert!(room.watch_activities.contains_key(&id(10)));

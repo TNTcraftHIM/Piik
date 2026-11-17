@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-15
+Last updated: 2026-11-17
 
 This page summarizes the current 3.0 evidence and limits that affect product
 claims. [Status](./status.md#isolated-30-prototype) owns delivery readiness;
@@ -51,6 +51,15 @@ the received and forwarded byte digests matched across that path. Leaving
 cancelled an in-flight source read, while disabling forwarding retained the
 original webpage's playback. These are controlled local sources and development
 artifacts, not independent Internet or whole-website compatibility evidence.
+Two sealed Windows Apps and an independent Browser verify Reader retention and
+new range reads across a short Native signaling interruption. Runtime expiry
+cancels pending reads while App control remains connected; reconnecting does not
+republish the old source, and explicit new-source preparation plays successfully.
+In that packaged run, the Browser viewer loses its player during short recovery
+and needs to rejoin. Focused Core checks now retain the admitted source and range
+lease during recovery, reject new offline sources and clear expired or withdrawn
+ones; the corrected Viewer path still needs matching-runtime acceptance.
+This controlled local-media check does not establish WAN or Linux pairing.
 With 100 ms source response delay, an approximately 8 Mbps MP4 passes a real
 Native-to-Browser-to-Browser path after initial buffering; correction stays
 inside received ranges instead of repeatedly seeking beyond them. This is a

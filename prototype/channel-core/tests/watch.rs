@@ -39,11 +39,29 @@ fn program_timeline_is_required_and_stays_with_the_activity() {
     command["playback"]["timeline"] = json!("program");
     command["playback"]["position"] = json!(1794744006.0);
     ready(net.command_at(owner, command.clone(), 2000), 2000);
-    net.command(viewer, json!({"type":"join_watch","roomId":room,"id":id,"mode":"direct"}));
-    error(net.command(owner, json!({"type":"update_watch","roomId":room,"id":id,"playback":playback()})), "watch_timeline_changed");
-    assert_eq!(net.state(viewer).watch_activities[0].playback.position, 1794744006.0);
-    error(net.command(owner, start(&room, id)), "watch_identity_conflict");
-    command["playback"].as_object_mut().unwrap().remove("timeline");
+    net.command(
+        viewer,
+        json!({"type":"join_watch","roomId":room,"id":id,"mode":"direct"}),
+    );
+    error(
+        net.command(
+            owner,
+            json!({"type":"update_watch","roomId":room,"id":id,"playback":playback()}),
+        ),
+        "watch_timeline_changed",
+    );
+    assert_eq!(
+        net.state(viewer).watch_activities[0].playback.position,
+        1794744006.0
+    );
+    error(
+        net.command(owner, start(&room, id)),
+        "watch_identity_conflict",
+    );
+    command["playback"]
+        .as_object_mut()
+        .unwrap()
+        .remove("timeline");
     assert!(piik_channel_core::wire::Request::parse(&command.to_string()).is_err());
 }
 #[test]
@@ -83,7 +101,8 @@ fn watch_confirmations_late_join_and_owner_control_do_not_create_media() {
     ] {
         error(net.command(owner, command), "not_watch_owner");
     }
-    let updated = json!({"timeline":"media","position":30,"paused":true,"rate":2,"anchorTime":4000});
+    let updated =
+        json!({"timeline":"media","position":30,"paused":true,"rate":2,"anchorTime":4000});
     net.command(
         viewer,
         json!({"type":"update_watch","roomId":room,"id":id,"playback":updated}),
@@ -437,18 +456,224 @@ fn watch_byte_source_and_mode_cross_the_real_room_projection() {
     assert_eq!(net.state(viewer).watch_bytes.len(), 1);
     assert!(net.state(viewer).watch_bytes[0].receiving);
     assert!(net.state(viewer).watch_bytes[0].upstream.is_some());
+    // A signaling interruption keeps the admitted source and existing range lease.
+    let before = net.state(viewer).clone();
+    let viewer_session = before.watch_activities[0].viewer_session_ids[0];
+    let source = before.watch_activities[0].byte_source.clone();
+    let peers = |state: &piik_channel_core::wire::Snapshot| {
+        state
+            .pairs
+            .iter()
+            .map(|pair| (pair.peer_id, pair.rooms.clone()))
+            .collect()
+    };
+    let mut delivery = piik_channel_core::watch_delivery::WatchDelivery::new(viewer_session);
+    assert!(delivery
+        .update(before.watch_bytes.clone(), peers(&before))
+        .is_empty());
+    let request = Uuid::new_v4();
+    let key = piik_channel_core::watch_delivery::WatchKey {
+        room_id: room.clone(),
+        activity_id: activity,
+        resource_id: source.as_ref().unwrap().resource_id,
+    };
+    assert!(matches!(
+        delivery.read(key, request, 0, 1024).as_slice(),
+        [piik_channel_core::watch_delivery::WatchEffect::SendControl { .. }]
+    ));
     let effects = net.authority.disconnect(provider, 400);
+    for (connection, event) in &effects.events {
+        if let Event::State { state } = event {
+            if *connection == viewer {
+                assert_eq!(
+                    state.watch_activities[0].byte_source, source,
+                    "Domain projection must retain the admitted source before the host reconciles"
+                );
+            }
+        }
+    }
+    net.deliver(effects);
+    assert_eq!(net.state(viewer).watch_activities[0].byte_source, source);
+    assert_eq!(net.state(viewer).watch_bytes, before.watch_bytes);
+    assert_eq!(
+        net.state(viewer).watch_subscriptions,
+        before.watch_subscriptions
+    );
+    assert!(delivery
+        .update(
+            net.state(viewer).watch_bytes.clone(),
+            peers(net.state(viewer))
+        )
+        .is_empty());
+    error(
+        net.command(
+            owner,
+            json!({"type":"set_watch_byte_source","roomId":room,"id":activity,
+        "byteSource":{"sessionId":provider_session,"resourceId":Uuid::new_v4(),"format":"file"}}),
+        ),
+        "watch_provider_unavailable",
+    );
+    assert_eq!(net.state(viewer).watch_activities[0].byte_source, source);
+    let resumed = Uuid::new_v4();
+    let joined = net.command_at(
+        resumed,
+        json!({"type":"join","name":"App","ownerKey":"owner","sessionId":provider_session}),
+        7400,
+    );
+    assert!(joined.events.iter().any(|(_, event)| matches!(event,
+        Event::Welcome { session_id, .. } if *session_id == provider_session)));
+    assert_eq!(net.state(viewer).watch_activities[0].byte_source, source);
+    assert_eq!(
+        net.state(viewer).watch_subscriptions,
+        before.watch_subscriptions
+    );
+    assert!(delivery
+        .update(
+            net.state(viewer).watch_bytes.clone(),
+            peers(net.state(viewer))
+        )
+        .is_empty());
+    // The existing authority deadline, not a new reader timer, ends this grant.
+    let effects = net.authority.disconnect(resumed, 8000);
+    net.deliver(effects);
+    let effects = net
+        .authority
+        .expire(8000 + piik_channel_core::RECOVERY_MS - 1);
+    net.deliver(effects);
+    assert_eq!(net.state(viewer).watch_activities[0].byte_source, source);
+    let effects = net.authority.expire(8000 + piik_channel_core::RECOVERY_MS);
     net.deliver(effects);
     assert!(net.state(viewer).watch_activities[0].byte_source.is_none());
     assert!(net.state(viewer).watch_bytes.is_empty());
     assert_eq!(
-        net.state(viewer).watch_subscriptions[0].mode,
-        piik_channel_core::wire::WatchMode::Peer
+        net.state(viewer).watch_subscriptions,
+        before.watch_subscriptions
     );
+    assert!(delivery.update(vec![], peers(net.state(viewer))).iter().any(|effect|
+        matches!(effect, piik_channel_core::watch_delivery::WatchEffect::Failed { request_id, .. } if *request_id == request)));
     assert!(piik_channel_core::wire::Request::parse(
         &json!({"type":"join_watch","roomId":room,"id":activity,"enabled":true}).to_string()
     )
     .is_err());
+}
+
+#[test]
+fn offline_provider_keeps_only_its_previously_admitted_source() {
+    let (mut net, owner, viewer, room) = setup();
+    let provider = Uuid::new_v4();
+    let provider_session = net
+        .command(
+            provider,
+            json!({"type":"join","name":"App","ownerKey":"owner"}),
+        )
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::Welcome { session_id, .. } => Some(session_id),
+            _ => None,
+        })
+        .unwrap();
+    let activity = Uuid::new_v4();
+    let source = json!({"sessionId":provider_session,"resourceId":Uuid::new_v4(),"format":"file"});
+    let mut initial = start(&room, activity);
+    initial["byteSource"] = source.clone();
+    net.command(owner, initial);
+    let effects = net.authority.disconnect(provider, 400);
+    net.deliver(effects);
+    let mut replacement = start(&room, Uuid::new_v4());
+    replacement["byteSource"] = source.clone();
+    error(
+        net.command(owner, replacement),
+        "watch_provider_unavailable",
+    );
+    assert_eq!(net.state(viewer).watch_activities[0].id, activity);
+
+    // The Domain also rejects a host inventing an offline source. Reuse an actual
+    // host output, changing only the claimed source, so room/revision ownership is valid.
+    let command = json!({"type":"update_watch","roomId":room,"id":activity,"playback":playback(),"requestId":"update"});
+    let effects = net.authority.handle(
+        owner,
+        piik_channel_core::wire::Request::parse(&command.to_string()).unwrap(),
+        500,
+    );
+    let input = effects
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        })
+        .unwrap();
+    let output = net.host_turn(&room, input);
+    for replace_activity in [false, true] {
+        let mut invalid = serde_json::to_value(&output).unwrap();
+        if replace_activity {
+            invalid["projection"]["watchActivities"][0]["id"] = json!(Uuid::new_v4());
+        } else {
+            invalid["projection"]["watchActivities"][0]["byteSource"]["resourceId"] =
+                json!(Uuid::new_v4());
+        }
+        error(
+            net.command(
+                owner,
+                json!({"type":"host_output","roomId":room,"output":invalid}),
+            ),
+            "invalid_room_projection",
+        );
+    }
+    let accepted = net.command(
+        owner,
+        json!({"type":"host_output","roomId":room,"output":output}),
+    );
+    assert!(accepted.events.iter().any(|(_, event)| matches!(
+        event,
+        Event::RoomReply {
+            result: RoomResult::Done,
+            ..
+        }
+    )));
+    assert_eq!(
+        serde_json::to_value(&net.state(viewer).watch_activities[0].byte_source).unwrap(),
+        source
+    );
+
+    // Explicit withdrawal still ends the grant during recovery; the old source
+    // cannot be restored by either the owner command or a stale host declaration.
+    net.command(
+        owner,
+        json!({"type":"set_watch_byte_source","roomId":room,"id":activity,"byteSource":null}),
+    );
+    assert!(net.state(viewer).watch_activities[0].byte_source.is_none());
+    error(
+        net.command(
+            owner,
+            json!({"type":"set_watch_byte_source","roomId":room,"id":activity,"byteSource":source}),
+        ),
+        "watch_provider_unavailable",
+    );
+    let effects = net.authority.handle(
+        owner,
+        piik_channel_core::wire::Request::parse(&command.to_string()).unwrap(),
+        600,
+    );
+    let input = effects
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        })
+        .unwrap();
+    let mut output = serde_json::to_value(net.host_turn(&room, input)).unwrap();
+    output["projection"]["watchActivities"][0]["byteSource"] = source;
+    error(
+        net.command(
+            owner,
+            json!({"type":"host_output","roomId":room,"output":output}),
+        ),
+        "invalid_room_projection",
+    );
+    assert!(net.state(viewer).watch_activities[0].byte_source.is_none());
 }
 
 #[test]
