@@ -2,12 +2,37 @@
 #[cfg(all(test, feature = "capture"))]
 #[path = "app_whip_cancel_tests.rs"]
 mod cancel_tests;
+#[cfg(test)]
+#[path = "app_whip_http_tests.rs"]
+mod http_tests;
 
 use super::*;
 use axum::extract::Path;
 use futures_util::future::Shared;
 use piik_channel_native::peer::ExternalControl;
 use std::sync::{Mutex as SyncMutex, Weak};
+
+pub(super) const ENDPOINT: &str = "/whip/{permit}";
+pub(super) const SESSION: &str = "/whip/{permit}/{generation}";
+
+pub(super) fn routes() -> Router<Arc<App>> {
+    Router::new()
+        .route(ENDPOINT, get(describe).post(offer).options(describe))
+        .route(
+            SESSION,
+            get(describe_session)
+                .delete(delete)
+                .options(describe_session),
+        )
+}
+
+pub(super) fn methods(path: &str) -> Option<&'static str> {
+    match path {
+        ENDPOINT => Some("GET, HEAD, POST, OPTIONS"),
+        SESSION => Some("GET, HEAD, DELETE, OPTIONS"),
+        _ => None,
+    }
+}
 
 pub(super) type Ended = Shared<BoxFuture<'static, Result<(), String>>>;
 pub(super) struct Resource {
@@ -114,6 +139,11 @@ impl Inputs {
 }
 
 pub(super) enum Request {
+    Inspect {
+        permit: Arc<Permit>,
+        generation: Uuid,
+        response: oneshot::Sender<Result<(), StatusCode>>,
+    },
     Offer {
         permit: Arc<Permit>,
         offer: String,
@@ -124,6 +154,45 @@ pub(super) enum Request {
         generation: Uuid,
         response: oneshot::Sender<Result<(), StatusCode>>,
     },
+}
+
+async fn describe(
+    State(app): State<Arc<App>>,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+) -> Response {
+    if app.external_inputs.authorized(id, &headers).is_none() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    (StatusCode::OK, [("accept-post", "application/sdp")]).into_response()
+}
+
+async fn describe_session(
+    State(app): State<Arc<App>>,
+    Path((id, generation)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Response {
+    let Some(permit) = app.external_inputs.authorized(id, &headers) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    let (response, result) = oneshot::channel();
+    if permit
+        .requests
+        .try_send(Request::Inspect {
+            permit: permit.clone(),
+            generation,
+            response,
+        })
+        .is_err()
+    {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+    match result.await {
+        Ok(Ok(())) => StatusCode::OK,
+        Ok(Err(status)) => status,
+        Err(_) => StatusCode::GONE,
+    }
+    .into_response()
 }
 
 /// The pending page operation and HTTP caller own this preparation wait.

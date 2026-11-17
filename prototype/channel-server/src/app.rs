@@ -406,11 +406,7 @@ pub async fn serve(
         .route("/connect-discovery", get(discovery))
         .route("/health", get(health))
         .route("/rooms", get(upgrade))
-        .route("/whip/{permit}", post(whip::offer))
-        .route(
-            "/whip/{permit}/{generation}",
-            axum::routing::delete(whip::delete),
-        )
+        .merge(whip::routes())
         .route("/rooms/{domain}/{user}/{room}/backup", get(backup::export))
         .route("/rooms/{domain}/{user}/backup", put(backup::restore))
         .route("/rooms/{domain}/{user}/hosting", get(backup::describe))
@@ -581,6 +577,14 @@ async fn access(
     let discovery = path == "/connect-discovery";
     let health = path == "/health";
     let backup = path.starts_with("/rooms/");
+    let whip_methods = request
+        .extensions()
+        .get::<axum::extract::MatchedPath>()
+        .and_then(|path| whip::methods(path.as_str()));
+    let whip_preflight = whip_methods.is_some()
+        && request.method() == axum::http::Method::OPTIONS
+        && origin.is_some()
+        && headers.contains_key(header::ACCESS_CONTROL_REQUEST_METHOD);
     let allowed = match &origin {
         Some(site) => app.registry.lock().await.permission(site).is_some(),
         None => false,
@@ -606,19 +610,29 @@ async fn access(
             return StatusCode::FORBIDDEN.into_response();
         }
     }
-    if (health || backup) && !allowed {
+    if ((health || backup) || (whip_methods.is_some() && origin.is_some())) && !allowed {
         return StatusCode::FORBIDDEN.into_response();
     }
-    let cors = origin.filter(|_| discovery || ((health || backup) && allowed));
+    let cors =
+        origin.filter(|_| discovery || ((health || backup || whip_methods.is_some()) && allowed));
     let private_network = headers
         .get("access-control-request-private-network")
         .is_some_and(|value| value == "true");
-    let mut response =
-        if request.method() == axum::http::Method::OPTIONS && (discovery || health || backup) {
-            StatusCode::NO_CONTENT.into_response()
-        } else {
-            next.run(request).await
-        };
+    let mut response = if whip_preflight {
+        // A preflight has no Bearer. It describes only this approved Origin's
+        // HTTP methods; the actual request still needs its live page permit.
+        let mut response = StatusCode::OK.into_response();
+        if whip_methods == whip::methods(whip::ENDPOINT) {
+            response
+                .headers_mut()
+                .insert("accept-post", "application/sdp".parse().unwrap());
+        }
+        response
+    } else if request.method() == axum::http::Method::OPTIONS && (discovery || health || backup) {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        next.run(request).await
+    };
     if let Some(origin) = cors {
         response
             .headers_mut()
@@ -628,16 +642,27 @@ async fn access(
             .insert(header::VARY, "Origin".parse().unwrap());
         response.headers_mut().insert(
             header::ACCESS_CONTROL_ALLOW_METHODS,
-            if backup { "GET, PUT, OPTIONS" } else { "GET" }
+            whip_methods
+                .unwrap_or(if backup { "GET, PUT, OPTIONS" } else { "GET" })
                 .parse()
                 .unwrap(),
         );
-        if backup {
+        if backup || whip_methods.is_some() {
             response.headers_mut().insert(
                 header::ACCESS_CONTROL_ALLOW_HEADERS,
-                "Authorization, Content-Type, X-Piik-Credential"
-                    .parse()
-                    .unwrap(),
+                if backup {
+                    "Authorization, Content-Type, X-Piik-Credential"
+                } else {
+                    "Authorization, Content-Type"
+                }
+                .parse()
+                .unwrap(),
+            );
+        }
+        if whip_methods.is_some() {
+            response.headers_mut().insert(
+                header::ACCESS_CONTROL_EXPOSE_HEADERS,
+                "Location".parse().unwrap(),
             );
         }
         if private_network {
@@ -1508,6 +1533,18 @@ async fn connection(
                     }
                     Some(request) = external_queue.recv() => {
                         match request {
+                            whip::Request::Inspect { permit, generation, response } => {
+                                let result = if permit.stopped() {
+                                    Err(StatusCode::GONE)
+                                } else if external_page.resources.get(&generation).is_some_and(|resource| {
+                                    resource.permit == permit.id && !resource.control.is_stopped()
+                                }) {
+                                    Ok(())
+                                } else {
+                                    Err(StatusCode::NOT_FOUND)
+                                };
+                                let _ = response.send(result);
+                            }
                             whip::Request::Offer { permit, offer, response } => {
                                 if permit.stopped() || !external_page.permits.get(&permit.publication).is_some_and(|p| Arc::ptr_eq(p, &permit)) {
                                     let _ = response.send(Err(StatusCode::GONE)); continue;
