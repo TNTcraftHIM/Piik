@@ -14,7 +14,7 @@ const section = (label, body) => `\n===== ${label} =====\n\n${body.trim()}\n`;
 // The packages the Vite bundle ships to the Browser. Nothing installs
 // node_modules at runtime any more, so this list is the notice contract rather
 // than package.json's dependencies field.
-const WEB_BUNDLE_PACKAGES = ["@oddbird/popover-polyfill", "@zip.js/zip.js", "hls.js", "markdown-it", "mp4box", "react", "react-dom", "qrcode.react", "sdp-transform", "semver", "zod"];
+const WEB_BUNDLE_PACKAGES = ["@oddbird/popover-polyfill", "@zip.js/zip.js", "hls.js", "markdown-it", "mp4box", "react", "react-dom", "qrcode.react", "sdp-transform", "semver", "shaka-player", "zod"];
 
 // Both binaries embed the Web bundle, which serves its own notice file.
 const WEB_NOTICE_LINE = "Web dependencies: served at /third-party-licenses.txt\n";
@@ -35,7 +35,7 @@ function noticesIn(directory) {
     .map((file) => file.name).sort();
 }
 
-export function writeWebLicenseNotices(repositoryRoot, outputFile, packages = WEB_BUNDLE_PACKAGES) {
+export function writeWebLicenseNotices(repositoryRoot, outputFile, packages = WEB_BUNDLE_PACKAGES, transitive = true) {
   const packagePath = join(repositoryRoot, "package.json");
   const lock = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"));
   const queue = packages.map((name) => [name, packagePath]);
@@ -62,7 +62,7 @@ export function writeWebLicenseNotices(repositoryRoot, outputFile, packages = WE
     // qrcode.react bundles this encoder, but its npm archive omits the MIT text.
     if (dependency.name === "qrcode.react") body += section("Bundled QR Code generator (MIT)", pinnedNotice(`qrcodegen/qrcode.react@${dependency.version}`));
     entries.set(key, section(`${key} (${dependency.license ?? "see license text"})`, body));
-    for (const child of Object.keys(dependency.dependencies ?? {})) queue.push([child, path]);
+    if (transitive) for (const child of Object.keys(dependency.dependencies ?? {})) queue.push([child, path]);
   }
   mkdirSync(dirname(outputFile), { recursive: true });
   writeFileSync(outputFile, "Third-party software notices\n" +
@@ -70,10 +70,26 @@ export function writeWebLicenseNotices(repositoryRoot, outputFile, packages = WE
     [...entries].sort(([a], [b]) => a.localeCompare(b)).map(([, body]) => body).join(""));
 }
 
+// The pure resolver ships inside Rust, independently of the Browser bundle.
+// These are the packages retained by its esbuild output, not the npm lock closure.
+export function writeMpdLicenseNotices(repositoryRoot, outputFile) {
+  writeWebLicenseNotices(repositoryRoot, outputFile,
+    ["mpd-parser", "@xmldom/xmldom", "@videojs/vhs-utils", "global"], false);
+  // The npm package carries Brightcove's notice but only links the full license.
+  appendFileSync(outputFile, section("Apache License 2.0", pinnedNotice("mpd-parser/Apache-2.0")));
+}
+
+function mpdEngineNotices(repositoryRoot) {
+  return section("Bundled MPD resolver JavaScript", readFileSync(join(repositoryRoot,
+    "prototype", "channel-mpd", "THIRD-PARTY-NOTICES.txt"), "utf8")) +
+    // rquickjs-core's crate omits its workspace license; cargo-about uses a template.
+    section("rquickjs and rquickjs-core 0.14.0 (MIT)", pinnedNotice("rquickjs@0.14.0"));
+}
+
 export function writeServerLicenseNotices(repositoryRoot, outputFile, target) {
   const notices = rustNotices(repositoryRoot, "prototype/channel-server/Cargo.toml", [target.rustTarget]);
   writeFileSync(outputFile, "Piik Server third-party software notices\n" +
-    WEB_NOTICE_LINE + notices);
+    WEB_NOTICE_LINE + notices + mpdEngineNotices(repositoryRoot));
 }
 
 function rustNotices(repositoryRoot, manifest, targets, features = []) {
@@ -115,7 +131,7 @@ export function writeAndroidLicenseNotices(repositoryRoot, outputFile) {
   mkdirSync(dirname(outputFile), { recursive: true });
   writeFileSync(outputFile, "Piik Android third-party software notices\n" +
     section("Piik (MIT)", readFileSync(join(repositoryRoot, "LICENSE"), "utf8")) +
-    WEB_NOTICE_LINE + section("Rust runtime and paired Android platform verifier", runtime) +
+    WEB_NOTICE_LINE + section("Rust runtime and paired Android platform verifier", runtime) + mpdEngineNotices(repositoryRoot) +
     section("Kotlin standard library (Apache-2.0)", pinnedNotice("kotlin-stdlib@2.2.10")) +
     section("JetBrains annotations (Apache-2.0)", pinnedNotice("jetbrains-annotations@13.0")) +
     webrtcMediaNotices(repositoryRoot) +
@@ -134,7 +150,7 @@ export function writeAppLicenseNotices(repositoryRoot, packageRoot, target, tunn
   let text = "Piik App third-party software notices\n" +
     WEB_NOTICE_LINE +
     (tunnelVersion ? "Cloudflared: runtime/tunnel/THIRD-PARTY-NOTICES.txt\n" : "") +
-    notices + webrtcMediaNotices(repositoryRoot);
+    notices + webrtcMediaNotices(repositoryRoot) + mpdEngineNotices(repositoryRoot);
   if (target.goos === "linux") {
     text += section("Linux system dependencies (not bundled)",
       readFileSync(join(repositoryRoot, "licenses", "linux-system-dependencies.txt"), "utf8"));

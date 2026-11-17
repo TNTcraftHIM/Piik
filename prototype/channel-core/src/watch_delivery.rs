@@ -7,6 +7,9 @@ use uuid::Uuid;
 pub const WATCH_FRAME_BYTES: usize = crate::file_delivery::FILE_FRAME_BYTES;
 // Twenty receivers share at most four reads each: 5 MiB of response storage.
 pub const WATCH_WINDOW_BYTES: usize = 64 * 1024;
+// Source-admission bounds for an encoded media fragment and an in-memory manifest.
+pub const WATCH_MEDIA_FRAGMENT_BYTES: usize = 60_000_000;
+pub const WATCH_MEDIA_MANIFEST_BYTES: usize = 1024 * 1024;
 pub const WATCH_MAX_PENDING: usize = 20 * 4;
 // Header's bounded printable MIME (128 bytes, at most doubled by JSON), UUID,
 // two u64 values and fixed fields fit in 512 bytes. Include the four-byte prefix.

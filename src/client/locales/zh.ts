@@ -43,7 +43,7 @@ export const zh = {
   "watch.decodeFailed": "浏览器无法解码此视频。请尝试其他浏览器，或在 App 中观看原网页。",
   "watch.playbackUnsupported": "浏览器暂时无法播放此视频来源或格式。",
   "watch.forward.failed": "视频播放失败。请重试或选择其他接收方式。",
-  "watch.forward.unsupported": "当前不支持转发此视频源。大家可以各自在 App 中观看原网页。",
+  "watch.forward.unsupported": "当前不支持转发此视频源。可继续使用原网页，或选择其他来源。",
   "watch.forward.sourceUnavailable": "未能读取此视频来源。请重试或选择其他来源。",
   "watch.forward.busy": "视频转发正忙，请稍后重试。",
   "watch.forward.readTimeout": "等待视频数据超时。请重新接收，或选择其他观看方式。",

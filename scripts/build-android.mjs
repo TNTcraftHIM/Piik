@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync, execFileSync } from 'node:child_process';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeAndroidLicenseNotices } from './package-licenses.mjs';
 import { buildChannelWeb } from './build-channel-web.mjs';
@@ -128,10 +128,17 @@ if (!tunnelOnly) {
   const launcher = readdirSync(join(gradleHome, 'lib')).find(name => /^gradle-launcher-.*\.jar$/.test(name));
   if (!launcher) throw new Error('GRADLE_HOME does not contain a Gradle launcher.');
   const cargoTarget = resolve(process.env.CARGO_TARGET_DIR ?? join(root, 'build', 'android-rust-target'));
+  const libclangName = { win32: 'libclang.dll', linux: 'libclang.so', darwin: 'libclang.dylib' }[process.platform];
+  const libclang = [tools, join(dirname(tools), 'lib'), join(dirname(tools), 'lib64')]
+    .find(directory => existsSync(join(directory, libclangName)));
+  if (!libclang) throw new Error('The configured Android NDK must contain libclang for native bindings.');
+  const sysroot = join(dirname(tools), 'sysroot').replaceAll('\\', '/');
   for (const { abi, rust, machine } of targets) {
     const output = join(android, 'app', 'src', 'main', 'jniLibs', abi, 'libpiik_channel_android.so');
     const key = rust.replaceAll('-', '_');
     const env = { ...process.env, CARGO_TARGET_DIR: cargoTarget,
+      PATH: [tools, process.env.PATH].filter(Boolean).join(delimiter), LIBCLANG_PATH: libclang,
+      [`BINDGEN_EXTRA_CLANG_ARGS_${key}`]: `--target=${rust}29 --sysroot="${sysroot}"`,
       PIIK_BUILD_VERSION: version, PIIK_BUILD_REVISION: revision, PIIK_BUILD_TARGET: ANDROID_APP_PACKAGE_TARGET.id,
       [`CARGO_TARGET_${key.toUpperCase()}_LINKER`]: clang,
       [`CARGO_TARGET_${key.toUpperCase()}_RUSTFLAGS`]: `-C link-arg=--target=${rust}29 -C link-arg=-Wl,-z,max-page-size=16384`,

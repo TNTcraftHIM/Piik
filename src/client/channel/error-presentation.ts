@@ -70,11 +70,12 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("watch.liveUnsupported");
   if (error === "watch_media_unsupported" || error === "watch_mp4_mse_unavailable")
     return display("watch.playbackUnsupported");
-  if (error === "watch_indexed_unsupported" || error === "invalid_watch_index"
+  if (error === "watch_mpd_unsupported" || error === "watch_indexed_unsupported" || error === "invalid_watch_index"
     || /^watch_(?:live_hls_unsupported|media_(?:encryption_unsupported|encoding_unsupported|range_unsupported|size_unavailable)|manifest_extension_unsupported|manifest_limit|resource_limit|mp4_parse_failed)$/.test(error))
     return display("watch.forward.unsupported");
   if (error === "watch_page_closed" || error === "page_player_closed")
     return display("watch.forward.sourceUnavailable");
+  if (error === "watch_mpd_invalid") return display("watch.forward.sourceUnavailable");
   if (/^(?:watch_(?:invalid_manifest|page_unavailable|media_(?:unavailable|timeout|credentials_unavailable|changed|truncated)|resource_unavailable|source_(?:unavailable|failed|changed|retired))|invalid_watch_range_response)$/.test(error))
     return display("watch.forward.sourceUnavailable");
   if (error === "watch_source_busy" || error === "watch_read_busy")

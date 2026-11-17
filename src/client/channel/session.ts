@@ -7,7 +7,7 @@ import { WatchBytes } from "./watch-bytes";
 import { z } from "zod";
 import { WatchPlayer } from "./watch-playback";
 import { HTMLVideoMedia, AppPageMedia, createPeerWatchMedia, waitForWatchMedia, watchSeekPosition, type WatchMedia } from "./watch-media";
-import { watchPlaybackSchema, watchSourceSchema, type WatchPlayback, type WatchSource, type WatchMode, type WatchByteSource } from "./protocol";
+import { watchPlaybackSchema, watchSourceSchema, type WatchPlayback, type WatchSource, type WatchMode, type WatchByteSource, type WatchFormat } from "./protocol";
 import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
@@ -19,7 +19,7 @@ import { loadRoomHosting, roomDatabaseName } from "./hosting";
 import type { HostedRoom, BrowserRoomSnapshot, BrowserRoomStage, BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
 import type { BackupHistoryImport } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
 import { AppPage, ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState, type NativeRelayCapacity } from "./app-link";
-import type { NativeCaptureTarget, EncodingExecution, NativePageIndexedSelection } from "../native/wire";
+import type { NativeCaptureTarget, EncodingExecution, NativePageIndexedSelection, NativePageMpdSelection, NativePageMpdCatalog } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 import { MicrophoneInput } from "../media/microphone-input";
@@ -2128,7 +2128,7 @@ export class ChannelSession {
       const selected = page.candidates.find(value => value.id === candidateId);
       if (!selected) throw new Error("watch_page_unavailable");
       // Both opaque players and a failed direct URL retain explicit page-source choices.
-      const watchSources: NonNullable<SourceSelection["watchSources"]> = selection.watchSources = { candidateId, choices: [], indexed: [] };
+      const watchSources: NonNullable<SourceSelection["watchSources"]> = selection.watchSources = { candidateId, choices: [], indexed: [], mpd: [] };
       this.patch({});
       const discover = async () => {
         await waitForWatchMedia(page, selection.controller.signal);
@@ -2162,7 +2162,7 @@ export class ChannelSession {
     if (choice) await this.commitPortableWatch(roomId, page, selection, choice.displayURL, choice.format);
     else await this.commitWatch(roomId, { kind: "website", url: page.url }, new AppPageMedia(page), selection);
   }, reportError);
-  private async commitPortableWatch(roomId: string, page: AppPage, selection: SourceSelection, url: string, format?: "file" | "hls"): Promise<void> {
+  private async commitPortableWatch(roomId: string, page: AppPage, selection: SourceSelection, url: string, format?: WatchFormat): Promise<void> {
     const media = await preparePortableWatchMedia(page, url, selection.controller.signal, format);
     try { await this.commitWatch(roomId, { kind: "website", url: page.url, mediaUrl: url }, media, selection); }
     finally { page.close(); }
@@ -2185,6 +2185,28 @@ export class ChannelSession {
     const byteSource = await page.prepareIndexedMedia(indexedMediaSelection(video, audio), selection.controller.signal);
     await this.commitPageSuppliedWatch(roomId, page, selection, byteSource);
   }, reportError);
+  inspectWatchMpdSource = (roomId: string, choiceId: string, signal: AbortSignal, activityId?: string): Promise<NativePageMpdCatalog> => this.action(activityId ? `watch-source:${activityId}` : `screen:${roomId}`, async () => {
+    const selection = this.sourceSelections.get(roomId), player = activityId ? this.watchPlayers.get(activityId) : undefined;
+    const page = activityId ? player?.owner ? player.media.page : undefined : selection?.page;
+    const choice = selection?.watchSources?.mpd.find(value => value.candidate.id === choiceId);
+    if (!(page instanceof AppPage) || !activityId && !choice) throw new Error("watch_page_unavailable");
+    const lifetime = AbortSignal.any([signal, ...(!activityId && selection ? [selection.controller.signal] : [])]);
+    const catalog = await page.inspectMpd(choiceId, lifetime);
+    lifetime.throwIfAborted();
+    if (activityId ? this.watchPlayers.get(activityId) !== player : this.sourceSelections.get(roomId) !== selection) throw new DOMException("Cancelled", "AbortError");
+    if (!activityId && choice && selection?.watchSources) {
+      for (const value of selection.watchSources.mpd) { delete value.catalog; delete value.error; }
+      choice.catalog = catalog; this.patch({});
+    }
+    return catalog;
+  }, false);
+  selectWatchMpdSource = (roomId: string, selected: NativePageMpdSelection, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
+    const selection = this.sourceSelections.get(roomId), page = selection?.page;
+    if (!selection || !page || !selection.watchSources?.mpd.some(choice => choice.catalog?.sourceId === selected.sourceId)) throw new Error("watch_page_unavailable");
+    selection.discovery?.abort();
+    const byteSource = await page.prepareMpdMedia(selected, selection.controller.signal);
+    await this.commitPageSuppliedWatch(roomId, page, selection, byteSource);
+  }, reportError);
   private async commitPageSuppliedWatch(roomId: string, page: AppPage, selection: SourceSelection, byteSource: WatchByteSource): Promise<void> {
     const media = await preparePageSuppliedWatchMedia(page, byteSource, selection.controller.signal);
     await this.commitWatch(roomId, { kind: "website", url: page.url }, media, selection, byteSource);
@@ -2192,7 +2214,7 @@ export class ChannelSession {
   private discoverWatchSources(page: AppPage, signal: AbortSignal, publish: (sources: WatchMediaSources) => void): Promise<WatchMediaSources> {
     let running: Promise<WatchMediaSources> | null = null, dirty = false;
     let inspecting: AbortController | null = null;
-    let current: WatchMediaSources = { choices: [], indexed: [] };
+    let current: WatchMediaSources = { choices: [], indexed: [], mpd: [] };
     const read = limitWatchReads(async (id, offset, length, signal) => {
       const result = await page.readMediaMetadata(id, offset, length, signal);
       return { ...result, eof: offset + result.bytes.length === result.totalSize };
@@ -2204,7 +2226,7 @@ export class ChannelSession {
           dirty = false;
           try {
             signal.throwIfAborted();
-            const { choices, indexedCandidates } = await page.mediaSources();
+            const { choices, indexedCandidates, mpdCandidates } = await page.mediaSources();
             signal.throwIfAborted();
             if (dirty) continue;
             inspecting = new AbortController();
@@ -2220,7 +2242,9 @@ export class ChannelSession {
               }
             }));
             checking.throwIfAborted();
-            current = { choices, indexed };
+            const mpd = mpdCandidates.map(candidate => ({ ...current.mpd.find(value => value.candidate.id === candidate.id), candidate }));
+            checking.throwIfAborted();
+            current = { choices, indexed, mpd };
           } catch (error) {
             signal.throwIfAborted();
             if (dirty) continue;
@@ -2270,7 +2294,7 @@ export class ChannelSession {
       if (actual) await page.stopMedia();
     }
   }
-  setWatchByteSource = (id: string, choiceId: string | NativePageIndexedSelection | null, signal = new AbortController().signal): Promise<void> => this.action(`watch-source:${id}`, async () => {
+  setWatchByteSource = (id: string, choiceId: string | NativePageIndexedSelection | NativePageMpdSelection | null, signal = new AbortController().signal): Promise<void> => this.action(`watch-source:${id}`, async () => {
     const player = this.watchPlayers.get(id), media = player?.media;
     if (player?.owner && media?.retainedByteSource) {
       signal.throwIfAborted();
@@ -2289,7 +2313,7 @@ export class ChannelSession {
     if (this.view.state?.watchActivities.find(activity => activity.id === id)?.byteSource) throw new Error("watch_source_already_active");
     let byteSource: WatchByteSource;
     try {
-      byteSource = typeof choiceId === "string" ? await page.prepareMedia(choiceId) : await page.prepareIndexedMedia(choiceId, signal);
+      byteSource = typeof choiceId === "string" ? await page.prepareMedia(choiceId) : "sourceId" in choiceId ? await page.prepareMpdMedia(choiceId, signal) : await page.prepareIndexedMedia(choiceId, signal);
       signal.throwIfAborted();
       if (this.watchPlayers.get(id) !== player) throw new DOMException("Cancelled", "AbortError");
       await this.request({ type: "set_watch_byte_source", roomId: player.roomId, id, byteSource }, undefined, player.roomId);

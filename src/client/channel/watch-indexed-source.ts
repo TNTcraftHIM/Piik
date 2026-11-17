@@ -1,4 +1,4 @@
-import Hls from "hls.js";
+import {mediaFragmentBytes} from "../../shared/media-resource";
 import { createFile, DataStream, FullBox, MP4BoxBuffer, type ISOFile, type Movie } from "mp4box";
 import { NATIVE_PAGE_METADATA_PREFIX_BYTES, NATIVE_PAGE_READ_BYTES, nativePageIndexedTrackRecipeSchema,
   nativePageIndexedSelectionSchema, type NativePageIndexedCandidate, type NativePageIndexedTrackRecipe,
@@ -93,7 +93,7 @@ export async function inspectIndexedTrack(candidate: NativePageIndexedCandidate,
         && [0, 1, 2].includes(reference.SAP_type) && reference.SAP_delta_time === 0);
       requireValue(safe(reference.referenced_size) && reference.referenced_size > 0
         && safe(reference.subsegment_duration) && reference.subsegment_duration > 0);
-      requireValue(reference.referenced_size <= Hls.DefaultConfig.maxBufferSize, "watch_resource_limit");
+      requireValue(reference.referenced_size <= mediaFragmentBytes(), "watch_resource_limit");
       end += reference.referenced_size; durationTicks += reference.subsegment_duration;
       requireValue(safe(end) && end <= candidate.totalSize && safe(durationTicks));
       return [reference.referenced_size, reference.subsegment_duration];

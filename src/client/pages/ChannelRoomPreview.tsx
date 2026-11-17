@@ -6,7 +6,7 @@ import { participantColor } from "../components/living/participant-color";
 import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
 import { screenVideoSettings } from "../media/quality";
-import type { ChannelController, WatchIndexedChoice } from "../channel/types";
+import type { ChannelController, WatchIndexedChoice, WatchMpdChoice } from "../channel/types";
 import type { ChannelRoom, WatchActivity } from "../channel/protocol";
 import { WatchPlayer } from "../channel/watch-playback";
 import { HTMLVideoMedia, AppPageMedia, type WatchMedia, type WatchMediaState, type WatchMediaEvent } from "../channel/watch-media";
@@ -18,6 +18,13 @@ import "./channel-room-preview.css";
 
 const screenCounts = [0, 1, 2, 3, 4, 8];
 const sampleProgramStart = 1_700_000_000;
+const mpdTracks: WatchMpdChoice[] = [{ candidate: {"id":"10000000-0000-4000-8000-000000000001","name":"Whole film","hostname":"media.example"}, catalog: {
+  sourceId: "37d9d97c-6b56-46d1-b337-f6c2aaa5f24f", tracks: [
+    {"bandwidth":100000,"codec":"avc1.42c01e","frameRate":null,"height":180,"id":"d59d3660-c3f2-44ac-aa21-8568fa49be8b","kind":"video","label":"same-video","language":"","mimeType":"video/mp4","role":"","width":320},
+    {"bandwidth":200000,"codec":"avc1.42c01e","frameRate":null,"height":360,"id":"47ea7137-cded-4e77-8b85-abc102d4291f","kind":"video","label":"unused-video","language":"","mimeType":"video/mp4","role":"","width":640},
+    {"bandwidth":64000,"codec":"mp4a.40.2","frameRate":null,"height":null,"id":"865146c1-bd3b-411b-9b6a-104cacd62a6a","kind":"audio","label":"same-audio","language":"en","mimeType":"audio/mp4","role":"","width":null},
+  ],
+} }];
 const watchSamples = [
   ["off", "关闭", "Off"], ["owner", "分享者", "Sharer"], ["viewer", "观看者", "Viewer"],
   ["available", "尚未加入", "Available"], ["blocked", "等待手动播放", "Playback blocked"],
@@ -42,6 +49,11 @@ const previewAppDiscovery: AppDiscovery = {
 
 /** The production room view with local samples. No Session, device access or App discovery. */
 export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean }) {
+  const mpdSample: WatchMpdChoice[] = new URLSearchParams(location.search).has("mpd-unavailable")
+    ? mpdTracks.map(({ candidate }) => ({ candidate, error: "watch_source_unavailable" })) : [...mpdTracks,
+      ...(new URLSearchParams(location.search).has("mpd-multiple") ? [{ candidate: { ...mpdTracks[0].candidate,
+        id: "10000000-0000-4000-8000-000000000007", name: "Other film" },
+        catalog: { ...mpdTracks[0].catalog!, sourceId: "10000000-0000-4000-8000-000000000008" } }] : [])];
   const { lang } = useCopy(), zh = lang === "zh";
   const sample = useChannelGuideSample(true);
   const invitedRoom = new URLSearchParams(location.search).get("invite-preview") === "studio" ? "studio" : null;
@@ -219,7 +231,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   useEffect(() => {
     if (!browserSourcePending) return;
     const timer = window.setTimeout(() => {
-      setPageSample(page => page && ({ ...page, watchSources: { choices: browserSourceChoices, indexed: [] } }));
+      setPageSample(page => page && ({ ...page, watchSources: { choices: browserSourceChoices, indexed: [], mpd: [] } }));
       setBrowserSourcePending(null);
     }, 3500);
     return () => window.clearTimeout(timer);
@@ -232,9 +244,10 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams, error: null, siteURL: "https://friends.example/",
     pending: browserSourcePending ? new Set([...sample.channel.pending, `screen:${browserSourcePending}`]) : sample.channel.pending,
     watchPlayers,
-    watchMediaChoices: async () => new URLSearchParams(location.search).has("indexed-tracks") ? { choices: [], indexed: indexedTracks }
+    watchMediaChoices: async () => new URLSearchParams(location.search).has("mpd-tracks") ? { choices: [], indexed: [], mpd: mpdSample.map(({ candidate }) => ({ candidate })) }
+      : new URLSearchParams(location.search).has("indexed-tracks") ? { choices: [], indexed: indexedTracks, mpd: [] }
       : { choices: [{ id: "sample-file", name: "An evening with friends.mp4", displayURL: "https://media.example/evening.mp4", format: "file" as const },
-        ...(new URLSearchParams(location.search).has("many-choices") ? [{ id: "sample-hls", name: "Evening playlist", displayURL: "https://media.example/master.m3u8", format: "hls" as const }] : [])], indexed: [] },
+        ...(new URLSearchParams(location.search).has("many-choices") ? [{ id: "sample-hls", name: "Evening playlist", displayURL: "https://media.example/master.m3u8", format: "hls" as const }] : [])], indexed: [], mpd: [] },
     setWatchByteSource: async (_id, choiceId) => setForwarding(choiceId !== null),
     pagePlayer: new URLSearchParams(location.search).has("page-player"),
     watchPage: (_roomId, activityId) => pageSample?.activityId === activityId ? pageSample : undefined,
@@ -244,30 +257,42 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     cancelScreenSelection: async () => { setBrowserSourcePending(null); setPageSample(undefined); },
     selectWatchPage: async (roomId, _candidateId, activityId) => {
       const query = new URLSearchParams(location.search);
-      if (!activityId && (query.has("browser-source") || query.has("indexed-tracks"))) {
+      if (!activityId && (query.has("browser-source") || query.has("indexed-tracks") || query.has("mpd-tracks"))) {
+        if (query.has("mpd-tracks")) {
+          setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: [], mpd: mpdSample.map(({ candidate }) => ({ candidate })) } });
+          return false;
+        }
         if (query.has("indexed-tracks")) {
-          setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: indexedTracks } });
+          setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: indexedTracks, mpd: [] } });
           return false;
         }
         if (query.has("browser-source-pending")) {
-          setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: [] } });
+          setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: [], mpd: [] } });
           setBrowserSourcePending(roomId);
           return false;
         }
         if (query.has("browser-source-failed")) {
-          setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: [], error: "watch_source_unavailable" } });
+          setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: [], mpd: [], error: "watch_source_unavailable" } });
           return false;
         }
         if (!query.has("empty-browser-sources")) {
-          setPageSample({ ...pageSample!, watchSources: { choices: browserSourceChoices, indexed: [] } });
+          setPageSample({ ...pageSample!, watchSources: { choices: browserSourceChoices, indexed: [], mpd: [] } });
           return false;
         }
-        setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: [] } });
+        setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: [], mpd: [] } });
         return false;
       }
       commitPageSelection(roomId, activityId);
       return true;
     },
+    inspectWatchMpdSource: async (_roomId, choiceId) => {
+      const choice = mpdSample.find(value => value.candidate.id === choiceId)!;
+      if (!choice.catalog) throw new Error("watch_source_unavailable");
+      setPageSample(page => page?.watchSources ? { ...page, watchSources: { ...page.watchSources,
+        mpd: page.watchSources.mpd.map(value => ({ candidate: value.candidate, ...(value.candidate.id === choiceId ? { catalog: choice.catalog } : {}) })) } } : page);
+      return choice.catalog!;
+    },
+    selectWatchMpdSource: async roomId => { setForwarding(true); commitPageSelection(roomId); },
     selectWatchIndexedSource: async roomId => { setForwarding(true); commitPageSelection(roomId); },
     selectWatchForwardSource: async roomId => { setForwarding(true); commitPageSelection(roomId); },
     selectWatchBrowserSource: async (roomId, choiceId) => {

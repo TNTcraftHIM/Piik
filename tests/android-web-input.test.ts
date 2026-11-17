@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { recordChannelWeb } from "../scripts/channel-web-artifact.mjs";
 
-const source = vi.hoisted(() => ({ root: "", web: "", revision: "a".repeat(40), frontend: "", webBuilds: 0, commands: [] as string[] }));
+const source = vi.hoisted(() => ({ root: "", web: "", revision: "a".repeat(40), frontend: "", webBuilds: 0, commands: [] as string[], cargoEnvs: [] as NodeJS.ProcessEnv[] }));
 const commit = "b".repeat(40);
 vi.mock("node:url", async original => {
   const url = await original<typeof import("node:url")>();
@@ -40,7 +40,7 @@ vi.mock("node:child_process", () => ({
     const output = (file: string, bytes = "fixture") => { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, bytes); };
     if (command === "tar") output(join(source.root, "build/android-cloudflared/cloudflared-" + "b".repeat(40), "supervisor/tunnel.go"));
     else if (command === "go") output(args[args.indexOf("-o") + 1]!);
-    else if (command === "cargo") output(join(options.env.CARGO_TARGET_DIR!, args[args.indexOf("--target") + 1]!, "debug/libpiik_channel_android.so"));
+    else if (command === "cargo") { source.cargoEnvs.push(options.env); output(join(options.env.CARGO_TARGET_DIR!, args[args.indexOf("--target") + 1]!, "debug/libpiik_channel_android.so")); }
     else if (command === "jar") { source.frontend = args[args.indexOf("-C") + 1]!; output(args[args.indexOf("--file") + 1]!); }
     else if (command === "java") output(join(source.root, "mobile/android/app/build/outputs/apk/debug/app-debug.apk"));
     else if (command !== "git" && !command.includes("llvm-strip") && !command.includes("fallback.test")) throw new Error("Unexpected command: " + command);
@@ -48,10 +48,10 @@ vi.mock("node:child_process", () => ({
   },
 }));
 
-it.each(["default", "shared", "mismatched", "overlap"])("Android uses the shared Web input owner (%s)", async scenario => {
+it.each(["default", "shared", "shared-lib", "mismatched", "overlap"])("Android uses the shared Web input owner (%s)", async scenario => {
   source.root = mkdtempSync(join(tmpdir(), "piik-android-web-"));
   source.web = join(source.root, scenario === "overlap" ? "mobile/android/app/src/main/assets/web" : "web");
-  source.frontend = ""; source.webBuilds = 0; source.commands = [];
+  source.frontend = ""; source.webBuilds = 0; source.commands = []; source.cargoEnvs = [];
   const previousArguments = process.argv, stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
   const write = (path: string, bytes: string | Buffer) => {
     const target = join(source.root, path); mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, bytes);
@@ -67,6 +67,13 @@ it.each(["default", "shared", "mismatched", "overlap"])("Android uses the shared
   recordChannelWeb(source.web, { version: scenario === "mismatched" ? "v3.0.0-beta.31" : "development", revision: source.revision });
   for (const name of ["ANDROID_HOME", "ANDROID_NDK_HOME", "GRADLE_HOME", "CARGO_TARGET_DIR"])
     vi.stubEnv(name, join(source.root, name === "GRADLE_HOME" ? "gradle" : name));
+  const platform = process.platform;
+  if (platform !== "win32" && platform !== "linux" && platform !== "darwin") throw new Error("Unsupported Android build host");
+  const host = { win32: "windows-x86_64", linux: "linux-x86_64", darwin: "darwin-x86_64" }[platform];
+  const prebuilt = join(process.env.ANDROID_NDK_HOME!, "toolchains/llvm/prebuilt", host);
+  const libclang = join(prebuilt, scenario === "shared-lib" ? "lib" : "bin");
+  const libclangName = { win32: "libclang.dll", linux: "libclang.so", darwin: "libclang.dylib" }[platform];
+  mkdirSync(libclang, { recursive: true }); writeFileSync(join(libclang, libclangName), "fixture libclang");
   const fetch = vi.fn(() => { throw new Error("The fixture must not download or access a network"); });
   vi.stubGlobal("fetch", fetch);
   try {
@@ -81,6 +88,12 @@ it.each(["default", "shared", "mismatched", "overlap"])("Android uses the shared
       await android;
       expect(source.frontend).toBe(source.web);
       expect(source.commands.filter(command => command === "cargo")).toHaveLength(2);
+      for (const [index, target] of ["aarch64-linux-android", "x86_64-linux-android"].entries()) {
+        const env = source.cargoEnvs[index]!, key = target.replaceAll("-", "_");
+        expect(env.LIBCLANG_PATH).toBe(libclang);
+        expect(env.PATH?.split(delimiter)[0]).toBe(join(prebuilt, "bin"));
+        expect(env["BINDGEN_EXTRA_CLANG_ARGS_" + key]).toBe(`--target=${target}29 --sysroot="${join(prebuilt, "sysroot").replaceAll("\\", "/")}"`);
+      }
       expect(readFileSync(join(source.root, "mobile/android/app/src/main/assets/web/frontend.zip"), "utf8")).toBe("fixture");
       expect(existsSync(`${source.web}.build.json`)).toBe(true);
     }

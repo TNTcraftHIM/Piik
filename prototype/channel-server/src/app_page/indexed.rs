@@ -8,7 +8,7 @@ use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
 use tokio::sync::watch;
 use uuid::Uuid;
 
-const MAX_FRAGMENT: u64 = 60_000_000;
+const MAX_FRAGMENT: u64 = piik_channel_core::watch_delivery::WATCH_MEDIA_FRAGMENT_BYTES as u64;
 const MAX_INIT: usize = 1024 * 1024;
 const MAX_PLAYLIST: usize = 1024 * 1024;
 

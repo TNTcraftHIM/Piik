@@ -1021,6 +1021,7 @@ pub struct WatchSubscription {
 pub enum WatchFormat {
     File,
     Hls,
+    Dash,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1028,6 +1029,36 @@ pub struct WatchByteSource {
     pub session_id: Uuid,
     pub resource_id: Uuid,
     pub format: WatchFormat,
+}
+#[cfg(test)]
+#[test]
+fn watch_formats_keep_the_opaque_source_contract() {
+    let session_id = Uuid::from_u128(1);
+    let resource_id = Uuid::from_u128(2);
+    for (format, name) in [
+        (WatchFormat::File, "file"),
+        (WatchFormat::Hls, "hls"),
+        (WatchFormat::Dash, "dash"),
+    ] {
+        let source = WatchByteSource {
+            session_id,
+            resource_id,
+            format,
+        };
+        let wire = serde_json::to_value(&source).unwrap();
+        assert_eq!(
+            wire,
+            serde_json::json!({"sessionId":session_id,"resourceId":resource_id,"format":name})
+        );
+        assert_eq!(
+            serde_json::from_value::<WatchByteSource>(wire.clone()).unwrap(),
+            source
+        );
+        let mut expanded = wire;
+        expanded["url"] = serde_json::json!("https://owned.test/private");
+        assert!(serde_json::from_value::<WatchByteSource>(expanded).is_err());
+    }
+    assert!(serde_json::from_str::<WatchFormat>("\"future\"").is_err());
 }
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(

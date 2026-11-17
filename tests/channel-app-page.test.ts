@@ -33,6 +33,93 @@ async function openPage(app: ChannelApp, socket: Socket) {
 }
 const state = { position: 12, paused: false, rate: 1, duration: null, readyState: 4, ended: false, buffered: [[0, 60]] as [number, number][] };
 
+function mpdCatalog() {
+  return { sourceId: crypto.randomUUID(), tracks: [
+    { id: crypto.randomUUID(), kind: "video", label: "1080p", mimeType: "video/mp4", codec: "avc1.640028",
+      language: "", role: "", width: 1920, height: 1080, bandwidth: 4000000, frameRate: 30 },
+    { id: crypto.randomUUID(), kind: "audio", label: "Audio", mimeType: "audio/mp4", codec: "mp4a.40.2",
+      language: "en", role: "main", width: null, height: null, bandwidth: 128000, frameRate: null },
+  ] };
+}
+
+test("MPD inspection cancellation and source replacement retain opaque catalog identity", async () => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket), choiceId = crypto.randomUUID(), cancel = new AbortController();
+    const inspecting = page.inspectMpd(choiceId, cancel.signal), old = socket.sent.at(-1)!;
+    expect(old).toMatchObject({ type: "page_media_resource", action: "inspect_mpd", pageId: page.id, choiceId, readId: expect.any(String) });
+    const cancelled = expect(inspecting).rejects.toMatchObject({ name: "AbortError" });
+    cancel.abort(); await cancelled;
+    expect(socket.sent.at(-1)).toMatchObject({ type: "page_media_resource", action: "cancel", pageId: page.id, readId: old.readId });
+    socket.reply(null);
+    socket.receive({ id: old.id, result: mpdCatalog() });
+    const fresh = mpdCatalog(), reading = page.inspectMpd(choiceId, new AbortController().signal);
+    socket.reply(fresh); await expect(reading).resolves.toEqual(fresh);
+    const selection = { sourceId: fresh.sourceId, videoId: fresh.tracks[0].id, audioId: fresh.tracks[1].id };
+    const stale = page.prepareMpdMedia(selection, new AbortController().signal);
+    socket.receive({ id: socket.sent.at(-1)!.id, error: "watch_source_changed" });
+    await expect(stale).rejects.toThrow("watch_source_changed");
+    expect(socket.sent.some(value => value.type === "page_media_stop" || value.type === "page_close")).toBe(false);
+    const next = mpdCatalog(), nextInspect = page.inspectMpd(choiceId, new AbortController().signal);
+    socket.reply(next); await nextInspect;
+    const prepare = page.prepareMpdMedia({ sourceId: next.sourceId,
+      videoId: next.tracks[0].id }, new AbortController().signal);
+    expect(socket.sent.at(-1)).toMatchObject({ type: "page_media_prepare_mpd", pageId: page.id, sourceId: next.sourceId });
+    expect(socket.sent.at(-1)).not.toHaveProperty("url");
+    const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "dash" };
+    socket.reply(source); await expect(prepare).resolves.toEqual(source);
+    expect(app.connected).toBe(true);
+  } finally { app.close(); }
+});
+
+test("MPD prepare cancellation uses selection stop while closing one page preserves sibling inspection", async () => {
+  const { app, socket } = await setup();
+  try {
+    const a = await openPage(app, socket), b = await openPage(app, socket), catalog = mpdCatalog();
+    const selection = { sourceId: catalog.sourceId, videoId: catalog.tracks[0].id };
+    const cancel = new AbortController(), preparing = a.prepareMpdMedia(selection, cancel.signal), request = socket.sent.at(-1)!;
+    const rejected = expect(preparing).rejects.toMatchObject({ name: "AbortError" });
+    cancel.abort(); await rejected;
+    const stopping = a.stopMedia(); socket.reply(null); await stopping;
+    socket.receive({ id: request.id, result: { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "dash" } });
+    const pendingA = a.inspectMpd(crypto.randomUUID(), new AbortController().signal), lateA = socket.sent.at(-1)!;
+    const endedA = expect(pendingA).rejects.toThrow("watch_page_closed");
+    const pendingB = b.inspectMpd(crypto.randomUUID(), new AbortController().signal), replyB = socket.sent.at(-1)!;
+    a.close(); await endedA; socket.reply(null);
+    socket.receive({ id: lateA.id, result: catalog });
+    socket.receive({ id: replyB.id, result: catalog }); await expect(pendingB).resolves.toEqual(catalog);
+    expect(app.connected).toBe(true);
+    expect(socket.sent.filter(value => value.type === "page_close").map(value => value.pageId)).toEqual([a.id]);
+    const wrongFormat = b.prepareMpdMedia(selection, new AbortController().signal);
+    socket.reply({ sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "hls" });
+    await expect(wrongFormat).rejects.toThrow();
+    const reading = b.read(); socket.reply(state); await expect(reading).resolves.toEqual(state);
+  } finally { app.close(); }
+});
+
+test("MPD source and catalog schemas reject URL authority and unknown track kinds without retiring control", async () => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket), candidate = { id: crypto.randomUUID(), name: "Manifest", hostname: "media.test" };
+    const listing = page.mediaSources();
+    socket.reply({ choices: [], indexedCandidates: [], mpdCandidates: [candidate], byteSource: null });
+    expect((await listing).mpdCandidates).toEqual([candidate]);
+    const missing = page.mediaSources(); socket.reply({ choices: [], indexedCandidates: [], byteSource: null });
+    await expect(missing).rejects.toThrow();
+    const catalog = mpdCatalog(), leaked = page.inspectMpd(candidate.id, new AbortController().signal);
+    socket.reply({ ...catalog, url: "https://media.test/private?grant=fixture" });
+    await expect(leaked).rejects.toThrow();
+    const unknown = page.inspectMpd(candidate.id, new AbortController().signal);
+    socket.reply({ ...catalog, tracks: [{ ...catalog.tracks[0], kind: "unknown" }] });
+    await expect(unknown).rejects.toThrow();
+    const before = socket.sent.length;
+    await expect(page.prepareMpdMedia({ sourceId: catalog.sourceId, videoId: "not-an-opaque-id" }, new AbortController().signal)).rejects.toThrow();
+    expect(socket.sent).toHaveLength(before);
+    const playback = page.read(); socket.reply(state); await expect(playback).resolves.toEqual(state);
+    expect(app.connected).toBe(true);
+  } finally { app.close(); }
+});
+
 test('local resource playback uses the prepared root and cancels only its opaque read', async () => {
   const {app,socket}=await setup();
   try{
@@ -119,7 +206,7 @@ test.each(['file', 'hls'] as const)('%s byte source registration retains the pag
     const choiceId = crypto.randomUUID();
     const choices = page.mediaSources();
     expect(socket.sent.at(-1)).toMatchObject({ type: 'page_media_sources', pageId });
-    socket.reply({ choices: [{ id: choiceId, displayURL: 'https://media.test/movie.m3u8', name: 'Movie', format }], indexedCandidates: [], byteSource: null });
+    socket.reply({ choices: [{ id: choiceId, displayURL: 'https://media.test/movie.m3u8', name: 'Movie', format }], indexedCandidates: [], mpdCandidates: [], byteSource: null });
     expect((await choices).choices[0]?.format).toBe(format);
     const preparing = page.prepareMedia(choiceId);
     expect(socket.sent.at(-1)).toMatchObject({ type: 'page_media_prepare', pageId, choiceId });
@@ -141,11 +228,11 @@ test("App 13 keeps indexed resource candidates separate from direct media choice
     const candidate = { id: crypto.randomUUID(), name: "Observed track", hostname: "media.test", mimeType: "video/mp4", totalSize: 1000000 };
     const direct = { id: crypto.randomUUID(), displayURL: "https://media.test/movie.m3u8", name: "Movie", format: "hls" };
     const sources = page.mediaSources();
-    socket.reply({ choices: [direct], indexedCandidates: [candidate], byteSource: null });
-    await expect(sources).resolves.toEqual({ choices: [direct], indexedCandidates: [candidate], byteSource: null });
+    socket.reply({ choices: [direct], indexedCandidates: [candidate], mpdCandidates: [], byteSource: null });
+    await expect(sources).resolves.toEqual({ choices: [direct], indexedCandidates: [candidate], mpdCandidates: [], byteSource: null });
     const missingHost = page.mediaSources();
     const { hostname: _hostname, ...oldCandidate } = candidate;
-    socket.reply({ choices: [], indexedCandidates: [oldCandidate], byteSource: null });
+    socket.reply({ choices: [], indexedCandidates: [oldCandidate], mpdCandidates: [], byteSource: null });
     await expect(missingHost).rejects.toThrow();
     const privateHost = page.mediaSources();
     socket.reply({ choices: [], indexedCandidates: [{ ...candidate, hostname: "media.test?private=grant" }], byteSource: null });

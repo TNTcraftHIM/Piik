@@ -1,9 +1,12 @@
 import { readFileSync } from "node:fs";
-import Hls from "hls.js";
+import initializeCore from "../prototype/channel-browser/pkg/piik_channel_browser";
+import { mediaFragmentBytes } from "../src/shared/media-resource";
 import { BoxParser, createFile, DataStream, MP4BoxBuffer, type Box, type ISOFile } from "mp4box";
-import { expect, test, vi } from "vitest";
+import { beforeAll, expect, test, vi } from "vitest";
 import { inspectIndexedTrack, indexedMediaSelection, type IndexedMetadataRead } from "../src/client/channel/watch-indexed-source";
 import { nativePageIndexedTrackRecipeSchema } from "../src/client/native/wire";
+
+beforeAll(async()=>{await initializeCore({module_or_path:readFileSync("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm")});});
 
 // Six seconds of owned synthetic picture/sine, encoded AV1 or copied AAC into fMP4.
 // Fixtures contain no website bytes. GPAC writes structural variants without a second parser.
@@ -97,7 +100,7 @@ test("SIDX keeps its own time units without changing media time or byte ranges",
 test.each([
   { name: "nested index", change: (p: ISOFile) => { p.sidx.references[0].reference_type = 1; }, error: "watch_indexed_unsupported" },
   { name: "non-random access", change: (p: ISOFile) => { p.sidx.references[0].starts_with_SAP = 0; }, error: "watch_indexed_unsupported" },
-  { name: "oversized fragment", change: (p: ISOFile) => { p.sidx.references[0].referenced_size = Hls.DefaultConfig.maxBufferSize + 1; }, error: "watch_resource_limit" },
+  { name: "oversized fragment", change: (p: ISOFile) => { p.sidx.references[0].referenced_size = mediaFragmentBytes() + 1; }, error: "watch_resource_limit" },
   { name: "protected sample entry", change: (p: ISOFile) => { p.moov.traks[0].mdia.minf.stbl.stsd.entries[0].addBox(new BoxParser.box.sinf()); }, error: "watch_media_encryption_unsupported" },
   { name: "multiple media edits", change: (p: ISOFile) => { edits(p, 20); p.moov.traks[0].edts!.elst!.entries[0].media_time = 0; }, error: "watch_indexed_unsupported" },
 ])("unsupported $name is refused by the same generic parser", async ({ change, error }) => {

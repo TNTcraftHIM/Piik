@@ -4,6 +4,7 @@ import { canReadWatchResources, limitWatchReads, openWatchResource, type WatchBy
 import { createWatchHlsLoader, watchHlsUrl } from "./watch-hls-loader";
 import { canReadWatchMp4, isWatchMp4, WatchMp4Media } from "./watch-mp4-media";
 import { watchElementFailure, watchHlsFailure } from "./watch-media-failure";
+import { WatchDashMedia, canReadWatchDash } from "./watch-dash-media";
 import { WatchHlsTimeline } from "./watch-hls-timeline";
 
 export interface WatchLiveWindow { active: boolean; seekable: [number, number][]; syncPosition: number | null }
@@ -85,6 +86,7 @@ export class HTMLVideoMedia implements WatchMedia {
   private hlsTimeline?: WatchHlsTimeline;
   private resource?: WatchResourceLease;
   private mp4?: WatchMp4Media;
+  private dash?: WatchDashMedia;
   private failure: Error | null = null;
   constructor(url: string | ((signal: AbortSignal) => Promise<WatchResourceLease>) | { resourceId: string; read: WatchByteReader }, format?: WatchFormat, private timeline?: WatchTimeline) {
     this.video.playsInline = true;
@@ -101,6 +103,13 @@ export class HTMLVideoMedia implements WatchMedia {
     let peerRead: WatchByteReader | undefined;
     if (typeof source === "object") {
       const peer = source;
+      if (format === "dash") {
+        if (this.timeline === "program") throw new Error("watch_live_timeline_unsupported");
+        const dash = this.dash = new WatchDashMedia(this.video, peer.resourceId, peer.read, this.lifetime.signal, error => {
+          this.failure = error; this.video.dispatchEvent(new Event("error"));
+        });
+        await dash.open(); return;
+      }
       if (format === "hls" && Hls.isSupported()) { peerRead = peer.read; source = watchHlsUrl(peer.resourceId); }
       else {
         const read = limitWatchReads(peer.read);
@@ -122,6 +131,7 @@ export class HTMLVideoMedia implements WatchMedia {
         source = signal => openWatchResource(peer.resourceId, peer.read, signal);
       }
     }
+    if (format === "dash") throw new Error("watch_media_unsupported");
     if (typeof source === "function") {
       const resource = await source(this.lifetime.signal);
       if (this.lifetime.signal.aborted) { resource.close(); return; }
@@ -198,13 +208,14 @@ export class HTMLVideoMedia implements WatchMedia {
   }
   private dispose(): void {
     if (this.lifetime.signal.aborted) return;
-    this.lifetime.abort(); this.hls?.destroy(); this.mp4?.close(); this.resource?.close();
+    this.lifetime.abort(); this.hls?.destroy(); this.mp4?.close(); this.dash?.close(); this.resource?.close();
     this.video.pause(); this.video.removeAttribute("src"); this.video.load(); this.video.remove();
   }
 }
 
-/** The owner's rewritten HLS playlists use only opaque resource UUID basenames. */
+/** Native-supplied manifests resolve only opaque resources through their reader. */
 export function canReceivePeerWatch(format?: WatchFormat): boolean {
+  if (format === "dash") return canReadWatchDash();
   return format === "hls" && Hls.isSupported() || format === "file" && canReadWatchMp4() || canReadWatchResources();
 }
 

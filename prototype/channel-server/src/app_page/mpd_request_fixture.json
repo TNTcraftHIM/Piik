@@ -1,0 +1,44 @@
+[
+  {
+    "name": "prepare-video-audio",
+    "command": {
+      "type": "page_media_prepare_mpd",
+      "pageId": "c12ee2dc-6e5f-4d9e-9906-c7cf7243d90e",
+      "sourceId": "37d9d97c-6b56-46d1-b337-f6c2aaa5f24f",
+      "videoId": "d59d3660-c3f2-44ac-aa21-8568fa49be8b",
+      "audioId": "865146c1-bd3b-411b-9b6a-104cacd62a6a",
+      "id": "3803ba01-1697-4824-8ace-329e8a38b151"
+    }
+  },
+  {
+    "name": "prepare-video-only",
+    "command": {
+      "type": "page_media_prepare_mpd",
+      "pageId": "c12ee2dc-6e5f-4d9e-9906-c7cf7243d90e",
+      "sourceId": "37d9d97c-6b56-46d1-b337-f6c2aaa5f24f",
+      "videoId": "d59d3660-c3f2-44ac-aa21-8568fa49be8b",
+      "id": "d6c9db72-43c2-4753-b40b-f86b76a74853"
+    }
+  },
+  {
+    "name": "inspect",
+    "command": {
+      "type": "page_media_resource",
+      "action": "inspect_mpd",
+      "pageId": "c12ee2dc-6e5f-4d9e-9906-c7cf7243d90e",
+      "readId": "82b57f1a-92d2-45e6-baf5-14d17bf4fddb",
+      "choiceId": "14fd2513-6604-42fa-aba9-2041d869e074",
+      "id": "22df81c5-8f14-4181-9a49-530f584e6a11"
+    }
+  },
+  {
+    "name": "cancel-inspect",
+    "command": {
+      "type": "page_media_resource",
+      "pageId": "c12ee2dc-6e5f-4d9e-9906-c7cf7243d90e",
+      "action": "cancel",
+      "readId": "82b57f1a-92d2-45e6-baf5-14d17bf4fddb",
+      "id": "9df1e967-f8d3-47ae-87a8-e04a52db863f"
+    }
+  }
+]

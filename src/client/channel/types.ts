@@ -1,5 +1,5 @@
 import type { IndexedTrackInspection } from "./watch-indexed-source";
-import type { NativePageCandidate, NativePageMediaChoice, NativePageIndexedCandidate, NativePageIndexedSelection } from "../native/wire";
+import type { NativePageCandidate, NativePageMediaChoice, NativePageIndexedCandidate, NativePageIndexedSelection, NativePageMpdCandidate, NativePageMpdCatalog, NativePageMpdSelection } from "../native/wire";
 import type { WatchMedia } from "./watch-media";
 import type { WatchPlayer } from "./watch-playback";
 import type { WatchPlayback, WatchMode } from "./protocol";
@@ -24,7 +24,8 @@ import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 import type { ConnectionMetrics } from "../types";
 
 export interface WatchIndexedChoice { candidate: NativePageIndexedCandidate; inspection?: IndexedTrackInspection; error?: string }
-export interface WatchMediaSources { choices: readonly NativePageMediaChoice[]; indexed: readonly WatchIndexedChoice[]; error?: string }
+export interface WatchMpdChoice { candidate: NativePageMpdCandidate; catalog?: NativePageMpdCatalog; error?: string }
+export interface WatchMediaSources { choices: readonly NativePageMediaChoice[]; indexed: readonly WatchIndexedChoice[]; mpd: readonly WatchMpdChoice[]; error?: string }
 
 export interface ChannelMediaMetric {
   pairId: string;
@@ -109,9 +110,11 @@ export interface ChannelActions {
   focusWatchPage(roomId: string, activityId?: string): Promise<void>;
   joinWatch(id: string, mode?: WatchMode): Promise<void>;
   watchMediaChoices(id: string, signal: AbortSignal, onChange?: (sources: WatchMediaSources) => void): Promise<WatchMediaSources>;
+  inspectWatchMpdSource(roomId: string, choiceId: string, signal: AbortSignal, activityId?: string): Promise<NativePageMpdCatalog>;
+  selectWatchMpdSource(roomId: string, selection: NativePageMpdSelection, reportError?: boolean): Promise<void>;
   selectWatchIndexedSource(roomId: string, videoId: string, audioId?: string, reportError?: boolean): Promise<void>;
   selectWatchForwardSource(roomId: string, choiceId: string, reportError?: boolean): Promise<void>;
-  setWatchByteSource(id: string, choice: string | NativePageIndexedSelection | null, signal?: AbortSignal): Promise<void>;
+  setWatchByteSource(id: string, choice: string | NativePageIndexedSelection | NativePageMpdSelection | null, signal?: AbortSignal): Promise<void>;
   leaveWatch(id: string): Promise<void>;
   stopWatch(id: string): Promise<void>;
   setWatchPlayback(id: string, patch: Partial<Pick<WatchPlayback, "paused" | "position" | "rate">>): Promise<void>;

@@ -67,7 +67,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 17;
+const PROTOCOL: u8 = 18;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -1839,11 +1839,60 @@ async fn connection(
                                     }
                                 } else { Err(anyhow!("hello_required")) }
                             }
+                            Operation::Page(page::Operation::PageMediaPrepareMpd {
+                                page_id,
+                                source_id,
+                                video_id,
+                                audio_id,
+                            }) => {
+                                if let Some(host) = &host {
+                                    match pages.prepare_mpd_media(
+                                        page_id,
+                                        source_id,
+                                        video_id,
+                                        audio_id,
+                                        host.clone(),
+                                    ) {
+                                        Ok(work) => {
+                                            operations.push(
+                                                async move {
+                                                    match work.await {
+                                                        Ok(value) => json!({"id":request.id,"result":value}),
+                                                        Err(error) => json!({"id":request.id,"error":error.to_string()}),
+                                                    }
+                                                }.boxed(),
+                                            );
+                                            continue;
+                                        }
+                                        Err(error) => Err(error),
+                                    }
+                                } else {
+                                    Err(anyhow!("hello_required"))
+                                }
+                            }
                             Operation::Page(page::Operation::PageMediaResource(resource)) => {
                                 if host.is_none() {
                                     Err(anyhow!("hello_required"))
                                 } else {
                                     match resource {
+                                        page::ResourceRequest::InspectMpd {
+                                            page_id,
+                                            choice_id,
+                                            read_id,
+                                        } => match pages.inspect_mpd(page_id, choice_id, read_id) {
+                                            Ok(work) => {
+                                                operations.push(
+                                                    async move {
+                                                        match work.await {
+                                                            Ok(value) => json!({"id":request.id,"result":value}),
+                                                            Err(error) => json!({"id":request.id,"error":error.to_string()}),
+                                                        }
+                                                    }.boxed(),
+                                                );
+                                                continue;
+                                            }
+                                            Err(error) => Err(error),
+                                        },
                                         page::ResourceRequest::ReadMetadata { page_id, choice_id, read_id, offset, length } => {
                                             match pages.read_metadata(page_id, choice_id, read_id, offset, length) {
                                                 Ok(work) => {
@@ -4224,5 +4273,27 @@ mod page_contract_tests {
             matches!(request.operation,Operation::Page(page::Operation::PagePrepare{page_id,..}) if page_id==id)
         );
         assert!(serde_json::from_value::<Request>(json!({"id":"request","type":"page_patch","pageId":id,"patch":{"position":1,"cookie":"secret"}})).is_err());
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn actual_browser_mpd_commands_deserialize_at_app_boundary() {
+    let fixtures: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("app_page/mpd_request_fixture.json")).unwrap();
+    for fixture in fixtures {
+        let command = fixture["command"].clone();
+        let parsed: Request = serde_json::from_value(command.clone()).unwrap();
+        match command["type"].as_str().unwrap() {
+            "page_media_prepare_mpd" => assert!(matches!(
+                parsed.operation,
+                Operation::Page(page::Operation::PageMediaPrepareMpd { .. })
+            )),
+            "page_media_resource" => assert!(matches!(
+                parsed.operation,
+                Operation::Page(page::Operation::PageMediaResource(_))
+            )),
+            _ => panic!("unexpectedfixture"),
+        }
     }
 }

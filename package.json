@@ -21,7 +21,8 @@
     "typecheck": "node prototype/channel-browser/build.mjs && tsc -b --pretty false && tsc -p prototype/channel-browser/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run check:rust && tsc -b --pretty false && npm test"
+    "check": "npm run check:rust && tsc -b --pretty false && npm test",
+    "build:mpd": "node scripts/build-mpd-resolver.mjs"
   },
   "devDependencies": {
     "@oddbird/popover-polyfill": "0.7.3",
@@ -47,6 +48,9 @@
     "vite": "8.2.4",
     "vitest": "4.1.12",
     "ws": "8.23.0",
-    "zod": "4.6.6"
+    "zod": "4.6.6",
+    "shaka-player": "5.3.5",
+    "mpd-parser": "1.4.1",
+    "@xmldom/xmldom": "0.8.15"
   }
 }

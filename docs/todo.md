@@ -49,7 +49,8 @@ the feedback period; they do not delay that delivery.
   playback-control changes on the reported accessible websites in a matching
   Windows App/Web package. Cover failed replacement retaining the active source,
   original-page closure, and independent viewer playback with and without
-  explicit forwarding. Broader website/live coverage remains below.
+  explicit forwarding, including static DASH video/audio selection. Broader
+  website/live coverage remains below.
 - [ ] **Native webpage-reader generation.** Retire the App's page-reader
   registration in matching-package acceptance when its Native media runtime
   ends. Verify explicit new-source preparation and retained short-recovery
@@ -156,6 +157,11 @@ the feedback period; they do not delay that delivery.
   listed in Native dependency provenance, replace the immutable upstream pin
   through the existing consumer checks and
   [dependency provenance](../prototype/channel-native/README.md#rtc-dependency).
+- [ ] **Refresh the MPD script runtime.** Follow the supported QuickJS-NG update
+  in [rquickjs #793](https://github.com/DelSkayn/rquickjs/pull/793), including
+  allocation-failure cleanup fixes. Verify the parser and binding behavior before
+  replacing the current released pin; the proposed update still fails upstream
+  compatibility checks.
 - [ ] **GNOME cancellation cleanup submission.** Submit the independently
   verified Mutter repair when GitLab authentication is available, under the upstream
   contribution rules. The

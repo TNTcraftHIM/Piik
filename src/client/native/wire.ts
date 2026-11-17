@@ -17,6 +17,24 @@ export const nativePageCandidateSchema = z.object({ id: z.uuid(), title: z.strin
 export type NativePageCandidate = z.infer<typeof nativePageCandidateSchema>;
 export const nativePageMediaChoiceSchema = z.object({ id: z.uuid(), displayURL: nativePageURLSchema, name: z.string().max(512).refine(value => [...value].length <= 256), format: watchFormatSchema }).strict();
 export type NativePageMediaChoice = z.infer<typeof nativePageMediaChoiceSchema>;
+export const nativePageMpdCandidateSchema = z.object({
+  id: z.uuid(), name: z.string().max(512).refine(value => [...value].length <= 256),
+  hostname: z.string().min(1).max(253).regex(/^[A-Za-z0-9.:[\]-]+$/),
+}).strict();
+export type NativePageMpdCandidate = z.infer<typeof nativePageMpdCandidateSchema>;
+const nativePageMpdTrackSchema = z.object({
+  id: z.uuid(), kind: z.enum(["video", "audio"]),
+  label: z.string().max(512), mimeType: z.string().max(256), codec: z.string().max(128),
+  language: z.string().max(256), role: z.string().max(256),
+  width: z.number().int().positive().safe().nullable(), height: z.number().int().positive().safe().nullable(),
+  bandwidth: z.number().int().positive().safe().nullable(), frameRate: z.number().finite().positive().nullable(),
+}).strict();
+export type NativePageMpdTrack = z.infer<typeof nativePageMpdTrackSchema>;
+export const nativePageMpdCatalogSchema = z.object({ sourceId: z.uuid(), tracks: z.array(nativePageMpdTrackSchema).min(1) }).strict();
+export type NativePageMpdCatalog = z.infer<typeof nativePageMpdCatalogSchema>;
+export const nativePageMpdSelectionSchema = z.object({ sourceId: z.uuid(), videoId: z.uuid(), audioId: z.uuid().optional() })
+  .strict().refine(value => value.videoId !== value.audioId);
+export type NativePageMpdSelection = z.infer<typeof nativePageMpdSelectionSchema>;
 export const NATIVE_PAGE_READ_BYTES = 64 * 1024;
 export const NATIVE_PAGE_METADATA_PREFIX_BYTES = 1024 * 1024;
 export const nativePageIndexedCandidateSchema = z.object({

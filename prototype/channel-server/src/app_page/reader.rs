@@ -1,5 +1,7 @@
 //! Origin reads remain inside a selected page lease; peers address admitted IDs only.
 use super::{Format, MediaContext};
+#[path = "mpd_native.rs"]
+mod mpd_native;
 use anyhow::{anyhow, bail, ensure, Result};
 use piik_channel_core::watch_delivery::WATCH_WINDOW_BYTES;
 use piik_channel_native::watch::{ReadResult, Reader};
@@ -13,7 +15,7 @@ use std::{
 use tokio::sync::{watch, Mutex};
 use uuid::Uuid;
 
-const MAX_MANIFEST: usize = 1024 * 1024;
+const MAX_MANIFEST: usize = piik_channel_core::watch_delivery::WATCH_MEDIA_MANIFEST_BYTES;
 const MAX_RESOURCES: usize = 32768;
 
 fn request_failure(error: reqwest::Error) -> anyhow::Error {
@@ -50,6 +52,10 @@ struct Retention {
 }
 #[derive(Clone)]
 enum Resource {
+    Memory {
+        bytes: Arc<Vec<u8>>,
+        mime_type: String,
+    },
     File {
         url: url::Url,
         size: Option<u64>,
@@ -123,7 +129,7 @@ impl OriginReader {
                 size: context.size,
                 retention: Retention::default(),
             },
-            Format::Hls => Resource::Playlist {
+            Format::Hls | Format::Dash => Resource::Playlist {
                 url,
                 snapshot: None,
                 reload: Arc::new(Mutex::new(())),
@@ -232,6 +238,16 @@ impl OriginReader {
                 .ok_or_else(|| anyhow!("watch_resource_unavailable"))?
         };
         match resource {
+            Resource::Memory { bytes, mime_type } => {
+                let start = (offset as usize).min(bytes.len());
+                let end = start.saturating_add(length as usize).min(bytes.len());
+                Ok(ReadResult {
+                    mime_type,
+                    total_size: Some(bytes.len() as u64),
+                    bytes: bytes[start..end].to_vec(),
+                    eof: end == bytes.len(),
+                })
+            }
             Resource::Playlist {
                 url,
                 snapshot,
@@ -462,16 +478,7 @@ impl Reader for OriginReader {
         offset: u64,
         length: u32,
     ) -> Pin<Box<dyn Future<Output = Result<ReadResult>> + Send + '_>> {
-        Box::pin(async move {
-            let mut page = self.context.retired.clone();
-            let mut stopped = self.stopped.clone();
-            tokio::select! {
-                biased;
-                _ = page.wait_for(|v|*v) => bail!("watch_source_retired"),
-                _ = stopped.wait_for(|v|*v) => bail!("watch_source_retired"),
-                result = self.window(id,offset,length) => result,
-            }
-        })
+        Box::pin(self.source_operation(self.window(id, offset, length)))
     }
 }
 fn parse_range(value: &str) -> Result<(u64, u64, u64)> {
@@ -624,9 +631,10 @@ fn rewrite(
     let mut pending = BTreeMap::new();
     let mut known: BTreeMap<String, Uuid> = resources
         .iter()
-        .map(|(id, r)| match r {
+        .filter_map(|(id, r)| match r {
+            Resource::Memory { .. } => None,
             Resource::File { url, .. } | Resource::Playlist { url, .. } => {
-                (url.as_str().to_owned(), *id)
+                Some((url.as_str().to_owned(), *id))
             }
         })
         .collect();

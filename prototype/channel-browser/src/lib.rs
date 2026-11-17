@@ -597,3 +597,12 @@ impl FileDelivery {
         )
     }
 }
+
+#[wasm_bindgen]
+pub fn watch_media_fragment_bytes() -> usize {
+    piik_channel_core::watch_delivery::WATCH_MEDIA_FRAGMENT_BYTES
+}
+#[wasm_bindgen]
+pub fn watch_media_manifest_bytes() -> usize {
+    piik_channel_core::watch_delivery::WATCH_MEDIA_MANIFEST_BYTES
+}

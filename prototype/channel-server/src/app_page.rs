@@ -1,12 +1,14 @@
 //! Page players belong to one approved App WebSocket, never to website messages.
-use anyhow::{anyhow, bail, Result};
+#[path = "app_page/mpd_selection.rs"]
+mod mpd_selection;
+use anyhow::{anyhow, bail, ensure, Result};
 use futures_util::{
     future::{AbortHandle, AbortRegistration, Abortable, BoxFuture},
     FutureExt,
 };
 use piik_channel_native::session::HostCommand;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::{collections::BTreeMap, sync::Mutex};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::{mpsc, oneshot, watch};
@@ -107,6 +109,12 @@ pub enum Operation {
         video: indexed::TrackRecipe,
         audio: Option<indexed::TrackRecipe>,
     },
+    PageMediaPrepareMpd {
+        page_id: Uuid,
+        source_id: Uuid,
+        video_id: Uuid,
+        audio_id: Option<Uuid>,
+    },
     PageMediaResource(ResourceRequest),
     PageMediaStop {
         page_id: Uuid,
@@ -120,6 +128,11 @@ pub enum Operation {
     deny_unknown_fields
 )]
 pub enum ResourceRequest {
+    InspectMpd {
+        page_id: Uuid,
+        choice_id: Uuid,
+        read_id: Uuid,
+    },
     ReadMetadata {
         page_id: Uuid,
         choice_id: Uuid,
@@ -230,6 +243,8 @@ impl Drop for Registration {
 }
 #[derive(Default)]
 struct MediaSlot {
+    inspection: Option<Uuid>,
+    mpd: Option<Arc<mpd_selection::MpdCatalog>>,
     pending: Option<(Uuid, watch::Sender<bool>)>,
     active: Option<Registration>,
 }
@@ -241,6 +256,10 @@ impl Drop for MediaSlot {
     }
 }
 enum MediaSelection {
+    Mpd {
+        catalog: Arc<mpd_selection::MpdCatalog>,
+        selected: Vec<Uuid>,
+    },
     Direct(Uuid),
     Indexed {
         video: indexed::TrackRecipe,
@@ -257,6 +276,7 @@ pub struct Connection {
     resource_reads: Mutex<BTreeMap<Uuid, (Uuid, AbortHandle)>>,
 }
 struct ResourceRead {
+    page_id: Uuid,
     connection: Arc<Connection>,
     id: Uuid,
     _permit: tokio::sync::OwnedSemaphorePermit,
@@ -268,6 +288,11 @@ impl Drop for ResourceRead {
             .lock()
             .unwrap()
             .remove(&self.id);
+        if let Some(slot) = self.connection.media.lock().unwrap().get_mut(&self.page_id) {
+            if slot.inspection == Some(self.id) {
+                slot.inspection = None;
+            }
+        }
     }
 }
 impl Connection {
@@ -301,7 +326,9 @@ impl Connection {
             let Some(slot) = sources.get_mut(&page) else { return };
             if !slot.active.as_ref().is_some_and(|active| active.source.resource_id == root) { return; }
             let removed = slot.active.take();
-            if slot.pending.is_none() { sources.remove(&page); }
+            if slot.pending.is_none() && slot.mpd.is_none() && slot.inspection.is_none() {
+                sources.remove(&page);
+            }
             removed
         };
         drop(removed); // Cancels this reader's in-flight origin reads before notifying the page.
@@ -333,7 +360,16 @@ impl Connection {
         selection: MediaSelection,
         host: mpsc::Sender<HostCommand>,
     ) -> Result<BoxFuture<'static, Result<Value>>> {
-        let (cancel, mut cancelled) = watch::channel(false);
+        let (cancel, mut cancelled) = match &selection {
+            MediaSelection::Mpd { catalog, .. } => {
+                (catalog.cancel.clone(), catalog.cancel.subscribe())
+            }
+            _ => watch::channel(false),
+        };
+        let catalog_source = match &selection {
+            MediaSelection::Mpd { catalog, .. } => Some(catalog.snapshot.source_id),
+            _ => None,
+        };
         let generation = Uuid::new_v4();
         {
             let mut sources = self.media.lock().unwrap();
@@ -356,9 +392,30 @@ impl Connection {
                     ensure_dispatch(dispatch(Command::Media { owner, page_id: page, choice_id, indexed, reply }))?;
                     result.await?.map_err(anyhow::Error::msg)
                 };
-                let (root, format, reader, retired): (_, _, Arc<dyn piik_channel_native::watch::Reader>, watch::Receiver<bool>) = match selection {
+                let (root, format, reader, retired): (
+                    _,
+                    _,
+                    Arc<dyn piik_channel_native::watch::Reader>,
+                    watch::Receiver<bool>,
+                ) = match selection {
+                    MediaSelection::Mpd { catalog, selected } => {
+                        catalog
+                            .reader
+                            .admit_mpd(catalog.snapshot.clone(), selected)
+                            .await?;
+                        (
+                            catalog.reader.root,
+                            Format::Dash,
+                            catalog.reader.clone(),
+                            catalog.retired.clone(),
+                        )
+                    }
                     MediaSelection::Direct(choice) => {
                         let context = resolve(choice, false).await?;
+                        ensure!(
+                            context.format != Format::Dash,
+                            "watch_mpd_selection_required"
+                        );
                         let format = context.format;
                         let retired = context.retired.clone();
                         let reader = reader::OriginReader::prepare(context, cancel.subscribe()).await?;
@@ -406,9 +463,26 @@ impl Connection {
                 {
                     let mut sources = connection.media.lock().unwrap();
                     ensure_not_cancelled(&cancel)?;
-                    anyhow::ensure!(!*registration.retired.borrow() && !*registration.provider_retired.borrow(), "watch_source_retired");
-                    let slot = sources.get_mut(&page).ok_or_else(|| anyhow!("watch_source_retired"))?;
-                    anyhow::ensure!(slot.pending.as_ref().is_some_and(|(id, _)| *id == generation), "watch_source_retired");
+                    anyhow::ensure!(
+                        !*registration.retired.borrow() && !*registration.provider_retired.borrow(),
+                        "watch_source_retired"
+                    );
+                    let slot = sources
+                        .get_mut(&page)
+                        .ok_or_else(|| anyhow!("watch_source_retired"))?;
+                    anyhow::ensure!(
+                        slot.pending
+                            .as_ref()
+                            .is_some_and(|(id, _)| *id == generation),
+                        "watch_source_retired"
+                    );
+                    ensure!(
+                        catalog_source.is_none_or(|id| slot
+                            .mpd
+                            .as_ref()
+                            .is_some_and(|catalog| catalog.snapshot.source_id == id)),
+                        "watch_source_changed"
+                    );
                     slot.active = Some(registration);
                     slot.pending = None;
                 }
@@ -424,7 +498,12 @@ impl Connection {
                 if let Some(slot) = sources.get_mut(&page) {
                     if slot.pending.as_ref().is_some_and(|(id, _)| *id == generation) { slot.pending = None; }
                 }
-                sources.retain(|_, slot| slot.pending.is_some() || slot.active.is_some());
+                sources.retain(|_, slot| {
+                    slot.pending.is_some()
+                        || slot.active.is_some()
+                        || slot.mpd.is_some()
+                        || slot.inspection.is_some()
+                });
             }
             result
         }.boxed())
@@ -486,6 +565,7 @@ impl Connection {
             reads.insert(read_id, (page_id, cancel));
         }
         let lease = ResourceRead {
+            page_id,
             connection: self.clone(),
             id: read_id,
             _permit: permit,
@@ -775,6 +855,8 @@ mod tests {
         connection.media.lock().unwrap().insert(
             page,
             MediaSlot {
+                inspection: None,
+                mpd: None,
                 pending: None,
                 active: Some(Registration {
                     reader: reader.clone(),
@@ -1283,3 +1365,7 @@ fn ensure_not_cancelled(cancel: &watch::Sender<bool>) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "app_page/mpd_selection_tests.rs"]
+mod mpd_selection_tests;

@@ -8729,8 +8729,8 @@ async function websiteSourceSelection(discover: () => Promise<unknown>) {
   const setupResult = await setup(1000, false);
   const { session } = setupResult;
   const pageId = crypto.randomUUID(), candidateId = crypto.randomUUID();
-  const request = vi.fn(async (command: { type: string }) => {
-    if (command.type === 'page_media_sources') return discover();
+  const request = vi.fn(async (command: { type: string }): Promise<unknown> => {
+    if (command.type === 'page_media_sources') return { mpdCandidates: [], ...(await discover() as object) };
     return { position: 0, paused: true, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] };
   });
   const dispose = vi.fn();
@@ -8743,6 +8743,131 @@ async function websiteSourceSelection(discover: () => Promise<unknown>) {
   page.receive({ type: 'page_candidates', pageId, url: page.url, candidates: [{ id: candidateId, title: 'Film', url: null, duration: 60 }] });
   return { ...setupResult, page, candidateId, commit, request, dispose };
 }
+
+function mpdSelectionFixture() {
+  const candidate = { id: crypto.randomUUID(), name: 'Whole film', hostname: 'media.test' };
+  const track = (kind: 'video' | 'audio') => ({ id: crypto.randomUUID(), kind, label: kind, mimeType: `${kind}/mp4`,
+    codec: kind === 'video' ? 'avc1.4d401e' : 'mp4a.40.2', language: kind === 'audio' ? 'en' : '', role: 'main',
+    width: kind === 'video' ? 640 : null, height: kind === 'video' ? 360 : null, bandwidth: null, frameRate: null });
+  const video = track('video'), audio = track('audio');
+  const catalog = { sourceId: crypto.randomUUID(), tracks: [video, audio] };
+  const selected = { sourceId: catalog.sourceId, videoId: video.id, audioId: audio.id };
+  return { candidate, catalog, selected };
+}
+
+test('MPD whole-track selection stays private until explicit confirmation and uses one atomic publication', async () => {
+  localProviderVideo();
+  const { candidate, catalog, selected } = mpdSelectionFixture();
+  const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], mpdCandidates: [candidate], byteSource: null }));
+  commit.mockRestore();
+  const inspect = vi.spyOn(page, 'inspectMpd').mockResolvedValue(catalog);
+  const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'dash' as const };
+  const prepare = vi.spyOn(page, 'prepareMpdMedia').mockResolvedValue(source);
+  try {
+    await session.selectWatchPage('first', candidateId);
+    expect(session.watchPage('first')?.watchSources?.mpd).toEqual([{ candidate }]);
+    expect(inspect).not.toHaveBeenCalled(); expect(prepare).not.toHaveBeenCalled();
+    await session.inspectWatchMpdSource('first', candidate.id, new AbortController().signal);
+    expect(session.watchPage('first')?.watchSources?.mpd).toEqual([{ candidate, catalog }]);
+    const confirming = session.selectWatchMpdSource('first', selected);
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
+    expect(prepare).toHaveBeenCalledWith(selected, expect.any(AbortSignal));
+    const start = socket.sent.findLast(command => command.type === 'start_watch')!;
+    expect(start.source).toEqual({ kind: 'website', url: page.url }); expect(start.byteSource).toEqual(source);
+    expect(socket.sent.filter(command => command.type === 'start_watch')).toHaveLength(1);
+    expect(socket.sent.some(command => command.type === 'set_watch_byte_source')).toBe(false);
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch')).toBe(true));
+    const update = socket.sent.findLast(command => command.type === 'update_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: update.requestId, result: { type: 'done' } });
+    await confirming;
+    expect(session.getSnapshot().watchPlayers.get(start.id as string)?.media.retainedByteSource).toEqual(source);
+    expect(dispose).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
+test('MPD preparation failure preserves the selected page and incumbent; cancelling retires a late candidate', async () => {
+  localProviderVideo();
+  const { candidate, catalog, selected } = mpdSelectionFixture();
+  const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], mpdCandidates: [candidate], byteSource: null }));
+  vi.spyOn(page, 'inspectMpd').mockResolvedValue(catalog);
+  const prepare = vi.spyOn(page, 'prepareMpdMedia').mockRejectedValueOnce(new Error('watch_source_unavailable'));
+  const incumbent = new WatchPlayer('first', true, new HTMLVideoMedia('https://fixture.test/old.mp4', 'file'), () => {});
+  const close = vi.spyOn(incumbent, 'close');
+  (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set('old', incumbent);
+  try {
+    await session.selectWatchPage('first', candidateId);
+    await session.inspectWatchMpdSource('first', candidate.id, new AbortController().signal);
+    await expect(session.selectWatchMpdSource('first', selected)).rejects.toThrow('watch_source_unavailable');
+    expect(session.watchPage('first')).toBeDefined(); expect(close).not.toHaveBeenCalled(); expect(dispose).not.toHaveBeenCalled();
+    let release!: (source: WatchByteSource) => void;
+    prepare.mockImplementationOnce((_selected, signal) => new Promise((resolve, reject) => {
+      release = resolve;
+      signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true });
+    }));
+    const confirming = session.selectWatchMpdSource('first', selected);
+    const rejected = expect(confirming).rejects.toThrow();
+    await session.cancelScreenSelection('first');
+    await rejected;
+    const nextDispose = vi.fn();
+    const nextPage = new appLink.AppPage(crypto.randomUUID(), 'https://other.test/player', vi.fn(async () => null), nextDispose, () => {});
+    vi.spyOn(session as unknown as { connectApp(): Promise<appLink.ChannelApp> }, 'connectApp').mockResolvedValue({ preparePage: async () => nextPage } as unknown as appLink.ChannelApp);
+    await session.prepareWatchPage('first', nextPage.url);
+    release({ sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'dash' });
+    await Promise.resolve();
+    expect(session.watchPage('first')?.url).toBe(nextPage.url); expect(nextDispose).not.toHaveBeenCalled(); expect(dispose).toHaveBeenCalledOnce();
+    expect(close).not.toHaveBeenCalled(); expect(commit).not.toHaveBeenCalled();
+    expect(socket.sent.some(command => command.type === 'start_watch')).toBe(false);
+  } finally { session.close(); }
+});
+
+test('a late MPD inspection cannot replace a newer page selection catalog', async () => {
+  const { candidate, catalog } = mpdSelectionFixture();
+  const { session, page, candidateId } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], mpdCandidates: [candidate], byteSource: null }));
+  let late!: (value: typeof catalog) => void;
+  const inspect = vi.spyOn(page, 'inspectMpd').mockImplementationOnce((_id, signal) => new Promise((resolve, reject) => {
+    late = resolve;
+    signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true });
+  }));
+  try {
+    await session.selectWatchPage('first', candidateId);
+    const selecting = session.inspectWatchMpdSource('first', candidate.id, new AbortController().signal);
+    const rejected = expect(selecting).rejects.toThrow();
+    await vi.waitFor(() => expect(inspect).toHaveBeenCalledOnce());
+    await session.cancelScreenSelection('first'); await rejected;
+    const next = mpdSelectionFixture(), nextCandidateId = crypto.randomUUID();
+    const nextPage = new appLink.AppPage(crypto.randomUUID(), 'https://other.test/player', vi.fn(async command => command.type === 'page_media_sources'
+      ? { choices: [], indexedCandidates: [], mpdCandidates: [next.candidate], byteSource: null }
+      : { position: 0, paused: true, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] }), vi.fn(), () => {});
+    vi.spyOn(nextPage, 'inspectMpd').mockResolvedValue(next.catalog);
+    vi.spyOn(session as unknown as { connectApp(): Promise<appLink.ChannelApp> }, 'connectApp').mockResolvedValue({ preparePage: async () => nextPage } as unknown as appLink.ChannelApp);
+    await session.prepareWatchPage('first', nextPage.url);
+    nextPage.receive({ type: 'page_candidates', pageId: nextPage.id, url: nextPage.url, candidates: [{ id: nextCandidateId, title: 'New film', url: null, duration: 60 }] });
+    await session.selectWatchPage('first', nextCandidateId);
+    await session.inspectWatchMpdSource('first', next.candidate.id, new AbortController().signal);
+    late(catalog); await Promise.resolve();
+    expect(session.watchPage('first')?.watchSources?.mpd[0]?.catalog?.sourceId).toBe(next.catalog.sourceId);
+  } finally { session.close(); }
+});
+
+test('MPD manifests are inspected explicitly and replacing the current catalog retires its old selection', async () => {
+  const first = mpdSelectionFixture(), second = mpdSelectionFixture();
+  const { session, page, candidateId } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], mpdCandidates: [first.candidate, second.candidate], byteSource: null }));
+  const inspect = vi.spyOn(page, 'inspectMpd').mockImplementation(async id => id === first.candidate.id ? first.catalog : second.catalog);
+  const prepare = vi.spyOn(page, 'prepareMpdMedia');
+  try {
+    await session.selectWatchPage('first', candidateId);
+    expect(inspect).not.toHaveBeenCalled();
+    await session.inspectWatchMpdSource('first', first.candidate.id, new AbortController().signal);
+    expect(inspect).toHaveBeenCalledTimes(1);
+    await session.inspectWatchMpdSource('first', second.candidate.id, new AbortController().signal);
+    expect(inspect).toHaveBeenCalledTimes(2);
+    const sources = session.watchPage('first')!.watchSources!.mpd;
+    expect(sources.filter(value => value.catalog)).toEqual([{ candidate: second.candidate, catalog: second.catalog }]);
+    await expect(session.selectWatchMpdSource('first', first.selected)).rejects.toThrow('watch_page_unavailable');
+    expect(prepare).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
 
 test.each([true, false])('a rejected webpage candidate keeps the live page with global reporting %s', async reportError => {
   const { session, page, candidateId, commit, dispose, request } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
@@ -8996,7 +9121,7 @@ test('an empty first source list stays open for later sources or an explicit ori
   try {
     await expect(session.selectWatchPage('first', candidateId)).resolves.toBe(false);
     expect(commit).not.toHaveBeenCalled();
-    expect(session.watchPage('first')?.watchSources).toEqual({ candidateId, choices: [], indexed: [] });
+    expect(session.watchPage('first')?.watchSources).toEqual({ candidateId, choices: [], indexed: [], mpd: [] });
     await session.selectWatchBrowserSource('first', null);
     expect(commit).toHaveBeenCalledOnce();
   } finally { session.close(); }
@@ -9255,7 +9380,7 @@ test('failed webpage discovery keeps its selected page for an explicit original-
   const { session, candidateId, commit, dispose } = await websiteSourceSelection(async () => { throw new Error('page_player_timeout'); });
   try {
     await expect(session.selectWatchPage('first', candidateId)).resolves.toBe(false);
-    expect(session.watchPage('first')?.watchSources).toEqual({ candidateId, choices: [], indexed: [], error: 'page_player_timeout' });
+    expect(session.watchPage('first')?.watchSources).toEqual({ candidateId, choices: [], indexed: [], mpd: [], error: 'page_player_timeout' });
     expect(dispose).not.toHaveBeenCalled();
     expect(commit).not.toHaveBeenCalled();
     await session.selectWatchBrowserSource('first', null);

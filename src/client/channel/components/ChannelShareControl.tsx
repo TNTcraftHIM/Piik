@@ -1,8 +1,8 @@
 import { WatchEmbedPreview } from "./WatchEmbedPreview";
 import { canUseYouTubePlayer, youtubeVideoId } from "../watch-youtube-source";
-import { WatchIndexedTrackPicker } from "./WatchIndexedTrackPicker";
+import { WatchIndexedTrackPicker, WatchMpdSourcePicker } from "./WatchIndexedTrackPicker";
 import { indexedMediaSelection } from "../watch-indexed-source";
-import type { NativePageIndexedSelection } from "../../native/wire";
+import type { NativePageIndexedSelection, NativePageMpdSelection } from "../../native/wire";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { CaptureSourcePicker, type NativeSourceList } from "../../components/living/CaptureSourcePicker";
 import { Btn, SwitchItem } from "../../components/living/primitives";
@@ -262,7 +262,7 @@ function WatchForwardSettings({ channel, activityId, disabled }: { channel: Chan
   const busy = channel.pending.has(`watch-source:${activityId}`);
   const retained = channel.watchPlayers.get(activityId)?.media.retainedByteSource;
   const failure = error ?? sources?.error;
-  const forward = (choice: string | NativePageIndexedSelection) => {
+  const forward = (choice: string | NativePageIndexedSelection | NativePageMpdSelection) => {
     discovery.current?.abort();
     const controller = discovery.current = new AbortController();
     void run(() => channel.setWatchByteSource(activityId, choice, controller.signal));
@@ -292,7 +292,18 @@ function WatchForwardSettings({ channel, activityId, disabled }: { channel: Chan
             const audio = audioId ? sources.indexed.find(value => value.candidate.id === audioId)?.inspection : undefined;
             if (video) forward(indexedMediaSelection(video, audio));
           }} />}
-        {!sources.choices.length && !sources.indexed.length && <p role="status">{t("watch.forward.none")}</p>}
+        {sources.mpd.length > 0 && <WatchMpdSourcePicker choices={sources.mpd} disabled={disabled} busy={busy} onConfirm={forward}
+          onInspect={(choiceId, signal) => run(async () => {
+            const catalog = await channel.inspectWatchMpdSource(activity!.roomId, choiceId, signal, activityId);
+            if (!signal.aborted) setSources(previous => {
+              if (!previous) return previous;
+              for (const value of previous.mpd) { delete value.catalog; delete value.error; }
+              const choice = previous.mpd.find(value => value.candidate.id === choiceId);
+              if (choice) choice.catalog = catalog;
+              return { ...previous };
+            });
+          })} />}
+        {!sources.choices.length && !sources.indexed.length && !sources.mpd.length && <p role="status">{t("watch.forward.none")}</p>}
         <Btn icon="x" quiet title="common.cancel" cap="common.cancel" disabled={busy} onClick={cancel} />
       </>}
     {failure && <p className="c3-settings-error" role="alert">{channelErrorPresentation(failure, t).message}</p>}
@@ -330,14 +341,14 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
       onOriginalPage={channel.pagePlayer ? () => { void run(async () => {
         await channel.cancelScreenSelection(roomId); await channel.prepareWatchPage(roomId, url.trim(), undefined, false);
       }); } : undefined} /> : page ? <div className="c3-settings-panels c3-external-input">
-      {pageSources ? <><h3 ref={pageSourcesHeading} tabIndex={-1}>{t(pageSources.indexed.length ? "watch.forward.title" : "watch.browserSource.title")}</h3>{pageSources.choices.length > 0 && <p>{t("watch.browserSource.help")}</p>}</>
+      {pageSources ? <><h3 ref={pageSourcesHeading} tabIndex={-1}>{t(pageSources.indexed.length || pageSources.mpd.length ? "watch.forward.title" : "watch.browserSource.title")}</h3>{pageSources.choices.length > 0 && <p>{t("watch.browserSource.help")}</p>}</>
         : <p ref={pageInstruction} tabIndex={-1}>{t("watch.chooseVideo")}</p>}
       <Btn icon="window" quiet size="compact" title="watch.openedPage" cap="watch.openedPage" onClick={() => { void run(() => channel.focusWatchPage(roomId, activityId)); }} />
       {pageSources ? <>
-        {busy && !error && pageSources.choices.length === 0 && pageSources.indexed.length === 0 && <div className="lr-source-picker-status" role="status">
+        {busy && !error && pageSources.choices.length === 0 && pageSources.indexed.length === 0 && pageSources.mpd.length === 0 && <div className="lr-source-picker-status" role="status">
           <BrandLoader /><span>{t("common.loading")}</span>
         </div>}
-        {!busy && !pageSources.error && pageSources.choices.length === 0 && pageSources.indexed.length === 0 && <p role="status">{t("watch.waitForVideo")}</p>}
+        {!busy && !pageSources.error && pageSources.choices.length === 0 && pageSources.indexed.length === 0 && pageSources.mpd.length === 0 && <p role="status">{t("watch.waitForVideo")}</p>}
         {pageSources.choices.length > 0 && <div className="lr-source-picker-list" data-text-list>
           {pageSources.choices.map(choice => {
             const source = new URL(choice.displayURL), name = choice.name || source.host;
@@ -350,6 +361,9 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
         </div>}
         {pageSources.indexed.length > 0 && <WatchIndexedTrackPicker choices={pageSources.indexed} busy={busy} mainPlayback
           onConfirm={(videoId, audioId) => { void run(() => channel.selectWatchIndexedSource(roomId, videoId, audioId, false), onClose); }} />}
+        {pageSources.mpd.length > 0 && <WatchMpdSourcePicker choices={pageSources.mpd} busy={busy} mainPlayback
+          onInspect={(choiceId, signal) => run(() => channel.inspectWatchMpdSource(roomId, choiceId, signal))}
+          onConfirm={selected => { void run(() => channel.selectWatchMpdSource(roomId, selected, false), onClose); }} />}
         <Btn icon="globe" quiet title="watch.browserSource.skip" cap="watch.browserSource.skip" disabled={busy}
           onClick={() => { void run(() => channel.selectWatchBrowserSource(roomId, null, false), onClose); }} />
       </> : page.candidates.length ? <div className="lr-source-picker-list">

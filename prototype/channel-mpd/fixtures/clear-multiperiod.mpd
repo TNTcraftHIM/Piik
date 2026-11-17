@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" xmlns:cenc="urn:mpeg:cenc:2013" profiles="urn:mpeg:dash:profile:isoff-live:2011" type="static" mediaPresentationDuration="PT36.269S" minBufferTime="PT2.000S">
+  <Period id="0" duration="PT5.972633333S">
+    <AdaptationSet mimeType="audio/mp4" segmentAlignment="true" startWithSAP="1" lang="en">
+      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
+      <SegmentTemplate initialization="https://example.com/$RepresentationID$/init0.m4f" media="https://example.com/$RepresentationID$/segment$Number$.m4f" startNumber="0" timescale="44100">
+        <SegmentTimeline>
+          <S d="88064" r="2"/>
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation audioSamplingRate="44100" bandwidth="123000" codecs="mp4a.40.2" id="default_audio128_2"/>
+      <Representation audioSamplingRate="44100" bandwidth="93000" codecs="mp4a.40.2" id="default_audio96_2"/>
+    </AdaptationSet>
+    <AdaptationSet mimeType="video/mp4" scanType="progressive" segmentAlignment="true" startWithSAP="1">
+      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
+      <SegmentTemplate initialization="https://example.com/$RepresentationID$/init0.m4f" media="https://example.com/$RepresentationID$/segment$Number$.m4f" startNumber="0" timescale="30000">
+        <SegmentTimeline>
+          <S d="60060" r="1"/>
+          <S d="59059"/>
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation bandwidth="2008000" codecs="avc1.4d001f" frameRate="2997/100" height="720" id="default_video2000_0_1280x720" width="1280"/>
+      <Representation bandwidth="1195000" codecs="avc1.4d001f" frameRate="2997/100" height="540" id="default_video1200_1_960x540" width="960"/>
+      <Representation bandwidth="884000" codecs="avc1.4d001e" frameRate="2997/100" height="360" id="default_video900_1_640x360" width="640"/>
+    </AdaptationSet>
+  </Period>
+  <Period id="1" duration="PT4.838166665S">
+    <AdaptationSet mimeType="audio/mp4" segmentAlignment="true" startWithSAP="1" lang="en">
+
+
+      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
+      <SegmentTemplate initialization="https://example.com/$RepresentationID$/init1.m4f" media="https://example.com/$RepresentationID$/segment$Number$.m4f" startNumber="3" timescale="44100">
+        <SegmentTimeline>
+          <S d="88064" r="1"/>
+          <S d="37888"/>
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation audioSamplingRate="44100" bandwidth="123000" codecs="mp4a.40.2" id="default_audio128_2"/>
+      <Representation audioSamplingRate="44100" bandwidth="93000" codecs="mp4a.40.2" id="default_audio96_2"/>
+    </AdaptationSet>
+    <AdaptationSet mimeType="video/mp4" scanType="progressive" segmentAlignment="true" startWithSAP="1">
+
+
+      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
+      <SegmentTemplate initialization="https://example.com/$RepresentationID$/init1.m4f" media="https://example.com/$RepresentationID$/segment$Number$.m4f" startNumber="3" timescale="30000">
+        <SegmentTimeline>
+          <S d="58058" r="1"/>
+          <S d="29029"/>
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation bandwidth="2008000" codecs="avc1.4d001f" frameRate="2997/100" height="720" id="default_video2000_0_1280x720" width="1280"/>
+      <Representation bandwidth="1195000" codecs="avc1.4d001f" frameRate="2997/100" height="540" id="default_video1200_1_960x540" width="960"/>
+      <Representation bandwidth="884000" codecs="avc1.4d001e" frameRate="2997/100" height="360" id="default_video900_1_640x360" width="640"/>
+    </AdaptationSet>
+  </Period>
+  <Period id="2" duration="PT13.980633333S">
+    <AdaptationSet mimeType="audio/mp4" segmentAlignment="true" startWithSAP="1" lang="en">
+      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
+      <SegmentTemplate initialization="https://example.com/$RepresentationID$/init2.m4f" media="https://example.com/$RepresentationID$/segment$Number$.m4f" startNumber="6" timescale="44100">
+        <SegmentTimeline>
+          <S d="88064" r="6"/>
+          <S d="1024"/>
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation audioSamplingRate="44100" bandwidth="123000" codecs="mp4a.40.2" id="default_audio128_2"/>
+      <Representation audioSamplingRate="44100" bandwidth="93000" codecs="mp4a.40.2" id="default_audio96_2"/>
+    </AdaptationSet>
+    <AdaptationSet mimeType="video/mp4" scanType="progressive" segmentAlignment="true" startWithSAP="1">
+      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
+      <SegmentTemplate initialization="https://example.com/$RepresentationID$/init2.m4f" media="https://example.com/$RepresentationID$/segment$Number$.m4f" startNumber="6" timescale="30000">
+        <SegmentTimeline>
+          <S d="60060" r="5"/>
+          <S d="59059"/>
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation bandwidth="2008000" codecs="avc1.4d001f" frameRate="2997/100" height="720" id="default_video2000_0_1280x720" width="1280"/>
+      <Representation bandwidth="1195000" codecs="avc1.4d001f" frameRate="2997/100" height="540" id="default_video1200_1_960x540" width="960"/>
+      <Representation bandwidth="884000" codecs="avc1.4d001e" frameRate="2997/100" height="360" id="default_video900_1_640x360" width="640"/>
+    </AdaptationSet>
+  </Period>
+  <Period id="3" duration="PT3.157913831S">
+    <AdaptationSet mimeType="audio/mp4" segmentAlignment="true" startWithSAP="1" lang="en">
+
+
+      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
+      <SegmentTemplate presentationTimeOffset="214016" initialization="https://example.com/$RepresentationID$/init3.m4f" media="https://example.com/$RepresentationID$/segment$Number$.m4f" startNumber="14" timescale="44100">
+        <SegmentTimeline>
+          <S d="51200"/>
+          <S d="88064"/>
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation audioSamplingRate="44100" bandwidth="123000" codecs="mp4a.40.2" id="default_audio128_2"/>
+      <Representation audioSamplingRate="44100" bandwidth="93000" codecs="mp4a.40.2" id="default_audio96_2"/>
+    </AdaptationSet>
+    <AdaptationSet mimeType="video/mp4" scanType="progressive" segmentAlignment="true" startWithSAP="1">
+
+
+      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
+      <SegmentTemplate presentationTimeOffset="145145" initialization="https://example.com/$RepresentationID$/init3.m4f" media="https://example.com/$RepresentationID$/segment$Number$.m4f" startNumber="13" timescale="30000">
+        <SegmentTimeline>
+          <S d="29029"/>
+          <S d="58058"/>
+          <S d="8008"/>
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation bandwidth="2008000" codecs="avc1.4d001f" frameRate="2997/100" height="720" id="default_video2000_0_1280x720" width="1280"/>
+      <Representation bandwidth="1195000" codecs="avc1.4d001f" frameRate="2997/100" height="540" id="default_video1200_1_960x540" width="960"/>
+      <Representation bandwidth="884000" codecs="avc1.4d001e" frameRate="2997/100" height="360" id="default_video900_1_640x360" width="640"/>
+    </AdaptationSet>
+  </Period>
+  <Period id="4" duration="PT7.987664396S">
+    <AdaptationSet mimeType="audio/mp4" segmentAlignment="true" startWithSAP="1" lang="en">
+      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
+      <SegmentTemplate initialization="https://example.com/$RepresentationID$/segment$Number$.m4f" media="https://example.com/$RepresentationID$/segment$Number$.m4f" startNumber="16" timescale="44100">
+        <SegmentTimeline>
+          <S d="88064" r="3"/>
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation audioSamplingRate="44100" bandwidth="123000" codecs="mp4a.40.2" id="default_audio128_2"/>
+      <Representation audioSamplingRate="44100" bandwidth="93000" codecs="mp4a.40.2" id="default_audio96_2"/>
+    </AdaptationSet>
+    <AdaptationSet mimeType="video/mp4" scanType="progressive" segmentAlignment="true" startWithSAP="1">
+      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
+      <SegmentTemplate initialization="https://example.com/$RepresentationID$/segment$Number$.m4f" media="https://example.com/$RepresentationID$/segment$Number$.m4f" startNumber="16" timescale="30000">
+        <SegmentTimeline>
+          <S d="60060" r="2"/>
+          <S d="59059"/>
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation bandwidth="2008000" codecs="avc1.4d001f" frameRate="2997/100" height="720" id="default_video2000_0_1280x720" width="1280"/>
+      <Representation bandwidth="1195000" codecs="avc1.4d001f" frameRate="2997/100" height="540" id="default_video1200_1_960x540" width="960"/>
+      <Representation bandwidth="884000" codecs="avc1.4d001e" frameRate="2997/100" height="360" id="default_video900_1_640x360" width="640"/>
+    </AdaptationSet>
+  </Period>
+</MPD>

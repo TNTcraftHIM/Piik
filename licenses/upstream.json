@@ -43,5 +43,15 @@
     "file": "jetbrains-annotations-13.0.txt",
     "source": "https://repo.maven.apache.org/maven2/org/jetbrains/annotations/13.0/annotations-13.0-sources.jar",
     "sha256": "87d9969aec44fb1ae09b0cca9586ceec329ff12a99342de28037cb648f792881"
+  },
+  "rquickjs@0.14.0": {
+    "source": "https://github.com/DelSkayn/rquickjs/blob/d7ef5eeae702fea24c03643064de454f1c1dd4b0/LICENSE",
+    "file": "rquickjs-0.14.0.txt",
+    "sha256": "976ad3d07927343ab99b31510625acba89eac8e0e517c712925620ddeda91b70"
+  },
+  "mpd-parser/Apache-2.0": {
+    "source": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+    "file": "mpd-parser-Apache-2.0.txt",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
   }
 }

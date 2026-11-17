@@ -336,6 +336,16 @@ its own resource semantics; it does not replace attachment hashes or persist
 media in chat history. Encrypted media still requires the receiving player's
 valid license.
 
+For clear static DASH, the approved Native page owns an immutable manifest
+catalog and opaque video/audio choices. The source selects complete logical
+tracks; the parser resolves only those tracks into the existing reader's admitted
+resources. Original URLs and request credentials remain Native-owned. The Browser's
+DASH player reads the selected manifest and media through those resource IDs and
+owns container/MSE playback. Selection does not promise decoder support or grant
+access to another source. Dynamic, protected and externally expanded manifests
+remain unsupported. The [pure parser module](../../prototype/channel-mpd/README.md)
+owns its dependency, generation and resource-budget contract.
+
 ### Screen Demand Uses Reachable Paths
 
 Viewers are a publication's destinations, not the complete set of eligible relays.

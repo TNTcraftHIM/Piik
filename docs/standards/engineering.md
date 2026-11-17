@@ -23,6 +23,7 @@ checks the Browser, `scripts/tsconfig.json` checks tooling/tests, and root
 | `prototype/channel-core` | Shared Rust domain/room authority, wire, storage, routing and file rules |
 | `prototype/channel-browser` | WASM binding and IndexedDB room adapter over that core |
 | `prototype/channel-native` | Native room participant, RTC/media, capture and input adapters |
+| `prototype/channel-mpd` | Pure source-manifest inspection and selected DASH resources; no transport or page authority |
 | `prototype/channel-server` | Domain HTTP/WebSocket I/O, Server composition, App approval/launcher and static Web delivery |
 | `prototype/channel-android`, `mobile/android` | JNI entry, Android service/consent shell and shared Rust App lifetime |
 | `mobile/cloudflared`, root `.go-version` | Independent upstream tunnel helper's Android overlay and build toolchain |

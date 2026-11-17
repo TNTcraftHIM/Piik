@@ -45,7 +45,7 @@ export const en: Record<CopyKey, string> = {
   "watch.decodeFailed": "This browser could not decode the video. Try another browser or watch the original webpage in the App.",
   "watch.playbackUnsupported": "This browser cannot play this video source or format right now.",
   "watch.forward.failed": "Video playback failed. Try again or choose another receiving method.",
-  "watch.forward.unsupported": "This video source cannot be forwarded yet. Each person can watch the original webpage in the App.",
+  "watch.forward.unsupported": "This video source cannot be forwarded yet. Keep using the original webpage, or choose another source.",
   "watch.forward.sourceUnavailable": "Could not read this video source. Try again or select another source.",
   "watch.forward.busy": "Video forwarding is busy. Try again shortly.",
   "watch.forward.readTimeout": "Timed out waiting for video data. Try receiving again or choose another viewing method.",

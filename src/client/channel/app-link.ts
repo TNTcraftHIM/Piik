@@ -2,6 +2,8 @@ import { CHANNEL_PROTOCOL, MAX_RELAY_CAPACITY, watchByteSourceSchema, type Watch
 import { unsupportedVideoFormatSchema, type UnsupportedVideoFormat, nativePageEventSchema, nativePageStateSchema, nativePageMediaChoiceSchema, nativePageIndexedCandidateSchema,
   nativePageMetadataReadSchema, nativePageMetadataResultSchema, nativePageIndexedSelectionSchema,
   nativePageResourceReadSchema, nativePageResourceResultSchema,
+  nativePageMpdCandidateSchema, nativePageMpdCatalogSchema, nativePageMpdSelectionSchema,
+  type NativePageMpdCandidate, type NativePageMpdCatalog, type NativePageMpdSelection,
   type NativePageCandidate, type NativePageMediaChoice, type NativePageIndexedCandidate, type NativePageIndexedSelection } from "../native/wire";
 import type { AppPagePort, WatchMediaEvent, WatchMediaPatch, WatchMediaState } from "./watch-media";
 import type { WatchByteResult } from "./watch-resource";
@@ -16,7 +18,7 @@ import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 import { debugEvent } from "../lib/debug";
 
-export const APP_PROTOCOL = 17;
+export const APP_PROTOCOL = 18;
 const APP_REQUEST_BYTES = 256 * 1024;
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
@@ -106,9 +108,9 @@ export class AppPage implements AppPagePort {
   async patch(patch: WatchMediaPatch): Promise<void> { await this.command("page_patch", { patch }); }
   async focus(): Promise<void> { await this.command("page_focus"); }
   async hide(): Promise<void> { await this.command("page_hide"); }
-  async mediaSources(): Promise<{ choices: NativePageMediaChoice[]; indexedCandidates: NativePageIndexedCandidate[]; byteSource: WatchByteSource | null }> {
+  async mediaSources(): Promise<{ choices: NativePageMediaChoice[]; indexedCandidates: NativePageIndexedCandidate[]; mpdCandidates: NativePageMpdCandidate[]; byteSource: WatchByteSource | null }> {
     return z.object({ choices: z.array(nativePageMediaChoiceSchema).max(32), indexedCandidates: z.array(nativePageIndexedCandidateSchema).max(32),
-      byteSource: watchByteSourceSchema.nullable() }).strict().parse(await this.command("page_media_sources"));
+      mpdCandidates: z.array(nativePageMpdCandidateSchema).max(32), byteSource: watchByteSourceSchema.nullable() }).strict().parse(await this.command("page_media_sources"));
   }
   async readMediaMetadata(choiceId: string, offset: number, length: number, signal: AbortSignal): Promise<{ mimeType: string; totalSize: number; bytes: Uint8Array }> {
     const range = nativePageMetadataReadSchema.parse({ choiceId, offset, length });
@@ -119,6 +121,21 @@ export class AppPage implements AppPagePort {
     return { mimeType: result.mimeType, totalSize: result.totalSize, bytes };
   }
   async prepareMedia(choiceId: string): Promise<WatchByteSource> { return watchByteSourceSchema.parse(await this.command("page_media_prepare", { choiceId })); }
+  async inspectMpd(choiceId: string, signal: AbortSignal): Promise<NativePageMpdCatalog> {
+    const choice = z.object({ choiceId: z.uuid() }).strict().parse({ choiceId });
+    return nativePageMpdCatalogSchema.parse(await this.mediaRead("inspect_mpd", choice, signal));
+  }
+  async prepareMpdMedia(selection: NativePageMpdSelection, signal: AbortSignal): Promise<WatchByteSource> {
+    const preparing = AbortSignal.any([this.lifetime.signal, signal]);
+    preparing.throwIfAborted();
+    const selected = nativePageMpdSelectionSchema.parse(selection);
+    const command = { type: "page_media_prepare_mpd", pageId: this.id, ...selected };
+    const bytes = new TextEncoder().encode(JSON.stringify({ ...command, id: "00000000-0000-4000-8000-000000000000" })).byteLength;
+    if (bytes > APP_REQUEST_BYTES) throw new Error("watch_resource_limit");
+    const value = await this.request(command, preparing);
+    preparing.throwIfAborted();
+    return watchByteSourceSchema.extend({ format: z.literal("dash") }).parse(value);
+  }
   async readMediaResource(sourceId: string, resourceId: string, offset: number, length: number, signal: AbortSignal): Promise<WatchByteResult> {
     const range = nativePageResourceReadSchema.parse({ sourceId, resourceId, offset, length });
     const result = nativePageResourceResultSchema.parse(await this.mediaRead("read", range, signal));
@@ -128,7 +145,7 @@ export class AppPage implements AppPagePort {
       throw new Error("invalid_app_response");
     return { bytes, mimeType: result.mimeType, totalSize: result.totalSize, eof: result.eof };
   }
-  private async mediaRead(action: "read" | "read_metadata", range: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
+  private async mediaRead(action: "read" | "read_metadata" | "inspect_mpd", range: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
     const reading = AbortSignal.any([this.lifetime.signal, signal]);
     reading.throwIfAborted();
     const readId = crypto.randomUUID();

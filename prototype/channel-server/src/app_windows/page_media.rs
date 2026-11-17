@@ -26,6 +26,7 @@ pub struct Choice {
     mime_type: String,
     direct: bool,
     indexed: bool,
+    mpd: bool,
 }
 type ResponseFact = (
     Format,
@@ -141,7 +142,8 @@ impl Media {
         self.match_frames()
     }
     fn is_playlist(&self, url: &str) -> bool {
-        self.response(url).is_some_and(|fact| fact.0 == Format::Hls)
+        self.response(url)
+            .is_some_and(|fact| fact.0 != Format::File)
     }
     fn match_frames(&mut self) -> bool {
         let mut frames = std::mem::take(&mut self.frames);
@@ -192,14 +194,14 @@ impl Media {
         let mut found: BTreeMap<String, (Format, Option<u64>, String, bool, bool)> =
             BTreeMap::new();
         if let Some((format, size, mime, _)) = self.response(current) {
-            if format == Format::Hls || size.is_some() {
+            if format == Format::Hls || format == Format::Dash || size.is_some() {
                 found.insert(current.to_owned(), (format, size, mime, true, false));
             }
         }
         if let Some(frame) = self.frames.get(&frame) {
             for url in &frame.resources {
                 if let Some((format, size, mime, _)) = self.response(url) {
-                    let direct = format == Format::Hls;
+                    let direct = format == Format::Hls || format == Format::Dash;
                     let indexed = format == Format::File
                         && size.is_some_and(|size| size > 0 && size <= 9_007_199_254_740_991);
                     if direct || indexed {
@@ -248,6 +250,7 @@ impl Media {
                     request,
                     direct,
                     indexed,
+                    mpd: format == Format::Dash,
                 },
             );
         }
@@ -274,7 +277,8 @@ impl Media {
                 .unwrap_or_default()
         };
         json!({
-            "choices": self.choices.values().filter(|choice| choice.direct).map(|c|json!({"id":c.id,"displayURL":c.url,"name":name(c),"format":c.format})).collect::<Vec<_>>(),
+            "choices": self.choices.values().filter(|choice| choice.direct&&!choice.mpd).map(|c|json!({"id":c.id,"displayURL":c.url,"name":name(c),"format":c.format})).collect::<Vec<_>>(),
+            "mpdCandidates":self.choices.values().filter(|c|c.mpd).map(|c|json!({"id":c.id,"name":name(c),"hostname":hostname(c)})).collect::<Vec<_>>(),
             "indexedCandidates": self.choices.values().filter(|choice| choice.indexed).map(|c|json!({"id":c.id,"name":name(c),"hostname":hostname(c),"mimeType":c.mime_type,"totalSize":c.size})).collect::<Vec<_>>()
         })
     }
@@ -293,6 +297,9 @@ impl Media {
 }
 
 fn response_format(mime: &str) -> Option<Format> {
+    if mime == "application/dash+xml" {
+        return Some(Format::Dash);
+    }
     if matches!(
         mime,
         "application/vnd.apple.mpegurl"
@@ -315,6 +322,32 @@ fn response_format(mime: &str) -> Option<Format> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mpd_choices_are_observed_opaque_candidates_not_direct_urls() {
+        let mut media = Media::default();
+        let frame = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let url = "https://media.test/master.mpd?grant=private";
+        media.observe_response(
+            url.into(),
+            (Format::Dash, None, "application/dash+xml".into(), None),
+        );
+        media.frame(frame, vec![], vec![url.into()]);
+        media.frame(other, vec![], vec![]);
+        let value = media.sources(frame, "blob:owned");
+        assert_eq!(value["mpdCandidates"].as_array().unwrap().len(), 1);
+        assert!(value["choices"].as_array().unwrap().is_empty());
+        assert!(value["indexedCandidates"].as_array().unwrap().is_empty());
+        assert!(!value.to_string().contains("grant="));
+        assert!(!value.to_string().contains("https://"));
+        let id = Uuid::parse_str(value["mpdCandidates"][0]["id"].as_str().unwrap()).unwrap();
+        assert_eq!(media.choice(id, false).unwrap().format, Format::Dash);
+        assert!(media.sources(other, "blob:other")["mpdCandidates"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+    }
 
     #[test]
     fn redirected_choice_uses_the_observed_final_request_context_privately() {

@@ -419,8 +419,8 @@ opens a separate website window; select its player after loading or signing in.
 If the player uses a media buffer, Piik offers the video addresses discovered in
 that page. Choose one for Browser viewers to try, or share the original webpage
 only. Selecting an address does not enable uploading.
-The list updates as the page discovers media. For indexed sources, choose a
-video track and optional audio track, then explicitly confirm forwarding.
+The list updates as the page discovers media. For indexed or DASH sources,
+choose a video track and optional audio track, then explicitly confirm forwarding.
 The App sends the original encoded bytes through the room's peer paths;
 the [website verification record](../../docs/verification-status.md) records current limits.
 The sharer controls play, pause, position and speed. Each viewer controls local
@@ -434,17 +434,19 @@ App browsing profile; Piik does not send the sharer's cookies to viewers.
 
 Playback state travels through the room's signaling connection. Direct viewing
 does not need a peer media path. The sharer can also choose **Share settings →
-Forward original video**, select a readable file or HLS source, and explicitly
+Forward original video**, select a readable file, HLS or DASH source, and explicitly
 enable upload. Viewers then choose **Receive from sharer** to use the room's
-existing peer paths and consume the sharer's upload capacity. Compatible MP4
-and HLS sources use the Browser's Media Source Extensions, including on the
+existing peer paths and consume the sharer's upload capacity. Compatible MP4,
+HLS and DASH sources use the Browser's Media Source Extensions, including on the
 App's local HTTPS entry. Other native-playable files require an origin where
 the Browser permits Service Workers. Stopping forwarding leaves the webpage
 and synchronized viewing activity open.
 
 Forwarding currently supports finite media files with byte ranges and standard
 HLS VOD playlists, including variants, separate audio and initialization segments.
-Live/low-latency playlists and DRM playback are outside that forwarding support.
+Clear static DASH manifests support explicit video/audio selection and byte-range
+indexes. The viewer still needs a compatible decoder. Live/low-latency playlists,
+dynamic DASH and DRM playback are outside that forwarding support.
 Closing the sharer's source window, changing its selected media, or ending the
 share ends the activity; closing a viewer's window only ends that viewer's watch.
 
@@ -714,7 +716,8 @@ cargo +1.91.0 test --release --locked --manifest-path prototype/channel-core/Car
 ```
 
 The `check:rust` entry point uses Rust 1.91.0 and the Browser adapter's pinned `wasm-bindgen`
-and `cargo-about` tools. It collects core tests with and without SQLite, Native
+and `cargo-about` tools. It checks the generated MPD resolver and its pure parser
+tests, core tests with and without SQLite, Native
 forwarding tests, Server tests including `native_session`, the shared Web/WASM
 build, Browser-adapter TypeScript and the finite WebSocket protocol check. The
 Web build uses development identity. It builds Native before

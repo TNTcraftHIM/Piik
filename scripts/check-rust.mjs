@@ -30,6 +30,8 @@ function cargo(command, crate, ...args) {
     `prototype/channel-${crate}/Cargo.toml`, ...args]);
 }
 
+run(process.execPath, ["scripts/build-mpd-resolver.mjs", "--check"]);
+cargo("test", "mpd");
 cargo("test", "core");
 cargo("test", "core", "--features", "sqlite");
 // Native's default capture feature needs platform SDKs; forwarding does not.
