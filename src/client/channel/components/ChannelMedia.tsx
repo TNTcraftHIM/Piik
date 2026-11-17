@@ -81,9 +81,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const videoRef = useMemo(() => ({ current: player.video }), [player]);
   const controlsId = useId();
   const surface = player.presentation, embedded = surface.kind === "embed";
-  const preparing = player.video
-    ? player.video.readyState < 2 || player.video.videoWidth > 0 && !player.hasPresentedFrame
-    : !player.mediaState || player.mediaState.readyState < 2;
+  const preparing = player.waitingForPicture;
   const [htmlMedia, setMedia] = useState({ position: 0, duration: 0, volume: 1, muted: false, rate: 1 });
   const live = player.mediaState?.live;
   const media = player.video && !live ? htmlMedia : { position: player.mediaState?.position ?? 0, duration: player.mediaState?.duration ?? 0,

@@ -4,9 +4,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ChannelRoomParticipants } from "../src/client/channel/components/ChannelRoomParticipants";
 import { ChannelPeople } from "../src/client/channel/components/ChannelPeople";
 import type { ChannelController } from "../src/client/channel/types";
-import { firstUnreadMessageId, roomPeople, roomRealtimePeople, screenTitle, watchAudience } from "../src/client/channel/presentation";
+import { firstUnreadMessageId, participantActivity, roomPeople, roomRealtimePeople, screenTitle, watchAudience } from "../src/client/channel/presentation";
 import { snapshotSchema, watchActivitySchema } from "../src/client/channel/protocol";
 import { t, type CopyKey } from "../src/client/ui/copy";
+
+import { WatchPlayer } from "../src/client/channel/watch-playback";
+import type { WatchMedia } from "../src/client/channel/watch-media";
 
 const english = (key: CopyKey) => t("en", key);
 const chinese = (key: CopyKey) => t("zh", key);
@@ -25,14 +28,35 @@ it("projects joined watch people independently of transport and deduplicates the
     publications: [], voice: [], subscriptions: [], watchActivities: [activity], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   });
   expect(watchAudience(state, activity)).toEqual([{ userId: "viewer", name: "viewer", avatar: undefined }, { userId: "direct", name: "direct", avatar: undefined }]);
-  expect(roomRealtimePeople(state, "room").map(({ id, sharing, watching, joinedWatch }) => ({ id, sharing, watching, joinedWatch }))).toEqual([
-    { id: "owner", sharing: true, watching: false, joinedWatch: true }, { id: "viewer", sharing: false, watching: false, joinedWatch: true },
-    { id: "direct", sharing: false, watching: false, joinedWatch: true }, { id: "relay", sharing: false, watching: false, joinedWatch: false },
+  expect(roomRealtimePeople(state, "room").map(({ id, sharing, viewing }) => ({ id, sharing, viewing }))).toEqual([
+    { id: "owner", sharing: true, viewing: "joined" }, { id: "viewer", sharing: false, viewing: "joined" },
+    { id: "direct", sharing: false, viewing: "joined" }, { id: "relay", sharing: false, viewing: undefined },
   ]);
   expect(roomPeople(state, "room")).toHaveLength(4);
   const { viewerSessionIds: _viewers, ...oldActivity } = activity;
   expect(watchActivitySchema.safeParse(oldActivity).success).toBe(false);
   expect(watchAudience(state, { ...activity, viewerSessionIds: [] })).toEqual([]);
+  const observedVideo = { readyState: 4, videoWidth: 640 };
+  const video = observedVideo as HTMLVideoElement;
+  const media: WatchMedia = { presentation: { kind: "video", element: video }, read: async () => ({ position: 0, paused: true, rate: 1, duration: 10, readyState: 4, ended: false, buffered: [[0, 10]] }),
+    patch: async () => {}, ready: async () => {}, listen: () => () => {}, close() {} };
+  const player = new WatchPlayer("room", false, media, () => {});
+  const local = { sessionId: "viewer-web", watchPlayers: new Map([["watch", player]]) };
+  try {
+    expect(participantActivity(state, "room", "viewer", local).viewing).toBe("preparing"); // Metadata is not a composited frame.
+    player.presentFrame();
+    expect(participantActivity(state, "room", "viewer", local).viewing).toBe("active");
+    observedVideo.readyState = 1; // A retained paused/offscreen player's first frame still belongs to this lease.
+    expect(participantActivity(state, "room", "viewer", local).viewing).toBe("active");
+    observedVideo.readyState = 4;
+    expect(participantActivity(state, "room", "direct", local).viewing).toBe("joined");
+    state.watchActivities[0].viewerSessionIds = ["viewer-app"];
+    expect(participantActivity(state, "room", "viewer", local).viewing).toBe("joined"); // Same identity, different endpoint.
+    state.watchActivities[0].viewerSessionIds = ["viewer-web"];
+    player.error = "watch_media_failed";
+    expect(participantActivity(state, "room", "viewer", local).viewing).toBe("failed");
+  } finally { player.close(); }
+
 });
 
 it("starts unread messages at another person without consuming earlier unread history", () => {
@@ -82,14 +106,18 @@ it("merges a user's real-time endpoints without treating chat-only presence as p
     subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   });
   expect(roomPeople(state, "room").map(person => person.userId)).toEqual(["self", "chat"]);
-  expect(roomRealtimePeople(state, "room").map(({ id, voice, sharing, watching }) => ({ id, voice, sharing, watching }))).toEqual([
-    { id: "self", voice: { microphone: false, deafened: true }, sharing: true, watching: true },
-    { id: "route", voice: undefined, sharing: false, watching: false },
+  expect(roomRealtimePeople(state, "room").map(({ id, voice, sharing, viewing }) => ({ id, voice, sharing, viewing }))).toEqual([
+    { id: "self", voice: { microphone: false, deafened: true }, sharing: true, viewing: "active" },
+    { id: "route", voice: undefined, sharing: false, viewing: undefined },
   ]);
   state.publications[0].audience[0].state = "preparing";
-  expect(roomRealtimePeople(state, "room").find(person => person.id === "self")?.watching).toBe(false);
+  expect(roomRealtimePeople(state, "room").find(person => person.id === "self")?.viewing).toBe("preparing");
+  const picture = state.publications.find(publication => publication.kind === "screen")!;
+  picture.audience.push({ sessionId: "self-helper", state: "active" });
+  expect(roomRealtimePeople(state, "room").find(person => person.id === "self")?.viewing).toBe("active");
+  picture.audience.pop();
   state.publications[0].audience[0].state = "failed";
-  expect(roomRealtimePeople(state, "room").find(person => person.id === "self")?.watching).toBe(false);
+  expect(roomRealtimePeople(state, "room").find(person => person.id === "self")?.viewing).toBe("failed");
   state.publications[0].audience[0].state = "active";
   const channel = { state, profiles: new Map(), streams: new Map(), voicePlaybackByUser: new Map(), sessionId: "self-page", self: null } as unknown as ChannelController;
   const render = () => renderToStaticMarkup(createElement(ChannelRoomParticipants, { channel, room: state.channel.rooms[0] }));

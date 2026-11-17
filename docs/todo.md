@@ -33,12 +33,10 @@ the feedback period; they do not delay that delivery.
   across room authority, selected source, forwarding plan and actual receiver.
   Complete the separate Server-transit candidate's authority and matched-runtime
   acceptance before considering it for this report.
-- [ ] **Left-side participant readiness.** Verify the reported ready/watching
-  indication against subscription, established delivery and actual local playback.
-  Align the participant list, source audience and waiting/error view with their
-  existing owners; joining voice or a room must not imply a received picture.
-  Accept the correction in a matching package, including a participant with no
-  media and one whose picture is still preparing.
+- [ ] **Participant readiness package acceptance.** Verify the shared activity
+  indicators in the room list, couch and people panel with a matching package.
+  Cover a participant with no media, a joined watch, and preparing, received or
+  failed pictures without changing those surfaces' membership rules.
 - [ ] **Native performance under the reported workload.** Measure capture,
   conversion, encoding and decoded cadence on the affected machines during
   normal use and contention. Identify the limiting stage before changing quality

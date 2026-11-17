@@ -447,7 +447,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           actions={layout === "quick" && !toolSurface.open ? joinVoice : undefined}
           caption={room ? t("channel.previewPage.roomFriends", { name: room.name }) : t("channel.previewPage.friendsInThisRoom")}
           home={{ couch: couchSlot, conversation: conversationSlot, voice: voiceSlot }}
-          couch={room?.authorized && <ChannelCouch className="c3-room-company" people={state ? roomPeople(state, roomId, channel.profiles) : []}
+          couch={room?.authorized && <ChannelCouch className="c3-room-company" people={state ? roomPeople(state, roomId, channel.profiles, channel) : []}
             floating={toolSurface.open && (layout !== "quick" || toolSurface.document !== document)} selfUserId={self?.id ?? null} session={channel.interactionsByRoom.get(roomId) ?? null} />}
           conversation={<>{room && !room.authorized && <ChannelRoomEntry key={room.id} channel={channel} room={room} />}
             <ChannelConversation domainId={state?.channel.id} roomId={roomId} roomName={room?.name ?? ""} roomIcon={room?.icon} messages={channel.messagesByRoom[roomId] ?? []}

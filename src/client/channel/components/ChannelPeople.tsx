@@ -46,16 +46,16 @@ export function ChannelPeople({ channel, roomId, active, onBack }: { channel: Ch
     if (user) groups[inRoom.has(id) ? 0 : online.has(id) ? 1 : 2].users.push(user);
   }
   const listeningUsers = new Set(listeningVoicePublications(state, channel.sessionId, channel.streams).map(publication => publication.userId));
-  const activities = new Map(state ? roomRealtimePeople(state, roomId, channel.profiles).map(user => [user.id, user]) : []);
+  const activities = new Map(state ? roomRealtimePeople(state, roomId, channel.profiles, channel).map(user => [user.id, user]) : []);
   const row = (user: User) => {
     const connected = online.has(user.id);
-    const activity = connected ? activities.get(user.id) : undefined;
+    const activity = activities.get(user.id);
     const voice = state && inRoom.has(user.id) ? voiceAppearance(state, user.id, roomId) : undefined;
     const playback = channel.voicePlaybackByUser.get(user.id) ?? { volume: 1, muted: false };
     return <ChannelUser key={user.id} id={user.id} name={user.name} avatar={user.avatar ?? undefined} self={user.id === self?.id}
       owner={user.id === state?.channel.rooms.find(room => room.id === roomId)?.creatorId} online={connected}
       voice={voice}
-      actions={<><ChannelActivityIndicators sharing={activity?.sharing} watching={activity?.watching} joinedWatch={activity?.joinedWatch} />
+      actions={<><ChannelActivityIndicators sharing={activity?.sharing} viewing={activity?.viewing} />
         {connected && listeningUsers.has(user.id) && user.id !== self?.id && <AudioVolumeMenu volume={playback.volume}
         onVolume={volume => channel.setVoiceVolume(user.id, volume)} label="voice.personVolume" heading={user.name}>
         <Btn icon={playback.muted ? "speakerOff" : "speaker"} size="dense" quiet title="voice.listenPerson"

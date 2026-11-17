@@ -12,10 +12,12 @@ import { useCopy } from "../../ui/copy";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { ChannelAction } from "./ChannelAction";
 import { ChannelUser } from "./ChannelUser";
+import { ChannelActivityIndicators } from "./ChannelRoomParticipants";
+import type { ParticipantActivity } from "../presentation";
 import { ChannelImageDialog } from "./ChannelImageDialog";
 import "./channel-couch.css";
 
-export interface ChannelCouchPerson {
+export interface ChannelCouchPerson extends Partial<ParticipantActivity> {
   userId: string;
   name: string;
   avatar?: string;
@@ -90,6 +92,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
           onClick={event => setTarget({ userId: person.userId, trigger: event.currentTarget })}>{inner}</button>
           : <span className={pawnClass}>{inner}</span>}
       </Tooltip>
+      <span className="c3-couch-activity"><ChannelActivityIndicators sharing={person.sharing} viewing={person.viewing} /></span>
     </span>;
   }
   return <section className={`c3-couch ${className}`} aria-label={t("channel.couch.friendsInThisRoom")}
@@ -127,6 +130,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
     {target && selected && state && session && <RoomQuickReactions key={selected.userId} id={pickerId} trigger={target.trigger} side="below"
       identity={<ChannelUser id={selected.userId} name={selected.name} avatar={selected.avatar} self={selected.userId === selfUserId}
         owner={!!selected.owner} online voice={selected.voice} collaboration={selected.collaboration}
+        actions={<ChannelActivityIndicators sharing={selected.sharing} viewing={selected.viewing} />}
         onPreviewAvatar={() => setAvatarPreview({ person: selected, trigger: target.trigger })} />}
       person={{ peerId: selected.userId, displayName: selected.name }} selfPeerId={selfUserId}
       hostPeerId={people.find(person => person.owner)?.userId} reactionIds={state.reactionIds}

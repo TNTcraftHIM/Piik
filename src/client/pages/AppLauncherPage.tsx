@@ -412,7 +412,7 @@ export function AppLauncherPage() {
           ready={!!target} starting={starting} invitationForm={navigation.invitationForm} footer={footer}
           localSiteAction={target ? <a className="lr-btn is-primary" href={launchURL(target)}>
             <Glyph name="arrowRight" size={19} /><span className="lr-cap">{t("client.connect.continue")}</span>
-          </a> : <Btn icon="arrowRight" title="client.launch.go" cap="client.launch.go" busy={starting} disabled={starting}
+          </a> : <Btn icon="arrowRight" title="client.launch.configure" cap="client.launch.configure" busy={starting} disabled={starting}
             onClick={() => setPanel("launch")} />}
         >
             {panel !== "launch" && roomError}

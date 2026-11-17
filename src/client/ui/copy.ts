@@ -13,13 +13,13 @@ import {
 
 export type { CopyKey, Lang, TitleFrameKey } from "../locales";
 
-const LANG_STORAGE_KEY = "piik:ui-lang";
+export const LANG_STORAGE_KEY = "piik:ui-lang";
 
 interface CopyPrefs {
   lang: Lang;
 }
 
-function readStored(): Partial<CopyPrefs> {
+export function readStoredCopy(): Partial<CopyPrefs> {
   try {
     const lang = window.localStorage.getItem(LANG_STORAGE_KEY);
     return {
@@ -30,7 +30,7 @@ function readStored(): Partial<CopyPrefs> {
   }
 }
 
-const stored = readStored();
+const stored = readStoredCopy();
 let explicit = Object.keys(stored).length > 0;
 const state: CopyPrefs = {
   lang: resolveLang(typeof navigator === "undefined" ? undefined : navigator.language),
@@ -75,7 +75,7 @@ function commit(next: Partial<CopyPrefs>): void {
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (event) => {
     if (event.key === LANG_STORAGE_KEY) {
-      const stored = readStored();
+      const stored = readStoredCopy();
       explicit = Object.keys(stored).length > 0;
       apply(stored);
     }

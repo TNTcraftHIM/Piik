@@ -22,6 +22,10 @@ export class WatchPlayer {
   private prepared = false;
   private presented = false;
   get hasPresentedFrame(): boolean { return this.presented; }
+  get waitingForPicture(): boolean {
+    return this.video ? this.video.readyState < 2 || this.video.videoWidth > 0 && !this.hasPresentedFrame
+      : !this.mediaState || this.mediaState.readyState < 2;
+  }
   presentFrame(): void {
     if (this.retired || this.presented) return;
     this.presented = true; this.changed();

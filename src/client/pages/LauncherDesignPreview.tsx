@@ -60,7 +60,7 @@ export function LauncherDesignPreview() {
         </form>
         <p id="ld-invite-hint" role={invalid ? "alert" : undefined}>{t(invalid ? "client.bookmarks.invalidAddress" : "client.launcher.invitationHint")}</p>
       </>}
-      localSiteAction={<Btn icon="arrowRight" title={ready ? "client.connect.continue" : "client.launch.go"} cap={ready ? "client.connect.continue" : "client.launch.go"} onClick={() => ready ? openSite({ id: "local", name: t("client.launcher.preview.myLivingRoom"), origin: "https://my-place.example" }) : setDialog("host")} />}
+      localSiteAction={<Btn icon="arrowRight" title={ready ? "client.connect.continue" : "client.launch.configure"} cap={ready ? "client.connect.continue" : "client.launch.configure"} onClick={() => ready ? openSite({ id: "local", name: t("client.launcher.preview.myLivingRoom"), origin: "https://my-place.example" }) : setDialog("host")} />}
       footer={<><span>Piik App <small>3.0</small></span><Btn icon="help" quiet size="dense" title={{ text: t("client.launcher.preview.versionHelp") }} cap={{ text: t("client.launcher.preview.versionHelp") }} onClick={() => setDialog("about")} /></>}
     >{notice && <output aria-live="polite">{notice}</output>}</LauncherWorkspace></main>
     <details className="ld-preview-tools"><summary>{t("client.launcher.preview.sampleStates")}</summary><div>{(["empty", "loaded", "ready"] as const).map(state => <Btn key={state} icon={state === "ready" ? "check" : state === "empty" ? "plus" : "star"} quiet size="dense" title={{ text: t(`client.launcher.preview.${state}`) }} cap={{ text: t(`client.launcher.preview.${state}`) }} onClick={() => { setSites(state === "empty" ? [] : samples); setReady(state === "ready"); setNotice(""); }} />)}</div></details>

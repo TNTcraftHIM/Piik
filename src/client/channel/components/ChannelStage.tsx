@@ -19,7 +19,7 @@ import { Btn, Cap } from "../../components/living/primitives";
 import { Tooltip } from "../../components/living/Tooltip";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { ChannelUser } from "./ChannelUser";
-import { screenTitle, type ScreenAudiencePerson, type AudiencePerson } from "../presentation";
+import { participantViewingLabel, screenTitle, type ScreenAudiencePerson, type AudiencePerson } from "../presentation";
 import type { MessageReactions } from "../protocol";
 import { ChannelContentReactions } from "./ChannelContentReactions";
 import { BrandLoader } from "../../components/living/BrandMark";
@@ -114,7 +114,7 @@ export function SourceAudience({ people, joined = false }: { people: readonly Sc
       <h3>{t(joined ? "watch.joined" : "screen.viewers")}</h3>
       {people.length ? people.map(person => <ChannelUser key={person.userId} id={person.userId} name={person.name} avatar={person.avatar}
         self={false} owner={false} online activity={joined ? t("watch.joined") : "state" in person
-          ? person.state === "active" ? t("screen.watching") : person.state === "preparing" ? t("screen.connecting") : t("screen.retrying") : undefined} />)
+          ? participantViewingLabel(person.state, t) : undefined} />)
         : <p>{t(joined ? "watch.noViewers" : "screen.noViewers")}</p>}
     </div>
   </span>;

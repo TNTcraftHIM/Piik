@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { ChannelWatchVideo, WatchPeerAction } from "../src/client/channel/components/ChannelMedia";
 import { ChannelStage, SourceAudience, type WatchStageSource } from "../src/client/channel/components/ChannelStage";
-import type { WatchPlayer } from "../src/client/channel/watch-playback";
+import { WatchPlayer } from "../src/client/channel/watch-playback";
 import { setCopy, t, type Lang } from "../src/client/ui/copy";
 import { ChannelSettingsError } from "../src/client/channel/components/ChannelSettingsDialog";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
@@ -164,7 +164,7 @@ describe("Webpage watch presentation", () => {
       const render = (patch = {}) => {
         const player = { video: { readyState: 0, parentElement: null }, media: {}, mediaState: null, blocked: false, error: null, ...patch };
         return renderToStaticMarkup(createElement(ChannelWatchVideo, {
-          player: { ...player, presentation: { kind: "video", element: player.video } } as unknown as WatchPlayer,
+          player: Object.setPrototypeOf({ ...player, presentation: { kind: "video", element: player.video } }, WatchPlayer.prototype) as WatchPlayer,
           owned: false, paused: true, label: "Preparing", presentation: "full", disabled: false,
           website: false, originalPageAvailable: false, theaterMode: false, onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
         }));
