@@ -27,4 +27,8 @@ if [ "${2:-}" = "--check" ]; then
     "$source_root/input.test.c" "$source_root/input.c" \
     $(pkg-config --cflags --libs libportal) -o "$output/piik-input-test"
   "$output/piik-input-test"
+  cc -std=c11 -O2 -Wall -Wextra -Werror \
+    "$source_root/portal.test.c" "$source_root/portal.c" "$source_root/input.c" \
+    $(pkg-config --cflags --libs libportal) -o "$output/piik-portal-test"
+  "$output/piik-portal-test"
 fi
