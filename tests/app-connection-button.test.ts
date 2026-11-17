@@ -876,11 +876,12 @@ describe("App control handshake uses the existing approval attempt", () => {
     page.cleanup();
   });
 
-  it("presents handshake failure and leaves App approval with its existing owner", async () => {
+  it.each([false, true])("owns handshake failure feedback for automatic=%s", async automatic => {
     const page = mount(true, "idle", false, false);
     page.onConnected.mockRejectedValueOnce(new Error("app_disconnected"));
-    await page.connect();
-    expect(page.setState).toHaveBeenLastCalledWith("unavailable");
+    await page.connect(false, automatic);
+    expect(page.setState).toHaveBeenLastCalledWith(automatic ? "idle" : "unavailable");
+    expect(page.showHelp.mock.calls.length > 0).toBe(!automatic);
     expect(page.activateClient).not.toHaveBeenCalled();
     expect(page.pending.current).toBeNull();
     page.cleanup();

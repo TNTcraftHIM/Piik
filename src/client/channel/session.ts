@@ -956,7 +956,7 @@ export class ChannelSession {
 
   activateApp = (verifiedHealth?: unknown, signal?: AbortSignal): Promise<void> => {
     if (this.closed || this.view.connection !== "connected") return Promise.reject(new Error("disconnected"));
-    return this.action("app", async () => { await this.connectApp(verifiedHealth, signal); });
+    return this.action("app", async () => { await this.connectApp(verifiedHealth, signal); }, false);
   };
 
   private rememberLocalEndpoint(app: ChannelApp, sessionId: string): void {

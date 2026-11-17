@@ -1395,7 +1395,9 @@ test("verified App approval connects while loopback permission stays prompt and 
     const approved = await appLink.discoverChannelAppHealth({ waitForPermission: true });
     expect(approved?.token).toBe(token);
     const checks = query.mock.calls.length, reads = fetcher.mock.calls.length;
+    socket.receive({ type: "error", code: "history_unavailable" });
     const denied = session.activateApp(approved);
+    const pendingError = session.getSnapshot().error;
     const rejected = expect(denied).rejects.toThrow("site_unapproved");
     await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
     const first = ChannelSocket.current;
@@ -1403,7 +1405,8 @@ test("verified App approval connects while loopback permission stays prompt and 
     expect(first.sent.at(-1)).toMatchObject({ type: "hello", channelId: "domain", userId: "self" });
     first.receive({ id: first.sent.at(-1)!.id, error: "site_unapproved" });
     await rejected;
-    expect(session.getSnapshot().appConnected).toBe(false);
+    expect(pendingError).toBe("history_unavailable");
+    expect(session.getSnapshot()).toMatchObject({ appConnected: false, error: "history_unavailable" });
     expect(query).toHaveBeenCalledTimes(checks);
     expect(fetcher).toHaveBeenCalledTimes(reads);
 
@@ -1416,7 +1419,7 @@ test("verified App approval connects while loopback permission stays prompt and 
     await next.onopen?.();
     next.receive({ id: next.sent.at(-1)!.id, result: null });
     await connecting;
-    expect(session.getSnapshot()).toMatchObject({ appConnected: true, error: null });
+    expect(session.getSnapshot()).toMatchObject({ appConnected: true, error: "history_unavailable" });
     expect(query).toHaveBeenCalledTimes(freshChecks);
     expect(fetcher).toHaveBeenCalledTimes(freshReads);
     expect(permission.state).toBe("prompt");
@@ -3846,7 +3849,7 @@ test("Browser hosting does not depend on automatic App activation", async () => 
     await expect(creating).resolves.toBe(host.roomId);
     expect(discovery).not.toHaveBeenCalled();
     await expect(session.activateApp()).rejects.toThrow("app_disconnected");
-    expect(session.getSnapshot().error).toBe("app_disconnected");
+    expect(session.getSnapshot().error).toBeNull();
   } finally { session.close(); }
 });
 
