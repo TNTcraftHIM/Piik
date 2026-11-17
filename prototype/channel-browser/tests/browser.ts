@@ -561,7 +561,7 @@ window.runBrowserRoomCheck = async () => {
       try { await BrowserRoomHost.open(previousSchema, savedPolicy); throw new Error("old counts schema accepted"); }
       catch (error) { check(String(error).includes("unsupported_storage_version"), "old private choices schema is rejected without migration"); }
     } finally { await new Promise<void>((resolve, reject) => { const request = indexedDB.deleteDatabase(previousSchema); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); }); }
-    // Old private checkpoints must fail explicitly, without replacing the saved policy.
+    // Invalid input and retained checkpoints use the shared policy validator before writes.
     const legacyPolicy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Old checkpoint", icon: "future-room_7",
       creatorId: owner.userId, access: "public", hidden: false });
     const legacyHost = await BrowserRoomHost.open(database, legacyPolicy);
@@ -571,23 +571,30 @@ window.runBrowserRoomCheck = async () => {
       const request = indexedDB.open(database, 6);
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
-    let oldPolicy = "";
     try {
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction("rooms", "readwrite"), rooms = tx.objectStore("rooms"), request = rooms.get(legacyId);
-        request.onsuccess = () => {
-          const record = request.result, policy = JSON.parse(record.policy);
-          delete policy.icon;
-          oldPolicy = JSON.stringify(policy);
-          rooms.put({ ...record, policy: oldPolicy });
-        };
-        tx.oncomplete = () => resolve(); tx.onabort = () => reject(tx.error);
-      });
-      let rejected = false;
-      try { await BrowserRoomHost.open(database, legacyPolicy); }
-      catch (error) { rejected = String(error) === "invalid_request"; }
-      check(rejected, "old room policy without icon is explicitly rejected");
-      check((await BrowserRoomHost.storedPolicies(database)).includes(oldPolicy), "invalid old policy remains unchanged");
+      for (const [field, value, expected] of [["icon", undefined, "invalid_request"], ["voiceBitrate", 0, "invalid_room_policy"],
+        ["relayCapacity", 0, "invalid_room_policy"], ["passwordHash", "invalid", "invalid_room_policy"]] as const) {
+        const invalid = { ...JSON.parse(legacyPolicy), id: crypto.randomUUID(), [field]: value };
+        const before = await BrowserRoomHost.storedPolicies(database);
+        let opened: BrowserRoomHost | undefined, error: string | undefined;
+        try { opened = await BrowserRoomHost.open(database, JSON.stringify(invalid)); }
+        catch (cause) { error = String(cause); }
+        finally { await opened?.close(); }
+        check(JSON.stringify(await BrowserRoomHost.storedPolicies(database)) === JSON.stringify(before), `${field} is rejected before IndexedDB writes`);
+        check(error === expected, `${field} reports its policy error`);
+        const oldPolicy = JSON.stringify({ ...invalid, id: legacyId });
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction("rooms", "readwrite"), rooms = tx.objectStore("rooms"), request = rooms.get(legacyId);
+          request.onsuccess = () => rooms.put({ ...request.result, policy: oldPolicy });
+          tx.oncomplete = () => resolve(); tx.onabort = () => reject(tx.error);
+        });
+        error = undefined;
+        try { opened = await BrowserRoomHost.open(database, legacyPolicy); }
+        catch (cause) { error = String(cause); }
+        finally { await opened?.close(); }
+        check(error === expected, `saved ${field} reports its policy error`);
+        check((await BrowserRoomHost.storedPolicies(database)).includes(oldPolicy), `invalid saved ${field} remains unchanged`);
+      }
     } finally { db.close(); }
     await checkReplyStorage();
     await checkImageHistoryBudget();
@@ -612,7 +619,8 @@ window.runBrowserRoomCheck = async () => {
       mentionReplyStorage: true, seededLatestSequence: true, concurrentFirstUse: true,
       imageHistoryByteBudget: true, imageHistoryPageSizes: [2, 2, 2, 1],
       restoredWriterFence: true, boundedBackupSlot: true, previousChoicesSchemaRejected: true,
-      missingIconRejectedWithoutOverwrite: true, domainCredentialDatabaseProvided: false };
+      missingIconRejectedWithoutOverwrite: true, invalidPolicyRejectedBeforeWrite: true, invalidSavedPolicyPreserved: true,
+      domainCredentialDatabaseProvided: false };
   } finally {
     await host.close();
     signer.free(); peerSigner.free();

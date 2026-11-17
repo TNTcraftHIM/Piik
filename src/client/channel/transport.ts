@@ -665,7 +665,8 @@ export class ChannelTransport {
           if (next !== encoded.track) await waitForConnectionOperation(binding.lifetime.signal, () => applyVideoCaptureProfile(next, owner.profile!));
           if (!owns()) return false;
           if (next !== previous) await waitForConnectionOperation(binding.lifetime.signal, () => sender.replaceTrack(next));
-          await waitForConnectionOperation(binding.lifetime.signal, () => configureVideoSender(sender, owner.profile!, member?.carrierScale()));
+          const applied = await waitForConnectionOperation(binding.lifetime.signal, () => configureVideoSender(sender, owner.profile!, member?.carrierScale()));
+          if (applied.mismatches.length) throw new Error("capture_quality_unsupported");
           if (!owns()) return false;
           if (next.readyState === "ended") throw new Error("Replacement video track ended");
           this.commitSenderTrack(sender);
@@ -717,7 +718,11 @@ export class ChannelTransport {
     const sender = binding.sender;
     if (!sender.getParameters().encodings.length) return;
     try {
-      await binding.pooled?.updateProfile(profile);
+      // Automatic projection owns no applied-setting acknowledgement. Pool
+      // completion may need a carrier handoff on this same sender queue.
+      void binding.pooled?.updateProfile(profile).catch(error => {
+        if (current()) console.warn("Channel source quality parameters could not be applied", { flowId: id }, error);
+      });
       const applied = await waitForConnectionOperation(binding.lifetime.signal,
         () => configureVideoSender(sender, profile, binding.pooled?.carrierScale()));
       if (current() && applied.mismatches.length) {
@@ -729,12 +734,18 @@ export class ChannelTransport {
   }
 
   /** An explicit source edit shares the negotiation queue, but cannot fail the pair. */
-  configureVideo(id: string, profile: VideoSenderProfile): Promise<void> {
+  async configureVideo(id: string, profile: VideoSenderProfile): Promise<void> {
     const owner = this.sending.get(id);
+    const bindings = await this.senderOperation(async () => {
+      if (this.closed || !owner || this.sending.get(id) !== owner || owner.failed) return [];
+      return owner.senders.filter(binding => binding.source.kind === "video" && binding.sender.getParameters().encodings.length);
+    });
+    // A producer replacement commits through configureCarrier on the sender
+    // queue. Await its acceptance outside that queue, then apply transport caps.
+    await Promise.all(bindings.map(binding => binding.pooled?.updateProfile(profile)));
     return this.senderOperation(async () => {
       if (this.closed || !owner || this.sending.get(id) !== owner || owner.failed) return;
-      for (const binding of owner.senders) if (binding.source.kind === "video" && binding.sender.getParameters().encodings.length) {
-        await binding.pooled?.updateProfile(profile);
+      for (const binding of bindings) if (this.ownsSender(id, owner, binding)) {
         const applied = await waitForConnectionOperation(binding.lifetime.signal,
           () => configureVideoSender(binding.sender, profile, binding.pooled?.carrierScale()));
         if (applied.mismatches.length) throw new Error("capture_quality_unsupported");

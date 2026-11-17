@@ -548,7 +548,7 @@ mod tests {
         let result = tokio::time::timeout(Duration::from_secs(10), async {
             while driver.local_producers[&prepared.lease.id].prepared.len() < 2 {
                 tokio::select! {
-                    source = received.recv() => driver.source_ready(source.context("source receiver closed")?).await?,
+                    source = received.recv() => driver.source_ready(source.context("source receiver closed")?).await,
                     _ = tick.tick() => {
                         frame += 1;
                         let audio_packet = rtp::Packet { header: rtp::header::Header { version:2,marker:true,timestamp:frame*960,..Default::default() }, payload:vec![0xf8,0xff,0xfe].into() };
@@ -578,7 +578,7 @@ mod tests {
             #[cfg(any(target_os="windows",target_os="linux",target_os="macos"))]
             assert!(driver.derived.contains_key(&prepared.lease.id));
             // The normal authoritative update retires the same local owner.
-            driver.update(vec![], vec![], vec![]).await?;
+            driver.update(vec![], vec![], vec![]).await;
             while driver.local_producers.contains_key(&prepared.lease.id) {
                 driver.event(events.recv().await.context("source never ended")?).await?;
             }

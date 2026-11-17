@@ -13,7 +13,7 @@ async fn declared_source_withdrawal_remaps_the_same_flow_without_failing_its_pai
         f.plans[0].rooms.clear();
         f.driver
             .update(f.plans.clone(), vec![f.publication.clone()], vec![])
-            .await?;
+            .await;
         f.until(|f| {
             [flow, sibling].iter().all(|id| {
                 f.driver.pairs[&f.sink]
@@ -159,7 +159,7 @@ async fn selected_screen_metrics_keep_room_voice_and_exclude_other_room() -> Res
             vec![f.publication.clone(), voice.clone()],
             vec![],
         )
-        .await?;
+        .await;
     f.until(|f| f.frame >= 70).await?;
     let measured = f
         .driver
@@ -184,7 +184,7 @@ async fn selected_screen_metrics_keep_room_voice_and_exclude_other_room() -> Res
             vec![f.publication.clone(), voice.clone()],
             vec![],
         )
-        .await?;
+        .await;
     let measured = f
         .driver
         .connection_metrics("room", Some(f.publication.id))
@@ -219,7 +219,7 @@ async fn screen_pause_stops_both_outputs_and_resumes_the_same_source_clock() -> 
     f.publication.paused = true;
     f.driver
         .update(f.plans.clone(), vec![f.publication.clone()], vec![])
-        .await?;
+        .await;
     f.driver.reconcile_encodings().await;
     // Drain the already-transmitted AU; the upstream fixture keeps producing AV.
     let drained = f.frame + 10;
@@ -243,7 +243,7 @@ async fn screen_pause_stops_both_outputs_and_resumes_the_same_source_clock() -> 
     f.publication.paused = false;
     f.driver
         .update(f.plans.clone(), vec![f.publication.clone()], vec![])
-        .await?;
+        .await;
     f.driver.reconcile_encodings().await;
     f.until(|f| {
         f.observed(&video.1, MediaKind::Video)
@@ -339,7 +339,7 @@ async fn physical_failure_retires_only_that_source_and_keeps_other_flow_leases()
         // LinkState::Failed; writing it does not await the authority's next snapshot.
         f.driver
             .update(f.plans.clone(), vec![f.publication.clone()], vec![])
-            .await?;
+            .await;
         f.driver.resync().await;
         ensure!(
             discard_failed(&mut f, failed) == 1,
@@ -380,7 +380,7 @@ async fn physical_failure_retires_only_that_source_and_keeps_other_flow_leases()
         f.plans.retain(|plan| plan.id != failed);
         f.driver
             .update(f.plans.clone(), vec![f.publication.clone()], vec![])
-            .await?;
+            .await;
         ensure!(
             !f.driver.admitted.contains(&failed),
             "withdrawn lease retained admission"
@@ -395,7 +395,7 @@ async fn physical_failure_retires_only_that_source_and_keeps_other_flow_leases()
         f.plans.push(replacement);
         f.driver
             .update(f.plans.clone(), vec![f.publication.clone()], vec![])
-            .await?;
+            .await;
         let fresh_instance = f.driver.pairs[&fresh].pc
             .connection_metrics()
             .await?
@@ -480,7 +480,7 @@ async fn early_base_channels_follow_physical_slots_until_room_projection_arrives
         f.plans.last_mut().unwrap().rooms.clear();
         f.driver
             .update(f.plans.clone(), vec![f.publication.clone()], vec![])
-            .await?;
+            .await;
         // The remote endpoint owns creation; the Native receiver sees actual DCEP first.
         f.driver.pairs.get_mut(&sink).unwrap().polite = true;
         let control = open(&mut f, "piik-room").await?;
@@ -491,7 +491,7 @@ async fn early_base_channels_follow_physical_slots_until_room_projection_arrives
         for _ in 0..2 {
             f.driver
                 .update(f.plans.clone(), vec![f.publication.clone()], vec![])
-                .await?;
+                .await;
             ensure!(f.driver.pairs[&sink]
                 .dc
                 .as_ref()
@@ -512,14 +512,14 @@ async fn early_base_channels_follow_physical_slots_until_room_projection_arrives
         f.plans.last_mut().unwrap().rooms.push("room".into());
         f.driver
             .update(f.plans.clone(), vec![f.publication.clone()], vec![])
-            .await?;
+            .await;
         f.until(|f| f.driver.pairs[&sink].reported.contains("room"))
             .await?;
         ensure!(!f.driver.pairs[&sink].base_failed);
         f.plans.last_mut().unwrap().rooms.clear();
         f.driver
             .update(f.plans.clone(), vec![f.publication.clone()], vec![])
-            .await?;
+            .await;
         ensure!(f.driver.pairs[&sink].dc.is_none() && f.driver.pairs[&sink].bulk.is_none());
         ensure!(!f.driver.pairs[&sink]
             .data
@@ -609,7 +609,7 @@ async fn base_channel_failure_preserves_media_on_the_same_physical_pair() -> Res
         take_reports(&mut f);
         f.driver
             .update(f.plans.clone(), vec![f.publication.clone()], vec![])
-            .await?;
+            .await;
         f.driver.resync().await;
         let replayed = take_reports(&mut f);
         for plan in &f.plans {

@@ -443,7 +443,7 @@ async fn pending_udp_preparation_keeps_the_latest_plan_and_retires_with_its_leas
         incoming: vec![],
         outgoing: vec![],
     };
-    d.update(vec![plan.clone()], vec![], vec![]).await?;
+    d.update(vec![plan.clone()], vec![], vec![]).await;
     assert!(d.pairs.is_empty() && d.preparings.len() == 1);
     let pending = &d.preparings[&plan.id];
     let task = pending.task.id();
@@ -458,11 +458,11 @@ async fn pending_udp_preparation_keeps_the_latest_plan_and_retires_with_its_leas
     };
     d.signal(plan.id, early).await?;
     plan.rooms = vec!["latest".into()];
-    d.update(vec![plan.clone()], vec![], vec![]).await?;
+    d.update(vec![plan.clone()], vec![], vec![]).await;
     assert_eq!(d.preparings[&plan.id].task.id(), task);
     assert_eq!(d.preparings[&plan.id].plan.rooms, vec!["latest"]);
     assert_eq!(d.preparings[&plan.id].signals.len(), 1);
-    d.update(vec![], vec![], vec![]).await?;
+    d.update(vec![], vec![], vec![]).await;
     assert!(d.preparings.is_empty() && d.pairs.is_empty() && retired.is_finished());
     while let Ok(event) = commands.try_recv() {
         assert!(

@@ -4801,6 +4801,68 @@ test("input registration replies stay with their endpoint after its media flow r
   } finally { session.close(); }
 });
 
+test("stopping a watch during signaling recovery closes its input before retiring the local subscription", async () => {
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  RoomPeerConnection.instances = [];
+  const { session, socket } = await setup(1000, false);
+  const viewer = "00000000-0000-4000-8000-000000000001", source = "00000000-0000-4000-8000-000000000002";
+  const [userId, sourceUser, domainId, bindingId, publicationId, pairId, flowId] = Array.from({ length: 7 }, () => crypto.randomUUID());
+  const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  let control: RemoteInputSession | undefined;
+  try {
+    const base = session.getSnapshot().state!;
+    const initial = { ...base,
+      channel: { ...base.channel, id: domainId, ownerId: userId, rooms: base.channel.rooms.map(room => ({ ...room, creatorId: userId,
+        participantSessionIds: [viewer], delivery: { hostSessionId: source, bindingId, nextHops: { [source]: source } } })) },
+      users: [{ id: userId, name: "Viewer", version: profileVersion }, { id: sourceUser, name: "Source", version: profileVersion }],
+      sessions: [{ id: viewer, userId, online: true, signingKey: testSigningKey }, { id: source, userId: sourceUser, online: true, signingKey: testSigningKey }],
+    };
+    socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: viewer, state: initial });
+    const flow = { id: flowId, publicationId, selected: true, inputFlowId: null };
+    const state = { ...initial, subscriptions: [publicationId],
+      publications: [{ audience: [], id: publicationId, roomId: "first", sessionId: source, userId: sourceUser, kind: "screen" as const,
+        source: { kind: "screen" as const, name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }],
+      pairs: [{ id: pairId, peerId: source, rooms: ["first"], canReceiveVideoLayers: false, outgoing: [], incoming: [flow] }],
+    };
+    socket.receive({ type: "state", state });
+    const watching = session.watch(publicationId, "first");
+    socket.receive({ type: "ack", requestId: socket.sent.findLast(command => command.type === "subscribe")!.requestId });
+    await watching;
+    socket.receive({ type: "state", state });
+    const pc = RoomPeerConnection.instances.at(-1)!;
+    pc.connected();
+    const carrier = pc.channels.find(channel => channel.label === "piik-input")!;
+    carrier.open();
+    socket.receive({ type: "ack", requestId: socket.sent.findLast(command => command.type === "input_register")!.requestId });
+    const endpoint = session.getSnapshot().inputChannels.get(publicationId)!;
+    control = new RemoteInputSession(endpoint, () => {});
+    await vi.waitFor(() => expect(carrier.send).toHaveBeenCalled());
+    const frames = () => carrier.send.mock.calls.map(([frame]) => JSON.parse(frame));
+    const sourceState = { ...state, subscriptions: [], pairs: [{ ...state.pairs[0], peerId: viewer, incoming: [], outgoing: [flow] }] };
+    const binding = JSON.parse(core.route_input(JSON.stringify(frames().find(frame => frame.data)), source, JSON.stringify(sourceState), viewer)).route.binding;
+    const sent = carrier.send.mock.calls.length;
+
+    socket.close();
+    expect(session.getSnapshot().connection).toBe("reconnecting");
+    expect(endpoint.readyState).toBe("open");
+    await session.unwatch(publicationId);
+
+    expect(endpoint.readyState).toBe("closed");
+    expect(control.state).toBeNull();
+    expect(session.getSnapshot().inputChannels.has(publicationId)).toBe(false);
+    expect(session.getSnapshot().state!.subscriptions).not.toContain(publicationId);
+    expect(carrier.readyState).toBe("open");
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(socket.sent.some(command => command.type === "subscribe" && command.enabled === false)).toBe(false);
+    const closed = frames().slice(sent);
+    expect(closed).toHaveLength(1);
+    expect(closed[0]).toMatchObject({ publicationId, controllerSessionId: viewer, routeId: flowId, closed: true });
+    const retired = JSON.parse(core.route_input(JSON.stringify(closed[0]), source, JSON.stringify(sourceState), viewer, JSON.stringify(binding)));
+    expect(retired.route.nextHop).toBeNull();
+    expect(retired.frame.closed).toBe(true);
+  } finally { control?.dispose(); session.close(); }
+});
+
 test("screen input shares its existing pair and retains only the committed flow's control session", async () => {
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   RoomPeerConnection.instances = [];
@@ -5921,6 +5983,30 @@ test("channel publications share one pool across Browser children, while Native 
     expect(pool.members.at(-1)!.source).toBe(fresh);
     expect(sent.some(command => command.type === "flow_state" && command.state === "failed")).toBe(false);
   } finally { media.reset(); session.close(); }
+});
+
+test("an explicit picture edit leaves the sender queue available to its pool handoff", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const pool = channelEncodingFixture(), videoPool = new BrowserEncodingPool();
+  const transport = new ChannelTransport({ polite: true, iceServers: [], videoPool, send() {},
+    receive() {}, connected() {}, base() {}, failed() {} });
+  const source = pool.source(), profile = QUALITY_PROFILES["1080p30"];
+  try {
+    transport.setOutgoing(new Map([["screen", { kind: "screen", stream: remoteStream("source", [source]), profile }]]));
+    const member = pool.members[0];
+    const configured = vi.fn(async () => {
+      // Producer acceptance may require this existing senderOperation callback.
+      expect(await member.configure()).toBe(true);
+    });
+    vi.mocked(member.handle.updateProfile).mockImplementation(configured);
+    const next = QUALITY_PROFILES["1080p60"];
+    await transport.configureVideo("screen", next);
+    expect(configured).toHaveBeenCalledWith(next);
+    expect(member.sender.track).toBe(member.encoded.track);
+    expect(member.sender.getParameters().encodings[0].maxBitrate).toBe(next.maxBitrate);
+    expect(RoomPeerConnection.instances[0].close).not.toHaveBeenCalled();
+  } finally { transport.close(); videoPool.dispose(); }
 });
 
 test("pooled carriers retain the logical source and pending offer across replacement, rollback and ordinary fallback", async () => {
@@ -11090,3 +11176,111 @@ test.each([{ volume: 0.35, muted: true }, { volume: 0.35, muted: false }, { volu
       expect(socket.sent.some(command => command.type === "update_watch")).toBe(false);
     } finally { session.close(); }
   });
+
+test.each(['accepted', 'rejected'])('screen quality commits only after its pooled producer has %s the edit', async result => {
+  const { BrowserEncodingProducer } = await import('../src/client/media/browser-encoding-producer');
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal('RTCPeerConnection', RoomPeerConnection);
+  const { session, socket } = await setup();
+  vi.useFakeTimers();
+  vi.stubGlobal('window', { localStorage });
+  const fixture = channelEncodingFixture();
+  vi.mocked(BrowserEncodingPool.prototype.create).mockRestore();
+  const actualCreate = BrowserEncodingPool.prototype.create;
+  const codec = { mimeType: 'video/VP8', clockRate: 90000 };
+  const report = (row: Record<string, unknown>) => new Map([
+    ['video', { id: 'video', timestamp: Date.now(), type: 'outbound-rtp', kind: 'video', codecId: 'codec', ...row }],
+    ['codec', { id: 'codec', timestamp: Date.now(), type: 'codec', ...codec }],
+  ]) as unknown as RTCStatsReport;
+  const production = new Map<InstanceType<typeof BrowserEncodingProducer>, { budget: number; fps: number; bytes: number; frames: number }>();
+  const chosen = new WeakMap<encodingOutput.BrowserEncodingOutput, string>();
+  const members: Array<{ sender: RTCRtpSender; output: encodingOutput.BrowserEncodingOutput }> = [];
+  vi.spyOn(BrowserEncodingPool.prototype, 'create').mockImplementation(function(this: BrowserEncodingPool, ...args) {
+    const [, sender, , , output] = args;
+    Object.assign(sender, { getStats: vi.fn(async () => report({ targetBitrate: 2_000_000 })) });
+    const handle = actualCreate.apply(this, args);
+    members.push({ sender, output });
+    return handle;
+  });
+  vi.spyOn(encodingOutput.BrowserEncodingOutput.prototype, 'snapshot').mockImplementation(function(this: encodingOutput.BrowserEncodingOutput) {
+    const producer = chosen.get(this) ?? null;
+    return { frames: producer ? 30 : 0, width: 1920, height: 1080, timestamp: Date.now(), lastProducerId: producer };
+  });
+  vi.spyOn(encodingOutput.BrowserEncodingOutput.prototype, 'select').mockImplementation(function(this: encodingOutput.BrowserEncodingOutput, id, _key, selected, accept) {
+    if (!accept({ width: 1920, height: 1080 })) return;
+    chosen.set(this, id); selected();
+  });
+  vi.spyOn(BrowserEncodingProducer.prototype, 'start').mockImplementation(async function(this: InstanceType<typeof BrowserEncodingProducer>, budget) {
+    production.set(this, { budget: budget!, fps: 30, bytes: 0, frames: 0 });
+  });
+  vi.spyOn(BrowserEncodingProducer.prototype, 'report').mockImplementation(async function(this: InstanceType<typeof BrowserEncodingProducer>) {
+    const row = production.get(this)!;
+    row.bytes += row.budget / 16; row.frames += row.fps / 2;
+    return report({ bytesSent: row.bytes, framesEncoded: row.frames, frameWidth: 1920, frameHeight: 1080, qualityLimitationReason: 'none' });
+  });
+  vi.spyOn(BrowserEncodingProducer.prototype, 'update').mockImplementation(async function(this: InstanceType<typeof BrowserEncodingProducer>, profile, budget) {
+    Object.assign(production.get(this)!, { budget, fps: profile.maxFramerate });
+  });
+  vi.spyOn(BrowserEncodingProducer.prototype, 'setPaused').mockImplementation(() => {});
+  vi.spyOn(BrowserEncodingProducer.prototype, 'dispose').mockImplementation(() => {});
+  const source = fixture.source(), stream = remoteStream('owned-proof-source', [source]);
+  vi.stubGlobal('navigator', { mediaDevices: { getDisplayMedia: vi.fn(async () => stream) } });
+  session.setVideoCodecMode('vp8');
+  session.setQuality(QUALITY_PROFILES['1080p30']);
+  try {
+    const starting = session.startScreen('first');
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe('publish'));
+    const request = socket.sent.at(-1)!;
+    const publication = request.publication as { id: string; roomId: string; kind: 'screen'; source: ScreenSource; videoSettings: VideoSettings };
+    socket.receive({ type: 'ack', requestId: request.requestId }); await starting;
+    const state = structuredClone(session.getSnapshot().state!);
+    state.publications = [{ audience: [], title: null, ...publication, paused: false, sessionId: 'endpoint', userId: 'self' }];
+    state.pairs = [{ id: 'proof-pair', peerId: 'z', canReceiveVideoLayers: false, rooms: ['first'], incoming: [],
+      outgoing: [{ id: 'proof-flow', publicationId: publication.id, selected: true, inputFlowId: null }] }];
+    socket.receive({ type: 'state', state });
+    RoomPeerConnection.instances[0].connected();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(members).toHaveLength(1);
+    expect(production.size).toBe(1);
+    expect(chosen.get(members[0].output)).toBe([...production.keys()][0].id);
+    expect(members[0].sender.track).toBe(members[0].output.track);
+    const producer = [...production.keys()][0];
+    const previous = session.screenQuality(publication.id)!.applied;
+    const next = { ...previous, maxFramerate: 60 };
+    let acceptUpdate!: () => void, rejectUpdate!: (reason: Error) => void;
+    vi.mocked(producer.update).mockImplementationOnce(() => new Promise<void>((resolve, reject) => {
+      acceptUpdate = () => { production.get(producer)!.fps = next.maxFramerate; resolve(); };
+      rejectUpdate = reject;
+    }));
+    const publishes = () => socket.sent.filter(command => command.type === 'publish').length;
+    const before = publishes();
+    const originalSend = socket.send.bind(socket);
+    vi.spyOn(socket, 'send').mockImplementation(data => {
+      originalSend(data);
+      const command = JSON.parse(data);
+      if (command.type === 'publish') queueMicrotask(() => socket.receive({ type: 'ack', requestId: command.requestId }));
+    });
+    let caller = 'pending';
+    const editing = session.setScreenQuality(publication.id, next).then(
+      () => { caller = 'accepted'; }, error => { caller = error.message; });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(rejectUpdate).toBeTypeOf('function');
+    expect(caller).toBe('pending');
+    expect(session.screenQuality(publication.id)?.applied).toEqual(previous);
+    expect(session.getSnapshot().quality).toEqual(previous);
+    expect(publishes()).toBe(before);
+    if (result === 'accepted') acceptUpdate();
+    else rejectUpdate(new Error('producer rejected its effective parameters'));
+    await vi.advanceTimersByTimeAsync(0);
+    await editing;
+    const expected = result === 'accepted' ? next : previous;
+    expect(caller).toBe(result === 'accepted' ? 'accepted' : 'capture_quality_unsupported');
+    expect(session.screenQuality(publication.id)).toEqual({ applied: expected, requested: expected });
+    expect(session.getSnapshot().quality).toEqual(expected);
+    expect(JSON.parse(localStorage.getItem('piik:quality-preference:v1')!)).toEqual(expected);
+    expect(publishes()).toBe(before + Number(result === 'accepted'));
+    expect(source.stop).not.toHaveBeenCalled();
+    expect(RoomPeerConnection.instances).toHaveLength(1);
+    expect(RoomPeerConnection.instances[0].close).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});

@@ -572,7 +572,7 @@ enum Input {
         Vec<PairInfo>,
         Vec<PublicationInfo>,
         Vec<FilePlan>,
-        oneshot::Sender<Result<()>>,
+        oneshot::Sender<()>,
     ),
     Signal(Uuid, Signal, oneshot::Sender<Result<()>>),
     Resync(oneshot::Sender<Result<()>>),
@@ -936,8 +936,8 @@ impl NativePeers {
                             }
                         }
                         Turn::Input(Input::Update(plans, info, files, done)) => {
-                            let result = d.update(plans, info, files).await;
-                            let _ = done.send(result);
+                            d.update(plans, info, files).await;
+                            let _ = done.send(());
                         }
                         Turn::Input(Input::ConnectionMetrics(room, publication, done)) => {
                             let _ = done.send(d.connection_metrics(&room, publication).await);
@@ -1045,15 +1045,11 @@ impl NativePeers {
                             }
                         }
                         Turn::SourceReady(source) => {
-                            if let Err(error) = d.source_ready(source).await {
-                                eprintln!("Native encoded track attach failed: {error}");
-                            }
+                            d.source_ready(source).await;
                         }
                         Turn::Tick | Turn::Bandwidth => {
                             d.deadlines().await;
-                            if let Err(error) = d.refresh_media(false).await {
-                                eprintln!("Native media admission failed: {error}");
-                            }
+                            d.refresh_media(false).await;
                         }
                     }
                     d.reconcile_encodings().await;
@@ -1109,7 +1105,7 @@ impl NativePeers {
         self.input
             .send(Input::Update(pairs, publications, files, tx))
             .await?;
-        rx.await?
+        Ok(rx.await?)
     }
     pub async fn update_watch(
         &self,
@@ -1538,7 +1534,7 @@ impl Driver {
             .get(&publication)
             .is_some_and(|(_, audio)| audio.control.is_stopped())
         {
-            self.retire_capture_audio(publication).await?;
+            self.retire_capture_audio(publication).await;
         }
         let audio_owner = if self.capture_audio.contains_key(&publication) {
             None
@@ -1723,7 +1719,7 @@ impl Driver {
                 details.producer.replace_system_audio(input);
                 let prepared = std::mem::take(&mut capture.prepared);
                 for source in prepared {
-                    self.source_ready(source).await?;
+                    self.source_ready(source).await;
                 }
                 return Ok(CaptureInput {
                     source: None,
@@ -1757,7 +1753,7 @@ impl Driver {
             } else {
                 self.inputs.end_source(publication);
                 if self.capture_audio.contains_key(&publication) {
-                    self.retire_capture_audio(publication).await?;
+                    self.retire_capture_audio(publication).await;
                 }
                 (
                     piik_channel_core::wire::ScreenSource {
@@ -1782,9 +1778,7 @@ impl Driver {
             capture.selected = true;
             let prepared = std::mem::take(&mut capture.prepared);
             for source in prepared {
-                if let Err(error) = self.source_ready(source).await {
-                    eprintln!("Native replacement media unavailable: {error}");
-                }
+                self.source_ready(source).await;
             }
             Ok(match input {
                 Some((remote, state)) => CaptureInput {
@@ -1802,9 +1796,9 @@ impl Driver {
     }
 
     #[cfg(feature = "capture")]
-    async fn capture_ended(&mut self, publication: Uuid, source_id: Uuid) -> Result<()> {
+    async fn capture_ended(&mut self, publication: Uuid, source_id: Uuid) {
         let Some(capture) = self.local_producers.get_mut(&source_id) else {
-            return Ok(());
+            return;
         };
         if capture.selected {
             self.inputs.end_source(publication);
@@ -1815,7 +1809,7 @@ impl Driver {
         self.sources
             .retain(|id, source| !capture.producer.owns(*id, source.kind));
         self.relay.retain(&self.sources.keys().copied().collect());
-        self.refresh_media(false).await?;
+        self.refresh_media(false).await;
         // Android can stop the incumbent when a new projection is authorized.
         // Its prepared replacement still owns the publication until commit/cancel.
         if self
@@ -1823,7 +1817,7 @@ impl Driver {
             .values()
             .any(|c| c.scope.publication_id == publication && !c.producer.is_stopped())
         {
-            return Ok(());
+            return;
         }
         let event = NativeEvent::CaptureEnded {
             publication_id: publication,
@@ -1831,11 +1825,10 @@ impl Driver {
         };
         let mut cancelled = self.cancel.clone();
         tokio::select! { _ = cancelled.changed() => {}, _ = self.commands.send(event) => {} }
-        Ok(())
     }
 
     #[cfg(feature = "capture")]
-    async fn capture_audio_ended(&mut self, publication: Uuid, source: Uuid) -> Result<()> {
+    async fn capture_audio_ended(&mut self, publication: Uuid, source: Uuid) {
         for capture in self
             .local_producers
             .values_mut()
@@ -1853,15 +1846,15 @@ impl Driver {
         &mut self,
         publication: Uuid,
         owner: watch::Receiver<bool>,
-    ) -> Result<()> {
+    ) {
         if !self
             .capture_audio
             .get(&publication)
             .is_some_and(|(_, audio)| audio.control.same(&owner))
         {
-            return Ok(());
+            return;
         }
-        self.retire_capture_audio(publication).await?;
+        self.retire_capture_audio(publication).await;
         if !self
             .local_producers
             .values()
@@ -1873,11 +1866,10 @@ impl Driver {
                 _ = self.commands.send(NativeEvent::CaptureEnded { publication_id: publication, error: None }) => {},
             }
         }
-        Ok(())
     }
 
     #[cfg(feature = "capture")]
-    async fn retire_capture_audio(&mut self, publication: Uuid) -> Result<()> {
+    async fn retire_capture_audio(&mut self, publication: Uuid) {
         let (_, audio) = self.capture_audio.remove(&publication).unwrap();
         let state = audio.control.source.clone();
         let source = *state.borrow();
@@ -1918,7 +1910,7 @@ impl Driver {
         plans: Vec<PairInfo>,
         publications: Vec<PublicationInfo>,
         files: Vec<FilePlan>,
-    ) -> Result<()> {
+    ) {
         self.inputs.reconcile();
         self.files.update(files, &plans).await;
         #[cfg(feature = "capture")]
@@ -2041,11 +2033,10 @@ impl Driver {
                 self.fail(id).await;
             }
         }
-        self.refresh_media(released).await?;
+        self.refresh_media(released).await;
         for id in self.pairs.keys().copied().collect::<Vec<_>>() {
             self.base_ready(id).await;
         }
-        Ok(())
     }
     async fn create_pair(
         &mut self,
@@ -2237,7 +2228,7 @@ impl Driver {
             for signal in pending.signals {
                 self.signal(id, signal).await?;
             }
-            self.refresh_media(false).await?;
+            self.refresh_media(false).await;
             self.base_ready(id).await;
             Ok::<_, anyhow::Error>(())
         }
@@ -2531,7 +2522,7 @@ impl Driver {
                 self.offer(id).await?;
             }
             self.reconcile_receivers(id).await?;
-            self.refresh_media(false).await?;
+            self.refresh_media(false).await;
         } else if let Some(c) = signal.candidate {
             if !p.ignore_offer {
                 if p.pc.remote_description().await {
@@ -2746,9 +2737,7 @@ impl Driver {
     }
     async fn fail(&mut self, id: Uuid) {
         self.retire_pair(id).await;
-        if let Err(error) = self.refresh_outputs().await {
-            eprintln!("Native media retirement failed: {error}");
-        }
+        self.refresh_outputs().await;
         self.send(Command::LinkState {
             pair_id: id,
             state: LinkState::Failed,
@@ -2908,17 +2897,17 @@ impl Driver {
             Event::CaptureEnded {
                 publication_id,
                 source,
-            } => self.capture_ended(publication_id, source).await?,
+            } => self.capture_ended(publication_id, source).await,
             #[cfg(feature = "capture")]
             Event::CaptureAudioEnded {
                 publication_id,
                 source,
-            } => self.capture_audio_ended(publication_id, source).await?,
+            } => self.capture_audio_ended(publication_id, source).await,
             #[cfg(feature = "capture")]
             Event::CaptureAudioStopped {
                 publication_id,
                 owner,
-            } => self.capture_audio_stopped(publication_id, owner).await?,
+            } => self.capture_audio_stopped(publication_id, owner).await,
             #[cfg(feature = "capture")]
             Event::EncodingFailed {
                 publication_id,
@@ -3430,7 +3419,7 @@ impl Driver {
         }
     }
 
-    async fn source_ready(&mut self, ready: SourceReady) -> Result<()> {
+    async fn source_ready(&mut self, ready: SourceReady) {
         #[cfg(feature = "capture")]
         if matches!(ready.source.origin, SourceOrigin::Local) {
             let captured_audio = ready.source.kind == MediaKind::Audio
@@ -3445,21 +3434,21 @@ impl Driver {
                     capture.scope.publication_id == ready.source.publication_id
                         && capture.producer.owns(ready.source.id, ready.source.kind)
                 }) else {
-                    return Ok(());
+                    return;
                 };
                 if capture.producer.is_stopped() {
-                    return Ok(());
+                    return;
                 }
                 if !capture.selected {
                     capture.prepared.push(ready);
-                    return Ok(());
+                    return;
                 }
             }
         }
         let SourceReady { source, media } = ready;
         let publication = source.publication_id;
         if !self.publications.contains_key(&publication) {
-            return Ok(());
+            return;
         }
         let incoming = match &source.origin {
             SourceOrigin::Incoming {
@@ -3469,7 +3458,7 @@ impl Driver {
                 ..
             } => {
                 if self.incoming_source_flow(&source).is_none() {
-                    return Ok(());
+                    return;
                 }
                 // A received successor replaces only its flow's encoded format.
                 let old = self.sources.values().find_map(|old| match &old.origin {
@@ -3515,7 +3504,7 @@ impl Driver {
                 #[cfg(not(feature = "capture"))]
                 let active = false;
                 if !active || self.publications[&publication].session_id != self.session {
-                    return Ok(());
+                    return;
                 }
                 None
             }
@@ -3550,7 +3539,7 @@ impl Driver {
             }
         }
         self.sources.insert(source.id, source.clone());
-        self.refresh_media(false).await?;
+        self.refresh_media(false).await;
         match media {
             InitialMedia::Rtp(packets) => {
                 for packet in packets {
@@ -3576,10 +3565,9 @@ impl Driver {
                 .await;
             }
         }
-        Ok(())
     }
-    async fn refresh_media(&mut self, released: bool) -> Result<()> {
-        let released = self.refresh_outputs().await? || released;
+    async fn refresh_media(&mut self, released: bool) {
+        let released = self.refresh_outputs().await || released;
         let mut retry = Vec::new();
         let mut partial = false;
         for (id, pair) in &mut self.pairs {
@@ -3609,7 +3597,7 @@ impl Driver {
             }
         }
         if partial {
-            self.refresh_outputs().await?;
+            self.refresh_outputs().await;
         }
         for id in retry {
             if let Err(error) = self.offer(id).await {
@@ -3617,10 +3605,9 @@ impl Driver {
                 self.fail(id).await;
             }
         }
-        Ok(())
     }
 
-    async fn refresh_outputs(&mut self) -> Result<bool> {
+    async fn refresh_outputs(&mut self) -> bool {
         // Forward the exact admitted input, including shadow branches. Selection
         // belongs to local playback and cannot recreate a prewarmed sender.
         let mut released = false;
@@ -3739,7 +3726,7 @@ impl Driver {
         for (flow_id, pair_id) in failed {
             self.fail_flow(pair_id, flow_id).await;
         }
-        Ok(released)
+        released
     }
 }
 fn signal_candidate(

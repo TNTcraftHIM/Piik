@@ -701,7 +701,7 @@ async fn repeated_media_leases_keep_sibling_av_and_use_fresh_rtp() -> Result<()>
                     vec![fixture.publication.clone()],
                     vec![],
                 )
-                .await?;
+                .await;
             tokio::time::timeout(Duration::from_secs(5), async {
                 while !pc
                     .call(|engine| {
@@ -723,7 +723,7 @@ async fn repeated_media_leases_keep_sibling_av_and_use_fresh_rtp() -> Result<()>
                     vec![fixture.publication.clone()],
                     vec![],
                 )
-                .await?;
+                .await;
             ensure!(
                 fixture.output(binding.id, MediaKind::Audio).1 == stream
                     && fixture.output(binding.id, MediaKind::Video).1 == stream,

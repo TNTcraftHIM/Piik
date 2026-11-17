@@ -91,6 +91,7 @@ impl StoredRoomHost {
 
     /// The caller supplies a trusted, separate database path for this room.
     pub fn create(path: &Path, policy: RoomState) -> StoreResult<Self> {
+        policy.validate()?;
         let mut store = Storage::open(path)?;
         if store.load()?.is_some() {
             return Err("room_already_exists".into());

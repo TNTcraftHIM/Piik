@@ -138,6 +138,30 @@ fn sent(
 }
 
 #[test]
+fn creating_invalid_room_policy_leaves_no_database() {
+    let saved =
+        serde_json::to_value(policy("invalid", Uuid::new_v4(), RoomAccess::Private)).unwrap();
+    for (field, value) in [
+        ("voiceBitrate", json!(0)),
+        ("relayCapacity", json!(0)),
+        ("passwordHash", json!("invalid")),
+    ] {
+        let path =
+            std::env::temp_dir().join(format!("piik-invalid-policy-{}.sqlite", Uuid::new_v4()));
+        let mut input = saved.clone();
+        input[field] = value;
+        let result = StoredRoomHost::create(&path, serde_json::from_value(input).unwrap());
+        let created = path.exists();
+        let error = result.err().map(|error| error.to_string());
+        if created {
+            std::fs::remove_file(&path).unwrap();
+        }
+        assert!(!created, "{field} must be rejected before opening SQLite");
+        assert_eq!(error.as_deref(), Some("invalid_room_policy"), "{field}");
+    }
+}
+
+#[test]
 fn deleting_room_policy_and_history_is_one_commit_and_keeps_other_stores() {
     use piik_channel_core::{history::HistoryRequest, storage::Storage};
     let folder = std::env::temp_dir().join(format!("piik-room-delete-{}", Uuid::new_v4()));

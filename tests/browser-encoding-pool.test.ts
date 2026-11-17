@@ -40,7 +40,7 @@ function member(budget = 2_000_000, configureCarrier = async () => true, sharedC
   const fatal = vi.fn();
   const handle = pool.create(source, sender, connection, profile,
     encoded, configureCarrier, async () => undefined, fatal)!;
-  return { demand, select, cancelSelection, fatal, handle, encoded, sender, producerId: () => producerId };
+  return { demand, select, cancelSelection, fatal, handle, encoded, sender, connection, producerId: () => producerId };
 }
 
 async function sample(count = 1) {
@@ -88,6 +88,103 @@ afterEach(() => {
 });
 
 describe("Browser encoding pool ownership", () => {
+  it.each(["accepted", "rejected"])("acknowledges shared picture settings only after the producer %s them", async outcome => {
+    const first = member(), second = member();
+    await sample(4);
+    expect(producers.size).toBe(1);
+    expect(first.producerId()).toBe(second.producerId());
+    const producer = [...producers.keys()][0];
+    let resolve!: () => void, reject!: (error: Error) => void;
+    vi.mocked(producer.update).mockImplementationOnce(() => new Promise<void>((yes, no) => { resolve = yes; reject = no; }));
+    const next = { ...profile, maxFramerate: 60 }, results = ["pending", "pending"];
+    const updates = [first, second].map((member, index) => member.handle.updateProfile(next).then(
+      () => { results[index] = "accepted"; }, error => { results[index] = error.message; }));
+    await sample();
+    expect(producer.update).toHaveBeenLastCalledWith(next, 2_000_000);
+    expect(results).toEqual(["pending", "pending"]);
+    if (outcome === "accepted") resolve();
+    else reject(new Error("producer rejected settings"));
+    await Promise.all(updates);
+    expect(results).toEqual(outcome === "accepted" ? ["accepted", "accepted"] : ["capture_quality_unsupported", "capture_quality_unsupported"]);
+    expect(first.producerId()).toBe(second.producerId());
+  });
+
+  it("settles a departing member while its shared producer update continues for its sibling", async () => {
+    const first = member(), second = member();
+    await sample(4);
+    const producer = [...producers.keys()][0];
+    let resolve!: () => void;
+    vi.mocked(producer.update).mockImplementationOnce(() => new Promise<void>(yes => { resolve = yes; }));
+    const next = { ...profile, maxFramerate: 60 };
+    const retired = first.handle.updateProfile(next);
+    const rejected = expect(retired).rejects.toMatchObject({ name: "AbortError" });
+    const retained = second.handle.updateProfile(next);
+    await sample();
+    first.handle.dispose();
+    await rejected;
+    resolve();
+    await retained;
+    expect(second.producerId()).toBe(producer.id);
+    expect(producer.dispose).not.toHaveBeenCalled();
+  });
+
+  it("keeps an unchanged sibling while a different profile waits for producer and carrier acceptance", async () => {
+    let attached!: (accepted: boolean) => void;
+    const configure = vi.fn(async () => true);
+    const first = member(2_000_000, configure), second = member();
+    await sample(4);
+    const retained = first.producerId();
+    const ready = holdNextProducerStart();
+    configure.mockImplementationOnce(() => new Promise(resolve => { attached = resolve; }));
+    let outcome = "pending";
+    const updated = first.handle.updateProfile({ ...profile, maxFramerate: 60 }).then(() => { outcome = "accepted"; });
+    await sample();
+    expect(outcome).toBe("pending");
+    expect(second.producerId()).toBe(retained);
+    ready();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(outcome).toBe("pending");
+    attached(true);
+    await updated;
+    expect(first.producerId()).not.toBe(retained);
+    expect(second.producerId()).toBe(retained);
+    expect(producers.size).toBe(2);
+  });
+
+  it.each(["connecting", "paused", "unknown allocation"])("accepts source intent before first output while %s", async state => {
+    const first = member();
+    if (state === "connecting") Object.assign(first.connection, { connectionState: "connecting" });
+    if (state === "paused") first.handle.setPaused(true);
+    if (state === "unknown allocation") vi.mocked(first.sender.getStats).mockResolvedValue(stats({}));
+    await sample();
+    expect(first.producerId()).toBeNull();
+    await first.handle.updateProfile({ ...profile, maxFramerate: 60 });
+    expect(first.producerId()).toBeNull();
+  });
+
+  it("keeps a rejected edit's rollback pending until ordinary fallback is accepted", async () => {
+    let restored!: (accepted: boolean) => void;
+    const configure = vi.fn(async () => true);
+    const first = member(2_000_000, configure);
+    await sample(4);
+    const producer = [...producers.keys()][0];
+    configure.mockImplementationOnce(() => new Promise(resolve => { restored = resolve; }));
+    vi.mocked(producer.update).mockRejectedValue(new Error("rejected profile"));
+    const editing = first.handle.updateProfile({ ...profile, maxFramerate: 60 });
+    const rejected = expect(editing).rejects.toThrow("capture_quality_unsupported");
+    await sample();
+    await rejected;
+    let accepted = false;
+    const rollback = first.handle.updateProfile(profile).then(() => { accepted = true; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(accepted).toBe(false);
+    await sample(2);
+    expect(producer.update).toHaveBeenCalledOnce();
+    restored(true);
+    await rollback;
+    expect(first.encoded.passthrough).toHaveBeenCalledOnce();
+  });
+
   it("keeps sampling healthy members after retiring a pending sender stats wait", async () => {
     const retired = member(), healthy = member();
     vi.mocked(retired.sender.getStats).mockReturnValueOnce(new Promise(() => {}));
@@ -516,7 +613,7 @@ describe("Browser encoding pool ownership", () => {
       }
       if (change === "budget") { strong.demand.budget = 500_000; await sample(); }
       if (change === "target demand") { weak.demand.budget = 500_000; await sample(); }
-      if (change === "profile") await strong.handle.updateProfile({ ...profile, resolution: { width: 1280, height: 720 } });
+      if (change === "profile") void strong.handle.updateProfile({ ...profile, resolution: { width: 1280, height: 720 } }).catch(() => {});
       const key = ["key dimensions", "quiet current", "unknown current"].includes(change)
         ? { width: 960, height: 540 } : { width: 1920, height: 1080 };
       expect(accept(key)).toBe(false);

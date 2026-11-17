@@ -35,6 +35,74 @@ async fn reader_preserves_rejection_and_malformed_frame_before_close() {
     }
 }
 
+#[tokio::test]
+async fn reader_reports_transport_failure_after_preserving_accepted_frames() {
+    use tokio_tungstenite::tungstenite::{error::ProtocolError, protocol::Role, Error};
+
+    let (local, remote) = tokio::io::duplex(4096);
+    let mut socket = WebSocketStream::from_raw_socket(local, Role::Client, None).await;
+    let mut peer = WebSocketStream::from_raw_socket(remote, Role::Server, None).await;
+    let text = r#"{"type":"ack","requestId":"accepted"}"#;
+    peer.send(Message::Text(text.into())).await.unwrap();
+    drop(peer); // An abrupt transport end has no WebSocket close handshake.
+
+    let (sender, mut incoming) = mpsc::channel(1);
+    let result = read_messages(&mut socket, sender).await;
+    assert_eq!(incoming.recv().await.unwrap().text, text);
+    assert!(incoming.recv().await.is_none());
+    let error = result.expect_err("transport failure must not become a successful reader exit");
+    assert!(matches!(
+        error.downcast_ref::<Error>(),
+        Some(Error::Protocol(ProtocolError::ResetWithoutClosingHandshake))
+    ));
+}
+
+#[tokio::test]
+async fn reader_keeps_invalid_utf8_on_carrier_recovery_path() {
+    use tokio_tungstenite::tungstenite::protocol::{
+        frame::{
+            coding::{Data, OpCode},
+            Frame,
+        },
+        Role,
+    };
+
+    let (local, remote) = tokio::io::duplex(4096);
+    let mut socket = WebSocketStream::from_raw_socket(local, Role::Client, None).await;
+    let mut peer = WebSocketStream::from_raw_socket(remote, Role::Server, None).await;
+    peer.send(Message::Frame(Frame::message(
+        vec![0xf0, 0x9f],
+        OpCode::Data(Data::Text),
+        false,
+    )))
+    .await
+    .unwrap();
+    peer.send(Message::Frame(Frame::message(
+        Vec::<u8>::new(),
+        OpCode::Data(Data::Continue),
+        true,
+    )))
+    .await
+    .unwrap();
+
+    let mut session = connection_session("ws://memory.invalid".into());
+    let join = Command::Join {
+        protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+        name: "Memory client".into(),
+        credential: None,
+        owner_key: None,
+        session_id: None,
+        signing_key: [1; 32],
+        can_prepare_udp: false,
+        can_receive_video_layers: false,
+    };
+    let mut stop = std::pin::pin!(std::future::pending());
+    assert!(!session
+        .connected(&mut socket, join, &mut stop)
+        .await
+        .unwrap());
+}
+
 #[tokio::test(start_paused = true)]
 async fn reader_services_ping_while_business_has_not_consumed_its_frame() {
     use tokio_tungstenite::tungstenite::protocol::Role;

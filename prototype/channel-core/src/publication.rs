@@ -60,6 +60,24 @@ struct Shadow {
 }
 
 impl Shadow {
+    fn record_proof(&mut self, state: FlowState, now: u64) -> bool {
+        match state {
+            FlowState::Forwardable => {
+                self.proof = self.proof.max(Some(Readiness::Forwardable));
+            }
+            FlowState::Decoded => {
+                self.proof = Some(Readiness::Decoded);
+                self.presented_at = None;
+            }
+            FlowState::SwitchReady if self.viewing => {
+                self.proof = Some(Readiness::Decoded);
+                self.presented_at = Some(now);
+            }
+            FlowState::SwitchReady | FlowState::Failed => return false,
+        }
+        true
+    }
+
     fn ready(&self, incumbent: Option<Readiness>, now: u64) -> bool {
         self.proof.is_some()
             && (!self.viewing
@@ -717,26 +735,15 @@ impl Publication {
                 .get_mut(&receiver)
                 .filter(|leg| leg.flow.id == id && leg.flow.sender == sender)
             {
-                match state {
-                    FlowState::Failed => {
-                        if let Some(candidate) = legs.get(root) {
-                            self.plan.reject_parent(*root, candidate.flow.sender);
-                        }
-                        legs.clear();
-                        return true;
+                if state == FlowState::Failed {
+                    if let Some(candidate) = legs.get(root) {
+                        self.plan.reject_parent(*root, candidate.flow.sender);
                     }
-                    FlowState::Forwardable => {
-                        leg.proof = leg.proof.max(Some(Readiness::Forwardable))
-                    }
-                    FlowState::Decoded => {
-                        leg.proof = Some(Readiness::Decoded);
-                        leg.presented_at = None;
-                    }
-                    FlowState::SwitchReady if leg.viewing => {
-                        leg.proof = Some(Readiness::Decoded);
-                        leg.presented_at = Some(now);
-                    }
-                    FlowState::SwitchReady => return false,
+                    legs.clear();
+                    return true;
+                }
+                if !leg.record_proof(state, now) {
+                    return false;
                 }
                 if legs
                     .iter()
@@ -766,26 +773,15 @@ impl Publication {
         }) = &mut self.operation
         {
             if let Some(leg) = legs.get_mut(&receiver).filter(|leg| leg.flow.id == id) {
-                match state {
-                    FlowState::Failed => {
-                        if let Some(helper) = helper {
-                            self.plan.reject_parent(*root, *helper);
-                        }
-                        self.operation = None;
-                        return true;
+                if state == FlowState::Failed {
+                    if let Some(helper) = helper {
+                        self.plan.reject_parent(*root, *helper);
                     }
-                    FlowState::Forwardable => {
-                        leg.proof = leg.proof.max(Some(Readiness::Forwardable))
-                    }
-                    FlowState::Decoded => {
-                        leg.proof = Some(Readiness::Decoded);
-                        leg.presented_at = None;
-                    }
-                    FlowState::SwitchReady if leg.viewing => {
-                        leg.proof = Some(Readiness::Decoded);
-                        leg.presented_at = Some(now);
-                    }
-                    FlowState::SwitchReady => return false,
+                    self.operation = None;
+                    return true;
+                }
+                if !leg.record_proof(state, now) {
+                    return false;
                 }
                 if legs
                     .iter()

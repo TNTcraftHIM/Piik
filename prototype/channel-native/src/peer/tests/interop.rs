@@ -87,7 +87,7 @@ async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
     f.parents.retain(|p| p.pair != original);
     f.driver
         .update(f.plans.clone(), vec![f.publication.clone()], vec![])
-        .await?;
+        .await;
     f.until(|f| {
         f.observed(&warm_audio.1, MediaKind::Audio)
             .is_some_and(|p| p.2.wrapping_sub(before_audio.2) > 9600)
@@ -187,7 +187,7 @@ async fn complete_h264_au_reaches_two_children_on_retained_pairs() -> Result<()>
     });
     f.driver
         .update(f.plans.clone(), vec![f.publication.clone()], vec![])
-        .await?;
+        .await;
     f.until(|f| {
         f.driver.pairs[&second]
             .outputs

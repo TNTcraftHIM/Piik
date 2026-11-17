@@ -19,7 +19,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
   const settingsLabel = t("room.item.settings", { name: room.name });
   return <div className="c3-room-item" data-selected={selected || undefined} data-unread={unread || undefined} data-settings-open={settingsOpen || undefined} data-offline={!room.available || undefined}>
     {participantDisclosure && <span className="c3-room-voice-toggle lr-embedded-actions">
-      <Btn icon="chevron" size="dense" quiet hint="hint-collapse"
+      <Btn icon="chevron" size="dense" quiet textTooltip
         title={{ text: t(participantDisclosure.open ? "room.item.hideParticipants" : "room.item.showParticipants", { count: String(participantDisclosure.count) }) }}
         expanded={participantDisclosure.open} controls={participantDisclosure.controls} onClick={participantDisclosure.onToggle} />
     </span>}

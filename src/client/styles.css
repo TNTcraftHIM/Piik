@@ -2180,14 +2180,14 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
   animation-duration: .01ms !important;
   animation-delay: 0s !important;
   animation-iteration-count: 1 !important;
-  transition-duration: .01ms !important;
+  transition: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition: none !important;
   }
   .lr-tv-static { animation: none; opacity: .35; }
   .lr-chip, .lr-tile, .lr-language-menu button, .lr-source-option { transform: none !important; }

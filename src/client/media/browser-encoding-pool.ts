@@ -34,6 +34,7 @@ type Member = {
   encoderStats: ReturnType<typeof createStatsAccumulator>;
   current?: Group; pending?: { group: Group; selecting?: boolean };
   output?: Output; previousOutput?: Output; replacement?: Promise<void>;
+  profileChange?: { promise: Promise<void>; resolve(): void; reject(error: Error): void };
 };
 
 // M152 exposes BWE through getStats, not a bandwidth callback. The paired
@@ -68,12 +69,7 @@ export class BrowserEncodingPool {
         const width = member.sender.track?.getSettings().width ?? member.profile.resolution.width;
         return Math.max(1, width / BROWSER_CARRIER_SIZE);
       },
-      updateProfile: async (next) => {
-        if (member.disposed || videoQualitySettingsEqual(member.profile, next)) return;
-        member.profile = { ...next };
-        member.encoderStats = createStatsAccumulator(); member.previousOutput = undefined;
-        // Callers await this inside their sender queue. Handoffs run outside it.
-      },
+      updateProfile: next => this.updateProfile(member, next),
       setPaused: (paused) => {
         if (member.disposed || member.paused === paused) return;
         member.paused = paused;
@@ -89,6 +85,30 @@ export class BrowserEncodingPool {
     this.disposed = true;
     for (const member of [...this.members]) this.remove(member);
     this.prune();
+  }
+
+  private updateProfile(member: Member, next: VideoSenderProfile): Promise<void> {
+    if (member.disposed) return Promise.reject(new DOMException("Browser encoding member retired", "AbortError"));
+    if (videoQualitySettingsEqual(member.profile, next)) return member.profileChange?.promise ?? member.replacement ?? Promise.resolve();
+    this.finishProfile(member, new DOMException("Browser encoding profile replaced", "AbortError"));
+    member.profile = { ...next };
+    member.encoderStats = createStatsAccumulator(); member.previousOutput = undefined;
+    // Before first output there is only accepted source intent. A quality edit
+    // must not wait for a new connection, a paused share or unknown allocation.
+    if (member.disabled || !member.current) return member.replacement ?? Promise.resolve();
+    let resolve!: () => void, reject!: (error: Error) => void;
+    const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+    member.profileChange = { promise, resolve, reject };
+    // The existing reconciliation batches all members' intent. Its producer
+    // completion or handoff accepts the request; the carrier cannot prove it.
+    return promise;
+  }
+
+  private finishProfile(member: Member, error?: Error): void {
+    const change = member.profileChange;
+    member.profileChange = undefined;
+    if (error) change?.reject(error);
+    else change?.resolve();
   }
 
   private compatible(member: Member, group: Group): boolean {
@@ -232,7 +252,10 @@ export class BrowserEncodingPool {
         }
       }).catch(() => {
         if (this.groups.has(group)) this.failSource(group.source);
-      }).finally(() => { group.updating = undefined; });
+      }).finally(() => {
+        group.updating = undefined;
+        if (!this.disposed && this.groups.has(group)) this.reconcile();
+      });
     }
     for (const member of this.members) {
       if (member.disposed || member.disabled || member.paused || member.replacement || !member.codec || member.budget === undefined) continue;
@@ -275,9 +298,14 @@ export class BrowserEncodingPool {
               member.pending = undefined;
               member.encoderStats = createStatsAccumulator(); member.previousOutput = undefined;
               member.carrier = true;
-              member.replacement = member.configureCarrier().then((applied) => {
+              const replacement = member.configureCarrier().then((applied) => {
                 if (!applied) this.fallback(member);
-              }).catch(() => this.fallback(member)).finally(() => { member.replacement = undefined; });
+              }).catch(() => this.fallback(member)).finally(() => {
+                if (member.replacement !== replacement) return;
+                member.replacement = undefined;
+                if (!member.disposed) this.reconcile();
+              });
+              member.replacement = replacement;
               this.prune();
             }, (metadata) => {
               if (member.disposed || member.pending !== pending) return false;
@@ -338,6 +366,10 @@ export class BrowserEncodingPool {
     }
     this.updatePauses();
     this.prune();
+    for (const member of this.members) {
+      const group = member.current;
+      if (group?.ready && !group.updating && !member.replacement && this.compatible(member, group)) this.finishProfile(member);
+    }
   }
 
   private startGroup(member: Member, budget: number): Group {
@@ -362,33 +394,35 @@ export class BrowserEncodingPool {
     return group;
   }
 
-  private restore(member: Member): void {
-    if (member.disposed) return;
-    member.mixed = true;
-    member.pending = undefined;
-    member.carrier = false;
-    member.replacement = member.configureCarrier().then((applied) => {
+  // Negotiated compatibility belongs to one connection. Its ordinary sender
+  // remains available without retiring a healthy sibling's shared producer.
+  private fallback(member: Member): void {
+    if (member.disabled || member.disposed) return;
+    member.disabled = true;
+    this.finishProfile(member, new Error("capture_quality_unsupported"));
+    const replacement = (member.replacement ?? Promise.resolve()).then(async () => {
+      if (member.disposed) return;
+      member.mixed = true;
+      member.pending = undefined;
+      member.carrier = false;
+      const applied = await member.configureCarrier();
       if (member.disposed) return;
       if (!applied) { member.onFatal(); return; }
       member.encoded.passthrough(member.requestKey);
       member.current = undefined;
       member.encoderStats = createStatsAccumulator(); member.previousOutput = undefined;
     }).catch(() => { if (!member.disposed) member.onFatal(); })
-      .finally(() => { member.replacement = undefined; this.prune(); });
-  }
-
-  // Negotiated compatibility belongs to one connection. Its ordinary sender
-  // remains available without retiring a healthy sibling's shared producer.
-  private fallback(member: Member): void {
-    if (member.disabled || member.disposed) return;
-    member.disabled = true;
-    if (member.replacement) void member.replacement.then(() => this.restore(member));
-    else this.restore(member);
+      .finally(() => {
+        if (member.replacement === replacement) member.replacement = undefined;
+        this.prune();
+      });
+    member.replacement = replacement;
   }
 
   private failSource(source: MediaStreamTrack): void {
     if (this.failedSources.has(source)) return;
     this.failedSources.add(source);
+    for (const group of this.groups) if (group.source === source) group.failed = true;
     for (const member of this.members) if (member.source === source) this.fallback(member);
   }
 
@@ -411,6 +445,7 @@ export class BrowserEncodingPool {
 
   private remove(member: Member): void {
     if (member.disposed) return;
+    this.finishProfile(member, new DOMException("Browser encoding member retired", "AbortError"));
     member.abort.abort();
     this.members.delete(member);
     member.encoded.passthrough(member.requestKey);

@@ -12,6 +12,14 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **Prepared-source settings.** An unused OBS input permit retains the
+  defaults from its creation. A later Browser or Native capture must use the
+  current next-share settings until a source has actually committed.
+- [ ] **Unconfirmed attachment retry.** Reuse the prepared message and nonce
+  for a retry of the same draft; rereading an unavailable original file must
+  not prevent resolving a message that may already be confirmed.
+- [ ] **Reading-window recovery.** Preserve an explicitly selected history
+  window across reconnection to the same room binding instead of loading latest.
 - [ ] **Two-App connection failure.** Correlate the reported failed attempt's
   actual source/viewer endpoints, App control state, Native session generations,
   STUN observations and ordinary/enhanced ICE outcome. Two open Apps do not
@@ -44,11 +52,6 @@ the feedback period; they do not delay that delivery.
   Windows App/Web package. Cover failed replacement retaining the active source,
   original-page closure, and independent viewer playback with and without
   explicit forwarding. Broader website/live coverage remains below.
-- [ ] **Site forwarding package acceptance.** Verify screen fallback when the
-  base path remains healthy and measure first-picture latency in matching packages.
-  Packaged Windows Native source, Linux Server and
-  Browser picture, sound and file delivery are covered in the verification
-  record. Fixed UDP reachability remains separate from HTTP access.
 - [ ] **Native console/terminal package acceptance.** Check the matching package's
   silent native entry, explicit Browser terminal, unavailable-WebView fallback,
   and interactive quit/update restart.

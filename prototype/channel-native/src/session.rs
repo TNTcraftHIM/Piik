@@ -81,6 +81,7 @@ async fn read_messages(
             }
             // tungstenite queues Pong itself; the next read flushes it.
             Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
+            Some(Err(error)) => return Err(error.into()),
             _ => return Ok(()),
         }
     }
@@ -818,7 +819,15 @@ impl Session {
             let result = read_messages(&mut reader, messages).await;
             ended.send_replace(Some(Instant::now()));
             if let Err(error) = result {
-                eprintln!("Native signaling reader stopped: {error}");
+                // Tungstenite's UTF-8 error can contain bytes from the private message.
+                if matches!(
+                    error.downcast_ref::<tokio_tungstenite::tungstenite::Error>(),
+                    Some(tokio_tungstenite::tungstenite::Error::Utf8(_))
+                ) {
+                    eprintln!("Native signaling reader stopped: invalid UTF-8 message");
+                } else {
+                    eprintln!("Native signaling reader stopped: {error}");
+                }
             }
             // Sender closure is ordered behind accepted application frames. Keep
             // the reader outcome alive until the business owner retires this turn.

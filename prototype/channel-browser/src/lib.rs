@@ -327,8 +327,10 @@ pub struct RoomHost {
 impl RoomHost {
     #[wasm_bindgen(constructor)]
     pub fn new(policy: &str) -> Result<RoomHost, JsValue> {
+        let policy: RoomState = parse(policy)?;
+        policy.validate().map_err(error)?;
         Ok(Self {
-            room: SharedRoomHost::new(parse(policy)?),
+            room: SharedRoomHost::new(policy),
         })
     }
     pub fn room_id(&self) -> String {

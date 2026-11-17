@@ -139,8 +139,14 @@ the subscription and later recovers without another user action. Two Native-owne
 rooms also retain independent leases on one Server pair: revoking one room's
 permission removes its flows while the other retains its connection, flow and
 advancing audio. Leaving both rooms releases the final connection and capture.
-First-picture latency remains open. These checks use synthetic media and a VM
-port forward, not difficult physical NATs or an endurance test.
+Matching packages also recover a missing screen path while retaining the healthy
+base connection and source's local presentation. One viewing request reached its
+first recorded video-frame callback after 22.64 seconds, with subsequent picture,
+source sound and base voice counters advancing. That callback reported two
+presented frames, so it does not identify the absolute first presentation.
+The isolated Browser exposed host candidates for the VM to reach its base path.
+These checks use synthetic media and a VM port forward, not difficult physical
+NATs or an endurance test.
 
 The newer conversation path passes normal Browser-hosted and App-hosted room
 checks with peer signaling blocked: history, bidirectional messages and saved

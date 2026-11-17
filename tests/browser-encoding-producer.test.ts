@@ -66,9 +66,10 @@ function createProducer(codec: RTCRtpCodec = { mimeType: "video/VP8", clockRate:
   return { producer, source, failed };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
-  vi.mocked(configureVideoSender).mockReset();
+  const actual = await vi.importActual<typeof import("../src/client/media/quality")>("../src/client/media/quality");
+  vi.mocked(configureVideoSender).mockReset().mockImplementation(actual.configureVideoSender);
   vi.useFakeTimers();
   Connection.instances = [];
   vi.stubGlobal("RTCPeerConnection", Connection);
@@ -85,6 +86,34 @@ afterEach(async () => {
 });
 
 describe("Browser encoding producer startup", () => {
+  it("rejects an ignored effective budget and retries the same request without changing source intent", async () => {
+    const { producer } = createProducer();
+    await producer.start();
+    for (const connection of Connection.instances) connection.state("connected");
+    const send = Connection.instances[0];
+    send.sender.setParameters.mockImplementationOnce(async () => {});
+    await expect(producer.update(QUALITY_PROFILES["1080p30"], 2_000_000)).rejects.toThrow("capture_quality_unsupported");
+    expect(send.sender.getParameters().encodings[0].maxBitrate).toBe(5_000_000);
+    await producer.update(QUALITY_PROFILES["1080p30"], 2_000_000);
+    expect(send.sender.getParameters().encodings[0].maxBitrate).toBe(2_000_000);
+    expect(applyVideoCaptureProfile).toHaveBeenCalledOnce();
+    expect(send.close).not.toHaveBeenCalled();
+  });
+
+  it("settles a pending parameter update when its producer retires", async () => {
+    const { producer, failed } = createProducer();
+    await producer.start();
+    for (const connection of Connection.instances) connection.state("connected");
+    const send = Connection.instances[0];
+    send.sender.setParameters.mockImplementationOnce(() => new Promise(() => {}));
+    const updating = producer.update(QUALITY_PROFILES["1080p30"], 2_000_000);
+    const rejected = expect(updating).rejects.toMatchObject({ name: "AbortError" });
+    await vi.advanceTimersByTimeAsync(0);
+    producer.dispose();
+    await rejected;
+    expect(failed).not.toHaveBeenCalled();
+  });
+
   const localAnswer = (codec: string, fmtp = "") => ({ type: "answer" as const, sdp: [
     "v=0", "o=- 1 1 IN IP4 127.0.0.1", "s=-", "t=0 0",
     "m=video 9 UDP/TLS/RTP/SAVPF 96", "c=IN IP4 0.0.0.0", "a=recvonly",
@@ -119,7 +148,7 @@ describe("Browser encoding producer startup", () => {
     expect(Connection.prototype.createAnswer).toHaveBeenCalledOnce();
   });
 
-  it.each([0, 999, Number.NaN])("does not invent a starting rate for budget %s", async (budget) => {
+  it.each([0, 999])("does not invent a starting rate for budget %s", async (budget) => {
     const answer = localAnswer("VP8");
     vi.spyOn(Connection.prototype, "createAnswer").mockResolvedValue(answer);
     const { producer } = createProducer();

@@ -260,7 +260,10 @@ export class BrowserEncodingProducer {
     try {
       if (captureChanged) await applyVideoCaptureProfile(track, profile);
       this.checkAlive();
-      if (senderChanged) await configureVideoSender(sender, parameters);
+      if (senderChanged) {
+        const applied = await configureVideoSender(sender, parameters);
+        if (applied.mismatches.length) throw new Error("capture_quality_unsupported");
+      }
       this.checkAlive();
       this.applied = { capture: profile, sender: parameters };
       debugEvent("encoding-pool", "producer-configured", { producerId: this.id, profile, parameters });
@@ -277,7 +280,7 @@ export class BrowserEncodingProducer {
   private serialize(operation: () => Promise<unknown>): Promise<void> {
     return this.parameterTail = this.parameterTail.catch(() => undefined).then(async () => {
       this.checkAlive();
-      await operation();
+      await waitForConnectionOperation(this.streamAbort.signal, operation);
       this.checkAlive();
     });
   }

@@ -165,6 +165,10 @@ export class ChannelInput {
     }
   }
 
+  close(publicationId: string): void {
+    this.endpoints.get(publicationId)?.channel.close();
+  }
+
   reset(): void {
     for (const endpoint of this.endpoints.values()) endpoint.channel.close();
     this.endpoints.clear();

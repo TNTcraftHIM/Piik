@@ -38,7 +38,7 @@ export function Cap({ k }: { k: ControlCopy }) {
 }
 
 export function BackButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
-  return <Btn icon="arrowLeft" title="common.back" cap="common.back" size="dense" quiet hint="hint-collapse" disabled={disabled} onClick={onClick} />;
+  return <Btn icon="arrowLeft" title="common.back" cap="common.back" size="dense" quiet disabled={disabled} onClick={onClick} />;
 }
 
 export function Btn({

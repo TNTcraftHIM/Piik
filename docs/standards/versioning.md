@@ -107,19 +107,31 @@ payloads through to Core. Nested schemas retain their own checks. The
 [Browser decoder](../../src/client/channel/protocol.ts) own these distinctions.
 
 Required fields and closed enums can still make an addition incompatible.
-The earlier required `sfu` addition to strict 2.x `/api/capabilities`
-demonstrated both directions of this problem; an unchanged signaling identifier
-does not cover HTTP compatibility.
+Compatibility applies at every published boundary, including HTTP discovery,
+WebSocket messages and their nested payloads. An unchanged signaling identifier
+does not establish compatibility at another boundary.
 
-Runtime capabilities and App discovery now ignore unknown descriptive fields
-while validating known types, bounds and required identity. An absent optional
-capability means unavailable. Commands, credentials and authority checks remain
-strict. A new
-message type, enum value or behavior-changing field is emitted only after the
-other side advertises support; accepting unknown metadata is not permission to
-execute unknown commands. A more tolerant reader does not update already-released
-readers: do not emit a new reaction to legacy pages merely because current pages
-can skip it. Verify both readers before calling a change additive.
+Runtime capabilities and App discovery ignore unknown descriptive fields while
+validating known types, bounds and required identity. An absent new optional
+capability means unavailable; established required fields keep their contract.
+Commands, credentials and authority checks remain strict. Accepting unknown
+descriptive metadata establishes neither support for an action nor permission to
+perform it.
+
+A sender preserves baseline commands, results and established behavior for a peer
+that has not selected an extension. It sends a new command, closed enum value or
+behavior-changing payload only after the receiving implementation's support for
+that feature is known. Server-initiated extension events require the recipient's
+advertised support or a concrete request selecting those events. A new client
+keeps a strict baseline handshake unchanged until support for an extension is known.
+
+Use the existing discovery, operation result or current room-host capability
+projection to advertise a concrete feature. Descriptions and selections retire
+with their existing App connection, room-host binding or source owner. The action
+owner still validates current authorization, identity, generation and operation
+state. A tolerant current reader does not change a released reader's contract;
+verify the affected released readers and new producers in both directions before
+calling a change additive.
 
 In the 2.0 contract, numeric media descriptions and retry progress
 are independent of current implementation limits and retry policy. Extending

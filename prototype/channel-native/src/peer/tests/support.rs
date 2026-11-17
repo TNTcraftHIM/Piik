@@ -185,7 +185,7 @@ impl Fixture {
         });
         f.driver
             .update(f.plans.clone(), vec![f.publication.clone()], vec![])
-            .await?;
+            .await;
         for (index, pair) in [first, second].into_iter().enumerate() {
             f.start_parent(pair, 500_000 + index as u32 * 900_000)
                 .await?;
@@ -299,9 +299,9 @@ impl Fixture {
         let changed = self.driver.bandwidth_changed.clone();
         tokio::select! {
             Some((pair,Some(_)))=feedbacks.next(),if !feedbacks.is_empty()=>{*self.plis.entry(pair).or_default()+=1;},
-            _=changed.notified()=>self.driver.refresh_media(false).await?,
+            _=changed.notified()=>self.driver.refresh_media(false).await,
             Some(event)=self.events.recv()=>self.driver.event(event).await?,
-            Some(source)=self.sources.recv()=>self.driver.source_ready(source).await?,
+            Some(source)=self.sources.recv()=>self.driver.source_ready(source).await,
             Some(command)=self.commands.recv()=>match command {
                 NativeEvent::Command(Command::Signal{pair_id,payload}) => {
                 let remote=&self.remote[&pair_id];
@@ -326,7 +326,7 @@ impl Fixture {
                 Some(TrackEvent::End)|None=>{self.tracks.remove(&id);},
             },
             _=self.tick.tick()=>{
-                self.frame+=1;if self.frame%50==0{self.driver.refresh_media(false).await?;self.driver.request_pending_keyframes();}let wallclock=self.epoch+Duration::from_millis(u64::from(self.frame.saturating_sub(1))*20);
+                self.frame+=1;if self.frame%50==0{self.driver.refresh_media(false).await;self.driver.request_pending_keyframes();}let wallclock=self.epoch+Duration::from_millis(u64::from(self.frame.saturating_sub(1))*20);
                 for parent in &self.parents {
                     if self.remote[&parent.pair].confirm(parent.audio).await?.flatten().is_none(){continue;}
                     let audio=rtp::Packet{header:rtp::header::Header{version:2,marker:true,sequence_number:self.frame as u16,timestamp:parent.base.wrapping_add(self.frame*960),..Default::default()},payload:vec![0xf8,0xff,0xfe].into()};

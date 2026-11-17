@@ -112,7 +112,7 @@ async fn actual_vp8_then_h264_on_the_same_ssrc_replaces_only_video_format() -> R
         f.plans.last_mut().unwrap().outgoing[1].selected = true;
         f.driver
             .update(f.plans.clone(), vec![f.publication.clone()], vec![])
-            .await?;
+            .await;
         let pair = f.parents[0].pair;
         let input = f.plans[0].incoming[0].id;
         let flow = f.plans.last().unwrap().outgoing[0].id;

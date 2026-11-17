@@ -1821,6 +1821,7 @@ export class ChannelSession {
     return operation.finally(() => { watch.operation = undefined; }).then(() => { void this.syncAppWatching(); });
   };
   private retireWatch(publicationId: string): void {
+    this.input.close(publicationId);
     this.watching.get(publicationId)?.query?.abort();
     this.watching.delete(publicationId);
   }

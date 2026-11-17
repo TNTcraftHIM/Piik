@@ -133,25 +133,45 @@ per mode. Auto and Software each delivered 120 frames in every second after
 their initial worker startup; neither recorded budget drops. Hardware
 input-to-output latency was 0.67/2.19 ms at p50/p95. Software encoding took
 0.46/0.64 ms, separately from its GPU-dependent readback wait of 0.43/1.08 ms.
-These are different stage measurements, not an encoder speed ranking.
+These separate stage measurements do not rank encoder speed. The control
+establishes no fixed 60 fps limit in that low-load encoding path.
 
-A further current-source control used synthetic text and moving blocks at
-1920 × 1080, 30 fps and 6 Mbps through the complete Rust texture/child-worker
-path, for five seconds per mode. Auto/Software returned 136/143 encoded AUs from
-150 input frames: startup reduced first-second delivery to 16/23; each remaining second
-delivered 30, with no budget drops. Encoding p95 was 2.77/2.48 ms; Software's
-GPU-dependent readback added a separately measured 0.90 ms p95. Child-process
-CPU totals were 609/1859 ms including initialization and shutdown, not steady
-CPU percentages. Conversion timings measure CPU submission, not GPU completion;
-Software encoding includes its owned NV12 copy. These instrumented debug runs
-measure encoded output, without decoding or network delivery, and establish
-short-run cadence rather than endurance or a compression-quality ranking.
+A 2026-11-17 control of `8872d40b`'s Windows encoder implementation compared
+hardware H264, system software H264 and libvpx 1.16.0 VP8 on a Ryzen 7 9700X /
+RTX 4070 SUPER (driver 32.0.16.1742). Each instrumented debug arm ran once for
+five seconds: the same synthetic text/moving-block textures, 1920 × 1080,
+30 fps, 6 Mbps requested, one output and each implementation's current presets.
+No competing load was injected; background scheduling was uncontrolled.
+Excluding the first second, all three delivered the same 120 source frames.
+Their converted NV12 reference hashes matched, and independent FFmpeg decoding
+preserved every received frame and its dimensions. Local receipts retain
+source/binary identity, AU-to-source mappings, stage timings and luma errors.
 
-Both workers joined on exit. This establishes no fixed 60 fps limit in that
-low-load encoding path; it does not measure WGC, high-resolution games, GPU
-saturation or automatic hardware/software switching.
+| Common post-startup sample | Hardware H264 | Software H264 | Software VP8 |
+| --- | ---: | ---: | ---: |
+| Worker CPU over approximately 3.97 s | 187.5 ms | 1562.5 ms | 1703.1 ms |
+| Encoder adapter start-to-AU p95 | 4.17 ms | 2.46 ms | 9.97 ms |
+| Separate GPU-dependent readback p95 | Not used | 1.60 ms | 1.27 ms |
+| Source PTS-to-parent AU receipt p95 | 6.60 ms | 5.39 ms | 12.99 ms |
+| AU payload bytes over four seconds | 1,305,218 | 1,119,727 | 1,650,161 |
+| Decoded luma PSNR against matching NV12 | 57.00 dB | 54.56 dB | 53.14 dB |
 
-A later owned Windows control separately delayed the GPU-copy handoff,
+Worker CPU uses the post-startup user-plus-kernel delta from
+[GetProcessTimes](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocesstimes),
+including worker/driver work rather than isolated codec CPU. Hardware timing
+includes asynchronous input-to-output service; software timing excludes the
+separate readback wait. GPU-copy/conversion submission does not measure GPU
+completion. PSNR uses pooled luma error with peak 255. Keyframe counts in the
+common sample differed (4/2/2), and none used the full requested bitrate, so this
+is a comparison of actual presets, not an equal-quality codec ranking.
+
+Hardware used substantially less worker CPU on this content. Software H264's
+slightly lower local latency came with more CPU and lower mean fidelity;
+the control gives no reason to change automatic selection or infer benefit
+under game contention. Real capture, packaged-App performance, network delivery,
+sustained load and perceptual quality were outside its scope.
+
+A separate owned Windows control delayed the GPU-copy handoff,
 encoder-adapter service and consumption of completed AUs. Raw-frame credit gaps
 and low output cadence appeared in all three, so neither identifies encoding
 pressure. Hardware input acceptance to observed HaveOutput delivery stayed near

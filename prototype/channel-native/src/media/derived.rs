@@ -68,7 +68,7 @@ struct Decoding {
     frames: Frames,
     input: Arc<Input>,
     format: watch::Receiver<Option<Format>>,
-    encoding_settings: Option<(Format, DegradationPreference)>,
+    encoding_settings: Option<(u32, u32, DegradationPreference)>,
     task: JoinHandle<Result<()>>,
 }
 impl Decoding {
@@ -174,20 +174,21 @@ async fn apply(
     let Some(format) = *decoding.format.borrow() else {
         return vec![];
     };
+    let settings = (format.width, format.height, preference);
     if decoding
         .encoding_settings
-        .is_some_and(|current| current != (format, preference))
+        .is_some_and(|current| current != settings)
     {
-        // Bitrate changes update an encoder in place; geometry and cadence are
-        // its creation settings, as is source-owned adaptation intent. Retain
-        // the decoder, source clock and readers.
+        // Geometry and source-owned adaptation intent require new workers.
+        // Decoder FPS is only a startup hint; live workers follow source PTS.
+        // Retain the decoder, source clock and readers.
         let previous = std::mem::replace(
             &mut decoding.encodings,
             Encodings::new(baseline.time(), baseline.changed(), decoding.codec),
         );
         previous.stop().await;
     }
-    decoding.encoding_settings = Some((format, preference));
+    decoding.encoding_settings = Some(settings);
     decoding
         .encodings
         .reconcile(next, Some(&decoding.input), |bitrate| {
@@ -367,7 +368,7 @@ mod tests {
     use tokio::sync::Notify;
 
     #[tokio::test]
-    async fn format_changes_join_old_encoding_work_but_equal_notifications_keep_it() -> Result<()> {
+    async fn geometry_and_preference_replace_encodings_but_fps_does_not() -> Result<()> {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
         let epoch = Instant::now();
@@ -404,7 +405,6 @@ mod tests {
         for next in [
             Format {
                 width: 640,
-                height: 360,
                 ..current
             },
             Format {
@@ -420,18 +420,21 @@ mod tests {
                 (video, Ok(()))
             }));
             let before = completed.load(Ordering::SeqCst);
-            // A published notification is not itself a new encoder specification.
-            format.send_replace(Some(current));
-            assert!(apply(
-                &mut decoding,
-                &[],
-                &baseline,
-                DegradationPreference::Balanced
-            )
-            .await
-            .is_empty());
-            assert_eq!(completed.load(Ordering::SeqCst), before);
-            assert_eq!(decoding.encodings.pumps.len(), 1);
+            // Equal notifications and nominal cadence changes retain the worker.
+            for fps in [current.fps, 60, 29] {
+                format.send_replace(Some(Format { fps, ..current }));
+                assert!(apply(
+                    &mut decoding,
+                    &[],
+                    &baseline,
+                    DegradationPreference::Balanced
+                )
+                .await
+                .is_empty());
+                assert_eq!(completed.load(Ordering::SeqCst), before);
+                assert_eq!(decoding.encodings.pumps.len(), 1);
+                assert!(Arc::ptr_eq(&input, &decoding.input));
+            }
 
             format.send_replace(Some(next));
             assert!(apply(
@@ -467,7 +470,11 @@ mod tests {
         assert!(Arc::ptr_eq(&input, &decoding.input));
         assert_eq!(
             decoding.encoding_settings,
-            Some((current, DegradationPreference::MaintainFramerate))
+            Some((
+                current.width,
+                current.height,
+                DegradationPreference::MaintainFramerate
+            ))
         );
         decoding.stop().await;
         Ok(())

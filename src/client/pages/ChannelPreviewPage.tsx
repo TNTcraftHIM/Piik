@@ -335,7 +335,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             {room?.authorized && <ChannelConnections key={`connections:${roomId}`} channel={channel} roomId={roomId} />}
             {layout !== "quick" && state && !overview && !toolSurface.open && <Btn id="c3-companion-trigger" icon={companionKind === "chat" ? "chat" : "users"}
               title={{ text: companionVisible ? t("channel.previewPage.hideSidePanel") : t("channel.previewPage.showSidePanel") }}
-              size="dense" quiet expanded={companionVisible} hint="hint-collapse"
+              size="dense" quiet expanded={companionVisible} textTooltip
               onClick={() => {
                 if (sidebarsInline) setCompanionOpen(previous => ({ ...previous, [companionKind]: !previous[companionKind] }));
                 else setMobilePane(companionVisible ? "room" : companionKind);
@@ -458,7 +458,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)}
             onHistory={channel.loadHistory} onLatest={channel.loadLatestHistory}
             onMessage={channel.loadMessage} onRead={channel.markRead} unreadAfter={channel.readByRoom[roomId]} selfUserId={self?.id}
-            onBack={!toolSurface.open && !sidebarsInline && visibleScreens.length > 0 ? () => setMobilePane("room") : undefined}
+            onBack={!toolSurface.open && !sidebarsInline && visibleScreens.length > 0 ? () => {
+              setMobilePane("room");
+              // Let the narrow header become visible before returning focus.
+              requestAnimationFrame(() => document.getElementById("c3-companion-trigger")?.focus({ preventScroll: true }));
+            } : undefined}
             interaction={channel.interactionsByRoom.get(roomId) ?? null}
             onSend={channel.sendMessage} floating={toolSurface.open} hidden={conversationHidden} /></>}
           voice={<><section className="c3-voice-entry" aria-label={t("channel.previewPage.voiceInThisRoom")}>
