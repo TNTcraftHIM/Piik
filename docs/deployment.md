@@ -34,7 +34,7 @@ backup; Git and immutable artifacts own history.
 
 ## Managed One-click Hosting
 
-Reviewed 2026-11-11. Vercel can serve Web assets, and its
+Reviewed 2026-11-17. Vercel can serve Web assets, and its
 [WebSocket support is now generally available](https://vercel.com/changelog/websocket-support-is-now-generally-available).
 That does not make the current Piik Server a stateless Function: it owns a live
 site authority, durable SQLite files and Native UDP transport. Its fixed UDP
@@ -54,6 +54,57 @@ button until its ordinary room, restart and peer-transfer flows run on the
 chosen hosting model. The existing Server archive and Compose service remain
 the supported starting points; use a persistent host rather than changing the
 room model to fit a hosting badge.
+
+### Fly.io Candidate
+
+The [Fly configuration](../deploy/fly/fly.toml.example) reuses the existing Server
+image with one always-running Machine and one persistent data volume. It remains
+an acceptance candidate: no Fly deployment, public UDP path or recovery on Fly
+has been verified. The initial CPU, memory and disk sizes are starting values,
+not a capacity guarantee.
+
+[Fly UDP](https://docs.fly.io/networking/udp-and-tcp) requires a dedicated IPv4,
+the `fly-global-services` bind address and equal internal/external ports. The
+template keeps HTTP on `0.0.0.0:8787` and UDP on that alias at port 8787. Server's
+public UDP address is the allocated IPv4 and the same port. HTTPS/WebSocket
+traffic uses Fly's HTTP service; media uses the separate UDP service.
+
+For an authorized isolated trial, copy the template outside the checkout as
+`fly.toml` and configure it using the [Fly reference](https://docs.fly.io/reference/configuration):
+
+1. Choose the app name and region, and pin a matching 3.0 image containing UDP
+   hostname binding support. Keep its digest for recovery; `latest` may still
+   select 2.x. Image publication remains a separate release action.
+2. Create the app with `fly apps create <app-name>`, then allocate its dedicated
+   IPv4 with `fly ips allocate-v4 --app <app-name>`. These create paid resources;
+   account for compute, volume, address and transfer charges for the chosen region.
+   Replace the template's documentation-only IP with that address.
+3. Set the exact public HTTPS origin, normally `https://<app-name>.fly.dev`.
+   Import a private owner seed as `PIIK_CHANNEL_OWNER_KEY` using
+   [`fly secrets import --stage --app <app-name>`](https://docs.fly.io/flyctl/cmd/fly_secrets_import)
+   from private stdin; keep credentials out of the template and shell history.
+4. Run `fly deploy --config /path/to/fly.toml --ha=false`. This uses the chosen
+   image and creates the configured volume on first deployment. Verify that
+   exactly one Machine has the volume attached. Keep that single authority;
+   extra independent volumes do not replicate a site. Updates use the ordinary
+   rolling strategy and briefly disconnect the single Machine's participants.
+
+The persistent mount retains the image's `/home/nonroot` data location and
+UID/GID 65532. Fly's writable ephemeral root supplies `/tmp` for backup and
+restore staging; durable data never belongs there. Verify a room backup/restore
+to establish both directories' actual permissions before acceptance.
+[Fly Volumes](https://docs.fly.io/volumes/overview) survive restarts and deployments
+but remain tied to their physical host. Keep private independent backups; provider
+snapshots alone do not establish recovery.
+
+Acceptance requires public health and matching Web assets, an ordinary room with
+conversation and picture/sound or file transfer through the Server's UDP path,
+and retained identity, room policy and history after Machine restart and image
+replacement. Exercise backup/restore as well as reopening the same volume.
+Record the image digest, volume and configuration before replacement; application
+recovery redeploys that image with the same volume and secrets. Data recovery uses
+the separately verified backup procedure below. Local Server checks do not prove
+the provider's mount permissions, UDP ingress or room lifecycle.
 
 ## Build Host
 

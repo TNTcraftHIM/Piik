@@ -198,6 +198,10 @@ the bound media port. This value accepts an IP:port, not a hostname. The local
 bind remains separate: an explicit loopback tunnel backend can use
 `PIIK_CHANNEL_UDP_BIND_ADDRESS=127.0.0.1`. The normal listener binds both IP
 families; set an explicit bind address when only one family should be used.
+The UDP bind also accepts a hostname resolving to local addresses, such as a
+hosting platform's service alias. Server resolves it once at startup and binds
+each distinct result; resolution or binding failure stops startup. The advertised
+public address remains a numeric IP:port with a matching listener family.
 
 For LAN Browser capture, use an HTTPS reverse proxy with a certificate trusted
 by the devices, or use the App's Local-network HTTPS entry. The Rust Server does

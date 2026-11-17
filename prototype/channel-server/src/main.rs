@@ -52,16 +52,30 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
         udp_port != 0,
         "PIIK_CHANNEL_UDP_PORT must be a fixed nonzero port"
     );
-    let addresses: Vec<IpAddr> = match std::env::var("PIIK_CHANNEL_UDP_BIND_ADDRESS") {
-        Ok(value) => vec![value
-            .parse()
-            .context("PIIK_CHANNEL_UDP_BIND_ADDRESS must be a local IP")?],
+    let mut addresses: Vec<IpAddr> = match std::env::var("PIIK_CHANNEL_UDP_BIND_ADDRESS") {
+        Ok(value) => {
+            ensure!(
+                !value.is_empty(),
+                "PIIK_CHANNEL_UDP_BIND_ADDRESS must not be empty"
+            );
+            tokio::net::lookup_host((value.as_str(), udp_port))
+                .await
+                .context("Resolve PIIK_CHANNEL_UDP_BIND_ADDRESS to a local IP")?
+                .map(|address| address.ip())
+                .collect()
+        }
         Err(std::env::VarError::NotPresent) => vec![
             std::net::Ipv4Addr::UNSPECIFIED.into(),
             std::net::Ipv6Addr::UNSPECIFIED.into(),
         ],
         Err(error) => return Err(error.into()),
     };
+    addresses.sort_unstable();
+    addresses.dedup();
+    ensure!(
+        !addresses.is_empty(),
+        "PIIK_CHANNEL_UDP_BIND_ADDRESS resolved to no IP addresses"
+    );
     let advertised = std::env::var("PIIK_CHANNEL_UDP_PUBLIC_ADDRESS")
         .ok()
         .map(|value| value.parse::<SocketAddr>())

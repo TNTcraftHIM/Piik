@@ -1808,6 +1808,7 @@ impl Engine {
                         s.local_addr().is_ok_and(|a| {
                             a.port() == packet.source.port()
                                 && a.is_ipv4() == packet.source.is_ipv4()
+                                && (a.ip().is_unspecified() || a.ip() == packet.source.ip())
                         })
                     }) {
                         if let Err(error) = socket.state.try_send(

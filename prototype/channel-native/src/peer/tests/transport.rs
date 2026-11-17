@@ -302,6 +302,80 @@ mod feedback;
 #[path = "media_reuse.rs"]
 mod media_reuse;
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+#[tokio::test]
+async fn fixed_udp_selects_each_bound_address_and_preserves_wildcard_sending() -> Result<()> {
+    use crate::peer::tests::support::{endpoint, exchange, open};
+
+    for wildcard in [false, true] {
+        let reserved = std::net::UdpSocket::bind("127.0.0.1:0")?;
+        let port = reserved.local_addr()?.port();
+        drop(reserved);
+        let selected = SocketAddr::from(([127, 0, 0, 2], port));
+        let bindings = if wildcard {
+            vec![(SocketAddr::from(([0, 0, 0, 0], port)), None)]
+        } else {
+            vec![
+                (SocketAddr::from(([127, 0, 0, 1], port)), None),
+                (selected, None),
+            ]
+        };
+        let server = Runtime::new(Some(ServerUdp::bind(&bindings)?));
+        let remote = Runtime::new(Some(ServerUdp::bind(&[("127.0.0.3:0".parse()?, None)])?));
+        let (sender, mut candidates) = endpoint(&server, Uuid::new_v4(), None).await?;
+        let (receiver, mut events) = endpoint(&remote, Uuid::new_v4(), None).await?;
+        let candidates: Vec<_> = std::iter::from_fn(|| candidates.try_recv().ok())
+            .filter_map(|event| match event {
+                Event::Candidate(_, candidate, _) => Some(candidate),
+                _ => None,
+            })
+            .collect();
+        let result = async {
+            sender
+                .call(move |engine| {
+                    // Keep both real sockets, while ICE uses the second local base.
+                    // Wildcard interface enumeration excludes loopback; admit this
+                    // owned loopback address through the same SDK candidate API.
+                    for candidate in candidates {
+                        if candidate.addr() != selected {
+                            ensure!(engine.rtc.direct_api().invalidate_candidate(&candidate));
+                        }
+                    }
+                    if wildcard {
+                        ensure!(engine
+                            .rtc
+                            .add_local_candidate(Candidate::host(selected, "udp")?)
+                            .is_some());
+                    }
+                    Ok(())
+                })
+                .await?;
+            let (sent, received) = open(&sender, &receiver, &mut events).await?;
+            exchange(&sent, &received, "selected-local-base").await?;
+            exchange(&received, &sent, "return-to-local-base").await?;
+            tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    if let Some(source) = sender.call(|engine| Ok(engine.selected_source())).await?
+                    {
+                        ensure!(source == selected, "ICE selected another local base");
+                        return Ok::<_, anyhow::Error>(());
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await??;
+            Ok::<_, anyhow::Error>(())
+        }
+        .await;
+        sender.close().await?;
+        receiver.close().await?;
+        server.close().await;
+        remote.close().await;
+        result.with_context(|| format!("fixed UDP wildcard={wildcard}"))?;
+    }
+    Ok(())
+}
+
 fn h264_profiles(profiles: &[u32]) -> str0m::format::CodecConfig {
     str0m::format::CodecConfig::new_from_payload_params(
         crate::media::h264_codecs()

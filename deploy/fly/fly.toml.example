@@ -1,0 +1,53 @@
+# Candidate configuration; follow docs/deployment.md before creating resources.
+# Replace the app, region, image, public origin and dedicated IPv4 address.
+# Deploy with --ha=false: one Machine owns this site's authority and volume.
+app = "replace-with-your-app-name"
+primary_region = "iad"
+kill_signal = "SIGTERM"
+kill_timeout = 20
+
+[build]
+  image = "ghcr.io/tntcrafthim/piik:replace-with-matching-3.0-tag"
+
+[env]
+  PIIK_CHANNEL_BIND_ADDRESS = "0.0.0.0"
+  PIIK_CHANNEL_PORT = "8787"
+  PIIK_CHANNEL_DATA_DIR = "/home/nonroot"
+  PIIK_CHANNEL_WEB_ORIGIN = "https://share.example.com"
+  PIIK_CHANNEL_UDP_BIND_ADDRESS = "fly-global-services"
+  PIIK_CHANNEL_UDP_PORT = "8787"
+  PIIK_CHANNEL_UDP_PUBLIC_ADDRESS = "203.0.113.10:8787"
+  PIIK_CHANNEL_SERVICE_TRANSIT = "false"
+  # Supply PIIK_CHANNEL_OWNER_KEY through Fly secrets before first startup.
+
+[mounts]
+  source = "piik_data"
+  destination = "/home/nonroot"
+  initial_size = "1gb"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = false
+
+  [[http_service.checks]]
+    interval = "15s"
+    grace_period = "10s"
+    timeout = "2s"
+    method = "GET"
+    path = "/healthz"
+
+[[services]]
+  protocol = "udp"
+  internal_port = 8787
+  auto_stop_machines = "off"
+  auto_start_machines = false
+
+  [[services.ports]]
+    port = 8787
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "512mb"
