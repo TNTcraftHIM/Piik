@@ -37,6 +37,8 @@ the feedback period; they do not delay that delivery.
   indicators in the room list, couch and people panel with a matching package.
   Cover a participant with no media, a joined watch, and preparing, received or
   failed pictures without changing those surfaces' membership rules.
+  Locate the observed first-entry failure where a paused video displays a frame
+  but retains the preparing state; subsequent re-entry does not reproduce it.
 - [ ] **Native performance under the reported workload.** Measure capture,
   conversion, encoding and decoded cadence on the affected machines during
   normal use and contention. Identify the limiting stage before changing quality
