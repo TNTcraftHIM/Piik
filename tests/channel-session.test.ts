@@ -3659,12 +3659,14 @@ test("arming OBS preserves the current capture controls until the external sourc
     app.receive({ id: app.sent.at(-1)!.id, result: { endpoint: "http://127.0.0.1:8793/whip/owned-input", token: "synthetic-input-token" } });
     await opening;
     expect(session.sourceMicrophone(publicationId)).toMatchObject({ enabled: true, available: true });
+    expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true, canMute: true });
     const external = crypto.randomUUID();
     app.receive({ type: "external_input_state", publicationId, state: "prepared", captureId: external, sessionId, codec: "h264" });
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("commit_capture"));
+    expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true, canMute: true });
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.sourceMicrophone(publicationId)).toMatchObject({ enabled: false, available: false }));
-    expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: false, canMute: false });
+    expect(session.sourceAudio(publicationId)).toBeUndefined();
   } finally { session.close(); }
 });
 

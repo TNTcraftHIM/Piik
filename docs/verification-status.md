@@ -130,9 +130,14 @@ The packaged Linux Server also passes optional site forwarding through the
 production Browser UI. A Browser-owned room retains its healthy direct pair
 when the owner enables forwarding. After an isolated UDP interruption, the
 viewer receives advancing synthetic audio through the actual Server Native
-endpoint; disabling the room option removes that service lease. This covers
-the room setting and real audio fallback, not Windows App endpoints, forwarded
-pictures/files or difficult physical NATs.
+endpoint; disabling the room option removes that service lease.
+A matching Windows Native OBS source also delivers H264 pictures and Opus sound
+through the packaged Linux Server to an independent Browser when that viewer's
+direct peer signaling is blocked. A file follows the same service path with an
+exact received digest while video continues. An initial delivery failure keeps
+the subscription and later recovers without another user action; first-picture
+latency and independent room-lease retirement remain open. This uses synthetic
+media and a VM port forward, not difficult physical NATs or an endurance test.
 
 The newer conversation path passes normal Browser-hosted and App-hosted room
 checks with peer signaling blocked: history, bidirectional messages and saved

@@ -2708,9 +2708,10 @@ export class ChannelSession {
     const share = [...this.screenShares.values()].find(share => share.id === publicationId);
     if (!share) return undefined;
     const local = this.local.get(publicationId);
+    const canMute = !!local?.audio?.outputGainAvailable || !!this.app?.hasSourceAudioControl(publicationId);
+    if (!local && !canMute) return undefined;
     const hasAudio = local ? !!local.audio?.audioAvailable
       : !!this.app?.hasSourceAudio(publicationId) || !!this.app?.sourceMicrophone(publicationId)?.enabled;
-    const canMute = !!local?.audio?.outputGainAvailable || !!this.app?.hasSourceAudioControl(publicationId);
     return { ...share.volume, bitrate: share.profile.maxAudioBitrate ?? 128_000,
       hasAudio, available: hasAudio && (!local || !!local.audio?.outputGainAvailable), canMute };
   };
