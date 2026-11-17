@@ -8,7 +8,7 @@ test("over-budget animated formats never reach a static decoder", async () => {
   const png = new Uint8Array(40); new DataView(png.buffer).setUint32(8, 8); png.set(new TextEncoder().encode("acTL"), 12);
   const webp = new Uint8Array(40); webp.set(new TextEncoder().encode("VP8X"), 12); webp[20] = 2;
   for (const [bytes, type] of [[png, "image/png"], [webp, "image/webp"], [new Uint8Array(40), "image/gif"]] as const) {
-    expect(await prepareInlineImage(new File([bytes], "animated"), type, 20)).toBeUndefined();
+    expect(await prepareInlineImage(new File([bytes], "animated"), type, 20)).toBe("original_over_budget");
   }
   expect(image).not.toHaveBeenCalled();
 });

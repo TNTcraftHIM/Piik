@@ -215,6 +215,49 @@ test("file progress follows completed writes and is shared until the last consum
   } finally { files.reset(); vi.unstubAllGlobals(); }
 });
 
+test.each(["image/png", "image/webp"] as const)("an animated %s uses spare message budget in either attachment order", async mediaType => {
+  const { readFile } = await import("node:fs/promises");
+  const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  await rust.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  const files = setup();
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...rust, initializeRuntime: async () => {} } as never);
+  const decode = vi.fn(async () => {}), canvas = vi.fn(() => { throw new Error("animation_must_not_reach_canvas"); });
+  class Image { naturalWidth = 1; naturalHeight = 1; src = ""; decode = decode; }
+  vi.stubGlobal("Image", Image); vi.stubGlobal("document", { createElement: canvas });
+  const bytes = new Uint8Array(300 * 1024), view = new DataView(bytes.buffer);
+  if (mediaType === "image/png") {
+    bytes.set([137, 80, 78, 71, 13, 10, 26, 10]); view.setUint32(8, 8); bytes.set(new TextEncoder().encode("acTL"), 12);
+  } else {
+    bytes.set(new TextEncoder().encode("RIFF")); view.setUint32(4, bytes.length - 8, true);
+    bytes.set(new TextEncoder().encode("WEBPVP8X"), 8); view.setUint32(16, 10, true); bytes[20] = 2;
+  }
+  const original = { id: crypto.randomUUID(), file: new File([bytes], "animation") };
+  const tiny = { id: crypto.randomUUID(), file: new File(["GIF89a"], "tiny.gif") };
+  try {
+    const alone = await files.describe([original]);
+    for (const order of [[original, tiny], [tiny, original]]) {
+      const prepared = await files.describe(order);
+      const image = prepared.find(entry => entry.id === original.id)!;
+      expect(image.attachment).toEqual(alone[0].attachment);
+      expect(image.file).toBe(original.file);
+      expect(image.inlineImage).toMatchObject({ original: true, mediaType });
+      expect(image.inlineImage?.data === alone[0].inlineImage?.data).toBe(true);
+      expect(prepared.reduce((sum, entry) => sum + atob(entry.inlineImage?.data ?? "").length, 0)).toBe(bytes.length + tiny.file.size);
+    }
+    expect(canvas).not.toHaveBeenCalled();
+    decode.mockClear();
+    const oversized = new Uint8Array(JSON.parse(rust.attachment_limits()).maxInlineImageBytes + 1);
+    oversized.set(bytes.subarray(0, 24));
+    const overBudget = await files.describe([{ id: crypto.randomUUID(), file: new File([oversized], "oversized-animation") }]);
+    expect(overBudget[0].inlineImage).toBeUndefined();
+    expect(decode).not.toHaveBeenCalled();
+    decode.mockClear(); decode.mockRejectedValue(new Error("invalid_image"));
+    const invalid = await files.describe([original, tiny]);
+    expect(invalid.every(entry => entry.inlineImage === undefined)).toBe(true);
+    expect(decode).toHaveBeenCalledTimes(2); // Tiny once; deferred original once, never retry a decode failure.
+  } finally { files.reset(); vi.unstubAllGlobals(); }
+});
+
 test("a GIF uses unused per-message image space without flattening or exceeding the shared limit", async () => {
   const files = setup();
   const decode = vi.fn(async () => {});

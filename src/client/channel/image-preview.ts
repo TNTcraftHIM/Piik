@@ -32,15 +32,15 @@ function staticImage(bytes: Uint8Array, mediaType: string): boolean {
   return false;
 }
 
-/** A rendition is optional; the unchanged original remains the attachment. */
-export async function prepareInlineImage(file: File, mediaType: string, budget: number, signal?: AbortSignal): Promise<ImageRendition | undefined> {
+/** Only a budget-skipped original may be tried again with unused message space. */
+export async function prepareInlineImage(file: File, mediaType: string, budget: number, signal?: AbortSignal): Promise<ImageRendition | "original_over_budget" | undefined> {
   signal?.throwIfAborted();
   if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(mediaType) || budget < 1) return undefined;
-  if (mediaType === "image/gif" && file.size > budget) return undefined;
+  if (mediaType === "image/gif" && file.size > budget) return "original_over_budget";
   const bytes = new Uint8Array(await file.arrayBuffer());
   signal?.throwIfAborted();
   const original = bytes.length <= budget;
-  if (!original && !staticImage(bytes, mediaType)) return undefined;
+  if (!original && !staticImage(bytes, mediaType)) return "original_over_budget";
   const url = URL.createObjectURL(new Blob([bytes], { type: mediaType }));
   let preparedCanvas: HTMLCanvasElement | undefined;
   try {

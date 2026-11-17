@@ -202,7 +202,7 @@ export class ChannelAttachments {
     signal?.throwIfAborted(); lifetime.signal.throwIfAborted();
     if (files.length > limits.maxAttachmentsPerMessage || files.some(entry => entry.file.size > limits.maxFileBytes)) throw new Error("invalid_attachments");
     const prepared: PreparedFile[] = [];
-    const deferredGifs = new Set<string>();
+    const deferredOriginals = new Set<string>();
     let inlineBytes = 0;
     const mediaTypes = await Promise.all(files.map(async entry => module.attachment_media_type(new Uint8Array(await entry.file.slice(0, 12).arrayBuffer()))));
     let remainingImages = mediaTypes.filter(type => type.startsWith("image/")).length;
@@ -222,20 +222,21 @@ export class ChannelAttachments {
         let inlineImage: ImageRendition | undefined;
         if (mediaType.startsWith("image/")) {
           const budget = Math.floor((limits.maxInlineImageBytes - inlineBytes) / remainingImages--);
-          if (mediaType === "image/gif" && entry.file.size > budget) deferredGifs.add(entry.id);
-          inlineImage = await prepareInlineImage(entry.file, mediaType, budget, signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal);
+          const image = await prepareInlineImage(entry.file, mediaType, budget, signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal);
+          if (image === "original_over_budget") deferredOriginals.add(entry.id);
+          else inlineImage = image;
           if (inlineImage) inlineBytes += Math.floor(inlineImage.data.length / 4) * 3 - (inlineImage.data.endsWith("==") ? 2 : inlineImage.data.endsWith("=") ? 1 : 0);
         }
         prepared.push({ ...entry, attachment: attachmentSchema.parse({ id: entry.id, name: entry.file.name, size: entry.file.size, mediaType, sha256 }),
           ...(inlineImage !== undefined ? { inlineImage } : {}) });
       } finally { hash?.free(); }
     }
-    // GIF cannot use a still preview. Reuse space left by smaller images for its unchanged original.
-    for (const entry of prepared) if (deferredGifs.has(entry.id)
+    // Animated images cannot use a still preview. Reuse leftover space for unchanged originals.
+    for (const entry of prepared) if (deferredOriginals.has(entry.id)
       && entry.file.size <= limits.maxInlineImageBytes - inlineBytes) {
-      entry.inlineImage = await prepareInlineImage(entry.file, "image/gif", limits.maxInlineImageBytes - inlineBytes,
+      const image = await prepareInlineImage(entry.file, entry.attachment.mediaType, limits.maxInlineImageBytes - inlineBytes,
         signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal);
-      if (entry.inlineImage) inlineBytes += entry.file.size;
+      if (image && image !== "original_over_budget") { entry.inlineImage = image; inlineBytes += entry.file.size; }
     }
     return prepared;
   }
