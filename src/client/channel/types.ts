@@ -176,6 +176,7 @@ export interface ChannelActions {
   nativeSources(): Promise<NativeCaptureSources>;
   externalInput(roomId: string): (NativeExternalInput & { publicationId: string }) | undefined;
   startExternalScreen(roomId: string): Promise<void>;
+  cancelExternalScreen(roomId: string): Promise<void>;
   nativePreview(target: NativeCaptureTarget, signal?: AbortSignal): Promise<string | null>;
   nativeCaptureRequest(roomId: string): NativeCaptureRequest | undefined;
   nativeCaptureSelection(roomId: string): { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget; showCaptureBorder: boolean; current: boolean } | undefined;

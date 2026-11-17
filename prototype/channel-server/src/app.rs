@@ -1054,6 +1054,9 @@ enum Operation {
         publication_id: Uuid,
         room_id: String,
     },
+    CancelExternalInput {
+        publication_id: Uuid,
+    },
     Microphones,
     Preview {
         target: Target,
@@ -1187,7 +1190,13 @@ impl SourceLease {
         }
     }
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SourceKind {
+    Capture,
+    External,
+}
 struct PendingCapture {
+    kind: SourceKind,
     request: AbortHandle,
     lease: Option<SourceLease>,
     producer: Option<Uuid>,
@@ -1251,6 +1260,7 @@ impl Capture {
     }
     fn prepare(
         &mut self,
+        kind: SourceKind,
         settings: SourceAudioSettings,
     ) -> Result<(AbortHandle, futures_util::future::AbortRegistration)> {
         settings.validate()?;
@@ -1260,6 +1270,7 @@ impl Capture {
         }
         let (request, registration) = AbortHandle::new_pair();
         self.pending = Some(PendingCapture {
+            kind,
             request: request.clone(),
             lease: None,
             producer: None,
@@ -1328,6 +1339,27 @@ fn external_input_event(
     }
     event
 }
+
+fn cancel_external_input(
+    publication: Uuid,
+    capture: Option<&mut Capture>,
+    external: &mut whip::Page,
+) -> Option<Value> {
+    let active = capture.and_then(|capture| {
+        if capture.pending.as_ref().is_some_and(|pending| pending.kind == SourceKind::External) {
+            capture.pending = None;
+        }
+        capture.source().and_then(SourceLease::external_identity)
+    });
+    if active.is_some() {
+        Some(external_input_event(publication, active, None, false, None))
+    } else {
+        external
+            .remove(publication)
+            .then(|| external_input_event(publication, None, None, true, None))
+    }
+}
+
 fn external_format_event(mut event: Value, format: Option<piik_channel_native::peer::UnsupportedVideoFormat>) -> Value {
     if event["error"] == "external_video_format_unsupported" {
         if let Some(format) = format {
@@ -1481,7 +1513,7 @@ async fn connection(
                                 }
                                 let Some(commands) = host.clone() else { let _ = response.send(Err(StatusCode::GONE)); continue; };
                                 let capture = captures.entry(permit.publication).or_default();
-                                let Ok((cancel, registration)) = capture.prepare(capture.audio_settings) else { let _ = response.send(Err(StatusCode::CONFLICT)); continue; };
+                                let Ok((cancel, registration)) = capture.prepare(SourceKind::External, capture.audio_settings) else { let _ = response.send(Err(StatusCode::CONFLICT)); continue; };
                                 let replaces = capture.source().map(SourceLease::producer_id);
                                 external_offers.push(async move {
                                     let mut response = response;
@@ -1708,8 +1740,7 @@ async fn connection(
                             Err(error) => {
                                 if !request.is_aborted() {
                                     if let Some(capture) = captures.get_mut(&publication_id) {
-                                        let external = capture.pending.as_ref().and_then(|pending| pending.producer)
-                                            .is_some_and(|producer| external_page.resources.contains_key(&producer));
+                                        let external = capture.pending.as_ref().is_some_and(|pending| pending.kind == SourceKind::External);
                                         capture.pending = None;
                                         if external && external_page.permits.contains_key(&publication_id) {
                                             let event = capture.external_event(publication_id, false, false, Some("external_input_failed"));
@@ -1766,7 +1797,7 @@ async fn connection(
                                 } else {
                                     let commands = host.clone().unwrap();
                                     let capture = captures.entry(publication_id).or_default();
-                                    match capture.prepare(capture.audio_settings) {
+                                    match capture.prepare(SourceKind::External, capture.audio_settings) {
                                         Err(error) => Err(error),
                                         Ok((cancel, registration)) => {
                                             external_authorizations.push(
@@ -2112,7 +2143,7 @@ async fn connection(
                             } => match &host {
                                 Some(commands) => {
                                     let capture = captures.entry(publication_id).or_default();
-                                    match capture.prepare(audio_settings) {
+                                    match capture.prepare(SourceKind::Capture, audio_settings) {
                                         Err(error) => Err(error),
                                         Ok((cancel, registration)) => {
                                             let replaces =
@@ -2169,7 +2200,9 @@ async fn connection(
                                         capture.pending.as_mut().unwrap().lease.take().unwrap();
                                     let replacing = capture.active.is_some();
                                     let (cancel, registration) = AbortHandle::new_pair();
+                                    let kind = capture.pending.as_ref().unwrap().kind;
                                     capture.pending = Some(PendingCapture {
+                                        kind,
                                         request: cancel.clone(),
                                         lease: None,
                                         producer: Some(lease.id()),
@@ -2192,6 +2225,16 @@ async fn connection(
                                 } else {
                                     Err(anyhow!("hello_required"))
                                 }
+                            }
+                            Operation::CancelExternalInput { publication_id } => {
+                                if let Some(event) = cancel_external_input(
+                                    publication_id,
+                                    captures.get_mut(&publication_id),
+                                    &mut external_page,
+                                ) {
+                                    timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                                }
+                                Ok(Value::Null)
                             }
                             Operation::CancelCapture { publication_id } => {
                                 let cancel =
@@ -3707,13 +3750,13 @@ mod lifecycle_tests {
             capture.configure_audio(muted).unwrap_err().to_string(),
             "capture_unavailable"
         );
-        let (_request, _registration) = capture.prepare(old).unwrap();
+        let (_request, _registration) = capture.prepare(SourceKind::Capture, old).unwrap();
         capture.configure_audio(muted).unwrap();
         assert_eq!(capture.audio_settings, muted);
         // A duplicate preparation cannot replace accepted audio intent while
         // the existing request owns its first frame/commit wait.
         assert_eq!(
-            capture.prepare(old).unwrap_err().to_string(),
+            capture.prepare(SourceKind::Capture, old).unwrap_err().to_string(),
             "capture_pending"
         );
         assert_eq!(capture.audio_settings, muted);
@@ -3949,10 +3992,10 @@ mod tests {
         let mut capture = Capture::default();
         let first = Uuid::new_v4();
         let second = Uuid::new_v4();
-        let (old, _) = capture.prepare(SourceAudioSettings::default()).unwrap();
+        let (old, _) = capture.prepare(SourceKind::External, SourceAudioSettings::default()).unwrap();
         capture.pending.as_mut().unwrap().producer = Some(first);
         capture.pending = None;
-        let (current, _) = capture.prepare(SourceAudioSettings::default()).unwrap();
+        let (current, _) = capture.prepare(SourceKind::External, SourceAudioSettings::default()).unwrap();
         capture.pending.as_mut().unwrap().producer = Some(second);
         assert!(old.is_aborted());
         assert!(capture.pending_for(first).is_none());

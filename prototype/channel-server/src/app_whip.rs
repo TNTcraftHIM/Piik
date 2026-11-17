@@ -1,4 +1,8 @@
 //! HTTP only locates a live page permit; the page owns all producer generations.
+#[cfg(all(test, feature = "capture"))]
+#[path = "app_whip_cancel_tests.rs"]
+mod cancel_tests;
+
 use super::*;
 use axum::extract::Path;
 use futures_util::future::Shared;
@@ -260,7 +264,13 @@ mod tests {
             let (response, http) = oneshot::channel();
             let mut http = Some(http);
             let mut capture = Capture::default();
-            let (_cancel, registration) = capture.prepare(SourceAudioSettings::default()).unwrap();
+            let mut page = Page {
+                permits: BTreeMap::from([(publication, permit.clone())]),
+                resources: BTreeMap::new(),
+            };
+            let (_cancel, registration) = capture
+                .prepare(SourceKind::External, SourceAudioSettings::default())
+                .unwrap();
             let source = permit.clone();
             let work = tokio::spawn(async move {
                 let mut response = response;
@@ -279,7 +289,12 @@ mod tests {
             };
             assert!(!pending.result.is_closed());
             match cause {
-                "page" => capture.pending = None,
+                "page" => {
+                    let event =
+                        cancel_external_input(publication, Some(&mut capture), &mut page).unwrap();
+                    assert_eq!(event["state"], "closed");
+                    assert!(!page.permits.contains_key(&publication));
+                }
                 "permit" => permit.revoke(),
                 "http" => {
                     drop(http.take());
@@ -299,8 +314,94 @@ mod tests {
                 pending.result.is_closed(),
                 "{cause} must cancel Native's pending preparation result"
             );
-            assert_eq!(*permit.revoked.borrow(), cause == "permit");
+            assert_eq!(*permit.revoked.borrow(), cause != "http");
             drop(snapshot);
+        }
+    }
+
+    #[test]
+    fn cancelling_external_waiting_or_first_frame_retires_the_permit_not_the_next_candidate() {
+        for first_frame in [false, true] {
+            let publication = Uuid::new_v4();
+            let binding = Uuid::new_v4();
+            let state: piik_channel_core::wire::Snapshot = serde_json::from_value(json!({
+                "channel":{"id":Uuid::new_v4(),"name":"Owned fixture","icon":"couch","ownerId":null,"userCount":1,"historyWindow":100,
+                    "rooms":[{"id":"room","name":"Room","icon":"couch","creatorId":Uuid::new_v4(),"access":"private","hidden":false,
+                        "hasPassword":false,"voiceBitrate":64000,"relayOverride":null,"authorized":true,"canManage":false,"available":true,"reading":false,
+                        "lastMessageSeq":0,"participantSessionIds":[],"realtimeSessionIds":[],"capabilities":{"attachments":true},
+                        "delivery":{"hostSessionId":Uuid::new_v4(),"bindingId":binding,"nextHops":{}}}]},
+                "files":[],"users":[],"sessions":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[],
+                "watchActivities":[],"watchSubscriptions":[],"watchBytes":[]
+            })).unwrap();
+            let (_snapshot, observed) = watch::channel(Some(state));
+            let inputs = Inputs::default();
+            let (requests, _queue) = mpsc::channel(1);
+            let permit = inputs.permit(
+                publication,
+                "room".into(),
+                requests,
+                piik_channel_native::peer::InputAuthority {
+                    scope: piik_channel_native::peer::CaptureScope {
+                        publication_id: publication,
+                        room_id: "room".into(),
+                        binding_id: binding,
+                    },
+                    snapshot: observed,
+                },
+            );
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                header::AUTHORIZATION,
+                format!("Bearer {}", permit.token).parse().unwrap(),
+            );
+            assert!(inputs.authorized(permit.id, &headers).is_some());
+            let mut page = Page {
+                permits: BTreeMap::from([(publication, permit.clone())]),
+                resources: BTreeMap::new(),
+            };
+            let mut capture = Capture::default();
+            let previous = Uuid::new_v4();
+            let cancelled = first_frame.then(|| {
+                let (cancelled, _) = capture
+                    .prepare(SourceKind::External, SourceAudioSettings::default())
+                    .unwrap();
+                capture.pending.as_mut().unwrap().producer = Some(previous);
+                cancelled
+            });
+            let audio_settings = SourceAudioSettings {
+                bitrate: 96_000,
+                gain: 0.5,
+            };
+            capture.audio_settings = audio_settings;
+            let event = cancel_external_input(publication, Some(&mut capture), &mut page).unwrap();
+            assert_eq!(
+                event,
+                external_input_event(publication, None, None, true, None)
+            );
+            assert!(capture.pending.is_none());
+            assert_eq!(capture.audio_settings, audio_settings);
+            assert!(cancelled.is_none_or(|request| request.is_aborted()));
+            assert!(
+                inputs.authorized(permit.id, &headers).is_none(),
+                "late offers must lose their original permit"
+            );
+            assert!(!page.permits.contains_key(&publication));
+
+            let next = Uuid::new_v4();
+            let (current, _) = capture
+                .prepare(SourceKind::External, audio_settings)
+                .unwrap();
+            capture.pending.as_mut().unwrap().producer = Some(next);
+            assert!(
+                capture.pending_for(previous).is_none(),
+                "late readiness cannot install the cancelled source"
+            );
+            assert!(
+                !capture.retire_producer(previous),
+                "late end cannot retire the successor"
+            );
+            assert!(!current.is_aborted());
+            assert_eq!(capture.pending.as_ref().unwrap().producer, Some(next));
         }
     }
 

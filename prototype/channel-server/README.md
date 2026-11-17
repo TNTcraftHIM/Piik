@@ -399,6 +399,9 @@ picture but retains the input connection; viewers select Watch again after a
 restart. **Stop OBS sharing**, closing the controlling page, or losing room
 authority revokes the connection and joins its receiver. Credentials stay in
 memory and are not part of room history or backups.
+Before OBS starts sharing, **Cancel OBS input** closes its pending input while
+preserving an existing screen share. Cancellation is disabled while a source
+change is being committed.
 
 The shared Native capability controls availability. Android currently lacks the
 received-video adaptation used by this input and does not expose this choice.

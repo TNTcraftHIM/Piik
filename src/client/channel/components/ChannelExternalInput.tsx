@@ -35,7 +35,7 @@ export function ChannelExternalInput({ input, busy, onStop, onClose }: {
       <ConnectionField label="Bearer Token" value={input.token} />
       <p>{t("screen.obsLifecycle")}</p>
       {message && <p className="c3-settings-error" role="alert">{message}</p>}
-      <ChannelAction icon="stop" danger label={t("screen.obsStop")} busy={busy} onClick={onStop} />
+      <ChannelAction icon="stop" danger label={t(input.state === "live" ? "screen.obsStop" : "screen.obsCancel")} busy={busy} onClick={onStop} />
     </div>
   </ChannelSettingsDialog>;
 }

@@ -10058,3 +10058,614 @@ test.each(["remote-description", "local-answer", "room-channel", "input-channel"
     expect(warning).toHaveBeenCalled();
   } finally { session.close(); }
 });
+
+test.each([
+  {
+    kind: "unsupported_h264",
+    error: "external_video_format_unsupported",
+    format: { codec: "h264", profileIdc: 110, constraintFlags: 0, levelIdc: 52 },
+  },
+  { kind: "first_frame_failed", error: "external_input_failed", format: undefined },
+])("OBS pending candidate $kind error remains local while incumbent Browser sharing stays live", async (value) => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
+    service: "piik-channel-app",
+    protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL,
+    port: 8793,
+    token: "owned-approved",
+  });
+  const { session, socket } = await setup();
+  const app = await startFixtureApp(session),
+    video = remoteTrack("video"),
+    stream = remoteStream("owned-incumbent", [video]);
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(async () => stream) } });
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const sharing = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const publication = socket.sent.at(-1)!.publication as {
+      id: string;
+    };
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await sharing;
+    const opening = session.startExternalScreen("first");
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_external_input"));
+    app.receive({
+      id: app.sent.at(-1)!.id,
+      result: { endpoint: "http://127.0.0.1:8793/whip/owned", token: "synthetic-whip-token" },
+    });
+    await opening;
+    app.receive({
+      type: "external_input_state",
+      publicationId: publication.id,
+      state: "error",
+      error: value.error,
+      ...(value.format ? { unsupportedVideoFormat: value.format } : {}),
+    });
+    expect(session.externalInput("first")).toMatchObject({ state: "error", error: value.error });
+    expect(session.getSnapshot().streams.get(publication.id)).toBe(stream);
+    expect(video.stop).not.toHaveBeenCalled();
+    expect(session.getSnapshot().appConnected).toBe(true);
+    expect(session.getSnapshot().connection).toBe("connected");
+    expect(session.getSnapshot().error).toBeNull();
+    expect(socket.sent.some((c) => c.type === "unpublish")).toBe(false);
+    const input = session.externalInput("first")!;
+    const presentation = channelErrorPresentation(
+      input.error ?? null,
+      (key) => key,
+      "channel.error.externalInputFailed",
+      input.unsupportedVideoFormat,
+    );
+    expect(presentation.connectionHelp).toBe(false);
+    expect(presentation.message).toContain(
+      value.kind === "unsupported_h264"
+        ? "channel.error.externalVideoFormatReceived"
+        : "channel.error.externalInputFailed",
+    );
+  } finally {
+    session.close();
+  }
+});
+test("cancelled pending OBS prepare ignores its late acknowledgement and Native events while incumbent remains", async () => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
+    service: "piik-channel-app",
+    protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL,
+    port: 8793,
+    token: "owned-approved",
+  });
+  const { session, socket } = await setup();
+  const app = await startFixtureApp(session),
+    video = remoteTrack("video"),
+    stream = remoteStream("owned-incumbent", [video]);
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(async () => stream) } });
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const sharing = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const publication = socket.sent.at(-1)!.publication as {
+      id: string;
+    };
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await sharing;
+    const opening = session.startExternalScreen("first"),
+      cancelled = expect(opening).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_external_input"));
+    const preparing = app.sent.at(-1)!;
+    const cancel = session.cancelScreenSelection("first");
+    expect(app.sent.at(-1)?.type).toBe("cancel_external_input");
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await cancel;
+    app.receive({
+      id: preparing.id,
+      result: { endpoint: "http://127.0.0.1:8793/whip/owned", token: "synthetic-whip-token" },
+    });
+    await cancelled;
+    app.receive({
+      type: "external_input_state",
+      publicationId: publication.id,
+      state: "prepared",
+      captureId: crypto.randomUUID(),
+      sessionId: crypto.randomUUID(),
+      codec: "h264",
+    });
+    expect(session.externalInput("first")).toBeUndefined();
+    expect(video.stop).not.toHaveBeenCalled();
+    expect(session.getSnapshot().streams.get(publication.id)).toBe(stream);
+    expect(socket.sent.some((c) => c.type === "unpublish")).toBe(false);
+    expect(session.getSnapshot().error).toBeNull();
+    expect(session.getSnapshot().appConnected).toBe(true);
+  } finally {
+    session.close();
+  }
+});
+test("stopping an uncommitted OBS permit must leave its incumbent Browser picture intact", async () => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
+    service: "piik-channel-app",
+    protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL,
+    port: 8793,
+    token: "owned-approved",
+  });
+  const { session, socket } = await setup();
+  const app = await startFixtureApp(session),
+    video = remoteTrack("video"),
+    stream = remoteStream("owned-incumbent", [video]);
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(async () => stream) } });
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const sharing = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const publication = socket.sent.at(-1)!.publication as {
+      id: string;
+    };
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await sharing;
+    const opening = session.startExternalScreen("first");
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_external_input"));
+    app.receive({
+      id: app.sent.at(-1)!.id,
+      result: { endpoint: "http://127.0.0.1:8793/whip/owned", token: "synthetic-whip-token" },
+    });
+    await opening;
+    // ChannelShareControl passes this exact onStop callback to the actual OBS card.
+    const stopping = session.cancelExternalScreen("first");
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    const unpublish = socket.sent.findLast((c) => c.type === "unpublish");
+    if (unpublish) socket.receive({ type: "ack", requestId: unpublish.requestId });
+    await stopping;
+    expect(video.stop).not.toHaveBeenCalled();
+    expect(session.getSnapshot().streams.get(publication.id)).toBe(stream);
+    expect(app.sent.at(-1)?.type).toBe("cancel_external_input");
+    expect(unpublish).toBeUndefined();
+    app.receive({
+      type: "external_input_state",
+      publicationId: publication.id,
+      state: "prepared",
+      captureId: crypto.randomUUID(),
+      sessionId: crypto.randomUUID(),
+      codec: "h264",
+    });
+    expect(session.externalInput("first")).toBeUndefined();
+    expect(video.stop).not.toHaveBeenCalled();
+    const end = session.stopScreen(publication.id);
+    const stopped = socket.sent.findLast((c) => c.type === "unpublish")!;
+    socket.receive({ type: "ack", requestId: stopped.requestId });
+    await end;
+    expect(video.stop).toHaveBeenCalledOnce();
+  } finally {
+    session.close();
+  }
+});
+test("cancelling an armed OBS B retains the exact active Native capture A", async () => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
+    service: "piik-channel-app",
+    protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL,
+    port: 8793,
+    token: "owned-approved",
+  });
+  const { session } = await setup();
+  const app = await startFixtureApp(session);
+  vi.spyOn(session, "watch").mockResolvedValue();
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const sharing = session.startNativeScreen("first", {
+      kind: "display",
+      sourceId: "owned-display",
+      title: "Owned A",
+    });
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
+    const request = app.sent.at(-1)!,
+      publicationId = request.publicationId as string,
+      captureId = crypto.randomUUID(),
+      nativeSession = crypto.randomUUID();
+    app.receive({ id: request.id, result: { captureId, sessionId: nativeSession, codec: "h264" } });
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("commit_capture"));
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await sharing;
+    const opening = session.startExternalScreen("first");
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_external_input"));
+    app.receive({
+      id: app.sent.at(-1)!.id,
+      result: { endpoint: "http://127.0.0.1:8793/whip/owned", token: "synthetic-whip-token" },
+    });
+    await opening;
+    const stopping = session.cancelExternalScreen("first");
+    expect(app.sent.at(-1)?.type).toBe("cancel_external_input");
+    app.receive({ type: "external_input_state", publicationId, state: "closed" });
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await stopping;
+    expect(session.nativeCaptureSelection("first")?.current).toBe(true);
+    expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
+    const linked = (
+      session as unknown as {
+        app: appLink.ChannelApp;
+      }
+    ).app;
+    const controls = linked.setCapturePaused(publicationId, true);
+    expect(app.sent.at(-1)).toMatchObject({ type: "capture_paused", publicationId, captureId, paused: true });
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await controls;
+    expect(app.sent.some((c) => c.type === "stop_capture")).toBe(false);
+    expect(session.externalInput("first")).toBeUndefined();
+    expect(session.getSnapshot().appConnected).toBe(true);
+  } finally {
+    session.close();
+  }
+});
+test("committing OBS B rejects user cancellation and a failed Native commit retains active OBS A", async () => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
+    service: "piik-channel-app",
+    protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL,
+    port: 8793,
+    token: "owned-approved",
+  });
+  const { session, socket } = await setup();
+  const app = await startFixtureApp(session);
+  vi.spyOn(session, "watch").mockResolvedValue();
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const opening = session.startExternalScreen("first");
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_external_input"));
+    const publicationId = app.sent.at(-1)!.publicationId as string;
+    app.receive({
+      id: app.sent.at(-1)!.id,
+      result: { endpoint: "http://127.0.0.1:8793/whip/owned", token: "synthetic-whip-token" },
+    });
+    await opening;
+    const a = crypto.randomUUID(),
+      nativeSession = crypto.randomUUID();
+    app.receive({
+      type: "external_input_state",
+      publicationId,
+      state: "prepared",
+      captureId: a,
+      sessionId: nativeSession,
+      codec: "h264",
+    });
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("commit_capture"));
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    app.receive({
+      type: "external_input_state",
+      publicationId,
+      state: "live",
+      captureId: a,
+      sessionId: nativeSession,
+      codec: "h264",
+    });
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("screen:first")).toBe(false));
+    const b = crypto.randomUUID();
+    app.receive({
+      type: "external_input_state",
+      publicationId,
+      state: "prepared",
+      captureId: b,
+      sessionId: nativeSession,
+      codec: "h264",
+    });
+    await vi.waitFor(() => expect(app.sent.at(-1)).toMatchObject({ type: "commit_capture", captureId: b }));
+    const committing = app.sent.at(-1)!;
+    const commandCount = app.sent.length;
+    await session.cancelExternalScreen("first");
+    expect(app.sent).toHaveLength(commandCount);
+    app.receive({
+      type: "external_input_state",
+      publicationId,
+      state: "live",
+      captureId: a,
+      sessionId: nativeSession,
+      codec: "h264",
+    });
+
+    app.receive({ id: committing.id, error: "capture_cancelled" });
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("screen:first")).toBe(false));
+    expect(session.externalInput("first")).toMatchObject({ state: "live", captureId: a });
+    expect(app.sent.some((c) => c.type === "stop_capture")).toBe(false);
+    expect(socket.sent.some((c) => c.type === "unpublish")).toBe(false);
+    expect(session.getSnapshot().error).toBeNull();
+    const linked = (
+      session as unknown as {
+        app: appLink.ChannelApp;
+      }
+    ).app;
+    const controls = linked.setCapturePaused(publicationId, true);
+    expect(app.sent.at(-1)).toMatchObject({ type: "capture_paused", captureId: a });
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await controls;
+  } finally {
+    session.close();
+  }
+});
+test("waiting OBS permit survives cancellation of a different Native screen candidate", async () => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
+    service: "piik-channel-app",
+    protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL,
+    port: 8793,
+    token: "owned-approved",
+  });
+  const { session } = await setup();
+  const app = await startFixtureApp(session);
+  vi.spyOn(session, "watch").mockResolvedValue();
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const opening = session.startExternalScreen("first");
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_external_input"));
+    const publicationId = app.sent.at(-1)!.publicationId as string;
+    app.receive({
+      id: app.sent.at(-1)!.id,
+      result: { endpoint: "http://127.0.0.1:8793/whip/owned", token: "synthetic-whip-token" },
+    });
+    await opening;
+    const original = session.externalInput("first");
+    const selecting = session.startNativeScreen("first", {
+        kind: "display",
+        sourceId: "owned-native-B",
+        title: "Owned Native B",
+      }),
+      rejected = expect(selecting).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
+    const preparing = app.sent.at(-1)!;
+    const cancel = session.cancelScreenSelection("first");
+    expect(app.sent.at(-1)).toMatchObject({ type: "cancel_capture", publicationId });
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await cancel;
+    app.receive({ id: preparing.id, error: "capture_cancelled" });
+    await rejected;
+    expect(session.externalInput("first")).toEqual(original);
+    expect(app.sent.some((c) => c.type === "cancel_external_input")).toBe(false);
+    expect(app.sent.some((c) => c.type === "stop_capture")).toBe(false);
+    expect(session.getSnapshot().error).toBeNull();
+  } finally {
+    session.close();
+  }
+});
+test("explicit OBS input cancellation leaves a different Native screen preparation owned and committable", async () => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
+    service: "piik-channel-app",
+    protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL,
+    port: 8793,
+    token: "owned-approved",
+  });
+  const { session } = await setup();
+  const app = await startFixtureApp(session);
+  vi.spyOn(session, "watch").mockResolvedValue();
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const opening = session.startExternalScreen("first");
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_external_input"));
+    const publicationId = app.sent.at(-1)!.publicationId as string;
+    app.receive({
+      id: app.sent.at(-1)!.id,
+      result: { endpoint: "http://127.0.0.1:8793/whip/owned", token: "synthetic-whip-token" },
+    });
+    await opening;
+    const target = { kind: "display" as const, sourceId: "owned-native-B", title: "Owned Native B" },
+      selecting = session.startNativeScreen("first", target);
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
+    const preparing = app.sent.at(-1)!;
+    const cancelling = session.cancelExternalScreen("first");
+    expect(app.sent.at(-1)).toMatchObject({ type: "cancel_external_input", publicationId });
+    app.receive({ type: "external_input_state", publicationId, state: "closed" });
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await cancelling;
+    const captureId = crypto.randomUUID();
+    app.receive({ id: preparing.id, result: { captureId, sessionId: crypto.randomUUID(), codec: "h264" } });
+    await vi.waitFor(() => expect(app.sent.at(-1)).toMatchObject({ type: "commit_capture", captureId }));
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await selecting;
+    expect(session.nativeCaptureSelection("first")).toMatchObject({ target, current: true });
+    expect(session.externalInput("first")).toBeUndefined();
+    expect(app.sent.some((c) => c.type === "cancel_capture")).toBe(false);
+    expect(app.sent.some((c) => c.type === "stop_capture")).toBe(false);
+    expect(session.getSnapshot().error).toBeNull();
+  } finally {
+    session.close();
+  }
+});
+
+test("OBS commit blocks candidate cancellation across both source-transfer confirmations", async () => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
+    service: "piik-channel-app",
+    protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL,
+    port: 8793,
+    token: "owned-approved",
+  });
+  const { session, socket } = await setup();
+  const app = await startFixtureApp(session),
+    video = remoteTrack("video"),
+    stream = remoteStream("owned-A", [video]);
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(async () => stream) } });
+  vi.spyOn(session, "watch").mockResolvedValue();
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const starting = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const publication = socket.sent.at(-1)!.publication as {
+      id: string;
+    };
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await starting;
+    const opening = session.startExternalScreen("first");
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_external_input"));
+    app.receive({
+      id: app.sent.at(-1)!.id,
+      result: { endpoint: "http://127.0.0.1:8793/whip/owned", token: "synthetic-only" },
+    });
+    await opening;
+    const b = crypto.randomUUID(),
+      native = crypto.randomUUID();
+    app.receive({
+      type: "external_input_state",
+      publicationId: publication.id,
+      state: "prepared",
+      captureId: b,
+      sessionId: native,
+      codec: "h264",
+    });
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("transfer_source"));
+    const transfer = socket.sent.at(-1)!;
+    socket.receive({ type: "ack", requestId: transfer.requestId });
+    // Project the authority's already-confirmed source transfer independently of App commit.
+    const before = session.getSnapshot().state!,
+      user = before.sessions.find((e) => e.id === "endpoint")!.userId;
+    socket.receive({
+      type: "state",
+      state: {
+        ...before,
+        sessions: [...before.sessions, { id: native, userId: user, online: true, signingKey: testSigningKey }],
+        publications: [
+          {
+            ...publication,
+            kind: "screen",
+            roomId: "first",
+            source: (publication as any).source,
+            videoSettings: (publication as any).videoSettings,
+            title: null,
+            audience: [],
+            paused: false,
+            sessionId: native,
+            userId: user,
+          },
+        ],
+      },
+    });
+    await vi.waitFor(() => expect(app.sent.at(-1)).toMatchObject({ type: "commit_capture", captureId: b }));
+    const commit = app.sent.at(-1)!;
+    const beforeCancel = {
+      stage: "Core-confirmed-App-pending",
+      screenPending: session.getSnapshot().pending.has("screen:first"),
+      stopPending: session.getSnapshot().pending.has("stop:" + publication.id),
+      sourceSelectionCommitting: session.sourceSelectionCommitting("first"),
+      externalState: session.externalInput("first")?.state,
+      publishedOwnerIsB: session.getSnapshot().state!.publications[0].sessionId === native,
+      oldAStreamRetained: session.getSnapshot().streams.get(publication.id) === stream,
+      oldATrackStopped: vi.mocked(video.stop).mock.calls.length,
+    };
+    const commandCount = app.sent.length;
+    await session.cancelExternalScreen("first");
+    expect(app.sent).toHaveLength(commandCount);
+    app.receive({
+      type: "external_input_state",
+      publicationId: publication.id,
+      state: "live",
+      captureId: b,
+      sessionId: native,
+      codec: "h264",
+    });
+    app.receive({ id: commit.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("screen:first")).toBe(false));
+    expect(session.sourceSelectionCommitting("first")).toBe(false);
+    const afterCancel = {
+      stage: "committed-B-cancel-was-ignored",
+      externalPresent: !!session.externalInput("first"),
+      publishedOwnerStillB: session.getSnapshot().state!.publications[0].sessionId === native,
+      oldAStreamRetained: session.getSnapshot().streams.get(publication.id) === stream,
+      oldATrackStopped: vi.mocked(video.stop).mock.calls.length,
+      siteConnected: session.getSnapshot().connection,
+      appConnected: session.getSnapshot().appConnected,
+      error: session.getSnapshot().error,
+      transferCommands: socket.sent.filter((c) => c.type === "transfer_source").length,
+      unpublishCommands: socket.sent.filter((c) => c.type === "unpublish").length,
+    };
+    expect(beforeCancel).toMatchObject({
+      screenPending: true,
+      stopPending: false,
+      sourceSelectionCommitting: true,
+      externalState: "prepared",
+      publishedOwnerIsB: true,
+    });
+    expect(afterCancel).toMatchObject({
+      externalPresent: true,
+      publishedOwnerStillB: true,
+      oldAStreamRetained: false,
+      oldATrackStopped: 1,
+      transferCommands: 1,
+      unpublishCommands: 0,
+      error: null,
+    });
+  } finally {
+    session.close();
+  }
+});
+test("external commit failure retires its committing selection while preserving the incumbent source", async () => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
+    service: "piik-channel-app",
+    protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL,
+    port: 8793,
+    token: "owned-approved",
+  });
+  const { session, socket } = await setup();
+  const app = await startFixtureApp(session),
+    video = remoteTrack("video"),
+    stream = remoteStream("owned-A", [video]);
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(async () => stream) } });
+  vi.spyOn(session, "watch").mockResolvedValue();
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const starting = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const publication = socket.sent.at(-1)!.publication as {
+      id: string;
+    };
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await starting;
+    const opening = session.startExternalScreen("first");
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_external_input"));
+    app.receive({
+      id: app.sent.at(-1)!.id,
+      result: { endpoint: "http://127.0.0.1:8793/whip/owned", token: "synthetic-only" },
+    });
+    await opening;
+    app.receive({
+      type: "external_input_state",
+      publicationId: publication.id,
+      state: "prepared",
+      captureId: crypto.randomUUID(),
+      sessionId: crypto.randomUUID(),
+      codec: "h264",
+    });
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("transfer_source"));
+    const transfer = socket.sent.at(-1)!;
+    expect(session.sourceSelectionCommitting("first")).toBe(true);
+    const sent = app.sent.length;
+    await session.cancelExternalScreen("first");
+    expect(app.sent).toHaveLength(sent);
+    socket.receive({ type: "error", requestId: transfer.requestId, code: "not_publication_owner" });
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("cancel_external_input"));
+    app.receive({ type: "external_input_state", publicationId: publication.id, state: "closed" });
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("screen:first")).toBe(false));
+    expect(session.sourceSelectionCommitting("first")).toBe(false);
+    expect(video.stop).not.toHaveBeenCalled();
+    expect(session.getSnapshot().streams.get(publication.id)).toBe(stream);
+    expect(app.sent.some((c) => c.type === "commit_capture")).toBe(false);
+    expect(socket.sent.some((c) => c.type === "unpublish")).toBe(false);
+    expect(session.getSnapshot().appConnected).toBe(true);
+  } finally {
+    session.close();
+  }
+});

@@ -246,8 +246,12 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
           close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true });
         }} />}
     </div>
-    {externalOpen && externalInput && <ChannelExternalInput input={externalInput} busy={channel.pending.has(`stop:${externalInput.publicationId}`)}
-      onStop={() => { void channel.stopScreen(externalInput.publicationId).then(() => setExternalOpen(false)).catch(() => {}); }} onClose={() => setExternalOpen(false)} />}
+    {externalOpen && externalInput && <ChannelExternalInput input={externalInput} busy={channel.pending.has(`stop:${externalInput.publicationId}`) || channel.sourceSelectionCommitting(roomId)}
+      onStop={() => {
+        const stopping = externalInput.state === "live"
+          ? channel.stopScreen(externalInput.publicationId) : channel.cancelExternalScreen(roomId);
+        void stopping.then(() => setExternalOpen(false)).catch(() => {});
+      }} onClose={() => setExternalOpen(false)} />}
   </>;
 }
 

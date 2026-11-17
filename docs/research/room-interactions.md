@@ -456,6 +456,11 @@ publication; its page permission can accept a new stream. Viewers follow ordinar
 publication lifetimes and select Watch again. Old DELETE/ready/end callbacks can
 retire only their own resource.
 
+A waiting OBS permission is independent of a pending local capture. Cancelling
+either preparation preserves the other and the committed source. Source transfer
+and Native commit share the existing source selection's non-cancellable commit
+phase; completing that phase retires the selection, not the resulting source.
+
 The App's loopback control listener is separate from the site's tunnel target,
 so Local network and Public invite use the same input adapter. HTTP requires the
 page-issued bearer; the existing RTC pump supplies loopback-only media sockets,

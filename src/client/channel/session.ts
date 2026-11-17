@@ -2500,6 +2500,17 @@ export class ChannelSession {
     const input = share && this.app?.externalInput(share.id);
     return input && { ...input, publicationId: share!.id };
   };
+  cancelExternalScreen = (roomId: string): Promise<void> => {
+    if (this.sourceSelectionCommitting(roomId)) return Promise.resolve();
+    const share = this.screenShares.get(roomId), app = this.app;
+    const candidate = share && app?.externalInput(share.id);
+    if (!share || !app || !candidate || candidate.state === "live") return Promise.resolve();
+    return this.action(`stop:${share.id}`, async () => {
+      await app.cancelExternalInput(share.id);
+      this.forgetInactiveScreen(share.id);
+      this.patch({});
+    });
+  };
   startExternalScreen = (roomId: string): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const { share, selection, current } = this.selectScreen(roomId);
     try {
@@ -2514,9 +2525,13 @@ export class ChannelSession {
     const entry = [...this.screenShares].find(([, share]) => share.id === event.publicationId);
     if (!entry) return Promise.resolve();
     const [roomId, share] = entry;
-    const current = () => this.app === app && this.screenShares.get(roomId) === share
-      && app.externalInput(share.id)?.captureId === event.captureId;
     return this.action(`screen:${roomId}`, async () => {
+      const selection = this.selectSource(roomId);
+      selection.committing = true;
+      this.patch({});
+      const current = () => this.app === app && this.screenShares.get(roomId) === share
+        && this.sourceSelections.get(roomId) === selection
+        && app.externalInput(share.id)?.captureId === event.captureId;
       try {
         if (this.local.has(share.id)) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: event.sessionId }, undefined, roomId);
         if (!current()) throw new DOMException("Input cancelled", "AbortError");
@@ -2534,7 +2549,7 @@ export class ChannelSession {
       } catch (error) {
         if (current()) await app.cancelCapture(share.id).catch(() => {});
         throw error;
-      }
+      } finally { this.finishSourceSelection(roomId, selection); }
     });
   }
   nativePreview = (target: NativeCaptureTarget, signal?: AbortSignal): Promise<string | null> =>

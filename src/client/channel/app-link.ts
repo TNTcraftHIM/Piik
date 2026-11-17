@@ -565,11 +565,22 @@ export class ChannelApp {
     await this.request({ type: "transfer_source", publicationId, captureId, toSessionId });
   }
 
+  async cancelExternalInput(publicationId: string): Promise<void> {
+    const candidate = this.externalInputs.get(publicationId);
+    if (!candidate || candidate.state === "live") return;
+    if (this.prepared.get(publicationId) === "external") this.prepared.delete(publicationId);
+    if (this.captures.get(publicationId)?.kind === "external")
+      this.externalInputs.set(publicationId, { ...candidate, captureId: undefined });
+    else this.externalInputs.delete(publicationId);
+    if (this.connected) await this.request({ type: "cancel_external_input", publicationId });
+  }
+
   async cancelCapture(publicationId: string): Promise<void> {
-    const prepared = this.prepared.delete(publicationId);
+    const prepared = this.prepared.get(publicationId);
+    this.prepared.delete(publicationId);
     const microphone = [...this.requests.values()].some(({ command }) => command.type === "capture_microphone" && command.publicationId === publicationId);
     if (!prepared && !microphone) return;
-    if (this.connected) await this.request({ type: "cancel_capture", publicationId });
+    if (this.connected) await this.request({ type: prepared === "external" ? "cancel_external_input" : "cancel_capture", publicationId });
   }
 
   async stopCapture(publicationId: string): Promise<void> {
