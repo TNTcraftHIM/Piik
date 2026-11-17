@@ -53,9 +53,6 @@ the feedback period; they do not delay that delivery.
   retention with a matching Windows App and independent Browser viewer across
   a short Native signaling interruption. Confirm actual playback resumes and
   explicit withdrawal or runtime expiry still retires the source.
-- [ ] **Sharing settings dismissal.** Restore a visible close action and
-  appropriate screen coverage on wide and narrow layouts. Reuse the shared
-  surface's dismissal and focus lifecycle instead of relying on page navigation.
 - [ ] **Site forwarding package acceptance.** Verify the operator setting,
   saved room permission and actual fallback with Windows App endpoints,
   forwarded pictures/files and independent room leases. Packaged Linux Server

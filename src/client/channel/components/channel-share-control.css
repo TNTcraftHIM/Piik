@@ -3,7 +3,6 @@
 .c3-share-feedback { display: inline-flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 100%; }
 .c3-share-wait { max-width: 34ch; overflow-wrap: anywhere; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .c3-watch-forward-settings { padding: 16px 18px; }
-.c3-watch-forward-settings h3 { margin: 0; font-size: 15px; }
 .c3-external-input, .c3-external-input-field { display: grid; gap: 10px; min-width: 0; }
 .c3-external-input p { margin: 0; font-size: 12px; line-height: 1.7; color: var(--muted); }
 .c3-external-input-field label { font-size: 12px; font-weight: 650; }
@@ -16,9 +15,13 @@
   padding: 0;
 }
 .c3-quality-picker .lr-sharing-panel { margin: 0; border: 0; border-radius: inherit; box-shadow: none; animation: none; }
-.c3-quality-picker > .c3-quality-heading { padding: 16px 18px 0; }
+.c3-quality-picker > .c3-quality-heading {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 18px; background: var(--paper); border-bottom: 1px solid var(--line);
+}
 .c3-quality-heading h3 { margin: 0; font-size: 16px; }
-.c3-quality-heading p { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.c3-quality-description { margin: 0; padding: 12px 18px 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .lr-anchored-card.c3-share-picker {
   width: min(720px, calc(100vw - 16px));
   max-height: min(560px, calc(100dvh - 16px));

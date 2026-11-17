@@ -115,7 +115,8 @@ describe("shared App connection entry", () => {
     const button = html.match(/<button\b[^>]*>/)![0];
     expect(button.includes("disabled")).toBe(false);
     expect(button.toLowerCase().includes("popovertarget=")).toBe(true);
-    expect(html.match(/<button\b/g)).toHaveLength(2);
+    expect(html.match(/<button\b/g)).toHaveLength(3);
+    expect(html).toContain('aria-label="Close"');
     expect(html).toMatch(/aria-label="(?:Share settings|分享设置)"/);
     const picker = renderToStaticMarkup(createElement(CaptureSourcePicker, {
       nativeSources: { kind: "browser" }, initialTab: "browser", browserSupported: entry.display, cameraSupported: entry.camera,
@@ -145,7 +146,8 @@ describe("shared App connection entry", () => {
     } as unknown as ChannelController;
     const html = renderToStaticMarkup(createElement(ChannelShareControl, { onWatch() {}, channel, roomId: "room", publicationId: "mine", compact: true, disabled: false }));
     expect(html).toMatch(/aria-label="(?:Switch source in Friday|切换Friday的分享源)"/);
-    expect(html.match(/<button\b/g)).toHaveLength(2);
+    expect(html.match(/<button\b/g)).toHaveLength(3);
+    expect(html).toContain('aria-label="Close"');
     expect(html).toMatch(/aria-label="(?:Share settings in Friday|Friday的分享设置)"/);
     const header = renderToStaticMarkup(createElement(ChannelShareControl, { onWatch() {}, channel, roomId: "room", disabled: false }));
     expect(header).toContain('aria-label="Switch source in Friday"');

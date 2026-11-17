@@ -175,7 +175,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     </span>
     {(!watching || sharing || pageWatch) && <span ref={settingsTrigger} className="c3-share-control">
       <Btn icon="sliders" title={{ text: settingsTitle }} cap={compact ? undefined : { text: settingsLabel }} hint="hint-quality" size="compact" quiet
-        disabled={disabled || busy} busy={qualityPending} popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
+        disabled={disabled || busy} busy={qualityPending} hasPopup="dialog" popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
     </span>}
     {externalInput && <ChannelAction icon="cast" label={externalInput.state === "live" ? "OBS" : t("screen.obsWaiting")}
       quiet onClick={() => setExternalOpen(true)} />}
@@ -185,10 +185,12 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     </span>}</span>
     <div ref={settingsPanel} id={`${id}-settings`} popover="auto" role="dialog" aria-label={settingsTitle} className="lr-anchored-card c3-quality-picker"
       onToggle={event => { if (event.target === event.currentTarget) setSettingsOpen(event.newState === "open"); }}>
+      <header className="c3-quality-heading"><h3>{watching ? t("watch.forward.title") : settingsLabel}</h3>
+        <ChannelAction icon="x" iconOnly quiet textTooltip label={t("room.action.close")}
+          onClick={() => settingsPanel.current?.hidePopover()} /></header>
       {watching ? settingsOpen && <WatchForwardSettings channel={channel} activityId={watching.id} disabled={disabled} /> : <>
-      <div className="c3-quality-heading"><h3>{settingsLabel}</h3>
-        <p>{sharing ? t("screen.shareSettingsHelp", { room: roomName ?? t("screen.currentRoom") })
-          : t("screen.shareSettingsNext")}</p></div>
+      <p className="c3-quality-description">{sharing ? t("screen.shareSettingsHelp", { room: roomName ?? t("screen.currentRoom") })
+        : t("screen.shareSettingsNext")}</p>
       {settingsOpen && sharing?.kind === "screen" && <ShareTitleEditor key={sharing.id} sharing={sharing} channel={channel} disabled={disabled || busy} />}
       {externalInput?.state === "live" ? <div className="c3-settings-panels"><p>{t("screen.obsQualityHelp")}</p>
         <ChannelAction icon="cast" label={t("screen.obsSettings")} onClick={() => { close(); setExternalOpen(true); }} /></div>
@@ -279,7 +281,7 @@ function WatchForwardSettings({ channel, activityId, disabled }: { channel: Chan
     void run(() => channel.setWatchByteSource(activityId, choice, controller.signal));
   };
   return <div className="c3-watch-forward-settings c3-external-input">
-    <h3>{t("watch.forward.title")}</h3><p>{t("watch.forward.upload")}</p>
+    <p>{t("watch.forward.upload")}</p>
     {activity?.byteSource ? <><p role="status">{t("watch.forward.active")}</p>
       <Btn icon="stop" title="watch.forward.stop" cap="watch.forward.stop" disabled={disabled || busy} busy={busy}
         onClick={() => { void run(() => channel.setWatchByteSource(activityId, null), cancel); }} /></>
