@@ -2328,6 +2328,153 @@ test("Browser source replacement keeps its publication, rejects only the candida
   } finally { session.close(); }
 });
 
+function nextSocketCommand(socket: ChannelSocket, type: string): Promise<Record<string, unknown>> {
+  return new Promise(resolve => {
+    const send = socket.send.bind(socket);
+    const observer = vi.spyOn(socket, "send").mockImplementation(data => {
+      send(data);
+      const command = JSON.parse(data);
+      if (command.type === type) { observer.mockRestore(); resolve(command); }
+    });
+  });
+}
+
+test("Browser publication leaves cancellable preparation before requesting room confirmation", async () => {
+  const { session, socket } = await setup();
+  const video = remoteTrack("video"), stream = remoteStream("first-window", [video]);
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(async () => stream) } });
+  session.setVideoCodecMode("vp8");
+  try {
+    const next = nextSocketCommand(socket, "publish");
+    const starting = session.startScreen("first").then(() => "published", error => error.name);
+    const publish = await next;
+    const committing = session.sourceSelectionCommitting("first");
+    const preparation = session.browserCapturePreparation("first");
+    await session.cancelScreenSelection("first");
+    const pending = session.getSnapshot().pending.has("screen:first");
+    socket.receive({ type: "ack", requestId: publish.requestId });
+    expect(await starting).toBe("published");
+    expect(committing).toBe(true);
+    expect(preparation).toBeUndefined();
+    expect(pending).toBe(true);
+    expect(video.stop).not.toHaveBeenCalled();
+    expect(socket.sent.some(command => command.type === "unpublish")).toBe(false);
+    expect(session.getSnapshot().ownedScreens.size).toBe(1);
+    expect(session.sourceSelectionCommitting("first")).toBe(false);
+  } finally { session.close(); }
+});
+
+test("Browser replacement cannot cancel preparation after transferring source authority", async () => {
+  const { session, socket } = await setup();
+  const old = remoteTrack("video"), candidate = remoteTrack("video");
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn()
+    .mockResolvedValueOnce(remoteStream("current-window", [old])).mockResolvedValueOnce(remoteStream("next-window", [candidate])) } });
+  session.setVideoCodecMode("vp8");
+  try {
+    const published = nextSocketCommand(socket, "publish");
+    const initial = session.startScreen("first");
+    const publication = await published;
+    socket.receive({ type: "ack", requestId: publication.requestId }); await initial;
+    const description = publication.publication as { id: string; roomId: string; kind: "screen"; source: ScreenSource; videoSettings: VideoSettings };
+    const state = { ...session.getSnapshot().state!, publications: [{ audience: [], title: null, ...description,
+      paused: false, sessionId: "endpoint", userId: "self" }] };
+    socket.receive({ type: "state", state });
+    const transferring = nextSocketCommand(socket, "transfer_source");
+    const replacement = session.startScreen("first").then(() => "replaced", error => error.name);
+    const transfer = await transferring;
+    const committing = session.sourceSelectionCommitting("first");
+    await session.cancelScreenSelection("first");
+    const send = socket.send.bind(socket);
+    vi.spyOn(socket, "send").mockImplementation(data => {
+      send(data);
+      const command = JSON.parse(data);
+      if (command.type === "publish") queueMicrotask(() => socket.receive({ type: "ack", requestId: command.requestId }));
+    });
+    socket.receive({ type: "ack", requestId: transfer.requestId });
+    expect(await replacement).toBe("replaced");
+    expect(committing).toBe(true);
+    expect(socket.sent.some(command => command.type === "unpublish")).toBe(false);
+    expect(old.stop).toHaveBeenCalledOnce();
+    expect(candidate.stop).not.toHaveBeenCalled();
+    expect(session.getSnapshot().ownedScreens.has(description.id)).toBe(true);
+    expect(session.sourceSelectionCommitting("first")).toBe(false);
+  } finally { session.close(); }
+});
+
+test.each(["transfer", "commit", "stop"] as const)("Native selection retains its commit boundary during %s", async stage => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app",
+    protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  const { session, socket } = await setup();
+  const app = await startFixtureApp(session);
+  const old = remoteTrack("video"), original = remoteStream("native-incumbent", [old]);
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(async () => original) } });
+  session.setVideoCodecMode("vp8");
+  try {
+    await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const publishing = nextSocketCommand(socket, "publish");
+    const initial = session.startScreen("first");
+    const publish = await publishing;
+    socket.receive({ type: "ack", requestId: publish.requestId }); await initial;
+    const description = publish.publication as { id: string; roomId: string; kind: "screen"; source: ScreenSource; videoSettings: VideoSettings };
+    const nativeSessionId = crypto.randomUUID(), captureId = crypto.randomUUID();
+    const state = { ...session.getSnapshot().state!,
+      sessions: [...session.getSnapshot().state!.sessions, { id: nativeSessionId, userId: "self", online: true, signingKey: testSigningKey }],
+      publications: [{ audience: [], title: null, ...description, paused: false, sessionId: "endpoint", userId: "self" }] };
+    socket.receive({ type: "state", state });
+    let prepared!: (command: Record<string, unknown>) => void;
+    let transferred!: (command: Record<string, unknown>) => void;
+    let committed!: (command: Record<string, unknown>) => void;
+    const prepareReady = new Promise<Record<string, unknown>>(resolve => { prepared = resolve; });
+    const transferReady = new Promise<Record<string, unknown>>(resolve => { transferred = resolve; });
+    const commitReady = new Promise<Record<string, unknown>>(resolve => { committed = resolve; });
+    const appSend = app.send.bind(app), coreSend = socket.send.bind(socket);
+    vi.spyOn(app, "send").mockImplementation(data => {
+      appSend(data); const command = JSON.parse(data);
+      if (command.type === "prepare_capture") prepared(command);
+      if (command.type === "commit_capture") {
+        committed(command);
+        if (stage === "transfer") queueMicrotask(() => app.receive({ id: command.id, result: null }));
+      }
+      if (command.type === "cancel_capture" || command.type === "stop_capture") queueMicrotask(() => app.receive({ id: command.id, result: null }));
+    });
+    vi.spyOn(socket, "send").mockImplementation(data => {
+      coreSend(data); const command = JSON.parse(data);
+      if (command.type === "transfer_source") transferred(command);
+      if (command.type === "subscribe" || command.type === "unpublish") queueMicrotask(() => socket.receive({ type: "ack", requestId: command.requestId }));
+    });
+    const starting = session.startNativeScreen("first", { kind: "display", sourceId: "1", title: "Fixture" })
+      .then(() => "native-started", error => error.name);
+    const prepare = await prepareReady;
+    app.receive({ id: prepare.id, result: { captureId, sessionId: nativeSessionId, codec: "vp8" } });
+    const transfer = await transferReady;
+    const acknowledgeTransfer = () => {
+      socket.receive({ type: "state", state: { ...state, publications: [{ ...state.publications[0], sessionId: nativeSessionId }] } });
+      socket.receive({ type: "ack", requestId: transfer.requestId });
+    };
+    let commit: Record<string, unknown> | undefined;
+    if (stage !== "transfer") { acknowledgeTransfer(); commit = await commitReady; }
+    const committing = session.sourceSelectionCommitting("first");
+    const confirmationStillPending = !!session.nativeCaptureRequest("first");
+    if (stage === "stop") await session.stopScreen(description.id);
+    else await session.cancelScreenSelection("first");
+    if (stage === "transfer") acknowledgeTransfer();
+    else app.receive({ id: commit!.id, result: null });
+    expect(await starting).toBe(stage === "stop" ? "AbortError" : "native-started");
+    expect(app.sent.some(command => command.type === "cancel_capture")).toBe(false);
+    expect(committing).toBe(true);
+    expect(confirmationStillPending).toBe(false);
+    expect(old.stop).toHaveBeenCalledOnce();
+    expect(session.sourceSelectionCommitting("first")).toBe(false);
+    expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
+    if (stage === "stop") {
+      expect(app.sent.filter(command => command.type === "stop_capture")).toHaveLength(1);
+      expect(session.getSnapshot().ownedScreens.size).toBe(0);
+      expect(session.nativeCaptureSelection("first")).toBeUndefined();
+    } else expect(session.nativeCaptureSelection("first")).toBeDefined();
+  } finally { session.close(); }
+});
+
 test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-reply", "candidate-ended-before-reply", "app-close-before-state", "app-close-after-state", "transfer-rejected", "audio-stop-before-reply", "mute-during-native-prepare", "mute-during-native-commit", "mute-rejected-during-native-prepare"])("Browser and Native handoffs keep one publication and use the current Native capture lease (%s)", async outcome => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();

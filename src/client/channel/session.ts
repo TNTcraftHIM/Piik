@@ -1807,11 +1807,12 @@ export class ChannelSession {
             watch.helperSessionId = description.sessionId;
             describedApp = app;
           }
-          if (!this.watching.has(publicationId)) return;
+          if (this.watching.get(publicationId) !== watch) throw new DOMException("Capture cancelled", "AbortError");
         }
         await this.request({ type: "subscribe", publicationId, enabled: true, helperSessionId: watch.helperSessionId }, undefined, roomId);
-        if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
+        if (signal?.aborted || this.watching.get(publicationId) !== watch) throw new DOMException("Capture cancelled", "AbortError");
       } catch (error) {
+        if (this.watching.get(publicationId) !== watch) throw new DOMException("Capture cancelled", "AbortError");
         if (!signal?.aborted && error instanceof Error && error.message === "disconnected") return;
         this.retireWatch(publicationId);
         this.refreshActivity();
@@ -1928,8 +1929,9 @@ export class ChannelSession {
 
   sourceSelectionCommitting = (roomId: string): boolean => this.sourceSelections.get(roomId)?.committing ?? false;
   browserCapturePreparation = (roomId: string): "picker" | "preparing" | undefined => {
-    const granted = this.sourceSelections.get(roomId)?.browserCaptureGranted;
-    return granted === undefined ? undefined : granted ? "preparing" : "picker";
+    const selection = this.sourceSelections.get(roomId);
+    const granted = selection?.browserCaptureGranted;
+    return selection?.committing || granted === undefined ? undefined : granted ? "preparing" : "picker";
   };
   cancelScreenSelection = async (roomId: string): Promise<void> => {
     const share = this.screenShares.get(roomId);
@@ -1983,6 +1985,8 @@ export class ChannelSession {
       }
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       if (candidate.getVideoTracks()[0]?.readyState !== "live") throw new Error("capture_unavailable");
+      selection.committing = true;
+      this.patch({});
       const app = this.app;
       if (previous || app?.hasCapture(share.id)) {
         const sessionId = this.view.sessionId;
@@ -2790,6 +2794,7 @@ export class ChannelSession {
       this.patch({});
       const prepared = await preparing;
       if (!current() || this.app !== app) throw new DOMException("Capture cancelled", "AbortError");
+      selection.committing = true;
       this.patch({});
       if (this.local.has(share.id)) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: prepared.sessionId }, undefined, roomId);
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
