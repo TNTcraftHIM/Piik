@@ -23,6 +23,10 @@ const decoder = new TextDecoder("utf-8", { fatal: true });
 const manifest = "manifest.json", history = "history.ndjson", users = "users.ndjson";
 const zipOptions = { useWebWorkers: false, compressionMethod: 0, level: 0 } as const;
 
+function backupFailure(error: unknown): never {
+  throw error instanceof Error ? error : new Error(typeof error === "string" ? error : "operation_failed");
+}
+
 async function runtime(): Promise<Runtime> {
   const module = await loadRoomHosting();
   await module.initializeRuntime();
@@ -35,7 +39,11 @@ function inventory(metadata: BackupMetadata): Map<string, RetainedBackupFile> {
 }
 
 /** Inspect metadata; domain records are preflighted before restore, room visitors validate history and content. */
-export async function readBackup(blob: Blob, visitor?: BackupVisitor): Promise<BackupMetadata> {
+export function readBackup(blob: Blob, visitor?: BackupVisitor): Promise<BackupMetadata> {
+  return readArchive(blob, visitor).catch(backupFailure);
+}
+
+async function readArchive(blob: Blob, visitor?: BackupVisitor): Promise<BackupMetadata> {
   const [module, zip] = await Promise.all([runtime(), import("@zip.js/zip.js/lib/zip-core-native.js")]);
   const reader = new zip.ZipReader(new zip.BlobReader(blob), { useWebWorkers: false });
   try {
@@ -137,7 +145,11 @@ function verifiedContent(module: Runtime, descriptor: ChannelAttachment) {
 }
 
 /** The caller supplies a stable snapshot; no live storage or file authority is changed here. */
-export async function writeBackup(metadata: Exclude<BackupMetadata, { kind: "domain" }>, rows: AsyncIterable<BackupHistoryRow>, open?: (file: RetainedBackupFile) => Promise<Blob>): Promise<Blob> {
+export function writeBackup(metadata: Exclude<BackupMetadata, { kind: "domain" }>, rows: AsyncIterable<BackupHistoryRow>, open?: (file: RetainedBackupFile) => Promise<Blob>): Promise<Blob> {
+  return writeArchive(metadata, rows, open).catch(backupFailure);
+}
+
+async function writeArchive(metadata: Exclude<BackupMetadata, { kind: "domain" }>, rows: AsyncIterable<BackupHistoryRow>, open?: (file: RetainedBackupFile) => Promise<Blob>): Promise<Blob> {
   const [module, zip] = await Promise.all([runtime(), import("@zip.js/zip.js/lib/zip-core-native.js")]);
   const canonical = module.backup_metadata(JSON.stringify(metadata));
   metadata = JSON.parse(canonical) as typeof metadata;

@@ -8247,6 +8247,35 @@ test("room backup exports its actual Browser host snapshot, full nonce/reactions
   } finally { session.close(); }
 });
 
+test("backup WASM failures preserve operation error copy and allow the next valid archive", async () => {
+  const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const { readFile } = await import("node:fs/promises");
+  await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...core, initializeRuntime: async () => {} } as never);
+  const metadata: backupArchive.BackupMetadata = { kind: "room_copy", version: 1, authors: {}, retainedFiles: [] };
+  const unsupported = { ...metadata, version: 999 } as unknown as typeof metadata;
+  const zip = await import("@zip.js/zip.js/lib/zip-core-native.js");
+  const writer = new zip.ZipWriter(new zip.BlobWriter("application/zip"), { useWebWorkers: false, compressionMethod: 0, level: 0 });
+  await writer.add("manifest.json", new zip.TextReader(JSON.stringify(unsupported)));
+  await writer.add("history.ndjson", new zip.TextReader(""));
+  const invalid = await writer.close();
+  const visitor = { metadata: vi.fn(), row: vi.fn(), content: vi.fn() };
+  const emptyRows = async function* () {};
+  for (const operation of [() => backupArchive.readBackup(invalid, visitor), () => backupArchive.writeBackup(unsupported, emptyRows())]) {
+    const error = await operation().catch(error => error);
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toBe("unsupported_backup_version");
+    expect(channelErrorPresentation(error.message, key => en[key]).message).toBe(en["channel.error.unsupportedBackupVersion"]);
+  }
+  expect(visitor.metadata).not.toHaveBeenCalled(); expect(visitor.row).not.toHaveBeenCalled(); expect(visitor.content).not.toHaveBeenCalled();
+  const valid = await backupArchive.writeBackup(metadata, emptyRows());
+  await expect(backupArchive.readBackup(valid)).resolves.toEqual(metadata);
+  const existing = new Error("owned private archive detail", { cause: new Error("owned cause") });
+  visitor.metadata.mockImplementation(() => { throw existing; });
+  await expect(backupArchive.readBackup(valid, visitor)).rejects.toBe(existing);
+  expect(channelErrorPresentation(existing.message, key => en[key]).message).toBe(en["channel.error.actionFailed"]);
+});
+
 test("a copy without room information round-trips real ZIP content and remaps historical identity in Core", async () => {
   const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
   const { readFile } = await import("node:fs/promises");
