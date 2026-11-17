@@ -1,6 +1,7 @@
 #include "portal.h"
 
 #include <gio/gio.h>
+#include <string.h>
 #include <unistd.h>
 
 // Ordinary capture keeps working with the existing system libportal. Remote
@@ -16,6 +17,7 @@ typedef struct {
   XdpSession *session;
   GError *error;
   gboolean remote_input;
+  gboolean retried_without_persist;
 } PortalRequest;
 
 static void finish_request(PortalRequest *request, GError *error) {
@@ -42,6 +44,19 @@ static void session_created(GObject *source, GAsyncResult *result,
       ? xdp_portal_create_remote_desktop_session_finish(XDP_PORTAL(source), result, &error)
       : xdp_portal_create_screencast_session_finish(XDP_PORTAL(source), result, &error);
   if (request->session == NULL) {
+    // KDE rejects non-none RemoteDesktop persistence; retry once without a token.
+    if (request->remote_input && !request->retried_without_persist &&
+        error != NULL && error->message != NULL &&
+        strstr(error->message, "Remote desktop sessions cannot persist") != NULL) {
+      request->retried_without_persist = TRUE;
+      g_error_free(error);
+      xdp_portal_create_remote_desktop_session_full(
+          request->portal, XDP_DEVICE_KEYBOARD | XDP_DEVICE_POINTER,
+          XDP_OUTPUT_MONITOR, XDP_REMOTE_DESKTOP_FLAG_NONE,
+          XDP_CURSOR_MODE_EMBEDDED, XDP_PERSIST_MODE_NONE, NULL, NULL,
+          session_created, request);
+      return;
+    }
     finish_request(request, error);
     return;
   }

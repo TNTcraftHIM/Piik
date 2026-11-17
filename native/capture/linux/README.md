@@ -20,8 +20,8 @@ sh native/capture/linux/build.sh /outside/repository/build
 ```
 
 Run `npm run check:native` on Linux to compile the sidecar, run the headless
-output-profile, source-geometry, segment-timestamp and retirement regressions,
-and validate its probe/source list.
+output-profile, source-geometry, segment-timestamp, retirement and
+remote-desktop persist-retry regressions, and validate its probe/source list.
 The same check runs when the Linux CI job packages an App candidate. For the
 native build and regression alone, add `--check` to the command above. The test
 uses synthetic input and GStreamer's core/base elements and needs no display, Portal session,
