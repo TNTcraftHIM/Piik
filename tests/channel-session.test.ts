@@ -4555,6 +4555,51 @@ test("pages beyond a full window without live messages interrupting reading, the
   } finally { session.close(); }
 });
 
+test.each(["success", "failure"])("automatic browse history preserves another action's error until its own %s, and explicit retry clears it", async outcome => {
+  const { session, socket, peer } = await setup();
+  try {
+    const sending = session.sendMessage("first", "Failed message"), rejected = expect(sending).rejects.toThrow("storage_failed");
+    const chat = await peer.next();
+    session.browse("second");
+    const browse = socket.sent.findLast(command => command.type === "browse" && command.active && command.roomId === "second")!;
+    peer.reply(chat, { type: "error", code: "storage_failed" });
+    await rejected;
+    socket.receive({ type: "ack", requestId: browse.requestId });
+    const history = await peer.next();
+    expect(history).toMatchObject({ type: "history", roomId: "second" });
+    expect(session.getSnapshot().error).toBe("storage_failed");
+    if (outcome === "failure") peer.reply(history, { type: "error", code: "request_timeout" });
+    else peer.page(history, [], false, null);
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:second")).toBe(false));
+    expect(session.getSnapshot().error).toBe(outcome === "failure" ? "request_timeout" : "storage_failed");
+    const retry = session.loadLatestHistory("second");
+    expect(session.getSnapshot().error).toBeNull();
+    peer.page(await peer.next(), [], false, null); await retry;
+    expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
+test("a confirmed send's automatic latest read preserves an unrelated operation error", async () => {
+  const { session, socket, peer } = await setup(1);
+  try {
+    await peer.history([message(2)], true);
+    await peer.history([message(1)], false, true);
+    const sending = session.sendMessage("first", "Hello 3");
+    const chat = await peer.next();
+    const setting = session.setRelayOverride("second", 3), rejected = expect(setting).rejects.toThrow("forbidden");
+    const request = socket.sent.findLast(command => command.type === "relay_capacity")!;
+    socket.receive({ type: "error", requestId: request.requestId, code: "forbidden" });
+    await rejected;
+    peer.reply(chat, { type: "confirmed", message: message(3), inserted: true }); await sending;
+    const history = await peer.next();
+    expect(history).toMatchObject({ type: "history", roomId: "first" });
+    expect(session.getSnapshot().error).toBe("forbidden");
+    peer.page(history, [message(3)]);
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:first")).toBe(false));
+    expect(session.getSnapshot().error).toBe("forbidden");
+  } finally { session.close(); }
+});
+
 test("a confirmed send returns a historical reader to latest without failing the send when history fails", async () => {
   const { session, peer } = await setup(1);
   try {

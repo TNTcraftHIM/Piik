@@ -65,6 +65,19 @@ describe("Webpage watch presentation", () => {
     expect(html).toContain('aria-label="Play direct video URL"');
   });
 
+  it.each([true, false])("explains original-page access before sharing with a direct candidate=%s", direct => {
+    setCopy({ lang: "en" });
+    const channel = { appConnected: true, pagePlayer: true, pending: new Set(), watchEmbed: () => undefined,
+      sourceSelectionCommitting: () => false, watchPage: () => ({ url: "https://video.test/player", candidates: [],
+        watchSources: { choices: direct ? [{ id: "video", name: "Owned video", displayURL: "https://video.test/video.mp4", format: "file" }] : [], indexed: [], mpd: [] } }),
+    } as unknown as ChannelController;
+    const html = renderToStaticMarkup(createElement(WatchSourceDialog, { channel, roomId: "room", onClose: vi.fn() }));
+    expect(html).toContain(t("en", "watch.browserSource.originalHelp"));
+    expect(html.indexOf(t("en", "watch.browserSource.originalHelp"))).toBeLessThan(html.indexOf('aria-label="Share original webpage only"'));
+    expect(html.includes('aria-label="Play Owned video in Piik"')).toBe(direct);
+    expect(html.includes('aria-label="Forward Owned video"')).toBe(direct);
+  });
+
 
   it.each([
     [["watch_live_hls_unsupported", "watch_media_encryption_unsupported", "watch_media_encoding_unsupported", "watch_media_range_unsupported", "watch_media_size_unavailable", "watch_manifest_extension_unsupported", "watch_manifest_limit", "watch_resource_limit", "watch_mp4_parse_failed", "watch_indexed_unsupported", "invalid_watch_index"], "watch.forward.unsupported", false],
@@ -218,6 +231,11 @@ describe("Webpage watch presentation", () => {
     expect(disconnected).toContain("Connect Piik App");
     expect(disconnected).not.toContain('aria-label="Watch in App"');
     const receiving = { peerAvailable: true, peerSupported: true, mode: "direct" as const, browserSource: false, onPeer: vi.fn(), onDirect: vi.fn() };
+    const unsupported = { ...source, onAppWatch: undefined, originalPageAvailable: false, originalPageUnavailable: t("en", "watch.pageUnsupported") };
+    expect(render(unsupported)).toContain(t("en", "watch.pageUnsupported"));
+    expect(render(unsupported)).not.toContain("Connect Piik App");
+    expect(render({ ...unsupported, browserSource: true })).not.toContain(t("en", "watch.pageUnsupported"));
+    expect(render({ ...unsupported, receiving })).not.toContain(t("en", "watch.pageUnsupported"));
     const forwarded = render({ ...source, onAppWatch: undefined, receiving });
     expect(forwarded).toContain('aria-label="Receive from sharer"');
     expect(forwarded).not.toContain("Connect Piik App");

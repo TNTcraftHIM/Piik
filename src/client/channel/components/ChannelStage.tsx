@@ -90,6 +90,7 @@ export interface WatchStageSource {
   shareControls?: ReactNode;
   player?: import("../watch-playback").WatchPlayer;
   website: boolean; browserSource: boolean; originalPageAvailable: boolean; onAppWatch?: () => void; onFocusWindow(): void;
+  originalPageUnavailable?: string;
   receiving?: WatchReceiving;
   audience: readonly AudiencePerson[];
   onRoom(): void; onJoin(): void; onLeave(): void; onStop(): void; onResume(): void;
@@ -352,7 +353,7 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
           <div className="c3-monitor-offer-actions">
             {source.kind === "watch" && !source.browserSource ? source.receiving?.peerAvailable && source.receiving.peerSupported ? null : source.onAppWatch
               ? <ChannelAction icon="window" label={t("watch.inApp")} disabled={!canSubscribe || source.available === false} busy={source.pending} onClick={source.onAppWatch} />
-              : source.originalPageAvailable && <small>{t("watch.connectApp")}</small> : <ChannelAction icon="eye" label={t("screen.watch")}
+              : (source.originalPageAvailable || source.originalPageUnavailable) && <small>{source.originalPageUnavailable ?? t("watch.connectApp")}</small> : <ChannelAction icon="eye" label={t("screen.watch")}
               hint="hint-watch"
               disabled={!canSubscribe || source.available === false} busy={source.pending}
               onClick={() => source.kind === "watch" ? source.onJoin() : onWatch(source.id)} />}

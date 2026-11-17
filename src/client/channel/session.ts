@@ -1077,10 +1077,10 @@ export class ChannelSession {
     }
   }
 
-  private async action<T>(key: string, work: () => Promise<T>, reportError = true): Promise<T> {
+  private async action<T>(key: string, work: () => Promise<T>, reportError = true, options: { clearError?: boolean } = {}): Promise<T> {
     if (this.view.pending.has(key)) throw new Error("operation_pending");
     const socket = this.socket;
-    this.patch({ pending: new Set([...this.view.pending, key]), ...(reportError ? { error: null } : {}) });
+    this.patch({ pending: new Set([...this.view.pending, key]), ...(reportError && options.clearError !== false ? { error: null } : {}) });
     try { return await work(); }
     catch (error) {
       const code = error instanceof DOMException ? error.name : error instanceof Error ? error.message : "operation_failed";
@@ -1141,7 +1141,7 @@ export class ChannelSession {
           || this.view.historyByRoom[id]?.atLatest === false) return;
         current.history = this.action(`history:${id}`, () => this.request({ type: "history", roomId: id }).catch(error => {
           if (this.readings.get(id) === current && this.socket === current.socket) throw error;
-        }));
+        }), true, { clearError: false });
         void current.history.catch(() => {});
       }, error => {
         if (this.readings.get(id) === current && this.socket === current.socket && this.view.connection === "connected") {
@@ -1254,7 +1254,7 @@ export class ChannelSession {
       if (event.type === "confirmed") this.attachments.confirmed(roomId, event.message, prepared);
     }, roomId, signal);
     if (this.outgoingMessages.get(roomId) === attempt) this.outgoingMessages.delete(roomId);
-    if (this.view.historyByRoom[roomId]?.atLatest === false) void this.loadLatestHistory(roomId).catch(() => {});
+    if (this.view.historyByRoom[roomId]?.atLatest === false) void this.requestHistory(roomId, undefined, false, { clearError: false }).catch(() => {});
   });
   loadHistory = (roomId: string): Promise<void> => this.requestHistory(roomId, this.view.historyByRoom[roomId]?.before);
   loadLatestHistory = (roomId: string): Promise<void> => this.requestHistory(roomId);
@@ -1294,11 +1294,11 @@ export class ChannelSession {
     stored(this.readMarkerKey, JSON.stringify(readByRoom));
     this.patch({ readByRoom });
   };
-  private requestHistory(roomId: string, before?: number, replace = false): Promise<void> {
+  private requestHistory(roomId: string, before?: number, replace = false, options: { clearError?: boolean } = {}): Promise<void> {
     const reading = this.reading?.roomId === roomId ? this.reading : null;
     const pending = this.view.pending.has(`history:${roomId}`);
     const loading = this.action(`history:${roomId}`, () => this.request(
-      { type: "history", roomId, ...(before !== undefined ? { before } : {}) }, undefined, roomId, undefined, replace));
+      { type: "history", roomId, ...(before !== undefined ? { before } : {}) }, undefined, roomId, undefined, replace), true, options);
     if (reading && !pending) reading.history = loading;
     return loading;
   }

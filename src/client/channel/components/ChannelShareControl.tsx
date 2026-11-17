@@ -378,6 +378,7 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
         {pageSources.mpd.length > 0 && <WatchMpdSourcePicker choices={pageSources.mpd} busy={busy} mainPlayback
           onInspect={(choiceId, signal) => run(() => channel.inspectWatchMpdSource(roomId, choiceId, signal))}
           onConfirm={selected => { void run(() => channel.selectWatchMpdSource(roomId, selected, false), onClose); }} />}
+        <p>{t("watch.browserSource.originalHelp")}</p>
         <Btn icon="globe" quiet title="watch.browserSource.skip" cap="watch.browserSource.skip" disabled={busy}
           onClick={() => { void run(() => channel.selectWatchBrowserSource(roomId, null, false), onClose); }} />
       </> : page.candidates.length ? <div className="lr-source-picker-list">
