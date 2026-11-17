@@ -41,7 +41,7 @@ export function WatchMpdSourcePicker({ choices, onInspect, onConfirm, ...props }
   return <div className="c3-external-input"><div className="lr-source-picker-list" data-text-list>
     {choices.map(choice => <CaptureSourceCard key={choice.candidate.id} title={choice.candidate.name || choice.candidate.hostname}
       description={choice.candidate.hostname} action={t("watch.selectVideoNamed", { name: choice.candidate.name || choice.candidate.hostname })}
-      icon="play" hint="hint-source-picker" selected={choice === selected} disabled={props.disabled || props.busy}
+      icon="play" selected={choice === selected} disabled={props.disabled || props.busy}
       onSelect={() => { request.current?.abort(); const controller = request.current = new AbortController(); void onInspect(choice.candidate.id, controller.signal); }} />)}
     </div>{selected && <WatchMpdTrackPicker key={selected.catalog!.sourceId} choice={selected} {...props} onConfirm={onConfirm} />}
   </div>;

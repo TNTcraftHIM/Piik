@@ -6,12 +6,12 @@ import type { HintKind } from "./hints";
 /** One visual source card; its caller owns discovery and preview resources. */
 export function CaptureSourceCard({ title, description, action, icon, hint, preview, disabled, selected,
   nativeKey, cameraKey, buttonRef, onPreview, onSelect }: {
-  title: string; description?: string; action: string; icon: GlyphName; hint: HintKind; preview?: string | null;
+  title: string; description?: string; action: string; icon: GlyphName; hint?: HintKind; preview?: string | null;
   disabled?: boolean; selected?: boolean; nativeKey?: string; cameraKey?: string;
   buttonRef?: Ref<HTMLButtonElement>; onPreview?: () => void; onSelect: () => void;
 }) {
   const descriptionId = useId();
-  return <Tooltip kind={hint} text={title} className="lr-source-option-hint">
+  return <Tooltip {...(hint ? { kind: hint, text: title } : { overflow: { text: title, selector: ".lr-source-option-copy strong" } })} className="lr-source-option-hint">
     <button ref={buttonRef} type="button" className={`lr-source-option${preview === undefined ? " is-action" : ""}`}
       data-native-source={nativeKey} data-camera-source={cameraKey}
       aria-label={action} aria-describedby={description ? descriptionId : undefined} aria-current={selected || undefined} disabled={disabled}
