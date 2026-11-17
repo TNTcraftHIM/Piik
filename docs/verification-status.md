@@ -51,15 +51,18 @@ the received and forwarded byte digests matched across that path. Leaving
 cancelled an in-flight source read, while disabling forwarding retained the
 original webpage's playback. These are controlled local sources and development
 artifacts, not independent Internet or whole-website compatibility evidence.
-Two sealed Windows Apps and an independent Browser verify Reader retention and
-new range reads across a short Native signaling interruption. Runtime expiry
-cancels pending reads while App control remains connected; reconnecting does not
-republish the old source, and explicit new-source preparation plays successfully.
-In that packaged run, the Browser viewer loses its player during short recovery
-and needs to rejoin. Focused Core checks now retain the admitted source and range
-lease during recovery, reject new offline sources and clear expired or withdrawn
-ones; the corrected Viewer path still needs matching-runtime acceptance.
-This controlled local-media check does not establish WAN or Linux pairing.
+A matching Windows development package with two Apps and an independent Browser
+retains the same Reader and Viewer video element across a short Native signaling
+interruption. An uncached seek after reconnection completes new range reads and
+resumes decoded frames without rejoining. First joining a paused or ended video
+presents a real frame. Runtime expiry cancels pending reads while App control
+remains connected; reconnecting does not republish the old source. Explicit
+new-source preparation plays successfully, and ending that activity releases its
+provider. Core checks also reject new offline sources and clear expired or
+withdrawn grants. These controlled local-media checks do not establish WAN/NAT
+success rates, Linux pairing or general website compatibility.
+The source App later required process termination during window cleanup; that
+exit path remains unaccepted.
 With 100 ms source response delay, an approximately 8 Mbps MP4 passes a real
 Native-to-Browser-to-Browser path after initial buffering; correction stays
 inside received ranges instead of repeatedly seeking beyond them. This is a

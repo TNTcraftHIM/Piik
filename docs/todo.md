@@ -37,7 +37,6 @@ the feedback period; they do not delay that delivery.
   indicators in the room list, couch and people panel with a matching package.
   Cover a participant with no media, a joined watch, and preparing, received or
   failed pictures without changing those surfaces' membership rules.
-  Include first joining a paused or ended video in the matching package.
 - [ ] **Native performance under the reported workload.** Measure capture,
   conversion, encoding and decoded cadence on the affected machines during
   normal use and contention. Identify the limiting stage before changing quality
@@ -49,10 +48,6 @@ the feedback period; they do not delay that delivery.
   Windows App/Web package. Cover failed replacement retaining the active source,
   original-page closure, and independent viewer playback with and without
   explicit forwarding. Broader website/live coverage remains below.
-- [ ] **Webpage watching during Native recovery.** Verify the corrected source
-  retention with a matching Windows App and independent Browser viewer across
-  a short Native signaling interruption. Confirm actual playback resumes and
-  explicit withdrawal or runtime expiry still retires the source.
 - [ ] **Site forwarding package acceptance.** Verify the operator setting,
   saved room permission and actual fallback with Windows App endpoints,
   forwarded pictures/files and independent room leases. Packaged Linux Server
@@ -61,6 +56,8 @@ the feedback period; they do not delay that delivery.
 - [ ] **Native console/terminal package acceptance.** Check the matching package's
   silent native entry, explicit Browser terminal, unavailable-WebView fallback,
   redirected output and normal quit/update restart.
+  Locate the shutdown stall observed after a controlled webpage-recovery run:
+  the source App reported stopped but its main window remained unresponsive.
 - [ ] **2.x periodic brief picture stalls.** With a particular Host or Viewer,
   normally clear playback pauses for less than half a second every few seconds
   or tens of seconds, skips several frames and sometimes briefly blurs. A roughly
