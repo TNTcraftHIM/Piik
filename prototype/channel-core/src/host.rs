@@ -219,7 +219,10 @@ impl RoomProjection {
             }
         }
         sessions.retain(|session| {
-            !self.views.get(session).is_some_and(|view| view.transit)
+            !self
+                .views
+                .get(session)
+                .is_some_and(|view| view.transit_endpoint.is_some())
                 || self.participant_session_ids.contains(session)
         });
         sessions.into_iter().collect()
@@ -228,7 +231,7 @@ impl RoomProjection {
     /// Assemble only the recipient's authorized view; the host owns these rights.
     pub fn snapshot(&self, session: Uuid, available: bool) -> Option<RoomSnapshot> {
         let view = self.views.get(&session)?;
-        if !view.authorized && (view.transit || self.summary.hidden) {
+        if !view.authorized && (view.transit_endpoint.is_some() || self.summary.hidden) {
             return None;
         }
         Some(RoomSnapshot {

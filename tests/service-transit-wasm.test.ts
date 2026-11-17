@@ -29,7 +29,8 @@ test("Browser WASM saves room consent, keeps Read separate and derives fresh ser
     expect(JSON.parse(host.summary())).not.toHaveProperty("allowServiceRelay");
     turn({ type: "command", context: { ...context, sessionId: viewer }, command: { type: "voice", roomId: policy.id, joined: true, muted: true, deafened: true } });
     const repairing = turn({ type: "sync" }, [{ first: owner, second: viewer, revision: revision + 1 }]);
-    expect(repairing.projection.views[service]).toMatchObject({ transit: true, authorized: false, transitEndpoint: serviceEndpoint, canManage: false, reading: false, subscriptions: [], watchSubscriptions: [] });
+    expect(repairing.projection.views[service]).toMatchObject({ authorized: false, transitEndpoint: serviceEndpoint, canManage: false, reading: false, subscriptions: [], watchSubscriptions: [] });
+    expect(repairing.projection.views[service]).not.toHaveProperty("transit");
     expect(JSON.parse(host.policy()).grants).toEqual([viewerUser]);
     for (const link of repairing.projection.baseLinks) for (const [sessionId, peer] of [[link.parent, link.child], [link.child, link.parent]]) turn({ type: "base_state", context: { ...context, sessionId }, peer, ready: true });
     serviceEndpoint = { sessionId: service, connectionId: crypto.randomUUID() };
@@ -74,7 +75,9 @@ test("public Read does not retain pure site forwarding after the saved preferenc
     }
     const off = turn(preference(false));
     expect(off.projection.baseLinks.some((link: { parent: string; child: string }) => link.parent === service || link.child === service)).toBe(false);
-    expect(off.projection.views[service]).toMatchObject({ authorized: true, transit: false });
+    expect(off.projection.views[service]).toMatchObject({ authorized: true });
+    expect(off.projection.views[service]).not.toHaveProperty("transitEndpoint");
+    expect(off.projection.views[service]).not.toHaveProperty("transit");
     expect(JSON.parse(host.policy()).allowServiceRelay).toBe(false);
   } finally { host.free(); }
 });

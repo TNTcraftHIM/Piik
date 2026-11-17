@@ -573,7 +573,8 @@ window.runBrowserRoomCheck = async () => {
     });
     try {
       for (const [field, value, expected] of [["icon", undefined, "invalid_request"], ["voiceBitrate", 0, "invalid_room_policy"],
-        ["relayCapacity", 0, "invalid_room_policy"], ["passwordHash", "invalid", "invalid_room_policy"]] as const) {
+        ["relayCapacity", 0, "invalid_room_policy"], ["passwordHash", "invalid", "invalid_room_policy"],
+        ["inviteHash", Array(32).fill(7), "invalid_room_policy"]] as const) {
         const invalid = { ...JSON.parse(legacyPolicy), id: crypto.randomUUID(), [field]: value };
         const before = await BrowserRoomHost.storedPolicies(database);
         let opened: BrowserRoomHost | undefined, error: string | undefined;

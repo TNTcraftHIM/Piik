@@ -479,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn room_invitation_recovery_preserves_hash_only_policy_and_history() {
+    fn room_invitation_reopen_preserves_current_data_and_rejects_hash_only_policy() {
         let path = std::env::temp_dir().join(format!("piik-invitation-{}.sqlite", Uuid::new_v4()));
         let mut policy = crate::RoomState::new(
             "room".into(),
@@ -494,8 +494,7 @@ mod tests {
         let previous = policy.invite().unwrap();
         let guest = Uuid::new_v4();
         policy.enter(guest, None, Some(&previous)).unwrap();
-        let mut legacy = serde_json::to_value(&policy).unwrap();
-        legacy.as_object_mut().unwrap().remove("inviteKey");
+        let saved_policy = serde_json::to_value(&policy).unwrap();
         let draft = MessageDraft::new(
             guest,
             "kept".into(),
@@ -509,7 +508,7 @@ mod tests {
         .unwrap();
         {
             let mut store = Storage::open(&path).unwrap();
-            store.save(&legacy).unwrap();
+            store.save(&saved_policy).unwrap();
             confirmed(&mut store, "room", &draft);
         }
         let key;
@@ -517,8 +516,8 @@ mod tests {
             let mut store = Storage::open(&path).unwrap();
             let value = store.load().unwrap().unwrap();
             assert_eq!(
-                value, legacy,
-                "opening does not rotate or rewrite beta policy"
+                value, saved_policy,
+                "opening does not rotate or rewrite the current invitation"
             );
             let mut restored: crate::RoomState = serde_json::from_value(value).unwrap();
             restored.validate().unwrap();
@@ -553,6 +552,23 @@ mod tests {
             let public = serde_json::to_value(restored).unwrap();
             assert_eq!(public["inviteKey"], key);
             assert!(!public["inviteHash"].is_null());
+        }
+        {
+            let mut store = Storage::open(&path).unwrap();
+            let mut legacy = store.load().unwrap().unwrap();
+            legacy.as_object_mut().unwrap().remove("inviteKey");
+            let invalid_path = path.with_extension("invalid.sqlite");
+            let invalid_policy = serde_json::from_value(legacy.clone()).unwrap();
+            let error = crate::StoredRoomHost::create(&invalid_path, invalid_policy)
+                .err()
+                .unwrap();
+            assert_eq!(error.to_string(), "invalid_room_policy");
+            assert!(!invalid_path.exists());
+            store.save(&legacy).unwrap();
+            let error = crate::StoredRoomHost::open(&path).err().unwrap();
+            assert_eq!(error.to_string(), "invalid_room_policy");
+            assert_eq!(store.load().unwrap().unwrap(), legacy);
+            assert_eq!(page(&mut store, "room", None).0[0].text, "Retained history");
         }
         std::fs::remove_file(path).unwrap();
     }

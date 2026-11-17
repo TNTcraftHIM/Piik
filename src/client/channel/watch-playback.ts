@@ -1,5 +1,5 @@
-import type { WatchPlayback, WatchMode } from "./protocol";
-import { type WatchMedia, type WatchMediaPatch, type WatchMediaState } from "./watch-media";
+import { watchPlaybackSchema, type WatchPlayback, type WatchMode } from "./protocol";
+import { watchSeekPosition, type WatchMedia, type WatchMediaPatch, type WatchMediaState } from "./watch-media";
 
 const mediaFailure = (error?: unknown): string => error instanceof Error && error.message ? error.message : "watch_media_failed";
 
@@ -175,6 +175,13 @@ export class WatchPlayer {
     else if (!playback.paused && state.paused && !this.blocked && !state.ended) patch.paused = false;
     await this.apply(patch);
     return !this.error || this.error === "watch_update_failed";
+  }
+  /** Called within the player's serialized turn; explicit failures reject. */
+  async editPlayback(patch: WatchMediaPatch): Promise<void> {
+    watchPlaybackSchema.parse({ ...await this.sample(), ...patch });
+    const ranges = this.localState?.live?.seekable;
+    await this.media.patch(patch.position !== undefined && ranges
+      ? { ...patch, position: watchSeekPosition(patch.position, ranges) } : patch);
   }
   private async apply(patch: WatchMediaPatch): Promise<void> {
     try {

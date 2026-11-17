@@ -3716,6 +3716,41 @@ test("closing the App connection preserves a pending Browser source selection", 
   } finally { session.close(); }
 });
 
+test.each([false, true])("next capture uses current preferences with an OBS permission armed=%s", async armed => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  const { session } = await setup();
+  const app = await startFixtureApp(session);
+  const first = { ...QUALITY_PROFILES["720p30"], maxAudioBitrate: 64_000 };
+  const next = { ...QUALITY_PROFILES["1080p60"], degradationPreference: "maintain-resolution" as const };
+  let capture: Promise<void> | undefined;
+  try {
+    await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    session.setQuality(first); session.setVideoCodecMode("auto"); session.setEncodingExecution("auto");
+    if (armed) {
+      const arming = session.startExternalScreen("first");
+      await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_external_input"));
+      app.receive({ id: app.sent.at(-1)!.id, result: { endpoint: "http://127.0.0.1:8793/whip/owned-input", token: "synthetic-input-token" } });
+      await arming;
+      expect(session.externalInput("first")?.state).toBe("waiting");
+    }
+    const permission = session.externalInput("first");
+    session.setQuality(next); session.setVideoCodecMode("h264"); session.setEncodingExecution("software");
+    capture = session.startNativeScreen("first", { kind: "display", sourceId: "1", title: "Owned capture" });
+    void capture.catch(() => {});
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
+    expect(app.sent.at(-1)).toMatchObject({
+      settings: { width: 1920, height: 1080, fps: 60, bitrate: 8_000_000, degradationPreference: "maintain-resolution" },
+      codecMode: "h264", encodingExecution: "software", audioSettings: { bitrate: 128_000, gain: 1 },
+    });
+    expect(session.externalInput("first")).toEqual(permission);
+    expect(session.getSnapshot().state?.publications).toHaveLength(0);
+    expect(session.nativeCaptureSelection("first")).toBeUndefined();
+    expect(app.sent.some(command => command.type === "commit_capture")).toBe(false);
+  } finally { session.close(); await capture?.catch(() => {}); }
+});
+
 test("arming OBS preserves the current capture controls until the external source commits", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
     domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
@@ -3725,6 +3760,8 @@ test("arming OBS preserves the current capture controls until the external sourc
   try {
     await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const profile = { ...QUALITY_PROFILES["720p30"], maxAudioBitrate: 64_000 };
+    session.setQuality(profile);
     const starting = session.startNativeScreen("first", { kind: "display", sourceId: "1", title: "Owned capture" });
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const request = app.sent.at(-1)!, publicationId = request.publicationId as string;
@@ -3735,12 +3772,16 @@ test("arming OBS preserves the current capture controls until the external sourc
     app.receive({ type: "capture_audio_state", publicationId, state: { sourceAudio: true,
       microphone: { enabled: true, deviceId: "owned-microphone", volume: 1 } } });
     expect(session.sourceMicrophone(publicationId)).toMatchObject({ enabled: true, available: true });
+    session.setQuality(QUALITY_PROFILES["1080p60"]); session.setVideoCodecMode("vp8"); session.setEncodingExecution("software");
     const opening = session.startExternalScreen("first");
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_external_input"));
     app.receive({ id: app.sent.at(-1)!.id, result: { endpoint: "http://127.0.0.1:8793/whip/owned-input", token: "synthetic-input-token" } });
     await opening;
+    expect(session.screenQuality(publicationId)).toEqual({ applied: profile, requested: profile });
+    expect(session.screenCodecMode(publicationId)).toBe("auto");
+    expect(session.screenEncodingExecution(publicationId)).toBe("auto");
     expect(session.sourceMicrophone(publicationId)).toMatchObject({ enabled: true, available: true });
-    expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true, canMute: true });
+    expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true, canMute: true, bitrate: 64_000 });
     const external = crypto.randomUUID();
     app.receive({ type: "external_input_state", publicationId, state: "prepared", captureId: external, sessionId, codec: "h264" });
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("commit_capture"));
@@ -4531,6 +4572,111 @@ test("a confirmed send returns a historical reader to latest without failing the
     await vi.waitFor(() => expect(session.getSnapshot().error).toBe("storage_failed"));
     expect(session.getSnapshot().pending.has("chat:first")).toBe(false);
     expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(false);
+  } finally { session.close(); }
+});
+
+test.each(["timeout", "cancel"])("same draft retries its prepared attachment after %s without reopening the file", async ending => {
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
+  vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new Error("optional_cache_unavailable"));
+  const { session, peer } = await setup();
+  const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeRuntime: async () => {} } as never);
+  const file = new File(["synthetic original"], "note.txt"), files = [{ id: crypto.randomUUID(), file }];
+  const slice = vi.spyOn(file, "slice"), confirmed = vi.spyOn(session.attachments, "confirmed");
+  const controller = new AbortController();
+  vi.useFakeTimers();
+  try {
+    const first = session.sendMessage("first", "original", files, controller.signal, { reply: { seq: 1, notify: false } });
+    const stopped = first.catch(error => error);
+    const request = await peer.next();
+    const reads = slice.mock.calls.length;
+    if (ending === "cancel") controller.abort();
+    await vi.advanceTimersByTimeAsync(ending === "timeout" ? 30000 : 0);
+    expect(session.getSnapshot().pending.has("chat:first")).toBe(false);
+    expect(await stopped).toMatchObject(ending === "timeout" ? { message: "request_timeout" } : { name: "AbortError" });
+    slice.mockImplementation(() => { throw new DOMException("Synthetic source removed", "NotReadableError"); });
+    const retry = session.sendMessage("first", "original", files, undefined, { reply: { seq: 1, notify: false } });
+    void retry.catch(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(peer.sent).toHaveLength(2);
+    const current = await peer.next();
+    expect(current).toEqual({ ...request, requestId: current.requestId });
+    expect(slice).toHaveBeenCalledTimes(reads);
+    const original = { ...message(1), text: "original", attachments: request.type === "chat" ? request.attachments : [] };
+    peer.reply(request, { type: "confirmed", inserted: true, message: original });
+    expect(confirmed).not.toHaveBeenCalled();
+    expect(session.getSnapshot().pending.has("chat:first")).toBe(true);
+    peer.reply(current, { type: "confirmed", inserted: false, message: original });
+    await retry;
+    expect(confirmed).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([original]);
+  } finally { session.close(); }
+});
+
+test("revoked room access retires a file preparation before its late result can retain a send", async () => {
+  const { session, socket, peer } = await setup();
+  const file = new File(["synthetic note"], "note.txt"), id = crypto.randomUUID();
+  let finish!: (files: Awaited<ReturnType<ChannelAttachments["describe"]>>) => void;
+  vi.spyOn(session.attachments, "describe").mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const attempts = (session as unknown as { outgoingMessages: Map<string, unknown> }).outgoingMessages;
+  try {
+    const sending = session.sendMessage("first", "synthetic note", [{ id, file }]);
+    const rejected = expect(sending).rejects.toThrow("room_unavailable");
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.rooms[0].authorized = false;
+    delete state.channel.rooms[0].delivery;
+    socket.receive({ type: "state", state });
+    expect(attempts.has("first")).toBe(false);
+    finish([{ id, file, attachment: { id, name: file.name, size: file.size, mediaType: "application/octet-stream", sha256: "a".repeat(64) } }]);
+    await rejected;
+    expect(peer.sent).toHaveLength(0);
+    expect(attempts.has("first")).toBe(false);
+  } finally { session.close(); }
+});
+
+test("edited drafts replace one pending send and cancelled preparation never installs a replacement", async () => {
+  const { session, peer } = await setup();
+  const firstFile = new File(["first"], "note.txt"), secondFile = new File(["second"], "note.txt");
+  const id = crypto.randomUUID(), controller = new AbortController();
+  const describe = vi.spyOn(session.attachments, "describe").mockImplementation(async files => files.map(({ id, file }) => ({ id, file,
+    attachment: { id, name: file.name, size: file.size, mediaType: "application/octet-stream", sha256: "a".repeat(64) } })));
+  const attempts = [
+    { text: "@Me original", file: firstFile, options: { mentions: [{ userId: "self", start: 0, end: 3 }], reply: { seq: 1, notify: true } } },
+    { text: "@Me edited", file: firstFile, options: { mentions: [{ userId: "self", start: 0, end: 3 }], reply: { seq: 1, notify: true } } },
+    { text: "@Me edited", file: firstFile, options: { mentions: [], reply: { seq: 1, notify: true } } },
+    { text: "@Me edited", file: firstFile, options: { mentions: [], reply: { seq: 1, notify: false } } },
+    { text: "@Me edited", file: secondFile, options: { mentions: [], reply: { seq: 1, notify: false } } },
+  ];
+  const nonces = new Set<string>();
+  try {
+    for (const attempt of attempts) {
+      const sending = session.sendMessage("first", attempt.text, [{ id, file: attempt.file }], undefined, attempt.options);
+      const failed = expect(sending).rejects.toThrow("request_timeout");
+      const request = await peer.next();
+      if (request.type !== "chat") throw new Error("expected chat");
+      expect(nonces.has(request.nonce)).toBe(false); nonces.add(request.nonce);
+      expect(request).toMatchObject({ text: attempt.text, ...attempt.options });
+      peer.reply(request, { type: "error", code: "request_timeout" });
+      await failed;
+    }
+    expect(describe).toHaveBeenCalledTimes(attempts.length);
+    let finish!: (files: Awaited<ReturnType<ChannelAttachments["describe"]>>) => void;
+    describe.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const cancelled = session.sendMessage("first", "cancelled edit", [{ id, file: secondFile }], controller.signal);
+    const rejected = expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
+    controller.abort(); finish([]);
+    await rejected;
+    expect(peer.sent).toHaveLength(attempts.length);
+    const last = attempts.at(-1)!;
+    const retry = session.sendMessage("first", last.text, [{ id, file: last.file }], undefined, last.options);
+    void retry.catch(() => {});
+    const request = await peer.next();
+    expect(request).toEqual({ ...peer.sent.at(-2)!, requestId: request.requestId });
+    expect(describe).toHaveBeenCalledTimes(attempts.length + 1);
+    peer.reply(request, { type: "error", code: "request_timeout" });
+    await expect(retry).rejects.toThrow("request_timeout");
+    session.close();
+    expect((session as unknown as { outgoingMessages: Map<string, unknown> }).outgoingMessages.size).toBe(0);
   } finally { session.close(); }
 });
 
@@ -8514,7 +8660,7 @@ test.each([undefined, CHANNEL_PROTOCOL - 1, CHANNEL_PROTOCOL + 1])("an incompati
   } finally { session.close(); }
 });
 
-test.each([{ state: "missing" }, { state: "unrecoverable" }, { state: "available", key: "private-room-key" }] as const)("reading a room invitation returns $state without rotating it", async invitation => {
+test.each([{ state: "missing" }, { state: "available", key: "private-room-key" }] as const)("reading a room invitation returns $state without rotating it", async invitation => {
   const { session, socket } = await setup();
   try {
     const reading = session.getRoomInvite("first");
@@ -8600,6 +8746,37 @@ test("Browser capture titles use original metadata and confirmed overrides witho
     state = { ...state, publications: [{ ...state.publications[0], sessionId: "other-endpoint" }] };
     socket.receive({ type: "state", state });
     await expect(session.setScreenTitle(publication.id, "Not mine")).rejects.toThrow("not_publication_owner");
+  } finally { session.close(); }
+});
+
+test("same-binding recovery preserves a selected historical window until the reader requests latest", async () => {
+  const { session, socket, peer } = await setup(3);
+  try {
+    await peer.history([message(50), message(51), message(52)]);
+    const jump = session.loadMessage("first", 2);
+    peer.page(await peer.next(), [message(1), message(2)], false, 1);
+    await jump;
+    const selected = session.getSnapshot().messagesByRoom.first;
+    const marker = session.getSnapshot().readByRoom.first;
+    const count = peer.sent.length;
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.rooms[0].lastMessageSeq = 53;
+    socket.close(); session.reconnect();
+    const resumed = ChannelSocket.current; await resumed.onopen?.();
+    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
+    resumed.receive({ type: "ack", requestId: browse.requestId });
+    await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.get("first")?.getSnapshot().ready).toBe(true));
+    expect(peer.sent).toHaveLength(count);
+    peer.live(message(53));
+    expect(session.getSnapshot().messagesByRoom.first).toBe(selected);
+    expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(false);
+    expect(session.getSnapshot().readByRoom.first).toBe(marker);
+    const latest = session.loadLatestHistory("first");
+    peer.page(await peer.next(), [message(51), message(52), message(53)], true);
+    await latest;
+    expect(session.getSnapshot().messagesByRoom.first.map(value => value.seq)).toEqual([51, 52, 53]);
+    expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(true);
   } finally { session.close(); }
 });
 
@@ -9975,6 +10152,30 @@ test('an explicit same-mode retry replaces a failed watch player without changin
     expect(session.getSnapshot().watchPlayers.get(activity.id)?.video).toBe(replacement);
     expect(first.src).toBe('');
     expect(socket.sent.some(command => command.type === 'update_watch')).toBe(false);
+  } finally { session.close(); }
+});
+
+test.each(["source", "autoplay"])("explicit watch edits preserve validation and reject a %s failure without changing automatic failure handling", async kind => {
+  const { session } = await setup(1000, false);
+  const state = { position: 4, duration: 30, paused: true, rate: 1, readyState: 4, ended: false, buffered: [[0, 30]] as [number, number][] };
+  const patch = vi.fn(async (_value: watchMedia.WatchMediaPatch) => {});
+  const player = new WatchPlayer("first", true, { read: async () => state, patch, ready: async () => {}, listen: () => () => {}, close() {} }, () => {});
+  player.calibrate(1000, performance.now());
+  (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set("owned-edit", player);
+  const failure = kind === "autoplay" ? new DOMException("Playback denied", "NotAllowedError") : new Error("watch_source_unavailable");
+  try {
+    await expect(session.setWatchPlayback("missing", { paused: false })).rejects.toThrow("not_watch_owner");
+    await expect(session.setWatchPlayback("owned-edit", { rate: 0 })).rejects.toMatchObject({ name: "ZodError" });
+    expect(patch).not.toHaveBeenCalled();
+    patch.mockRejectedValueOnce(failure);
+    await expect(session.setWatchPlayback("owned-edit", { position: 12 })).rejects.toBe(failure);
+    expect(player.error).toBeNull(); expect(player.blocked).toBe(false);
+    await session.setWatchPlayback("owned-edit", { position: 14, paused: false, rate: 1.25 });
+    expect(patch).toHaveBeenLastCalledWith({ position: 14, paused: false, rate: 1.25 });
+    patch.mockRejectedValueOnce(failure);
+    await expect(player.patch({ paused: false })).resolves.toBeUndefined();
+    expect(player.error).toBe(kind === "autoplay" ? null : "watch_source_unavailable");
+    expect(player.blocked).toBe(kind === "autoplay");
   } finally { session.close(); }
 });
 

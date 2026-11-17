@@ -24,7 +24,7 @@ export const nativePageMpdCandidateSchema = z.object({
 export type NativePageMpdCandidate = z.infer<typeof nativePageMpdCandidateSchema>;
 const nativePageMpdTrackSchema = z.object({
   id: z.uuid(), kind: z.enum(["video", "audio"]),
-  label: z.string().max(512), mimeType: z.string().max(256), codec: z.string().max(128),
+  label: z.string(), mimeType: z.string().max(256), codec: z.string().max(128),
   language: z.string().max(256), role: z.string().max(256),
   width: z.number().int().positive().safe().nullable(), height: z.number().int().positive().safe().nullable(),
   bandwidth: z.number().int().positive().safe().nullable(), frameRate: z.number().finite().positive().nullable(),

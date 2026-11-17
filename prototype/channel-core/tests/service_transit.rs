@@ -517,7 +517,12 @@ fn transit_retirement_keeps_other_room_leases_and_rejects_old_service_outputs() 
         })
         .unwrap();
     let old_allow = net.host_turn(&room, input);
-    assert!(old_allow.projection.views[&relay].transit);
+    assert_eq!(
+        old_allow.projection.views[&relay]
+            .transit_endpoint
+            .map(|endpoint| (endpoint.session_id, endpoint.connection_id)),
+        Some((relay, service))
+    );
     let mut off = preference(&net, &room, false);
     off["requestId"] = json!("committed-off");
     let stopped = net.command(host, off);

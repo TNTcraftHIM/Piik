@@ -84,12 +84,11 @@ function RoomInvitation({ channel, room, onClose, onManageAccess }: {
           {invitation.state === "failed" && <><p role="status">{t("invite.room.failed")}</p>
             <ChannelAction icon="refresh" quiet label={t("room.action.retry")} onClick={() => setRetry(value => value + 1)} /></>}
           {invitation.state === "missing" && generate()}
-          {invitation.state === "unrecoverable" && <p>{t("invite.room.unrecoverable")}</p>}
         </>)}
     {invite && <InvitationLink url={invite} label={passwordLink ? t("invite.room.passwordLink")
       : room.access === "private" ? t("invite.room.invitationLink") : t("invite.room.publicLink")}
       copyLabel={passwordLink || room.access === "public" ? t("invite.room.copyLink") : t("invite.room.copyInvitation")} />}
-    {room.access === "private" && !passwordLink && room.canManage && available && (invitation.state === "available" || invitation.state === "unrecoverable") &&
+    {room.access === "private" && !passwordLink && room.canManage && available && invitation.state === "available" &&
       <details className="c3-settings-details"><summary>{t("invite.room.reset")}</summary>
         <p>{t("invite.room.resetNote")}</p>{generate(true)}
       </details>}

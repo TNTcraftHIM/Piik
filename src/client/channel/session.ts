@@ -6,14 +6,14 @@ import { limitWatchReads } from "./watch-resource";
 import { WatchBytes } from "./watch-bytes";
 import { z } from "zod";
 import { WatchPlayer } from "./watch-playback";
-import { HTMLVideoMedia, AppPageMedia, createPeerWatchMedia, waitForWatchMedia, watchSeekPosition, type WatchMedia } from "./watch-media";
-import { watchPlaybackSchema, watchSourceSchema, type WatchPlayback, type WatchSource, type WatchMode, type WatchByteSource, type WatchFormat } from "./protocol";
+import { HTMLVideoMedia, AppPageMedia, createPeerWatchMedia, waitForWatchMedia, type WatchMedia } from "./watch-media";
+import { watchSourceSchema, type WatchPlayback, type WatchSource, type WatchMode, type WatchByteSource, type WatchFormat } from "./protocol";
 import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
 import { selectedRoom } from "./navigation";
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
-import { ChannelAttachments, type DraftFile } from "./attachments";
+import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
 import type { ChannelActions, ChannelView, ChatOptions, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings, WatchMediaSources } from "./types";
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
 import type { HostedRoom, BrowserRoomSnapshot, BrowserRoomStage, BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
@@ -200,7 +200,9 @@ export class ChannelSession {
   private readings = new Map<string, RoomReading>();
   private get reading(): RoomReading | undefined { return this.readings.get(this.roomId); }
   private readingRooms = new Set<string>();
-  private outgoingMessages = new Map<string, { content: string; nonce: string }>();
+  private outgoingMessages = new Map<string, {
+    content: string; files: PreparedFile[]; command: Extract<ChannelCommand, { type: "chat" }>;
+  }>();
   private captureLifetime = new AbortController();
   private screenShares = new Map<string, ScreenShare>();
   private watchPlayers = new Map<string, WatchPlayer>();
@@ -1136,7 +1138,8 @@ export class ChannelSession {
         if (this.readings.get(id) !== current || this.socket !== current.socket || !this.wantedReadings().has(id)) return;
         this.retireReadings();
         this.syncRoomReading(current);
-        if (this.roomId !== id || current.history || this.view.pending.has(`history:${id}`)) return;
+        if (this.roomId !== id || current.history || this.view.pending.has(`history:${id}`)
+          || this.view.historyByRoom[id]?.atLatest === false) return;
         current.history = this.action(`history:${id}`, () => this.request({ type: "history", roomId: id }).catch(error => {
           if (this.readings.get(id) === current && this.socket === current.socket) throw error;
         }));
@@ -1231,21 +1234,27 @@ export class ChannelSession {
     return roomId;
   };
   sendMessage = (roomId: string, text: string, files: DraftFile[] = [], signal?: AbortSignal, options: ChatOptions = {}): Promise<void> => this.action(`chat:${roomId}`, async () => {
+    signal?.throwIfAborted();
     if (files.length && !this.view.state?.channel.rooms.find(room => room.id === roomId)?.capabilities.attachments) throw new Error("attachments_unavailable");
     const sessionId = this.view.sessionId;
-    const prepared = files.length ? await this.attachments.describe(files, signal) : [];
+    const draft = { text, ...structuredClone(options) }, content = JSON.stringify(draft);
+    const previous = this.outgoingMessages.get(roomId);
+    const retry = previous && previous.content === content && previous.files.length === files.length
+      && files.every((entry, index) => entry.id === previous.files[index].id && entry.file === previous.files[index].file) ? previous : undefined;
+    const prepared = retry?.files ?? (files.length ? await this.attachments.describe(files, signal) : []);
     if (this.closed || this.view.sessionId !== sessionId) throw new Error("disconnected");
     signal?.throwIfAborted();
-    const attachments = prepared.map(file => file.attachment);
-    const inlineImages = Object.fromEntries(prepared.flatMap(file => file.inlineImage ? [[file.id, file.inlineImage]] : []));
-    const content = JSON.stringify({ text, attachments, inlineImages, ...options });
-    const previous = this.outgoingMessages.get(roomId);
-    const attempt = previous?.content === content ? previous : { content, nonce: crypto.randomUUID() };
+    if (!this.view.state?.channel.rooms.some(room => room.id === roomId && room.authorized)) throw new Error("room_unavailable");
+    // Retry the prepared command even if its selected disk file is no longer readable.
+    const attempt = retry ?? { content, files: prepared, command: {
+      type: "chat" as const, roomId, ...draft, nonce: crypto.randomUUID(), attachments: prepared.map(file => file.attachment),
+      inlineImages: Object.fromEntries(prepared.flatMap(file => file.inlineImage ? [[file.id, file.inlineImage]] : [])),
+    } };
     this.outgoingMessages.set(roomId, attempt);
-    await this.request({ type: "chat", roomId, text, attachments, inlineImages, ...options, nonce: attempt.nonce }, event => {
+    await this.request(attempt.command, event => {
       if (event.type === "confirmed") this.attachments.confirmed(roomId, event.message, prepared);
-    });
-    this.outgoingMessages.delete(roomId);
+    }, roomId, signal);
+    if (this.outgoingMessages.get(roomId) === attempt) this.outgoingMessages.delete(roomId);
     if (this.view.historyByRoom[roomId]?.atLatest === false) void this.loadLatestHistory(roomId).catch(() => {});
   });
   loadHistory = (roomId: string): Promise<void> => this.requestHistory(roomId, this.view.historyByRoom[roomId]?.before);
@@ -1900,6 +1909,13 @@ export class ChannelSession {
       this.screenShares.set(roomId, share);
     }
     if (share.audioChange || share.qualityChange || this.view.pending.has(`source-microphone:${share.id}`)) throw new Error("operation_pending");
+    // An armed OBS permission keeps the publication ID, not a capture's settings.
+    if (!this.local.has(share.id) && !this.app?.hasCapture(share.id)) {
+      share.profile = this.view.quality;
+      share.codecMode = this.view.videoCodecMode;
+      share.encodingExecution = this.view.encodingExecution;
+      share.codec = undefined;
+    }
     const selection = this.selectSource(roomId);
     const selected = share;
     return { share, selection, current: () => this.screenShares.get(roomId) === selected && this.sourceSelections.get(roomId) === selection };
@@ -2504,10 +2520,7 @@ export class ChannelSession {
     if (!player?.owner) return Promise.reject(new Error("not_watch_owner"));
     return player.serialize(async () => {
       if (this.watchPlayers.get(id) !== player) return;
-      watchPlaybackSchema.parse({ ...await player.sample(), ...patch });
-      const ranges = player.mediaState?.live?.seekable;
-      await player.media.patch(patch.position !== undefined && ranges
-        ? { ...patch, position: watchSeekPosition(patch.position, ranges) } : patch);
+      await player.editPlayback(patch);
     });
   };
   resumeWatch = async (id: string): Promise<void> => {
@@ -3259,6 +3272,7 @@ export class ChannelSession {
     this.socket = null;
     socket?.close();
     this.rejectRequests("closed");
+    this.outgoingMessages.clear();
     this.releaseMedia();
     this.conversation.close();
     this.profileLoads.clear(); this.missingProfiles.clear();

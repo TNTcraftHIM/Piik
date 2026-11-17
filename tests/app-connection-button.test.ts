@@ -25,6 +25,17 @@ vi.mock("react", async importOriginal => {
 describe("shared App connection entry", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it("keeps reopened approval guidance pending without failure or retry", () => {
+    setCopy({ lang: "en" });
+    vi.mocked(useState).mockReturnValueOnce(["approving", vi.fn()]).mockReturnValueOnce([true, vi.fn()]);
+    const html = renderToStaticMarkup(createElement(AppConnectionButton, { connected: false }));
+    expect(html).toContain('aria-busy="true"');
+    expect(html).toContain(`aria-label="${t("en", "client.connect.approving")}"`);
+    expect(html).toContain('data-comic-tone="busy" data-comic-motion="progress"');
+    expect(html).not.toContain('data-comic-tone="bad"');
+    expect(html).not.toContain(`aria-label="${t("en", "common.retry")}"`);
+  });
+
   it("uses one native link to open update management without another discovery click", () => {
     setCopy({ lang: "en" });
     const html = renderToStaticMarkup(createElement(AppReleaseNotice, {

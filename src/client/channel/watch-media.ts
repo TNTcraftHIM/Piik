@@ -5,9 +5,8 @@ import { createWatchHlsLoader, watchHlsUrl } from "./watch-hls-loader";
 import { canReadWatchMp4, isWatchMp4, WatchMp4Media } from "./watch-mp4-media";
 import { watchElementFailure, watchHlsFailure } from "./watch-media-failure";
 import { WatchDashMedia, canReadWatchDash } from "./watch-dash-media";
-import { WatchHlsTimeline } from "./watch-hls-timeline";
+import { WatchHlsTimeline, type WatchLiveWindow } from "./watch-hls-timeline";
 
-export interface WatchLiveWindow { active: boolean; seekable: [number, number][]; syncPosition: number | null }
 export interface WatchAudioTrack { id: number; name: string; language?: string; channels?: string; selected: boolean }
 export interface WatchMediaState {
   position: number;

@@ -123,7 +123,6 @@ export const ko = {
   "invite.room.loading": "초대 링크 불러오는 중…",
   "invite.room.failed": "초대 링크를 불러오지 못했어요. 다시 시도해 주세요.",
   "room.action.retry": "다시 시도",
-  "invite.room.unrecoverable": "기존 초대 링크는 유효하지만 링크를 복구할 수 없어요. 새 링크가 필요하면 초대 링크를 새로 생성하세요.",
   "invite.room.passwordLink": "비밀번호가 필요한 방 링크",
   "invite.room.invitationLink": "비밀번호 없는 초대 링크",
   "invite.room.publicLink": "방 링크",

@@ -1,8 +1,12 @@
 //! Live complete-copy offers and recipient demand on the room's existing base tree.
-use crate::{attachment::AttachmentDescriptor, history::HISTORY_WINDOW, routes::BaseTree};
+use crate::{attachment::AttachmentDescriptor, routes::BaseTree};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
+
+// Maximum distinct live attachment registrations retained by one room.
+// Holders and receivers of the same message attachment share one registration.
+pub(crate) const FILE_REGISTRATION_LIMIT: usize = 1000;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,7 +55,7 @@ impl FileRoom {
         {
             return Err("attachment_unavailable");
         }
-        if !self.files.contains_key(&key) && self.files.len() >= HISTORY_WINDOW {
+        if !self.files.contains_key(&key) && self.files.len() >= FILE_REGISTRATION_LIMIT {
             return Err("file_sources_full");
         }
         let file = self.files.entry(key).or_insert_with(|| File {

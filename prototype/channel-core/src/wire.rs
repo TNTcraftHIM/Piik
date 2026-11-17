@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 26;
+pub const CHANNEL_PROTOCOL: u8 = 27;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -715,7 +715,6 @@ pub struct RoomCapabilities {
 pub enum RoomInvitation {
     Missing,
     Available { key: String },
-    Unrecoverable,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

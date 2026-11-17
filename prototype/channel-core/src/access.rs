@@ -85,6 +85,7 @@ impl RoomState {
                 .password_hash
                 .as_ref()
                 .is_some_and(|hash| PasswordHash::new(hash).is_err())
+            || self.invite_hash.is_some() != self.invite_key.is_some()
             || self.invite_key.as_ref().is_some_and(|key| {
                 !crate::wire::valid_id(key) || self.invite_hash != Some(digest(key))
             })
@@ -201,7 +202,6 @@ impl RoomState {
         use crate::wire::RoomInvitation;
         Ok(match &self.invite_key {
             Some(key) => RoomInvitation::Available { key: key.clone() },
-            None if self.invite_hash.is_some() => RoomInvitation::Unrecoverable,
             None => RoomInvitation::Missing,
         })
     }

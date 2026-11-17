@@ -122,7 +122,6 @@ export const ja = {
   "invite.room.loading": "招待を読み込み中…",
   "invite.room.failed": "招待を読み込めませんでした。再試行してください。",
   "room.action.retry": "再試行",
-  "invite.room.unrecoverable": "以前の招待は有効ですが、リンクを復元できません。新しいリンクが必要な場合は招待を作成し直してください。",
   "invite.room.passwordLink": "パスワードが必要なルームリンク",
   "invite.room.invitationLink": "パスワード不要の招待リンク",
   "invite.room.publicLink": "ルームリンク",

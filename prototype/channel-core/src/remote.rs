@@ -106,7 +106,7 @@ impl RemoteRoom {
                 view.failed_subscriptions.clear();
                 view.files.clear();
                 view.reading = false;
-                view.transit = false;
+                view.transit_endpoint = None;
             }
         }
         replies

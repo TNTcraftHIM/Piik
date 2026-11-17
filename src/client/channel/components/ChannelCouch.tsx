@@ -47,11 +47,12 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
   const [offset, setOffset] = useState(0);
   const area = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState<{ userId: string; trigger: HTMLButtonElement } | null>(null);
-  const [avatarPreview, setAvatarPreview] = useState<{ person: ChannelCouchPerson; trigger: HTMLButtonElement } | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<{ userId: string; trigger: HTMLButtonElement } | null>(null);
   const pickerId = useId();
   const self = people.find(person => person.userId === selfUserId);
   const others = people.filter(person => person.userId !== selfUserId);
   const selected = people.find(person => person.userId === target?.userId);
+  const previewPerson = people.find(person => person.userId === avatarPreview?.userId);
   const width = Math.min(availableWidth, Math.max(144, people.length * SEAT_WIDTH + 2 * SEAT_GUTTER));
   const seatingWidth = width - 2 * SEAT_GUTTER;
   const seats = Math.max(1, people.length * MIN_SEAT_WIDTH <= seatingWidth
@@ -65,7 +66,11 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
     const seat = others.indexOf(person);
     return seat * seatWidth >= offset - 1 && (seat + 1) * seatWidth <= offset + guestWidth + 1;
   }).map(person => ({ peerId: person.userId }));
-  useEffect(() => { setTarget(null); }, [session?.key]);
+  useEffect(() => { setTarget(null); setAvatarPreview(null); }, [session?.key]);
+  useEffect(() => { if (!previewPerson?.avatar) setAvatarPreview(null); }, [previewPerson?.avatar]);
+  useEffect(() => () => {
+    if (avatarPreview?.trigger.isConnected) avatarPreview.trigger.focus({ preventScroll: true });
+  }, [avatarPreview]);
   useLayoutEffect(() => { setTarget(null); }, [floating, surfaceDocument]);
   useEffect(() => {
     if (target && (!selected || !target.trigger.isConnected)) setTarget(null);
@@ -131,15 +136,13 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
       identity={<ChannelUser id={selected.userId} name={selected.name} avatar={selected.avatar} self={selected.userId === selfUserId}
         owner={!!selected.owner} online voice={selected.voice} collaboration={selected.collaboration}
         actions={<ChannelActivityIndicators sharing={selected.sharing} viewing={selected.viewing} />}
-        onPreviewAvatar={() => setAvatarPreview({ person: selected, trigger: target.trigger })} />}
+        onPreviewAvatar={() => setAvatarPreview({ userId: selected.userId, trigger: target.trigger })} />}
       person={{ peerId: selected.userId, displayName: selected.name }} selfPeerId={selfUserId}
       hostPeerId={people.find(person => person.owner)?.userId} reactionIds={state.reactionIds}
       canSend={state.ready && !state.pending && !state.coolingDown}
       onSend={(reaction, targetUserId) => session.send({ kind: "reaction", reaction, ...(targetUserId ? { targetPeerId: targetUserId } : {}) })}
       onClose={() => setTarget(null)} />}
-    {avatarPreview?.person.avatar && <ChannelImageDialog src={avatarPreview.person.avatar}
-      name={t("channel.user.avatar", { name: avatarPreview.person.name })} onClose={() => {
-        avatarPreview.trigger.focus({ preventScroll: true }); setAvatarPreview(null);
-      }} />}
+    {avatarPreview && previewPerson?.avatar && <ChannelImageDialog src={previewPerson.avatar}
+      name={t("channel.user.avatar", { name: previewPerson.name })} onClose={() => setAvatarPreview(null)} />}
   </section>;
 }

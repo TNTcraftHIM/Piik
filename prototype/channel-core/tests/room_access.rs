@@ -728,7 +728,9 @@ fn room_invitation_reads_are_manager_only_and_never_rotate_the_current_link() {
     assert_ne!(key, replacement);
     assert_eq!(
         read(&mut network, creator),
-        RoomInvitation::Available { key: replacement }
+        RoomInvitation::Available {
+            key: replacement.clone(),
+        }
     );
     assert!(network
         .state(reader)
@@ -736,16 +738,15 @@ fn room_invitation_reads_are_manager_only_and_never_rotate_the_current_link() {
         .rooms
         .iter()
         .any(|value| value.id == room && value.authorized));
-    let mut legacy = serde_json::to_value(network.policy(&room)).unwrap();
-    legacy.as_object_mut().unwrap().remove("inviteKey");
-    network.restore_room(creator, serde_json::from_value(legacy).unwrap());
-    assert_eq!(read(&mut network, creator), RoomInvitation::Unrecoverable);
     command(
         &mut network,
         creator,
         json!({"type":"update_room","roomId":room,"name":"Public","icon":"couch","access":"public","hidden":false}),
     );
-    assert_eq!(read(&mut network, creator), RoomInvitation::Unrecoverable);
+    assert_eq!(
+        read(&mut network, creator),
+        RoomInvitation::Available { key: replacement }
+    );
     let public_key = invite(&mut network, creator, &room);
     assert_eq!(
         read(&mut network, creator),

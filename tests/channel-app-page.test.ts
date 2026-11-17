@@ -104,6 +104,28 @@ function mpdCatalog() {
   ] };
 }
 
+test("MPD inspection retains long display labels and propagates catalog-limit errors", async () => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket), choiceId = crypto.randomUUID(), catalog = mpdCatalog();
+    catalog.tracks[0]!.label = "v".repeat(513);
+    const inspecting = page.inspectMpd(choiceId, new AbortController().signal);
+    socket.reply(catalog);
+    await expect(inspecting).resolves.toEqual(catalog);
+    const selection = { sourceId: catalog.sourceId, videoId: catalog.tracks[0]!.id, audioId: catalog.tracks[1]!.id };
+    const preparing = page.prepareMpdMedia(selection, new AbortController().signal);
+    expect(socket.sent.at(-1)).toEqual({ type: "page_media_prepare_mpd", pageId: page.id, ...selection, id: expect.any(String) });
+    const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "dash" };
+    socket.reply(source);
+    await expect(preparing).resolves.toEqual(source);
+    const oversized = page.inspectMpd(choiceId, new AbortController().signal);
+    socket.receive({ id: socket.sent.at(-1)!.id, error: "watch_resource_limit" });
+    await expect(oversized).rejects.toThrow("watch_resource_limit");
+    const reading = page.read(); socket.reply(state); await expect(reading).resolves.toEqual(state);
+    expect(app.connected).toBe(true);
+  } finally { app.close(); }
+});
+
 test("MPD inspection cancellation and source replacement retain opaque catalog identity", async () => {
   const { app, socket } = await setup();
   try {

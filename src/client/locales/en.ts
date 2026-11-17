@@ -153,7 +153,6 @@ export const en: Record<CopyKey, string> = {
   "invite.room.loading": "Loading invitation…",
   "invite.room.failed": "Could not load the invitation. Try again.",
   "room.action.retry": "Retry",
-  "invite.room.unrecoverable": "The old invitation still works, but its link cannot be recovered. Generate a new invitation when you need a new link.",
   "invite.room.passwordLink": "Password-required room link",
   "invite.room.invitationLink": "Password-free invitation link",
   "invite.room.publicLink": "Room link",

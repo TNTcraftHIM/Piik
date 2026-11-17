@@ -151,7 +151,6 @@ export const zh = {
   "invite.room.loading": "正在读取邀请…",
   "invite.room.failed": "未能读取邀请，请重试。",
   "room.action.retry": "重试",
-  "invite.room.unrecoverable": "旧邀请仍有效，但无法取回链接。需要新链接时，请主动生成新邀请。",
   "invite.room.passwordLink": "需密码的房间链接",
   "invite.room.invitationLink": "免密邀请链接",
   "invite.room.publicLink": "房间链接",

@@ -1,4 +1,5 @@
 use crate::{
+    file_room::FILE_REGISTRATION_LIMIT,
     history::HISTORY_WINDOW,
     host::{HostAction, HostOutput, RequestContext, RoomReply, RoomResult, RoomSummary},
     identity::{Admission, Admitted, Identity, StoredUser, MAX_SESSIONS},
@@ -269,7 +270,6 @@ impl Channel {
                 .get(&service.session_id)
                 .is_some_and(|session| session.connection == Some(service.connection_id))
         });
-        let service_endpoint = self.service_endpoint.map(|service| service.session_id);
         for room in self.remote.values_mut() {
             if let Some(projection) = &mut room.projection {
                 projection
@@ -277,20 +277,18 @@ impl Channel {
                     .retain(|session, _| endpoints.contains_key(session));
                 let mut routable_sessions = BTreeSet::new();
                 for (session, view) in &mut projection.views {
-                    let was_transit = view.transit;
-                    view.transit &= view.transit_endpoint == self.service_endpoint
-                        && Some(*session) == service_endpoint
-                        && (projection
-                            .base_links
-                            .iter()
-                            .any(|link| link.parent == *session || link.child == *session)
-                            || projection
-                                .flows
+                    let was_transit = view.transit_endpoint.is_some();
+                    view.transit_endpoint = view.transit_endpoint.filter(|endpoint| {
+                        Some(*endpoint) == self.service_endpoint
+                            && endpoint.session_id == *session
+                            && (projection
+                                .base_links
                                 .iter()
-                                .any(|flow| flow.sender == *session || flow.receiver == *session));
-                    if !view.transit {
-                        view.transit_endpoint = None;
-                    }
+                                .any(|link| link.parent == *session || link.child == *session)
+                                || projection.flows.iter().any(|flow| {
+                                    flow.sender == *session || flow.receiver == *session
+                                }))
+                    });
                     let ordinary = !was_transit
                         || room
                             .binding
@@ -305,7 +303,7 @@ impl Channel {
                             .watch_bytes
                             .iter()
                             .any(|plan| plan.receiving || plan.source.session_id == *session);
-                    if view.transit || (view.authorized && ordinary) {
+                    if view.transit_endpoint.is_some() || (view.authorized && ordinary) {
                         routable_sessions.insert(*session);
                     }
                 }
@@ -1161,14 +1159,14 @@ impl Channel {
         }
         for (recipient, view) in &projection.views {
             if view.allow_service_relay && !view.can_manage
-                || view.transit_endpoint.is_some_and(|endpoint| {
-                    !view.transit || Some(endpoint) != self.service_endpoint
-                })
+                || view
+                    .transit_endpoint
+                    .is_some_and(|endpoint| Some(endpoint) != self.service_endpoint)
             {
                 return Err("invalid_room_projection");
             }
             if !endpoints.contains_key(recipient)
-                || view.transit
+                || view.transit_endpoint.is_some()
                     && (Some(*recipient) != self.service_endpoint.map(|service| service.session_id)
                         || !(projection
                             .base_links
@@ -1205,14 +1203,14 @@ impl Channel {
                             publication.id == *id && publication.kind == Kind::Screen
                         })
                 })
-                || view.files.len() > HISTORY_WINDOW
+                || view.files.len() > FILE_REGISTRATION_LIMIT
                 || (!view.authorized
                     && (view.reading
                         || !view.watch_subscriptions.is_empty()
-                        || !view.transit && !view.watch_bytes.is_empty()
+                        || view.transit_endpoint.is_none() && !view.watch_bytes.is_empty()
                         || !view.subscriptions.is_empty()
                         || !view.failed_subscriptions.is_empty()
-                        || !view.transit && !view.files.is_empty()))
+                        || view.transit_endpoint.is_none() && !view.files.is_empty()))
             {
                 return Err("invalid_room_projection");
             }
@@ -1366,10 +1364,12 @@ impl Channel {
                 || !endpoints.contains_key(&flow.sender)
                 || !endpoints.contains_key(&flow.receiver)
                 || !projection.views.get(&flow.sender).is_some_and(|v| {
-                    (v.authorized || v.transit) && publications.contains_key(&flow.publication_id)
+                    (v.authorized || v.transit_endpoint.is_some())
+                        && publications.contains_key(&flow.publication_id)
                 })
                 || !projection.views.get(&flow.receiver).is_some_and(|v| {
-                    (v.authorized || v.transit) && publications.contains_key(&flow.publication_id)
+                    (v.authorized || v.transit_endpoint.is_some())
+                        && publications.contains_key(&flow.publication_id)
                 })
                 || previous.get(&flow.id).is_some_and(|old| {
                     old.publication_id != flow.publication_id
@@ -1440,7 +1440,7 @@ impl Channel {
                     projection
                         .views
                         .get(&s)
-                        .is_some_and(|view| view.authorized || view.transit)
+                        .is_some_and(|view| view.authorized || view.transit_endpoint.is_some())
                 })
             {
                 return Err("invalid_room_projection");
@@ -1662,7 +1662,7 @@ impl Channel {
             transit_session: projection
                 .views
                 .iter()
-                .find_map(|(session, view)| view.transit.then_some(*session)),
+                .find_map(|(session, view)| view.transit_endpoint.is_some().then_some(*session)),
             base: BaseTopology {
                 root_session_id: binding.session,
                 edges: projection
@@ -1703,7 +1703,7 @@ impl Channel {
                     if let Some(view) = projection
                         .views
                         .get(&session_id)
-                        .filter(|view| view.transit && !view.authorized)
+                        .filter(|view| view.transit_endpoint.is_some() && !view.authorized)
                     {
                         publications.extend(
                             projection

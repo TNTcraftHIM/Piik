@@ -73,7 +73,6 @@
 
 请只把私密房间邀请发给你想接纳进这个房间的人。
 需要换新链接时，展开**重置房间邀请**，再点**确认重置邀请**：旧免密链接会失效，已获准的用户仍保留访问，密码不变。
-旧邀请无法取回时，面板会先说明，再由你决定是否生成新邀请。
 
 ![房间标题旁的邀请浮层提供复制、下级二维码展开和重置邀请。](../assets/guide/channel-invitation.zh-CN.png#gh-light-mode-only)
 ![房间标题旁的邀请浮层提供复制、下级二维码展开和重置邀请。](../assets/guide/channel-invitation.zh-CN.dark.png#gh-dark-mode-only)

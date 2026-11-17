@@ -86,8 +86,7 @@ certificate before accepting its first warning; see the
 Send private-room invitations only to people you want to admit to that room.
 To replace a private link, expand **Reset room invitation**, then select
 **Confirm invitation reset**. Old password-free links stop
-working, while existing access and the room password remain. If an older invitation
-cannot be recovered, the panel explains this before you generate a replacement.
+working, while existing access and the room password remain.
 
 ![The room-title invitation opens copy, a subordinate QR section and invitation reset.](../assets/guide/channel-invitation.en.png#gh-light-mode-only)
 ![The room-title invitation opens copy, a subordinate QR section and invitation reset.](../assets/guide/channel-invitation.en.dark.png#gh-dark-mode-only)

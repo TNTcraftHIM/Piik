@@ -77,8 +77,6 @@ pub struct RoomRecipient {
     pub watch_subscriptions: Vec<crate::wire::WatchSubscription>,
     pub watch_bytes: Vec<crate::watch_delivery::WatchBytePlan>,
     pub authorized: bool,
-    #[serde(default)]
-    pub transit: bool,
     pub can_manage: bool,
     pub reading: bool,
     pub relay_override: Option<u8>,
@@ -180,16 +178,16 @@ impl RoomRuntime {
     fn recipient(&self, member: Member, session: Uuid) -> Option<RoomRecipient> {
         let room = self.policy.view(member.user_id);
         let authorized = room.as_ref().is_some_and(|room| room.authorized);
-        let transit = self
-            .selected_service()
-            .is_some_and(|service| service.session_id == session)
-            && (self
-                .base_links()
-                .any(|link| link.parent == session || link.child == session)
-                || self
-                    .flows()
-                    .any(|flow| flow.sender == session || flow.receiver == session));
-        if room.is_none() && !transit {
+        let transit_endpoint = self.selected_service().filter(|service| {
+            service.session_id == session
+                && (self
+                    .base_links()
+                    .any(|link| link.parent == session || link.child == session)
+                    || self
+                        .flows()
+                        .any(|flow| flow.sender == session || flow.receiver == session))
+        });
+        if room.is_none() && transit_endpoint.is_none() {
             return None;
         }
         let subscriptions = if authorized {
@@ -200,7 +198,7 @@ impl RoomRuntime {
         Some(RoomRecipient {
             allow_service_relay: room.as_ref().is_some_and(|room| room.can_manage)
                 && self.policy.allow_service_relay,
-            transit_endpoint: transit.then(|| self.selected_service()).flatten(),
+            transit_endpoint,
             watch_subscriptions: self
                 .activity
                 .get(&session)
@@ -215,13 +213,12 @@ impl RoomRuntime {
                         .collect()
                 })
                 .unwrap_or_default(),
-            watch_bytes: if authorized || transit {
+            watch_bytes: if authorized || transit_endpoint.is_some() {
                 self.watch_byte_plans(session)
             } else {
                 vec![]
             },
             authorized,
-            transit,
             can_manage: room.as_ref().is_some_and(|room| room.can_manage),
             members: room.and_then(|room| room.members),
             reading: authorized && self.reading(session),
@@ -229,7 +226,7 @@ impl RoomRuntime {
                 .activity
                 .get(&session)
                 .and_then(|activity| activity.relay_capacity),
-            files: if authorized || transit {
+            files: if authorized || transit_endpoint.is_some() {
                 self.base
                     .as_ref()
                     .map(|base| self.files.plans(&self.policy.id, session, base))

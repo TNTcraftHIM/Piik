@@ -1,6 +1,7 @@
 import type Hls from "hls.js";
 import type { WatchTimeline } from "./protocol";
-import type { WatchLiveWindow } from "./watch-media";
+
+export interface WatchLiveWindow { active: boolean; seekable: [number, number][]; syncPosition: number | null }
 
 /** HLS owns segment time and sliding. These public facts map into one activity coordinate. */
 export class WatchHlsTimeline {

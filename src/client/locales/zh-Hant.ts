@@ -122,7 +122,6 @@ export const zhHant = {
   "invite.room.loading": "正在讀取邀請…",
   "invite.room.failed": "未能讀取邀請，請重試。",
   "room.action.retry": "重試",
-  "invite.room.unrecoverable": "舊邀請仍然有效，但無法取回連結。如需新連結，請產生新邀請。",
   "invite.room.passwordLink": "需要密碼的房間連結",
   "invite.room.invitationLink": "免密碼邀請連結",
   "invite.room.publicLink": "房間連結",

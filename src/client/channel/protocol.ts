@@ -13,14 +13,13 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 26;
+export const CHANNEL_PROTOCOL = 27;
 export const CHANNEL_SESSION_LIMIT = 128;
 export const CHANNEL_ROOM_LIMIT = 32;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("missing") }),
   z.object({ state: z.literal("available"), key: id }),
-  z.object({ state: z.literal("unrecoverable") }),
 ]);
 export const MAX_USER_NAME_UNITS = 40;
 export const userSummarySchema = z.object({ id, name: z.string().max(MAX_USER_NAME_UNITS), version: z.string().regex(/^[a-f0-9]{64}$/) });
@@ -237,7 +236,7 @@ export class ChannelEventDecoder {
 }
 export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" | "room_invite_state" | "room_reply" | "room_created" | "profiles" }> | Extract<ConversationReply["record"], { type: "confirmed" }>;
 export type SignedConversationPacket = z.infer<typeof signedConversationPacketSchema>;
-export type RoomInvitationState = { state: "available"; url: string } | { state: "missing" | "unrecoverable" };
+export type RoomInvitationState = { state: "available"; url: string } | { state: "missing" };
 export interface ConversationAddress { roomId: string; bindingId: string; sender: string; recipient: string; requestId: string }
 export type ConversationReply = ConversationAddress & { record:
   | { type: "reaction"; nonce: number; event: ReactionEvent | null; snapshot: ReactionSnapshot | null }

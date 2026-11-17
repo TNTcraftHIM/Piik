@@ -299,7 +299,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       <div className="lr-app-connect-head">
         {state === "busy" ? <LoadingStatus label="client.connect.discovering" /> :
           <div className="lr-app-connect-scene" aria-hidden="true">{helpOpen && (ready ? <HintComic kind="hint-app-ready" /> : state === "approval" || state === "waking" || state === "ready" ? <HintComic kind="hint-client-site" /> :
-            <Comic kind={state === "incompatible" ? "warning" : "signal-failed"} theme="paper" />)}</div>}
+            <Comic kind={state === "approving" ? "signal-connecting" : state === "incompatible" ? "warning" : "signal-failed"} theme="paper" />)}</div>}
         <button type="button" className="lr-btn is-dense is-quiet lr-app-connect-close" aria-label={t("common.close")}
           popoverTarget={helpId} popoverTargetAction="hide">
           <Glyph name="x" size={16} />
@@ -312,7 +312,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       </p>}
       {update && <AppReleaseNotice update={update} managementURL={management?.updateSupported ? management.url : undefined} />}
       <div className="lr-app-connect-actions">
-        {!ready && state !== "busy" && <button type="button" className="lr-btn" aria-label={t(state === "approval" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")} onClick={() => void connect()}>
+        {!ready && state !== "busy" && state !== "approving" && <button type="button" className="lr-btn" aria-label={t(state === "approval" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")} onClick={() => void connect()}>
           <Glyph name={state === "approval" ? "arrowRight" : "refresh"} size={16} /><span>{t(state === "approval" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")}</span>
         </button>}
         {failed && wakeURL && <a className="lr-btn" href={wakeURL} onClick={event => { event.preventDefault(); void connect(true); }}>

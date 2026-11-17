@@ -244,6 +244,7 @@ fn domain_protocol_rejects_old_clients_before_admission() {
         Some(4),
         Some(5),
         Some(6),
+        Some(piik_channel_core::wire::CHANNEL_PROTOCOL - 1),
     ] {
         let connection = Uuid::new_v4();
         let mut join = json!({"type":"join","name":"Old","requestId":"join",
