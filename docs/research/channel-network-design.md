@@ -370,9 +370,11 @@ do not infer it from a same-user participant list. The room validates that the
 helper is an admitted endpoint of the same user with room access. The Browser
 remains the real viewer and supplies decoded and presentation proof; the App
 receives and forwards without adding a fictitious watch or reading activity.
-Watching another user's source does not wait for App admission; assistance can
-attach when ready. Sources that may be local retain the pre-subscription source
-identity check needed to suppress local preview sound.
+Watching does not wait for App admission; assistance can attach when ready.
+Before subscribing to a source that may be local, the approved App reports its
+exact current or retained Native endpoint, or its absence, independently of
+admission. That source-location fact suppresses local preview sound and does
+not grant capture ownership or helper eligibility.
 
 For that publication, the Browser becomes a presentation leaf. Replacing
 `parent → Browser → children` with `parent → App → {Browser, children}` uses the

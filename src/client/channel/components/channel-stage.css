@@ -75,6 +75,10 @@
 /* Use the same responsive target range as the playback toolbar; captions never shrink. */
 .c3-monitor-source-row .lr-btn:not(:where(.c3-monitor-source-row [popover] *)) { --button-size: var(--control-dense-size); --button-padding: 0; gap: 2px; }
 @container (max-width: 520px) {
+  .c3-monitor-source-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .c3-monitor-tile-actions { grid-column: 1 / -1; justify-self: stretch; min-width: 0; }
+  .c3-monitor-publishing { flex: 1; flex-wrap: wrap; min-width: 0; }
+  .c3-monitor-publishing > .c3-share-feedback { flex: 1 1 auto; }
   .c3-monitor-source-row .lr-btn:not(:where(.c3-monitor-source-row [popover] *)) { --button-size: clamp(24px, 8cqi, var(--control-dense-size)); min-width: var(--button-size); height: var(--control-dense-size); }
 }
 .c3-monitor-tile:has(> .c3-video[data-controls-hidden="true"]) > footer .c3-monitor-source-row { opacity: 0; pointer-events: none; transform: translateY(-4px); }

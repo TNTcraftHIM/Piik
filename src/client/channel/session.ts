@@ -1786,7 +1786,6 @@ export class ChannelSession {
   revokeRoomAccess = (roomId: string, userId: string, reportError = true): Promise<void> => this.action(`revoke:${roomId}:${userId}`, () => this.request({ type: "revoke_room_access", roomId, userId }), reportError);
   watch = (publicationId: string, roomId?: string, signal?: AbortSignal): Promise<void> => {
     const watch: ScreenWatch = {};
-    let describedApp: ChannelApp | undefined;
     const operation = this.action(`watch:${publicationId}`, async () => {
       if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
       this.watching.set(publicationId, watch);
@@ -1794,22 +1793,20 @@ export class ChannelSession {
         const app = this.app;
         const publication = this.view.state?.publications.find(value => value.id === publicationId);
         const remote = publication && this.view.self && publication.userId !== this.view.self.id;
-        // A known remote source needs no local sound check. Optional App assistance
-        // follows the subscription through syncAppWatching when admission is ready.
+        // Source location is independent of Native admission. Only assistance
+        // waits for hosting readiness after the ordinary subscription.
         if (app?.connected && !remote && !this.view.localScreens.has(publicationId)) {
           watch.query = new AbortController();
           const lifetime = AbortSignal.any([watch.query.signal, this.captureLifetime.signal, ...(signal ? [signal] : [])]);
-          const description = await app.describeHosting(lifetime).catch(() => undefined);
+          const endpoint = await app.localEndpoint(lifetime).catch(error => {
+            if (this.app === app && app.connected) throw error;
+          });
           watch.query = undefined;
           lifetime.throwIfAborted();
-          if (description && this.app === app && app.connected) {
-            this.rememberLocalEndpoint(app, description.sessionId);
-            watch.helperSessionId = description.sessionId;
-            describedApp = app;
-          }
+          if (endpoint) this.rememberLocalEndpoint(app, endpoint);
           if (this.watching.get(publicationId) !== watch) throw new DOMException("Capture cancelled", "AbortError");
         }
-        await this.request({ type: "subscribe", publicationId, enabled: true, helperSessionId: watch.helperSessionId }, undefined, roomId);
+        await this.request({ type: "subscribe", publicationId, enabled: true }, undefined, roomId);
         if (signal?.aborted || this.watching.get(publicationId) !== watch) throw new DOMException("Capture cancelled", "AbortError");
       } catch (error) {
         if (this.watching.get(publicationId) !== watch) throw new DOMException("Capture cancelled", "AbortError");
@@ -1821,9 +1818,7 @@ export class ChannelSession {
       }
     });
     watch.operation = operation;
-    return operation.finally(() => { watch.operation = undefined; }).then(() => {
-      if (this.app !== describedApp || !describedApp?.connected) void this.syncAppWatching();
-    });
+    return operation.finally(() => { watch.operation = undefined; }).then(() => { void this.syncAppWatching(); });
   };
   private retireWatch(publicationId: string): void {
     this.watching.get(publicationId)?.query?.abort();

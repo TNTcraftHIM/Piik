@@ -153,6 +153,23 @@ async fn pending_udp_capability_keeps_stop_and_recovery_owned_by_session() {
 async fn pending_udp_capability_releases_expired_session_before_late_join() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let mut session = connection_session(format!("ws://{}", listener.local_addr().unwrap()));
+    let directory = tempfile::tempdir().unwrap();
+    let (host_commands, requests) = mpsc::channel(4);
+    session.hosting = Some(Hosting {
+        directory: directory.path().into(),
+        identity: (Uuid::new_v4(), Uuid::new_v4()),
+        commands: requests,
+        ready: watch::channel(None).0,
+        desktop: None,
+    });
+    let local_endpoint = || async {
+        let (result, response) = oneshot::channel();
+        host_commands
+            .send(HostCommand::LocalEndpoint(result))
+            .await
+            .unwrap();
+        response.await.unwrap()
+    };
     let previous = Uuid::new_v4();
     let (commands, mut events) = mpsc::channel(8);
     session.live = Some(Live {
@@ -203,6 +220,11 @@ async fn pending_udp_capability_releases_expired_session_before_late_join() {
             _ = async { while events.recv().await.is_some() {} } => {},
             result = &mut drive => panic!("session ended before recovery: {result:?}"),
             _ = time::sleep(Duration::from_secs(2)) => panic!("expired peers stayed alive"),
+        }
+        tokio::select! {
+            endpoint = local_endpoint() => assert_eq!(endpoint, None),
+            result = &mut drive => panic!("session ended before retired endpoint read: {result:?}"),
+            _ = time::sleep(Duration::from_secs(2)) => panic!("retired endpoint read waited for capability"),
         }
         complete.send(false).unwrap();
         let (socket, request) = tokio::select! {

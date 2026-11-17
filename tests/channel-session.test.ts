@@ -1062,13 +1062,13 @@ test.each([false, true])("App viewing assistance withdraws without ending the wa
   } finally { session.close(); }
 });
 
-test("remote App rewatch subscribes normally before attaching its current helper", async () => {
+test.each(["friend", "self"])("remote App rewatch subscribes before attaching its helper (source user: %s)", async userId => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const helperSessionId = crypto.randomUUID();
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helperSessionId, roomIds: [] });
   const { session, socket } = await setup();
   const state = { ...session.getSnapshot().state!, publications: [
-    { audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", source: { kind: "screen", name: null }, title: null,
+    { audience: [], id: "screen", roomId: "first", sessionId: "source", userId, kind: "screen", source: { kind: "screen", name: null }, title: null,
       videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
   ] };
   socket.receive({ type: "state", state });
@@ -1079,7 +1079,11 @@ test("remote App rewatch subscribes normally before attaching its current helper
     await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
     for (const round of [1, 2]) {
       const watching = session.watch("screen");
-      expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true });
+      if (userId === "self") {
+        expect(app.sent.at(-1)).toMatchObject({ type: "local_endpoint" });
+        app.receive({ id: app.sent.at(-1)!.id, result: { sessionId: helperSessionId } });
+      }
+      await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true }));
       expect(socket.sent.at(-1)).not.toHaveProperty("helperSessionId");
       socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await watching;
       await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true, helperSessionId }));
@@ -1094,7 +1098,7 @@ test("remote App rewatch subscribes normally before attaching its current helper
   } finally { session.close(); }
 });
 
-test("remote Browser watching stays available while the connected App awaits Native admission", async () => {
+test.each(["friend", "self"])("Browser watching stays available while the connected App awaits Native admission (source user: %s)", async userId => {
   let descriptionSignal: AbortSignal | undefined;
   const fetcher = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
     descriptionSignal = init.signal!;
@@ -1103,10 +1107,11 @@ test("remote Browser watching stays available while the connected App awaits Nat
   vi.stubGlobal("fetch", fetcher);
   const { session, socket } = await setup();
   const state = structuredClone(session.getSnapshot().state!);
+  const nativeSessionId = crypto.randomUUID();
   state.users.push({ id: "friend", name: "Friend", version: profileVersion });
-  state.sessions.push({ id: "source", userId: "friend", online: true, signingKey: testSigningKey },
-    { id: crypto.randomUUID(), userId: "self", online: false, signingKey: testSigningKey });
-  state.publications.push({ audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen",
+  state.sessions.push({ id: "source", userId, online: true, signingKey: testSigningKey },
+    { id: nativeSessionId, userId: "self", online: false, signingKey: testSigningKey });
+  state.publications.push({ audience: [], id: "screen", roomId: "first", sessionId: "source", userId, kind: "screen",
     source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false });
   socket.receive({ type: "state", state });
   try {
@@ -1116,7 +1121,11 @@ test("remote Browser watching stays available while the connected App awaits Nat
     const app = ChannelSocket.current;
     await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
     const watching = session.watch("screen", "first");
-    expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true });
+    if (userId === "self") {
+      expect(app.sent.at(-1)).toMatchObject({ type: "local_endpoint" });
+      app.receive({ id: app.sent.at(-1)!.id, result: { sessionId: nativeSessionId } });
+    }
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true }));
     expect(socket.sent.at(-1)).not.toHaveProperty("helperSessionId");
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await watching;
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
@@ -1179,12 +1188,11 @@ test("a retained watch re-associates an App endpoint after its current admission
   } finally { session.close(); }
 });
 
-test.each([false, true])("local Native playback provenance follows endpoint lifetime, without ownership or user inference (description rejected: %s)", async rejected => {
+test.each([false, true])("local Native playback provenance follows endpoint lifetime, without ownership or user inference (endpoint absent: %s)", async absent => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const applyBufferTarget = vi.spyOn(ChannelMedia.prototype, "setScreenBufferTarget");
   const native = crypto.randomUUID(), remote = crypto.randomUUID();
-  const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: native, roomIds: [] });
-  if (rejected) description.mockRejectedValue(new Error("hosting_unavailable"));
+  vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockRejectedValue(new Error("hosting_unavailable"));
   const { session, socket } = await setup();
   session.setScreenBufferTarget(725); applyBufferTarget.mockClear();
   const original = session.getSnapshot().state!, userId = session.getSnapshot().self!.id;
@@ -1200,14 +1208,16 @@ test.each([false, true])("local Native playback provenance follows endpoint life
     const app = ChannelSocket.current;
     await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
     const watching = session.watch("screen-0");
+    expect(app.sent.at(-1)).toMatchObject({ type: "local_endpoint" });
+    app.receive({ id: app.sent.at(-1)!.id, result: { sessionId: absent ? null : native } });
     await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen-0" }));
     // The listening decision is known before subscription can deliver sound.
-    expect(description).toHaveBeenCalled();
-    expect([...session.getSnapshot().localScreens]).toEqual(rejected ? [] : ["screen-0"]);
-    expect(applyBufferTarget.mock.calls).toEqual(rejected ? [] : [[725]]);
+    expect([...session.getSnapshot().localScreens]).toEqual(absent ? [] : ["screen-0"]);
+    expect(applyBufferTarget.mock.calls).toEqual(absent ? [] : [[725]]);
     expect(session.getSnapshot().ownedScreens.size).toBe(0);
+    expect(socket.sent.at(-1)).not.toHaveProperty("helperSessionId");
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await watching;
-    if (rejected) { expect(session.getSnapshot().error).toBeNull(); return; }
+    if (absent) { expect(session.getSnapshot().error).toBeNull(); return; }
     app.close();
     expect(session.getSnapshot().appConnected).toBe(false);
     expect([...session.getSnapshot().localScreens]).toEqual(["screen-0"]);
@@ -1221,13 +1231,31 @@ test.each([false, true])("local Native playback provenance follows endpoint life
   } finally { session.close(); }
 });
 
-test.each(["session", "capture", "app", "unwatch", "retirement"])("pending local-source HTTP follows %s cancellation without trapping the watch", async ending => {
+test.each([{ error: "hosting_unavailable" }, { result: { sessionId: "invalid" } }])("failed source lookup is not proof of a remote source (%j)", async reply => {
+  const { session, socket } = await setup();
+  socket.receive({ type: "state", state: { ...session.getSnapshot().state!, publications: [
+    { audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "self", kind: "screen", source: { kind: "screen", name: null }, title: null,
+      videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
+  ] } });
+  try {
+    const connecting = session.activateApp({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+      domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const app = ChannelSocket.current;
+    await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
+    const watching = session.watch("screen").catch(error => error);
+    expect(app.sent.at(-1)).toMatchObject({ type: "local_endpoint" });
+    app.receive({ id: app.sent.at(-1)!.id, ...reply });
+    expect(await watching).toBeInstanceOf(Error);
+    expect(session.getSnapshot().appConnected).toBe(true);
+    expect(session.getSnapshot().pending.has("watch:screen")).toBe(false);
+    expect(session.getSnapshot().localScreens.size).toBe(0);
+    expect(socket.sent.some(command => command.type === "subscribe")).toBe(false);
+  } finally { session.close(); }
+});
+
+test.each(["session", "capture", "app", "unwatch", "retirement"])("pending local-source lookup follows %s cancellation without trapping the watch", async ending => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
-  const fetcher = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
-    const signal = init.signal!;
-    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-  }));
-  vi.stubGlobal("fetch", fetcher);
   const { session, socket } = await setup();
   const state = { ...session.getSnapshot().state!, publications: [
     { audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "self", kind: "screen", source: { kind: "screen", name: null }, title: null,
@@ -1243,9 +1271,8 @@ test.each(["session", "capture", "app", "unwatch", "retirement"])("pending local
     const watching = session.watch("screen", undefined, cancel.signal);
     // Attach rejection handling before aborting the underlying request.
     const settled = watching.then(() => null, error => error);
-    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
-    const signal = fetcher.mock.calls[0][1].signal!;
-    expect(signal.aborted).toBe(false);
+    expect(app.sent.at(-1)).toMatchObject({ type: "local_endpoint" });
+    const query = app.sent.at(-1)!;
     expect(socket.sent.some(command => command.type === "subscribe")).toBe(false);
     let stopping: Promise<unknown> | undefined;
     if (ending === "session") session.close();
@@ -1253,7 +1280,6 @@ test.each(["session", "capture", "app", "unwatch", "retirement"])("pending local
     else if (ending === "unwatch") stopping = session.unwatch("screen").catch(error => error);
     else if (ending === "retirement") socket.receive({ type: "state", state: { ...state, publications: [] } });
     else app.close();
-    expect(signal.aborted).toBe(true);
     if (ending === "app") {
       await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true }));
       socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
@@ -1267,6 +1293,8 @@ test.each(["session", "capture", "app", "unwatch", "retirement"])("pending local
       socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
       expect(await stopping).toBeUndefined();
     }
+    app.receive({ id: query.id, result: { sessionId: crypto.randomUUID() } });
+    expect(session.getSnapshot().localScreens.size).toBe(0);
     expect(session.getSnapshot().pending.has("watch:screen")).toBe(false);
   } finally { session.close(); }
 });

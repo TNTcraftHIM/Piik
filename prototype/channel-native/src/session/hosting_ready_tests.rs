@@ -3,6 +3,15 @@ use anyhow::{ensure, Context as _};
 use piik_channel_core::{wire::Request, Authority};
 use tokio::net::TcpListener;
 
+async fn local_endpoint(commands: &mpsc::Sender<HostCommand>) -> Result<Option<Uuid>> {
+    let (answer, response) = oneshot::channel();
+    commands
+        .send(HostCommand::LocalEndpoint(answer))
+        .await
+        .map_err(|_| anyhow!("host command closed"))?;
+    Ok(response.await?)
+}
+
 #[tokio::test]
 async fn current_host_readiness_retires_between_actual_admissions_and_on_stop() -> Result<()> {
     let directory = tempfile::tempdir()?;
@@ -46,6 +55,7 @@ async fn current_host_readiness_retires_between_actual_admissions_and_on_stop() 
             Request::parse(join.to_text()?).map_err(|error| anyhow!("join: {error:?}"))?,
             0,
         );
+        ensure!(local_endpoint(&commands).await?.is_none());
         let mut first_id = None;
         for (recipient, event) in effects.events {
             if recipient != connection {
@@ -70,9 +80,14 @@ async fn current_host_readiness_retires_between_actual_admissions_and_on_stop() 
             response.await?.map_err(anyhow::Error::msg)?.session_id
                 == first_id.context("first welcome missing")?
         );
+        ensure!(local_endpoint(&commands).await? == first_id);
 
         first.close(None).await?;
         status.wait_for(Option::is_none).await?;
+        ensure!(
+            local_endpoint(&commands).await? == first_id,
+            "temporary admission loss erased retained local provenance"
+        );
         authority.disconnect(connection, 1);
         authority.expire(RECOVERY_MS + 2);
         let next_connection = Uuid::new_v4();
@@ -88,6 +103,7 @@ async fn current_host_readiness_retires_between_actual_admissions_and_on_stop() 
             status.borrow().is_none(),
             "prior success survived before current Welcome"
         );
+        ensure!(local_endpoint(&commands).await? == first_id);
         let (answer, response) = oneshot::channel();
         commands
             .send(HostCommand::Describe(answer))
@@ -118,6 +134,7 @@ async fn current_host_readiness_retires_between_actual_admissions_and_on_stop() 
             .map_err(|_| anyhow!("host command closed"))?;
         let description = response.await?.map_err(anyhow::Error::msg)?;
         ensure!(Some(description.session_id) == next_id && next_id != first_id);
+        ensure!(local_endpoint(&commands).await? == next_id);
         Ok::<_, anyhow::Error>(())
     };
     let result = time::timeout(Duration::from_secs(5), observed).await;

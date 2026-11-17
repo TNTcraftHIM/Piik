@@ -67,7 +67,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 18;
+const PROTOCOL: u8 = 19;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -1044,6 +1044,7 @@ enum Operation {
     Open {
         policy: String,
     },
+    LocalEndpoint,
     RelayCapacity(piik_channel_native::session::RelayCapacityRequest),
     ConnectionMetrics {
         room_id: String,
@@ -2034,6 +2035,26 @@ async fn connection(
                                 Some(commands) => open(commands, &policy).await,
                                 None => Err(anyhow!("hello_required")),
                             },
+                            Operation::LocalEndpoint => match &host {
+                                Some(commands) => {
+                                    let commands = commands.clone();
+                                    operations.push(async move {
+                                        let endpoint = async {
+                                            let (result, response) = oneshot::channel();
+                                            commands.send(HostCommand::LocalEndpoint(result)).await
+                                                .map_err(|_| anyhow!("hosting_unavailable"))?;
+                                            let session_id = response.await.map_err(|_| anyhow!("hosting_unavailable"))?;
+                                            Ok::<_, anyhow::Error>(json!({"sessionId": session_id}))
+                                        }.await;
+                                        match endpoint {
+                                            Ok(value) => json!({"id":request.id,"result":value}),
+                                            Err(error) => json!({"id":request.id,"error":error.to_string()}),
+                                        }
+                                    }.boxed());
+                                    continue;
+                                }
+                                None => Err(anyhow!("hello_required")),
+                            },
                             Operation::RelayCapacity(relay) => match &host {
                                 Some(commands) => {
                                     let (result, response) = oneshot::channel();
@@ -2785,7 +2806,7 @@ mod lifecycle_tests {
         let site = "https://owned.test".to_string();
         let key = (site.clone(), Uuid::from_u128(1), Uuid::from_u128(2));
         let permission = Arc::new(Permission::new(Uuid::from_u128(3)));
-        let (commands, _receiver) = mpsc::channel(1);
+        let (commands, mut receiver) = mpsc::channel(1);
         let (ready, admitted) = watch::channel(None);
         let (stop, mut stopped) = watch::channel(false);
         let host = Host {
@@ -2865,7 +2886,21 @@ mod lifecycle_tests {
             "Sec-WebSocket-Protocol",
             "piik-channel-rooms.owned".parse().unwrap(),
         );
-        let (mut socket, _) = connect_async(request).await.unwrap();
+        let (mut socket, _) = connect_async(request.clone()).await.unwrap();
+        socket
+            .send(WsMessage::Text(
+                json!({"id":"before-hello","type":"local_endpoint"})
+                    .to_string()
+                    .into(),
+            ))
+            .await
+            .unwrap();
+        let reply = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(reply.to_text().unwrap()).unwrap(),
+            json!({"id":"before-hello","error":"hello_required"})
+        );
+        assert!(receiver.try_recv().is_err());
         socket
             .send(WsMessage::Text(
                 json!({"id":"hello","type":"hello","channelId":key.1,
@@ -2911,6 +2946,65 @@ mod lifecycle_tests {
             .await
             .unwrap();
         assert!(connected.same_channel(&commands));
+        for revoke in [false, true] {
+            ready.send_replace(Some(Ok(())));
+            let (mut socket, _) = connect_async(request.clone()).await.unwrap();
+            socket
+                .send(WsMessage::Text(
+                    json!({"id":"hello","type":"hello","channelId":key.1,
+                        "userId":key.2,"credential":"owned","name":"Test"})
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            let hello = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
+            assert_eq!(
+                serde_json::from_str::<Value>(hello.to_text().unwrap()).unwrap(),
+                json!({"id":"hello","result":null})
+            );
+            // A previously approved control remains valid while its Native Host
+            // loses admission. Identity reads do not reuse the readiness gate.
+            ready.send_replace(None);
+            if !revoke {
+                for endpoint in [Some(Uuid::new_v4()), None] {
+                    socket
+                        .send(WsMessage::Text(
+                            json!({"id":"endpoint","type":"local_endpoint"})
+                                .to_string()
+                                .into(),
+                        ))
+                        .await
+                        .unwrap();
+                    let HostCommand::LocalEndpoint(result) = timeout(IO_TIMEOUT, receiver.recv())
+                        .await.unwrap().unwrap() else { panic!("local endpoint read expected") };
+                    result.send(endpoint).unwrap();
+                    let reply = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
+                    assert_eq!(
+                        serde_json::from_str::<Value>(reply.to_text().unwrap()).unwrap(),
+                        json!({"id":"endpoint","result":{"sessionId":endpoint}})
+                    );
+                    assert!(ready.borrow().is_none());
+                }
+            }
+            socket
+                .send(WsMessage::Text(
+                    json!({"id":"pending-endpoint","type":"local_endpoint"})
+                        .to_string()
+                        .into(),
+                ))
+                .await
+                .unwrap();
+            let HostCommand::LocalEndpoint(mut result) = timeout(IO_TIMEOUT, receiver.recv())
+                .await.unwrap().unwrap() else { panic!("pending local endpoint read expected") };
+            if revoke {
+                permission.revoked.send_replace(true);
+            } else {
+                socket.close(None).await.unwrap();
+            }
+            timeout(IO_TIMEOUT, result.closed()).await.unwrap();
+            assert!(!*stop.borrow(), "control retirement stopped its independent Host");
+        }
         timeout(IO_TIMEOUT, app.shutdown()).await.unwrap();
         assert!(*stop.borrow());
         let _ = stop_server.send(());

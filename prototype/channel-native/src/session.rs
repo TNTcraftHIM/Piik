@@ -502,6 +502,8 @@ pub enum HostCommand {
     RevokeWatchReader {
         resource_id: Uuid,
     },
+    /// Exact current or recovery-retained identity, not hosting admission.
+    LocalEndpoint(oneshot::Sender<Option<Uuid>>),
     Describe(oneshot::Sender<Result<HostingDescription, String>>),
     ConnectionMetrics {
         room_id: String,
@@ -525,8 +527,11 @@ pub enum HostCommand {
     PublishCaptureSettings(PublishCaptureSettings),
 }
 impl HostCommand {
-    fn unavailable(self) {
+    fn unavailable(self, local_endpoint: Option<Uuid>) {
         match self {
+            Self::LocalEndpoint(result) => {
+                let _ = result.send(local_endpoint);
+            }
             Self::RelayCapacity { result, .. } => {
                 let _ = result.send(Err("hosting_unavailable".into()));
             }
@@ -723,7 +728,8 @@ impl Session {
                     _ = &mut *stop => return Ok(()),
                     _ = recovery_deadline(self.recovery) => { self.release().await?; },
                     command = next_host_command(&mut self.hosting) => {
-                        command.ok_or_else(|| anyhow!("hosting_control_closed"))?.unavailable();
+                        command.ok_or_else(|| anyhow!("hosting_control_closed"))?
+                            .unavailable(self.live.as_ref().map(|live| live.session));
                     },
                     result = &mut connecting => break result,
                 }
@@ -771,7 +777,8 @@ impl Session {
                     _ = &mut *stop => return Ok(()),
                     _ = recovery_deadline(self.recovery) => self.release().await?,
                     command = next_host_command(&mut self.hosting) => {
-                        command.ok_or_else(|| anyhow!("hosting_control_closed"))?.unavailable();
+                        command.ok_or_else(|| anyhow!("hosting_control_closed"))?
+                            .unavailable(self.live.as_ref().map(|live| live.session));
                     },
                     _ = &mut delay => break,
                 }
@@ -852,8 +859,11 @@ impl Session {
                     tokio::select! {
                         request = next_host_command(&mut self.hosting) => {
                             let request = request.ok_or_else(|| anyhow!("hosting_control_closed"))?;
-                            if !admitted { request.unavailable(); }
+                            if !admitted { request.unavailable(self.live.as_ref().map(|live| live.session)); }
                             else { match request {
+                                HostCommand::LocalEndpoint(result) => {
+                                    let _ = result.send(self.live.as_ref().map(|live| live.session));
+                                },
                                 HostCommand::RelayCapacity { request, result } => self.relay_capacity(request, result, socket).await?,
                                 HostCommand::RegisterWatchReader { resource_id, reader, result } => {
                                     let registered = if let Some(live) = &mut self.live {

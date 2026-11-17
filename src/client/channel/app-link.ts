@@ -18,7 +18,7 @@ import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 import { debugEvent } from "../lib/debug";
 
-export const APP_PROTOCOL = 18;
+export const APP_PROTOCOL = 19;
 const APP_REQUEST_BYTES = 256 * 1024;
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
@@ -428,6 +428,12 @@ export class ChannelApp {
   async open(policy: string): Promise<RoomSummary> {
     await this.ready;
     return this.request({ type: "open", policy });
+  }
+
+  async localEndpoint(signal?: AbortSignal): Promise<string | null> {
+    if (!this.connected) throw new Error("app_disconnected");
+    return z.object({ sessionId: z.uuid().nullable() }).parse(
+      await this.request({ type: "local_endpoint" }, undefined, signal)).sessionId;
   }
 
   async describeHosting(signal?: AbortSignal) {
