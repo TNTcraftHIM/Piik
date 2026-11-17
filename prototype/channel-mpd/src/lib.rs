@@ -105,6 +105,7 @@ impl MpdSnapshot {
         )?;
         let infos: Vec<ChoiceInfo> =
             serde_json::from_str(&result).map_err(|_| anyhow!("watch_mpd_invalid"))?;
+        ensure!(!infos.is_empty(), "watch_mpd_unsupported");
         ensure!(infos.len() <= limits.resources, "watch_resource_limit");
         let choices = infos
             .into_iter()

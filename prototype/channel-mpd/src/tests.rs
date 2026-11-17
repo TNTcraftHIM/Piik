@@ -158,3 +158,15 @@ fn declared_unsupported_and_malformed_sources_have_fixed_distinct_errors() {
     );
     assert_eq!(malformed.err().unwrap().to_string(), "watch_mpd_invalid");
 }
+
+#[test]
+fn static_mpd_without_a_complete_track_is_unsupported() {
+    let result = MpdSnapshot::inspect(
+        Uuid::new_v4(),
+        include_str!("../fixtures/no-whole-track.mpd").into(),
+        base(),
+        limits(),
+        Arc::new(|| false),
+    );
+    assert_eq!(result.err().unwrap().to_string(), "watch_mpd_unsupported");
+}
