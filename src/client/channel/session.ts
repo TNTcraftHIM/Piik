@@ -1946,9 +1946,19 @@ export class ChannelSession {
       const video = candidate.getVideoTracks()[0];
       const metadata = captureSource(video, source === "camera");
       if (!video || video.readyState !== "live") throw new Error("capture_unavailable");
-      const codec = share.codec ?? (share.codecMode === "auto"
-        ? automaticVideoCodecPreference(await preferredVideoCodecForTrack(video, selection.controller.signal))
-        : manualVideoCodecPreference(share.codecMode));
+      let codec = share.codec;
+      if (!codec) {
+        const complete = debugOperation("capture", "codec-selection", { mode: share.codecMode });
+        try {
+          codec = share.codecMode === "auto"
+            ? automaticVideoCodecPreference(await preferredVideoCodecForTrack(video, selection.controller.signal))
+            : manualVideoCodecPreference(share.codecMode);
+          complete("selected", { codec });
+        } catch (error) {
+          complete(selection.controller.signal.aborted ? "cancelled" : "failed", {}, error);
+          throw error;
+        }
+      }
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       share.codec = codec;
       const previous = this.local.get(share.id);

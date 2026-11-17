@@ -32,6 +32,7 @@ import * as videoCodec from "../src/client/webrtc/video-codec";
 import type { InputTransport } from "../src/client/remote-control/input-route";
 import { BrowserEncodingPool, type BrowserPooledSender } from "../src/client/media/browser-encoding-pool";
 import * as encodingOutput from "../src/client/media/browser-encoding-output";
+import * as browserDiagnostics from "../src/client/lib/debug";
 
 class ChannelSocket {
   static OPEN = 1;
@@ -9920,6 +9921,66 @@ test("owned display grant cancels while optional audio resume never settles", as
     expect(audio.stop).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledOnce();
     expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
+    expect(socket.sent.some(command => command.type === "publish")).toBe(false);
+  } finally { session.close(); }
+});
+
+test("capture stage diagnostics distinguish an unanswered picker and stop a late cancelled grant", async () => {
+  const events: { stage: string; outcome: string; details?: object }[] = [];
+  vi.spyOn(browserDiagnostics, "debugOperation").mockImplementation((scope, stage) => {
+    if (scope === "capture") events.push({ stage, outcome: "started" });
+    return (outcome, details) => { if (scope === "capture") events.push({ stage, outcome, details }); };
+  });
+  const { session, socket } = await setup();
+  const video = remoteTrack("video"), source = remoteStream("owned-late-window", [video]);
+  let grant!: (stream: MediaStream) => void;
+  const getDisplayMedia = vi.fn(() => new Promise<MediaStream>(resolve => { grant = resolve; }));
+  const codec = vi.spyOn(codecPreflight, "preferredVideoCodecForTrack");
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia } });
+  const starting = session.startScreen("first").catch(error => error);
+  try {
+    expect(events).toEqual([{ stage: "display", outcome: "started" }]);
+    await session.cancelScreenSelection("first");
+    expect(await starting).toMatchObject({ name: "AbortError" });
+    expect(events.map(({ stage, outcome }) => [stage, outcome])).toEqual([["display", "started"], ["display", "cancelled"]]);
+    grant(source); await vi.waitFor(() => expect(video.stop).toHaveBeenCalledOnce());
+    expect(codec).not.toHaveBeenCalled();
+    expect(events).toHaveLength(2);
+    expect(socket.sent.some(command => command.type === "publish")).toBe(false);
+  } finally { session.close(); }
+});
+
+test("capture stage diagnostics show completed codec selection before pending audio and its cancellation", async () => {
+  const events: { stage: string; outcome: string; details?: object }[] = [];
+  vi.spyOn(browserDiagnostics, "debugOperation").mockImplementation((scope, stage) => {
+    if (scope === "capture") events.push({ stage, outcome: "started" });
+    return (outcome, details) => { if (scope === "capture") events.push({ stage, outcome, details }); };
+  });
+  const { session, socket } = await setup();
+  const video = remoteTrack("video"), audio = remoteTrack("audio");
+  const source = remoteStream("owned-granted-window", [video]);
+  const resume = vi.fn(() => new Promise<void>(() => {})), close = vi.fn(async () => {});
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(async () => source) } });
+  vi.spyOn(codecPreflight, "preferredVideoCodecForTrack").mockResolvedValue("vp8");
+  vi.stubGlobal("AudioContext", class {
+    state = "suspended";
+    resume = resume; close = close;
+    createMediaStreamDestination() { return { stream: remoteStream("owned-mixed", [audio]) }; }
+    createGain() { return { gain: { value: 1 }, connect() {}, disconnect() {} }; }
+  });
+  session.setVideoCodecMode("auto");
+  const starting = session.startScreen("first").catch(error => error);
+  try {
+    await vi.waitFor(() => expect(resume).toHaveBeenCalledOnce());
+    expect(events.map(({ stage, outcome }) => [stage, outcome])).toEqual([
+      ["display", "started"], ["display", "applied"], ["codec-selection", "started"],
+      ["codec-selection", "selected"], ["audio-prepare", "started"],
+    ]);
+    expect(events[1].details).toMatchObject({ trackId: video.id, audio: false });
+    await session.cancelScreenSelection("first");
+    expect(await starting).toMatchObject({ name: "AbortError" });
+    expect(events.at(-1)).toMatchObject({ stage: "audio-prepare", outcome: "cancelled", details: { state: "suspended" } });
+    expect(video.stop).toHaveBeenCalledOnce(); expect(audio.stop).toHaveBeenCalledOnce(); expect(close).toHaveBeenCalledOnce();
     expect(socket.sent.some(command => command.type === "publish")).toBe(false);
   } finally { session.close(); }
 });

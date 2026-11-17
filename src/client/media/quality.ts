@@ -288,7 +288,7 @@ export async function captureDisplay(profile: QualityProfile, signal?: AbortSign
       ...captureConstraints(profile),
     })), signal);
   } catch (error) {
-    complete("failed", {}, error);
+    complete(signal?.aborted ? "cancelled" : "failed", {}, error);
     throw error;
   }
 

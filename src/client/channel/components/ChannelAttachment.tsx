@@ -67,6 +67,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   const progressBytes = progress ? `${fileSize(progress.received)} / ${fileSize(progress.total)}${progress.total > 0 ? ` · ${Math.floor(progress.received / progress.total * 100)}%` : ""}` : null;
   const imageStatus = previewBusy ? progress ? `${progressLabel} · ${progressBytes}` : t("channel.attachment.loadingOriginalImage")
     : previewMessage ?? imageDescription;
+  const saving = download.outcome === "started", savedBytes = download.saveProgress;
   return <div className="c3-attachment" ref={downloadSurface}>
     <div className="c3-attachment-file"><Glyph name="save" size={21} />
       <div><Tooltip overflow={{ text: file.name, selector: "strong" }}><strong>{file.name}</strong></Tooltip><small>{fileSize(file.size)}</small></div>
@@ -81,8 +82,15 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
         value={progress.total > 0 && progress.received > 0 ? progress.received : undefined} />
       <small>{progressBytes}</small>
     </div>}
-    {!download.busy && (download.outcome === "requested" || download.outcome === "dispatched" || download.outcome === "started" || download.outcome === "saved") && <small role="status">{t(download.outcome === "saved"
-      ? "channel.attachment.saved" : download.outcome === "started" ? "channel.attachment.saving"
+    {saving && <div className="c3-attachment-progress">
+      <small role="status">{t("channel.attachment.saving")}</small>
+      <progress aria-label={t("channel.attachment.saving")} max={savedBytes?.total || undefined}
+        value={savedBytes && savedBytes.total !== null && savedBytes.total > 0 ? savedBytes.received : undefined} />
+      {savedBytes && <small>{fileSize(savedBytes.received)}{savedBytes.total !== null && ` / ${fileSize(savedBytes.total)}`}
+        {savedBytes.total !== null && savedBytes.total > 0 && ` · ${Math.floor(savedBytes.received / savedBytes.total * 100)}%`}</small>}
+    </div>}
+    {!download.busy && (download.outcome === "requested" || download.outcome === "dispatched" || download.outcome === "saved") && <small role="status">{t(download.outcome === "saved"
+      ? "channel.attachment.saved"
       : download.outcome === "requested" ? "channel.attachment.downloadRequested" : "channel.attachment.downloadSent")}</small>}
     {isImage && !preview && <ChannelAction icon={previewBusy ? "x" : "eye"} quiet
       label={previewBusy ? t("channel.attachment.cancelImageLoading") : t("channel.attachment.viewImage")}

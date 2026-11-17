@@ -2,6 +2,7 @@ import type { BrowserCaptureSource } from "./quality";
 import { audioInputConstraints } from "./audio-capture";
 import { MicrophoneInput } from "./microphone-input";
 import { acquireMediaStream } from "./capture-stream";
+import { debugOperation } from "../lib/debug";
 
 export interface CommentaryInput { deviceId: string; volume: number; voiceProcessing: boolean }
 
@@ -36,6 +37,7 @@ export class HostAudio {
   // has no sound. Input changes never replace the transport's output track.
   async start(signal?: AbortSignal): Promise<MediaStream> {
     signal?.throwIfAborted();
+    const complete = debugOperation("capture", "audio-prepare", { source: this.kind, sourceAudio: this.sourceAudioAvailable });
     let abort: (() => void) | undefined;
     try {
       const context = this.context = new AudioContext();
@@ -52,7 +54,9 @@ export class HostAudio {
         if (signal.aborted) abort();
       })]);
       else await resumed;
-    } catch {
+      complete("resumed", { state: context.state });
+    } catch (error) {
+      complete(signal?.aborted ? "cancelled" : "fallback", { state: this.context?.state ?? null }, error);
       // Commentary is optional. A failed graph must not retire a valid picture
       // or source sound; this share continues with its original audio track.
       this.closeGraph();

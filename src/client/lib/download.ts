@@ -1,9 +1,11 @@
 export type DownloadOutcome = "requested" | "dispatched" | "started" | "saved" | "cancelled" | "failed";
+export interface DownloadProgress { received: number; total: number | null }
 declare global { interface Window { piikNativeDownloads?: boolean } }
 interface DownloadOptions {
   document?: Document;
   signal?: AbortSignal;
   outcome?(state: DownloadOutcome): void;
+  progress?(progress: DownloadProgress): void;
 }
 
 /** Saving belongs to the platform. Only the requesting document observes its result. */
@@ -23,19 +25,27 @@ export function downloadBlob(blob: Blob, filename: string, options: DownloadOpti
     link.remove();
   };
   const result = (event: Event) => {
-    const state: unknown = (event as CustomEvent).detail;
+    const detail: unknown = (event as CustomEvent).detail;
+    if (!detail || typeof detail !== "object" || !("status" in detail)) return;
+    const state = detail.status;
+    if (state === "progress") {
+      if (!("received" in detail) || typeof detail.received !== "number" || !Number.isSafeInteger(detail.received) || detail.received < 0
+        || !("total" in detail) || (detail.total !== null && (typeof detail.total !== "number" || !Number.isSafeInteger(detail.total) || detail.total < 0))) return;
+      options.progress?.({ received: detail.received, total: detail.total });
+      return;
+    }
     if (state !== "started" && state !== "saved" && state !== "cancelled" && state !== "failed") return;
     if (state !== "started") close();
     options.outcome?.(state);
   };
   try {
-    if (native && options.outcome) {
+    if (native && (options.outcome || options.progress)) {
       link.hidden = true; link.dataset.piikDownload = "";
       link.addEventListener("piik-native-download", result);
       view.addEventListener("pagehide", close, { once: true });
       options.signal?.addEventListener("abort", close, { once: true });
       owner.body.append(link);
-      options.outcome("requested");
+      options.outcome?.("requested");
     }
     options.signal?.throwIfAborted();
     link.click();

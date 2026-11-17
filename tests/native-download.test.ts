@@ -23,9 +23,9 @@ function fixture(native = true, origin = "https://owned.test", globals = true) {
   const owner = { defaultView: view, createElement: () => new Anchor(),
     body: { append: (link: Anchor) => anchors.push(link) }, querySelectorAll: () => anchors };
   if (globals) { vi.stubGlobal("window", view); vi.stubGlobal("document", owner); }
-  const report = (url: string, status: string) => runInNewContext("(" + reportScript + ")", {
+  const report = (url: string, status: string | { status: "progress"; received: number; total: number | null }) => runInNewContext("(" + reportScript + ")", {
     window: view, document: owner, URL, CustomEvent,
-  })(url, status);
+  })(url, typeof status === "string" ? { status } : status);
   return { view, document: owner as unknown as Document, clicked, anchors, create, revoke, report };
 }
 
@@ -101,4 +101,41 @@ test("an adopted attachment uses its current document and window when bytes arri
   home.report(url, "saved"); expect(files.status(key).outcome).toBe("requested");
   pip.report(url, "started"); pip.report(url, "saved"); expect(files.status(key).outcome).toBe("saved");
   expect(home.anchors).toEqual([]); expect(pip.anchors).toEqual([]); files.reset();
+});
+
+
+test("system save progress follows verified content and retires with its own retry", async () => {
+  const f = fixture(), files = new ChannelAttachments(async () => {}, async () => {});
+  const file = { id: "progress", name: "owned.txt", size: 8, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
+  const key = { roomId: "owned", messageSeq: 1, attachmentId: file.id };
+  let received!: (file: File) => void;
+  vi.spyOn(files, "content").mockImplementationOnce(() => new Promise(resolve => { received = resolve; }))
+    .mockResolvedValue(new File(["verified"], file.name));
+  const receiving = files.download(key, file);
+  expect(files.status(key)).toEqual({ busy: true, error: null });
+  expect(f.clicked).toHaveLength(0);
+  received(new File(["verified"], file.name)); await receiving;
+  const first = f.clicked[0].href;
+  f.report(first, "started");
+  for (const progress of [{ received: 0, total: null }, { received: 0, total: 8 }, { received: 4, total: 8 }, { received: 0, total: 8 }, { received: 8, total: 8 }]) {
+    f.report(first, { status: "progress", ...progress });
+    expect(files.status(key)).toMatchObject({ busy: false, error: null, outcome: "started", saveProgress: progress });
+    expect(files.progress(key)).toBeNull();
+  }
+  f.report(first, "failed");
+  expect(files.status(key)).toMatchObject({ outcome: "failed", error: "download_failed", saveProgress: undefined });
+  await files.download(key, file);
+  const next = f.clicked[1].href;
+  f.report(first, { status: "progress", received: 8, total: 8 }); f.report(first, "saved");
+  expect(files.status(key).outcome).toBe("requested");
+  f.report(next, "started"); f.report(next, { status: "progress", received: 8, total: 8 });
+  expect(files.status(key).outcome).toBe("started");
+  f.report(next, "saved");
+  expect(files.status(key)).toMatchObject({ outcome: "saved", error: null, saveProgress: undefined });
+  expect(f.anchors).toHaveLength(0);
+  await files.download(key, file); const cancelled = f.clicked[2].href;
+  f.report(cancelled, "cancelled");
+  f.report(cancelled, { status: "progress", received: 8, total: 8 });
+  expect(files.status(key).outcome).toBe("cancelled");
+  files.reset();
 });

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { downloadBlob, type DownloadOutcome } from "../lib/download";
+import { downloadBlob, type DownloadOutcome, type DownloadProgress } from "../lib/download";
 import { FileStore, type FileScope, type FileRetentionLimits, type RetainedFile } from "./file-store";
 import { loadRoomHosting } from "./hosting";
 import type { AttachmentHash, FileDelivery } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
@@ -27,7 +27,7 @@ interface Sink {
 }
 export interface AttachmentProgress { received: number; total: number; state: "waiting" | "connecting" | "waiting-source" | "receiving" | "finishing" }
 interface PendingSink { ready: Promise<Sink>; consumers: Set<symbol>; progress: AttachmentProgress }
-interface Download { controller: AbortController; promise: Promise<void>; status: { busy: boolean; error: string | null; outcome?: DownloadOutcome } }
+interface Download { controller: AbortController; promise: Promise<void>; status: { busy: boolean; error: string | null; outcome?: DownloadOutcome; saveProgress?: DownloadProgress } }
 interface Source { key: ChannelFileKey; attachment: ChannelAttachment; file: File; status: typeof idle; retained: boolean }
 const idle: Download["status"] = { busy: false, error: null };
 const keyOf = (key: ChannelFileKey) => JSON.stringify([key.roomId, key.messageSeq, key.attachmentId]);
@@ -281,7 +281,12 @@ export class ChannelAttachments {
       download.controller.signal.throwIfAborted();
       downloadBlob(file, attachment.name, { document: surface?.ownerDocument, signal: download.controller.signal, outcome: outcome => {
         if (this.downloads.get(id) !== download) return;
-        download.status = { busy: false, error: outcome === "failed" ? "download_failed" : null, outcome };
+        download.status = { busy: false, error: outcome === "failed" ? "download_failed" : null, outcome,
+          saveProgress: outcome === "started" ? download.status.saveProgress : undefined };
+        this.changed();
+      }, progress: saveProgress => {
+        if (this.downloads.get(id) !== download) return;
+        download.status = { busy: false, error: null, outcome: "started", saveProgress };
         this.changed();
       } });
     })
