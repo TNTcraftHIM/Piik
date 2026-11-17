@@ -78,16 +78,19 @@ export class ChannelConversation {
     if (!host) throw new Error("room_host_offline");
     const replies = await host.dispatchPeer(packet, Date.now());
     const { signer } = await this.ready();
-    const send = async (reply: ConversationReply) => {
+    const isCurrent = (reply: ConversationReply) => {
       const current = this.options.context();
-      if (!current.connected || current.sessionId !== sessionId
-        || current.state?.channel.rooms.find(room => room.id === reply.roomId)?.delivery?.bindingId !== reply.bindingId) return;
+      return this.options.host(reply.roomId) === host && current.connected && current.sessionId === sessionId
+        && current.state?.channel.rooms.find(room => room.id === reply.roomId)?.delivery?.bindingId === reply.bindingId;
+    };
+    const send = async (reply: ConversationReply) => {
+      if (!isCurrent(reply)) return;
       this.options.send(JSON.parse(signer.sign(sessionId, JSON.stringify(reply))), reply.requestId);
     };
     const broadcasts: ConversationReply[] = [];
     for (const reply of replies) {
       const record = JSON.parse(runtime.conversation_broadcast(JSON.stringify(reply.record))) as ConversationReply["record"] | null;
-      if (record) for (const recipient of await host.currentReaders()) if (recipient !== reply.recipient) {
+      if (record && isCurrent(reply)) for (const recipient of await host.currentReaders()) if (recipient !== reply.recipient) {
         broadcasts.push({ ...reply, recipient, record });
       }
     }

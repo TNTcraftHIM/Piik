@@ -76,10 +76,11 @@ test("signed conversation uses Domain delivery without peers and still fences si
     const { command: _command, ...address } = JSON.parse(packet.payload);
     return [{ ...address, sender: host, recipient: sender, record: { type: "history_end", count: 0, hasMore: false, oldestSeq: null, before: null } }];
   });
+  const roomHost = { dispatchPeer } as unknown as HostedRoom;
   const reader = new ChannelConversation({ context: () => ({ sessionId: sender, state, connected: true }),
     host: () => undefined, file: vi.fn(), reply: received, send: packet => { requests.push(packet); } });
   const owner = new ChannelConversation({ context: () => ({ sessionId: host, state, connected: true }),
-    host: () => ({ dispatchPeer } as unknown as HostedRoom), file: vi.fn(), reply: vi.fn(), send: packet => { replies.push(packet); } });
+    host: () => roomHost, file: vi.fn(), reply: vi.fn(), send: packet => { replies.push(packet); } });
   state.sessions = [{ id: host, userId: host, online: true, signingKey: await owner.initialize() },
     { id: sender, userId: sender, online: true, signingKey: await reader.initialize() }];
   try {
@@ -100,6 +101,39 @@ test("signed conversation uses Domain delivery without peers and still fences si
     expect(dispatchPeer).toHaveBeenCalledOnce();
     expect(state.pairs).toEqual([]);
   } finally { owner.close(); reader.close(); }
+});
+
+test("retiring a room during a conversation commit does not read or broadcast from its released host", async () => {
+  const state = { channel: { rooms: [{ id: "room", delivery: { bindingId: "binding", hostSessionId: "host" } }] } } as ChannelSnapshot;
+  const record: ConversationReply["record"] = { type: "reaction", nonce: 1,
+    event: { id: "event", occurredAt: 1000, senderUserId: "user", reaction: "heart", target: { type: "message", messageSeq: 1 } }, snapshot: null };
+  let finish!: (replies: ConversationReply[]) => void;
+  const committed = new Promise<ConversationReply[]>(resolve => { finish = resolve; });
+  let began!: () => void;
+  const committing = new Promise<void>(resolve => { began = resolve; });
+  const currentReaders = vi.fn(() => { throw new Error("released room"); });
+  const host = { dispatchPeer: vi.fn(() => { began(); return committed; }), currentReaders } as unknown as HostedRoom;
+  let hosted: HostedRoom | undefined = host;
+  const send = vi.fn();
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
+    createSessionSigner: async () => ({ signing_key: () => new Uint8Array(32), sign: vi.fn(), free: vi.fn() }),
+    verify_conversation: (json: string) => JSON.stringify(JSON.parse(JSON.parse(json).payload)),
+    conversation_broadcast: () => JSON.stringify(record),
+  } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const conversation = new ChannelConversation({ context: () => ({ sessionId: "host", state, connected: true }),
+    host: () => hosted, send, file: vi.fn(), reply: vi.fn() });
+  const address = { roomId: "room", bindingId: "binding", sender: "source", recipient: "host", requestId: "request" };
+  try {
+    await conversation.initialize();
+    const received = conversation.receive({ sender: "source", signature: [1], payload: JSON.stringify({ ...address,
+      command: { type: "react", nonce: 1, target: record.event!.target, reaction: "heart" } }) });
+    await committing;
+    hosted = undefined;
+    finish([{ ...address, sender: "host", recipient: "source", record }]);
+    await expect(received).resolves.toBeUndefined();
+    expect(currentReaders).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  } finally { conversation.close(); }
 });
 
 test('typed room controls dispatch watch ranges independently of attachment controls', async () => {
