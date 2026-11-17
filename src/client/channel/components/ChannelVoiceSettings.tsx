@@ -26,7 +26,7 @@ export function ChannelVoiceSettings({ channel, roomId, available }: { channel: 
     </span>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={t("voice.settings")} className="lr-anchored-card c3-voice-settings"
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
-      <strong>{t("voice.settings")}</strong>
+      <strong>{t("voice.settings.sharedMicrophone")}</strong>
       <MicrophoneSettings host={false} enabled={enabled} disabled={!available || busy}
         loadDevices={channel.microphones} deviceId={channel.voiceInput.deviceId} onDevice={deviceId => configure({ deviceId })}
         volume={channel.voiceInput.volume} onVolume={channel.setInputVolume}

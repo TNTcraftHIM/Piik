@@ -1,3 +1,4 @@
 .c3-voice-settings { width: min(360px, calc(100vw - 16px)); max-height: calc(100dvh - 24px); padding: 16px; overflow-y: auto; }
 .c3-voice-settings > strong { display: block; margin-bottom: 14px; font-size: var(--control-label-size); }
 .c3-voice-settings > p { margin: 6px 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.c3-voice-settings .lr-switch-item .lr-cap { white-space: normal; }

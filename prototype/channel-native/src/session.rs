@@ -17,7 +17,10 @@ use piik_channel_core::{
 };
 use piik_channel_core::{
     host::{RoomResult, RoomSummary},
-    wire::{Command, Event, Kind, PublicationInput, RoomAccess, Snapshot, VideoSettings},
+    wire::{
+        Command, Event, Kind, PublicationInput, Room, RoomAccess, RoomDelivery, Snapshot,
+        VideoSettings,
+    },
     RoomState, RECOVERY_MS,
 };
 use std::sync::Arc;
@@ -441,14 +444,18 @@ impl PendingCapture {
     }
 }
 
-fn capture_binding(state: &Snapshot, room_id: &str) -> Option<Uuid> {
-    state
+// Current operations require availability; retained CaptureScope authority does not.
+fn available_room<'a>(state: &'a Snapshot, room_id: &str) -> Option<(&'a Room, &'a RoomDelivery)> {
+    let room = state
         .channel
         .rooms
         .iter()
-        .find(|room| room.id == room_id && room.authorized && room.available)
-        .and_then(|room| room.delivery.as_ref())
-        .map(|delivery| delivery.binding_id)
+        .find(|room| room.id == room_id && room.authorized && room.available)?;
+    Some((room, room.delivery.as_ref()?))
+}
+
+fn capture_binding(state: &Snapshot, room_id: &str) -> Option<Uuid> {
+    available_room(state, room_id).map(|(_, delivery)| delivery.binding_id)
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -971,18 +978,9 @@ impl Session {
             .as_ref()
             .ok_or_else(|| anyhow!("hosting_unavailable"))?;
         let snapshot = live.room.snapshot.borrow();
-        let room = snapshot
+        let (room, binding) = snapshot
             .as_ref()
-            .and_then(|s| {
-                s.channel
-                    .rooms
-                    .iter()
-                    .find(|r| r.id == room_id && r.authorized && r.available)
-            })
-            .ok_or_else(|| anyhow!("room_unavailable"))?;
-        let binding = room
-            .delivery
-            .as_ref()
+            .and_then(|state| available_room(state, room_id))
             .ok_or_else(|| anyhow!("room_unavailable"))?;
         Ok(RelayCapacityState {
             room_id: room_id.into(),

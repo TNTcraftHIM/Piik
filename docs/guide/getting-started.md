@@ -64,14 +64,32 @@ site, not the entry for this test version.
 
 - **Local network:** for friends on the same LAN or virtual LAN. If several
   invitation addresses are offered, choose the interface they can reach.
-- **Public invite:** for friends elsewhere. It creates a temporary Internet
-  address while App is running. Send a new link if that address changes.
+- **Public invite:** for friends elsewhere. **Automatic** creates a temporary
+  Cloudflare address while App is running; send a new link if it changes.
+  **Existing address** uses [your own HTTPS proxy](#use-an-existing-public-address).
 
 Local invitations use HTTPS. After starting **Local network**, return to the
 App launcher and expand **Local connection details** below **Open Piik** to
 read the address and certificate fingerprint. Compare it with the browser's
 certificate before accepting its first warning; see the
 [certificate steps](./troubleshooting.md#local-https-certificate-warning).
+
+### Use an existing public address
+
+If you already operate frp or another HTTPS reverse proxy:
+
+1. Before starting the site, select **Public invite → Existing address**. Enter
+   your HTTPS site address without a path, query or invitation fragment.
+2. Forward its HTTP and WebSocket traffic to the displayed **Local forwarding
+   target**, initially `http://127.0.0.1:8787`. Run frpc on the same computer as
+   App; do not forward the separate App management/discovery port.
+3. Configure the domain and trusted certificate in your proxy; see
+   [frp's HTTPS-to-HTTP example](https://gofrp.org/en/docs/examples/https2http/).
+   Keep App and the proxy running, then copy invitations from the room UI.
+
+If you change **Site port**, update the proxy target too. This provides the site
+and chat connection. Picture, voice and peer file transfers still need their
+own [connections](./network.md); the HTTP tunnel does not provide those paths.
 
 ### Invite friends
 
