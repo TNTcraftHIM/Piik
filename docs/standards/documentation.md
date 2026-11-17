@@ -50,6 +50,15 @@ publication. General symptoms and report collection belong to the troubleshootin
 guide; browser/network connection procedures belong to the network guide.
 Introductions and the general guide link to those procedures rather than duplicate them.
 
+## Requirement Language
+
+Use [BCP 14](https://datatracker.ietf.org/doc/html/bcp14) when a specification or
+project rule needs explicit distinctions between obligations, recommendations
+and optional behavior. The [RFC 2119 skill](../../.agents/skills/rfc2119/SKILL.md)
+provides the writing method. Plain-language rules retain their existing force;
+introducing keywords does not change an accepted requirement or decision owner.
+Guides and product copy keep their ordinary reader-facing language.
+
 ## Updating A Rule
 
 1. Locate the rule's owner and establish the design from the product contract,
