@@ -714,6 +714,7 @@ impl Deadline {
 struct Reader {
     key: TrackKey,
     track: String,
+    stream: String,
     task: JoinHandle<()>,
 }
 
@@ -2146,7 +2147,7 @@ impl Driver {
         let retired: Vec<_> = p
             .tasks
             .iter()
-            .filter(|(id, reader)| !keep.contains(id) || reader.task.is_finished())
+            .filter(|(id, _)| !keep.contains(id))
             .map(|(id, _)| *id)
             .collect();
         for id in retired {
@@ -2786,30 +2787,35 @@ impl Driver {
     }
     async fn source_ended(&mut self, pair: Uuid, key: TrackKey, reader: Uuid) {
         // An old active source may end while its replacement is awaiting a first
-        // packet. Only the latest, still-declared reader can invalidate its lease.
+        // packet. Reader ownership exists before its queued SourceReady is consumed.
         let source = self
             .sources
             .values()
             .find_map(|source| match &source.origin {
                 SourceOrigin::Incoming {
+                    pair: current_pair,
+                    flow_id,
                     reader: current,
-                    stream,
                     ..
-                } if *current == reader => Some((source.id, stream)),
+                } if *current_pair == pair
+                    && *flow_id == key.0
+                    && source.kind == key.1
+                    && *current == reader => Some(source.id),
                 _ => None,
             });
         let assigned_latest = self.pairs.get(&pair).and_then(|p| {
+            let current = p.tasks.get(&reader)?;
             p.plan
                 .incoming
                 .iter()
                 .find(|flow| {
                     flow.id == key.0
+                        && current.key == key
                         && p.latest.get(&key) == Some(&reader)
-                        && source.is_some_and(|(_, stream)| p.remote.get(stream) == Some(&flow.id))
+                        && p.remote.get(&current.stream) == Some(&flow.id)
                 })
                 .copied()
         });
-        let source = source.map(|(id, _)| id);
         if let Some(p) = self.pairs.get_mut(&pair) {
             if p.latest.get(&key) == Some(&reader) {
                 p.latest.remove(&key);
@@ -2820,8 +2826,7 @@ impl Driver {
             }
         }
         if let Some(source) = source {
-            let current = self.sources.remove(&source).unwrap();
-            let publication = current.publication_id;
+            self.sources.remove(&source);
             self.relay.remove(source);
             for p in self.pairs.values_mut() {
                 let retired: Vec<_> = p
@@ -2834,21 +2839,21 @@ impl Driver {
                     p.outputs.remove(&key).unwrap().close(&p.pc).await;
                 }
             }
-            if assigned_latest.is_some_and(|flow| {
-                !flow.selected
-                    || key.1 == MediaKind::Video
-                    || self
-                        .publications
-                        .get(&publication)
-                        .is_some_and(|p| p.kind == piik_channel_core::wire::Kind::Voice)
-            }) {
-                self.send(Command::FlowState {
-                    flow_id: key.0,
-                    pair_id: pair,
-                    state: FlowState::Failed,
-                })
-                .await;
-            }
+        }
+        if assigned_latest.is_some_and(|flow| {
+            !flow.selected
+                || key.1 == MediaKind::Video
+                || self
+                    .publications
+                    .get(&flow.publication_id)
+                    .is_some_and(|p| p.kind == piik_channel_core::wire::Kind::Voice)
+        }) {
+            self.send(Command::FlowState {
+                flow_id: key.0,
+                pair_id: pair,
+                state: FlowState::Failed,
+            })
+            .await;
         }
     }
     async fn event(&mut self, event: Event) -> Result<()> {
@@ -3106,7 +3111,7 @@ impl Driver {
             origin: SourceOrigin::Incoming {
                 pair: id,
                 flow_id,
-                stream,
+                stream: stream.clone(),
                 reader,
             },
             kind,
@@ -3130,7 +3135,7 @@ impl Driver {
         let ready_sources = self.ready_sources.clone();
         let relay = self.relay.clone();
         let events = self.events.clone();
-        p.tasks.retain(|_, reader| !reader.task.is_finished());
+        // A finished reader still owns its queued terminal event until Driver handles it.
         let task = tokio::spawn(async move {
             let mut first = true;
             let mut input_codec = codec;
@@ -3392,6 +3397,7 @@ impl Driver {
             Reader {
                 key,
                 track: track_id,
+                stream,
                 task,
             },
         );

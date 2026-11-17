@@ -36,7 +36,7 @@ if (window.piikNativeWindow && window.ipc) {
 
   function report(): void {
     scheduled = false;
-    const appearance = JSON.stringify(windowAppearance(root, integrated ? modalMaterial() : null));
+    const appearance = JSON.stringify(windowAppearance(root, modalMaterial()));
     if (appearance !== previousAppearance) {
       ipc.postMessage(appearance);
       previousAppearance = appearance;
@@ -66,9 +66,10 @@ if (window.piikNativeWindow && window.ipc) {
     if (!scheduled) { scheduled = true; requestAnimationFrame(report); }
   }
 
-  new MutationObserver(schedule).observe(root, integrated ? { subtree: true, childList: true,
-    attributes: true, attributeFilter: ["class", "hidden", "data-layout", "data-theme", "lang", "open"] }
-    : { attributes: true, attributeFilter: ["data-theme", "lang"] });
+  new MutationObserver(schedule).observe(root, { subtree: true, childList: true,
+    attributes: true, attributeFilter: integrated
+      ? ["class", "hidden", "data-layout", "data-theme", "lang", "open", "data-modal-material"]
+      : ["data-theme", "lang", "open", "data-modal-material"] });
   if (integrated) {
     addEventListener("resize", schedule);
     addEventListener("scroll", schedule, { capture: true, passive: true });

@@ -53,14 +53,17 @@ test("native appearance follows the selected locale when the document language c
   }
 });
 
-test("system-decorated App windows report the same document appearance without custom caption geometry", async () => {
+test("standalone App captions follow their document's modal material without integrated geometry", async () => {
   const messages: unknown[] = [];
   const root = { lang: "en", dataset: { theme: "dark" } as Record<string, string>, style: { setProperty: vi.fn() } };
+  let dialogs: string[] = [];
   let changed: () => void = () => {};
   vi.stubGlobal("window", { piikNativeWindow: "system", ipc: {
     postMessage: (message: string) => messages.push(JSON.parse(message)),
   } });
-  vi.stubGlobal("document", { documentElement: root });
+  vi.stubGlobal("document", { documentElement: root,
+    querySelectorAll: () => dialogs.map(material => ({ getAttribute: () => material })),
+  });
   vi.stubGlobal("MutationObserver", class {
     constructor(callback: () => void) { changed = callback; }
     observe() {}
@@ -73,4 +76,24 @@ test("system-decorated App windows report the same document appearance without c
   root.dataset.theme = "light";
   changed();
   expect(messages.at(-1)).toEqual({ kind: "appearance", theme: "light", language: "en", material: null });
+  dialogs = ["surface"];
+  changed();
+  expect(messages.at(-1)).toEqual({ kind: "appearance", theme: "light", language: "en", material: "surface" });
+  dialogs.push("image");
+  changed();
+  expect(messages.at(-1)).toEqual({ kind: "appearance", theme: "light", language: "en", material: "image" });
+  root.dataset.theme = "dark";
+  root.lang = "zh";
+  changed();
+  expect(messages.at(-1)).toEqual({ kind: "appearance", theme: "dark", language: "zh", material: "image" });
+  dialogs.pop();
+  changed();
+  expect(messages.at(-1)).toEqual({ kind: "appearance", theme: "dark", language: "zh", material: "surface" });
+  dialogs = [];
+  changed();
+  expect(messages.at(-1)).toEqual({ kind: "appearance", theme: "dark", language: "zh", material: null });
+  const count = messages.length;
+  changed();
+  expect(messages).toHaveLength(count);
+  expect(messages.every(message => (message as { kind: string }).kind === "appearance")).toBe(true);
 });

@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-11-16
+Last updated: 2026-11-17
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -16,9 +16,9 @@ Cloudflared helper. Work stays on `feat/channel-prototype`, separately from 2.x.
 Matched Windows App and Linux x64 Server candidates have been delivered for
 internal testing; their receipts identify the protocol and shared frontend. Windows includes
 the integrated system-WebView window and custom device permission prompts; both
-packages passed their scoped runtime acceptance. A matching Android development
-package passes signing, architecture and shared-Web checks; runtime acceptance
-remains open.
+packages passed their scoped runtime acceptance. Android's earlier development
+package passed signing, architecture and shared-Web checks; rebuilding it for
+the current private protocol and runtime acceptance remain open.
 Exact revisions and receipts stay with the immutable packages, and
 [verification status](./verification-status.md) records their tested scope.
 

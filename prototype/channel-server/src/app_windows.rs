@@ -159,7 +159,7 @@ enum ServiceEvent {
     Finished,
     PopupClosed(WindowId),
     PopupPresentation(WindowId, popup::Message),
-    PopupAppearance(WindowId, Theme, Language),
+    PopupAppearance(WindowId, Theme, Language, Option<ModalMaterial>),
     Download(WindowId, String, download::Status),
     Permission,
     PermissionReady(WindowId),
@@ -309,8 +309,8 @@ impl MainWindow {
                         .with_ipc_handler(move |request| {
                             if let Ok(message) = serde_json::from_str::<popup::Message>(request.body()) {
                                 let _ = presentation.send_event(ServiceEvent::PopupPresentation(id, message));
-                            } else if let Ok(ContentMessage::Appearance { theme, language, .. }) = serde_json::from_str(request.body()) {
-                                let _ = presentation.send_event(ServiceEvent::PopupAppearance(id, theme, language));
+                            } else if let Ok(ContentMessage::Appearance { theme, language, material }) = serde_json::from_str(request.body()) {
+                                let _ = presentation.send_event(ServiceEvent::PopupAppearance(id, theme, language, material));
                             }
                         })
                         .build_as_child(window.as_ref())?;
@@ -648,9 +648,9 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                     }
                 }
             }
-            Event::UserEvent(ServiceEvent::PopupAppearance(id, theme, language)) => {
+            Event::UserEvent(ServiceEvent::PopupAppearance(id, theme, language, material)) => {
                 if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == id) {
-                    child.caption.appearance(&theme, language, None);
+                    child.caption.appearance(&theme, language, material);
                     child.window.set_theme(Some(match theme {
                         Theme::Light => tao::window::Theme::Light,
                         Theme::Dark => tao::window::Theme::Dark,

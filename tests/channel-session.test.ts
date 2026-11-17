@@ -5389,7 +5389,7 @@ async function receiveScreen(fixture: Awaited<ReturnType<typeof screenFixture>>,
   fixture.pc.ontrack?.({ streams: [stream] });
 }
 
-test("an audio-first screen waits for decoded video on a currently connected transport", async () => {
+test.each(["initial", "replacement", "proved replacement"])("an audio-first %s screen waits for decoded video on a currently connected transport", async stage => {
   const fixture = await screenFixture();
   const { media, session, pc, sent } = fixture;
   vi.useFakeTimers();
@@ -5399,6 +5399,25 @@ test("an audio-first screen waits for decoded video on a currently connected tra
   const pending = new Promise<RTCStatsReport>(done => { resolve = done; });
   const getStats = vi.fn().mockReturnValueOnce(pending).mockResolvedValue(decodedReport(2));
   try {
+    if (stage !== "initial") {
+      const previous = remoteTrack("video");
+      const previousStats = stage === "proved replacement"
+        ? vi.fn().mockResolvedValueOnce(decodedReport(1)).mockResolvedValue(decodedReport(2))
+        : async () => decodedReport(0);
+      pc.receivers = [{ track: previous, getStats: previousStats } as RTCRtpReceiver];
+      await receiveScreen(fixture, remoteStream("previous-screen", [previous]));
+      if (stage === "proved replacement") {
+        await vi.advanceTimersByTimeAsync(100);
+        expect(sent).toContainEqual({ type: "flow_state", flowId: "screen-flow", pairId: "pair", state: "decoded" });
+        sent.length = 0;
+      }
+      const apply = pc.setRemoteDescription.bind(pc);
+      vi.spyOn(pc, "setRemoteDescription").mockImplementationOnce(async description => {
+        Object.defineProperty(previous, "readyState", { value: "ended" });
+        previous.dispatchEvent(new Event("ended"));
+        await apply(description);
+      });
+    }
     await receiveScreen(fixture, stream);
     stream.dispatchEvent(new Event("removetrack"));
     expect(sent.filter(command => command.type === "flow_state")).toEqual([]);
@@ -5415,6 +5434,36 @@ test("an audio-first screen waits for decoded video on a currently connected tra
     expect(sent.filter(command => command.type === "flow_state")).toEqual([
       { type: "flow_state", flowId: "screen-flow", pairId: "pair", state: "decoded" },
     ]);
+  } finally { media.reset(); session.close(); }
+});
+
+test("a video ending before its first decoded proof fails only its assigned flow", async () => {
+  const fixture = await screenFixture();
+  const { media, session, state, pc, sent, changed } = fixture;
+  const video = remoteTrack("video"), voice = remoteTrack("audio");
+  const picture = remoteStream("picture", [video]), sibling = remoteStream("voice", [voice]);
+  state.publications.push({ audience: [], id: "sibling-voice", roomId: "first", sessionId: "z", userId: "other", kind: "voice", paused: false });
+  state.pairs[0].incoming.push({ id: "voice-flow", publicationId: "sibling-voice", selected: true, inputFlowId: null });
+  state.subscriptions = ["screen", "sibling-voice"];
+  media.update("a", state);
+  pc.receivers = [{ track: video, getStats: async () => decodedReport(0) } as RTCRtpReceiver];
+  try {
+    media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "picture-and-voice" }, tracks: [
+      { flowId: "screen-flow", streamId: picture.id }, { flowId: "voice-flow", streamId: sibling.id },
+    ] });
+    await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("picture-and-voice"));
+    pc.ontrack?.({ streams: [picture, sibling] });
+    await Promise.resolve();
+    expect(sent.filter(command => command.type === "flow_state" && command.flowId === "screen-flow")).toEqual([]);
+
+    Object.defineProperty(video, "readyState", { value: "ended" });
+    video.dispatchEvent(new Event("ended"));
+    expect(sent.filter(command => command.type === "flow_state" && command.state === "failed")).toEqual([
+      { type: "flow_state", pairId: "pair", flowId: "screen-flow", state: "failed" },
+    ]);
+    expect(pc.close).not.toHaveBeenCalled(); expect(voice.stop).not.toHaveBeenCalled();
+    expect(changed.mock.calls.at(-1)?.[0].get("sibling-voice")).toBe(sibling);
+    expect(changed.mock.calls.at(-1)?.[0].has("screen")).toBe(false);
   } finally { media.reset(); session.close(); }
 });
 

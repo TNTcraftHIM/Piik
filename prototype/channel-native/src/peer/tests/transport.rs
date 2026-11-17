@@ -1,6 +1,238 @@
 use super::*;
 
 #[tokio::test]
+async fn source_ended_before_ready_fails_only_its_current_flow() -> Result<()> {
+    use crate::{
+        media::MediaKind,
+        peer::{
+            tests::{
+                driver,
+                support::{video_payloads, vp8},
+            },
+            NativeEvent, Pair,
+        },
+    };
+    use piik_channel_core::wire::{
+        Command as WireCommand, FlowBinding, FlowState, Kind, PublicationInfo,
+    };
+
+    let (mut driver, mut events, mut reports, _stop) = driver();
+    let (ready, mut sources) = mpsc::channel(8);
+    driver.ready_sources = ready;
+    let pair = Uuid::new_v4();
+    let (commands, receiver) = mpsc::channel(1);
+    drop(receiver); // Exercise Driver/Track queues without constructing a network engine.
+    let pc = Transport {
+        pair,
+        instance: Uuid::new_v4(),
+        tx: commands,
+    };
+    let state = Arc::new(AtomicU8::new(PeerState::Connected as u8));
+    let data = crate::data::DataLink::new(pair, state.clone(), driver.events.clone());
+    let (demand, _) = watch::channel(BandwidthDemand {
+        minimum_bps: 0,
+        desired_bps: Some(0),
+    });
+    let (_, bandwidth) = watch::channel(Estimate::Startup(0.0));
+    let screen = Uuid::new_v4();
+    let voice = Uuid::new_v4();
+    let flows = [(screen, Kind::Screen), (voice, Kind::Voice)].map(|(publication, kind)| {
+        driver.publications.insert(
+            publication,
+            PublicationInfo {
+                screen: (kind == Kind::Screen).then(|| piik_channel_core::wire::ScreenInfo {
+                    source: Default::default(),
+                    title: None,
+                }),
+                id: publication,
+                room_id: "room".into(),
+                session_id: Uuid::new_v4(),
+                user_id: Uuid::new_v4(),
+                kind,
+                paused: false,
+                audience: vec![],
+                video_settings: None,
+            },
+        );
+        FlowBinding {
+            id: Uuid::new_v4(),
+            publication_id: publication,
+            input_flow_id: None,
+            selected: true,
+        }
+    });
+    driver.pairs.insert(
+        pair,
+        Pair {
+            plan: piik_channel_core::wire::PairInfo {
+                id: pair,
+                peer_id: Uuid::new_v4(),
+                rooms: vec![],
+                incoming: flows.to_vec(),
+                outgoing: vec![],
+                udp_preparation: None,
+                can_receive_video_layers: false,
+            },
+            pc: pc.clone(),
+            mapping: None,
+            polite: true,
+            pending_offer: None,
+            stable_outputs: None,
+            failed_offer: None,
+            answer: None,
+            negotiate: false,
+            ignore_offer: false,
+            candidates: vec![],
+            remote: HashMap::from([
+                ("screen".into(), flows[0].id),
+                ("voice".into(), flows[1].id),
+            ]),
+            latest: HashMap::new(),
+            outputs: HashMap::new(),
+            rejected_outputs: HashMap::new(),
+            reports: Default::default(),
+            bandwidth,
+            demand,
+            tasks: HashMap::new(),
+            dc: None,
+            bulk: None,
+            input: None,
+            data,
+            state,
+            dc_open: false,
+            base_failed: false,
+            reported: HashSet::new(),
+            deadline: None,
+            overflow: Arc::new(AtomicBool::new(false)),
+        },
+    );
+    let track = |stream: &str, kind, codec: RtpCodec| {
+        let (send, receive) = mpsc::channel(8);
+        (
+            Track {
+                transport: pc.clone(),
+                mid: "0".into(),
+                stream: stream.into(),
+                id: format!("{stream}-track"),
+                kind,
+                rids: vec![],
+                first_ssrc: 1,
+                first_codec: RtpCodecParameters {
+                    rtp_codec: codec,
+                    payload_type: 96,
+                },
+                packets: Arc::new(tokio::sync::Mutex::new(receive)),
+                encodings: Default::default(),
+                reports: Arc::new(Mutex::new(HashMap::from([(
+                    1,
+                    (
+                        SourceClockReport {
+                            ssrc: 1,
+                            ntp_time: 0,
+                            rtp_time: 0,
+                        },
+                        Instant::now(),
+                    ),
+                )]))),
+            },
+            send,
+        )
+    };
+    let packet = |payload, sequence, marker| rtp::Packet {
+        header: rtp::header::Header {
+            version: 2,
+            ssrc: 1,
+            timestamp: 3000,
+            sequence_number: sequence,
+            marker,
+            ..Default::default()
+        },
+        payload,
+    };
+    let result = tokio::time::timeout(Duration::from_secs(2), async {
+        let (audio, audio_packets) = track("voice", MediaKind::Audio, crate::peer::codec());
+        driver.track(pair, audio).await?;
+        audio_packets.send(TrackEvent::Rtp(packet(vec![0xf8, 0xff, 0xfe].into(), 1, true), 1, 3000, crate::peer::codec())).await?;
+        let audio = sources.recv().await.context("voice source")?;
+        let audio_id = audio.source.id;
+        driver.source_ready(audio).await;
+        let audio_reader = driver.pairs[&pair].latest[&(flows[1].id, MediaKind::Audio)];
+        while reports.try_recv().is_ok() {}
+
+        let (video, video_packets) = track("screen", MediaKind::Video, vp8());
+        driver.track(pair, video).await?;
+        let key = (flows[0].id, MediaKind::Video);
+        let reader = driver.pairs[&pair].latest[&key];
+        let payloads = video_payloads(&vp8(), 1, true)?;
+        let count = payloads.len();
+        for (index, payload) in payloads.into_iter().enumerate() {
+            video_packets.send(TrackEvent::Rtp(packet(payload, index as u16 + 1, index + 1 == count), index as u64 + 1, 3000, vp8())).await?;
+        }
+        video_packets.send(TrackEvent::End).await?;
+        let ended = events.recv().await.context("reader terminal event")?;
+        ensure!(matches!(ended, Event::SourceEnded { pair: ended_pair, key: ended_key, reader: ended_reader }
+            if ended_pair == pair && ended_key == key && ended_reader == reader));
+        ensure!(sources.len() == 1 && driver.sources.len() == 1, "Ready must remain queued when End is consumed");
+        while !driver.pairs[&pair].tasks[&reader].task.is_finished() {
+            tokio::task::yield_now().await;
+        }
+        // Unrelated Track/plan work must not forget a queued terminal event's owner.
+        let (companion, companion_packets) = track("screen", MediaKind::Audio, crate::peer::codec());
+        driver.track(pair, companion).await?;
+        let plan = driver.pairs[&pair].plan.clone();
+        driver.apply_pair(plan).await?;
+        driver.event(ended).await?;
+        let ready = sources.recv().await.context("queued video Ready")?;
+        let ended_source = ready.source.id;
+        driver.source_ready(ready).await;
+        driver.event(Event::SourceEnded { pair, key, reader }).await?;
+
+        ensure!(!driver.sources.contains_key(&ended_source), "late Ready revived its ended reader");
+        ensure!(driver.pairs[&pair].connected() && driver.pairs[&pair].pc.instance == pc.instance);
+        ensure!(!driver.pairs[&pair].latest.contains_key(&key) && !driver.pairs[&pair].tasks.contains_key(&reader));
+        ensure!(driver.sources.contains_key(&audio_id) && driver.pairs[&pair].latest[&(flows[1].id, MediaKind::Audio)] == audio_reader);
+        // An unready selected screen-audio reader is optional to its picture.
+        companion_packets.send(TrackEvent::End).await?;
+        driver.event(events.recv().await.context("companion audio end")?).await?;
+        // A source declaration can change before a successor has produced a Track.
+        let (old, old_packets) = track("screen", MediaKind::Video, vp8());
+        driver.track(pair, old).await?;
+        old_packets.send(TrackEvent::End).await?;
+        let old_end = events.recv().await.context("withdrawn stream end")?;
+        let current = driver.pairs.get_mut(&pair).unwrap();
+        current.remote.remove("screen");
+        current.remote.insert("replacement".into(), flows[0].id);
+        driver.event(old_end).await?;
+        // An older reader's queued End cannot retire a newer reader on the same flow.
+        let (old, old_packets) = track("replacement", MediaKind::Video, vp8());
+        driver.track(pair, old).await?;
+        old_packets.send(TrackEvent::End).await?;
+        let old_end = events.recv().await.context("superseded reader end")?;
+        let (next, _next_packets) = track("replacement", MediaKind::Video, vp8());
+        driver.track(pair, next).await?;
+        let next_reader = driver.pairs[&pair].latest[&key];
+        driver.event(old_end).await?;
+        ensure!(driver.pairs[&pair].latest[&key] == next_reader && driver.pairs[&pair].tasks.contains_key(&next_reader));
+        let (received, mut packets) = mpsc::channel(1);
+        driver.relay.set(audio_id, vec![received]);
+        audio_packets.send(TrackEvent::Rtp(packet(vec![0xf8, 0xff, 0xfe].into(), 2, true), 2, 3960, crate::peer::codec())).await?;
+        ensure!(packets.recv().await.is_some(), "sibling voice reader stopped");
+        let reports: Vec<_> = std::iter::from_fn(|| reports.try_recv().ok()).collect();
+        ensure!(matches!(reports.as_slice(), [NativeEvent::Command(WireCommand::FlowState {
+            pair_id, flow_id, state: FlowState::Failed,
+        })] if *pair_id == pair && *flow_id == key.0), "ended current video must report one scoped failure before Ready");
+        Ok(())
+    }).await.unwrap_or_else(|error| Err(error.into()));
+    for (_, pair) in std::mem::take(&mut driver.pairs) {
+        crate::peer::close_pair(pair).await;
+    }
+    driver.files.close().await;
+    driver.watches.close().await;
+    driver.transport.close().await;
+    result
+}
+
+#[tokio::test]
 async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()> {
     use crate::peer::{tests::driver, Pair, Reader};
     use std::future::Future;
@@ -73,6 +305,7 @@ async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()>
                 Reader {
                     key: (Uuid::new_v4(), MediaKind::Video),
                     track: "retiring".into(),
+                    stream: "retiring".into(),
                     task: reader,
                 },
             )]),
