@@ -198,6 +198,13 @@ owns adaptation behavior and recovery measurements.
 
 ### Windows And Android
 
+Windows software H264 processing adaptation has a controlled encoding and
+independent decoding check: an injected encode-stage delay produced a lower
+resolution through the existing policy, while preserved slow-consumer timings
+did not trigger it. The final shared H264/VP8 timing path passes codec, preference
+and recovery checks. These results do not establish improved game performance,
+physical GPU-overload detection or automatic hardware/software switching.
+
 The packaged endpoint-setting flow retains independent webpage and Native App
 overrides after reopening settings. With room default 1, webpage override 0 and
 Native host override 3, three synthetic voice participants established three ready

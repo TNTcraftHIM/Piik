@@ -5,6 +5,7 @@ import { Glyph } from "../../ui/icons";
 import { CaptureSourceCard } from "../../components/living/CaptureSourceCard";
 import type { WatchIndexedChoice, WatchMpdChoice } from "../types";
 import { formatMediaTime } from "../../media/media-time";
+import { mediaLanguageLabel } from "../../media/media-language";
 
 import type { NativePageMpdSelection } from "../../native/wire";
 
@@ -50,10 +51,8 @@ function WatchMpdTrackPicker({ choice, onConfirm, ...props }: {
   choice: WatchMpdChoice; disabled?: boolean; busy?: boolean; mainPlayback?: boolean; onConfirm(selection: NativePageMpdSelection): void;
 }) {
   const { lang, t } = useCopy();
-  const languages = new Intl.DisplayNames([lang], { type: "language" });
   const tracks = choice.catalog?.tracks.map(track => {
-    let language = track.language && track.language !== "und" ? track.language : "";
-    try { if (language) language = languages.of(language) ?? language; } catch { /* Keep an unrecognized source label literal. */ }
+    const language = mediaLanguageLabel(track.language, lang);
     return { id: track.id, kind: track.kind,
     name: track.label || choice.candidate.name || t("watch.video"),
     label: [track.width && track.height ? `${track.width} × ${track.height}` : undefined, language,

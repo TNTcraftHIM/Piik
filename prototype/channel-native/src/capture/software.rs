@@ -113,6 +113,7 @@ pub(super) fn run(
     let started = Instant::now();
     let mut policy = QualityPolicy::new(codec, settings.degradation_preference, 0);
     let requested_max = (timing == FrameTiming::Capture).then_some(settings.fps);
+    let mut usage = super::software_usage::SoftwareUsage::new(requested_max.unwrap_or(30), 0);
     let mut frame_limit = requested_max;
     let mut cadence = Cadence::new(settings.fps);
     let mut admission_rate = AdmissionRate::default();
@@ -193,6 +194,7 @@ pub(super) fn run(
         let next_limit = policy.restrictions().frame_rate_limit(requested_max);
         if next_limit != frame_limit {
             frame_limit = next_limit;
+            usage.target_frame_rate(frame_limit.unwrap_or(30));
             cadence = Cadence::new(frame_limit.unwrap_or(settings.fps));
             if frame_limit.is_some() {
                 cadence.accept(qpc);
@@ -247,6 +249,11 @@ pub(super) fn run(
             context.Map(staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))?;
             let length = mapped.RowPitch as usize * current.height as usize * 3 / 2;
             let pixels = slice::from_raw_parts(mapped.pData.cast(), length);
+            let input = Input {
+                pixels: current.width * current.height,
+                fps: admission_rate.fps.unwrap_or(0.0).round() as u32,
+            };
+            let usage_id = usage.started(input, started.elapsed().as_micros() as i64, &mut policy);
             let unit = encoder.encode(
                 pixels,
                 mapped.RowPitch as usize,
@@ -256,6 +263,14 @@ pub(super) fn run(
                     .max(1.0) as u32,
                 force,
             );
+            if unit.as_ref().is_ok_and(|unit| unit.is_some()) {
+                usage.completed(
+                    usage_id,
+                    input,
+                    started.elapsed().as_micros() as i64,
+                    &mut policy,
+                );
+            }
             context.Unmap(staging, 0);
             unit?
         };
@@ -295,6 +310,13 @@ mod tests {
                 };
                 let mut encoder = Encoder::new(codec, settings)?;
                 let mut pixels = vec![128; pitch * height as usize * 3 / 2];
+                let epoch = Instant::now();
+                let mut usage = super::super::software_usage::SoftwareUsage::new(30, 0);
+                let mut policy = QualityPolicy::new(codec, settings.degradation_preference, 0);
+                let input = Input {
+                    pixels: width * height,
+                    fps: 30,
+                };
                 for index in 0..12 {
                     if index == 6 {
                         encoder.set_bitrate(150_000)?;
@@ -304,6 +326,7 @@ mod tests {
                             pixels[y * pitch + x] = (32 + (x + y + index * 11) % 190) as u8;
                         }
                     }
+                    let id = usage.started(input, epoch.elapsed().as_micros() as i64, &mut policy);
                     let unit = encoder
                         .encode(
                             &pixels,
@@ -313,6 +336,7 @@ mod tests {
                             index == 0 || index == 6,
                         )?
                         .unwrap();
+                    usage.completed(id, input, epoch.elapsed().as_micros() as i64, &mut policy);
                     assert_eq!(unit.keyframe, index == 0 || index == 6);
                     assert_eq!(unit.vp8.is_some(), codec == VideoCodec::Vp8);
                     assert!(unit.qp.is_some(), "{codec:?} lacks quality feedback");

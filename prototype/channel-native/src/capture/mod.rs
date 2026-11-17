@@ -37,6 +37,8 @@ mod converter;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod decoder;
 #[cfg(any(feature = "capture", test))]
+mod encode_usage;
+#[cfg(any(feature = "capture", test))]
 mod frame_dropper;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod frames;
@@ -64,6 +66,8 @@ mod qp;
 mod sdr;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod software;
+#[cfg(all(feature = "capture", target_os = "windows"))]
+mod software_usage;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod vp8;
 #[cfg(all(feature = "capture", target_os = "windows"))]

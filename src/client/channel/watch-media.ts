@@ -8,6 +8,7 @@ import { WatchDashMedia, canReadWatchDash } from "./watch-dash-media";
 import { WatchHlsTimeline } from "./watch-hls-timeline";
 
 export interface WatchLiveWindow { active: boolean; seekable: [number, number][]; syncPosition: number | null }
+export interface WatchAudioTrack { id: number; name: string; language?: string; channels?: string; selected: boolean }
 export interface WatchMediaState {
   position: number;
   paused: boolean;
@@ -19,7 +20,7 @@ export interface WatchMediaState {
   live?: WatchLiveWindow;
 }
 export type WatchMediaPatch = Partial<Pick<WatchMediaState, "position" | "paused" | "rate">>;
-export type WatchMediaEvent = "loadedmetadata" | "loadeddata" | "play" | "playing" | "pause" | "seeked" | "ratechange" | "ended" | "waiting" | "error" | "blocked" | "closed";
+export type WatchMediaEvent = "loadedmetadata" | "loadeddata" | "play" | "playing" | "pause" | "seeked" | "ratechange" | "ended" | "waiting" | "error" | "blocked" | "closed" | "audiotracks";
 
 /** Local player access only. Domain clocks and shared playback belong to WatchPlayer. */
 export type WatchPresentation = { kind: "video"; element: HTMLVideoElement }
@@ -29,11 +30,14 @@ export type WatchPresentation = { kind: "video"; element: HTMLVideoElement }
 export interface WatchMedia {
   readonly page?: AppPagePort | null;
   readonly retainedByteSource?: WatchByteSource;
+  audioAvailable?(): boolean | undefined;
   readonly presentation?: WatchPresentation;
   readonly seekTolerance?: number;
   readonly seekEvents?: boolean;
   playbackAvailable?(): boolean;
   playbackRates?(): readonly number[];
+  audioTracks?(): readonly WatchAudioTrack[];
+  selectAudioTrack?(id: number): void;
   waitForPresentation?(signal: AbortSignal): Promise<void>;
   read(): Promise<WatchMediaState>;
   patch(value: WatchMediaPatch): Promise<void>;
@@ -144,6 +148,8 @@ export class HTMLVideoMedia implements WatchMedia {
       const hls = this.hls = new Hls({ backBufferLength: 30, liveDurationInfinity: true, lowLatencyMode: false,
         ...(peerRead && { loader: createWatchHlsLoader(peerRead, this.lifetime.signal) }) });
       this.hlsTimeline = new WatchHlsTimeline(hls, this.timeline);
+      for (const event of [Hls.Events.AUDIO_TRACKS_UPDATED, Hls.Events.AUDIO_TRACK_SWITCHING, Hls.Events.AUDIO_TRACK_SWITCHED])
+        hls.on(event, () => this.video.dispatchEvent(new Event("audiotracks")));
       hls.on(Hls.Events.ERROR, (_event, error) => {
         if (!error.fatal || this.lifetime.signal.aborted) return;
         const failure = watchHlsFailure(error, !!peerRead);
@@ -195,9 +201,10 @@ export class HTMLVideoMedia implements WatchMedia {
     }
     catch (error) { this.dispose(); throw error; }
   }
+  audioAvailable(): boolean | undefined { return this.dash?.audioAvailable(); }
   listen(changed: (event: WatchMediaEvent) => void): () => void {
     const lifetime = new AbortController();
-    for (const event of ["loadedmetadata", "loadeddata", "play", "playing", "pause", "seeked", "ratechange", "ended", "waiting", "error", "blocked", "closed"] as const)
+    for (const event of ["loadedmetadata", "loadeddata", "play", "playing", "pause", "seeked", "ratechange", "ended", "waiting", "error", "blocked", "closed", "audiotracks"] as const)
       this.video.addEventListener(event, () => changed(event), { signal: lifetime.signal });
     return () => lifetime.abort();
   }
@@ -205,6 +212,15 @@ export class HTMLVideoMedia implements WatchMedia {
     if (this.lifetime.signal.aborted) return;
     this.dispose();
     this.video.dispatchEvent(new Event("closed"));
+  }
+  audioTracks(): readonly WatchAudioTrack[] {
+    return this.hls?.audioTracks.map((track, id) => ({ id, name: track.name, language: track.lang,
+      channels: track.channels, selected: id === this.hls!.audioTrack })) ?? [];
+  }
+  selectAudioTrack(id: number): void {
+    if (this.lifetime.signal.aborted || !Number.isInteger(id) || !this.hls?.audioTracks[id]) return;
+    const { name, lang, assocLang, characteristics, channels, audioCodec } = this.hls.audioTracks[id];
+    this.hls.setAudioOption({ name, lang, assocLang, characteristics, channels, audioCodec, flushImmediate: true });
   }
   private dispose(): void {
     if (this.lifetime.signal.aborted) return;

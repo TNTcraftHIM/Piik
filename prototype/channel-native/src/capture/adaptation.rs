@@ -6,6 +6,7 @@
  * BalancedDegradationSettings at 3710345e71ad3a7c1f4ed4efef152fd4fc24869a.
  * Sources, scope and BSD licensing: native/third_party/webrtc-adaptation/.
  */
+use super::encode_usage::UsageSignal;
 use super::{DegradationPreference as Mode, Settings, VideoCodec as Codec};
 
 const MIN_PIXELS: u32 = 320 * 180;
@@ -57,6 +58,7 @@ enum AdaptationStatus {
     Valid,
     LimitReached,
     AwaitingPreviousAdaptation,
+    InsufficientInput,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -189,6 +191,12 @@ struct Adaptation {
     fps_adaptations: u32,
 }
 
+#[derive(Default)]
+struct ProcessingRestriction {
+    adaptation: Adaptation,
+    awaiting_size: Option<(bool, u32)>,
+}
+
 /// One policy belongs to one encoding with trusted codec QP when present.
 /// MaintainResolution disables this quality resource, as in the upstream manager;
 /// detail keeps its existing FrameDropper. Retire the policy with its worker.
@@ -204,6 +212,7 @@ pub(super) struct QualityPolicy {
     adaptation: Adaptation,
     // Like upstream, the wait is directional: reversing an adaptation is allowed.
     awaiting_size: Option<(bool, u32)>,
+    processing: Option<ProcessingRestriction>,
 }
 
 impl QualityPolicy {
@@ -218,6 +227,7 @@ impl QualityPolicy {
             next_check_ms: start_ms + SAMPLE_PERIOD_MS,
             adaptation: Adaptation::default(),
             awaiting_size: None,
+            processing: None,
         }
     }
 
@@ -245,7 +255,46 @@ impl QualityPolicy {
     }
 
     pub fn restrictions(&self) -> Restrictions {
-        self.adaptation.restrictions
+        let quality = self.adaptation.restrictions;
+        let Some(processing) = &self.processing else {
+            return quality;
+        };
+        let processing = processing.adaptation.restrictions;
+        let minimum = |a: Option<u32>, b: Option<u32>| match (a, b) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+        Restrictions {
+            max_pixels: minimum(quality.max_pixels, processing.max_pixels),
+            target_pixels: minimum(
+                quality.target_pixels.or(quality.max_pixels),
+                processing.target_pixels.or(processing.max_pixels),
+            ),
+            max_fps: minimum(quality.max_fps, processing.max_fps),
+        }
+    }
+
+    // The caller owns the detector; this owner alone publishes restrictions.
+    pub fn report_processing(&mut self, usage: UsageSignal, input: Input) {
+        if matches!(usage, UsageSignal::Underuse) && self.processing.is_none() {
+            return;
+        }
+        let state = self
+            .processing
+            .get_or_insert_with(ProcessingRestriction::default);
+        Self::adapt(
+            self.mode,
+            match usage {
+                UsageSignal::Overuse => QpUsage::High,
+                UsageSignal::Underuse => QpUsage::Low,
+            },
+            input,
+            &mut state.adaptation,
+            &mut state.awaiting_size,
+        );
+        if state.adaptation.resolution_adaptations == 0 && state.adaptation.fps_adaptations == 0 {
+            self.processing = None;
+        }
     }
 
     /// Perform one due check, then schedule relative to this call's time, as a
@@ -262,7 +311,13 @@ impl QualityPolicy {
                 if usage == QpUsage::High {
                     self.fast_rampup = false;
                 }
-                self.adapt(usage, input);
+                Self::adapt(
+                    self.mode,
+                    usage,
+                    input,
+                    &mut self.adaptation,
+                    &mut self.awaiting_size,
+                );
                 // Upstream clears after reporting usage even if adaptation is blocked.
                 self.drops.reset();
                 self.qp_high.reset();
@@ -302,11 +357,20 @@ impl QualityPolicy {
         QpUsage::Normal
     }
 
-    fn adapt(&mut self, usage: QpUsage, input: Input) -> AdaptationStatus {
+    fn adapt(
+        mode: Mode,
+        usage: QpUsage,
+        input: Input,
+        adaptation: &mut Adaptation,
+        awaiting_size: &mut Option<(bool, u32)>,
+    ) -> AdaptationStatus {
+        // VideoStreamAdapter::HasSufficientInputForAdaptation.
+        if mode == Mode::MaintainResolution && input.fps < 2 {
+            return AdaptationStatus::InsufficientInput;
+        }
         let increasing = usage == QpUsage::Low;
-        if let Some((awaiting_increase, previous_pixels)) = self
-            .awaiting_size
-            .filter(|_| self.mode == Mode::MaintainFramerate)
+        if let Some((awaiting_increase, previous_pixels)) =
+            (*awaiting_size).filter(|_| mode == Mode::MaintainFramerate)
         {
             if increasing == awaiting_increase
                 && if increasing {
@@ -320,20 +384,20 @@ impl QualityPolicy {
         }
 
         let step = if increasing {
-            self.up(input, self.adaptation)
+            Self::up(mode, input, *adaptation)
         } else {
-            self.down(input, self.adaptation).and_then(|next| {
+            Self::down(mode, input, *adaptation).and_then(|next| {
                 // AdaptIfFpsDiffInsufficient retries once from the proposed state.
                 // If the second step fails, upstream discards the first proposal.
-                if self.mode == Mode::Balanced
-                    && next.fps_adaptations > self.adaptation.fps_adaptations
+                if mode == Mode::Balanced
+                    && next.fps_adaptations > adaptation.fps_adaptations
                     && input.fps > 0
                     && balanced_min_fps_diff(input.pixels).is_some_and(|minimum| {
                         i64::from(input.fps) - i64::from(next.restrictions.max_fps.unwrap())
                             < i64::from(minimum)
                     })
                 {
-                    self.down(input, next)
+                    Self::down(mode, input, next)
                 } else {
                     Ok(next)
                 }
@@ -343,19 +407,32 @@ impl QualityPolicy {
             Ok(next) => next,
             Err(status) => return status,
         };
-        let old_pixels = self.adaptation.restrictions.max_pixels.unwrap_or(UNLIMITED);
+        let old_pixels = adaptation.restrictions.max_pixels.unwrap_or(UNLIMITED);
         let new_pixels = next.restrictions.max_pixels.unwrap_or(UNLIMITED);
-        self.awaiting_size = match new_pixels.cmp(&old_pixels) {
+        *awaiting_size = match new_pixels.cmp(&old_pixels) {
             std::cmp::Ordering::Greater => Some((true, input.pixels)),
             std::cmp::Ordering::Less => Some((false, input.pixels)),
             std::cmp::Ordering::Equal => None,
         };
-        self.adaptation = next;
+        *adaptation = next;
         AdaptationStatus::Valid
     }
 
-    fn down(&self, input: Input, mut state: Adaptation) -> Result<Adaptation, AdaptationStatus> {
-        if self.mode == Mode::Balanced {
+    fn down(
+        mode: Mode,
+        input: Input,
+        mut state: Adaptation,
+    ) -> Result<Adaptation, AdaptationStatus> {
+        if mode == Mode::MaintainResolution {
+            let wanted = (input.fps * 2 / 3).max(2);
+            if wanted >= state.restrictions.max_fps.unwrap_or(UNLIMITED) {
+                return Err(AdaptationStatus::LimitReached);
+            }
+            state.restrictions.max_fps = Some(wanted);
+            state.fps_adaptations += 1;
+            return Ok(state);
+        }
+        if mode == Mode::Balanced {
             let wanted = balanced_min_fps(input.pixels);
             if wanted < state.restrictions.max_fps.unwrap_or(UNLIMITED) {
                 state.restrictions.max_fps = Some(wanted.max(2));
@@ -373,8 +450,21 @@ impl QualityPolicy {
         Ok(state)
     }
 
-    fn up(&self, input: Input, mut state: Adaptation) -> Result<Adaptation, AdaptationStatus> {
-        if self.mode == Mode::Balanced {
+    fn up(mode: Mode, input: Input, mut state: Adaptation) -> Result<Adaptation, AdaptationStatus> {
+        if mode == Mode::MaintainResolution {
+            let wanted = if state.fps_adaptations == 1 {
+                UNLIMITED
+            } else {
+                input.fps * 3 / 2
+            };
+            if wanted <= state.restrictions.max_fps.unwrap_or(UNLIMITED) {
+                return Err(AdaptationStatus::LimitReached);
+            }
+            state.restrictions.max_fps = (wanted != UNLIMITED).then_some(wanted);
+            state.fps_adaptations -= 1;
+            return Ok(state);
+        }
+        if mode == Mode::Balanced {
             let mut wanted = balanced_max_fps(input.pixels);
             // Upstream preserves one up step per prior down step when the next
             // FPS setting is unlimited but several FPS adaptations remain.

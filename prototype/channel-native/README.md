@@ -30,6 +30,9 @@ still requires an independent encoded frame. This choice belongs to the capture
 and all its encodings, including child-process replacement. Remote forwarding
 uses the receiving device's own encoding policy. Software H264 and VP8 share
 one synchronous scheduling, adaptation and NV12 readback owner.
+Their measured encoding time also feeds the shared quality policy, which adjusts
+pixels or frame rate according to the selected preference. The measurement ends
+before output delivery and does not represent GPU-copy or network pressure.
 Demand-driven GPU handoff preserves the source's presentation clock and copies the texture into
 the child's private resource before encoding. An unread encoding rests on its
 bounded output queue without continuing GPU transfers. The Encoding owner stops

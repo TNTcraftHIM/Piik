@@ -18,6 +18,8 @@
 .c3-watch-rate { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .c3-watch-rate > span { min-width: 0; }
 .c3-watch-rate .lr-select { flex: none; min-width: 76px; width: auto; }
+.c3-watch-audio { display: grid; gap: 6px; }
+.c3-watch-audio .lr-select { width: 100%; min-width: 0; }
 .c3-mini-message .c3-watch-result { flex-direction: column; max-width: min(360px, calc(100% - 24px)); text-align: center; }
 .c3-monitor-tile:not(.is-thumbnail) > .c3-watch-player:is([data-external], [data-failed]) { min-height: 240px; }
 .c3-watch-player:is([data-external], [data-failed]) .c3-mini-message { inset: 88px 12px 64px; }

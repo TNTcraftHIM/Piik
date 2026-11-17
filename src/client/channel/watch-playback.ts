@@ -47,6 +47,7 @@ export class WatchPlayer {
       if (event === "error") void this.mediaError();
       if (event === "playing") { this.blocked = false; this.changed(); }
       if (event === "blocked") { this.blocked = true; this.changed(); }
+      if (event === "audiotracks") this.changed();
       if (event === "loadedmetadata") void this.align(true);
       if (owner && ["play", "playing", "pause", "seeked", "ratechange", "ended"].includes(event))
         void this.publish(event === "playing").catch(() => {

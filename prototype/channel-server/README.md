@@ -428,6 +428,8 @@ The App sends the original encoded bytes through the room's peer paths;
 the [website verification record](../../docs/verification-status.md) records current limits.
 The sharer controls play, pause, position and speed. Each viewer controls local
 sound and can stop watching independently.
+When an HLS source offers multiple audio tracks, playback settings let each
+participant choose their own audio without changing the shared progress.
 
 When the selected player exposes an independently usable media address, Browser
 viewers load it directly from the source. If it cannot play there, **Watch in App**

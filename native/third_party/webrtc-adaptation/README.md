@@ -16,16 +16,28 @@ is a semantic port at WebRTC commit
 - `video/adaptation/quality_scaler_resource.cc` owns optional-QP reporting:
   missing QP supplies no sample, while actual encoder/media-optimization drops
   can still trigger adaptation.
+- `video/adaptation/overuse_frame_detector.{h,cc}` and
+  `video/adaptation/encode_usage_resource.{h,cc}` own the default software
+  processing-usage window, 42/85 thresholds and overuse/recovery hysteresis.
+  The Rust port selects SendProcessingUsage1, without field-trial estimator2.
 
 Each Windows/Android encoding worker owns one policy, its applied size/cadence
-and real encoder feedback. The existing FrameDropper remains the byte-budget
+and real encoder feedback. Synchronous Windows software H264/VP8 workers also
+measure admitted encode work through successful completion, before output waits;
+conversion/readback and downstream waiting are outside that interval. One policy
+combines QP and processing restrictions; each worker drops its timing state at
+retirement. Maintain-framerate adjusts pixels, maintain-resolution adjusts FPS,
+and balanced uses the same upstream restriction rules. Hardware/other asynchronous
+encoders do not provide processing-usage feedback. The existing FrameDropper remains the byte-budget
 owner. User settings, transport allocations and capture/source timestamps retain
 their existing owners; QP and automatic restrictions do not make a new IPC loop.
 
 The port selects those defaults explicitly and uses a monotonic caller tick in
 place of TaskQueue scheduling. It omits field-trial parsing, unused QP arithmetic
-averages/media-only drop windows, CPU adaptation, encoder-specific bitrate-limit
-tables and multi-resource arbitration. Upstream balanced defaults and recovery
+averages/media-only drop windows, encoder-specific bitrate-limit tables and the
+general ResourceAdaptationProcessor. Software usage checks are due after 100 ms,
+then every 5 s, on the existing worker's admission/completion callbacks; blocked
+workers do not synthesize catch-up checks. Upstream balanced defaults and recovery
 hysteresis are retained. This is not the complete WebRTC sender pipeline.
 
 The pinned C++ implementation and Rust candidate matched across VP8/H264,

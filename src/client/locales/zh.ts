@@ -462,6 +462,7 @@ export const zh = {
   "watch.following": "播放进度由分享者控制，音量只影响你自己。",
   "watch.failed": "无法播放此视频。请检查直链是否可用，或重新加入。",
   "watch.waiting": "正在准备视频",
+  "watch.audioTrack": "我听的音轨",
   "watch.resume": "开始本地播放",
   "watch.live": "直播中",
   "watch.liveEnded": "已结束",

@@ -77,6 +77,10 @@ export class WatchDashMedia {
       throw dashFailure(error);
     }
   }
+  audioAvailable(): boolean | undefined {
+    const track = this.player?.getVariantTracks().find(track => track.active);
+    return track ? track.audioId !== null || !!track.audioCodec : undefined;
+  }
   close(): void {
     if (this.closed) return;
     this.closed = true;

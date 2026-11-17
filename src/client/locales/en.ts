@@ -464,6 +464,7 @@ export const en: Record<CopyKey, string> = {
   "watch.following": "Playback follows the sharer. Volume only affects you.",
   "watch.failed": "This video could not play. Check the direct URL or leave and rejoin.",
   "watch.waiting": "Preparing video",
+  "watch.audioTrack": "Audio track for me",
   "watch.resume": "Start local playback",
   "watch.live": "Live",
   "watch.liveEnded": "Ended",

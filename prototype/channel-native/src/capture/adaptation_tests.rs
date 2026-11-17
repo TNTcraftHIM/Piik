@@ -178,3 +178,142 @@ fn balanced_rejects_the_whole_proposal_when_its_second_step_hits_the_floor() {
         (0, 0)
     );
 }
+
+#[test]
+fn processing_recovery_cannot_release_quality_restrictions_and_vice_versa() {
+    let mut policy = QualityPolicy::new(Codec::H264, Mode::MaintainFramerate, 0);
+    samples(&mut policy, 45, 0);
+    policy.tick(
+        2_000,
+        Input {
+            pixels: 230_400,
+            fps: 30,
+        },
+    );
+    assert_eq!(policy.restrictions().max_pixels, Some(138_240));
+    policy.report_processing(
+        UsageSignal::Overuse,
+        Input {
+            pixels: 138_240,
+            fps: 30,
+        },
+    );
+    assert_eq!(policy.restrictions().max_pixels, Some(82_944));
+    samples(&mut policy, 10, 6_000);
+    policy.tick(
+        7_000,
+        Input {
+            pixels: 82_944,
+            fps: 30,
+        },
+    );
+    assert_eq!(
+        policy.restrictions().max_pixels,
+        Some(82_944),
+        "QP recovery released processing constraint"
+    );
+    policy.report_processing(
+        UsageSignal::Underuse,
+        Input {
+            pixels: 82_944,
+            fps: 30,
+        },
+    );
+    assert_eq!(policy.restrictions(), Restrictions::default());
+
+    samples(&mut policy, 45, 11_000);
+    policy.tick(
+        12_000,
+        Input {
+            pixels: 230_400,
+            fps: 30,
+        },
+    );
+    policy.report_processing(
+        UsageSignal::Overuse,
+        Input {
+            pixels: 138_240,
+            fps: 30,
+        },
+    );
+    policy.report_processing(
+        UsageSignal::Underuse,
+        Input {
+            pixels: 82_944,
+            fps: 30,
+        },
+    );
+    assert_eq!(
+        policy.restrictions().max_pixels,
+        Some(138_240),
+        "processing recovery released QP constraint"
+    );
+}
+
+#[test]
+fn processing_uses_the_requested_degradation_preference() {
+    for (mode, pixels, fps) in [
+        (Mode::MaintainFramerate, Some(138_240), None),
+        (Mode::MaintainResolution, None, Some(20)),
+        (Mode::Balanced, None, Some(15)),
+    ] {
+        let mut policy = QualityPolicy::new(Codec::H264, mode, 0);
+        policy.report_processing(
+            UsageSignal::Overuse,
+            Input {
+                pixels: 230_400,
+                fps: 30,
+            },
+        );
+        assert_eq!(
+            (
+                policy.restrictions().max_pixels,
+                policy.restrictions().max_fps
+            ),
+            (pixels, fps)
+        );
+        policy.report_processing(
+            UsageSignal::Underuse,
+            Input {
+                pixels: pixels.unwrap_or(230_400),
+                fps: fps.unwrap_or(30),
+            },
+        );
+        assert_eq!(policy.restrictions(), Restrictions::default());
+    }
+    let mut detail = QualityPolicy::new(Codec::H264, Mode::MaintainResolution, 0);
+    detail.report_processing(
+        UsageSignal::Overuse,
+        Input {
+            pixels: 230_400,
+            fps: 0,
+        },
+    );
+    assert_eq!(detail.restrictions(), Restrictions::default());
+    for (input, maximum) in [(30, 20), (20, 13)] {
+        detail.report_processing(
+            UsageSignal::Overuse,
+            Input {
+                pixels: 230_400,
+                fps: input,
+            },
+        );
+        assert_eq!(detail.restrictions().max_fps, Some(maximum));
+    }
+    detail.report_processing(
+        UsageSignal::Underuse,
+        Input {
+            pixels: 230_400,
+            fps: 13,
+        },
+    );
+    assert_eq!(detail.restrictions().max_fps, Some(19));
+    detail.report_processing(
+        UsageSignal::Underuse,
+        Input {
+            pixels: 230_400,
+            fps: 19,
+        },
+    );
+    assert_eq!(detail.restrictions(), Restrictions::default());
+}

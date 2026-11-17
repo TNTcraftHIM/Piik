@@ -27,6 +27,7 @@ import type { WatchPlayer } from "../watch-playback";
 import type { WatchPlayback } from "../protocol";
 import { channelErrorPresentation } from "../error-presentation";
 import { formatMediaTime } from "../../media/media-time";
+import { mediaLanguageLabel } from "../../media/media-language";
 
 export interface WatchReceiving {
   peerAvailable: boolean; peerSupported: boolean; mode: "direct" | "peer"; browserSource: boolean;
@@ -42,7 +43,7 @@ export function WatchPeerAction({ receiving }: { receiving: WatchReceiving }) {
     : <small>{t("watch.forward.secure")}</small>;
 }
 
-function WatchPlaybackSettings({ receiving, playback, children }: { receiving?: WatchReceiving; children?: ReactNode; playback?: {
+function WatchPlaybackSettings({ receiving, playback, children, audioAvailable = true }: { receiving?: WatchReceiving; children?: ReactNode; audioAvailable?: boolean; playback?: {
   rate: number; rates: readonly number[]; disabled: boolean; onRate(rate: number): void;
 } }) {
   const { t } = useCopy();
@@ -54,7 +55,8 @@ function WatchPlaybackSettings({ receiving, playback, children }: { receiving?: 
         <select className="lr-select" aria-label={t("watch.rate")} value={playback.rate} disabled={playback.disabled}
           onChange={event => playback.onRate(Number(event.target.value))}>
           {playback.rates.map(rate => <option key={rate} value={rate}>{rate}×</option>)}
-        </select></label> : <p>{t("watch.following")}</p>}
+        </select></label> : audioAvailable && <p>{t("watch.following")}</p>}
+      {!audioAvailable && <p>{t("playback.noAudio")}</p>}
       {receiving && <><b>{t("watch.forward.viewing")}</b><p>{t("watch.forward.receiveHelp")}</p>
       {receiving.peerSupported ? <Btn icon="share" title="watch.forward.peer" cap="watch.forward.peer" size="compact"
         pressed={receiving.mode === "peer"} disabled={!receiving.peerAvailable || receiving.disabled || receiving.pending
@@ -76,12 +78,16 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   receiving?: WatchReceiving;
   automaticPlayback?: boolean;
 }) {
-  const { t } = useCopy();
+  const { lang, t } = useCopy();
   const slot = useRef<HTMLDivElement>(null), controls = useRef<HTMLDivElement>(null);
   const videoRef = useMemo(() => ({ current: player.video }), [player]);
   const controlsId = useId();
   const surface = player.presentation, embedded = surface.kind === "embed";
+  const audioTracks = player.media.audioTracks?.() ?? [];
+  const audioOptions = audioTracks.map(track => ({ ...track, label: [mediaLanguageLabel(track.language, lang) || track.name,
+    track.channels ? t("watch.forward.channels", { count: track.channels }) : undefined].filter(Boolean).join(" · ") }));
   const preparing = player.waitingForPicture;
+  const audioAvailable = player.media.audioAvailable?.() !== false;
   const [htmlMedia, setMedia] = useState({ position: 0, duration: 0, volume: 1, muted: false, rate: 1 });
   const live = player.mediaState?.live;
   const media = player.video && !live ? htmlMedia : { position: player.mediaState?.position ?? 0, duration: player.mediaState?.duration ?? 0,
@@ -196,16 +202,22 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       </div>}
       {!embedded && localControls && <span className="lr-viewer-action-separator" aria-hidden="true" />}
       {localControls && <div className="c3-watch-local">
-        {player.video ? <>
+        {player.video && audioAvailable ? <>
           <Btn icon={media.muted || !media.volume ? "speakerOff" : "speaker"} quiet size="dense" title={media.muted ? "playback.unmute" : "playback.mute"}
             onClick={() => { const video = player.video; if (!video) return; const silent = video.muted || !video.volume; if (silent && !video.volume) video.volume = 1; video.muted = !silent; }} />
         <input className="c3-mini-volume" type="range" min={0} max={100} step={1} value={media.muted ? 0 : Math.round(media.volume * 100)}
           aria-label={t("playback.volumeBasic")} aria-valuetext={`${media.muted ? 0 : Math.round(media.volume * 100)}%`}
           onChange={event => { if (player.video) { player.video.volume = Number(event.target.value) / 100; player.video.muted = false; } }} />
         </> : null}
-        {(owned && !embedded || receivingSettings || player.video) && <WatchPlaybackSettings receiving={receivingSettings}
+        {(owned && !embedded || receivingSettings || player.video) && <WatchPlaybackSettings receiving={receivingSettings} audioAvailable={audioAvailable}
           playback={owned && !embedded ? { rate: media.rate, rates: player.media.playbackRates?.() ?? [0.5, 0.75, 1, 1.25, 1.5, 2], disabled,
             onRate: rate => onPlayback({ rate }) } : undefined}>
+          {audioTracks.length > 0 && <label className="c3-watch-audio"><span>{t("watch.audioTrack")}</span>
+            <select className="lr-select" aria-label={t("watch.audioTrack")} value={audioTracks.find(track => track.selected)?.id ?? ""} disabled={audioTracks.length === 1}
+              onChange={event => player.media.selectAudioTrack?.(Number(event.target.value))}>
+              {audioOptions.map(track => <option key={track.id} value={track.id}>{audioOptions.some(other => other.id !== track.id && other.label === track.label)
+                ? `${track.label} — ${track.name}` : track.label}</option>)}
+            </select></label>}
           {owned && player.media.page && <Btn icon="window" quiet title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />}
           {windowControls && <div className="c3-watch-settings-window">{windowControls}</div>}
         </WatchPlaybackSettings>}

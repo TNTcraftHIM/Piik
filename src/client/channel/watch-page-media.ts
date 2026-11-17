@@ -42,9 +42,12 @@ export class PageSuppliedMedia implements WatchMedia {
     // Original play/pause/seek events are deliberately not room playback events.
     this.unlisten = page.listen(event => { if (event === "closed") this.close(); });
   }
+  audioAvailable(): boolean | undefined { return this.media.audioAvailable(); }
   read(): Promise<WatchMediaState> { return this.media.read(); }
   patch(value: WatchMediaPatch): Promise<void> { return this.media.patch(value); }
   ready(signal: AbortSignal): Promise<void> { return this.media.ready(signal); }
+  audioTracks() { return this.media.audioTracks(); }
+  selectAudioTrack(id: number): void { this.media.selectAudioTrack(id); }
   listen(changed: (event: WatchMediaEvent) => void): () => void { return this.media.listen(changed); }
   close(): void {
     if (this.closed) return;
