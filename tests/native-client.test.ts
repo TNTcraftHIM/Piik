@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import * as nativeDebug from "../src/client/lib/debug";
 
 import { discoverNativeConnect, discoverNativeHealth, NativeClient, NativeCompatibilityError, notifyNativePresentation } from "../src/client/native/client";
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
@@ -19,6 +20,8 @@ import {
   receiveAnswerResponseSchema,
   requestFailedResponseSchema,
 } from "../src/client/native/wire";
+
+beforeEach(() => { vi.stubGlobal("document", { visibilityState: "visible" }); });
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -536,6 +539,8 @@ describe("native App private wire", () => {
   });
 
   it("notifies the owner once on an unexpected close and stays silent on cleanup", async () => {
+    const debug = vi.spyOn(nativeDebug, "debugEvent");
+    vi.stubGlobal("document", { visibilityState: "hidden" });
     const sockets: FakeWebSocket[] = [];
     const token = "a".repeat(43);
     let failureCode = "operation-failed";
@@ -574,7 +579,7 @@ describe("native App private wire", () => {
 
       emitUnexpectedClose(): void {
         this.readyState = FakeWebSocket.CLOSED;
-        this.dispatchEvent(new Event("close"));
+        this.dispatchEvent(Object.assign(new Event("close"), { code: 1006, wasClean: false, reason: "private close reason" }));
       }
     }
     vi.stubGlobal("WebSocket", FakeWebSocket);
@@ -626,6 +631,7 @@ describe("native App private wire", () => {
     sockets[0]!.emitUnexpectedClose();
     sockets[0]!.emitUnexpectedClose();
     expect(unexpected).toHaveBeenCalledOnce();
+    expect(debug).toHaveBeenCalledWith("native", "closed", { trigger: "socket-close", code: 1006, wasClean: false, visibility: "hidden" });
     await closedRequest;
     await expect(client!.sources()).rejects.toMatchObject({ reason: "unavailable", operation: "list-sources" });
 
@@ -636,6 +642,25 @@ describe("native App private wire", () => {
     cleanClient!.close();
     sockets[1]!.emitUnexpectedClose();
     expect(intentional).not.toHaveBeenCalled();
+
+    vi.stubGlobal("document", { visibilityState: "visible" });
+    const errorClient = (await NativeClient.connect())!;
+    const errorOwner = vi.fn(); errorClient.onClose(errorOwner);
+    sockets[2]!.dispatchEvent(new Event("error"));
+    sockets[2]!.emitUnexpectedClose();
+    expect(errorOwner).toHaveBeenCalledOnce();
+    const invalidClient = (await NativeClient.connect())!;
+    const invalidOwner = vi.fn(); invalidClient.onClose(invalidOwner);
+    sockets[3]!.dispatchEvent(Object.assign(new Event("message"), { data: "private invalid message" }));
+    sockets[3]!.emitUnexpectedClose();
+    expect(invalidOwner).toHaveBeenCalledOnce();
+    expect(sockets[3]!.close).toHaveBeenCalledWith(1008, "invalid Client message");
+    expect(debug).toHaveBeenCalledWith("native", "protocol-failed", { stage: "json-invalid" });
+    expect(debug.mock.calls.filter(([scope, event]) => scope === "native" && event === "closed").map(([, , details]) => details)).toEqual([
+      { trigger: "socket-close", code: 1006, wasClean: false, visibility: "hidden" },
+      { trigger: "socket-error", visibility: "visible" },
+      { trigger: "protocol-failure", visibility: "visible" },
+    ]);
   });
 
   it("accepts descriptive health extensions and treats absent media features as unavailable", () => {

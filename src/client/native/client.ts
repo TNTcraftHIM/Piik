@@ -240,8 +240,8 @@ export class NativeClient {
     socket.addEventListener("message", (event) =>
       this.handleMessage(event.data),
     );
-    socket.addEventListener("close", () => this.handleClose());
-    socket.addEventListener("error", () => this.handleClose());
+    socket.addEventListener("close", event => this.handleClose("socket-close", event));
+    socket.addEventListener("error", () => this.handleClose("socket-error"));
   }
 
   static async connect(options?: NativeDiscoveryOptions): Promise<NativeClient | null> {
@@ -885,9 +885,11 @@ export class NativeClient {
     }
   }
 
-  private handleClose(): void {
+  private handleClose(trigger: "socket-close" | "socket-error" | "protocol-failure", event?: CloseEvent): void {
     if (this.closed) return;
-    debugEvent("native", "closed");
+    debugEvent("native", "closed", { trigger, visibility: document.visibilityState,
+      ...(event ? { code: event.code, wasClean: event.wasClean } : {}),
+    });
     this.closed = true;
     this.rejectPending();
     this.listeners.clear();
@@ -900,7 +902,7 @@ export class NativeClient {
     if (this.socket.readyState < WebSocket.CLOSING) {
       this.socket.close(1008, "invalid Client message");
     }
-    this.handleClose();
+    this.handleClose("protocol-failure");
   }
 
   private rejectPending(): void {

@@ -11,10 +11,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   through source selection, Browser/App capability and approval state. The
   reporter's platform and capture source are unknown; distinguish unsupported
   capture from a stale capability result.
-- [ ] **Mobile sharing stops unexpectedly.** Review the supplied recording and
-  distinguish Browser capture, Android MediaProjection/service and control
-  connection retirement. Keeping the App locked in recents does not identify
-  which lifetime ended; do not add a keepalive without the failing transition.
+- [ ] **Mobile sharing stops unexpectedly.** The recording shows
+  `app/control/disconnected` on returning to Chrome, followed by App ready.
+  Capture the existing opt-in control-close diagnostic during a reproduction
+  to identify the failing transition before changing capture or service lifetime.
 - [ ] **Release mirror platform integration.** Verify a supported way to create
   the platform's Release tag or trigger its immediate synchronization during
   publication. Do not assume disabling Pull synchronization makes the repository
