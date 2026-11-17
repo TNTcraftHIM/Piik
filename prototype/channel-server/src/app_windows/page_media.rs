@@ -26,7 +26,6 @@ pub struct Choice {
     mime_type: String,
     direct: bool,
     indexed: bool,
-    mpd: bool,
 }
 type ResponseFact = (
     Format,
@@ -250,7 +249,6 @@ impl Media {
                     request,
                     direct,
                     indexed,
-                    mpd: format == Format::Dash,
                 },
             );
         }
@@ -277,8 +275,8 @@ impl Media {
                 .unwrap_or_default()
         };
         json!({
-            "choices": self.choices.values().filter(|choice| choice.direct&&!choice.mpd).map(|c|json!({"id":c.id,"displayURL":c.url,"name":name(c),"format":c.format})).collect::<Vec<_>>(),
-            "mpdCandidates":self.choices.values().filter(|c|c.mpd).map(|c|json!({"id":c.id,"name":name(c),"hostname":hostname(c)})).collect::<Vec<_>>(),
+            "choices": self.choices.values().filter(|choice| choice.direct && choice.format != Format::Dash).map(|c|json!({"id":c.id,"displayURL":c.url,"name":name(c),"format":c.format})).collect::<Vec<_>>(),
+            "mpdCandidates":self.choices.values().filter(|c| c.format == Format::Dash).map(|c|json!({"id":c.id,"name":name(c),"hostname":hostname(c)})).collect::<Vec<_>>(),
             "indexedCandidates": self.choices.values().filter(|choice| choice.indexed).map(|c|json!({"id":c.id,"name":name(c),"hostname":hostname(c),"mimeType":c.mime_type,"totalSize":c.size})).collect::<Vec<_>>()
         })
     }
