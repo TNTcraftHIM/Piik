@@ -18,7 +18,7 @@ use tokio::{
 use uuid::Uuid;
 
 pub(crate) struct Producer {
-    demands: watch::Sender<Demand>,
+    demands: Option<watch::Sender<Demand>>,
     task: JoinHandle<()>,
 }
 #[derive(Clone, PartialEq)]
@@ -40,14 +40,20 @@ impl Producer {
             preference,
         });
         let task = tokio::spawn(run(publication, source, baseline, codec, rx, events));
-        Self { demands, task }
+        Self {
+            demands: Some(demands),
+            task,
+        }
     }
     pub fn set_demands(&self, demands: Vec<VideoDemand>, preference: DegradationPreference) {
         let next = Demand {
             demands,
             preference,
         };
-        self.demands.send_if_modified(|current| {
+        let Some(demands) = &self.demands else {
+            return;
+        };
+        demands.send_if_modified(|current| {
             if *current == next {
                 false
             } else {
@@ -56,9 +62,9 @@ impl Producer {
             }
         });
     }
-    pub async fn stop(self) {
-        drop(self.demands);
-        let _ = self.task.await;
+    pub async fn stop(&mut self) {
+        self.demands.take();
+        let _ = (&mut self.task).await;
     }
 }
 
@@ -360,12 +366,36 @@ async fn run(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::{media::clock::SourceTime, EncodedFrame};
     use rtc_shared::time::SystemInstant;
     use std::time::{Duration, Instant};
     use tokio::sync::Notify;
+
+    pub(crate) fn controlled_retirement(
+        started: tokio::sync::oneshot::Sender<()>,
+        release: std::sync::mpsc::Receiver<()>,
+        finished: tokio::sync::oneshot::Sender<()>,
+    ) -> Producer {
+        let (demands, mut incoming) = watch::channel(Demand {
+            demands: vec![],
+            preference: DegradationPreference::Balanced,
+        });
+        let worker = tokio::task::spawn_blocking(move || {
+            let _ = release.recv_timeout(std::time::Duration::from_secs(3));
+        });
+        let task = tokio::spawn(async move {
+            while incoming.changed().await.is_ok() {}
+            let _ = started.send(());
+            let _ = worker.await;
+            let _ = finished.send(());
+        });
+        Producer {
+            demands: Some(demands),
+            task,
+        }
+    }
 
     #[tokio::test]
     async fn geometry_and_preference_replace_encodings_but_fps_does_not() -> Result<()> {

@@ -1,4 +1,7 @@
 import { createElement } from "react";
+import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
+import ts from "typescript";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ChannelConnectionReport } from "../src/client/channel/components/ChannelConnections";
@@ -10,6 +13,67 @@ import { say, type CopyKey } from "../src/client/ui/copy";
 import { screenAudience } from "../src/client/channel/presentation";
 
 const t = (key: CopyKey) => key;
+
+describe("connection sampling lifetime", () => {
+  it("samples only the visible displaying document and rejects retired results", async () => {
+    const source = ts.createSourceFile("ChannelConnections.tsx", readFileSync(new URL(
+      "../src/client/channel/components/ChannelConnections.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let effect: string | undefined;
+    const visit = (node: ts.Node) => {
+      if (ts.isCallExpression(node) && node.expression.getText(source) === "useEffect") effect = node.arguments[0]!.getText(source);
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    if (!effect) throw new Error("Missing connection observation effect");
+    const ownerDocument = Object.assign(new EventTarget(), { visibilityState: "hidden" });
+    const requests: { signal: AbortSignal; finish(value: object): void }[] = [];
+    const updates: { topology: object }[] = [];
+    const timers = new Map<number, { run(): void; delay: number }>();
+    let sequence = 0;
+    const channel = {
+      appConnected: true, state: { publications: [] },
+      roomTopology: (_room: string, _source: string, signal: AbortSignal) => new Promise<object>(finish => requests.push({ signal, finish })),
+      connectionMetrics: async () => ({ samples: [], unavailable: false }),
+      appConnectionMetrics: async () => null,
+    };
+    const cleanup = runInNewContext(ts.transpileModule(`(${effect})()`, {
+      compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+    }).outputText, {
+      active: true, ownerDocument, room: { authorized: true, available: true, delivery: {} },
+      current: { current: channel }, roomId: "room", selected: "", scope: "scope", sessionId: "self",
+      AbortController, Map, Promise, collectNativeConnectionMetrics, hasSelectedLocalDisplay: () => false,
+      setResult: (value: { topology: object }) => updates.push(value),
+      setTimeout: (run: () => void, delay: number) => { const id = ++sequence; timers.set(id, { run, delay }); return id; },
+      clearTimeout: (id: number) => timers.delete(id),
+    }) as () => void;
+    const visibility = (value: "visible" | "hidden") => { ownerDocument.visibilityState = value; ownerDocument.dispatchEvent(new Event("visibilitychange")); };
+    const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+    expect(requests).toHaveLength(0);
+    visibility("visible");
+    expect(requests).toHaveLength(1);
+    visibility("hidden");
+    expect(requests[0].signal.aborted).toBe(true);
+    visibility("visible");
+    expect(requests).toHaveLength(2);
+    requests[0].finish({ source: "retired" }); await settle();
+    expect(updates).toHaveLength(0);
+    expect(timers.size).toBe(0);
+    requests[1].finish({ source: "current" }); await settle();
+    expect(updates).toEqual([expect.objectContaining({ topology: { source: "current" } })]);
+    expect([...timers.values()].map(timer => timer.delay)).toEqual([1000]);
+    visibility("hidden");
+    expect(timers.size).toBe(0);
+    visibility("visible");
+    expect(requests).toHaveLength(3);
+    cleanup();
+    expect(requests[2].signal.aborted).toBe(true);
+    requests[2].finish({ source: "closed" }); await settle();
+    visibility("hidden"); visibility("visible");
+    expect(requests).toHaveLength(3);
+    expect(updates).toHaveLength(1);
+    expect(timers.size).toBe(0);
+  });
+});
 
 describe("channel connection presentation", () => {
   it("draws the actual service as forwarding infrastructure while keeping its operator's real endpoint", () => {

@@ -1069,7 +1069,7 @@ impl NativePeers {
             #[cfg(feature = "capture")]
             {
                 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-                for (_, producer) in d.derived.drain() {
+                for (_, mut producer) in d.derived.drain() {
                     producer.stop().await;
                 }
                 for capture in d.local_producers.values() {

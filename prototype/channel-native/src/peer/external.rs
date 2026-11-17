@@ -424,7 +424,7 @@ mod tests {
         for (_, mut capture) in driver.local_producers.drain() {
             capture.producer.close().await;
         }
-        for (_, producer) in driver.derived.drain() {
+        for (_, mut producer) in driver.derived.drain() {
             producer.stop().await;
         }
         driver.files.close().await;
@@ -700,7 +700,7 @@ mod tests {
             source.producer.close().await;
         }
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-        for (_, producer) in driver.derived.drain() {
+        for (_, mut producer) in driver.derived.drain() {
             producer.stop().await;
         }
         sender.close().await?;

@@ -162,6 +162,8 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **Native site-switch appearance.** Clear the previous page's dialog
+  shading while the next site loads or shows an error.
 - [ ] **Public 3.0 interface baseline.** Design same-major evolution around
   stable existing actions and concrete optional capabilities, keeping permission
   independent of advertised support. Apply the

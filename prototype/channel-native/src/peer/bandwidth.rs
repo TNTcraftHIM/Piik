@@ -308,7 +308,8 @@ impl Driver {
                 .copied()
                 .collect();
             for id in retired {
-                self.derived.remove(&id).unwrap().stop().await;
+                self.derived.get_mut(&id).unwrap().stop().await;
+                self.derived.remove(&id);
             }
         }
         use crate::media::encodings::{self, VideoDemand};
@@ -595,6 +596,61 @@ fn encoding_demand(full_bps: Option<u32>, grant: u32) -> EncodingDemand {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(all(
+        feature = "capture",
+        any(target_os = "windows", target_os = "linux", target_os = "macos")
+    ))]
+    #[tokio::test]
+    async fn cancelled_derived_retirement_keeps_the_worker_join_owned() -> anyhow::Result<()> {
+        use tokio::sync::oneshot;
+        let (mut driver, _events, _commands, _stop) = crate::peer::tests::driver();
+        let id = uuid::Uuid::new_v4();
+        let (started, stopping) = oneshot::channel();
+        let (release, blocked) = std::sync::mpsc::channel();
+        let (finished, mut completed) = oneshot::channel();
+        driver.derived.insert(
+            id,
+            crate::media::derived::tests::controlled_retirement(started, blocked, finished),
+        );
+        {
+            let retiring = driver.reconcile_encodings();
+            tokio::pin!(retiring);
+            tokio::select! {
+                _ = stopping => {},
+                _ = &mut retiring => anyhow::bail!("retirement returned before its worker"),
+            }
+            // Same work-future cancellation as the Driver's outer stop select.
+        }
+        let retained = driver.derived.contains_key(&id);
+        let worker_pending = matches!(
+            completed.try_recv(),
+            Err(oneshot::error::TryRecvError::Empty)
+        );
+        let waited = {
+            let closing = async {
+                for (_, mut producer) in driver.derived.drain() {
+                    producer.stop().await;
+                }
+            };
+            tokio::pin!(closing);
+            let waited = futures_util::poll!(&mut closing).is_pending();
+            release.send(())?;
+            if waited {
+                closing.await;
+            }
+            waited
+        };
+        completed.await?;
+        driver.files.close().await;
+        driver.watches.close().await;
+        driver.transport.close().await;
+        anyhow::ensure!(
+            retained && worker_pending && waited,
+            "cancelled derived retirement lost its pending worker join"
+        );
+        Ok(())
+    }
+
     use super::*;
     use crate::media::{
         clock::SourceTime,

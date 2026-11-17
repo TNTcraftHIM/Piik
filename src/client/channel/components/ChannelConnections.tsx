@@ -12,6 +12,7 @@ import { participantColor } from "../../components/living/participant-color";
 import { useCopy } from "../../ui/copy";
 import { channelConnectionGraph, channelConnectionRows, connectionSessionName, hasSelectedLocalDisplay } from "./channel-connection-data";
 import { collectNativeConnectionMetrics, type NativeMetricSamples } from "../native-connection-metrics";
+import { useSurfaceDocument } from "../../ui/panel-window";
 import "./channel-connections.css";
 
 interface Observations {
@@ -50,6 +51,7 @@ export function ChannelConnectionReport({ state, roomId, sessionId, topology, me
 
 function ConnectionBody({ channel, roomId, active }: { channel: ChannelController; roomId: string; active: boolean }) {
   const { t } = useCopy();
+  const ownerDocument = useSurfaceDocument();
   const [publication, setPublication] = useState<string>();
   const [result, setResult] = useState<Observations>();
   const current = useRef(channel);
@@ -62,36 +64,44 @@ function ConnectionBody({ channel, roomId, active }: { channel: ChannelControlle
   const scope = JSON.stringify([state?.channel.id, channel.self?.id, sessionId, roomId, room?.delivery?.bindingId,
     selected, screens.find(screen => screen.id === selected)?.sessionId, channel.appConnected]);
   useEffect(() => {
-    if (!active || !room?.authorized || !room.available || !room.delivery) return;
-    const lifetime = new AbortController();
-    const nativePrevious: NativeMetricSamples = new Map();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const read = async () => {
-      const owner = current.current;
-      const [topology, metrics, native] = await Promise.allSettled([
-        owner.roomTopology(roomId, selected || undefined, lifetime.signal),
-        owner.connectionMetrics(roomId, selected || undefined),
-        owner.appConnected ? owner.appConnectionMetrics(roomId, selected || undefined, lifetime.signal) : Promise.resolve(null),
-      ]);
-      if (lifetime.signal.aborted) return;
-      const browser = metrics.status === "fulfilled" ? metrics.value.samples.map(sample => ({ ...sample,
-        ownerSessionId: sessionId!, connectionId: sample.pairId, selected: true })) : [];
-      const app = native.status === "fulfilled" && native.value ? collectNativeConnectionMetrics(native.value, nativePrevious) : [];
-      if (native.status === "rejected") nativePrevious.clear();
-      const samples = [...browser, ...app].filter(sample => selected || owner.state?.publications.some(publication =>
-        publication.id === sample.publicationId && publication.kind === "voice"));
-      const graph = topology.status === "fulfilled" ? topology.value : null;
-      const appExpected = hasSelectedLocalDisplay(graph, sessionId!);
-      const unavailable: Observations["unavailable"] = [];
-      if (topology.status === "rejected") unavailable.push("connection.topologyUnavailable");
-      if (metrics.status === "rejected" || metrics.value.unavailable) unavailable.push("connection.browserMetricsUnavailable");
-      if (native.status === "rejected" || appExpected && !owner.appConnected) unavailable.push("connection.appMetricsUnavailable");
-      setResult({ scope, topology: graph, metrics: samples, unavailable });
-      timer = setTimeout(read, 1000);
+    if (!active || !ownerDocument || !room?.authorized || !room.available || !room.delivery) return;
+    let stop = () => {};
+    const refresh = () => {
+      stop();
+      if (ownerDocument.visibilityState !== "visible") return;
+      const lifetime = new AbortController();
+      const nativePrevious: NativeMetricSamples = new Map();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const read = async () => {
+        const owner = current.current;
+        const [topology, metrics, native] = await Promise.allSettled([
+          owner.roomTopology(roomId, selected || undefined, lifetime.signal),
+          owner.connectionMetrics(roomId, selected || undefined),
+          owner.appConnected ? owner.appConnectionMetrics(roomId, selected || undefined, lifetime.signal) : Promise.resolve(null),
+        ]);
+        if (lifetime.signal.aborted) return;
+        const browser = metrics.status === "fulfilled" ? metrics.value.samples.map(sample => ({ ...sample,
+          ownerSessionId: sessionId!, connectionId: sample.pairId, selected: true })) : [];
+        const app = native.status === "fulfilled" && native.value ? collectNativeConnectionMetrics(native.value, nativePrevious) : [];
+        if (native.status === "rejected") nativePrevious.clear();
+        const samples = [...browser, ...app].filter(sample => selected || owner.state?.publications.some(publication =>
+          publication.id === sample.publicationId && publication.kind === "voice"));
+        const graph = topology.status === "fulfilled" ? topology.value : null;
+        const appExpected = hasSelectedLocalDisplay(graph, sessionId!);
+        const unavailable: Observations["unavailable"] = [];
+        if (topology.status === "rejected") unavailable.push("connection.topologyUnavailable");
+        if (metrics.status === "rejected" || metrics.value.unavailable) unavailable.push("connection.browserMetricsUnavailable");
+        if (native.status === "rejected" || appExpected && !owner.appConnected) unavailable.push("connection.appMetricsUnavailable");
+        setResult({ scope, topology: graph, metrics: samples, unavailable });
+        timer = setTimeout(read, 1000);
+      };
+      void read();
+      stop = () => { lifetime.abort(); clearTimeout(timer); };
     };
-    void read();
-    return () => { lifetime.abort(); clearTimeout(timer); };
-  }, [active, scope, room?.authorized, room?.available]);
+    ownerDocument.addEventListener("visibilitychange", refresh);
+    refresh();
+    return () => { stop(); ownerDocument.removeEventListener("visibilitychange", refresh); };
+  }, [active, scope, room?.authorized, room?.available, ownerDocument]);
   const observation = result?.scope === scope ? result : null;
   return <>
     <label className="c3-connection-scope"><span>{t("connection.scope")}</span>
