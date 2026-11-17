@@ -8,16 +8,22 @@
 .c3-room-unread-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .c3-room-item[data-selected] .lr-btn { --ink: var(--control-selected-ink); --muted: var(--control-selected-ink); --control-hover: var(--control-selected); }
 .c3-room-item > .c3-room-label { flex: 1; min-width: 0; }
-.c3-room-list-item { --room-disclosure-width: 24px; --room-content-inset: 0px; --room-icon-size: 28px; --room-content-gap: 9px; }
-.c3-room-list-item > .c3-room-item { position: relative; padding-inline-start: var(--room-disclosure-width); min-height: 52px; }
-.c3-room-voice-toggle { position: absolute; inset-inline-start: 0; inset-block: 4px; display: flex; align-items: center; }
-.c3-room-voice-toggle .lr-btn { --button-size: var(--room-disclosure-width); --button-icon-size: 12px; --button-padding: 0; width: var(--room-disclosure-width); min-width: var(--room-disclosure-width); height: 40px; box-shadow: none; border: 0; }
+.c3-room-list-item { --room-row-padding: 8px; --room-disclosure-width: 24px; --room-content-inset: 0px; --room-icon-size: 28px; --room-content-gap: 9px; }
+.c3-room-list-item > .c3-room-item { display: grid; grid-template-columns: var(--room-disclosure-width) minmax(0, 1fr) auto; grid-template-rows: 1fr auto; min-height: 52px; }
+/* Share the name/activity tracks through the existing tooltip and button wrappers. */
+.c3-room-list-item > .c3-room-item > :is(.c3-room-label, .c3-room-voice-toggle, .c3-room-manage),
+.c3-room-list-item :is(.c3-room-voice-toggle, .c3-room-manage) > .lr-comic-tip-wrap,
+.c3-room-list-item .c3-room-item .lr-btn { display: grid; grid-row: 1 / span 2; grid-template-rows: subgrid; align-self: stretch; row-gap: 0; }
+.c3-room-list-item .c3-room-label { grid-column: 2; }
+.c3-room-list-item .c3-room-manage { grid-column: 3; }
+.c3-room-list-item :is(.c3-room-voice-toggle, .c3-room-manage) .lr-btn { height: auto; padding-block: var(--room-row-padding); }
+.c3-room-list-item :is(.c3-room-voice-toggle, .c3-room-manage) .lr-btn > svg { grid-row: 1; }
+.c3-room-list-item .c3-room-activity { margin-block-start: 3px; }
+.c3-room-voice-toggle { grid-column: 1; }
+.c3-room-voice-toggle .lr-btn { --button-size: var(--room-disclosure-width); --button-icon-size: 12px; --button-padding: 0; width: var(--room-disclosure-width); min-width: var(--room-disclosure-width); box-shadow: none; border: 0; }
 .c3-room-voice-toggle [aria-expanded="false"] > svg { transform: rotate(-90deg); }
 .c3-room-voice-toggle .lr-btn > svg { transition: transform var(--motion-control) var(--spring); }
-@media (any-pointer: coarse) {
-  .c3-room-voice-toggle .lr-btn { height: var(--control-compact-size); }
-}
-.c3-room-link.lr-btn { --control-hover-transform: none; --control-press-transform: scale(.99); display: grid; grid-template-columns: var(--room-icon-size, 21px) minmax(0, 1fr); gap: 3px var(--room-content-gap, 9px); align-items: center; justify-content: stretch; width: 100%; height: auto; min-width: 0; min-height: 46px; padding: 8px var(--room-content-inset, 10px); border: 0; color: var(--muted); text-align: start; box-shadow: none; }
+.c3-room-link.lr-btn { --control-hover-transform: none; --control-press-transform: scale(.99); display: grid; grid-template-columns: var(--room-icon-size, 21px) minmax(0, 1fr); gap: 3px var(--room-content-gap, 9px); align-items: center; justify-content: stretch; width: 100%; height: auto; min-width: 0; min-height: 46px; padding: var(--room-row-padding, 8px) var(--room-content-inset, 10px); border: 0; color: var(--muted); text-align: start; box-shadow: none; }
 .c3-room-link > .c3-identity-mark { grid-column: 1; grid-row: 1; justify-self: center; }
 .c3-room-link strong { grid-column: 2; grid-row: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 650; line-height: 1.4; }
 .c3-room-activity, .c3-room-activity > span { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
@@ -30,7 +36,7 @@
 .c3-room-item[data-offline] .c3-room-link > .c3-identity-mark { opacity: .55; }
 .c3-room-order-help { margin: 4px 10px 8px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .c3-room-list-item[data-ordering] { display: flex; flex-wrap: wrap; align-items: center; border-radius: 8px; }
-.c3-room-list-item[data-ordering] > .c3-room-item { order: 0; flex: 1 0 100%; min-width: 0; padding-inline-start: 0; }
+.c3-room-list-item[data-ordering] > .c3-room-item { order: 0; flex: 1 0 100%; min-width: 0; --room-disclosure-width: 0px; }
 .c3-room-list-item[data-ordering] .c3-room-voice-toggle { display: none; }
 .c3-room-order-controls { order: 1; display: flex; flex: 1; align-items: center; justify-content: flex-end; gap: 0; padding-inline: 6px; }
 .c3-room-order-controls > [draggable] { margin-inline-end: auto; }
