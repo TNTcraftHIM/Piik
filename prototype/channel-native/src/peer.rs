@@ -1836,6 +1836,9 @@ impl Driver {
             .filter(|c| c.scope.publication_id == publication)
         {
             capture.prepared.retain(|ready| ready.source.id != source);
+            if let LocalProducer::External(producer) = &mut capture.producer {
+                producer.retire_audio(source);
+            }
         }
         self.sources.remove(&source);
         self.relay.remove(source);

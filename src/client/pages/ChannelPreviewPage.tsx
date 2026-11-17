@@ -55,7 +55,7 @@ export function ChannelPreviewPage() {
     setLayout(value); saveRoomPreferences({ interfaceLayout: value });
   }, []);
   const onSelect = useCallback((id: string) => { rememberRoom(id); setSelected(id); }, []);
-  const channel = useChannel(onSelect);
+  const channel = useChannel();
   return <ChannelRoomPage channel={channel} selected={selected} onSelect={onSelect} layout={layout ?? "workspace"} offerLayout={layout === undefined} onLayoutChange={changeLayout}
     appControl={<AppConnectionButton discovery={channelAppDiscovery} available={channel.connection === 'connected'} connected={channel.appConnected} targetURL={targetURL}
       onConnected={(health, signal) => channel.activateApp(health, signal)} />} />;
@@ -77,6 +77,14 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     preparingShare.current = null; setPickerRoom(null);
     onSelect(id); setSourceView(null); setMobilePane("room");
   }, [onSelect]);
+  useEffect(() => {
+    const navigate = () => {
+      const room = new URLSearchParams(location.hash.slice(1)).get("room");
+      if (room) selectRoom(room);
+    };
+    window.addEventListener("hashchange", navigate);
+    return () => window.removeEventListener("hashchange", navigate);
+  }, [selectRoom]);
   useEffect(() => { setMobilePane("room"); preparingShare.current = null; }, [selected]);
   useEffect(() => { if (pickerRoom && pickerRoom !== selected) setPickerRoom(null); }, [selected, pickerRoom]);
   useEffect(() => {

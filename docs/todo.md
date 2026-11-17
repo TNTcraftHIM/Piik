@@ -12,6 +12,10 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **Input permission retirement feedback.** Native terminal replies must
+  identify the retired request so the Viewer can leave its active or pending
+  state without accepting a stale reply for a newer request. Native authority
+  already retires; do not weaken the Browser's request-identity check.
 - [ ] **Two-App connection failure.** Correlate the reported failed attempt's
   actual source/viewer endpoints, App control state, Native session generations,
   STUN observations and ordinary/enhanced ICE outcome. Two open Apps do not

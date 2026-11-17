@@ -1,5 +1,4 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { rememberRoom, selectedRoom } from "../src/client/channel/navigation";
 import { useChannel } from "../src/client/channel/use-channel";
 
 const { session, cleanups } = vi.hoisted(() => ({
@@ -39,32 +38,19 @@ test("a persisted page return restarts the retired session and cleanup removes t
   expect(session.start).toHaveBeenCalledTimes(2);
 });
 
-test.each([false, true])("hash navigation stays on the latest room after late admission (History throws: %s)", async historyThrows => {
+test("hash invitation admission cannot replay an older room after navigation", async () => {
   vi.stubGlobal("window", new EventTarget());
   vi.stubGlobal("document", new EventTarget());
   vi.stubGlobal("location", new URL("https://channel.test/#room=original"));
-  const browserHistory = { state: null as unknown, replaceState: vi.fn((state: unknown) => {
-    if (historyThrows) throw new DOMException("History unavailable", "SecurityError");
-    browserHistory.state = state;
-  }) };
-  vi.stubGlobal("history", browserHistory);
-  let selected = "original";
-  const onSelect = vi.fn((room: string) => { rememberRoom(room); selected = room; });
   let admitFirst!: (room: string) => void;
   const first = new Promise<string>(resolve => { admitFirst = resolve; });
   session.acceptInvitation.mockReturnValueOnce(first).mockResolvedValueOnce("second");
-  useChannel(onSelect);
-
+  useChannel();
   location.hash = "room=first&invite=first-key";
   window.dispatchEvent(new Event("hashchange"));
-  expect(selected).toBe("first");
-  expect(session.acceptInvitation).toHaveBeenCalledTimes(1);
   location.hash = "room=second";
   window.dispatchEvent(new Event("hashchange"));
-  expect(selected).toBe("second");
-  admitFirst("first");
-  await first;
-  expect(selected).toBe("second");
-  expect(onSelect.mock.calls).toEqual([["first"], ["second"]]);
-  expect(selectedRoom()).toBe("second");
+  expect(session.acceptInvitation).toHaveBeenCalledTimes(2);
+  admitFirst("first"); await first;
+  expect(new URLSearchParams(location.hash.slice(1)).get("room")).toBe("second");
 });

@@ -6,16 +6,20 @@ use futures_util::{future::BoxFuture, stream::FuturesUnordered, FutureExt};
 pub(super) struct Producer {
     pub control: ExternalControl,
     video: Uuid,
-    audio: Uuid,
+    audio: Option<Uuid>,
     task: Option<JoinHandle<Option<String>>>,
     joining: Option<oneshot::Sender<()>>,
 }
 impl Producer {
     pub fn owns(&self, id: Uuid, kind: MediaKind) -> bool {
-        id == if kind == MediaKind::Video {
-            self.video
-        } else {
-            self.audio
+        match kind {
+            MediaKind::Video => self.video == id,
+            MediaKind::Audio => self.audio == Some(id),
+        }
+    }
+    pub(super) fn retire_audio(&mut self, id: Uuid) {
+        if self.audio == Some(id) {
+            self.audio = None;
         }
     }
     pub fn is_stopped(&self) -> bool {
@@ -82,7 +86,7 @@ impl Driver {
                 producer: LocalProducer::External(Producer {
                     control: control.clone(),
                     video,
-                    audio,
+                    audio: Some(audio),
                     task: Some(task),
                     joining: Some(joining),
                 }),
@@ -326,6 +330,110 @@ mod tests {
     use crate::peer::tests::support::{endpoint, h264, send, video_payloads};
 
     #[tokio::test]
+    async fn audio_end_before_ready_retires_only_that_external_source() -> Result<()> {
+        let (mut driver, mut events, mut commands, _stop) = crate::peer::tests::driver();
+        let (sources, mut ready) = mpsc::channel(2);
+        driver.ready_sources = sources;
+        let publication = Uuid::new_v4();
+        let video_id = Uuid::new_v4();
+        let audio_id = Uuid::new_v4();
+        let control = ExternalControl(watch::channel(None).0, Default::default());
+        let (joining, joined) = oneshot::channel();
+        let (ended, _ended) = oneshot::channel();
+        driver.local_producers.insert(
+            video_id,
+            PreparedSource {
+                scope: CaptureScope {
+                    publication_id: publication,
+                    room_id: "owned".into(),
+                    binding_id: Uuid::new_v4(),
+                },
+                selected: true,
+                prepared: vec![],
+                ended,
+                producer: LocalProducer::External(Producer {
+                    control: control.clone(),
+                    video: video_id,
+                    audio: Some(audio_id),
+                    task: Some(tokio::spawn(async move {
+                        let _ = joined.await;
+                        None
+                    })),
+                    joining: Some(joining),
+                }),
+            },
+        );
+        driver.publications.insert(
+            publication,
+            PublicationInfo {
+                id: publication,
+                room_id: "owned".into(),
+                session_id: driver.session,
+                user_id: Uuid::new_v4(),
+                kind: piik_channel_core::wire::Kind::Screen,
+                paused: false,
+                audience: vec![],
+                video_settings: None,
+                screen: Some(piik_channel_core::wire::ScreenInfo {
+                    source: Default::default(),
+                    title: None,
+                }),
+            },
+        );
+        let now = Instant::now();
+        let video = crate::media::video::Video::new(
+            SourceTime::local(now, rtc_shared::time::SystemInstant::now(now)),
+            Arc::new(Notify::new()),
+        );
+        video.set_codec(h264())?;
+        let result = async {
+            driver.source_ready(SourceReady {
+                source: Source { id: video_id, publication_id: publication, origin: SourceOrigin::Local,
+                    kind: MediaKind::Video, feed: SourceFeed::Video(video.clone()), layers: None },
+                media: InitialMedia::Video(crate::EncodedFrame { bytes: vec![1], presentation_time: now,
+                    keyframe: true, vp8: None }),
+            }).await;
+            // A predecessor's audio event cannot withdraw this generation's source.
+            driver.event(Event::CaptureAudioEnded { publication_id: publication, source: Uuid::new_v4() }).await?;
+            anyhow::ensure!(driver.local_producers[&video_id].producer.owns(audio_id, MediaKind::Audio));
+            let (keyframes, _) = watch::channel(0);
+            driver.ready_sources.send(SourceReady {
+                source: Source { id: audio_id, publication_id: publication, origin: SourceOrigin::Local,
+                    kind: MediaKind::Audio, layers: None, feed: SourceFeed::Rtp {
+                        codec: codec(), keyframes, report: Default::default(),
+                    } },
+                media: InitialMedia::Rtp(vec![]),
+            }).await.map_err(|_| anyhow!("fixture Ready queue closed"))?;
+            driver.events.send(Event::CaptureAudioEnded { publication_id: publication, source: audio_id }).await?;
+            driver.event(events.recv().await.context("audio End")?).await?;
+            anyhow::ensure!(!driver.sources.contains_key(&audio_id), "ended audio was not removed");
+            driver.source_ready(ready.recv().await.context("late audio Ready")?).await;
+            let resurrected = driver.sources.contains_key(&audio_id);
+            let output = video.subscribe();
+            video.write(crate::EncodedFrame { bytes: vec![2], presentation_time: now + Duration::from_millis(1),
+                keyframe: true, vp8: None });
+            anyhow::ensure!(output.recv().await.context("video stopped")?.bytes == [2]);
+            let video_alive = driver.sources.contains_key(&video_id)
+                && driver.local_producers[&video_id].producer.owns(video_id, MediaKind::Video)
+                && !control.is_stopped();
+            let whole_publication_failed = commands.try_recv().is_ok();
+            anyhow::ensure!(video_alive && driver.capture_audio.is_empty() && !whole_publication_failed, "optional audio ended its picture owner");
+            anyhow::ensure!(!resurrected, "late Ready reinstalled the ended OBS audio source");
+            Ok(())
+        }.await;
+        for (_, mut capture) in driver.local_producers.drain() {
+            capture.producer.close().await;
+        }
+        for (_, producer) in driver.derived.drain() {
+            producer.stop().await;
+        }
+        driver.files.close().await;
+        driver.watches.close().await;
+        driver.transport.close().await;
+        result
+    }
+
+    #[tokio::test]
     async fn cancelled_external_close_retains_its_actor_join() {
         use std::future::Future;
         let (release, blocked) = oneshot::channel::<()>();
@@ -334,7 +442,7 @@ mod tests {
         let mut producer = Producer {
             control: ExternalControl(watch::channel(None).0, Default::default()),
             video: Uuid::new_v4(),
-            audio: Uuid::new_v4(),
+            audio: Some(Uuid::new_v4()),
             joining: Some(joining),
             task: Some(tokio::spawn(async move {
                 joined.await.unwrap();

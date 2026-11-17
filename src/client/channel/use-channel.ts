@@ -6,18 +6,16 @@ declare global {
   interface Window { __channelGate?: { session: ChannelSession; snapshot: () => ReturnType<ChannelSession["getSnapshot"]> } }
 }
 
-export function useChannel(onInvitation?: (roomId: string) => void): ChannelController {
+export function useChannel(): ChannelController {
   const [session] = useState(() => new ChannelSession());
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
   useEffect(() => {
     const accept = () => {
-      const room = new URLSearchParams(location.hash.slice(1)).get("room");
-      if (room) onInvitation?.(room);
       void session.acceptInvitation().catch(() => {});
     };
     window.addEventListener("hashchange", accept);
     return () => window.removeEventListener("hashchange", accept);
-  }, [session, onInvitation]);
+  }, [session]);
   useEffect(() => {
     session.start();
     const close = () => session.close();
