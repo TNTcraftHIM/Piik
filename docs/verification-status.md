@@ -125,6 +125,11 @@ received digest, Native picture reception in both directions, and room voice
 with advancing received packets and energy from a synthetic microphone.
 Windows Browser camera and Native window checks used owned synthetic inputs.
 These package checks ran on a controlled local network.
+The matching packages after the private-protocol cleanup also reject the previous
+protocol before admission. Current private-room invitation credentials, visitor
+authority and signed history survive a normal Server shutdown and reopen.
+Native OBS picture and source sound reach an independent Browser through the
+Server while room voice continues; stopping the screen retains that voice lease.
 
 The packaged Linux Server also passes optional site forwarding through the
 production Browser UI. A Browser-owned room retains its healthy direct pair

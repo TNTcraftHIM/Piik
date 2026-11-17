@@ -6,6 +6,7 @@ import type { HintKind } from "../../components/living/hints";
 import { useCopy } from "../../ui/copy";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useSurfaceDocument } from "../../ui/panel-window";
+import { surfaceViewport } from "../../ui/window-appearance";
 import { navigateTabs } from "../../ui/tab-navigation";
 import { ChannelAction } from "./ChannelAction";
 import { channelErrorPresentation } from "../error-presentation";
@@ -26,9 +27,25 @@ export function ChannelSettingsDialog({ title, caption, compact = false, materia
   };
   useLayoutEffect(() => {
     const element = dialog.current;
-    if (!element) return;
+    const view = element?.ownerDocument.defaultView;
+    if (!element || !view) return;
+    const viewport = view.visualViewport;
+    const place = () => {
+      const bounds = surfaceViewport(element.ownerDocument);
+      element.style.setProperty("--dialog-available-height", `${bounds.height}px`);
+      element.style.insetBlock = `${bounds.top}px ${Math.max(0, view.innerHeight - bounds.bottom)}px`;
+    };
+    place();
     element.showModal();
-    return () => { if (element.open) element.close(); };
+    view.addEventListener("resize", place);
+    viewport?.addEventListener("resize", place);
+    viewport?.addEventListener("scroll", place);
+    return () => {
+      view.removeEventListener("resize", place);
+      viewport?.removeEventListener("resize", place);
+      viewport?.removeEventListener("scroll", place);
+      if (element.open) element.close();
+    };
   }, [ownerDocument]);
   return ownerDocument && createPortal(<dialog ref={dialog} className={`c3-settings-dialog ${className}`} data-compact={compact || undefined} data-modal-material={material}
     closedby={closeDisabled ? "none" : dismissOnBackdrop ? "any" : "closerequest"}

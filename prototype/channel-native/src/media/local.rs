@@ -280,7 +280,7 @@ impl Producer {
         }
     }
 
-    pub async fn stop_system_audio(&mut self) {
+    pub fn stop_system_audio(&mut self) {
         if let Some(control) = self.system_audio.take() {
             control.stop();
         }
@@ -288,7 +288,7 @@ impl Producer {
 
     pub async fn close(&mut self) -> Option<String> {
         self.control.stop();
-        self.stop_system_audio().await;
+        self.stop_system_audio();
         let error = if let Some(task) = self.task.as_mut() {
             let result = (&mut *task).await;
             self.task = None;

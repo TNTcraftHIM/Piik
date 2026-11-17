@@ -21,7 +21,7 @@ type Output = ReturnType<BrowserEncodingOutput["snapshot"]>;
 type Group = {
   producer: BrowserEncodingProducer; source: MediaStreamTrack; profile: VideoSenderProfile;
   codecKey: string; budget: number; ready: boolean; failed: boolean;
-  report?: RTCStatsReport; previous?: RTCOutboundRtpStreamStats; output?: Observation;
+  report?: RTCStatsReport; output?: Observation;
   updating?: Promise<void>;
 };
 type Member = {
@@ -200,10 +200,9 @@ export class BrowserEncodingPool {
           const report = await group.producer.report().catch(() => null);
           if (!this.groups.has(group)) return;
           if (!report) { group.output = undefined; return; }
+          const previous = group.report && videoOutbound(group.report);
+          group.output = observeVideo(videoOutbound(report), previous);
           group.report = report;
-          const video = videoOutbound(report);
-          group.output = observeVideo(video, group.previous);
-          group.previous = video;
         }),
       ]);
       if (this.disposed) return;
@@ -379,7 +378,7 @@ export class BrowserEncodingPool {
         output.encoded.push(producer.id, frame);
       }
     },
-      () => { group.failed = true; this.failSource(member.source); });
+      () => this.failSource(member.source));
     const group: Group = { producer, source: member.source, profile, codecKey: member.codecKey!, budget, ready: false, failed: false };
     this.groups.add(group);
     debugEvent("encoding-pool", "producer-preparing", { producerId: producer.id, trackId: member.source.id, codec: member.codecKey, budget, profile });
@@ -389,7 +388,7 @@ export class BrowserEncodingPool {
       this.reconcile();
     }, (error) => {
       debugError("encoding-pool", "producer-start-failed", error, { producerId: producer.id });
-      if (this.groups.has(group)) { group.failed = true; this.failSource(group.source); }
+      if (this.groups.has(group)) this.failSource(group.source);
     });
     return group;
   }

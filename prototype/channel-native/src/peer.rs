@@ -378,9 +378,9 @@ impl LocalProducer {
             Self::External(value) => value.close().await,
         }
     }
-    async fn stop_system_audio(&mut self) {
+    fn stop_system_audio(&mut self) {
         if let Self::Capture(value) = self {
-            value.producer.stop_system_audio().await;
+            value.producer.stop_system_audio();
         }
     }
     fn owns(&self, id: Uuid, kind: MediaKind) -> bool {
@@ -1768,7 +1768,7 @@ impl Driver {
                 if *old != id && capture.scope.publication_id == publication && capture.selected {
                     capture.selected = false;
                     capture.producer.stop();
-                    capture.producer.stop_system_audio().await;
+                    capture.producer.stop_system_audio();
                     self.sources
                         .retain(|source, value| !capture.producer.owns(*source, value.kind));
                 }

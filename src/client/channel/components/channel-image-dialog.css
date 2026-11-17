@@ -1,4 +1,4 @@
-.c3-settings-dialog.c3-image-dialog { --ink: var(--piik-dark-ink); --muted: var(--piik-dark-muted); --paper: var(--piik-dark-paper); --control-hover: var(--piik-dark-hover); --line: var(--piik-dark-line); width: min(1200px, calc(100vw - 24px)); height: calc(100dvh - var(--surface-inset-top, 0px) - 24px); max-height: none; background: var(--stage); color: var(--ink); }
+.c3-settings-dialog.c3-image-dialog { --ink: var(--piik-dark-ink); --muted: var(--piik-dark-muted); --paper: var(--piik-dark-paper); --control-hover: var(--piik-dark-hover); --line: var(--piik-dark-line); width: min(1200px, calc(100vw - 24px)); height: calc(var(--dialog-available-height, calc(100dvh - var(--surface-inset-top, 0px))) - 24px); max-height: none; background: var(--stage); color: var(--ink); }
 .c3-image-dialog .c3-settings-dialog-heading { background: transparent; border-color: rgb(255 255 255 / .18); padding: 12px 16px; align-items: center; }
 .c3-image-dialog .c3-settings-dialog-heading h2 { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; font-weight: 600; }
 .c3-image-dialog .c3-settings-dialog-heading h2:focus { outline: none; }
