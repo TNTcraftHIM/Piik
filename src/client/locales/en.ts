@@ -993,6 +993,8 @@ export const en: Record<CopyKey, string> = {
   "stats.audioAbsent": "Absent",
   "stats.droppedHint": "Video frames dropped during the current sampling interval.",
   "stats.inputFpsHint": "Frame rate arriving at the encoder.",
+  "stats.receiveFpsHint": "Shows the browser's frame rate over the last second, or the average between samples if unavailable. Freeze statistics may cover a different period.",
+  "stats.freezeDurationHint": "Freeze time newly reported since the previous sample, counted when the picture resumes. It does not identify packet loss or encoder problems.",
   "stats.pictureSend": "Picture sent",
   "stats.pictureReceive": "Picture received",
   "stats.voiceSend": "Voice sent",

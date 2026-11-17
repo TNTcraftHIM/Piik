@@ -12,6 +12,8 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use uuid::Uuid;
 
+const MAX_ROOMS: usize = 32;
+
 /// Domain admission, hosted-room directory and shared transport leases.
 /// Browsing selects a presentation; it never owns another room's activities.
 #[derive(Clone)]
@@ -699,7 +701,7 @@ impl Channel {
 
     fn insert_room(&mut self, room: RoomSummary) -> Result<(), &'static str> {
         room.validate()?;
-        if self.remote.len() >= 32 {
+        if self.remote.len() >= MAX_ROOMS {
             return Err("room_limit");
         }
         self.remote
@@ -1860,7 +1862,7 @@ impl DomainStateHeader {
         if self.id.is_nil()
             || self.owner_id.is_nil()
             || title(&self.name).is_none()
-            || self.hosted_rooms.len() > 32
+            || self.hosted_rooms.len() > MAX_ROOMS
             || self
                 .hosted_rooms
                 .iter()

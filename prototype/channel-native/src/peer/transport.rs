@@ -71,7 +71,7 @@ fn desired_bps(desired: Option<u64>) -> u64 {
 
 fn host_candidates(
     local: SocketAddr,
-    interfaces: impl Iterator<Item = std::net::IpAddr>,
+    interfaces: impl Iterator<Item = netwatch::interfaces::IpNet>,
 ) -> Result<Vec<Candidate>> {
     if !local.ip().is_unspecified() {
         return Ok(vec![Candidate::host(local, "udp")?]);
@@ -79,6 +79,11 @@ fn host_candidates(
     // Interface discovery includes addresses the ICE SDK cannot advertise.
     // One such address must not discard the socket's other usable candidates.
     Ok(interfaces
+        .filter(|address| {
+            !matches!(address, netwatch::interfaces::IpNet::V6 { flags, .. }
+                if flags.tentative || flags.duplicated)
+        })
+        .map(|address| address.addr())
         .filter(|ip| {
             ip.is_ipv4() == local.is_ipv4()
                 && !ip.is_unspecified()
@@ -704,8 +709,7 @@ impl Runtime {
                     .iter()
                     .flat_map(|state| state.interfaces.values())
                     .filter(|i| i.is_up())
-                    .flat_map(|i| i.addrs())
-                    .map(|a| a.addr()),
+                    .flat_map(|i| i.addrs()),
             )?;
             for candidate in candidates {
                 let address = candidate.addr();

@@ -296,6 +296,97 @@ fn ask_requires_matching_intent_and_keeps_holds_until_reset_release_or_route_ret
 }
 
 #[test]
+fn terminal_replies_keep_request_identity_after_consent_ends() {
+    let (desktop, recording) = desktop();
+    let (source, mut replies, view) = source(&desktop);
+    source.set_mode(Mode::Ask).unwrap();
+    let mut client = Client::new(&source);
+    let ready = client.state(&mut replies);
+    let first = Uuid::from_u128(101);
+    client.send(&source, json!({"type":"request", "intent":first}));
+    let pending_first = client.state(&mut replies);
+    source.decide(client.id, first, true).unwrap();
+    let active_first = client.state(&mut replies);
+    let grant = active_first["grant"].as_str().unwrap();
+    client.send(
+        &source,
+        json!({"type":"key", "code":"ShiftLeft", "down":true, "grant":grant}),
+    );
+    source
+        .receive(client.id, client.flow, "invalid ciphertext")
+        .unwrap();
+    source.decide(client.id, first, false).unwrap();
+    let stopped_first = client.state(&mut replies);
+    assert_eq!(stopped_first["state"], "ready");
+    assert_eq!(stopped_first["intent"], first.simple().to_string());
+    assert!(stopped_first.get("grant").is_none());
+    assert!(view.borrow().requests.is_empty());
+    assert_eq!(
+        recording.lock().unwrap().events.len(),
+        2,
+        "held Shift released"
+    );
+    client.send(
+        &source,
+        json!({"type":"key", "code":"KeyB", "down":true, "grant":grant}),
+    );
+    assert_eq!(
+        recording.lock().unwrap().events.len(),
+        2,
+        "retired grant cannot execute"
+    );
+    desktop.tick();
+    assert!(
+        replies.try_recv().is_err(),
+        "ordinary ticks do not force a reply"
+    );
+    client.send(&source, json!({"type":"sync"}));
+    let synced_first = client.state(&mut replies);
+    assert_eq!(synced_first, stopped_first);
+
+    let second = Uuid::from_u128(102);
+    client.send(&source, json!({"type":"request", "intent":second}));
+    let pending_second = client.state(&mut replies);
+    assert_eq!(pending_second["state"], "pending");
+    assert_eq!(pending_second["intent"], second.simple().to_string());
+    client.send(&source, json!({"type":"release", "intent":first}));
+    assert!(
+        replies.try_recv().is_err(),
+        "old release cannot end the new request"
+    );
+    assert_eq!(view.borrow().requests[0].id, second.simple().to_string());
+    source.decide(client.id, second, false).unwrap();
+    let declined_second = client.state(&mut replies);
+    assert_eq!(declined_second["state"], "ready");
+    assert_eq!(declined_second["intent"], second.simple().to_string());
+    assert!(declined_second.get("grant").is_none());
+
+    source.set_policy(Mode::Password, "private").unwrap();
+    let mut newcomer = Client::new(&source);
+    let password_ready = newcomer.state(&mut replies);
+    let third = Uuid::from_u128(103);
+    newcomer.send(
+        &source,
+        json!({"type":"request", "intent":third, "password":"wrong"}),
+    );
+    let password_denied = newcomer.state(&mut replies);
+    assert_eq!(password_denied["state"], "ready");
+    assert_eq!(password_denied["intent"], third.simple().to_string());
+    assert_eq!(password_denied["reason"], "password");
+    assert!(view.borrow().requests.is_empty());
+    println!(
+        "PIIK_INPUT_REPLY_FIXTURE:{}",
+        json!({
+            "first":first, "second":second, "third":third,
+            "ready":ready, "pendingFirst":pending_first, "activeFirst":active_first,
+            "stoppedFirst":stopped_first, "syncedFirst":synced_first,
+            "pendingSecond":pending_second, "declinedSecond":declined_second,
+            "passwordReady":password_ready, "passwordDenied":password_denied,
+        })
+    );
+}
+
+#[test]
 fn focus_suspend_releases_and_resume_retains_grant_but_target_loss_retires() {
     let (d, r) = desktop();
     let (s, mut replies, _) = source(&d);
@@ -652,9 +743,12 @@ fn room_password_and_exclusive_source_ownership_share_the_same_grant_path() {
         Ok(())
     })
     .unwrap();
-    let packet = cb.packet(json!({"type":"request","intent":Uuid::new_v4(),"password":"private"}));
+    let rejected = Uuid::new_v4();
+    let packet = cb.packet(json!({"type":"request","intent":rejected,"password":"private"}));
     assert!(b.receive(cb.id, cb.flow, &packet).is_err());
-    assert_eq!(cb.state(&mut rb)["reason"], "busy");
+    let response = cb.state(&mut rb);
+    assert_eq!(response["reason"], "busy");
+    assert_eq!(response["intent"], rejected.simple().to_string());
     a.close();
     b.run(|_, source| {
         source.password_retry = None;
@@ -864,7 +958,8 @@ fn local_stop_requires_fresh_consent_and_reply_backpressure_cleans_up_holds() {
     let (s, mut replies, view) = source(&d);
     s.set_mode(Mode::Room).unwrap();
     let mut c = Client::new(&s);
-    c.send(&s, json!({"type":"request","intent":Uuid::new_v4()}));
+    let intent = Uuid::new_v4();
+    c.send(&s, json!({"type":"request","intent":intent}));
     let grant = c.state(&mut replies)["grant"].as_str().unwrap().to_string();
     c.send(
         &s,
@@ -883,7 +978,10 @@ fn local_stop_requires_fresh_consent_and_reply_backpressure_cleans_up_holds() {
     );
     while replies.try_recv().is_ok() {}
     c.send(&s, json!({"type":"sync"}));
-    assert_eq!(c.state(&mut replies)["state"], "ready");
+    let state = c.state(&mut replies);
+    assert_eq!(state["state"], "ready");
+    assert_eq!(state["intent"], intent.simple().to_string());
+    assert!(state.get("grant").is_none());
     d.revoke();
     assert_eq!(view.borrow().mode, Mode::Ask);
     c.send(&s, json!({"type":"request","intent":Uuid::new_v4()}));

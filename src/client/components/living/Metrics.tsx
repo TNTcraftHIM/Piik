@@ -16,6 +16,7 @@ interface MetricValue {
   label: MetricLabel;
   value: string;
   hint?: ComicKind | HintKind;
+  description?: CopyKey;
   tone?: ComicTone;
 }
 
@@ -191,12 +192,12 @@ export function CaptureMetricCells({ resolution, frameRate, codec, hasSourceAudi
   </div>;
 }
 
-export function MetricCell({ icon, label, value, hint, tone = "off" }: MetricValue) {
+export function MetricCell({ icon, label, value, hint, description, tone = "off" }: MetricValue) {
   const { t } = useCopy();
   const presentation = METRIC_PRESENTATION[label];
   return (
     <Tooltip toggleOnClick kind={hint ?? presentation.hint} tone={tone} motion={tone === "warn" ? "still" : "demo"}
-      text={metricHintText(label, t, value)}>
+      text={metricHintText(label, t, value, description)}>
     <button type="button" className="lr-meter-cell" data-metric={label}
       data-wrap-value={"wrap" in presentation && presentation.wrap ? "" : undefined} aria-label={`${t(label)} · ${value}`}
       style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}>
@@ -259,6 +260,7 @@ export function MetricCells({
     { label: "stats.resolution", value: metrics.resolution ?? t("stats.unknown") },
     {
       label: "stats.fps",
+      description: direction === "receive" && Number.isFinite(metrics.framesPerSecond) ? "stats.receiveFpsHint" : undefined,
       value: metrics.framesPerSecond === null || !Number.isFinite(metrics.framesPerSecond)
         ? t("stats.unknown")
         : `${metrics.framesPerSecond.toFixed(1)} fps`,
@@ -312,7 +314,7 @@ export function ConnectionSummaryCells({ samples, direction, media }: {
   const values: MetricValue[] = media === "video" ? [
     { label: resolutionRange ? "stats.resolutionRange" : "stats.resolution", value: summary.resolution
       ? resolutionRange ? summary.resolution.join(" – ") : summary.resolution[0] : t("stats.unknown") },
-    { label: fpsRange ? "stats.fpsRange" : "stats.fps", value: summary.framesPerSecond
+    { label: fpsRange ? "stats.fpsRange" : "stats.fps", description: direction === "receive" && summary.framesPerSecond ? "stats.receiveFpsHint" : undefined, value: summary.framesPerSecond
       ? `${fpsRange ? summary.framesPerSecond.map(value => value.toFixed(1)).join("–") : summary.framesPerSecond[0].toFixed(1)} fps` : t("stats.unknown") },
   ] : [{ label: "stats.avgRtt", value: number(summary.rttMs, "ms") }];
   values.splice(media === "video" ? 2 : 0, 0, { label: "stats.totalBitrate", value: number(summary.bitrateKbps, "kbps") });

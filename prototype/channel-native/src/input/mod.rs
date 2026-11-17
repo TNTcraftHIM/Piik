@@ -291,7 +291,7 @@ impl Desktop {
         let mut executor = self.0.lock().unwrap();
         executor.retry_releases();
         if let Some(video) = executor.owner {
-            let _ = executor.with_source(video, |e, source| {
+            let _ = executor.with_source(video, None, |e, source| {
                 for c in source.controllers.values_mut() {
                     if c.pad.as_mut().is_some_and(|pad| pad.error().is_some()) {
                         c.fail_pad();
@@ -379,7 +379,7 @@ impl Source {
             .0
             .lock()
             .unwrap()
-            .with_source(self.0.video, action)
+            .with_source(self.0.video, None, action)
     }
     pub fn close(&self) {
         self.0.desktop.0.lock().unwrap().close(self.0.video);
@@ -605,7 +605,12 @@ impl Source {
 
     pub fn receive(&self, controller: Uuid, flow: Uuid, data: &str) -> Result<()> {
         let video = self.0.video;
-        self.run(|e, source| {
+        let mut executor = self.0.desktop.0.lock().unwrap();
+        let command = {
+            let source = executor
+                .sources
+                .get_mut(&video)
+                .ok_or_else(|| anyhow!("input_source_retired"))?;
             let Some(c) = source
                 .controllers
                 .get_mut(&controller)
@@ -620,6 +625,14 @@ impl Source {
             let Ok(command) = serde_json::from_slice::<Command>(&plain) else {
                 return Ok(());
             };
+            command
+        };
+        let response = match &command {
+            Command::Request { intent, .. } => Some((controller, Some(*intent))),
+            Command::Sync | Command::Capabilities { .. } => Some((controller, None)),
+            _ => None,
+        };
+        executor.with_source(video, response, |e, source| {
             let mut c = source.controllers.remove(&controller).unwrap();
             let result = e.command(video, source, &mut c, command);
             source.controllers.insert(controller, c);
@@ -776,6 +789,7 @@ struct Controller {
     suspended: bool,
     failed: bool,
     reason: Option<&'static str>,
+    // Latest reply snapshot; its intent can name a retired request, never consent.
     last: Option<RemoteState>,
     pad: Option<gamepad::Pad>,
     pad_failed: bool,
@@ -842,7 +856,7 @@ impl Executor {
     fn revoke(&mut self) {
         let ids: Vec<_> = self.sources.keys().copied().collect();
         for id in ids {
-            let _ = self.with_source(id, |e, source| {
+            let _ = self.with_source(id, None, |e, source| {
                 source.cancel_permission();
                 e.revoke_all(source);
                 // Local stop requires fresh consent, including automatic modes.
@@ -857,6 +871,7 @@ impl Executor {
     fn with_source(
         &mut self,
         video: Uuid,
+        response: Option<(Uuid, Option<Uuid>)>,
         action: impl FnOnce(&mut Self, &mut SourceState) -> Result<()>,
     ) -> Result<()> {
         let mut source = self
@@ -864,7 +879,7 @@ impl Executor {
             .remove(&video)
             .ok_or_else(|| anyhow!("input_source_retired"))?;
         let result = action(self, &mut source);
-        self.emit(&mut source);
+        self.emit(&mut source, response);
         if self.owner == Some(video) && !source.controllers.values().any(|c| c.grant.is_some()) {
             self.owner = None;
         }
@@ -879,7 +894,7 @@ impl Executor {
     fn retire_source(&mut self, video: Uuid) -> Option<SourceState> {
         let mut source = self.sources.remove(&video)?;
         self.retire_capture(video, &mut source);
-        self.emit(&mut source);
+        self.emit(&mut source, None);
         Some(source)
     }
 
@@ -1012,7 +1027,7 @@ impl Executor {
         command: Command,
     ) -> Result<()> {
         match command {
-            Command::Sync | Command::Capabilities { .. } => c.last = None,
+            Command::Sync | Command::Capabilities { .. } => {}
             Command::Release { intent } => {
                 if c.intent == Some(intent) {
                     self.release(source, c);
@@ -1020,7 +1035,6 @@ impl Executor {
             }
             Command::Request { intent, password } => {
                 if !source.available || source.mode == Mode::Off {
-                    c.last = None;
                     return Ok(());
                 }
                 if c.intent == Some(intent) {
@@ -1175,7 +1189,7 @@ impl Executor {
         Ok(())
     }
 
-    fn emit(&mut self, source: &mut SourceState) {
+    fn emit(&mut self, source: &mut SourceState, response: Option<(Uuid, Option<Uuid>)>) {
         let count = source
             .controllers
             .values()
@@ -1191,6 +1205,7 @@ impl Executor {
             if self.gamepad.is_some() && !c.pad_failed {
                 capabilities.push("gamepad");
             }
+            let response = response.filter(|(controller, _)| *controller == id);
             let state = RemoteState {
                 state: if !source.available || source.mode == Mode::Off {
                     "unavailable"
@@ -1207,14 +1222,18 @@ impl Executor {
                 },
                 mode: source.mode,
                 platform: platform(),
-                intent: c.intent.map(|id| id.simple().to_string()),
+                intent: c
+                    .intent
+                    .or(response.and_then(|(_, intent)| intent))
+                    .map(|id| id.simple().to_string())
+                    .or_else(|| c.last.as_ref().and_then(|last| last.intent.clone())),
                 grant: c.grant.clone(),
                 reason: c.reason,
                 co_play: true,
                 capabilities,
                 input_failed: c.failed || (c.grant.is_some() && !self.releases.is_empty()),
             };
-            if c.last.as_ref() != Some(&state) {
+            if response.is_some() || c.last.as_ref() != Some(&state) {
                 let reply = serde_json::to_vec(&state)
                     .map_err(anyhow::Error::from)
                     .and_then(|bytes| c.cipher.seal(&bytes, c.flow));
@@ -1229,13 +1248,11 @@ impl Executor {
                         })
                         .is_ok()
                 });
-                if sent {
-                    c.last = Some(state);
-                } else {
-                    // Backpressure stops the grant, but the authenticated route
-                    // remains registered and its next sync can recover consent.
+                // Keep correlation even when enqueue fails. Sync repeats current
+                // state; it never revives the grant retired by backpressure.
+                c.last = Some(state);
+                if !sent {
                     self.release(source, &mut c);
-                    c.last = None;
                 }
             }
             source.controllers.insert(id, c);

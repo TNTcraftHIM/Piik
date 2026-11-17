@@ -991,6 +991,8 @@ export const zh = {
   "stats.audioAbsent": "未包含",
   "stats.droppedHint": "当前采样期间丢弃的视频帧数。",
   "stats.inputFpsHint": "交给编码器的视频帧率。",
+  "stats.receiveFpsHint": "优先显示浏览器最近 1 秒的帧率，否则显示采样间平均值；可能与卡顿统计的时间范围不同。",
+  "stats.freezeDurationHint": "最近采样间新增的卡顿时长，画面恢复后计入；不能据此判断丢包或编码原因。",
   "stats.pictureSend": "画面发送",
   "stats.pictureReceive": "画面接收",
   "stats.voiceSend": "语音发送",

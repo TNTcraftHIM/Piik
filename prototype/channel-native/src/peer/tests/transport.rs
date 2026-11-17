@@ -1021,9 +1021,18 @@ fn wildcard_candidates_ignore_unusable_interfaces_without_losing_valid_paths() -
         "ff02::1",
         "fd00::1",
     ]
-    .map(|ip| ip.parse::<std::net::IpAddr>().unwrap());
-    let v4 = host_candidates("0.0.0.0:42000".parse()?, interfaces.into_iter())?;
-    let v6 = host_candidates("[::]:42000".parse()?, interfaces.into_iter())?;
+    .map(|ip| match ip.parse::<std::net::IpAddr>().unwrap() {
+        std::net::IpAddr::V4(ip) => {
+            netwatch::interfaces::IpNet::V4(format!("{ip}/32").parse().unwrap())
+        }
+        std::net::IpAddr::V6(ip) => netwatch::interfaces::IpNet::V6 {
+            net: format!("{ip}/128").parse().unwrap(),
+            scope_id: 0,
+            flags: Default::default(),
+        },
+    });
+    let v4 = host_candidates("0.0.0.0:42000".parse()?, interfaces.clone().into_iter())?;
+    let v6 = host_candidates("[::]:42000".parse()?, interfaces.clone().into_iter())?;
     assert_eq!(
         v4.iter().map(Candidate::addr).collect::<Vec<_>>(),
         vec!["192.168.1.10:42000".parse::<SocketAddr>()?]
@@ -1034,10 +1043,70 @@ fn wildcard_candidates_ignore_unusable_interfaces_without_losing_valid_paths() -
     );
     let explicit = "127.0.0.1:42000".parse()?;
     assert_eq!(
-        host_candidates(explicit, interfaces.into_iter())?[0].addr(),
+        host_candidates(explicit, interfaces.clone().into_iter())?[0].addr(),
         explicit
     );
     assert!(host_candidates("169.254.83.107:42000".parse()?, interfaces.into_iter()).is_err());
+    Ok(())
+}
+
+#[test]
+fn interface_state_changes_only_admit_usable_ipv6_addresses() -> Result<()> {
+    use netwatch::interfaces::{IpNet, Ipv6AddrFlags};
+    let socket: SocketAddr = "[::]:42000".parse()?;
+    let snapshot = |flags| {
+        [
+            IpNet::V6 {
+                net: "2001:db8::10/64".parse().unwrap(),
+                scope_id: 0,
+                flags,
+            },
+            IpNet::V6 {
+                net: "fd00::20/64".parse().unwrap(),
+                scope_id: 0,
+                flags: Ipv6AddrFlags {
+                    deprecated: true,
+                    temporary: true,
+                    ..Default::default()
+                },
+            },
+            IpNet::V4("192.0.2.30/24".parse().unwrap()),
+        ]
+    };
+    let stable: SocketAddr = "[fd00::20]:42000".parse()?;
+    let changing: SocketAddr = "[2001:db8::10]:42000".parse()?;
+    for (flags, expected) in [
+        (
+            Ipv6AddrFlags {
+                tentative: true,
+                ..Default::default()
+            },
+            vec![stable],
+        ),
+        (Ipv6AddrFlags::default(), vec![changing, stable]),
+        (
+            Ipv6AddrFlags {
+                duplicated: true,
+                ..Default::default()
+            },
+            vec![stable],
+        ),
+    ] {
+        let addresses = snapshot(flags);
+        let candidates = host_candidates(socket, addresses.clone().into_iter())?;
+        assert_eq!(
+            candidates.iter().map(Candidate::addr).collect::<Vec<_>>(),
+            expected,
+            "per-address flags were lost before SDK candidate admission"
+        );
+        assert_eq!(
+            host_candidates("0.0.0.0:42000".parse()?, addresses.into_iter())?
+                .iter()
+                .map(Candidate::addr)
+                .collect::<Vec<_>>(),
+            vec!["192.0.2.30:42000".parse::<SocketAddr>()?]
+        );
+    }
     Ok(())
 }
 
