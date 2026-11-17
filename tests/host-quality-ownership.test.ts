@@ -338,6 +338,38 @@ describe("Camera replacement ownership", () => {
     return { ...current, nativeControl, remoteSnapshot, picture, previous, camera, nativeStream, oldBridge, peer, nativePeer, startedPeerStreams, replacePublication };
   }
 
+  it("retains Browser picture and sound when the replacement capture has already ended", async () => {
+    const current = sourceFixture(false);
+    const previous = current.picture(true), candidate = current.picture(true);
+    const audio = new HostAudio(previous as unknown as MediaStream, "browser");
+    const attach = vi.spyOn(audio, "attach");
+    current.context.streamRef.current = previous;
+    current.context.hostAudioRef.current = audio;
+    const permission = deferred<unknown>();
+    current.context.captureBrowserSource.mockReturnValue(permission.promise);
+    const switching = current.context.switchSource("browser");
+    candidate.video.readyState = "ended";
+    candidate.video.dispatchEvent(new Event("ended"));
+    permission.resolve(candidate);
+    await switching;
+
+    expect(previous.video.stop).not.toHaveBeenCalled();
+    expect(previous.getAudioTracks()[0]!.stop).not.toHaveBeenCalled();
+    expect(current.context.streamRef.current).toBe(previous);
+    expect(audio.sourceStream).toBe(previous);
+    expect(attach).not.toHaveBeenCalled();
+    for (const track of candidate.getTracks()) expect(track.stop).toHaveBeenCalledOnce();
+    expect(current.invalidateSenderQualityEvidence).not.toHaveBeenCalled();
+    expect(current.signalRef.current.setAudioAvailable).not.toHaveBeenCalled();
+    expect(current.peer.replaceStream).not.toHaveBeenCalled();
+    expect(current.replacePublication).not.toHaveBeenCalled();
+    expect(current.context.endSharing).not.toHaveBeenCalled();
+    expect(current.sourceSwitchRef.current).toBeNull();
+    expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({
+      target: "operation", key: "host.capture.readFailed",
+    }));
+  });
+
   it.each([["capture", "browser"], ["control", "camera"]])("keeps a pending Browser source when Native %s ends: %s", async (reason, source) => {
     const current = sourceFixture(true);
     current.generationRef.current = 1;

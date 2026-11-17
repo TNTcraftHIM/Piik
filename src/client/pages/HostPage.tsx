@@ -3376,6 +3376,14 @@ export function HostPage({
     try {
       // Like initial capture, changing source must begin in this button gesture.
       captured = await captureBrowserSource(qualitySettingsRef.current, source, deviceId);
+      if (!isCurrentGeneration(generation) || sourceSwitchRef.current !== token) {
+        captured.getTracks().forEach(track => track.stop());
+        return;
+      }
+      if (!captured.getVideoTracks().some(track => track.readyState === "live")) {
+        captured.getTracks().forEach(track => track.stop());
+        throw new DOMException("Browser capture ended before source replacement", "NotReadableError");
+      }
     } catch (error) {
       if (
         isCurrentGeneration(generation) &&
@@ -3390,14 +3398,6 @@ export function HostPage({
         }
       }
       finishSourceSwitch(token);
-      return;
-    }
-
-    if (
-      !isCurrentGeneration(generation) ||
-      sourceSwitchRef.current !== token
-    ) {
-      captured.getTracks().forEach((track) => track.stop());
       return;
     }
 
