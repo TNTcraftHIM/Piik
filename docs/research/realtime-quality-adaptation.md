@@ -65,6 +65,55 @@ or `GODEBUG=gctrace=1` reproduction when the snapshots justify it, following
 Current evidence does not justify disabling GC, imposing a memory limit or
 replacing the Go transport. The unmatched field reports remain in [TODO](../todo.md).
 
+## 2.x Receiver Buffering And Source Gaps
+
+Reviewed 2026-11-17. Two separate synthetic controls distinguish late delivery
+from absent source frames. The [media-quality contract](../standards/media-quality.md#capture-and-controls)
+owns automatic buffering and the optional receiver target; requested targets
+and actual delay remain different measurements.
+
+The November 16 network control used the e25bd009 production Source,
+RelayDerivation, Windows helper and LiveKit/Pion path. Those media owners and
+dependencies are unchanged through da3cfa1b. Three 45-second arms used the same
+1338 source frames and produced 1338 helper outputs at 29.73 fps and 320x180,
+with no helper drops. The source was pre-encoded synthetic input; helper
+decoding/re-encoding ran live. The 25-second impaired window added 100±20 ms
+packet delay and three 200 ms interruptions. With sender budget fixed at 200 ms:
+
+| Receiver target | Maximum presentation gap during impairment | Source admission-to-rVFC median during impairment | Freezes over 45 seconds |
+| --- | ---: | ---: | ---: |
+| Automatic | 402.6 ms | 106.2 ms | 3 / 1.075 s |
+| 300 ms | 145.9 ms | 331.1 ms | 0 / 0 s |
+
+Both arms decoded 1338 frames, and the interruption windows recorded NACK/RTX.
+This supports smoother presentation at about 225 ms additional delay in that
+control, without proving each repair arrived in time. Derived QP, bitrate and
+lost-packet identities differed; it does not establish a sharpness improvement.
+
+The November 17 source-gap control used da3cfa1b's actual ViewerPeer in Windows
+HeadlessChrome 152, with one synthetic 320x180 canvas track feeding automatic and
+300 ms receivers simultaneously. Pausing frame submission once produced a
+334.5 ms source gap, with no catch-up and Browser-owned RTP timestamps. Both
+senders' encoded-frame counters stopped; loss, NACK, retransmissions and frame
+drops remained zero. The same adjacent pixel frame IDs appeared **333.3 ms**
+apart with automatic buffering and **333.4 ms** apart with 300 ms; each
+`presentedFrames` counter advanced by one. The buffered receiver shifted the
+gap about 278 ms later without filling it. Stable submission-to-rVFC medians
+were 15.9/295.0 ms, while actual jitter-buffer residence was 0.011/260.573 ms.
+
+The network experiment's sender 200→500 ms variable was SDK pacer `MaxLatency`,
+a queue-pressure budget, not a fixed sending-delay buffer. At receiver 300 ms,
+that intervention was rarely active; the 500 ms arm also had an unexplained
+829.6 ms presentation gap before impairment. A fourth arm missed the source
+cadence gate, leaving no complete four-arm comparison. These observations do
+not establish a benefit from increasing sender delay.
+
+Waiting can accommodate late content but cannot supply absent source frames.
+An encoder stall that later delivers every frame with its original timeline is
+a different, unmeasured case. Neither control identifies the cause of reported
+periodic stalls or establishes physical-device capture, audio synchronization
+or cross-network acceptance.
+
 ## VP8 Cost And Hardware Boundary
 
 Chromium 151's Windows Media Foundation and D3D12 WebRTC encoder factories did
