@@ -98,7 +98,7 @@ impl Control {
 pub(crate) struct AudioProducer {
     pub control: AudioControl,
     task: JoinHandle<()>,
-    joining: oneshot::Sender<()>,
+    joining: Option<oneshot::Sender<()>>,
 }
 impl AudioProducer {
     pub fn start(
@@ -123,16 +123,18 @@ impl AudioProducer {
         Self {
             control,
             task,
-            joining,
+            joining: Some(joining),
         }
     }
     pub fn source(&self) -> Option<Uuid> {
         *self.control.source.borrow()
     }
-    pub async fn close(self) {
-        let _ = self.joining.send(());
+    pub async fn close(&mut self) {
+        if let Some(joining) = self.joining.take() {
+            let _ = joining.send(());
+        }
         self.control.stop();
-        let _ = self.task.await;
+        let _ = (&mut self.task).await;
     }
 }
 
@@ -390,9 +392,33 @@ impl RtpSource {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::time::Duration;
+
+    pub(crate) fn controlled_audio_retirement(
+        started: oneshot::Sender<()>,
+        release: std::sync::mpsc::Receiver<()>,
+        finished: oneshot::Sender<()>,
+    ) -> AudioProducer {
+        let (control, _) = AudioControl::fixture();
+        let (joining, joined) = oneshot::channel();
+        let worker = tokio::task::spawn_blocking(move || {
+            // Dropping the test's sender also releases this worker on failure.
+            let _ = release.recv_timeout(Duration::from_secs(3));
+        });
+        let task = tokio::spawn(async move {
+            let _ = joined.await;
+            let _ = started.send(());
+            let _ = worker.await;
+            let _ = finished.send(());
+        });
+        AudioProducer {
+            control,
+            task,
+            joining: Some(joining),
+        }
+    }
 
     #[cfg(target_os = "windows")]
     #[tokio::test]

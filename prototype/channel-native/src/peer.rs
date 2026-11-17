@@ -1078,7 +1078,7 @@ impl NativePeers {
                 for (_, mut capture) in d.local_producers.drain() {
                     capture.producer.close().await;
                 }
-                for (_, (_, audio)) in d.capture_audio.drain() {
+                for (_, (_, mut audio)) in d.capture_audio.drain() {
                     audio.close().await;
                 }
             }
@@ -1874,10 +1874,11 @@ impl Driver {
 
     #[cfg(feature = "capture")]
     async fn retire_capture_audio(&mut self, publication: Uuid) {
-        let (_, audio) = self.capture_audio.remove(&publication).unwrap();
+        let (_, audio) = self.capture_audio.get_mut(&publication).unwrap();
         let state = audio.control.source.clone();
         let source = *state.borrow();
         audio.close().await;
+        self.capture_audio.remove(&publication);
         // Joining settles a first/final source report already in flight.
         for source in source.into_iter().chain(*state.borrow()) {
             self.sources.remove(&source);

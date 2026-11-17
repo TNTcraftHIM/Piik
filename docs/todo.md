@@ -12,6 +12,9 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **Video-orientation capability.** Align negotiated rotation extensions
+  with the metadata actually carried through Native and pooled Browser media.
+  Verify sender behavior before claiming rotated-camera interoperability.
 - [ ] **Two-App connection failure.** Correlate the reported failed attempt's
   actual source/viewer endpoints, App control state, Native session generations,
   STUN observations and ordinary/enhanced ICE outcome. Two open Apps do not

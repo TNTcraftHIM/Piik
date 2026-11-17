@@ -1364,7 +1364,7 @@ mod tests {
             let occupied = Uuid::new_v4();
             assert!(events.try_send(Event::CaptureAudioEnded { publication_id: publication, source: occupied }).is_ok());
             let (_cancel, cancelled) = watch::channel(false);
-            let producer = super::super::AudioProducer::start(publication, sources, events, Relay::default(), cancelled);
+            let mut producer = super::super::AudioProducer::start(publication, sources, events, Relay::default(), cancelled);
             let (system, pcm, system_joined) = AudioCapture::fixture(true)?;
             let (lease, started, _) = producer.control.prepare_system(Some(system)).await?;
             started.await??;
@@ -1380,7 +1380,7 @@ mod tests {
             let (sources, _ready) = mpsc::channel(1);
             let (events, _ended) = mpsc::channel(1);
             let (_cancel, cancelled) = watch::channel(false);
-            let producer = super::super::AudioProducer::start(publication, sources, events, Relay::default(), cancelled);
+            let mut producer = super::super::AudioProducer::start(publication, sources, events, Relay::default(), cancelled);
             let (stopping, stopped) = oneshot::channel();
             let (finish, finishing) = oneshot::channel();
             let (system, _pcm, system_joined) = AudioCapture::fixture_with_teardown(false, move || {

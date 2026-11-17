@@ -9,11 +9,72 @@ mod transit;
 
 #[cfg(feature = "capture")]
 #[tokio::test]
+async fn cancelled_audio_retirement_keeps_the_worker_join_owned() -> Result<()> {
+    let (mut driver, _events, _commands, _stop) = driver();
+    let publication = Uuid::new_v4();
+    let (started, stopping) = oneshot::channel();
+    let (release, blocked) = std::sync::mpsc::channel();
+    let (finished, mut completed) = oneshot::channel();
+    let producer =
+        crate::media::local::tests::controlled_audio_retirement(started, blocked, finished);
+    driver.capture_audio.insert(
+        publication,
+        (
+            CaptureScope {
+                publication_id: publication,
+                room_id: "room".into(),
+                binding_id: Uuid::new_v4(),
+            },
+            producer,
+        ),
+    );
+    {
+        let retiring = driver.retire_capture_audio(publication);
+        tokio::pin!(retiring);
+        tokio::select! {
+            result = stopping => result?,
+            _ = &mut retiring => anyhow::bail!("retirement returned before its worker"),
+        }
+        // Same work-future cancellation as the Driver's outer stop select.
+    }
+    let retained = driver.capture_audio.contains_key(&publication);
+    let worker_pending = matches!(
+        completed.try_recv(),
+        Err(oneshot::error::TryRecvError::Empty)
+    );
+    let waited = {
+        let closing = async {
+            for (_, (_, mut producer)) in driver.capture_audio.drain() {
+                producer.close().await;
+            }
+        };
+        tokio::pin!(closing);
+        let waited = futures_util::poll!(&mut closing).is_pending();
+        release.send(())?;
+        if waited {
+            closing.await;
+        }
+        waited
+    };
+    completed.await?;
+    ensure!(driver.capture_audio.is_empty());
+    driver.files.close().await;
+    driver.watches.close().await;
+    driver.transport.close().await;
+    ensure!(
+        retained && worker_pending && waited,
+        "cancelled audio retirement lost its pending worker join"
+    );
+    Ok(())
+}
+
+#[cfg(feature = "capture")]
+#[tokio::test]
 async fn publication_audio_settings_belong_to_the_mixer_until_it_stops() -> Result<()> {
     let (sources, _ready) = mpsc::channel(2);
     let (events, _ended) = mpsc::channel(2);
     let (_cancel, cancelled) = watch::channel(false);
-    let producer = crate::media::local::AudioProducer::start(
+    let mut producer = crate::media::local::AudioProducer::start(
         Uuid::new_v4(),
         sources,
         events,
