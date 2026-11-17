@@ -441,6 +441,7 @@ export const zhHant = {
   "channel.error.deviceUnavailable": "裝置暫不可用，請檢查瀏覽器權限及裝置占用。",
   "channel.error.disconnected": "連線已中斷，請重新連線後再試。",
   "channel.error.actionFailed": "未能完成操作，請重試。",
+  "channel.error.busy": "有操作正在進行，請稍後重試。",
   "state.peer.present": "已在房間",
   "state.peer.voiceConnected": "語音已連線",
   "host.topology.idle": "已在房間，暫無媒體線路。",

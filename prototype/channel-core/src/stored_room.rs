@@ -17,6 +17,43 @@ pub struct RoomBackup {
 }
 
 impl RoomBackup {
+    fn from_snapshot(
+        store: Storage,
+        domain_id: Uuid,
+        own_credential: Option<OwnCredential>,
+    ) -> StoreResult<Self> {
+        let metadata = RoomMetadata {
+            version: 2,
+            domain_id,
+            policy: serde_json::from_value(store.load()?.ok_or("room_not_found")?)?,
+            own_credential,
+            retained_files: vec![],
+        };
+        metadata.validate()?;
+        Ok(Self { metadata, store })
+    }
+
+    /// Snapshot from a trusted hosting path without borrowing its live writer.
+    pub fn snapshot_readonly(
+        source: &Path,
+        path: &Path,
+        domain_id: Uuid,
+        room_id: &str,
+        creator: Uuid,
+        own_credential: Option<OwnCredential>,
+        cancelled: impl FnMut() -> bool,
+    ) -> StoreResult<Self> {
+        let backup = Self::from_snapshot(
+            Storage::snapshot_readonly(source, path, cancelled)?,
+            domain_id,
+            own_credential,
+        )?;
+        if backup.metadata.policy.id != room_id || backup.metadata.policy.creator_id != creator {
+            return Err("backup_owner_mismatch".into());
+        }
+        Ok(backup)
+    }
+
     pub fn metadata(&self) -> &RoomMetadata {
         &self.metadata
     }
@@ -55,16 +92,7 @@ impl StoredRoomHost {
         domain_id: Uuid,
         own_credential: Option<OwnCredential>,
     ) -> StoreResult<RoomBackup> {
-        let store = self.store.snapshot(path)?;
-        let metadata = RoomMetadata {
-            version: 2,
-            domain_id,
-            policy: serde_json::from_value(store.load()?.ok_or("room_not_found")?)?,
-            own_credential,
-            retained_files: vec![],
-        };
-        metadata.validate()?;
-        Ok(RoomBackup { metadata, store })
+        RoomBackup::from_snapshot(self.store.snapshot(path)?, domain_id, own_credential)
     }
 
     /// Install a validated snapshot during the owner's serialized turn. Only

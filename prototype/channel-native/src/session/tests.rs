@@ -577,6 +577,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
         opening: BTreeMap::new(),
         pending_captures: BTreeMap::new(),
         pending_relay: BTreeMap::new(),
+        snapshot_job: None,
     };
     let mut welcome = state.clone();
     // A fresh Native endpoint has no view of this already-authorized hidden room.
@@ -841,6 +842,7 @@ async fn capture_settings_and_title_complete_only_on_the_correlated_room_reply()
         opening: BTreeMap::new(),
         pending_captures: BTreeMap::new(),
         pending_relay: BTreeMap::new(),
+        snapshot_job: None,
     };
     for title in [false, true] {
         for result in [
@@ -991,6 +993,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                 opening: BTreeMap::new(),
                 pending_captures: BTreeMap::new(),
                 pending_relay: BTreeMap::new(),
+                snapshot_job: None,
             };
             session
                 .event(

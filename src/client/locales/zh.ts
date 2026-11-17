@@ -520,6 +520,7 @@ export const zh = {
   "channel.error.deviceUnavailable": "设备暂不可用，请检查浏览器权限及设备占用。",
   "channel.error.disconnected": "连接已断开，请重新连接后再试。",
   "channel.error.actionFailed": "未能完成操作，请重试。",
+  "channel.error.busy": "有操作正在进行，请稍后重试。",
   "state.peer.present": "已在房间",
   "state.peer.voiceConnected": "语音已连接",
   "host.topology.idle": "已在房间，暂无媒体线路。",

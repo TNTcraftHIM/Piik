@@ -23,7 +23,10 @@ use piik_channel_core::{
     },
     RoomState, RECOVERY_MS,
 };
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::{
     collections::{BTreeMap, BTreeSet},
     future::Future,
@@ -229,6 +232,7 @@ struct Live {
 }
 
 struct Session {
+    snapshot_job: Option<SnapshotJob>,
     config: Config,
     service_admission: Option<mpsc::Sender<piik_channel_core::host::ServiceEndpoint>>,
     files: Vec<RoomFile>,
@@ -294,6 +298,23 @@ pub struct SnapshotRoom {
     pub room_id: String,
     pub own_credential: Option<OwnCredential>,
     pub result: oneshot::Sender<Result<RoomSnapshot, String>>,
+}
+
+struct SnapshotJob {
+    cancel: Arc<AtomicBool>,
+    task: tokio::task::JoinHandle<()>,
+}
+impl SnapshotJob {
+    async fn join(&mut self) {
+        if let Err(error) = (&mut self.task).await {
+            eprintln!("Snapshot worker failed: {error}");
+        }
+    }
+}
+impl Drop for SnapshotJob {
+    fn drop(&mut self) {
+        self.cancel.store(true, Ordering::Release);
+    }
 }
 
 pub struct RestoreRoom {
@@ -625,6 +646,7 @@ pub async fn run_host(
         opening: BTreeMap::new(),
         pending_captures: BTreeMap::new(),
         pending_relay: BTreeMap::new(),
+        snapshot_job: None,
     };
     let mut stop = std::pin::pin!(stop);
     let result = session.drive(&mut stop, crate::peer::can_prepare_udp).await;
@@ -662,6 +684,9 @@ impl Session {
 
     async fn release(&mut self) -> Result<()> {
         self.hosting_unready();
+        if let Some(snapshot) = &self.snapshot_job {
+            snapshot.cancel.store(true, Ordering::Release);
+        }
         self.fail_pending_requests("hosting_unavailable");
         let restoring: Vec<_> = self
             .opening
@@ -685,6 +710,10 @@ impl Session {
         };
         self.live = None;
         self.recovery = None;
+        if let Some(snapshot) = &mut self.snapshot_job {
+            snapshot.join().await;
+        }
+        self.snapshot_job = None;
         closed
     }
 
@@ -901,7 +930,7 @@ impl Session {
                                     let _ = result.send(measured);
                                 },
                                 HostCommand::Open(request) => self.open_room(request, socket).await?,
-                                HostCommand::Snapshot(request) => self.snapshot_room(request),
+                                HostCommand::Snapshot(request) => self.snapshot_room(request).await,
                                 HostCommand::Restore(request) => self.restore_room(request, socket).await?,
                                 HostCommand::PrepareCapture(request) => self.prepare_capture(request, socket).await?,
                                 HostCommand::PrepareExternal(request) => self.prepare_external(request, socket).await?,
@@ -2238,11 +2267,19 @@ impl Session {
         .await
     }
 
-    fn snapshot_room(&self, request: SnapshotRoom) {
+    async fn snapshot_room(&mut self, request: SnapshotRoom) {
         if request.result.is_closed() {
             return;
         }
-        let result = (|| -> Result<RoomSnapshot> {
+        if let Some(snapshot) = &mut self.snapshot_job {
+            if !snapshot.task.is_finished() {
+                let _ = request.result.send(Err("room_busy".into()));
+                return;
+            }
+            snapshot.join().await;
+            self.snapshot_job = None;
+        }
+        let source = (|| -> Result<_> {
             let hosting = self
                 .hosting
                 .as_ref()
@@ -2252,17 +2289,40 @@ impl Session {
                 .as_ref()
                 .and_then(|live| live.room.rooms.get(&request.room_id))
                 .ok_or_else(|| anyhow!("room_unavailable"))?;
-            let directory = tempfile::Builder::new().prefix("piik-backup-").tempdir()?;
-            let room = host.snapshot(
-                &directory.path().join("room.sqlite"),
-                hosting.identity.0,
-                request.own_credential,
-            )?;
-            Ok(RoomSnapshot { room, directory })
+            Ok((host.snapshot_source(), hosting.identity.0))
         })();
-        let _ = request
-            .result
-            .send(result.map_err(|error| error.to_string()));
+        let ((source, room, creator), domain) = match source {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = request.result.send(Err(error.to_string()));
+                return;
+            }
+        };
+        let cancel = Arc::new(AtomicBool::new(false));
+        let stopped = cancel.clone();
+        let task = tokio::task::spawn_blocking(move || {
+            if stopped.load(Ordering::Acquire) || request.result.is_closed() {
+                return;
+            }
+            let work = (|| -> Result<RoomSnapshot> {
+                let directory = tempfile::Builder::new().prefix("piik-backup-").tempdir()?;
+                let room = piik_channel_core::RoomBackup::snapshot_readonly(
+                    &source,
+                    &directory.path().join("room.sqlite"),
+                    domain,
+                    &room,
+                    creator,
+                    request.own_credential,
+                    || stopped.load(Ordering::Acquire) || request.result.is_closed(),
+                )
+                .map_err(anyhow::Error::from_boxed)?;
+                Ok(RoomSnapshot { room, directory })
+            })();
+            if !stopped.load(Ordering::Acquire) && !request.result.is_closed() {
+                let _ = request.result.send(work.map_err(|error| error.to_string()));
+            }
+        });
+        self.snapshot_job = Some(SnapshotJob { cancel, task });
     }
 
     async fn restore_room(&mut self, request: RestoreRoom, socket: &mut Writer<'_>) -> Result<()> {

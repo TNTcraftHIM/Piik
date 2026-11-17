@@ -523,6 +523,13 @@ Backup follows the runtime that owns the data:
 | Room copy | Room owner through its hosting runtime | Confirmed history, reaction counts and retained local files; room name, icon and connection/voice settings are optional. Import creates a new room owned by the importer. |
 | Personal record export | Any participant | Records obtained by that client. The current text export includes the messages loaded on the page. |
 
+Native room exports copy committed SQLite state on a blocking worker with its
+own read-only connection. Policy and history come from the completed snapshot.
+One copy runs per Native session; another export can retry after `room_busy`.
+Cancellation requests cooperative exit, and the worker retains its database
+handles and temporary files until it finishes. SQLite write-lock contention
+remains separate from moving the copy off the session's message loop.
+
 Going offline does not delete an owner's saved room. The site retains its
 directory entry, and the owner can resume hosting with the same data. Participants'
 reading windows and files are local copies, not additional authoritative histories.

@@ -12,6 +12,9 @@ use serde_json::Value;
 use std::path::Path;
 use uuid::Uuid;
 
+// Match rusqlite's backup batch in pages, with cancellation checked between steps.
+const SNAPSHOT_PAGES_PER_STEP: i32 = 100;
+
 pub type StoreResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 /// Invalid saved representation, distinct from permissions, locks and I/O failure.
@@ -63,15 +66,19 @@ impl Storage {
             .map_err(read_error)
     }
     pub fn open(path: &Path) -> StoreResult<Self> {
-        Self::open_with_flags(path, OpenFlags::default())
+        Self::open_with_flags(path, OpenFlags::default(), false)
     }
 
     /// Open existing room storage without creating or initializing its database.
     pub fn open_existing(path: &Path) -> StoreResult<Self> {
-        Self::open_with_flags(path, OpenFlags::default() & !OpenFlags::SQLITE_OPEN_CREATE)
+        Self::open_with_flags(
+            path,
+            OpenFlags::default() & !OpenFlags::SQLITE_OPEN_CREATE,
+            false,
+        )
     }
 
-    fn open_with_flags(path: &Path, flags: OpenFlags) -> StoreResult<Self> {
+    fn open_with_flags(path: &Path, flags: OpenFlags, no_wait: bool) -> StoreResult<Self> {
         // Resolve the existing directory before SQLite creates the file and its journals.
         let normalized = match path.file_name() {
             Some(name) if path != Path::new(":memory:") => {
@@ -84,6 +91,9 @@ impl Storage {
             _ => None,
         };
         let connection = Connection::open_with_flags(normalized.as_deref().unwrap_or(path), flags)?;
+        if no_wait {
+            connection.busy_timeout(std::time::Duration::ZERO)?;
+        }
         let version: u32 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .map_err(read_error)?;
@@ -156,6 +166,55 @@ impl Storage {
             return Err(error);
         }
         Ok(snapshot)
+    }
+
+    /// The caller owns the disposable destination path, including failed copies.
+    pub(crate) fn snapshot_readonly(
+        source: &Path,
+        path: &Path,
+        mut cancelled: impl FnMut() -> bool,
+    ) -> StoreResult<Self> {
+        let result = (|| -> StoreResult<Self> {
+            if cancelled() {
+                return Err("snapshot_cancelled".into());
+            }
+            let source = Self::open_with_flags(
+                source,
+                OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+                true,
+            )?;
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)?;
+            let mut snapshot = Self::open_with_flags(path, OpenFlags::default(), true)?;
+            {
+                let copy =
+                    rusqlite::backup::Backup::new(&source.connection, &mut snapshot.connection)?;
+                loop {
+                    if cancelled() {
+                        return Err("snapshot_cancelled".into());
+                    }
+                    match copy.step(SNAPSHOT_PAGES_PER_STEP)? {
+                        rusqlite::backup::StepResult::Done => break,
+                        rusqlite::backup::StepResult::More => std::thread::yield_now(),
+                        _ => return Err("storage_busy".into()),
+                    }
+                }
+            }
+            Ok(snapshot)
+        })();
+        result.map_err(|error| {
+            match error
+                .downcast_ref::<rusqlite::Error>()
+                .and_then(|error| error.sqlite_error_code())
+            {
+                Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked) => {
+                    "storage_busy".into()
+                }
+                _ => error,
+            }
+        })
     }
 
     pub(crate) fn create_staging(path: &Path) -> StoreResult<Self> {

@@ -11,6 +11,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
   fallback: CopyKey = "channel.error.actionFailed", unsupportedVideoFormat?: UnsupportedVideoFormat): ChannelErrorPresentation {
   const display = (key: CopyKey, connectionHelp = false): ChannelErrorPresentation => ({ message: t(key), connectionHelp });
   if (!error) return { message: null, connectionHelp: true };
+  if (error === "room_busy") return display("channel.error.busy");
   if (error === "attachment_unavailable" || error === "file_unavailable" || error === "file_source_unavailable")
     return display("channel.attachment.sourceUnavailable");
   if (error === "download_failed") return display("channel.attachment.saveFailed");

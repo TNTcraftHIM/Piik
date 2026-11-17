@@ -162,6 +162,7 @@ fn connection_session(url: String) -> Session {
         opening: BTreeMap::new(),
         pending_captures: BTreeMap::new(),
         pending_relay: BTreeMap::new(),
+        snapshot_job: None,
     }
 }
 

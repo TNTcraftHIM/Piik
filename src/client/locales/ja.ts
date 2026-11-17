@@ -441,6 +441,7 @@ export const ja = {
   "channel.error.deviceUnavailable": "デバイスを利用できません。ブラウザーの権限や他のアプリを確認してください。",
   "channel.error.disconnected": "接続が切れました。再接続して再試行してください。",
   "channel.error.actionFailed": "操作を完了できませんでした。再試行してください。",
+  "channel.error.busy": "別の操作を実行中です。しばらくしてから再試行してください。",
   "state.peer.present": "ルームに参加中",
   "state.peer.voiceConnected": "通話接続済み",
   "host.topology.idle": "ルームに参加中です。有効なメディア経路はありません。",

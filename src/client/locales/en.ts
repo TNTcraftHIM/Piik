@@ -522,6 +522,7 @@ export const en: Record<CopyKey, string> = {
   "channel.error.deviceUnavailable": "Device unavailable. Check browser permissions and other apps.",
   "channel.error.disconnected": "Connection lost. Reconnect and try again.",
   "channel.error.actionFailed": "Could not complete the action. Please try again.",
+  "channel.error.busy": "Another operation is in progress. Try again shortly.",
   "state.peer.present": "In the room",
   "state.peer.voiceConnected": "Voice connected",
   "host.topology.idle": "In the room. No active media routes.",

@@ -1,7 +1,6 @@
 //! One native room's storage and exclusive runtime ownership.
 use anyhow::{anyhow, bail, Result};
 use piik_channel_core::{
-    backup::OwnCredential,
     conversation::{ConversationOutcome, SignedPacket},
     host::{HostInput, HostOutput, RoomSummary},
     storage::StorageDataError,
@@ -31,15 +30,12 @@ pub(crate) fn storage_error(error: Box<dyn std::error::Error + Send + Sync>) -> 
 }
 
 impl HostedRoom {
-    pub fn snapshot(
-        &self,
-        path: &Path,
-        domain_id: Uuid,
-        own_credential: Option<OwnCredential>,
-    ) -> Result<RoomBackup> {
-        self.host
-            .snapshot(path, domain_id, own_credential)
-            .map_err(anyhow::Error::from_boxed)
+    pub(crate) fn snapshot_source(&self) -> (PathBuf, String, Uuid) {
+        (
+            self.path.clone(),
+            self.host.policy().id.clone(),
+            self.host.policy().creator_id,
+        )
     }
 
     pub fn from_backup(path: &Path, backup: &RoomBackup, identity: (Uuid, Uuid)) -> Result<Self> {

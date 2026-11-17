@@ -442,6 +442,7 @@ export const ko = {
   "channel.error.deviceUnavailable": "기기를 사용할 수 없어요. 브라우저 권한과 다른 앱을 확인하세요.",
   "channel.error.disconnected": "연결이 끊겼어요. 재연결하고 다시 시도하세요.",
   "channel.error.actionFailed": "작업을 완료하지 못했어요. 다시 시도해 주세요.",
+  "channel.error.busy": "다른 작업이 진행 중입니다. 잠시 후 다시 시도해 주세요.",
   "state.peer.present": "방에 있음",
   "state.peer.voiceConnected": "음성 연결됨",
   "host.topology.idle": "방에 있어요. 활성 미디어 경로는 없어요.",

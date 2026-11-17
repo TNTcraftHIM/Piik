@@ -177,6 +177,7 @@ fn session(core: &mut CoreBurst, state: Snapshot) -> Session {
         opening: BTreeMap::new(),
         pending_captures: BTreeMap::new(),
         pending_relay: BTreeMap::new(),
+        snapshot_job: None,
     }
 }
 fn addressed_input(core: &mut CoreBurst, index: usize, name: &str) -> Result<Event> {
@@ -193,6 +194,59 @@ fn addressed_input(core: &mut CoreBurst, index: usize, name: &str) -> Result<Eve
             (to == core.connection && matches!(e, Event::HostInput { .. })).then_some(e)
         })
         .context("missing actual HostInput")
+}
+
+#[tokio::test]
+async fn cancelled_release_keeps_snapshot_join_without_repolling_closed_peers() -> Result<()> {
+    let mut core = CoreBurst::new()?;
+    let state = core
+        .recovery()?
+        .into_iter()
+        .find_map(|event| match event {
+            Event::Welcome { state, .. } => Some(state),
+            _ => None,
+        })
+        .context("missing current Welcome")?;
+    let mut native = session(&mut core, state);
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (release, blocked) = std::sync::mpsc::channel();
+    let (entered, started) = oneshot::channel();
+    // Control only the blocking I/O wait; Session release and NativePeers are real.
+    native.snapshot_job = Some(SnapshotJob {
+        cancel: cancel.clone(),
+        task: tokio::task::spawn_blocking(move || {
+            let directory = tempfile::tempdir().expect("snapshot directory");
+            let _ = entered.send(directory.path().to_owned());
+            let _ = blocked.recv_timeout(Duration::from_secs(3));
+        }),
+    });
+    let directory = time::timeout(Duration::from_secs(2), started).await??;
+    time::timeout(Duration::from_secs(2), async {
+        loop {
+            {
+                let releasing = native.release();
+                tokio::pin!(releasing);
+                ensure!(futures_util::poll!(&mut releasing).is_pending());
+            }
+            if native.live.is_none() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .await??;
+    ensure!(cancel.load(Ordering::Acquire));
+    ensure!(directory.exists());
+    ensure!(native
+        .snapshot_job
+        .as_ref()
+        .is_some_and(|job| !job.task.is_finished()));
+    release.send(())?;
+    time::timeout(Duration::from_secs(2), native.release()).await??;
+    ensure!(native.live.is_none() && native.snapshot_job.is_none());
+    ensure!(!directory.exists());
+    Ok(())
 }
 
 #[tokio::test]
