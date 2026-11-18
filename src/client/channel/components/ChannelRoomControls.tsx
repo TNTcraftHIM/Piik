@@ -15,6 +15,7 @@ import { ChannelIdentityFields } from "./ChannelIdentity";
 import "./channel-room-controls.css";
 import { BackupControls } from "./BackupControls";
 import { messageAuthorName, userProfile } from "../presentation";
+import { fileSize, type AttachmentLimits } from "../attachments";
 
 export function RoomChatExport({ messages, users }: { messages: readonly ChannelMessage[]; users: readonly Pick<ChannelUser, "id" | "name">[] }) {
   const { t } = useCopy();
@@ -265,8 +266,8 @@ export function ChannelRoomSettingsDialog({ channel, room, onClose }: {
 }
 type RoomSettingsTask = "room" | "relay" | "data";
 
-function RoomCopyExport({ channel, roomId, disabled, busy, run }: {
-  channel: ChannelController; roomId: string; disabled: boolean; busy: boolean; run: SettingsAction;
+function RoomCopyExport({ channel, roomId, includeFiles, disabled, busy, run }: {
+  channel: ChannelController; roomId: string; includeFiles: boolean; disabled: boolean; busy: boolean; run: SettingsAction;
 }) {
   const { t } = useCopy();
   const [includeRoomInfo, setIncludeRoomInfo] = useState(true);
@@ -278,7 +279,7 @@ function RoomCopyExport({ channel, roomId, disabled, busy, run }: {
       onChange={event => setIncludeRoomInfo(event.target.checked)} />
       {t("room.copy.includeSettings")}</label>
     <ChannelAction icon="save" quiet label={t("room.copy.export")} disabled={disabled || busy} busy={exporting}
-      onClick={() => { setExporting(true); void run(async () => downloadBlob(await channel.exportRoomCopy(roomId, includeRoomInfo), "piik-room-copy.zip"))
+      onClick={() => { setExporting(true); void run(async () => downloadBlob(await channel.exportRoomCopy(roomId, includeRoomInfo, includeFiles), "piik-room-copy.zip"))
         .finally(() => setExporting(false)); }} />
   </section>;
 }
@@ -292,11 +293,17 @@ function RoomSettings({ channel, room, onClose }: {
   const [draft, setDraft] = useState<RoomDraft | null>(null);
   const [task, setTask] = useState<RoomSettingsTask>(room.canManage ? "room" : "relay");
   const [backupAvailable, setBackupAvailable] = useState(false);
+  const [includeFiles, setIncludeFiles] = useState(true);
+  const [fileLimits, setFileLimits] = useState<AttachmentLimits | null>(null);
   useEffect(() => {
-    let current = true; setBackupAvailable(false);
-    if (room.canManage) void channel.roomBackupAvailable(room.id).then(value => { if (current) setBackupAvailable(value); });
+    let current = true; setBackupAvailable(false); setFileLimits(null);
+    if (room.canManage) void channel.roomBackupAvailable(room.id).then(value => {
+      if (!current) return;
+      setBackupAvailable(value);
+      if (value) void channel.attachments.limits().then(limits => { if (current) setFileLimits(limits); }).catch(() => {});
+    });
     return () => { current = false; };
-  }, [room.id, room.canManage, room.delivery?.bindingId, channel.sessionId, channel.appConnected, channel.connection, channel.roomBackupAvailable]);
+  }, [room.id, room.canManage, room.delivery?.bindingId, channel.sessionId, channel.appConnected, channel.connection, channel.roomBackupAvailable, channel.attachments]);
   const connected = channel.connection === "connected";
   const available = connected && room.available;
   const busy = channel.pending.has(`room:${room.id}`);
@@ -355,11 +362,17 @@ function RoomSettings({ channel, room, onClose }: {
         {(room.authorized || room.canManage) && <section id={`${id}-data`} role="tabpanel" aria-labelledby={`${id}-data-tab`} hidden={selected !== "data"}>
           <h3>{t("room.settings.recordsTitle")}</h3>
           {room.authorized && <RoomChatExport messages={channel.messagesByRoom[room.id] ?? []} users={[...(channel.state?.users ?? []), ...channel.profiles.values()]} />}
-          {room.canManage && backupAvailable && <RoomCopyExport channel={channel} roomId={room.id} run={run}
+          {room.canManage && backupAvailable && <section className="c3-backup-controls">
+            <label className="c3-check"><input type="checkbox" checked={includeFiles} disabled={!available || working}
+              onChange={event => setIncludeFiles(event.target.checked)} />{t("room.backup.includeFiles")}</label>
+            <p>{t("room.backup.fileScope")}</p>
+            {fileLimits && <p>{t("room.backup.fileLimits", { count: String(fileLimits.maxRetainedFiles), size: fileSize(fileLimits.maxRetainedBytes) })}</p>}
+          </section>}
+          {room.canManage && backupAvailable && <RoomCopyExport channel={channel} roomId={room.id} includeFiles={includeFiles} run={run}
             disabled={!available || busy || removing} busy={backupBusy} />}
           {room.canManage && backupAvailable && <h3>{t("room.backup.title")}</h3>}
           {room.canManage && <BackupControls run={run} available={backupAvailable} disabled={!available || busy || removing || !backupAvailable}
-            busy={backupBusy} onExport={() => channel.exportRoomBackup(room.id)} onRestore={async file => {
+            busy={backupBusy} onExport={() => channel.exportRoomBackup(room.id, includeFiles)} onRestore={async file => {
               try {
                 const result = await channel.restoreRoomBackup(file, room.id);
                 setDraft(null);

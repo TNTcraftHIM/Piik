@@ -158,8 +158,8 @@ export interface ChannelActions {
   appRelayCapacity(roomId: string, signal?: AbortSignal): Promise<NativeRelayCapacity>;
   setAppRelayOverride(current: NativeRelayCapacity, capacity: number | null, reportError?: boolean): Promise<NativeRelayCapacity>;
   roomBackupAvailable(roomId: string): Promise<boolean>;
-  exportRoomBackup(roomId: string): Promise<Blob>;
-  exportRoomCopy(roomId: string, includeRoomInfo: boolean): Promise<Blob>;
+  exportRoomBackup(roomId: string, includeFiles?: boolean): Promise<Blob>;
+  exportRoomCopy(roomId: string, includeRoomInfo: boolean, includeFiles?: boolean): Promise<Blob>;
   inspectRoomCopy(archive: Blob): Promise<Partial<RoomCopyInfo>>;
   importRoomCopy(archive: Blob, settings: RoomSettings): Promise<{ roomId: string; cached: boolean }>;
   restoreRoomBackup(archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }>;

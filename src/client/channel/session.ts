@@ -1109,6 +1109,9 @@ export class ChannelSession {
         rooms.add(publication.roomId);
       }
     }
+    for (const member of state?.voice ?? []) {
+      if (member.sessionId === this.view.sessionId) rooms.add(member.roomId);
+    }
     for (const player of this.watchPlayers.values()) rooms.add(player.roomId);
     return rooms;
   }
@@ -1460,13 +1463,13 @@ export class ChannelSession {
     check(); return archive;
   }
 
-  exportRoomBackup = (roomId: string): Promise<Blob> => this.action("room-backup", () => this.exportRoomArchive(roomId), false);
+  exportRoomBackup = (roomId: string, includeFiles = true): Promise<Blob> => this.action("room-backup", () => this.exportRoomArchive(roomId, includeFiles), false);
 
-  exportRoomCopy = (roomId: string, includeRoomInfo: boolean): Promise<Blob> =>
-    this.action("room-backup", () => this.exportRoomArchive(roomId, { includeRoomInfo }), false);
+  exportRoomCopy = (roomId: string, includeRoomInfo: boolean, includeFiles = true): Promise<Blob> =>
+    this.action("room-backup", () => this.exportRoomArchive(roomId, includeFiles, { includeRoomInfo }), false);
 
-  private async exportRoomArchive(roomId: string, copy?: { includeRoomInfo: boolean }): Promise<Blob> {
-    const owner = await this.backupOwner(roomId), retained = await this.attachments.retained(roomId); owner.current();
+  private async exportRoomArchive(roomId: string, includeFiles: boolean, copy?: { includeRoomInfo: boolean }): Promise<Blob> {
+    const owner = await this.backupOwner(roomId), retained = includeFiles ? await this.attachments.retained(roomId) : []; owner.current();
     let snapshot: BrowserRoomSnapshot | undefined;
     try {
       let metadata: Extract<BackupMetadata, { kind: "room" }>;

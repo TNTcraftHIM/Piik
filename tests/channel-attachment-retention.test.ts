@@ -180,6 +180,15 @@ test("preview and download share source-unavailable guidance while other failure
   }
 });
 
+test.each(["en", "zh", "zh-Hant", "ja", "ko"] as const)("archive budget guidance names the available file option in %s", lang => {
+  const copy = (key: Parameters<typeof t>[1], vars?: Record<string, string>) => t(lang, key, vars);
+  const budget = channelErrorPresentation("backup_content_limit", copy);
+  expect(budget).toEqual({ message: copy("channel.error.backupContentLimit", { option: copy("room.backup.includeFiles") }), connectionHelp: false });
+  expect(budget.message).toContain(copy("room.backup.includeFiles"));
+  expect(budget.message).not.toBe(copy("channel.error.actionFailed"));
+  expect(channelErrorPresentation("invalid_backup_content", copy).message).toBe(copy("channel.error.actionFailed"));
+});
+
 
 test("file progress follows completed writes and is shared until the last consumer cancels", async () => {
   const files = setup(), key = { roomId: "room", messageSeq: 1, attachmentId: attachment.id };

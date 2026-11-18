@@ -17,19 +17,20 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function surface() {
+function surface({ native = false, anchorTop = 600 } = {}) {
   const frame = new Map<number, FrameRequestCallback>();
   let sequence = 0, visible = true, open = true;
   const field = {};
   const viewport = Object.assign(new EventTarget(), { width: 390, height: 844, offsetLeft: 0, offsetTop: 0 });
   const view = Object.assign(new EventTarget(), {
     visualViewport: viewport, innerWidth: 390, innerHeight: 844,
+    getComputedStyle: () => ({ getPropertyValue: () => "58px" }),
     requestAnimationFrame: (callback: FrameRequestCallback) => { frame.set(++sequence, callback); return sequence; },
     cancelAnimationFrame: (id: number) => { frame.delete(id); },
   });
-  const owner = { defaultView: view, documentElement: { dataset: {} }, activeElement: null as unknown };
+  const owner = { defaultView: view, documentElement: { dataset: { piikNativeWindow: native ? "integrated" : undefined } }, activeElement: null as unknown };
   const anchor = {
-    getBoundingClientRect: () => ({ left: 40, right: 350, top: 600, bottom: 650, width: 310, height: 50 }),
+    getBoundingClientRect: () => ({ left: 40, right: 350, top: anchorTop, bottom: anchorTop + 50, width: 310, height: 50 }),
     getClientRects: () => visible ? [{}] : [],
     closest: () => null,
   };
@@ -52,6 +53,16 @@ function surface() {
 }
 
 describe("Anchored popover input ownership", () => {
+  it("keeps a native caption anchor visible while placing its menu below the caption", () => {
+    const current = surface({ native: true, anchorTop: 5 });
+    expect(current.hidePopover).not.toHaveBeenCalled();
+    expect(parseFloat(current.style.top!)).toBe(66);
+
+    current.owner.defaultView.visualViewport.offsetTop = 60;
+    current.resize(784);
+    expect(current.hidePopover).toHaveBeenCalledOnce();
+  });
+
   it("keeps an active editor open and inside the keyboard viewport", () => {
     const current = surface();
     current.owner.activeElement = current.field;

@@ -251,7 +251,7 @@ impl RoomMetadata {
 
 fn validate_files(files: &[RetainedFile]) -> Result<(), &'static str> {
     if files.len() > ATTACHMENT_LIMITS.max_retained_files {
-        return Err("invalid_backup_content");
+        return Err("backup_content_limit");
     }
     let mut identities = BTreeSet::new();
     let mut sizes = BTreeMap::new();
@@ -273,7 +273,7 @@ fn validate_files(files: &[RetainedFile]) -> Result<(), &'static str> {
         bytes += file.attachment.size;
     }
     if bytes > ATTACHMENT_LIMITS.max_retained_bytes {
-        return Err("invalid_backup_content");
+        return Err("backup_content_limit");
     }
     Ok(())
 }

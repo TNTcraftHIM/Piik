@@ -32,7 +32,9 @@ export function useAnchoredPopover(
       const bounds = surfaceViewport(menu.ownerDocument);
       const left = bounds.left + 8, top = bounds.top + 8;
       const right = bounds.right - 8, bottom = bounds.bottom - 8;
-      const anchorOutside = rect.bottom < top || rect.top > bottom || rect.right < left || rect.left > right;
+      // Placement insets do not make a visible anchor offscreen.
+      const anchorOutside = rect.bottom < (viewport?.offsetTop ?? 0) || rect.top > bounds.bottom
+        || rect.right < bounds.left || rect.left > bounds.right;
       // A keyboard can cover the anchor while its popover still owns input.
       // Keep that editing surface placed in view; a removed trigger still closes it.
       if (!anchor.getClientRects().length || (anchorOutside && !menu.contains(menu.ownerDocument.activeElement))) {

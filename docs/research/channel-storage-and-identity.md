@@ -519,9 +519,14 @@ Backup follows the runtime that owns the data:
 | Export | Who provides it | Contents |
 | --- | --- | --- |
 | Site backup | Site operator | Site identity and settings, users and room directory. Room records remain with their room owners. |
-| Full room backup | Room owner through its hosting runtime | Room identity, settings, grants, complete confirmed history and retained local files. Restore preserves the original room and owner. |
-| Room copy | Room owner through its hosting runtime | Confirmed history, reaction counts and retained local files; room name, icon and connection/voice settings are optional. Import creates a new room owned by the importer. |
+| Room backup | Room owner through its hosting runtime | Room identity, settings, grants and complete confirmed history; available local file originals are included by default and may be excluded explicitly. Restore preserves the original room and owner. |
+| Room copy | Room owner through its hosting runtime | Complete confirmed history and reaction counts, with the same choice of local file originals; room name, icon and connection/voice settings are optional. Import creates a new room owned by the importer. |
 | Personal record export | Any participant | Records obtained by that client. The current text export includes the messages loaded on the page. |
+
+Excluding file originals preserves attachment descriptions and inline images already
+stored in history. The archive's retained-file inventory keeps its existing count
+and aggregate-byte budgets; exceeding either fails the export without dropping
+individual originals. The user can explicitly export without those originals.
 
 Native room exports copy committed SQLite state on a blocking worker with its
 own read-only connection. Policy and history come from the completed snapshot.

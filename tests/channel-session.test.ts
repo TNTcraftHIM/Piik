@@ -7737,18 +7737,32 @@ test("App relay settings target the actual endpoint, preserve webpage settings a
   } finally { session.close(); }
 });
 
-test("live chat overlays follow each watched room and never replay loaded history", async () => {
-  const { session, socket, peer } = await setup();
+test.each(["watch", "voice", "voice and watch"])("live room interactions follow this page's %s across navigation until its last activity ends", async activity => {
+  const { session, socket, peer } = await setup(1000, true, "room=first", true, ["first", "second", "third"]);
+  const hasVoice = activity !== "watch", hasWatch = activity !== "voice";
   try {
     const state = structuredClone(session.getSnapshot().state!);
-    state.publications = [{ audience: [], id: "screen", roomId: "first", sessionId: "other", userId: "friend", kind: "screen", source: { kind: "screen", name: null }, title: null,
+    state.users.push({ id: "friend-user-1234", name: "Friend", version: profileVersion });
+    state.sessions.push({ id: "other", userId: "friend-user-1234", online: true, signingKey: testSigningKey },
+      { id: "another-page", userId: "self", online: true, signingKey: testSigningKey });
+    state.voice = ["other", "another-page"].map(sessionId => ({ roomId: "third", sessionId, muted: true, deafened: false }));
+    state.publications = [{ audience: [], id: "screen", roomId: "first", sessionId: "other", userId: "friend-user-1234", kind: "screen", source: { kind: "screen", name: null }, title: null,
       videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }];
     socket.receive({ type: "state", state });
-    const watching = session.watch("screen");
-    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
-    await watching;
-    state.subscriptions = ["screen"];
-    socket.receive({ type: "state", state });
+    if (hasVoice) {
+      const joining = session.joinVoice("first", true), join = socket.sent.at(-1)!;
+      state.voice.push({ roomId: "first", sessionId: "endpoint", muted: true, deafened: false });
+      socket.receive({ type: "state", state });
+      socket.receive({ type: "ack", requestId: join.requestId });
+      await joining;
+    }
+    if (hasWatch) {
+      const watching = session.watch("screen");
+      socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+      await watching;
+      state.subscriptions = ["screen"];
+      socket.receive({ type: "state", state });
+    }
     const first = session.getSnapshot().interactionsByRoom.get("first")!;
     session.browse("second");
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
@@ -7756,6 +7770,13 @@ test("live chat overlays follow each watched room and never replay loaded histor
     await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.get("second")?.getSnapshot().ready).toBe(true));
     await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:second")).toBe(false));
     const second = session.getSnapshot().interactionsByRoom.get("second")!;
+    expect(session.getSnapshot().interactionsByRoom.get("first")).toBe(first);
+    expect(socket.sent.some(command => command.type === "browse" && command.roomId === "first" && command.active === false)).toBe(false);
+    expect(socket.sent.some(command => command.type === "browse" && command.roomId === "third")).toBe(false);
+    const firstRequest = peer.interactions.find(request => request.roomId === "first" && request.type === "interaction_ready")!;
+    peer.reply({ ...firstRequest, requestId: "live-reaction" }, { type: "reaction", nonce: 1, snapshot: null,
+      event: { id: "first-reaction", occurredAt: Date.now(), senderUserId: "self", reaction: "heart", target: { type: "person", userId: "friend-user-1234" } } });
+    expect(first.getSnapshot().reactions.map(reaction => reaction.id)).toEqual(["first-reaction"]);
     first.setOverlayEnabled(true); second.setOverlayEnabled(true);
     const stopFirst = first.showOverlay(), stopSecond = second.showOverlay();
     const firstMessage = { ...message(1), time: Date.now(), text: "First room" };
@@ -7778,12 +7799,23 @@ test("live chat overlays follow each watched room and never replay loaded histor
       expect(summary.text.endsWith("…")).toBe(true);
     }
     expect(session.getSnapshot().messagesByRoom.second.find(value => value.id === longMessage.id)?.text).toBe(longMessage.text);
-    const unwatching = session.unwatch("screen");
-    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
-    await unwatching;
-    state.subscriptions = [];
-    socket.receive({ type: "state", state });
+    if (hasVoice) {
+      const leaving = session.leaveVoice("first"), leave = socket.sent.at(-1)!;
+      state.voice = state.voice.filter(member => member.sessionId !== "endpoint");
+      socket.receive({ type: "state", state });
+      socket.receive({ type: "ack", requestId: leave.requestId });
+      await leaving;
+      if (hasWatch) expect(session.getSnapshot().interactionsByRoom.get("first")).toBe(first);
+    }
+    if (hasWatch) {
+      const unwatching = session.unwatch("screen");
+      socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+      await unwatching;
+      state.subscriptions = [];
+      socket.receive({ type: "state", state });
+    }
     await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.has("first")).toBe(false));
+    expect(socket.sent).toContainEqual({ type: "browse", roomId: "first", active: false });
     expect(first.getSnapshot().overlayMessages).toEqual([]);
     expect(second.getSnapshot().ready).toBe(true);
     stopFirst(); stopSecond();
@@ -8368,6 +8400,60 @@ test("a copy without room information round-trips real ZIP content and remaps hi
   } finally { importer?.free(); session.close(); }
 });
 
+test.each(["backup", "copy", "copy-with-settings"] as const)("%s without file originals preserves every history row and inline image in the real ZIP", async kind => {
+  const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const { readFile } = await import("node:fs/promises");
+  await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  const { session, socket, state, snapshot, row, read } = await setupRoomBackup();
+  read.mockRestore();
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...core, initializeRuntime: async () => {} } as never);
+  const policy = JSON.parse(core.create_room_policy(JSON.stringify({ id: "first", creatorId: crypto.randomUUID(),
+    name: "Owned room", icon: "couch", access: "private", hidden: false })));
+  snapshot.policy = JSON.stringify(policy);
+  state.channel.id = crypto.randomUUID(); socket.receive({ type: "state", state });
+  const hash = new core.AttachmentHash(); hash.update(new TextEncoder().encode("GIF89a"));
+  const attachment = { id: crypto.randomUUID(), name: "owned.gif", size: 6, mediaType: "image/gif" as const, sha256: hash.finish() };
+  Object.assign(row, { id: crypto.randomUUID(), userId: crypto.randomUUID(), archivedAuthorName: "Archived author", attachments: [attachment],
+    inlineImages: { [attachment.id]: { data: btoa("GIF89a"), mediaType: "image/gif", original: true, width: 1, height: 1 } } });
+  const rows = [row, { ...row, id: crypto.randomUUID(), seq: 2, nonce: "second-send", text: "Older and recent rows both remain" }];
+  Object.defineProperty(snapshot, "rows", { get: () => (async function* () { yield* rows; })() });
+  const retained = vi.spyOn(session.attachments, "retained").mockRejectedValue(new Error("file_inventory_must_not_be_opened"));
+  const content = vi.fn(), restored: BackupHistoryRow[] = [];
+  try {
+    const archive = kind === "backup" ? await session.exportRoomBackup("first", false)
+      : await session.exportRoomCopy("first", kind === "copy-with-settings", false);
+    const metadata = await backupArchive.readBackup(archive, { metadata: () => {}, row: value => { restored.push(value); }, content });
+    expect(metadata).toMatchObject({ kind: kind === "backup" ? "room" : "room_copy", retainedFiles: [] });
+    if (kind === "backup") expect(metadata).toMatchObject({ domainId: state.channel.id, policy });
+    else if (kind === "copy-with-settings") expect(metadata).toMatchObject({ roomInfo: { name: policy.name, icon: policy.icon, voiceBitrate: policy.voiceBitrate, relayCapacity: policy.relayCapacity } });
+    else expect(metadata).not.toHaveProperty("roomInfo");
+    expect(restored).toEqual(rows); expect(content).not.toHaveBeenCalled(); expect(retained).not.toHaveBeenCalled();
+    const zip = await import("@zip.js/zip.js/lib/zip-core-native.js"), reader = new zip.ZipReader(new zip.BlobReader(archive), { useWebWorkers: false });
+    try { expect((await reader.getEntries()).map(entry => entry.filename)).toEqual(["manifest.json", "history.ndjson"]); }
+    finally { await reader.close(); }
+    expect(snapshot.close).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test("Core archive budget failures stay distinct from malformed retained inventory", async () => {
+  const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const { readFile } = await import("node:fs/promises");
+  await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  const limits = JSON.parse(core.attachment_limits());
+  const inventory = (sizes: number[]) => sizes.map((size, index) => ({ messageSeq: index + 1,
+    attachment: { id: crypto.randomUUID(), name: "owned.bin", size, mediaType: "application/octet-stream", sha256: index.toString(16).padStart(64, "0") } }));
+  const validate = (retainedFiles: ReturnType<typeof inventory>) => core.backup_metadata(JSON.stringify({ kind: "room_copy", version: 1, authors: {}, retainedFiles }));
+  const count = inventory(Array(limits.maxRetainedFiles).fill(1));
+  const sizes = Array(limits.maxRetainedBytes / limits.maxFileBytes).fill(limits.maxFileBytes);
+  const bytes = inventory(sizes);
+  expect(JSON.parse(validate(count)).retainedFiles).toHaveLength(count.length);
+  expect(JSON.parse(validate(bytes)).retainedFiles).toHaveLength(bytes.length);
+  expect(() => validate(inventory(Array(limits.maxRetainedFiles + 1).fill(1)))).toThrow("backup_content_limit");
+  expect(() => validate(inventory([...sizes, 1]))).toThrow("backup_content_limit");
+  expect(() => validate([count[0], count[0]])).toThrow("invalid_backup_content");
+  expect(() => validate([count[0], { ...count[1], attachment: { ...count[1].attachment, sha256: count[0].attachment.sha256, size: 2 } }])).toThrow("invalid_backup_content");
+});
+
 test("invalid archives and failed atomic replacements keep the existing Browser host, capture, voice and watch", async () => {
   const context = await setupRoomBackup();
   const { session, socket, host, stage, read } = context;
@@ -8484,19 +8570,20 @@ test("Native room restore preserves the explicit committed failure from its stor
   } finally { session.close(); }
 });
 
-test("Native backup is selected by its described live host identity, with no Browser fallback", async () => {
+test.each([true, false])("Native backup uses its described live host without Browser fallback (includeFiles=%s)", async includeFiles => {
   const { session, socket } = await setup();
   const hostId = crypto.randomUUID(), archive = new Blob(["native-snapshot"]);
   const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ sessionId: hostId, roomIds: ["first"] })))
     .mockResolvedValueOnce(new Response(archive));
   vi.stubGlobal("fetch", fetch);
-  vi.spyOn(session.attachments, "retained").mockResolvedValue([]);
+  const retained = vi.spyOn(session.attachments, "retained").mockResolvedValue([]);
   const open = vi.fn();
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: { open } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const state = structuredClone(session.getSnapshot().state!); state.channel.rooms[0].delivery!.hostSessionId = hostId;
   socket.receive({ type: "state", state });
   try {
-    const result = await session.exportRoomBackup("first"); expect(await result.text()).toBe("native-snapshot");
+    const result = await session.exportRoomBackup("first", includeFiles); expect(await result.text()).toBe("native-snapshot");
+    expect(retained).toHaveBeenCalledTimes(includeFiles ? 1 : 0);
     expect(fetch.mock.calls.map(call => call[0])).toEqual(["/prototype/channel/hosting", "/prototype/channel/rooms/first/backup"]);
     expect(open).not.toHaveBeenCalled();
     fetch.mockResolvedValueOnce(new Response(JSON.stringify({ sessionId: crypto.randomUUID(), roomIds: ["first"] })));

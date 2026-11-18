@@ -64,7 +64,7 @@ export function AppReleaseNotice({ update, native, managementURL }: {
       </Tooltip>}
     </div>
     {native && <AppUpdateStatus {...native} />}
-    {native?.view.state === "unavailable" && <p className="lr-app-update-manual">{t("client.update.manualHint")}</p>}
+    {native?.view.state === "unavailable" && (major || update.kind === "update-available") && <p className="lr-app-update-manual">{t("client.update.manualHint")}</p>}
     <a className="lr-client-release-mirror" href="https://atomgit.com/TNTcraftHIM/Piik/releases"
       target="_blank" rel="noopener noreferrer" aria-label={t("client.update.downloads")}>
       {t("client.update.downloads")}

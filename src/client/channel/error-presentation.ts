@@ -40,6 +40,8 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.error.backupRoomMismatch");
   if (error === "unsupported_backup_version")
     return display("channel.error.unsupportedBackupVersion");
+  if (error === "backup_content_limit")
+    return { message: t("channel.error.backupContentLimit", { option: t("room.backup.includeFiles") }), connectionHelp: false };
   if (error === "expected_room_copy")
     return display("channel.error.expectedRoomCopy");
   if (error === "invalid_room_copy")
