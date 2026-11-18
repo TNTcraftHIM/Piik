@@ -1,8 +1,24 @@
 import type Hls from "hls.js";
 import { expect, test } from "vitest";
 import { WatchHlsTimeline } from "../src/client/channel/watch-hls-timeline";
+import { watchSeekPosition } from "../src/client/channel/watch-media";
 
 const epoch = 1794744000;
+
+test("pointer and directional keyboard seeks around a program gap map to playable media", () => {
+  const { hls, video, details } = fixture(0, epoch);
+  details.fragments = [
+    { start: 0, end: 8, programDateTime: epoch * 1000, endProgramDateTime: (epoch + 8) * 1000 },
+    { start: 8, end: 12, programDateTime: (epoch + 12) * 1000, endProgramDateTime: (epoch + 16) * 1000 },
+  ];
+  const timeline = new WatchHlsTimeline(hls, "program");
+  const ranges = timeline.read(video)!.live.seekable;
+  for (const [requested, expected] of [[7.99, 7.99], [8, 7.999], [9, 7.999], [10, 8], [11, 8], [12, 8], [16, 12]]) {
+    expect(timeline.localPosition(watchSeekPosition(epoch + requested, ranges))).toBeCloseTo(expected, 5);
+  }
+  expect(timeline.localPosition(watchSeekPosition(epoch + 8.1, ranges, 1))).toBe(8);
+  expect(timeline.localPosition(watchSeekPosition(epoch + 11.9, ranges, -1))).toBeCloseTo(7.999, 5);
+});
 function fixture(start: number, programStart: number, live = true, liveSyncPosition = start + 3) {
   const video = { currentTime: start + 2, buffered: { length: 1, start: () => start, end: () => start + 6 } } as unknown as HTMLVideoElement;
   const details = { live, fragments: [{ start, end: start + 6, programDateTime: programStart * 1000, endProgramDateTime: (programStart + 6) * 1000 }] };

@@ -19,6 +19,7 @@ import { playbackFailure } from "../../media/viewer-playback";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
 import type { VideoFit, VideoRotation } from "../../media/video-geometry";
 import type { ChannelScreenInput, ScreenPresentation } from "../types";
+import { watchSeekPosition } from "../watch-media";
 import { useCopy } from "../../ui/copy";
 import { RemoteControl } from "../../components/living/RemoteControl";
 import type { InputTransport } from "../../remote-control/input-route";
@@ -191,7 +192,11 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
         {owned ? <input type="range" min={seekStart} max={seekEnd || 1} step="0.1" value={position}
           aria-label={t("watch.seek")} disabled={disabled || seekEnd <= seekStart}
           aria-valuetext={timeLabel} onPointerDown={() => { draggingSeek.current = true; }}
-          onChange={event => { const position = Number(event.target.value); if (draggingSeek.current) setSeekPreview(position); else onPlayback({ position }); }}
+          onInput={event => {
+            const requested = Number(event.currentTarget.value);
+            if (draggingSeek.current) setSeekPreview(requested);
+            else onPlayback({ position: live ? watchSeekPosition(requested, live.seekable, requested - position) : requested });
+          }}
           onPointerUp={event => { draggingSeek.current = false; onPlayback({ position: Number(event.currentTarget.value) }); setSeekPreview(null); }}
           onPointerCancel={() => { draggingSeek.current = false; setSeekPreview(null); }} />
           : <progress max={seekEnd - seekStart || 1} value={Math.max(0, media.position - seekStart)}

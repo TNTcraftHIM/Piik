@@ -32,7 +32,13 @@ export class WatchHlsTimeline {
         fragment.programDateTime! / 1000 + end - fragment.start]);
     }
     return { position, buffered, live: { active: details.live,
-      seekable: fragments.map(fragment => [fragment.programDateTime! / 1000, fragment.endProgramDateTime! / 1000]),
+      seekable: fragments.map((fragment, index) => {
+        const start = fragment.programDateTime! / 1000, end = fragment.endProgramDateTime! / 1000;
+        const next = fragments[index + 1];
+        // Step inside the old fragment so the browser can seek without rounding to the shared endpoint.
+        return [start, next && next.start <= fragment.end && next.programDateTime! > fragment.endProgramDateTime!
+          ? Math.max(start, end - 0.001) : end];
+      }),
       syncPosition: details.live && this.hls.liveSyncPosition !== null ? this.programPosition(this.hls.liveSyncPosition) : null } };
   }
 

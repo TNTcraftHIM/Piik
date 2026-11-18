@@ -319,7 +319,15 @@ export class AppPageMedia implements WatchMedia {
 }
 
 /** Explicit sharer seeks land on available content without changing received anchors. */
-export function watchSeekPosition(position: number, ranges: readonly (readonly [number, number])[]): number {
+export function watchSeekPosition(position: number, ranges: readonly (readonly [number, number])[], direction = 0): number {
+  if (direction > 0) {
+    const range = ranges.find(([, end]) => position <= end);
+    return range ? Math.max(position, range[0]) : (ranges.at(-1)?.[1] ?? position);
+  }
+  if (direction < 0) {
+    const range = ranges.findLast(([start]) => start <= position);
+    return range ? Math.min(position, range[1]) : (ranges[0]?.[0] ?? position);
+  }
   let nearest = position, distance = Infinity;
   for (const [start, end] of ranges) {
     const target = Math.max(start, Math.min(position, end)), delta = Math.abs(target - position);
