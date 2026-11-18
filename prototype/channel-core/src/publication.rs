@@ -163,12 +163,14 @@ impl Publication {
         if self.info.kind != Kind::Screen || self.operation.is_none() {
             return;
         }
-        let mut outputs = BTreeMap::<Uuid, usize>::new();
+        let mut outputs = BTreeMap::<Uuid, (usize, bool)>::new();
         for flow in self.relay_flows(helpers) {
-            *outputs.entry(flow.sender).or_default() += 1;
+            let (count, preparing) = outputs.entry(flow.sender).or_default();
+            *count += 1;
+            *preparing |= !flow.selected;
         }
-        if self.relay_flows(helpers).any(|flow| {
-            !flow.selected && outputs[&flow.sender] > limits.get(flow.sender, self.plan.source)
+        if outputs.into_iter().any(|(sender, (count, preparing))| {
+            preparing && count > limits.get(sender, self.plan.source)
         }) {
             self.operation = None;
         }
