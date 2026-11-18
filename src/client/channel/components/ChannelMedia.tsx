@@ -501,7 +501,11 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
         pictureFit={pictureFit} pictureRotation={pictureRotation} touchMode={remoteTouchMode} />}
       <span ref={pictureTrigger} className="lr-playback-more"><Btn icon="sliders" quiet title="playback.more" hint="hint-advanced"
         popoverTarget={pictureId} controls={pictureId} expanded={pictureOpen} /></span>
-      <div ref={picturePanel} id={pictureId} popover="auto" role="dialog" aria-label={t("playback.more")}
+      <div ref={panel => {
+        picturePanel.current = panel;
+        // Native popover focus runs before the settings content mounts.
+        panel?.setAttribute("autofocus", "");
+      }} id={pictureId} popover="auto" role="dialog" tabIndex={-1} aria-label={t("playback.more")}
         className="lr-floating-surface lr-playback-menu lr-playback-settings" onToggle={event => {
           if (event.target === event.currentTarget) setPictureOpen(event.newState === "open");
         }}>

@@ -6,6 +6,7 @@ import { nextViewerMediaBinding, playbackFailure, prepareViewerPlayback } from "
 import { ChannelVideo } from "../src/client/channel/components/ChannelMedia";
 import { ChannelStage, type ChannelStageProps } from "../src/client/channel/components/ChannelStage";
 import { PlaybackControlsView } from "../src/client/components/living/PlaybackControls";
+import { PlaybackSettings } from "../src/client/components/living/PlaybackSettings";
 import { setCopy } from "../src/client/ui/copy";
 import { en } from "../src/client/locales/en";
 import { useHostPreviewPlayback } from "../src/client/components/living/use-host-preview-playback";
@@ -229,12 +230,20 @@ describe("Screen delivery result", () => {
 });
 
 
-it("shows shared buffer intent on received screens, including limitations, and omits local previews", () => {
+it("defers buffering controls until playback settings opens", () => {
   setCopy({ lang: "en" });
   const stream = { id: "buffer-ui", getAudioTracks: () => [] } as unknown as MediaStream;
   const props = { stream, owned: false, localSource: false, label: "Screen", theaterMode: false, onToggleTheater: vi.fn(),
     buffering: { target: 725, status: "unsupported" as const, onChange: vi.fn() } };
   const remote = renderToStaticMarkup(createElement(ChannelVideo, props));
+  expect(remote).toContain('aria-label="Playback settings"');
+  expect(remote).not.toContain('aria-label="Playback buffering"');
+});
+
+it("shows the manual buffer target and browser limitations in playback settings", () => {
+  setCopy({ lang: "en" });
+  const buffering = { target: 725, status: "unsupported" as const, onChange: vi.fn() };
+  const remote = renderToStaticMarkup(createElement(PlaybackSettings, { buffering, reconnect: null }));
   expect(remote).toContain('aria-label="Playback buffering"');
   expect(remote).toContain('name="screen-buffer-target"');
   expect(remote).toContain('max="4000"');
@@ -243,10 +252,6 @@ it("shows shared buffer intent on received screens, including limitations, and o
   expect(remote).toContain('aria-label="Increase playback buffering"');
   expect(remote).toContain("Total buffer target");
   expect(remote).toContain(en["playback.bufferHint"]);
-  const automatic = renderToStaticMarkup(createElement(ChannelVideo, { ...props, buffering: { ...props.buffering, target: null } }));
+  const automatic = renderToStaticMarkup(createElement(PlaybackSettings, { buffering: { ...buffering, target: null }, reconnect: null }));
   expect(automatic).not.toContain('name="screen-buffer-target"');
-  const preview = renderToStaticMarkup(createElement(ChannelVideo, { ...props, localSource: true }));
-  expect(preview).not.toContain('aria-label="Playback buffering"');
-  const host = renderToStaticMarkup(createElement(ChannelVideo, { ...props, owned: true }));
-  expect(host).not.toContain('aria-label="Playback buffering"');
 });

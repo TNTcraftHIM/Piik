@@ -41,11 +41,12 @@ const sessions = ["a", "b", "c", "d", "e"].map(name => `${sessionPrefix}-${name}
 const lifecycleOnly = process.argv.includes("--lifecycle");
 const roomsOnly = process.argv.includes("--rooms");
 const identityOnly = process.argv.includes("--identity");
+const playbackOnly = process.argv.includes("--playback");
 const hostsOnly = process.argv.includes("--hosts");
 const baseOnly = process.argv.includes("--base");
 const nativeOnly = process.argv.includes("--native");
 const appOnly = process.argv.includes("--app") || process.argv.includes("--previews");
-const active = backupOnly ? [1] : identityOnly ? [0, 1] : process.argv.includes("--app") ? [0, 1, 2, 3]
+const active = backupOnly ? [1] : identityOnly || playbackOnly ? [0, 1] : process.argv.includes("--app") ? [0, 1, 2, 3]
   : lifecycleOnly || roomsOnly || hostsOnly || nativeOnly || appOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
 async function browser(index, ...args) {
   if (["click", "dblclick", "hover"].includes(args[0])) await browser(index, "scrollintoview", args[1]);
@@ -92,6 +93,35 @@ async function roomInvitation(index, roomId) {
   await browser(index, "click", `.c3-room-link[aria-label=${JSON.stringify(room.name)}]`);
   await browser(index, "find", "role", "button", "click", "--name", `Invite to ${room.name}`, "--exact");
   await browser(index, "wait", ".c3-room-invitation:popover-open");
+}
+
+async function playbackSettings(index, publication, remote) {
+  const trigger = `[data-publication-id=${JSON.stringify(publication)}] .lr-playback-more button`;
+  const inspect = () => evaluate(index, `(() => {
+    const trigger = document.querySelector(${JSON.stringify(trigger)});
+    const panel = document.getElementById(trigger.getAttribute('aria-controls'));
+    return {
+      mounted: !!panel.querySelector('.lr-viewer-settings'),
+      open: panel.matches(':popover-open'),
+      panelFocused: document.activeElement === panel,
+      controlFocused: panel.contains(document.activeElement) && document.activeElement.matches('button'),
+      triggerFocused: document.activeElement === trigger,
+      buffering: !!panel.querySelector('[aria-label="Increase playback buffering"]'),
+      retry: !!panel.querySelector('[aria-label="Retry picture"]'),
+    };
+  })()`);
+  assert.equal((await inspect()).mounted, false, "closed settings stay unmounted");
+  await browser(index, "focus", trigger);
+  await browser(index, "press", "Enter");
+  const opened = await until("settings mount with focus on the panel", inspect, value => value.mounted && value.open && value.panelFocused);
+  assert.equal(opened.buffering, remote);
+  assert.equal(opened.retry, remote);
+  await browser(index, "press", "Tab");
+  assert.equal((await inspect()).controlFocused, true, "Tab enters the settings controls");
+  await browser(index, "press", "Escape");
+  if ((await inspect()).open) await browser(index, "press", "Escape");
+  await until("settings close, unmount and restore the trigger focus", inspect,
+    value => !value.open && !value.mounted && value.triggerFocused);
 }
 
 async function senderAllocationFailure() {
@@ -1386,6 +1416,15 @@ try {
   } else if (identityOnly) {
     await identityControls(roomId);
     console.log(`Identity image acceptance passed; evidence: ${output}`);
+  } else if (playbackOnly) {
+    for (const index of active) await browser(index, "click", '.c3-room-link[aria-label="Living room"]');
+    const publication = await publishScreen(0, roomId);
+    await action(1, `watch(${JSON.stringify(publication)})`);
+    await playing(1, publication);
+    await browser(1, "find", "role", "button", "click", "--name", "Return to Living room", "--exact");
+    await playbackSettings(1, publication, true);
+    await playbackSettings(0, publication, false);
+    console.log("Playback settings keyboard acceptance passed");
   } else if (appOnly) {
     await appRoom({ initial, serverRoom: roomId, browser, action, view, evaluate, until, sample,
       capturedScreen, playing, progressing, audioProgressing, hook, output });
