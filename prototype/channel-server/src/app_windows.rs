@@ -33,7 +33,7 @@ use webview2_com::{
     ContainsFullScreenElementChangedEventHandler, WindowCloseRequestedEventHandler,
 };
 use wry::{
-    NewWindowResponse, WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows,
+    NewWindowResponse, PageLoadEvent, WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows,
     WebViewExtWindows,
 };
 
@@ -156,6 +156,7 @@ enum ServiceEvent {
         entry: String,
     },
     Navigate(String),
+    ContentLoading,
     Finished,
     PopupClosed(WindowId),
     PopupPresentation(WindowId, popup::Message),
@@ -185,6 +186,46 @@ impl WindowControls {
 struct Core {
     stop: Option<oneshot::Sender<()>>,
     worker: Option<thread::JoinHandle<Result<()>>>,
+}
+
+#[cfg(test)]
+#[test]
+fn worker_finishes_after_headless_close() -> Result<()> {
+    use tao::platform::windows::EventLoopBuilderExtWindows;
+    let directory = tempfile::tempdir()?;
+    let config = Config {
+        data_root: directory.path().into(),
+        assets: directory.path().into(),
+        open_browser: false,
+        terminal_notice: None,
+        page_player: None,
+        website_permission_reset: None,
+        window_navigation: None,
+        cloudflared: Default::default(),
+        ice_servers: vec![],
+        update: Default::default(),
+    };
+    let mut events = EventLoopBuilder::with_user_event().with_any_thread(true).build();
+    let mut core = Core::start(config, Some(0), events.create_proxy())?;
+    let mut ready = false;
+    let mut finished = false;
+    events.run_return(|event, _, flow| {
+        *flow = ControlFlow::Wait;
+        match event {
+            Event::UserEvent(ServiceEvent::Ready { .. }) => {
+                ready = true;
+                core.stop();
+            }
+            Event::UserEvent(ServiceEvent::Finished) => {
+                finished = true;
+                *flow = ControlFlow::Exit;
+            }
+            _ => {}
+        }
+    });
+    core.finish()?;
+    assert!(ready && finished);
+    Ok(())
 }
 impl Core {
     fn start(
@@ -285,9 +326,16 @@ impl MainWindow {
         let popup_events = events.clone();
         let popup_pending = pending.clone();
         let content_events = events.clone();
+        let load_events = events.clone();
         let content = WebViewBuilder::new_with_web_context(context).with_url("about:blank")
             .with_initialization_script(CAPABILITY)
             .with_initialization_script(download::SCRIPT)
+            .with_on_page_load_handler(move |event, _| {
+                // Wry maps Started to top-level ContentLoading, after cancellation is resolved.
+                if matches!(event, PageLoadEvent::Started) {
+                    let _ = load_events.send_event(ServiceEvent::ContentLoading);
+                }
+            })
             .with_ipc_handler(move |request| {
                 if let Ok(message) = serde_json::from_str::<ContentMessage>(request.body()) {
                     if matches!(&message, ContentMessage::Header { slot: Some([x, y]) } if !x.is_finite() || !y.is_finite()) { return; }
@@ -509,6 +557,11 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 pages.appearance(&theme, language);
                 if let Some(prompt) = &prompt {
                     prompt.update_appearance(&theme, language);
+                }
+            }
+            Event::UserEvent(ServiceEvent::ContentLoading) => {
+                if let Some(main) = &window {
+                    main.caption.content_loading();
                 }
             }
             Event::UserEvent(ServiceEvent::ResetWebsitePermissions(command)) => {

@@ -846,12 +846,11 @@ fn page_view(
                 let _ = messages.send_event(ServiceEvent::PageMessage(key, request.into_body()));
             }
         })
-        .with_navigation_handler(move |url| {
-            if !page::valid_url(&url) {
-                return false;
+        .with_navigation_handler(|url| page::valid_url(&url))
+        .with_on_page_load_handler(move |event, _| {
+            if matches!(event, wry::PageLoadEvent::Started) {
+                let _ = navigating.send_event(ServiceEvent::PageNavigate(key));
             }
-            let _ = navigating.send_event(ServiceEvent::PageNavigate(key));
-            true
         })
         .build_as_child(&window)?;
     super::download::install(&view, None)?;

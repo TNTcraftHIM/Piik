@@ -14,8 +14,36 @@ use wry::{NewWindowResponse, WebView, WebViewBuilder, WebViewBuilderExtWindows, 
 
 pub(super) struct Caption {
     pub(super) view: WebView,
-    appearance: RefCell<Option<(Theme, Language, Option<ModalMaterial>)>>,
+    appearance: RefCell<Appearance>,
     title: RefCell<String>,
+}
+
+#[derive(Default)]
+struct Appearance(Option<(Theme, Language, Option<ModalMaterial>)>);
+
+impl Appearance {
+    fn update(
+        &mut self,
+        theme: &Theme,
+        language: Language,
+        material: Option<ModalMaterial>,
+    ) -> String {
+        self.0 = Some((theme.clone(), language, material.clone()));
+        format!(
+            "window.updateAppearance(...{})",
+            serde_json::json!([theme.code(), language.code(), material])
+        )
+    }
+
+    fn ready(&mut self, theme: &Theme, language: Language) -> String {
+        let (theme, language, material) = self.0.clone().unwrap_or((theme.clone(), language, None));
+        self.update(&theme, language, material)
+    }
+
+    fn content_loading(&mut self) -> Option<String> {
+        let (theme, language, _) = self.0.clone()?;
+        Some(self.update(&theme, language, None))
+    }
 }
 
 impl Caption {
@@ -60,7 +88,7 @@ impl Caption {
         )?;
         Ok(Self {
             view,
-            appearance: RefCell::new(None),
+            appearance: RefCell::default(),
             title: RefCell::new(String::new()),
         })
     }
@@ -71,22 +99,21 @@ impl Caption {
         language: Language,
         material: Option<ModalMaterial>,
     ) {
-        *self.appearance.borrow_mut() = Some((theme.clone(), language, material.clone()));
-        let _ = self.view.evaluate_script(&format!(
-            "window.updateAppearance(...{})",
-            serde_json::json!([theme.code(), language.code(), material])
-        ));
+        let script = self.appearance.borrow_mut().update(theme, language, material);
+        let _ = self.view.evaluate_script(&script);
     }
 
     pub(super) fn ready(&self, theme: &Theme, language: Language) {
-        let (theme, language, material) =
-            self.appearance
-                .borrow()
-                .clone()
-                .unwrap_or((theme.clone(), language, None));
-        self.appearance(&theme, language, material);
+        let script = self.appearance.borrow_mut().ready(theme, language);
+        let _ = self.view.evaluate_script(&script);
         let title = self.title.borrow().clone();
         self.title(&title);
+    }
+
+    pub(super) fn content_loading(&self) {
+        if let Some(script) = self.appearance.borrow_mut().content_loading() {
+            let _ = self.view.evaluate_script(&script);
+        }
     }
 
     pub(super) fn title(&self, title: &str) {
@@ -128,5 +155,41 @@ pub(super) fn apply(window: &Window, action: &WindowAction) {
         WindowAction::Close => {
             unreachable!("Close is routed by the exact window's lifecycle owner")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replacing_the_document_clears_modal_material_from_delivery_and_ready_replay() {
+        for material in [ModalMaterial::Surface, ModalMaterial::Image] {
+            let mut appearance = Appearance::default();
+            appearance.update(&Theme::Dark, Language::ZhHant, Some(material));
+            let cleared = r#"window.updateAppearance(...["dark","zh-Hant",null])"#;
+            assert_eq!(appearance.content_loading().as_deref(), Some(cleared));
+            // A loading/error document need not send any appearance of its own.
+            assert_eq!(appearance.ready(&Theme::Light, Language::En), cleared);
+
+            let next = appearance.update(&Theme::Light, Language::Ja, Some(ModalMaterial::Surface));
+            assert_eq!(
+                next,
+                r#"window.updateAppearance(...["light","ja","surface"])"#
+            );
+            assert_eq!(appearance.ready(&Theme::Dark, Language::En), next);
+        }
+    }
+
+    #[test]
+    fn without_document_replacement_the_current_modal_survives_ready_replay() {
+        let mut appearance = Appearance::default();
+        assert!(appearance.content_loading().is_none());
+        assert_eq!(
+            appearance.ready(&Theme::Light, Language::Ko),
+            r#"window.updateAppearance(...["light","ko",null])"#
+        );
+        let current = appearance.update(&Theme::Dark, Language::Zh, Some(ModalMaterial::Image));
+        assert_eq!(appearance.ready(&Theme::Light, Language::En), current);
     }
 }
