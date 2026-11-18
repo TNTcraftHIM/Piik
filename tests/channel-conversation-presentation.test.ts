@@ -26,6 +26,9 @@ test("the first loaded day has an absolute date and message metadata exposes the
   const timestamp = date.toLocaleString("en", { dateStyle: "long", timeStyle: "long" });
   expect(html).toContain(`title="${timestamp}" aria-label="${timestamp}"`);
   expect(html).toContain('c3-message c3-reaction-message is-continuation');
+  const continuation = html.split('is-continuation')[1];
+  expect(continuation).toContain('<div class="visually-hidden"><strong>');
+  expect(continuation).toContain(new Date(date.getTime() + 30_000).toISOString());
 });
 
 test("same-author messages break at local midnight, while a UTC date boundary alone does not", () => {

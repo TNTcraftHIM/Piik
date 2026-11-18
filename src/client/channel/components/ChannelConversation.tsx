@@ -422,9 +422,9 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
     {unread && <div className="c3-message-date c3-unread-divider">{t("conversation.newMessages")}</div>}
     <article ref={row} tabIndex={0} className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}${mentioned ? " is-mentioned" : ""}`} data-message-id={message.id} data-message-seq={message.seq}>
     {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} avatar={avatar} />}
-    <div className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
+    <div className="c3-message-body"><div className={grouped ? "visually-hidden" : "c3-message-meta"}><strong>{name}</strong>
       <time dateTime={date.toISOString()} title={timestamp} aria-label={timestamp}>{date.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" })}</time>
-    </div>}<div className="c3-message-content-body">
+    </div><div className="c3-message-content-body">
     {message.reply && <button type="button" className="c3-message-reference" disabled={!onMessage} onClick={() => onMessage?.(message.reply!.seq)}>
       <Glyph name="reply" size={14} /><strong>{message.reply.archivedAuthorName ?? users.find(user => user.id === message.reply!.userId)?.name ?? t("conversation.user")}</strong>
       <span>{message.reply.text || t("conversation.attachment")}</span></button>}
