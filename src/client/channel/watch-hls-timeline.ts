@@ -37,14 +37,20 @@ export class WatchHlsTimeline {
   }
 
   private programPosition(position: number): number | null {
-    const fragment = this.hls.latestLevelDetails?.fragments.find(fragment => fragment.start <= position && position <= fragment.end);
+    const fragment = this.hls.latestLevelDetails?.fragments.findLast(fragment => fragment.start <= position && position <= fragment.end);
     return fragment && Number.isFinite(fragment.programDateTime) ? fragment.programDateTime! / 1000 + position - fragment.start : null;
   }
 
   localPosition(position: number): number {
     if (this.coordinate !== "program") return position;
-    const fragment = this.hls.latestLevelDetails?.fragments.find(fragment => fragment.programDateTime !== null
-      && fragment.endProgramDateTime !== null && fragment.programDateTime / 1000 <= position && position <= fragment.endProgramDateTime / 1000);
+    const fragment = this.hls.latestLevelDetails?.fragments.findLast((fragment, index, fragments) => {
+      if (fragment.programDateTime === null || fragment.endProgramDateTime === null) return false;
+      const end = fragment.endProgramDateTime / 1000;
+      const next = fragments[index + 1];
+      // A shared media endpoint belongs to the next fragment, even across a program-time gap.
+      return fragment.programDateTime / 1000 <= position
+        && (position < end || (position === end && (!next || next.start > fragment.end)));
+    });
     if (!fragment) throw new Error("watch_live_position_unavailable");
     return fragment.start + position - fragment.programDateTime! / 1000;
   }

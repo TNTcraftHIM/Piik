@@ -3,10 +3,10 @@ import { expect, test } from "vitest";
 import { WatchHlsTimeline } from "../src/client/channel/watch-hls-timeline";
 
 const epoch = 1794744000;
-function fixture(start: number, programStart: number, live = true) {
+function fixture(start: number, programStart: number, live = true, liveSyncPosition = start + 3) {
   const video = { currentTime: start + 2, buffered: { length: 1, start: () => start, end: () => start + 6 } } as unknown as HTMLVideoElement;
   const details = { live, fragments: [{ start, end: start + 6, programDateTime: programStart * 1000, endProgramDateTime: (programStart + 6) * 1000 }] };
-  const hls = { latestLevelDetails: details, liveSyncPosition: start + 3,
+  const hls = { latestLevelDetails: details, liveSyncPosition,
     get playingDate() { return new Date((programStart + video.currentTime - start) * 1000); } } as unknown as Hls;
   return { video, details, hls };
 }
@@ -42,4 +42,19 @@ test("a seek uses the target fragment mapping while the prior playing-date obser
   const input = fixture(0, epoch + 20), timeline = new WatchHlsTimeline(input.hls, "program");
   Object.defineProperty(input.hls, "playingDate", { value: new Date((epoch + 2) * 1000) });
   expect(timeline.read(input.video)?.position).toBe(epoch + 22);
+});
+
+test("a shared media boundary uses the next fragment's program date", () => {
+  const { hls, video, details } = fixture(0, epoch, true, 6);
+  details.fragments.push({ start: 6, end: 12, programDateTime: (epoch + 10) * 1000, endProgramDateTime: (epoch + 16) * 1000 });
+  const timeline = new WatchHlsTimeline(hls, "program");
+
+  video.currentTime = timeline.localPosition(epoch + 10);
+  expect(video.currentTime).toBe(6);
+  expect(timeline.read(video)?.position).toBe(epoch + 10);
+  expect(timeline.read(video)?.live.syncPosition).toBe(epoch + 10);
+  expect(() => timeline.localPosition(epoch + 6)).toThrow("watch_live_position_unavailable");
+  expect(() => timeline.localPosition(epoch + 8)).toThrow("watch_live_position_unavailable");
+  video.currentTime = timeline.localPosition(epoch + 16);
+  expect(timeline.read(video)?.position).toBe(epoch + 16);
 });
