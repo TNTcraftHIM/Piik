@@ -20,7 +20,7 @@ const roomPreferencesSchema = z.object({
   pictureFit: z.enum(["contain", "cover", "fill"]).default("contain"),
   pictureRotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).catch(0).default(0),
   previewAutoPause: z.boolean().default(true),
-  relayCapacityByRoom: z.record(z.string(), z.number().int().min(0).max(MAX_RELAY_CAPACITY)).default({}),
+  forwardingLimitByIdentity: z.record(z.string(), z.number().int().min(-1).max(MAX_RELAY_CAPACITY)).default({}),
   overlayEnabled: z.boolean().default(false),
   overlayAppearance: z.object({
     scale: z.number().min(CHAT_OVERLAY_LIMITS.scale[0]).max(CHAT_OVERLAY_LIMITS.scale[1]),

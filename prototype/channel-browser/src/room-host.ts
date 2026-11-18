@@ -1,5 +1,5 @@
-import init, { attachment_result, create_room_policy, HistoryPage, history_page_size, prepare_confirmation, reaction_result, RoomHost, SessionSigner } from "../pkg/piik_channel_browser.js";
-export { AttachmentHash, BackupHistoryImport, CopyHistoryImport, DomainArchiveCheck, FileDelivery, WatchDelivery, attachment_limits, attachment_media_type, backup_metadata, backup_record_bytes, message_mention_limit, conversation_broadcast, decode_control, encode_control, verify_conversation, route_input, input_binding_current, verify_reply } from "../pkg/piik_channel_browser.js";
+import init, { attachment_result, create_room_policy, HistoryPage, history_page_size, message_retry_key, prepare_confirmation, reaction_result, RoomHost, SessionSigner } from "../pkg/piik_channel_browser.js";
+export { AttachmentHash, BackupHistoryImport, CopyHistoryImport, DomainArchiveCheck, FileDelivery, ForwardingBudget, WatchDelivery, attachment_limits, attachment_media_type, backup_metadata, backup_record_bytes, message_mention_limit, conversation_broadcast, decode_control, encode_control, verify_conversation, route_input, input_binding_current, verify_reply } from "../pkg/piik_channel_browser.js";
 let initialization: Promise<void> | undefined;
 export function initializeRuntime(): Promise<void> { return initialization ??= init().then(() => {}); }
 export async function createSessionSigner(seed: Uint8Array): Promise<SessionSigner> { await initializeRuntime(); return new SessionSigner(seed); }
@@ -11,19 +11,28 @@ export interface NewRoomPolicy extends RoomSettings {
 }
 interface RoomRecord { id: string; policy: string; bindingId?: string }
 interface RetainedMessage extends ChannelMessage { reactions: MessageReactions }
-interface StoredMessage extends RetainedMessage { roomId: string; nonce: string }
+type StoredRow = BackupHistoryRow & { roomId: string; retryKey: string };
+function indexed(row: BackupHistoryRow) { return "id" in row ? { ...row, retryKey: message_retry_key(row.userId, row.nonce) } : row; }
+function portable(row: BackupHistoryRow & { retryKey: string }): BackupHistoryRow {
+  if (!("id" in row)) return row;
+  const { retryKey: _retryKey, ...message } = row;
+  return message;
+}
+function live(row: StoredRow | undefined) { return row && "id" in row ? row : undefined; }
 export interface SentResult { type: "sent"; message: RetainedMessage; inserted: boolean }
 export interface PageResult {
   type: "page"; messages: RetainedMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null;
 }
 interface AttachmentResult { type: "attachment"; messageSeq: number; attachment: ChannelMessage["attachments"][number] }
 interface ReactionResult { type: "reacted"; nonce: number; snapshot: MessageReactions & { messageId: string; messageSeq: number }; event: ReactionEvent | null }
-type HistoryResult = SentResult | PageResult | AttachmentResult | ReactionResult;
+type HistoryResult = SentResult | PageResult | AttachmentResult | ReactionResult | { type: "message_deleted"; messageSeq: number } | { type: "history_cleared"; throughSeq: number };
 interface SendRequest { type: "send"; roomId: string; draft: ChatOptions & { userId: string; nonce: string; text: string; time: number; attachments: ChannelMessage["attachments"]; inlineImages?: ChannelMessage["inlineImages"] } }
 interface ReadRequest { type: "read"; roomId: string; before: number | null }
 interface AttachmentRequest { type: "attachment"; roomId: string; messageSeq: number; attachmentId: string }
 interface ReactionRequest { type: "react"; roomId: string; messageSeq: number; nonce: number; event: ReactionEvent | null }
-type HistoryRequest = SendRequest | ReadRequest | AttachmentRequest | ReactionRequest;
+type HistoryRequest = SendRequest | ReadRequest | AttachmentRequest | ReactionRequest
+  | { type: "delete_message"; roomId: string; messageSeq: number; authorId?: string | null }
+  | { type: "clear_history"; roomId: string; throughSeq: number };
 interface HostWork { policy: object | null; history: HistoryRequest | null; delete: boolean }
 type ConversationWork = { type: "history"; value: HistoryRequest } | { type: "immediate"; value: ConversationReply["record"] };
 type ConversationResult = { type: "history"; value: HistoryResult } | { type: "immediate"; value: ConversationReply["record"] };
@@ -34,19 +43,17 @@ function read<T>(request: IDBRequest<T>, receive: (value: T) => void, abort: (er
 }
 function openDatabase(name: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(name, 6);
+    const request = indexedDB.open(name, 7);
     let unsupported = false;
     request.onupgradeneeded = event => {
       if (event.oldVersion !== 0) { unsupported = true; request.transaction!.abort(); return; }
       const db = request.result;
-      if (event.oldVersion === 0) {
-        db.createObjectStore("rooms", { keyPath: "id" });
-        const messages = db.createObjectStore("messages", { keyPath: ["roomId", "seq"] });
-        messages.createIndex("send", ["roomId", "userId", "nonce"], { unique: true });
-        messages.createIndex("id", "id", { unique: true });
-      }
+      db.createObjectStore("rooms", { keyPath: "id" });
+      const messages = db.createObjectStore("messages", { keyPath: ["roomId", "seq"] });
+      messages.createIndex("send", ["roomId", "retryKey"], { unique: true });
+      messages.createIndex("id", "id", { unique: true });
       const backup = db.createObjectStore("backup", { keyPath: "seq" });
-      backup.createIndex("send", ["userId", "nonce"], { unique: true });
+      backup.createIndex("send", "retryKey", { unique: true });
       backup.createIndex("id", "id", { unique: true });
     };
     request.onerror = () => reject(unsupported ? new Error("unsupported_storage_version") : request.error);
@@ -102,7 +109,7 @@ class RoomBackup implements BrowserRoomSnapshot, BrowserRoomStage {
     // Core validated the row; reject sequence keys that IndexedDB's Number
     // representation cannot retain exactly, including the reserved marker key.
     if (!Number.isSafeInteger(row.seq) || row.seq <= 0) return Promise.reject(new Error("invalid_backup_history"));
-    return this.turn(["backup"], "readwrite", tx => { tx.objectStore("backup").add(row); }, () => {});
+    return this.turn(["backup"], "readwrite", tx => { tx.objectStore("backup").add(indexed(row)); }, () => {});
   }
 
   get rows(): AsyncIterable<BackupHistoryRow> { return this.readRows(); }
@@ -113,7 +120,7 @@ class RoomBackup implements BrowserRoomSnapshot, BrowserRoomStage {
       await this.turn(["backup"], "readonly", (tx, abort) => {
         read(tx.objectStore("backup").openCursor(IDBKeyRange.lowerBound(after, true)), cursor => {
           if (!cursor) return;
-          rows.push(cursor.value);
+          rows.push(portable(cursor.value));
           if (rows.length < history_page_size()) cursor.continue();
         }, abort);
       }, () => {});
@@ -218,7 +225,7 @@ export class BrowserRoomHost implements HostedRoom {
             snapshot.initialize(tx);
             read(tx.objectStore("messages").openCursor(IDBKeyRange.bound([this.roomId], [this.roomId, Infinity])), cursor => {
               if (!cursor) return;
-              const { roomId: _roomId, ...row } = cursor.value as StoredMessage;
+              const { roomId: _roomId, ...row } = cursor.value as StoredRow;
               tx.objectStore("backup").add(row);
               cursor.continue();
             }, abort);
@@ -231,6 +238,7 @@ export class BrowserRoomHost implements HostedRoom {
 
   /** The archive owner supplies a Core-validated policy and canonical rows. */
   static async stage(databaseName: string, policy: string): Promise<BrowserRoomStage> {
+    await initializeRuntime();
     const roomId: string = JSON.parse(policy).id;
     const db = await openDatabase(databaseName);
     let stage: RoomBackup | undefined;
@@ -332,7 +340,7 @@ export class BrowserRoomHost implements HostedRoom {
     });
   }
 
-  dispatchPeer(packet: SignedConversationPacket, now: number, signal?: AbortSignal): Promise<ConversationReply[]> {
+  dispatchPeer(packet: SignedConversationPacket, now: number, signal?: AbortSignal, publish?: (output: unknown) => void): Promise<ConversationReply[]> {
     return this.enqueue(async () => {
       if (!this.bindingId) throw new Error("stale_room_host");
       const prepared: { address: ConversationAddress; work: { Ok: ConversationWork } | { Err: string } } = JSON.parse(this.room.prepare_peer(JSON.stringify(packet), BigInt(now)));
@@ -350,7 +358,10 @@ export class BrowserRoomHost implements HostedRoom {
         const cause = failure(error);
         result = { Err: cause.name === "AbortError" ? cause.name : cause.message };
       }
-      return JSON.parse(this.room.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)));
+      const outcome: { replies: ConversationReply[]; projectionUpdate: unknown } = JSON.parse(
+        this.room.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)));
+      if (outcome.projectionUpdate) publish?.(outcome.projectionUpdate);
+      return outcome.replies;
     });
   }
 
@@ -361,47 +372,80 @@ export class BrowserRoomHost implements HostedRoom {
   private executeHistory(request: HistoryRequest, policy: object | null, signal?: AbortSignal): Promise<HistoryResult> {
     let page = request.type === "read" ? new HistoryPage() : undefined;
     let oldest: number | undefined, result: HistoryResult;
-    return this.roomTransaction(["rooms", "messages"], request.type === "send" || request.type === "react" && request.event !== null || policy ? "readwrite" : "readonly", (tx, abort) => {
+    return this.roomTransaction(["rooms", "messages"], request.type === "send" || request.type === "delete_message" || request.type === "clear_history" || request.type === "react" && request.event !== null || policy ? "readwrite" : "readonly", (tx, abort) => {
       this.savePolicy(tx, policy);
       const messages = tx.objectStore("messages");
       if (request.type === "send") {
+        const retryKey = message_retry_key(request.draft.userId, request.draft.nonce);
         const prepare = (input: object) => {
           const confirmation: SentResult = JSON.parse(prepare_confirmation(JSON.stringify(request.draft), JSON.stringify(input)));
-          if (confirmation.inserted) messages.add({ ...confirmation.message, roomId: request.roomId, nonce: request.draft.nonce });
+          if (confirmation.inserted) messages.add({ ...confirmation.message, roomId: request.roomId, nonce: request.draft.nonce, retryKey });
           result = confirmation;
         };
-        read<StoredMessage | undefined>(messages.index("send").get([request.roomId, request.draft.userId, request.draft.nonce]), previous => {
+        read<StoredRow | undefined>(messages.index("send").get([request.roomId, retryKey]), previous => {
+          if (previous && !live(previous)) throw new Error("message_unavailable");
           if (previous) { prepare({ type: "existing", message: previous }); return; }
           read(messages.openCursor(IDBKeyRange.bound([request.roomId], [request.roomId, Infinity]), "prev"), cursor => {
             const lastSeq = cursor?.value.seq ?? 0;
             if (request.draft.reply) {
-              read<StoredMessage | undefined>(messages.get([request.roomId, request.draft.reply.seq]), reply => {
-                prepare({ type: "new", lastSeq, reply: reply ?? null });
+              read<StoredRow | undefined>(messages.get([request.roomId, request.draft.reply.seq]), reply => {
+                prepare({ type: "new", lastSeq, reply: live(reply) ?? null });
               }, abort);
             } else prepare({ type: "new", lastSeq });
           }, abort);
         }, abort);
+      } else if (request.type === "delete_message" || request.type === "clear_history") {
+        const single = request.type === "delete_message";
+        const through = single ? request.messageSeq : request.throughSeq;
+        result = single ? { type: "message_deleted", messageSeq: through } : { type: "history_cleared", throughSeq: through };
+        const range = IDBKeyRange.bound([request.roomId, single ? through : 0], [request.roomId, Infinity]);
+        let found = false;
+        read(messages.openCursor(range), cursor => {
+          if (!cursor) {
+            if (single && !found) throw new Error("message_unavailable");
+            return;
+          }
+          const row: StoredRow = cursor.value;
+          if (row.seq <= through) {
+            found = true;
+            const message = live(row);
+            if (!message && single) throw new Error("message_unavailable");
+            if (message) {
+              if (single && request.authorId && request.authorId !== message.userId) throw new Error("forbidden");
+              cursor.update({ roomId: row.roomId, seq: row.seq, retryKey: row.retryKey });
+            }
+          } else {
+            if (single && !found) throw new Error("message_unavailable");
+            const message = live(row);
+            if (message?.reply && (single ? message.reply.seq === through : message.reply.seq <= through)) {
+              delete message.reply;
+              cursor.update(message);
+            }
+          }
+          cursor.continue();
+        }, abort);
       } else if (request.type === "react") {
-        read<StoredMessage | undefined>(messages.get([request.roomId, request.messageSeq]), previous => {
-          const confirmation: ReactionResult = JSON.parse(reaction_result(JSON.stringify(request), JSON.stringify(previous ?? null)));
+        read<StoredRow | undefined>(messages.get([request.roomId, request.messageSeq]), previous => {
+          const confirmation: ReactionResult = JSON.parse(reaction_result(JSON.stringify(request), JSON.stringify(live(previous) ?? null)));
           if (confirmation.event) messages.put({ ...previous!, reactions: {
             revision: confirmation.snapshot.revision, counts: confirmation.snapshot.counts,
           } });
           result = confirmation;
         }, abort);
       } else if (request.type === "attachment") {
-        read<StoredMessage | undefined>(messages.get([request.roomId, request.messageSeq]), value => {
-          result = JSON.parse(attachment_result(JSON.stringify(request), JSON.stringify(value ?? null)));
+        read<StoredRow | undefined>(messages.get([request.roomId, request.messageSeq]), value => {
+          result = JSON.parse(attachment_result(JSON.stringify(request), JSON.stringify(live(value) ?? null)));
         }, abort);
       } else {
         const range = IDBKeyRange.bound([request.roomId], [request.roomId, request.before ?? Infinity], false, request.before !== null);
         const cursor = messages.openCursor(range, "prev");
         read(cursor, value => {
           if (!value) return;
-          if (page!.push(JSON.stringify(value.value))) value.continue();
+          if (!live(value.value) || page!.push(JSON.stringify(value.value))) value.continue();
         }, abort);
         read(messages.openCursor(IDBKeyRange.bound([request.roomId], [request.roomId, Infinity])), value => {
-          oldest = value?.value.seq;
+          if (value && !live(value.value)) value.continue();
+          else oldest = value?.value.seq;
         }, abort);
       }
     }, () => {

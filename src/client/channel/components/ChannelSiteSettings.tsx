@@ -3,9 +3,9 @@ import { Btn } from "../../components/living/primitives";
 import { Tooltip } from "../../components/living/Tooltip";
 import { useCopy } from "../../ui/copy";
 import type { ChannelController } from "../types";
-import type { DomainSettings } from "../protocol";
+import { roomCreationPolicySchema, type DomainSettings, type RoomCreationPolicy } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
-import { ChannelSettingsDialog, ChannelSettingsTabs, useSettingsAction } from "./ChannelSettingsDialog";
+import { ChannelSettingsDialog, ChannelSettingsError, ChannelSettingsTabs, useSettingsAction } from "./ChannelSettingsDialog";
 import { ChannelIdentityFields, ChannelIdentityMark } from "./ChannelIdentity";
 import { BackupControls } from "./BackupControls";
 import "./channel-room-controls.css";
@@ -19,7 +19,8 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
   const [name, setName] = useState(current?.name ?? "");
   const [icon, setIcon] = useState(current?.icon ?? "couch");
   const [open, setOpen] = useState(false), [imageBusy, setImageBusy] = useState(false);
-  const [task, setTask] = useState<"site" | "backup">("site");
+  const [task, setTask] = useState<"site" | "rooms" | "backup">("site");
+  const [policyDraft, setPolicyDraft] = useState<RoomCreationPolicy | null>(null);
   const { error, run } = useSettingsAction(open);
   const busy = channel.pending.has("domain"), backupBusy = channel.pending.has("domain-backup");
   const unavailable = !owner || channel.connection !== "connected";
@@ -28,9 +29,11 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
     setName(value?.name ?? ""); setIcon(value?.icon ?? "couch");
   };
   const title = t("channel.siteSettings.siteSettings");
-  const close = () => { setOpen(false); setImageBusy(false); };
+  const policy = policyDraft ?? current?.roomCreationPolicy ?? "ordinary";
+  const close = () => { setOpen(false); setImageBusy(false); setPolicyDraft(null); };
   const tasks = [
     { value: "site", label: t("channel.siteSettings.site"), icon: "globe", hint: "hint-advanced" },
+    { value: "rooms", label: t("channel.siteSettings.rooms"), icon: "couch" },
     { value: "backup", label: t("channel.siteSettings.backup"), icon: "save", hint: "hint-advanced" },
   ] as const;
   if (!owner) return null;
@@ -59,6 +62,27 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
               </div>
             </form>
           </section>
+          <section id={`${id}-rooms`} role="tabpanel" aria-labelledby={`${id}-rooms-tab`} hidden={task !== "rooms"}>
+            <form className="c3-room-form" onSubmit={event => {
+              event.preventDefault();
+              if (!disabled && policy !== current?.roomCreationPolicy) void run(() => channel.setRoomCreationPolicy(policy, false), close);
+            }}>
+              <fieldset className="c3-site-creation-options" disabled={disabled}>
+                <legend>{t("channel.siteSettings.guestCreation")}</legend>
+                {roomCreationPolicySchema.options.map(option => <label className="c3-check" key={option}>
+                  <input type="radio" name="roomCreation" checked={policy === option} onChange={() => setPolicyDraft(option)} />
+                  {t(`channel.siteSettings.creation.${option}`)}
+                </label>)}
+              </fieldset>
+              <p>{t(`channel.siteSettings.creationNote.${policy}`)}</p>
+              <div className="c3-form-actions">
+                <ChannelAction icon="x" quiet label={t("channel.siteSettings.cancel")} onClick={close} />
+                <ChannelAction icon="check" primary type="submit" label={t("channel.siteSettings.save")} busy={busy}
+                  disabled={disabled || policy === current?.roomCreationPolicy} />
+              </div>
+            </form>
+            {task === "rooms" && <ChannelRoomDirectory channel={channel} disabled={disabled} />}
+          </section>
           <section id={`${id}-backup`} role="tabpanel" aria-labelledby={`${id}-backup-tab`} hidden={task !== "backup"}>
             <h3>{t("channel.siteSettings.siteBackup")}</h3>
             <BackupControls run={run} kind="domain" busy={backupBusy} disabled={unavailable || busy}
@@ -74,4 +98,38 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
       </div>
     </ChannelSettingsDialog>}
   </>;
+}
+
+function ChannelRoomDirectory({ channel, disabled }: { channel: ChannelController; disabled: boolean }) {
+  const { t, lang } = useCopy();
+  const heading = useId();
+  const { error, run } = useSettingsAction();
+  const directory = channel.state?.channel;
+  const deleteData = directory?.hostingMode === "hosted";
+  const titledRooms = new Map(directory?.rooms.map(room => [room.id, room.name]));
+  const rooms = (directory?.managedRoomIds ?? []).map(id => ({ id, name: titledRooms.get(id) }));
+  rooms.sort((a, b) => Number(!a.name) - Number(!b.name) ||
+    (a.name ?? a.id).localeCompare(b.name ?? b.id, lang) || a.id.localeCompare(b.id));
+  return <section className="c3-site-room-directory" aria-labelledby={heading}>
+    <h3 id={heading}>{t("channel.siteSettings.roomDirectory")}</h3>
+    {rooms.length === 0 ? <p>{t("channel.siteSettings.roomDirectoryEmpty")}</p> :
+      <ul>
+        {rooms.map(({ id, name }) => {
+          const idLabel = t("channel.siteSettings.roomId", { id });
+          const duplicateName = name && rooms.some(room => room.id !== id && room.name === name);
+          const label = duplicateName ? `${name} · ${idLabel}` : name ?? idLabel;
+          const removing = channel.pending.has(`delete:${id}`);
+          return <li key={id}>
+            <span>{label}</span>
+            <Btn icon="x" quiet tone="danger" size="compact" busy={removing} disabled={disabled || removing}
+              title={{ text: t(deleteData ? "channel.siteSettings.deleteNamedRoom" : "channel.siteSettings.removeNamedRoom", { name: label }) }}
+              cap={{ text: t(deleteData ? "room.action.delete" : "room.action.remove") }} onClick={() => {
+                if (window.confirm(t(deleteData ? "room.settings.confirmHostedDelete" : "room.settings.confirmRemove", { name: label })))
+                  void run(() => channel.deleteRoom(id, deleteData, false));
+              }} />
+          </li>;
+        })}
+      </ul>}
+    <ChannelSettingsError error={error ?? (channel.error === "room_data_removal_unconfirmed" ? channel.error : null)} />
+  </section>;
 }

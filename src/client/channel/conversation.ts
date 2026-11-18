@@ -13,11 +13,13 @@ interface ConversationOptions {
   file(peer: string, control: string): void;
   watch?(peer: string, control: string): void;
   reply(reply: ConversationReply): void;
+  projection?(roomId: string, output: unknown): void;
 }
 
 /** Browser I/O for the shared Rust conversation protocol. Callers own requests. */
 export class ChannelConversation {
   private identity: Promise<{ runtime: Runtime; signer: SessionSigner }> | undefined;
+  private runtime: Runtime | undefined;
   constructor(private options: ConversationOptions) {}
 
   private async ready() {
@@ -34,15 +36,19 @@ export class ChannelConversation {
       const signer = await runtime.createSessionSigner(crypto.getRandomValues(new Uint8Array(32)));
       return { runtime, signer };
     })();
-    return Array.from((await this.ready()).signer.signing_key());
+    const { runtime, signer } = await this.ready();
+    this.runtime = runtime;
+    return Array.from(signer.signing_key());
   }
+
+  forwardingBudget() { return this.runtime && new this.runtime.ForwardingBudget(); }
 
   async fileFrame(control: string): Promise<string> {
     const { runtime } = await this.ready();
     return new TextDecoder().decode(runtime.encode_control(JSON.stringify({ kind: "file", body: JSON.parse(control) })));
   }
 
-  async send(command: Extract<ChannelCommand, { type: "chat" | "history" | "react" | "interaction_ready" }>, requestId: string): Promise<void> {
+  async send(command: Extract<ChannelCommand, { type: "chat" | "history" | "delete_message" | "clear_history" | "react" | "interaction_ready" }>, requestId: string): Promise<void> {
     const { signer } = await this.ready();
     const { state, sessionId, connected } = this.options.context();
     if (!connected || !sessionId) throw new Error("disconnected");
@@ -76,7 +82,13 @@ export class ChannelConversation {
     }
     const host = this.options.host(address.roomId);
     if (!host) throw new Error("room_host_offline");
-    const replies = await host.dispatchPeer(packet, Date.now());
+    const replies = await host.dispatchPeer(packet, Date.now(), undefined, output => {
+      const current = this.options.context();
+      if (current.connected && current.sessionId === sessionId && this.options.host(address.roomId) === host
+        && current.state?.channel.rooms.find(room => room.id === address.roomId)?.delivery?.bindingId === address.bindingId) {
+        this.options.projection?.(address.roomId, output);
+      }
+    });
     const { signer } = await this.ready();
     const isCurrent = (reply: ConversationReply) => {
       const current = this.options.context();
@@ -103,6 +115,7 @@ export class ChannelConversation {
   close(): void {
     const identity = this.identity;
     this.identity = undefined;
+    this.runtime = undefined;
     void identity?.then(({ signer }) => signer.free()).catch(() => {});
   }
 }

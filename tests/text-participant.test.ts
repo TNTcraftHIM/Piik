@@ -27,7 +27,7 @@ test('Node text conversation ignores unrelated media descriptions and retains si
         expect(command.protocol).toBe(CHANNEL_PROTOCOL);
         expect(command).not.toHaveProperty('ownerKey');
         const state = snapshotSchema.parse({
-          channel: { id: randomUUID(), name: 'Fixture', icon: 'couch', ownerId: owner, historyWindow: 100, userCount: 2,
+          channel: { id: randomUUID(), name: 'Fixture', icon: 'couch', ownerId: owner, roomCreationPolicy: 'ordinary', hostingMode: 'lightweight', historyWindow: 100, userCount: 2, managedRoomIds: [],
             rooms: [{ id: 'room', name: 'Room', icon: 'couch', creatorId: owner, access: 'public', hidden: false,
               hasPassword: false, authorized: true, canManage: false, available: true, reading: true,
               participantSessionIds: [local], lastMessageSeq: 1, fileActivity: [], capabilities: { attachments: true },
@@ -134,7 +134,7 @@ test('text pagination, replies and mentions use signed Core commands and host co
     try {
       const command = JSON.parse(raw.toString());
       if (command.type === 'join') {
-        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, hostSessionId: host, revision: 1,
+        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, channelOwnerId: owner, hostSessionId: host, revision: 1,
           endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true } }, action: { type: 'sync' } }));
         room.finish();
         socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
@@ -160,7 +160,8 @@ test('text pagination, replies and mentions use signed Core commands and host co
             } catch (error) { result = { Err: String(error) }; }
           }
         }
-        for (const reply of JSON.parse(room.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)))) {
+        const { replies } = JSON.parse(room.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)));
+        for (const reply of replies) {
           if (reply.record.type === 'history_end' && malformedPage) {
             if (malformedPage === 'count') reply.record.count++;
             else reply.record.hasMore = true;
@@ -234,7 +235,7 @@ test('text retries keep one nonce across a lost confirmation and sign the curren
       const command = JSON.parse(raw.toString());
       if (command.type === 'join') {
         room?.free(); room = new rust.RoomHost(policy); binding = randomUUID();
-        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, hostSessionId: host, revision: 1,
+        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, channelOwnerId: owner, hostSessionId: host, revision: 1,
           endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true } }, action: { type: 'sync' } }));
         room.finish();
         socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
@@ -253,7 +254,7 @@ test('text retries keep one nonce across a lost confirmation and sign the curren
           if (confirmation.inserted) stored.set(key, JSON.stringify(confirmation.message));
           result = { Ok: { type: 'history', value: confirmation } };
         }
-        const replies = JSON.parse(room!.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)));
+        const { replies } = JSON.parse(room!.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)));
         for (const reply of replies) {
           const broadcast = JSON.parse(rust.conversation_broadcast(JSON.stringify(reply.record)));
           if (broadcast?.type === 'live_message') broadcasts.push(broadcast.message);
@@ -323,7 +324,8 @@ test('text message reactions use advertised support and Core counted-history non
         result = { Ok: { type: 'history', value: JSON.parse(page.finish(1n)) } };
       }
     }
-    return JSON.parse(room.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result))) as Array<{ record: Record<string, any> }>;
+    const { replies } = JSON.parse(room.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)));
+    return replies as Array<{ record: Record<string, any> }>;
   };
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await once(server, 'listening');
@@ -334,7 +336,7 @@ test('text message reactions use advertised support and Core counted-history non
     try {
       const command = JSON.parse(raw.toString());
       if (command.type === 'join') {
-        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, hostSessionId: host, revision: ++revision,
+        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, channelOwnerId: owner, hostSessionId: host, revision: ++revision,
           endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true } }, action: { type: 'sync' } }));
         room.finish();
         socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,

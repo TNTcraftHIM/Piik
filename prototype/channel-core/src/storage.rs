@@ -1,7 +1,7 @@
 //! The local Server experiment's metadata and confirmed room history.
 //! Media sessions and routes never enter this database.
 use crate::{
-    backup::{HistoryImport, HistoryRow},
+    backup::{DeletedHistoryRow, HistoryImport, HistoryRow, LiveHistoryRow},
     history::{
         ConfirmationInput, HistoryPage, HistoryRequest, HistoryResult, StoredMessage, HISTORY_PAGE,
     },
@@ -52,17 +52,16 @@ fn read_error(error: rusqlite::Error) -> Box<dyn std::error::Error + Send + Sync
     }
 }
 
+const LAST_SEQ: &str = "SELECT max(coalesce((SELECT max(seq) FROM message WHERE room_id=?1),0),
+    coalesce((SELECT max(seq) FROM deleted_message WHERE room_id=?1),0))";
+
 pub struct Storage {
     connection: Connection,
 }
 impl Storage {
     pub(crate) fn last_message_seq(&self, room: &str) -> StoreResult<u64> {
         self.connection
-            .query_row(
-                "SELECT coalesce(max(seq),0) FROM message WHERE room_id=?1",
-                [room],
-                |row| row.get(0),
-            )
+            .query_row(LAST_SEQ, [room], |row| row.get(0))
             .map_err(read_error)
     }
     pub fn open(path: &Path) -> StoreResult<Self> {
@@ -98,18 +97,18 @@ impl Storage {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .map_err(read_error)?;
         let existing: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message','attachment'))", [], |row| row.get(0)).map_err(read_error)?;
-        if version != 8
+        if version != 9
             && (version != 0 || existing || !flags.contains(OpenFlags::SQLITE_OPEN_CREATE))
         {
             return Err(StorageDataError("unsupported_storage_version".into()).into());
         }
-        if version == 8 {
-            let tables: u32 = connection.query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message')", [], |row| row.get(0)).map_err(read_error)?;
-            if tables != 2 {
+        if version == 9 {
+            let tables: u32 = connection.query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message','deleted_message')", [], |row| row.get(0)).map_err(read_error)?;
+            if tables != 3 {
                 return Err(StorageDataError("invalid_storage_schema".into()).into());
             }
         }
-        connection.execute_batch("PRAGMA foreign_keys=ON;")?;
+        connection.execute_batch("PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON;")?;
         if version == 0 {
             connection.execute_batch(
             "CREATE TABLE checkpoint (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
@@ -120,7 +119,11 @@ impl Storage {
                archived_author_name TEXT, inline_images TEXT NOT NULL, mentions TEXT NOT NULL, reply TEXT,
                PRIMARY KEY(room_id,seq), UNIQUE(room_id,user_id,nonce)
              );
-             PRAGMA user_version=8;",
+             CREATE TABLE deleted_message (
+               room_id TEXT NOT NULL, seq INTEGER NOT NULL, retry_key TEXT NOT NULL,
+               PRIMARY KEY(room_id,seq), UNIQUE(room_id,retry_key)
+             );
+             PRAGMA user_version=9;",
         )?;
         }
         Ok(Self { connection })
@@ -152,6 +155,7 @@ impl Storage {
         let transaction = self.connection.transaction()?;
         transaction.execute("DELETE FROM checkpoint WHERE id=1", [])?;
         transaction.execute("DELETE FROM message WHERE room_id=?1", [room_id])?;
+        transaction.execute("DELETE FROM deleted_message WHERE room_id=?1", [room_id])?;
         transaction.commit()?;
         Ok(())
     }
@@ -246,13 +250,19 @@ impl Storage {
     ) -> StoreResult<()> {
         let mut statement = self.connection.prepare(
             "SELECT seq,id,user_id,text,time,attachments,reactions,archived_author_name,inline_images,mentions,reply,nonce FROM message
-             WHERE room_id=?1 ORDER BY seq",
+             WHERE room_id=?1 UNION ALL SELECT seq,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,retry_key FROM deleted_message WHERE room_id=?1 ORDER BY seq",
         )?;
         let rows = statement.query_map([room_id], |row| {
-            Ok(HistoryRow {
+            if row.get::<_, Option<String>>(1)?.is_none() {
+                return Ok(HistoryRow::Deleted(DeletedHistoryRow {
+                    seq: row.get(0)?,
+                    retry_key: row.get(11)?,
+                }));
+            }
+            Ok(HistoryRow::Message(LiveHistoryRow {
                 message: read_message(row)?,
                 nonce: row.get(11)?,
-            })
+            }))
         })?;
         for row in rows {
             visit(row?)?;
@@ -274,6 +284,16 @@ impl Storage {
         for row in rows {
             let row = row?;
             import.accept(&row)?;
+            let row = match row {
+                HistoryRow::Message(row) => row,
+                HistoryRow::Deleted(row) => {
+                    transaction.execute(
+                        "INSERT INTO deleted_message(room_id,seq,retry_key) VALUES(?1,?2,?3)",
+                        params![policy.id, row.seq, row.retry_key],
+                    )?;
+                    continue;
+                }
+            };
             let message = row.message.message;
             transaction.execute(
                 "INSERT INTO message(room_id,seq,id,user_id,nonce,text,time,attachments,reactions,archived_author_name,inline_images,mentions,reply)
@@ -305,15 +325,49 @@ impl Storage {
             HistoryRequest::Read { .. } | HistoryRequest::Attachment { .. } => {
                 TransactionBehavior::Deferred
             }
-            HistoryRequest::Send { .. } | HistoryRequest::React { .. } => {
-                TransactionBehavior::Immediate
-            }
+            HistoryRequest::Send { .. }
+            | HistoryRequest::React { .. }
+            | HistoryRequest::DeleteMessage { .. }
+            | HistoryRequest::ClearHistory { .. } => TransactionBehavior::Immediate,
         };
         let transaction = self
             .connection
             .transaction_with_behavior(behavior)
             .map_err(|_| "storage_failed")?;
         let result = match request {
+            HistoryRequest::DeleteMessage {
+                room_id,
+                message_seq,
+                author_id,
+            } => {
+                let owner: String = transaction
+                    .query_row(
+                        "SELECT user_id FROM message WHERE room_id=?1 AND seq=?2",
+                        params![room_id, message_seq],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .map_err(|_| "storage_failed")?
+                    .ok_or("message_unavailable")?;
+                if author_id.is_some_and(|actor| actor.to_string() != owner) {
+                    return Err("forbidden");
+                }
+                delete_messages(&transaction, room_id, *message_seq, *message_seq)
+                    .map_err(|_| "storage_failed")?;
+                HistoryResult::MessageDeleted {
+                    message_seq: *message_seq,
+                }
+            }
+            HistoryRequest::ClearHistory {
+                room_id,
+                through_seq,
+            } => {
+                delete_messages(&transaction, room_id, 0, *through_seq)
+                    .map_err(|_| "storage_failed")?;
+                HistoryResult::HistoryCleared {
+                    through_seq: *through_seq,
+                }
+            }
             HistoryRequest::React {
                 room_id,
                 message_seq,
@@ -391,14 +445,16 @@ impl Storage {
                 let input = if let Some(message) = previous {
                     ConfirmationInput::Existing { message }
                 } else {
-                    // No owner-history deletion exists in this slice. The last
-                    // persisted row is the room's order, independent of other rooms.
+                    let retired: bool = transaction.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM deleted_message WHERE room_id=?1 AND retry_key=?2)",
+                        params![room_id, crate::history::retry_key(draft.user_id, &draft.nonce)],
+                        |row| row.get(0),
+                    ).map_err(|_| "storage_failed")?;
+                    if retired {
+                        return Err("message_unavailable");
+                    }
                     let last_seq = transaction
-                        .query_row(
-                            "SELECT coalesce(max(seq),0) FROM message WHERE room_id=?1",
-                            [room_id],
-                            |row| row.get(0),
-                        )
+                        .query_row(LAST_SEQ, [room_id], |row| row.get(0))
                         .map_err(|_| "storage_failed")?;
                     ConfirmationInput::New {
                         last_seq,
@@ -438,6 +494,29 @@ fn read_uuid(row: &Row<'_>, index: usize) -> rusqlite::Result<Uuid> {
     Uuid::parse_str(&text).map_err(|error| {
         rusqlite::Error::FromSqlConversionFailure(index, Type::Text, Box::new(error))
     })
+}
+
+fn delete_messages(db: &Connection, room: &str, from: u64, through: u64) -> StoreResult<()> {
+    {
+        let mut rows = db.prepare(
+            "SELECT seq,user_id,nonce FROM message WHERE room_id=?1 AND seq BETWEEN ?2 AND ?3",
+        )?;
+        let mut rows = rows.query(params![room, from, through])?;
+        let mut retire =
+            db.prepare("INSERT INTO deleted_message(room_id,seq,retry_key) VALUES(?1,?2,?3)")?;
+        while let Some(row) = rows.next()? {
+            let seq: u64 = row.get(0)?;
+            let user = Uuid::parse_str(row.get_ref(1)?.as_str()?)?;
+            let nonce = row.get_ref(2)?.as_str()?;
+            retire.execute(params![room, seq, crate::history::retry_key(user, nonce)])?;
+        }
+    }
+    db.execute(
+        "DELETE FROM message WHERE room_id=?1 AND seq BETWEEN ?2 AND ?3",
+        params![room, from, through],
+    )?;
+    db.execute("UPDATE message SET reply=NULL WHERE room_id=?1 AND json_extract(reply, '$.seq') BETWEEN ?2 AND ?3", params![room, from, through])?;
+    Ok(())
 }
 
 fn read_message(row: &Row<'_>) -> rusqlite::Result<StoredMessage> {
@@ -693,7 +772,7 @@ mod tests {
             name: "image.gif".into(),
             size: bytes.len() as u64,
             media_type: "image/gif".into(),
-            sha256: crate::attachment::sha256_hex(&bytes),
+            sha256: "a".repeat(64),
         };
         let mut draft = MessageDraft::new(
             Uuid::new_v4(),
@@ -705,7 +784,7 @@ mod tests {
                 crate::attachment::ImageRendition {
                     data: Base64::encode_string(&bytes),
                     media_type: image.media_type.clone(),
-                    original: true,
+                    original: false,
                     width: 256,
                     height: 256,
                 },
@@ -763,7 +842,6 @@ mod tests {
         assert!(page(&mut store, "images", Some(1)).0.is_empty());
         bytes.resize(crate::ATTACHMENT_LIMITS.max_inline_image_bytes, 0);
         draft.attachments[0].size = bytes.len() as u64;
-        draft.attachments[0].sha256 = crate::attachment::sha256_hex(&bytes);
         draft.inline_images.get_mut(&image.id).unwrap().data = Base64::encode_string(&bytes);
         draft.nonce = "full-budget-image".into();
         confirmed(&mut store, "images", &draft);

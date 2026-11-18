@@ -39,7 +39,87 @@ test("a confirmed attachment uses its committed readable copy after the selected
   } finally { files.reset(); }
 });
 
-test("a confirmed inline GIF remains readable without a live session, cache or transfer", async () => {
+test("confirmed message removal discards its retained copy and blocks stale attachment reads", async () => {
+  const removed = new Set<number>();
+  const files = new ChannelAttachments(async () => {}, async () => {}, key => key.roomId === "room" && removed.has(key.messageSeq));
+  const entry = { key, attachment, file: new File(["GIF89a"], attachment.name) };
+  const sibling = { ...entry, key: { ...key, messageSeq: 2 } };
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([entry, sibling]);
+  const drop = vi.spyOn(FileStore.prototype, "removeMessages").mockResolvedValue();
+  files.update("endpoint", { domainId: "domain", userId: "self" }, [],
+    [{ id: key.roomId, authorized: true, available: true }] as ChannelRoom[], []);
+  try {
+    await expect(files.content(key, attachment, new AbortController().signal, inlineImage)).resolves.toBeInstanceOf(File);
+    removed.add(key.messageSeq);
+    files.removeMessages(key.roomId, seq => removed.has(seq));
+    expect(drop).toHaveBeenCalledOnce();
+    await expect(files.content(key, attachment, new AbortController().signal, inlineImage)).rejects.toThrow("attachment_unavailable");
+    await expect(files.retained(key.roomId)).resolves.toEqual([sibling]);
+  } finally { files.reset(); }
+});
+
+test("clearing one room cache withdraws its copies and ignores an older cache snapshot", async () => {
+  const command = vi.fn(async (_command: ChannelCommand) => {});
+  const files = setup(command), file = new File(["GIF89a"], attachment.name);
+  const entry = { key, attachment, file };
+  const other = { ...entry, key: { ...key, roomId: "second" } };
+  const stale = { ...entry, key: { ...key, messageSeq: 2 } };
+  const selected = { ...entry, key: { ...key, messageSeq: 3 } };
+  const scope = { domainId: "domain", userId: "self" };
+  const rooms = ["room", "second"].map(id => ({ id, available: true, authorized: true })) as ChannelRoom[];
+  let readOlderSnapshot!: (files: typeof entry[]) => void;
+  let loadOlderSnapshot!: (files: typeof entry[]) => void;
+  let finishRetain!: (result: Awaited<ReturnType<FileStore["retain"]>>) => void;
+  const retain = vi.spyOn(FileStore.prototype, "retain")
+    .mockResolvedValueOnce({ file, evicted: [] })
+    .mockImplementationOnce(() => new Promise(resolve => { finishRetain = resolve; }));
+  const remove = vi.spyOn(FileStore.prototype, "removeMessages").mockResolvedValue();
+  vi.mocked(FileStore.prototype.list)
+    .mockResolvedValueOnce([entry, other])
+    .mockImplementationOnce(() => new Promise(resolve => { readOlderSnapshot = resolve; }))
+    .mockImplementationOnce(() => new Promise(resolve => { loadOlderSnapshot = resolve; }))
+    .mockResolvedValue([other]);
+  try {
+    files.update("endpoint", scope, [], rooms, []);
+    await vi.waitFor(() => expect(command).toHaveBeenCalledWith(expect.objectContaining({ ...other.key, available: true })));
+    files.confirmed(key.roomId, message, [{ id: attachment.id, attachment, file }]);
+    await vi.waitFor(() => expect(retain).toHaveBeenCalledOnce());
+    await new Promise(resolve => setImmediate(resolve));
+    files.confirmed(key.roomId, { ...message, seq: selected.key.messageSeq }, [{ id: attachment.id, attachment, file }]);
+    await vi.waitFor(() => expect(retain).toHaveBeenCalledTimes(2));
+    const staleInventory = files.retained(key.roomId);
+    files.update("endpoint", scope, [], [rooms[0]], []);
+    files.update("endpoint", scope, [], rooms, []);
+    command.mockClear();
+
+    await files.clearLocalCache(key.roomId);
+    expect(remove).toHaveBeenCalledWith(key.roomId, expect.any(Function));
+    expect(remove.mock.calls[0][1](stale.key.messageSeq)).toBe(true);
+    expect(command.mock.calls).toEqual([[{ type: "file_offer", ...key, sha256: attachment.sha256, available: false }]]);
+    expect(retain.mock.calls[1][2]?.()).toBe(false);
+    finishRetain({ file, evicted: [] });
+    readOlderSnapshot([entry, stale, other]);
+    loadOlderSnapshot([entry, stale, other]);
+    expect(await staleInventory).toEqual([selected]);
+    expect(command.mock.calls.filter(([event]) => event.type === "file_offer" && event.available)
+      .map(([event]) => event)).toEqual([{ type: "file_offer", ...other.key, sha256: attachment.sha256, available: true }]);
+    expect(await files.retained(other.key.roomId)).toEqual([other]);
+    command.mockClear();
+    files.resume();
+    expect(command).toHaveBeenCalledTimes(2);
+    for (const entry of [other, selected]) expect(command).toHaveBeenCalledWith({
+      type: "file_offer", ...entry.key, sha256: attachment.sha256, available: true,
+    });
+
+    files.reset();
+    command.mockClear();
+    files.update("another-endpoint", scope, [], rooms, []);
+    await vi.waitFor(() => expect(command).toHaveBeenCalledOnce());
+    expect(command).toHaveBeenCalledWith({ type: "file_offer", ...other.key, sha256: attachment.sha256, available: true });
+  } finally { files.reset(); }
+});
+
+test("a legacy inline GIF remains readable without a live session, cache or transfer", async () => {
   const command = vi.fn(), send = vi.fn(), load = vi.spyOn(hosting, "loadRoomHosting");
   const files = new ChannelAttachments(command, send);
   const content = await files.content(key, attachment, new AbortController().signal, inlineImage);
@@ -224,72 +304,28 @@ test("file progress follows completed writes and is shared until the last consum
   } finally { files.reset(); vi.unstubAllGlobals(); }
 });
 
-test.each(["image/png", "image/webp"] as const)("an animated %s uses spare message budget in either attachment order", async mediaType => {
-  const { readFile } = await import("node:fs/promises");
-  const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
-  await rust.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+test("small and animated images retain their original file and send a separate thumbnail", async () => {
   const files = setup();
-  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...rust, initializeRuntime: async () => {} } as never);
-  const decode = vi.fn(async () => {}), canvas = vi.fn(() => { throw new Error("animation_must_not_reach_canvas"); });
-  class Image { naturalWidth = 1; naturalHeight = 1; src = ""; decode = decode; }
-  vi.stubGlobal("Image", Image); vi.stubGlobal("document", { createElement: canvas });
-  const bytes = new Uint8Array(300 * 1024), view = new DataView(bytes.buffer);
-  if (mediaType === "image/png") {
-    bytes.set([137, 80, 78, 71, 13, 10, 26, 10]); view.setUint32(8, 8); bytes.set(new TextEncoder().encode("acTL"), 12);
-  } else {
-    bytes.set(new TextEncoder().encode("RIFF")); view.setUint32(4, bytes.length - 8, true);
-    bytes.set(new TextEncoder().encode("WEBPVP8X"), 8); view.setUint32(16, 10, true); bytes[20] = 2;
-  }
-  const original = { id: crypto.randomUUID(), file: new File([bytes], "animation") };
-  const tiny = { id: crypto.randomUUID(), file: new File(["GIF89a"], "tiny.gif") };
-  try {
-    const alone = await files.describe([original]);
-    for (const order of [[original, tiny], [tiny, original]]) {
-      const prepared = await files.describe(order);
-      const image = prepared.find(entry => entry.id === original.id)!;
-      expect(image.attachment).toEqual(alone[0].attachment);
-      expect(image.file).toBe(original.file);
-      expect(image.inlineImage).toMatchObject({ original: true, mediaType });
-      expect(image.inlineImage?.data === alone[0].inlineImage?.data).toBe(true);
-      expect(prepared.reduce((sum, entry) => sum + atob(entry.inlineImage?.data ?? "").length, 0)).toBe(bytes.length + tiny.file.size);
-    }
-    expect(canvas).not.toHaveBeenCalled();
-    decode.mockClear();
-    const oversized = new Uint8Array(JSON.parse(rust.attachment_limits()).maxInlineImageBytes + 1);
-    oversized.set(bytes.subarray(0, 24));
-    const overBudget = await files.describe([{ id: crypto.randomUUID(), file: new File([oversized], "oversized-animation") }]);
-    expect(overBudget[0].inlineImage).toBeUndefined();
-    expect(decode).not.toHaveBeenCalled();
-    decode.mockClear(); decode.mockRejectedValue(new Error("invalid_image"));
-    const invalid = await files.describe([original, tiny]);
-    expect(invalid.every(entry => entry.inlineImage === undefined)).toBe(true);
-    expect(decode).toHaveBeenCalledTimes(2); // Tiny once; deferred original once, never retry a decode failure.
-  } finally { files.reset(); vi.unstubAllGlobals(); }
-});
-
-test("a GIF uses unused per-message image space without flattening or exceeding the shared limit", async () => {
-  const files = setup();
-  const decode = vi.fn(async () => {});
-  class Image { naturalWidth = 1; naturalHeight = 1; src = ""; decode = decode; }
-  vi.stubGlobal("Image", Image);
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ initializeRuntime: async () => {},
     attachment_limits: () => JSON.stringify({ maxFileBytes: 2048, maxAttachmentsPerMessage: 8, maxRetainedBytes: 4096, maxRetainedFiles: 8, maxInlineImageBytes: 1024 }),
     attachment_media_type: (bytes: Uint8Array) => bytes[0] === 71 ? "image/gif" : "image/png",
     AttachmentHash: class { update() {} finish() { return "a".repeat(64); } },
   } as never);
-  const gif = (size: number) => new File(["GIF89a", new Uint8Array(size - 6)], "owned.gif");
+  const decode = vi.fn(async () => {});
+  vi.stubGlobal("Image", class { naturalWidth = 1500; naturalHeight = 750; decode = decode; });
+  const thumbnail = new Blob(["RIFFabcdWEBPpreview"], { type: "image/webp" });
+  vi.stubGlobal("document", { createElement: () => ({ getContext: () => ({ drawImage() {} }),
+    toBlob: (callback: BlobCallback) => callback(thumbnail) }) });
   try {
-    const tiny = { id: crypto.randomUUID(), file: new File(["tiny"], "tiny.png") };
-    const prepared = await files.describe([{ id: crypto.randomUUID(), file: gif(700) }, tiny]);
-    expect(prepared[0].inlineImage).toMatchObject({ mediaType: "image/gif", original: true });
-    expect(atob(prepared[0].inlineImage!.data).length).toBe(700);
-    expect(prepared.reduce((sum, entry) => sum + atob(entry.inlineImage?.data ?? "").length, 0)).toBe(704);
-    const oversized = await files.describe([{ id: crypto.randomUUID(), file: gif(1025) }, tiny]);
-    expect(oversized[0].inlineImage).toBeUndefined();
-    expect(oversized[1].inlineImage?.original).toBe(true);
-    decode.mockClear(); decode.mockRejectedValue(new Error("invalid_image"));
-    const invalid = await files.describe([{ id: crypto.randomUUID(), file: gif(100) }]);
-    expect(invalid[0].inlineImage).toBeUndefined();
-    expect(decode).toHaveBeenCalledOnce(); // Failed decoding is not a deferred-budget candidate.
+    const selected = [new File(["GIF89a"], "tiny.gif"), new File(["PNG", new Uint8Array(1024)], "large.png")]
+      .map(file => ({ file, id: crypto.randomUUID() }));
+    const prepared = await files.describe(selected);
+    for (const [i, image] of prepared.entries()) {
+      expect(image.file).toBe(selected[i].file);
+      expect(image.attachment.size).toBe(selected[i].file.size);
+      expect(image.inlineImage).toEqual({ original: false, mediaType: "image/webp", width: 640, height: 320, data: btoa(await thumbnail.text()) });
+    }
+    decode.mockRejectedValue(new Error("invalid_image"));
+    expect((await files.describe(selected)).every(entry => entry.inlineImage === undefined)).toBe(true);
   } finally { files.reset(); vi.unstubAllGlobals(); }
 });

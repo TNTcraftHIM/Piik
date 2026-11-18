@@ -5,10 +5,10 @@ import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { downloadBlob } from "../../lib/download";
 import { formatChatTranscript } from "../../lib/room-chat-export";
-import type { ChannelMessage, ChannelUser, ChannelRoom, RoomSettings, ChannelTopology } from "../protocol";
-import { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../protocol";
+import type { ChannelMessage, ChannelUser, ChannelRoom, RoomCreationPolicy, RoomSettings, ChannelTopology } from "../protocol";
+import { MAX_RELAY_CAPACITY } from "../protocol";
+import { roomCreationPolicyFor, roomDraft, roomSettings, type RoomDraft } from "../room-creation";
 import type { ChannelController } from "../types";
-import type { NativeRelayCapacity } from "../app-link";
 import { ChannelAction } from "./ChannelAction";
 import { ChannelSettingsDialog, ChannelSettingsTabs, useSettingsAction, type SettingsAction } from "./ChannelSettingsDialog";
 import { ChannelIdentityFields } from "./ChannelIdentity";
@@ -48,67 +48,6 @@ function RelayLimit({ value, min, label, caption = label, note, disabled, onChan
   </NumberControl>;
 }
 
-function EndpointRelay({ title, capacity, override, busy, disabled, host, change }: {
-  title: string; capacity: number; override: number | null; busy: boolean; disabled: boolean; host: boolean;
-  change(value: number | null): void;
-}) {
-  const { t } = useCopy();
-  const following = override === null;
-  const label = t("room.relay.endpointLimit", { endpoint: title });
-  const note = t(host ? "room.relay.endpointHostNote" : "room.relay.endpointNote");
-  return <section className="c3-room-relay" aria-label={title} aria-busy={busy}>
-    <h4 className="c3-relay-endpoint-title">{title}</h4>
-    <SwitchItem checked={override !== 0} disabled={disabled || busy} hint="hint-relay-volunteer"
-      label={t("room.relay.assist")} onChange={allow => change(allow ? null : 0)} />
-    <SwitchItem checked={following} disabled={disabled || busy || override === 0} hint="hint-relay-volunteer"
-      label={t("room.relay.followDefault")}
-      onChange={follow => change(follow ? null : capacity)} />
-    <RelayLimit value={following ? capacity : override!} min={0} label={label} caption={t("room.relay.limit")} note={note}
-      disabled={disabled || busy || following || override === 0} onChange={change} />
-  </section>;
-}
-
-function AppRelay({ channel, room, disabled, run }: { channel: ChannelController; room: ChannelRoom; disabled: boolean; run: SettingsAction }) {
-  const { t } = useCopy();
-  const [value, setValue] = useState<NativeRelayCapacity | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-  const [reload, setReload] = useState(0);
-  const read = channel.appRelayCapacity;
-  const retained = !value || !!channel.state?.sessions.some(session => session.id === value.sessionId);
-  useEffect(() => {
-    if (disabled) return;
-    const lifetime = new AbortController();
-    setLoading(true); setFailed(false);
-    void read(room.id, lifetime.signal).then(result => {
-      if (!lifetime.signal.aborted) { setValue(result); setLoading(false); }
-    }, () => { if (!lifetime.signal.aborted) { setFailed(true); setLoading(false); } });
-    return () => lifetime.abort();
-  }, [read, room.id, room.delivery?.bindingId, room.relayCapacity, channel.sessionId, disabled, retained, reload]);
-  const title = t("room.relay.app");
-  if (!value || !retained || loading || failed) return <section className="c3-room-relay" aria-label={title} aria-busy={loading && !disabled}>
-    <h4 className="c3-relay-endpoint-title">{title}</h4>
-    <p role="status">{t(failed || disabled ? "room.relay.appUnavailable" : "common.loading")}</p>
-    {failed && <Btn quiet size="dense" icon="refresh" title="common.retry" cap="common.retry" onClick={() => setReload(value => value + 1)} />}
-  </section>;
-  return <EndpointRelay title={title} capacity={value.relayCapacity} override={value.relayOverride}
-    busy={channel.pending.has(`app-relay:${room.id}`)} disabled={disabled}
-    host={room.delivery?.hostSessionId === value.sessionId}
-    change={capacity => { void run(() => channel.setAppRelayOverride(value, capacity, false), setValue); }} />;
-}
-
-export function PersonalRelay({ channel, room, disabled, run }: { channel: ChannelController; room: ChannelRoom; disabled: boolean; run: SettingsAction }) {
-  const { t } = useCopy();
-  return <div className="c3-relay-endpoints">
-    <EndpointRelay title={t("room.relay.webpage")} capacity={room.relayCapacity} override={room.relayOverride}
-      busy={channel.pending.has(`relay:${room.id}`)} disabled={disabled}
-      host={room.delivery?.hostSessionId === channel.sessionId}
-      change={capacity => { void run(() => channel.setRelayOverride(room.id, capacity, false)); }} />
-    {channel.appConnected && <AppRelay key={`${room.id}/${room.delivery?.bindingId}/${channel.sessionId}`}
-      channel={channel} room={room} disabled={disabled} run={run} />}
-  </div>;
-}
-
 export function ServiceTransit({ channel, room, disabled, run }: { channel: ChannelController; room: ChannelRoom; disabled: boolean; run: SettingsAction }) {
   const { t } = useCopy();
   const [topology, setTopology] = useState<ChannelTopology | null>(null);
@@ -136,20 +75,9 @@ export function ServiceTransit({ channel, room, disabled, run }: { channel: Chan
   </section>;
 }
 
-export type RoomDraft = Pick<RoomSettings, "name" | "icon" | "access" | "hidden" | "voiceBitrate"> & { password: string; removePassword: boolean; relayCapacity: number };
-export function roomDraft(room?: ChannelRoom): RoomDraft {
-  return { name: room?.name ?? "", icon: room?.icon ?? "couch", access: room?.access ?? "public", hidden: room?.hidden ?? false,
-    password: "", removePassword: false, relayCapacity: room?.relayCapacity ?? DEFAULT_RELAY_CAPACITY };
-}
-
-export function roomSettings(value: RoomDraft): RoomSettings {
-  const { name, icon, access, hidden, password, removePassword, relayCapacity, voiceBitrate } = value;
-  return { name: name.trim(), icon, access, relayCapacity, ...(voiceBitrate === undefined ? {} : { voiceBitrate }), hidden: access === "private" && hidden,
-    ...(access === "private" && password ? { password } : removePassword ? { password: null } : {}) };
-}
-
-export function RoomForm({ room, value, onChange, appHosted, disabled, busy, onSave, onCancel, createLabel }: {
-  room?: ChannelRoom; value: RoomDraft; onChange(value: Partial<RoomDraft>): void; appHosted: boolean; disabled: boolean; busy: boolean;
+export function RoomForm({ room, value, onChange, roomHost, inviteOnly, disabled, busy, onSave, onCancel, createLabel }: {
+  room?: ChannelRoom; value: RoomDraft; onChange(value: Partial<RoomDraft>): void; roomHost?: "server" | "app" | "browser"; disabled: boolean; busy: boolean;
+  inviteOnly: boolean;
   onSave: (settings: RoomSettings) => Promise<unknown>; onCancel(): void; createLabel?: string;
 }) {
   const { t } = useCopy();
@@ -159,34 +87,35 @@ export function RoomForm({ room, value, onChange, appHosted, disabled, busy, onS
   return <form className="c3-room-form" onSubmit={event => {
     event.preventDefault();
     if (!name.trim() || disabled || imageBusy) return;
-    void onSave(roomSettings(value));
+    void onSave(roomSettings(value, inviteOnly));
   }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>
-    {!room && <p>{appHosted
-      ? t("room.create.appHostedNote")
-      : t("room.create.browserHostedNote")}</p>}
+    {roomHost && <p>{roomHost === "server" ? t("room.create.serverHostedNote")
+      : roomHost === "app" ? t("room.create.appHostedNote") : t("room.create.browserHostedNote")}</p>}
     <ChannelIdentityFields name={name} icon={icon} label={t("room.settings.name")}
       disabled={disabled} onName={name => change({ name })} onIcon={icon => change({ icon })} imageBusy={imageBusy} onImageBusyChange={setImageBusy} />
-    <fieldset className="lr-toggle c3-room-access" disabled={disabled}>
-      <legend className="visually-hidden">{t("room.settings.admission")}</legend>
-      {(["public", "private"] as const).map(value => <label key={value}>
-        <input type="radio" name="access" value={value} checked={access === value}
-          onChange={() => change({ access: value, password: "", removePassword: false })} />
-        <span><Glyph name={value === "public" ? "users" : "lock"} size={18} />
-          {value === "public" ? t("room.settings.public") : t("room.settings.private")}</span>
-      </label>)}
-    </fieldset>
-    <p>{access === "public" ? t("room.settings.publicNote")
-      : t("room.settings.privateNote")}</p>
-    {access === "private" && <div className="c3-private-options">
-      <label><span>{t("room.settings.optionalPassword")}</span><input className="c3-input" type="password"
-        maxLength={128} autoComplete="new-password" value={password} disabled={disabled || removePassword}
-        placeholder={room?.hasPassword ? t("room.settings.keepPassword") : undefined}
-        onChange={event => change({ password: event.target.value })} /></label>
-      {room?.hasPassword && <label className="c3-check"><input type="checkbox" checked={removePassword} disabled={disabled}
-        onChange={event => { change({ removePassword: event.target.checked, password: "" }); }} />{t("room.settings.removePassword")}</label>}
-      <label className="c3-check"><input type="checkbox" checked={hidden} disabled={disabled} onChange={event => change({ hidden: event.target.checked })} />
-        {t("room.settings.hidden")}</label>
-    </div>}
+    {inviteOnly ? <p>{t("room.settings.inviteOnlyNote")}</p> : <>
+      <fieldset className="lr-toggle c3-room-access" disabled={disabled}>
+        <legend className="visually-hidden">{t("room.settings.admission")}</legend>
+        {(["public", "private"] as const).map(value => <label key={value}>
+          <input type="radio" name="access" value={value} checked={access === value}
+            onChange={() => change({ access: value, password: "", removePassword: false })} />
+          <span><Glyph name={value === "public" ? "users" : "lock"} size={18} />
+            {value === "public" ? t("room.settings.public") : t("room.settings.private")}</span>
+        </label>)}
+      </fieldset>
+      <p>{access === "public" ? t("room.settings.publicNote")
+        : t("room.settings.privateNote")}</p>
+      {access === "private" && <div className="c3-private-options">
+        <label><span>{t("room.settings.optionalPassword")}</span><input className="c3-input" type="password"
+          maxLength={128} autoComplete="new-password" value={password} disabled={disabled || removePassword}
+          placeholder={room?.hasPassword ? t("room.settings.keepPassword") : undefined}
+          onChange={event => change({ password: event.target.value })} /></label>
+        {room?.hasPassword && <label className="c3-check"><input type="checkbox" checked={removePassword} disabled={disabled}
+          onChange={event => { change({ removePassword: event.target.checked, password: "" }); }} />{t("room.settings.removePassword")}</label>}
+        <label className="c3-check"><input type="checkbox" checked={hidden} disabled={disabled} onChange={event => change({ hidden: event.target.checked })} />
+          {t("room.settings.hidden")}</label>
+      </div>}
+    </>}
     <details className="c3-settings-details"><summary>{t("room.relay.default")}</summary>
     <RelayLimit value={relayCapacity} min={1} label={t("room.relay.defaultLimit")}
       note={t("room.relay.defaultNote")}
@@ -198,8 +127,8 @@ export function RoomForm({ room, value, onChange, appHosted, disabled, busy, onS
 }
 
 /** Creation and management share the same form and modal surface. */
-export function ChannelRoomCreateDialog({ channel, initialName = "", onCreated, onClose }: {
-  channel: ChannelController; initialName?: string; onCreated(id: string): void; onClose(): void;
+export function ChannelRoomCreateDialog({ channel, initialName = "", creationPolicy, onCreated, onClose }: {
+  channel: ChannelController; initialName?: string; creationPolicy: RoomCreationPolicy; onCreated(id: string): void; onClose(): void;
 }) {
   const { t } = useCopy();
   const { error, run } = useSettingsAction();
@@ -209,6 +138,9 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", onCreated, 
   const [completed, setCompleted] = useState<"uncached" | "restored-uncached" | "reconnect" | null>(null);
   const [creating, setCreating] = useState(false);
   const connected = channel.connection === "connected";
+  const inviteOnly = creationPolicy === "invite_only";
+  const serverHosted = channel.state?.channel.hostingMode === "hosted";
+  const roomHost = serverHosted ? "server" : channel.appConnected ? "app" : "browser";
   const busy = channel.pending.has("create-room");
   const backupBusy = channel.pending.has("room-backup");
   const title = t("room.action.create");
@@ -219,8 +151,12 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", onCreated, 
           : completed === "restored-uncached"
           ? t("room.create.restoredUncached")
           : t("room.create.createdUncached")}</p>
-          <ChannelAction icon="check" primary label={t("room.action.done")} onClick={onClose} /></div> : <>
-        <section className="c3-room-copy-load">
+          <ChannelAction icon="check" primary label={t("room.action.done")} onClick={onClose} /></div>
+        : creationPolicy === "owner_only" ? <div className="c3-backup-confirm">
+          <p role="status">{t("channel.previewPage.ownerCreatesRooms")}</p>
+          <ChannelAction icon="x" quiet label={t("room.action.cancel")} onClick={onClose} />
+        </div> : <>
+        {!serverHosted && <section className="c3-room-copy-load">
           <input ref={input} type="file" accept=".zip,application/zip" hidden onChange={event => {
             const file = event.currentTarget.files?.[0]; event.currentTarget.value = "";
             if (!file) return;
@@ -233,8 +169,9 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", onCreated, 
             disabled={!connected || busy || backupBusy || inspecting} busy={inspecting} onClick={() => input.current?.click()} />
           {copy && <><p>{copy.name}</p><p>{t("room.copy.loadNote")}</p>
             <ChannelAction icon="x" quiet label={t("room.copy.remove")} disabled={busy || backupBusy} onClick={() => setCopy(null)} /></>}
-        </section>
-        <RoomForm value={draft} onChange={fields => setDraft(previous => ({ ...previous, ...fields }))} appHosted={channel.appConnected} disabled={!connected || busy || backupBusy || inspecting} busy={creating}
+        </section>}
+        <RoomForm value={draft} onChange={fields => setDraft(previous => ({ ...previous, ...fields }))} roomHost={roomHost} inviteOnly={inviteOnly}
+          disabled={!connected || busy || backupBusy || inspecting} busy={creating}
           createLabel={copy ? t("room.copy.create") : undefined}
           onCancel={onClose} onSave={settings => { setCreating(true); return run(async () => {
             if (copy) {
@@ -246,7 +183,9 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", onCreated, 
             }
             return { roomId: await channel.createRoom(settings, false), cached: true };
           }, result => { if (result) { onCreated(result.roomId); if (result.cached) onClose(); else setCompleted("uncached"); } }).finally(() => setCreating(false)); }} />
-        <details className="c3-settings-details"><summary>{t("room.backup.restore")}</summary>
+        {serverHosted ? <p className="c3-hosted-backup-note">{t("room.create.hostedBackupNote")}</p>
+          : <details className="c3-settings-details"><summary>{t("room.backup.restore")}</summary>
+          {inviteOnly && <p>{t("room.backup.inviteOnlyNote")}</p>}
           <BackupControls run={run} disabled={!connected || busy} busy={backupBusy} replacing={false}
             onRestore={async file => {
               const result = await channel.restoreRoomBackup(file);
@@ -254,7 +193,7 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", onCreated, 
               if (result.cached) onClose(); else setCompleted("restored-uncached");
               return result;
             }} />
-        </details>
+        </details>}
         </>}
       </div>
     </ChannelSettingsDialog>;
@@ -307,10 +246,17 @@ function RoomSettings({ channel, room, onClose }: {
     return () => { current = false; };
   }, [room.id, room.canManage, room.delivery?.bindingId, channel.sessionId, channel.appConnected, channel.connection, channel.roomBackupAvailable, channel.attachments]);
   const connected = channel.connection === "connected";
+  const site = channel.state?.channel;
+  const serverHosted = site?.hostingMode === "hosted";
+  const deleteData = serverHosted || room.available;
+  const canPurge = room.authorized && (room.canManage || (!!channel.self && channel.self.id === site?.ownerId));
+  const inviteOnly = !!site && roomCreationPolicyFor(site, room.creatorId) === "invite_only";
   const available = connected && room.available;
   const busy = channel.pending.has(`room:${room.id}`);
   const backupBusy = channel.pending.has("room-backup");
   const removing = channel.pending.has(`delete:${room.id}`);
+  const purging = channel.pending.has(`clear-history:${room.id}`);
+  const clearingCache = channel.pending.has(`clear-local-cache:${room.id}`);
   const working = busy || backupBusy || removing;
   const members = room.members?.filter(userId => userId !== room.creatorId) ?? [];
   const [membersError, setMembersError] = useState(false);
@@ -321,7 +267,7 @@ function RoomSettings({ channel, room, onClose }: {
   }, [room.id, room.members, room.canManage, channel.loadProfiles, channel.connection]);
   const tasks = [
     ...(room.canManage ? [{ value: "room", label: t("room.settings.roomTab"), icon: "couch" } as const] : []),
-    ...(room.authorized ? [{ value: "relay", label: t("room.settings.connectionTab"), icon: "branch" } as const] : []),
+    ...(room.authorized && room.canManage ? [{ value: "relay", label: t("room.settings.connectionTab"), icon: "branch" } as const] : []),
     ...(room.authorized || room.canManage ? [{ value: "data", label: t("room.settings.recordsTab"), icon: "save" } as const] : []),
   ];
   const selected = tasks.some(value => value.value === task) ? task : tasks[0]?.value;
@@ -329,10 +275,11 @@ function RoomSettings({ channel, room, onClose }: {
     <div className="c3-settings-body">
       <ChannelSettingsTabs<RoomSettingsTask> id={id} label={t("room.settings.title")} tasks={tasks} selected={selected ?? "room"} onSelect={setTask} />
       <div className="c3-settings-panels">
-        {!room.available && <p className="c3-settings-offline">{room.canManage ? t("room.settings.offlineManager")
+        {!room.available && <p className="c3-settings-offline">{room.canManage ? t(serverHosted ? "room.settings.offlineHostedManager" : "room.settings.offlineManager")
           : t("room.settings.offlineRelay")}</p>}
         {room.canManage && <section id={`${id}-room`} role="tabpanel" aria-labelledby={`${id}-room-tab`} hidden={selected !== "room"}>
-          <RoomForm room={room} value={draft ?? roomDraft(room)} onChange={fields => setDraft(previous => ({ ...(previous ?? roomDraft(room)), ...fields }))} appHosted={channel.appConnected} disabled={!available || working} busy={busy}
+          <RoomForm room={room} value={draft ?? roomDraft(room)} onChange={fields => setDraft(previous => ({ ...(previous ?? roomDraft(room)), ...fields }))}
+            inviteOnly={inviteOnly} disabled={!available || working} busy={busy}
             onCancel={onClose} onSave={settings => run(() => channel.updateRoom(room.id, settings, false), onClose)} />
           {room.access === "private" && members.length > 0 && <details className="c3-room-members">
             <summary>{t("room.settings.members")}</summary>
@@ -345,25 +292,36 @@ function RoomSettings({ channel, room, onClose }: {
           </details>}
           <section className="c3-room-removal">
             <Btn icon="x" size="dense" quiet tone="danger" busy={removing} disabled={!connected || working}
-              title={{ text: room.available ? t("room.action.delete") : t("room.action.remove") }}
-              cap={{ text: room.available ? t("room.action.delete") : t("room.action.remove") }}
+              title={{ text: t(deleteData ? "room.action.delete" : "room.action.remove") }}
+              cap={{ text: t(deleteData ? "room.action.delete" : "room.action.remove") }}
               onClick={() => {
-                const deleteData = room.available;
-                const question = deleteData
-                  ? t("room.settings.confirmDelete", { name: room.name })
-                  : t("room.settings.confirmRemove", { name: room.name });
+                const question = t(serverHosted ? "room.settings.confirmHostedDelete" :
+                  deleteData ? "room.settings.confirmDelete" : "room.settings.confirmRemove", { name: room.name });
                 if (window.confirm(question)) void run(() => channel.deleteRoom(room.id, deleteData, false), onClose);
               }} />
           </section>
         </section>}
-        {room.authorized && <section id={`${id}-relay`} role="tabpanel" aria-labelledby={`${id}-relay-tab`} hidden={selected !== "relay"}>
-          <h3>{t("room.settings.device")}</h3>
-          <PersonalRelay channel={channel} room={room} disabled={!available || working} run={run} />
+        {room.authorized && room.canManage && <section id={`${id}-relay`} role="tabpanel" aria-labelledby={`${id}-relay-tab`} hidden={selected !== "relay"}>
           {room.canManage && <ServiceTransit key={`${room.id}/${room.delivery?.bindingId}`} channel={channel} room={room} disabled={!available || working} run={run} />}
         </section>}
         {(room.authorized || room.canManage) && <section id={`${id}-data`} role="tabpanel" aria-labelledby={`${id}-data-tab`} hidden={selected !== "data"}>
           <h3>{t("room.settings.recordsTitle")}</h3>
           {room.authorized && <RoomChatExport messages={channel.messagesByRoom[room.id] ?? []} users={[...(channel.state?.users ?? []), ...channel.profiles.values()]} />}
+          {room.authorized && <section className="c3-backup-controls">
+            <p>{t("room.settings.localCacheScope")}</p>
+            <ChannelAction icon="x" quiet label={t("room.settings.clearLocalCache")} busy={clearingCache} disabled={working || purging || clearingCache}
+              onClick={() => {
+                if (window.confirm(t("room.settings.confirmClearLocalCache", { name: room.name })))
+                  void run(() => channel.clearLocalRoomCache(room.id));
+              }} />
+          </section>}
+          {canPurge && <div>
+            <ChannelAction icon="x" quiet danger label={t("room.chat.purgeHistory")} busy={purging} disabled={!available || working}
+              onClick={() => {
+                if (window.confirm(t("room.chat.confirmPurgeHistory", { name: room.name })))
+                  void run(() => channel.purgeRoomHistory(room.id));
+              }} />
+          </div>}
           {room.canManage && backupAvailable && <section className="c3-backup-controls">
             <label className="c3-check"><input type="checkbox" checked={includeFiles} disabled={!available || working}
               onChange={event => setIncludeFiles(event.target.checked)} />{t("room.backup.includeFiles")}</label>
@@ -373,6 +331,7 @@ function RoomSettings({ channel, room, onClose }: {
           {room.canManage && backupAvailable && <RoomCopyExport channel={channel} roomId={room.id} includeFiles={includeFiles} run={run}
             disabled={!available || busy || removing} busy={backupBusy} />}
           {room.canManage && backupAvailable && <h3>{t("room.backup.title")}</h3>}
+          {room.canManage && backupAvailable && inviteOnly && <p>{t("room.backup.inviteOnlyNote")}</p>}
           {room.canManage && <BackupControls run={run} available={backupAvailable} disabled={!available || busy || removing || !backupAvailable}
             busy={backupBusy} onExport={() => channel.exportRoomBackup(room.id, includeFiles)} onRestore={async file => {
               try {

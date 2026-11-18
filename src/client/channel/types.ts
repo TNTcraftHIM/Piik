@@ -3,7 +3,7 @@ import type { NativePageCandidate, NativePageIndexedSelection, NativePageMpdCata
 import type { WatchMedia } from "./watch-media";
 import type { WatchPlayer } from "./watch-playback";
 import type { WatchPlayback, WatchMode } from "./protocol";
-import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomInvitationState, RoomSettings, PublicationReactionSnapshot, ChatOptions, ProfilePage } from "./protocol";
+import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomCreationPolicy, RoomInvitationState, RoomSettings, PublicationReactionSnapshot, ChatOptions, ProfilePage } from "./protocol";
 export type { ChatOptions } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
 import type { FeedbackCue } from "./feedback-audio";
@@ -82,6 +82,8 @@ export interface ChannelView {
   profiles: ReadonlyMap<string, ChannelUser>;
   connection: "connecting" | "connected" | "reconnecting" | "closed";
   messagesByRoom: Record<string, ChannelMessage[]>;
+  historyChangesByRoom: Record<string, RoomHistoryChanges>;
+  forwardingLimit: number;
   historyByRoom: Record<string, { hasMore: boolean; before?: number; atLatest: boolean }>;
   readByRoom: Record<string, number>;
   streams: ReadonlyMap<string, MediaStream>;
@@ -91,6 +93,15 @@ export interface ChannelView {
   error: string | null;
   siteURL: string | null;
   pending: ReadonlySet<string>;
+}
+
+export interface RoomHistoryChanges {
+  clearedThrough: number;
+  deleted: ReadonlySet<number>;
+}
+
+export function messageRemoved(changes: RoomHistoryChanges | undefined, seq: number): boolean {
+  return !!changes && (seq <= changes.clearedThrough || changes.deleted.has(seq));
 }
 
 export interface ChannelActions {
@@ -141,6 +152,9 @@ export interface ChannelActions {
   connectionMetrics(roomId: string, publicationId?: string): Promise<ChannelMediaMetrics>;
   appConnectionMetrics(roomId: string, publicationId?: string, signal?: AbortSignal): Promise<NativeConnectionMetrics>;
   sendMessage(roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal, options?: ChatOptions): Promise<void>;
+  deleteMessage(roomId: string, messageSeq: number): Promise<void>;
+  purgeRoomHistory(roomId: string): Promise<void>;
+  clearLocalRoomCache(roomId: string): Promise<void>;
   markRead(roomId: string, seq: number): void;
   loadMessage(roomId: string, seq: number): Promise<void>;
   loadHistory(roomId: string): Promise<void>;
@@ -148,14 +162,15 @@ export interface ChannelActions {
   attachments: ChannelAttachments;
   updateProfile(profile: { name: string; avatar: string | null }): Promise<void>;
   updateDomain(settings: DomainSettings, reportError?: boolean): Promise<void>;
+  setRoomCreationPolicy(policy: RoomCreationPolicy, reportError?: boolean): Promise<void>;
   exportDomainBackup(): Promise<Blob>;
   restoreDomainBackup(archive: Blob): Promise<DomainSettings>;
   createRoom(settings: RoomSettings, reportError?: boolean): Promise<string>;
   updateRoom(roomId: string, settings: RoomSettings, reportError?: boolean): Promise<void>;
   deleteRoom(roomId: string, deleteData: boolean, reportError?: boolean): Promise<{ dataRemoved: boolean }>;
   setRoomVoiceBitrate(roomId: string, bitrate: number): Promise<void>;
-  setRelayOverride(roomId: string, capacity: number | null, reportError?: boolean): Promise<void>;
-  appRelayCapacity(roomId: string, signal?: AbortSignal): Promise<NativeRelayCapacity>;
+  setForwardingLimit(capacity: number): void;
+  appRelayCapacity(signal?: AbortSignal): Promise<NativeRelayCapacity>;
   setAppRelayOverride(current: NativeRelayCapacity, capacity: number | null, reportError?: boolean): Promise<NativeRelayCapacity>;
   roomBackupAvailable(roomId: string): Promise<boolean>;
   exportRoomBackup(roomId: string, includeFiles?: boolean): Promise<Blob>;

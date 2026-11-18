@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { normalizeVideoOfferSdp, requireReceivingVideo, VideoReceiveRejectedError } from "../src/client/webrtc/video-codec";
+import { normalizeVideoOfferSdp, withoutVideoOrientation, requireReceivingVideo, VideoReceiveRejectedError } from "../src/client/webrtc/video-codec";
 import { preferredVideoCodecForTrack } from "../src/client/webrtc/video-codec-preflight";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
@@ -69,4 +69,11 @@ it("preserves valid codec parameters, feedback and opaque data without reseriali
     "a=rtpmap:97 rtx/90000\r\na=fmtp:97 apt=96\r\na=rtcp-fb:96 nack\r\n" +
     "a=rtcp-fb:* transport-cc\r\na=unknown:exact spacing  and values\r\n";
   expect(normalizeVideoOfferSdp(sdp)).toBe(sdp);
+});
+
+it("declines CVO while retaining the other negotiated header extensions", () => {
+  const section = "m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=extmap:4 urn:ietf:params:rtp-hdrext:sdes:mid\r\n";
+  const cvo = "a=extmap:13/sendrecv urn:3gpp:video-orientation\r\n";
+  expect(normalizeVideoOfferSdp(section + cvo)).toBe(section + cvo);
+  expect(withoutVideoOrientation(section + cvo)).toBe(section);
 });

@@ -46,20 +46,55 @@ struct Pair {
     id: Uuid,
     flows: Directions,
     attempt: Attempt,
-    ever_connected: bool,
+    confirmed_by: [Option<Uuid>; 2],
 }
 
-/// Logical flow leases share one current physical attempt until the last retires.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct DiscoveryEdge {
+    pub endpoints: (Uuid, Uuid),
+    pub sockets: (Uuid, Uuid),
+}
+
+/// Current physical attempts shared by flow, room and standby interests.
 #[derive(Clone, Default)]
 pub struct TransportBook {
+    // One optional trial for the channel. A terminal failure is remembered
+    // only while the same demand and socket generations still justify it.
+    discovery: Option<DiscoveryEdge>,
+    rejected: BTreeSet<DiscoveryEdge>,
+    discovery_deadline: Option<u64>,
     pairs: BTreeMap<(Uuid, Uuid), Pair>,
 }
 
 impl TransportBook {
+    pub(crate) fn discovery_endpoints(&self) -> Option<(Uuid, Uuid)> {
+        self.discovery.as_ref().map(|edge| edge.endpoints)
+    }
+
+    pub(crate) fn rejected(&self, edge: &DiscoveryEdge) -> bool {
+        self.rejected.contains(edge)
+    }
+
+    pub(crate) fn has_pair(&self, endpoints: (Uuid, Uuid)) -> bool {
+        self.pairs.contains_key(&endpoints)
+    }
+
+    #[cfg(test)]
     pub fn reconcile(
         &mut self,
         flows: impl IntoIterator<Item = Flow>,
         base: impl IntoIterator<Item = BaseLink>,
+    ) {
+        self.reconcile_with_standby(flows, base, &BTreeSet::new(), &BTreeSet::new(), 0);
+    }
+
+    pub(crate) fn reconcile_with_standby(
+        &mut self,
+        flows: impl IntoIterator<Item = Flow>,
+        base: impl IntoIterator<Item = BaseLink>,
+        standby: &BTreeSet<(Uuid, Uuid)>,
+        candidates: &BTreeSet<DiscoveryEdge>,
+        now: u64,
     ) {
         let mut needed = BTreeMap::<_, Directions>::new();
         for flow in flows {
@@ -92,6 +127,46 @@ impl TransportBook {
             };
             needed.entry(key).or_default().rooms.insert(link.room_id);
         }
+        self.rejected.retain(|edge| candidates.contains(edge));
+        if self
+            .discovery
+            .as_ref()
+            .is_some_and(|edge| !candidates.contains(edge))
+        {
+            self.discovery_deadline = None;
+            if let Some(old) = self.discovery.take() {
+                // A socket takeover may immediately produce the same endpoints
+                // with a different generation. Discard the old optional attempt.
+                if !needed.contains_key(&old.endpoints) && !standby.contains(&old.endpoints) {
+                    self.pairs.remove(&old.endpoints);
+                }
+            }
+        }
+        if self.discovery.is_none() {
+            self.discovery = candidates
+                .iter()
+                .find(|edge| !needed.contains_key(&edge.endpoints) && !self.rejected.contains(edge))
+                .cloned();
+            self.discovery_deadline = self
+                .discovery
+                .as_ref()
+                .map(|_| now.saturating_add(crate::publication::SCREEN_PREPARE_MS));
+        }
+        if let Some(edge) = &self.discovery {
+            if needed.contains_key(&edge.endpoints) || standby.contains(&edge.endpoints) {
+                self.discovery_deadline = None;
+            }
+            needed.entry(edge.endpoints).or_default();
+        }
+        // An idle endpoint can keep one known neighbor. Active or preparing
+        // work takes precedence at both ends, including the same pair.
+        let mut occupied: BTreeSet<_> = needed.keys().flat_map(|&(a, b)| [a, b]).collect();
+        for &(a, b) in standby {
+            if !occupied.contains(&a) && !occupied.contains(&b) {
+                needed.entry((a, b)).or_default();
+                occupied.extend([a, b]);
+            }
+        }
         self.pairs.retain(|key, _| needed.contains_key(key));
         for (key, flows) in needed {
             self.pairs
@@ -100,7 +175,7 @@ impl TransportBook {
                     id: Uuid::new_v4(),
                     flows: Directions::default(),
                     attempt: Attempt::Ordinary,
-                    ever_connected: false,
+                    confirmed_by: [None; 2],
                 })
                 .flows = flows;
         }
@@ -151,10 +226,52 @@ impl TransportBook {
             .any(|pair| pair.id == id && pair.flows.rooms.contains(room))
     }
 
-    pub fn connected(&mut self, id: Uuid) {
-        if let Some(pair) = self.pairs.values_mut().find(|pair| pair.id == id) {
-            pair.ever_connected = true;
+    /// A new socket report may complete the evidence for this pair.
+    pub fn connected(
+        &mut self,
+        endpoint: Uuid,
+        connection: Uuid,
+        peer_connection: Option<Uuid>,
+        id: Uuid,
+    ) -> bool {
+        let Some(((first, second), pair)) = self.pairs.iter_mut().find(|(_, pair)| pair.id == id)
+        else {
+            return false;
+        };
+        let side = if *first == endpoint {
+            0
+        } else if *second == endpoint {
+            1
+        } else {
+            return false;
+        };
+        if pair.confirmed_by[side] == Some(connection) {
+            return false;
         }
+        pair.confirmed_by[side] = Some(connection);
+        let confirmed = peer_connection.is_some() && pair.confirmed_by[1 - side] == peer_connection;
+        if confirmed
+            && self
+                .discovery
+                .as_ref()
+                .is_some_and(|edge| edge.endpoints == (*first, *second))
+        {
+            self.discovery_deadline = None;
+        }
+        confirmed
+    }
+
+    pub(crate) fn confirmed_pairs<'a>(
+        &'a self,
+        identity: &'a crate::identity::Identity,
+    ) -> impl Iterator<Item = (Uuid, Uuid)> + 'a {
+        self.pairs.iter().filter_map(|(&(a, b), pair)| {
+            let sockets = [
+                identity.sessions.get(&a)?.connection?,
+                identity.sessions.get(&b)?.connection?,
+            ];
+            (pair.confirmed_by == sockets.map(Some)).then_some((a, b))
+        })
     }
 
     // The caller authorizes both current online capabilities. Only this book
@@ -163,7 +280,7 @@ impl TransportBook {
         let Some(pair) = self.pairs.values_mut().find(|pair| pair.id == id) else {
             return false;
         };
-        if pair.attempt != Attempt::Ordinary || pair.ever_connected {
+        if pair.attempt != Attempt::Ordinary || pair.confirmed_by != [None; 2] {
             return false;
         }
         pair.id = Uuid::new_v4();
@@ -171,7 +288,30 @@ impl TransportBook {
         true
     }
 
+    pub(crate) fn expire_discovery(&mut self, now: u64) -> bool {
+        if self
+            .discovery_deadline
+            .is_none_or(|deadline| deadline > now)
+        {
+            return false;
+        }
+        let edge = self.discovery.take().unwrap();
+        self.pairs.remove(&edge.endpoints);
+        self.rejected.insert(edge);
+        self.discovery_deadline = None;
+        true
+    }
+
     pub fn retire(&mut self, id: Uuid) {
+        if self
+            .discovery
+            .as_ref()
+            .and_then(|edge| self.pairs.get(&edge.endpoints))
+            .is_some_and(|pair| pair.id == id)
+        {
+            self.rejected.insert(self.discovery.take().unwrap());
+            self.discovery_deadline = None;
+        }
         self.pairs.retain(|_, pair| pair.id != id);
     }
 
@@ -201,7 +341,9 @@ impl TransportBook {
                     id: pair.id,
                     udp_preparation: match pair.attempt {
                         Attempt::Prepared => Some(UdpPreparation::Required),
-                        Attempt::Ordinary if !pair.ever_connected && can_prepare(peer) => {
+                        Attempt::Ordinary
+                            if pair.confirmed_by == [None; 2] && can_prepare(peer) =>
+                        {
                             Some(UdpPreparation::Available)
                         }
                         Attempt::Ordinary => None,

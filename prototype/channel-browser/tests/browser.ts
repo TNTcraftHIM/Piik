@@ -1,6 +1,7 @@
 import { BrowserRoomHost, conversation_broadcast, createRoomPolicy, createSessionSigner, initializeRuntime, decode_control, encode_control, verify_reply, type SentResult } from "../src/room-host";
 import type { SignedConversationPacket } from "../../../src/client/channel/protocol";
 import { IDENTITY_IMAGE_URL_BYTES, identityIconSchema } from "../../../src/client/channel/protocol";
+import { imageBytes, prepareInlineImage } from "../../../src/client/channel/image-preview";
 import { prepareIdentityImage } from "../../../src/client/channel/identity-image";
 import type { BackupHistoryRow } from "../src/hosting-contract";
 import { QUALITY_PROFILES, screenVideoSettings } from "../../../src/client/media/quality";
@@ -38,12 +39,12 @@ window.runBrowserRoomCheck = async () => {
   let host = await BrowserRoomHost.open(database, policy);
   check(host.summary().icon === "future-room_7", "unknown valid decorative key survives the shared policy and summary");
   const dispatch = async (command: object, signal?: AbortSignal, target = host): Promise<Output> => target.dispatch({
-    now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints,
+    now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
     action: { type: "command", context: { connection, sessionId: session, requestId: crypto.randomUUID(), now: Date.now() }, command },
   }, signal) as Promise<Output>;
   const bindHost = async () => {
     await host.bind(bindingId);
-    await host.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints, action: { type: "sync" } });
+    await host.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints, action: { type: "sync" } });
   };
   const peerPacket = (command: object, binding = bindingId): SignedConversationPacket => JSON.parse(peerSigner.sign(peerSession, JSON.stringify({
     roomId: host.roomId, bindingId: binding, sender: peerSession, recipient: session, requestId: crypto.randomUUID(), command,
@@ -77,7 +78,7 @@ window.runBrowserRoomCheck = async () => {
     const binding = crypto.randomUUID(); let turn = 0;
     const sync = async (target = current) => {
       await target.bind(binding);
-      return await target.dispatch({ now: Date.now(), bindingId: binding, hostSessionId: session, revision: ++turn, endpoints, action: { type: "sync" } }) as Output;
+      return await target.dispatch({ now: Date.now(), bindingId: binding, channelOwnerId: owner.userId, hostSessionId: session, revision: ++turn, endpoints, action: { type: "sync" } }) as Output;
     };
     const chat = (target: BrowserRoomHost, body: object, signal?: AbortSignal) => target.dispatchPeer(JSON.parse(peerSigner.sign(peerSession, JSON.stringify({
       roomId: target.roomId, bindingId: binding, sender: peerSession, recipient: session, requestId: crypto.randomUUID(),
@@ -85,7 +86,8 @@ window.runBrowserRoomCheck = async () => {
     }))), Date.now(), signal);
     try {
       check((await sync()).projection.lastMessageSeq === 0, "reply room starts with an empty sequence"); await sync(other);
-      const first = (await chat(current, { text: "Original author text", nonce: "original" }))[0].record;
+      const attachment = { id: crypto.randomUUID(), name: "original.txt", mediaType: "application/octet-stream", size: 1, sha256: "9".repeat(64) };
+      const first = (await chat(current, { text: "Original author text", nonce: "original", attachments: [attachment] }))[0].record;
       check(first.type === "confirmed" && first.message.seq === 1, "reference message is committed before replying");
       const crossRoom = (await chat(other, { text: "Cross room", nonce: "cross-room", reply: { seq: 1, notify: true } }))[0].record;
       check(crossRoom.type === "error" && crossRoom.code === "message_unavailable", "reply lookup is scoped to the same room's IndexedDB key");
@@ -106,10 +108,44 @@ window.runBrowserRoomCheck = async () => {
       check((await sync()).projection.lastMessageSeq === 2, "aborted reply cannot advance the confirmed sequence");
       await current.close(); current = await BrowserRoomHost.open(name, replyPolicy);
       check((await sync()).projection.lastMessageSeq === 2, "reopen seeds the reply history without scanning it in the UI");
-      const records = await current.dispatchPeer(JSON.parse(peerSigner.sign(peerSession, JSON.stringify({ roomId: current.roomId,
-        bindingId: binding, sender: peerSession, recipient: session, requestId: crypto.randomUUID(), command: { type: "history", before: null } }))), Date.now());
+      const published: unknown[] = [];
+      const run = (command: object, asOwner = false) => {
+        const sender = asOwner ? session : peerSession;
+        const signature = (asOwner ? signer : peerSigner).sign(sender, JSON.stringify({ roomId: current.roomId,
+          bindingId: binding, sender, recipient: session, requestId: crypto.randomUUID(), command }));
+        return current.dispatchPeer(JSON.parse(signature), Date.now(), undefined, output => published.push(output));
+      };
+      const records = await run({ type: "history", before: null });
       check(records.some(({ record }) => record.type === "history_message" && record.message.seq === 2
         && JSON.stringify(record.message.reply) === JSON.stringify(replied.message.reply)), "reopened history preserves the confirmed reply");
+      const offered = await current.dispatch({ now: Date.now(), bindingId: binding, channelOwnerId: owner.userId,
+        hostSessionId: session, revision: ++turn, endpoints, action: { type: "command", context: { connection,
+          sessionId: session, requestId: crypto.randomUUID(), now: Date.now() }, command: { type: "file_offer",
+          roomId: current.roomId, messageSeq: 1, attachmentId: attachment.id, sha256: attachment.sha256, available: true } } }) as Output;
+      check(offered.reply?.result.type === "done", "offer registered before the source message is deleted");
+      const deletion = await run({ type: "delete_message", messageSeq: 1 });
+      check(published.length === 1 && !JSON.stringify(published[0]).includes(attachment.id),
+        "deleting an offered file publishes its removal to the directory");
+      check(deletion[0]?.record.type === "message_deleted", "author deletes the original message");
+      const redacted = await run({ type: "history", before: null });
+      check(redacted.length === 3 && redacted[0].record.type === "history_message" && !redacted[0].record.message.reply
+        && redacted[0].record.message.seq === 2, "deletion removes the body, reactions and embedded quote");
+      const cleared = await run({ type: "clear_history", throughSeq: 2 }, true);
+      check(cleared[0]?.record.type === "history_cleared", "room owner clears remaining history");
+      const snapshot = await current.snapshot(), deleted: BackupHistoryRow[] = [];
+      try { for await (const row of snapshot.rows) deleted.push(row); } finally { await snapshot.close(); }
+      check(deleted.length === 2 && deleted.every(row => Object.keys(row).sort().join() === "retryKey,seq"),
+        "moderated archive stores only sequence and opaque retry identity");
+      const stage = await BrowserRoomHost.stage(name, replyPolicy);
+      try { for (const row of deleted) await stage.append(row); await stage.replace(); } finally { await stage.close(); }
+      await current.close(); current = await BrowserRoomHost.open(name, replyPolicy);
+      check((await sync()).projection.lastMessageSeq === 2, "empty restored archive preserves sequence floor");
+      const empty = await run({ type: "history", before: null });
+      check(empty.length === 1 && empty[0].record.type === "history_end" && empty[0].record.count === 0, "reopened purged history is empty");
+      const replay = (await chat(current, { text: "Original author text", nonce: "original" }))[0].record;
+      check(replay.type === "error" && replay.code === "message_unavailable", "restored deletion rejects a stale send");
+      const next = (await chat(current, { text: "New", nonce: "fresh" }))[0].record;
+      check(next.type === "confirmed" && next.message.seq === 3, "post-restore send advances past deleted history");
     } finally { await current.close(); await other.close(); await new Promise<void>((resolve, reject) => {
       const request = indexedDB.deleteDatabase(name); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); }); }
   }
@@ -121,12 +157,13 @@ window.runBrowserRoomCheck = async () => {
       bindingId: binding, sender: peerSession, recipient: session, requestId: crypto.randomUUID(), command })));
     try {
       await imageHost.bind(binding);
-      await imageHost.dispatch({ now: Date.now(), bindingId: binding, hostSessionId: session, revision: 1, endpoints, action: { type: "sync" } });
+      await imageHost.dispatch({ now: Date.now(), bindingId: binding, channelOwnerId: owner.userId, hostSessionId: session, revision: 1, endpoints, action: { type: "sync" } });
       const bytes = new Uint8Array(65536); bytes.set(new TextEncoder().encode("GIF89a"));
       const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
       const image = { id: crypto.randomUUID(), name: "image.gif", size: bytes.length, mediaType: "image/gif",
         sha256: Array.from(hash, byte => byte.toString(16).padStart(2, "0")).join("") };
-      const inline = { data: btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join("")), mediaType: "image/gif", original: true, width: 1, height: 1 };
+      bytes[bytes.length - 1] = 1; // The message carries distinct display bytes.
+      const inline = { data: btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join("")), mediaType: "image/gif", original: false, width: 1, height: 1 };
       for (let seq = 1; seq <= 7; seq++) {
         const replies = await imageHost.dispatchPeer(packet({ type: "chat", text: "", nonce: `image-${seq}`, attachments: [image], inlineImages: { [image.id]: inline } }), Date.now());
         check(replies[0].record.type === "confirmed" && replies[0].record.message.seq === seq, "full-budget image is confirmed by the real shared Core and IndexedDB producer");
@@ -141,7 +178,7 @@ window.runBrowserRoomCheck = async () => {
         const snapshots = replies.filter(({ record }) => record.type === "message_reactions");
         check(bodies.length === end.count && snapshots.length === end.count && bodies.length <= 50 && end.before === before && end.oldestSeq === 1,
           "byte-bounded pages preserve count, reaction and cursor contracts");
-        check(bodies.every(body => JSON.stringify(body.inlineImages?.[image.id]) === JSON.stringify(inline)), "pagination retains every original inline image");
+        check(bodies.every(body => JSON.stringify(body.inlineImages?.[image.id]) === JSON.stringify(inline)), "pagination retains every thumbnail");
         check(bodies.reduce((total, body) => total + new TextEncoder().encode(JSON.stringify(body)).byteLength, 0) <= 256 * 1024,
           "message bodies remain within the 256 KiB history page budget");
         sizes.push(bodies.length); received.push(...bodies.map(body => body.seq));
@@ -150,13 +187,34 @@ window.runBrowserRoomCheck = async () => {
       }
       check(sizes.join() === "2,2,2,1" && received.sort((a, b) => a - b).join() === "1,2,3,4,5,6,7",
         "real IndexedDB cursor pages match SQLite 2/2/2/1 without dropping a boundary row");
+      const gifData = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+      const gif = new File([imageBytes(gifData)], "tiny.gif", { type: "image/gif" });
+      const digest = await crypto.subtle.digest("SHA-256", await gif.arrayBuffer());
+      const attachment = { ...image, id: crypto.randomUUID(), name: gif.name, size: gif.size,
+        sha256: Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("") };
+      const thumbnail = await prepareInlineImage(gif, gif.type, 65536);
+      check(thumbnail && !thumbnail.original && thumbnail.data !== gifData && thumbnail.width === 1,
+        "a tiny GIF gets distinct message-owned thumbnail bytes from the real browser encoder");
+      const chat = { type: "chat", text: "", nonce: "small-gif", attachments: [attachment] };
+      const fake = await imageHost.dispatchPeer(packet({ ...chat, inlineImages: {
+        [attachment.id]: { ...thumbnail, mediaType: gif.type, data: gifData },
+      } }), Date.now());
+      check(fake[0].record.type === "error" && fake[0].record.code === "invalid_inline_images",
+        "the browser writer rejects an original relabelled as a thumbnail");
+      const sent = await imageHost.dispatchPeer(packet({ ...chat, inlineImages: { [attachment.id]: thumbnail } }), Date.now());
+      check(sent[0].record.type === "confirmed" && sent[0].record.message.seq === 8, "the thumbnail is confirmed");
+      const records = await imageHost.dispatchPeer(packet({ type: "history", before: null }), Date.now());
+      check(records.some(({ record }) => record.type === "history_message"
+        && record.message.inlineImages?.[attachment.id]?.data === thumbnail.data),
+        "the writer returns the thumbnail from history without requesting the original");
+
     } finally { await imageHost.close(); await new Promise<void>((resolve, reject) => { const request = indexedDB.deleteDatabase(name);
       request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); }); }
   }
   try {
-    const previousDatabase = `${database}-schema-2`;
+    const previousDatabase = `${database}-schema-6`;
     const old = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(previousDatabase, 2);
+      const request = indexedDB.open(previousDatabase, 6);
       request.onupgradeneeded = () => { request.result.createObjectStore("retained").put("original", "marker"); };
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
@@ -165,7 +223,7 @@ window.runBrowserRoomCheck = async () => {
       try { await BrowserRoomHost.storedPolicies(previousDatabase); throw new Error("old schema accepted"); }
       catch (error) { check(String(error).includes("unsupported_storage_version"), "previous private schema is explicitly rejected"); }
       const saved = await new Promise<IDBDatabase>((resolve, reject) => {
-        const request = indexedDB.open(previousDatabase, 2);
+        const request = indexedDB.open(previousDatabase, 6);
         request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
       });
       try {
@@ -239,7 +297,7 @@ window.runBrowserRoomCheck = async () => {
     await privateHost.bind(bindingId);
     try {
       const guestSession = crypto.randomUUID();
-      const output = await privateHost.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision,
+      const output = await privateHost.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision,
         endpoints: { ...endpoints, [guestSession]: { member: { ...owner, userId: crypto.randomUUID() }, connected: true, signingKey: peerSigningKey } },
         action: { type: "command", context: { connection, sessionId: guestSession, requestId: "hidden", now: Date.now() },
           command: { type: "browse", roomId: privateHost.roomId, active: true } },
@@ -255,7 +313,7 @@ window.runBrowserRoomCheck = async () => {
       }
       const guest = { ...owner, userId: crypto.randomUUID() };
       const guestEndpoints = { ...endpoints, [guestSession]: { member: guest, connected: true, signingKey: peerSigningKey } };
-      const granted = await privateHost.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints,
+      const granted = await privateHost.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints,
         action: { type: "command", context: { connection, sessionId: guestSession, requestId: null, now: Date.now() },
           command: { type: "enter_room", roomId: privateHost.roomId, inviteKey: invitation.reply!.result.key } },
       }) as Output;
@@ -264,7 +322,7 @@ window.runBrowserRoomCheck = async () => {
       const reopened = await BrowserRoomHost.open(database, privatePolicy);
       await reopened.bind(bindingId);
       try {
-        const restored = await reopened.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
+        const restored = await reopened.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
         check(restored.projection.views[guestSession], "private invitation grant survives runtime reopen");
         const read = await dispatch({ type: "get_room_invite", roomId: reopened.roomId }, undefined, reopened);
         check(read.reply?.result.invitation?.key === invitation.reply!.result.key, "IndexedDB reopen preserves the readable invitation");
@@ -278,7 +336,7 @@ window.runBrowserRoomCheck = async () => {
         const afterReset = await reopened.dispatchPeer(privatePacket({ type: "history", before: null }), Date.now());
         check(afterReset.some(reply => reply.record.type === "history_message" && reply.record.message.text === "Before invitation reset"),
           "resetting an invitation preserves committed IndexedDB history");
-        const grantedAgain = await reopened.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
+        const grantedAgain = await reopened.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
         check(grantedAgain.projection.views[guestSession], "resetting an invitation preserves an existing user's grant");
       } finally { await reopened.close(); }
     } finally { await privateHost.close(); }
@@ -394,7 +452,7 @@ window.runBrowserRoomCheck = async () => {
       catch (error) { check(error instanceof Error && error.message === "room_host_conflict", "late claim cannot replace new owner"); }
       try { await lateClaim.dispatch({ bindingId: previousBinding }); throw new Error("failed claim dispatched"); }
       catch (error) { check(error instanceof Error && error.message === "stale_room_host", "failed claim disables dispatch"); }
-      const stale = await previousHost.dispatch({ now: Date.now(), bindingId: previousBinding, hostSessionId: session, revision: ++revision, endpoints,
+      const stale = await previousHost.dispatch({ now: Date.now(), bindingId: previousBinding, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
         action: { type: "command", context: { connection, sessionId: session, requestId: null, now: Date.now() },
           command: { type: "update_room", roomId: previousHost.roomId, name: "Stale policy", icon: "future-room_7", access: "public", hidden: false } },
       }) as Output;
@@ -444,13 +502,13 @@ window.runBrowserRoomCheck = async () => {
     const afterInteraction = await host.dispatchPeer(peerPacket({ type: "history", before: null }), 3000);
     check(JSON.stringify(afterInteraction.map(reply => reply.record)) === JSON.stringify(page.map(reply => reply.record)), "immediate interaction does not add retained history");
 
-    const snapshot = await host.snapshot(), rows: BackupHistoryRow[] = [];
+    const snapshot = await host.snapshot(), rows: Extract<BackupHistoryRow, { id: string }>[] = [];
     const savedPolicy = snapshot.policy;
     try {
       await dispatch({ type: "update_room", roomId: host.roomId, name: "After snapshot", icon: "future-room_7", access: "public", hidden: false });
       await send("Newer than backup", "after-snapshot");
       await host.close();
-      for await (const row of snapshot.rows) rows.push(row);
+      for await (const row of snapshot.rows) { if (!("id" in row)) throw Error("expected live message"); rows.push(row); }
       check(rows.length === 112 && rows[0].nonce === "first" && rows.at(-1)?.seq === 112,
         "snapshot streams all history beyond pagination, including retry nonces, after the runtime closes");
       check(JSON.stringify(rows[0].reactions) === JSON.stringify({ revision: finalReaction.snapshot.revision, counts: finalReaction.snapshot.counts })
@@ -568,7 +626,7 @@ window.runBrowserRoomCheck = async () => {
     const legacyId = legacyHost.roomId;
     await legacyHost.close();
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(database, 6);
+      const request = indexedDB.open(database, 7);
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     try {
@@ -600,7 +658,7 @@ window.runBrowserRoomCheck = async () => {
     await checkReplyStorage();
     await checkImageHistoryBudget();
     await new Promise<void>((resolve, reject) => {
-      const upgrade = indexedDB.open(database, 7);
+      const upgrade = indexedDB.open(database, 8);
       upgrade.onsuccess = () => { upgrade.result.close(); resolve(); }; upgrade.onerror = () => reject(upgrade.error);
     });
     for (const nonce of ["closed", "closed-again"]) {

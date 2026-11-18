@@ -146,6 +146,12 @@ impl CopyHistoryImport {
 }
 
 #[wasm_bindgen]
+pub fn message_retry_key(user: &str, nonce: &str) -> Result<String, JsValue> {
+    let user_id = Uuid::parse_str(user).map_err(|_| error("invalid_request"))?;
+    Ok(piik_channel_core::history::retry_key(user_id, nonce))
+}
+
+#[wasm_bindgen]
 pub fn backup_record_bytes() -> usize {
     piik_channel_core::backup::RECORD_BYTES
 }
@@ -357,16 +363,24 @@ impl RoomHost {
         let address: ConversationAddress = parse(address)?;
         let result: Result<piik_channel_core::conversation::ConversationResult, String> =
             parse(result)?;
-        let replies = match result {
-            Ok(result) => self
-                .room
-                .finish_peer(address, Ok(result))
-                .map_err(error)?
-                .replies(),
-            Err(code) => address.replies(Err(&code)),
+        let (replies, projection) = match result {
+            Ok(result) => {
+                let mut outcome = self.room.finish_peer(address, Ok(result)).map_err(error)?;
+                let projection = outcome.projection_update.take();
+                (outcome.replies(), projection)
+            }
+            Err(code) => (address.replies(Err(&code)), None),
+        };
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct PeerOutput {
+            replies: Vec<ConversationReply>,
+            projection_update: Option<piik_channel_core::host::HostOutput>,
         }
-        .map_err(error)?;
-        encode(&replies)
+        encode(&PeerOutput {
+            replies: replies.map_err(error)?,
+            projection_update: projection,
+        })
     }
     pub fn current_readers(&self) -> Result<String, JsValue> {
         encode(&self.room.current_readers())
@@ -422,6 +436,33 @@ pub fn attachment_limits() -> Result<String, JsValue> {
 
 #[wasm_bindgen]
 pub struct FileDelivery(piik_channel_core::file_delivery::FileDelivery);
+
+#[wasm_bindgen]
+#[derive(Default)]
+pub struct ForwardingBudget(piik_channel_core::forwarding::ForwardingBudget);
+
+#[wasm_bindgen]
+impl ForwardingBudget {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn apply(
+        &mut self,
+        limit: Option<u8>,
+        user_id: &str,
+        snapshot: &str,
+    ) -> Result<String, JsValue> {
+        let mut snapshot = parse(snapshot)?;
+        let refusals = self.0.apply(
+            limit,
+            Uuid::parse_str(user_id).map_err(|_| error("invalid_user"))?,
+            &mut snapshot,
+        );
+        encode(&serde_json::json!({ "snapshot": snapshot, "refusals": refusals }))
+    }
+}
 
 #[wasm_bindgen]
 pub struct WatchDelivery(piik_channel_core::watch_delivery::WatchDelivery);

@@ -9,7 +9,7 @@ use crate::{
     RoomState,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
 #[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -78,6 +78,9 @@ pub struct RequestContext {
 pub enum HostAction {
     Sync,
     RouteWake,
+    RemoveHostedRoom {
+        context: RequestContext,
+    },
     Command {
         context: RequestContext,
         command: Command,
@@ -119,12 +122,15 @@ pub struct ServiceEndpoint {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostInput {
+    pub channel_owner_id: Uuid,
     pub now: u64,
     pub binding_id: Uuid,
     pub host_session_id: Uuid,
     pub revision: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub failed_pairs: Vec<PairFailure>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub confirmed_pairs: BTreeSet<(Uuid, Uuid)>,
     pub endpoints: BTreeMap<Uuid, Endpoint>,
     #[serde(default)]
     pub service_endpoint: Option<ServiceEndpoint>,
@@ -326,6 +332,22 @@ impl RoomRuntime {
                 op.history =
                     self.file_command(member, session, message_seq, attachment_id, true, available)?
             }
+            Command::FileBranchRefused {
+                message_seq,
+                attachment_id,
+                source_id,
+                downstream_id,
+                ..
+            } => {
+                self.refuse_file_branch(
+                    session,
+                    message_seq,
+                    attachment_id,
+                    source_id,
+                    downstream_id,
+                )?;
+            }
+            Command::ForwardingAvailable { kind, .. } => self.forwarding_available(session,kind),
             Command::FileReceive {
                 message_seq,
                 attachment_id,
@@ -467,6 +489,9 @@ struct Pending {
 }
 
 struct RoomAuthority {
+    now: u64,
+    confirmed_pairs: BTreeSet<(Uuid, Uuid)>,
+    channel_owner_id: Uuid,
     binding_id: Uuid,
     host_session_id: Uuid,
     revision: u64,
@@ -531,12 +556,14 @@ mod tests {
             .unwrap(),
         );
         host.dispatch(HostInput {
+            channel_owner_id: Uuid::nil(),
             service_endpoint: None,
             now: 0,
             binding_id: binding,
             host_session_id: local,
             revision: 1,
             endpoints,
+            confirmed_pairs: Default::default(),
             failed_pairs: vec![],
             action: HostAction::Sync,
         })
@@ -762,11 +789,13 @@ mod tests {
                 endpoints.insert(native, endpoint(friend));
             }
             let input = HostInput {
+                channel_owner_id: Uuid::nil(),
                 service_endpoint: None,
                 now: 0,
                 binding_id: binding,
                 host_session_id: host_session,
                 revision,
+                confirmed_pairs: Default::default(),
                 failed_pairs: Vec::new(),
                 endpoints,
                 action: HostAction::Command {
@@ -826,11 +855,13 @@ mod tests {
             ),
         ] {
             let input = HostInput {
+                channel_owner_id: Uuid::nil(),
                 service_endpoint: None,
                 now: 0,
                 binding_id: Uuid::new_v4(),
                 host_session_id: session,
                 revision: 1,
+                confirmed_pairs: Default::default(),
                 failed_pairs: Vec::new(),
                 endpoints: BTreeMap::from([(
                     session,
@@ -970,7 +1001,37 @@ impl RoomHost {
         {
             return Err("invalid_conversation_scope");
         }
+        let actor = endpoint.member.user_id;
+        let moderator = self.room.policy().manages(actor) || actor == authority.channel_owner_id;
         let work = match request.command {
+            ConversationCommand::DeleteMessage { message_seq } => self
+                .room
+                .authorize(endpoint.member, crate::RoomPermission::Read)
+                .and_then(|()| {
+                    if message_seq == 0 || message_seq > self.room.last_message_seq {
+                        return Err("message_unavailable");
+                    }
+                    Ok(ConversationWork::History(HistoryRequest::DeleteMessage {
+                        room_id: self.room.policy().id.clone(),
+                        message_seq,
+                        author_id: (!moderator).then_some(actor),
+                    }))
+                }),
+            ConversationCommand::ClearHistory { through_seq } => self
+                .room
+                .authorize(endpoint.member, crate::RoomPermission::Read)
+                .and_then(|()| {
+                    if !moderator {
+                        return Err("forbidden");
+                    }
+                    if through_seq > self.room.last_message_seq {
+                        return Err("message_unavailable");
+                    }
+                    Ok(ConversationWork::History(HistoryRequest::ClearHistory {
+                        room_id: self.room.policy().id.clone(),
+                        through_seq,
+                    }))
+                }),
             ConversationCommand::InteractionReady => self
                 .room
                 .authorize(endpoint.member, crate::RoomPermission::Read)
@@ -1084,6 +1145,28 @@ impl RoomHost {
                 .last_message_seq
                 .max(confirmation.message.message.seq);
         }
+        let files_changed = match &result {
+            Ok(ConversationResult::History(HistoryResult::MessageDeleted { message_seq })) => {
+                self.room.remove_message_files(*message_seq, *message_seq)
+            }
+            Ok(ConversationResult::History(HistoryResult::HistoryCleared { through_seq })) => {
+                self.room.remove_message_files(0, *through_seq)
+            }
+            _ => false,
+        };
+        let projection_update = files_changed.then(|| {
+            self.room.reconcile_with_pairs(
+                &authority.endpoints,
+                authority.now,
+                &authority.confirmed_pairs,
+            );
+            HostOutput {
+                binding_id: authority.binding_id,
+                revision: authority.revision,
+                projection: self.room.projection(&authority.endpoints),
+                reply: None,
+            }
+        });
         let committed = match &mut result {
             Ok(ConversationResult::History(HistoryResult::Reacted(confirmation))) => confirmation
                 .event
@@ -1107,7 +1190,11 @@ impl RoomHost {
                 Err(code) => result = Err(code),
             }
         }
-        Ok(crate::conversation::ConversationOutcome { address, result })
+        Ok(crate::conversation::ConversationOutcome {
+            address,
+            result,
+            projection_update,
+        })
     }
 
     pub fn current_readers(&self) -> Vec<Uuid> {
@@ -1156,6 +1243,9 @@ impl RoomHost {
             .unwrap_or_default();
         reaction_nonces.retain(|session, _| input.endpoints.contains_key(session));
         self.authority = Some(RoomAuthority {
+            now: input.now,
+            confirmed_pairs: input.confirmed_pairs.clone(),
+            channel_owner_id: input.channel_owner_id,
             binding_id: input.binding_id,
             host_session_id: input.host_session_id,
             revision: input.revision,
@@ -1163,7 +1253,8 @@ impl RoomHost {
             reaction_nonces,
         });
         self.room.set_host_session(input.host_session_id);
-        self.room.reconcile(&input.endpoints, input.now);
+        self.room
+            .reconcile_with_pairs(&input.endpoints, input.now, &input.confirmed_pairs);
         let before = self.room.clone();
         let mut reply = None;
         let mut work = HostWork {
@@ -1173,6 +1264,7 @@ impl RoomHost {
         };
         let context = match &input.action {
             HostAction::Command { context, .. }
+            | HostAction::RemoveHostedRoom { context }
             | HostAction::Revoke { context, .. }
             | HostAction::FlowState { context, .. }
             | HostAction::BaseState { context, .. } => Some(context.clone()),
@@ -1191,6 +1283,10 @@ impl RoomHost {
                 .transpose()?;
             match &input.action {
                 HostAction::Sync => {}
+                HostAction::RemoveHostedRoom { .. } => {
+                    work.delete = true;
+                    return Ok(RoomResult::Deleted { data_removed: true });
+                }
                 HostAction::RouteWake => {
                     self.room.expire_media(input.now);
                 }
@@ -1274,7 +1370,8 @@ impl RoomHost {
         if let Some(context) = context {
             reply = Some(RoomReply { context, result });
         }
-        self.room.reconcile(&input.endpoints, input.now);
+        self.room
+            .reconcile_with_pairs(&input.endpoints, input.now, &input.confirmed_pairs);
         self.pending = Some(Pending {
             before,
             input,
@@ -1292,6 +1389,7 @@ impl RoomHost {
         let mut pending = self.pending.take().unwrap();
         if let Some(result) = history {
             let HistoryResult::Attachment {
+                author_id,
                 message_seq,
                 attachment,
             } = result
@@ -1310,6 +1408,7 @@ impl RoomHost {
                 Command::FileOffer { available, .. } => self.room.finish_file(
                     context.session_id,
                     message_seq,
+                    author_id,
                     attachment,
                     true,
                     *available,
@@ -1317,6 +1416,7 @@ impl RoomHost {
                 Command::FileReceive { enabled, .. } => self.room.finish_file(
                     context.session_id,
                     message_seq,
+                    author_id,
                     attachment,
                     false,
                     *enabled,
@@ -1326,8 +1426,11 @@ impl RoomHost {
             if let Err(code) = result {
                 pending.reply.as_mut().unwrap().result = RoomResult::Error { code: code.into() };
             }
-            self.room
-                .reconcile(&pending.input.endpoints, pending.input.now);
+            self.room.reconcile_with_pairs(
+                &pending.input.endpoints,
+                pending.input.now,
+                &pending.input.confirmed_pairs,
+            );
         }
         Ok(self.output(pending))
     }

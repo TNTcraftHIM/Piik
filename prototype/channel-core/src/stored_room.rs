@@ -23,7 +23,7 @@ impl RoomBackup {
         own_credential: Option<OwnCredential>,
     ) -> StoreResult<Self> {
         let metadata = RoomMetadata {
-            version: 2,
+            version: 3,
             domain_id,
             policy: serde_json::from_value(store.load()?.ok_or("room_not_found")?)?,
             own_credential,
@@ -173,15 +173,17 @@ impl StoredRoomHost {
         self.host.summary()
     }
 
+    pub fn delete_data(&mut self) -> StoreResult<()> {
+        self.store.delete_room(&self.host.policy().id)
+    }
+
     /// Domain-authenticated input follows the same commit boundary as Browser
     /// hosting. A storage failure completes with the core's scoped error output.
     pub fn dispatch(&mut self, input: HostInput) -> Result<HostOutput, &'static str> {
         let work = self.host.dispatch(input)?;
         let result = (|| {
             if work.delete {
-                self.store
-                    .delete_room(&self.host.policy().id)
-                    .map_err(|_| "storage_failed")?;
+                self.delete_data().map_err(|_| "storage_failed")?;
                 return Ok(None);
             }
             if let Some(policy) = work.policy {

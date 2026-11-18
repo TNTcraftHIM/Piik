@@ -1,12 +1,23 @@
 use anyhow::{ensure, Context};
+use piik_channel_core::wire::{HostingMode, RoomCreationPolicy};
 use piik_channel_native::peer::server_udp::ServerUdp;
 use piik_channel_prototype::{domain::Domain, listener_client_address, serve_server, web};
+use serde::de::{value::StrDeserializer, DeserializeOwned};
 use std::{
     net::{IpAddr, SocketAddr},
     path::PathBuf,
 };
 
 mod release;
+
+fn first_start_setting<T: DeserializeOwned>(key: &str, default: T) -> anyhow::Result<T> {
+    match std::env::var(key) {
+        Ok(value) => T::deserialize(StrDeserializer::<serde::de::value::Error>::new(&value))
+            .with_context(|| format!("Invalid {key}")),
+        Err(std::env::VarError::NotPresent) => Ok(default),
+        Err(error) => Err(error).with_context(|| format!("Read {key}")),
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<std::process::ExitCode> {
@@ -15,6 +26,11 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
         println!("{}", serde_json::to_string(&result)?);
         return Ok(std::process::ExitCode::from(result.exit_code()));
     }
+    let room_creation_policy = first_start_setting(
+        "PIIK_CHANNEL_ROOM_CREATION_POLICY",
+        RoomCreationPolicy::Ordinary,
+    )?;
+    let hosting_mode = first_start_setting("PIIK_CHANNEL_HOSTING_MODE", HostingMode::Lightweight)?;
     let stop = piik_channel_native::shutdown_signal()?;
     let port = std::env::var("PIIK_CHANNEL_PORT")
         .unwrap_or_else(|_| "8791".into())
@@ -97,12 +113,14 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
         })
         .collect();
     let udp = ServerUdp::bind(&bindings)?;
-    let state = Domain::open(
+    let state = Domain::open_with_options(
         &directory,
         &owner,
         origin.clone(),
         invitation_origin,
         ice_servers,
+        room_creation_policy,
+        Some(hosting_mode),
     )?;
     println!("Piik Server: http://{bound}");
     println!("Web interface: {origin}/__channel-preview");

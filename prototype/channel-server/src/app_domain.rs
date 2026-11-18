@@ -5,6 +5,7 @@ mod stun;
 use super::{console::Console, stop_hosts, tunnel, ApiResult, App, Permission};
 use crate::{domain::Domain, web};
 use axum::{extract::State, http::StatusCode, Json};
+use piik_channel_core::wire::HostingMode;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{future::pending, net::Ipv4Addr, num::NonZeroU16, sync::Arc};
@@ -375,6 +376,10 @@ async fn run(
                 if request.result.is_closed() { continue; }
                 if !domain.is_owner_credential(&request.credential) {
                     let _ = request.result.send(Err("forbidden".into()));
+                    continue;
+                }
+                if request.metadata.state.hosting_mode() == HostingMode::Hosted {
+                    let _ = request.result.send(Err("hosted_channel_requires_server".into()));
                     continue;
                 }
                 // Keep the existing creation gate through shutdown and replacement.

@@ -55,11 +55,13 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
         now: 0,
     };
     host.dispatch(HostInput {
+        channel_owner_id: Uuid::nil(),
         service_endpoint: None,
         now: 0,
         binding_id: binding,
         host_session_id: publisher,
         revision: 1,
+        confirmed_pairs: Default::default(),
         failed_pairs: Vec::new(),
         endpoints: endpoints.clone(),
         action: HostAction::Command {
@@ -91,11 +93,13 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
     endpoints.remove(&publisher);
     let work = host
         .dispatch(HostInput {
+            channel_owner_id: Uuid::nil(),
             service_endpoint: None,
             now: 0,
             binding_id: binding,
             host_session_id: publisher,
             revision: 2,
+            confirmed_pairs: Default::default(),
             failed_pairs: Vec::new(),
             endpoints,
             action: HostAction::Command {
@@ -265,6 +269,7 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
         recipient
             .files
             .push(piik_channel_core::file_room::FilePlan {
+                author_id: Uuid::new_v4(),
                 room_id: room_id.into(),
                 message_seq: 1,
                 attachment: piik_channel_core::AttachmentDescriptor {
@@ -443,7 +448,7 @@ fn room_host_cannot_complete_an_unissued_other_room_request() {
     let mut core = Authority::new("owner".into(), vec![]).unwrap();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
-    let b_session = review_admit(&mut core, b, "invite");
+    let b_session = review_admit(&mut core, b, "owner");
     let c_session = review_admit(&mut core, c, "invite");
     let b_user = core
         .handle(
@@ -513,7 +518,7 @@ fn room_entry_waits_for_commit_without_blocking_site_identity() {
     let mut core = Authority::new("owner".into(), vec![]).unwrap();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
-    let bs = review_admit(&mut core, b, "invite");
+    let bs = review_admit(&mut core, b, "owner");
     let bu = core
         .handle(
             b,
@@ -618,7 +623,7 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
     let mut core = Authority::new("owner".into(), vec![]).unwrap();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
-    let bs = review_admit(&mut core, b, "invite");
+    let bs = review_admit(&mut core, b, "owner");
     review_admit(&mut core, c, "invite");
     let bu = core
         .handle(
@@ -802,7 +807,7 @@ fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
         let mut core = Authority::new("owner".into(), vec![]).unwrap();
         let source = Uuid::new_v4();
         let viewer = Uuid::new_v4();
-        let source_session = review_admit(&mut core, source, "invite");
+        let source_session = review_admit(&mut core, source, "owner");
         let viewer_session = review_admit(&mut core, viewer, "invite");
         let state = core
             .handle(
@@ -1170,8 +1175,14 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
     ] {
         let mut core = Authority::new("owner".into(), vec![]).unwrap();
         let connections: [Uuid; 5] = std::array::from_fn(|_| Uuid::new_v4());
-        let [source, relay, branch, viewer, transit] =
-            connections.map(|connection| review_admit(&mut core, connection, "invite"));
+        let [source, relay, branch, viewer, transit] = connections.map(|connection| {
+            let key = if connection == connections[0] {
+                "owner"
+            } else {
+                "invite"
+            };
+            review_admit(&mut core, connection, key)
+        });
         let source_user = state(&mut core, connections[0])
             .sessions
             .iter()

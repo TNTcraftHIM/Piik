@@ -9,3 +9,6 @@
 .c3-interface-options .is-selected .c3-interface-option-description { color: inherit; }
 .c3-interface-suggestion footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
 .c3-interface-suggestion footer > span { flex: 1 1 160px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.c3-forwarding-settings { padding: 8px 0; }
+.c3-forwarding-settings summary { cursor: pointer; padding-block: 6px; font-size: 13px; font-weight: 600; }
+.c3-forwarding-settings > p { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 4px 0; }

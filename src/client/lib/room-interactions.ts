@@ -17,6 +17,7 @@ export interface RoomInteraction {
   id: string;
   requestId: string;
   occurredAt: number;
+  messageSeq?: number;
   sender: { peerId: string; role: "host" | "viewer"; displayName: string };
   payload: InteractionPayload;
   contentTarget?: ContentReactionTarget;
@@ -130,6 +131,13 @@ export class RoomInteractionSession {
   /** The channel has already validated this message; empty text represents an attachment-only message. */
   receiveConfirmedChat(event: RoomInteraction & { payload: Extract<InteractionPayload, { kind: "chat" }> }): boolean {
     return this.accept(event);
+  }
+
+  removeChatMessages(removed: (seq: number) => boolean): void {
+    const keep = (event: RoomInteraction) => (event.messageSeq === undefined || !removed(event.messageSeq))
+      && (!event.contentTarget || !("messageSeq" in event.contentTarget) || !removed(event.contentTarget.messageSeq));
+    this.update({ messages: this.state.messages.filter(keep), overlayMessages: this.state.overlayMessages.filter(keep),
+      reactions: this.state.reactions.filter(keep) });
   }
 
   private accept(message: RoomInteraction): boolean {

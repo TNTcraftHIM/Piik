@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-11-17
+Last updated: 2026-11-18
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -13,21 +13,27 @@ across Server, Native and Browser/WASM, with the shared Web UI for chat, screen
 sharing, selective watching, room voice and App control. Normal development and
 distribution use these Rust/Web paths; Go tooling only builds the pinned
 Cloudflared helper. Work stays on `feat/channel-prototype`, separately from 2.x.
-Matched Windows App and Linux x64 Server candidates have been delivered for
-internal testing; their receipts identify the protocol and shared frontend. Windows includes
-the integrated system-WebView window and custom device permission prompts; both
-packages passed their scoped runtime acceptance. A matching Android development
-package passes signing, architecture and shared-Web checks; runtime acceptance
-remains open. Its development build identity is not an upgrade package for an
-installed numbered beta.
-Exact revisions and receipts stay with the immutable packages, and
-[verification status](./verification-status.md) records their tested scope.
+The current local review delivery pairs the Windows x64 App with the Linux
+x64 Server and their shared Web bundle. The extracted Windows App started
+its native WebView and received live video. The extracted Linux Server retained
+private-room access and history after the creator left and the service restarted.
+Android evidence covers an earlier protocol generation. Package receipts identify
+the exact artifacts. [Verification scope](./verification-status.md)
 
-The site owns user identity and directory summaries. Room plans and shared transport
-leases keep separate Rust owners. Rooms created in the UI run in their owner's
-Browser or linked App; confirmed history and private policy stay there. Browser
-hosting uses WASM/IndexedDB; Native uses Rust/SQLite. Server embeds a Native
-participant for persistent rooms and retains its fixed UDP deployment entry.
+The channel owns user identity and the room directory. Lightweight channels put the
+room writer in the creator's Browser or linked App. A hosted Server runs the
+writers and retains confirmed history and private grants while creators are away.
+The public Demo profile admits guest-created rooms by invitation and omits them
+from public discovery. New image messages retain a thumbnail. Room writers
+support authenticated message deletion and clearing history.
+[Hosting and moderation](./research/server-hosting-plan.md)
+
+The room planner preserves existing delivery and compares alternatives for waiting
+screen viewers. Active screen demand can trigger one optional connection to join
+eligible components or bypass an intermediate. Both endpoints confirm the
+transport before another flow can use it. The Browser and Native App apply
+individual forwarding limits per kind across rooms. Field costs and automatic
+fanout calibration remain under [evaluation](./research/channel-forwarding-plan.md#review-and-validation-plan).
 
 App hosting follows its Native endpoint and process lifetime. Personal voice,
 shares, watches and capture consent remain page-owned; connecting an App does not

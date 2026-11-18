@@ -53,7 +53,7 @@ pub struct RoomCopyMetadata {
 
 impl RoomCopyMetadata {
     pub fn validate(&self) -> Result<(), &'static str> {
-        if self.version != 1 {
+        if self.version != 2 {
             return Err("unsupported_backup_version");
         }
         if self.room_info.as_ref().is_some_and(|info| {
@@ -174,6 +174,7 @@ impl DomainArchiveCheck {
         Ok(Self {
             seen: BTreeSet::new(),
             required: std::iter::once(metadata.state.owner_id)
+                .chain(metadata.state.restorable_rooms.values().copied())
                 .chain(
                     metadata
                         .state
@@ -216,8 +217,7 @@ pub struct RetainedFile {
 
 impl RetainedFile {
     pub fn matches(&self, row: &HistoryRow) -> bool {
-        row.message.message.seq == self.message_seq
-            && row.message.message.attachments.contains(&self.attachment)
+        matches!(row, HistoryRow::Message(row) if row.message.message.seq == self.message_seq && row.message.message.attachments.contains(&self.attachment))
     }
 }
 
@@ -234,7 +234,7 @@ pub struct RoomMetadata {
 
 impl RoomMetadata {
     pub fn validate(&self) -> Result<(), &'static str> {
-        if self.version != 2 {
+        if self.version != 3 {
             return Err("unsupported_backup_version");
         }
         self.policy.validate()?;
@@ -309,11 +309,13 @@ impl HistoryImport {
 
     pub fn accept(&mut self, row: &HistoryRow) -> Result<(), &'static str> {
         row.validate()?;
-        let message = &row.message.message;
-        if message.seq <= self.previous {
+        let seq = row.seq();
+        if seq <= self.previous {
             return Err("invalid_backup_history_order");
         }
-        self.previous = message.seq;
+        self.previous = seq;
+        let HistoryRow::Message(live) = row else { return Ok(()); };
+        let message = &live.message.message;
         for attachment in &message.attachments {
             if let Some(file) = self.pending.remove(&(message.seq, attachment.id)) {
                 if !file.matches(row) {
@@ -351,7 +353,14 @@ impl CopyHistoryImport {
 
     pub fn accept(&mut self, mut row: HistoryRow) -> Result<HistoryRow, &'static str> {
         self.history.accept(&row)?;
-        let message = &mut row.message.message;
+        let HistoryRow::Message(live) = &mut row else {
+            // Copies have new participant identities and cannot retry a source send.
+            return Ok(HistoryRow::Deleted(DeletedHistoryRow {
+                seq: row.seq(),
+                retry_key: crate::history::retry_key(Uuid::new_v4(), ""),
+            }));
+        };
+        let message = &mut live.message.message;
         for mention in &mut message.mentions {
             mention.user_id = *self
                 .authors
@@ -377,7 +386,7 @@ impl CopyHistoryImport {
             .entry(message.user_id)
             .or_insert_with(Uuid::new_v4);
         message.id = Uuid::new_v4();
-        row.nonce = Uuid::new_v4().to_string();
+        live.nonce = Uuid::new_v4().to_string();
         Ok(row)
     }
 
@@ -386,16 +395,49 @@ impl CopyHistoryImport {
     }
 }
 
+/// Deleted rows retain only the room sequence and opaque retry identity.
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeletedHistoryRow {
+    pub seq: u64,
+    pub retry_key: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum HistoryRow {
+    Deleted(DeletedHistoryRow),
+    Message(LiveHistoryRow),
+}
+
+impl HistoryRow {
+    pub fn seq(&self) -> u64 {
+        match self {
+            Self::Deleted(row) => row.seq,
+            Self::Message(row) => row.message.message.seq,
+        }
+    }
+    pub fn validate(&self) -> Result<(), &'static str> {
+        match self {
+            Self::Message(row) => row.validate(),
+            Self::Deleted(row) if row.seq > 0 && row.seq <= i64::MAX as u64
+                && row.retry_key.len() == 64
+                && row.retry_key.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)) => Ok(()),
+            Self::Deleted(_) => Err("invalid_backup_history"),
+        }
+    }
+}
+
 /// A complete storage row, including the retry identity omitted from reading pages.
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct HistoryRow {
+pub struct LiveHistoryRow {
     pub nonce: String,
     #[serde(flatten)]
     pub message: StoredMessage,
 }
 
-impl HistoryRow {
+impl LiveHistoryRow {
     pub fn validate(&self) -> Result<(), &'static str> {
         let message = &self.message.message;
         if message.seq == 0
@@ -425,22 +467,20 @@ impl HistoryRow {
         {
             return Err("invalid_backup_history");
         }
-        MessageDraft::new(
-            message.user_id,
-            self.nonce.clone(),
-            message.text.clone(),
-            message.attachments.clone(),
-            message.inline_images.clone(),
-            message.mentions.clone(),
-            message
-                .reply
-                .as_ref()
-                .map(|reply| crate::history::ReplyTarget {
-                    seq: reply.seq,
-                    notify: reply.notify,
-                }),
-            message.time,
-        )?;
+        MessageDraft {
+            user_id: message.user_id,
+            nonce: self.nonce.clone(),
+            text: message.text.clone(),
+            attachments: message.attachments.clone(),
+            inline_images: message.inline_images.clone(),
+            mentions: message.mentions.clone(),
+            reply: message.reply.as_ref().map(|reply| crate::history::ReplyTarget {
+                seq: reply.seq,
+                notify: reply.notify,
+            }),
+            time: message.time,
+        }
+        .validate(true)?;
         Ok(())
     }
 }

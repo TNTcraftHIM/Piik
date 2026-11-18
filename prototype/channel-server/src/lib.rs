@@ -110,10 +110,10 @@ impl NativeService {
             loop {
                 tokio::select! {
                     result = &mut running => return result,
-                    Some(session) = admitted.recv() => {
+                    Some((session, acknowledged)) = admitted.recv() => {
                         // Only this owned Native Welcome supplies the service identity.
                         // Its actual socket retirement clears registration in Domain.
-                        if transit_enabled { service_domain.register_service(session); }
+                        if service_domain.register_service(session, transit_enabled) { let _ = acknowledged.send(()); }
                     }
                 }
             }

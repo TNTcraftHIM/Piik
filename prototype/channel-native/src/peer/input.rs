@@ -355,6 +355,9 @@ mod tests {
             watch_subscriptions: vec![],
             files: vec![],
             channel: ChannelInfo {
+                hosting_mode: Default::default(),
+                room_creation_policy: Default::default(),
+                managed_room_ids: vec![],
                 user_count: 0,
                 history_window: 100,
                 id: id(10),

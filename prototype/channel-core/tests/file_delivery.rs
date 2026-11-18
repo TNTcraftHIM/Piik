@@ -161,6 +161,7 @@ fn plan(
     bytes: &[u8],
 ) -> FilePlan {
     FilePlan {
+        author_id: id(source),
         room_id: key().room_id,
         message_seq: key().message_seq,
         attachment: AttachmentDescriptor {

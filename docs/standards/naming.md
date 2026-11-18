@@ -8,13 +8,15 @@ Use the brand for people and predictable lowercase identifiers for tools.
 Use the same role and action vocabulary in the App, Browser, website and guides.
 Role labels describe permission; a person's chosen nickname stays unchanged.
 
-For 3.0, the product hierarchy is **Site → Room / 站点 → 房间**.
-Use these terms in controls, onboarding, guides and current product descriptions.
-The [3.0 design vocabulary](../research/channel-network-design.md#terminology-and-responsibilities)
-owns their responsibilities and overlapping user roles. `Domain` names the
-site's technical authority/runtime; `Channel` remains its existing code and wire
-identifier. Neither adds a user-facing level called “频道”. Keep WebRTC data
-channels, DNS domains, code paths and historical quotations in their own context.
+The approved 3.0 design vocabulary is **Channel → Room → Activity**
+(**频道 → 房间 → 业务**). A Channel contains rooms. A room hosts activities
+such as voice and screen sharing. Use these terms in target designs and diagrams.
+
+The current prototype UI calls the Channel a **Site / 站点**. Use the visible
+labels when describing its controls until the UI migration lands. Existing
+code and wire identifiers include `Domain` for the technical authority and
+runtime. Preserve identifier spelling when discussing protocol messages.
+WebRTC data channels and DNS domains retain their technical meanings.
 
 The table below describes the published 2.x model.
 

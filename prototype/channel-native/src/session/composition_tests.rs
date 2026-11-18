@@ -106,6 +106,92 @@ async fn restored_host_catalog_preserves_event_order_and_expired_carrier_authori
     Ok(())
 }
 
+#[tokio::test]
+async fn changing_native_limit_rechecks_a_verified_holder_and_reports_one_refusal() -> Result<()> {
+    use piik_channel_core::{attachment::AttachmentDescriptor, file_room::FilePlan, wire::Request};
+    let mut core = CoreBurst::new()?;
+    let mut state = core
+        .recovery()?
+        .into_iter()
+        .find_map(|event| match event {
+            Event::Welcome { state, .. } => Some(state),
+            _ => None,
+        })
+        .context("missing current Welcome")?;
+    let recipient = state
+        .sessions
+        .iter()
+        .find(|s| s.id != core.session)
+        .context("missing recipient")?;
+    let plan = FilePlan {
+        author_id: recipient.user_id,
+        room_id: core.room_ids[0].clone(),
+        message_seq: 1,
+        attachment: AttachmentDescriptor {
+            id: Uuid::new_v4(),
+            name: "held.bin".into(),
+            size: 1,
+            media_type: String::new(),
+            sha256: "0".repeat(64),
+        },
+        source_id: Some(core.session),
+        upstream: None,
+        downstream: vec![recipient.id],
+        receiving: false,
+    };
+    state.files = vec![
+        plan.clone(),
+        FilePlan {
+            author_id: core.user,
+            message_seq: 2,
+            ..plan.clone()
+        },
+    ];
+    let mut native = session(&mut core, state);
+    let mut writer = RecordedSink::default();
+    native.set_forwarding_limit(Some(0), &mut writer).await?;
+    native.set_forwarding_limit(Some(0), &mut writer).await?;
+    let declines: Vec<_> = writer
+        .messages
+        .iter()
+        .filter_map(|message| Request::parse(message.to_text().ok()?).ok())
+        .filter_map(|request| match request.command {
+            Command::FileBranchRefused {
+                room_id,
+                message_seq,
+                attachment_id,
+                source_id,
+                downstream_id,
+            } => Some((
+                room_id,
+                message_seq,
+                attachment_id,
+                source_id,
+                downstream_id,
+            )),
+            _ => None,
+        })
+        .collect();
+    ensure!(
+        declines
+            == [(
+                plan.room_id.clone(),
+                1,
+                plan.attachment.id,
+                core.session,
+                plan.downstream[0]
+            )]
+    );
+    writer.messages.clear();
+    native.set_forwarding_limit(None, &mut writer).await?;
+    ensure!(writer.messages.iter().all(|message| !message
+        .to_text()
+        .unwrap_or("")
+        .contains("file_branch_refused")));
+    native.release().await?;
+    Ok(())
+}
+
 #[derive(Default)]
 struct RecordedSink {
     messages: Vec<Message>,
@@ -149,6 +235,7 @@ fn session(core: &mut CoreBurst, state: Snapshot) -> Session {
     let signer = Arc::new(SessionSigner::from_seed([1; 32]));
     let (commands, received) = mpsc::channel(64);
     Session {
+        forwarding_limit: None,
         service_admission: None,
         config: Config {
             url: "ws://owned.invalid".into(),
@@ -160,6 +247,7 @@ fn session(core: &mut CoreBurst, state: Snapshot) -> Session {
         },
         files: vec![],
         live: Some(Live {
+            forwarding_budget: Default::default(),
             session: core.session,
             room: RoomTurns {
                 local: core.session,
@@ -176,7 +264,6 @@ fn session(core: &mut CoreBurst, state: Snapshot) -> Session {
         hosting: None,
         opening: BTreeMap::new(),
         pending_captures: BTreeMap::new(),
-        pending_relay: BTreeMap::new(),
         snapshot_job: None,
     }
 }

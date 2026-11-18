@@ -219,8 +219,9 @@ export class ChannelMedia {
       for (const room of peer.baseReady) if (!plan.rooms.includes(room)) peer.baseReady.delete(room);
       try {
         peer.transport.setRooms(plan.rooms);
+        const probe = !plan.rooms.length && !plan.incoming.length && !plan.outgoing.length;
         peer.transport.setInputEnabled([...plan.incoming, ...plan.outgoing].some(flow => flow.selected
-          && state.publications.some(publication => publication.id === flow.publicationId && publication.kind === "screen")));
+          && state.publications.some(publication => publication.id === flow.publicationId && publication.kind === "screen")), probe);
       } catch (error) {
         // Browser RTC setup is a pair failure, not an invalid Domain frame.
         console.warn("Channel peer data channels could not be created", error);

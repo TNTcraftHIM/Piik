@@ -35,36 +35,29 @@ export class HostAudio {
   }
   // Install one audio track before publishing, even when the selected picture
   // has no sound. Input changes never replace the transport's output track.
-  async start(signal?: AbortSignal): Promise<MediaStream> {
-    signal?.throwIfAborted();
-    const complete = debugOperation("capture", "audio-prepare", { source: this.kind, sourceAudio: this.sourceAudioAvailable });
-    let abort: (() => void) | undefined;
+  static activate(): AudioContext | null {
     try {
-      const context = this.context = new AudioContext();
+      const context = new AudioContext();
+      void context.resume().catch(() => {});
+      return context;
+    } catch { return null; }
+  }
+  start(context: AudioContext | null = HostAudio.activate()): MediaStream {
+    const complete = debugOperation("capture", "audio-prepare", { source: this.kind, sourceAudio: this.sourceAudioAvailable });
+    this.context = context;
+    try {
+      if (context?.state !== "running") throw new Error("Shared audio context is unavailable");
       this.destination = context.createMediaStreamDestination();
       this.destination.stream.getAudioTracks()[0]!.contentHint = "music";
       this.gain = context.createGain();
       this.gain.gain.value = this.volume;
       this.gain.connect(this.destination);
       this.connectSource();
-      const resumed = context.resume();
-      if (signal) await Promise.race([resumed, new Promise<never>((_, reject) => {
-        abort = () => reject(signal.reason);
-        signal.addEventListener("abort", abort, { once: true });
-        if (signal.aborted) abort();
-      })]);
-      else await resumed;
       complete("resumed", { state: context.state });
     } catch (error) {
-      complete(signal?.aborted ? "cancelled" : "fallback", { state: this.context?.state ?? null }, error);
-      // Commentary is optional. A failed graph must not retire a valid picture
-      // or source sound; this share continues with its original audio track.
+      complete("fallback", { state: context?.state ?? null }, error);
       this.closeGraph();
-      signal?.throwIfAborted();
-    } finally {
-      if (abort) signal?.removeEventListener("abort", abort);
     }
-    if (this.closed) throw new Error("Shared audio has stopped");
     return this.output();
   }
   private closeGraph(): void {

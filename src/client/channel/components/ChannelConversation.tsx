@@ -6,6 +6,7 @@ import { motionDuration } from "../../ui/animation";
 import { useCopy } from "../../ui/copy";
 import { MAX_MESSAGE_CODE_POINTS, type ChannelMessage, type ChannelUser, type ChannelUserSummary } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
+import { ChannelSettingsError, useSettingsAction } from "./ChannelSettingsDialog";
 import { firstUnreadMessageId, messageAuthorName } from "../presentation";
 import { ChannelAttachment } from "./ChannelAttachment";
 import { ChannelMessageContent } from "./ChannelMessageContent";
@@ -16,7 +17,7 @@ import { BackButton } from "../../components/living/primitives";
 import type { RoomInteractionSession } from "../../lib/room-interactions";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { Tooltip } from "../../components/living/Tooltip";
-import type { ChatOptions, ChannelController } from "../types";
+import { messageRemoved, type ChatOptions, type ChannelController } from "../types";
 import { loadRoomHosting } from "../hosting";
 import { ChannelMentionSuggestions, editMentions, matchingMentionUsers, mentionQuery } from "./ChannelMentionSuggestions";
 import "./channel-conversation.css";
@@ -25,7 +26,7 @@ type Draft = { text: string; mentions: NonNullable<ChatOptions["mentions"]>; rep
 const emptyDraft: Draft = { text: "", mentions: [] };
 
 /** Browsing owns the conversation; drafts and reading position belong to this pane. */
-export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entry, messages, users, profiles, queryProfiles, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, onMessage, unreadAfter, onRead, interaction, onBack }: {
+export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entry, messages, users, profiles, queryProfiles, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, onMessage, unreadAfter, onRead, interaction, onBack, onDeleteMessage, canModerate, pending, historyChanges }: {
   domainId: string | undefined; roomId: string; roomName: string; roomIcon?: string; messages: ChannelMessage[]; users: ChannelUserSummary[];
   profiles: ReadonlyMap<string, ChannelUser>; queryProfiles: ChannelController["queryProfiles"];
   entry?: ChannelEntry;
@@ -37,6 +38,10 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
   onLatest: (roomId: string) => Promise<void>;
   onSend: (roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal, options?: ChatOptions) => Promise<void>;
   onMessage?: (roomId: string, seq: number) => Promise<void>;
+  onDeleteMessage?: (roomId: string, seq: number) => Promise<void>;
+  canModerate?: boolean;
+  pending?: ReadonlySet<string>;
+  historyChanges?: ChannelController["historyChangesByRoom"][string];
   unreadAfter?: number; onRead?: (roomId: string, seq: number) => void;
   interaction: RoomInteractionSession | null;
   onBack?: () => void;
@@ -91,6 +96,17 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
   }, [messages, conversationScope, hidden, loadingHistory, history?.atLatest]);
   let authorMessageId = "";
   const draft = drafts[conversationScope] ?? emptyDraft;
+  const quotedSeq = draft.reply?.seq;
+  const quoteDeleted = quotedSeq !== undefined && messageRemoved(historyChanges, quotedSeq);
+  const draftReply = quoteDeleted ? undefined : draft.reply;
+  useEffect(() => {
+    if (!quoteDeleted) return;
+    setDrafts(previous => {
+      const value = previous[conversationScope];
+      if (!value || value.reply?.seq !== quotedSeq) return previous;
+      return { ...previous, [conversationScope]: { ...value, reply: undefined } };
+    });
+  }, [conversationScope, quotedSeq, quoteDeleted]);
   const text = draft.text;
   const hasText = text.trim().length > 0;
   const query = selection && !composing.current && mentionLimit !== null && draft.mentions.length < mentionLimit
@@ -256,7 +272,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
     setFileError("");
     try {
       const mentions = draft.mentions;
-      const reply = draft.reply && { seq: draft.reply.seq, notify: draft.reply.notify };
+      const reply = draftReply && { seq: draftReply.seq, notify: draftReply.notify };
       await onSend(roomId, text, files, request.signal, { mentions, ...(reply ? { reply } : {}) });
       setDrafts(previous => previous[conversationScope] === draft ? { ...previous, [conversationScope]: emptyDraft } : previous);
       setDraftFiles(previous => ({ ...previous, [conversationScope]: (previous[conversationScope] ?? []).filter(value => !files.some(file => file.id === value.id)) }));
@@ -321,6 +337,9 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
             avatar={(!summary || summary.version === author?.version ? author?.avatar : null) ?? undefined}
             users={displayUsers} selfUserId={selfUserId} unread={newMessages} onMessage={loadingHistory ? undefined : seq => { void showMessage(seq); }}
             onReply={() => { updateDraft(value => ({ ...value, reply: { seq: message.seq, notify: true, name, text: message.text || t("conversation.attachment") } })); input.current?.focus(); }}
+            onDelete={onDeleteMessage && (canModerate || message.userId === selfUserId)
+              ? () => onDeleteMessage(roomId, message.seq) : undefined}
+            deleting={pending?.has(`delete-message:${roomId}:${message.seq}`)}
             onMention={available && mentionLimit !== null && draft.mentions.length < mentionLimit && displayUsers.some(user => user.id === message.userId)
               ? () => selectMention(displayUsers.find(user => user.id === message.userId)!, {
                 start: input.current?.selectionStart ?? draft.text.length, end: input.current?.selectionEnd ?? draft.text.length, query: "",
@@ -347,10 +366,10 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
     {limitsFailed && <div className="c3-file-retry"><span>{t("conversation.filesUnavailable")}</span>
       <ChannelAction icon="refresh" quiet label={t("conversation.retry")} onClick={() => setLimitsRetry(value => value + 1)} /></div>}
     {roomId && <form className="c3-composer" onSubmit={event => { void send(event); }}>
-      {draft.reply && <div className="c3-compose-reply"><span><strong>{t("conversation.replyingTo", { name: draft.reply.name })}</strong><small>{draft.reply.text}</small></span>
-        <Tooltip text={draft.reply.notify ? t("conversation.replyNotifyOn")
+      {draftReply && <div className="c3-compose-reply"><span><strong>{t("conversation.replyingTo", { name: draftReply.name })}</strong><small>{draftReply.text}</small></span>
+        <Tooltip text={draftReply.notify ? t("conversation.replyNotifyOn")
           : t("conversation.replyNotifyOff")}>
-          <button type="button" className={`lr-btn is-compact is-quiet c3-reply-notify${draft.reply.notify ? " is-on" : ""}`} aria-pressed={draft.reply.notify}
+          <button type="button" className={`lr-btn is-compact is-quiet c3-reply-notify${draftReply.notify ? " is-on" : ""}`} aria-pressed={draftReply.notify}
             aria-label={t("conversation.replyNotify")} onClick={() => updateDraft(value => ({ ...value, reply: value.reply && { ...value.reply, notify: !value.reply.notify } }))}>@</button>
         </Tooltip>
         <ChannelAction icon="x" quiet iconOnly textTooltip label={t("conversation.cancelReply")} onClick={() => {
@@ -401,15 +420,18 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
   </section>;
 }
 
-const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, avatar, dateLabel, attachments, available, interaction, authorMessageId, effectsEnabled, users, selfUserId, unread, onReply, onMessage, onMention }: {
+const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, avatar, dateLabel, attachments, available, interaction, authorMessageId, effectsEnabled, users, selfUserId, unread, onReply, onMessage, onMention, onDelete, deleting }: {
   roomId: string; message: ChannelMessage; grouped: boolean; name: string; avatar?: string; dateLabel?: string;
   attachments: ChannelAttachments; available: boolean; interaction: RoomInteractionSession | null;
   authorMessageId: string; effectsEnabled: boolean;
   users: ChannelUserSummary[]; unread: boolean; onReply(): void; onMessage?(seq: number): void;
   selfUserId?: string | null;
   onMention?: () => void;
+  onDelete?: () => Promise<void>;
+  deleting?: boolean;
 }) {
   const { lang, t } = useCopy();
+  const { error, run } = useSettingsAction();
   const mentioned = message.mentions?.some(mention => mention.userId === selfUserId)
     || (message.reply?.notify && message.reply.userId === selfUserId);
   const date = new Date(message.time);
@@ -437,7 +459,12 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
         disabled={!onMention} onClick={onMention}>@</button></Tooltip>
       <ChannelAction icon="reply" iconOnly quiet textTooltip
       label={!available ? t("conversation.replyUnavailable") : t("conversation.reply")}
-      disabled={!available} onClick={onReply} /></>} />
+      disabled={!available} onClick={onReply} />
+      {onDelete && <ChannelAction icon="x" iconOnly quiet danger textTooltip label={t("conversation.deleteMessage")}
+        disabled={!available} busy={deleting} onClick={() => {
+          if (row.current?.ownerDocument.defaultView?.confirm(t("conversation.confirmDeleteMessage"))) void run(onDelete);
+        }} />}</>} />
+    <ChannelSettingsError error={error} />
     </div></div>
     </article>
   </>;

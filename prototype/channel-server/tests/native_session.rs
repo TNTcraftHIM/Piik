@@ -324,7 +324,7 @@ async fn interrupted_unconfirmed_native_creation_reports_failure_without_replayi
         .events
         .iter()
         .any(|(_, event)| matches!(event, Event::RoomCreated { .. })));
-    // The directory commit succeeds, but its response cannot reach the creator.
+    // The reserved ID never reaches the creator, so it cannot bind its writer.
     domain.socket.close(None).await.unwrap();
     let result = tokio::time::timeout(Duration::from_secs(5), native)
         .await
@@ -338,12 +338,12 @@ async fn interrupted_unconfirmed_native_creation_reports_failure_without_replayi
         !expected_path.exists(),
         "unconfirmed creation never wrote a local policy"
     );
-    assert_eq!(
+    assert!(
         serde_json::to_value(domain.authority.export_state()).unwrap()["hostedRooms"]
             .as_object()
             .unwrap()
-            .len(),
-        1
+            .is_empty(),
+        "only a bound room enters the durable directory"
     );
     assert!(
         tokio::time::timeout(Duration::from_millis(100), listener.accept())
@@ -532,12 +532,16 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
     };
     let binding = domain.bound("one").await;
     domain.bound("two").await;
-    // An admitted observer receives the paused directory after the host leaves.
+    // A reader retains scoped status for the room it opened during host recovery.
     let guest = Uuid::new_v4();
     let signer = piik_channel_core::conversation::SessionSigner::from_seed([9; 32]);
     domain.command(guest, json!({
         "type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL, "name": "Observer", "signingKey": signer.signing_key()
     })).await;
+    domain
+        .command(guest, json!({"type":"browse","roomId":"one","active":true}))
+        .await;
+    domain.until(|connection, event| connection == guest && matches!(event, Event::State { state } if state.channel.rooms.iter().any(|room| room.id == "one" && room.reading))).await;
     domain
         .command(
             domain.connection,
@@ -682,7 +686,8 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
     }
     stop.send(()).unwrap();
     domain.events.clear();
-    domain.until(|_, event| matches!(event, Event::State { state } if state.channel.rooms.iter().any(|room| room.id == "one" && !room.available))).await;
+    // The guest never entered the newly bound room after the process restarted.
+    domain.until(|connection, event| connection == guest && matches!(event, Event::State { state } if state.channel.rooms.iter().all(|room| room.id != "one"))).await;
     tokio::time::timeout(Duration::from_secs(5), native)
         .await
         .unwrap()
@@ -895,6 +900,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let (status, discovery) = app_http(address, "GET", "/connect-discovery", None, None).await;
     assert_eq!(status, 200);
     assert_eq!(discovery["service"], "piik-channel-app");
+    assert_eq!(discovery["protocol"], 21);
     assert_eq!(
         discovery["domainProtocol"],
         piik_channel_core::wire::CHANNEL_PROTOCOL
@@ -2343,7 +2349,7 @@ async fn app_external_origin_is_exact_and_owned_startup_restores_it() {
 
 #[tokio::test]
 async fn app_relay_capacity_confirms_the_native_endpoint_without_changing_the_browser() {
-    use piik_channel_core::{conversation::SessionSigner, wire::RoomAccess, RoomState};
+    use piik_channel_core::conversation::SessionSigner;
     use piik_channel_prototype::app;
     use tokio_tungstenite::{connect_async, tungstenite::client::IntoClientRequest};
     async fn reply(
@@ -2355,7 +2361,7 @@ async fn app_relay_capacity_confirms_the_native_endpoint_without_changing_the_br
                 message=page.next()=>return serde_json::from_str(&message.unwrap().unwrap().into_text().unwrap()).unwrap(),
                 _=domain.step()=>{},
             }}
-        }).await.expect("App response follows the actual room turn")
+        }).await.expect("App responded through its admitted Native endpoint")
     }
     let directory = tempfile::tempdir().unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -2453,89 +2459,21 @@ async fn app_relay_capacity_confirms_the_native_endpoint_without_changing_the_br
     };
     assert_ne!(native, browser_session);
     assert!(reply(&mut domain, &mut page).await["result"].is_null());
-    let mut policy = RoomState::new(
-        "new".into(),
-        "Relay control".into(),
-        Default::default(),
-        user,
-        RoomAccess::Public,
-        false,
-        None,
-    )
-    .unwrap();
-    domain.command(browser,json!({"type":"create_room","room":piik_channel_core::host::RoomSummary::from_policy(&policy),"requestId":"create"})).await;
-    policy.id = domain
-        .events
-        .iter()
-        .find_map(|(connection, event)| match event {
-            Event::RoomCreated {
-                room,
-                request_id: Some(id),
-            } if *connection == browser && id == "create" => Some(room.id.clone()),
-            _ => None,
-        })
-        .unwrap();
-    let room = policy.id.clone();
-    page.send(Message::Text(
-        json!({"id":"open","type":"open","policy":serde_json::to_string(&policy).unwrap()})
-            .to_string()
-            .into(),
-    ))
-    .await
-    .unwrap();
-    let binding = domain.bound(&room).await;
-    assert_eq!(reply(&mut domain, &mut page).await["result"]["id"], room);
-    domain
-        .command(
-            browser,
-            json!({"type":"relay_capacity","roomId":room,"capacity":7,"requestId":"browser-limit"}),
-        )
-        .await;
-    domain.until(|connection,event|connection==browser && matches!(event,Event::RoomReply{request_id:Some(id),result:piik_channel_core::host::RoomResult::Done,..} if id=="browser-limit")).await;
-    let read = json!({"id":"read","type":"relay_capacity","action":"read","roomId":room});
+    let read = json!({"id":"read","type":"relay_capacity","action":"read"});
     page.send(Message::Text(read.to_string().into()))
         .await
         .unwrap();
     let current = reply(&mut domain, &mut page).await;
     assert_eq!(current["result"]["sessionId"], native.to_string());
-    assert_eq!(current["result"]["bindingId"], binding.to_string());
+    assert!(current["result"].get("roomId").is_none());
     assert!(current["result"]["relayOverride"].is_null());
-    for capacity in [1, 3] {
-        let start = domain.events.len();
-        page.send(Message::Text(json!({"id":"set","type":"relay_capacity","action":"set","roomId":room,"sessionId":native,"bindingId":binding,"capacity":capacity}).to_string().into())).await.unwrap();
+    for capacity in [0, 3] {
+        page.send(Message::Text(json!({"id":"set","type":"relay_capacity","action":"set","sessionId":native,"capacity":capacity}).to_string().into())).await.unwrap();
         let accepted = reply(&mut domain, &mut page).await;
         assert_eq!(accepted["result"]["relayOverride"], capacity, "{accepted}");
-        let events = &domain.events[start..];
-        let projected=events.iter().position(|(connection,event)|*connection==domain.connection && matches!(event,Event::State{state} if state.channel.rooms.iter().any(|value|value.id==room && value.relay_override==Some(capacity)))).unwrap();
-        let confirmed = events
-            .iter()
-            .position(|(connection, event)| {
-                *connection == domain.connection
-                    && matches!(
-                        event,
-                        Event::RoomReply {
-                            result: piik_channel_core::host::RoomResult::Done,
-                            ..
-                        }
-                    )
-            })
-            .unwrap();
-        assert!(projected < confirmed);
-        let browser_override = events
-            .iter()
-            .rev()
-            .find_map(|(connection, event)| match event {
-                Event::State { state } if *connection == browser => state
-                    .channel
-                    .rooms
-                    .iter()
-                    .find(|value| value.id == room)
-                    .map(|value| value.relay_override),
-                _ => None,
-            })
-            .unwrap();
-        assert_eq!(browser_override, Some(7));
     }
+    page.send(Message::Text(json!({"id":"stale","type":"relay_capacity","action":"set","sessionId":browser_session,"capacity":7}).to_string().into())).await.unwrap();
+    assert_eq!(reply(&mut domain, &mut page).await["error"], "app_context_changed");
     page.close(None).await.unwrap();
     let (mut page, _) = connect_async(upgrade()).await.unwrap();
     page.send(Message::Text(hello.to_string().into()))
@@ -2548,7 +2486,7 @@ async fn app_relay_capacity_confirms_the_native_endpoint_without_changing_the_br
     let retained = reply(&mut domain, &mut page).await;
     assert_eq!(retained["result"]["sessionId"], native.to_string());
     assert_eq!(retained["result"]["relayOverride"], 3);
-    page.send(Message::Text(json!({"id":"follow","type":"relay_capacity","action":"set","roomId":room,"sessionId":native,"bindingId":binding,"capacity":null}).to_string().into())).await.unwrap();
+    page.send(Message::Text(json!({"id":"follow","type":"relay_capacity","action":"set","sessionId":native,"capacity":null}).to_string().into())).await.unwrap();
     let followed = reply(&mut domain, &mut page).await;
     assert!(followed["error"].is_null());
     assert!(followed["result"]["relayOverride"].is_null());

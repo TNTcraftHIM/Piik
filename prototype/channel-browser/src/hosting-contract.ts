@@ -1,7 +1,8 @@
 // Platform-neutral room hosting and backup transactions over the shared wire.
 import type { ChannelMessage, ConversationReply, MessageReactions, RoomSummary, SignedConversationPacket } from "../../../src/client/channel/protocol";
 
-export type BackupHistoryRow = ChannelMessage & { nonce: string; reactions: MessageReactions };
+export type DeletedHistoryRow = { seq: number; retryKey: string };
+export type BackupHistoryRow = DeletedHistoryRow | ChannelMessage & { nonce: string; reactions: MessageReactions };
 export interface BrowserRoomSnapshot {
   readonly policy: string;
   readonly rows: AsyncIterable<BackupHistoryRow>;
@@ -17,7 +18,7 @@ export interface HostedRoom {
   summary(): RoomSummary | Promise<RoomSummary>;
   bind(bindingId: string): Promise<void>;
   dispatch(input: unknown): Promise<unknown>;
-  dispatchPeer(packet: SignedConversationPacket, now: number): Promise<ConversationReply[]>;
+  dispatchPeer(packet: SignedConversationPacket, now: number, signal?: AbortSignal, publish?: (output: unknown) => void): Promise<ConversationReply[]>;
   currentReaders(): string[] | Promise<string[]>;
   snapshot(): Promise<BrowserRoomSnapshot>;
   close(): Promise<void>;

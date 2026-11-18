@@ -69,11 +69,13 @@ async fn resumed_endpoint_retires_its_missing_host_after_a_deleted_output_cannot
     remote.close(None).await.unwrap();
     let _ = socket.close(None).await;
     let input = HostInput {
+        channel_owner_id: Uuid::nil(),
         service_endpoint: None,
         now: 1,
         binding_id: binding,
         host_session_id: native,
         revision: 1,
+        confirmed_pairs: Default::default(),
         failed_pairs: Vec::new(),
         endpoints: [(
             native,
@@ -156,6 +158,32 @@ async fn resumed_endpoint_retires_its_missing_host_after_a_deleted_output_cannot
 }
 
 #[tokio::test]
+async fn backup_controls_only_expose_rooms_created_by_the_hosting_identity() {
+    let (mut session, _socket, _remote, state) = capture_projection_session().await;
+    let directory = tempfile::tempdir().unwrap();
+    let owner = Uuid::new_v4();
+    let (_commands, received) = mpsc::channel(1);
+    session.hosting = Some(Hosting {
+        directory: directory.path().into(),
+        identity: (state.channel.id, owner),
+        commands: received,
+        ready: watch::channel(None).0,
+        desktop: None,
+    });
+    for (id, creator) in [("own", owner), ("guest", Uuid::new_v4())] {
+        let policy = RoomState::new(id.into(), id.into(), Default::default(), creator,
+            RoomAccess::Private, true, None).unwrap();
+        let room = HostedRoom::create(&directory.path().join(format!("{id}.sqlite")), policy).unwrap();
+        session.live.as_mut().unwrap().room.rooms.insert(id.into(), room);
+    }
+    assert_eq!(session.hosting_description().unwrap().room_ids, ["own"]);
+    let (result, response) = oneshot::channel();
+    session.snapshot_room(SnapshotRoom { room_id: "guest".into(), own_credential: None, result }).await;
+    assert_eq!(response.await.unwrap().err().unwrap(), "room_unavailable");
+    assert!(session.snapshot_job.is_none());
+}
+
+#[tokio::test]
 async fn missing_room_restore_waits_for_domain_admission_and_drops_denied_or_retired_staging() {
     use piik_channel_core::{backup::RoomMetadata, wire::Request, RoomBackup};
     let (mut session, mut socket, mut remote, state) = capture_projection_session().await;
@@ -190,7 +218,7 @@ async fn missing_room_restore_waits_for_domain_admission_and_drops_denied_or_ret
         let room = RoomBackup::stage(
             &path.join("room.sqlite"),
             RoomMetadata {
-                version: 2,
+                version: 3,
                 domain_id: state.channel.id,
                 policy,
                 own_credential: None,
@@ -310,7 +338,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
         let room = RoomBackup::stage(
             &stage_path.join("room.sqlite"),
             RoomMetadata {
-                version: 2,
+                version: 3,
                 domain_id: state.channel.id,
                 policy: replacement,
                 own_credential: None,
@@ -333,6 +361,11 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
             )
             .await
             .unwrap();
+        let admission =
+            Request::parse(remote.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+        assert!(matches!(admission.command, Command::AdmitRoom { .. }));
+        assert!(stage_path.exists());
+        session.event(Event::Ack { request_id: admission.request_id.unwrap() }, &mut socket).await.unwrap();
         let registration =
             Request::parse(remote.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
         assert!(matches!(registration.command, Command::HostRegister { .. }));
@@ -408,11 +441,13 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
                     Event::HostInput {
                         room_id: "target".into(),
                         input: HostInput {
+                            channel_owner_id: Uuid::nil(),
                             service_endpoint: None,
                             now: 1,
                             binding_id: binding,
                             host_session_id: native,
                             revision: 1,
+                            confirmed_pairs: Default::default(),
                             failed_pairs: Vec::new(),
                             endpoints: [(
                                 native,
@@ -550,6 +585,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
     };
     let state: Snapshot = serde_json::from_value(json!({
         "channel":{"id":Uuid::new_v4(),"name":"Capture projection","icon":"couch","ownerId":owner,
+            "hostingMode":"lightweight","roomCreationPolicy":"ordinary","managedRoomIds":[],
             "userCount":2,"historyWindow":100,"rooms":[room("target",true,json!({
                 "hostSessionId":host,"bindingId":Uuid::new_v4(),"nextHops":{}
             })),room("offline",false,serde_json::Value::Null)]},
@@ -560,6 +596,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
     }))
     .unwrap();
     let mut session = Session {
+        forwarding_limit: None,
         service_admission: None,
         config: Config {
             url,
@@ -576,7 +613,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
         hosting: None,
         opening: BTreeMap::new(),
         pending_captures: BTreeMap::new(),
-        pending_relay: BTreeMap::new(),
+
         snapshot_job: None,
     };
     let mut welcome = state.clone();
@@ -825,6 +862,7 @@ async fn capture_settings_and_title_complete_only_on_the_correlated_room_reply()
     let (mut socket, _) = client.unwrap();
     let _remote = remote.unwrap();
     let mut session = Session {
+        forwarding_limit: None,
         service_admission: None,
         config: Config {
             url,
@@ -841,7 +879,7 @@ async fn capture_settings_and_title_complete_only_on_the_correlated_room_reply()
         hosting: None,
         opening: BTreeMap::new(),
         pending_captures: BTreeMap::new(),
-        pending_relay: BTreeMap::new(),
+
         snapshot_job: None,
     };
     for title in [false, true] {
@@ -969,6 +1007,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
             };
             let mut state: Snapshot = serde_json::from_value(json!({
             "channel":{"id":Uuid::new_v4(),"name":"Capture lifecycle","icon":"couch","ownerId":user,
+                "hostingMode":"lightweight","roomCreationPolicy":"ordinary","managedRoomIds":[],
                 "userCount":1,"historyWindow":100,"rooms":[room("affected"),room("other")]},
             "users":[{"id":user,"name":"Source","version":"a".repeat(64)}],
             "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]}],
@@ -977,6 +1016,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
         }))
         .unwrap();
             let mut session = Session {
+                forwarding_limit: None,
                 service_admission: None,
                 config: Config {
                     url,
@@ -993,7 +1033,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                 hosting: None,
                 opening: BTreeMap::new(),
                 pending_captures: BTreeMap::new(),
-                pending_relay: BTreeMap::new(),
+
                 snapshot_job: None,
             };
             session
@@ -1110,145 +1150,26 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
 }
 
 #[tokio::test]
-async fn relay_capacity_uses_native_snapshot_and_room_confirmation_then_retires_pending_context() {
-    tokio::time::timeout(Duration::from_secs(10), async {
-        let (mut session, mut socket, mut remote, mut state) = capture_projection_session().await;
-        session.state(state.clone(), &mut socket).await.unwrap();
-        let actual = session.relay_capacity_state("target").unwrap();
-        let request = |session_id, binding_id, capacity| RelayCapacityRequest::Set {
-            room_id: "target".into(),
-            session_id,
-            binding_id,
-            capacity,
-        };
-        let (done, response) = oneshot::channel();
-        session
-            .relay_capacity(
-                request(Uuid::new_v4(), actual.binding_id, Some(3)),
-                done,
-                &mut socket,
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.await.unwrap().unwrap_err(), "room_context_changed");
-        assert!(session.pending_relay.is_empty());
-        let (done, mut response) = oneshot::channel();
-        session
-            .relay_capacity(
-                request(actual.session_id, actual.binding_id, Some(3)),
-                done,
-                &mut socket,
-            )
-            .await
-            .unwrap();
-        let wire: serde_json::Value =
-            serde_json::from_str(&remote.next().await.unwrap().unwrap().into_text().unwrap())
-                .unwrap();
-        assert_eq!(wire["type"], "relay_capacity");
-        assert_eq!(wire["roomId"], "target");
-        assert_eq!(wire["capacity"], 3);
-        let id = wire["requestId"].as_str().unwrap().to_owned();
-        assert!(matches!(
-            response.try_recv(),
-            Err(oneshot::error::TryRecvError::Empty)
-        ));
-        session
-            .event(
-                Event::RoomReply {
-                    room_id: "offline".into(),
-                    request_id: Some(id.clone()),
-                    result: RoomResult::Done,
-                },
-                &mut socket,
-            )
-            .await
-            .unwrap();
-        assert_eq!(session.pending_relay.len(), 1);
-        state.channel.rooms[0].relay_override = Some(3);
-        session
-            .event(
-                Event::State {
-                    state: state.clone(),
-                },
-                &mut socket,
-            )
-            .await
-            .unwrap();
-        assert!(matches!(
-            response.try_recv(),
-            Err(oneshot::error::TryRecvError::Empty)
-        ));
-        session
-            .event(
-                Event::RoomReply {
-                    room_id: "target".into(),
-                    request_id: Some(id),
-                    result: RoomResult::Done,
-                },
-                &mut socket,
-            )
-            .await
-            .unwrap();
-        let reply = response.await.unwrap().unwrap();
-        assert_eq!(reply.relay_override, Some(3));
-        assert_eq!(reply.session_id, actual.session_id);
-        let (done, response) = oneshot::channel();
-        session
-            .relay_capacity(
-                RelayCapacityRequest::Read {
-                    room_id: "target".into(),
-                },
-                done,
-                &mut socket,
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.await.unwrap().unwrap().relay_override, Some(3));
-        let (done, response) = oneshot::channel();
-        session
-            .relay_capacity(
-                request(actual.session_id, actual.binding_id, None),
-                done,
-                &mut socket,
-            )
-            .await
-            .unwrap();
-        let wire: serde_json::Value =
-            serde_json::from_str(&remote.next().await.unwrap().unwrap().into_text().unwrap())
-                .unwrap();
-        let id = wire["requestId"].as_str().unwrap().to_owned();
-        state.channel.rooms[0].delivery.as_mut().unwrap().binding_id = Uuid::new_v4();
-        session
-            .event(Event::State { state }, &mut socket)
-            .await
-            .unwrap();
-        assert_eq!(response.await.unwrap().unwrap_err(), "room_context_changed");
-        session
-            .event(
-                Event::RoomReply {
-                    room_id: "target".into(),
-                    request_id: Some(id),
-                    result: RoomResult::Done,
-                },
-                &mut socket,
-            )
-            .await
-            .unwrap();
-        let live = session.relay_capacity_state("target").unwrap();
-        let (done, response) = oneshot::channel();
-        session
-            .relay_capacity(
-                request(live.session_id, live.binding_id, Some(1)),
-                done,
-                &mut socket,
-            )
-            .await
-            .unwrap();
-        let _ = remote.next().await.unwrap().unwrap();
-        session.release().await.unwrap();
+async fn app_forwarding_limit_follows_the_admitted_identity_across_rooms_and_restarts() {
+    let (mut session, mut socket, _remote, state) = capture_projection_session().await;
+    let directory = tempfile::tempdir().unwrap();
+    let session_id = session.live.as_ref().unwrap().session;
+    let (_commands, received) = mpsc::channel(1);
+    session.hosting = Some(Hosting {
+        directory: directory.path().into(), identity: (state.channel.id, state.sessions[0].user_id),
+        commands: received, ready: watch::channel(None).0, desktop: None,
+    });
+    assert_eq!(session.hosting.as_ref().unwrap().forwarding_limit().unwrap(), None);
+    for capacity in [Some(0), Some(3), None] {
+        let (answer, response) = oneshot::channel();
+        session.relay_capacity(RelayCapacityRequest::Set { session_id, capacity }, answer, &mut socket).await.unwrap();
+        assert_eq!(response.await.unwrap().unwrap().relay_override, capacity);
+        assert_eq!(session.hosting.as_ref().unwrap().forwarding_limit().unwrap(), capacity);
+    }
+    for (expected, capacity) in [(Uuid::new_v4(), Some(2)), (session_id, Some(u8::MAX))] {
+        let (answer, response) = oneshot::channel();
+        session.relay_capacity(RelayCapacityRequest::Set { session_id: expected, capacity }, answer, &mut socket).await.unwrap();
         assert!(response.await.unwrap().is_err());
-        assert!(session.pending_relay.is_empty());
-    })
-    .await
-    .unwrap();
+        assert_eq!(session.hosting.as_ref().unwrap().forwarding_limit().unwrap(), None);
+    }
 }

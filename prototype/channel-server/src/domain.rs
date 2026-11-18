@@ -16,7 +16,7 @@ use futures_util::{stream::FuturesUnordered, FutureExt, Sink, SinkExt, StreamExt
 use piik_channel_core::{
     backup::DomainMetadata,
     storage,
-    wire::{Event, Request},
+    wire::{Event, HostingMode, Request, RoomCreationPolicy},
     Authority, Effects,
 };
 use std::{
@@ -45,12 +45,21 @@ struct Hub {
 
 impl Hub {
     fn request(&mut self, connection: Uuid, request: Request) {
+        self.handle_request(connection, request, false);
+    }
+
+    fn handle_request(
+        &mut self,
+        connection: Uuid,
+        request: Request,
+        defer_room_result: bool,
+    ) -> Option<Event> {
         if !self
             .clients
             .get(&connection)
             .is_some_and(|client| !*client.close.borrow())
         {
-            return;
+            return None;
         }
         let metadata = self.authority.changes_metadata(&request);
         // A host has already committed its room policy. The domain's directory
@@ -84,7 +93,7 @@ impl Hub {
             _ => (connection, request.request_id.clone()),
         };
         let before = (metadata && !room_projection).then(|| self.authority.clone());
-        let effects = self.authority.handle(connection, request, now());
+        let mut effects = self.authority.handle(connection, request, now());
         let failed = effects
             .events
             .iter()
@@ -102,7 +111,7 @@ impl Hub {
                             request_id: None,
                         },
                     );
-                    return;
+                    return None;
                 }
                 self.authority = before.expect("metadata request checkpoint");
                 if let Some((room, context)) = deleted {
@@ -116,10 +125,30 @@ impl Hub {
                         request_id,
                     },
                 );
-                return;
+                return None;
             }
         }
+        let deferred = if defer_room_result {
+            effects
+                .events
+                .iter()
+                .position(|(target, event)| {
+                    *target == connection
+                        && matches!(
+                            event,
+                            Event::RoomCreated { .. }
+                                | Event::RoomReply {
+                                    result: piik_channel_core::host::RoomResult::Deleted { .. },
+                                    ..
+                                }
+                        )
+                })
+                .map(|index| effects.events.remove(index).1)
+        } else {
+            None
+        };
         self.apply(effects);
+        deferred
     }
 
     fn send(&self, connection: Uuid, mut event: Event) {
@@ -230,7 +259,130 @@ async fn send_frame(
     )
 }
 
+async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
+    use piik_channel_core::{
+        wire::{Command, HostingMode},
+        RoomState,
+    };
+    use piik_channel_native::session::{HostCommand, OpenRoom};
+
+    let (room, request_id, commands, password, allow_service_relay) = {
+        let mut hub = state.hub.lock().unwrap();
+        if hub.authority.hosting_mode() == HostingMode::Lightweight {
+            hub.request(connection, request);
+            return;
+        }
+        let Command::CreateRoom {
+            room,
+            password,
+            allow_service_relay,
+        } = &mut request.command
+        else {
+            unreachable!()
+        };
+        room.has_password = password.is_some();
+        let password = password.take();
+        let allow_service_relay = *allow_service_relay;
+        let Some(Event::RoomCreated { room, request_id }) =
+            hub.handle_request(connection, request, true)
+        else {
+            return;
+        };
+        (
+            room,
+            request_id,
+            hub.room_commands.clone(),
+            password,
+            allow_service_relay,
+        )
+    };
+    let id = room.id.clone();
+    let result = async {
+        let commands = commands.ok_or_else(|| "hosting_unavailable".to_owned())?;
+        let policy = tokio::task::spawn_blocking(move || {
+            let mut policy = RoomState::new(
+                room.id,
+                room.name,
+                room.icon,
+                room.creator_id,
+                room.access,
+                room.hidden,
+                password,
+            )?;
+            policy.voice_bitrate = room.voice_bitrate;
+            policy.relay_capacity = room.relay_capacity;
+            policy.allow_service_relay = allow_service_relay;
+            policy.validate()?;
+            Ok::<_, &'static str>(policy)
+        })
+        .await
+        .map_err(|_| "hosting_unavailable")??;
+        let (result, response) = tokio::sync::oneshot::channel();
+        commands
+            .try_send(HostCommand::Open(OpenRoom { policy, result }))
+            .map_err(|_| "hosting_unavailable")?;
+        response.await.map_err(|_| "hosting_unavailable")?
+    }
+    .await;
+    let mut hub = state.hub.lock().unwrap();
+    match result {
+        Ok(room) => hub.send(connection, Event::RoomCreated { room, request_id }),
+        Err(code) => {
+            hub.authority.cancel_room_reservation(&id);
+            hub.send(connection, Event::Error { code, request_id });
+        }
+    }
+}
+
+async fn delete_room(state: &Domain, connection: Uuid, request: Request, id: String) {
+    use piik_channel_native::session::HostCommand;
+    let (mut reply, creator, commands) = {
+        let mut hub = state.hub.lock().unwrap();
+        let Some(creator) = hub.authority.offline_hosted_creator(&id) else {
+            hub.request(connection, request);
+            return;
+        };
+        // Only the durable, authorized directory removal may retire this room's data.
+        let Some(reply) = hub.handle_request(connection, request, true) else {
+            return;
+        };
+        (reply, creator, hub.room_commands.clone())
+    };
+    if let (
+        Some(commands),
+        Event::RoomReply {
+            result: piik_channel_core::host::RoomResult::Deleted { data_removed },
+            ..
+        },
+    ) = (commands, &mut reply)
+    {
+        let (result, response) = tokio::sync::oneshot::channel();
+        if commands
+            .send(HostCommand::DeleteRetired {
+                id,
+                creator,
+                result,
+            })
+            .await
+            .is_ok()
+        {
+            *data_removed = response.await.unwrap_or(false);
+        }
+    }
+    state.hub.lock().unwrap().send(connection, reply);
+}
+
 async fn dispatch_request(state: &Domain, connection: Uuid, request: Request) {
+    if let piik_channel_core::wire::Command::DeleteRoom { room_id, .. } = &request.command {
+        let id = room_id.clone();
+        return delete_room(state, connection, request, id).await;
+    }
+    if matches!(
+        &request.command,
+        piik_channel_core::wire::Command::CreateRoom { .. }
+    ) {
+        return create_room(state, connection, request).await;
+    }
     let (events, close) = {
         let mut hub = state.hub.lock().unwrap();
         if !matches!(
@@ -406,6 +558,28 @@ impl Domain {
         invitation_origin: Option<String>,
         ice_servers: Vec<serde_json::Value>,
     ) -> anyhow::Result<Self> {
+        Self::open_with_options(
+            directory,
+            owner_seed,
+            origin,
+            invitation_origin,
+            ice_servers,
+            RoomCreationPolicy::Ordinary,
+            None,
+        )
+    }
+
+    /// Seed channel settings on first startup. Without a Server mode, only
+    /// lightweight channels supported by App can be opened.
+    pub fn open_with_options(
+        directory: &Path,
+        owner_seed: &str,
+        origin: String,
+        invitation_origin: Option<String>,
+        ice_servers: Vec<serde_json::Value>,
+        initial_policy: RoomCreationPolicy,
+        server_mode: Option<HostingMode>,
+    ) -> anyhow::Result<Self> {
         let origin = crate::web::origin(&origin)?;
         let invitation_origin = invitation_origin
             .as_deref()
@@ -421,13 +595,26 @@ impl Domain {
         let checkpoint = storage.load().map_err(anyhow::Error::from_boxed)?;
         let created = checkpoint.is_none();
         let authority = match checkpoint {
-            Some(checkpoint) => serde_json::from_value::<DomainMetadata>(checkpoint)
-                .context("unsupported_domain_checkpoint: preserve the existing data and use a supported backup or a fresh directory")?
-                .into_authority(ice_servers.clone())
-                .map_err(anyhow::Error::msg)?,
-            None => Authority::new(owner_seed.into(), ice_servers.clone())
-                .map_err(anyhow::Error::msg)
-                .context("A new site requires its local owner bootstrap key")?,
+            Some(checkpoint) => {
+                let metadata = serde_json::from_value::<DomainMetadata>(checkpoint)
+                    .context("unsupported_domain_checkpoint: preserve the existing data and use a supported backup or a fresh directory")?;
+                anyhow::ensure!(
+                    server_mode.is_some()
+                        || metadata.state.hosting_mode() == HostingMode::Lightweight,
+                    "hosted_channel_requires_server",
+                );
+                metadata
+                    .into_authority(ice_servers.clone())
+                    .map_err(anyhow::Error::msg)?
+            }
+            None => {
+                let mut authority = Authority::new(owner_seed.into(), ice_servers.clone())
+                    .map_err(anyhow::Error::msg)
+                    .context("A new site requires its local owner bootstrap key")?;
+                authority.set_room_creation_policy(initial_policy);
+                authority.set_hosting_mode(server_mode.unwrap_or(HostingMode::Lightweight));
+                authority
+            }
         };
         storage
             .save(&serde_json::to_value(authority.export_backup())?)
@@ -454,11 +641,21 @@ impl Domain {
         self.hub.lock().unwrap().authority.identity()
     }
 
-    pub(crate) fn register_service(&self, endpoint: piik_channel_core::host::ServiceEndpoint) {
+    pub(crate) fn register_service(
+        &self,
+        endpoint: piik_channel_core::host::ServiceEndpoint,
+        transit: bool,
+    ) -> bool {
         let mut hub = self.hub.lock().unwrap();
-        if let Ok(effects) = hub.authority.set_service_endpoint(Some(endpoint)) {
-            hub.apply(effects);
+        if hub.authority.set_room_writer(endpoint).is_err() {
+            return false;
         }
+        if transit {
+            if let Ok(effects) = hub.authority.set_service_endpoint(Some(endpoint)) {
+                hub.apply(effects);
+            }
+        }
+        true
     }
 
     pub(crate) fn set_room_commands(

@@ -84,8 +84,10 @@ and [website preview and publishing](./operations/website.md).
 | Measurements and platform limits | [Research](./research/) and [verification status](./verification-status.md) |
 | Published 2.x camera and Host microphone research | [Capture scope and limits](./research/camera-and-microphone.md) |
 | Text, reactions and floating room tools | [Room-interaction design](./research/room-interactions.md) |
-| Accepted 3.0 site/room foundation, Rust direction and multi-source routing | [Site and network design](./research/channel-network-design.md) |
+| Current 3.0 site/room foundation, Rust core and multi-source routing | [Site and network design](./research/channel-network-design.md) |
 | 3.0 room-data ownership, cached attachments and file-delivery design | [Room data and hosting](./research/channel-storage-and-identity.md) |
+| 3.0 forwarding design and candidate delivery details | [Channel, room and activity forwarding](./research/channel-forwarding-plan.md) |
+| 3.0 target channel modes, authority and moderation | [Server hosting design](./research/server-hosting-plan.md) |
 | Stereo verification and HDR-to-SDR assessment | [Media fidelity](./research/media-fidelity.md) |
 
 ## Shared conventions

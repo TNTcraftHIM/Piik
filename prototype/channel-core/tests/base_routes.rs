@@ -3760,6 +3760,384 @@ fn coordinated_udp_preparation_replaces_only_the_physical_attempt_and_preserves_
         .all(|p| p.udp_preparation != Some(piik_channel_core::wire::UdpPreparation::Required)));
 }
 #[test]
+fn confirmed_business_pairs_follow_room_scope_sockets_and_flow_leases() {
+    use piik_channel_core::wire::Request;
+    use std::collections::BTreeSet;
+
+    let mut network = RoomNetwork::new();
+    let source = Uuid::new_v4();
+    let viewer = Uuid::new_v4();
+    let (a, _) = join(&mut network, source, None);
+    let (b, credential) = join(&mut network, viewer, None);
+    let edge = (a.min(b), a.max(b));
+    let first = network.create(source, RoomAccess::Public, false);
+    let second = network.create(source, RoomAccess::Public, false);
+    let unrelated = network.create(source, RoomAccess::Private, true);
+    let idle = network.create(source, RoomAccess::Public, false);
+    browse(&mut network, viewer, &second, true);
+    let screen = publish(&mut network, source, &first, "screen");
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"subscribe", "publicationId":screen, "enabled":true}),
+    );
+    let pair = network
+        .state(viewer)
+        .pairs
+        .iter()
+        .find(|pair| pair.peer_id == a)
+        .unwrap()
+        .id;
+    let report = || {
+        Request::parse(&json!({"type":"link_state","pairId":pair,"state":"connected"}).to_string())
+            .unwrap()
+    };
+    let report_rooms = |network: &mut RoomNetwork, socket| {
+        let effects = network.authority.handle(socket, report(), 100);
+        let rooms: BTreeSet<_> = effects
+            .events
+            .iter()
+            .filter_map(|(_, event)| match event {
+                Event::HostInput { room_id, input } if input.confirmed_pairs.contains(&edge) => {
+                    Some(room_id.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        network.deliver(effects);
+        rooms
+    };
+    assert!(report_rooms(&mut network, source).is_empty());
+    assert!(report_rooms(&mut network, source).is_empty());
+    assert_eq!(
+        report_rooms(&mut network, viewer),
+        BTreeSet::from([first.clone(), second.clone()])
+    );
+    let resumed = Uuid::new_v4();
+    let effects = network.authority.handle(resumed, Request::parse(&json!({
+        "type":"join", "protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
+        "name":"Returning viewer","credential":credential,"sessionId":b,
+        "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1;32]).signing_key()
+    }).to_string()).unwrap(), 101);
+    let mut synced = BTreeSet::new();
+    for (_, event) in &effects.events {
+        if let Event::HostInput { room_id, input } = event {
+            assert!(!input.confirmed_pairs.contains(&edge));
+            synced.insert(room_id.clone());
+        }
+    }
+    assert_eq!(
+        synced,
+        BTreeSet::from([first.clone(), second.clone(), unrelated, idle])
+    );
+    network.deliver(effects);
+    assert_eq!(
+        report_rooms(&mut network, resumed),
+        BTreeSet::from([first, second.clone()])
+    );
+
+    let other = publish(&mut network, source, &second, "screen");
+    command(
+        &mut network,
+        resumed,
+        json!({"type":"subscribe","publicationId":other,"enabled":true}),
+    );
+    command(
+        &mut network,
+        source,
+        json!({"type":"unpublish","publicationId":screen}),
+    );
+    let lease = network
+        .state(resumed)
+        .pairs
+        .iter()
+        .find(|p| p.id == pair)
+        .unwrap();
+    assert!(lease
+        .incoming
+        .iter()
+        .any(|flow| flow.publication_id == other));
+    assert!(lease
+        .incoming
+        .iter()
+        .all(|flow| flow.publication_id != screen));
+    command(
+        &mut network,
+        source,
+        json!({"type":"unpublish","publicationId":other}),
+    );
+    let standby = network
+        .state(resumed)
+        .pairs
+        .iter()
+        .find(|p| p.id == pair)
+        .unwrap();
+    assert!(standby.rooms.is_empty() && standby.incoming.is_empty() && standby.outgoing.is_empty());
+    let next = publish(&mut network, source, &second, "screen");
+    command(
+        &mut network,
+        resumed,
+        json!({"type":"subscribe","publicationId":next,"enabled":true}),
+    );
+    assert!(network
+        .state(resumed)
+        .pairs
+        .iter()
+        .any(|p| p.id == pair && p.incoming.iter().any(|f| f.publication_id == next)));
+    command(
+        &mut network,
+        source,
+        json!({"type":"unpublish","publicationId":next}),
+    );
+    assert!(network.state(resumed).pairs.iter().any(|p| p.id == pair));
+    browse(&mut network, resumed, &second, false);
+    assert!(network.state(resumed).pairs.iter().all(|p| p.id != pair));
+    let stale = network.authority.handle(resumed, report(), 102);
+    assert!(
+        stale.events.is_empty(),
+        "a retired pair report cannot wake a room"
+    );
+}
+
+#[test]
+fn demand_probes_one_shortcut_over_a_working_relay() {
+    use piik_channel_core::wire::Request;
+
+    for outcome in ["confirmed", "timeout", "failed"] {
+        let mut network = RoomNetwork::new();
+        let source = Uuid::new_v4();
+        let relay = Uuid::new_v4();
+        let viewer = Uuid::new_v4();
+        let (a, _) = join(&mut network, source, None);
+        let (b, _) = join(&mut network, relay, None);
+        let (c, _) = join(&mut network, viewer, None);
+        let room = network.create(source, RoomAccess::Public, false);
+        command(
+            &mut network,
+            source,
+            json!({"type":"update_room","roomId":room,"name":"Friends","icon":"couch","access":"public","hidden":false,"relayCapacity":1}),
+        );
+        for (child, parent, parent_session) in [(relay, source, a), (viewer, relay, b)] {
+            join_base(&mut network, child, &room);
+            let edge = pair(&network, child, parent_session, &room);
+            for socket in [child, parent] {
+                command(
+                    &mut network,
+                    socket,
+                    json!({"type":"base_state","roomId":room,"pairId":edge.id,"ready":true}),
+                );
+            }
+        }
+        let screen = publish(&mut network, source, &room, "screen");
+        command(
+            &mut network,
+            viewer,
+            json!({"type":"subscribe","publicationId":screen,"enabled":true}),
+        );
+        let upstream = pair(&network, relay, a, &room);
+        let forwarded = upstream
+            .incoming
+            .iter()
+            .find(|f| f.publication_id == screen)
+            .unwrap()
+            .id;
+        command(
+            &mut network,
+            relay,
+            json!({"type":"flow_state","pairId":upstream.id,"flowId":forwarded,"state":"decoded"}),
+        );
+        let incumbent = pair(&network, viewer, b, &room);
+        let flow = incumbent
+            .incoming
+            .iter()
+            .find(|f| f.publication_id == screen)
+            .unwrap()
+            .id;
+        command(
+            &mut network,
+            viewer,
+            json!({"type":"flow_state","pairId":incumbent.id,"flowId":flow,"state":"decoded"}),
+        );
+        for (child, parent, parent_session) in [(relay, source, a), (viewer, relay, b)] {
+            let edge = pair(&network, child, parent_session, &room);
+            for socket in [child, parent] {
+                command(
+                    &mut network,
+                    socket,
+                    json!({"type":"link_state","pairId":edge.id,"state":"connected"}),
+                );
+            }
+        }
+        let trial = network
+            .state(viewer)
+            .pairs
+            .iter()
+            .find(|p| p.peer_id == a)
+            .unwrap()
+            .clone();
+        assert!(trial.rooms.is_empty() && trial.incoming.is_empty() && trial.outgoing.is_empty());
+        let edge = (a.min(c), a.max(c));
+        let report = || {
+            Request::parse(
+                &json!({"type":"link_state","pairId":trial.id,"state":"connected"}).to_string(),
+            )
+            .unwrap()
+        };
+        let effects = network.authority.handle(source, report(), 101);
+        assert!(effects.events.iter().all(|(_, e)| !matches!(e, Event::HostInput { input, .. } if input.confirmed_pairs.contains(&edge))));
+        network.deliver(effects);
+        match outcome {
+            "confirmed" => {
+                let effects = network.authority.handle(viewer, report(), 102);
+                assert!(effects.events.iter().any(|(_, e)| matches!(e, Event::HostInput { input, .. } if input.confirmed_pairs.contains(&edge))));
+                network.deliver(effects);
+                assert!(network.state(viewer).pairs.iter().any(|p| p.id == trial.id));
+            }
+            "timeout" => {
+                let effects = network.authority.expire(20_101);
+                network.deliver(effects);
+            }
+            _ => command(
+                &mut network,
+                viewer,
+                json!({"type":"link_state","pairId":trial.id,"state":"failed"}),
+            ),
+        }
+        if outcome != "confirmed" {
+            command(
+                &mut network,
+                viewer,
+                json!({"type":"set_profile","name":"Still watching","avatar":null}),
+            );
+            assert!(
+                network.state(viewer).pairs.iter().all(|p| p.peer_id != a),
+                "{outcome}: {:?}",
+                serde_json::to_value(&network.state(viewer).pairs).unwrap()
+            );
+        }
+        assert!(
+            network
+                .state(viewer)
+                .pairs
+                .iter()
+                .any(|p| p.id == incumbent.id
+                    && p.incoming.iter().any(|f| f.id == flow && f.selected))
+        );
+        if outcome == "confirmed" {
+            let disconnect = network.authority.disconnect(relay, 103);
+            for (_, event) in &disconnect.events {
+                if let Event::State { state } = event {
+                    if state
+                        .sessions
+                        .iter()
+                        .any(|session| session.id == b && !session.online)
+                    {
+                        assert!(state.pairs.iter().any(|p| p.id == trial.id),
+                            "channel discarded the confirmed pair before the room repaired delivery");
+                    }
+                }
+            }
+            network.deliver(disconnect);
+            assert!(
+                network.state(viewer).pairs.iter().any(|p| p.id == trial.id),
+                "after host disconnect projection"
+            );
+            command(
+                &mut network,
+                source,
+                json!({"type":"link_state","pairId":upstream.id,"state":"failed"}),
+            );
+            command(
+                &mut network,
+                viewer,
+                json!({"type":"link_state","pairId":incumbent.id,"state":"failed"}),
+            );
+            assert!(
+                network.state(viewer).pairs.iter().any(|p| p.id == trial.id),
+                "after incumbent failure"
+            );
+            let repair = network.authority.expire(5_104);
+            network.deliver(repair);
+            assert!(network.state(viewer).pairs.iter().any(|p| p.id == trial.id
+                && p.incoming
+                    .iter()
+                    .any(|f| f.publication_id == screen && f.selected)));
+            command(&mut network, viewer, json!({"type":"leave"}));
+            assert!(network.state(source).pairs.iter().all(|p| p.id != trial.id));
+        }
+    }
+}
+
+#[test]
+fn standby_yields_to_other_demand_and_socket_retirement() {
+    for withdrawal in ["other demand", "disconnect", "leave"] {
+        let mut network = RoomNetwork::new();
+        let source = Uuid::new_v4();
+        let viewer = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let (a, _) = join(&mut network, source, None);
+        join(&mut network, viewer, None);
+        let (c, _) = join(&mut network, other, None);
+        let room = network.create(source, RoomAccess::Public, false);
+        browse(&mut network, viewer, &room, true);
+        let screen = publish(&mut network, source, &room, "screen");
+        command(
+            &mut network,
+            viewer,
+            json!({"type":"subscribe","publicationId":screen,"enabled":true}),
+        );
+        let pair = network
+            .state(viewer)
+            .pairs
+            .iter()
+            .find(|p| p.peer_id == a)
+            .unwrap()
+            .id;
+        for endpoint in [source, viewer] {
+            command(
+                &mut network,
+                endpoint,
+                json!({"type":"link_state","pairId":pair,"state":"connected"}),
+            );
+        }
+        command(
+            &mut network,
+            source,
+            json!({"type":"unpublish","publicationId":screen}),
+        );
+        assert!(network
+            .state(source)
+            .pairs
+            .iter()
+            .any(|p| p.id == pair && p.outgoing.is_empty() && p.rooms.is_empty()));
+        match withdrawal {
+            "other demand" => {
+                let next = publish(&mut network, source, &room, "screen");
+                command(
+                    &mut network,
+                    other,
+                    json!({"type":"subscribe","publicationId":next,"enabled":true}),
+                );
+                assert!(network
+                    .state(source)
+                    .pairs
+                    .iter()
+                    .any(|p| p.peer_id == c && !p.outgoing.is_empty()));
+            }
+            "disconnect" => {
+                let effects = network.authority.disconnect(viewer, 101);
+                network.deliver(effects);
+            }
+            _ => command(&mut network, viewer, json!({"type":"leave"})),
+        }
+        assert!(
+            network.state(source).pairs.iter().all(|p| p.id != pair),
+            "{withdrawal}"
+        );
+    }
+}
+
+#[test]
 fn coordinated_udp_preparation_uses_current_capability_and_never_restarts_a_connected_pair() {
     use piik_channel_core::wire::Request;
     for connected in [false, true] {

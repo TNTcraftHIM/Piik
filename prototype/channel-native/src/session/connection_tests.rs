@@ -145,6 +145,7 @@ async fn reader_services_ping_while_business_has_not_consumed_its_frame() {
 
 fn connection_session(url: String) -> Session {
     Session {
+        forwarding_limit: None,
         service_admission: None,
         config: Config {
             url,
@@ -161,7 +162,6 @@ fn connection_session(url: String) -> Session {
         hosting: None,
         opening: BTreeMap::new(),
         pending_captures: BTreeMap::new(),
-        pending_relay: BTreeMap::new(),
         snapshot_job: None,
     }
 }
@@ -242,6 +242,7 @@ async fn pending_udp_capability_releases_expired_session_before_late_join() {
     let previous = Uuid::new_v4();
     let (commands, mut events) = mpsc::channel(8);
     session.live = Some(Live {
+        forwarding_budget: Default::default(),
         session: previous,
         room: RoomTurns {
             local: previous,
@@ -339,6 +340,7 @@ async fn unsupported_software_execution_rejects_before_room_or_capture_effects()
     let previous = Uuid::new_v4();
     let (commands, mut events) = mpsc::channel(8);
     session.live = Some(Live {
+        forwarding_budget: Default::default(),
         session: previous,
         room: RoomTurns {
             local: previous,

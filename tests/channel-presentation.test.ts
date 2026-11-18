@@ -19,7 +19,7 @@ it("projects joined watch people independently of transport and deduplicates the
   const activity = watchActivitySchema.parse({ id: "watch", roomId: "room", sessionId: "owner-page", userId: "owner",
     source: { kind: "website", url: "https://video.test/watch" }, playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 0 },
     viewerSessionIds: ["owner-app", "viewer-web", "viewer-app", "direct-web", "retired"] });
-  const state = snapshotSchema.parse({ channel: { id: "site", name: "Site", icon: "couch", ownerId: "owner", historyWindow: 1000, userCount: 4, rooms: [{
+  const state = snapshotSchema.parse({ channel: { id: "site", name: "Site", icon: "couch", ownerId: "owner", roomCreationPolicy: "ordinary", hostingMode: "lightweight", historyWindow: 1000, userCount: 4, managedRoomIds: [], rooms: [{
     id: "room", name: "Room", icon: "couch", creatorId: "owner", access: "public", hidden: false, hasPassword: false,
     authorized: true, canManage: true, available: true, reading: true, participantSessionIds: sessions.map(([id]) => id),
     lastMessageSeq: 0, fileActivity: [], capabilities: { attachments: true },
@@ -93,7 +93,7 @@ describe("screen titles", () => {
 
 it("shows each person's room activity across endpoints and keeps chat presence independent", () => {
   const state = snapshotSchema.parse({
-    channel: { id: "site", name: "Site", icon: "couch", ownerId: "self", historyWindow: 1000, userCount: 3, rooms: [{
+    channel: { id: "site", name: "Site", icon: "couch", ownerId: "self", roomCreationPolicy: "ordinary", hostingMode: "lightweight", historyWindow: 1000, userCount: 3, managedRoomIds: [], rooms: [{
       id: "room", name: "Room", icon: "couch", creatorId: "self", access: "public", hidden: false,
       hasPassword: false, authorized: true, canManage: true, available: true, reading: true,
       participantSessionIds: ["self-page", "chat-page"], lastMessageSeq: 0,

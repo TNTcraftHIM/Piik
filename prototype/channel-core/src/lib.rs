@@ -9,9 +9,11 @@ mod access;
 pub mod attachment;
 pub mod backup;
 mod channel;
+mod connectivity;
 pub mod conversation;
 pub mod file_delivery;
 pub mod file_room;
+pub mod forwarding;
 pub mod history;
 pub mod host;
 mod identity;
@@ -74,6 +76,46 @@ impl Authority {
         self.channel.export_state()
     }
 
+    /// Seed a newly opened domain before admitting its first connection.
+    pub fn set_room_creation_policy(&mut self, policy: wire::RoomCreationPolicy) {
+        self.channel.set_room_creation_policy(policy);
+    }
+
+    pub fn hosting_mode(&self) -> wire::HostingMode {
+        self.channel.hosting_mode
+    }
+
+    pub fn set_hosting_mode(&mut self, mode: wire::HostingMode) {
+        self.channel.hosting_mode = mode;
+    }
+
+    pub fn set_room_writer(&mut self, writer: host::ServiceEndpoint) -> Result<(), &'static str> {
+        if self.current_connection(writer.session_id) != Some(writer.connection_id) {
+            return Err("hosting_unavailable");
+        }
+        self.channel.room_writer = Some(writer);
+        Ok(())
+    }
+
+    pub fn offline_hosted_creator(&self, id: &str) -> Option<Uuid> {
+        let room = self.channel.remote.get(id)?;
+        (self.hosting_mode() == wire::HostingMode::Hosted
+            && room.reservation.is_none()
+            && !self.channel.room_online(id))
+        .then_some(room.summary.creator_id)
+    }
+
+    pub fn cancel_room_reservation(&mut self, room_id: &str) {
+        if self
+            .channel
+            .remote
+            .get(room_id)
+            .is_some_and(|room| room.reservation.is_some())
+        {
+            self.channel.remote.remove(room_id);
+        }
+    }
+
     /// Private hosting data for the domain's storage owner, never a client event.
     pub fn export_backup(&self) -> backup::DomainMetadata {
         backup::DomainMetadata {
@@ -107,7 +149,7 @@ impl Authority {
                 .channel
                 .remote
                 .get(&room.id)
-                .is_none_or(|current| current.summary != *room),
+                .is_none_or(|current| current.reservation.is_some() || current.summary != *room),
             Command::HostOutput { room_id, output } => {
                 self.channel
                     .remote
@@ -120,7 +162,7 @@ impl Authority {
             Command::Join { .. }
             | Command::SetProfile { .. }
             | Command::UpdateDomain { .. }
-            | Command::CreateRoom { .. }
+            | Command::SetRoomCreationPolicy { .. }
             | Command::AdmitRoom { .. }
             | Command::DeleteRoom { .. } => true,
             _ => false,
@@ -225,7 +267,7 @@ impl Authority {
                 }
                 return effects;
             }
-            Command::CreateRoom { room } => {
+            Command::CreateRoom { room, .. } => {
                 match self.channel.create_room(session_id, room.clone()) {
                     Ok(room) => {
                         self.broadcast(None, &mut effects);
@@ -257,20 +299,32 @@ impl Authority {
                 room_id,
                 delete_data,
             } => {
-                if let Err(code) = self.channel.manages_room(session_id, room_id) {
+                let actor = self.channel.identity.sessions[&session_id].user_id;
+                let room = self.channel.remote.get(room_id);
+                let hosted_data = self.hosting_mode() == wire::HostingMode::Hosted
+                    && room.is_some_and(|room| room.reservation.is_none());
+                if let Err(code) = self.channel.can_remove_room(session_id, room_id) {
                     Self::error(connection, request.request_id, code, &mut effects);
-                } else if *delete_data && self.channel.room_online(room_id) {
-                    match self
-                        .channel
-                        .forward_room(room_id, context, request.command.clone())
-                    {
+                } else if self.channel.room_online(room_id)
+                    && (hosted_data
+                        || (*delete_data
+                            && room.is_some_and(|room| room.summary.creator_id == actor)))
+                {
+                    match self.channel.forward_room(
+                        room_id,
+                        context,
+                        Command::DeleteRoom {
+                            room_id: room_id.clone(),
+                            delete_data: true,
+                        },
+                    ) {
                         Ok((session, event)) => self.deliver(session, event, &mut effects),
                         Err(code) => {
                             Self::error(connection, request.request_id, code, &mut effects)
                         }
                     }
                 } else {
-                    for (room, reply) in self.channel.remove_room(room_id) {
+                    for (room, reply) in self.channel.remove_room(room_id, actor) {
                         self.room_reply(&room, reply, &mut effects);
                     }
                     self.broadcast(None, &mut effects);
@@ -457,6 +511,8 @@ impl Authority {
         }
         if expired {
             self.sync_hosts(&mut effects, true);
+        }
+        if self.channel.expire_discovery(now) || expired {
             self.broadcast(None, &mut effects);
         }
         for (session, event) in self.channel.wake_hosts(now) {
@@ -590,12 +646,8 @@ impl Authority {
         let accepted = self
             .channel
             .accept_host(room_id, session, connection, &output)?;
-        if output
-            .reply
-            .as_ref()
-            .is_some_and(|reply| matches!(reply.result, RoomResult::Deleted { data_removed: true }))
-        {
-            for (room, reply) in self.channel.remove_room(room_id) {
+        if let Some(actor) = accepted.deleted_by {
+            for (room, reply) in self.channel.remove_room(room_id, actor) {
                 self.room_reply(&room, reply, effects);
             }
             self.broadcast(None, effects);

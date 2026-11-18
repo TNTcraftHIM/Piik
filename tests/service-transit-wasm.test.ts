@@ -14,7 +14,7 @@ test("Browser WASM saves room consent, keeps Read separate and derives fresh ser
   let revision = 0;
   let serviceEndpoint: { sessionId: string; connectionId: string } | null = { sessionId: service, connectionId: serviceSocket };
   const turn = (action: object, failedPairs: object[] = [], commit = true) => {
-    const work = JSON.parse(host.dispatch(JSON.stringify({ now: 100, bindingId: binding, hostSessionId: owner, revision: ++revision, endpoints, serviceEndpoint, failedPairs, action })));
+    const work = JSON.parse(host.dispatch(JSON.stringify({ now: 100, bindingId: binding, channelOwnerId: ownerUser, hostSessionId: owner, revision: ++revision, endpoints, serviceEndpoint, failedPairs, action })));
     expect(work.history).toBeNull();
     return JSON.parse(commit ? host.finish() : host.abort("storage_failed"));
   };
@@ -59,7 +59,7 @@ test("public Read does not retain pure site forwarding after the saved preferenc
   let revision = 0;
   const context = (sessionId: string) => ({ connection: sessionId, sessionId, requestId: crypto.randomUUID(), now: 100 });
   const turn = (action: object, failedPairs: object[] = []) => {
-    host.dispatch(JSON.stringify({ now: 100, bindingId: binding, hostSessionId: owner, revision: ++revision,
+    host.dispatch(JSON.stringify({ now: 100, bindingId: binding, channelOwnerId: owner, hostSessionId: owner, revision: ++revision,
       endpoints, serviceEndpoint: { sessionId: service, connectionId: service }, failedPairs, action }));
     return JSON.parse(host.finish());
   };

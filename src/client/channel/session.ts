@@ -13,7 +13,7 @@ import { ChannelConversation } from "./conversation";
 import { selectedRoom } from "./navigation";
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
-import type { ChannelActions, ChannelView, ChatOptions, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings } from "./types";
+import { messageRemoved, type ChannelActions, type ChannelView, type ChatOptions, type RoomHistoryChanges, type ScreenPresentation, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
 import type { HostedRoom, BrowserRoomSnapshot, BrowserRoomStage, BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
 import type { BackupHistoryImport } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
@@ -21,6 +21,7 @@ import { AppPage, ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut
 import type { NativeCaptureTarget, EncodingExecution, NativePageIndexedSelection, NativePageMpdSelection, NativePageMpdCatalog } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
+import { MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
 import { MicrophoneInput } from "../media/microphone-input";
 import { debugEvent, debugOperation, registerDebugCollector } from "../lib/debug";
 import { acquireMediaStream } from "../media/capture-stream";
@@ -75,6 +76,7 @@ interface ScreenWatch {
 interface SourceSelection {
   controller: AbortController;
   committing: boolean;
+  watchCandidate?: { player: WatchPlayer; stopping: boolean };
   browserCaptureGranted?: boolean;
   page?: AppPage;
   embed?: YouTubeMedia;
@@ -131,6 +133,12 @@ function mergeMessage(previous: ChannelMessage | undefined, message: ChannelMess
     ? { ...message, reactions: previous.reactions } : message;
 }
 
+function redactReply(message: ChannelMessage, changes: RoomHistoryChanges | undefined): ChannelMessage {
+  if (!message.reply || !messageRemoved(changes, message.reply.seq)) return message;
+  const { reply: _reply, ...remaining } = message;
+  return remaining;
+}
+
 /** A reading window retains a contiguous end of history, bounded by text and image bytes. */
 function readingWindow(messages: ChannelMessage[], count: number, latest: boolean): ChannelMessage[] {
   const encoder = new TextEncoder(), maximum = 4 * 1024 * 1024;
@@ -159,9 +167,10 @@ export class ChannelSession {
     listeningVolume: readRoomPreferences().voiceListeningVolume,
     feedbackSound: readRoomPreferences().feedbackSound,
     appConnected: false,
+    forwardingLimit: -1,
     ownedScreens: new Set(),
     localScreens: new Set(),
-    state: null, sessionId: null, self: null, profiles: new Map(), connection: "connecting", messagesByRoom: {}, historyByRoom: {}, readByRoom: {},
+    state: null, sessionId: null, self: null, profiles: new Map(), connection: "connecting", messagesByRoom: {}, historyChangesByRoom: {}, historyByRoom: {}, readByRoom: {},
     streams: new Map(), screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), error: null, siteURL: null, pending: new Set(),
   };
   private listeners = new Set<() => void>();
@@ -169,6 +178,8 @@ export class ChannelSession {
   private missingProfiles = new Set<string>();
   private readMarkerKey: string | null = null;
   private socket: WebSocket | null = null;
+  private forwardingBudget: ReturnType<ChannelConversation["forwardingBudget"]>;
+  private forwardingState: ChannelSnapshot | undefined;
   private retry: ReturnType<typeof setTimeout> | null = null;
   private recoveryDeadline: ReturnType<typeof setTimeout> | null = null;
   private closed = true;
@@ -182,7 +193,7 @@ export class ChannelSession {
   private roomId = selectedRoom();
   private requests = new Map<string, {
     roomId?: string; bindingId?: string;
-    history?: { before?: number; replace: boolean; entries: Map<number, { message?: ChannelMessage; snapshot?: MessageReactionSnapshot }> };
+    history?: { before?: number; replace: boolean; refreshThrough?: number; entries: Map<number, { message?: ChannelMessage; snapshot?: MessageReactionSnapshot }> };
     resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void; timer: ReturnType<typeof setTimeout>;
   }>();
   private hostedRooms = new Map<string, { host: HostedRoom; bindingId?: string }>();
@@ -217,6 +228,7 @@ export class ChannelSession {
     file: (peer, control) => this.attachments.data(peer, "control", control),
     watch: (peer, control) => this.watchBytes.data(peer, "control", control),
     reply: reply => this.receiveConversation(reply),
+    projection: (roomId, output) => this.write({ type: "host_output", roomId, output }),
   });
   private input = new ChannelInput({
     context: () => ({ sessionId: this.view.sessionId, state: this.view.state,
@@ -239,7 +251,8 @@ export class ChannelSession {
       changed: screenBufferStatus => { if (screenBufferStatus !== this.view.screenBufferStatus) this.patch({ screenBufferStatus }); } });
   private watchBytes = new WatchBytes((peer, kind, data, allowed) => this.media.sendData(peer, kind, data, allowed));
   readonly attachments = new ChannelAttachments(command => this.request(command), async (peer, kind, data, allowed) =>
-    this.media.sendData(peer, kind, kind === "control" ? await this.conversation.fileFrame(data as string) : data, allowed));
+    this.media.sendData(peer, kind, kind === "control" ? await this.conversation.fileFrame(data as string) : data, allowed),
+    key => messageRemoved(this.view.historyChangesByRoom[key.roomId], key.messageSeq));
 
   getSnapshot = (): ChannelView => this.view;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
@@ -461,7 +474,10 @@ export class ChannelSession {
       }
       this.invitationOrigin = event.invitationOrigin ?? location.origin;
       this.profileLoads.clear(); this.missingProfiles.clear();
-      this.patch({ sessionId: event.sessionId, self: event.selfProfile, profiles: new Map([[event.selfProfile.id, event.selfProfile]]), connection: "connected", error: null, siteURL: this.siteURL() });
+      const forwardingKey = JSON.stringify([event.state.channel.id, event.selfProfile.id]);
+      const forwardingLimit = resumed ? this.view.forwardingLimit : readRoomPreferences().forwardingLimitByIdentity[forwardingKey] ?? -1;
+      this.forwardingBudget ??= this.conversation.forwardingBudget();
+      this.patch({ sessionId: event.sessionId, self: event.selfProfile, profiles: new Map([[event.selfProfile.id, event.selfProfile]]), connection: "connected", error: null, siteURL: this.siteURL(), forwardingLimit });
       this.readings.clear();
       for (const room of event.state.channel.rooms) if (room.reading) this.readingRooms.add(room.id);
       for (const activity of event.state.watchActivities) {
@@ -668,6 +684,7 @@ export class ChannelSession {
       siteURL: this.siteURL(),
       voicePlaybackByUser: sameChannel ? new Map([...this.view.voicePlaybackByUser].filter(([id]) => state.users.some(user => user.id === id))) : new Map(),
       messagesByRoom: Object.fromEntries(Object.entries(this.view.messagesByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
+      historyChangesByRoom: Object.fromEntries(Object.entries(this.view.historyChangesByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
       publicationReactions: new Map([...this.view.publicationReactions].filter(([id]) => state.publications.some(publication => publication.id === id
         && canRead(publication.roomId) && !freshBindings.has(publication.roomId)))),
       historyByRoom: Object.fromEntries(Object.entries(this.view.historyByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
@@ -696,13 +713,26 @@ export class ChannelSession {
         this.readingRooms.add(room.id);
       }
     }
-    this.watchBytes.update(sessionId, state.watchBytes, state.pairs);
-    this.media.update(sessionId, state);
+    this.forwardingState = state;
+    this.applyForwarding(sessionId, state, userId);
     this.input.update();
-    if (userId) this.attachments.update(sessionId, { domainId: state.channel.id, userId }, state.files, state.channel.rooms, state.pairs);
-    else this.attachments.reset();
     this.browseRooms();
     this.releaseUnusedMicrophone();
+  }
+
+  private applyForwarding(sessionId: string, state: ChannelSnapshot, userId: string | undefined): void {
+    const limit = this.view.forwardingLimit;
+    const result = userId && this.forwardingBudget
+      ? JSON.parse(this.forwardingBudget.apply(limit < 0 ? undefined : limit, userId, JSON.stringify(state))) as {
+        snapshot: Pick<ChannelSnapshot, "watchBytes" | "pairs" | "files">;
+        refusals: ChannelCommand[];
+      } : { snapshot: state, refusals: [] };
+    const { pairs, files, watchBytes } = result.snapshot;
+    this.watchBytes.update(sessionId, watchBytes, pairs);
+    this.media.update(sessionId, { ...state, pairs });
+    if (userId) this.attachments.update(sessionId, { domainId: state.channel.id, userId }, files, state.channel.rooms, pairs);
+    else this.attachments.reset();
+    for (const command of result.refusals) this.send(command);
   }
 
   private siteURL(): string {
@@ -718,9 +748,10 @@ export class ChannelSession {
     else if (command.type === "signal" && this.signals.length < 256) this.signals.push(command);
   }
 
-  private async request(command: ChannelCommand, result?: (event: ChannelReply) => void, roomId = this.commandRoom(command), signal?: AbortSignal, replaceHistory = false): Promise<void> {
+  private async request(command: ChannelCommand, result?: (event: ChannelReply) => void, roomId = this.commandRoom(command), signal?: AbortSignal, replaceHistory = false, refreshThrough?: number): Promise<void> {
     const reading = roomId ? this.readings.get(roomId) : undefined;
-    const conversation = command.type === "chat" || command.type === "history" || command.type === "react";
+    const conversation = command.type === "chat" || command.type === "history" || command.type === "react"
+      || command.type === "delete_message" || command.type === "clear_history";
     if (conversation && reading && reading.roomId === roomId) await reading.ready;
     signal?.throwIfAborted();
     if (this.view.connection !== "connected") return Promise.reject(new Error("disconnected"));
@@ -739,7 +770,7 @@ export class ChannelSession {
       const timer = setTimeout(() => { this.requests.delete(requestId); reject(new Error("request_timeout")); }, conversation || command.type === "profiles" ? 30000 : 10000);
       this.requests.set(requestId, { resolve, reject, timer, result, roomId,
         ...(delivery && (conversation || command.type === "browse" || command.type === "room_topology") ? { bindingId: delivery.bindingId } : {}),
-        ...(command.type === "history" ? { history: { before: command.before, replace: replaceHistory, entries: new Map() } } : {}) });
+        ...(command.type === "history" ? { history: { before: command.before, replace: replaceHistory, refreshThrough, entries: new Map() } } : {}) });
       signal?.addEventListener("abort", abort, { once: true });
       if (conversation) void this.conversation.send(command, requestId).catch(error => {
         if (!this.requests.delete(requestId)) return;
@@ -755,6 +786,10 @@ export class ChannelSession {
 
   private receiveConversation(reply: ConversationReply): void {
     const record = reply.record;
+    if (record.type === "message_deleted" || record.type === "history_cleared") {
+      if (!this.view.state?.channel.rooms.some(room => room.id === reply.roomId && room.authorized && room.delivery?.bindingId === reply.bindingId)) return;
+      this.applyHistoryRemoval(reply.roomId, record);
+    }
     if (record.type === "message_reactions") {
       this.applyReactionSnapshot(reply.roomId, reply.bindingId, record.snapshot);
       return;
@@ -789,7 +824,9 @@ export class ChannelSession {
       }
     }
     if (record.type === "live_message") {
-      this.applyMessage(reply.roomId, record.message);
+      if (this.view.state?.channel.rooms.some(room => room.id === reply.roomId && room.delivery?.bindingId === reply.bindingId)) {
+        this.applyMessage(reply.roomId, record.message);
+      }
       return;
     }
     const request = this.requests.get(reply.requestId);
@@ -811,13 +848,42 @@ export class ChannelSession {
         return;
       }
       const page = entries.map(({ message, snapshot }) => ({ ...message!, reactions: { revision: snapshot!.revision, counts: snapshot!.counts } }));
-      this.applyHistory(reply.roomId, page.sort((a, b) => a.seq - b.seq), record, request.history.replace);
-    } else if (record.type === "confirmed") {
+      this.applyHistory(reply.roomId, page.sort((a, b) => a.seq - b.seq), record, request.history);
+    } else if (record.type === "confirmed" && !messageRemoved(this.view.historyChangesByRoom[reply.roomId], record.message.seq)) {
       request.result?.(record);
       this.applyMessage(reply.roomId, record.message);
     }
     this.receive(record.type === "error" ? { type: "error", requestId: reply.requestId, code: record.code }
       : { type: "ack", requestId: reply.requestId });
+  }
+
+  private applyHistoryRemoval(roomId: string, record: Extract<ConversationReply["record"], { type: "message_deleted" | "history_cleared" }>): void {
+    this.applyHistoryRemovals(roomId, record.type === "history_cleared" ? record.throughSeq : 0,
+      record.type === "message_deleted" ? [record.messageSeq] : []);
+  }
+
+  private applyHistoryRemovals(roomId: string, throughSeq: number, messageSeqs: number[]): void {
+    const previous = this.view.historyChangesByRoom[roomId];
+    const clearedThrough = Math.max(previous?.clearedThrough ?? 0, throughSeq);
+    const deleted = new Set([...(previous?.deleted ?? []), ...messageSeqs].filter(seq => seq > clearedThrough));
+    // These markers cover live events and overlapping pages. History storage owns older deletions.
+    const limit = this.view.state?.channel.historyWindow ?? 1000;
+    while (deleted.size > limit) deleted.delete(deleted.values().next().value!);
+    const changes = { clearedThrough, deleted };
+    const removedSeqs = new Set(messageSeqs);
+    const removed = (seq: number) => seq <= throughSeq || removedSeqs.has(seq);
+    const messages = (this.view.messagesByRoom[roomId] ?? []).filter(message => !removed(message.seq)).map(message => redactReply(message, changes));
+    const history = this.view.historyByRoom[roomId];
+    this.patch({
+      historyChangesByRoom: { ...this.view.historyChangesByRoom, [roomId]: changes },
+      messagesByRoom: { ...this.view.messagesByRoom, [roomId]: messages },
+      ...(history && { historyByRoom: { ...this.view.historyByRoom, [roomId]: { ...history,
+        hasMore: history.hasMore && (history.before ?? 0) > clearedThrough,
+        before: messages[0]?.seq ?? history.before } } }),
+    });
+    this.attachments.removeMessages(roomId, removed);
+    this.view.interactionsByRoom.get(roomId)?.removeChatMessages(removed);
+    if (throughSeq) this.markRead(roomId, throughSeq);
   }
 
   private applyReactionSnapshot(roomId: string, bindingId: string, snapshot: MessageReactionSnapshot): void {
@@ -848,19 +914,32 @@ export class ChannelSession {
     this.patch({ publicationReactions: new Map(this.view.publicationReactions).set(snapshot.publicationId, snapshot) });
   }
 
-  private applyHistory(roomId: string, page: ChannelMessage[], result: Extract<ConversationReply["record"], { type: "history_end" }>, jumping: boolean): void {
+  private applyHistory(roomId: string, page: ChannelMessage[], result: Extract<ConversationReply["record"], { type: "history_end" }>,
+    { replace: jumping, refreshThrough }: { replace: boolean; refreshThrough?: number }): void {
     const state = this.view.state;
     if (!state?.channel.rooms.some(room => room.id === roomId && room.authorized)) return;
-    const current = jumping ? [] : this.view.messagesByRoom[roomId] ?? [];
+    const current = this.view.messagesByRoom[roomId] ?? [];
     const last = page.at(-1)?.seq ?? 0;
     const latest = result.before === null;
-    const existing = latest ? current.filter(message => message.seq > last) : current;
-    const projected = page.map(message => mergeMessage(current.find(previous => previous.id === message.id), message));
-    const merged = mergeMessages([...existing, ...projected]
-      .filter(message => result.oldestSeq === null || message.seq >= result.oldestSeq));
+    if (refreshThrough !== undefined) {
+      // Only this page's covered range can establish which cached messages were removed.
+      const lower = result.hasMore ? page[0]?.seq ?? Infinity : 0;
+      const present = new Set(page.map(message => message.seq));
+      const missing = current.filter(message => message.seq >= lower && message.seq <= refreshThrough && !present.has(message.seq));
+      if (missing.length) this.applyHistoryRemovals(roomId, 0, missing.map(message => message.seq));
+    }
+    const existing = jumping ? [] : latest ? current.filter(message => message.seq > Math.max(last, refreshThrough ?? 0)) : current;
+    const changes = this.view.historyChangesByRoom[roomId];
+    const projected = page.filter(message => !messageRemoved(changes, message.seq))
+      .map(message => mergeMessage(current.find(previous => previous.id === message.id), redactReply(message, changes)));
+    const merged = mergeMessages([...existing, ...projected].filter(message => !messageRemoved(changes, message.seq)
+      && (result.oldestSeq === null || message.seq >= result.oldestSeq)).map(message => redactReply(message, changes)));
     const messages = readingWindow(merged, state.channel.historyWindow, latest);
     const atLatest = latest || (!jumping && (this.view.historyByRoom[roomId]?.atLatest ?? true) && messages.length === merged.length);
-    const hasMore = result.hasMore || result.oldestSeq !== null && messages.length > 0 && messages[0].seq > result.oldestSeq;
+    const oldestSeq = result.oldestSeq;
+    const canReadEarlier = !changes?.clearedThrough || (result.before ?? messages[0]?.seq ?? 0) > changes.clearedThrough + 1;
+    const hasMore = canReadEarlier && (result.hasMore
+      || oldestSeq !== null && messages.length > 0 && messages[0].seq > oldestSeq);
     this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: messages },
       historyByRoom: { ...this.view.historyByRoom, [roomId]: { hasMore, before: messages[0]?.seq, atLatest } } });
     void this.loadProfiles(this.historyProfileIds(messages)).catch(() => {});
@@ -869,12 +948,15 @@ export class ChannelSession {
   private applyMessage(roomId: string, message: ChannelMessage): void {
     const state = this.view.state;
     if (!state?.channel.rooms.some(room => room.id === roomId && room.authorized)) return;
+    const changes = this.view.historyChangesByRoom[roomId];
+    if (messageRemoved(changes, message.seq)) return;
+    message = redactReply(message, changes);
     void this.loadProfiles(this.historyProfileIds([message])).catch(() => {});
     const sender = state.users.find(user => user.id === message.userId) ?? this.view.profiles.get(message.userId) ?? { id: message.userId, name: message.archivedAuthorName ?? "User" };
     const points = Array.from(message.text.replace(/\s+/gu, " ").normalize("NFC").trim());
     const text = points.length > MAX_CHAT_CODE_POINTS ? `${points.slice(0, MAX_CHAT_CODE_POINTS - 1).join("")}…` : points.join("");
     this.view.interactionsByRoom.get(roomId)?.receiveConfirmedChat({
-      type: "room-interaction", id: message.id, requestId: message.id, occurredAt: message.time,
+      type: "room-interaction", id: message.id, requestId: message.id, occurredAt: message.time, messageSeq: message.seq,
       sender: { peerId: sender.id, displayName: sender.name, role: "viewer" }, payload: { kind: "chat", text },
     });
     // A bounded historical window stays put until its reader requests latest.
@@ -1130,9 +1212,8 @@ export class ChannelSession {
       if (!room?.delivery) continue;
       let reading = this.readings.get(id);
       if (!reading) {
-        const capacity = readRoomPreferences().relayCapacityByRoom[`${this.view.state!.channel.id}/${id}`];
         reading = { roomId: id, bindingId: room.delivery.bindingId, socket: this.socket,
-          ready: this.request({ type: "browse", roomId: id, active: true, ...(capacity !== undefined ? { relayCapacity: capacity } : {}) }) };
+          ready: this.request({ type: "browse", roomId: id, active: true }) };
         this.readings.set(id, reading);
       }
       const current = reading;
@@ -1140,11 +1221,14 @@ export class ChannelSession {
         if (this.readings.get(id) !== current || this.socket !== current.socket || !this.wantedReadings().has(id)) return;
         this.retireReadings();
         this.syncRoomReading(current);
-        if (this.roomId !== id || current.history || this.view.pending.has(`history:${id}`)
-          || this.view.historyByRoom[id]?.atLatest === false) return;
-        current.history = this.action(`history:${id}`, () => this.request({ type: "history", roomId: id }).catch(error => {
-          if (this.readings.get(id) === current && this.socket === current.socket) throw error;
-        }), true, { clearError: false });
+        if (this.roomId !== id || current.history || this.view.pending.has(`history:${id}`)) return;
+        const latestInWindow = this.view.messagesByRoom[id]?.at(-1)?.seq;
+        const before = this.view.historyByRoom[id]?.atLatest === false && latestInWindow !== undefined ? latestInWindow + 1 : undefined;
+        const refreshThrough = latestInWindow === undefined ? undefined : before === undefined ? room.lastMessageSeq : latestInWindow;
+        current.history = this.action(`history:${id}`, () =>
+          this.request({ type: "history", roomId: id, ...(before === undefined ? {} : { before }) }, undefined, id, undefined, before !== undefined, refreshThrough).catch(error => {
+            if (this.readings.get(id) === current && this.socket === current.socket) throw error;
+          }), true, { clearError: false });
         void current.history.catch(() => {});
       }, error => {
         if (this.readings.get(id) === current && this.socket === current.socket && this.view.connection === "connected") {
@@ -1162,6 +1246,13 @@ export class ChannelSession {
     for (const id of this.view.interactionsByRoom.keys()) if (!keep.has(id)) this.closeInteraction(id);
     for (const [id] of this.readings) if (!keep.has(id)) {
       this.closeInteraction(id); this.readings.delete(id);
+      for (const [requestId, request] of this.requests) if (request.roomId === id && request.history) {
+        this.requests.delete(requestId);
+        request.reject(new DOMException("Read cancelled", "AbortError"));
+      }
+      const messagesByRoom = { ...this.view.messagesByRoom }, historyByRoom = { ...this.view.historyByRoom };
+      delete messagesByRoom[id]; delete historyByRoom[id];
+      this.patch({ messagesByRoom, historyByRoom });
     }
     for (const id of this.readingRooms) {
       if (keep.has(id) && this.readings.has(id)) continue;
@@ -1259,6 +1350,15 @@ export class ChannelSession {
     if (this.outgoingMessages.get(roomId) === attempt) this.outgoingMessages.delete(roomId);
     if (this.view.historyByRoom[roomId]?.atLatest === false) void this.requestHistory(roomId, undefined, false, { clearError: false }).catch(() => {});
   });
+  deleteMessage = (roomId: string, messageSeq: number): Promise<void> =>
+    this.action(`delete-message:${roomId}:${messageSeq}`, () => this.request({ type: "delete_message", roomId, messageSeq }), false);
+  purgeRoomHistory = (roomId: string): Promise<void> => this.action(`clear-history:${roomId}`, () => {
+    const room = this.view.state?.channel.rooms.find(value => value.id === roomId && value.authorized && value.available);
+    if (!room) throw new Error("room_unavailable");
+    return this.request({ type: "clear_history", roomId, throughSeq: room.lastMessageSeq });
+  }, false);
+  clearLocalRoomCache = (roomId: string): Promise<void> =>
+    this.action(`clear-local-cache:${roomId}`, () => this.attachments.clearLocalCache(roomId), false);
   loadHistory = (roomId: string): Promise<void> => this.requestHistory(roomId, this.view.historyByRoom[roomId]?.before);
   loadLatestHistory = (roomId: string): Promise<void> => this.requestHistory(roomId);
   loadMessage = async (roomId: string, seq: number): Promise<void> => {
@@ -1310,18 +1410,30 @@ export class ChannelSession {
     stored(nameKey, name.trim());
   }, false);
   updateDomain = (settings: DomainSettings, reportError = true): Promise<void> => this.action("domain", () => this.request({ type: "update_domain", ...settings }), reportError);
-  createRoom = (settings: RoomSettings, reportError = true): Promise<string> => this.action("create-room", async () => {
-    const app = this.app?.connected ? this.app : undefined;
-    const state = this.view.state, self = this.view.self, sessionId = this.view.sessionId;
-    if (!state || !self || !sessionId) throw new Error("disconnected");
+  setRoomCreationPolicy = (policy: Extract<ChannelCommand, { type: "set_room_creation_policy" }>["policy"], reportError = true): Promise<void> =>
+    this.action("domain", () => this.request({ type: "set_room_creation_policy", policy }), reportError);
+  private async allocateRoom(settings: RoomSettings): Promise<RoomSummary> {
     const current = this.sessionContext();
+    const serverHosted = this.view.state!.channel.hostingMode === "hosted";
     let room: RoomSummary | undefined;
-    await this.request({ type: "create_room", room: roomSummarySchema.parse({ ...settings, id: "new", creatorId: self.id,
-      hasPassword: settings.access === "private" && Boolean(settings.password) }) }, event => {
+    const password = settings.access === "private" && settings.password ? settings.password : undefined;
+    await this.request({ type: "create_room", room: roomSummarySchema.parse({ ...settings, id: "new", creatorId: this.view.self!.id, hasPassword: Boolean(password) }),
+      ...(serverHosted ? { password, allowServiceRelay: settings.allowServiceRelay } : {}) }, event => {
       if (event.type === "room_created") room = event.room;
     });
     current();
     if (!room) throw new Error("invalid_response");
+    return room;
+  }
+  createRoom = (settings: RoomSettings, reportError = true): Promise<string> => this.action("create-room", async () => {
+    const app = this.app?.connected ? this.app : undefined;
+    const state = this.view.state, self = this.view.self, sessionId = this.view.sessionId;
+    if (!state || !self || !sessionId) throw new Error("disconnected");
+    const room = await this.allocateRoom(settings);
+    if (state.channel.hostingMode === "hosted") {
+      await this.request({ type: "browse", roomId: room.id, active: true });
+      return room.id;
+    }
     const runtime = await loadRoomHosting(), roomId = room.id;
     const policy = await runtime.createRoomPolicy({ ...settings, id: roomId, creatorId: self.id });
     if (app) {
@@ -1402,6 +1514,7 @@ export class ChannelSession {
     const check = this.sessionContext(), state = this.view.state!, self = this.view.self!;
     const room = state.channel.rooms.find(room => room.id === roomId), delivery = room?.delivery;
     if (!room?.available || !delivery) throw new Error("room_unavailable");
+    if (room.creatorId !== self.id) throw new Error("room_host_unavailable");
     const current = () => {
       check();
       const next = this.view.state?.channel.rooms.find(room => room.id === roomId)?.delivery;
@@ -1445,6 +1558,7 @@ export class ChannelSession {
     const byKey = new Map(retained.map(file => [JSON.stringify([file.key.messageSeq, file.key.attachmentId]), file]));
     for await (const row of snapshot.rows) {
       check();
+      if (!("attachments" in row)) continue;
       if (metadata.kind === "room_copy" && !row.archivedAuthorName) {
         authors.add(row.userId);
         if (authors.size >= PROFILE_PAGE_SIZE) await readAuthors();
@@ -1495,12 +1609,12 @@ export class ChannelSession {
         } catch (error) { await stage?.close(); throw error; }
       } else {
         snapshot = await owner.snapshot!(); owner.current();
-        metadata = { kind: "room", version: 2, domainId: this.view.state!.channel.id,
+        metadata = { kind: "room", version: 3, domainId: this.view.state!.channel.id,
           policy: JSON.parse(snapshot.policy), retainedFiles: [] };
       }
       if (copy) {
         const { name, icon, voiceBitrate, relayCapacity } = metadata.policy;
-        return await this.writeRoomSnapshot(snapshot!, { kind: "room_copy", version: 1,
+        return await this.writeRoomSnapshot(snapshot!, { kind: "room_copy", version: 2,
           roomInfo: copy.includeRoomInfo ? { name, icon, voiceBitrate, relayCapacity } : undefined,
           authors: {}, retainedFiles: [] }, retained, owner.current);
       }
@@ -1615,11 +1729,13 @@ export class ChannelSession {
 
   importRoomCopy = (archive: Blob, settings: RoomSettings): Promise<{ roomId: string; cached: boolean }> => this.action("room-backup", async () => {
     const current = this.sessionContext(), state = this.view.state!, self = this.view.self!;
+    const socket = this.socket;
+    if (state.channel.hostingMode === "hosted") throw new Error("room_host_unavailable");
     const runtime = await loadRoomHosting();
     const policy = await runtime.createRoomPolicy({ ...settings, allowServiceRelay: false, id: crypto.randomUUID(), creatorId: self.id });
     current();
     let stage: BrowserRoomStage | undefined, importer: BackupHistoryImport | undefined, converted: Blob;
-    let conversionSucceeded = false;
+    let reservation: string | undefined;
     const contents = new Map<string, File>();
     try {
       const metadata = await readBackup(archive, {
@@ -1634,16 +1750,22 @@ export class ChannelSession {
       });
       current(); importer!.finish();
       if (metadata.kind !== "room_copy") throw new Error("expected_room_copy");
-      converted = await writeBackup({ kind: "room", version: 2, domainId: state.channel.id,
-        policy: JSON.parse(policy), retainedFiles: metadata.retainedFiles }, stage!.rows,
+      const room = await this.allocateRoom(settings);
+      reservation = room.id;
+      converted = await writeBackup({ kind: "room", version: 3, domainId: state.channel.id,
+        policy: { ...JSON.parse(policy), id: room.id }, retainedFiles: metadata.retainedFiles }, stage!.rows,
         async entry => contents.get(entry.attachment.sha256.toLowerCase())!);
-      conversionSucceeded = true;
+      const finished = stage!;
+      stage = undefined;
+      await finished.close();
+      current();
+    } catch (error) {
+      if (reservation && this.socket === socket) this.write({ type: "delete_room", roomId: reservation, deleteData: false });
+      throw error;
     } finally {
       importer?.free();
-      try { await stage?.close(); }
-      catch (error) { if (conversionSucceeded) throw error; }
+      await stage?.close().catch(() => {});
     }
-    current();
     return this.restoreRoomArchive(converted);
   }, false);
 
@@ -1652,6 +1774,7 @@ export class ChannelSession {
 
   private async restoreRoomArchive(archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }> {
     const initial = this.sessionContext(), owner = roomId ? await this.backupOwner(roomId) : undefined;
+    if (!roomId && this.view.state!.channel.hostingMode === "hosted") throw new Error("room_host_unavailable");
     let stage: BrowserRoomStage | undefined, rollback: (() => Promise<void>) | undefined, committed = false;
     const contents = new Map<string, File>();
     try {
@@ -1670,11 +1793,6 @@ export class ChannelSession {
       if (!roomId && this.view.state!.channel.rooms.some(room => room.id === metadata.policy.id && room.available)) throw new Error("room_host_conflict");
       if (roomId && metadata.policy.creatorId !== this.view.self!.id) throw new Error("backup_identity_required");
       rollback = await this.admitBackupIdentity(metadata);
-      const admission = this.sessionContext();
-      if (!this.view.state!.channel.rooms.some(room => room.id === metadata.policy.id)) {
-        await this.request({ type: "admit_room", room: roomSummarySchema.parse({ ...metadata.policy, hasPassword: metadata.policy.passwordHash != null }) });
-        admission();
-      }
       const check = this.sessionContext(), target = metadata.policy.id;
       const app = this.app?.connected ? this.app : undefined;
       const native = owner?.native ?? (!roomId && app ? { restore: (blob: Blob) => app.restoreRoom(blob) } : undefined);
@@ -1693,6 +1811,8 @@ export class ChannelSession {
         }
       }
       else {
+        await this.request({ type: "admit_room", room: roomSummarySchema.parse({ ...metadata.policy, hasPassword: metadata.policy.passwordHash != null }) });
+        check(); owner?.current();
         const hosted = this.hostedRooms.get(target);
         // The transaction retires the durable writer. Keep the old host alive
         // until commit so a storage rollback needs no competing registration.
@@ -1726,6 +1846,7 @@ export class ChannelSession {
         throw new Error("room_restored_connection_failed");
       }
       await rollback?.();
+      if (error instanceof Error && error.message === "room_not_in_domain") throw new Error("backup_room_not_admitted");
       throw error;
     }
     finally {
@@ -1734,39 +1855,35 @@ export class ChannelSession {
   }
 
   updateRoom = (roomId: string, settings: RoomSettings, reportError = true): Promise<void> => this.action(`room:${roomId}`, () => this.request({ type: "update_room", roomId, ...settings }), reportError);
-  setRelayOverride = (roomId: string, capacity: number | null, reportError = true): Promise<void> => this.action(`relay:${roomId}`, async () => {
-    const current = this.sessionContext();
-    const key = `${this.view.state!.channel.id}/${roomId}`;
-    await this.request({ type: "relay_capacity", roomId, capacity });
-    current();
-    const relayCapacityByRoom = { ...readRoomPreferences().relayCapacityByRoom };
-    if (capacity === null) delete relayCapacityByRoom[key];
-    else relayCapacityByRoom[key] = capacity;
-    saveRoomPreferences({ relayCapacityByRoom });
-  }, reportError);
-  appRelayCapacity = async (roomId: string, signal?: AbortSignal): Promise<NativeRelayCapacity> => {
+  setForwardingLimit = (forwardingLimit: number): void => {
+    const { self, sessionId, connection } = this.view, state = this.forwardingState;
+    if (!self || !sessionId || !state || !Number.isInteger(forwardingLimit) || forwardingLimit < -1 || forwardingLimit > MAX_RELAY_CAPACITY) return;
+    const key = JSON.stringify([state.channel.id, self.id]);
+    saveRoomPreferences({ forwardingLimitByIdentity: { ...readRoomPreferences().forwardingLimitByIdentity, [key]: forwardingLimit } });
+    this.patch({ forwardingLimit });
+    if (connection === "connected") this.applyForwarding(sessionId, state, self.id);
+  };
+  appRelayCapacity = async (signal?: AbortSignal): Promise<NativeRelayCapacity> => {
     signal?.throwIfAborted();
-    const current = this.sessionContext(), context = this.connectionContext(roomId), app = this.app;
+    const current = this.sessionContext(), app = this.app;
     if (!app?.connected) throw new Error("app_disconnected");
-    const result = await app.relayCapacity(roomId, signal);
-    current(); context.current(); signal?.throwIfAborted();
-    if (this.app !== app || !app.connected) throw new Error("room_context_changed");
-    if (result.roomId !== roomId || result.bindingId !== context.bindingId) throw new Error("invalid_response");
+    const result = await app.relayCapacity(signal);
+    current(); signal?.throwIfAborted();
+    if (this.app !== app || !app.connected) throw new Error("app_disconnected");
     return result;
   };
   setAppRelayOverride = (previous: NativeRelayCapacity, capacity: number | null, reportError = true): Promise<NativeRelayCapacity> =>
-    this.action(`app-relay:${previous.roomId}`, async () => {
-      const current = this.sessionContext(), context = this.connectionContext(previous.roomId), app = this.app;
+    this.action("app-relay", async () => {
+      const current = this.sessionContext(), app = this.app;
       if (!app?.connected) throw new Error("app_disconnected");
-      if (previous.bindingId !== context.bindingId) throw new Error("room_context_changed");
       const result = await app.setRelayCapacity(previous, capacity);
-      current(); context.current();
-      if (this.app !== app || !app.connected) throw new Error("room_context_changed");
-      if (result.roomId !== previous.roomId || result.bindingId !== previous.bindingId || result.sessionId !== previous.sessionId)
-        throw new Error("room_context_changed");
+      current();
+      if (this.app !== app || !app.connected || result.sessionId !== previous.sessionId) throw new Error("app_disconnected");
       return result;
     }, reportError);
   deleteRoom = (roomId: string, deleteData: boolean, reportError = true): Promise<{ dataRemoved: boolean }> => this.action(`delete:${roomId}`, async () => {
+    const socket = this.socket;
+    if (this.view.error === "room_data_removal_unconfirmed") this.clearError();
     let dataRemoved: boolean | undefined;
     await this.request({ type: "delete_room", roomId, deleteData }, event => {
       if (event.type !== "room_reply" || event.result.type !== "deleted" || typeof event.result.dataRemoved !== "boolean") throw new Error("invalid_response");
@@ -1774,6 +1891,8 @@ export class ChannelSession {
     });
     if (dataRemoved === undefined) throw new Error("invalid_response");
     if (this.roomId === roomId) this.browse("");
+    // The directory projection can close Room settings before the deletion result arrives.
+    if (deleteData && !dataRemoved && this.socket === socket) this.patch({ error: "room_data_removal_unconfirmed" });
     return { dataRemoved };
   }, reportError);
 
@@ -1971,6 +2090,7 @@ export class ChannelSession {
   startScreen = (roomId: string, source: BrowserCaptureSource = "browser", deviceId = ""): Promise<void> => this.action(`screen:${roomId}`, async () => {
     if (source === "camera" ? !navigator.mediaDevices?.getUserMedia : !navigator.mediaDevices?.getDisplayMedia) throw new Error("capture_unavailable");
     const { share, selection, current } = this.selectScreen(roomId);
+    let context = this.local.get(share.id)?.audio ? null : HostAudio.activate();
     let candidate: MediaStream | undefined;
     let audio: HostAudio | undefined;
     try {
@@ -2004,7 +2124,8 @@ export class ChannelSession {
         });
         audio = mixer;
         audio.setVolume(share.volume.muted ? 0 : share.volume.level);
-        candidate = await audio.start(selection.controller.signal);
+        candidate = audio.start(context);
+        context = null;
         if (!audio.outputGainAvailable && audio.sourceAudioAvailable && (share.volume.muted || share.volume.level !== 1)) throw new Error("source_audio_unavailable");
       }
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
@@ -2090,14 +2211,16 @@ export class ChannelSession {
         await stopping;
       }
     } finally {
+      void context?.close().catch(() => {});
       audio?.dispose();
       candidate?.getTracks().forEach(track => track.stop());
       this.finishScreenSelection(roomId, share, selection);
     }
   });
   private retireWatchPlayer(id: string): void {
-    this.watchPlayers.get(id)?.close();
+    const player = this.watchPlayers.get(id);
     this.watchPlayers.delete(id);
+    player?.close();
   }
   private async sampleWatchClock(id: string, player: WatchPlayer): Promise<void> {
     const start = performance.now();
@@ -2366,15 +2489,19 @@ export class ChannelSession {
     const current = () => this.sourceSelections.get(roomId) === selection;
     const id = crypto.randomUUID();
     const player = this.makeWatchPlayer(id, roomId, true, media);
+    const candidate = { player, stopping: false };
     let committed = false;
+    let startSocket: WebSocket | null = null;
     try {
       await player.ready(selection.controller.signal);
       const initial = await media.read();
       if (!current()) throw new DOMException("Cancelled", "AbortError");
       this.watchPlayers.set(id, player);
+      selection.watchCandidate = candidate;
       selection.committing = true;
       this.patch({});
       const start = performance.now();
+      startSocket = this.socket;
       await this.request({ type: "start_watch", roomId, id, source, ...(byteSource ? { byteSource } : {}),
         playback: { timeline: initial.live ? "program" : "media", position: initial.position, paused: true, rate: initial.rate, anchorTime: 0 } }, event => {
         if (event.type === "room_reply" && event.result.type === "watch_ready" && typeof event.result.serverTime === "number")
@@ -2382,6 +2509,7 @@ export class ChannelSession {
       }, roomId);
       if (!current() || this.watchPlayers.get(id) !== player) throw new DOMException("Cancelled", "AbortError");
       committed = true;
+      delete selection.watchCandidate;
       if (media instanceof PageSuppliedMedia) void media.page.hide().catch(() => {});
       player.activate(async playback => {
         if (this.watchPlayers.get(id) === player && this.view.connection === "connected")
@@ -2404,7 +2532,9 @@ export class ChannelSession {
       if (!committed) {
         if (this.watchPlayers.get(id) === player) this.retireWatchPlayer(id);
         else player.close();
-        this.send({ type: "stop_watch", roomId, id });
+        // Once submitted, this selection owns rollback. A replacement socket
+        // reconciles orphaned activities from Welcome.
+        if (!candidate.stopping && startSocket && this.socket === startSocket) this.send({ type: "stop_watch", roomId, id });
       }
       this.finishSourceSelection(roomId, selection);
     }
@@ -2462,6 +2592,8 @@ export class ChannelSession {
   stopWatch = async (id: string): Promise<void> => {
     const player = this.watchPlayers.get(id);
     if (!player?.owner) return;
+    const candidate = this.sourceSelections.get(player.roomId)?.watchCandidate;
+    if (candidate?.player === player && this.view.connection === "connected") candidate.stopping = true;
     this.retireWatchPlayer(id);
     this.refreshActivity();
     this.browseRooms();
@@ -3124,6 +3256,9 @@ export class ChannelSession {
   }
 
   private releaseMedia(): void {
+    this.forwardingBudget?.free();
+    this.forwardingBudget = undefined;
+    this.forwardingState = undefined;
     this.closeInteractions();
     this.readings.clear();
     this.readingRooms.clear();

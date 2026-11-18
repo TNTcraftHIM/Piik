@@ -67,7 +67,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 19;
+const PROTOCOL: u8 = 21;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -4425,7 +4425,7 @@ mod page_contract_tests {
     #[test]
     fn relay_capacity_app_operation_keeps_read_and_set_scopes_explicit() {
         let read: Request = serde_json::from_value(
-            json!({"id":"read","type":"relay_capacity","action":"read","roomId":"owned"}),
+            json!({"id":"read","type":"relay_capacity","action":"read"}),
         )
         .unwrap();
         assert!(matches!(
@@ -4434,9 +4434,9 @@ mod page_contract_tests {
                 piik_channel_native::session::RelayCapacityRequest::Read { .. }
             )
         ));
-        let mut set = json!({"id":"set","type":"relay_capacity","action":"set","roomId":"owned","sessionId":Uuid::new_v4(),"bindingId":Uuid::new_v4(),"capacity":null});
+        let mut set = json!({"id":"set","type":"relay_capacity","action":"set","sessionId":Uuid::new_v4(),"capacity":null});
         assert!(serde_json::from_value::<Request>(set.clone()).is_ok());
-        set.as_object_mut().unwrap().remove("bindingId");
+        set.as_object_mut().unwrap().remove("sessionId");
         assert!(serde_json::from_value::<Request>(set).is_err());
     }
     #[test]

@@ -1,4 +1,4 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import { once } from "node:events";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { test } from "node:test";
@@ -83,6 +83,10 @@ test("the frontend accepts real cross-room publications and subscriptions", { ti
       : (await reader.wait(event => event.type === "state" && event.state.channel.rooms.length === 3, "Server rooms registered")).state;
     const rooms = state.channel.rooms;
     assert.equal(rooms.length, 3);
+    assert.equal(state.channel.hostingMode, "lightweight");
+    assert.equal(state.channel.roomCreationPolicy, "ordinary");
+    assert.deepEqual([...state.channel.managedRoomIds].sort(), rooms.map(room => room.id).sort());
+    assert.deepEqual(clients[1].welcome.state.channel.managedRoomIds, []);
     for (const room of rooms) for (const client of clients) {
       assert.equal((await client.request({ type: "voice", roomId: room.id, joined: true, muted: false, deafened: false })).type, "ack");
       for (const kind of ["screen", "voice"]) {

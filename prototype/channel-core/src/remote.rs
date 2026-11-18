@@ -5,7 +5,7 @@ use crate::{
     room::RoomSnapshot,
     wire::{Room, RoomAccess, RoomCapabilities},
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -37,11 +37,17 @@ pub(crate) type RetiredRoomReply = (String, RoomReply);
 #[derive(Clone)]
 pub(crate) struct RemoteRoom {
     pub summary: RoomSummary,
+    pub reservation: Option<Uuid>,
+    pub known_sessions: BTreeSet<Uuid>,
     pub binding: Option<Binding>,
     pub projection: Option<RoomProjection>,
 }
 
 impl RemoteRoom {
+    pub fn occupies_slot(&self) -> bool {
+        self.reservation.is_some() || self.binding.is_some()
+    }
+
     pub fn failed_pair(&mut self, first: Uuid, second: Uuid) -> bool {
         let (Some(binding), Some(projection)) = (&mut self.binding, &mut self.projection) else {
             return false;
@@ -115,24 +121,72 @@ impl RemoteRoom {
     pub fn restored(summary: RoomSummary) -> Self {
         Self {
             summary,
+            reservation: None,
+            known_sessions: BTreeSet::new(),
             binding: None,
             projection: None,
         }
     }
 
+    pub(crate) fn planning_sessions(
+        &self,
+        service: Option<ServiceEndpoint>,
+        actor: Option<Uuid>,
+    ) -> BTreeSet<Uuid> {
+        let Some((binding, projection)) = self.binding.as_ref().zip(self.projection.as_ref())
+        else {
+            return BTreeSet::new();
+        };
+        if binding.applied_revision < binding.projection_floor {
+            return BTreeSet::new();
+        }
+        let mut sessions: BTreeSet<_> = projection
+            .participant_session_ids
+            .iter()
+            .copied()
+            .chain([binding.session])
+            .chain(actor)
+            .chain(
+                projection
+                    .views
+                    .iter()
+                    .filter(|(_, view)| !view.files.is_empty() || !view.watch_bytes.is_empty())
+                    .map(|(id, _)| *id),
+            )
+            .filter(|id| projection.views.get(id).is_some_and(|view| view.authorized))
+            .collect();
+        if let Some(service) =
+            service.filter(|_| projection.views.values().any(|v| v.allow_service_relay))
+        {
+            sessions.insert(service.session_id);
+        }
+        sessions
+    }
+
     pub fn input(
         &mut self,
+        channel_owner_id: Uuid,
         endpoints: BTreeMap<Uuid, Endpoint>,
         service_endpoint: Option<ServiceEndpoint>,
+        pairs: impl Iterator<Item = (Uuid, Uuid)>,
         action: HostAction,
         now: u64,
     ) -> Result<(Uuid, HostInput), &'static str> {
+        let actor = match &action {
+            HostAction::Command { context, .. } => Some(context.session_id),
+            _ => None,
+        };
+        let sessions = self.planning_sessions(service_endpoint, actor);
+        let confirmed_pairs = pairs
+            .filter(|(a, b)| sessions.contains(a) && sessions.contains(b))
+            .collect();
         let binding = self.binding.as_mut().ok_or("room_host_offline")?;
         binding.failed_pairs.retain(|(first, second), _| {
             endpoints.contains_key(first) && endpoints.contains_key(second)
         });
         let owner = match &action {
             HostAction::Command { context, .. }
+            | HostAction::RemoveHostedRoom { context }
             | HostAction::Revoke { context, .. }
             | HostAction::FlowState { context, .. }
             | HostAction::BaseState { context, .. } => Some(ReplyOwner::Request {
@@ -141,13 +195,14 @@ impl RemoteRoom {
                 completion: None,
                 delete: matches!(
                     &action,
-                    HostAction::Command {
-                        command: crate::wire::Command::DeleteRoom {
-                            delete_data: true,
+                    HostAction::RemoveHostedRoom { .. }
+                        | HostAction::Command {
+                            command: crate::wire::Command::DeleteRoom {
+                                delete_data: true,
+                                ..
+                            },
                             ..
-                        },
-                        ..
-                    }
+                        }
                 ),
             }),
             HostAction::RouteWake => Some(ReplyOwner::RouteWake),
@@ -166,10 +221,12 @@ impl RemoteRoom {
         Ok((
             binding.session,
             HostInput {
+                channel_owner_id,
                 now,
                 binding_id: binding.id,
                 host_session_id: binding.session,
                 revision: binding.revision,
+                confirmed_pairs,
                 failed_pairs: binding
                     .failed_pairs
                     .iter()
@@ -187,15 +244,23 @@ impl RemoteRoom {
     }
 
     pub fn snapshot(&self, member: Member, session: Uuid, available: bool) -> Option<RoomSnapshot> {
-        if let Some(view) = self
-            .projection
-            .as_ref()
-            .and_then(|p| p.snapshot(session, available))
-        {
-            return Some(view);
+        // Existing participant work can survive a signaling-only disconnect
+        // until the binding retires. Public directory visitors see no such row.
+        let known = self.known_sessions.contains(&session);
+        if available || (self.binding.is_some() && known) {
+            if let Some(projection) = &self.projection {
+                if projection.views.contains_key(&session) {
+                    return projection.snapshot(session, available);
+                }
+            }
         }
         let manager = member.user_id == self.summary.creator_id;
-        if self.summary.hidden && !manager {
+        let summary = self
+            .projection
+            .as_ref()
+            .map_or(&self.summary, |p| &p.summary);
+        let discoverable = available && self.projection.is_some() && !summary.hidden;
+        if !manager && !discoverable && !(known && self.projection.is_some()) {
             return None;
         }
         Some(RoomSnapshot {
@@ -204,19 +269,19 @@ impl RemoteRoom {
             watch_bytes: vec![],
             room: Room {
                 delivery: None,
-                id: self.summary.id.clone(),
-                name: self.summary.name.clone(),
-                icon: self.summary.icon.clone(),
-                creator_id: self.summary.creator_id,
-                access: self.summary.access,
-                hidden: self.summary.hidden,
-                has_password: self.summary.has_password,
-                voice_bitrate: self.summary.voice_bitrate,
-                relay_capacity: self.summary.relay_capacity,
+                id: summary.id.clone(),
+                name: summary.name.clone(),
+                icon: summary.icon.clone(),
+                creator_id: summary.creator_id,
+                access: summary.access,
+                hidden: summary.hidden,
+                has_password: summary.has_password,
+                voice_bitrate: summary.voice_bitrate,
+                relay_capacity: summary.relay_capacity,
                 relay_override: None,
-                authorized: manager || self.summary.access == RoomAccess::Public,
+                authorized: manager || known || summary.access == RoomAccess::Public,
                 can_manage: manager,
-                available: false,
+                available: discoverable,
                 reading: false,
                 participant_session_ids: Vec::new(),
                 last_message_seq: 0,

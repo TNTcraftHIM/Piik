@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-17
+Last reviewed: 2026-11-18
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -12,12 +12,38 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+### 3.0 implementation sequence
+
+1. Build the two Core changes in parallel. Channel creation assigns the room writer
+   and enforces directory policy and owner removal. The room planner consumes a
+   confirmed connection graph, scoped demand and per-kind grants. Check lightweight
+   and hosted creation, known and missing pairs, and independent flow retirement.
+2. Connect the existing Browser, App and Server adapters and shared Web UI.
+   Exercise room creation, moderation, history and thumbnail cleanup through
+   ordinary user actions. Exercise peer and service forwarding with an independent
+   receiver, including a failed attempt, an offline room and a working-path handoff.
+3. Measure startup, coverage, waiting time, attempts, idle cost and disruption
+   under matched workloads. Tune automatic fanout and retry/standby budgets from
+   those results. Retire superseded branches as each path is integrated and
+   resume the remaining frontend, backend and feature work below.
+
+### Active work
+
 - [ ] **3.0 architecture convergence.** Trace product responsibilities through
   the [module, contract and lifecycle owners](./standards/engineering.md#module-map)
   into current functions and resource lifetimes. Use source-linked diagrams to
   identify competing writers, unnecessary coupling and replaceable private
   experiments. Converge each affected boundary before migrating its consumers;
   continue independent confirmed fixes and scoped experiments in parallel.
+- [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
+  [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
+  with on-demand routing on Browser/App combinations. Measure time to usable media,
+  coverage, idle cost and disruption. Exercise concurrent kinds on one uplink
+  and recovery from a refused file branch before tuning automatic fanout.
+- [ ] **Matched-package room acceptance.** Exercise hosted/private history,
+  invite-only public Demo discovery, removal of offline rooms and archive
+  recovery on the supported distributions. The [hosting design](./research/server-hosting-plan.md)
+  owns the lightweight, hosted and moderation contracts.
 - [ ] **Video-orientation capability.** Align negotiated rotation extensions
   with the metadata actually carried through Native and pooled Browser media.
   Verify sender behavior before claiming rotated-camera interoperability.
@@ -206,8 +232,9 @@ the feedback period; they do not delay that delivery.
   overlapping candidates before enabling automatic quality trials.
 - [ ] **Field-test same-room screen recovery.** On restricted networks,
   compare [on-demand relay](./research/channel-network-design.md#idle-room-peers-for-screen-recovery)
-  with sparse warm links. Measure first picture, recovery when a peer leaves,
-  load on an existing call and the cost of finding a path through two idle peers.
+  under the [layered-forwarding validation plan](./research/channel-forwarding-plan.md#review-and-validation-plan)
+  after model review. Measure first picture, recovery when a peer leaves, load
+  on an existing call and the cost of finding a path through two idle peers.
 - [ ] **NAT field coverage.** The bounded random-mapping Native implementation
   and ordinary Native-to-Browser linear extension have controlled media and
   retirement evidence. Measure difficult physical networks and sustained

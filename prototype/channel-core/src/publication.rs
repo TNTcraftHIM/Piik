@@ -1,6 +1,6 @@
 use crate::{
     identity::Endpoint,
-    routes::{BaseTree, Plan, Readiness, RelayLimits},
+    routes::{BaseTree, Plan, Readiness, RelayLimits, ScreenDemand},
     transport::Flow,
     wire::{FlowState, Kind, PublicationInfo},
 };
@@ -20,6 +20,7 @@ pub(crate) struct Publication {
     plan: Plan,
     leases: BTreeMap<Uuid, Flow>,
     operation: Option<RouteOperation>,
+    pub(crate) watch_order: Vec<Uuid>,
     reader_relays: BTreeSet<Uuid>,
     direct_attempted: BTreeSet<Uuid>,
     // A route retry does not erase the watching page's last delivery result.
@@ -98,6 +99,7 @@ impl Publication {
             reactions: Default::default(),
             leases: BTreeMap::new(),
             operation: None,
+            watch_order: Vec::new(),
             reader_relays: BTreeSet::new(),
             direct_attempted: BTreeSet::new(),
             failed_receivers: BTreeSet::new(),
@@ -123,6 +125,9 @@ impl Publication {
 
     pub fn retry_required(&mut self, requested: &BTreeSet<Uuid>, connected: &BTreeSet<Uuid>) {
         self.plan.retry_required(requested, connected);
+    }
+    pub fn forwarding_available(&mut self, sender: Uuid) {
+        self.plan.retry_parent(sender);
     }
 
     pub fn delivery_failed(&self, receiver: Uuid) -> bool {
@@ -195,8 +200,10 @@ impl Publication {
         readers: &BTreeMap<Uuid, (usize, bool)>,
         helpers: &BTreeMap<Uuid, Uuid>,
         limits: &RelayLimits,
+        neighbors: &BTreeMap<Uuid, BTreeSet<Uuid>>,
         now: u64,
     ) {
+        self.watch_order.retain(|viewer| requested.contains(viewer));
         self.expire(now);
         self.failed_receivers
             .retain(|receiver| requested.contains(receiver));
@@ -243,8 +250,40 @@ impl Publication {
                 .collect();
             paths
         } else {
-            self.plan
-                .reconcile(requested, available, connected, base, helpers, limits);
+            let relays: BTreeSet<_> = readers
+                .keys()
+                .copied()
+                .chain(service)
+                .chain(base.map(BaseTree::root))
+                .collect();
+            let screen = (self.info.kind == Kind::Screen).then_some(ScreenDemand {
+                order: &self.watch_order,
+                neighbors,
+                relays: &relays,
+            });
+            self.plan.reconcile_demand(
+                requested,
+                available,
+                connected,
+                base,
+                helpers,
+                limits,
+                screen.as_ref(),
+            );
+            if self.info.kind == Kind::Screen {
+                self.reader_relays.extend(
+                    self.plan
+                        .parents
+                        .values()
+                        .filter(|reader| {
+                            readers.get(reader).is_some_and(|(_, idle)| *idle)
+                                && **reader != self.plan.source
+                                && base.is_none_or(|base| base.root() != **reader)
+                                && !helpers.values().any(|helper| helper == *reader)
+                        })
+                        .copied(),
+                );
+            }
             // An unproved input has no picture to preserve. A proved branch
             // instead keeps every incumbent lease until the shared switch.
             for (viewer, helper) in helpers {

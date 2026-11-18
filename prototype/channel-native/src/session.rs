@@ -98,9 +98,9 @@ const SIGNALING_IDLE_TIMEOUT: Duration = Duration::from_secs(20);
 #[cfg(test)]
 mod composition_tests;
 #[cfg(test)]
-mod hosting_ready_tests;
-#[cfg(test)]
 mod connection_tests;
+#[cfg(test)]
+mod hosting_ready_tests;
 #[cfg(all(test, feature = "capture"))]
 mod tests;
 
@@ -118,13 +118,22 @@ struct RoomTurns {
     snapshot: watch::Sender<Option<Snapshot>>,
 }
 impl RoomTurns {
-    fn receive(&mut self, packet: SignedPacket) -> Result<Vec<SignedPacket>> {
+    fn receive(&mut self, packet: SignedPacket) -> Result<Vec<Command>> {
         let current = self.snapshot.borrow();
         let snapshot = current
             .as_ref()
             .ok_or_else(|| anyhow!("room_unavailable"))?;
-        let address = conversation::verify_delivery(&packet, self.local, snapshot)
+        // The writer can serve a private room without receiving a personal directory view.
+        let sender = snapshot
+            .sessions
+            .iter()
+            .find(|session| session.id == packet.sender)
+            .ok_or_else(|| anyhow!("session_expired"))?;
+        let address = conversation::verify_address(&packet, sender.signing_key)
             .map_err(anyhow::Error::msg)?;
+        if address.recipient != self.local {
+            bail!("invalid_conversation_scope");
+        }
         drop(current);
         let hosted = self
             .rooms
@@ -135,10 +144,17 @@ impl RoomTurns {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
-        let outcome = hosted
+        let mut outcome = hosted
             .dispatch_peer(&packet, now)
             .map_err(anyhow::Error::msg)?;
         let address = outcome.address.reply();
+        let mut commands = Vec::new();
+        if let Some(output) = outcome.projection_update.take() {
+            commands.push(Command::HostOutput {
+                room_id: address.room_id.clone(),
+                output,
+            });
+        }
         let mut replies = outcome.replies().map_err(anyhow::Error::msg)?;
         if let Some(record) = replies.iter().find_map(|reply| reply.record.broadcast()) {
             for reader in hosted.current_readers() {
@@ -153,11 +169,14 @@ impl RoomTurns {
                 }
             }
         }
-        replies
-            .iter()
-            .map(|reply| self.signer.sign(self.local, reply))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(anyhow::Error::msg)
+        for reply in replies {
+            let packet = self
+                .signer
+                .sign(self.local, &reply)
+                .map_err(anyhow::Error::msg)?;
+            commands.push(Command::Conversation { packet });
+        }
+        Ok(commands)
     }
     fn disconnected(&mut self) {
         self.snapshot.send_replace(None);
@@ -224,6 +243,7 @@ pub struct RoomFile {
 }
 
 struct Live {
+    forwarding_budget: piik_channel_core::forwarding::ForwardingBudget,
     session: Uuid,
     room: RoomTurns,
     peers: NativePeers,
@@ -232,9 +252,10 @@ struct Live {
 }
 
 struct Session {
+    forwarding_limit: Option<u8>,
     snapshot_job: Option<SnapshotJob>,
     config: Config,
-    service_admission: Option<mpsc::Sender<piik_channel_core::host::ServiceEndpoint>>,
+    service_admission: Option<mpsc::Sender<ServiceAdmission>>,
     files: Vec<RoomFile>,
     live: Option<Live>,
     recovery: Option<Instant>,
@@ -242,13 +263,17 @@ struct Session {
     hosting: Option<Hosting>,
     opening: BTreeMap<String, OpeningRoom>,
     pending_captures: BTreeMap<String, PendingCapture>,
-    pending_relay: BTreeMap<String, PendingRelay>,
 }
 
 pub struct OpenRoom {
     pub policy: RoomState,
     pub result: oneshot::Sender<Result<RoomSummary, String>>,
 }
+
+pub type ServiceAdmission = (
+    piik_channel_core::host::ServiceEndpoint,
+    oneshot::Sender<()>,
+);
 
 struct OpeningRoom {
     request_id: String,
@@ -487,30 +512,17 @@ fn capture_binding(state: &Snapshot, room_id: &str) -> Option<Uuid> {
     deny_unknown_fields
 )]
 pub enum RelayCapacityRequest {
-    Read {
-        room_id: String,
-    },
+    Read {},
     Set {
-        room_id: String,
         session_id: Uuid,
-        binding_id: Uuid,
         capacity: Option<u8>,
     },
 }
 #[derive(Clone, Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelayCapacityState {
-    pub room_id: String,
     pub session_id: Uuid,
-    pub binding_id: Uuid,
-    pub relay_capacity: u8,
     pub relay_override: Option<u8>,
-}
-struct PendingRelay {
-    room_id: String,
-    session_id: Uuid,
-    binding_id: Uuid,
-    result: oneshot::Sender<Result<RelayCapacityState, String>>,
 }
 #[derive(Debug)]
 pub struct WatchReaderRegistration {
@@ -540,6 +552,11 @@ pub enum HostCommand {
         result: oneshot::Sender<Result<NativeConnectionMetrics, String>>,
     },
     Open(OpenRoom),
+    DeleteRetired {
+        id: String,
+        creator: Uuid,
+        result: oneshot::Sender<bool>,
+    },
     Snapshot(SnapshotRoom),
     Restore(RestoreRoom),
     PrepareCapture(PrepareCapture),
@@ -573,6 +590,9 @@ impl HostCommand {
             }
             Self::ConnectionMetrics { result, .. } => {
                 let _ = result.send(Err("hosting_unavailable".into()));
+            }
+            Self::DeleteRetired { result, .. } => {
+                let _ = result.send(false);
             }
             Self::Open(request) => {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
@@ -619,6 +639,23 @@ pub struct Hosting {
     pub desktop: Option<crate::input::Desktop>,
 }
 
+impl Hosting {
+    fn forwarding_limit(&self) -> Result<Option<u8>> {
+        match std::fs::File::open(self.directory.join("forwarding-limit.json")) {
+            Ok(file) => {
+                let value: Option<u8> = serde_json::from_reader(file)?;
+                anyhow::ensure!(
+                    value.is_none_or(|n| n <= piik_channel_core::MAX_RELAY_CAPACITY),
+                    "invalid_relay_capacity"
+                );
+                Ok(value)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+}
+
 /// The calling App or Server owns this hosting future independently of its pages.
 pub async fn run(
     config: Config,
@@ -632,10 +669,11 @@ pub async fn run_host(
     config: Config,
     files: Vec<RoomFile>,
     hosting: Option<Hosting>,
-    service_admission: Option<mpsc::Sender<piik_channel_core::host::ServiceEndpoint>>,
+    service_admission: Option<mpsc::Sender<ServiceAdmission>>,
     stop: impl Future<Output = ()> + Send,
 ) -> Result<()> {
     let mut session = Session {
+        forwarding_limit: None,
         config,
         service_admission,
         files,
@@ -645,7 +683,7 @@ pub async fn run_host(
         hosting,
         opening: BTreeMap::new(),
         pending_captures: BTreeMap::new(),
-        pending_relay: BTreeMap::new(),
+
         snapshot_job: None,
     };
     let mut stop = std::pin::pin!(stop);
@@ -674,9 +712,6 @@ impl Session {
     }
 
     fn fail_pending_requests(&mut self, code: &str) {
-        for pending in std::mem::take(&mut self.pending_relay).into_values() {
-            let _ = pending.result.send(Err(code.into()));
-        }
         for request in std::mem::take(&mut self.pending_captures).into_values() {
             request.fail(code.into());
         }
@@ -920,15 +955,16 @@ impl Session {
                                     if let Some(live) = &self.live { live.peers.revoke_watch_reader(resource_id).await?; }
                                 },
                                 HostCommand::Describe(result) => {
-                                    let description = self.live.as_ref().map(|live| HostingDescription {
-                                        session_id: live.session, room_ids: live.room.rooms.keys().cloned().collect(),
-                                    }).ok_or_else(|| "hosting_unavailable".into());
-                                    let _ = result.send(description);
+                                    let _ = result.send(self.hosting_description());
                                 },
                                 HostCommand::ConnectionMetrics { room_id, publication_id, result } => {
                                     let measured = self.connection_metrics(&room_id, publication_id, socket).await.map_err(|error| error.to_string());
                                     let _ = result.send(measured);
                                 },
+                                HostCommand::DeleteRetired { id, creator, result } => {
+                                    let removed = self.delete_retired_room(&id, creator).is_ok();
+                                    let _ = result.send(removed);
+                                }
                                 HostCommand::Open(request) => self.open_room(request, socket).await?,
                                 HostCommand::Snapshot(request) => self.snapshot_room(request).await,
                                 HostCommand::Restore(request) => self.restore_room(request, socket).await?,
@@ -1001,24 +1037,6 @@ impl Session {
         }
     }
 
-    fn relay_capacity_state(&self, room_id: &str) -> Result<RelayCapacityState> {
-        let live = self
-            .live
-            .as_ref()
-            .ok_or_else(|| anyhow!("hosting_unavailable"))?;
-        let snapshot = live.room.snapshot.borrow();
-        let (room, binding) = snapshot
-            .as_ref()
-            .and_then(|state| available_room(state, room_id))
-            .ok_or_else(|| anyhow!("room_unavailable"))?;
-        Ok(RelayCapacityState {
-            room_id: room_id.into(),
-            session_id: live.session,
-            binding_id: binding.binding_id,
-            relay_capacity: room.relay_capacity,
-            relay_override: room.relay_override,
-        })
-    }
     async fn relay_capacity(
         &mut self,
         request: RelayCapacityRequest,
@@ -1028,78 +1046,39 @@ impl Session {
         if result.is_closed() {
             return Ok(());
         }
-        self.retire_relay_requests();
-        let RelayCapacityRequest::Set {
-            room_id,
-            session_id,
-            binding_id,
-            capacity,
-        } = request
-        else {
-            let RelayCapacityRequest::Read { room_id } = request else {
-                unreachable!()
-            };
-            let _ = result.send(
-                self.relay_capacity_state(&room_id)
-                    .map_err(|e| e.to_string()),
-            );
-            return Ok(());
-        };
-        let validation = (|| -> Result<()> {
-            let current = self.relay_capacity_state(&room_id)?;
-            anyhow::ensure!(
-                current.session_id == session_id && current.binding_id == binding_id,
-                "room_context_changed"
-            );
-            anyhow::ensure!(
-                capacity.is_none_or(|capacity| capacity <= piik_channel_core::MAX_RELAY_CAPACITY),
-                "invalid_relay_capacity"
-            );
-            anyhow::ensure!(
-                !self.pending_relay.values().any(|p| p.room_id == room_id),
-                "relay_capacity_pending"
-            );
-            Ok(())
-        })();
-        if let Err(error) = validation {
-            let _ = result.send(Err(error.to_string()));
-            return Ok(());
-        }
-        let id = Uuid::new_v4().to_string();
-        self.pending_relay.insert(
-            id.clone(),
-            PendingRelay {
-                room_id: room_id.clone(),
+        let response = async {
+            let live = self
+                .live
+                .as_ref()
+                .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+            let session_id = live.session;
+            if let RelayCapacityRequest::Set {
+                session_id: expected,
+                capacity,
+            } = request
+            {
+                anyhow::ensure!(expected == session_id, "app_context_changed");
+                anyhow::ensure!(
+                    capacity.is_none_or(|n| n <= piik_channel_core::MAX_RELAY_CAPACITY),
+                    "invalid_relay_capacity"
+                );
+                let hosting = self
+                    .hosting
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+                let file = tempfile::NamedTempFile::new_in(&hosting.directory)?;
+                serde_json::to_writer(file.as_file(), &capacity)?;
+                file.persist(hosting.directory.join("forwarding-limit.json"))?;
+                self.set_forwarding_limit(capacity, socket).await?;
+            }
+            Ok::<_, anyhow::Error>(RelayCapacityState {
                 session_id,
-                binding_id,
-                result,
-            },
-        );
-        write(
-            socket,
-            &Command::RelayCapacity { room_id, capacity },
-            Some(&id),
-        )
-        .await
-    }
-    fn retire_relay_requests(&mut self) {
-        let retired: Vec<_> = self
-            .pending_relay
-            .iter()
-            .filter_map(|(id, p)| {
-                let current = self.relay_capacity_state(&p.room_id);
-                (p.result.is_closed()
-                    || current.as_ref().is_err()
-                    || current.is_ok_and(|state| {
-                        state.session_id != p.session_id || state.binding_id != p.binding_id
-                    }))
-                .then_some(id.clone())
+                relay_override: self.forwarding_limit,
             })
-            .collect();
-        for id in retired {
-            let pending = self.pending_relay.remove(&id).unwrap();
-            let _ = pending.result.send(Err("room_context_changed".into()));
         }
+        .await;
+        let _ = result.send(response.map_err(|e| e.to_string()));
+        Ok(())
     }
     async fn connection_metrics(
         &mut self,
@@ -1201,6 +1180,7 @@ impl Session {
                     }
                     // No local room is opened until the actual domain admission agrees.
                     std::fs::create_dir_all(&hosting.directory)?;
+                    self.forwarding_limit = hosting.forwarding_limit()?;
                     for file in stored_rooms(&hosting.directory)? {
                         if !self.files.iter().any(|known| known.path == file.path) {
                             self.files.push(file);
@@ -1229,7 +1209,10 @@ impl Session {
                                     Err(error) => return Err(error),
                                 };
                                 file.id = policy.id;
-                                if !state.channel.rooms.iter().any(|room| room.id == file.id) {
+                                if !state.channel.rooms.iter().any(|room| room.id == file.id)
+                                    && !(self.service_admission.is_some()
+                                        && state.channel.managed_room_ids.contains(&file.id))
+                                {
                                     if file.bootstrap {
                                         new_rooms.insert(file.id.clone());
                                     } else {
@@ -1237,7 +1220,15 @@ impl Session {
                                         continue;
                                     }
                                 }
-                                HostedRoom::open(&file.path, &file.id, user)
+                                let creator = if self.service_admission.is_some()
+                                    && state.channel.hosting_mode
+                                        == piik_channel_core::wire::HostingMode::Hosted
+                                {
+                                    policy.creator_id
+                                } else {
+                                    user
+                                };
+                                HostedRoom::open(&file.path, &file.id, creator)
                             }
                             Err(error)
                                 if error.kind() == std::io::ErrorKind::NotFound
@@ -1303,6 +1294,7 @@ impl Session {
                         self.config.server_udp.clone(),
                     );
                     self.live = Some(Live {
+                        forwarding_budget: Default::default(),
                         session: session_id,
                         room: RoomTurns {
                             rooms,
@@ -1318,11 +1310,18 @@ impl Session {
                 self.recovery = None;
                 self.state(state, socket).await?;
                 if let Some(admission) = &self.service_admission {
+                    let (ack, registered) = oneshot::channel();
                     admission
-                        .send(piik_channel_core::host::ServiceEndpoint {
-                            session_id,
-                            connection_id,
-                        })
+                        .send((
+                            piik_channel_core::host::ServiceEndpoint {
+                                session_id,
+                                connection_id,
+                            },
+                            ack,
+                        ))
+                        .await
+                        .map_err(|_| anyhow!("service_registration_closed"))?;
+                    registered
                         .await
                         .map_err(|_| anyhow!("service_registration_closed"))?;
                 }
@@ -1364,7 +1363,16 @@ impl Session {
                     .await?;
                 }
                 for (request_id, room) in creating {
-                    write(socket, &Command::CreateRoom { room }, Some(&request_id)).await?;
+                    write(
+                        socket,
+                        &Command::CreateRoom {
+                            room,
+                            password: None,
+                            allow_service_relay: false,
+                        },
+                        Some(&request_id),
+                    )
+                    .await?;
                 }
                 let restoring: Vec<_> = self
                     .opening
@@ -1472,7 +1480,7 @@ impl Session {
                     let opening = self.opening.remove(&room_id).unwrap();
                     let replies = match opening.work {
                         OpeningWork::AdmitRestore(request) => {
-                            self.restore_room(request, socket).await?;
+                            self.install_room_backup(request, socket).await?;
                             return Ok(());
                         }
                         OpeningWork::Register { replies, .. } => replies,
@@ -1492,9 +1500,9 @@ impl Session {
             Event::Conversation { packet } => {
                 if let Some(live) = &mut self.live {
                     match live.room.receive(packet) {
-                        Ok(packets) => {
-                            for packet in packets {
-                                write(socket, &Command::Conversation { packet }, None).await?;
+                        Ok(commands) => {
+                            for command in commands {
+                                write(socket, &command, None).await?;
                             }
                         }
                         Err(error) => eprintln!("Native conversation unavailable: {error}"),
@@ -1541,40 +1549,6 @@ impl Session {
                 request_id: Some(id),
                 result,
             } => {
-                if self
-                    .pending_relay
-                    .get(&id)
-                    .is_some_and(|p| p.room_id == room_id)
-                {
-                    match result {
-                        RoomResult::Done => {
-                            let pending = self.pending_relay.remove(&id).unwrap();
-                            let current = self
-                                .relay_capacity_state(&room_id)
-                                .and_then(|state| {
-                                    anyhow::ensure!(
-                                        state.session_id == pending.session_id
-                                            && state.binding_id == pending.binding_id,
-                                        "room_context_changed"
-                                    );
-                                    Ok(state)
-                                })
-                                .map_err(|error| error.to_string());
-                            let _ = pending.result.send(current);
-                        }
-                        RoomResult::Error { code } => {
-                            let pending = self.pending_relay.remove(&id).unwrap();
-                            let _ = pending.result.send(Err(code));
-                        }
-                        _ => {
-                            let pending = self.pending_relay.remove(&id).unwrap();
-                            let _ = pending
-                                .result
-                                .send(Err("invalid_relay_capacity_reply".into()));
-                        }
-                    }
-                    return Ok(());
-                }
                 if self
                     .pending_captures
                     .get(&id)
@@ -1637,13 +1611,6 @@ impl Session {
                 }
             }
             Event::Error { code, request_id } => {
-                if let Some(pending) = request_id
-                    .as_ref()
-                    .and_then(|id| self.pending_relay.remove(id))
-                {
-                    let _ = pending.result.send(Err(code));
-                    return Ok(());
-                }
                 if let Some(room) = self.opening.iter().find_map(|(room, opening)| {
                     (!matches!(opening.work, OpeningWork::Register { .. })
                         && request_id.as_ref() == Some(&opening.request_id))
@@ -2207,6 +2174,35 @@ impl Session {
         }
     }
 
+    fn delete_retired_room(&mut self, id: &str, creator: Uuid) -> Result<()> {
+        let hosting = self
+            .hosting
+            .as_ref()
+            .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+        if self.service_admission.is_none() {
+            bail!("forbidden");
+        }
+        let live = self
+            .live
+            .as_mut()
+            .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+        if let Some(mut room) = live.room.rooms.remove(id) {
+            if room.summary().creator_id != creator {
+                bail!("owner_mismatch");
+            }
+            room.delete_data()?;
+        } else {
+            // Imported rooms may have a local filename different from their policy ID.
+            let file = stored_rooms(&hosting.directory)?
+                .into_iter()
+                .find(|file| file.id == id)
+                .ok_or_else(|| anyhow!("room_unavailable"))?;
+            HostedRoom::open(&file.path, id, creator)?.delete_data()?;
+        }
+        self.files.retain(|file| file.id != id);
+        Ok(())
+    }
+
     async fn open_room(&mut self, request: OpenRoom, socket: &mut Writer<'_>) -> Result<()> {
         let id = request.policy.id.clone();
         let installed = (|| -> Result<RoomSummary> {
@@ -2214,7 +2210,7 @@ impl Session {
                 .hosting
                 .as_ref()
                 .ok_or_else(|| anyhow!("hosting_control_closed"))?;
-            if request.policy.creator_id != hosting.identity.1 {
+            if self.service_admission.is_none() && request.policy.creator_id != hosting.identity.1 {
                 bail!("owner_mismatch");
             }
             let live = self
@@ -2227,7 +2223,7 @@ impl Session {
                 }
                 let path = hosting.directory.join(format!("{id}.sqlite"));
                 let host = if path.try_exists()? {
-                    HostedRoom::open(&path, &id, hosting.identity.1)?
+                    HostedRoom::open(&path, &id, request.policy.creator_id)?
                 } else {
                     HostedRoom::create(&path, request.policy)?
                 };
@@ -2267,6 +2263,24 @@ impl Session {
         .await
     }
 
+    fn hosting_description(&self) -> Result<HostingDescription, String> {
+        let (live, hosting) = self
+            .live
+            .as_ref()
+            .zip(self.hosting.as_ref())
+            .ok_or("hosting_unavailable")?;
+        Ok(HostingDescription {
+            session_id: live.session,
+            room_ids: live
+                .room
+                .rooms
+                .iter()
+                .filter(|(_, host)| host.creator_id() == hosting.identity.1)
+                .map(|(id, _)| id.clone())
+                .collect(),
+        })
+    }
+
     async fn snapshot_room(&mut self, request: SnapshotRoom) {
         if request.result.is_closed() {
             return;
@@ -2288,6 +2302,7 @@ impl Session {
                 .live
                 .as_ref()
                 .and_then(|live| live.room.rooms.get(&request.room_id))
+                .filter(|host| host.creator_id() == hosting.identity.1)
                 .ok_or_else(|| anyhow!("room_unavailable"))?;
             Ok((host.snapshot_source(), hosting.identity.0))
         })();
@@ -2330,7 +2345,7 @@ impl Session {
             return Ok(());
         }
         let id = request.snapshot.room.metadata().policy.id.clone();
-        let admission = (|| -> Result<bool> {
+        let admission = (|| -> Result<()> {
             let hosting = self
                 .hosting
                 .as_ref()
@@ -2343,30 +2358,35 @@ impl Session {
                 .live
                 .as_ref()
                 .ok_or_else(|| anyhow!("hosting_unavailable"))?;
-            let snapshot = live.room.snapshot.borrow();
-            let snapshot = snapshot
-                .as_ref()
-                .ok_or_else(|| anyhow!("hosting_unavailable"))?;
-            Ok(!snapshot.channel.rooms.iter().any(|room| room.id == id))
+            if live.room.snapshot.borrow().is_none() {
+                bail!("hosting_unavailable");
+            }
+            Ok(())
         })();
-        match admission {
-            Ok(true) => {
-                let request_id = Uuid::new_v4().to_string();
-                let room = RoomSummary::from_policy(&request.snapshot.room.metadata().policy);
-                self.opening.insert(
-                    id,
-                    OpeningRoom {
-                        request_id: request_id.clone(),
-                        work: OpeningWork::AdmitRestore(request),
-                    },
-                );
-                return write(socket, &Command::AdmitRoom { room }, Some(&request_id)).await;
-            }
-            Err(error) => {
-                let _ = request.result.send(Err(error.to_string()));
-                return Ok(());
-            }
-            Ok(false) => {}
+        if let Err(error) = admission {
+            let _ = request.result.send(Err(error.to_string()));
+            return Ok(());
+        }
+        let request_id = Uuid::new_v4().to_string();
+        let room = RoomSummary::from_policy(&request.snapshot.room.metadata().policy);
+        self.opening.insert(
+            id,
+            OpeningRoom {
+                request_id: request_id.clone(),
+                work: OpeningWork::AdmitRestore(request),
+            },
+        );
+        write(socket, &Command::AdmitRoom { room }, Some(&request_id)).await
+    }
+
+    async fn install_room_backup(
+        &mut self,
+        request: RestoreRoom,
+        socket: &mut Writer<'_>,
+    ) -> Result<()> {
+        let id = request.snapshot.room.metadata().policy.id.clone();
+        if request.result.is_closed() {
+            return Ok(());
         }
         let restored = (|| -> Result<(RoomSummary, Option<Uuid>)> {
             let hosting = self
@@ -2380,6 +2400,15 @@ impl Session {
                 .live
                 .as_mut()
                 .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+            if !live.room.snapshot.borrow().as_ref().is_some_and(|state| {
+                state
+                    .channel
+                    .rooms
+                    .iter()
+                    .any(|room| room.id == id && room.creator_id == hosting.identity.1)
+            }) {
+                bail!("room_not_in_domain");
+            }
             let previous = if let Some(host) = live.room.rooms.get_mut(&id) {
                 let previous = host.binding().ok_or_else(|| anyhow!("room_unavailable"))?;
                 host.replace(&request.snapshot.room, hosting.identity)?;
@@ -2470,11 +2499,29 @@ impl Session {
         Ok(())
     }
 
-    async fn state(&mut self, state: Snapshot, socket: &mut Writer<'_>) -> Result<()> {
+    async fn set_forwarding_limit(
+        &mut self,
+        limit: Option<u8>,
+        socket: &mut Writer<'_>,
+    ) -> Result<()> {
+        self.forwarding_limit = limit;
+        let state = self
+            .live
+            .as_ref()
+            .and_then(|live| live.room.snapshot.borrow().clone());
+        if let Some(state) = state {
+            self.state(state, socket).await?;
+        }
+        Ok(())
+    }
+
+    async fn state(&mut self, mut state: Snapshot, socket: &mut Writer<'_>) -> Result<()> {
         if let Some(live) = &mut self.live {
             live.room.rooms.retain(|id, room| {
                 room.binding().is_none()
                     || state.channel.rooms.iter().any(|summary| &summary.id == id)
+                    || (self.service_admission.is_some()
+                        && state.channel.managed_room_ids.contains(id))
             });
         }
         self.retire_missing_hosts(&state, socket).await?;
@@ -2505,6 +2552,15 @@ impl Session {
                 self.config.name.clone_from(&user.name);
             }
             live.room.snapshot.send_replace(Some(state.clone()));
+            let user_id = state
+                .sessions
+                .iter()
+                .find(|session| session.id == live.session)
+                .ok_or_else(|| anyhow!("session_expired"))?
+                .user_id;
+            let refusals = live
+                .forwarding_budget
+                .apply(self.forwarding_limit, user_id, &mut state);
             live.pairs = state.pairs.iter().map(|pair| pair.id).collect();
             let captures = await_peer(
                 live.peers.capture_publications(),
@@ -2555,8 +2611,10 @@ impl Session {
                 socket,
             )
             .await?;
+            for refusal in refusals {
+                write(socket, &refusal, None).await?;
+            }
         }
-        self.retire_relay_requests();
         Ok(())
     }
 

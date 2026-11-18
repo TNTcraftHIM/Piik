@@ -394,9 +394,10 @@ external media follows the Source integration described below.
 The site already creates an identity and personal credential for an ordinary
 participant. An automated participant uses its own credential, kept with its
 process and local configuration rather than supplied by a person's Browser session
-or exposed back to a web page. It has the same public-room access and ability to
-create rooms as any other ordinary user. Private-room entry uses the existing
-invitation or password and the room host's saved grant.
+or exposed back to a web page. It uses ordinary member admission and the
+[channel's creation policy](./server-hosting-plan.md#guest-creation-and-the-public-demo).
+Private-room entry uses the existing invitation or password and the room
+host's saved grant.
 
 Room owners can remove a private-room grant through the existing room settings;
 this preserves authored history. A still-valid shared invitation or password can

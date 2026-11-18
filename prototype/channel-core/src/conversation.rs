@@ -273,6 +273,12 @@ impl ConversationAddress {
     deny_unknown_fields
 )]
 pub enum ConversationCommand {
+    DeleteMessage {
+        message_seq: u64,
+    },
+    ClearHistory {
+        through_seq: u64,
+    },
     InteractionReady,
     React {
         nonce: u64,
@@ -346,6 +352,12 @@ pub struct ConversationRequest {
     deny_unknown_fields
 )]
 pub enum ConversationRecord {
+    MessageDeleted {
+        message_seq: u64,
+    },
+    HistoryCleared {
+        through_seq: u64,
+    },
     Reaction {
         nonce: u64,
         event: Option<ReactionEvent>,
@@ -391,7 +403,9 @@ impl ConversationRecord {
             } => Some(Self::LiveMessage {
                 message: message.clone(),
             }),
-            Self::Reaction { event: Some(_), .. } => Some(self.clone()),
+            Self::MessageDeleted { .. }
+            | Self::HistoryCleared { .. }
+            | Self::Reaction { event: Some(_), .. } => Some(self.clone()),
             _ => None,
         }
     }
@@ -439,6 +453,8 @@ pub enum ConversationResult {
 }
 #[derive(Serialize)]
 pub struct ConversationOutcome {
+    #[serde(rename = "projectionUpdate", skip_serializing_if = "Option::is_none")]
+    pub projection_update: Option<crate::host::HostOutput>,
     pub address: ConversationAddress,
     pub result: Result<ConversationResult, &'static str>,
 }
@@ -455,6 +471,12 @@ impl ConversationAddress {
         let records = match result {
             Err(code) => vec![ConversationRecord::Error { code: code.into() }],
             Ok(ConversationResult::Immediate(record)) => vec![record],
+            Ok(ConversationResult::History(HistoryResult::MessageDeleted { message_seq })) => {
+                vec![ConversationRecord::MessageDeleted { message_seq }]
+            }
+            Ok(ConversationResult::History(HistoryResult::HistoryCleared { through_seq })) => {
+                vec![ConversationRecord::HistoryCleared { through_seq }]
+            }
             Ok(ConversationResult::History(HistoryResult::Sent(confirmation))) => {
                 let snapshot = confirmation.message.reaction_snapshot();
                 vec![
@@ -568,7 +590,7 @@ mod tests {
                 name: "\u{10ffff}".repeat(240),
                 size: image.len() as u64,
                 media_type: "image/png".into(),
-                sha256: crate::attachment::sha256_hex(&image),
+                sha256: "a".repeat(64),
             })
             .collect();
         let inline_images = attachments
@@ -579,9 +601,9 @@ mod tests {
                     crate::attachment::ImageRendition {
                         data: Base64::encode_string(&image),
                         media_type: a.media_type.clone(),
-                        original: true,
-                        width: u32::MAX,
-                        height: u32::MAX,
+                        original: false,
+                        width: 640,
+                        height: 640,
                     },
                 )
             })
@@ -728,11 +750,13 @@ mod room_tests {
             ),
         ]);
         let input = |action, binding_id| HostInput {
+            channel_owner_id: Uuid::nil(),
             service_endpoint: None,
             now: 0,
             binding_id,
             host_session_id: host_session,
             revision: 1,
+            confirmed_pairs: Default::default(),
             failed_pairs: Vec::new(),
             endpoints: endpoints.clone(),
             action,

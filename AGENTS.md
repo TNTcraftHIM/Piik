@@ -59,10 +59,12 @@ invocation; follow their relevant guidance without importing unrelated workflows
 
 ## Product Contract
 
-This worktree develops isolated 3.0. The accepted
-[network model](./docs/research/channel-network-design.md) and
-[room-data model](./docs/research/channel-storage-and-identity.md) own its behavior;
-[status](./docs/status.md#isolated-30-prototype) indexes current implementation.
+This worktree develops isolated 3.0. The [network model](./docs/research/channel-network-design.md)
+and [room-data model](./docs/research/channel-storage-and-identity.md) describe
+the current prototype. The [forwarding design](./docs/research/channel-forwarding-plan.md)
+and [hosting and moderation design](./docs/research/server-hosting-plan.md)
+own the target boundaries. [Status](./docs/status.md#isolated-30-prototype)
+indexes the implementation.
 Published 2.x promises remain with the maintenance line's
 [standards](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/README.md)
 and [status](https://github.com/TNTcraftHIM/Piik/blob/main/docs/status.md).

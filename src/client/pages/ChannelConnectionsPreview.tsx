@@ -14,7 +14,7 @@ export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames 
   const forwarding = mode === "site-forwarding";
   if (forwarding) mode = "both";
   const state = snapshotSchema.parse({
-    channel: { id: "domain", name: "Friends", icon: "couch", ownerId: "host-user", historyWindow: 100, userCount: 3,
+    channel: { id: "domain", name: "Friends", icon: "couch", ownerId: "host-user", roomCreationPolicy: "ordinary", hostingMode: "lightweight", historyWindow: 100, userCount: 3, managedRoomIds: [],
       rooms: [{ id: "room", name: "Living room", icon: "couch", creatorId: "host-user", access: "public", hidden: false,
         hasPassword: false, authorized: true, canManage: false, participantSessionIds: ["host", "self", "friend", "app"],
         fileActivity: [],

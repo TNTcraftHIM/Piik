@@ -1,29 +1,20 @@
 # Piik 3.0 Room Data And Hosting
 
-Reviewed 2026-11-11. The [accepted network model](./channel-network-design.md)
-owns responsibilities, routing and live lifecycles. This document records the
-accepted data ownership and develops synchronization, delivery and recovery. The
-[prototype README](../../prototype/channel-server/README.md) describes running
-behavior; [TODO](../todo.md) owns pending decisions and implementation.
-The first version keeps one room data owner and reuses established room paths.
+This research records the prototype's storage, synchronization, delivery and recovery behavior alongside its original design rationale. The [hosting design](./server-hosting-plan.md) owns the target channel modes, directory, room permissions, thumbnails and backup behavior. [TODO](../todo.md) tracks implementation.
 
 ## Ownership And Placement
 
-The product hierarchy is Site → Room (站点 → 房间); domain refers to the site's
-technical authority and storage scope, as defined by the
-[network model](./channel-network-design.md#terminology-and-responsibilities).
-The room owner operates the room and keeps its authoritative data. The site
-operator maintains the domain identity and room directory. These runtimes may share
-one App when that user owns both, or run on different users' devices. Neither
-arrangement adds a storage server, a second application or a configuration task.
+The channel binds a room ID to its creator. The room runtime confirms and stores its records. The target keeps the creator as room manager and assigns the writer by channel mode. A lightweight room runs on its creator's device. In hosted mode the Server runs the room writer.
+
+The table describes current prototype placement.
 
 | Information | Authoritative owner and copies |
 | --- | --- |
-| Domain identity, users and room-to-owner binding | Domain runtime's durable data. Clients and room runtimes receive authenticated identity facts. |
+| Domain identity, users and room-to-creator binding | Domain runtime's durable data. Clients and room runtimes receive authenticated identity facts. |
 | Room name, icon, access and grants | Room runtime's durable data. The domain directory holds only its authorized summary. |
 | Identity images | Small retained metadata at their domain or room owner; independent of the uploader's live session. The directory carries the authorized room summary. |
 | Messages, attachment descriptions and bounded image renditions | Confirmed history at the room runtime; participants may keep readable local copies. |
-| File bytes | The sender and recipients that retain complete copies. The site operator does not automatically receive or store them. |
+| New attachment originals | The sender and recipients that retain complete copies. The site operator does not automatically receive or store them. |
 | Presence, available file holders and active activities | Current authenticated sessions. Rebuild these facts when participants reconnect; a saved record does not prove present availability. |
 | Live sessions, voice, pictures and route plans | Their active runtimes. Reconnection reconciles existing work; a runtime restart establishes new sessions and activities. Saved data does not restore a call. |
 | Drafts and display preferences | The local client, separate from domain/room authority. |
@@ -99,7 +90,7 @@ outside that grant. Access-mode changes retain an existing private invitation
 until its owner explicitly resets it; resetting retires old links without
 removing existing room grants. Public entry alone creates no grant for a later
 switch to private. A room creator may register and restore their own saved room;
-site maintenance does not confer ownership of another user's room data.
+the target channel-owner removal action retires the directory binding. Reading messages or files still requires ordinary room admission.
 
 Scope local copies by domain, room and authenticated user, never nickname or
 room title. Source URLs locate the runtime; they are not the room's identity.
@@ -245,7 +236,7 @@ history store is needed. The room remains the single writer and confirmation own
 
 ## File Sources And Reachability
 
-Attachment records and bounded inline images are distributed with chat through the domain WebSocket; other file
+Attachment records and bounded thumbnails are distributed with chat through the domain WebSocket; other file
 bytes and pull control use the existing room peer network. A readable description
 does not prove that its bytes are currently reachable. The sender prepares a readable source before submitting the description.
 A complete, verified copy can become another source while its holder remains
@@ -345,9 +336,9 @@ is an explicit capability result. Start with recovery of an active task across
 connection loss; persistent downloads across process restart are not required
 for the first transfer implementation.
 
-No optional configured file-host store is proposed. A room owner may hold a file
-as an ordinary sender or recipient; ownership does not require retaining every
-file. The availability boundary is simple:
+The current participant-held file path uses online holders. A room owner
+may hold a copy as an ordinary sender or recipient. The [hosting design](./server-hosting-plan.md#sending-and-storing-an-attachment)
+covers thumbnail persistence and original-file availability in both channel modes.
 
 | Situation | Result |
 | --- | --- |
@@ -385,6 +376,8 @@ recommendation; discuss them only if shared-tree delivery leaves a concrete gap.
 
 ### Retained Files And Images
 
+A retained file survives a session. Offering it again requires an admitted holder that can still read it. Restoring a descriptor alone cannot establish availability.
+
 The Browser participant retains confirmed sent files and verified completed
 downloads in one IndexedDB store, scoped to its domain and user identity. File
 bytes and their confirmed descriptions commit together. The cache retains at
@@ -406,22 +399,17 @@ currently readable selection, retained copy or granted handle. Browser-managed
 storage follows [origin, quota and persistence rules](https://storage.spec.whatwg.org/).
 A session-only source must not be presented as a retained copy.
 
-Conversation images retain the original attachment identity and whole-file
-digest. Their display renditions share a 512 KiB decoded-byte budget per message,
-divided among its images. An original that fits keeps its bytes and animation.
-For larger static images, the sender generates a preview at up to 2048px:
-PNG is tried for PNG input, then WebP at 0.9 and 0.85, with one final 1600px
-attempt at 0.85. No attempt enlarges an image. An image that cannot fit at these
-settings retains ordinary on-demand P2P viewing; it is not repeatedly reduced
-until unreadable. Larger GIF, animated PNG and animated WebP skip Canvas rather
-than silently becoming still images.
+Conversation messages retain the original attachment descriptor and an optional
+thumbnail. The sender encodes a still frame for PNG, JPEG, WebP and GIF input.
+It fits the longer edge within 640 pixels and the shared 512 KiB message budget,
+trying smaller dimensions when necessary. Images that cannot produce a distinct
+thumbnail keep their ordinary attachment card.
 
-Each rendition declares its own media type and dimensions, and whether it is
-the unchanged original. The room owner saves it with history, while the site
-carries it with the conversation. It does not enter route plans or file-holder
-announcements. The original file and its offer/cache lifecycle remain unchanged.
-Preview display needs no peer route; viewing or downloading a non-inline
-original uses the existing verified file path. There is no separate image server.
+The room writer saves the thumbnail with the message. Reading history displays
+it even after file holders disconnect. Opening or downloading the original uses
+the local or live holder's verified file, including animation. Historical beta
+messages that already embedded a verified original remain readable.
+
 Conversation operations use a 30-second confirmation deadline, covering upload
 and the room host's response within the bounded image format. Control operations
 keep their shorter deadline. At a measured 1 Mbps in both directions, a full
@@ -430,13 +418,11 @@ keep their shorter deadline. At a measured 1 Mbps in both directions, a full
 reported failure after a successful commit. The same nonce and confirmation
 owners handle retries; there is no separate image retry protocol.
 
-The message owner checks the aggregate rendition size, positive dimensions,
-supported raster signature and attachment binding. Unchanged originals must
-also match their original size, MIME and digest; a preview is not claimed to
-match that digest. The signed conversation
-frame budget covers the complete largest legal message, including encoding
-overhead; the file-control frame budget is independent. Reading or downloading
-an inline image does not allocate a file route. Original-image and avatar
+The writer checks the aggregate byte budget, declared dimensions, raster
+signature and attachment binding. Live sends require the thumbnail role and
+reject original bytes supplied as a thumbnail. The signed conversation frame
+budget covers the complete message including encoding overhead. Reading a
+thumbnail requires no file route. Original-image and avatar
 enlargement reuse one local lightbox; closing it keeps the conversation and file
 owners alive.
 User avatars and domain/room icons are small visible metadata: the Browser encodes a bounded
@@ -483,7 +469,7 @@ same data restores that room's identity and history while its directory entry
 remains admitted, without resuming captures or calls. Recreating a same-named
 room without its data creates a new room.
 
-The domain directory can retain the unavailable room's summary and owner binding.
+The current directory can retain an unavailable room's summary and creator binding. The target public lobby withdraws its entry while the host is offline. The binding remains available for management, and a known link can show the room's offline status.
 It does not automatically become a substitute room host or recover data it never
 stored. Continuing a room on another device requires an explicit transfer of
 hosting and state. Automatic election and offline concurrent writing are outside
@@ -497,7 +483,7 @@ directory entry; automatic recovery cannot recreate a removed room. Explicit
 backup import may restore an absent entry after authenticating as that room's
 creator. An archive's identifiers alone do not grant that authority.
 
-An online room's creator can delete its authoritative policy and
+In the current prototype an online room's creator can delete its authoritative policy and
 history. The hosting runtime commits that local deletion before the domain
 confirms directory removal. Removing only a directory entry is a separate user
 intent: it retires room access and activity without deleting the host's data,
@@ -514,7 +500,7 @@ without a second deletion ledger.
 
 ### Backups
 
-Backup follows the runtime that owns the data:
+The table describes current export formats and defaults. In the target, history exports carry message thumbnails. An explicit **Include files** export can add readable originals and report missing items. [Target storage and backup](./server-hosting-plan.md#storage-recovery-and-backup)
 
 | Export | Who provides it | Contents |
 | --- | --- | --- |
@@ -522,6 +508,8 @@ Backup follows the runtime that owns the data:
 | Room backup | Room owner through its hosting runtime | Room identity, settings, grants and complete confirmed history; available local file originals are included by default and may be excluded explicitly. Restore preserves the original room and owner. |
 | Room copy | Room owner through its hosting runtime | Complete confirmed history and reaction counts, with the same choice of local file originals; room name, icon and connection/voice settings are optional. Import creates a new room owned by the importer. |
 | Personal record export | Any participant | Records obtained by that client. The current text export includes the messages loaded on the page. |
+
+Native room storage uses SQLite schema 9 and Browser hosting uses IndexedDB schema 7. Opening an older private room store reports `unsupported_storage_version` and preserves its contents. Use the build that created it to access the existing history. Room backups use archive version 3 and room copies use version 2. Import checks the format before replacing a room. Deleted rows carry only their room sequence and hashed retry identity, so restore preserves message order and rejects a delayed send after deletion.
 
 Excluding file originals preserves attachment descriptions and inline images already
 stored in history. The archive's retained-file inventory keeps its existing count

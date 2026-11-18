@@ -3,14 +3,13 @@ import { inlineImageFile, prepareInlineImage } from "../src/client/channel/image
 
 afterEach(() => vi.unstubAllGlobals());
 
-test("over-budget animated formats never reach a static decoder", async () => {
-  const image = vi.fn(); vi.stubGlobal("Image", image);
-  const png = new Uint8Array(40); new DataView(png.buffer).setUint32(8, 8); png.set(new TextEncoder().encode("acTL"), 12);
-  const webp = new Uint8Array(40); webp.set(new TextEncoder().encode("VP8X"), 12); webp[20] = 2;
-  for (const [bytes, type] of [[png, "image/png"], [webp, "image/webp"], [new Uint8Array(40), "image/gif"]] as const) {
-    expect(await prepareInlineImage(new File([bytes], "animated"), type, 20)).toBe("original_over_budget");
-  }
-  expect(image).not.toHaveBeenCalled();
+test("byte-identical and over-budget encodings stay out of history", async () => {
+  const file = new File(["abc"], "small.webp", { type: "image/webp" });
+  vi.stubGlobal("Image", class { naturalWidth = 1; naturalHeight = 1; async decode() {} });
+  vi.stubGlobal("document", { createElement: () => ({ getContext: () => ({ drawImage() {} }),
+    toBlob: (callback: BlobCallback) => callback(file) }) });
+  expect(await prepareInlineImage(file, file.type, 1024)).toBeUndefined();
+  expect(await prepareInlineImage(file, file.type, 2)).toBeUndefined();
 });
 
 test("unsupported input and cancelled work cannot begin image decoding", async () => {

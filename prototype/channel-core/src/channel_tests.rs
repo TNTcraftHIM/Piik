@@ -110,11 +110,13 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
         .unwrap(),
     );
     host.dispatch(HostInput {
+        channel_owner_id: Uuid::nil(),
         service_endpoint: None,
         now: 0,
         binding_id: Uuid::new_v4(),
         host_session_id: sessions[0],
         revision: 1,
+        confirmed_pairs: Default::default(),
         failed_pairs: Vec::new(),
         endpoints: channel.identity.endpoints(),
         action: HostAction::Sync,
@@ -182,6 +184,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
             .collect();
         view.files = (0..8)
             .map(|index| FilePlan {
+                author_id: sessions[0],
                 room_id: room_id.clone(),
                 message_seq: index + 1,
                 attachment: crate::AttachmentDescriptor {
@@ -247,7 +250,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
             version: "a".repeat(64),
         })
         .collect();
-    for index in 0..32 {
+    for index in 0..MAX_ROOMS {
         let id = format!("{index:0128}");
         let mut view = room.clone();
         view.room.id = id.clone();

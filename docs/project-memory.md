@@ -1,67 +1,59 @@
 # Project Memory
 
-Last updated: 2026-11-11
+Last updated: 2026-11-18
 
 This working tree develops the isolated 3.0 model: a shared Rust core across
 Server, Native and Browser/WASM, with one shared Web UI for rooms, conversation,
 screen sharing, selective watching, voice and App control. Go tooling builds the
 separately pinned Cloudflared helper. [Status](./status.md#isolated-30-prototype)
 owns the current implementation and delivery snapshot.
-The product hierarchy is **Site → Room / 站点 → 房间**. Technical `Domain` and
-existing `Channel` identifiers refer to the site's authority/runtime; the
-[naming owner](./standards/naming.md) governs user-facing terminology.
+The target hierarchy is **Channel → Room → Activity / 频道 → 房间 → 业务**.
+The current Web UI uses Site / 站点 for a channel. Technical identifiers keep
+their published spelling. [Naming](./standards/naming.md)
 
-Published 2.x has its own [compatibility index](./status.md#accepted-release-contract).
-Its maintained behavior and deployment belong to the canonical
-[2.x standards](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/README.md)
-and [status](https://github.com/TNTcraftHIM/Piik/blob/main/docs/status.md).
-The 3.0 owners below define this tree's domain, room and participant model.
+Published 2.x maintains its own [compatibility index](./status.md#accepted-release-contract)
+and [product standards](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/README.md).
 
 ## Authority And Lifetimes
 
-- The domain owns persistent user identity, membership, room-host
-  bindings and directory summaries. A room's detailed policy and history belong
-  to its room runtime; the directory is a projection of those facts.
-- Live identity summaries and bounded profile reads keep historical users
-  separate from endpoint capacity. The same Browser display cache supplies
-  names and pictures to conversation, offline people and mention search.
-- Opening a site establishes or restores a user's identity without a separate
-  site invitation or passphrase. Users create and manage their own rooms;
-  private access belongs to each room. The site operator maintains site metadata
-  and backups, without automatically reading or managing another user's room.
-- Room admission permits conversation, voice, sharing and watching without
-  role groups. Domain/room management follows ownership; remote input still
-  requires the source owner's consent.
-- Each room owner operates that room in a Browser or Native runtime. Participants
-  can share, watch, speak and forward independently of room ownership. One user
-  may have separate Browser and App endpoints; identity, live connection and
-  personal activity remain distinct.
-- Browser hosting ends with its page. App hosting follows its Native endpoint
-  and process; Server explicitly supplies unattended hosting. Connecting an App
-  does not transfer existing Browser rooms. Personal captures, voice, watches and
-  input consent remain page-owned; changing views does not stop other activities.
-- Browser room data uses IndexedDB through the shared WASM core; Native uses
-  SQLite. Room confirmation follows the owner's storage commit. Saved identity,
-  policy and history survive runtime retirement; live transports, captures and
-  grants do not become saved activities. There is no automatic room takeover.
-- Conversation uses the existing domain WebSocket to reach the actual room host,
-  which alone authorizes, stores and signs confirmations. The domain forwards
-  plaintext without retaining history. Reading and writing need no peer path.
-- One room routing owner plans its base tree and source-specific screen delivery.
-  Voice and file bytes/control reuse base paths; selected viewers and necessary
-  relays receive pictures. Shared physical connections retain their own leases,
-  so retiring one flow does not retire unrelated work. Browser WebRTC and the
-  Native RTC SDK own congestion control and transport adaptation; Piik owns
-  source clocks, output demand and resource lifetimes.
-- Attachment descriptions and bounded image originals or previews belong to confirmed history;
-  other complete file copies belong to participants. Ordinary URLs and manual bookmarks locate
-  domains. App approval belongs to an exact site origin, independently of saved
-  domain identity and room data.
+- The channel owns identities, room-to-host bindings, creation policy and
+  the permitted directory. The channel owner may remove any room, including
+  a private or offline room. Reading its contents requires ordinary room
+  admission. The room owner manages the room. Senders can delete their own
+  messages, and room moderation runs through the current room writer.
+- Creation uses one action. A lightweight channel puts the room on its
+  creator's device. An App starts this mode. A standalone Server can also
+  operate a hosted channel, providing a room writer for every room even when
+  the creators are away. The mode determines storage placement. Room access
+  determines the audience. The public lobby publishes reachable rooms within
+  the channel's discovery policy. [Hosting and moderation](./research/server-hosting-plan.md)
+- The current room writer owns detailed policy and confirmed conversation.
+  Chat can reach it through channel signaling. Thumbnails and file metadata
+  are message history. Original files are supplied by eligible holders and
+  explicit local saves. A permitted service can forward a live file transfer.
+  Ordinary invitations address a particular origin. An App approval, a
+  channel's saved identity and a browser's local room data have distinct lifetimes.
+- A channel has one graph of confirmed endpoint pairs. A room uses its
+  authorized subgraph. Each publication selects directed delivery paths on
+  those pairs, including authorized peer or service relays. A business can
+  request a missing pair. Once confirmed it becomes reusable by other eligible
+  flows. The forwarding limit applies independently to files, voice and
+  screens. [Forwarding model and planner](./research/channel-forwarding-plan.md)
+- A person can have separate Browser and App endpoints and can share, watch,
+  speak or forward independently of ownership. Personal captures, voice,
+  watches and remote-input consent follow the activity. Changing the current
+  view preserves those activities. App hosting follows the Native process.
+  Browser hosting follows its page. Connecting an App does not transfer an
+  existing Browser room.
+- The prototype stores Browser rooms in IndexedDB through WASM and Native
+  rooms in SQLite. Confirmation follows the writer's storage commit. Runtime
+  activities retire separately from saved identity, policy and history.
+  Live profile summaries and bounded historical profile reads use the same
+  Browser display cache for names, avatars, offline people and mention search.
 
-The [network model](./research/channel-network-design.md) owns authority, routing
-and activity lifetimes. The [room-data model](./research/channel-storage-and-identity.md)
-owns persistence, history, file delivery and identity recovery. Their accepted
-boundaries govern implementation; this memory is only a compact map.
+The [current network model](./research/channel-network-design.md) and
+[current room-data model](./research/channel-storage-and-identity.md) describe
+the running prototype and identify the differences from the target designs.
 
 ## Working References
 

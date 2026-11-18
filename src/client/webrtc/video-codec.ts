@@ -119,10 +119,9 @@ export function applyH264ProbeCodec(
     applyCodecs(transceiver, [...h264, ...repairCodecs(codecs)]);
 }
 
-/** Remove only attributes of codecs excluded from a locally generated offer.
- * Firefox can retain them after setCodecPreferences (Mozilla bug 1909443),
- * making the whole offer unparseable in Chromium. Do not rewrite codec choices,
- * valid feedback, unknown attributes or answers with asymmetric payload types.
+/** Drop feedback for codecs excluded from the offer.
+ * Firefox can retain it after setCodecPreferences (Mozilla bug 1909443),
+ * making the offer unparseable in Chromium.
  */
 export function normalizeVideoOfferSdp(sdp: string): string {
   let payloads: Set<number> | null = null;
@@ -141,6 +140,11 @@ export function normalizeVideoOfferSdp(sdp: string): string {
     return true;
   });
   return changed ? lines.join(sdp.includes("\r\n") ? "\r\n" : "\n") : sdp;
+}
+
+// Pooled outputs replace the carrier payload without copying RTP orientation.
+export function withoutVideoOrientation(sdp: string): string {
+  return sdp.replace(/^a=extmap:[^\s]+[ \t]+(?:urn:ietf:params:rtp-hdrext:encrypt[ \t]+)?urn:3gpp:video-orientation(?:[ \t][^\r\n]*)?\r?(?:\n|$)/gm, "");
 }
 
 export class VideoReceiveRejectedError extends Error {

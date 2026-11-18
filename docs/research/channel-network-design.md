@@ -1,11 +1,12 @@
 # Piik 3.0 Sites, Rooms And Networking
 
-Accepted direction updated 2026-11-11. This document owns the isolated 3.0 responsibility
-and networking design. The [prototype README](../../prototype/channel-server/README.md)
+This document records the current 3.0 prototype design and its routing evidence.
+The [forwarding plan](./channel-forwarding-plan.md) owns the accepted next topology and
+the [hosting plan](./server-hosting-plan.md) owns channel modes and directory authority. The [prototype README](../../prototype/channel-server/README.md)
 describes running behavior; [TODO](../todo.md) owns implementation and decisions.
 The [2.x routing contract](../standards/routing-transport.md) remains unchanged.
 
-## Accepted Direction
+## Current Prototype Design
 
 The room owner operates its detailed state, management and distribution. Browser
 hosting ends with its page; App hosting ends when stopped or its process exits.
@@ -24,7 +25,7 @@ attachment copies and shared file delivery on those paths.
 
 ## Terminology And Responsibilities
 
-The product hierarchy is **Site → Room / 站点 → 房间**. A site is the entry
+The current prototype uses **Site → Room / 站点 → 房间**. A site is the entry
 people open and the container for their rooms. Technical domain authority and
 the existing `Channel` identifiers implement that site, not another product level.
 The [copy convention](../standards/naming.md#voice-and-terminology) applies this
@@ -59,8 +60,9 @@ metadata, private policy or history. Opening a site establishes or restores a
 personal identity. Users create and manage their own rooms; admission permits
 conversation, voice, sharing, watching and interactions without role groups or
 participation switches.
-Site maintenance grants no access to another user's private room, and source
-owners separately consent to remote input.
+In the target hosting model, the channel owner may remove any room from the
+channel directory, including a hidden or offline room. Reading its content
+requires ordinary room admission. Source owners separately consent to remote input.
 
 Public rooms admit site users through ordinary links. Private rooms require their
 host's invitation or password after the site connection; hidden rooms disclose
@@ -163,7 +165,16 @@ owns retained identity and bounded profile reads; historical users do not consum
 live connection capacity. The [runtime reference](../../prototype/channel-server/README.md)
 owns current resource values and explicit capacity checks.
 
+## Next Forwarding Model
+
+The target vocabulary is **Channel → Room → Activity / 频道 → 房间 → 业务**.
+One channel graph holds peer connections. Each room uses its authorized subgraph,
+and each source uses paths within that subgraph for its actual recipients.
+The [forwarding plan](./channel-forwarding-plan.md) defines grants, budgets and validation.
+
 ## Routing Foundation
+
+The following base-tree design and its evidence describe the current prototype.
 
 ### Choice And Cost
 
@@ -1047,6 +1058,5 @@ work; the [Native reference](../../prototype/channel-native/README.md) and
 - [Jami file transfer](https://jami.net/swarm-file-transfers/) informs separating
   a file announcement from on-demand bytes and available copies.
 
-These references support individual boundaries. The accepted room-owner-operated
-base tree and selective screen plans are Piik's design choice, to be checked
-against its existing routing behavior and actual runtime costs.
+These references support individual boundaries. The room-operated base tree and selective screen plans provide the
+prototype baseline for comparing the next model against measured runtime costs.

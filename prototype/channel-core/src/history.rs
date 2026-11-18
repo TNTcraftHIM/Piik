@@ -4,6 +4,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
+pub fn retry_key(user_id: Uuid, nonce: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::new()
+        .chain_update(user_id.as_bytes())
+        .chain_update(nonce.as_bytes())
+        .finalize();
+    format!("{digest:x}")
+}
+
 pub const HISTORY_WINDOW: usize = 1000;
 // Each retained message has a body and a reaction snapshot on the peer wire.
 pub const HISTORY_PAGE: usize = 50;
@@ -146,30 +155,48 @@ impl MessageDraft {
         reply: Option<ReplyTarget>,
         time: u64,
     ) -> Result<Self, &'static str> {
-        validate_mentions(&text, &mentions)?;
-        if reply
+        let draft = Self {
+            mentions,
+            reply,
+            user_id,
+            nonce,
+            text,
+            attachments,
+            inline_images,
+            time,
+        };
+        draft.validate(false)?;
+        Ok(draft)
+    }
+
+    pub(crate) fn validate(&self, allow_legacy_images: bool) -> Result<(), &'static str> {
+        validate_mentions(&self.text, &self.mentions)?;
+        if self
+            .reply
             .as_ref()
             .is_some_and(|reply| reply.seq == 0 || reply.seq > i64::MAX as u64)
         {
             return Err("invalid_reply");
         }
-        if attachments.len() > ATTACHMENT_LIMITS.max_attachments_per_message
-            || attachments
+        if self.attachments.len() > ATTACHMENT_LIMITS.max_attachments_per_message
+            || self
+                .attachments
                 .iter()
                 .map(|file| file.id)
                 .collect::<BTreeSet<_>>()
                 .len()
-                != attachments.len()
+                != self.attachments.len()
         {
             return Err("invalid_attachments");
         }
-        for attachment in &attachments {
+        for attachment in &self.attachments {
             attachment.validate()?;
         }
         use base64ct::{Base64, Encoding};
         let mut total = 0;
-        for (id, image) in &inline_images {
-            let attachment = attachments
+        for (id, image) in &self.inline_images {
+            let attachment = self
+                .attachments
                 .iter()
                 .find(|file| file.id == *id)
                 .ok_or("invalid_inline_images")?;
@@ -185,32 +212,29 @@ impl MessageDraft {
                 || attachment.media_type == "application/octet-stream"
                 || image.media_type == "application/octet-stream"
                 || crate::attachment::sniff_media_type(&bytes) != image.media_type
-                || (!image.original && attachment.media_type == "image/gif")
-                || (image.original
-                    && (bytes.len() as u64 != attachment.size
-                        || image.media_type != attachment.media_type
-                        || !crate::attachment::sha256_hex(&bytes)
-                            .eq_ignore_ascii_case(&attachment.sha256)))
+                || (!allow_legacy_images
+                    && (image.original || image.width > 640 || image.height > 640))
+            {
+                return Err("invalid_inline_images");
+            }
+            let same_digest =
+                crate::attachment::sha256_hex(&bytes).eq_ignore_ascii_case(&attachment.sha256);
+            if (image.original
+                && (!same_digest
+                    || bytes.len() as u64 != attachment.size
+                    || image.media_type != attachment.media_type))
+                || (!allow_legacy_images && same_digest)
             {
                 return Err("invalid_inline_images");
             }
         }
-        if (text.trim().is_empty() && attachments.is_empty())
-            || text.chars().count() > 2000
-            || !valid_id(&nonce)
+        if (self.text.trim().is_empty() && self.attachments.is_empty())
+            || self.text.chars().count() > 2000
+            || !valid_id(&self.nonce)
         {
             return Err("invalid_message");
         }
-        Ok(Self {
-            mentions,
-            reply,
-            user_id,
-            nonce,
-            text,
-            attachments,
-            inline_images,
-            time,
-        })
+        Ok(())
     }
 
     /// Read these facts and commit the returned message in the same transaction.
@@ -304,6 +328,15 @@ pub struct MessageConfirmation {
     rename_all_fields = "camelCase"
 )]
 pub enum HistoryRequest {
+    DeleteMessage {
+        room_id: String,
+        message_seq: u64,
+        author_id: Option<Uuid>,
+    },
+    ClearHistory {
+        room_id: String,
+        through_seq: u64,
+    },
     React {
         room_id: String,
         message_seq: u64,
@@ -383,6 +416,7 @@ impl HistoryRequest {
             .find(|file| file.id == *attachment_id)
             .ok_or("attachment_unavailable")?;
         Ok(HistoryResult::Attachment {
+            author_id: message.message.user_id,
             message_seq: *message_seq,
             attachment,
         })
@@ -396,8 +430,15 @@ impl HistoryRequest {
     rename_all_fields = "camelCase"
 )]
 pub enum HistoryResult {
+    MessageDeleted {
+        message_seq: u64,
+    },
+    HistoryCleared {
+        through_seq: u64,
+    },
     Reacted(ReactionConfirmation),
     Attachment {
+        author_id: Uuid,
         message_seq: u64,
         attachment: AttachmentDescriptor,
     },
@@ -482,39 +523,20 @@ mod inline_tests {
             height: 32,
         };
         let images = BTreeMap::from([(file.id, image.clone())]);
-        let draft = check(vec![file.clone()], images.clone()).unwrap();
-        assert_eq!(
-            draft
-                .prepare_confirmation(ConfirmationInput::New {
-                    last_seq: 0,
-                    reply: None
-                })
-                .unwrap()
-                .message
-                .message
-                .inline_images,
-            images
+        assert!(check(vec![file.clone()], images.clone()).is_err());
+        let mut legacy = check(vec![file.clone()], BTreeMap::new()).unwrap();
+        legacy.inline_images = images;
+        assert!(legacy.validate(true).is_ok());
+        legacy.attachments[0].size += 1;
+        assert!(
+            legacy.validate(true).is_err(),
+            "archive originals require their complete size"
         );
-        for invalid in [
-            AttachmentDescriptor {
-                size: file.size + 1,
-                ..file.clone()
-            },
-            AttachmentDescriptor {
-                sha256: "0".repeat(64),
-                ..file.clone()
-            },
-            AttachmentDescriptor {
-                media_type: "image/png".into(),
-                ..file.clone()
-            },
-            AttachmentDescriptor {
-                media_type: "application/octet-stream".into(),
-                ..file.clone()
-            },
-        ] {
-            assert!(check(vec![invalid], images.clone()).is_err());
-        }
+        legacy.inline_images.get_mut(&file.id).unwrap().original = false;
+        assert!(
+            legacy.validate(false).is_err(),
+            "relabelling the original must fail"
+        );
         assert!(check(
             vec![file.clone()],
             BTreeMap::from([(Uuid::new_v4(), image.clone())])
@@ -537,7 +559,7 @@ mod inline_tests {
             .map(|_| AttachmentDescriptor {
                 id: Uuid::new_v4(),
                 size: large.len() as u64,
-                sha256: crate::attachment::sha256_hex(&large),
+                sha256: file.sha256.clone(),
                 ..file.clone()
             })
             .collect();
@@ -548,6 +570,7 @@ mod inline_tests {
                     a.id,
                     ImageRendition {
                         data: Base64::encode_string(&large),
+                        original: false,
                         ..image.clone()
                     },
                 )
@@ -558,16 +581,16 @@ mod inline_tests {
             data: Base64::encode_string(b"RIFFabcdWEBPpreview"),
             media_type: "image/webp".into(),
             original: false,
-            width: 2048,
-            height: 1024,
+            width: 640,
+            height: 320,
         };
         assert!(
             check(
                 vec![file.clone()],
                 BTreeMap::from([(file.id, preview.clone())])
             )
-            .is_err(),
-            "GIF must retain animation rather than silently use a static preview"
+            .is_ok(),
+            "an animated original can have a static thumbnail"
         );
         let original = AttachmentDescriptor {
             media_type: "image/png".into(),
@@ -589,7 +612,7 @@ mod inline_tests {
                 ..preview.clone()
             },
             ImageRendition {
-                width: 0,
+                width: 641,
                 ..preview.clone()
             },
             ImageRendition {

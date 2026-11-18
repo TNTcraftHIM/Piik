@@ -22,6 +22,8 @@ const env = { ...process.env, PIIK_CHANNEL_PORT: String(corePort), PIIK_CHANNEL_
   PIIK_CHANNEL_WEB_DIR: resolve(process.env.PIIK_CHANNEL_WEB_DIR ?? "build/channel-web"),
   PIIK_CHANNEL_VITE_CACHE_DIR: join(directory, "vite-cache"),
   PIIK_CHANNEL_ICE_SERVERS: "[]",
+  PIIK_CHANNEL_HOSTING_MODE: "lightweight",
+  PIIK_CHANNEL_ROOM_CREATION_POLICY: "ordinary",
   PIIK_CHANNEL_WEB_ORIGIN: origin, CHANNEL_UI_ORIGIN: origin, PIIK_CHANNEL_DATA_DIR: directory,
   CHANNEL_WS_URL: `ws://127.0.0.1:${corePort}/prototype/channel`,
   CHANNEL_DATA_FILE: join(directory, "channel.sqlite"),

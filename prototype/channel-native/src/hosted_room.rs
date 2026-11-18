@@ -30,6 +30,10 @@ pub(crate) fn storage_error(error: Box<dyn std::error::Error + Send + Sync>) -> 
 }
 
 impl HostedRoom {
+    pub(crate) fn creator_id(&self) -> Uuid {
+        self.host.policy().creator_id
+    }
+
     pub(crate) fn snapshot_source(&self) -> (PathBuf, String, Uuid) {
         (
             self.path.clone(),
@@ -122,6 +126,10 @@ impl HostedRoom {
         self.host.dispatch_peer(packet, now)
     }
 
+    pub(crate) fn delete_data(&mut self) -> Result<()> {
+        self.host.delete_data().map_err(storage_error)
+    }
+
     pub fn current_readers(&self) -> Vec<Uuid> {
         self.host.current_readers()
     }
@@ -185,7 +193,7 @@ mod tests {
         let backup = RoomBackup::stage(
             &folder.join("staged.sqlite"),
             RoomMetadata {
-                version: 2,
+                version: 3,
                 domain_id: domain,
                 policy: room.clone(),
                 own_credential: None,
@@ -203,11 +211,13 @@ mod tests {
         assert_eq!(host.binding(), None);
         assert!(HostedRoom::open(&path, "room", owner).is_err());
         let stale = || HostInput {
+            channel_owner_id: Uuid::nil(),
             service_endpoint: None,
             now: 1,
             binding_id: old_binding,
             host_session_id: owner,
             revision: 1,
+            confirmed_pairs: Default::default(),
             failed_pairs: Vec::new(),
             endpoints: Default::default(),
             action: HostAction::Sync,
@@ -306,11 +316,13 @@ mod tests {
             ),
         ]);
         let input = |endpoints: &BTreeMap<Uuid, Endpoint>, binding_id| HostInput {
+            channel_owner_id: Uuid::nil(),
             service_endpoint: None,
             now: 0,
             binding_id,
             host_session_id: local,
             revision: 1,
+            confirmed_pairs: Default::default(),
             failed_pairs: Vec::new(),
             endpoints: endpoints.clone(),
             action: HostAction::Sync,

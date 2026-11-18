@@ -37,11 +37,12 @@ export class FileStore {
     });
   }
 
-  async retain(entry: RetainedFile, limits: FileRetentionLimits): Promise<{ file: File | null; evicted: ChannelFileKey[] }> {
+  async retain(entry: RetainedFile, limits: FileRetentionLimits, allowed?: () => boolean): Promise<{ file: File | null; evicted: ChannelFileKey[] }> {
     if (entry.file.size > limits.maxRetainedBytes || limits.maxRetainedFiles < 1) return Promise.reject(new Error("file_retention_limit"));
-    const evicted = await this.transaction<ChannelFileKey[]>("readwrite", (store, done) => {
+    const evicted = await this.transaction<ChannelFileKey[] | null>("readwrite", (store, done) => {
       const request = store.getAll();
       request.onsuccess = () => {
+        if (allowed && !allowed()) { done(null); return; }
         const rows = request.result as StoredFile[], key = cacheKey(entry.key);
         const previous = rows.find(row => row.cacheKey === key);
         const retained = rows.filter(row => row !== previous);
@@ -55,6 +56,7 @@ export class FileStore {
         put.onsuccess = () => done(evicted);
       };
     });
+    if (!evicted) return { file: null, evicted: [] };
     // A GET inside the write transaction can still return the original OPFS
     // snapshot. Reopen after commit to read the independent IndexedDB value.
     const file = await this.transaction<File | null>("readonly", (store, done) => {
@@ -68,6 +70,19 @@ export class FileStore {
     return this.transaction("readwrite", (store, done) => {
       const request = store.index("key").getKey(cacheKey(key));
       request.onsuccess = () => { if (request.result !== undefined) store.delete(request.result); done(); };
+    });
+  }
+
+  removeMessages(roomId: string, removed: (seq: number) => boolean): Promise<void> {
+    return this.transaction("readwrite", (store, done) => {
+      const request = store.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) { done(); return; }
+        const { key } = cursor.value as StoredFile;
+        if (key.roomId === roomId && removed(key.messageSeq)) cursor.delete();
+        cursor.continue();
+      };
     });
   }
 }

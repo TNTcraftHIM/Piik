@@ -12,7 +12,9 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use uuid::Uuid;
 
-const MAX_ROOMS: usize = 32;
+const MAX_ACTIVE_ROOMS: usize = 32;
+// Directory space for the live set plus one equally sized recovery set.
+const MAX_ROOMS: usize = 64;
 
 /// Domain admission, hosted-room directory and shared transport leases.
 /// Browsing selects a presentation; it never owns another room's activities.
@@ -23,6 +25,10 @@ pub struct Channel {
     id: Uuid,
     name: String,
     icon: IdentityIcon,
+    pub(crate) hosting_mode: HostingMode,
+    pub(crate) room_writer: Option<crate::host::ServiceEndpoint>,
+    room_creation_policy: RoomCreationPolicy,
+    restorable_rooms: BTreeMap<String, Uuid>,
     pub(crate) remote: BTreeMap<String, RemoteRoom>,
     transports: TransportBook,
     input_registrations: BTreeMap<Uuid, Vec<crate::input::InputRegistration>>,
@@ -33,6 +39,7 @@ pub struct Channel {
 pub(crate) struct HostAcceptance {
     pub projection_applied: bool,
     pub replies: Vec<RoomReply>,
+    pub deleted_by: Option<Uuid>,
 }
 
 pub struct Outcome {
@@ -64,6 +71,10 @@ impl Channel {
             id: Uuid::new_v4(),
             name: "Piik friends".into(),
             icon: IdentityIcon::default(),
+            hosting_mode: HostingMode::default(),
+            room_writer: None,
+            room_creation_policy: RoomCreationPolicy::default(),
+            restorable_rooms: BTreeMap::new(),
             remote: BTreeMap::new(),
             transports: TransportBook::default(),
             input_registrations: BTreeMap::new(),
@@ -119,6 +130,13 @@ impl Channel {
                 let name = title(&name).ok_or("invalid_domain_name")?;
                 self.name = name;
                 self.icon = icon;
+                broadcast = true;
+            }
+            Command::SetRoomCreationPolicy { policy } => {
+                if user_id != self.identity.owner_id {
+                    return Err("forbidden");
+                }
+                replies = self.set_room_creation_policy(policy);
                 broadcast = true;
             }
             Command::HostRegister { .. }
@@ -191,7 +209,30 @@ impl Channel {
             Command::LinkState { pair_id, state } => {
                 let peer = self.peer(session_id, pair_id).ok_or("unassigned_pair")?;
                 if matches!(state, LinkState::Connected) {
-                    self.transports.connected(pair_id);
+                    let connection = self.identity.sessions[&session_id]
+                        .connection
+                        .ok_or("disconnected")?;
+                    let peer_connection =
+                        self.identity.sessions.get(&peer).and_then(|s| s.connection);
+                    if self
+                        .transports
+                        .connected(session_id, connection, peer_connection, pair_id)
+                    {
+                        let rooms: Vec<_> = self
+                            .remote
+                            .iter()
+                            .filter(|(_, room)| {
+                                let scope = room.planning_sessions(self.service_endpoint, None);
+                                scope.contains(&session_id) && scope.contains(&peer)
+                            })
+                            .map(|(id, _)| id.clone())
+                            .collect();
+                        for room in rooms {
+                            if let Ok(event) = self.host_input(&room, HostAction::Sync) {
+                                events.push(event);
+                            }
+                        }
+                    }
                 } else if self.can_prepare_udp(session_id, peer) && self.transports.prepare(pair_id)
                 {
                     broadcast = true;
@@ -238,8 +279,11 @@ impl Channel {
 
     pub(crate) fn retire_session(&mut self, session_id: Uuid) -> Vec<RetiredRoomReply> {
         self.identity.sessions.remove(&session_id);
+        self.remote
+            .retain(|_, room| room.reservation != Some(session_id));
         let mut replies = Vec::new();
         for remote in self.remote.values_mut() {
+            remote.known_sessions.remove(&session_id);
             if remote
                 .binding
                 .as_ref()
@@ -249,6 +293,14 @@ impl Channel {
             }
         }
         replies
+    }
+
+    pub(crate) fn expire_discovery(&mut self, now: u64) -> bool {
+        if self.transports.expire_discovery(now) {
+            self.reconcile();
+            return true;
+        }
+        false
     }
 
     pub fn expire_sessions(&mut self, now: u64) -> (bool, Vec<RetiredRoomReply>) {
@@ -422,7 +474,80 @@ impl Channel {
                 });
             }
         }
-        self.transports.reconcile(
+        let confirmed: BTreeSet<_> = self.transports.confirmed_pairs(&self.identity).collect();
+        let discovery = self.transports.discovery_endpoints();
+        let mut standby = BTreeSet::new();
+        let mut candidates = BTreeSet::new();
+        for room in self
+            .remote
+            .values()
+            .filter(|room| Self::host_online(&self.identity, room))
+        {
+            let Some(projection) = &room.projection else {
+                continue;
+            };
+            let proposal = |(a, b)| crate::transport::DiscoveryEdge {
+                endpoints: (a, b),
+                sockets: (
+                    self.identity.sessions[&a].connection.unwrap(),
+                    self.identity.sessions[&b].connection.unwrap(),
+                ),
+            };
+            let demand: BTreeSet<_> = projection
+                .publications
+                .iter()
+                .filter(|p| p.kind == Kind::Screen && !p.paused)
+                .flat_map(|p| {
+                    p.audience
+                        .iter()
+                        .map(|viewer| (p.session_id, viewer.session_id))
+                })
+                .collect();
+            // Keep the proven source-viewer pair through incumbent failure and
+            // a pending repair revision while the accepted subscription lives.
+            if let Some((a, b)) = discovery.filter(|pair| confirmed.contains(pair)) {
+                if demand.contains(&(a, b)) || demand.contains(&(b, a)) {
+                    candidates.insert(proposal((a, b)));
+                }
+            }
+            let mut scope = room.planning_sessions(self.service_endpoint, None);
+            scope.retain(|id| endpoints.get(id).is_some_and(|endpoint| endpoint.connected));
+            let mut graph: BTreeSet<_> = confirmed
+                .iter()
+                .copied()
+                .filter(|(a, b)| scope.contains(a) && scope.contains(b))
+                .collect();
+            standby.extend(&graph);
+            // Test the continuing need for the optional edge against the graph
+            // without it. Its own confirmation must not immediately cancel it.
+            if let Some(pair) = discovery {
+                graph.remove(&pair);
+            }
+            if demand.is_empty() || graph.is_empty() {
+                continue;
+            }
+            let available = |a: Uuid, b: Uuid| {
+                let pair = (a.min(b), a.max(b));
+                Some(pair) == discovery || !self.transports.has_pair(pair)
+            };
+            if let Some(first) = crate::connectivity::candidate(&scope, &graph, &demand, available)
+            {
+                let edge = proposal(first);
+                // Keep a single alternative per room after a failed primary.
+                // Retaining both proposals keeps failed generations fenced.
+                if self.transports.rejected(&edge) {
+                    if let Some(next) =
+                        crate::connectivity::candidate(&scope, &graph, &demand, |a, b| {
+                            (a, b) != first && available(a, b)
+                        })
+                    {
+                        candidates.insert(proposal(next));
+                    }
+                }
+                candidates.insert(edge);
+            }
+        }
+        self.transports.reconcile_with_standby(
             self.remote
                 .values()
                 .filter(|room| room.binding.is_some())
@@ -433,6 +558,9 @@ impl Channel {
                 .filter(|room| room.binding.is_some())
                 .filter_map(|room| room.projection.as_ref())
                 .flat_map(|projection| projection.base_links.iter().cloned()),
+            &standby,
+            &candidates,
+            self.now,
         );
     }
 
@@ -441,6 +569,9 @@ impl Channel {
             version: 6,
             users: self.identity.export_users(),
             header: DomainStateHeader {
+                hosting_mode: self.hosting_mode,
+                room_creation_policy: self.room_creation_policy,
+                restorable_rooms: self.restorable_rooms.clone(),
                 id: self.id,
                 name: self.name.clone(),
                 icon: self.icon.clone(),
@@ -448,6 +579,7 @@ impl Channel {
                 hosted_rooms: self
                     .remote
                     .iter()
+                    .filter(|(_, room)| room.reservation.is_none())
                     .map(|(id, room)| (id.clone(), room.summary.clone()))
                     .collect(),
             },
@@ -517,6 +649,11 @@ impl Channel {
             .hosted_rooms
             .values()
             .any(|room| !identity.users.contains_key(&room.creator_id))
+            || state
+                .header
+                .restorable_rooms
+                .values()
+                .any(|creator| !identity.users.contains_key(creator))
         {
             return Err("invalid_state");
         }
@@ -525,6 +662,10 @@ impl Channel {
         self.id = state.header.id;
         self.name = name;
         self.icon = state.header.icon;
+        self.hosting_mode = state.header.hosting_mode;
+        self.room_writer = None;
+        self.room_creation_policy = state.header.room_creation_policy;
+        self.restorable_rooms = state.header.restorable_rooms;
         self.remote = state
             .header
             .hosted_rooms
@@ -550,6 +691,8 @@ impl Channel {
             | Command::Browse { room_id, .. }
             | Command::BaseState { room_id, .. }
             | Command::FileOffer { room_id, .. }
+            | Command::FileBranchRefused { room_id, .. }
+            | Command::ForwardingAvailable { room_id, .. }
             | Command::FileReceive { room_id, .. }
             | Command::UpdateRoom { room_id, .. }
             | Command::EnterRoom { room_id, .. }
@@ -600,13 +743,31 @@ impl Channel {
         let member = self
             .identity
             .member(self.identity.sessions[&session].user_id)?;
-        if summary.creator_id != member.user_id {
+        let assigned = match self.hosting_mode {
+            HostingMode::Lightweight => summary.creator_id == member.user_id,
+            HostingMode::Hosted => {
+                self.room_writer
+                    == Some(crate::host::ServiceEndpoint {
+                        session_id: session,
+                        connection_id: connection,
+                    })
+            }
+        };
+        if !assigned {
             return Err("forbidden");
         }
         summary.validate()?;
+        self.check_room_policy(&summary)?;
         let room_id = summary.id.clone();
+        if self
+            .remote
+            .get(&room_id)
+            .is_some_and(|room| !room.occupies_slot())
+        {
+            self.check_active_room_limit()?;
+        }
         let remote = self.remote.get_mut(&room_id).ok_or("room_not_in_domain")?;
-        if remote.summary.creator_id != member.user_id {
+        if remote.summary.creator_id != summary.creator_id {
             return Err("forbidden");
         }
         // A live owner in another page is not displaced by opening its local data.
@@ -627,6 +788,9 @@ impl Channel {
         let replies = remote.drain_replies();
         if continuing {
             remote.binding.as_mut().unwrap().connection = connection;
+            if remote.summary != summary {
+                remote.projection = None;
+            }
         } else {
             remote.binding = Some(Binding {
                 id: Uuid::new_v4(),
@@ -639,8 +803,10 @@ impl Channel {
                 failed_pairs: BTreeMap::new(),
             });
             remote.projection = None;
+            remote.known_sessions.clear();
         }
         remote.summary = summary;
+        remote.reservation = None;
         let id = remote.binding.as_ref().unwrap().id;
         let mut events = vec![(
             session,
@@ -672,7 +838,9 @@ impl Channel {
             .member(self.identity.sessions[&session].user_id)?;
         room.id = Uuid::new_v4().to_string();
         room.creator_id = member.user_id;
+        self.check_active_room_limit()?;
         self.insert_room(room.clone())?;
+        self.remote.get_mut(&room.id).unwrap().reservation = Some(session);
         Ok(room)
     }
 
@@ -689,6 +857,7 @@ impl Channel {
         }
         self.identity.member(room.creator_id)?;
         room.validate()?;
+        self.check_room_policy(&room)?;
         if let Some(current) = self.remote.get(&room.id) {
             return if current.summary.creator_id == room.creator_id {
                 Ok(())
@@ -696,25 +865,80 @@ impl Channel {
                 Err("forbidden")
             };
         }
+        if member.user_id != self.identity.owner_id
+            && self.restorable_rooms.get(&room.id) != Some(&member.user_id)
+        {
+            return Err("room_not_in_domain");
+        }
         self.insert_room(room)
+    }
+
+    fn check_active_room_limit(&self) -> Result<(), &'static str> {
+        if self
+            .remote
+            .values()
+            .filter(|room| room.occupies_slot())
+            .count()
+            >= MAX_ACTIVE_ROOMS
+        {
+            return Err("room_limit");
+        }
+        Ok(())
     }
 
     fn insert_room(&mut self, room: RoomSummary) -> Result<(), &'static str> {
         room.validate()?;
-        if self.remote.len() >= MAX_ROOMS {
+        self.check_room_policy(&room)?;
+        if self.remote.len() + self.restorable_rooms.len() >= MAX_ROOMS
+            && !self.restorable_rooms.contains_key(&room.id)
+        {
             return Err("room_limit");
         }
+        self.restorable_rooms.remove(&room.id);
         self.remote
             .insert(room.id.clone(), RemoteRoom::restored(room));
         Ok(())
     }
 
-    pub(crate) fn manages_room(&self, session: Uuid, id: &str) -> Result<(), &'static str> {
+    pub(crate) fn set_room_creation_policy(
+        &mut self,
+        policy: RoomCreationPolicy,
+    ) -> Vec<RetiredRoomReply> {
+        self.room_creation_policy = policy;
+        let mut replies = Vec::new();
+        self.remote.retain(|_, room| {
+            room.reservation.is_none() || policy.permits(self.identity.owner_id, &room.summary)
+        });
+        for room in self.remote.values_mut() {
+            if !policy.permits(self.identity.owner_id, &room.summary) {
+                replies.extend(room.pause());
+                room.projection = None;
+            }
+        }
+        replies
+    }
+
+    fn check_room_policy(&self, summary: &RoomSummary) -> Result<(), &'static str> {
+        if self
+            .room_creation_policy
+            .permits(self.identity.owner_id, summary)
+        {
+            Ok(())
+        } else {
+            Err("room_creation_restricted")
+        }
+    }
+
+    pub(crate) fn can_remove_room(&self, session: Uuid, id: &str) -> Result<(), &'static str> {
         let member = self
             .identity
             .member(self.identity.sessions[&session].user_id)?;
-        let room = self.remote.get(id).ok_or("room_not_in_domain")?;
-        if member.user_id == room.summary.creator_id {
+        let creator = self.remote.get(id).map(|room| room.summary.creator_id);
+        let owner = member.user_id == self.identity.owner_id;
+        if creator.is_none() && !(owner && self.restorable_rooms.contains_key(id)) {
+            return Err("room_not_in_domain");
+        }
+        if creator == Some(member.user_id) || owner {
             Ok(())
         } else {
             Err("forbidden")
@@ -804,11 +1028,18 @@ impl Channel {
         Ok((address.recipient, changed))
     }
 
-    pub(crate) fn remove_room(&mut self, id: &str) -> Vec<RetiredRoomReply> {
-        let replies = self
-            .remote
-            .remove(id)
-            .map_or_else(Vec::new, |mut room| room.drain_replies());
+    pub(crate) fn remove_room(&mut self, id: &str, actor: Uuid) -> Vec<RetiredRoomReply> {
+        self.restorable_rooms.remove(id);
+        let replies = self.remote.remove(id).map_or_else(Vec::new, |mut room| {
+            if self.hosting_mode == HostingMode::Lightweight
+                && room.reservation.is_none()
+                && actor == room.summary.creator_id
+                && actor != self.identity.owner_id
+            {
+                self.restorable_rooms.insert(id.to_owned(), actor);
+            }
+            room.drain_replies()
+        });
         self.reconcile();
         replies
     }
@@ -823,7 +1054,14 @@ impl Channel {
         if !Self::host_online(&self.identity, remote) {
             return Err("room_host_offline");
         }
-        let (session, input) = remote.input(endpoints, self.service_endpoint, action, self.now)?;
+        let (session, input) = remote.input(
+            self.identity.owner_id,
+            endpoints,
+            self.service_endpoint,
+            self.transports.confirmed_pairs(&self.identity),
+            action,
+            self.now,
+        )?;
         Ok((
             session,
             Event::HostInput {
@@ -839,7 +1077,32 @@ impl Channel {
         context: RequestContext,
         command: Command,
     ) -> Result<(Uuid, Event), &'static str> {
+        if let Command::UpdateRoom {
+            access,
+            hidden,
+            password,
+            ..
+        } = &command
+        {
+            let mut proposed = self
+                .remote
+                .get(id)
+                .ok_or("room_unavailable")?
+                .summary
+                .clone();
+            proposed.access = *access;
+            proposed.hidden = *hidden;
+            if let Some(password) = password {
+                proposed.has_password = password.is_some();
+            }
+            self.check_room_policy(&proposed)?;
+        }
         let action = match command {
+            Command::DeleteRoom {
+                delete_data: true, ..
+            } if self.hosting_mode == HostingMode::Hosted => {
+                HostAction::RemoveHostedRoom { context }
+            }
             Command::BaseState {
                 room_id,
                 pair_id,
@@ -1035,15 +1298,20 @@ impl Channel {
             {
                 return Err("invalid_room_reply");
             }
-            self.remote
+            let Some(ReplyOwner::Request { member, .. }) = self
+                .remote
                 .get_mut(id)
                 .unwrap()
                 .binding
                 .as_mut()
                 .unwrap()
                 .replies
-                .remove(&output.revision);
+                .remove(&output.revision)
+            else {
+                unreachable!()
+            };
             return Ok(HostAcceptance {
+                deleted_by: Some(member.user_id),
                 projection_applied: false,
                 replies: vec![reply.clone()],
             });
@@ -1054,6 +1322,7 @@ impl Channel {
             return Ok(self.finish_host_output(id, output, false));
         }
         let projection = &output.projection;
+        self.check_room_policy(&projection.summary)?;
         if projection.summary.validate().is_err()
             || projection.last_message_seq > i64::MAX as u64
             || projection.summary.id != id
@@ -1518,6 +1787,24 @@ impl Channel {
         if let Some(previous) = &room.projection {
             next.last_message_seq = next.last_message_seq.max(previous.last_message_seq);
         }
+        // Public access alone applies to every visitor. Only a personal room
+        // interaction, or the host's private grant, qualifies for offline status.
+        room.known_sessions
+            .retain(|id| next.views.get(id).is_some_and(|view| view.authorized));
+        room.known_sessions
+            .extend(next.views.iter().filter_map(|(id, view)| {
+                (view.authorized
+                    && (room.summary.access == RoomAccess::Private
+                        || view.reading
+                        || next.participant_session_ids.contains(id)
+                        || !view.subscriptions.is_empty()
+                        || !view.watch_subscriptions.is_empty()
+                        || view
+                            .files
+                            .iter()
+                            .any(|plan| plan.receiving || plan.source_id == Some(*id))))
+                .then_some(*id)
+            }));
         room.projection = Some(next);
         self.reconcile();
         Ok(self.finish_host_output(id, output, true))
@@ -1583,6 +1870,7 @@ impl Channel {
             })
             .collect();
         HostAcceptance {
+            deleted_by: None,
             projection_applied,
             replies,
         }
@@ -1699,6 +1987,13 @@ impl Channel {
         let mut failed_subscriptions = BTreeSet::new();
         if let Some(member) = member {
             for room in self.remote.values() {
+                if member.user_id != room.summary.creator_id
+                    && !self
+                        .room_creation_policy
+                        .permits(self.identity.owner_id, &room.summary)
+                {
+                    continue;
+                }
                 if let Some(projection) =
                     room.projection.as_ref().filter(|_| room.binding.is_some())
                 {
@@ -1772,6 +2067,19 @@ impl Channel {
             watch_subscriptions: watch_subscriptions.into_iter().collect(),
             files,
             channel: ChannelInfo {
+                hosting_mode: self.hosting_mode,
+                room_creation_policy: self.room_creation_policy,
+                managed_room_ids: if member
+                    .is_some_and(|member| member.user_id == self.identity.owner_id)
+                {
+                    self.remote
+                        .keys()
+                        .chain(self.restorable_rooms.keys())
+                        .cloned()
+                        .collect()
+                } else {
+                    Vec::new()
+                },
                 user_count: self.identity.users.len(),
                 history_window: HISTORY_WINDOW,
                 id: self.id,
@@ -1850,6 +2158,12 @@ pub struct DurableState {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DomainStateHeader {
+    #[serde(default)]
+    pub(crate) hosting_mode: HostingMode,
+    #[serde(default)]
+    pub(crate) room_creation_policy: RoomCreationPolicy,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) restorable_rooms: BTreeMap<String, Uuid>,
     pub(crate) id: Uuid,
     pub(crate) name: String,
     pub(crate) icon: IdentityIcon,
@@ -1857,12 +2171,37 @@ pub struct DomainStateHeader {
     pub(crate) hosted_rooms: BTreeMap<String, RoomSummary>,
 }
 
+impl DurableState {
+    pub fn hosting_mode(&self) -> HostingMode {
+        self.header.hosting_mode
+    }
+}
+
+impl RoomCreationPolicy {
+    fn permits(self, owner_id: Uuid, room: &RoomSummary) -> bool {
+        room.creator_id == owner_id
+            || match self {
+                Self::Ordinary => true,
+                Self::InviteOnly => {
+                    room.access == RoomAccess::Private && room.hidden && !room.has_password
+                }
+                Self::OwnerOnly => false,
+            }
+    }
+}
+
 impl DomainStateHeader {
     pub(crate) fn validate(&self) -> Result<(), &'static str> {
         if self.id.is_nil()
             || self.owner_id.is_nil()
             || title(&self.name).is_none()
-            || self.hosted_rooms.len() > MAX_ROOMS
+            || self.hosted_rooms.len() + self.restorable_rooms.len() > MAX_ROOMS
+            || self.restorable_rooms.iter().any(|(id, creator)| {
+                !valid_id(id)
+                    || creator.is_nil()
+                    || *creator == self.owner_id
+                    || self.hosted_rooms.contains_key(id)
+            })
             || self
                 .hosted_rooms
                 .iter()

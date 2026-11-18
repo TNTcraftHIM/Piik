@@ -46,10 +46,24 @@ function mixerSetup() {
   return { getUserMedia, contexts };
 }
 
+test.each([true, false])("a suspended mixer preserves the granted window (source sound %s)", async sound => {
+  mixerSetup();
+  const context = new Context();
+  context.state = "suspended";
+  context.resume.mockImplementation(() => new Promise<void>(() => {}));
+  vi.stubGlobal("AudioContext", class { constructor() { return context; } });
+  const source = media(new Track("video"), ...(sound ? [new Track("audio")] : []));
+  const audio = new HostAudio(source);
+  expect(audio.start()).toBe(source);
+  expect(context.close).toHaveBeenCalledOnce();
+  expect(source.getTracks().every(track => track.readyState === "live")).toBe(true);
+  audio.dispose();
+});
+
 test("failed optional mixing preserves source sharing and retires its partial graph", async () => {
   const { getUserMedia } = mixerSetup();
   const context = new Context();
-  context.resume.mockRejectedValueOnce(new Error("Audio unavailable"));
+  context.createGain.mockImplementation(() => { throw new Error("Audio unavailable"); });
   vi.stubGlobal("AudioContext", class { constructor() { return context; } });
   const destination = vi.spyOn(context, "createMediaStreamDestination");
   const video = new Track("video"), sound = new Track("audio"), source = media(video, sound);

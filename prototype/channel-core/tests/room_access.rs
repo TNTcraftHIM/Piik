@@ -583,6 +583,115 @@ fn offline_removal_and_correlated_online_deletion_keep_room_scopes_separate() {
     assert!(network.state(owner).channel.rooms.is_empty());
 }
 
+#[test]
+fn public_discovery_ends_with_host_presence_while_known_sessions_keep_scoped_status() {
+    let mut network = RoomNetwork::new();
+    let creator = Uuid::new_v4();
+    let visitor = Uuid::new_v4();
+    let reader = Uuid::new_v4();
+    for connection in [creator, visitor, reader] {
+        admit(
+            &mut network,
+            connection,
+            json!({"type":"join","name":"Member"}),
+        );
+    }
+    let id = room(&mut network, creator, "public", false);
+    assert!(network
+        .state(visitor)
+        .channel
+        .rooms
+        .iter()
+        .any(|room| room.id == id && room.available));
+    command(
+        &mut network,
+        reader,
+        json!({"type":"browse","roomId":id,"active":true}),
+    );
+    let effects = network.authority.disconnect(creator, 200);
+    network.deliver(effects);
+    assert!(network.state(visitor).channel.rooms.is_empty());
+    let offline = &network.state(reader).channel.rooms[0];
+    assert_eq!(offline.id, id);
+    assert!(!offline.available && offline.delivery.is_some() && offline.members.is_none());
+    let direct = command(
+        &mut network,
+        visitor,
+        json!({"type":"enter_room","roomId":id}),
+    );
+    assert!(direct.events.iter().any(
+        |(_, event)| matches!(event, Event::Error { code, .. } if code == "room_host_offline")
+    ));
+    let late = Uuid::new_v4();
+    let (_, _, state) = admit(&mut network, late, json!({"type":"join","name":"Later"}));
+    assert!(state.channel.rooms.is_empty());
+    let expired = network.authority.expire(200 + piik_channel_core::RECOVERY_MS);
+    network.deliver(expired);
+    assert!(network.state(reader).channel.rooms[0].delivery.is_none());
+}
+
+#[test]
+fn abandoned_reservations_and_stopped_guest_rooms_release_active_slots() {
+    let mut network = RoomNetwork::new();
+    let creator = Uuid::new_v4();
+    let visitor = Uuid::new_v4();
+    for connection in [creator, visitor] {
+        admit(
+            &mut network,
+            connection,
+            json!({"type":"join","name":"Guest"}),
+        );
+    }
+    let live = room(&mut network, creator, "public", false);
+    let summary = piik_channel_core::host::RoomSummary::from_policy(&network.policy(&live));
+    let reserve = json!({"type":"create_room","room":summary,"requestId":"reserve"});
+    for _ in 1..32 {
+        assert!(command(&mut network, creator, reserve.clone())
+            .events
+            .iter()
+            .any(|(_, e)| matches!(e, Event::RoomCreated { .. })));
+    }
+    assert_eq!(network.state(visitor).channel.rooms.len(), 1);
+    assert_eq!(
+        serde_json::to_value(network.authority.export_state()).unwrap()["hostedRooms"]
+            .as_object()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(command(&mut network, visitor, reserve.clone())
+        .events
+        .iter()
+        .any(|(_, e)| matches!(e, Event::Error { code, .. } if code == "room_limit")));
+    let binding = network
+        .state(creator)
+        .channel
+        .rooms
+        .iter()
+        .find(|r| r.id == live)
+        .unwrap()
+        .delivery
+        .as_ref()
+        .unwrap()
+        .binding_id;
+    command(
+        &mut network,
+        creator,
+        json!({"type":"host_stop","roomId":live,"bindingId":binding}),
+    );
+    assert!(command(&mut network, visitor, reserve.clone())
+        .events
+        .iter()
+        .any(|(_, e)| matches!(e, Event::RoomCreated { .. })));
+    command(&mut network, creator, json!({"type":"leave"}));
+    for _ in 1..32 {
+        assert!(command(&mut network, visitor, reserve.clone())
+            .events
+            .iter()
+            .any(|(_, e)| matches!(e, Event::RoomCreated { .. })));
+    }
+}
+
 fn command(core: &mut RoomNetwork, connection: Uuid, value: Value) -> Effects {
     core.command(connection, value)
 }

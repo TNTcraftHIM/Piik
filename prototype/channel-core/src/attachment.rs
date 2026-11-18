@@ -12,7 +12,7 @@ pub struct AttachmentDescriptor {
     pub sha256: String,
 }
 
-/// Message-owned display bytes; only an original rendition is file content.
+/// Message thumbnail. Historical rows can carry an authenticated inline original.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImageRendition {

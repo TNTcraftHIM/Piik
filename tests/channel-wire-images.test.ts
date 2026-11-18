@@ -5,7 +5,7 @@ import { CHANNEL_EVENT_BYTES, CHANNEL_PROTOCOL, CHANNEL_ROOM_LIMIT, CHANNEL_SESS
 const picture = "data:image/png;base64,YWJj";
 const version = "a".repeat(64);
 const snapshot = () => ({
-  channel: { id: "domain", name: "Friends", icon: picture, ownerId: null, historyWindow: 1000, userCount: 1, rooms: [{
+  channel: { id: "domain", name: "Friends", icon: picture, ownerId: null, roomCreationPolicy: "ordinary", hostingMode: "lightweight", historyWindow: 1000, userCount: 1, managedRoomIds: [], rooms: [{
     id: "room", name: "Room", icon: picture, creatorId: "user", access: "public", hidden: false,
     hasPassword: false, authorized: true, canManage: false, participantSessionIds: [], lastMessageSeq: 0, fileActivity: [],
     available: true, reading: false, capabilities: { attachments: true },

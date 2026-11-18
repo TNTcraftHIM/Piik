@@ -16,11 +16,13 @@ use uuid::Uuid;
 
 fn input(owner: Uuid, actor: Uuid, action: impl FnOnce(RequestContext) -> HostAction) -> HostInput {
     HostInput {
+        channel_owner_id: Uuid::nil(),
         service_endpoint: None,
         now: 0,
         binding_id: owner,
         host_session_id: owner,
         revision: 1,
+        confirmed_pairs: Default::default(),
         failed_pairs: Vec::new(),
         endpoints: [owner, actor]
             .into_iter()
@@ -98,8 +100,19 @@ fn peer(
     actor: Uuid,
     command: ConversationCommand,
 ) -> Result<HistoryResult, &'static str> {
-    host.dispatch(input(owner, actor, |_| HostAction::Sync))
-        .unwrap();
+    peer_with_owner(host, owner, actor, Uuid::nil(), command)
+}
+
+fn peer_with_owner(
+    host: &mut StoredRoomHost,
+    owner: Uuid,
+    actor: Uuid,
+    channel_owner: Uuid,
+    command: ConversationCommand,
+) -> Result<HistoryResult, &'static str> {
+    let mut sync = input(owner, actor, |_| HostAction::Sync);
+    sync.channel_owner_id = channel_owner;
+    host.dispatch(sync).unwrap();
     let now = match &command {
         ConversationCommand::React { nonce, .. } => nonce * 800,
         _ => 1,
@@ -159,6 +172,109 @@ fn creating_invalid_room_policy_leaves_no_database() {
         assert!(!created, "{field} must be rejected before opening SQLite");
         assert_eq!(error.as_deref(), Some("invalid_room_policy"), "{field}");
     }
+}
+
+#[test]
+fn private_room_moderation_removes_quotes_and_blocks_stale_retries_after_restart() {
+    let path = std::env::temp_dir().join(format!("piik-moderation-{}.sqlite", Uuid::new_v4()));
+    let owner = Uuid::new_v4();
+    let author = Uuid::new_v4();
+    let moderator = Uuid::new_v4();
+    let mut room = policy("private", owner, RoomAccess::Private);
+    room.grants.insert(author);
+    let mut host = StoredRoomHost::create(&path, room).unwrap();
+    let chat = |nonce: &str, text: &str, reply| ConversationCommand::Chat {
+        nonce: nonce.into(),
+        text: text.into(),
+        mentions: vec![],
+        attachments: vec![],
+        inline_images: Default::default(),
+        reply,
+    };
+    let target = || chat("target", "deleted quotation", None);
+    let delete = |message_seq| ConversationCommand::DeleteMessage { message_seq };
+    let clear = || ConversationCommand::ClearHistory { through_seq: 2 };
+    sent(peer(&mut host, owner, author, target()));
+    sent(peer(
+        &mut host,
+        owner,
+        owner,
+        chat(
+            "reply",
+            "kept reply",
+            Some(piik_channel_core::history::ReplyTarget {
+                seq: 1,
+                notify: true,
+            }),
+        ),
+    ));
+    for command in [
+        ConversationCommand::History { before: None },
+        delete(1),
+        clear(),
+    ] {
+        assert_eq!(
+            peer_with_owner(&mut host, owner, moderator, moderator, command).err(),
+            Some("room_access_required")
+        );
+    }
+    assert_eq!(
+        peer(&mut host, owner, author, delete(2)).err(),
+        Some("forbidden")
+    );
+    assert_eq!(
+        peer(&mut host, owner, author, clear()).err(),
+        Some("forbidden")
+    );
+    assert!(matches!(
+        peer(&mut host, owner, author, delete(1)),
+        Ok(HistoryResult::MessageDeleted { message_seq: 1 })
+    ));
+    let HistoryResult::Page { messages, .. } = peer(
+        &mut host,
+        owner,
+        owner,
+        ConversationCommand::History { before: None },
+    )
+    .unwrap() else {
+        panic!("history expected")
+    };
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].message.text, "kept reply");
+    assert!(messages[0].message.reply.is_none());
+    assert_eq!(
+        peer(&mut host, owner, author, target()).err(),
+        Some("message_unavailable")
+    );
+
+    let key = invitation(&mut host, owner);
+    enter(&mut host, owner, moderator, &key);
+    assert!(matches!(
+        peer_with_owner(&mut host, owner, moderator, moderator, clear()),
+        Ok(HistoryResult::HistoryCleared { through_seq: 2 })
+    ));
+    drop(host);
+    let mut host = StoredRoomHost::open(&path).unwrap();
+    assert!(host.policy().reads(moderator) && host.policy().reads(author));
+    assert_eq!(
+        peer(&mut host, owner, author, target()).err(),
+        Some("message_unavailable")
+    );
+    let fresh = sent(peer(
+        &mut host,
+        owner,
+        author,
+        chat("fresh", "after clear", None),
+    ));
+    assert_eq!(fresh.message.message.seq, 3);
+    peer_with_owner(&mut host, owner, moderator, moderator, clear()).unwrap();
+    assert!(
+        matches!(peer(&mut host, owner, author, ConversationCommand::History { before: None }),
+        Ok(HistoryResult::Page { messages, .. }) if messages.len() == 1 && messages[0].message.seq == 3)
+    );
+    peer_with_owner(&mut host, owner, moderator, moderator, delete(3)).unwrap();
+    drop(host);
+    std::fs::remove_file(path).unwrap();
 }
 
 #[test]
@@ -305,9 +421,9 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
                 inline_images: BTreeMap::from([(
                     attachment.id,
                     piik_channel_core::attachment::ImageRendition {
-                        data: "R0lGODlhYWJj".into(),
+                        data: "R0lGODlhZGVm".into(),
                         media_type: "image/gif".into(),
-                        original: true,
+                        original: false,
                         width: 32,
                         height: 32,
                     },
@@ -344,10 +460,15 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
     let backup = host
         .snapshot(&folder.join("snapshot.sqlite"), domain, None)
         .unwrap();
+    use piik_channel_core::backup::HistoryRow;
+    let live = |row| match row {
+        HistoryRow::Message(message) => message,
+        HistoryRow::Deleted(_) => panic!("expected live archive row"),
+    };
     let mut rows = Vec::new();
     backup
         .for_each_row(|row| {
-            rows.push(row);
+            rows.push(live(row));
             Ok(())
         })
         .unwrap();
@@ -379,7 +500,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
             .next()
             .unwrap()
             .data,
-        "R0lGODlhYWJj"
+        "R0lGODlhZGVm"
     );
     let manifest = serde_json::to_value(Metadata::Room(backup.metadata().clone())).unwrap();
     assert_eq!(manifest["kind"], "room");
@@ -397,7 +518,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
             CopyHistoryImport, RetainedFile, RoomCopyInfo, RoomCopyMetadata, RoomMetadata,
         };
         let metadata = RoomCopyMetadata {
-            version: 1,
+            version: 2,
             room_info: Some(RoomCopyInfo {
                 name: host.policy().name.clone(),
                 icon: host.policy().icon.clone(),
@@ -428,7 +549,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         let copied: Vec<_> = rows
             .iter()
             .cloned()
-            .map(|row| importer.accept(row).unwrap())
+            .map(|row| live(importer.accept(HistoryRow::Message(row)).unwrap()))
             .collect();
         importer.finish().unwrap();
         let archived = copied[0].message.message.user_id;
@@ -474,7 +595,11 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
             ..metadata.clone()
         })
         .unwrap();
-        let copied_again = copying_again.accept(copied[0].clone()).unwrap();
+        let copied_again = live(
+            copying_again
+                .accept(HistoryRow::Message(copied[0].clone()))
+                .unwrap(),
+        );
         assert_eq!(
             copied_again.message.message.archived_author_name.as_deref(),
             Some("Original owner")
@@ -495,13 +620,13 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         let staged_copy = RoomBackup::stage(
             &folder.join("copy-staging.sqlite"),
             RoomMetadata {
-                version: 2,
+                version: 3,
                 domain_id: Uuid::new_v4(),
                 policy: copy_policy,
                 own_credential: None,
                 retained_files: metadata.retained_files,
             },
-            copied.iter().cloned().map(Ok),
+            copied.iter().cloned().map(HistoryRow::Message).map(Ok),
         )
         .unwrap();
         let copied_path = folder.join("copied.sqlite");
@@ -580,7 +705,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
                     || false,
                 )?);
             }
-            Ok(row)
+            Ok(HistoryRow::Message(row))
         }),
     )
     .unwrap();
@@ -589,7 +714,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
     during_import
         .unwrap()
         .for_each_row(|row| {
-            last_exported = Some(row.nonce);
+            last_exported = Some(live(row).nonce);
             Ok(())
         })
         .unwrap();
@@ -637,7 +762,10 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
     assert!(RoomBackup::stage(
         &rejected_path,
         backup.metadata().clone(),
-        [Ok(rows[0].clone()), Ok(duplicate)],
+        [
+            Ok(HistoryRow::Message(rows[0].clone())),
+            Ok(HistoryRow::Message(duplicate))
+        ],
     )
     .is_err());
     let rejected = Storage::open(&rejected_path).unwrap();
@@ -1171,8 +1299,56 @@ fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
         assert!(!retry.inserted);
         assert_eq!(
             serde_json::to_value(retry.message).unwrap(),
-            serde_json::to_value(original).unwrap()
+            serde_json::to_value(&original).unwrap()
         );
+        let offer = json!({"type":"file_offer", "roomId":"private", "messageSeq":original.message.seq, "attachmentId":attachment["id"], "sha256":attachment["sha256"], "available":true});
+        command(&mut host, owner, owner, offer.clone());
+        let request = ConversationRequest {
+            address: ConversationAddress {
+                room_id: "private".into(),
+                binding_id: owner,
+                sender: owner,
+                recipient: owner,
+                request_id: "delete-file".into(),
+            },
+            command: ConversationCommand::DeleteMessage {
+                message_seq: original.message.seq,
+            },
+        };
+        let packet = SessionSigner::from_seed([1; 32])
+            .sign(owner, &request)
+            .unwrap();
+        let outcome = host.dispatch_peer(&packet, 2).unwrap();
+        assert!(matches!(
+            outcome.result,
+            Ok(ConversationResult::History(
+                HistoryResult::MessageDeleted { .. }
+            ))
+        ));
+        assert!(outcome.projection_update.unwrap().projection.views[&owner]
+            .files
+            .is_empty());
+        assert!(
+            matches!(command(&mut host, owner, owner, offer).reply.unwrap().result, RoomResult::Error { code } if code == "attachment_unavailable")
+        );
+        let frozen = path.with_extension("snapshot.sqlite");
+        let backup = host.snapshot(&frozen, Uuid::new_v4(), None).unwrap();
+        let mut exported = Vec::new();
+        backup
+            .for_each_row(|row| {
+                exported.push(serde_json::to_value(row)?);
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            exported,
+            vec![json!({
+                "seq": original.message.seq, "retryKey": piik_channel_core::history::retry_key(owner, "file-send")
+            })]
+        );
+        assert!(backup.metadata().retained_files.is_empty());
+        drop(backup);
+        std::fs::remove_file(frozen).unwrap();
     }
     std::fs::remove_file(path).unwrap();
 }

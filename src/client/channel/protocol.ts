@@ -13,9 +13,11 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 28;
+export const CHANNEL_PROTOCOL = 31;
 export const CHANNEL_SESSION_LIMIT = 128;
-export const CHANNEL_ROOM_LIMIT = 32;
+export const CHANNEL_ROOM_LIMIT = 64;
+export const roomCreationPolicySchema = z.enum(["ordinary", "invite_only", "owner_only"]);
+export type RoomCreationPolicy = z.infer<typeof roomCreationPolicySchema>;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("missing") }),
@@ -60,7 +62,7 @@ export const attachmentSchema = z.object({
 });
 export const fileKeySchema = z.object({ roomId: id, messageSeq: z.number().int().positive(), attachmentId: id });
 export const filePlanSchema = z.object({
-  roomId: id, messageSeq: z.number().int().positive(), attachment: attachmentSchema,
+  roomId: id, messageSeq: z.number().int().positive(), attachment: attachmentSchema, authorId: z.uuid(),
   sourceId: id.nullable(), upstream: id.nullable(), downstream: z.array(id), receiving: z.boolean(),
 });
 export const MAX_MESSAGE_CODE_POINTS = 2000;
@@ -101,6 +103,8 @@ export type WatchActivity = z.infer<typeof watchActivitySchema>;
 export const snapshotSchema = z.object({
   channel: z.object({
     id, name: identityNameSchema, icon: identityIconSchema, ownerId: id.nullable(), rooms: z.array(roomSchema).max(CHANNEL_ROOM_LIMIT), historyWindow: z.number().int().positive(), userCount: z.number().int().nonnegative(),
+    roomCreationPolicy: roomCreationPolicySchema, hostingMode: z.enum(["lightweight", "hosted"]),
+    managedRoomIds: z.array(id).max(CHANNEL_ROOM_LIMIT),
   }),
   users: z.array(userSummarySchema),
   sessions: z.array(z.object({ id, userId: id, online: z.boolean(), signingKey })).max(CHANNEL_SESSION_LIMIT),
@@ -244,6 +248,8 @@ export type ConversationReply = ConversationAddress & { record:
   | { type: "interaction_ready"; serverTime: number; reactionIds: string[]; publicationReactions: PublicationReactionSnapshot[] }
   | { type: "confirmed"; message: ChannelMessage; inserted: boolean }
   | { type: "history_message" | "live_message"; message: ChannelMessage }
+  | { type: "message_deleted"; messageSeq: number }
+  | { type: "history_cleared"; throughSeq: number }
   | { type: "history_end"; count: number; hasMore: boolean; oldestSeq: number | null; before: number | null }
   | { type: "error"; code: string }
 };
@@ -264,10 +270,11 @@ export type ChannelCommand =
   | { type: "conversation"; packet: SignedConversationPacket }
   | { type: "set_profile"; name: string; avatar: string | null }
   | ({ type: "update_domain" } & DomainSettings)
+  | { type: "set_room_creation_policy"; policy: RoomCreationPolicy }
   | { type: "profiles"; ids?: string[]; after?: string; query?: string }
   | { type: "input_register"; publicationId: string; flowId: string; secret: number[] }
   | { type: "host_register"; room: RoomSummary; resumeBinding?: string }
-  | { type: "create_room"; room: RoomSummary }
+  | { type: "create_room"; room: RoomSummary; password?: string; allowServiceRelay?: boolean }
   | { type: "admit_room"; room: RoomSummary }
   | { type: "delete_room"; roomId: string; deleteData: boolean }
   | { type: "host_output"; roomId: string; output: unknown }
@@ -277,9 +284,13 @@ export type ChannelCommand =
   | { type: "interaction_ready"; roomId: string }
   | { type: "react"; roomId: string; reaction: string; target: ReactionTarget; nonce: number }
   | { type: "history"; roomId: string; before?: number }
+  | { type: "delete_message"; roomId: string; messageSeq: number }
+  | { type: "clear_history"; roomId: string; throughSeq: number }
   | ({ type: "chat"; roomId: string; text: string; nonce: string; attachments: ChannelAttachment[]; inlineImages?: Record<string, ImageRendition> } & ChatOptions)
   | ({ type: "file_offer"; sha256: string; available: boolean } & ChannelFileKey)
   | ({ type: "file_receive"; enabled: boolean } & ChannelFileKey)
+  | ({ type: "file_branch_refused"; downstreamId: string; sourceId: string } & ChannelFileKey)
+  | { type: "forwarding_available"; roomId: string; kind?: "voice" | "file" | "screen" }
   | ({ type: "update_room"; roomId: string } & RoomSettings)
   | { type: "enter_room"; roomId: string; password?: string; inviteKey?: string }
   | { type: "room_invite"; roomId: string }

@@ -271,7 +271,7 @@ mod tests {
             sha256: "a".repeat(64),
         };
         let rows = (1..=55)
-            .map(|seq| HistoryRow {
+            .map(|seq| HistoryRow::Message(piik_channel_core::backup::LiveHistoryRow {
                 nonce: format!("retry-{seq}"),
                 message: StoredMessage {
                     message: ChatMessage {
@@ -310,7 +310,7 @@ mod tests {
                         counts: BTreeMap::from([("wave".into(), 1)]),
                     },
                 },
-            })
+            }))
             .collect();
         let inventory = [1, 55]
             .into_iter()
@@ -320,7 +320,7 @@ mod tests {
             })
             .collect();
         let metadata = RoomMetadata {
-            version: 2,
+            version: 3,
             domain_id: Uuid::new_v4(),
             policy: RoomState::new(
                 "living".into(),
@@ -357,7 +357,12 @@ mod tests {
     ) -> Result<()> {
         let folder = std::env::temp_dir().join(format!("piik-room-archive-{}", Uuid::new_v4()));
         std::fs::create_dir(&folder)?;
-        let (metadata, rows, inventory) = room();
+        let (metadata, mut rows, inventory) = room();
+        let deleted = piik_channel_core::backup::DeletedHistoryRow {
+            seq: 56,
+            retry_key: piik_channel_core::history::retry_key(metadata.policy.creator_id, "retired send"),
+        };
+        rows.push(piik_channel_core::backup::HistoryRow::Deleted(deleted));
         let snapshot = RoomBackup::stage(
             &folder.join("source.sqlite"),
             metadata,

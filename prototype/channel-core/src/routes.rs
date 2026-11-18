@@ -1,4 +1,5 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use uuid::Uuid;
 
 const BASE_PREPARE_MS: u64 = 20_000;
@@ -44,6 +45,12 @@ pub struct Plan {
     failed_parents: BTreeMap<Uuid, BTreeSet<Uuid>>,
 }
 
+pub(crate) struct ScreenDemand<'a> {
+    pub order: &'a [Uuid],
+    pub neighbors: &'a BTreeMap<Uuid, BTreeSet<Uuid>>,
+    pub relays: &'a BTreeSet<Uuid>,
+}
+
 impl Plan {
     pub fn new(source: Uuid) -> Self {
         Self {
@@ -77,6 +84,19 @@ impl Plan {
         helpers: &BTreeMap<Uuid, Uuid>,
         limits: &RelayLimits,
     ) {
+        self.reconcile_demand(requested, available, connected, base, helpers, limits, None)
+    }
+
+    pub fn reconcile_demand(
+        &mut self,
+        requested: &BTreeSet<Uuid>,
+        available: &BTreeSet<Uuid>,
+        connected: &BTreeSet<Uuid>,
+        base: Option<&BaseTree>,
+        helpers: &BTreeMap<Uuid, Uuid>,
+        limits: &RelayLimits,
+        screen: Option<&ScreenDemand<'_>>,
+    ) {
         let remove: Vec<_> = self
             .parents
             .iter()
@@ -101,6 +121,7 @@ impl Plan {
                 if self.parents.contains_key(child)
                     && !self.ready.contains_key(child)
                     && !self.is_display(*child, helpers)
+                    && !screen.is_some_and(|screen| self.confirmed_path(*child, screen))
                 {
                     self.graft_base(*child, &base_parents, available, connected, helpers, limits);
                 }
@@ -125,6 +146,10 @@ impl Plan {
         if !connected.contains(&self.source) {
             return;
         }
+        if let Some(screen) = screen {
+            self.extend_confirmed(screen, helpers, limits);
+        }
+        // Unknown paths use the existing admission and repair policy.
         for child in requested {
             if *child == self.source
                 || self.parents.contains_key(child)
@@ -139,6 +164,179 @@ impl Plan {
                 self.parents.insert(*child, parent);
             }
         }
+    }
+
+    fn confirmed_path(&self, mut child: Uuid, screen: &ScreenDemand<'_>) -> bool {
+        while child != self.source {
+            let Some(parent) = self.parents.get(&child) else {
+                return false;
+            };
+            if !screen
+                .neighbors
+                .get(&child)
+                .is_some_and(|peers| peers.contains(parent))
+            {
+                return false;
+            }
+            child = *parent;
+        }
+        true
+    }
+
+    /// Append branches on confirmed room pairs. The incumbent and its media
+    /// proofs are read-only inputs to both candidates.
+    fn extend_confirmed(
+        &mut self,
+        screen: &ScreenDemand<'_>,
+        helpers: &BTreeMap<Uuid, Uuid>,
+        limits: &RelayLimits,
+    ) {
+        let waiting: Vec<_> = screen
+            .order
+            .iter()
+            .copied()
+            .filter(|peer| {
+                !self.parents.contains_key(peer)
+                    && screen.neighbors.contains_key(peer)
+                    && *peer != self.source
+            })
+            .collect();
+        if waiting.is_empty() {
+            return;
+        }
+        let fill = |plan: &mut Plan| {
+            for &viewer in &waiting {
+                plan.append_path(viewer, screen, helpers, limits);
+            }
+        };
+        let rank = |plan: &Plan| {
+            let served: Vec<_> = waiting
+                .iter()
+                .map(|v| plan.parents.contains_key(v))
+                .collect();
+            let hops: usize = waiting
+                .iter()
+                .filter(|v| plan.parents.contains_key(v))
+                .map(|v| {
+                    std::iter::successors(Some(*v), |p| plan.parents.get(p).copied()).count() - 1
+                })
+                .sum();
+            (
+                served.iter().filter(|covered| **covered).count(),
+                served,
+                Reverse(plan.parents.len()),
+                Reverse(hops),
+            )
+        };
+        let mut best = self.clone();
+        fill(&mut best);
+        // The second candidate gives a shared upstream copy first use of a
+        // scarce slot. Compare complete trees after filling other demand.
+        let mut shared = None;
+        for relay in screen.relays {
+            if *relay == self.source
+                || self.parents.contains_key(relay)
+                || self.is_display(*relay, helpers)
+            {
+                continue;
+            }
+            let Some(peers) = screen.neighbors.get(relay) else {
+                continue;
+            };
+            let viewers: Vec<_> = waiting
+                .iter()
+                .copied()
+                .filter(|viewer| {
+                    peers.contains(viewer)
+                        && !self
+                            .failed_parents
+                            .get(viewer)
+                            .is_some_and(|failed| failed.contains(relay))
+                })
+                .take(limits.get(*relay, self.source))
+                .collect();
+            if viewers.len() + usize::from(waiting.contains(relay)) < 2 {
+                continue;
+            }
+            let mut candidate = self.clone();
+            if !candidate.append_path(*relay, screen, helpers, limits)
+                || candidate.is_display(*relay, helpers)
+            {
+                continue;
+            }
+            for viewer in viewers {
+                candidate.parents.entry(viewer).or_insert(*relay);
+            }
+            let score = rank(&candidate);
+            if shared
+                .as_ref()
+                .is_none_or(|(best_score, _)| score > *best_score)
+            {
+                shared = Some((score, candidate));
+            }
+        }
+        if let Some((_, mut candidate)) = shared {
+            fill(&mut candidate);
+            if rank(&candidate) > rank(&best) {
+                best = candidate;
+            }
+        }
+        self.parents = best.parents;
+    }
+
+    fn append_path(
+        &mut self,
+        target: Uuid,
+        screen: &ScreenDemand<'_>,
+        helpers: &BTreeMap<Uuid, Uuid>,
+        limits: &RelayLimits,
+    ) -> bool {
+        if self.parents.contains_key(&target) {
+            return true;
+        }
+        let mut queue = VecDeque::from([self.source]);
+        let mut visited = BTreeSet::from([self.source]);
+        // Shortest added branches can start at any installed, usable prefix.
+        for peer in self.subtree(self.source).into_iter().skip(1) {
+            if self.rooted_ready(peer) || self.confirmed_path(peer, screen) {
+                queue.push_back(peer);
+                visited.insert(peer);
+            }
+        }
+        let mut previous = BTreeMap::new();
+        while let Some(parent) = queue.pop_front() {
+            if (parent != self.source && !screen.relays.contains(&parent))
+                || self.is_display(parent, helpers)
+                || previous
+                    .get(&parent)
+                    .is_some_and(|upstream| helpers.get(&parent) == Some(upstream))
+                || self.wan_outputs(parent, None, helpers) >= limits.get(parent, self.source)
+            {
+                continue;
+            }
+            for &child in screen.neighbors.get(&parent).into_iter().flatten() {
+                if self.parents.contains_key(&child)
+                    || self
+                        .failed_parents
+                        .get(&child)
+                        .is_some_and(|failed| failed.contains(&parent))
+                    || !visited.insert(child)
+                {
+                    continue;
+                }
+                previous.insert(child, parent);
+                if child == target {
+                    let mut next = child;
+                    while let Some(&upstream) = previous.get(&next) {
+                        self.parents.insert(next, upstream);
+                        next = upstream;
+                    }
+                    return true;
+                }
+                queue.push_back(child);
+            }
+        }
+        false
     }
 
     pub(crate) fn candidate_parent(
@@ -260,6 +458,12 @@ impl Plan {
 
     pub fn reject_parent(&mut self, child: Uuid, parent: Uuid) {
         self.failed_parents.entry(child).or_default().insert(parent);
+    }
+    pub fn retry_parent(&mut self, parent: Uuid) {
+        self.failed_parents.retain(|_, parents| {
+            parents.remove(&parent);
+            !parents.is_empty()
+        });
     }
 
     /// Necessary reductions in deterministic child order. Select a feasible
@@ -878,6 +1082,14 @@ impl BaseTree {
     /// Walk the ready tree from the actual source, then retain only the unique
     /// paths to listeners. Shared directed edges carry one copy of that source.
     pub fn project(&self, source: Uuid, listeners: &BTreeSet<Uuid>) -> BTreeSet<(Uuid, Uuid)> {
+        self.project_avoiding(source, listeners, &BTreeSet::new())
+    }
+    pub fn project_avoiding(
+        &self,
+        source: Uuid,
+        listeners: &BTreeSet<Uuid>,
+        refused: &BTreeSet<(Uuid, Uuid)>,
+    ) -> BTreeSet<(Uuid, Uuid)> {
         let mut adjacency = BTreeMap::<Uuid, Vec<Uuid>>::new();
         for (parent, child) in self.plan.ready_edges() {
             adjacency.entry(parent).or_default().push(child);
@@ -888,7 +1100,7 @@ impl BaseTree {
         let mut pending = vec![source];
         while let Some(node) = pending.pop() {
             for next in adjacency.get(&node).into_iter().flatten() {
-                if visited.insert(*next) {
+                if !refused.contains(&(node, *next)) && visited.insert(*next) {
                     parents.insert(*next, node);
                     pending.push(*next);
                 }

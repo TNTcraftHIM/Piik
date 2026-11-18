@@ -8,7 +8,7 @@ import { useCopy } from "../ui/copy";
 import { screenVideoSettings } from "../media/quality";
 import type { ChannelController } from "../channel/types";
 import type { WatchIndexedChoice, WatchMpdChoice } from "../channel/watch-page-media";
-import type { ChannelRoom, WatchActivity } from "../channel/protocol";
+import { roomCreationPolicySchema, type ChannelRoom, type RoomCreationPolicy, type WatchActivity } from "../channel/protocol";
 import { WatchPlayer } from "../channel/watch-playback";
 import { HTMLVideoMedia, AppPageMedia, type WatchMedia, type WatchMediaState, type WatchMediaEvent } from "../channel/watch-media";
 import { useAnchoredPopover } from "../components/living/use-anchored-popover";
@@ -57,6 +57,11 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
         catalog: { ...mpdTracks[0].catalog!, sourceId: "10000000-0000-4000-8000-000000000008" } }] : [])];
   const { lang } = useCopy(), zh = lang === "zh";
   const sample = useChannelGuideSample(true);
+  const guestPreview = new URLSearchParams(location.search).has("guest");
+  const [roomCreationPolicy, setRoomCreationPolicy] = useState<RoomCreationPolicy>(() => {
+    const requested = roomCreationPolicySchema.safeParse(new URLSearchParams(location.search).get("creation-policy"));
+    return requested.success ? requested.data : "ordinary";
+  });
   const invitedRoom = new URLSearchParams(location.search).get("invite-preview") === "studio" ? "studio" : null;
   const [layout, setLayout] = useState<InterfaceLayout>(new URLSearchParams(location.search).get("layout") === "quick" ? "quick" : "workspace");
   const [offerLayout, setOfferLayout] = useState(firstUse);
@@ -68,6 +73,8 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const [fileSample, setFileSample] = useState(() => new URLSearchParams(location.search).has("file"));
   const [audienceSample, setAudienceSample] = useState(() => new URLSearchParams(location.search).has("audience"));
   const [createdRooms, setCreatedRooms] = useState<ChannelRoom[]>([]);
+  const [removedRooms, setRemovedRooms] = useState(new Set<string>());
+  const extraRoomId = new URLSearchParams(location.search).has("managed-rooms") ? "a20d8954-55fd-4ef9-bc98-f9d50f955ef7" : null;
   const [sharingRoom, setSharingRoom] = useState<string | null>(null);
   const [watchMode, setWatchMode] = useState(new URLSearchParams(location.search).get("watch") ?? "off");
   const watchOnly = new URLSearchParams(location.search).has("watch-only");
@@ -99,7 +106,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const [sourceSounds, setSourceSounds] = useState<Partial<Record<string, { level: number; muted: boolean; bitrate?: number }>>>({});
   const canvases = useRef<HTMLCanvasElement[]>([]);
   const rooms = [...sample.channel.state!.channel.rooms.slice(0, roomCount),
-    ...createdRooms.map(room => ({ ...room, ...sample.settingsByRoom[room.id] }))];
+    ...createdRooms.map(room => ({ ...room, ...sample.settingsByRoom[room.id] }))].filter(room => !removedRooms.has(room.id));
   const roomIds = new Set(rooms.map(room => room.id));
   const publications = (sharingRoom ? [{ audience: [], id: "sample-screen-2", roomId: sharingRoom,
     sessionId: sample.channel.sessionId!, userId: users[0].id, kind: "screen" as const, paused: false,
@@ -188,6 +195,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     .map(user => `${user.id}-session`) : [];
   const watchSessions = watchActivity ? [watchActivity.sessionId, ...watchViewerSessionIds] : [];
   const state = { ...sample.channel.state!, channel: { ...sample.channel.state!.channel,
+    ownerId: guestPreview ? "sample-bo" : sample.channel.state!.channel.ownerId, roomCreationPolicy,
+    hostingMode: new URLSearchParams(location.search).has("hosted") ? "hosted" as const : "lightweight" as const,
+    managedRoomIds: guestPreview ? [] : [...roomIds, ...(extraRoomId && !removedRooms.has(extraRoomId) ? [extraRoomId] : [])],
     rooms: rooms.map(room => ({ ...room, ...(hostOffline && room.id === "friday" ? { available: false, delivery: undefined,
       ...(new URLSearchParams(location.search).has("offline-locked") ? { authorized: false, canManage: false } : {}) } : {}),
       name: longNames && room.id === "friday" ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,
@@ -210,9 +220,10 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   };
   let messagesByRoom = emptyChat ? { ...sample.channel.messagesByRoom,
     friday: sample.channel.messagesByRoom.friday.filter(message => message.seq > 2) } : sample.channel.messagesByRoom;
-  if (fileSample && roomIds.has("friday")) {
+  const fileSampleSeq = fileSample && roomIds.has("friday") ? (messagesByRoom.friday.at(-1)?.seq ?? 0) + 1 : null;
+  if (fileSampleSeq !== null) {
     const messages = messagesByRoom.friday;
-    messagesByRoom = { ...messagesByRoom, friday: [...messages, { id: "sample-file", seq: (messages.at(-1)?.seq ?? 0) + 1,
+    messagesByRoom = { ...messagesByRoom, friday: [...messages, { id: "sample-file", seq: fileSampleSeq,
       userId: users[0].id, text: "", time: new Date(2020, 0, 1, 20, 3).getTime(),
       attachments: [{ id: "sample-document", name: longNames ? "AnnualPlanningNotes_".repeat(3) + "final.pdf" : "Notes.pdf",
         mediaType: "application/octet-stream", size: 12 * 1024 * 1024, sha256: "0".repeat(64) }] }] };
@@ -350,6 +361,20 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     screenPresentation: () => {}, reconnect: sample.received, clearError: sample.received,
     setVoiceMuted: () => sample.received(), setVoiceVolume: () => sample.received(),
     updateProfile: sample.channel.updateProfile, updateDomain: async () => sample.received(),
+    setRoomCreationPolicy: async policy => setRoomCreationPolicy(policy),
+    deleteRoom: async (roomId, deleteData) => {
+      setRemovedRooms(previous => new Set(previous).add(roomId));
+      setSelected(previous => previous === roomId ? "" : previous);
+      return { dataRemoved: deleteData };
+    },
+    deleteMessage: async (roomId, seq) => {
+      if (roomId === "friday" && seq === fileSampleSeq) setFileSample(false);
+      await sample.channel.deleteMessage(roomId, seq);
+    },
+    purgeRoomHistory: async roomId => {
+      if (roomId === "friday") setFileSample(false);
+      await sample.channel.purgeRoomHistory(roomId);
+    },
     createRoom: async settings => {
       const id = `sample-room-${crypto.randomUUID()}`;
       setCreatedRooms(previous => [...previous, { ...sample.channel.state!.channel.rooms[0], ...settings,

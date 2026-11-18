@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 28;
+pub const CHANNEL_PROTOCOL: u8 = 31;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -42,6 +42,9 @@ pub enum Command {
         name: String,
         icon: IdentityIcon,
     },
+    SetRoomCreationPolicy {
+        policy: RoomCreationPolicy,
+    },
     Conversation {
         packet: crate::conversation::SignedPacket,
     },
@@ -58,6 +61,18 @@ pub enum Command {
         sha256: String,
         available: bool,
     },
+    FileBranchRefused {
+        room_id: String,
+        message_seq: u64,
+        attachment_id: Uuid,
+        source_id: Uuid,
+        downstream_id: Uuid,
+    },
+    ForwardingAvailable {
+        room_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kind: Option<crate::forwarding::ForwardingKind>,
+    },
     FileReceive {
         room_id: String,
         message_seq: u64,
@@ -70,6 +85,9 @@ pub enum Command {
     },
     CreateRoom {
         room: crate::host::RoomSummary,
+        password: Option<String>,
+        #[serde(default)]
+        allow_service_relay: bool,
     },
     AdmitRoom {
         room: crate::host::RoomSummary,
@@ -245,6 +263,23 @@ fn nullable_password<'de, D: serde::Deserializer<'de>>(
 pub enum RoomAccess {
     Public,
     Private,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoomCreationPolicy {
+    #[default]
+    Ordinary,
+    InviteOnly,
+    OwnerOnly,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostingMode {
+    #[default]
+    Lightweight,
+    Hosted,
 }
 
 pub fn valid_id(value: &str) -> bool {
@@ -826,6 +861,9 @@ pub struct UserSummary {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelInfo {
+    pub hosting_mode: HostingMode,
+    pub room_creation_policy: RoomCreationPolicy,
+    pub managed_room_ids: Vec<String>,
     pub user_count: usize,
     pub history_window: usize,
     pub id: Uuid,

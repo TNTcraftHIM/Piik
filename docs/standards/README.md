@@ -5,10 +5,10 @@ the [ownership map](./documentation.md#owners) explains where each fact belongs.
 [AGENTS.md](../../AGENTS.md) owns task authority and
 [Contributing](../../CONTRIBUTING.md) owns delivery.
 
-The room, routing, media and lifecycle product contracts below describe published
-2.x. Isolated 3.0 uses the accepted [channel/network model](../research/channel-network-design.md)
-and [room-data model](../research/channel-storage-and-identity.md). Engineering,
-visual language and delivery rules apply to both lines.
+The room, routing, media and lifecycle contracts below describe published
+2.x. The 3.0 entries distinguish today's prototype from the target designs for
+hosting and routing. Engineering, visual language and delivery rules apply to
+both lines.
 
 | Subject | Standard |
 | --- | --- |
@@ -16,6 +16,8 @@ visual language and delivery rules apply to both lines.
 | Product names, terminology, Chinese/English voice and content layers | [Naming and copy](./naming.md) |
 | 3.0 authority, activities, routing and runtime lifetimes | [Channel/network model](../research/channel-network-design.md) |
 | 3.0 room policy, history, identity and file storage | [Room-data model](../research/channel-storage-and-identity.md) |
+| 3.0 target channel modes, authority and moderation | [Server hosting design](../research/server-hosting-plan.md) |
+| 3.0 target forwarding model and candidate delivery details | [Channel, room and activity forwarding](../research/channel-forwarding-plan.md) |
 | Published 2.x room authority, invitation/password access and persistence | [Rooms and access](./rooms-access.md) |
 | Published 2.x routes, capacity, P2P/SFU transitions and route operations | [Routing and transport](./routing-transport.md) |
 | Published 2.x capture, encoders, media adaptation and audio | [Media quality](./media-quality.md) |

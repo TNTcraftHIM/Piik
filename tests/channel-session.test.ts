@@ -106,11 +106,12 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
   } });
   vi.stubGlobal("WebSocket", ChannelSocket);
   const session = new ChannelSession();
-  type PeerRequest = Extract<ChannelCommand, { type: "chat" | "history" }> & { requestId: string };
+  type PeerRequest = Extract<ChannelCommand, { type: "chat" | "history" | "delete_message" | "clear_history" }> & { requestId: string };
   type InteractionRequest = Extract<ChannelCommand, { type: "interaction_ready" | "react" }> & { requestId: string };
   const sent: PeerRequest[] = [], pending: PeerRequest[] = [];
   const interactions: InteractionRequest[] = [];
-  vi.spyOn(ChannelConversation.prototype, "send").mockImplementation(async (command, requestId) => {
+  const conversation = (session as unknown as { conversation: ChannelConversation }).conversation;
+  vi.spyOn(conversation, "send").mockImplementation(async (command, requestId) => {
     if (command.type === "interaction_ready" || command.type === "react") {
       const request = { ...command, requestId };
       interactions.push(request);
@@ -154,7 +155,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
   const socket = ChannelSocket.current;
   await socket.onopen?.();
   socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state: {
-    channel: { id: "domain", name: "Friends", icon: "future-domain_7", ownerId: "self", historyWindow: window, userCount: 1,
+    channel: { id: "domain", name: "Friends", icon: "future-domain_7", ownerId: "self", roomCreationPolicy: "ordinary", hostingMode: "lightweight", historyWindow: window, userCount: 1, managedRoomIds: roomIds,
       rooms: roomIds.map(id => ({ id, name: id, icon: "couch", creatorId: "self", access: "public",
         hidden: false, hasPassword: false, authorized: true, canManage: true,
         participantSessionIds: id === "first" ? ["endpoint"] : [],
@@ -183,6 +184,88 @@ const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", t
   reactions: { revision: 0, counts: {} } });
 const reactionSnapshot = (seq: number, revision: number, counts: Record<string, number> = {}) =>
   ({ messageId: `message-${seq}`, messageSeq: seq, revision, counts });
+
+test("writer-confirmed moderation removes messages, quotations and transfers for both readers", async () => {
+  const moderator = await setup();
+  const reader = await setup();
+  const quoted = { ...message(3), reply: { seq: 1, userId: "self", text: "Deleted quotation", notify: true } };
+  const readerTransfers = vi.spyOn(reader.session.attachments, "removeMessages");
+  try {
+    for (const { session, socket, peer } of [moderator, reader]) {
+      const state = session.getSnapshot().state!;
+      socket.receive({ type: "state", state: { ...state, channel: { ...state.channel, rooms: state.channel.rooms.map(room =>
+        room.id === "first" ? { ...room, lastMessageSeq: 3 } : room) } } });
+      await peer.history([message(1), message(2), quoted]);
+    }
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+    const deletion = moderator.session.deleteMessage("first", 1);
+    const request = await moderator.peer.next();
+    expect(request).toMatchObject({ type: "delete_message", messageSeq: 1 });
+    expect(moderator.session.getSnapshot().messagesByRoom.first).toHaveLength(3);
+    reader.peer.reply(request, { type: "message_deleted", messageSeq: 1 }, "retired-binding");
+    expect(reader.session.getSnapshot().messagesByRoom.first).toHaveLength(3);
+    for (const { peer } of [moderator, reader]) peer.reply(request, { type: "message_deleted", messageSeq: 1 });
+    await deletion;
+    for (const { session } of [moderator, reader]) {
+      const messages = session.getSnapshot().messagesByRoom.first;
+      expect(messages.map(item => item.seq)).toEqual([2, 3]);
+      expect(messages[1].reply).toBeUndefined();
+    }
+    const [room, removed] = readerTransfers.mock.calls[0];
+    expect([room, removed(1), removed(2)]).toEqual(["first", true, false]);
+
+    const clearing = moderator.session.purgeRoomHistory("first");
+    const purge = await moderator.peer.next();
+    expect(purge).toMatchObject({ type: "clear_history", throughSeq: 3 });
+    const older = reader.session.loadLatestHistory("first");
+    const history = await reader.peer.next();
+    for (const { peer } of [moderator, reader]) peer.reply(purge, { type: "history_cleared", throughSeq: 3 });
+    await clearing;
+    reader.peer.page(history, [message(2), quoted]);
+    await older;
+    reader.peer.live(message(3));
+    reader.peer.live(message(4));
+    expect(reader.session.getSnapshot().messagesByRoom.first.map(item => item.seq)).toEqual([4]);
+    expect(reader.session.getSnapshot().readByRoom.first).toBe(3);
+    expect(moderator.session.getSnapshot().messagesByRoom.first).toEqual([]);
+  } finally { reader.session.close(); moderator.session.close(); }
+});
+
+test("the owner submits room creation policy and reads the authoritative update", async () => {
+  const { session, socket } = await setup(1000, false);
+  try {
+    const state = session.getSnapshot().state!;
+    const pending = session.setRoomCreationPolicy("invite_only", false);
+    const command = socket.sent.findLast(command => command.type === "set_room_creation_policy")!;
+    expect(command).toMatchObject({ type: "set_room_creation_policy", policy: "invite_only" });
+    expect(session.getSnapshot().state?.channel.roomCreationPolicy).toBe("ordinary");
+    socket.receive({ type: "state", state: { ...state, channel: { ...state.channel, roomCreationPolicy: "invite_only" } } });
+    socket.receive({ type: "ack", requestId: command.requestId });
+    await pending;
+    expect(session.getSnapshot().state?.channel.roomCreationPolicy).toBe("invite_only");
+  } finally { session.close(); }
+});
+
+test("a hosted site creates and binds the room before the browser enters it", async () => {
+  const { session, socket } = await setup(1000, false, "");
+  const loadHosting = vi.spyOn(hosting, "loadRoomHosting");
+  try {
+    const state = session.getSnapshot().state!;
+    socket.receive({ type: "state", state: { ...state, channel: { ...state.channel, hostingMode: "hosted" } } });
+    await vi.waitFor(() => expect(session.getSnapshot().state?.channel.hostingMode).toBe("hosted"));
+    const pending = session.createRoom({ name: "Hosted room", icon: "couch", access: "private", hidden: true, password: "fixture", allowServiceRelay: false });
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("create_room"));
+    const create = socket.sent.at(-1)!;
+    expect(create).toMatchObject({ type: "create_room", room: { access: "private", hidden: true, hasPassword: true },
+      password: "fixture", allowServiceRelay: false });
+    socket.receive({ type: "room_created", requestId: create.requestId, room: { ...create.room as object, id: "hosted-room" } });
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "browse", roomId: "hosted-room", active: true }));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    expect(await pending).toBe("hosted-room");
+    expect(loadHosting).not.toHaveBeenCalled();
+    expect(socket.sent.some(command => command.type === "host_register")).toBe(false);
+  } finally { session.close(); }
+});
 
 test("profile reads batch and deduplicate missing IDs without deleting retained identities", async () => {
   const { session, socket } = await setup(1000, false); socket.autoProfiles = false;
@@ -1456,6 +1539,7 @@ test("personal voice playback follows user identity without sending room command
 
 function microphoneMixer(clones: MediaStream[]) {
   class Context {
+    state = "running";
     currentTime = 0;
     resume = vi.fn(async () => {});
     close = vi.fn(async () => {});
@@ -2854,6 +2938,7 @@ test("Browser source output gain and bitrate survive replacement and close with 
   const node = () => ({ connect() {}, disconnect() {} });
   vi.stubGlobal("AudioContext", class {
     currentTime = 0;
+    state = "running";
     gain = vi.fn(); close = vi.fn(async () => {});
     constructor() { contexts.push(this); }
     createMediaStreamDestination() { return { ...node(), stream: remoteStream("mixed", [remoteTrack("audio")]) }; }
@@ -4071,14 +4156,15 @@ test("room replies settle only the request belonging to that room", async () => 
       result: { type: "done" } });
     await saving;
     expect(settled).toBe(true);
-    for (const deleteData of [false, true]) {
-      const deleting = session.deleteRoom("first", deleteData);
+    for (const [deleteData, dataRemoved] of [[false, false], [true, false], [true, true]]) {
+      const deleting = session.deleteRoom("first", deleteData, false);
       const request = socket.sent.at(-1)!;
       expect(request).toMatchObject({ type: "delete_room", roomId: "first", deleteData });
       socket.receive({ type: "room_reply", roomId: "second", requestId: request.requestId, result: { type: "deleted", dataRemoved: true } });
       expect(session.getSnapshot().pending.has("delete:first")).toBe(true);
-      socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "deleted", dataRemoved: deleteData } });
-      await expect(deleting).resolves.toEqual({ dataRemoved: deleteData });
+      socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "deleted", dataRemoved } });
+      await expect(deleting).resolves.toEqual({ dataRemoved });
+      expect(session.getSnapshot().error).toBe(deleteData && !dataRemoved ? "room_data_removal_unconfirmed" : null);
     }
     const updating = session.updateRoom("first", { name: "Unavailable", icon: "couch", access: "public", hidden: false });
     const rejected = expect(updating).rejects.toThrow("room_host_offline");
@@ -4586,8 +4672,9 @@ test("a confirmed send's automatic latest read preserves an unrelated operation 
     await peer.history([message(1)], false, true);
     const sending = session.sendMessage("first", "Hello 3");
     const chat = await peer.next();
-    const setting = session.setRelayOverride("second", 3), rejected = expect(setting).rejects.toThrow("forbidden");
-    const request = socket.sent.findLast(command => command.type === "relay_capacity")!;
+    const setting = session.updateRoom("second", { name: "Second", icon: "couch", access: "public", hidden: false });
+    const rejected = expect(setting).rejects.toThrow("forbidden");
+    const request = socket.sent.findLast(command => command.type === "update_room")!;
     socket.receive({ type: "error", requestId: request.requestId, code: "forbidden" });
     await rejected;
     peer.reply(chat, { type: "confirmed", message: message(3), inserted: true }); await sending;
@@ -4839,7 +4926,7 @@ test("retained source content and availability follow the current authenticated 
     await expect(session.attachments.content(key, { ...attachment, sha256: attachment.sha256.toUpperCase() }, new AbortController().signal)).resolves.toBe(file);
     await expect(session.attachments.content(key, { ...attachment, sha256: "b".repeat(64) }, new AbortController().signal)).rejects.toThrow("attachment_unavailable");
     const state = structuredClone(session.getSnapshot().state!);
-    state.files = [{ ...changedKey, attachment: { ...attachment, id: changedId, size: file.size + 1 }, sourceId: "endpoint", upstream: null, downstream: [], receiving: false }];
+    state.files = [{ ...changedKey, authorId: crypto.randomUUID(), attachment: { ...attachment, id: changedId, size: file.size + 1 }, sourceId: "endpoint", upstream: null, downstream: [], receiving: false }];
     socket.receive({ type: "state", state });
     expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...key, sha256: attachment.sha256, available: false }));
     expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...changedKey, sha256: attachment.sha256, available: false }));
@@ -6810,7 +6897,7 @@ test.each(["initial", "resume"])("a stale %s file admission cannot retire a repl
   const bytes = Uint8Array.from([1, 2, 3]), hash = new rust.AttachmentHash();
   hash.update(bytes);
   const attachment = { id: key.attachmentId, name: "owned.bin", size: bytes.length, mediaType: "application/octet-stream" as const, sha256: hash.finish() };
-  const plan = { ...key, attachment, sourceId: source, upstream: source, downstream: [], receiving: true };
+  const plan = { ...key, attachment, authorId: crypto.randomUUID(), sourceId: source, upstream: source, downstream: [], receiving: true };
   const write = vi.fn(async (_value: unknown) => {}), aborts: ReturnType<typeof vi.fn>[] = [];
   vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
     getFileHandle: async () => {
@@ -7391,6 +7478,26 @@ test("source replacement releases unmapped streams and ignores their late track 
   } finally { transport.close(); }
 });
 
+test("an empty pair starts SCTP and reports physical connectivity without enabling a room or input", async () => {
+  const { session } = await setup();
+  const base = session.getSnapshot().state!;
+  session.close();
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const send = vi.fn(), input = vi.fn();
+  const media = new ChannelMedia(send, vi.fn(), undefined, undefined, undefined, input);
+  const state = { ...base, pairs: [{ id: "probe", peerId: "z-peer", rooms: [], incoming: [], outgoing: [], canReceiveVideoLayers: false }] };
+  media.update("a-source", state);
+  const pc = RoomPeerConnection.instances.at(-1)!;
+  expect(pc.channels.map(channel => channel.label)).toEqual(["piik-input"]);
+  pc.connected(); pc.channels[0].open();
+  expect(send.mock.calls.map(([command]) => command)).toContainEqual({ type: "link_state", pairId: "probe", state: "connected" });
+  expect(send.mock.calls.some(([command]) => command.type === "base_state")).toBe(false);
+  expect(media.sendInput("z-peer", "frame")).toBe(false);
+  expect(input).not.toHaveBeenCalled();
+  media.update("a-source", { ...state, pairs: [] });
+  expect(pc.close).toHaveBeenCalledOnce();
+});
+
 test("physical data channels can precede room leases without admitting retired work", async () => {
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const base = vi.fn(), data = vi.fn(), failed = vi.fn(), dataState = vi.fn();
@@ -7649,48 +7756,77 @@ test("browsing keeps watched-room reading and resumes the offline selection with
   } finally { session.close(); }
 });
 
-test("relay overrides persist per room only after acceptance and accompany read admission", async () => {
+test("Browser forwarding preferences persist by identity across rooms", async () => {
   const { session, socket } = await setup();
   const values = new Map<string, string>();
-  vi.stubGlobal("window", { localStorage: {
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => values.set(key, value),
-  } });
-  const preferences = () => JSON.parse(values.get("piik:room-preferences:v1") ?? "{}").relayCapacityByRoom;
+  vi.stubGlobal("window", { localStorage: { getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value) } });
   try {
-    const stopping = session.setRelayOverride("first", 0);
-    const first = socket.sent.at(-1)!;
-    expect(first).toMatchObject({ type: "relay_capacity", roomId: "first", capacity: 0 });
-    expect(preferences()).toBeUndefined();
-    socket.receive({ type: "room_reply", roomId: "first", requestId: first.requestId, result: { type: "done" } });
-    await stopping;
-    expect(preferences()).toEqual({ "domain/first": 0 });
-
-    const rejected = session.setRelayOverride("first", null);
-    const refusal = expect(rejected).rejects.toThrow("forbidden");
-    socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.at(-1)!.requestId,
-      result: { type: "error", code: "forbidden" } });
-    await refusal;
-    expect(preferences()).toEqual({ "domain/first": 0 });
-
-    const state = structuredClone(session.getSnapshot().state!);
-    socket.close(); session.reconnect();
-    const resumed = ChannelSocket.current;
-    await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
-    expect(resumed.sent.some(command => command.type === "relay_capacity")).toBe(false);
-    const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
-    expect(browse).toMatchObject({ roomId: "first", relayCapacity: 0 });
-    resumed.receive({ type: "ack", requestId: browse.requestId });
-
-    const resetting = session.setRelayOverride("first", null);
-    resumed.receive({ type: "room_reply", roomId: "first", requestId: resumed.sent.at(-1)!.requestId, result: { type: "done" } });
-    await resetting;
-    expect(preferences()).toEqual({});
+    expect(session.getSnapshot().forwardingLimit).toBe(-1);
+    session.setForwardingLimit(0);
+    expect(session.getSnapshot().forwardingLimit).toBe(0);
+    const preferences = JSON.parse(values.get("piik:room-preferences:v1")!);
+    expect(preferences.forwardingLimitByIdentity).toEqual({ [JSON.stringify(["domain", "self"])]: 0 });
+    session.browse("second");
+    expect(session.getSnapshot().forwardingLimit).toBe(0);
+    expect(socket.sent.findLast(command => command.type === "browse")).not.toHaveProperty("relayCapacity");
+    expect(socket.sent.some(command => command.type === "relay_capacity")).toBe(false);
   } finally { session.close(); }
 });
 
-test("App relay settings target the actual endpoint, preserve webpage settings and reject retired room results", async () => {
+test("Browser applies the shared per-kind budget before dispatching assignments across rooms", async () => {
+  const { session, socket } = await setup(1000, false, "");
+  const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const budget = vi.spyOn(ChannelConversation.prototype, "forwardingBudget").mockImplementation(() => new core.ForwardingBudget());
+  const media = vi.spyOn(ChannelMedia.prototype, "update").mockImplementation(() => {});
+  const files = vi.spyOn(session.attachments, "update").mockImplementation(() => {});
+  try {
+    const userId = crypto.randomUUID(), sessionId = crypto.randomUUID(), source = crypto.randomUUID();
+    const firstPeer = crypto.randomUUID(), otherPeer = crypto.randomUUID();
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.id = crypto.randomUUID(); state.channel.ownerId = userId;
+    state.channel.rooms.forEach(room => { room.creatorId = userId; room.participantSessionIds = []; room.delivery = undefined; });
+    state.users[0].id = userId;
+    state.sessions[0] = { ...state.sessions[0], id: sessionId, userId };
+    const screen1 = crypto.randomUUID(), screen2 = crypto.randomUUID(), voice = crypto.randomUUID();
+    state.publications = [
+      { id: screen1, roomId: "first", sessionId: source, userId, kind: "screen", paused: false, audience: [], source: { kind: "screen", name: null }, title: null },
+      { id: screen2, roomId: "second", sessionId: source, userId, kind: "screen", paused: false, audience: [], source: { kind: "screen", name: null }, title: null },
+      { id: voice, roomId: "second", sessionId: source, userId, kind: "voice", paused: false, audience: [] },
+    ];
+    const forward = (publicationId: string) => ({ id: crypto.randomUUID(), publicationId, selected: true, inputFlowId: crypto.randomUUID() });
+    const first = [forward(screen1), forward(screen2)];
+    const competing = forward(screen2), voiceFlow = forward(voice);
+    const own = { ...forward(screen1), inputFlowId: null };
+    state.pairs = [
+      { id: crypto.randomUUID(), peerId: firstPeer, rooms: ["first", "second"], incoming: [], outgoing: first, canReceiveVideoLayers: false },
+      { id: crypto.randomUUID(), peerId: otherPeer, rooms: ["second"], incoming: [], outgoing: [voiceFlow, own], canReceiveVideoLayers: false },
+    ];
+    state.files = [{ roomId: "second", messageSeq: 1, authorId: crypto.randomUUID(), sourceId: sessionId, upstream: null,
+      downstream: [otherPeer], receiving: false, attachment: { id: crypto.randomUUID(), name: "fixture", size: 1, mediaType: "application/octet-stream", sha256: "0".repeat(64) } }];
+    socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId, state });
+    expect(budget).toHaveBeenCalledOnce();
+    session.setForwardingLimit(1);
+    state.pairs[1].outgoing.push(competing);
+    socket.receive({ type: "state", state });
+    expect(media.mock.lastCall![1].pairs.map(pair => pair.outgoing)).toEqual([first, [voiceFlow, own]]);
+    expect(files.mock.lastCall![2][0].downstream).toEqual([otherPeer]);
+    expect(session.getSnapshot().state!.pairs[1].outgoing).toContainEqual(competing);
+    const refused = () => socket.sent.filter(command => command.type === "flow_state" && command.flowId === competing.id);
+    expect(refused()).toHaveLength(1);
+    socket.receive({ type: "state", state });
+    expect(refused()).toHaveLength(1);
+    session.setForwardingLimit(0);
+    expect(media.mock.lastCall![1].pairs.map(pair => pair.outgoing)).toEqual([[], [own]]);
+    expect(files.mock.lastCall![2][0].downstream).toEqual([]);
+    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_branch_refused", downstreamId: otherPeer }));
+    session.setForwardingLimit(-1);
+    expect(media.mock.lastCall![1].pairs[1].outgoing).toContainEqual(competing);
+    expect(files.mock.lastCall![2][0].downstream).toEqual([otherPeer]);
+  } finally { session.close(); }
+});
+
+test("App forwarding settings target the connected endpoint independently of rooms and the webpage", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
     domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
@@ -7699,41 +7835,24 @@ test("App relay settings target the actual endpoint, preserve webpage settings a
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
-    const setting = { roomId: "first", sessionId: crypto.randomUUID(), bindingId: crypto.randomUUID(), relayCapacity: 1, relayOverride: null };
-    const state = structuredClone(session.getSnapshot().state!);
-    state.channel.rooms[0].delivery!.bindingId = setting.bindingId;
-    state.channel.rooms[0].relayOverride = 4;
-    socket.receive({ type: "state", state });
-
-    const read = session.appRelayCapacity("first");
-    expect(app.sent.at(-1)).toMatchObject({ type: "relay_capacity", action: "read", roomId: "first" });
+    const setting = { sessionId: crypto.randomUUID(), relayOverride: null };
+    const read = session.appRelayCapacity();
+    expect(app.sent.at(-1)).toMatchObject({ type: "relay_capacity", action: "read" });
+    expect(app.sent.at(-1)).not.toHaveProperty("roomId");
     app.receive({ id: app.sent.at(-1)!.id, result: setting });
     expect(await read).toEqual(setting);
-
+    session.setForwardingLimit(4);
     const write = session.setAppRelayOverride(setting, 3, false);
-    expect(app.sent.at(-1)).toMatchObject({ type: "relay_capacity", action: "set", roomId: "first",
-      sessionId: setting.sessionId, bindingId: setting.bindingId, capacity: 3 });
+    expect(app.sent.at(-1)).toMatchObject({ type: "relay_capacity", action: "set", sessionId: setting.sessionId, capacity: 3 });
+    session.browse("second");
     app.receive({ id: app.sent.at(-1)!.id, result: { ...setting, relayOverride: 3 } });
     expect(await write).toEqual({ ...setting, relayOverride: 3 });
-    expect(session.getSnapshot().state!.channel.rooms[0].relayOverride).toBe(4);
+    expect(session.getSnapshot().forwardingLimit).toBe(4);
     expect(socket.sent.some(command => command.type === "relay_capacity")).toBe(false);
-
     const wrongEndpoint = session.setAppRelayOverride(setting, 2, false);
-    const rejectedEndpoint = expect(wrongEndpoint).rejects.toThrow("room_context_changed");
+    const rejectedEndpoint = expect(wrongEndpoint).rejects.toThrow("app_disconnected");
     app.receive({ id: app.sent.at(-1)!.id, result: { ...setting, sessionId: crypto.randomUUID(), relayOverride: 2 } });
     await rejectedEndpoint;
-
-    const late = session.setAppRelayOverride(setting, null, false);
-    const rejectedLate = expect(late).rejects.toThrow("room_context_changed");
-    const request = app.sent.at(-1)!;
-    state.channel.rooms[0].delivery!.bindingId = crypto.randomUUID();
-    socket.receive({ type: "state", state });
-    app.receive({ id: request.id, result: setting });
-    await rejectedLate;
-    const before = app.sent.length;
-    await expect(session.setAppRelayOverride(setting, 2, false)).rejects.toThrow("room_context_changed");
-    expect(app.sent).toHaveLength(before);
-    expect(session.getSnapshot().error).toBeNull();
   } finally { session.close(); }
 });
 
@@ -8112,7 +8231,15 @@ async function setupRoomBackup() {
   context.socket.receive({ type: "state", state });
   context.socket.receive({ type: "host_bound", roomId: "first", bindingId: "binding" });
   context.socket.receive({ type: "ack", requestId: register.requestId });
-  const metadata = { kind: "room" as const, version: 2 as const, domainId: "domain", policy: JSON.parse(policy), retainedFiles: [] };
+  const metadata = { kind: "room" as const, version: 3 as const, domainId: "domain", policy: JSON.parse(policy), retainedFiles: [] };
+  const send = context.socket.send.bind(context.socket);
+  context.socket.send = data => {
+    send(data);
+    const request = JSON.parse(data);
+    if (request.type === "admit_room" && request.room.id === "first")
+      queueMicrotask(() => context.socket.receive({ type: "ack", requestId: request.requestId }));
+    if (request.type === "create_room") queueMicrotask(() => acceptCreatedRoom(context.socket));
+  };
   const read = vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => {
     await visitor?.metadata(metadata); await visitor?.row(row); return metadata;
   });
@@ -8166,7 +8293,7 @@ test("domain backup uses its actual service owner and validates kind before reti
   const archive = new Blob(["domain-checkpoint"]), fetch = vi.fn().mockResolvedValue(new Response(archive));
   vi.stubGlobal("fetch", fetch);
   const read = vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => {
-    const metadata = { kind: "room" as const, version: 2 as const, domainId: "domain", policy: { id: "first", creatorId: "self", name: "First", icon: "couch", voiceBitrate: 64000, relayCapacity: 2 }, retainedFiles: [] };
+    const metadata = { kind: "room" as const, version: 3 as const, domainId: "domain", policy: { id: "first", creatorId: "self", name: "First", icon: "couch", voiceBitrate: 64000, relayCapacity: 2 }, retainedFiles: [] };
     await visitor?.metadata(metadata); return metadata;
   });
   try {
@@ -8309,7 +8436,7 @@ test("room backup exports its actual Browser host snapshot, full nonce/reactions
   let exported: unknown[] = [];
   const write = vi.spyOn(backupArchive, "writeBackup").mockImplementation(async (metadata, history, open) => {
     for await (const value of history!) exported.push(value);
-    expect(metadata).toMatchObject({ kind: "room", version: 2, ownCredential: { userId: "self", credential: "credential" }, retainedFiles: [{ messageSeq: 1, attachment }] });
+    expect(metadata).toMatchObject({ kind: "room", version: 3, ownCredential: { userId: "self", credential: "credential" }, retainedFiles: [{ messageSeq: 1, attachment }] });
     expect(await open!({ messageSeq: 1, attachment })).toBe(file);
     return new Blob(["archive"]);
   });
@@ -8329,7 +8456,7 @@ test("backup WASM failures preserve operation error copy and allow the next vali
   const { readFile } = await import("node:fs/promises");
   await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...core, initializeRuntime: async () => {} } as never);
-  const metadata: backupArchive.BackupMetadata = { kind: "room_copy", version: 1, authors: {}, retainedFiles: [] };
+  const metadata: backupArchive.BackupMetadata = { kind: "room_copy", version: 2, authors: {}, retainedFiles: [] };
   const unsupported = { ...metadata, version: 999 } as unknown as typeof metadata;
   const zip = await import("@zip.js/zip.js/lib/zip-core-native.js");
   const writer = new zip.ZipWriter(new zip.BlobWriter("application/zip"), { useWebWorkers: false, compressionMethod: 0, level: 0 });
@@ -8377,7 +8504,7 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     const metadata = await backupArchive.readBackup(archive, {
       metadata: () => {}, row: value => { history.push(value); }, content: (digest, value) => { content.set(digest, value); },
     });
-    expect(metadata).toEqual({ kind: "room_copy", version: 1, authors: {}, retainedFiles: [{ messageSeq: row.seq, attachment }] });
+    expect(metadata).toEqual({ kind: "room_copy", version: 2, authors: {}, retainedFiles: [{ messageSeq: row.seq, attachment }] });
     // A copy excludes room authority; it is not anonymized history before import.
     expect(history).toEqual([row]);
     expect(await content.get(attachment.sha256)!.text()).toBe("owned copy bytes");
@@ -8386,10 +8513,11 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     importer.finish();
     expect(copied).toMatchObject({ seq: row.seq, text: row.text, attachments: [attachment],
       archivedAuthorName: "Archived author", reactions: row.reactions });
+    if (!("id" in copied)) throw new Error("expected live archive message");
     expect(copied.id).not.toBe(messageId); expect(copied.userId).not.toBe(author); expect(copied.nonce).not.toBe(row.nonce);
     const policy = JSON.parse(core.create_room_policy(JSON.stringify({ id: crypto.randomUUID(), creatorId: creator,
       name: "New copy", icon: "couch", access: "private", hidden: false })));
-    const converted = await backupArchive.writeBackup({ kind: "room", version: 2, domainId: crypto.randomUUID(), policy,
+    const converted = await backupArchive.writeBackup({ kind: "room", version: 3, domainId: crypto.randomUUID(), policy,
       retainedFiles: metadata.kind === "room_copy" ? metadata.retainedFiles : [] },
       (async function* () { yield copied; })(), async entry => content.get(entry.attachment.sha256)!);
     const restored: BackupHistoryRow[] = [];
@@ -8442,7 +8570,7 @@ test("Core archive budget failures stay distinct from malformed retained invento
   const limits = JSON.parse(core.attachment_limits());
   const inventory = (sizes: number[]) => sizes.map((size, index) => ({ messageSeq: index + 1,
     attachment: { id: crypto.randomUUID(), name: "owned.bin", size, mediaType: "application/octet-stream", sha256: index.toString(16).padStart(64, "0") } }));
-  const validate = (retainedFiles: ReturnType<typeof inventory>) => core.backup_metadata(JSON.stringify({ kind: "room_copy", version: 1, authors: {}, retainedFiles }));
+  const validate = (retainedFiles: ReturnType<typeof inventory>) => core.backup_metadata(JSON.stringify({ kind: "room_copy", version: 2, authors: {}, retainedFiles }));
   const count = inventory(Array(limits.maxRetainedFiles).fill(1));
   const sizes = Array(limits.maxRetainedBytes / limits.maxFileBytes).fill(limits.maxFileBytes);
   const bytes = inventory(sizes);
@@ -8479,18 +8607,65 @@ test("room restore releases staging when its session reconnects during append", 
   } finally { session.close(); }
 });
 
+test("a guest imports a room copy under the channel-assigned ID and opens its restored history", async () => {
+  const { session, socket, state, read, stage, metadata, row, nextHost } = await setupRoomBackup();
+  state.channel.ownerId = "another-owner";
+  socket.receive({ type: "state", state });
+  const id = "domain-created-room";
+  const runtime = await hosting.loadRoomHosting();
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...runtime, createRoomPolicy: async () => stage.policy,
+    CopyHistoryImport: class { accept(line: string) { return line; } finish() {} free() {} },
+  } as unknown as typeof runtime);
+  const copy = { kind: "room_copy", version: 2, authors: {}, retainedFiles: [] } as const;
+  read.mockImplementationOnce(async (_blob, visitor) => {
+    const source = { ...copy, retainedFiles: [] };
+    await visitor!.metadata(source); await visitor!.row(row); return source;
+  });
+  vi.spyOn(backupArchive, "writeBackup").mockImplementationOnce(async converted => {
+    if (converted.kind !== "room") throw new Error("expected converted room");
+    metadata.policy = converted.policy;
+    stage.policy = JSON.stringify(converted.policy);
+    return new Blob();
+  });
+  nextHost.summary = () => ({ ...metadata.policy, hasPassword: false });
+  vi.spyOn(session.attachments, "restoreRetained").mockResolvedValue(true);
+  const send = socket.send.bind(socket);
+  socket.send = data => {
+    send(data);
+    const request = JSON.parse(data);
+    if (request.room?.id !== id && request.roomId !== id) return;
+    queueMicrotask(() => {
+      if (request.type === "host_register") {
+        socket.receive({ type: "host_bound", roomId: id, bindingId: "copied-binding" });
+        state.channel.rooms.push({ ...state.channel.rooms[0], id,
+          delivery: { hostSessionId: "endpoint", bindingId: "copied-binding", nextHops: {} } });
+        socket.receive({ type: "state", state });
+      }
+      socket.receive({ type: "ack", requestId: request.requestId });
+    });
+  };
+  try {
+    await expect(session.importRoomCopy(new Blob(), metadata.policy)).resolves.toEqual({ roomId: id, cached: true });
+    expect(stage.append.mock.calls).toEqual([[row], [row]]);
+    expect(stage.replace).toHaveBeenCalledOnce();
+    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "browse", roomId: id }));
+  } finally { session.close(); }
+});
+
 test("room copy preserves the archive conversion failure when staging cleanup rejects", async () => {
-  const { session, stage, read, metadata } = await setupRoomBackup();
+  const { session, socket, stage, read, metadata } = await setupRoomBackup();
   try {
     const runtime = await hosting.loadRoomHosting();
     vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...runtime, createRoomPolicy: async () => stage.policy,
       CopyHistoryImport: class { finish() {} free() {} },
     } as unknown as typeof runtime);
-    const copy = { kind: "room_copy" as const, version: 1 as const, authors: {}, retainedFiles: [] };
+    const copy = { kind: "room_copy" as const, version: 2 as const, authors: {}, retainedFiles: [] };
     read.mockImplementationOnce(async (_blob, visitor) => { await visitor?.metadata(copy); return copy; });
-    vi.spyOn(backupArchive, "writeBackup").mockRejectedValueOnce(new Error("archive_conversion_failed"));
+    const write = vi.spyOn(backupArchive, "writeBackup").mockRejectedValueOnce(new Error("archive_conversion_failed"));
     stage.close.mockRejectedValueOnce(new Error("stage_cleanup_failed"));
     await expect(session.importRoomCopy(new Blob(), metadata.policy)).rejects.toThrow("archive_conversion_failed");
+    expect(write.mock.calls[0][0]).toMatchObject({ policy: { id: "domain-created-room" } });
+    expect(socket.sent.at(-1)).toMatchObject({ type: "delete_room", roomId: "domain-created-room", deleteData: false });
     expect(stage.close).toHaveBeenCalledOnce();
   } finally { session.close(); }
 });
@@ -8502,7 +8677,7 @@ test("room copy stops when its session reconnects during staging cleanup", async
     vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...runtime, createRoomPolicy: async () => stage.policy,
       CopyHistoryImport: class { finish() {} free() {} },
     } as unknown as typeof runtime);
-    const copy = { kind: "room_copy", version: 1, authors: {}, retainedFiles: [] } as const;
+    const copy = { kind: "room_copy", version: 2, authors: {}, retainedFiles: [] } as const;
     read.mockImplementationOnce(async (_blob, visitor) => {
       await visitor?.metadata({ ...copy, retainedFiles: [] }); return { ...copy, retainedFiles: [] };
     });
@@ -8670,6 +8845,20 @@ test("a late Native ownership description cannot export a replaced room binding"
   } finally { session.close(); }
 });
 
+test("a refused backup room ID keeps existing storage and never allocates a replacement", async () => {
+  const { session, socket, stage, metadata } = await setupRoomBackup();
+  metadata.policy = { ...metadata.policy, id: "removed" };
+  try {
+    const restore = session.restoreRoomBackup(new Blob());
+    const failure = expect(restore).rejects.toThrow("backup_room_not_admitted");
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "admit_room", room: { id: "removed" } }));
+    socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "room_not_in_domain" });
+    await failure;
+    expect(stage.replace).not.toHaveBeenCalled();
+    expect(socket.sent.some(request => request.type === "create_room")).toBe(false);
+  } finally { session.close(); }
+});
+
 test("portable import validates the full archive before switching accounts and rejects an unrelated Welcome without persisting it", async () => {
   const { session, socket, stage, metadata, read } = await setupRoomBackup();
   metadata.policy = { ...metadata.policy, id: "imported", creatorId: "archived-user" };
@@ -8796,7 +8985,7 @@ test.each(["tail", "first"])("late bulk %s fragments from a cancelled file canno
   const bytes = Uint8Array.from({ length: 20_000 }, (_, index) => index % 251), hash = new rust.AttachmentHash();
   hash.update(bytes);
   const attachment = { id: key.attachmentId, name: "owned.bin", size: bytes.length, mediaType: "application/octet-stream" as const, sha256: hash.finish() };
-  const plan = { ...key, attachment, sourceId: source, upstream: source, downstream: [], receiving: true };
+  const plan = { ...key, attachment, authorId: crypto.randomUUID(), sourceId: source, upstream: source, downstream: [], receiving: true };
   const aborts: ReturnType<typeof vi.fn>[] = [];
   vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
     getFileHandle: async () => {
@@ -8853,7 +9042,7 @@ test("a delayed source busy error cannot fail a cancelled file's successful retr
   const bytes = Uint8Array.from([1, 2, 3]), hash = new rust.AttachmentHash(); hash.update(bytes);
   const attachment = { id: crypto.randomUUID(), name: "retry.bin", size: bytes.length, mediaType: "application/octet-stream" as const, sha256: hash.finish() };
   const key = { roomId: "room", messageSeq: 33, attachmentId: attachment.id };
-  const plan = { ...key, attachment, sourceId: source, upstream: source, downstream: [], receiving: true };
+  const plan = { ...key, attachment, authorId: crypto.randomUUID(), sourceId: source, upstream: source, downstream: [], receiving: true };
   const upstream = new rust.FileDelivery(source);
   const blockers = Array.from({ length: 32 }, (_, index) => ({ ...plan, messageSeq: index + 1, attachment: { ...attachment, id: crypto.randomUUID() }, upstream: null, downstream: [receiver], receiving: false }));
   upstream.update(JSON.stringify([...blockers, { ...plan, upstream: null, downstream: [receiver], receiving: false }]), JSON.stringify([[receiver, ["room"]]]), 0n);
@@ -9023,16 +9212,14 @@ test("Browser capture titles use original metadata and confirmed overrides witho
   } finally { session.close(); }
 });
 
-test("same-binding recovery preserves a selected historical window until the reader requests latest", async () => {
+test("same-binding recovery confirms the historical window and removes messages deleted while offline", async () => {
   const { session, socket, peer } = await setup(3);
   try {
     await peer.history([message(50), message(51), message(52)]);
     const jump = session.loadMessage("first", 2);
     peer.page(await peer.next(), [message(1), message(2)], false, 1);
     await jump;
-    const selected = session.getSnapshot().messagesByRoom.first;
     const marker = session.getSnapshot().readByRoom.first;
-    const count = peer.sent.length;
     const state = structuredClone(session.getSnapshot().state!);
     state.channel.rooms[0].lastMessageSeq = 53;
     socket.close(); session.reconnect();
@@ -9041,9 +9228,16 @@ test("same-binding recovery preserves a selected historical window until the rea
     const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
     resumed.receive({ type: "ack", requestId: browse.requestId });
     await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.get("first")?.getSnapshot().ready).toBe(true));
-    expect(peer.sent).toHaveLength(count);
+    const refresh = await peer.next();
+    expect(refresh).toMatchObject({ type: "history", before: 3 });
+    peer.page(refresh, [message(2)], false, 2);
+    await vi.waitFor(() => {
+      expect(session.getSnapshot().messagesByRoom.first.map(item => item.seq)).toEqual([2]);
+      expect(session.getSnapshot().historyChangesByRoom.first.deleted.has(1)).toBe(true);
+      expect(session.getSnapshot().pending.has("history:first")).toBe(false);
+    });
     peer.live(message(53));
-    expect(session.getSnapshot().messagesByRoom.first).toBe(selected);
+    expect(session.getSnapshot().messagesByRoom.first.map(item => item.seq)).toEqual([2]);
     expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(false);
     expect(session.getSnapshot().readByRoom.first).toBe(marker);
     const latest = session.loadLatestHistory("first");
@@ -9538,6 +9732,7 @@ test.each(['cancel', 'stop'] as const)('watch replacement commit ignores %s canc
       await cancelled;
       expect(session.getSnapshot().watchPlayers.has(b.id as string)).toBe(false);
       expect(replacement.src).toBe('');
+      expect(socket.sent.filter(command => command.type === 'stop_watch' && command.id === b.id)).toHaveLength(1);
     } else {
       await opening;
       expect(session.getSnapshot().watchPlayers.get(b.id as string)?.video).toBe(replacement);
@@ -10301,6 +10496,8 @@ test('a rejected portable room confirmation retires its Page and candidate witho
     const start = socket.sent.findLast(command => command.type === 'start_watch')!;
     expect(dispose).not.toHaveBeenCalled();
     expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: 'page_patch', patch: { paused: true } }), expect.any(AbortSignal));
+    // The media can close before the pending start reply reaches this page.
+    candidateVideo.dispatchEvent(new Event('closed'));
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'error', code: 'room_host_unavailable' } });
     await rejected;
     expect(dispose).toHaveBeenCalledOnce();
@@ -10310,6 +10507,32 @@ test('a rejected portable room confirmation retires its Page and candidate witho
     expect(incumbentClose).not.toHaveBeenCalled();
     expect(originalVideo.src).toBe('https://media.test/current.mp4');
     expect(socket.sent.filter(command => command.type === 'stop_watch').map(command => command.id)).toEqual([start.id]);
+  } finally { session.close(); }
+});
+
+test('recovery cancels a disconnected watch candidate once using its Welcome activity', async () => {
+  const { session, socket } = await setup(1000, false);
+  const video = new WatchTestVideo();
+  vi.stubGlobal('document', { createElement: () => video });
+  try {
+    const opening = session.startWatch('first', 'https://media.test/video.mp4');
+    const rejected = expect(opening).rejects.toThrow('disconnected');
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
+    const start = socket.sent.findLast(command => command.type === 'start_watch')!;
+    const state = session.getSnapshot().state!;
+    socket.close();
+    await rejected;
+    session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'credential', sessionId: 'endpoint',
+      state: { ...state, watchActivities: [{ id: start.id, roomId: 'first', viewerSessionIds: [], sessionId: 'endpoint',
+        userId: 'self', source: start.source, playback: start.playback }] } });
+    expect(socket.sent.filter(command => command.type === 'stop_watch')).toEqual([]);
+    expect(resumed.sent.filter(command => command.type === 'stop_watch')).toEqual([
+      { type: 'stop_watch', roomId: 'first', id: start.id },
+    ]);
+    expect(session.getSnapshot().watchPlayers.has(start.id as string)).toBe(false);
   } finally { session.close(); }
 });
 
@@ -10883,7 +11106,7 @@ test("one admitted Watch aggregate fits the shared bulk queue while control stay
   } finally { source.free(); media.reset(); session.close(); }
 });
 
-test("owned display grant cancels while optional audio resume never settles", async () => {
+test("cancelling the picker releases its gesture-activated audio context", async () => {
   const { session, socket } = await setup();
   const video = remoteTrack("video"), audio = remoteTrack("audio");
   const source = remoteStream("owned-granted-window", [video]);
@@ -10902,13 +11125,12 @@ test("owned display grant cancels while optional audio resume never settles", as
   const starting = session.startScreen("first").catch(error => error);
   try {
     expect(session.browserCapturePreparation("first")).toBe("picker");
-    grant(source);
-    await vi.waitFor(() => expect(resume).toHaveBeenCalledOnce());
-    expect(session.browserCapturePreparation("first")).toBe("preparing");
+    expect(resume).toHaveBeenCalledOnce();
     await session.cancelScreenSelection("first");
+    grant(source);
     await vi.waitFor(() => expect(video.stop).toHaveBeenCalledOnce(), { timeout: 150 });
     expect(await starting).toMatchObject({ name: "AbortError" });
-    expect(audio.stop).toHaveBeenCalledOnce();
+    expect(audio.stop).not.toHaveBeenCalled();
     expect(close).toHaveBeenCalledOnce();
     expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
     expect(session.browserCapturePreparation("first")).toBeUndefined();
@@ -10941,7 +11163,7 @@ test("capture stage diagnostics distinguish an unanswered picker and stop a late
   } finally { session.close(); }
 });
 
-test("capture stage diagnostics show completed codec selection before pending audio and its cancellation", async () => {
+test("capture stage diagnostics track publication with a suspended mixer", async () => {
   const events: { stage: string; outcome: string; details?: object }[] = [];
   vi.spyOn(browserDiagnostics, "debugOperation").mockImplementation((scope, stage) => {
     if (scope === "capture") events.push({ stage, outcome: "started" });
@@ -10962,17 +11184,13 @@ test("capture stage diagnostics show completed codec selection before pending au
   session.setVideoCodecMode("auto");
   const starting = session.startScreen("first").catch(error => error);
   try {
-    await vi.waitFor(() => expect(resume).toHaveBeenCalledOnce());
-    expect(events.map(({ stage, outcome }) => [stage, outcome])).toEqual([
-      ["display", "started"], ["display", "applied"], ["codec-selection", "started"],
-      ["codec-selection", "selected"], ["audio-prepare", "started"],
-    ]);
-    expect(events[1].details).toMatchObject({ trackId: video.id, audio: false });
-    await session.cancelScreenSelection("first");
-    expect(await starting).toMatchObject({ name: "AbortError" });
-    expect(events.at(-1)).toMatchObject({ stage: "audio-prepare", outcome: "cancelled", details: { state: "suspended" } });
-    expect(video.stop).toHaveBeenCalledOnce(); expect(audio.stop).toHaveBeenCalledOnce(); expect(close).toHaveBeenCalledOnce();
-    expect(socket.sent.some(command => command.type === "publish")).toBe(false);
+    const publish = await nextSocketCommand(socket, "publish");
+    socket.receive({ type: "ack", requestId: publish.requestId });
+    expect(await starting).toBeUndefined();
+    expect(events.at(-1)).toMatchObject({ stage: "audio-prepare", outcome: "fallback", details: { state: "suspended" } });
+    expect(session.getSnapshot().ownedScreens.size).toBe(1);
+    expect(video.stop).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
   } finally { session.close(); }
 });
 

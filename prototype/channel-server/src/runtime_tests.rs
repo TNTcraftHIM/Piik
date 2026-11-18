@@ -411,7 +411,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         invitation_origin: None,
         room_commands: None,
     };
-    let mut operator = Endpoint::join(&mut hub, "invite");
+    let mut operator = Endpoint::join(&mut hub, "owner");
     let mut viewer = Endpoint::join(&mut hub, "invite");
     let mut host = RoomHost::new(
         RoomState::new(
@@ -813,6 +813,14 @@ async fn connect_with_credential(
     key: &str,
     name: &str,
 ) -> (Socket, Uuid, Snapshot, String) {
+    join_with_credential(address, key, name, None).await
+}
+async fn join_with_credential(
+    address: std::net::SocketAddr,
+    key: &str,
+    name: &str,
+    credential: Option<&str>,
+) -> (Socket, Uuid, Snapshot, String) {
     let mut request = format!("ws://{address}/prototype/channel")
         .into_client_request()
         .unwrap();
@@ -822,7 +830,7 @@ async fn connect_with_credential(
     let (mut socket, _) = connect_async(request).await.unwrap();
     send_request(
         &mut socket,
-        json!({"type":"join", "ownerKey":(key!="invite").then_some(key), "name":name}),
+        json!({"type":"join", "ownerKey":(key!="invite").then_some(key), "name":name, "credential":credential}),
     )
     .await;
     let Event::Welcome {
@@ -876,7 +884,16 @@ async fn start_server(
     tokio::task::JoinHandle<anyhow::Result<()>>,
     Arc<Mutex<Hub>>,
 ) {
-    let state = Domain::open(folder, "owner", "http://localhost".into(), None, vec![]).unwrap();
+    let state = Domain::open_with_options(
+        folder,
+        "owner",
+        "http://localhost".into(),
+        None,
+        vec![],
+        Default::default(),
+        Some(Default::default()),
+    )
+    .unwrap();
     let hub = state.hub.clone();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -1640,85 +1657,269 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
     std::fs::remove_dir_all(folder).unwrap();
 }
 
+use piik_channel_core::conversation::{
+    ConversationAddress, ConversationCommand, ConversationRecord, ConversationReply,
+    ConversationRequest, SessionSigner,
+};
+
+async fn room_conversation(
+    socket: &mut Socket,
+    session: Uuid,
+    state: &Snapshot,
+    room_id: &str,
+    command: ConversationCommand,
+) -> Vec<ConversationRecord> {
+    let delivery = state
+        .channel
+        .rooms
+        .iter()
+        .find(|room| room.id == room_id)
+        .unwrap()
+        .delivery
+        .as_ref()
+        .unwrap();
+    let key = state
+        .sessions
+        .iter()
+        .find(|peer| peer.id == delivery.host_session_id)
+        .unwrap()
+        .signing_key;
+    let request_id = Uuid::new_v4().to_string();
+    let packet = SessionSigner::from_seed([1; 32])
+        .sign(
+            session,
+            &ConversationRequest {
+                address: ConversationAddress {
+                    room_id: room_id.into(),
+                    binding_id: delivery.binding_id,
+                    sender: session,
+                    recipient: delivery.host_session_id,
+                    request_id: request_id.clone(),
+                },
+                command,
+            },
+        )
+        .unwrap();
+    send_request(socket, json!({"type":"conversation", "packet":packet})).await;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let mut records = vec![];
+        loop {
+            match event(socket).await {
+                Event::Conversation { packet } => {
+                    let reply = ConversationReply::verify(&packet, key).unwrap();
+                    if reply.address.request_id != request_id {
+                        continue;
+                    }
+                    assert!(!matches!(reply.record, ConversationRecord::Error { .. }));
+                    let finished = matches!(
+                        reply.record,
+                        ConversationRecord::Confirmed { .. }
+                            | ConversationRecord::HistoryEnd { .. }
+                    );
+                    records.push(reply.record);
+                    if finished {
+                        return records;
+                    }
+                }
+                Event::Error { code, .. } => panic!("conversation failed: {code}"),
+                _ => {}
+            }
+        }
+    })
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_restart() {
+    use piik_channel_core::wire::{HostingMode, RoomCreationPolicy};
+    let folder = tempfile::tempdir().unwrap();
+    drop(
+        Domain::open_with_options(
+            folder.path(),
+            "owner",
+            "http://localhost".into(),
+            None,
+            vec![],
+            RoomCreationPolicy::Ordinary,
+            Some(HostingMode::Hosted),
+        )
+        .unwrap(),
+    );
+    let (address, stop, task, _) = start_server(folder.path()).await;
+    let (mut creator, creator_session, _, _) =
+        connect_with_credential(address, "invite", "Manager").await;
+    send_request(
+        &mut creator,
+        json!({"type":"create_room","room":{"id":"new","name":"Hidden guest room","icon":"couch",
+        "creatorId":Uuid::nil(),"access":"private","hidden":true,"hasPassword":false}}),
+    )
+    .await;
+    let room = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            match event(&mut creator).await {
+                Event::RoomCreated { room, .. } => break room,
+                Event::Error { code, .. } => panic!("creation failed: {code}"),
+                _ => {}
+            }
+        }
+    })
+    .await
+    .unwrap();
+    send_request(&mut creator, json!({"type":"room_invite","roomId":room.id})).await;
+    let invite = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match event(&mut creator).await {
+                Event::RoomInvite { key, .. } => break key,
+                Event::Error { code, .. } => panic!("invite failed: {code}"),
+                _ => {}
+            }
+        }
+    })
+    .await
+    .unwrap();
+    let (mut reader, session, initial, credential) =
+        connect_with_credential(address, "invite", "Reader").await;
+    assert!(!initial.channel.rooms.iter().any(|r| r.id == room.id));
+    send_request(
+        &mut reader,
+        json!({"type":"enter_room","roomId":room.id,"inviteKey":invite}),
+    )
+    .await;
+    let readable = |state: &Snapshot| {
+        state
+            .channel
+            .rooms
+            .iter()
+            .any(|r| r.id == room.id && r.authorized && r.available && !r.can_manage)
+    };
+    let initial = state_when(&mut reader, readable).await;
+    assert_ne!(
+        initial
+            .channel
+            .rooms
+            .iter()
+            .find(|r| r.id == room.id)
+            .unwrap()
+            .delivery
+            .as_ref()
+            .unwrap()
+            .host_session_id,
+        creator_session
+    );
+    send_request(&mut creator, json!({"type":"leave"})).await;
+    state_when(&mut reader, |s| {
+        readable(s) && !s.sessions.iter().any(|e| e.id == creator_session)
+    })
+    .await;
+    send_request(
+        &mut reader,
+        json!({"type":"browse","roomId":room.id,"active":true}),
+    )
+    .await;
+    let state = state_when(&mut reader, |s| {
+        s.channel.rooms.iter().any(|r| r.id == room.id && r.reading)
+    })
+    .await;
+    let sent = room_conversation(
+        &mut reader,
+        session,
+        &state,
+        &room.id,
+        ConversationCommand::Chat {
+            text: "After manager left".into(),
+            nonce: "reader-1".into(),
+            mentions: vec![],
+            reply: None,
+            attachments: vec![],
+            inline_images: Default::default(),
+        },
+    )
+    .await;
+    assert!(matches!(&sent[0], ConversationRecord::Confirmed { message, .. } if message.seq == 1));
+    stop.send(()).unwrap();
+    task.await.unwrap().unwrap();
+    let (address, stop, task, _) = start_server(folder.path()).await;
+    let (mut reader, session, initial, _) =
+        join_with_credential(address, "invite", "Reader", Some(&credential)).await;
+    if !readable(&initial) {
+        state_when(&mut reader, readable).await;
+    }
+    send_request(
+        &mut reader,
+        json!({"type":"browse","roomId":room.id,"active":true}),
+    )
+    .await;
+    let state = state_when(&mut reader, |s| {
+        s.channel.rooms.iter().any(|r| r.id == room.id && r.reading)
+    })
+    .await;
+    let history = room_conversation(
+        &mut reader,
+        session,
+        &state,
+        &room.id,
+        ConversationCommand::History { before: None },
+    )
+    .await;
+    assert!(history.iter().any(|r| matches!(r, ConversationRecord::HistoryMessage {message} if message.text == "After manager left")));
+    let (_, _, stranger) = connect(address, "invite", "Stranger").await;
+    assert!(!stranger.channel.rooms.iter().any(|r| r.id == room.id));
+    let (mut operator, _, state) = connect(address, "owner", "Operator").await;
+    assert!(!state.channel.rooms.iter().any(|r| r.id == room.id));
+    send_request(
+        &mut operator,
+        json!({"type":"set_room_creation_policy","policy":"owner_only"}),
+    )
+    .await;
+    state_when(&mut operator, |s| {
+        s.channel.room_creation_policy == RoomCreationPolicy::OwnerOnly
+    })
+    .await;
+    send_request(
+        &mut operator,
+        json!({"type":"delete_room","roomId":room.id,"deleteData":false}),
+    )
+    .await;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match event(&mut operator).await {
+                Event::RoomReply {
+                    result: piik_channel_core::host::RoomResult::Deleted { data_removed },
+                    ..
+                } => {
+                    assert!(data_removed);
+                    break;
+                }
+                Event::Error { code, .. } => panic!("retirement failed: {code}"),
+                _ => {}
+            }
+        }
+    })
+    .await
+    .unwrap();
+    let database = crate::room_directory(
+        folder.path(),
+        (state.channel.id, state.channel.owner_id.unwrap()),
+    )
+    .join(format!("{}.sqlite", room.id));
+    assert!(storage::Storage::open_existing(&database)
+        .unwrap()
+        .load()
+        .unwrap()
+        .is_none());
+    stop.send(()).unwrap();
+    task.await.unwrap().unwrap();
+}
+
 #[tokio::test]
 async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers_after_repair() {
     use piik_channel_core::{
-        conversation::{
-            ConversationAddress, ConversationCommand, ConversationRecord, ConversationReply,
-            ConversationRequest, SessionSigner,
-        },
         history::{HistoryRequest, MessageDraft},
         storage::Storage,
         wire::RoomAccess,
         RoomState, StoredRoomHost,
     };
-
-    async fn conversation(
-        socket: &mut Socket,
-        session: Uuid,
-        state: &Snapshot,
-        command: ConversationCommand,
-    ) -> Vec<ConversationRecord> {
-        let delivery = state
-            .channel
-            .rooms
-            .iter()
-            .find(|room| room.id == "healthy")
-            .unwrap()
-            .delivery
-            .as_ref()
-            .unwrap();
-        let key = state
-            .sessions
-            .iter()
-            .find(|peer| peer.id == delivery.host_session_id)
-            .unwrap()
-            .signing_key;
-        let request_id = Uuid::new_v4().to_string();
-        let packet = SessionSigner::from_seed([1; 32])
-            .sign(
-                session,
-                &ConversationRequest {
-                    address: ConversationAddress {
-                        room_id: "healthy".into(),
-                        binding_id: delivery.binding_id,
-                        sender: session,
-                        recipient: delivery.host_session_id,
-                        request_id: request_id.clone(),
-                    },
-                    command,
-                },
-            )
-            .unwrap();
-        send_request(socket, json!({"type":"conversation", "packet":packet})).await;
-        tokio::time::timeout(Duration::from_secs(5), async {
-            let mut records = vec![];
-            loop {
-                match event(socket).await {
-                    Event::Conversation { packet } => {
-                        let reply = ConversationReply::verify(&packet, key).unwrap();
-                        if reply.address.request_id != request_id {
-                            continue;
-                        }
-                        assert!(!matches!(reply.record, ConversationRecord::Error { .. }));
-                        let finished = matches!(
-                            reply.record,
-                            ConversationRecord::Confirmed { .. }
-                                | ConversationRecord::HistoryEnd { .. }
-                        );
-                        records.push(reply.record);
-                        if finished {
-                            return records;
-                        }
-                    }
-                    Event::Error { code, .. } => panic!("conversation failed: {code}"),
-                    _ => {}
-                }
-            }
-        })
-        .await
-        .unwrap()
-    }
 
     for damage in [
         "empty",
@@ -1861,10 +2062,11 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
             })
             .await;
             let expected = if repaired { 3 } else { 2 };
-            let sent = conversation(
+            let sent = room_conversation(
                 &mut socket,
                 session,
                 &state,
+                "healthy",
                 ConversationCommand::Chat {
                     mentions: vec![],
                     reply: None,
@@ -1878,10 +2080,11 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
             assert!(
                 matches!(&sent[0], ConversationRecord::Confirmed { message, .. } if message.seq == expected)
             );
-            let history = conversation(
+            let history = room_conversation(
                 &mut socket,
                 session,
                 &state,
+                "healthy",
                 ConversationCommand::History { before: None },
             )
             .await;
@@ -2098,23 +2301,25 @@ async fn room_backup_http_restores_native_history_and_reopens_named_imports() {
     let mut metadata = snapshot.metadata().clone();
     metadata.policy.name = "Restored living".into();
     let rows = (1..=55)
-        .map(|seq| HistoryRow {
-            nonce: format!("retained-{seq}"),
-            message: StoredMessage {
-                message: piik_channel_core::wire::ChatMessage {
-                    mentions: vec![],
-                    reply: None,
-                    inline_images: Default::default(),
-                    id: Uuid::new_v4(),
-                    seq,
-                    user_id: metadata.policy.creator_id,
-                    archived_author_name: None,
-                    text: format!("Saved {seq}"),
-                    time: seq,
-                    attachments: vec![],
+        .map(|seq| {
+            HistoryRow::Message(piik_channel_core::backup::LiveHistoryRow {
+                nonce: format!("retained-{seq}"),
+                message: StoredMessage {
+                    message: piik_channel_core::wire::ChatMessage {
+                        mentions: vec![],
+                        reply: None,
+                        inline_images: Default::default(),
+                        id: Uuid::new_v4(),
+                        seq,
+                        user_id: metadata.policy.creator_id,
+                        archived_author_name: None,
+                        text: format!("Saved {seq}"),
+                        time: seq,
+                        attachments: vec![],
+                    },
+                    reactions: Default::default(),
                 },
-                reactions: Default::default(),
-            },
+            })
         })
         .collect::<Vec<_>>();
     let make = |metadata, path: &str| {

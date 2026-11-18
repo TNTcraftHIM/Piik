@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-17
+Last updated: 2026-11-18
 
 This page summarizes the current 3.0 evidence and limits that affect product
 claims. [Status](./status.md#isolated-30-prototype) owns delivery readiness;
@@ -9,6 +9,21 @@ package receipts own exact tested builds. Published 2.x has its separate
 Research owns measurements, and [TODO](./todo.md) owns remaining work.
 
 ## Current Evidence
+
+The Windows x64 review package opened its native WebView2 launcher, created a
+room and decoded a synthetic screen from an independent browser on loopback.
+Closing the main window retired the observed WebView processes and listeners.
+On Alpine x64, the packaged Server accepted signed chat after the room creator
+left, retained the invited reader's grant and history on restart, and hid the
+room from a stranger. These runs used disposable data. Physical display capture,
+microphone capture and public-network conditions require their own checks.
+
+Three loopback Chromium sessions kept B’s screen playing through A while
+B and C established an additional connection. After A left, the original
+subscription resumed on that same pair when both ends had confirmed it.
+With negotiation delayed until A left, the subscription resumed on a new
+pair. These checks establish connection reuse and recovery. WAN reachability,
+mobile power cost and typical recovery time require independent networks.
 
 The capacity scenario exercises the real Core with two rooms of 20 users, each
 using Browser and App endpoints, plus the Server endpoint. It includes screen,

@@ -12,6 +12,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
   const display = (key: CopyKey, connectionHelp = false): ChannelErrorPresentation => ({ message: t(key), connectionHelp });
   if (!error) return { message: null, connectionHelp: true };
   if (error === "room_busy") return display("channel.error.busy");
+  if (error === "room_creation_restricted") return display("channel.error.roomCreationRestricted");
   if (error === "attachment_unavailable" || error === "file_unavailable" || error === "file_source_unavailable")
     return display("channel.attachment.sourceUnavailable");
   if (error === "download_failed") return display("channel.attachment.saveFailed");
@@ -28,6 +29,8 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.error.channelFull");
   if (error === "directory_storage_failed")
     return display("channel.error.directoryStorageFailed");
+  if (error === "room_data_removal_unconfirmed")
+    return display("room.settings.roomDataRemovalUnconfirmed");
   if (error === "domain_restored_connection_failed")
     return display("channel.error.domainRestoredConnectionFailed", true);
   if (error === "room_restored_connection_failed")
@@ -38,6 +41,10 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.error.backupIdentityRequired");
   if (error === "backup_room_mismatch")
     return display("channel.error.backupRoomMismatch");
+  if (error === "backup_room_not_admitted")
+    return display("channel.error.backupRoomNotAdmitted");
+  if (error === "unsupported_storage_version")
+    return display("channel.error.unsupportedStorageVersion");
   if (error === "unsupported_backup_version")
     return display("channel.error.unsupportedBackupVersion");
   if (error === "backup_content_limit")
@@ -46,7 +53,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.error.expectedRoomCopy");
   if (error === "invalid_room_copy")
     return display("channel.error.invalidRoomCopy");
-  if (error === "app_disconnected")
+  if (error === "app_disconnected" || error === "app_context_changed")
     return display("channel.error.appDisconnected");
   if (error === "external_input_unavailable")
     return display("channel.error.externalInputUnavailable");

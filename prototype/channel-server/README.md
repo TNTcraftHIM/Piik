@@ -17,20 +17,17 @@ The [Domain service](./src/domain.rs) owns its HTTP, WebSocket and directory lif
 the [Server composition](./src/lib.rs) adds deliberate Native room hosting. Local App
 composition reuses the Domain without inheriting that unattended participant.
 
-The Server starts one real [Native participant](../channel-native/README.md) in
-its process to operate the three initial rooms. Its lifetime follows the explicit
-Server service, independently of administration pages. Rooms created in the interface use
-their owner's [Browser/WASM runtime](../channel-browser/README.md) or the
-[linked Rust App](#local-app-link). That runtime owns admission,
-policy, activities, publication plans and confirmed history. The domain binds
-authenticated runtimes to directory entries and combines their transport demand;
-a physical pair remains while any room needs it. Domain WebSocket rendezvous
-carries admission, activity changes and repair. Conversation uses that same
-WebSocket for signed text/history requests and room-owner replies.
-The domain can see forwarded text but does not store or confirm it. Browser-hosted
-rooms and the explicit [Native participant](../channel-native/README.md) establish
-a shared base tree for media and file demand. File bytes and pull control reuse
-its admitted paths, with the same Rust range-delivery core in both participants.
+The Server runs an embedded [Native participant](../channel-native/README.md).
+In lightweight mode, rooms created in the interface use the creator's
+[Browser/WASM runtime](../channel-browser/README.md) or [linked App](#local-app-link).
+In hosted mode, the embedded Native service opens and owns each room writer
+before the creator receives confirmation. The creator remains the room manager.
+The operator configuration below controls first-start hosting and creation policy.
+
+The current room writer owns admission, policy, publication plans and confirmed
+history. The channel binds the authenticated writer and carries signed room
+commands through the domain WebSocket. Shared physical pairs serve independent
+room and publication work. File ranges travel over reliable data channels.
 
 For an internal App package, follow the [first-room guide](../../docs/guide/getting-started.md#share-with-piik-app)
 for the launcher, invitations and sharing. The [App data and backups reference](../../cmd/piik-app/README.md#data-and-backups)
@@ -77,12 +74,24 @@ Open the address printed at startup. With no port or origin override, it is
 the executable unless `PIIK_CHANNEL_DATA_DIR` selects another directory. An
 existing site's database owns its saved key; changing the seed does not rotate it.
 
+`PIIK_CHANNEL_ROOM_CREATION_POLICY` seeds the policy when a Server creates a
+channel. The default is `ordinary`, which lets members create ordinary rooms.
+`invite_only` limits members to unlisted, invite-only rooms. `owner_only`
+reserves room creation for the channel owner. The channel database retains the
+saved policy, including later changes by its owner, across restarts.
+
+`PIIK_CHANNEL_HOSTING_MODE` selects the room host for a new Server channel.
+The default `lightweight` gives each creator's Browser or App the room data.
+`hosted` makes the Server the room host while the creator manages the room.
+The selected mode belongs to the saved channel and survives restarts.
+Restore a hosted channel backup on a standalone Server. App starts and restores
+lightweight channels.
+
 The first startup creates Living room, Studio and Quiet corner under the Server's
 Native endpoint. Enter one of those rooms and share/watch normally to use its
-server media path. A room created in the page uses the current Browser or linked
-App instead. These rooms can forward media through the Server while routing
-remains automatic; 3.0 has no SFU-only switch or general server fallback for
-Browser/App-hosted rooms.
+server media path. The channel's mode assigns the host for rooms created in the
+page. Browser/App-hosted rooms can use the optional Server forwarding assistance
+with automatic routing.
 
 ### Development Server
 
@@ -176,6 +185,13 @@ reads `/etc/piik/piik.env`, runs `/opt/piik/current/piik-server` on HTTP 8787 an
 stores data under `/var/lib/piik`. Put the matching environment values in that
 file, install the unit as `/etc/systemd/system/piik.service`, then run
 `sudo systemctl daemon-reload` and `sudo systemctl enable --now piik`.
+
+For the 3.0 public Demo profile, install the
+[Demo drop-in](../../deploy/systemd/piik-demo.conf.example) as
+`/etc/systemd/system/piik.service.d/demo.conf` before first launch and set
+`PIIK_CHANNEL_WEB_ORIGIN=https://demo.piik.tv` in the service environment file.
+For an existing 3.0 channel, set its saved creation policy to invite-only in
+channel settings as the owner.
 
 Set `PIIK_CHANNEL_WEB_ORIGIN` to the exact HTTPS origin users will open.
 Terminate HTTPS at your reverse proxy and forward HTTP/WebSocket traffic to the
@@ -516,9 +532,9 @@ Each message supports 2,000 Unicode characters and up to eight attachments.
 Text supports Markdown emphasis, lists, quotes, links, inline code and fenced code
 blocks with a copy action. Formatting preserves the saved message and confirmed
 mention identities; code remains literal and message HTML is not executed.
-Images share a 512 KiB rendition budget per message and travel with confirmed
-history. Originals that fit are retained unchanged; larger static images can
-carry a high-quality preview while the original keeps on-demand P2P delivery.
+Images share a 512 KiB thumbnail budget per message. History keeps a static
+thumbnail with a maximum long edge of 640 pixels. Original pictures and animations
+come from a local copy or an available file holder.
 Read pages and drafts stay in memory; refreshing retrieves history from the host.
 There is no separate offline history database or peer history replication.
 
@@ -619,17 +635,12 @@ The room owner retains a private invitation's digest and recoverable key so it
 can read the current link. The site's bootstrap key is private hosting data.
 Sessions, captures and routes are not restored after a process restart.
 
-This unpublished prototype uses domain hosting metadata version 2 around domain
-authority version 6 and SQLite schema version 8. Portable site archives use
-version 3, with `manifest.json` and `users.ndjson`; changing that archive format
-does not reset the live database. Room backup metadata remains version 2 and
-room-copy metadata version 1.
-Earlier private site archive formats are rejected explicitly; use the exporting
-version to read them. Current database files remain readable by this change.
-Browser room storage uses IndexedDB version 6. Older experimental
-checkpoints and the old unscoped `rooms/*.sqlite` layout are rejected rather than
-silently discarding or attaching their history to another domain. Keep any
-old experiment's database and choose a fresh data directory for this version:
+Domain hosting metadata version 2 contains domain authority version 6.
+Portable site archives use version 3. Room storage and backups have separate
+versions. The [storage reference](../../docs/research/channel-storage-and-identity.md#backups)
+records the supported SQLite, IndexedDB, room backup and room copy formats.
+An unsupported private store or archive is preserved. Open it with the build
+that created it, or choose a fresh directory for the new build using
 `PIIK_CHANNEL_DATA_DIR` for Server or `PIIK_CHANNEL_APP_DATA_DIR` for App.
 
 The current site operator's personal credential authorizes `GET` and `PUT` on
@@ -696,7 +707,10 @@ owns retention and reclamation.
 Current access controls offers and downloads; already downloaded bytes cannot be revoked.
 
 Replicated history, federation and authority handoff remain outside this slice.
-Current resource bounds are 128 live endpoints and 32 rooms per site. Browser,
+Each site supports 128 live endpoints and 32 active room bindings or creation
+reservations. The directory holds up to 64 room identities in total, including
+offline registrations and restore permissions. When it fills, the channel
+owner can remove a registration to make space. Browser,
 App and Server endpoints count as resources; a person's endpoints share one user
 identity. The current multi-room acceptance scale is 20 users per room, without
 a separate hard person-count quota. Each endpoint may publish one screen and

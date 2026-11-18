@@ -24,6 +24,7 @@ fn window() -> Result<(Vec<Vec<u8>>, FileDelivery, Uuid)> {
             attachment_id: Uuid::new_v4(),
         };
         let plan = FilePlan {
+            author_id: source,
             room_id: key.room_id.clone(),
             message_seq: key.message_seq,
             attachment: AttachmentDescriptor {

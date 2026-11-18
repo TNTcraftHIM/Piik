@@ -18,7 +18,7 @@ import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 import { debugEvent } from "../lib/debug";
 
-export const APP_PROTOCOL = 19;
+export const APP_PROTOCOL = 21;
 const APP_REQUEST_BYTES = 256 * 1024;
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
@@ -42,8 +42,7 @@ export const nativeConnectionMetricsSchema = z.object({
 /** SDK sample clocks belong to each Native connectionId, never Browser performance time. */
 export type NativeConnectionMetrics = z.infer<typeof nativeConnectionMetricsSchema>;
 const nativeRelayCapacitySchema = z.object({
-  roomId: z.string(), sessionId: z.uuid(), bindingId: z.uuid(),
-  relayCapacity: z.number().int().min(1).max(MAX_RELAY_CAPACITY),
+  sessionId: z.uuid(),
   relayOverride: z.number().int().min(0).max(MAX_RELAY_CAPACITY).nullable(),
 }).strict();
 export type NativeRelayCapacity = z.infer<typeof nativeRelayCapacitySchema>;
@@ -397,16 +396,16 @@ export class ChannelApp {
     return nativeConnectionMetricsSchema.parse(await this.request({ type: "connection_metrics", roomId, publicationId }, crypto.randomUUID(), signal));
   }
 
-  async relayCapacity(roomId: string, signal?: AbortSignal): Promise<NativeRelayCapacity> {
+  async relayCapacity(signal?: AbortSignal): Promise<NativeRelayCapacity> {
     signal?.throwIfAborted();
     if (!this.connected) throw new Error("app_disconnected");
-    return nativeRelayCapacitySchema.parse(await this.request({ type: "relay_capacity", action: "read", roomId }, crypto.randomUUID(), signal));
+    return nativeRelayCapacitySchema.parse(await this.request({ type: "relay_capacity", action: "read" }, crypto.randomUUID(), signal));
   }
 
   async setRelayCapacity(current: NativeRelayCapacity, capacity: number | null): Promise<NativeRelayCapacity> {
     if (!this.connected) throw new Error("app_disconnected");
-    const { roomId, sessionId, bindingId } = current;
-    return nativeRelayCapacitySchema.parse(await this.request({ type: "relay_capacity", action: "set", roomId, sessionId, bindingId, capacity }));
+    const { sessionId } = current;
+    return nativeRelayCapacitySchema.parse(await this.request({ type: "relay_capacity", action: "set", sessionId, capacity }));
   }
 
   async waitReady(signal?: AbortSignal): Promise<void> {

@@ -178,11 +178,12 @@ export class ChannelTransport {
   }
 
   /** Input follows selected screens, independently of room-base leases. */
-  setInputEnabled(enabled: boolean): void {
+  setInputEnabled(enabled: boolean, probe: boolean): void {
     if (this.closed) return;
     const changed = this.inputEnabled !== enabled;
     this.inputEnabled = enabled;
-    if (enabled && !this.input && !this.options.polite && !["failed", "closed"].includes(this.pc.connectionState)) {
+    // An empty pair needs an SCTP offer to start ICE. Input delivery still requires a selected screen.
+    if ((enabled || probe) && !this.input && !this.options.polite && !["failed", "closed"].includes(this.pc.connectionState)) {
       this.installInput(this.pc.createDataChannel("piik-input", { ordered: true }));
       this.retryOffer();
     } else if (changed) this.options.input?.(enabled ? this.input : null);

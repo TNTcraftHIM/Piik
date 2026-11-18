@@ -367,6 +367,41 @@ impl RoomRuntime {
     pub fn attachments_available(&self) -> bool {
         self.base.is_some()
     }
+    pub(crate) fn remove_message_files(&mut self, from: u64, through: u64) -> bool {
+        self.files.remove_messages(from, through)
+    }
+    pub(crate) fn forwarding_available(
+        &mut self,
+        sender: Uuid,
+        kind: Option<crate::forwarding::ForwardingKind>,
+    ) {
+        use crate::forwarding::ForwardingKind;
+        if kind.is_none_or(|kind| kind == ForwardingKind::File) {
+            self.files.forwarding_available(sender);
+        }
+        for publication in self.publications.values_mut() {
+            if kind.is_none_or(|kind| {
+                matches!(
+                    (kind, publication.info.kind),
+                    (ForwardingKind::Voice, Kind::Voice) | (ForwardingKind::Screen, Kind::Screen)
+                )
+            }) {
+                publication.forwarding_available(sender);
+            }
+        }
+    }
+    pub(crate) fn refuse_file_branch(
+        &mut self,
+        sender: Uuid,
+        seq: u64,
+        id: Uuid,
+        source: Uuid,
+        downstream: Uuid,
+    ) -> Result<(), &'static str> {
+        let base = self.base.as_ref().ok_or("unassigned_file_branch")?;
+        self.files
+            .refuse_branch(base, seq, id, source, sender, downstream)
+    }
     pub(crate) fn file_command(
         &mut self,
         member: Member,
@@ -395,12 +430,14 @@ impl RoomRuntime {
         &mut self,
         session: Uuid,
         seq: u64,
+        author_id: Uuid,
         attachment: crate::AttachmentDescriptor,
         offer: bool,
         enabled: bool,
     ) -> Result<(), &'static str> {
         if enabled {
-            self.files.install(session, seq, attachment, offer)
+            self.files
+                .install(session, seq, author_id, attachment, offer)
         } else {
             self.files.remove(session, seq, attachment.id, offer);
             Ok(())
@@ -1035,6 +1072,12 @@ impl RoomRuntime {
             None
         };
         let activity = self.activity.entry(session).or_default();
+        let publication = self.publications.get_mut(&id).unwrap();
+        if enabled && !activity.watching.contains_key(&id) {
+            publication.watch_order.push(session);
+        } else if !enabled {
+            publication.watch_order.retain(|viewer| *viewer != session);
+        }
         Ok(if enabled {
             activity.watching.insert(id, helper) != Some(helper)
         } else {
@@ -1116,6 +1159,15 @@ impl RoomRuntime {
     }
 
     pub fn reconcile(&mut self, endpoints: &BTreeMap<Uuid, Endpoint>, now: u64) {
+        self.reconcile_with_pairs(endpoints, now, &BTreeSet::new());
+    }
+
+    pub(crate) fn reconcile_with_pairs(
+        &mut self,
+        endpoints: &BTreeMap<Uuid, Endpoint>,
+        now: u64,
+        confirmed_pairs: &BTreeSet<(Uuid, Uuid)>,
+    ) {
         // Keep the retiring service's role while deriving ordinary routing demand.
         let transit_endpoint = self.transit_endpoint;
         self.transit_endpoint = self.transit_endpoint.filter(|service| {
@@ -1205,6 +1257,17 @@ impl RoomRuntime {
                 base.retry_required(&demand, &connected);
             }
             base.reconcile(&demand, &routable, &connected, &limits, now);
+        }
+        let mut neighbors = BTreeMap::<Uuid, BTreeSet<Uuid>>::new();
+        for (a, b) in confirmed_pairs.iter().copied().chain(
+            self.base_links()
+                .filter(|link| link.ready && link.selected)
+                .map(|link| (link.parent, link.child)),
+        ) {
+            if connected.contains(&a) && connected.contains(&b) {
+                neighbors.entry(a).or_default().insert(b);
+                neighbors.entry(b).or_default().insert(a);
+            }
         }
         let readers: BTreeMap<_, _> = self
             .activity
@@ -1297,6 +1360,7 @@ impl RoomRuntime {
                 &reader_capacity,
                 &helpers,
                 &screen_limits,
+                &neighbors,
                 now,
             );
             publication.bound_screen_preparation(&screen_limits, &helpers);
@@ -1328,6 +1392,7 @@ impl RoomRuntime {
                         &BTreeMap::new(),
                         &BTreeMap::new(),
                         &limits,
+                        &neighbors,
                         now,
                     );
                 }
@@ -2060,6 +2125,99 @@ mod tests {
     }
 
     #[test]
+    fn waiting_viewers_share_a_confirmed_branch_and_keep_the_serving_flow() {
+        let id = Uuid::from_u128;
+        let (original, mut endpoints) = screen_on_room_base();
+        let mut room = RoomRuntime::new(original.policy.clone());
+        for number in [5, 6] {
+            endpoints.insert(
+                id(number),
+                Endpoint {
+                    member: Member {
+                        user_id: id(number),
+                    },
+                    signing_key: [number as u8; 32],
+                    connected: true,
+                },
+            );
+        }
+        for (&peer, endpoint) in &endpoints {
+            room.browse(endpoint.member, peer, true).unwrap();
+            let capacity = if peer == id(1) || peer == id(5) { 2 } else { 0 };
+            room.set_relay_capacity(endpoint.member, peer, Some(capacity))
+                .unwrap();
+        }
+        room.publish(
+            endpoints[&id(1)].member,
+            id(1),
+            id(10),
+            Kind::Screen,
+            screen_settings(),
+            Some(Default::default()),
+        )
+        .unwrap();
+        let watch = |room: &mut RoomRuntime, peer| {
+            room.subscribe(endpoints[&peer].member, peer, id(10), true, None)
+                .unwrap();
+        };
+        watch(&mut room, id(6));
+        room.reconcile(&endpoints, 0);
+        let serving = room.flows().next().unwrap();
+        room.flow_state(
+            serving.id,
+            serving.receiver,
+            serving.sender,
+            FlowState::Decoded,
+            1,
+        )
+        .unwrap();
+        // One source slot remains. Viewer 4 requested first and has a direct
+        // path. Readers 2 and 3 can both receive via a single upstream to 5.
+        for viewer in [4, 3, 2] {
+            watch(&mut room, id(viewer));
+        }
+        let pairs = [(1, 4), (1, 5), (5, 2), (5, 3)]
+            .map(|(a, b)| (id(a), id(b)))
+            .into();
+        // With room for just one receiver behind 5 the candidates tie on
+        // coverage, so the older viewer 4 receives the remaining source slot.
+        let mut tie = room.clone();
+        tie.set_relay_capacity(endpoints[&id(5)].member, id(5), Some(1))
+            .unwrap();
+        tie.reconcile_with_pairs(&endpoints, 2, &pairs);
+        assert!(tie.flows().any(|flow| flow.receiver == id(4)));
+
+        room.reconcile_with_pairs(&endpoints, 2, &pairs);
+        let flows = room.flows().collect::<Vec<_>>();
+        assert!(flows
+            .iter()
+            .any(|flow| flow.id == serving.id && flow.proof == Some(FlowState::Decoded)));
+        assert_eq!(
+            flows
+                .iter()
+                .filter(|flow| flow.proof.is_none())
+                .map(|flow| (flow.sender, flow.receiver))
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([(id(1), id(5)), (id(5), id(3)), (id(5), id(2))])
+        );
+        let relay = flows.iter().find(|flow| flow.receiver == id(5)).unwrap();
+        assert!(flows
+            .iter()
+            .filter(|flow| flow.sender == id(5))
+            .all(|flow| flow.input_flow_id == Some(relay.id)));
+        assert_eq!(room.next_route_deadline(), Some(2 + SCREEN_PREPARE_MS));
+        room.flow_state(relay.id, id(5), id(1), FlowState::Failed, 3)
+            .unwrap();
+        room.reconcile_with_pairs(&endpoints, 3, &pairs);
+        assert!(room
+            .flows()
+            .any(|flow| flow.id == serving.id && flow.proof == Some(FlowState::Decoded)));
+        assert!(room
+            .flows()
+            .any(|flow| flow.sender == id(1) && flow.receiver == id(4)));
+    }
+
+    #[test]
     fn reader_keeps_its_picture_lease_when_joining_voice_and_shares_capacity_when_watching() {
         let id = Uuid::from_u128;
         let (template, endpoints) = screen_on_room_base();
@@ -2190,7 +2348,7 @@ mod tests {
             media_type: "application/octet-stream".into(),
             sha256: crate::attachment::sha256_hex(b"abc"),
         };
-        room.finish_file(id(3), 1, attachment.clone(), true, true)
+        room.finish_file(id(3), 1, id(3), attachment.clone(), true, true)
             .unwrap();
         room.reconcile(&endpoints, 2);
         assert!(
@@ -2204,7 +2362,7 @@ mod tests {
                 .any(|activity| activity.session_id == id(3)),
             "an idle cached copy has no file activity"
         );
-        room.finish_file(id(2), 1, attachment.clone(), false, true)
+        room.finish_file(id(2), 1, id(3), attachment.clone(), false, true)
             .unwrap();
         room.reconcile(&endpoints, 2);
         assert!(
@@ -2226,7 +2384,8 @@ mod tests {
             "inserting the unavailable file source prepares a replacement voice route"
         );
 
-        room.finish_file(id(1), 1, attachment, true, true).unwrap();
+        room.finish_file(id(1), 1, id(3), attachment, true, true)
+            .unwrap();
         room.reconcile(&endpoints, 3);
         assert!(
             !room
@@ -2501,6 +2660,7 @@ mod tests {
                     &BTreeMap::new(),
                     &helpers,
                     &limits,
+                    &BTreeMap::new(),
                     0,
                 );
                 for flow in picture.flows().collect::<Vec<_>>() {
@@ -2541,6 +2701,7 @@ mod tests {
                 &BTreeMap::new(),
                 &helpers,
                 &limits,
+                &BTreeMap::new(),
                 10,
             );
             let candidate = picture.flows().find(|flow| !flow.selected).unwrap();
@@ -2555,6 +2716,7 @@ mod tests {
                 &BTreeMap::new(),
                 &helpers,
                 &limits,
+                &BTreeMap::new(),
                 1_000,
             );
             assert_eq!(picture.deadline(), deadline);
@@ -2587,6 +2749,7 @@ mod tests {
                 &BTreeMap::new(),
                 &helpers,
                 &limits,
+                &BTreeMap::new(),
                 1_003,
             );
             assert!(picture
@@ -3583,7 +3746,11 @@ mod tests {
         assert_eq!(transports.peer(id(3), prepared.id), Some(id(4)));
         assert_eq!(transports.peer(id(3), healthy.id), Some(id(1)));
 
-        transports.connected(prepared.id);
+        assert!(!transports.connected(id(3), id(103), Some(id(104)), prepared.id));
+        assert!(transports.connected(id(4), id(104), Some(id(103)), prepared.id));
+        // Both signaling sockets resume. Only the second current report wakes the room.
+        assert!(!transports.connected(id(3), id(203), Some(id(204)), prepared.id));
+        assert!(transports.connected(id(4), id(204), Some(id(203)), prepared.id));
         room.base_state(id(3), id(4), true).unwrap();
         room.base_state(id(4), id(3), true).unwrap();
         room.reconcile(&endpoints, 5_200);
