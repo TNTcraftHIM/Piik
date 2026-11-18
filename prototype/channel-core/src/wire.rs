@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 27;
+pub const CHANNEL_PROTOCOL: u8 = 28;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -687,12 +687,21 @@ pub struct Room {
     pub available: bool,
     pub reading: bool,
     pub participant_session_ids: Vec<Uuid>,
-    pub realtime_session_ids: Vec<Uuid>,
+    pub file_activity: Vec<FileActivity>,
     pub capabilities: RoomCapabilities,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delivery: Option<RoomDelivery>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub members: Option<Vec<Uuid>>,
+}
+
+/// Active personal file operations; available copies and forwarding are not activity.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileActivity {
+    pub session_id: Uuid,
+    pub sending: bool,
+    pub receiving: bool,
 }
 
 /// The domain derives these destinations from the accepted room base tree.

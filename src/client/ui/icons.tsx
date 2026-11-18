@@ -13,6 +13,8 @@ import windowControls from "./window-controls.json";
 
 type GlyphDefinition = { body: ReactElement<{ children: ReactNode }>; solid?: boolean; phases?: number[] };
 
+const fileOutline = <path pathLength={1} d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8ZM14 2v6h6" />;
+
 const PATHS = {
   qr: { body: (<><path pathLength={1} d="M3 3h6v6H3zM15 3h6v6h-6zM3 15h6v6H3zM15 15h3v3h3v3h-6zM12 3v3m0 6h6m3 0v3M3 12h6m3 3v6" /></>) },
   book: { body: (<><path pathLength={1} d="M12 5C9 3 5 3 2 4v15c3-1 7-1 10 1 3-2 7-2 10-1V4c-3-1-7-1-10 1Zm0 0v15M5 8h4m-4 4h4m6-4h4m-4 4h4"/></>) },
@@ -73,6 +75,9 @@ const PATHS = {
   reply: { body: (<><path pathLength={1} d="m9 5-6 6 6 6M3 11h10a7 7 0 0 1 7 7v1"/></>) },
   arrowUp: { phases: [0, 1], body: (<><path pathLength={1} d="M12 20V4"/><path pathLength={1} d="m5.5 10.5 6.5-6.5 6.5 6.5"/></>) },
   arrowDown: { phases: [0, 1], body: (<><path pathLength={1} d="M12 4v16"/><path pathLength={1} d="m5.5 13.5 6.5 6.5 6.5-6.5"/></>) },
+  fileUp: { body: (<>{fileOutline}<path pathLength={1} d="M12 18v-7m-3 3 3-3 3 3"/></>) },
+  fileDown: { body: (<>{fileOutline}<path pathLength={1} d="M12 11v7m-3-3 3 3 3-3"/></>) },
+  fileTransfer: { body: (<>{fileOutline}<path pathLength={1} d="M9 18v-7m-2 2 2-2 2 2m4-2v7m-2-2 2 2 2-2"/></>) },
   key: { phases: [0, 1, 2, 2], body: (<><circle pathLength={1} cx="7.5" cy="15.5" r="4.5"/><path pathLength={1} d="m11 12.5 9.5-9.5"/><path pathLength={1} d="m14.5 6 3 3"/><path pathLength={1} d="m17.5 3 3 3"/></>) },
   globe: { body: (<><circle pathLength={1} cx="12" cy="12" r="9"/><path pathLength={1} d="M3 12h18"/><path pathLength={1} d="M12 3c2.5 2.6 3.9 5.6 3.9 9s-1.4 6.4-3.9 9c-2.5-2.6-3.9-5.6-3.9-9S9.5 5.6 12 3Z"/></>) },
   lock: { body: (<><rect pathLength={1} x="4" y="11" width="16" height="10" rx="2"/><path pathLength={1} d="M8 11V7a4 4 0 0 1 8 0v4"/></>) },

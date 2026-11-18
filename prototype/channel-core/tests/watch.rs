@@ -113,7 +113,6 @@ fn watch_confirmations_late_join_and_owner_control_do_not_create_media() {
         let state = net.state(c);
         assert!(state.pairs.is_empty());
         assert!(state.publications.is_empty());
-        assert_eq!(state.channel.rooms[0].realtime_session_ids.len(), 2);
         assert_eq!(state.watch_activities[0].viewer_session_ids.len(), 1);
         assert!(!state.watch_activities[0]
             .viewer_session_ids
@@ -129,7 +128,9 @@ fn watch_confirmations_late_join_and_owner_control_do_not_create_media() {
         .viewer_session_ids
         .is_empty());
     assert_eq!(
-        net.state(owner).channel.rooms[0].realtime_session_ids.len(),
+        net.state(owner).channel.rooms[0]
+            .participant_session_ids
+            .len(),
         1
     );
     net.command(viewer, json!({"type":"stop_watch","roomId":room,"id":id}));
@@ -724,7 +725,7 @@ fn watch_audience_projects_all_modes_and_sessions_without_peer_demand() {
             audience.contains(&other_session) && audience.contains(&other_page_session),
             "same user's endpoints remain separate wire facts"
         );
-        assert_eq!(state.channel.rooms[0].realtime_session_ids.len(), 4);
+        assert_eq!(state.channel.rooms[0].participant_session_ids.len(), 4);
         assert!(
             state.pairs.is_empty() && state.watch_bytes.is_empty() && state.publications.is_empty()
         );
@@ -783,7 +784,7 @@ fn watch_audience_is_room_private_and_revoke_removes_viewer_only() {
         .iter()
         .find(|r| r.id == private)
         .unwrap()
-        .realtime_session_ids
+        .participant_session_ids
         .is_empty());
     net.command(
         viewer,
@@ -817,7 +818,7 @@ fn watch_audience_is_room_private_and_revoke_removes_viewer_only() {
             .iter()
             .find(|r| r.id == private)
             .unwrap()
-            .realtime_session_ids,
+            .participant_session_ids,
         vec![net.state(owner).watch_activities[0].session_id]
     );
 }

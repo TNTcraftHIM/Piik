@@ -247,10 +247,6 @@ fn exact_service_lease_carries_assigned_media_and_bytes_without_room_read() {
         .find(|value| value.id == room)
         .unwrap();
     assert!(!room_view.participant_session_ids.contains(&relay));
-    assert!(
-        !room_view.realtime_session_ids.contains(&relay),
-        "pure service work is not a person's activity"
-    );
 
     for connection in [host, viewer] {
         command(
@@ -314,6 +310,25 @@ fn exact_service_lease_carries_assigned_media_and_bytes_without_room_read() {
     assert_eq!(file.upstream, Some(source));
     assert_eq!(file.downstream, vec![destination]);
     assert!(!file.receiving);
+    let activity = &net
+        .state(host)
+        .channel
+        .rooms
+        .iter()
+        .find(|value| value.id == room)
+        .unwrap()
+        .file_activity;
+    assert_eq!(activity.len(), 2);
+    assert!(activity
+        .iter()
+        .any(|value| value.session_id == source && value.sending && !value.receiving));
+    assert!(activity
+        .iter()
+        .any(|value| value.session_id == destination && value.receiving && !value.sending));
+    assert!(
+        !activity.iter().any(|value| value.session_id == relay),
+        "forwarding is not a personal file operation"
+    );
 
     let activity = Uuid::new_v4();
     command(
@@ -721,7 +736,7 @@ fn public_read_alone_does_not_keep_withdrawn_service_work() {
         service_room.authorized,
         "the room setting does not revoke public Read"
     );
-    assert!(!service_room.realtime_session_ids.contains(&relay));
+    assert!(!service_room.participant_session_ids.contains(&relay));
     command(
         &mut net,
         operator_page,
@@ -736,9 +751,8 @@ fn public_read_alone_does_not_keep_withdrawn_service_work() {
         .find(|value| value.id == room)
         .unwrap();
     assert!(participant.participant_session_ids.contains(&person));
-    assert!(participant.realtime_session_ids.contains(&person));
     assert!(
-        !participant.realtime_session_ids.contains(&relay),
+        !participant.participant_session_ids.contains(&relay),
         "the same user's real Browser stays distinct from pure service work"
     );
     let hosted = net.create(service, RoomAccess::Public, false);

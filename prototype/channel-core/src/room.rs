@@ -1598,11 +1598,11 @@ mod tests {
         .unwrap();
         room.command(viewer, id(2), command, &endpoints).unwrap();
         room.reconcile(&endpoints, 2);
-        assert!(room
+        assert!(!room
             .snapshot(viewer, id(2))
             .unwrap()
             .room
-            .realtime_session_ids
+            .participant_session_ids
             .contains(&id(5)));
         let trial: BTreeMap<_, _> = room
             .flows()
@@ -1646,11 +1646,11 @@ mod tests {
             }
         }
         room.reconcile(&endpoints, 4);
-        assert!(room
+        assert!(!room
             .snapshot(viewer, id(2))
             .unwrap()
             .room
-            .realtime_session_ids
+            .participant_session_ids
             .contains(&id(5)));
         assert!(trial
             .values()
@@ -2063,9 +2063,10 @@ mod tests {
                 .snapshot(id(2), true)
                 .unwrap()
                 .room
-                .realtime_session_ids
-                .contains(&id(3)),
-            "an idle cached copy has no realtime activity"
+                .file_activity
+                .iter()
+                .any(|activity| activity.session_id == id(3)),
+            "an idle cached copy has no file activity"
         );
         room.finish_file(id(2), 1, attachment.clone(), false, true)
             .unwrap();
@@ -2075,8 +2076,9 @@ mod tests {
                 .snapshot(id(2), true)
                 .unwrap()
                 .room
-                .realtime_session_ids
-                .contains(&id(3)),
+                .file_activity
+                .iter()
+                .any(|activity| activity.session_id == id(3) && activity.sending),
             "the selected file source participates while its path prepares"
         );
         assert!(room
@@ -2096,8 +2098,9 @@ mod tests {
                 .snapshot(id(2), true)
                 .unwrap()
                 .room
-                .realtime_session_ids
-                .contains(&id(3)),
+                .file_activity
+                .iter()
+                .any(|activity| activity.session_id == id(3)),
             "a replaced file source returns to being only a cached copy"
         );
         assert_eq!(
@@ -4355,15 +4358,6 @@ mod tests {
                 .collect::<BTreeSet<_>>(),
             BTreeSet::from([owner_session, viewer_session, reader_session])
         );
-        assert_eq!(
-            admitted
-                .room
-                .realtime_session_ids
-                .into_iter()
-                .collect::<BTreeSet<_>>(),
-            BTreeSet::from([owner_session, viewer_session]),
-            "chat reading alone is not realtime participation"
-        );
         assert_eq!(admitted.publications.len(), 2);
         assert_eq!(
             admitted
@@ -4409,7 +4403,7 @@ mod tests {
         assert!(!locked.room.authorized);
         assert!(!locked.room.can_manage);
         assert!(locked.room.participant_session_ids.is_empty());
-        assert!(locked.room.realtime_session_ids.is_empty());
+        assert!(locked.room.file_activity.is_empty());
         assert!(locked.publications.is_empty());
         assert!(locked.voice.is_empty());
         assert!(locked.subscriptions.is_empty());

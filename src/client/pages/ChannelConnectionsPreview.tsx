@@ -17,7 +17,7 @@ export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames 
     channel: { id: "domain", name: "Friends", icon: "couch", ownerId: "host-user", historyWindow: 100, userCount: 3,
       rooms: [{ id: "room", name: "Living room", icon: "couch", creatorId: "host-user", access: "public", hidden: false,
         hasPassword: false, authorized: true, canManage: false, participantSessionIds: ["host", "self", "friend", "app"],
-        realtimeSessionIds: mode === "room" ? [] : ["host", "self", "friend", ...(mode === "app" ? ["app"] : [])],
+        fileActivity: [],
         available: true, reading: true, lastMessageSeq: 0, capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding", nextHops: mode === "room" ? {} : { host: "host" } } }] },
     users: [{ id: "host-user", name: longNames ? "Host with a very long display name" : "Momo", version: "0".repeat(64) },

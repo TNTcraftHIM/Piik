@@ -5,7 +5,7 @@ import type { ChannelController } from "../types";
 import type { ChannelRoom } from "../protocol";
 import { ChannelRoomItem } from "./ChannelRoomItem";
 import { ChannelRoomParticipants } from "./ChannelRoomParticipants";
-import { roomRealtimePeople } from "../presentation";
+import { roomActivityPeople } from "../presentation";
 
 /** Folding the participant roster changes presentation, never room activities. */
 export function ChannelRoomListItem({ channel, room, selected, settingsOpen, onSelect, onManage, ordering }: {
@@ -17,7 +17,7 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, onS
   const [open, setOpen] = useState(true), id = useId();
   const state = channel.state;
   const voices = state?.voice.filter(voice => voice.roomId === room.id) ?? [];
-  const people = state ? roomRealtimePeople(state, room.id) : [];
+  const people = state && !ordering ? roomActivityPeople(state, room.id, channel.profiles, channel) : [];
   const screens = state?.publications.filter(source => source.roomId === room.id && source.kind === "screen") ?? [];
   const watches = state?.watchActivities.filter(source => source.roomId === room.id) ?? [];
   const [over, setOver] = useState(false);
@@ -45,6 +45,6 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, onS
         watching={screens.some(source => state?.subscriptions.includes(source.id) && !channel.ownedScreens.has(source.id))
           || watches.some(source => state?.watchSubscriptions.some(value => value.id === source.id) && source.sessionId !== channel.sessionId)}
         onSelect={onSelect} onManage={onManage} />
-    <div id={id} hidden={!open || !!ordering}><ChannelRoomParticipants channel={channel} room={room} /></div>
+    <div id={id} hidden={!open}>{open && people.length > 0 && <ChannelRoomParticipants channel={channel} room={room} people={people} />}</div>
   </div>;
 }

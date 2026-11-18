@@ -191,10 +191,15 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     rooms: rooms.map(room => ({ ...room, ...(hostOffline && room.id === "friday" ? { available: false, delivery: undefined,
       ...(new URLSearchParams(location.search).has("offline-locked") ? { authorized: false, canManage: false } : {}) } : {}),
       name: longNames && room.id === "friday" ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,
-      realtimeSessionIds: [...new Set([...(watchOnly ? [] : room.realtimeSessionIds), ...publications.filter(publication => publication.roomId === room.id).flatMap(publication => [publication.sessionId, ...publication.audience.map(viewer => viewer.sessionId)]), ...(watchActivity?.roomId === room.id ? watchSessions : [])])],
-      participantSessionIds: [...new Set([
-      ...room.participantSessionIds, ...publications.filter(publication => publication.roomId === room.id).map(publication => publication.sessionId), ...(watchActivity?.roomId === room.id ? watchSessions : []),
-    ])], ...(hostOffline && room.id === "friday" ? { participantSessionIds: [], realtimeSessionIds: [] } : {}) })),
+      fileActivity: fileSample && room.id === "friday" && !hostOffline ? [
+        { sessionId: "sample-ada-session", sending: true, receiving: false },
+        { sessionId: "sample-dora-session", sending: false, receiving: true },
+      ] : [],
+      participantSessionIds: hostOffline && room.id === "friday" ? [] : [...new Set([
+        ...room.participantSessionIds,
+        ...publications.filter(publication => publication.roomId === room.id).flatMap(publication => [publication.sessionId, ...publication.audience.map(viewer => viewer.sessionId)]),
+        ...(watchActivity?.roomId === room.id ? watchSessions : []),
+      ])] })),
   }, publications: [...sample.channel.state!.publications.filter(publication => roomIds.has(publication.roomId) && (!watchOnly || publication.kind !== "voice")), ...publications],
     voice: sample.channel.state!.voice.filter(voice => !watchOnly && roomIds.has(voice.roomId) && !(hostOffline && voice.roomId === "friday")),
     users,

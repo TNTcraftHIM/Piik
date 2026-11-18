@@ -7,7 +7,7 @@ import { useCopy } from "../../ui/copy";
 import { VoiceListeningButton, VoiceMicrophoneButton } from "../../room-voice/VoiceAudioButtons";
 import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
 import type { ChannelController } from "../types";
-import { userProfile, voiceAppearance } from "../presentation";
+import { profileAvatar, roomVoicePeople } from "../presentation";
 import { ChannelVoiceSettings } from "./ChannelVoiceSettings";
 import { useCallback } from "react";
 import { useVoiceLevels } from "../../room-voice/use-voice-levels";
@@ -27,13 +27,8 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
   const nameOfRoom = (id: string) => state.channel.rooms.find(room => room.id === id)?.name ?? id;
   const { muted, deafened } = activity;
   const available = channel.connection === "connected" && !!state.channel.rooms.find(room => room.id === roomId)?.available;
-  const participants = state.users.flatMap(user => {
-    const appearance = voiceAppearance(state, user.id, roomId);
-    const endpoints = state.sessions.filter(session => session.userId === user.id).map(session => session.id);
-    const values = state.voice.filter(voice => voice.roomId === roomId && !voice.muted && endpoints.includes(voice.sessionId))
-      .flatMap(voice => levels.has(voice.sessionId) ? [levels.get(voice.sessionId)!] : []);
-    return appearance ? [{ user: userProfile(state, channel.profiles, user.id)!, ...appearance, level: values.length ? Math.max(...values) : undefined }] : [];
-  });
+  const appearances = roomVoicePeople(state, roomId, levels);
+  const participants = state.users.filter(user => appearances.has(user.id));
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
   return <section className="c3-voice-dock" aria-label={t("channel.voiceDock.voiceControls")}>
     <Glyph name="headphones" size={22} />
@@ -51,10 +46,14 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
       <ChannelVoiceSettings channel={channel} roomId={roomId} available={available} />
     </div>
     <div className="c3-voice-participants" aria-label={t("channel.voiceDock.voiceParticipants")}>
-      {participants.slice(0, 4).map(({ user, ...voice }) => <Tooltip key={user.id}
-        kind={voice.deafened ? "hint-voice-deafen" : voice.microphone ? "hint-voice-microphone-on" : "hint-voice-microphone-off"} text={user.name}>
-        <span aria-label={user.name}><PawnSvg color={participantColor(user.id)} identity={user.id} avatar={user.avatar ?? undefined} voice={voice} /></span>
-      </Tooltip>)}
+      {participants.slice(0, 4).map(user => {
+        const avatar = profileAvatar(user, channel.profiles.get(user.id)) ?? undefined;
+        const voice = appearances.get(user.id)!;
+        return <Tooltip key={user.id}
+          kind={voice.deafened ? "hint-voice-deafen" : voice.microphone ? "hint-voice-microphone-on" : "hint-voice-microphone-off"} text={user.name}>
+          <span aria-label={user.name}><PawnSvg color={participantColor(user.id)} identity={user.id} avatar={avatar} voice={voice} /></span>
+        </Tooltip>;
+      })}
       {participants.length > 4 && <small>+{participants.length - 4}</small>}
     </div>
     <div className="c3-voice-controls">

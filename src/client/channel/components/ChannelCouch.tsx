@@ -11,8 +11,7 @@ import { useElementWidth } from "../../lib/use-element-width";
 import { useCopy } from "../../ui/copy";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { ChannelAction } from "./ChannelAction";
-import { ChannelUser } from "./ChannelUser";
-import { ChannelActivityIndicators } from "./ChannelRoomParticipants";
+import { ChannelActivityIndicators, ChannelUser, personVoiceLabel } from "./ChannelUser";
 import type { ParticipantActivity } from "../presentation";
 import { ChannelImageDialog } from "./ChannelImageDialog";
 import "./channel-couch.css";
@@ -37,9 +36,10 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
   people: readonly ChannelCouchPerson[]; selfUserId: string | null;
   session: RoomInteractionSession | null; className?: string; floating?: boolean;
 }) {
-  const { t } = useCopy();
+  const copy = useCopy();
+  const { t } = copy;
   const state = useSyncExternalStore<ReturnType<RoomInteractionSession["getSnapshot"]> | null>(
-    session?.subscribe ?? noSubscription, session?.getSnapshot ?? noSnapshot,
+    session?.subscribe ?? noSubscription, session?.getSnapshot ?? noSnapshot, noSnapshot,
   );
   const surfaceDocument = useSurfaceDocument();
   const [container, availableWidth] = useElementWidth();
@@ -82,6 +82,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
   function seat(person: ChannelCouchPerson) {
     const active = target?.userId === person.userId;
     const action = t(person.userId === selfUserId ? "interaction.express" : "interaction.withPerson", { name: person.name });
+    const voice = person.voice && personVoiceLabel(person.voice, copy);
     const inner = <>
       <PawnSvg color={participantColor(person.userId)} identity={person.userId} host={person.owner}
         avatar={person.avatar} voice={person.voice} collaboration={person.collaboration} />
@@ -89,15 +90,16 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
     </>;
     const pawnClass = `lr-pawn${person.userId === selfUserId ? " is-you" : ""}${session ? "" : " is-static"}`;
     const overflow = { text: person.name, selector: ".lr-pawn-name" };
-    const hint = session ? { kind: "hint-reaction-picker" as const, text: action, overflow } : { overflow };
+    const hint = session ? { kind: "hint-reaction-picker" as const, text: voice ? `${action}\n${voice}` : action, overflow } : { text: voice, overflow };
     return <span key={person.userId} className="c3-couch-seat" data-room-peer={person.userId}>
       <Tooltip {...hint} disabled={active}>
-        {session ? <button type="button" className={pawnClass} aria-label={action}
+        {session ? <button type="button" className={pawnClass} aria-label={action} aria-description={voice}
           aria-expanded={active} aria-controls={pickerId}
           onClick={event => setTarget({ userId: person.userId, trigger: event.currentTarget })}>{inner}</button>
-          : <span className={pawnClass}>{inner}</span>}
+          : <span className={pawnClass}>{inner}{voice && <span className="visually-hidden">{voice}</span>}</span>}
       </Tooltip>
-      <span className="c3-couch-activity"><ChannelActivityIndicators sharing={person.sharing} viewing={person.viewing} /></span>
+      <span className="c3-couch-activity"><ChannelActivityIndicators sharing={person.sharing} viewing={person.viewing}
+        sendingFiles={person.sendingFiles} receivingFiles={person.receivingFiles} /></span>
     </span>;
   }
   return <section className={`c3-couch ${className}`} aria-label={t("channel.couch.friendsInThisRoom")}
@@ -134,8 +136,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
     )}
     {target && selected && state && session && <RoomQuickReactions key={selected.userId} id={pickerId} trigger={target.trigger} side="below"
       identity={<ChannelUser id={selected.userId} name={selected.name} avatar={selected.avatar} self={selected.userId === selfUserId}
-        owner={!!selected.owner} online voice={selected.voice} collaboration={selected.collaboration}
-        actions={<ChannelActivityIndicators sharing={selected.sharing} viewing={selected.viewing} />}
+        owner={!!selected.owner} online roomActivity={selected} collaboration={selected.collaboration}
         onPreviewAvatar={() => setAvatarPreview({ userId: selected.userId, trigger: target.trigger })} />}
       person={{ peerId: selected.userId, displayName: selected.name }} selfPeerId={selfUserId}
       hostPeerId={people.find(person => person.owner)?.userId} reactionIds={state.reactionIds}

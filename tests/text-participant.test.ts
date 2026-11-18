@@ -30,7 +30,7 @@ test('Node text conversation ignores unrelated media descriptions and retains si
           channel: { id: randomUUID(), name: 'Fixture', icon: 'couch', ownerId: owner, historyWindow: 100, userCount: 2,
             rooms: [{ id: 'room', name: 'Room', icon: 'couch', creatorId: owner, access: 'public', hidden: false,
               hasPassword: false, authorized: true, canManage: false, available: true, reading: true,
-              participantSessionIds: [local], lastMessageSeq: 1, realtimeSessionIds: [], capabilities: { attachments: true },
+              participantSessionIds: [local], lastMessageSeq: 1, fileActivity: [], capabilities: { attachments: true },
               delivery: { hostSessionId: host, bindingId: binding, nextHops: {} } }] },
           users: [{ id: user, name: 'Text fixture', version: '0'.repeat(64) }],
           sessions: [{ id: local, userId: user, online: true, signingKey: command.signingKey },

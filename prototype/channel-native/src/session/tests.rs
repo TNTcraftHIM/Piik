@@ -545,7 +545,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
         json!({
             "id":id,"name":id,"icon":"couch","creatorId":owner,"access":"private","hidden":true,
             "hasPassword":false,"voiceBitrate":64_000,"authorized":true,"canManage":false,"available":available,
-            "reading":false,"lastMessageSeq":0,"participantSessionIds":[],"realtimeSessionIds":[],"capabilities":{"attachments":false},"delivery":delivery
+            "reading":false,"lastMessageSeq":0,"participantSessionIds":[],"fileActivity":[],"capabilities":{"attachments":false},"delivery":delivery
         })
     };
     let state: Snapshot = serde_json::from_value(json!({
@@ -963,7 +963,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                 json!({
                     "id":id,"name":id,"icon":"couch","creatorId":user,"access":"public","hidden":false,
                     "hasPassword":false,"voiceBitrate":64_000,"authorized":true,"canManage":true,"available":true,
-                    "reading":false,"lastMessageSeq":0,"participantSessionIds":[],"realtimeSessionIds":[],"capabilities":{"attachments":false},
+                    "reading":false,"lastMessageSeq":0,"participantSessionIds":[],"fileActivity":[],"capabilities":{"attachments":false},
                     "delivery":{"hostSessionId":Uuid::new_v4(),"bindingId":binding,"nextHops":{}}
                 })
             };
@@ -972,7 +972,8 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                 "userCount":1,"historyWindow":100,"rooms":[room("affected"),room("other")]},
             "users":[{"id":user,"name":"Source","version":"a".repeat(64)}],
             "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]}],
-            "files":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[]
+            "files":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[],
+            "watchActivities":[],"watchSubscriptions":[],"watchBytes":[]
         }))
         .unwrap();
             let mut session = Session {

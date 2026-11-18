@@ -117,8 +117,9 @@ export function useChannelGuideSample(multiRoom = false) {
     .map(room => ({ creatorId: "sample-ada", access: "private" as const, hidden: false, hasPassword: false,
       authorized: true, canManage: true, available: true, reading: true, lastMessageSeq: room.id === "friday" ? sampleMessages.at(-1)?.seq ?? 0 : messagesByRoom[room.id]?.at(-1)?.seq ?? 0,
       delivery: { hostSessionId: appSessionId, bindingId: `sample-binding-${room.id}`, nextHops: {} },
-      realtimeSessionIds: room.id === "studio" ? (voiceByRoom.studio ? ["sample-ada-session"] : []) : ["sample-bo-session", ...(voiceByRoom.friday ? ["sample-ada-session"] : [])],
-      participantSessionIds: room.id === "studio" ? ["sample-coco-session", ...(voiceByRoom.studio ? ["sample-ada-session"] : [])] : ["sample-ada-session", "sample-bo-session"], capabilities: { attachments: true },
+      fileActivity: [],
+      participantSessionIds: room.id === "studio" ? ["sample-coco-session", ...(voiceByRoom.studio ? ["sample-ada-session"] : [])]
+        : ["sample-ada-session", "sample-bo-session", ...(multiRoom ? ["sample-dora-session"] : [])], capabilities: { attachments: true },
       ...room, ...settingsByRoom[room.id] }));
   const state = snapshotSchema.parse({ channel: { id: "sample", name: "Friends", icon: "couch", ownerId: "sample-ada", historyWindow: 1000, userCount: users.length,
     rooms }, users: users.map(({ avatar: _avatar, ...user }) => user),

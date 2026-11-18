@@ -2,8 +2,10 @@
 
 mod support;
 use piik_channel_core::{
-    conversation::ConversationCommand,
+    conversation::{ConversationCommand, ConversationResult},
+    history::HistoryResult,
     wire::{Event, PairInfo, RoomAccess},
+    AttachmentDescriptor,
 };
 use serde_json::{json, Value};
 use support::RoomNetwork;
@@ -40,6 +42,57 @@ fn command(network: &mut RoomNetwork, connection: Uuid, command: Value) {
         )),
         "authorized production command failed"
     );
+}
+fn file_activity(
+    network: &RoomNetwork,
+    connection: Uuid,
+    room: &str,
+) -> std::collections::BTreeMap<Uuid, (bool, bool)> {
+    network
+        .state(connection)
+        .channel
+        .rooms
+        .iter()
+        .find(|value| value.id == room)
+        .unwrap()
+        .file_activity
+        .iter()
+        .map(|activity| (activity.session_id, (activity.sending, activity.receiving)))
+        .collect()
+}
+fn offer_file(
+    network: &mut RoomNetwork,
+    connection: Uuid,
+    room: &str,
+    name: &str,
+) -> (u64, AttachmentDescriptor) {
+    let attachment = AttachmentDescriptor {
+        id: Uuid::new_v4(),
+        name: name.into(),
+        size: name.len() as u64,
+        media_type: "application/octet-stream".into(),
+        sha256: piik_channel_core::attachment::sha256_hex(name.as_bytes()),
+    };
+    let chat = ConversationCommand::Chat {
+        mentions: vec![],
+        reply: None,
+        inline_images: Default::default(),
+        text: String::new(),
+        nonce: name.into(),
+        attachments: vec![attachment.clone()],
+    };
+    let Ok(ConversationResult::History(HistoryResult::Sent(sent))) =
+        network.peer_request(connection, room, chat).result
+    else {
+        panic!("attachment message was not confirmed");
+    };
+    let seq = sent.message.message.seq;
+    command(
+        network,
+        connection,
+        json!({"type":"file_offer","roomId":room,"messageSeq":seq,"attachmentId":attachment.id,"sha256":attachment.sha256,"available":true}),
+    );
+    (seq, attachment)
 }
 fn pair(network: &RoomNetwork, connection: Uuid, peer: Uuid, room: &str) -> PairInfo {
     network
@@ -1629,6 +1682,14 @@ fn file_copy_selection_uses_the_last_base_candidate_ack_without_an_extra_sync() 
     assert!(network.state(copy).files[0]
         .downstream
         .contains(&viewer_session));
+    assert_eq!(
+        file_activity(&network, host, &room),
+        [
+            (copy_session, (true, false)),
+            (viewer_session, (false, true))
+        ]
+        .into()
+    );
 }
 
 #[test]
@@ -1765,33 +1826,7 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
     let (source_session, credential) = join(&mut network, source, None);
     let (viewer_session, _) = join(&mut network, viewer, None);
     let room = network.create(host, RoomAccess::Public, false);
-    let attachment = json!({ "id":Uuid::new_v4(), "name":"retained.bin", "size":3, "mediaType":"application/octet-stream",
-        "sha256":piik_channel_core::attachment::sha256_hex(b"abc") });
-    let confirmation = network.peer_request(
-        source,
-        &room,
-        ConversationCommand::Chat {
-            mentions: vec![],
-            reply: None,
-            inline_images: Default::default(),
-            text: String::new(),
-            nonce: "file".into(),
-            attachments: vec![serde_json::from_value(attachment.clone()).unwrap()],
-        },
-    );
-    assert!(matches!(
-        confirmation.result,
-        Ok(
-            piik_channel_core::conversation::ConversationResult::History(
-                piik_channel_core::history::HistoryResult::Sent(_)
-            )
-        )
-    ));
-    command(
-        &mut network,
-        source,
-        json!({"type":"file_offer", "roomId":room, "messageSeq":1, "attachmentId":attachment["id"], "sha256":attachment["sha256"], "available":true}),
-    );
+    let (seq, attachment) = offer_file(&mut network, source, &room, "retained.bin");
     assert!(
         network.state(source).pairs.is_empty(),
         "idle readable copy does not own a live base connection"
@@ -1800,10 +1835,11 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
         network.state(source).files.is_empty(),
         "idle copies are not active delivery plans"
     );
+    assert!(file_activity(&network, host, &room).is_empty());
     command(
         &mut network,
         viewer,
-        json!({"type":"file_receive", "roomId":room, "messageSeq":1, "attachmentId":attachment["id"], "enabled":true}),
+        json!({"type":"file_receive", "roomId":room, "messageSeq":seq, "attachmentId":attachment.id, "enabled":true}),
     );
     for connection in [source, viewer] {
         let session = if connection == source {
@@ -1827,6 +1863,46 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
     let active = network.state(viewer).files[0].clone();
     assert_eq!(active.source_id, Some(source_session));
     assert_eq!(active.upstream, Some(host_session));
+    let active_people = [
+        (source_session, (true, false)),
+        (viewer_session, (false, true)),
+    ]
+    .into();
+    assert_eq!(
+        file_activity(&network, host, &room),
+        active_people,
+        "the base host forwards bytes without becoming a file participant"
+    );
+    let (reply_seq, reply) = offer_file(&mut network, viewer, &room, "return.bin");
+    command(
+        &mut network,
+        source,
+        json!({"type":"file_receive", "roomId":room, "messageSeq":reply_seq, "attachmentId":reply.id, "enabled":true}),
+    );
+    assert_eq!(
+        file_activity(&network, host, &room),
+        [
+            (source_session, (true, true)),
+            (viewer_session, (true, true))
+        ]
+        .into(),
+        "each endpoint can receive one attachment while serving the other"
+    );
+    command(
+        &mut network,
+        source,
+        json!({"type":"file_offer", "roomId":room, "messageSeq":reply_seq, "attachmentId":reply.id, "sha256":reply.sha256, "available":true}),
+    );
+    command(
+        &mut network,
+        source,
+        json!({"type":"file_receive", "roomId":room, "messageSeq":reply_seq, "attachmentId":reply.id, "enabled":false}),
+    );
+    assert_eq!(
+        file_activity(&network, host, &room),
+        active_people,
+        "retaining the completed copy ends only that transfer's activity"
+    );
     let lease = pair(&network, viewer, host_session, &room).id;
     browse(&mut network, source, &room, false);
     browse(&mut network, viewer, &room, false);
@@ -1850,6 +1926,11 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
         Some(source_session)
     );
     assert_eq!(network.state(viewer).files[0].upstream, active.upstream);
+    assert_eq!(
+        file_activity(&network, viewer, &room),
+        active_people,
+        "signaling loss alone does not cancel an established file operation"
+    );
     assert_eq!(pair(&network, viewer, host_session, &room).id, lease);
     command(
         &mut network,
@@ -1884,13 +1965,110 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
         None,
         "retired session withdraws its copy"
     );
+    assert_eq!(
+        file_activity(&network, viewer, &room),
+        [(viewer_session, (false, true))].into(),
+        "a waiting receiver remains active after the serving session retires"
+    );
     command(
         &mut network,
         viewer,
-        json!({"type":"file_receive", "roomId":room, "messageSeq":1, "attachmentId":attachment["id"], "enabled":false}),
+        json!({"type":"file_receive", "roomId":room, "messageSeq":seq, "attachmentId":attachment.id, "enabled":false}),
     );
     assert!(network.state(viewer).files.is_empty());
     assert!(network.state(viewer).pairs.is_empty());
+    assert!(file_activity(&network, viewer, &room).is_empty());
+}
+
+#[test]
+fn file_activity_follows_room_grants_and_disappears_with_its_host() {
+    let mut network = RoomNetwork::new();
+    let host = Uuid::new_v4();
+    let viewer = Uuid::new_v4();
+    let outsider = Uuid::new_v4();
+    let (host_session, _) = join(&mut network, host, None);
+    let (viewer_session, _) = join(&mut network, viewer, None);
+    join(&mut network, outsider, None);
+    let room = network.create(host, RoomAccess::Private, false);
+    command(
+        &mut network,
+        host,
+        json!({"type":"update_room","roomId":room,"name":"Private","icon":"couch","access":"private","hidden":false,"password":"secret"}),
+    );
+    let (seq, attachment) = offer_file(&mut network, host, &room, "private.bin");
+    assert!(file_activity(&network, host, &room).is_empty());
+    let receive = json!({"type":"file_receive","roomId":room,"messageSeq":seq,"attachmentId":attachment.id,"enabled":true});
+    let denied = network.command(viewer, receive.clone());
+    assert!(denied.events.iter().any(|(_, event)| matches!(event,
+        Event::RoomReply { result: piik_channel_core::host::RoomResult::Error { code }, .. } if code == "room_access_required")));
+    assert!(file_activity(&network, host, &room).is_empty());
+
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"enter_room","roomId":room,"password":"secret"}),
+    );
+    command(&mut network, viewer, receive.clone());
+    let active_people = [
+        (host_session, (true, false)),
+        (viewer_session, (false, true)),
+    ]
+    .into();
+    assert_eq!(file_activity(&network, host, &room), active_people);
+    assert_eq!(file_activity(&network, viewer, &room), active_people);
+    assert!(
+        file_activity(&network, outsider, &room).is_empty(),
+        "visible room metadata does not disclose private activity"
+    );
+    let wire = serde_json::to_value(network.state(viewer)).unwrap();
+    let expected: Vec<_> = active_people
+        .iter()
+        .map(|(id, (sending, receiving))| json!({"sessionId":id, "sending":sending, "receiving":receiving}))
+        .collect();
+    assert_eq!(
+        wire["channel"]["rooms"][0]["fileActivity"],
+        json!(expected),
+        "the room exposes just the session and its file roles"
+    );
+
+    let user = network
+        .state(host)
+        .sessions
+        .iter()
+        .find(|value| value.id == viewer_session)
+        .unwrap()
+        .user_id;
+    command(
+        &mut network,
+        host,
+        json!({"type":"revoke_room_access","roomId":room,"userId":user}),
+    );
+    assert!(file_activity(&network, viewer, &room).is_empty());
+    assert!(
+        file_activity(&network, host, &room).is_empty(),
+        "revocation removes the receiver and its source demand"
+    );
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"enter_room","roomId":room,"password":"secret"}),
+    );
+    command(&mut network, viewer, receive);
+    assert_eq!(file_activity(&network, viewer, &room), active_people);
+    let effects = network.authority.disconnect(host, 200);
+    network.deliver(effects);
+    let unavailable = network
+        .state(viewer)
+        .channel
+        .rooms
+        .iter()
+        .find(|value| value.id == room)
+        .unwrap();
+    assert!(!unavailable.available);
+    assert!(
+        unavailable.file_activity.is_empty(),
+        "unavailable authority never projects a stale live activity"
+    );
 }
 
 #[test]
@@ -3958,7 +4136,7 @@ fn two_twenty_person_rooms_share_site_capacity_with_browser_app_and_bounded_prof
             .find(|value| &value.id == room)
             .unwrap();
         let users: std::collections::BTreeSet<_> = visible
-            .realtime_session_ids
+            .participant_session_ids
             .iter()
             .map(|id| {
                 state

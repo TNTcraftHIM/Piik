@@ -195,17 +195,23 @@ the launcher and room workspace, identified by the ellipsis rather than a settin
 
 Keep the room invitation beside the upper room title, and group Share with its
 parameters on the opposite side. Personal voice and identity stay lower left.
-The left list contains rooms and their realtime participants; the Piik mark returns
-to this site's room overview. Keep the site name visible beside it, with maintenance
+The left list contains the site's rooms. The Piik mark returns to the site
+overview. Keep the site name visible beside it, with maintenance
 actions attached to that name rather than the personal controls. Global connection,
 App, language, theme and help belong to the site bar above the room toolbar.
 They do not move into the sharing group when a sidebar collapses. Place connection
 dots beside the site identity; App leads the right-hand utility group. The room
 toolbar owns the single companion-pane toggle; the main body fills the released width.
 Site maintenance is separate from a room's access settings.
-Each room can fold its realtime participant roster without changing voice,
-watching, sharing or transfer activity. The site-wide people pane separately
-groups the current room's presence, other online users and offline users.
+Under each room, show one row per person taking part in voice, sharing,
+watching or a file transfer. Combine their Browser and App activities on that
+row. Give each activity a labelled icon. File arrows identify the selected
+sender and the person requesting a download, including while the path is
+being prepared. The attachment owns byte progress. Folding the list is local.
+The couch seats people present through chat or media. Its headset shows voice
+state. The site directory uses the same presence for its current-room group,
+then lists other online people and offline people. Background forwarding and
+cached copies belong to connection and file details.
 The couch anchors the bottom of the central body, aligned with the personal area's
 top edge; it does not span either sidebar. Sidebars can collapse independently.
 Narrow layouts use temporary drawers without replacing those desktop preferences.
@@ -813,6 +819,7 @@ type checking rather than silently render a warning triangle.
 | Reply / 回复 | `reply` | Quote a message or identify its referenced message. The bent return arrow is distinct from `arrowLeft` page or panel navigation. |
 | Repeat and disclosure / 重试与展开 | `refresh`, `chevron`, `arrowRight`, `arrowLeft` | Repeat/refresh, expand/collapse, proceed/enter and return. Direction follows the control's action; no arrow alone establishes delivery. |
 | Transfer and upgrade / 传输与更新 | `arrowUp`, `arrowDown` | Outbound/inbound or upload/download, qualified by the adjacent label. An explicit update label may use the upward arrow for upgrade; neither arrow is a connection-quality rating. |
+| File activity / 文件活动 | `fileUp`, `fileDown`, `fileTransfer` | A person is sending a file, receiving one, or doing both. Combine both directions in one badge. |
 | Diagnostics / 诊断 | `cpu` | Technical diagnostics in the labelled diagnostic control; in metrics the same processor identifies encoding work. The surrounding control or measured field states the scope. |
 | Help / 帮助 | `help`, `book` | Open product help or read a guide, respectively; current build identity belongs with this low-frequency information, separate from media settings and App connection state. |
 | Settings / 设置 | `sliders`, `mountain`, `balance`, `frames` | Settings, preserve image detail, balanced preference, preserve frame rate. The frame-rate preference uses the same frames as the measured value. |

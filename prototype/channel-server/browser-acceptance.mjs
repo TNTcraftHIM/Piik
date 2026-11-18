@@ -51,7 +51,7 @@ async function browser(index, ...args) {
   if (["click", "dblclick", "hover"].includes(args[0])) await browser(index, "scrollintoview", args[1]);
   // Omitting launch options on later commands selects a different Browser context.
   const { stdout } = await run(executable, ["--session", sessions[index], "--json",
-    ...(backupOnly ? ["--download-path", output] : ["--args", "--no-sandbox,--autoplay-policy=no-user-gesture-required",
+    ...(backupOnly ? ["--download-path", output] : [...(roomsOnly ? ["--download-path", join(temporary, "downloads")] : []), "--args", "--no-sandbox,--autoplay-policy=no-user-gesture-required",
       "--init-script", join(temporary, `${index}.js`)]), ...args], {
     timeout: 35_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
   });
@@ -70,7 +70,8 @@ const voicePlayersRetired = values => values.length > 0 && values.every(value =>
 const dropSignaling = index => evaluate(index,
   "window.__channelProbe.sockets.filter(socket => socket.readyState === WebSocket.OPEN && new URL(socket.url).pathname === '/prototype/channel').forEach(socket => socket.close())");
 async function showRoomList(index) {
-  if (!await evaluate(index, "document.querySelector('#c3-room-list')?.checkVisibility() ?? false")) {
+  if (await evaluate(index, `document.querySelector('.c3-shell[data-sidebars="overlay"] #c3-rooms-trigger[aria-expanded="false"]') !== null
+    || !document.querySelector('#c3-room-list')?.checkVisibility()`)) {
     await browser(index, "click", "#c3-rooms-trigger");
   }
 }
@@ -79,7 +80,8 @@ async function settingsTask(index, task) {
 }
 async function roomSettings(index, roomId, task = "room") {
   await showRoomList(index);
-  await browser(index, "click", `button[data-room-settings=${JSON.stringify(roomId)}]`);
+  const room = (await view(index)).state.channel.rooms.find(room => room.id === roomId);
+  await browser(index, "find", "role", "button", "click", "--name", `Settings for ${room.name}`, "--exact");
   await browser(index, "wait", "dialog.c3-settings-dialog[open]");
   await settingsTask(index, task);
 }
@@ -1163,11 +1165,11 @@ async function profileControls(roomId, messageId) {
   await reenter();
   if (!await evaluate(0, "document.querySelector('#c3-people')?.checkVisibility() ?? false"))
     await browser(0, "click", "#c3-companion-trigger");
-  const previewButton = `#c3-people [data-user-id=${JSON.stringify(member.id)}] .c3-avatar-preview`;
+  const previewButton = `#c3-people [aria-label="This room"] [data-user-id=${JSON.stringify(member.id)}] .c3-avatar-preview`;
   await browser(0, "click", previewButton);
   await browser(0, "wait", ".c3-image-dialog[open]");
   await openProfile();
-  await browser(1, "find", "role", "button", "click", "--name", "Remove picture", "--exact");
+  await browser(1, "find", "role", "button", "click", "--name", "Remove", "--exact");
   await browser(1, "click", '.c3-name-popover:popover-open button[type="submit"]');
   await until("removing a profile image updates the other reader without changing its own identity", async () => ({
     profiles: await Promise.all([0, 1].map(memberProfile)), message: await messageAvatar(), owner: (await view(0)).self,
@@ -1221,8 +1223,12 @@ async function roomsAndFiles() {
   await until("two draft files", () => evaluate(1, "document.querySelectorAll('.c3-draft-files > div').length"), count => count === 2);
   await browser(1, "click", ".c3-composer button[type=submit]");
   await until("attachment metadata arrives in chat", () => evaluate(0, "document.querySelector('.c3-message-log').textContent"), text => text.includes("picture.png") && text.includes("notes.txt"));
-  await browser(0, "find", "role", "button", "click", "--name", "View image", "--exact");
   await until("PNG preview decodes", () => evaluate(0, "[...document.querySelectorAll('.c3-attachment img')].some(image => image.complete && image.naturalWidth > 0)"), Boolean);
+  await browser(0, "find", "role", "button", "click", "--name", "Download", "--exact");
+  const downloaded = await until("receiver saves notes.txt", () => readFile(join(temporary, "downloads", "notes.txt")).catch(() => undefined), Boolean);
+  assert.deepEqual(downloaded, await readFile(text));
+  await until("completed transfer retires file activity", () => view(0),
+    value => value.state.channel.rooms.find(entry => entry.id === room.id)?.fileActivity.length === 0);
   for (const index of [0, 1]) await assertNoError(index, "normal room entry, chat and file flow");
   await countedRoomReactions(room.id);
   const authored = await until("the profile target is the member's confirmed image message", () => evaluate(0,
@@ -1358,6 +1364,7 @@ async function roomsAndFiles() {
 // parallel test implementation of room state, routing or signaling.
 await mkdir(output, { recursive: true });
 const temporary = await mkdtemp(join(tmpdir(), "piik-channel-acceptance-"));
+if (roomsOnly) await mkdir(join(temporary, "downloads"));
 try {
   for (const index of active) {
     const script = join(temporary, `${index}.js`);
@@ -1559,5 +1566,6 @@ try {
 } finally {
   await Promise.allSettled(active.map(index => browser(index, "close")));
   await Promise.allSettled([...active.map(index => `${index}.js`), "picture.png", "notes.txt"].map(name => unlink(join(temporary, name))));
+  if (roomsOnly) await rm(join(temporary, "downloads"), { recursive: true, force: true });
   await rmdir(temporary);
 }

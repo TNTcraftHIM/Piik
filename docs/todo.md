@@ -18,12 +18,6 @@ the feedback period; they do not delay that delivery.
   identify competing writers, unnecessary coupling and replaceable private
   experiments. Converge each affected boundary before migrating its consumers;
   continue independent confirmed fixes and scoped experiments in parallel.
-- [ ] **Room people responsibilities.** Resolve whether the left room list
-  should show personal voice/sharing/watching activity or the broader transport
-  participants it currently includes. Keep the couch's room presence and the
-  directory's current-room group aligned. The proposed narrower activity list
-  excludes hosting, forwarding and file-only work; leave its membership unchanged
-  until this product choice is settled.
 - [ ] **Video-orientation capability.** Align negotiated rotation extensions
   with the metadata actually carried through Native and pooled Browser media.
   Verify sender behavior before claiming rotated-camera interoperability.
@@ -177,8 +171,6 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **Native site-switch appearance.** Clear the previous page's dialog
-  shading while the next site loads or shows an error.
 - [ ] **Public 3.0 interface baseline.** Design same-major evolution around
   stable existing actions and concrete optional capabilities, keeping permission
   independent of advertised support. Apply the

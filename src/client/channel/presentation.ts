@@ -14,7 +14,11 @@ export function messageAuthorName(message: ChannelMessage, users: readonly Pick<
 /** Snapshot names are current; avatars display only at their matching profile version. */
 export function userProfile(state: ChannelSnapshot | null, profiles: ReadonlyMap<string, ChannelUser>, id: string): ChannelUser | undefined {
   const summary = state?.users.find(user => user.id === id), profile = profiles.get(id);
-  return summary ? { ...summary, avatar: profile?.version === summary.version ? profile.avatar : null } : profile;
+  return summary ? { ...summary, avatar: profileAvatar(summary, profile) } : profile;
+}
+
+export function profileAvatar(summary: Pick<ChannelUser, "version">, profile: ChannelUser | undefined) {
+  return profile && profile.version === summary.version ? profile.avatar : null;
 }
 
 /** Live metadata owns names; generic source labels belong to the viewer's locale. */
@@ -32,7 +36,12 @@ export interface AudiencePerson {
 export interface ScreenAudiencePerson extends AudiencePerson { state: "preparing" | "active" | "failed" }
 
 export type ParticipantViewing = ScreenAudiencePerson["state"] | "joined";
-export interface ParticipantActivity { sharing: boolean; viewing?: ParticipantViewing }
+export interface ParticipantActivity {
+  sharing: boolean;
+  viewing?: ParticipantViewing;
+  sendingFiles: boolean;
+  receivingFiles: boolean;
+}
 interface LocalWatchPresentation {
   sessionId: string | null;
   watchPlayers: ReadonlyMap<string, Pick<WatchPlayer, "waitingForPicture" | "hasPresentedFrame" | "error">>;
@@ -43,27 +52,57 @@ export function participantViewingLabel(state: ParticipantViewing, t: Copy["t"])
   return t(({ joined: "watch.joined", preparing: "screen.connectingPicture", active: "screen.pictureReceived", failed: "screen.pictureFailed" } as const)[state]);
 }
 
-/** Screen audience proves remote decoding; watch membership alone proves only joining. */
-export function participantActivity(state: ChannelSnapshot, roomId: string, userId: string, local?: LocalWatchPresentation): ParticipantActivity {
-  const endpoints = new Set(state.sessions.filter(session => session.userId === userId).map(session => session.id));
-  const screens = state.publications.filter(publication => publication.kind === "screen" && publication.roomId === roomId);
-  const watches = state.watchActivities.filter(activity => activity.roomId === roomId);
-  const viewing: ParticipantViewing[] = screens.flatMap(publication => publication.audience.filter(viewer => endpoints.has(viewer.sessionId)).map(viewer => viewer.state));
-  for (const activity of watches) {
-    if (!activity.viewerSessionIds.some(id => endpoints.has(id))) continue;
-    // This page's player cannot attest to another endpoint, even for the same user.
-    const player = local?.sessionId && endpoints.has(local.sessionId) && activity.viewerSessionIds.includes(local.sessionId)
-      ? local.watchPlayers.get(activity.id) : undefined;
-    if (!player) viewing.push("joined");
-    else if (player.error) viewing.push("failed");
-    else if (player.hasPresentedFrame) viewing.push("active");
-    else if (player.waitingForPicture) viewing.push("preparing");
-    else viewing.push("joined");
+type VoiceAppearance = { microphone: boolean; deafened: boolean; level?: number };
+type RoomActivity = ParticipantActivity & { voice?: VoiceAppearance };
+const idleActivity = (): RoomActivity => ({ sharing: false, sendingFiles: false, receivingFiles: false });
+
+function roomActivities(state: ChannelSnapshot, roomId: string, local?: LocalWatchPresentation) {
+  const people = new Map<string, RoomActivity>();
+  let endpoints: Map<string, string> | undefined;
+  function person(id: string) {
+    let row = people.get(id);
+    if (!row) {
+      row = idleActivity();
+      people.set(id, row);
+    }
+    return row;
   }
-  return {
-    sharing: screens.some(publication => publication.userId === userId) || watches.some(activity => activity.userId === userId),
-    viewing: viewing.sort((a, b) => viewingRank[b] - viewingRank[a])[0],
-  };
+  function endpoint(id: string) {
+    endpoints ??= new Map(state.sessions.map(session => [session.id, session.userId]));
+    const user = endpoints.get(id);
+    return user === undefined ? undefined : person(user);
+  }
+  function view(sessionId: string, status: ParticipantViewing) {
+    const row = endpoint(sessionId);
+    if (row && (!row.viewing || viewingRank[status] > viewingRank[row.viewing])) row.viewing = status;
+  }
+  for (const publication of state.publications) {
+    if (publication.roomId !== roomId || publication.kind !== "screen") continue;
+    person(publication.userId).sharing = true;
+    for (const viewer of publication.audience) view(viewer.sessionId, viewer.state);
+  }
+  for (const watch of state.watchActivities) {
+    if (watch.roomId !== roomId) continue;
+    person(watch.userId).sharing = true;
+    for (const id of watch.viewerSessionIds) {
+      const player = local?.sessionId === id ? local.watchPlayers.get(watch.id) : undefined;
+      view(id, player?.error ? "failed" : player?.hasPresentedFrame ? "active" : player?.waitingForPicture ? "preparing" : "joined");
+    }
+  }
+  for (const file of state.channel.rooms.find(room => room.id === roomId)?.fileActivity ?? []) {
+    if (!file.sending && !file.receiving) continue;
+    const row = endpoint(file.sessionId);
+    if (row) {
+      row.sendingFiles ||= file.sending;
+      row.receivingFiles ||= file.receiving;
+    }
+  }
+  for (const voice of state.voice) {
+    if (voice.roomId !== roomId) continue;
+    const row = endpoint(voice.sessionId);
+    if (row) row.voice = mergeVoice(row.voice, voice);
+  }
+  return people;
 }
 
 /** Joining a watch is a room fact; it does not assert local video readiness. */
@@ -98,35 +137,51 @@ export function listeningVoicePublications(state: ChannelSnapshot | null, sessio
     state.subscriptions.includes(value.id) && streams.has(value.id)) ?? [];
 }
 
-/** One user's appearance combines their endpoints in the selected voice room. */
-export function voiceAppearance(state: ChannelSnapshot, userId: string, roomId: string) {
-  const endpoints = new Set(state.sessions.filter(session => session.userId === userId).map(session => session.id));
-  const voices = state.voice.filter(voice => voice.roomId === roomId && endpoints.has(voice.sessionId));
-  return voices.length ? {
-    microphone: voices.some(voice => !voice.muted),
-    deafened: voices.every(voice => voice.deafened),
-  } : undefined;
+function mergeVoice(previous: VoiceAppearance | undefined, voice: ChannelSnapshot["voice"][number], level?: number): VoiceAppearance {
+  const appearance = previous ?? { microphone: false, deafened: true };
+  appearance.microphone ||= !voice.muted;
+  appearance.deafened &&= voice.deafened;
+  if (!voice.muted && level !== undefined) appearance.level = Math.max(appearance.level ?? level, level);
+  return appearance;
+}
+
+export function roomVoicePeople(state: ChannelSnapshot, roomId: string, levels: ReadonlyMap<string, number>) {
+  const endpoints = new Map(state.sessions.map(session => [session.id, session.userId]));
+  const people = new Map<string, VoiceAppearance>();
+  for (const voice of state.voice) {
+    if (voice.roomId !== roomId) continue;
+    const user = endpoints.get(voice.sessionId);
+    if (user !== undefined) people.set(user, mergeVoice(people.get(user), voice, levels.get(voice.sessionId)));
+  }
+  return people;
 }
 
 /** The room supplies presence; multiple live endpoints still draw one person. */
+export function roomPresentUserIds(state: ChannelSnapshot, roomId: string) {
+  const sessions = new Set(state.channel.rooms.find(room => room.id === roomId)?.participantSessionIds);
+  return new Set(state.sessions.filter(value => value.online && sessions.has(value.id)).map(value => value.userId));
+}
+
 export function roomPeople(state: ChannelSnapshot, roomId: string, profiles: ReadonlyMap<string, ChannelUser> = new Map(), local?: LocalWatchPresentation) {
   const room = state.channel.rooms.find(value => value.id === roomId);
   if (!room) return [];
-  const sessions = new Set(room.participantSessionIds);
-  const users = new Set(state.sessions.filter(value => value.online && sessions.has(value.id)).map(value => value.userId));
+  const users = roomPresentUserIds(state, roomId);
+  const activity = roomActivities(state, roomId, local);
   return state.users.filter(user => users.has(user.id)).map(user => ({
-    userId: user.id, name: user.name, avatar: userProfile(state, profiles, user.id)?.avatar ?? undefined, owner: user.id === (room.creatorId ?? state.channel.ownerId),
-    voice: voiceAppearance(state, user.id, roomId),
-    ...participantActivity(state, roomId, user.id, local),
+    userId: user.id, name: user.name, avatar: profileAvatar(user, profiles.get(user.id)) ?? undefined, owner: user.id === (room.creatorId ?? state.channel.ownerId),
+    ...(activity.get(user.id) ?? idleActivity()),
   }));
 }
 
-/** Room authority supplies real-time involvement, independently of chat presence. */
-export function roomRealtimePeople(state: ChannelSnapshot, roomId: string, profiles: ReadonlyMap<string, ChannelUser> = new Map(), local?: LocalWatchPresentation) {
-  const endpoints = new Set(state.channel.rooms.find(room => room.id === roomId)?.realtimeSessionIds ?? []);
-  const users = new Set(state.sessions.filter(session => endpoints.has(session.id)).map(session => session.userId));
-  return state.users.filter(user => users.has(user.id)).map(user => ({ ...user, avatar: userProfile(state, profiles, user.id)?.avatar,
-    voice: voiceAppearance(state, user.id, roomId),
-    ...participantActivity(state, roomId, user.id, local),
-  }));
+/** Each row is explained by the room activity the person is participating in. */
+export function roomActivityPeople(state: ChannelSnapshot, roomId: string, profiles: ReadonlyMap<string, ChannelUser> = new Map(), local?: LocalWatchPresentation) {
+  const room = state.channel.rooms.find(value => value.id === roomId);
+  if (!room?.authorized || !room.available) return [];
+  const activity = roomActivities(state, roomId, local);
+  if (!activity.size) return [];
+  return state.users.flatMap(user => {
+    const row = activity.get(user.id);
+    if (!row) return [];
+    return [{ ...user, avatar: profileAvatar(user, profiles.get(user.id)), ...row }];
+  });
 }

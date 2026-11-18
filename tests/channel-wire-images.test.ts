@@ -7,7 +7,7 @@ const version = "a".repeat(64);
 const snapshot = () => ({
   channel: { id: "domain", name: "Friends", icon: picture, ownerId: null, historyWindow: 1000, userCount: 1, rooms: [{
     id: "room", name: "Room", icon: picture, creatorId: "user", access: "public", hidden: false,
-    hasPassword: false, authorized: true, canManage: false, participantSessionIds: [], lastMessageSeq: 0, realtimeSessionIds: [],
+    hasPassword: false, authorized: true, canManage: false, participantSessionIds: [], lastMessageSeq: 0, fileActivity: [],
     available: true, reading: false, capabilities: { attachments: true },
   }] },
   users: [{ id: "user", name: "Friend", version }], sessions: [], publications: [], voice: [],

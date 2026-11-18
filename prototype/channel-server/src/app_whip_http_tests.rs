@@ -45,7 +45,7 @@ fn fixture() -> (
         "channel":{"id":Uuid::new_v4(),"name":"Fixture","icon":"couch","ownerId":null,"userCount":1,"historyWindow":100,
             "rooms":[{"id":"room","name":"Room","icon":"couch","creatorId":Uuid::new_v4(),"access":"private","hidden":false,
                 "hasPassword":false,"voiceBitrate":64000,"relayOverride":null,"authorized":true,"canManage":false,"available":true,"reading":false,
-                "lastMessageSeq":0,"participantSessionIds":[],"realtimeSessionIds":[],"capabilities":{"attachments":true},
+                "lastMessageSeq":0,"participantSessionIds":[],"fileActivity":[],"capabilities":{"attachments":true},
                 "delivery":{"hostSessionId":Uuid::new_v4(),"bindingId":binding,"nextHops":{}}}]},
         "files":[],"users":[],"sessions":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[],
         "watchActivities":[],"watchSubscriptions":[],"watchBytes":[]

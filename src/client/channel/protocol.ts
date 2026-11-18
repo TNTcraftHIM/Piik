@@ -13,7 +13,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 27;
+export const CHANNEL_PROTOCOL = 28;
 export const CHANNEL_SESSION_LIMIT = 128;
 export const CHANNEL_ROOM_LIMIT = 32;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
@@ -35,7 +35,7 @@ export const roomSchema = z.object({
   relayOverride: z.number().int().min(0).max(MAX_RELAY_CAPACITY).nullable().default(null),
   members: z.array(id).optional(),
   participantSessionIds: z.array(id),
-  realtimeSessionIds: z.array(id),
+  fileActivity: z.array(z.object({ sessionId: id, sending: z.boolean(), receiving: z.boolean() })).max(CHANNEL_SESSION_LIMIT),
   available: z.boolean(), reading: z.boolean(),
   lastMessageSeq: z.number().int().nonnegative(),
   capabilities: z.object({ attachments: z.boolean() }),

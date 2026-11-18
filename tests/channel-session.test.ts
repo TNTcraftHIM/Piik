@@ -158,7 +158,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
       rooms: roomIds.map(id => ({ id, name: id, icon: "couch", creatorId: "self", access: "public",
         hidden: false, hasPassword: false, authorized: true, canManage: true,
         participantSessionIds: id === "first" ? ["endpoint"] : [],
-        lastMessageSeq: 0, realtimeSessionIds: [],
+        lastMessageSeq: 0, fileActivity: [],
         available: true, reading: id === "first", capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } } })) },
     users: [{ id: "self", name: "Me", version: profileVersion }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
@@ -8774,7 +8774,7 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
     admission.receive({ type: "ack", requestId: registration.requestId });
     const restored = structuredClone(state);
     restored.channel.rooms = [{ id: "imported", name: "First", creatorId: "archived-user", icon: "couch", access: "public", hidden: false, hasPassword: false,
-      authorized: true, canManage: true, voiceBitrate: 64_000, relayCapacity: 2, relayOverride: null, participantSessionIds: [], lastMessageSeq: 0, realtimeSessionIds: [], available: true, reading: false, capabilities: { attachments: true },
+      authorized: true, canManage: true, voiceBitrate: 64_000, relayCapacity: 2, relayOverride: null, participantSessionIds: [], lastMessageSeq: 0, fileActivity: [], available: true, reading: false, capabilities: { attachments: true },
       delivery: { hostSessionId: "new-endpoint", bindingId: "imported-binding", nextHops: {} } }];
     admission.receive({ type: "state", state: restored });
     await vi.waitFor(() => expect(admission.sent.some(command => command.type === "browse" && command.roomId === "imported")).toBe(true));
@@ -9372,14 +9372,14 @@ test('watch short recovery keeps its player, samples domain time again, and resp
 
 test("local unwatch removes only this endpoint's audience entry through recovery", async () => {
   const { session, socket } = await setup(1000, false);
-  const { participantActivity, screenAudience } = await import("../src/client/channel/presentation");
+  const { roomActivityPeople, screenAudience } = await import("../src/client/channel/presentation");
   const state = structuredClone(session.getSnapshot().state!);
+  const viewing = (snapshot: typeof state, roomId: string) => roomActivityPeople(snapshot, roomId).find(person => person.id === "self")?.viewing;
   state.users.push({ id: "source-user", name: "Source", version: profileVersion });
   state.sessions.push({ id: "source", userId: "source-user", online: true, signingKey: testSigningKey },
     { id: "self-other", userId: "self", online: true, signingKey: testSigningKey });
   state.channel.rooms.forEach(room => {
     room.participantSessionIds = ["endpoint", "self-other", "source"];
-    room.realtimeSessionIds = ["endpoint", "self-other", "source"];
   });
   state.publications = ["first", "second"].map((roomId, index) => ({
     id: `picture-${index}`, roomId, sessionId: "source", userId: "source-user", kind: "screen" as const,
@@ -9395,28 +9395,28 @@ test("local unwatch removes only this endpoint's audience entry through recovery
     }
     state.subscriptions = state.publications.map(publication => publication.id);
     socket.receive({ type: "state", state });
-    expect(participantActivity(session.getSnapshot().state!, "first", "self").viewing).toBe("active");
+    expect(viewing(session.getSnapshot().state!, "first")).toBe("active");
     socket.close(); await session.unwatch("picture-0");
     const stopped = session.getSnapshot().state!;
     expect(stopped.subscriptions).toEqual(["picture-1"]);
     expect(stopped.publications[0].audience).toEqual([{ sessionId: "self-other", state: "preparing" }]);
     expect(screenAudience(stopped, stopped.publications[0])).toEqual([{ userId: "self", name: "Me", state: "preparing" }]);
-    expect(participantActivity(stopped, "first", "self").viewing).toBe("preparing");
-    expect(participantActivity(stopped, "second", "self").viewing).toBe("active");
+    expect(viewing(stopped, "first")).toBe("preparing");
+    expect(viewing(stopped, "second")).toBe("active");
     expect(state.publications[0].audience).toHaveLength(2);
     session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
     resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
     const recovered = session.getSnapshot().state!;
     expect(recovered.publications[0].audience).toEqual([{ sessionId: "self-other", state: "preparing" }]);
-    expect(participantActivity(recovered, "second", "self").viewing).toBe("active");
+    expect(viewing(recovered, "second")).toBe("active");
     expect(resumed.sent).toContainEqual({ type: "subscribe", publicationId: "picture-0", enabled: false });
   } finally { session.close(); }
 });
 
 test("local video leave clears its audience membership through recovery without removing remote viewers", async () => {
   const { session, socket } = await setup(1000, false);
-  const { participantActivity, watchAudience } = await import("../src/client/channel/presentation");
+  const { roomActivityPeople, watchAudience } = await import("../src/client/channel/presentation");
   const video = new WatchTestVideo();
   vi.stubGlobal("document", { createElement: () => video });
   const state = structuredClone(session.getSnapshot().state!);
@@ -9424,7 +9424,6 @@ test("local video leave clears its audience membership through recovery without 
   state.sessions.push({ id: "owner-endpoint", userId: "owner", online: true, signingKey: testSigningKey },
     { id: "other-endpoint", userId: "other-viewer", online: true, signingKey: testSigningKey });
   state.channel.rooms[0].participantSessionIds = ["endpoint", "owner-endpoint", "other-endpoint"];
-  state.channel.rooms[0].realtimeSessionIds = ["endpoint", "owner-endpoint", "other-endpoint"];
   const activity = { id: "owned-watch", roomId: "first", sessionId: "owner-endpoint", userId: "owner",
     viewerSessionIds: ["endpoint", "other-endpoint"], source: { kind: "media" as const, url: "https://media.test/owned.mp4" },
     playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 1000 } };
@@ -9439,7 +9438,7 @@ test("local video leave clears its audience membership through recovery without 
     const stopped = session.getSnapshot().state!;
     expect(stopped.watchSubscriptions).toEqual([]); expect(session.getSnapshot().watchPlayers.size).toBe(0);
     expect(stopped.watchActivities[0].viewerSessionIds).toEqual(["other-endpoint"]);
-    expect(participantActivity(stopped, "first", "self").viewing).toBeUndefined();
+    expect(roomActivityPeople(stopped, "first").find(person => person.id === "self")?.viewing).toBeUndefined();
     expect(watchAudience(stopped, stopped.watchActivities[0]).map(person => person.userId)).toEqual(["other-viewer"]);
     expect(activity.viewerSessionIds).toEqual(["endpoint", "other-endpoint"]);
     session.reconnect();

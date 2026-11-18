@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ChannelRoomParticipants } from "../src/client/channel/components/ChannelRoomParticipants";
+import { ChannelRoomListItem } from "../src/client/channel/components/ChannelRoomListItem";
 import { ChannelPeople } from "../src/client/channel/components/ChannelPeople";
 import type { ChannelController } from "../src/client/channel/types";
-import { firstUnreadMessageId, participantActivity, roomPeople, roomRealtimePeople, screenTitle, watchAudience } from "../src/client/channel/presentation";
+import { firstUnreadMessageId, roomActivityPeople, roomPeople, screenTitle, watchAudience } from "../src/client/channel/presentation";
 import { snapshotSchema, watchActivitySchema } from "../src/client/channel/protocol";
-import { t, type CopyKey } from "../src/client/ui/copy";
+import { say, t, type CopyKey } from "../src/client/ui/copy";
 
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 import type { WatchMedia } from "../src/client/channel/watch-media";
@@ -22,15 +22,15 @@ it("projects joined watch people independently of transport and deduplicates the
   const state = snapshotSchema.parse({ channel: { id: "site", name: "Site", icon: "couch", ownerId: "owner", historyWindow: 1000, userCount: 4, rooms: [{
     id: "room", name: "Room", icon: "couch", creatorId: "owner", access: "public", hidden: false, hasPassword: false,
     authorized: true, canManage: true, available: true, reading: true, participantSessionIds: sessions.map(([id]) => id),
-    lastMessageSeq: 0, realtimeSessionIds: sessions.map(([id]) => id), capabilities: { attachments: true },
+    lastMessageSeq: 0, fileActivity: [], capabilities: { attachments: true },
   }] }, users: ["owner", "viewer", "direct", "relay"].map(id => ({ id, name: id, version: "a".repeat(64) })),
     sessions: sessions.map(([id, userId]) => ({ id, userId, online: true, signingKey: Array(32).fill(0) })),
     publications: [], voice: [], subscriptions: [], watchActivities: [activity], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   });
   expect(watchAudience(state, activity)).toEqual([{ userId: "viewer", name: "viewer", avatar: undefined }, { userId: "direct", name: "direct", avatar: undefined }]);
-  expect(roomRealtimePeople(state, "room").map(({ id, sharing, viewing }) => ({ id, sharing, viewing }))).toEqual([
+  expect(roomActivityPeople(state, "room").map(({ id, sharing, viewing }) => ({ id, sharing, viewing }))).toEqual([
     { id: "owner", sharing: true, viewing: "joined" }, { id: "viewer", sharing: false, viewing: "joined" },
-    { id: "direct", sharing: false, viewing: "joined" }, { id: "relay", sharing: false, viewing: undefined },
+    { id: "direct", sharing: false, viewing: "joined" },
   ]);
   expect(roomPeople(state, "room")).toHaveLength(4);
   const { viewerSessionIds: _viewers, ...oldActivity } = activity;
@@ -42,19 +42,20 @@ it("projects joined watch people independently of transport and deduplicates the
     patch: async () => {}, ready: async () => {}, listen: () => () => {}, close() {} };
   const player = new WatchPlayer("room", false, media, () => {});
   const local = { sessionId: "viewer-web", watchPlayers: new Map([["watch", player]]) };
+  const viewing = (userId: string) => roomActivityPeople(state, "room", undefined, local).find(person => person.id === userId)?.viewing;
   try {
-    expect(participantActivity(state, "room", "viewer", local).viewing).toBe("preparing"); // Metadata is not a composited frame.
+    expect(viewing("viewer")).toBe("preparing"); // Metadata is not a composited frame.
     player.presentFrame();
-    expect(participantActivity(state, "room", "viewer", local).viewing).toBe("active");
+    expect(viewing("viewer")).toBe("active");
     observedVideo.readyState = 1; // A retained paused/offscreen player's first frame still belongs to this lease.
-    expect(participantActivity(state, "room", "viewer", local).viewing).toBe("active");
+    expect(viewing("viewer")).toBe("active");
     observedVideo.readyState = 4;
-    expect(participantActivity(state, "room", "direct", local).viewing).toBe("joined");
+    expect(viewing("direct")).toBe("joined");
     state.watchActivities[0].viewerSessionIds = ["viewer-app"];
-    expect(participantActivity(state, "room", "viewer", local).viewing).toBe("joined"); // Same identity, different endpoint.
+    expect(viewing("viewer")).toBe("joined"); // Same identity, different endpoint.
     state.watchActivities[0].viewerSessionIds = ["viewer-web"];
     player.error = "watch_media_failed";
-    expect(participantActivity(state, "room", "viewer", local).viewing).toBe("failed");
+    expect(viewing("viewer")).toBe("failed");
   } finally { player.close(); }
 
 });
@@ -90,12 +91,14 @@ describe("screen titles", () => {
   });
 });
 
-it("merges a user's real-time endpoints without treating chat-only presence as participation", () => {
+it("shows each person's room activity across endpoints and keeps chat presence independent", () => {
   const state = snapshotSchema.parse({
     channel: { id: "site", name: "Site", icon: "couch", ownerId: "self", historyWindow: 1000, userCount: 3, rooms: [{
       id: "room", name: "Room", icon: "couch", creatorId: "self", access: "public", hidden: false,
       hasPassword: false, authorized: true, canManage: true, available: true, reading: true,
-      participantSessionIds: ["self-page", "chat-page"], lastMessageSeq: 0, realtimeSessionIds: ["self-page", "self-helper", "route-peer"], capabilities: { attachments: true },
+      participantSessionIds: ["self-page", "chat-page"], lastMessageSeq: 0,
+      fileActivity: [{ sessionId: "self-helper", sending: true, receiving: false }, { sessionId: "route-peer", sending: false, receiving: true }],
+      capabilities: { attachments: true },
     }] }, users: ["self", "chat", "route"].map(id => ({ id, name: id, version: "a".repeat(64) })),
     sessions: [["self-page", "self"], ["self-helper", "self"], ["chat-page", "chat"], ["route-peer", "route"]]
       .map(([id, userId]) => ({ id, userId, online: true, signingKey: Array(32).fill(0) })),
@@ -106,21 +109,25 @@ it("merges a user's real-time endpoints without treating chat-only presence as p
     subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   });
   expect(roomPeople(state, "room").map(person => person.userId)).toEqual(["self", "chat"]);
-  expect(roomRealtimePeople(state, "room").map(({ id, voice, sharing, viewing }) => ({ id, voice, sharing, viewing }))).toEqual([
-    { id: "self", voice: { microphone: false, deafened: true }, sharing: true, viewing: "active" },
-    { id: "route", voice: undefined, sharing: false, viewing: undefined },
+  const activities = () => roomActivityPeople(state, "room");
+  expect(activities().map(({ id, voice, sharing, viewing, sendingFiles, receivingFiles }) => ({ id, voice, sharing, viewing, sendingFiles, receivingFiles }))).toEqual([
+    { id: "self", voice: { microphone: false, deafened: true }, sharing: true, viewing: "active", sendingFiles: true, receivingFiles: false },
+    { id: "route", voice: undefined, sharing: false, viewing: undefined, sendingFiles: false, receivingFiles: true },
   ]);
   state.publications[0].audience[0].state = "preparing";
-  expect(roomRealtimePeople(state, "room").find(person => person.id === "self")?.viewing).toBe("preparing");
+  expect(activities().find(person => person.id === "self")?.viewing).toBe("preparing");
   const picture = state.publications.find(publication => publication.kind === "screen")!;
   picture.audience.push({ sessionId: "self-helper", state: "active" });
-  expect(roomRealtimePeople(state, "room").find(person => person.id === "self")?.viewing).toBe("active");
+  expect(activities().find(person => person.id === "self")?.viewing).toBe("active");
   picture.audience.pop();
   state.publications[0].audience[0].state = "failed";
-  expect(roomRealtimePeople(state, "room").find(person => person.id === "self")?.viewing).toBe("failed");
+  expect(activities().find(person => person.id === "self")?.viewing).toBe("failed");
   state.publications[0].audience[0].state = "active";
-  const channel = { state, profiles: new Map(), streams: new Map(), voicePlaybackByUser: new Map(), sessionId: "self-page", self: null } as unknown as ChannelController;
-  const render = () => renderToStaticMarkup(createElement(ChannelRoomParticipants, { channel, room: state.channel.rooms[0] }));
+  const room = state.channel.rooms[0];
+  const streams = new Map<string, MediaStream>();
+  const channel = { state, profiles: new Map(), streams, voicePlaybackByUser: new Map(), sessionId: "self-page", self: state.users[0],
+    ownedScreens: new Set(), readByRoom: {}, watchPlayers: new Map() } as unknown as ChannelController;
+  const render = () => renderToStaticMarkup(createElement(ChannelRoomListItem, { channel, room, selected: true, settingsOpen: false, onSelect() {}, onManage() {} }));
   const renderPeople = () => renderToStaticMarkup(createElement(ChannelPeople, { channel, roomId: "room", active: true, onBack() {} }));
   state.sessions.find(session => session.id === "self-helper")!.online = false;
   state.sessions.find(session => session.id === "route-peer")!.online = false;
@@ -131,5 +138,19 @@ it("merges a user's real-time endpoints without treating chat-only presence as p
   state.sessions.find(session => session.id === "self-page")!.online = false;
   expect(render()).toContain('class="c3-user is-offline" data-user-id="self"');
   expect(renderPeople()).toContain('class="c3-user is-offline" data-user-id="self"');
-  expect(roomRealtimePeople(state, "room").map(user => user.id)).toEqual(["self", "route"]);
+  room.fileActivity = [];
+  expect(activities().map(user => user.id)).toEqual(["self"]);
+  expect(render()).not.toContain('data-user-id="route"');
+  expect(renderPeople()).toContain('data-user-id="route"');
+  expect(roomPeople(state, room.id).map(user => user.userId)).toEqual(["chat"]);
+
+  state.voice[0].deafened = false;
+  state.voice.push({ roomId: room.id, sessionId: "route-peer", muted: false, deafened: false });
+  state.publications.push({ roomId: room.id, sessionId: "route-peer", userId: "route", id: "voice", kind: "voice", paused: false, audience: [] });
+  state.subscriptions.push("voice");
+  streams.set("voice", {} as MediaStream);
+  const listenLabel = say("voice.listenPerson");
+  for (const surface of [render, renderPeople]) expect(surface()).toContain(`aria-label="${listenLabel}"`);
+  streams.clear();
+  for (const surface of [render, renderPeople]) expect(surface()).not.toContain(`aria-label="${listenLabel}"`);
 });

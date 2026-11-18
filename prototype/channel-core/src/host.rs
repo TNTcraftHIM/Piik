@@ -9,7 +9,7 @@ use crate::{
     RoomState,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 #[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -183,49 +183,23 @@ pub struct RoomProjection {
 }
 
 impl RoomProjection {
-    fn realtime_sessions(&self) -> Vec<Uuid> {
-        let mut sessions = BTreeSet::new();
-        for activity in &self.watch_activities {
-            sessions.insert(activity.session_id);
-            sessions.extend(&activity.viewer_session_ids);
-        }
-        for publication in &self.publications {
-            sessions.insert(publication.session_id);
-            sessions.extend(publication.audience.iter().map(|viewer| viewer.session_id));
-        }
-        sessions.extend(self.voice.iter().map(|voice| voice.session_id));
-        for flow in &self.flows {
-            sessions.extend([flow.sender, flow.receiver]);
-        }
-        for link in &self.base_links {
-            sessions.extend([link.parent, link.child]);
-        }
-        for (session, view) in &self.views {
-            for plan in &view.watch_bytes {
-                if plan.receiving || plan.upstream.is_some() || !plan.downstream.is_empty() {
-                    sessions.insert(*session);
-                    sessions.insert(plan.source.session_id);
-                    sessions.extend(plan.upstream);
-                    sessions.extend(&plan.downstream);
-                }
-            }
-            for file in &view.files {
-                if file.receiving || file.upstream.is_some() || !file.downstream.is_empty() {
-                    sessions.insert(*session);
-                    sessions.extend(file.source_id);
-                    sessions.extend(file.upstream);
-                    sessions.extend(&file.downstream);
-                }
-            }
-        }
-        sessions.retain(|session| {
-            !self
-                .views
-                .get(session)
-                .is_some_and(|view| view.transit_endpoint.is_some())
-                || self.participant_session_ids.contains(session)
-        });
-        sessions.into_iter().collect()
+    fn file_activity(&self) -> Vec<crate::wire::FileActivity> {
+        self.views
+            .iter()
+            .filter(|(_, view)| view.authorized)
+            .filter_map(|(session, view)| {
+                let sending = view
+                    .files
+                    .iter()
+                    .any(|file| file.source_id == Some(*session));
+                let receiving = view.files.iter().any(|file| file.receiving);
+                (sending || receiving).then_some(crate::wire::FileActivity {
+                    session_id: *session,
+                    sending,
+                    receiving,
+                })
+            })
+            .collect()
     }
 
     /// Assemble only the recipient's authorized view; the host owns these rights.
@@ -270,8 +244,8 @@ impl RoomProjection {
                 } else {
                     vec![]
                 },
-                realtime_session_ids: if view.authorized && available {
-                    self.realtime_sessions()
+                file_activity: if view.authorized && available {
+                    self.file_activity()
                 } else {
                     vec![]
                 },
