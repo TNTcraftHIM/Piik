@@ -20,6 +20,28 @@ afterEach(() => {
 });
 
 describe("opt-in Browser diagnostics", () => {
+  it.each([false, true])("exports the first composited frame only for negotiated flows (opt-in %s)", async enabled => {
+    browser(enabled ? "?debug=1" : "");
+    vi.stubGlobal("document", { documentElement: {}, visibilityState: "visible" });
+    const { observeChannelInputFrame } = await import("../src/client/channel/components/ChannelMedia");
+    const { exportBrowserDebug } = await import("../src/client/lib/debug");
+    const stream = { id: "private-local-stream" } as MediaStream;
+    const frame = vi.fn();
+    for (const flow of [undefined, "flow-0"]) {
+      let callback!: () => void;
+      const video = Object.assign(new EventTarget(), { srcObject: stream, readyState: 4, currentTime: 0,
+        requestVideoFrameCallback: (fn: () => void) => { callback = fn; return 1; } });
+      const stop = observeChannelInputFrame(video as unknown as HTMLVideoElement, stream, flow, frame);
+      callback();
+      for (const event of ["resize", "enterpictureinpicture", "playing"]) video.dispatchEvent(new Event(event));
+      callback(); stop();
+    }
+    expect(frame).toHaveBeenCalledTimes(2);
+    const report = await exportBrowserDebug();
+    expect(report).not.toContain(stream.id);
+    const events = JSON.parse(report).events.filter((event: { event: string }) => event.event === "first-composited-frame");
+    expect(events.map((event: { details: unknown }) => event.details)).toEqual(enabled ? [{ flowId: "flow-0" }] : []);
+  });
   it.each([false, true])("3.0 transport uses the shared opt-in collector and retires it with its peer (%s)", async enabled => {
     vi.useFakeTimers();
     const page = browser(enabled ? "?debug=1" : "");

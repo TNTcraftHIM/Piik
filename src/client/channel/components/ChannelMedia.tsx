@@ -6,6 +6,7 @@ import { PlaybackWindowControls } from "../../components/living/PlaybackWindowCo
 import { PlaybackSettings, type PlaybackSettingsProps } from "../../components/living/PlaybackSettings";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../../lib/room-interactions";
+import { debugEvent } from "../../lib/debug";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useVideoRotation } from "../../components/living/use-video-rotation";
 import { usePlaybackControlsVisibility } from "../../components/living/use-playback-controls-visibility";
@@ -230,8 +231,15 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   </div>;
 }
 
-function ChannelVideoInput({ input, visible, interactive, label, fit, register, frame, issue, playing, fullscreen }: {
-  input: ChannelScreenInput; visible: boolean; interactive: boolean; label: string; fit: VideoFit;
+export function observeChannelInputFrame(element: HTMLVideoElement, stream: MediaStream, negotiatedFlowId: string | undefined, frame: () => void) {
+  return observeCompositedVideoFrame(element, stream, () => {
+    if (negotiatedFlowId) debugEvent("channel", "first-composited-frame", { flowId: negotiatedFlowId });
+    frame();
+  });
+}
+
+function ChannelVideoInput({ input, negotiatedFlowId, visible, interactive, label, fit, register, frame, issue, playing, fullscreen }: {
+  input: ChannelScreenInput; negotiatedFlowId?: string; visible: boolean; interactive: boolean; label: string; fit: VideoFit;
   register(input: ChannelScreenInput, element: HTMLVideoElement | null): void;
   frame(input: ChannelScreenInput, element: HTMLVideoElement): void;
   issue(input: ChannelScreenInput, element: HTMLVideoElement, error: unknown): void;
@@ -248,13 +256,13 @@ function ChannelVideoInput({ input, visible, interactive, label, fit, register, 
     element.muted = true;
     element.srcObject = input.stream;
     setComposited(false);
-    const stop = observeCompositedVideoFrame(element, input.stream, () => {
+    const stop = observeChannelInputFrame(element, input.stream, negotiatedFlowId, () => {
       setComposited(true); frame(input, element);
     });
     let active = true;
     void element.play().catch(error => { if (active) issue(input, element, error); });
     return () => { active = false; stop(); element.muted = true; element.pause(); element.srcObject = null; };
-  }, [input.flowId, input.stream, frame, issue]);
+  }, [input.flowId, input.stream, negotiatedFlowId, frame, issue]);
   return <video ref={attach} playsInline muted inert={!interactive} style={{ objectFit: fit }} aria-label={visible ? label : undefined} aria-hidden={!visible}
     data-flow-id={input.flowId} data-selected={visible} data-composited={composited} data-switch-ready={input.switchReady}
     tabIndex={visible ? 0 : -1} onPlay={() => playing(input, false)} onPause={() => playing(input, true)}
@@ -280,7 +288,7 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
   onPresentation?: (flowId: string, stream: MediaStream, state: ScreenPresentation) => void;
 }) {
   const thumbnail = presentation === "thumbnail", interactive = presentation === "full";
-  const target = inputs?.find(input => input.selected) ?? { flowId: stream.id, stream, selected: true, switchReady: false };
+  const target = inputs?.find(input => input.selected) ?? { flowId: stream.id, stream, selected: true, switchReady: false, localDisplayKey: true };
   const [displayed, setDisplayed] = useState(target);
   const next = target.flowId !== displayed.flowId || target.stream !== displayed.stream ? target : inputs?.find(input => !input.selected);
   const rendered = next ? [displayed, next] : [displayed];
@@ -454,6 +462,7 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
     && !fullscreen.active && !(document.fullscreenEnabled && activeVideo?.parentElement?.requestFullscreen);
   return <div className="c3-video c3-mini-player" data-controls-hidden={visibility.hidden} data-thumbnail={thumbnail || undefined} inert={presentation === "background"}>
     {rendered.map(input => <ChannelVideoInput key={`${input.flowId}:${input.stream.id}`} input={input} visible={input.flowId === displayed.flowId && input.stream === displayed.stream}
+      negotiatedFlowId={"localDisplayKey" in input ? undefined : input.flowId}
       interactive={interactive} label={label} fit={pictureFit} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
     <RoomChatOverlay session={interaction} visible={interactive && ready && !blocked && !paused} />
     {!ready && !blocked && <div className="c3-mini-message" role="status">
@@ -491,7 +500,7 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
         className="lr-floating-surface lr-playback-menu lr-playback-settings" onToggle={event => {
           if (event.target === event.currentTarget) setPictureOpen(event.newState === "open");
         }}>
-        <PlaybackSettings buffering={!owned && !localSource ? buffering : undefined} picture={{ pictureFit, pictureRotation,
+        {pictureOpen && <PlaybackSettings buffering={!owned && !localSource ? buffering : undefined} picture={{ pictureFit, pictureRotation,
           setPictureFit: (fit: VideoFit) => { setPictureFit(fit); saveRoomPreferences({ pictureFit: fit }); },
           setPictureRotation: (rotation: VideoRotation) => { setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation }); },
         }} preview={owned ? { autoPause: previewAutoPause, onChange: autoPause => {
@@ -501,7 +510,7 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
         } } : undefined} overlaySettings={interaction && <RoomChatOverlaySettings session={interaction} />} reconnect={!owned && !localSource && onRetryPicture ? <Btn icon="refresh" quiet size="dense"
           title="screen.retryPicture" cap="screen.retryPicture" disabled={!retryAvailable} onClick={() => {
             picturePanel.current?.hidePopover(); pictureTrigger.current?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true }); onRetryPicture();
-          }} /> : null} />
+          }} /> : null} />}
       </div>
       <PlaybackWindowControls picture={{ ...picture, toggle: pictureToggle }} quiet
         canPlay={ready && !inputs?.some(input => !input.selected && input.switchReady)}
