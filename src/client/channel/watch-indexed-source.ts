@@ -1,5 +1,5 @@
 import {mediaFragmentBytes} from "../../shared/media-resource";
-import { createFile, DataStream, FullBox, MP4BoxBuffer, type ISOFile, type Movie } from "mp4box";
+import type { DataStream, ISOFile, Movie } from "mp4box";
 import { NATIVE_PAGE_METADATA_PREFIX_BYTES, NATIVE_PAGE_READ_BYTES, nativePageIndexedTrackRecipeSchema,
   nativePageIndexedSelectionSchema, type NativePageIndexedCandidate, type NativePageIndexedTrackRecipe,
   type NativePageIndexedSelection } from "../native/wire";
@@ -26,12 +26,11 @@ function encode(bytes: Uint8Array): string {
 }
 
 /** GPAC writes the original boxes. Rebuilding trex would change untouched fragments' defaults. */
-function normalizedIndexedInit(parser: ISOFile): Uint8Array {
+function normalizedIndexedInit(parser: ISOFile, stream: DataStream): Uint8Array {
   // RFC 8216 §3.3: the generated init describes the admitted ISO6-compatible fMP4 layout.
   if (!parser.ftyp.compatible_brands.includes("iso6")) parser.ftyp.compatible_brands.push("iso6");
   parser.moov.mvhd.duration = 0;
   for (const track of parser.moov.traks) track.tkhd.duration = 0;
-  const stream = new DataStream();
   parser.ftyp.write(stream); parser.moov.write(stream);
   return new Uint8Array(stream.buffer);
 }
@@ -39,6 +38,11 @@ function normalizedIndexedInit(parser: ISOFile): Uint8Array {
 /** Each candidate has its own GPAC namespace; track ID 1 in two files is valid. */
 export async function inspectIndexedTrack(candidate: NativePageIndexedCandidate, read: IndexedMetadataRead,
   signal: AbortSignal): Promise<IndexedTrackInspection> {
+  const { createFile, DataStream, FullBox, MP4BoxBuffer } = await import("mp4box").catch(error => {
+    signal.throwIfAborted();
+    throw new Error("watch_indexed_unsupported", { cause: error });
+  });
+  signal.throwIfAborted();
   const parser = createFile(false);
   let info: Movie | undefined, parseError = false;
   parser.onReady = value => { info = value; };
@@ -109,7 +113,7 @@ export async function inspectIndexedTrack(candidate: NativePageIndexedCandidate,
     requireValue(firstSample?.is_sync && firstSample.offset >= moofStart + moof.size
       && firstSample.offset + firstSample.size <= firstEnd);
 
-    const init = normalizedIndexedInit(parser);
+    const init = normalizedIndexedInit(parser, new DataStream());
     requireValue(init.length <= NATIVE_PAGE_METADATA_PREFIX_BYTES, "watch_resource_limit");
     const checked = nativePageIndexedTrackRecipeSchema.safeParse({ choiceId: candidate.id, totalSize: candidate.totalSize,
       codec: track.codec, timescale: index.timescale, mediaOffset, initBase64: encode(init), segments });

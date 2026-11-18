@@ -113,8 +113,18 @@ test("cancelled inspection cannot publish metadata from a late prefix response",
   const read = vi.fn<IndexedMetadataRead>(() => new Promise(resolve => { complete = resolve; }));
   const pending = inspectIndexedTrack(candidate, read, lifetime.signal);
   const cancelled = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
   lifetime.abort(); complete({ bytes, totalSize: bytes.length, mimeType: "video/mp4" });
   await cancelled; expect(read).toHaveBeenCalledOnce();
+});
+
+test("inspection cancelled during parser loading never starts a resource read", async () => {
+  const bytes = fixture("av1"), { candidate } = selected(bytes), lifetime = new AbortController();
+  const read = vi.fn<IndexedMetadataRead>();
+  const pending = inspectIndexedTrack(candidate, read, lifetime.signal);
+  lifetime.abort();
+  await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  expect(read).not.toHaveBeenCalled();
 });
 
 test("recipe codec syntax accepts undotted tokens without granting Browser codec support", async () => {
@@ -125,4 +135,23 @@ test("recipe codec syntax accepts undotted tokens without granting Browser codec
   for (const codec of ["", "av01,mp4a", 'av01",AUDIO="other', "av01\n", "non ascii 字"]) {
     expect(nativePageIndexedTrackRecipeSchema.safeParse({ ...recipe, codec }).success).toBe(false);
   }
+});
+
+test.each([false, true])("indexed module load failure stays local and respects cancellation (%s)", async cancelled => {
+  vi.resetModules();
+  let rejectLoad!: (error: Error) => void;
+  const loading = new Promise<never>((_, reject) => { rejectLoad = reject; });
+  const load = vi.fn(() => loading);
+  vi.doMock("mp4box", load);
+  try {
+    const { inspectIndexedTrack: inspect } = await import("../src/client/channel/watch-indexed-source");
+    const lifetime = new AbortController(), read = vi.fn<IndexedMetadataRead>();
+    const operation = inspect({ id: crypto.randomUUID(), name: "Owned track", hostname: "media.test", mimeType: "video/mp4", totalSize: 128 }, read, lifetime.signal);
+    const failure = expect(operation).rejects.toMatchObject(cancelled ? { name: "AbortError" } : { message: "watch_indexed_unsupported" });
+    await vi.waitFor(() => expect(load).toHaveBeenCalledOnce());
+    if (cancelled) lifetime.abort();
+    rejectLoad(new Error("Failed to fetch dynamically imported module: /assets/mp4box.js"));
+    await failure;
+    expect(read).not.toHaveBeenCalled();
+  } finally { vi.doUnmock("mp4box"); vi.resetModules(); }
 });

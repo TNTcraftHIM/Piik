@@ -5,6 +5,7 @@ use super::*;
 struct FailureCount {
     count: u64,
     last_os_error: Option<i32>,
+    last_error_kind: Option<std::io::ErrorKind>,
 }
 
 #[derive(Debug, Default)]
@@ -15,13 +16,14 @@ pub(super) struct UdpSendFailures {
     selected_snapshot_max_age_ms: Option<u64>,
 }
 impl UdpSendFailures {
+    /// Report the first or changed cause in this bucket's existing summary window.
     pub fn record(
         &mut self,
         source: SocketAddr,
         destination: SocketAddr,
         error: &std::io::Error,
         stats: Option<&PeerStats>,
-    ) {
+    ) -> bool {
         let bucket = match stats.and_then(|stats| stats.selected_candidate_pair.as_ref()) {
             Some(pair) if pair.local.addr == source && pair.remote.addr == destination => 0,
             Some(_) => 1,
@@ -32,13 +34,19 @@ impl UdpSendFailures {
         } else {
             &mut self.ipv6
         };
-        family[bucket].count += 1;
-        family[bucket].last_os_error = error.raw_os_error();
+        let failure = &mut family[bucket];
+        let report = failure.count == 0
+            || failure.last_os_error != error.raw_os_error()
+            || failure.last_error_kind != Some(error.kind());
+        failure.count += 1;
+        failure.last_os_error = error.raw_os_error();
+        failure.last_error_kind = Some(error.kind());
         if let Some(stats) = stats {
             let age = stats.timestamp.elapsed().as_millis() as u64;
             self.selected_snapshot_max_age_ms =
                 Some(self.selected_snapshot_max_age_ms.unwrap_or(0).max(age));
         }
+        report
     }
     pub fn flush(&mut self, pair: Option<Uuid>) {
         if let Some(window) = self.take() {
@@ -83,9 +91,15 @@ mod tests {
         };
         let error = std::io::Error::from_raw_os_error(10051);
         let mut failures = UdpSendFailures::default();
-        for _ in 0..2000 {
-            failures.record(source, destination, &error, Some(&stats));
+        for index in 0..32 {
+            assert_eq!(
+                failures.record(source, destination, &error, Some(&stats)),
+                index == 0
+            );
         }
+        let changed = std::io::Error::from_raw_os_error(10065);
+        assert!(failures.record(source, destination, &changed, Some(&stats)));
+        assert!(!failures.record(source, destination, &changed, Some(&stats)));
         // A probe can share the selected local socket while targeting another candidate.
         failures.record(
             source,
@@ -100,13 +114,44 @@ mod tests {
             None,
         );
         let window = failures.take().unwrap();
-        assert_eq!(window.ipv4[0].count, 2000);
+        assert_eq!(window.ipv4[0].count, 34);
         assert_eq!(window.ipv4[1].count, 1);
         assert_eq!(window.ipv4[2].count, 0);
         assert_eq!(window.ipv6[2].count, 1);
-        assert_eq!(window.ipv4[0].last_os_error, Some(10051));
+        assert_eq!(window.ipv4[0].last_os_error, Some(10065));
         assert!(window.selected_snapshot_max_age_ms.is_some());
         assert!(failures.take().is_none());
+        for kind in [
+            std::io::ErrorKind::NetworkUnreachable,
+            std::io::ErrorKind::ConnectionReset,
+        ] {
+            let error = std::io::Error::from(kind);
+            assert!(failures.record(source, destination, &error, Some(&stats)));
+            assert!(!failures.record(source, destination, &error, Some(&stats)));
+        }
+        let kinds = failures.take().unwrap();
+        assert_eq!(kinds.ipv4[0].count, 4);
+        assert_eq!(kinds.ipv4[0].last_os_error, None);
+        assert_eq!(
+            kinds.ipv4[0].last_error_kind,
+            Some(std::io::ErrorKind::ConnectionReset)
+        );
+        assert!(failures.record(source, destination, &error, Some(&stats)));
+        assert!(!failures.record(source, destination, &error, Some(&stats)));
+        assert_eq!(failures.take().unwrap().ipv4[0].count, 2);
+        // PeerStats flushes before installing the next selected tuple.
+        let mut next = stats.clone();
+        let pair = next.selected_candidate_pair.as_mut().unwrap();
+        pair.local.addr = "192.0.2.21:31001".parse().unwrap();
+        pair.remote.addr = "192.0.2.22:31002".parse().unwrap();
+        let (local, remote) = (pair.local.addr, pair.remote.addr);
+        assert!(failures.record(local, remote, &error, Some(&next)));
+        assert!(!failures.record(local, remote, &error, Some(&next)));
+        assert!(failures.record(local, remote, &error, None));
+        assert!(!failures.record(local, remote, &error, None));
+        let next_window = failures.take().unwrap();
+        assert_eq!(next_window.ipv4[0].count, 2);
+        assert_eq!(next_window.ipv4[2].count, 2);
         let text = format!("{window:?}");
         assert!(!text.contains("192.0.2") && !text.contains("2001:db8") && !text.contains("31001"));
     }

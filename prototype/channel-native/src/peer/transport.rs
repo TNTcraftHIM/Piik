@@ -1592,14 +1592,15 @@ impl Engine {
         if error.kind() == std::io::ErrorKind::WouldBlock {
             return;
         }
-        self.udp_send_failures
+        let report = self
+            .udp_send_failures
             .record(source, destination, error, self.peer_stats.as_ref());
         if self.selected_source() == Some(source) {
-            if self.source_error.replace(source) == Some(source) {
-                return;
-            }
+            self.source_error = Some(source);
         }
-        eprintln!("Native str0m UDP send: {error}");
+        if report {
+            eprintln!("Native str0m UDP send: {error}");
+        }
     }
 
     fn check_source(&mut self) {

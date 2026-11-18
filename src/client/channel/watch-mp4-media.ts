@@ -1,5 +1,5 @@
 import Hls from "hls.js";
-import { createFile, MP4BoxBuffer, type ISOFile, type Movie, type Track } from "mp4box";
+import type { ISOFile, Movie, Track } from "mp4box";
 import { readWatchWindows, WATCH_READ_AHEAD, WATCH_READ_SIZE } from "./watch-read-windows";
 import type { WatchByteReader, WatchByteResult } from "./watch-resource";
 import { watchElementFailure } from "./watch-media-failure";
@@ -41,6 +41,7 @@ export class WatchMp4Media {
   private operation = new AbortController();
   private work: Promise<void> = Promise.resolve();
   private opening: { resolve(): void; reject(error: unknown): void } | null = null;
+  private mp4box?: typeof import("mp4box");
   private parser: ISOFile | null = null;
   private mediaSource?: MediaSource;
   private buffer?: SourceBuffer;
@@ -72,10 +73,15 @@ export class WatchMp4Media {
     if (!canReadWatchMp4()) throw new Error("watch_mp4_mse_unavailable");
     if (this.first.totalSize === null || !Number.isSafeInteger(this.first.totalSize) || this.first.totalSize < this.first.bytes.length)
       throw new Error("watch_media_size_unavailable");
+    this.mp4box = await import("mp4box").catch(error => {
+      this.signal.throwIfAborted();
+      throw new Error("watch_media_unsupported", { cause: error });
+    });
+    this.signal.throwIfAborted();
     const mediaSource = this.mediaSource = new MediaSource();
     this.url = URL.createObjectURL(mediaSource);
     await waitEvent(mediaSource, "sourceopen", this.signal, () => { this.video.src = this.url!; });
-    this.parser = createFile(false);
+    this.parser = this.mp4box.createFile(false);
     this.parser.onError = (module, message) => this.fail(new Error("watch_mp4_parse_failed", { cause: new Error(`${module}: ${message}`) }));
     this.parser.onReady = info => this.metadata(info);
     this.parser.onSegment = (trackId, _user, bytes, sampleNumber) => {
@@ -133,6 +139,7 @@ export class WatchMp4Media {
 
   private async pump(offset: number, signal: AbortSignal, initial: boolean): Promise<void> {
     const parser = this.parser!, size = this.first.totalSize!;
+    const { MP4BoxBuffer } = this.mp4box!;
     let parseBytes = 0;
     if (initial) {
       offset = parser.appendBuffer(MP4BoxBuffer.fromArrayBuffer(this.first.bytes.slice().buffer, 0));

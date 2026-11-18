@@ -101,6 +101,17 @@ test("actual MP4 MIME/ftyp facts are separate from generic file and container su
   vi.stubGlobal("MediaSource", undefined); expect(canReadWatchMp4()).toBe(false);
 });
 
+test("closing while the MP4 module loads does not acquire a media source or parser", async () => {
+  const video = setup(), failed = vi.fn();
+  const media = new WatchMp4Media(video as unknown as HTMLVideoElement, id, vi.fn(), first, new AbortController().signal, failed);
+  const opening = media.open();
+  media.close();
+  await expect(opening).rejects.toMatchObject({ name: "AbortError" });
+  expect(runtime.parsers).toHaveLength(0);
+  expect(URL.createObjectURL).not.toHaveBeenCalled();
+  expect(failed).not.toHaveBeenCalled();
+});
+
 test("retiring MP4 cancels its four adjacent reads, removes listeners and releases samples", async () => {
   const video = setup(), signals: AbortSignal[] = [], failed = vi.fn();
   const read: WatchByteReader = async (_id, _offset, _length, signal) => {
@@ -182,4 +193,26 @@ test("a sample outside the MSE budget fails before segmentation or an alternate 
   const media = createPeerWatchMedia({ resourceId: id, format: "file" }, async () => first);
   await expect(media.ready(new AbortController().signal)).rejects.toThrow("watch_resource_limit");
   expect(Source.last.addSourceBuffer).not.toHaveBeenCalled(); expect(register).not.toHaveBeenCalled(); media.close();
+});
+
+test.each([false, true])("MP4 module load failure never falls through to the URL adapter (%s)", async cancelled => {
+  vi.resetModules();
+  let rejectLoad!: (error: Error) => void;
+  const loading = new Promise<never>((_, reject) => { rejectLoad = reject; });
+  const load = vi.fn(() => loading);
+  vi.doMock("mp4box", load);
+  try {
+    const { createPeerWatchMedia: createMedia } = await import("../src/client/channel/watch-media");
+    setup(); const register = worker(), lifetime = new AbortController();
+    const media = createMedia({ resourceId: id, format: "file" }, async () => first);
+    const failure = expect(media.ready(lifetime.signal)).rejects.toMatchObject(cancelled ? { name: "AbortError" } : { message: "watch_media_unsupported" });
+    await vi.waitFor(() => expect(load).toHaveBeenCalledOnce());
+    if (cancelled) lifetime.abort();
+    rejectLoad(new Error("Failed to fetch dynamically imported module: /assets/mp4box.js"));
+    await failure;
+    expect(runtime.parsers).toHaveLength(0);
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(register).not.toHaveBeenCalled();
+    media.close();
+  } finally { vi.doUnmock("mp4box"); vi.resetModules(); }
 });
