@@ -69,6 +69,7 @@ enum Resource {
 }
 pub struct OriginReader {
     pub root: Uuid,
+    file_validator: std::sync::OnceLock<Option<(url::Url, reqwest::header::HeaderValue)>>,
     context: MediaContext,
     stopped: watch::Receiver<bool>,
     client: reqwest::Client,
@@ -158,6 +159,7 @@ impl OriginReader {
             .transpose()?;
         let reader = Arc::new(Self {
             root,
+            file_validator: Default::default(),
             context,
             stopped,
             // reqwest removes sensitive headers across origins; source URLs may contain grants.
@@ -381,6 +383,26 @@ impl OriginReader {
                     available == length as u64 || offset + available == total,
                     "watch_media_truncated"
                 );
+                if id == self.root && self.context.format == Format::File {
+                    let strong_tag = response.headers().get(reqwest::header::ETAG).filter(|v| {
+                        matches!(v.as_bytes(), [b'"', opaque @ .., b'"'] if opaque.iter().all(|b| matches!(b, 0x21 | 0x23..=0x7e | 0x80..=0xff)))
+                    });
+                    let validator = self.file_validator.get_or_init(|| {
+                        strong_tag.map(|tag| {
+                            let mut owner = response.url().clone();
+                            owner.set_fragment(None);
+                            (owner, tag.clone())
+                        })
+                    });
+                    if let Some((owner, tag)) = validator {
+                        ensure!(
+                            owner[..url::Position::AfterQuery]
+                                == response.url()[..url::Position::AfterQuery]
+                                && strong_tag == Some(tag),
+                            "watch_media_unavailable"
+                        );
+                    }
+                }
                 if !retention.grace.is_zero() {
                     if let Some(Resource::File { size, .. }) =
                         self.resources.lock().await.get_mut(&id)
@@ -826,6 +848,47 @@ mod tests {
                 },
             );
         if path != "/ignore" {
+            if path == "/redirect-version" {
+                let target = if start < 2 {
+                    "/object?a#one"
+                } else {
+                    "/object?b#two"
+                };
+                return Response::builder()
+                    .status(307)
+                    .header("location", target)
+                    .body(Body::empty())
+                    .unwrap();
+            }
+            if path == "/object" {
+                let byte = if request.uri().query() == Some("a") {
+                    1
+                } else {
+                    2
+                };
+                return response
+                    .header("etag", r#""same""#)
+                    .header("content-range", format!("bytes {start}-{end}/{size}"))
+                    .body(Body::from(vec![byte; bytes.len()]))
+                    .unwrap();
+            }
+            if matches!(path, "/weak" | "/absent") {
+                assert!(request.headers().get("if-match").is_none());
+                if start > 0 {
+                    response = response.header("etag", format!(r#""{start}""#));
+                } else if path == "/weak" {
+                    response = response.header("etag", r#"W/"weak""#);
+                }
+            }
+            if path == "/replace" {
+                assert!(request.headers().get("if-match").is_none());
+                let tag = if start < 2 { r#""a""# } else { r#""b""# };
+                return response
+                    .header("etag", tag)
+                    .header("content-range", format!("bytes {start}-{end}/{size}"))
+                    .body(Body::from(vec![if start < 2 { 1 } else { 2 }; bytes.len()]))
+                    .unwrap();
+            }
             response = response.header(
                 "content-range",
                 format!(
@@ -1209,6 +1272,40 @@ mod tests {
             .iter()
             .enumerate()
             .all(|(i, b)| *b == ((65536 + i) % 251) as u8));
+        server.abort();
+    }
+    #[tokio::test]
+    async fn selected_file_rejects_replacement() {
+        let (base, server) = fixture().await;
+        let (ctx, _page, _) = context(format!("{base}/./replace#local"), Format::File, Some(128));
+        let (_stop, stopped) = watch::channel(false);
+        let reader = OriginReader::prepare(ctx, stopped).await.unwrap();
+        assert_eq!(reader.read(reader.root, 0, 2).await.unwrap().bytes, [1, 1]);
+        assert_eq!(
+            reader
+                .read(reader.root, 2, 2)
+                .await
+                .err()
+                .unwrap()
+                .to_string(),
+            "watch_media_unavailable"
+        );
+        server.abort();
+    }
+    #[tokio::test]
+    async fn selected_file_scopes_validator_to_final_url_and_first_accepted_read() {
+        let (base, server) = fixture().await;
+        for path in ["redirect-version", "weak", "absent"] {
+            let (ctx, _page, _) = context(format!("{base}/{path}"), Format::File, Some(128));
+            let (_stop, stopped) = watch::channel(false);
+            let reader = OriginReader::prepare(ctx, stopped).await.unwrap();
+            let read = reader.read(reader.root, 2, 2).await;
+            if path == "redirect-version" {
+                assert_eq!(read.err().unwrap().to_string(), "watch_media_unavailable");
+            } else {
+                assert_eq!(read.unwrap().bytes, [2, 3]);
+            }
+        }
         server.abort();
     }
     #[tokio::test]
