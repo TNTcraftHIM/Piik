@@ -51,7 +51,7 @@ describe("AtomGit mirror publication", () => {
   });
   async function mirror(options: { existing?: "pending" | "published" | "unknown"; corrupt?: boolean;
     updates?: { name: string; bytes: Buffer }[];
-    wrongSource?: boolean; wrongDigest?: boolean; missing?: boolean; uploadFailure?: boolean | number;
+    wrongSource?: boolean; sourceDigest?: "different" | "missing"; missing?: boolean; uploadFailure?: boolean | number;
     stale?: boolean; supersededDuringUpload?: boolean;
     downloadFault?: { remaining: number; name: "TimeoutError" | "TypeError" };
     fault?: { method: string; remaining: number; status: number | "timeout" | "body-timeout" } } = {}) {
@@ -74,7 +74,9 @@ describe("AtomGit mirror publication", () => {
     const source = {
       ...release(false), html_url: `https://github.com/TNTcraftHIM/Piik/releases/tag/${version}`,
       target_commitish: options.wrongSource ? "b".repeat(40) : revision,
-      assets: options.wrongDigest ? publishedAssets.map((asset) => ({ ...asset, digest: "sha256:wrong" })) : publishedAssets,
+      assets: options.sourceDigest ? publishedAssets.map(asset => ({
+        ...asset, digest: options.sourceDigest === "different" ? `sha256:${"0".repeat(64)}` : undefined,
+      })) : publishedAssets,
     };
     let latestReads = 0;
     command.mockImplementation((_program, args) => {
@@ -103,7 +105,9 @@ describe("AtomGit mirror publication", () => {
           return interrupted(readFileSync(join(directory, file)), options.downloadFault.name === "TypeError"
             ? new TypeError("terminated") : new DOMException("Timed out", "TimeoutError"));
         }
-        return new Response(options.corrupt ? "corrupt" : readFileSync(join(directory, file)));
+        const bytes = readFileSync(join(directory, file));
+        if (options.corrupt) bytes[0] = bytes[0]! ^ 1;
+        return new Response(bytes);
       }
       if (url.startsWith("https://upload.example/")) {
         const name = url.slice("https://upload.example/".length);
@@ -255,12 +259,18 @@ describe("AtomGit mirror publication", () => {
     }
   });
 
-  it.each([{ wrongSource: true }, { wrongDigest: true }, { existing: "unknown" as const }])
+  it.each([{ wrongSource: true }, { existing: "unknown" as const }])
     ("rejects mismatched provenance before mirror writes: %j", async (options) => {
       const result = await mirror(options);
       expect(result.failure).toBeDefined();
       expect(result.mutations).toEqual([]);
     });
+
+  it.each(["different", "missing"] as const)("rejects a %s GitHub digest before mirror writes", async sourceDigest => {
+    const result = await mirror({ sourceDigest });
+    expect(result.failure).toContain("GitHub attachment checksum mismatch or unavailable");
+    expect(result.mutations).toEqual([]);
+  });
 
   it.each([true, 403, 413, 503])("reports safe upload diagnostics without retrying PUT (%s)", async (uploadFailure) => {
     const result = await mirror({ uploadFailure });
@@ -273,7 +283,7 @@ describe("AtomGit mirror publication", () => {
 
   it("does not publish a corrupt upload or repair a published missing file", async () => {
     const corrupt = await mirror({ corrupt: true });
-    expect(corrupt.failure).toMatch(/mismatch/);
+    expect(corrupt.failure).toContain("Mirror attachment checksum mismatch");
     expect(corrupt.mutations).not.toContain(`PATCH /releases/${version}`);
     const incomplete = await mirror({ existing: "published", missing: true });
     expect(incomplete.failure).toContain("corrected new version");

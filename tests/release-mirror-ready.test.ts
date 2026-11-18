@@ -26,6 +26,18 @@ test("signed releases require both original update attachments in the completed 
   ] }))).toEqual({ status: "complete", version, revision });
 });
 
+test.each([
+  { digest: asset.digest, complete: true },
+  { digest: asset.digest.slice("sha256:".length), complete: true },
+  { digest: "", complete: false },
+  { digest: `sha256:${"c".repeat(64)}`, complete: false },
+])("checks declared AtomGit digests even for matching names and sizes ($digest)", async ({ digest, complete }) => {
+  const [attachment, ...archives] = mirror.assets;
+  const result = mirrorReadiness(source, async () => ({ ...mirror, assets: [{ ...attachment, digest }, ...archives] }));
+  if (complete) await expect(result).resolves.toEqual({ status: "complete", version, revision });
+  else await expect(result).rejects.toThrow("Published mirror is incomplete");
+});
+
 test("a pending mirror resumes without querying mirrored commits or tags", async () => {
   const read = vi.fn(async () => ({ ...mirror, prerelease: true, assets: [] }));
   expect(await mirrorReadiness(source, read)).toEqual({ status: "ready", version, revision });

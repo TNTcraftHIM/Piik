@@ -33,8 +33,11 @@ export async function mirrorReadiness(source, read = readMirror) {
     const packages = source.assets?.filter(asset => asset.name?.startsWith("piik-") || ["update.json", "update.json.sig"].includes(asset.name));
     const complete = packages?.length > 0 && Array.isArray(mirror.assets) && packages.every(asset => {
       const matches = mirror.assets.filter(candidate => candidate.type === "attach" && candidate.name === asset.name);
+      const digest = matches[0]?.digest;
       return asset.state === "uploaded" && /^sha256:[a-f0-9]{64}$/.test(asset.digest ?? "")
         && matches.length === 1 && matches[0].size === asset.size
+        && (digest == null || (typeof digest === "string"
+          && digest.toLowerCase().replace(/^sha256:/, "") === asset.digest.slice("sha256:".length)))
         && matches[0].browser_download_url === `https://atomgit.com/${repository}/releases/download/${version}/${asset.name}`;
     });
     if (!mirror.prerelease) {
