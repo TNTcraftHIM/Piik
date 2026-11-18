@@ -1619,6 +1619,7 @@ export class ChannelSession {
     const policy = await runtime.createRoomPolicy({ ...settings, allowServiceRelay: false, id: crypto.randomUUID(), creatorId: self.id });
     current();
     let stage: BrowserRoomStage | undefined, importer: BackupHistoryImport | undefined, converted: Blob;
+    let conversionSucceeded = false;
     const contents = new Map<string, File>();
     try {
       const metadata = await readBackup(archive, {
@@ -1629,15 +1630,20 @@ export class ChannelSession {
           stage = await runtime.BrowserRoomHost.stage(roomDatabaseName(state.channel.id, self.id), policy);
         },
         row: row => { current(); return stage!.append(JSON.parse(importer!.accept(JSON.stringify(row))) as BackupHistoryRow); },
-        content: (digest, file) => { contents.set(digest, file); },
+        content: (digest, file) => { current(); contents.set(digest, file); },
       });
       current(); importer!.finish();
       if (metadata.kind !== "room_copy") throw new Error("expected_room_copy");
       converted = await writeBackup({ kind: "room", version: 2, domainId: state.channel.id,
         policy: JSON.parse(policy), retainedFiles: metadata.retainedFiles }, stage!.rows,
         async entry => contents.get(entry.attachment.sha256.toLowerCase())!);
-      current();
-    } finally { importer?.free(); await stage?.close(); }
+      conversionSucceeded = true;
+    } finally {
+      importer?.free();
+      try { await stage?.close(); }
+      catch (error) { if (conversionSucceeded) throw error; }
+    }
+    current();
     return this.restoreRoomArchive(converted);
   }, false);
 
@@ -1655,7 +1661,9 @@ export class ChannelSession {
           if (value.kind !== "room" || value.domainId !== this.view.state!.channel.id || (roomId && value.policy.id !== roomId)) throw new Error("backup_room_mismatch");
           const runtime = await loadRoomHosting(); initial();
           stage = await runtime.BrowserRoomHost.stage(roomDatabaseName(value.domainId, value.policy.creatorId), JSON.stringify(value.policy));
-        }, row: row => stage!.append(row), content: (digest, file) => { contents.set(digest, file); },
+        },
+        row: row => { initial(); return stage!.append(row); },
+        content: (digest, file) => { initial(); contents.set(digest, file); },
       });
       initial(); owner?.current();
       if (metadata.kind !== "room" || !stage) throw new Error("invalid_backup");
@@ -1720,7 +1728,9 @@ export class ChannelSession {
       await rollback?.();
       throw error;
     }
-    finally { await stage?.close(); }
+    finally {
+      try { await stage?.close(); } catch { /* Temporary staging cleanup preserves the restore outcome. */ }
+    }
   }
 
   updateRoom = (roomId: string, settings: RoomSettings, reportError = true): Promise<void> => this.action(`room:${roomId}`, () => this.request({ type: "update_room", roomId, ...settings }), reportError);

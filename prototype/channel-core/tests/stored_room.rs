@@ -564,13 +564,36 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
             attachments: vec![],
         },
     ));
+    let mut during_import = None;
     let staged = RoomBackup::stage(
         &folder.join("import.sqlite"),
         backup.metadata().clone(),
-        rows.iter().cloned().map(Ok),
+        rows.iter().cloned().enumerate().map(|(index, row)| {
+            if index == rows.len() / 2 {
+                during_import = Some(RoomBackup::snapshot_readonly(
+                    &folder.join("live.sqlite"),
+                    &folder.join("during-import.sqlite"),
+                    domain,
+                    "retained",
+                    owner,
+                    None,
+                    || false,
+                )?);
+            }
+            Ok(row)
+        }),
     )
     .unwrap();
     host.replace(&staged).unwrap();
+    let mut last_exported = None;
+    during_import
+        .unwrap()
+        .for_each_row(|row| {
+            last_exported = Some(row.nonce);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(last_exported.as_deref(), Some("later"));
     assert!(host.current_readers().is_empty());
     assert_eq!(
         serde_json::to_value(host.policy()).unwrap(),

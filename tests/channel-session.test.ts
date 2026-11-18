@@ -8454,6 +8454,69 @@ test("Core archive budget failures stay distinct from malformed retained invento
   expect(() => validate([count[0], { ...count[1], attachment: { ...count[1].attachment, sha256: count[0].attachment.sha256, size: 2 } }])).toThrow("invalid_backup_content");
 });
 
+test("room restore releases staging when its session reconnects during append", async () => {
+  const { session, socket, stage, read, metadata, row, state } = await setupRoomBackup();
+  stage.close.mockRejectedValueOnce(new Error("stage_cleanup_failed"));
+  let resume!: () => void;
+  stage.append.mockImplementationOnce(() => new Promise<void>(resolve => { resume = resolve; }));
+  read.mockImplementationOnce(async (_blob, visitor) => {
+    await visitor?.metadata(metadata);
+    await visitor?.row(row);
+    await visitor?.row({ ...row, seq: row.seq + 1 });
+    return metadata;
+  });
+  try {
+    const restore = session.restoreRoomBackup(new Blob(), "first");
+    await vi.waitFor(() => expect(stage.append).toHaveBeenCalledOnce());
+    socket.close(); session.reconnect();
+    const next = ChannelSocket.current; await next.onopen?.();
+    next.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resume();
+    await expect(restore).rejects.toThrow("disconnected");
+    expect(stage.append).toHaveBeenCalledOnce();
+    expect(stage.close).toHaveBeenCalledOnce();
+    expect(stage.replace).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
+test("room copy preserves the archive conversion failure when staging cleanup rejects", async () => {
+  const { session, stage, read, metadata } = await setupRoomBackup();
+  try {
+    const runtime = await hosting.loadRoomHosting();
+    vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...runtime, createRoomPolicy: async () => stage.policy,
+      CopyHistoryImport: class { finish() {} free() {} },
+    } as unknown as typeof runtime);
+    const copy = { kind: "room_copy" as const, version: 1 as const, authors: {}, retainedFiles: [] };
+    read.mockImplementationOnce(async (_blob, visitor) => { await visitor?.metadata(copy); return copy; });
+    vi.spyOn(backupArchive, "writeBackup").mockRejectedValueOnce(new Error("archive_conversion_failed"));
+    stage.close.mockRejectedValueOnce(new Error("stage_cleanup_failed"));
+    await expect(session.importRoomCopy(new Blob(), metadata.policy)).rejects.toThrow("archive_conversion_failed");
+    expect(stage.close).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test("room copy stops when its session reconnects during staging cleanup", async () => {
+  const { session, socket, stage, read, state, metadata } = await setupRoomBackup();
+  try {
+    const runtime = await hosting.loadRoomHosting();
+    vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...runtime, createRoomPolicy: async () => stage.policy,
+      CopyHistoryImport: class { finish() {} free() {} },
+    } as unknown as typeof runtime);
+    const copy = { kind: "room_copy", version: 1, authors: {}, retainedFiles: [] } as const;
+    read.mockImplementationOnce(async (_blob, visitor) => {
+      await visitor?.metadata({ ...copy, retainedFiles: [] }); return { ...copy, retainedFiles: [] };
+    });
+    vi.spyOn(backupArchive, "writeBackup").mockResolvedValue(new Blob());
+    stage.close.mockImplementationOnce(async () => {
+      socket.close(); session.reconnect();
+      const next = ChannelSocket.current; await next.onopen?.();
+      next.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    });
+    await expect(session.importRoomCopy(new Blob(), metadata.policy)).rejects.toThrow("disconnected");
+    expect(read).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
 test("invalid archives and failed atomic replacements keep the existing Browser host, capture, voice and watch", async () => {
   const context = await setupRoomBackup();
   const { session, socket, host, stage, read } = context;
@@ -8486,6 +8549,7 @@ test("invalid archives and failed atomic replacements keep the existing Browser 
 test("room restore rebinds before installing file copies, and optional cache failure preserves committed success", async () => {
   const context = await setupRoomBackup();
   const { session, socket, host, nextHost, stage, state, metadata, read, row } = context;
+  stage.close.mockRejectedValueOnce(new Error("stage_cleanup_failed"));
   const attachment = { id: "restored-file", name: "data", size: 2, mediaType: "application/octet-stream" as const, sha256: "b".repeat(64) };
   const file = new File([new Uint8Array([4, 5])], "data");
   metadata.retainedFiles = [{ messageSeq: 1, attachment }] as never;
