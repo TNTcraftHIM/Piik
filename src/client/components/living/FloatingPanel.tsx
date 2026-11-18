@@ -55,7 +55,7 @@ export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpe
         event.preventDefault();
         if (detachedAction === "return") {
           panelWindow.close();
-          returnToPage(document);
+          if (!directWindow) returnToPage(document);
         } else surfaceDocument?.defaultView?.focus();
         return;
       }
