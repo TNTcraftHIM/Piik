@@ -64,7 +64,8 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       await browser(1, "open", destination);
     }
     await browser(1, "wait", "#site-approval-title");
-    await browser(1, "find", "role", "button", "click", "--name", "English", "--exact");
+    await evaluate(1, "localStorage.setItem('piik:ui-lang', 'en')");
+    await browser(1, "reload");
     if (site === origin) {
       const viewport = await evaluate(1, "({ width: innerWidth, height: innerHeight })");
       await browser(1, "screenshot", join(output, "app-approval-desktop.png"));
@@ -72,7 +73,8 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       await browser(1, "screenshot", join(output, "app-approval-mobile.png"));
       await browser(1, "set", "viewport", String(viewport.width), String(viewport.height));
     }
-    await browser(1, "find", "role", "button", "click", "--name", "Allow access", "--exact");
+    await browser(1, "wait", ".lr-client-approval-actions button.is-primary");
+    await browser(1, "click", ".lr-client-approval-actions button.is-primary");
     await until("real approval page grants the exact Site", async () => (await health(site)).status, value => value === 200);
     await browser(1, "tab", personalTab);
   };
@@ -80,7 +82,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     const browserRoom = await action(1, "createRoom({name:'Browser-owned room',icon:'couch',access:'public',hidden:false})");
     start(); await ready();
     const discovery = await fetch(`${local}/connect-discovery`).then(response => response.json());
-    assert.deepEqual(discovery, { service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port, connectURL: `${local}/client` });
+    assert.deepEqual(discovery, { service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port, windowNavigation: false, connectURL: `${local}/client` });
     assert.equal((await health(origin)).status, 403, "discovery does not approve its caller");
     await approve(origin);
     const token = (await (await health(origin)).json()).token;
@@ -171,6 +173,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await action(2, `watch(${JSON.stringify(picture)})`); await playing(2, picture);
     const unrelated = await capturedScreen(0, serverRoom);
     await action(2, `watch(${JSON.stringify(unrelated)})`); await playing(2, unrelated);
+    await browser(1, "network", "route", local + "/health*", "--abort");
     await evaluate(1, "window.__channelProbe.sockets.filter(socket => new URL(socket.url).pathname === '/rooms').forEach(socket => socket.close())");
     await until("local control disconnect is visible", () => evaluate(1, `${hook}.snapshot().appConnected`), value => value === false);
     await progressing(2, picture);
@@ -191,6 +194,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       await until("ordinary room base opens before the next admission", () => sample(index), value =>
         value.channels.some(channel => channel.label === "piik-room" && channel.state === "open"));
     }
+    await action(3, `setRelayOverride(${JSON.stringify(browserRoom)}, 0)`);
     const fillerBase = (await view(3)).state.pairs.filter(pair => pair.rooms.includes(browserRoom));
     assert.equal(fillerBase.length, 1, "fourth Browser has one ordinary base parent");
     const sourceIndex = [0, 2].find(index => initial[index].sessionId === fillerBase[0].peerId);
@@ -218,6 +222,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     finally { await observeConcurrent(concurrentBefore ? "playing" : "failed-before-helper"); }
     await action(sourceIndex, "setVideoCodecMode('h264')");
     await evaluate(sourceIndex, "window.__channelProbe.captureAudio(true)");
+    await evaluate(sourceIndex, "window.__channelProbe.captureFramerate(30)");
     const helperPicture = await capturedScreen(sourceIndex, browserRoom);
     const globalSources = await Promise.all([0, 1, 2, 3].map(index => evaluate(index, `(() => {
       const value = ${hook}.snapshot(); return { index: ${index}, sessionId: value.sessionId,
@@ -286,6 +291,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     }
     for (const index of [0, 1, 2, 3]) await evaluate(index, "window.__channelProbe.clearProtocol()");
     for (const index of viewers) await evaluate(index, "window.__channelProbe.observeQuality()");
+    await browser(1, "network", "unroute", local + "/health*");
     await action(1, "activateApp()"); await appReady(1);
     const lastQualityTimes = new Map();
     await until("Native assists both viewers without Browser WAN forwarding", async () => {
@@ -294,7 +300,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       for (const index of viewers) {
         const screen = await evaluate(index, `window.__channelProbe.screen(${JSON.stringify(helperPicture)})`);
         for (const sample of screen.qualitySamples.filter(sample => sample.time > (lastQualityTimes.get(index) ?? 0))) {
-          qualitySamples.push({ index, qualitySampleTime: sample.time, result: sample.result });
+          qualitySamples.push({ index, ...sample });
           lastQualityTimes.set(index, sample.time);
         }
         assert(screen.inputs.some(input => input.selected && input.frames > 0), "handover retains a decoded selected picture");
@@ -386,7 +392,9 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       }
     }
     await writeFile(join(output, "app-helper-metrics-result.json"), JSON.stringify({ passed: true, metricsBefore, metricsUnwatched, metricsAfter }, null, 2));
+    await browser(1, "network", "route", local + "/health*", "--abort");
     await evaluate(1, "window.__channelProbe.sockets.filter(socket => new URL(socket.url).pathname === '/rooms').forEach(socket => socket.close())");
+    await browser(1, "tab", personalTab);
     await until("helper control disconnect is visible", () => evaluate(1, `${hook}.snapshot().appConnected`), value => value === false);
     assert((await view(1)).state.subscriptions.includes(helperPicture), "control loss retains the existing watch intent");
     await progressing(1, helperPicture); await audioProgressing(1, helperPicture);
@@ -401,6 +409,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     if (sourceIndex !== 0) await action(sourceIndex, `stopScreen(${JSON.stringify(concurrentPicture)})`);
     await action(1, "close()");
     await browser(1, "open", "about:blank");
+    await browser(1, "network", "unroute", local + "/health*");
     await until("page close ends personal activity and Browser hosting only", () => view(2), value =>
       value.state.channel.rooms.some(entry => entry.id === room && entry.available && entry.delivery.hostSessionId === nativeEndpoint)
       && value.state.channel.rooms.some(entry => entry.id === browserRoom && !entry.available)
@@ -440,9 +449,8 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await progressing(2, unrelated);
     start(); await ready();
     assert.equal((await health(origin)).status, 200, "approved Site survives App restart");
-    const originalTab = (await browser(1, "tab")).tabs.find(tab => tab.active).targetId;
-    await browser(1, "tab", "new", "about:blank");
-    await browser(1, "tab", originalTab);
+    // A failed automatic probe leaves the App button available for an explicit retry.
+    await browser(1, "click", ".lr-app-connect");
     await appReady(1);
     assert.equal((await view(1)).sessionId, endpoint, "App re-entry retains the Browser endpoint");
     assert.equal((await view(1)).state.channel.rooms.find(entry => entry.id === browserRoom).delivery.bindingId,
@@ -499,9 +507,10 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     const otherBinding = (await view(0)).state.channel.rooms.find(entry => entry.id === otherRoom).delivery.bindingId;
     await action(0, `sendMessage(${JSON.stringify(otherRoom)}, 'Other Site before revocation')`);
     await browser(1, "tab", approvalTab);
-    await browser(1, "open", `${local}/client`);
-    await browser(1, "wait", ".lr-client-approved-sites");
-    await browser(1, "click", `.lr-client-approved-site:has(a[href^="${origin}/"]) button[aria-label="Revoke this Site's App access"]`);
+    await browser(1, "open", `${local}/client?bookmarks`);
+    await browser(1, "wait", ".lr-site-list");
+    await browser(1, "find", "role", "button", "click", "--name", "Manage " + origin, "--exact");
+    await browser(1, "find", "role", "button", "click", "--name", "Revoke App access", "--exact");
     await until("revocation removes only this Site's health authority", async () => (await health(origin)).status, value => value === 403);
     await until("revoked Site's Native rooms stop", () => view(2), value => value.state.channel.rooms.some(entry => entry.id === room && !entry.available));
     assert.equal((await health(otherOrigin)).status, 200);
@@ -512,7 +521,8 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       `${hook}.snapshot().messagesByRoom[${JSON.stringify(otherRoom)}]`), messages => messages?.some(message => message.text === "Other Site still confirms after revocation"));
     await browser(1, "open", `${local}/client?site=${encodeURIComponent(origin)}`);
     await browser(1, "wait", "#site-approval-title");
-    await browser(1, "find", "role", "button", "click", "--name", "Allow access", "--exact");
+    await browser(1, "wait", ".lr-client-approval-actions button.is-primary");
+    await browser(1, "click", ".lr-client-approval-actions button.is-primary");
     await until("reapproval restores the Site's existing local permission", async () => (await health(origin)).status, value => value === 200);
     await browser(1, "tab", personalTab);
     await action(1, "activateApp()");

@@ -52,7 +52,7 @@ function captureProbe(name) {
       if (trackEvents.length > 128) trackEvents.shift();
     };
     let qualityInstalled = false;
-    let captureAudio = false;
+    let captureAudio = false, captureFramerate = 10;
     const conversationWS = Object.create(null);
     const warn = console.warn.bind(console);
     console.warn = (...args) => { warnings.push(args.map(value => String(value))); if (warnings.length > 20) warnings.shift(); warn(...args); };
@@ -216,8 +216,8 @@ function captureProbe(name) {
       const timer = setInterval(() => {
         ctx.fillStyle = 'hsl(' + (frame++ % 360) + ' 70% 40%)'; ctx.fillRect(0, 0, 640, 360);
         ctx.fillStyle = 'white'; ctx.font = '40px sans-serif'; ctx.fillText('${name} ' + frame, 40, 150);
-      }, 100);
-      const stream = canvas.captureStream(10); captures.push(stream);
+      }, 1000 / captureFramerate);
+      const stream = canvas.captureStream(captureFramerate); captures.push(stream);
       const track = stream.getVideoTracks()[0], stop = track.stop.bind(track);
       track.stop = () => { clearInterval(timer); stop(); };
       if (captureAudio) for (const audio of microphone(true).getAudioTracks()) stream.addTrack(audio);
@@ -226,6 +226,7 @@ function captureProbe(name) {
     window.__channelProbe = { peers, sockets, captures, contexts,
       clearProtocol() { protocol.length = 0; },
       captureAudio(enabled) { captureAudio = enabled; },
+      captureFramerate(value) { captureFramerate = value; },
       voicePlayback(publicationId, retain = false) {
         const session = window.__channelGate.session, snapshot = window.__channelGate.snapshot();
         const tracks = [...(snapshot.streams.get(publicationId)?.getAudioTracks() ?? [])];
