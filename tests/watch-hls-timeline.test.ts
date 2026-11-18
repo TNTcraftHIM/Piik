@@ -1,3 +1,4 @@
+import { M3U8Parser, PlaylistLevelType } from "hls.js";
 import type Hls from "hls.js";
 import { expect, test } from "vitest";
 import { WatchHlsTimeline } from "../src/client/channel/watch-hls-timeline";
@@ -73,4 +74,24 @@ test("a shared media boundary uses the next fragment's program date", () => {
   expect(() => timeline.localPosition(epoch + 8)).toThrow("watch_live_position_unavailable");
   video.currentTime = timeline.localPosition(epoch + 16);
   expect(timeline.read(video)?.position).toBe(epoch + 16);
+});
+
+test("EXT-X-GAP keeps program time but excludes missing media at either edge and inside the window", () => {
+  const playlist = ["#EXTM3U", "#EXT-X-TARGETDURATION:2", "#EXT-X-PROGRAM-DATE-TIME:" + new Date(epoch * 1000).toISOString(),
+    ...[true, false, true, false, true].flatMap((gap, i) => [...(gap ? ["#EXT-X-GAP"] : []), "#EXTINF:2,", i + ".ts"])].join("\n");
+  const details = M3U8Parser.parseLevelPlaylist(playlist, "https://example.test/live.m3u8", 0, PlaylistLevelType.MAIN, 0, null);
+  const { hls, video } = fixture(0, epoch, true, 5);
+  Object.defineProperty(hls, "latestLevelDetails", { value: details });
+  const timeline = new WatchHlsTimeline(hls, "program");
+  const { live, buffered } = timeline.read(video)!;
+  expect(live.seekable).toEqual([[epoch + 2, epoch + 3.999], [epoch + 6, epoch + 7.999]]);
+  expect(buffered).toEqual([[epoch + 2, epoch + 4]]);
+  expect(live.syncPosition).toBeNull();
+  for (const offset of [0, 4, 5, 8, 10])
+    expect(() => timeline.localPosition(epoch + offset)).toThrow("watch_live_position_unavailable");
+  expect(timeline.localPosition(watchSeekPosition(epoch + 5, live.seekable, 1))).toBe(6);
+  for (const offset of [3.9, 4, 6.1]) {
+    video.currentTime = offset;
+    expect(timeline.read(video)!.position).toBeCloseTo(epoch + offset, 5);
+  }
 });

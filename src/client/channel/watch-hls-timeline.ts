@@ -27,30 +27,32 @@ export class WatchHlsTimeline {
     if (position === null) throw new Error("watch_live_timeline_unavailable");
     const buffered: [number, number][] = [];
     for (let i = 0; i < video.buffered.length; i++) for (const fragment of fragments) {
+      if (fragment.gap) continue;
       const start = Math.max(video.buffered.start(i), fragment.start), end = Math.min(video.buffered.end(i), fragment.end);
       if (end > start) buffered.push([fragment.programDateTime! / 1000 + start - fragment.start,
         fragment.programDateTime! / 1000 + end - fragment.start]);
     }
     return { position, buffered, live: { active: details.live,
-      seekable: fragments.map((fragment, index) => {
+      seekable: fragments.flatMap((fragment, index): [number, number][] => {
+        if (fragment.gap) return [];
         const start = fragment.programDateTime! / 1000, end = fragment.endProgramDateTime! / 1000;
         const next = fragments[index + 1];
         // Step inside the old fragment so the browser can seek without rounding to the shared endpoint.
-        return [start, next && next.start <= fragment.end && next.programDateTime! > fragment.endProgramDateTime!
-          ? Math.max(start, end - 0.001) : end];
+        return [[start, next && next.start <= fragment.end && (next.gap || next.programDateTime! > fragment.endProgramDateTime!)
+          ? Math.max(start, end - 0.001) : end]];
       }),
-      syncPosition: details.live && this.hls.liveSyncPosition !== null ? this.programPosition(this.hls.liveSyncPosition) : null } };
+      syncPosition: details.live && this.hls.liveSyncPosition !== null ? this.programPosition(this.hls.liveSyncPosition, true) : null } };
   }
 
-  private programPosition(position: number): number | null {
+  private programPosition(position: number, requirePlayable = false): number | null {
     const fragment = this.hls.latestLevelDetails?.fragments.findLast(fragment => fragment.start <= position && position <= fragment.end);
-    return fragment && Number.isFinite(fragment.programDateTime) ? fragment.programDateTime! / 1000 + position - fragment.start : null;
+    return fragment && !(requirePlayable && fragment.gap) && Number.isFinite(fragment.programDateTime) ? fragment.programDateTime! / 1000 + position - fragment.start : null;
   }
 
   localPosition(position: number): number {
     if (this.coordinate !== "program") return position;
     const fragment = this.hls.latestLevelDetails?.fragments.findLast((fragment, index, fragments) => {
-      if (fragment.programDateTime === null || fragment.endProgramDateTime === null) return false;
+      if (fragment.gap || fragment.programDateTime === null || fragment.endProgramDateTime === null) return false;
       const end = fragment.endProgramDateTime / 1000;
       const next = fragments[index + 1];
       // A shared media endpoint belongs to the next fragment, even across a program-time gap.
