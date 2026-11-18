@@ -10,8 +10,8 @@
 .lr-launcher-saved-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 7px 12px; }
 .lr-launcher-saved-heading h2 { font-size: 13px; color: var(--muted); margin: 0; }
 .lr-launcher-sites { display: grid; grid-auto-rows: max-content; min-height: 4.5rem; max-height: 50dvh; align-content: start; gap: 4px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
-.lr-launcher-site { display: flex; align-items: center; gap: 11px; width: 100%; border: 0; border-radius: var(--c3-inset-radius); background: transparent; color: var(--ink); text-align: start; padding: 12px 8px; cursor: pointer; transition: background var(--motion-feedback) ease, transform var(--motion-control) var(--spring); }
-.lr-launcher-site:hover { background: var(--control-hover); transform: translateX(3px); }
+.lr-launcher-site { display: flex; align-items: center; gap: 11px; width: 100%; border: 0; border-radius: var(--c3-inset-radius); background: transparent; color: var(--ink); text-align: start; padding: 12px 8px; cursor: pointer; transition: background var(--motion-feedback) ease; }
+.lr-launcher-site:hover { background: var(--control-hover); }
 .lr-launcher-site-symbol { display: grid; place-items: center; width: 38px; height: 42px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: var(--c3-inset-radius); background: var(--paper); color: var(--ink); }
 .lr-launcher-site > span:nth-child(2) { min-width: 0; flex: 1; }
 .lr-launcher-site strong { display: block; font-size: 13px; overflow-wrap: anywhere; font-weight: 650; }
@@ -83,7 +83,7 @@
   .lr-launcher-local { order: 4; margin: 0; padding: 10px 18px; background: var(--wall); }
   .lr-launcher-site > .lr-glyph { opacity: 1; }
 }
-@media (prefers-reduced-motion: reduce) { .lr-launcher-site { transition: none; } .lr-launcher-site:hover { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .lr-launcher-site { transition: none; } }
 
 .lr-launcher-join form > label { flex: 1; min-width: 0; }
 .lr-launcher-join form > label > .lr-input { display: flex; }
