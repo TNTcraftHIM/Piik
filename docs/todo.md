@@ -204,6 +204,10 @@ the feedback period; they do not delay that delivery.
   The controls also show delayed natural recovery and an incumbent freeze during
   a rejected trial. Distinguish sustained path limits and bound the cost of
   overlapping candidates before enabling automatic quality trials.
+- [ ] **Field-test same-room screen recovery.** On restricted networks,
+  compare [on-demand relay](./research/channel-network-design.md#idle-room-peers-for-screen-recovery)
+  with sparse warm links. Measure first picture, recovery when a peer leaves,
+  load on an existing call and the cost of finding a path through two idle peers.
 - [ ] **NAT field coverage.** The bounded random-mapping Native implementation
   and ordinary Native-to-Browser linear extension have controlled media and
   retirement evidence. Measure difficult physical networks and sustained

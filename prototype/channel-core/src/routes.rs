@@ -502,7 +502,7 @@ impl Plan {
         self.failed(first, second);
     }
 
-    fn detach(&mut self, child: Uuid) {
+    pub(crate) fn detach(&mut self, child: Uuid) {
         let mut pending = vec![child];
         while let Some(current) = pending.pop() {
             pending.extend(

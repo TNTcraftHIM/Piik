@@ -1206,6 +1206,32 @@ impl RoomRuntime {
             }
             base.reconcile(&demand, &routable, &connected, &limits, now);
         }
+        let readers: BTreeMap<_, _> = self
+            .activity
+            .iter()
+            .filter(|(session, activity)| {
+                (activity.reading || demand.contains(*session))
+                    && connected.contains(*session)
+                    && transit_endpoint.is_none_or(|service| service.session_id != **session)
+            })
+            .map(|(session, activity)| {
+                (
+                    *session,
+                    activity
+                        .relay_capacity
+                        .map(usize::from)
+                        .unwrap_or(limits.default),
+                )
+            })
+            .collect();
+        let mut reserved = BTreeMap::<Uuid, usize>::new();
+        for flow in self.flows().filter(|flow| {
+            !flow.presentation
+                && flow.input_flow_id.is_some()
+                && self.publications[&flow.publication_id].info.kind == Kind::Screen
+        }) {
+            *reserved.entry(flow.sender).or_default() += 1;
+        }
         for (id, publication) in &mut self.publications {
             publication.retain_sessions(endpoints);
             let helpers = self
@@ -1227,16 +1253,58 @@ impl RoomRuntime {
             if repair_due {
                 publication.retry_required(&subscribers, &connected);
             }
+            if publication.info.kind == Kind::Screen {
+                for flow in publication.relay_flows(&helpers) {
+                    *reserved.get_mut(&flow.sender).unwrap() -= 1;
+                }
+            }
+            let reader_capacity = readers
+                .iter()
+                .map(|(reader, capacity)| {
+                    (
+                        *reader,
+                        (
+                            capacity.saturating_sub(reserved.get(reader).copied().unwrap_or(0)),
+                            !demand.contains(reader),
+                        ),
+                    )
+                })
+                .collect();
+            let mut screen_limits = limits.clone();
+            if publication.info.kind == Kind::Screen {
+                // A screen source owns its outputs. Forwarders share their
+                // remaining capacity across all other screens in the room.
+                screen_limits.host = publication.info.session_id;
+                for (&session, &used) in &reserved {
+                    if session != publication.info.session_id && used > 0 {
+                        let capacity = limits
+                            .overrides
+                            .get(&session)
+                            .copied()
+                            .unwrap_or(limits.default);
+                        screen_limits
+                            .overrides
+                            .insert(session, capacity.saturating_sub(used));
+                    }
+                }
+            }
             publication.reconcile(
                 &subscribers,
                 &routable,
                 &connected,
                 self.base.as_ref(),
                 service,
+                &reader_capacity,
                 &helpers,
-                &limits,
+                &screen_limits,
                 now,
             );
+            publication.bound_screen_preparation(&screen_limits, &helpers);
+            if publication.info.kind == Kind::Screen {
+                for flow in publication.relay_flows(&helpers) {
+                    *reserved.entry(flow.sender).or_default() += 1;
+                }
+            }
             needs_repair |= publication.needs_repair(&subscribers, &connected);
         }
         self.prepare_base(&requested);
@@ -1257,6 +1325,7 @@ impl RoomRuntime {
                         &connected,
                         self.base.as_ref(),
                         service,
+                        &BTreeMap::new(),
                         &BTreeMap::new(),
                         &limits,
                         now,
@@ -1591,6 +1660,10 @@ mod tests {
             room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
                 .unwrap();
         }
+        // The helper reserves one WAN output for the other viewer. Its paired
+        // display also receives the prepared picture under that same cap.
+        room.set_relay_capacity(endpoints[&id(5)].member, id(5), Some(1))
+            .unwrap();
         let old: BTreeMap<_, _> = room.flows().map(|flow| (flow.receiver, flow)).collect();
         let command = serde_json::from_value(serde_json::json!({
             "type": "subscribe", "publicationId": id(10), "enabled": true, "helperSessionId": id(5),
@@ -1987,6 +2060,69 @@ mod tests {
     }
 
     #[test]
+    fn reader_keeps_its_picture_lease_when_joining_voice_and_shares_capacity_when_watching() {
+        let id = Uuid::from_u128;
+        let (template, endpoints) = screen_on_room_base();
+        let mut room = RoomRuntime::new(template.policy.clone());
+        let (a, b, c, d) = (id(1), id(2), id(3), id(4));
+        let member = |session| endpoints[&session].member;
+        room.browse(member(a), a, true).unwrap();
+        room.set_relay_capacity(member(a), a, Some(1)).unwrap();
+        for (publisher, publication) in [(b, id(10)), (d, id(11))] {
+            room.publish(
+                member(publisher),
+                publisher,
+                publication,
+                Kind::Screen,
+                screen_settings(),
+                Some(crate::wire::ScreenSource::default()),
+            )
+            .unwrap();
+        }
+        room.subscribe(member(c), c, id(10), true, None).unwrap();
+        room.reconcile(&endpoints, 0);
+        room.failed_pair(b, c);
+        room.reconcile(&endpoints, 1);
+        let input = room.flows().find(|f| f.receiver == a).unwrap();
+        let output = room.flows().find(|f| f.receiver == c).unwrap();
+        assert_eq!(output.sender, a);
+        room.flow_state(input.id, a, b, FlowState::Forwardable, 2)
+            .unwrap();
+        room.flow_state(output.id, c, a, FlowState::Decoded, 2)
+            .unwrap();
+        room.set_voice(member(a), a, true, true, false).unwrap();
+        room.reconcile(&endpoints, 3);
+        room.browse(member(a), a, false).unwrap();
+        room.reconcile(&endpoints, 3);
+        assert!(room.flows().any(|f| f.id == output.id));
+        for publication in [id(10), id(11)] {
+            room.subscribe(member(a), a, publication, true, None)
+                .unwrap();
+        }
+        room.subscribe(member(c), c, id(11), true, None).unwrap();
+        room.reconcile(&endpoints, 4);
+        let second_input = room
+            .flows()
+            .find(|f| f.publication_id == id(11) && f.receiver == a)
+            .unwrap();
+        room.flow_state(second_input.id, a, d, FlowState::Decoded, 5)
+            .unwrap();
+        room.failed_pair(d, c);
+        room.reconcile(&endpoints, 6);
+        let outputs: Vec<_> = room.flows().filter(|f| f.sender == a).collect();
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].id, output.id);
+        room.set_relay_capacity(member(a), a, Some(0)).unwrap();
+        room.reconcile(&endpoints, 7);
+        assert!(!room
+            .flows()
+            .any(|flow| flow.sender == a && flow.receiver == c));
+        assert!(room
+            .flows()
+            .any(|flow| flow.receiver == a && flow.publication_id == id(10)));
+    }
+
+    #[test]
     fn ready_file_copy_retires_unneeded_insertion_and_its_voice_candidate() {
         let id = Uuid::from_u128;
         let endpoints: BTreeMap<_, _> = (1..=3)
@@ -2356,7 +2492,17 @@ mod tests {
                     base.state(parent, child, true);
                     base.state(child, parent, true);
                 }
-                picture.reconcile(&requested, &all, &all, None, None, &helpers, &limits, 0);
+                picture.reconcile(
+                    &requested,
+                    &all,
+                    &all,
+                    None,
+                    None,
+                    &BTreeMap::new(),
+                    &helpers,
+                    &limits,
+                    0,
+                );
                 for flow in picture.flows().collect::<Vec<_>>() {
                     picture.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1);
                 }
@@ -2386,11 +2532,31 @@ mod tests {
             base.reconcile(&requested, &all, &all, &limits, 1_000);
             assert_eq!(base.candidate_links(), vec![expected]);
             assert_eq!(base.deadline(), base_deadline);
-            picture.reconcile(&requested, &all, &all, None, None, &helpers, &limits, 10);
+            picture.reconcile(
+                &requested,
+                &all,
+                &all,
+                None,
+                None,
+                &BTreeMap::new(),
+                &helpers,
+                &limits,
+                10,
+            );
             let candidate = picture.flows().find(|flow| !flow.selected).unwrap();
             assert_eq!((candidate.sender, candidate.receiver), expected);
             let deadline = picture.deadline();
-            picture.reconcile(&requested, &all, &all, None, None, &helpers, &limits, 1_000);
+            picture.reconcile(
+                &requested,
+                &all,
+                &all,
+                None,
+                None,
+                &BTreeMap::new(),
+                &helpers,
+                &limits,
+                1_000,
+            );
             assert_eq!(picture.deadline(), deadline);
             assert!(picture
                 .flows()
@@ -2412,7 +2578,17 @@ mod tests {
                 FlowState::SwitchReady,
                 1_002,
             );
-            picture.reconcile(&requested, &all, &all, None, None, &helpers, &limits, 1_003);
+            picture.reconcile(
+                &requested,
+                &all,
+                &all,
+                None,
+                None,
+                &BTreeMap::new(),
+                &helpers,
+                &limits,
+                1_003,
+            );
             assert!(picture
                 .flows()
                 .any(|flow| flow.id == candidate.id && flow.selected));

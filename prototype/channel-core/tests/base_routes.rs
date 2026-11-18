@@ -4297,3 +4297,150 @@ fn udp_observation_preserves_port_bounds_in_both_directions() {
         assert!(serde_json::from_value::<piik_channel_core::wire::UdpSignal>(signal).is_err());
     }
 }
+
+fn screen_input(
+    network: &RoomNetwork,
+    receiver: Uuid,
+    sender: Uuid,
+    screen: Uuid,
+) -> Option<(Uuid, piik_channel_core::wire::FlowBinding)> {
+    network
+        .state(receiver)
+        .pairs
+        .iter()
+        .filter(|pair| pair.peer_id == sender)
+        .find_map(|pair| {
+            pair.incoming
+                .iter()
+                .find(|flow| flow.publication_id == screen)
+                .map(|flow| (pair.id, *flow))
+        })
+}
+
+fn subscribe_screen(network: &mut RoomNetwork, connection: Uuid, screen: Uuid) {
+    command(
+        network,
+        connection,
+        json!({"type":"subscribe","publicationId":screen,"enabled":true}),
+    );
+}
+
+#[test]
+fn reader_relay_follows_room_scope_and_releases_proved_flows_at_zero() {
+    let mut network = RoomNetwork::new();
+    let [reader, publisher, viewer] = [(); 3].map(|_| Uuid::new_v4());
+    let (relay, _) = join(&mut network, reader, None);
+    let (source, _) = join(&mut network, publisher, None);
+    let (audience, _) = join(&mut network, viewer, None);
+    let room = network.create(publisher, RoomAccess::Public, false);
+    let other = network.create(reader, RoomAccess::Public, false);
+    browse(&mut network, reader, &other, true);
+    let screen = publish(&mut network, publisher, &room, "screen");
+    subscribe_screen(&mut network, viewer, screen);
+    let (direct, _) = screen_input(&network, viewer, source, screen).unwrap();
+    assert!(screen_input(&network, reader, source, screen).is_none());
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"link_state","pairId":direct,"state":"failed"}),
+    );
+    assert!(screen_input(&network, viewer, relay, screen).is_none());
+    assert_eq!(network.state(viewer).failed_subscriptions, vec![screen]);
+
+    browse(&mut network, reader, &room, true);
+    let (upstream_pair, upstream) = screen_input(&network, reader, source, screen).unwrap();
+    let (downstream_pair, downstream) = screen_input(&network, viewer, relay, screen).unwrap();
+    assert_eq!(downstream.input_flow_id, Some(upstream.id));
+    let publication = network
+        .state(publisher)
+        .publications
+        .iter()
+        .find(|p| p.id == screen)
+        .unwrap();
+    assert_eq!(
+        publication
+            .audience
+            .iter()
+            .map(|entry| entry.session_id)
+            .collect::<Vec<_>>(),
+        vec![audience]
+    );
+    command(
+        &mut network,
+        reader,
+        json!({"type":"flow_state","pairId":upstream_pair,"flowId":upstream.id,"state":"forwardable"}),
+    );
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"flow_state","pairId":downstream_pair,"flowId":downstream.id,"state":"decoded"}),
+    );
+    assert!(network.state(viewer).failed_subscriptions.is_empty());
+
+    voice(&mut network, reader, &room, true);
+    assert_eq!(
+        screen_input(&network, viewer, relay, screen),
+        Some((downstream_pair, downstream))
+    );
+    subscribe_screen(&mut network, reader, screen);
+    assert_eq!(
+        screen_input(&network, viewer, relay, screen),
+        Some((downstream_pair, downstream))
+    );
+    assert!(network.state(viewer).failed_subscriptions.is_empty());
+
+    command(
+        &mut network,
+        reader,
+        json!({"type":"relay_capacity","roomId":room,"capacity":0}),
+    );
+    assert!(screen_input(&network, viewer, relay, screen).is_none());
+    assert!(screen_input(&network, reader, source, screen).is_some());
+    assert!(network.state(reader).subscriptions.contains(&screen));
+}
+
+#[test]
+fn reader_relay_reserves_capacity_across_publications_before_proof() {
+    let mut network = RoomNetwork::new();
+    let [reader, publisher, viewer, second_publisher, second_viewer] =
+        [(); 5].map(|_| Uuid::new_v4());
+    let (relay, _) = join(&mut network, reader, None);
+    let (source, _) = join(&mut network, publisher, None);
+    let (second_source, _) = join(&mut network, second_publisher, None);
+    for endpoint in [viewer, second_viewer] {
+        join(&mut network, endpoint, None);
+    }
+    let room = network.create(publisher, RoomAccess::Public, false);
+    browse(&mut network, reader, &room, true);
+    command(
+        &mut network,
+        reader,
+        json!({"type":"relay_capacity","roomId":room,"capacity":1}),
+    );
+    let first = publish(&mut network, publisher, &room, "screen");
+    let second = publish(&mut network, second_publisher, &room, "screen");
+    for (receiver, sender, screen) in [
+        (viewer, source, first),
+        (second_viewer, second_source, second),
+    ] {
+        subscribe_screen(&mut network, receiver, screen);
+        let (direct, _) = screen_input(&network, receiver, sender, screen).unwrap();
+        assert!(screen_input(&network, receiver, relay, screen).is_none());
+        command(
+            &mut network,
+            receiver,
+            json!({"type":"link_state","pairId":direct,"state":"failed"}),
+        );
+    }
+    let first_assigned = screen_input(&network, viewer, relay, first).is_some();
+    let second_assigned = screen_input(&network, second_viewer, relay, second).is_some();
+    assert_ne!(first_assigned, second_assigned);
+    browse(&mut network, reader, &room, false);
+    assert!(screen_input(&network, viewer, relay, first).is_none());
+    assert!(screen_input(&network, second_viewer, relay, second).is_none());
+    assert!(network
+        .state(reader)
+        .pairs
+        .iter()
+        .all(|pair| pair.incoming.is_empty() && pair.outgoing.is_empty()));
+}

@@ -20,6 +20,7 @@ pub(crate) struct Publication {
     plan: Plan,
     leases: BTreeMap<Uuid, Flow>,
     operation: Option<RouteOperation>,
+    reader_relays: BTreeSet<Uuid>,
     direct_attempted: BTreeSet<Uuid>,
     // A route retry does not erase the watching page's last delivery result.
     failed_receivers: BTreeSet<Uuid>,
@@ -97,6 +98,7 @@ impl Publication {
             reactions: Default::default(),
             leases: BTreeMap::new(),
             operation: None,
+            reader_relays: BTreeSet::new(),
             direct_attempted: BTreeSet::new(),
             failed_receivers: BTreeSet::new(),
         }
@@ -146,10 +148,39 @@ impl Publication {
             self.leases.retain(|child, _| !preparing.contains(child));
         } else {
             self.info.session_id = session;
+            self.reader_relays.clear();
             self.plan = Plan::new(session);
             self.leases.clear();
             self.direct_attempted.clear();
         }
+    }
+
+    pub fn bound_screen_preparation(
+        &mut self,
+        limits: &RelayLimits,
+        helpers: &BTreeMap<Uuid, Uuid>,
+    ) {
+        if self.info.kind != Kind::Screen || self.operation.is_none() {
+            return;
+        }
+        let mut outputs = BTreeMap::<Uuid, usize>::new();
+        for flow in self.relay_flows(helpers) {
+            *outputs.entry(flow.sender).or_default() += 1;
+        }
+        if self.relay_flows(helpers).any(|flow| {
+            !flow.selected && outputs[&flow.sender] > limits.get(flow.sender, self.plan.source)
+        }) {
+            self.operation = None;
+        }
+    }
+
+    pub fn relay_flows<'a>(
+        &'a self,
+        helpers: &'a BTreeMap<Uuid, Uuid>,
+    ) -> impl Iterator<Item = Flow> + 'a {
+        self.flows().filter(|flow| {
+            flow.input_flow_id.is_some() && helpers.get(&flow.receiver) != Some(&flow.sender)
+        })
     }
 
     pub fn reconcile(
@@ -159,6 +190,7 @@ impl Publication {
         connected: &BTreeSet<Uuid>,
         base: Option<&BaseTree>,
         service: Option<Uuid>,
+        readers: &BTreeMap<Uuid, (usize, bool)>,
         helpers: &BTreeMap<Uuid, Uuid>,
         limits: &RelayLimits,
         now: u64,
@@ -166,6 +198,41 @@ impl Publication {
         self.expire(now);
         self.failed_receivers
             .retain(|receiver| requested.contains(receiver));
+        // A ready base path can already carry the picture through an idle
+        // host before recovery recruits a reader. Opt-out also ends that flow.
+        for (&reader, &(capacity, idle)) in readers {
+            if idle
+                && capacity == 0
+                && reader != self.plan.source
+                && !requested.contains(&reader)
+                && !helpers.values().any(|helper| *helper == reader)
+                && self.plan.parents.contains_key(&reader)
+            {
+                self.plan.detach(reader);
+            }
+        }
+        self.reader_relays.retain(|reader| {
+            if helpers.values().any(|helper| helper == reader) {
+                return false;
+            }
+            let capacity = readers.get(reader).map_or(0, |(capacity, _)| *capacity);
+            let children: Vec<_> = self
+                .plan
+                .parents
+                .iter()
+                .filter_map(|(child, parent)| (parent == reader).then_some(*child))
+                .collect();
+            for child in children.iter().skip(capacity) {
+                self.plan.detach(*child);
+            }
+            if capacity == 0 || children.is_empty() {
+                if !requested.contains(reader) {
+                    self.plan.detach(*reader);
+                }
+                return false;
+            }
+            true
+        });
         let paths = if let Some(base) = base.filter(|_| self.info.kind == Kind::Voice) {
             let paths = base.project(self.plan.source, requested);
             self.plan.parents = paths
@@ -207,6 +274,37 @@ impl Publication {
                         // The service is a required ancestor, not a viewer. Its
                         // pending input keeps the same lease and frontier deadline.
                         self.plan.parents = parents;
+                    }
+                }
+            }
+            if self.info.kind == Kind::Screen && !self.info.paused {
+                for viewer in requested {
+                    if self.plan.parents.contains_key(viewer)
+                        || !self.failed_receivers.contains(viewer)
+                    {
+                        continue;
+                    }
+                    for (&reader, &(capacity, idle)) in readers {
+                        if !idle
+                            || capacity == 0
+                            || reader == self.plan.source
+                            || requested.contains(&reader)
+                            || helpers.values().any(|helper| *helper == reader)
+                        {
+                            continue;
+                        }
+                        if let Some(parents) = self
+                            .plan
+                            .through_relay(*viewer, reader, connected, helpers, limits)
+                        {
+                            if parents.values().filter(|parent| **parent == reader).count()
+                                <= capacity
+                            {
+                                self.plan.parents = parents;
+                                self.reader_relays.insert(reader);
+                                break;
+                            }
+                        }
                     }
                 }
             }

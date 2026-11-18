@@ -40,7 +40,7 @@ function RelayLimit({ value, min, label, caption = label, note, disabled, onChan
   value: number; min: number; label: string; caption?: string; note: string; disabled: boolean; onChange(value: number): void;
 }) {
   const { t } = useCopy();
-  return <NumberControl value={value} min={min} max={MAX_RELAY_CAPACITY} step={1} unit={t(value === 1 ? "playback.relayPerson" : "playback.relayPeople")}
+  return <NumberControl value={value} min={min} max={MAX_RELAY_CAPACITY} step={1} unit={t(value === 1 ? "room.relay.route" : "room.relay.routes")}
     name="relay-capacity" label={label} disabled={disabled} onChange={onChange} className="lr-door-group c3-relay-limit">
     {input => <><div className="lr-quality-heading"><span className="lr-door-glyph"><Glyph name="branch" size={18} />
       <span>{caption}</span></span>{input}</div>
@@ -53,16 +53,18 @@ function EndpointRelay({ title, capacity, override, busy, disabled, host, change
   change(value: number | null): void;
 }) {
   const { t } = useCopy();
-  const following = override === null || host && override === 0;
+  const following = override === null;
   const label = t("room.relay.endpointLimit", { endpoint: title });
   const note = t(host ? "room.relay.endpointHostNote" : "room.relay.endpointNote");
   return <section className="c3-room-relay" aria-label={title} aria-busy={busy}>
     <h4 className="c3-relay-endpoint-title">{title}</h4>
-    <SwitchItem checked={following} disabled={disabled || busy} hint="hint-relay-volunteer"
+    <SwitchItem checked={override !== 0} disabled={disabled || busy} hint="hint-relay-volunteer"
+      label={t("room.relay.assist")} onChange={allow => change(allow ? null : 0)} />
+    <SwitchItem checked={following} disabled={disabled || busy || override === 0} hint="hint-relay-volunteer"
       label={t("room.relay.followDefault")}
       onChange={follow => change(follow ? null : capacity)} />
-    <RelayLimit value={following ? capacity : override!} min={host ? 1 : 0} label={label} caption={t("room.relay.limit")} note={note}
-      disabled={disabled || busy || following} onChange={change} />
+    <RelayLimit value={following ? capacity : override!} min={0} label={label} caption={t("room.relay.limit")} note={note}
+      disabled={disabled || busy || following || override === 0} onChange={change} />
   </section>;
 }
 

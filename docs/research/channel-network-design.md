@@ -362,6 +362,20 @@ nor creates a separate frame queue. Unsupported receivers retain automatic behav
 the [fidelity assessment](./media-fidelity.md#playback-buffering) owns the measured
 smoothness/delay tradeoff and its limits.
 
+### Idle Room Peers for Screen Recovery
+
+A failed screen subscription can use an authorized peer browsing the same
+room, even when that peer is only reading chat. Connection settings explain
+the upload cost. Assistance is on by default and can be switched off. Peers
+present only in the lobby or another room may assist discovery and connection
+setup through the site's existing signaling permissions.
+
+Each endpoint's room limit counts outgoing deliveries on behalf of others
+across screen publications, including deliveries being prepared. Zero disables
+that assistance. Each viewer has one selected input per publication. A
+replacement may receive frames within the same forwarding budget to prove it
+can take over before the old input is released.
+
 ### App-Assisted Viewing
 
 A Browser may attach its currently approved App's live endpoint to its own
