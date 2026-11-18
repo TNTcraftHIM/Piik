@@ -22,7 +22,8 @@ use uuid::Uuid;
 use webview2_com::{
     Microsoft::Web::WebView2::Win32::{
         ICoreWebView2Deferral, ICoreWebView2Environment, ICoreWebView2NewWindowRequestedEventArgs,
-        ICoreWebView2_2, COREWEBVIEW2_PERMISSION_STATE_DENY,
+        ICoreWebView2PermissionRequestedEventArgs3, ICoreWebView2_2,
+        COREWEBVIEW2_PERMISSION_STATE_DENY,
     },
     NewWindowRequestedEventHandler, PermissionRequestedEventHandler,
     WindowCloseRequestedEventHandler,
@@ -917,6 +918,8 @@ fn website_permissions(view: &WebView) -> Result<()> {
             &PermissionRequestedEventHandler::create(Box::new(|_, args| {
                 if let Some(args) = args {
                     args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY)?;
+                    args.cast::<ICoreWebView2PermissionRequestedEventArgs3>()?
+                        .SetSavesInProfile(false)?;
                 }
                 Ok(())
             })),
