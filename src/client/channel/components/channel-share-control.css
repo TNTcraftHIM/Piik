@@ -12,11 +12,12 @@
 .c3-external-input > .lr-btn { justify-self: start; }
 .lr-anchored-card.c3-quality-picker {
   width: min(640px, calc(100vw - 16px)); max-height: calc(100dvh - 16px);
-  padding: 0;
+  padding: 0; overflow: hidden;
 }
+.c3-quality-picker:popover-open { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.c3-quality-body { overflow: auto; overscroll-behavior: contain; }
 .c3-quality-picker .lr-sharing-panel { margin: 0; border: 0; border-radius: inherit; box-shadow: none; animation: none; }
 .c3-quality-picker > .c3-quality-heading {
-  position: sticky; top: 0; z-index: 1;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 12px 18px; background: var(--paper); border-bottom: 1px solid var(--line);
 }

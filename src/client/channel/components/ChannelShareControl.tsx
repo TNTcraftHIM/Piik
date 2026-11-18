@@ -129,7 +129,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     : label;
   // The inner grid scrolls independently, so its clipped outer scrollHeight cannot size placement.
   useAnchoredPopover(trigger, panel, { maxHeight: 560, preferredHeight: 560, minVisibleHeight: 360 });
-  useAnchoredPopover(settingsTrigger, settingsPanel, { maxHeight: 640, minVisibleHeight: 240 });
+  useAnchoredPopover(settingsTrigger, settingsPanel, { maxHeight: 640, preferredHeight: 640, minVisibleHeight: 240 });
   const close = useCallback(() => { panel.current?.hidePopover(); settingsPanel.current?.hidePopover(); }, []);
   const refresh = useCallback(() => {
     const current = request.current = {};
@@ -189,6 +189,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
       <header className="c3-quality-heading"><h3>{watching ? t("watch.forward.title") : settingsLabel}</h3>
         <ChannelAction icon="x" iconOnly quiet textTooltip label={t("room.action.close")}
           onClick={() => settingsPanel.current?.hidePopover()} /></header>
+      <div className="c3-quality-body">
       {watching ? settingsOpen && <WatchForwardSettings channel={channel} activityId={watching.id} disabled={disabled} /> : <>
       <p className="c3-quality-description">{sharing ? t("screen.shareSettingsHelp", { room: roomName ?? t("screen.currentRoom") })
         : t("screen.shareSettingsNext")}</p>
@@ -236,6 +237,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
             if (sharing) void channel.setSourceAudio(sharing.id, { bitrate }).catch(() => {});
             else setQuality({ ...quality, maxAudioBitrate: bitrate });
           }} /></>} />}</>}
+      </div>
     </div>
     <div ref={panel} id={id} popover="auto" className="lr-anchored-card c3-share-picker"
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
