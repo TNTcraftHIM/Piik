@@ -22,8 +22,10 @@ Three loopback Chromium sessions kept B’s screen playing through A while
 B and C established an additional connection. After A left, the original
 subscription resumed on that same pair when both ends had confirmed it.
 With negotiation delayed until A left, the subscription resumed on a new
-pair. These checks establish connection reuse and recovery. WAN reachability,
-mobile power cost and typical recovery time require independent networks.
+pair. [Conditioned join and relay-departure trials](./research/network-lab.md#joining-and-relay-departure-under-measured-loss)
+also recorded receiver RTP loss while the original publication remained available.
+WAN reachability, mobile power cost and typical recovery time require independent
+networks and devices.
 
 The capacity scenario exercises the real Core with two rooms of 20 users, each
 using Browser and App endpoints, plus the Server endpoint. It includes screen,

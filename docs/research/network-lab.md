@@ -212,6 +212,30 @@ media and clean teardown. Exact source closures and failed controls remain in th
 [Native evidence index](../../prototype/channel-native/README.md#rtc-dependency).
 The older Go runners below require their matching snapshot.
 
+### Joining and relay departure under measured loss
+
+Protocol 31 review build `cfbffb86477c` ran two matched loopback comparisons
+using separate Chromium processes and a synthetic moving screen. Each scenario
+had one control and one conditioned run. The test registered the browser's P2P
+network rule before opening peer sockets, then requested 12% loss and varied
+latency between 40 and 95 ms during a 3.6-second window. Receiver RTP counters
+confirmed that the condition reached the selected media stream.
+
+| Observation | Control | Conditioned |
+| --- | ---: | ---: |
+| Two viewers join. First visible frame from subscription, direct viewer | 1.91 s | 2.44 s |
+| First visible frame from subscription, viewer reached through the incumbent | 2.46 s | 3.72 s |
+| Incumbent rendered frames during the join window | 61 → 97 | 39 → 76 |
+| Incumbent RTP loss increase / peak sampled jitter | 0 / 7 ms | 2 / 50 ms |
+| Relay departs. Last rendered relay sample to sustained direct playback | 951 ms | 952 ms |
+
+In the join trial the incumbent kept its original direct pair. In the departure
+trial both ends kept the same preverified direct pair and the viewer subscribed
+once. Its conditioned loss counter rose by three packets on the retiring stream
+and two on the new stream. These samples establish delivery under the measured
+conditions. Choosing production thresholds requires repeated trials on independent
+networks. [Chromium P2P network interceptor](https://chromium.googlesource.com/chromium/src/+/main/services/network/throttling/throttling_p2p_network_interceptor.cc)
+
 ### Playable Route Improvement
 
 On 2026-11-14, a controlled trial reused the `64e6281e` screen-routing
