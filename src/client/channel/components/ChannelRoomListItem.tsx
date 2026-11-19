@@ -5,7 +5,7 @@ import type { ChannelController } from "../types";
 import type { ChannelRoom } from "../protocol";
 import { ChannelRoomItem } from "./ChannelRoomItem";
 import { ChannelRoomParticipants } from "./ChannelRoomParticipants";
-import { roomActivityPeople } from "../presentation";
+import { roomActivityPeople, roomSessionViewing } from "../presentation";
 
 /** Folding the participant roster changes presentation, never room activities. */
 export function ChannelRoomListItem({ channel, room, selected, settingsOpen, onSelect, onManage, ordering }: {
@@ -42,8 +42,7 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, onS
         participantDisclosure={people.length ? { open, count: people.length, controls: id, onToggle: () => setOpen(!open) } : undefined}
         voice={voices.some(voice => voice.sessionId === channel.sessionId)} sourceCount={screens.length + watches.length}
         sharing={screens.some(source => channel.ownedScreens.has(source.id)) || watches.some(source => source.sessionId === channel.sessionId)}
-        watching={screens.some(source => state?.subscriptions.includes(source.id) && !channel.ownedScreens.has(source.id))
-          || watches.some(source => state?.watchSubscriptions.some(value => value.id === source.id) && source.sessionId !== channel.sessionId)}
+        viewing={state && room.authorized && room.available ? roomSessionViewing(screens, watches, state.subscriptions, channel) : undefined}
         onSelect={onSelect} onManage={onManage} />
     <div id={id} hidden={!open}>{open && people.length > 0 && <ChannelRoomParticipants channel={channel} room={room} people={people} />}</div>
   </div>;

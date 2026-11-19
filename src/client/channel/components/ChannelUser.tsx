@@ -7,14 +7,13 @@ import { joinSentences, useCopy, type Copy } from "../../ui/copy";
 import { ChannelImageDialog } from "./ChannelImageDialog";
 import { Tooltip } from "../../components/living/Tooltip";
 import { Glyph, type GlyphName } from "../../ui/icons";
-import { participantViewingLabel, type ParticipantActivity, type ParticipantViewing } from "../presentation";
+import { participantViewingLabel, viewingAppearance, type ParticipantActivity, type ParticipantViewing } from "../presentation";
 import type { ChannelController } from "../types";
 import "./channel-activity-indicators.css";
 
 type PersonActivity = Partial<ParticipantActivity> & { voice?: PawnVoice };
 type VoicePlaybackControls = Pick<ChannelController, "voicePlaybackByUser" | "setVoiceVolume" | "setVoiceMuted">;
 
-const viewingIcons: Record<ParticipantViewing, GlyphName> = { joined: "clapperboard", preparing: "loader", active: "eye", failed: "alert" };
 const fileBadges = {
   sending: { icon: "fileUp", label: "channel.roomParticipants.sendingFiles" },
   receiving: { icon: "fileDown", label: "channel.roomParticipants.receivingFiles" },
@@ -42,7 +41,7 @@ export function ChannelActivityIndicators({ voice, sharing, viewing, sendingFile
     {voice && <ActivityBadge icon={voice.deafened ? "headphonesOff" : voice.microphone ? "microphone" : "microphoneOff"}
       label={personVoiceLabel(voice, copy)} />}
     {sharing && <ActivityBadge icon="cast" label={t("channel.roomParticipants.sharing")} />}
-    {viewing && <ActivityBadge icon={viewingIcons[viewing]} label={participantViewingLabel(viewing, t)} viewing={viewing} />}
+    {viewing && <ActivityBadge icon={viewingAppearance[viewing].icon} label={participantViewingLabel(viewing, t)} viewing={viewing} />}
     {file && <ActivityBadge icon={file.icon} label={t(file.label)} />}
   </span>;
 }

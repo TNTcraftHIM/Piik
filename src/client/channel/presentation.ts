@@ -1,4 +1,5 @@
-import type { Copy } from "../ui/copy";
+import type { Copy, CopyKey } from "../ui/copy";
+import type { GlyphName } from "../ui/icons";
 import type { ChannelMessage, ChannelPublication, ChannelSnapshot, ChannelUser, WatchActivity } from "./protocol";
 import type { WatchPlayer } from "./watch-playback";
 
@@ -46,10 +47,45 @@ interface LocalWatchPresentation {
   sessionId: string | null;
   watchPlayers: ReadonlyMap<string, Pick<WatchPlayer, "waitingForPicture" | "hasPresentedFrame" | "error">>;
 }
-const viewingRank = { joined: 0, failed: 1, preparing: 2, active: 3 };
+export const viewingAppearance = {
+  joined: { icon: "clapperboard", label: "watch.joined", rank: 0 },
+  failed: { icon: "alert", label: "screen.pictureFailed", rank: 1 },
+  preparing: { icon: "loader", label: "screen.connectingPicture", rank: 2 },
+  active: { icon: "eye", label: "screen.pictureReceived", rank: 3 },
+} as const satisfies Record<ParticipantViewing, { icon: GlyphName; label: CopyKey; rank: number }>;
 
 export function participantViewingLabel(state: ParticipantViewing, t: Copy["t"]): string {
-  return t(({ joined: "watch.joined", preparing: "screen.connectingPicture", active: "screen.pictureReceived", failed: "screen.pictureFailed" } as const)[state]);
+  return t(viewingAppearance[state].label);
+}
+
+function watchViewerState(watch: WatchActivity, sessionId: string, local?: LocalWatchPresentation): ParticipantViewing {
+  const player = sessionId === local?.sessionId ? local.watchPlayers.get(watch.id) : undefined;
+  if (player?.error) return "failed";
+  if (player?.hasPresentedFrame) return "active";
+  return player?.waitingForPicture ? "preparing" : "joined";
+}
+
+function takesViewingPriority(next: ParticipantViewing, current?: ParticipantViewing): boolean {
+  return current === undefined || viewingAppearance[next].rank > viewingAppearance[current].rank;
+}
+
+/** The navigation row describes this endpoint. A person's row can combine several endpoints. */
+export function roomSessionViewing(screens: readonly ChannelPublication[], watches: readonly WatchActivity[],
+  subscriptions: readonly string[], local: LocalWatchPresentation): ParticipantViewing | undefined {
+  const { sessionId } = local;
+  if (!sessionId) return;
+  let result: ParticipantViewing | undefined;
+  for (const screen of screens) {
+    if (!subscriptions.includes(screen.id)) continue;
+    const viewer = screen.audience.find(entry => entry.sessionId === sessionId);
+    if (viewer && takesViewingPriority(viewer.state, result)) result = viewer.state;
+  }
+  for (const watch of watches) {
+    if (watch.sessionId === sessionId || !watch.viewerSessionIds.includes(sessionId)) continue;
+    const status = watchViewerState(watch, sessionId, local);
+    if (takesViewingPriority(status, result)) result = status;
+  }
+  return result;
 }
 
 type VoiceAppearance = { microphone: boolean; deafened: boolean; level?: number };
@@ -74,7 +110,7 @@ function roomActivities(state: ChannelSnapshot, roomId: string, local?: LocalWat
   }
   function view(sessionId: string, status: ParticipantViewing) {
     const row = endpoint(sessionId);
-    if (row && (!row.viewing || viewingRank[status] > viewingRank[row.viewing])) row.viewing = status;
+    if (row && takesViewingPriority(status, row.viewing)) row.viewing = status;
   }
   for (const publication of state.publications) {
     if (publication.roomId !== roomId || publication.kind !== "screen") continue;
@@ -84,10 +120,7 @@ function roomActivities(state: ChannelSnapshot, roomId: string, local?: LocalWat
   for (const watch of state.watchActivities) {
     if (watch.roomId !== roomId) continue;
     person(watch.userId).sharing = true;
-    for (const id of watch.viewerSessionIds) {
-      const player = local?.sessionId === id ? local.watchPlayers.get(watch.id) : undefined;
-      view(id, player?.error ? "failed" : player?.hasPresentedFrame ? "active" : player?.waitingForPicture ? "preparing" : "joined");
-    }
+    for (const id of watch.viewerSessionIds) view(id, watchViewerState(watch, id, local));
   }
   for (const file of state.channel.rooms.find(room => room.id === roomId)?.fileActivity ?? []) {
     if (!file.sending && !file.receiving) continue;
@@ -125,7 +158,7 @@ export function screenAudience(state: ChannelSnapshot, publication: ChannelPubli
     if (!user || user.id === publication.userId) continue;
     // Signaling can disconnect while an established media watch continues.
     const previous = people.get(user.id);
-    if (!previous || viewingRank[entry.state] > viewingRank[previous.state]) people.set(user.id, { userId: user.id, name: user.name, avatar: user.avatar ?? undefined, state: entry.state });
+    if (takesViewingPriority(entry.state, previous?.state)) people.set(user.id, { userId: user.id, name: user.name, avatar: user.avatar ?? undefined, state: entry.state });
   }
   return [...people.values()];
 }

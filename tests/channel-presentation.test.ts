@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ChannelRoomListItem } from "../src/client/channel/components/ChannelRoomListItem";
 import { ChannelPeople } from "../src/client/channel/components/ChannelPeople";
 import type { ChannelController } from "../src/client/channel/types";
-import { firstUnreadMessageId, roomActivityPeople, roomPeople, screenTitle, watchAudience } from "../src/client/channel/presentation";
+import { firstUnreadMessageId, roomActivityPeople, roomPeople, roomSessionViewing, screenTitle, watchAudience } from "../src/client/channel/presentation";
 import { snapshotSchema, watchActivitySchema } from "../src/client/channel/protocol";
 import { say, t, type CopyKey } from "../src/client/ui/copy";
 
@@ -43,19 +43,24 @@ it("projects joined watch people independently of transport and deduplicates the
   const player = new WatchPlayer("room", false, media, () => {});
   const local = { sessionId: "viewer-web", watchPlayers: new Map([["watch", player]]) };
   const viewing = (userId: string) => roomActivityPeople(state, "room", undefined, local).find(person => person.id === userId)?.viewing;
+  const localViewing = () => roomSessionViewing([], state.watchActivities, [], local);
   try {
     expect(viewing("viewer")).toBe("preparing"); // Metadata is not a composited frame.
+    expect(localViewing()).toBe("preparing");
     player.presentFrame();
     expect(viewing("viewer")).toBe("active");
+    expect(localViewing()).toBe("active");
     observedVideo.readyState = 1; // A retained paused/offscreen player's first frame still belongs to this lease.
     expect(viewing("viewer")).toBe("active");
     observedVideo.readyState = 4;
     expect(viewing("direct")).toBe("joined");
     state.watchActivities[0].viewerSessionIds = ["viewer-app"];
     expect(viewing("viewer")).toBe("joined"); // Same identity, different endpoint.
+    expect(localViewing()).toBeUndefined();
     state.watchActivities[0].viewerSessionIds = ["viewer-web"];
     player.error = "watch_media_failed";
     expect(viewing("viewer")).toBe("failed");
+    expect(localViewing()).toBe("failed");
   } finally { player.close(); }
 
 });
@@ -126,9 +131,26 @@ it("shows each person's room activity across endpoints and keeps chat presence i
   const room = state.channel.rooms[0];
   const streams = new Map<string, MediaStream>();
   const channel = { state, profiles: new Map(), streams, voicePlaybackByUser: new Map(), sessionId: "self-page", self: state.users[0],
-    ownedScreens: new Set(), readByRoom: {}, watchPlayers: new Map() } as unknown as ChannelController;
+    ownedScreens: new Set(), readByRoom: { room: 0 }, watchPlayers: new Map() } as unknown as ChannelController;
   const render = () => renderToStaticMarkup(createElement(ChannelRoomListItem, { channel, room, selected: true, settingsOpen: false, onSelect() {}, onManage() {} }));
   const renderPeople = () => renderToStaticMarkup(createElement(ChannelPeople, { channel, roomId: "room", active: true, onBack() {} }));
+  const navigationDescriptions = () => {
+    const html = render();
+    const ids = html.match(/<button[^>]*aria-label="Room"[^>]*aria-describedby="([^"]+)"/)?.[1];
+    return (ids?.split(/\s+/) ?? []).map(id => html.match(new RegExp('id="' + id + '"[^>]*>([^<]+)<'))?.[1]);
+  };
+  expect(navigationDescriptions()).toEqual([]);
+  state.subscriptions.push("screen");
+  picture.audience.push({ sessionId: "self-helper", state: "active" });
+  room.lastMessageSeq = 1;
+  for (const [status, label] of [["preparing", "screen.connectingPicture"], ["active", "screen.pictureReceived"], ["failed", "screen.pictureFailed"]] as const) {
+    picture.audience[0].state = status;
+    expect(navigationDescriptions()).toEqual([say("room.item.unread"), say(label)]);
+  }
+  room.lastMessageSeq = 0;
+  picture.audience.pop();
+  state.subscriptions.pop();
+  picture.audience[0].state = "active";
   state.sessions.find(session => session.id === "self-helper")!.online = false;
   state.sessions.find(session => session.id === "route-peer")!.online = false;
   expect(render()).toContain('class="c3-user" data-user-id="self"');
