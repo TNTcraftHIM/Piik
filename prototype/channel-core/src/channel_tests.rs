@@ -425,8 +425,8 @@ fn text_limits_match_browser_utf16_and_room_history() {
         .handle(
             owner.session_id,
             Command::SetProfile {
-                avatar: None,
-                name: "\u{1f600}".repeat(21)
+                avatar: Some(None),
+                name: Some("\u{1f600}".repeat(21))
             },
             0
         )
@@ -435,7 +435,7 @@ fn text_limits_match_browser_utf16_and_room_history() {
         .handle(
             owner.session_id,
             Command::UpdateDomain {
-                name: "\u{1f600}".repeat(33),
+                name: Some("\u{1f600}".repeat(33)),
                 icon: Default::default(),
             },
             0
@@ -445,7 +445,7 @@ fn text_limits_match_browser_utf16_and_room_history() {
         .handle(
             owner.session_id,
             Command::UpdateDomain {
-                name: "   ".into(),
+                name: Some("   ".into()),
                 icon: Default::default(),
             },
             0
@@ -455,7 +455,7 @@ fn text_limits_match_browser_utf16_and_room_history() {
         .handle(
             owner.session_id,
             Command::UpdateDomain {
-                name: format!(" {} ", "\u{1f600}".repeat(32)),
+                name: Some(format!(" {} ", "\u{1f600}".repeat(32))),
                 icon: Default::default(),
             },
             0,
@@ -491,6 +491,50 @@ fn text_limits_match_browser_utf16_and_room_history() {
         vec![],
         None,
         0
+    )
+    .is_err());
+}
+
+#[test]
+fn consecutive_profile_and_domain_patches_merge_before_projection() {
+    let mut channel = Channel::new("owner".into(), vec![]);
+    let owner = channel
+        .join(
+            Admission {
+                can_prepare_udp: false,
+                can_receive_video_layers: false,
+                name: "Owner",
+                credential: None,
+                owner_key: Some("owner"),
+                resume: None,
+                signing_key: crate::conversation::SessionSigner::from_seed([1; 32]).signing_key(),
+            },
+            Uuid::new_v4(),
+            0,
+        )
+        .unwrap();
+
+    let image = "data:image/png;base64,iVBORw0KGgo=";
+    let session = owner.session_id;
+    let user_id = channel.identity.owner_id;
+    let mut apply = |value| channel.handle(session, serde_json::from_value(value).unwrap(), 0);
+    apply(serde_json::json!({"type":"set_profile","avatar":image})).unwrap();
+    apply(serde_json::json!({"type":"set_profile","name":"Renamed"})).unwrap();
+    apply(serde_json::json!({"type":"update_domain","icon":"star"})).unwrap();
+    apply(serde_json::json!({"type":"update_domain","name":"New site"})).unwrap();
+    let user = &channel.identity.users[&user_id];
+    assert_eq!(user.name, "Renamed");
+    assert_eq!(user.avatar.as_deref(), Some(image));
+    let domain = channel.snapshot(session).channel;
+    assert_eq!(domain.name, "New site");
+    assert_eq!(serde_json::to_value(domain.icon).unwrap(), "star");
+    let clear =
+        serde_json::from_value(serde_json::json!({"type":"set_profile","avatar":null})).unwrap();
+    channel.handle(session, clear, 0).unwrap();
+    assert_eq!(channel.identity.users[&user_id].avatar, None);
+    assert_eq!(channel.identity.users[&user_id].name, "Renamed");
+    assert!(serde_json::from_value::<Command>(
+        serde_json::json!({"type":"set_profile","avatar":"bad"})
     )
     .is_err());
 }

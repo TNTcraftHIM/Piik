@@ -11,12 +11,14 @@ import "./channel-profile-editor.css";
 
 export function ChannelProfileEditor({ name, avatar, color, disabled, busy, onSave }: {
   name: string; avatar: string | null; color: string; disabled: boolean; busy: boolean;
-  onSave(profile: { name: string; avatar: string | null }): Promise<void>;
+  onSave(profile: { name?: string; avatar?: string | null }): Promise<void>;
 }) {
   const { t } = useCopy();
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
-  const [open, setOpen] = useState(false), [draft, setDraft] = useState(name), [picture, setPicture] = useState(avatar);
+  const [open, setOpen] = useState(false), [nameDraft, setDraft] = useState<string>(), [pictureDraft, setPicture] = useState<string | null>();
+  const draft = nameDraft ?? name;
+  const picture = pictureDraft === undefined ? avatar : pictureDraft;
   const [preparing, setPreparing] = useState(false);
   const { error, run } = useSettingsAction(open);
   useAnchoredPopover(trigger, panel, { side: "above" });
@@ -36,14 +38,15 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, busy, onSa
         if (event.target !== event.currentTarget) return;
         const opened = event.newState === "open";
         setOpen(opened);
-        if (opened) { setDraft(name); setPicture(avatar); input.current?.focus({ preventScroll: true }); }
+        if (opened) { setDraft(undefined); setPicture(undefined); input.current?.focus({ preventScroll: true }); }
         else setPreparing(false);
       }}>
       <h2>{t("channel.profileEditor.editProfile")}</h2>
       <form onSubmit={event => {
         event.preventDefault();
         if (!draft.trim() || locked) return;
-        void run(() => onSave({ name: draft.trim(), avatar: picture }), close);
+        if (nameDraft === undefined && pictureDraft === undefined) { close(); return; }
+        void run(() => onSave({ name: nameDraft?.trim(), avatar: pictureDraft }), close);
       }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>
         <div className="c3-profile-picture"><PawnSvg color={color} avatar={picture ?? undefined} />
           {open && <ChannelIdentityImageInput value={picture} onChange={setPicture} disabled={disabled || busy}

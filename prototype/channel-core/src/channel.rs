@@ -122,21 +122,23 @@ impl Channel {
         match command {
             Command::Join { .. } => return Err("already_joined"),
             Command::SetProfile { name, avatar } => {
-                let name = name.trim();
-                if name.is_empty() || name.encode_utf16().count() > 40 {
-                    return Err("invalid_name");
-                }
-                let user = self.identity.users.get_mut(&user_id).unwrap();
-                user.set_profile(name.to_owned(), avatar);
+                self.identity
+                    .users
+                    .get_mut(&user_id)
+                    .unwrap()
+                    .set_profile(name, avatar)?;
                 broadcast = true;
             }
             Command::UpdateDomain { name, icon } => {
                 if user_id != self.identity.owner_id {
                     return Err("forbidden");
                 }
-                let name = title(&name).ok_or("invalid_domain_name")?;
-                self.name = name;
-                self.icon = icon;
+                if let Some(name) = name {
+                    self.name = title(&name).ok_or("invalid_domain_name")?;
+                }
+                if let Some(icon) = icon {
+                    self.icon = icon;
+                }
                 broadcast = true;
             }
             Command::SetRoomCreationPolicy { policy } => {
@@ -1024,8 +1026,8 @@ impl Channel {
                 .ok_or("room_unavailable")?
                 .summary
                 .clone();
-            proposed.access = *access;
-            proposed.hidden = *hidden;
+            proposed.access = access.unwrap_or(proposed.access);
+            proposed.hidden = hidden.unwrap_or(proposed.hidden);
             if let Some(password) = password {
                 proposed.has_password = password.is_some();
             }

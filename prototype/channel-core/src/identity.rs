@@ -37,10 +37,23 @@ impl User {
             version: self.version.clone(),
         }
     }
-    pub fn set_profile(&mut self, name: String, avatar: Option<String>) {
-        self.version = profile_version(&name, &avatar);
-        self.name = name;
-        self.avatar = avatar;
+    pub fn set_profile(
+        &mut self,
+        name: Option<String>,
+        avatar: Option<Option<String>>,
+    ) -> Result<(), &'static str> {
+        if let Some(name) = name {
+            let name = name.trim();
+            if name.is_empty() || name.encode_utf16().count() > 40 {
+                return Err("invalid_name");
+            }
+            self.name = name.to_owned();
+        }
+        if let Some(avatar) = avatar {
+            self.avatar = avatar;
+        }
+        self.version = profile_version(&self.name, &self.avatar);
+        Ok(())
     }
 }
 

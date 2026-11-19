@@ -367,7 +367,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     inputShortcut: async () => { throw new Error("No input device in this preview"); },
     screenPresentation: () => {}, reconnect: sample.received, clearError: sample.received,
     setVoiceMuted: () => sample.received(), setVoiceVolume: () => sample.received(),
-    updateProfile: sample.channel.updateProfile, updateDomain: async () => sample.received(),
+    updateProfile: sample.channel.updateProfile, updateDomain: sample.channel.updateDomain,
     setRoomCreationPolicy: async policy => setRoomCreationPolicy(policy),
     deleteRoom: async (roomId, deleteData) => {
       setRemovedRooms(previous => new Set(previous).add(roomId));

@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 34;
+pub const CHANNEL_PROTOCOL: u8 = 35;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -29,9 +29,14 @@ pub enum Command {
         can_receive_video_layers: bool,
     },
     SetProfile {
-        name: String,
-        #[serde(deserialize_with = "avatar")]
-        avatar: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(
+            default,
+            deserialize_with = "picture_patch",
+            skip_serializing_if = "Option::is_none"
+        )]
+        avatar: Option<Option<String>>,
     },
     Profiles {
         ids: Option<Vec<Uuid>>,
@@ -39,8 +44,10 @@ pub enum Command {
         query: Option<String>,
     },
     UpdateDomain {
-        name: String,
-        icon: IdentityIcon,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        icon: Option<IdentityIcon>,
     },
     SetRoomCreationPolicy {
         policy: RoomCreationPolicy,
@@ -115,16 +122,20 @@ pub enum Command {
     },
     UpdateRoom {
         room_id: String,
-        name: String,
-        icon: RoomIcon,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<RoomIcon>,
         #[serde(
             default,
             deserialize_with = "picture_patch",
             skip_serializing_if = "Option::is_none"
         )]
         picture: Option<Option<String>>,
-        access: RoomAccess,
-        hidden: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        access: Option<RoomAccess>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        hidden: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         voice_bitrate: Option<u32>,
         #[serde(default, skip_serializing_if = "Option::is_none")]

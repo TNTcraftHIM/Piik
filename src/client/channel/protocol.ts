@@ -14,7 +14,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
 export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 34;
+export const CHANNEL_PROTOCOL = 35;
 export const CHANNEL_SESSION_LIMIT = 128;
 export const CHANNEL_ROOM_LIMIT = 64;
 export const roomCreationPolicySchema = z.enum(["ordinary", "invite_only", "owner_only"]);
@@ -273,8 +273,8 @@ export type ChannelCommand =
   | { type: "stop_watch"; roomId: string; id: string }
   | { type: "join"; protocol: typeof CHANNEL_PROTOCOL; name: string; signingKey: number[]; credential?: string; ownerKey?: string; sessionId?: string }
   | { type: "conversation"; packet: SignedConversationPacket }
-  | { type: "set_profile"; name: string; avatar: string | null }
-  | ({ type: "update_domain" } & DomainSettings)
+  | { type: "set_profile"; name?: string; avatar?: string | null }
+  | ({ type: "update_domain" } & Partial<DomainSettings>)
   | { type: "set_room_creation_policy"; policy: RoomCreationPolicy }
   | { type: "profiles"; ids?: string[]; after?: string; query?: string }
   | { type: "input_register"; publicationId: string; flowId: string; secret: number[] }
@@ -297,7 +297,7 @@ export type ChannelCommand =
   | ({ type: "file_receive"; enabled: boolean } & ChannelFileKey)
   | ({ type: "file_branch_refused"; downstreamId: string; sourceId: string } & ChannelFileKey)
   | { type: "forwarding_available"; roomId: string; kind?: "voice" | "file" | "screen" }
-  | ({ type: "update_room"; roomId: string } & RoomSettings)
+  | ({ type: "update_room"; roomId: string } & Partial<RoomSettings>)
   | { type: "enter_room"; roomId: string; password?: string; inviteKey?: string }
   | { type: "room_invite"; roomId: string }
   | { type: "get_room_invite"; roomId: string }

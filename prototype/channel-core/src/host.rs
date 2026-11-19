@@ -414,15 +414,15 @@ impl RoomRuntime {
                     return Err("invalid_relay_capacity");
                 }
                 let appearance = crate::RoomAppearance {
-                    icon,
+                    icon: icon.unwrap_or_else(|| self.policy().appearance.icon.clone()),
                     picture: picture.unwrap_or_else(|| self.policy().appearance.picture.clone()),
                 };
                 self.update(
                     member,
-                    name,
+                    name.unwrap_or_else(|| self.policy().name.clone()),
                     appearance,
-                    access,
-                    hidden,
+                    access.unwrap_or(self.policy().access),
+                    hidden.unwrap_or(self.policy().hidden),
                     password,
                     voice_bitrate,
                 )?;

@@ -253,11 +253,11 @@ impl CoreBurst {
         self.command(
             Command::UpdateRoom {
                 room_id: self.room_ids[index].clone(),
-                name: name.into(),
-                icon: Default::default(),
+                name: Some(name.to_owned()),
+                icon: None,
                 picture: None,
-                access: RoomAccess::Public,
-                hidden: false,
+                access: None,
+                hidden: None,
                 voice_bitrate: None,
                 relay_capacity: None,
                 allow_service_relay: None,

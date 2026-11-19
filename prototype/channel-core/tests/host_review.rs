@@ -106,11 +106,11 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
                 context: context(reader),
                 command: Command::UpdateRoom {
                     room_id: "review".into(),
-                    name: "Updated".into(),
+                    name: Some("Updated".into()),
                     icon: Default::default(),
                     picture: None,
-                    access: RoomAccess::Public,
-                    hidden: false,
+                    access: None,
+                    hidden: None,
                     password: None,
                     voice_bitrate: None,
                     relay_capacity: None,
@@ -457,8 +457,8 @@ fn room_host_cannot_complete_an_unissued_other_room_request() {
             piik_channel_core::wire::Request {
                 request_id: None,
                 command: Command::SetProfile {
-                    avatar: None,
-                    name: "B".into(),
+                    avatar: Some(None),
+                    name: Some("B".into()),
                 },
             },
             0,
@@ -526,8 +526,8 @@ fn room_entry_waits_for_commit_without_blocking_site_identity() {
             Request {
                 request_id: None,
                 command: Command::SetProfile {
-                    avatar: None,
-                    name: "B".into(),
+                    avatar: Some(None),
+                    name: Some("B".into()),
                 },
             },
             0,
@@ -588,8 +588,8 @@ fn room_entry_waits_for_commit_without_blocking_site_identity() {
         Request {
             request_id: Some("rename".into()),
             command: Command::SetProfile {
-                avatar: None,
-                name: "Still connected".into(),
+                avatar: Some(None),
+                name: Some("Still connected".into()),
             },
         },
         2,
@@ -632,8 +632,8 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
             Request {
                 request_id: None,
                 command: Command::SetProfile {
-                    avatar: None,
-                    name: "B".into(),
+                    avatar: Some(None),
+                    name: Some("B".into()),
                 },
             },
             0,
@@ -747,8 +747,8 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
         Request {
             request_id: Some("rename".into()),
             command: Command::SetProfile {
-                avatar: None,
-                name: "C".into(),
+                avatar: Some(None),
+                name: Some("C".into()),
             },
         },
         2,
@@ -816,8 +816,8 @@ fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
                 Request {
                     request_id: None,
                     command: Command::SetProfile {
-                        avatar: None,
-                        name: "Source".into(),
+                        avatar: Some(None),
+                        name: Some("Source".into()),
                     },
                 },
                 0,
@@ -1018,8 +1018,8 @@ fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
                             Request {
                                 request_id: None,
                                 command: Command::SetProfile {
-                                    avatar: None,
-                                    name: "Source".into(),
+                                    avatar: Some(None),
+                                    name: Some("Source".into()),
                                 },
                             },
                             2,
@@ -1111,8 +1111,8 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
             Request {
                 request_id: None,
                 command: Command::SetProfile {
-                    avatar: None,
-                    name: "Review".into(),
+                    avatar: Some(None),
+                    name: Some("Review".into()),
                 },
             },
             1,

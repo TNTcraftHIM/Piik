@@ -1407,11 +1407,11 @@ export class ChannelSession {
     if (reading && !pending) reading.history = loading;
     return loading;
   }
-  updateProfile = ({ name, avatar }: { name: string; avatar: string | null }): Promise<void> => this.action("profile", async () => {
+  updateProfile = ({ name, avatar }: { name?: string; avatar?: string | null }): Promise<void> => this.action("profile", async () => {
     await this.request({ type: "set_profile", name, avatar });
-    stored(nameKey, name.trim());
+    if (name !== undefined) stored(nameKey, name.trim());
   }, false);
-  updateDomain = (settings: DomainSettings, reportError = true): Promise<void> => this.action("domain", () => this.request({ type: "update_domain", ...settings }), reportError);
+  updateDomain = (settings: Partial<DomainSettings>, reportError = true): Promise<void> => this.action("domain", () => this.request({ type: "update_domain", ...settings }), reportError);
   setRoomCreationPolicy = (policy: Extract<ChannelCommand, { type: "set_room_creation_policy" }>["policy"], reportError = true): Promise<void> =>
     this.action("domain", () => this.request({ type: "set_room_creation_policy", policy }), reportError);
   private async allocateRoom(settings: RoomSettings) {
@@ -1887,7 +1887,7 @@ export class ChannelSession {
     }
   }
 
-  updateRoom = (roomId: string, settings: RoomSettings, reportError = true): Promise<void> => this.action(`room:${roomId}`, () => this.request({ type: "update_room", roomId, ...settings }), reportError);
+  updateRoom = (roomId: string, settings: Partial<RoomSettings>, reportError = true): Promise<void> => this.action(`room:${roomId}`, () => this.request({ type: "update_room", roomId, ...settings }), reportError);
   setForwardingLimit = (forwardingLimit: number): void => {
     const { self, sessionId, connection } = this.view, state = this.forwardingState;
     if (!self || !sessionId || !state || !Number.isInteger(forwardingLimit) || forwardingLimit < -1 || forwardingLimit > MAX_RELAY_CAPACITY) return;
@@ -1941,7 +1941,7 @@ export class ChannelSession {
     const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
     if (!room?.canManage) return Promise.reject(new Error("forbidden"));
     if (!Number.isInteger(voiceBitrate) || voiceBitrate < 6_000 || voiceBitrate > 320_000) return Promise.reject(new Error("invalid_audio_bitrate"));
-    return this.updateRoom(roomId, { name: room.name, icon: room.icon, access: room.access, hidden: room.hidden, voiceBitrate });
+    return this.updateRoom(roomId, { voiceBitrate });
   };
   enterRoom = (roomId: string, password: string): Promise<void> => this.action(`enter:${roomId}`, () => this.request({ type: "enter_room", roomId, password }));
   private roomInvitationURL(roomId: string, key: string): string {

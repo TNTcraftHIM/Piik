@@ -31,6 +31,10 @@ does not permanently consume an online slot, and admitting new friends does not
 delete historical authors, room ownership or room grants. The retained identity
 owner stays in the existing domain storage.
 
+An edit sends the fields the user changed. The channel merges site and profile
+edits, and the current room writer merges room edits. Concurrent edits to
+different fields both take effect. Setting an image to `null` clears it.
+
 Joining without a credential creates an ordinary identity. An explicitly supplied
 credential must identify an existing user; rejection never silently creates a new
 user or overwrites the client's saved credential. A valid operator bootstrap key

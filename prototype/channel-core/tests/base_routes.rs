@@ -1392,14 +1392,20 @@ fn voice_uses_only_mutually_ready_tree_paths_and_non_listeners_can_forward_both_
     let (screen_pair, screen_flow) = screen_input(&network, b, cs, relay_picture).unwrap();
     assert_eq!(screen_pair, cb.id);
     let live_cd = pair(&network, d, cs, &room);
-    assert!(live_cd.incoming.iter().any(|flow| flow.publication_id == from_b));
+    assert!(live_cd
+        .incoming
+        .iter()
+        .any(|flow| flow.publication_id == from_b));
     command(
         &mut network,
         d,
         json!({"type":"link_state","pairId":live_cd.id,"state":"failed"}),
     );
     let (retained_pair, retained_flow) = screen_input(&network, b, cs, relay_picture).unwrap();
-    assert_eq!((retained_pair, retained_flow.id), (screen_pair, screen_flow.id));
+    assert_eq!(
+        (retained_pair, retained_flow.id),
+        (screen_pair, screen_flow.id)
+    );
     command(
         &mut network,
         c,
@@ -5013,3 +5019,65 @@ fn screen_reaches_its_only_viewer_through_two_room_readers() {
 
 #[path = "base_routes/coexisting_demand.rs"]
 mod coexisting_demand;
+
+#[test]
+fn in_flight_room_updates_merge_at_the_room_host() {
+    use piik_channel_core::wire::Request;
+
+    let mut network = RoomNetwork::new();
+    let owner = Uuid::new_v4();
+    let outsider = Uuid::new_v4();
+    join(&mut network, owner, None);
+    join(&mut network, outsider, None);
+    let room = network.create(owner, RoomAccess::Public, false);
+    let patch = |fields: Value| {
+        let mut command = json!({"type":"update_room","roomId":room});
+        command
+            .as_object_mut()
+            .unwrap()
+            .extend(fields.as_object().unwrap().clone());
+        Request::parse(&command.to_string()).unwrap()
+    };
+    let image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+    let privacy = network.authority.handle(
+        owner,
+        patch(json!({"access":"private","hidden":true,"picture":image,"password":"fixture"})),
+        100,
+    );
+    let audio = network
+        .authority
+        .handle(owner, patch(json!({"voiceBitrate":96000})), 100);
+    network.deliver(privacy);
+    network.deliver(audio);
+    let policy = network.policy(&room);
+    assert!(policy.access == RoomAccess::Private);
+    assert!(
+        policy.hidden && piik_channel_core::host::RoomSummary::from_policy(&policy).has_password
+    );
+    assert_eq!(policy.appearance.picture.as_deref(), Some(image));
+    assert_eq!(policy.voice_bitrate, 96000);
+    assert!(!network
+        .state(outsider)
+        .channel
+        .rooms
+        .iter()
+        .any(|r| r.id == room));
+
+    let unauthorized = network
+        .authority
+        .handle(outsider, patch(json!({"access":"public"})), 101);
+    network.deliver(unauthorized);
+    assert!(network.policy(&room).access == RoomAccess::Private);
+    let clear =
+        network
+            .authority
+            .handle(owner, patch(json!({"picture":null,"password":null})), 102);
+    network.deliver(clear);
+    let policy = network.policy(&room);
+    assert!(
+        !piik_channel_core::host::RoomSummary::from_policy(&policy).has_password
+            && policy.appearance.picture.is_none()
+    );
+    assert!(policy.hidden);
+    assert_eq!(policy.voice_bitrate, 96000);
+}

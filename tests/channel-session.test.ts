@@ -4539,7 +4539,7 @@ test("room voice settings use the managed room update without changing local inp
     const previous = session.getSnapshot();
     const saving = session.setRoomVoiceBitrate("first", 96_000);
     const request = socket.sent.at(-1)!;
-    expect(request).toMatchObject({ type: "update_room", roomId: "first", voiceBitrate: 96_000 });
+    expect(request).toEqual({ type: "update_room", roomId: "first", voiceBitrate: 96_000, requestId: expect.any(String) });
     socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "done" } });
     await saving;
     expect(session.getSnapshot().voiceInput).toEqual(previous.voiceInput);

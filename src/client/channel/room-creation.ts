@@ -17,6 +17,21 @@ export function roomDraft(room?: ChannelRoom): RoomDraft {
     password: "", removePassword: false, relayCapacity: room?.relayCapacity ?? DEFAULT_RELAY_CAPACITY };
 }
 
+export function roomSettingsPatch(dirty: Partial<RoomDraft>, invitationOnlyRoom?: Pick<ChannelRoom, "access" | "hidden" | "hasPassword">): Partial<RoomSettings> {
+  const { name, password, removePassword, access, hidden, ...settings } = dirty;
+  const fields = { ...settings, ...(name === undefined ? {} : { name: name.trim() }) };
+  if (invitationOnlyRoom) {
+    if (Object.keys(fields).length === 0) return fields;
+    return { ...fields,
+      ...(invitationOnlyRoom.access !== "private" ? { access: "private" } : {}),
+      ...(!invitationOnlyRoom.hidden ? { hidden: true } : {}),
+      ...(invitationOnlyRoom.hasPassword ? { password: null } : {}) };
+  }
+  return { ...fields, ...(access === undefined ? {} : { access }),
+    ...(hidden === undefined ? {} : { hidden }),
+    ...(password ? { password } : removePassword ? { password: null } : {}) };
+}
+
 export function roomSettings(value: RoomDraft, inviteOnly = false): RoomSettings {
   const { name, icon, picture, access, hidden, password, removePassword, relayCapacity, voiceBitrate } = value;
   const settings = { name: name.trim(), icon, relayCapacity, ...(picture === undefined ? {} : { picture }), ...(voiceBitrate === undefined ? {} : { voiceBitrate }) };

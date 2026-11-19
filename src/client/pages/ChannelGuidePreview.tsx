@@ -7,7 +7,7 @@ import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
 import { ChannelRoomInvitation } from "../channel/components/ChannelRoomInvitation";
 import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
 import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
-import { snapshotSchema, type ChannelMessage, type ChannelSnapshot, type ChannelTopology, type RoomSettings } from "../channel/protocol";
+import { snapshotSchema, type ChannelMessage, type ChannelSnapshot, type ChannelTopology, type DomainSettings, type RoomSettings } from "../channel/protocol";
 import { messageRemoved, type ChannelController } from "../channel/types";
 import { ChannelAttachments } from "../channel/attachments";
 import { readBackup } from "../channel/backup-archive";
@@ -40,6 +40,7 @@ export function sampleRoomTopology(state: ChannelSnapshot, roomId: string, publi
 /** Guide and room previews share local sample props, never a Session or backend. */
 export function useChannelGuideSample(multiRoom = false) {
   const { lang } = useCopy(), zh = lang === "zh";
+  const [site, setSite] = useState({ name: "Friends", icon: "couch" });
   const [settingsByRoom, setSettingsByRoom] = useState<Record<string, Partial<RoomSettings>>>({});
   const [forwardingLimit, setForwardingLimit] = useState(-1);
   const [appRelayLimit, setAppRelayLimit] = useState<number | null>(null);
@@ -126,7 +127,7 @@ export function useChannelGuideSample(multiRoom = false) {
       participantSessionIds: room.id === "studio" ? ["sample-coco-session", ...(voiceByRoom.studio ? ["sample-ada-session"] : [])]
         : ["sample-ada-session", "sample-bo-session", ...(multiRoom ? ["sample-dora-session"] : [])], capabilities: { attachments: true },
       ...room, ...settingsByRoom[room.id], picture: settingsByRoom[room.id]?.picture ?? undefined }));
-  const state = snapshotSchema.parse({ channel: { id: "sample", name: "Friends", icon: "couch", ownerId: "sample-ada", roomCreationPolicy: "ordinary", hostingMode: "lightweight", historyWindow: 1000, userCount: users.length,
+  const state = snapshotSchema.parse({ channel: { id: "sample", ...site, ownerId: "sample-ada", roomCreationPolicy: "ordinary", hostingMode: "lightweight", historyWindow: 1000, userCount: users.length,
     rooms, managedRoomIds: rooms.map(room => room.id) }, users: users.map(({ avatar: _avatar, ...user }) => user),
     sessions: [...users.map(user => ({ id: `${user.id}-session`, userId: user.id, online: user.id !== "sample-iris", signingKey: Array(32).fill(0) })),
       { id: appSessionId, userId: "sample-ada", online: true, signingKey: Array(32).fill(0) }],
@@ -155,7 +156,12 @@ export function useChannelGuideSample(multiRoom = false) {
       updateFeedback({ clips });
     },
     previewFeedbackSound: feedbackAudio.preview,
-    updateProfile: async (value: { name: string; avatar: string | null }) => setProfile(value),
+    updateDomain: async (changes: Partial<DomainSettings>) => setSite(previous => ({
+      name: changes.name ?? previous.name, icon: changes.icon ?? previous.icon,
+    })),
+    updateProfile: async (value: { name?: string; avatar?: string | null }) => setProfile(previous => ({
+      name: value.name ?? previous.name, avatar: value.avatar === undefined ? previous.avatar : value.avatar,
+    })),
     state, self: users[0], profiles: new Map(users.map(user => [user.id, user])),
     loadProfiles: async (ids: readonly string[]) => users.filter(user => ids.includes(user.id)),
     queryProfiles: async ({ after, query }: { after?: string; query?: string }) => {
@@ -182,7 +188,7 @@ export function useChannelGuideSample(multiRoom = false) {
       const next = `${invites[roomId] ?? `https://friends.example/#room=${roomId}&invite=sample`}-new`;
       setInvites(previous => ({ ...previous, [roomId]: next })); received(); return next;
     },
-    updateRoom: async (roomId: string, next: RoomSettings) => { setSettingsByRoom(previous => ({ ...previous, [roomId]: { ...previous[roomId], ...next } })); received(); },
+    updateRoom: async (roomId: string, next: Partial<RoomSettings>) => { setSettingsByRoom(previous => ({ ...previous, [roomId]: { ...previous[roomId], ...next } })); received(); },
     deleteRoom: async () => { received(); return { dataRemoved: false }; },
     forwardingLimit, setForwardingLimit, appRelayCapacity,
     setAppRelayOverride: async (previous, capacity) => {

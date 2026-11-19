@@ -3,7 +3,7 @@ import { Btn } from "../../components/living/primitives";
 import { Tooltip } from "../../components/living/Tooltip";
 import { useCopy } from "../../ui/copy";
 import type { ChannelController } from "../types";
-import { roomCreationPolicySchema, type DomainSettings, type RoomCreationPolicy } from "../protocol";
+import { roomCreationPolicySchema, type RoomCreationPolicy } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
 import { ChannelSettingsDialog, ChannelSettingsError, ChannelSettingsTabs, useSettingsAction } from "./ChannelSettingsDialog";
 import { ChannelIdentityFields, ChannelIdentityMark } from "./ChannelIdentity";
@@ -16,8 +16,10 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
   const current = channel.state?.channel ?? null;
   const owner = !!channel.self && current?.ownerId === channel.self.id;
   const id = useId();
-  const [name, setName] = useState(current?.name ?? "");
-  const [icon, setIcon] = useState(current?.icon ?? "couch");
+  const [nameDraft, setName] = useState<string>();
+  const [iconDraft, setIcon] = useState<string>();
+  const name = nameDraft ?? current?.name ?? "";
+  const icon = iconDraft ?? current?.icon ?? "couch";
   const [open, setOpen] = useState(false), [imageBusy, setImageBusy] = useState(false);
   const [task, setTask] = useState<"site" | "rooms" | "backup">("site");
   const [policyDraft, setPolicyDraft] = useState<RoomCreationPolicy | null>(null);
@@ -25,8 +27,10 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
   const busy = channel.pending.has("domain"), backupBusy = channel.pending.has("domain-backup");
   const unavailable = !owner || channel.connection !== "connected";
   const disabled = unavailable || busy || backupBusy;
-  const resetDraft = (value: DomainSettings | null) => {
-    setName(value?.name ?? ""); setIcon(value?.icon ?? "couch");
+  const resetDraft = () => {
+    setName(undefined);
+    setIcon(undefined);
+    setPolicyDraft(null);
   };
   const title = t("channel.siteSettings.siteSettings");
   const policy = policyDraft ?? current?.roomCreationPolicy ?? "ordinary";
@@ -41,7 +45,7 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
     <Tooltip overflow={{ text: current?.name ?? title, selector: ".lr-cap" }} disabled={open}>
       <Btn icon="chevron" size="dense" quiet title={{ text: title }} cap={{ text: current?.name ?? title }} expanded={open} disabled={disabled}
         iconOverlay={<ChannelIdentityMark icon={current?.icon ?? "couch"} size={22} />}
-        onClick={() => { resetDraft(current); setTask("site"); setOpen(true); }} />
+        onClick={() => { resetDraft(); setTask("site"); setOpen(true); }} />
     </Tooltip>
     {open && <ChannelSettingsDialog title={current?.name ?? title} caption={current ? title : undefined} error={error} onClose={close}>
       <div className="c3-settings-body">
@@ -52,7 +56,9 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
               if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault();
             }} onSubmit={event => {
               event.preventDefault();
-              if (!disabled && !imageBusy && name.trim()) void run(() => channel.updateDomain({ name: name.trim(), icon }, false), close);
+              if (disabled || imageBusy || !name.trim()) return;
+              if (nameDraft === undefined && iconDraft === undefined) { close(); return; }
+              void run(() => channel.updateDomain({ name: nameDraft?.trim(), icon: iconDraft }, false), close);
             }}>
               <ChannelIdentityFields name={name} icon={icon} label={t("channel.siteSettings.siteName")} disabled={disabled}
                 onName={setName} onIcon={setIcon} imageBusy={imageBusy} onImageBusyChange={setImageBusy} />
@@ -87,9 +93,9 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
             <h3>{t("channel.siteSettings.siteBackup")}</h3>
             <BackupControls run={run} kind="domain" busy={backupBusy} disabled={unavailable || busy}
               onExport={channel.exportDomainBackup} onRestore={async file => {
-                try { resetDraft(await channel.restoreDomainBackup(file)); }
+                try { await channel.restoreDomainBackup(file); resetDraft(); }
                 catch (error) {
-                  if (error instanceof Error && error.message === "domain_restored_connection_failed") resetDraft(null);
+                  if (error instanceof Error && error.message === "domain_restored_connection_failed") resetDraft();
                   throw error;
                 }
               }} />

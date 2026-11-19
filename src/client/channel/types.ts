@@ -162,13 +162,13 @@ export interface ChannelActions {
   loadHistory(roomId: string): Promise<void>;
   loadLatestHistory(roomId: string): Promise<void>;
   attachments: ChannelAttachments;
-  updateProfile(profile: { name: string; avatar: string | null }): Promise<void>;
-  updateDomain(settings: DomainSettings, reportError?: boolean): Promise<void>;
+  updateProfile(profile: { name?: string; avatar?: string | null }): Promise<void>;
+  updateDomain(settings: Partial<DomainSettings>, reportError?: boolean): Promise<void>;
   setRoomCreationPolicy(policy: RoomCreationPolicy, reportError?: boolean): Promise<void>;
   exportDomainBackup(): Promise<Blob>;
   restoreDomainBackup(archive: Blob): Promise<DomainSettings>;
   createRoom(settings: RoomSettings, reportError?: boolean): Promise<string>;
-  updateRoom(roomId: string, settings: RoomSettings, reportError?: boolean): Promise<void>;
+  updateRoom(roomId: string, settings: Partial<RoomSettings>, reportError?: boolean): Promise<void>;
   deleteRoom(roomId: string, deleteData: boolean, reportError?: boolean): Promise<{ dataRemoved: boolean }>;
   setRoomVoiceBitrate(roomId: string, bitrate: number): Promise<void>;
   setForwardingLimit(capacity: number): void;
