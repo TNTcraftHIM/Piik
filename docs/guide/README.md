@@ -29,11 +29,15 @@ Choose a guide to start sharing, use room tools or solve a problem.
 ## Get help
 
 - **Cannot join, share or hear a friend:** [find the checks for your problem](./troubleshooting.md#common-problems).
-- **The page opens, but picture or voice still will not connect:** after the basic checks, use [network checks](./network.md) to compare browsers, networks or a virtual LAN.
 
 Still stuck? [Report a problem](https://github.com/TNTcraftHIM/Piik/issues/new/choose)
 with your version, system, browser and reproduction steps. Follow the
 [reporting steps](./troubleshooting.md#reporting-a-problem) to collect diagnostics.
+
+## Networking
+
+- [Set up a fixed invitation with frp](./frp.md) for Piik App or Server, with a SakuraFrp walkthrough.
+- [Check direct and relayed connections](./network.md) when the room opens but the picture does not play.
 
 ## Run a site for your group
 

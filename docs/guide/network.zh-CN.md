@@ -114,12 +114,6 @@ STUN 服务会接收到参与者的公网 IP，请选择信任的服务。
 
 仅与信任的朋友组网。
 
-<details>
-<summary>通过 frp 转发已有服务器</summary>
-
-有公网服务器的管理员可按 [frp 教程](../operations/self-hosting.zh-CN.md#可选通过-frp-转发已有服务)，
-通过 frps 转发已有站点的网页和 SFU 端点，需同时配置网页与媒体转发。
-
-</details>
+如果需要 App 或 Server 的固定公网邀请地址，可用现有 frp 服务或自建隧道。[frp 与樱花映射教程](./frp.zh-CN.md)
 
 仍有问题时，请按[反馈说明](./troubleshooting.zh-CN.md#反馈问题)收集同一次尝试的报告。

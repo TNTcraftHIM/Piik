@@ -252,10 +252,9 @@ Run `piik-app --link --public-origin https://share.example.com --port 8787` on t
 
 ### Using a managed frp provider
 
-Services such as SakuraFrp supply the public server and their own client or
-launcher. Follow the provider's setup instead of copying the private frps token
-configuration above. Check that the chosen node supports both HTTPS web access
-with WebSockets and an ordinary UDP tunnel.
+Follow the [fixed invitation guide](../guide/frp.md) for the website tunnel and
+SakuraFrp dashboard steps. To relay media from a 2.x Server through the provider,
+choose a node that also offers UDP tunnels and apply the media settings below.
 
 | Endpoint | Local target | Piik setting |
 | --- | --- | --- |

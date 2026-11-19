@@ -127,13 +127,6 @@ If something fails, start with the first failing step:
 
 Join only with trusted friends.
 
-<details>
-<summary>Use frp with an existing server</summary>
-
-For administrators with a public server, the [frp recipe](../operations/self-hosting.md#optional-forward-an-existing-server-with-frp)
-forwards an existing site's web and SFU endpoints through frps. Configure both
-web and media forwarding.
-
-</details>
+To give an App or Server a fixed public invitation address, use a managed or self-hosted tunnel. [frp and SakuraFrp guide](./frp.md)
 
 If the issue persists, [collect reports](./troubleshooting.md#reporting-a-problem) from the same attempt.
