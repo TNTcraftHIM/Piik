@@ -16,6 +16,8 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   const key = { roomId, messageSeq, attachmentId: file.id };
   const downloadSurface = useRef<HTMLDivElement>(null);
   const download = useSyncExternalStore(client.subscribe, () => client.status(key));
+  const savedCopy = useSyncExternalStore(client.subscribe, () => client.hasSavedCopy(key, file));
+  const [revealing, setRevealing] = useState(false);
   const progress = useSyncExternalStore(client.subscribe, () => client.progress(key));
   const [preview, setPreview] = useState<string | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
@@ -69,13 +71,25 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   const imageStatus = previewBusy ? progress ? `${progressLabel} · ${progressBytes}` : t("channel.attachment.loadingOriginalImage")
     : previewMessage ?? imageDescription;
   const saving = download.outcome === "started", savedBytes = download.saveProgress;
+  const canReveal = savedCopy && typeof (downloadSurface.current?.ownerDocument.defaultView ?? window).piikRevealDownload === "function";
   return <div className="c3-attachment" ref={downloadSurface}>
     <div className="c3-attachment-file"><Glyph name="save" size={21} />
       <div><Tooltip overflow={{ text: file.name, selector: "strong" }}><strong>{file.name}</strong></Tooltip><small>{fileSize(file.size)}</small></div>
-      <ChannelAction icon={download.busy ? "x" : "arrowDown"} label={download.busy ? t("channel.attachment.cancelDownload")
-        : isImage ? t("channel.attachment.downloadOriginal") : t("channel.attachment.download")}
-        quiet
-        onClick={() => { if (download.busy) client.cancelDownload(key); else { setPreviewError(null); void client.download(key, file, inlineImage, downloadSurface.current ?? undefined).catch(() => {}); } }} />
+      <ChannelAction icon={download.busy ? "x" : canReveal ? "folder" : "arrowDown"}
+        label={download.busy ? t("channel.attachment.cancelDownload") : canReveal ? t("channel.attachment.revealSaved")
+          : isImage ? t("channel.attachment.downloadOriginal") : t("channel.attachment.download")}
+        quiet busy={revealing && !download.busy}
+        onClick={() => {
+          if (download.busy) { client.cancelDownload(key); return; }
+          const surface = downloadSurface.current;
+          if (canReveal && surface) {
+            setRevealing(true);
+            void client.revealSavedCopy(key, file, surface).catch(() => {}).finally(() => setRevealing(false));
+            return;
+          }
+          setPreviewError(null);
+          void client.download(key, file, inlineImage, surface ?? undefined).catch(() => {});
+        }} />
     </div>
     {(download.busy || previewBusy) && <div className="c3-attachment-progress">
       <small role="status">{progressLabel}</small>

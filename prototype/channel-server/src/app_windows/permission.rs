@@ -174,8 +174,12 @@ pub(super) fn permissions(
 }
 
 // The request and WebView retire before the dialog, which retires before its owner.
+pub(super) enum Action {
+    Media(Permission),
+    Reveal(super::reveal::Confirmation),
+}
 pub(super) struct Prompt {
-    request: Permission,
+    request: Action,
     webview: WebView,
     window: Window,
     owner: Rc<Window>,
@@ -185,7 +189,7 @@ impl Prompt {
         target: &EventLoopWindowTarget<ServiceEvent>,
         events: EventLoopProxy<ServiceEvent>,
         context: &mut WebContext,
-        request: Permission,
+        request: Action,
         owner: Rc<Window>,
         theme: &Theme,
         language: Language,
@@ -212,9 +216,14 @@ impl Prompt {
             .build(target)?;
         let id = window.id();
         let initial_document = Cell::new(true);
+        let (origin, camera, filename) = match &request {
+            Action::Media(request) => (Some(&request.origin), request.camera, None),
+            Action::Reveal(request) => (None, false, Some(&request.filename)),
+        };
         let data = serde_json::json!({
-            "origin": request.origin,
-            "camera": request.camera,
+            "origin": origin,
+            "camera": camera,
+            "filename": filename,
             "theme": theme.code(),
             "language": language.code(),
         });
@@ -258,7 +267,7 @@ impl Prompt {
         self.window.id()
     }
     pub(super) fn owner(&self) -> WindowId {
-        self.request.owner
+        self.owner.id()
     }
 
     pub(super) fn show(&self) {
@@ -276,8 +285,18 @@ impl Prompt {
         ));
     }
 
-    pub(super) fn answer(mut self, allowed: bool) {
-        self.request.answer(allowed);
+    pub(super) fn stale(&self, main: &super::MainWindow) -> bool {
+        matches!(&self.request, Action::Reveal(request) if !request.current(main))
+    }
+    pub(super) fn answer(mut self, allowed: bool, main: Option<&super::MainWindow>) {
+        match &mut self.request {
+            Action::Media(request) => request.answer(allowed),
+            Action::Reveal(request) => {
+                if let Some(main) = main {
+                    request.answer(main, allowed);
+                }
+            }
+        }
         let owner = self.owner.clone();
         drop(self);
         owner.set_focus();
@@ -287,6 +306,5 @@ impl Drop for Prompt {
     fn drop(&mut self) {
         // Windows requires the owner to be enabled before destroying its dialog.
         self.owner.set_enable(true);
-        self.request.answer(false);
     }
 }

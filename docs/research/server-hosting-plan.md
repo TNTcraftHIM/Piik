@@ -62,13 +62,19 @@ A person can share a cloud-drive link today. A future bot or integration can cop
 
 | Evidence available to this reader | Action |
 | --- | --- |
-| A previously saved original is still accessible on this device | Open it. A desktop client can reveal the actual save location. A browser uses its downloads or an available permitted file handle |
+| A Windows App download completed on this device | Offer **Reveal in folder**. On confirmation, the App selects the saved file in Explorer. If the saved copy is missing, offer **Download** again |
+| A Browser accepted a download request | Direct the recipient to browser downloads for its progress and save location |
 | An authorized live holder can supply the original | Download or download again. A verified local copy may help other readers during the live share |
 | A valid source is reconnecting | Show that the original is temporarily unavailable |
 | The original share has ended and its live sources have retired | Show that the original has expired. The message, filename and saved thumbnail remain available to permitted history readers |
 | A member published a separate external link | Open the link under its provider's access rules |
 
-Record a completed local save on the receiving device. If the file has moved or vanished, resolve the action from current remote availability. A local download remains under the recipient's control after the remote share ends. A sender going offline establishes loss of that source. The original becomes unavailable when there is no other valid source for the share. A thumbnail establishes preview availability only.
+The Windows App records the path reported by the completed platform download.
+The attachment card stores an opaque reference scoped to the receiver's site,
+identity, room and attachment. Clearing the cache or deleting the message
+removes the card's reference. The recipient keeps their saved file.
+A sender going offline removes one live source. An independently retained
+thumbnail can still be viewed when the original is unavailable.
 
 ## Room maintenance
 

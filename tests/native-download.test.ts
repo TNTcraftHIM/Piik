@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { afterEach, expect, test, vi } from "vitest";
 import { downloadBlob, type DownloadOutcome } from "../src/client/lib/download";
+import { FileStore } from "../src/client/channel/file-store";
+import type { ChannelRoom } from "../src/client/channel/protocol";
 import { ChannelAttachments } from "../src/client/channel/attachments";
 
 const reportScript = readFileSync(new URL("../prototype/channel-server/src/app_windows/download.rs", import.meta.url), "utf8")
@@ -23,7 +25,7 @@ function fixture(native = true, origin = "https://owned.test", globals = true) {
   const owner = { defaultView: view, createElement: () => new Anchor(),
     body: { append: (link: Anchor) => anchors.push(link) }, querySelectorAll: () => anchors };
   if (globals) { vi.stubGlobal("window", view); vi.stubGlobal("document", owner); }
-  const report = (url: string, status: string | { status: "progress"; received: number; total: number | null }) => runInNewContext("(" + reportScript + ")", {
+  const report = (url: string, status: string | { status: "saved"; receipt: string } | { status: "progress"; received: number; total: number | null }) => runInNewContext("(" + reportScript + ")", {
     window: view, document: owner, URL, CustomEvent,
   })(url, typeof status === "string" ? { status } : status);
   return { view, document: owner as unknown as Document, clicked, anchors, create, revoke, report };
@@ -67,6 +69,68 @@ test("Browser dispatch has no saved claim, and unobserved exports retain no anch
   expect(outcome).toHaveBeenCalledWith("dispatched"); expect(f.anchors).toEqual([]);
   f.view.piikNativeDownloads = true;
   downloadBlob(new Blob(["owned"]), "export.txt"); expect(f.anchors).toEqual([]);
+});
+
+test("confirmed attachment receipts restore only for the current identity and original digest", async () => {
+  const f = fixture(), files = new ChannelAttachments(async () => {}, async () => {});
+  const reveal = vi.fn().mockResolvedValue("unavailable");
+  Object.assign(f.view, { piikRevealDownload: reveal });
+  const scope = { domainId: "domain", userId: "alice" };
+  const rooms = [{ id: "room", authorized: true }] as ChannelRoom[];
+  const key = { roomId: "room", messageSeq: 1, attachmentId: "file" };
+  const receipt = "a2ba9eea-8aa4-4ce9-97f2-3ff030242412";
+  const file = { id: key.attachmentId, name: "saved.txt", size: 5, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
+  const entry = { key, sha256: file.sha256, receipt };
+  const read = vi.spyOn(FileStore.prototype, "receipts").mockResolvedValue([]);
+  const save = vi.spyOn(FileStore.prototype, "saveReceipt").mockImplementation(async (_entry, allowed) => allowed());
+  const forget = vi.spyOn(FileStore.prototype, "forgetReceipt").mockResolvedValue();
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
+  vi.spyOn(files, "content").mockResolvedValue(new File(["saved"], file.name));
+  files.update("session", scope, [], rooms, []);
+  await files.download(key, file);
+  const first = f.clicked[0];
+  expect(first.dataset).toHaveProperty("piikRemember");
+  expect(files.hasSavedCopy(key, file)).toBe(false);
+  f.report(first.href, { status: "saved", receipt });
+  await Promise.resolve();
+  expect(save).toHaveBeenCalledWith(entry, expect.any(Function));
+  expect(files.hasSavedCopy(key, file)).toBe(true);
+  expect(files.hasSavedCopy(key, { ...file, sha256: "b".repeat(64) })).toBe(false);
+  await files.download(key, file);
+  const retired = f.clicked.at(-1)!;
+  files.update("session2", { ...scope, userId: "bob" }, [], rooms, []);
+  f.report(retired.href, { status: "saved", receipt });
+  expect(save).toHaveBeenCalledOnce();
+  expect(files.hasSavedCopy(key, file)).toBe(false);
+
+  read.mockResolvedValue([entry]);
+  files.update("session3", scope, [], rooms, []);
+  await vi.waitFor(() => expect(files.hasSavedCopy(key, file)).toBe(true));
+  await files.revealSavedCopy(key, file, { ownerDocument: f.document } as Element);
+  expect(reveal).toHaveBeenCalledWith(receipt);
+  expect(forget).toHaveBeenCalledWith(entry);
+  expect(files.hasSavedCopy(key, file)).toBe(false);
+  expect(files.status(key)).toEqual({ busy: false, error: "saved_copy_missing" });
+  expect(f.clicked).toHaveLength(2);
+
+  const purge = vi.spyOn(FileStore.prototype, "removeMessages").mockResolvedValue();
+  await files.download(key, file);
+  f.report(f.clicked.at(-1)!.href, { status: "saved", receipt });
+  await vi.waitFor(() => expect(files.hasSavedCopy(key, file)).toBe(true));
+  expect(files.status(key).outcome).toBe("saved");
+  await files.clearLocalCache(key.roomId);
+  expect(files.hasSavedCopy(key, file)).toBe(false);
+  expect(files.status(key).outcome).toBeUndefined();
+
+  await files.download(key, file);
+  expect(files.status(key)).toMatchObject({ error: null, outcome: "requested" });
+  const pending = f.clicked.at(-1)!;
+  await files.clearLocalCache(key.roomId);
+  expect(purge).toHaveBeenCalledWith(key.roomId, expect.any(Function));
+  f.report(pending.href, { status: "saved", receipt });
+  await Promise.resolve();
+  expect(files.hasSavedCopy(key, file)).toBe(false);
+  files.reset();
 });
 
 test("no-start retries keep one attachment observer and reset releases it", async () => {

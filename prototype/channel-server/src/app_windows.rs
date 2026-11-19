@@ -1,6 +1,7 @@
 //! Windows owns presentation; the existing HTTP App owns all room and capture work.
 mod console;
 mod caption;
+mod reveal;
 mod download;
 mod page;
 mod permission;
@@ -161,6 +162,7 @@ enum ServiceEvent {
     PopupClosed(WindowId),
     PopupPresentation(WindowId, popup::Message),
     PopupAppearance(WindowId, Theme, Language, Option<ModalMaterial>),
+    Reveal(reveal::Request, String, u64),
     Download(WindowId, String, download::Status),
     Permission,
     PermissionReady(WindowId),
@@ -298,6 +300,8 @@ type Popups = Rc<RefCell<Vec<PopupWindow>>>;
 
 // Fields drop in this order: both WebViews retire before their native owner.
 struct MainWindow {
+    receipts: Rc<download::ReceiptBook>,
+    document: Rc<std::cell::Cell<u64>>,
     caption: caption::Caption,
     content: WebView,
     window: Rc<Window>,
@@ -307,6 +311,7 @@ impl MainWindow {
         target: &EventLoopWindowTarget<ServiceEvent>,
         events: EventLoopProxy<ServiceEvent>,
         context: &mut WebContext,
+        receipts: Rc<download::ReceiptBook>,
         pending: PendingPermissions,
         popups: Popups,
         controls: &WindowControls,
@@ -327,16 +332,25 @@ impl MainWindow {
         let popup_pending = pending.clone();
         let content_events = events.clone();
         let load_events = events.clone();
+        let document = Rc::new(std::cell::Cell::new(0u64));
+        let loading_document = document.clone();
+        let ipc_document = document.clone();
         let content = WebViewBuilder::new_with_web_context(context).with_url("about:blank")
             .with_initialization_script(CAPABILITY)
+            .with_initialization_script(reveal::SCRIPT)
             .with_initialization_script(download::SCRIPT)
             .with_on_page_load_handler(move |event, _| {
                 // Wry maps Started to top-level ContentLoading, after cancellation is resolved.
                 if matches!(event, PageLoadEvent::Started) {
+                    loading_document.set(loading_document.get().wrapping_add(1));
                     let _ = load_events.send_event(ServiceEvent::ContentLoading);
                 }
             })
             .with_ipc_handler(move |request| {
+                if let Ok(message) = serde_json::from_str::<reveal::Request>(request.body()) {
+                    let _ = content_events.send_event(ServiceEvent::Reveal(message, request.uri().to_string(), ipc_document.get()));
+                    return;
+                }
                 if let Ok(message) = serde_json::from_str::<ContentMessage>(request.body()) {
                     if matches!(&message, ContentMessage::Header { slot: Some([x, y]) } if !x.is_finite() || !y.is_finite()) { return; }
                     let _ = content_events.send_event(ServiceEvent::Content(message));
@@ -365,7 +379,7 @@ impl MainWindow {
                     let download_events = popup_events.clone();
                     download::install(&webview, Some(Rc::new(move |url, status| {
                         let _ = download_events.send_event(ServiceEvent::Download(id, url, status));
-                    })))?;
+                    })), None)?;
                     let caption = caption::Caption::new(&window, &webview, popup_events.clone(), &popup_controls, true)?;
                     caption.title("Piik");
                     caption.layout(&window, &webview, &popup_controls);
@@ -395,7 +409,7 @@ impl MainWindow {
         let id = window.id();
         download::install(&content, Some(Rc::new(move |url, status| {
             let _ = download_events.send_event(ServiceEvent::Download(id, url, status));
-        })))?;
+        })), Some(receipts.clone()))?;
         permissions(&content, window.id(), pending, events.clone())?;
         let fullscreen_events = events.clone();
         unsafe {
@@ -417,6 +431,7 @@ impl MainWindow {
 
         let caption = caption::Caption::new(&window, &content, events, controls, false)?;
         let result = Self {
+            receipts, document,
             caption,
             content,
             window,
@@ -484,6 +499,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
         &events,
         events.create_proxy(),
         &mut context,
+        Rc::new(download::ReceiptBook::new(config.data_root.join("download-receipts"))),
         pending.clone(),
         popups.clone(),
         &controls,
@@ -537,6 +553,21 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
     events.run_return(|event, target, flow| {
         *flow = ControlFlow::Wait;
         match event {
+            Event::UserEvent(ServiceEvent::Reveal(request, source, generation)) => {
+                if let Some(main) = &window {
+                    if let Some(confirm) = reveal::Confirmation::prepare(main, request, &source, generation) {
+                        if prompt.is_some() {
+                            confirm.answer(main, false);
+                        } else {
+                            let next = Prompt::new(target, permission_events.clone(), &mut context, permission::Action::Reveal(confirm.clone()), main.window.clone(), &theme, language);
+                            match next {
+                                Ok(next) => prompt = Some(next),
+                                Err(_) => confirm.answer(main, false),
+                            }
+                        }
+                    }
+                }
+            }
             Event::UserEvent(ServiceEvent::Download(id, url, status)) => {
                 if let Some(main) = window.as_ref().filter(|main| main.window.id() == id) {
                     download::report(&main.content, &url, status);
@@ -561,6 +592,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             }
             Event::UserEvent(ServiceEvent::ContentLoading) => {
                 if let Some(main) = &window {
+                    if prompt.as_ref().is_some_and(|dialog| dialog.stale(main)) { prompt.take(); }
                     main.caption.content_loading();
                 }
             }
@@ -662,7 +694,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 if prompt.as_ref().is_some_and(|prompt| prompt.id() == id) {
                     let current = prompt.take().unwrap();
                     let owner = current.owner();
-                    current.answer(allowed);
+                    current.answer(allowed, window.as_ref());
                     if let Some(main) = window.as_ref().filter(|main| main.window.id() == owner) {
                         let _ = main.content.focus();
                     } else if let Some(child) = popups
@@ -785,7 +817,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                         target,
                         permission_events.clone(),
                         &mut context,
-                        request,
+                        permission::Action::Media(request),
                         owner,
                         &theme,
                         language,

@@ -6,11 +6,14 @@
     "maximize": ["M5 5h14v14H5z"],
     "restore": ["M8 8H4v12h12v-4", "M8 8V4h12v12h-4", "M8 8h8v8"],
     "close": ["M6 6l12 12", "M18 6 6 18"],
+    "folder": ["M3 7V5h6l2 2h10v12H3z"],
     "camera": ["M5 6h8a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V9a3 3 0 0 1 3-3Z", "m16 10 6-3v10l-6-3"],
     "microphone": ["M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3Z", "M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"]
   },
   "labels": {
     "en": {
+      "revealQuestion": "Show the downloaded file in File Explorer?",
+      "reveal": "Show file",
       "minimize": "Minimize",
       "maximize": "Maximize",
       "restore": "Restore",
@@ -23,6 +26,8 @@
       "permissionClose": "Cancel"
     },
     "zh": {
+      "revealQuestion": "在文件资源管理器中显示下载的文件？",
+      "reveal": "显示文件",
       "minimize": "最小化",
       "maximize": "最大化",
       "restore": "还原",
@@ -35,6 +40,8 @@
       "permissionClose": "取消"
     },
     "zh-Hant": {
+      "revealQuestion": "在檔案總管中顯示下載的檔案？",
+      "reveal": "顯示檔案",
       "minimize": "最小化",
       "maximize": "最大化",
       "restore": "還原",
@@ -47,6 +54,8 @@
       "permissionClose": "取消"
     },
     "ja": {
+      "revealQuestion": "ダウンロードしたファイルをエクスプローラーに表示しますか？",
+      "reveal": "ファイルを表示",
       "minimize": "最小化",
       "maximize": "最大化",
       "restore": "元のサイズに戻す",
@@ -59,6 +68,8 @@
       "permissionClose": "キャンセル"
     },
     "ko": {
+      "revealQuestion": "다운로드한 파일을 파일 탐색기에 표시할까요?",
+      "reveal": "파일 표시",
       "minimize": "최소화",
       "maximize": "최대화",
       "restore": "이전 크기로 복원",

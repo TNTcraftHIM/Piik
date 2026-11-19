@@ -1,7 +1,11 @@
 //! WebView2 owns file paths, progress and the download dialog; the page observes facts.
 use anyhow::Result;
+#[path = "receipt.rs"]
+mod receipt;
+pub(super) use receipt::ReceiptBook;
 use serde::Serialize;
 use std::{cell::Cell, rc::Rc};
+use uuid::Uuid;
 use webview2_com::{
     BytesReceivedChangedEventHandler, DownloadStartingEventHandler,
     Microsoft::Web::WebView2::Win32::{
@@ -21,18 +25,28 @@ pub(super) const SCRIPT: &str =
 #[serde(tag = "status", rename_all = "lowercase")]
 pub(super) enum Status {
     Started,
-    Progress { received: i64, total: Option<i64> },
-    Saved,
+    Progress {
+        received: i64,
+        total: Option<i64>,
+    },
+    Saved {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        receipt: Option<Uuid>,
+    },
     Cancelled,
     Failed,
 }
 
-pub(super) fn install(view: &WebView, report: Option<Rc<dyn Fn(String, Status)>>) -> Result<()> {
+pub(super) fn install(
+    view: &WebView,
+    report: Option<Rc<dyn Fn(String, Status)>>,
+    book: Option<Rc<ReceiptBook>>,
+) -> Result<()> {
     unsafe {
         view.webview()
             .cast::<ICoreWebView2_4>()?
             .add_DownloadStarting(
-                &DownloadStartingEventHandler::create(Box::new(move |_, args| {
+                &DownloadStartingEventHandler::create(Box::new(move |sender, args| {
                     let Some(args) = args else { return Ok(()) };
                     // Wry's default allow handler suppresses this UI. Keep the platform owner visible.
                     args.SetHandled(false)?;
@@ -44,7 +58,12 @@ pub(super) fn install(view: &WebView, report: Option<Rc<dyn Fn(String, Status)>>
                     if !uri.starts_with("blob:") {
                         return Ok(());
                     }
-                    observe(&operation, uri, report.clone())
+                    if let (Some(view), Some(book)) = (sender, book.clone()) {
+                        if observe_marked(&view, &operation, &uri, report.clone(), book).is_some() {
+                            return Ok(());
+                        }
+                    }
+                    observe(&operation, uri, report.clone(), None)
                 })),
                 &mut Default::default(),
             )?;
@@ -52,8 +71,39 @@ pub(super) fn install(view: &WebView, report: Option<Rc<dyn Fn(String, Status)>>
     Ok(())
 }
 
+const MARKED_ATTACHMENT: &str = r#"([origin, url]) => location.origin === origin &&
+  Array.from(document.querySelectorAll('a[data-piik-download][data-piik-remember]'))
+    .some(link => link.href === url)"#;
+
+// On lookup failure the caller still observes normal download progress.
+fn observe_marked(
+    view: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2,
+    operation: &ICoreWebView2DownloadOperation,
+    uri: &str,
+    report: Rc<dyn Fn(String, Status)>,
+    book: Rc<ReceiptBook>,
+) -> Option<()> {
+    let mut source = PWSTR::null();
+    unsafe { view.Source(&mut source) }.ok()?;
+    let origin = super::reveal::origin(&webview2_com::take_pwstr(source))?;
+    if url::Url::parse(uri).ok()?.origin().ascii_serialization() != origin {
+        return None;
+    }
+    let args = serde_json::json!([origin, uri]);
+    let script = windows_core::HSTRING::from(format!("({MARKED_ATTACHMENT})({args})"));
+    let operation = operation.clone();
+    let uri = uri.to_owned();
+    let completed =
+        webview2_com::ExecuteScriptCompletedHandler::create(Box::new(move |err, result| {
+            let target = (err.is_ok() && result == "true").then(|| (book.clone(), origin.clone()));
+            observe(&operation, uri.clone(), report.clone(), target)
+        }));
+    unsafe { view.ExecuteScript(&script, &completed) }.ok()
+}
+
 // The operation owns both callbacks. They retain no operation reference.
 struct Observation {
+    target: Option<(Rc<ReceiptBook>, String)>,
     uri: String,
     report: Rc<dyn Fn(String, Status)>,
     bytes: Cell<Option<i64>>,
@@ -65,8 +115,10 @@ fn observe(
     operation: &ICoreWebView2DownloadOperation,
     uri: String,
     report: Rc<dyn Fn(String, Status)>,
+    target: Option<(Rc<ReceiptBook>, String)>,
 ) -> windows_core::Result<()> {
     let observation = Rc::new(Observation {
+        target,
         uri,
         report,
         bytes: Cell::new(None),
@@ -115,7 +167,7 @@ impl Observation {
     fn update(&self, operation: &ICoreWebView2DownloadOperation) -> windows_core::Result<()> {
         if matches!(
             self.last.get(),
-            Some(Status::Saved | Status::Cancelled | Status::Failed)
+            Some(Status::Saved { .. } | Status::Cancelled | Status::Failed)
         ) {
             return Ok(());
         }
@@ -123,7 +175,16 @@ impl Observation {
             let mut state = Default::default();
             operation.State(&mut state)?;
             let terminal = if state == COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED {
-                Some(Status::Saved)
+                Some(Status::Saved {
+                    receipt: self.target.as_ref().and_then(|(book, origin)| {
+                        let mut path = PWSTR::null();
+                        operation.ResultFilePath(&mut path).ok()?;
+                        book.remember(
+                            origin,
+                            std::path::Path::new(&webview2_com::take_pwstr(path)),
+                        )
+                    }),
+                })
             } else if state == COREWEBVIEW2_DOWNLOAD_STATE_INTERRUPTED {
                 let mut reason = Default::default();
                 operation.InterruptReason(&mut reason)?;

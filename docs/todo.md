@@ -44,10 +44,6 @@ the feedback period; they do not delay that delivery.
   invite-only public Demo discovery, removal of offline rooms and archive
   recovery on the supported distributions. The [hosting design](./research/server-hosting-plan.md)
   owns the lightweight, hosted and moderation contracts.
-- [ ] **Open a saved attachment.** Let a Windows App recipient reopen or reveal
-  a completed download from its message. If the saved file is missing, offer
-  another download from an available source. An ordinary Browser directs the
-  recipient to its downloads after dispatch. [Attachment actions](./research/server-hosting-plan.md#what-an-attachment-card-promises)
 - [ ] **Physical camera orientation.** Check portrait capture on a phone through
   Native and pooled Browser paths. Compare the orientation of the source and
   the decoded viewer picture after a device rotation.

@@ -4,6 +4,7 @@ use webview2_com::Microsoft::Web::WebView2::Win32::*;
 
 #[derive(Default)]
 struct Evidence {
+    path: RefCell<Option<String>>,
     state: Cell<COREWEBVIEW2_DOWNLOAD_STATE>,
     reason: Cell<COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON>,
     resumable: Cell<bool>,
@@ -125,8 +126,11 @@ impl ICoreWebView2DownloadOperation_Impl for Operation_Impl {
     fn EstimatedEndTime(&self, _: *mut windows_core::PWSTR) -> windows_core::Result<()> {
         unreachable!()
     }
-    fn ResultFilePath(&self, _: *mut windows_core::PWSTR) -> windows_core::Result<()> {
-        unreachable!()
+    fn ResultFilePath(&self, result: *mut windows_core::PWSTR) -> windows_core::Result<()> {
+        unsafe {
+            *result = webview2_com::pwstr_from_str(self.evidence.path.borrow().as_ref().unwrap())
+        };
+        Ok(())
     }
     fn Cancel(&self) -> windows_core::Result<()> {
         unreachable!()
@@ -167,6 +171,7 @@ impl Fixture {
                 assert_eq!(uri, "blob:https://owned.test/fixture");
                 output.borrow_mut().push(status);
             }),
+            None,
         )
     }
     fn bytes(&self, received: i64, total: i64) {
@@ -249,7 +254,10 @@ fn progress_is_observed_deduplicated_and_can_restart_before_only_completed_saves
     f.bytes(40, 40);
     let late_bytes = f.evidence.bytes_handler.borrow().clone().unwrap();
     f.state(COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED);
-    assert_eq!(f.output.borrow().last(), Some(&Status::Saved));
+    assert_eq!(
+        f.output.borrow().last(),
+        Some(&Status::Saved { receipt: None })
+    );
     assert_eq!(f.evidence.removed.get(), 2);
     unsafe {
         late_bytes
@@ -262,7 +270,7 @@ fn progress_is_observed_deduplicated_and_can_restart_before_only_completed_saves
         f.output
             .borrow()
             .iter()
-            .filter(|state| **state == Status::Saved)
+            .filter(|state| **state == Status::Saved { receipt: None })
             .count(),
         1
     );
@@ -275,7 +283,7 @@ fn progress_is_observed_deduplicated_and_can_restart_before_only_completed_saves
         serde_json::json!({"status":"progress","received":16,"total":null})
     );
     assert_eq!(
-        serde_json::to_value(Status::Saved).unwrap(),
+        serde_json::to_value(Status::Saved { receipt: None }).unwrap(),
         serde_json::json!({"status":"saved"})
     );
 }
@@ -298,7 +306,7 @@ fn cancel_or_failure_releases_both_subscriptions_without_claiming_saved() {
         f.evidence.reason.set(reason);
         f.state(COREWEBVIEW2_DOWNLOAD_STATE_INTERRUPTED);
         assert_eq!(f.output.borrow().last(), Some(&expected));
-        assert!(!f.output.borrow().contains(&Status::Saved));
+        assert!(!f.output.borrow().contains(&Status::Saved { receipt: None }));
         f.assert_retired();
     }
 }
@@ -325,7 +333,7 @@ fn operation_drop_releases_the_progress_observer_without_a_reference_cycle() {
     assert!(evidence.state_handler.borrow().is_none());
     assert!(evidence.bytes_handler.borrow().is_none());
     assert_eq!(Rc::strong_count(&output), 1);
-    assert!(!output.borrow().contains(&Status::Saved));
+    assert!(!output.borrow().contains(&Status::Saved { receipt: None }));
 }
 
 #[test]
@@ -337,4 +345,57 @@ fn partial_subscription_failure_releases_the_installed_progress_handler() {
     assert!(f.evidence.bytes_handler.borrow().is_none());
     assert!(f.output.borrow().is_empty());
     assert_eq!(Rc::strong_count(&f.output), 1);
+}
+
+#[test]
+fn receipt_survives_restart_and_checks_origin_file_and_store() {
+    let folder = tempfile::tempdir().unwrap();
+    let path = folder.path().join("synthetic.txt");
+    let directory = folder.path().join("receipts");
+    std::fs::write(&path, b"fixture").unwrap();
+    let origin = "https://owned.test";
+    let token = ReceiptBook::new(directory.clone())
+        .remember(origin, &path)
+        .unwrap();
+    let book = ReceiptBook::new(directory.clone());
+    assert_eq!(book.resolve(origin, token), Some(path.clone()));
+    assert_eq!(book.resolve(origin, Uuid::new_v4()), None);
+    assert_eq!(book.resolve("https://other.test", token), None);
+    std::fs::write(&path, b"changed fixture").unwrap();
+    assert_eq!(book.resolve(origin, token), None);
+    let updated = book.remember(origin, &path).unwrap();
+    std::fs::rename(&path, folder.path().join("moved.txt")).unwrap();
+    assert_eq!(book.resolve(origin, updated), None);
+    std::fs::write(directory.join("download-receipts.sqlite"), b"corrupt").unwrap();
+    assert_eq!(book.resolve(origin, updated), None);
+}
+
+#[test]
+fn completed_marked_operation_issues_receipt_for_its_own_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("completed.txt");
+    std::fs::write(&path, b"synthetic attachment").unwrap();
+    let book = Rc::new(ReceiptBook::new(temp.path().join("store")));
+    let origin = "https://owned.test";
+    let f = Fixture::new();
+    f.evidence
+        .path
+        .replace(Some(path.to_str().unwrap().to_owned()));
+    let output = f.output.clone();
+    observe(
+        &f.operation,
+        format!("blob:{origin}/fixture"),
+        Rc::new(move |_, status| output.borrow_mut().push(status)),
+        Some((book.clone(), origin.to_owned())),
+    )
+    .unwrap();
+    f.state(COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED);
+    let Some(Status::Saved {
+        receipt: Some(token),
+    }) = f.output.borrow().last().copied()
+    else {
+        panic!("missing receipt")
+    };
+    assert_eq!(book.resolve(origin, token), Some(path));
+    f.assert_retired();
 }

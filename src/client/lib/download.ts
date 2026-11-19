@@ -1,10 +1,16 @@
 export type DownloadOutcome = "requested" | "dispatched" | "started" | "saved" | "cancelled" | "failed";
 export interface DownloadProgress { received: number; total: number | null }
-declare global { interface Window { piikNativeDownloads?: boolean } }
+declare global {
+  interface Window {
+    piikNativeDownloads?: boolean;
+    piikRevealDownload?: (receipt: string) => Promise<"revealed" | "cancelled" | "unavailable">;
+  }
+}
 interface DownloadOptions {
   document?: Document;
   signal?: AbortSignal;
   outcome?(state: DownloadOutcome): void;
+  rememberSaved?(receipt: string): void;
   progress?(progress: DownloadProgress): void;
 }
 
@@ -36,11 +42,16 @@ export function downloadBlob(blob: Blob, filename: string, options: DownloadOpti
     }
     if (state !== "started" && state !== "saved" && state !== "cancelled" && state !== "failed") return;
     if (state !== "started") close();
+    if ("piikRemember" in link.dataset && state === "saved" && "receipt" in detail && typeof detail.receipt === "string"
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(detail.receipt)) {
+      options.rememberSaved?.(detail.receipt);
+    }
     options.outcome?.(state);
   };
   try {
-    if (native && (options.outcome || options.progress)) {
+    if (native && (options.outcome || options.progress || options.rememberSaved)) {
       link.hidden = true; link.dataset.piikDownload = "";
+      if (options.rememberSaved && typeof view.piikRevealDownload === "function") link.dataset.piikRemember = "";
       link.addEventListener("piik-native-download", result);
       view.addEventListener("pagehide", close, { once: true });
       options.signal?.addEventListener("abort", close, { once: true });

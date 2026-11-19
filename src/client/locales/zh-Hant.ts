@@ -246,6 +246,8 @@ export const zhHant = {
   "channel.attachment.loadingOriginalImage": "正在載入原圖…",
   "channel.attachment.originalLoadFailed": "暫時無法載入原圖。",
   "channel.attachment.cancelDownload": "取消下載",
+  "channel.attachment.savedCopyMissing": "找不到已儲存的檔案，可重新下載。",
+  "channel.attachment.revealSaved": "在資料夾中顯示",
   "channel.attachment.downloadOriginal": "下載原圖",
   "channel.attachment.download": "下載",
   "channel.attachment.cancelImageLoading": "取消載入圖片",

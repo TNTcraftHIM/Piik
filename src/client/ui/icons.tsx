@@ -32,6 +32,7 @@ const PATHS = {
   chat: { body: (<><path pathLength={1} d="M5 4h14a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H9l-5 3v-4a3 3 0 0 1-2-3V7a3 3 0 0 1 3-3Z"/><path pathLength={1} d="M7 9h10M7 13h6"/></>) },
   smile: { body: (<><circle pathLength={1} cx="12" cy="12" r="9"/><path pathLength={1} d="M8 14c1 4 7 4 8 0M8 8.5v1M16 8.5v1"/></>) },
   send: { body: (<><path pathLength={1} d="m3 3 18 9-18 9 3-9-3-9ZM6 12h15"/></>) },
+  folder: { body: (<>{windowControls.icons.folder.map((path, index) => <path key={index} pathLength={1} d={path}/>)}</>) },
   camera: { body: (<>{windowControls.icons.camera.map((path, index) => <path key={index} pathLength={1} d={path}/>)}</>) },
   microphone: { phases: [0, 1], body: (<>{windowControls.icons.microphone.map((path, index) => <path key={index} pathLength={1} d={path}/>)}</>) },
   microphoneOff: { phases: [0, 1, 2], body: (<><path pathLength={1} d="M9 5a3 3 0 0 1 6 0v5m0 4a3 3 0 0 1-6-2V9"/><path pathLength={1} d="M5 10v2a7 7 0 0 0 12 5m2-5v-2M12 19v3m-4 0h8"/><path pathLength={1} d="M3 3l18 18"/></>) },

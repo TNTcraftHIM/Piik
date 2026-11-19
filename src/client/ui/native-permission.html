@@ -49,24 +49,24 @@ const request = window.piikPermission;
 const close = document.getElementById('close');
 const deny = document.getElementById('deny');
 const allow = document.getElementById('allow');
-for (const [selector, icon] of [['#close svg', 'close'], ['.permission-glyph', request.camera ? 'camera' : 'microphone']]) {
+for (const [selector, icon] of [['#close svg', 'close'], ['.permission-glyph', request.filename ? 'folder' : request.camera ? 'camera' : 'microphone']]) {
   for (const geometry of controls.icons[icon]) {
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', geometry);
     document.querySelector(selector).append(path);
   }
 }
-document.getElementById('permission-origin').textContent = request.origin;
+document.getElementById('permission-origin').textContent = request.filename ?? request.origin;
 window.updateAppearance = (theme, language) => {
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme;
   document.documentElement.lang = language;
   const copy = controls.labels[language];
-  document.getElementById('permission-title').textContent = request.camera ? copy.camera : copy.microphone;
+  document.getElementById('permission-title').textContent = request.filename ? copy.revealQuestion : request.camera ? copy.camera : copy.microphone;
   close.title = copy.permissionClose;
   close.setAttribute('aria-label', copy.permissionClose);
-  deny.textContent = copy.deny;
-  allow.textContent = copy.allow;
+  deny.textContent = request.filename ? copy.permissionClose : copy.deny;
+  allow.textContent = request.filename ? copy.reveal : copy.allow;
 };
 const answer = allowed => window.ipc.postMessage(allowed ? 'allow' : 'deny');
 close.onclick = deny.onclick = () => answer(false);
