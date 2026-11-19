@@ -25,6 +25,13 @@
   [playback owner](../standards/presentation-lifecycle.md#playback-ownership)
   and do not change sender or room state.
 
+On v2.7.0, two Chrome sessions shared a content tab playing a 500 Hz tone
+while the viewer sent a 1500 Hz marker over room voice. The host received
+the voice marker. The viewer received the content tone, and muting then
+restoring shared sound in the host toolbar silenced and restored that tone
+without interrupting the call. In a separate controlled mix, adding the
+received voice to the capture source returned the voice marker to the viewer.
+
 ## RED Tradeoff
 
 RTP RED carries redundant prior audio payload to improve short-loss recovery and
