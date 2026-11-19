@@ -3958,6 +3958,28 @@ function acceptCreatedRoom(socket: ChannelSocket): void {
     room: { ...(request.room as object), id: "domain-created-room" } });
 }
 
+test("fresh Welcome restores only rooms still listed in the channel directory", async () => {
+  const policy = (id: string) => ({ id, creatorId: "self", name: id, icon: "couch", access: "public", hidden: false, hasPassword: false });
+  const revoked = JSON.stringify(policy("revoked"));
+  const retained = JSON.stringify(policy("first"));
+  const host = { roomId: "first", summary: () => policy("first"), bind: vi.fn(async () => {}), close: vi.fn(async () => {}) };
+  const open = vi.fn(async (_database: string, _policy: string) => host);
+  vi.stubGlobal("indexedDB", {});
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: {
+    storedPolicies: async () => [revoked, retained], open,
+  } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const { session, socket } = await setup();
+  try {
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "host_register")).toBe(true));
+    const registration = socket.sent.find(command => command.type === "host_register")!;
+    expect(registration).toMatchObject({ room: { id: "first" } });
+    socket.receive({ type: "host_bound", roomId: "first", bindingId: "restored-binding" });
+    socket.receive({ type: "ack", requestId: registration.requestId });
+    expect(open.mock.calls).toEqual([[expect.any(String), retained]]);
+    expect(socket.sent.filter(command => command.type === "host_register" || command.type === "create_room")).toEqual([registration]);
+  } finally { session.close(); }
+});
+
 test("same-session recovery retires its own host binding when the committed room policy is gone", async () => {
   const policy = JSON.stringify({ id: "first", creatorId: "self", name: "First", icon: "couch", access: "public", hidden: false });
   let policies = [policy];
