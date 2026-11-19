@@ -1249,6 +1249,7 @@ impl RoomRuntime {
                 (endpoint.connected && routable.contains(session)).then_some(*session)
             })
             .collect();
+        let confirmed_demand = self.confirmed_delivery_pairs(&requested, confirmed_pairs);
         if let Some(base) = &mut self.base {
             if base.needs_repair(&demand, &connected) {
                 demand.extend(service);
@@ -1256,7 +1257,14 @@ impl RoomRuntime {
             if repair_due {
                 base.retry_required(&demand, &connected);
             }
-            base.reconcile(&demand, &routable, &connected, &limits, now);
+            base.reconcile_confirmed(
+                &demand,
+                &routable,
+                &connected,
+                &limits,
+                now,
+                &confirmed_demand,
+            );
         }
         let mut neighbors = BTreeMap::<Uuid, BTreeSet<Uuid>>::new();
         for (a, b) in confirmed_pairs.iter().copied().chain(
@@ -1407,10 +1415,15 @@ impl RoomRuntime {
             demand = self.media_sessions();
             demand.extend(self.watch_byte_demand());
             demand.extend(self.files.demand());
-            self.base
-                .as_mut()
-                .unwrap()
-                .reconcile(&demand, &routable, &connected, &limits, now);
+            let confirmed_demand = self.confirmed_delivery_pairs(&requested, confirmed_pairs);
+            self.base.as_mut().unwrap().reconcile_confirmed(
+                &demand,
+                &routable,
+                &connected,
+                &limits,
+                now,
+                &confirmed_demand,
+            );
             self.prepare_base(&requested);
         }
         needs_repair |= self
@@ -1423,6 +1436,30 @@ impl RoomRuntime {
         } else {
             self.repair_at = None;
         }
+    }
+
+    fn confirmed_delivery_pairs(
+        &self,
+        requested: &BTreeMap<Uuid, BTreeSet<Uuid>>,
+        confirmed_pairs: &BTreeSet<(Uuid, Uuid)>,
+    ) -> BTreeSet<(Uuid, Uuid)> {
+        if confirmed_pairs.is_empty() {
+            return BTreeSet::new();
+        }
+        let voice = requested.iter().flat_map(|(&receiver, ids)| {
+            ids.iter()
+                .filter_map(|id| self.publications.get(id))
+                .filter(|publication| {
+                    publication.info.kind == Kind::Voice && !publication.info.paused
+                })
+                .map(move |publication| (publication.info.session_id, receiver))
+        });
+        self.files
+            .requested_pairs()
+            .chain(voice)
+            .map(|(a, b)| (a.min(b), a.max(b)))
+            .filter(|pair| confirmed_pairs.contains(pair))
+            .collect()
     }
 
     fn prepare_base(&mut self, requested: &BTreeMap<Uuid, BTreeSet<Uuid>>) {
@@ -2122,6 +2159,70 @@ mod tests {
             .unwrap();
         room.reconcile(&endpoints, 0);
         (room, endpoints)
+    }
+
+    #[test]
+    fn waiting_voice_and_files_reuse_a_confirmed_pair_after_room_ack() {
+        let id = Uuid::from_u128;
+        let (prior, endpoints) = screen_on_room_base();
+        let (a, b, c) = (id(1), id(2), id(3));
+        for voice in [true, false] {
+            let mut room = RoomRuntime::new(prior.policy.clone());
+            room.set_host_session(b);
+            let file = crate::attachment::AttachmentDescriptor {
+                id: id(9),
+                name: "sample".into(),
+                size: 3,
+                media_type: "application/octet-stream".into(),
+                sha256: crate::attachment::sha256_hex(b"abc"),
+            };
+            if voice {
+                for peer in [a, b, c] {
+                    room.set_voice(endpoints[&peer].member, peer, true, true, false)
+                        .unwrap();
+                }
+                room.publish(endpoints[&a].member, a, id(10), Kind::Voice, None, None)
+                    .unwrap();
+            } else {
+                room.files.install(a, 1, a, file.clone(), true).unwrap();
+                room.files.install(c, 1, a, file.clone(), false).unwrap();
+            }
+            room.reconcile(&endpoints, 0);
+            room.base_state(b, a, true).unwrap();
+            room.base_state(a, b, true).unwrap();
+            room.reconcile(&endpoints, 1);
+            assert!(room
+                .base_links()
+                .any(|e| e.parent == b && e.child == c && !e.ready));
+            let pairs = BTreeSet::from([(a, c)]);
+            room.reconcile_with_pairs(&endpoints, 2, &pairs);
+            assert!(room
+                .base_links()
+                .any(|e| e.parent == a && e.child == c && !e.ready));
+            room.base_state(a, c, true).unwrap();
+            room.reconcile_with_pairs(&endpoints, 3, &pairs);
+            assert!(!room.base_links().any(|e| e.child == c && e.ready));
+            room.base_state(c, a, true).unwrap();
+            room.reconcile_with_pairs(&endpoints, 4, &pairs);
+            assert!(room
+                .base_links()
+                .any(|e| e.parent == a && e.child == c && e.ready));
+            if voice {
+                assert!(room
+                    .flows()
+                    .any(|f| f.sender == a && f.receiver == c && f.proof.is_none()));
+                room.set_voice(endpoints[&c].member, c, false, true, false)
+                    .unwrap();
+            } else {
+                assert_eq!(
+                    room.snapshot(endpoints[&c].member, c).unwrap().files[0].upstream,
+                    Some(a)
+                );
+                room.files.remove(c, 1, file.id, false);
+            }
+            room.reconcile_with_pairs(&endpoints, 5, &pairs);
+            assert!(!room.base_links().any(|e| e.child == c));
+        }
     }
 
     #[test]

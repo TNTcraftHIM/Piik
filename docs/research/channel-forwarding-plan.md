@@ -93,7 +93,7 @@ within its resource allowance and closes a pair when its last use ends.
 | Version | When peer connections are prepared and used |
 | --- | --- |
 | [v2.7.0](https://github.com/TNTcraftHIM/Piik/blob/e25bd009501793681c2fc52080846cd092bb917e/docs/standards/routing-transport.md#topology) | The room already supports multi-hop delivery from one screen host. Each viewer has at most one active upstream. Voice can establish the room graph before the host shares a screen. Voice and picture use the same route controller. Voice can use a companion transport on a selected edge. The route policy can use an embedded SFU. |
-| [Current 3.0 prototype](./channel-network-design.md#one-base-tree-per-participating-room) | The channel can test a missing pair for current screen demand and make the verified transport reusable. Per-publication planning compares ordered additions with a shared-relay branch and retains working delivery. Browser and Native each apply their own per-kind limit across rooms. Voice and file plans use eligible room paths, including a permitted service relay. |
+| [Current 3.0 prototype](./channel-network-design.md#one-base-tree-per-participating-room) | Screen demand can trigger an ICE attempt inside the room's authorized graph. A waiting voice listener or file recipient can use an already verified pair after both endpoints acknowledge the room link. Active branches keep delivering. Browser and Native enforce per-kind limits across rooms. |
 | 3.0 design target | One channel pool learns connections made for rooms or activities and can fill gaps between groups. Rooms use authorized subgraphs. Each flow selects a delivery path and can request additional pairs. Freshly verified edges immediately become available for reuse. |
 
 ### Payloads

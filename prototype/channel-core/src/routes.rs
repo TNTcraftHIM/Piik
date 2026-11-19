@@ -346,6 +346,17 @@ impl Plan {
         helpers: &BTreeMap<Uuid, Uuid>,
         limits: &RelayLimits,
     ) -> Option<Uuid> {
+        self.preferred_parent(child, connected, helpers, limits, &BTreeSet::new())
+    }
+
+    fn preferred_parent(
+        &self,
+        child: Uuid,
+        connected: &BTreeSet<Uuid>,
+        helpers: &BTreeMap<Uuid, Uuid>,
+        limits: &RelayLimits,
+        confirmed_demand: &BTreeSet<(Uuid, Uuid)>,
+    ) -> Option<Uuid> {
         if !connected.contains(&self.source) || !connected.contains(&child) {
             return None;
         }
@@ -370,6 +381,7 @@ impl Plan {
             // Readiness changes must not revoke a valid equal-depth reservation.
             .min_by_key(|parent| {
                 (
+                    !confirmed_demand.contains(&((*parent).min(child), (*parent).max(child))),
                     std::iter::successors(Some(*parent), |node| self.parents.get(node).copied())
                         .count(),
                     current != Some(parent),
@@ -785,6 +797,7 @@ impl BaseTree {
                 (*parent == first && *child == second) || (*parent == second && *child == first)
             })
     }
+    #[cfg(test)]
     pub fn reconcile(
         &mut self,
         demand: &BTreeSet<Uuid>,
@@ -792,6 +805,18 @@ impl BaseTree {
         connected: &BTreeSet<Uuid>,
         limits: &RelayLimits,
         now: u64,
+    ) {
+        self.reconcile_confirmed(demand, available, connected, limits, now, &BTreeSet::new())
+    }
+
+    pub(crate) fn reconcile_confirmed(
+        &mut self,
+        demand: &BTreeSet<Uuid>,
+        available: &BTreeSet<Uuid>,
+        connected: &BTreeSet<Uuid>,
+        limits: &RelayLimits,
+        now: u64,
+        confirmed_demand: &BTreeSet<(Uuid, Uuid)>,
     ) {
         self.plan
             .reconcile(demand, available, connected, None, &BTreeMap::new(), limits);
@@ -805,10 +830,27 @@ impl BaseTree {
             .copied()
             .collect();
         for child in pending {
-            if let Some(parent) =
+            let current = self.plan.parents[&child];
+            // Keep the current room handshake once either endpoint has acknowledged it.
+            let acknowledging = self.acknowledged.contains(&(current, child))
+                || self.acknowledged.contains(&(child, current));
+            if acknowledging && confirmed_demand.contains(&(current.min(child), current.max(child)))
+            {
+                continue;
+            }
+            let parent = if acknowledging {
                 self.plan
                     .candidate_parent(child, connected, &BTreeMap::new(), limits)
-            {
+            } else {
+                self.plan.preferred_parent(
+                    child,
+                    connected,
+                    &BTreeMap::new(),
+                    limits,
+                    confirmed_demand,
+                )
+            };
+            if let Some(parent) = parent {
                 self.plan.parents.insert(child, parent);
             }
         }

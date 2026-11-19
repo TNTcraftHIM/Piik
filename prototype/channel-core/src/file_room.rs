@@ -141,6 +141,15 @@ impl FileRoom {
             file.refused.retain(|(from, _)| *from != sender);
         }
     }
+    pub fn requested_pairs(&self) -> impl Iterator<Item = (Uuid, Uuid)> + '_ {
+        self.files.values().flat_map(|file| {
+            file.source.into_iter().flat_map(move |source| {
+                file.receivers.iter().filter_map(move |&receiver| {
+                    (!file.refused.contains(&(source, receiver))).then_some((source, receiver))
+                })
+            })
+        })
+    }
     pub fn demand(&self) -> BTreeSet<Uuid> {
         self.files
             .values()
