@@ -65,8 +65,6 @@ the feedback period; they do not delay that delivery.
 - [ ] **Native console/terminal package acceptance.** Check the matching package's
   silent native entry, explicit Browser terminal, unavailable-WebView fallback,
   and interactive quit/update restart.
-  Locate the first remaining window or worker if shutdown stalls after a
-  recovered webpage share.
 - [ ] **2.x periodic brief picture stalls.** With a particular Host or Viewer,
   normally clear playback pauses for less than half a second every few seconds
   or tens of seconds, skips several frames and sometimes briefly blurs. A roughly

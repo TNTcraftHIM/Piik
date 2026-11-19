@@ -91,10 +91,12 @@ new-source preparation plays successfully, and ending that activity releases its
 provider. Core checks also reject new offline sources and clear expired or
 withdrawn grants. These controlled local-media checks do not establish WAN/NAT
 success rates, Linux pairing or general website compatibility.
-With an independent viewer waiting on a 64 KiB range from a local source,
-closing the Windows App cancelled the HTTP read and released the viewer's
-subscription, transfer plan, WebView2 processes and sockets. An earlier run
-stalled after webpage recovery. That combined sequence remains under review.
+After a short interruption of Native signaling, an independent viewer continued
+playing the same publication and requested a new 64 KiB range. Closing the
+Windows App while the local video source still held that request cancelled the
+HTTP read and cleared the viewer's subscription and transfer plan. The App
+exited normally and released its WebView2 processes and sockets. The cause of
+an earlier isolated shutdown stall remains unconfirmed.
 With 100 ms source response delay, an approximately 8 Mbps MP4 passes a real
 Native-to-Browser-to-Browser path after initial buffering; correction stays
 inside received ranges instead of repeatedly seeking beyond them. This is a
