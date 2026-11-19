@@ -136,6 +136,14 @@ input-to-output latency was 0.67/2.19 ms at p50/p95. Software encoding took
 These separate stage measurements do not rank encoder speed. The control
 establishes no fixed 60 fps limit in that low-load encoding path.
 
+A single Native-to-Chromium session on `07d1e62b` used a 640 × 360 moving
+texture, H264 and the production RTP sender. The Windows source submitted
+360 frames and the encoder supplied 360 access units in three seconds.
+Chromium received and decoded 362 frames in 3.0144 seconds (120.09 fps).
+Presented frames advanced at 116.77 fps, and JavaScript observed 103.17
+video-frame callbacks per second. This run covered local SDP signaling and
+synthetic input. Window capture and display refresh require a physical check.
+
 A 2026-11-17 control of `8872d40b`'s Windows encoder implementation compared
 hardware H264, system software H264 and libvpx 1.16.0 VP8 on a Ryzen 7 9700X /
 RTX 4070 SUPER (driver 32.0.16.1742). Each instrumented debug arm ran once for
