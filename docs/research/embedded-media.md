@@ -56,6 +56,29 @@ because its example compiles. Keep test executables under the worktree's stable
   verify, not proof of Piik's required behavior.
 - Galene is useful architectural reference, not yet an accepted library adapter.
 
+### Cloudflare Realtime SFU
+
+A proposed optional 2.x adapter would let each deployment use its own Cloudflare
+SFU App ID and keep the App Secret on the Piik Server. Cloudflare bills egress
+to the app owner's account. TURN relays ICE traffic; the SFU forwards selected
+tracks. The adapter would map authorized rooms, participants and current media
+generations to Cloudflare sessions and publications. The existing embedded SFU
+is the shipped fallback. [App setup](https://developers.cloudflare.com/realtime/sfu/get-started/)
+and [pricing](https://developers.cloudflare.com/realtime/sfu/platform/pricing/).
+
+For a receive-only Viewer, the Server creates a session with an empty-body
+`POST /sessions/new`, then requests the Host's published tracks by session ID
+and track name through `tracks/new`. The Viewer maps receiving MIDs to tracks,
+applies the SFU offer and gathers ICE candidates for its local answer. The Server
+submits that answer through `PUT .../renegotiate` before the next mutation.
+Real-service verification must cover screen and audio playback, reconnect and
+track closure on revocation. [Receive a published track](https://developers.cloudflare.com/realtime/sfu/get-started/connection-patterns/#receive-a-published-track).
+
+Room voice has a separate subscription for each authorized speaker.
+Remote control would also need a data channel tied to the current input grant.
+Cloudflare assigns one reply holder per published data channel.
+[Control channel exchange](https://developers.cloudflare.com/realtime/sfu/get-started/connection-patterns/#receive-media-and-send-controls)
+
 ## Current Evidence
 
 - The 2026-09-07 local STUN check passed three independent Binding responses,

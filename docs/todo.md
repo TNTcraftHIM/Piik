@@ -74,6 +74,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
+- [ ] **2.x optional SFU provider.** Implement and verify the
+  [deployment-owned Cloudflare SFU adapter](./research/embedded-media.md#cloudflare-realtime-sfu).
+
 - [ ] **Stronger microphone noise suppression (#518).** Assess the
   [requested speech-processing option](https://github.com/TNTcraftHIM/Piik/issues/518)
   through the shared microphone input. Browser voice processing is already the
