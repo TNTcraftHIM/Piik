@@ -50,9 +50,11 @@ it("projects joined watch people independently of transport and deduplicates the
     player.presentFrame();
     expect(viewing("viewer")).toBe("active");
     expect(localViewing()).toBe("active");
-    observedVideo.readyState = 1; // A retained paused/offscreen player's first frame still belongs to this lease.
-    expect(viewing("viewer")).toBe("active");
+    observedVideo.readyState = 1;
+    expect(viewing("viewer")).toBe("preparing");
+    expect(localViewing()).toBe("preparing");
     observedVideo.readyState = 4;
+    expect(localViewing()).toBe("active");
     expect(viewing("direct")).toBe("joined");
     state.watchActivities[0].viewerSessionIds = ["viewer-app"];
     expect(viewing("viewer")).toBe("joined"); // Same identity, different endpoint.

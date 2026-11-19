@@ -65,8 +65,8 @@ export function participantViewingLabel(state: ParticipantViewing, t: Copy["t"])
 function watchViewerState(watch: WatchActivity, sessionId: string, local?: LocalWatchPresentation): ParticipantViewing {
   const player = sessionId === local?.sessionId ? local.watchPlayers.get(watch.id) : undefined;
   if (player?.error) return "failed";
-  if (player?.hasPresentedFrame) return "active";
-  return player?.waitingForPicture ? "preparing" : "joined";
+  if (player?.waitingForPicture) return "preparing";
+  return player?.hasPresentedFrame ? "active" : "joined";
 }
 
 function takesViewingPriority(next: ParticipantViewing, current?: ParticipantViewing): boolean {
