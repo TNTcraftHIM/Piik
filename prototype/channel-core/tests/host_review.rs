@@ -108,6 +108,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
                     room_id: "review".into(),
                     name: "Updated".into(),
                     icon: Default::default(),
+                    picture: None,
                     access: RoomAccess::Public,
                     hidden: false,
                     password: None,
