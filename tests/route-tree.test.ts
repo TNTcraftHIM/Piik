@@ -13,6 +13,11 @@ import { deriveParticipantStatus } from "../src/client/ui/media-status";
 
 afterEach(() => setCopy({ lang: "zh" }));
 
+function accessibleRoutes(html: string): string[] {
+  const list = html.split('<ul class="visually-hidden">')[1].split("</ul>")[0];
+  return Array.from(list.matchAll(/<li>(.*?)<\/li>/gs), ([, item]) => item.replace(/<[^>]+>/g, ""));
+}
+
 it("keeps participant identity and actual Viewer readiness in their descriptions", () => {
   setCopy({ lang: "en" });
   const render = (view: "host" | "viewer") => renderToStaticMarkup(createElement(Couch, {
@@ -471,8 +476,10 @@ describe("RouteTree", () => {
       .map((match) => ({ x: Number(match[1]), y: Number(match[2]) }));
     expect(new Set(points.map((point) => point.y)).size).toBe(21);
     expect(points.every((point) => point.x >= 0 && point.x + 40 < width)).toBe(true);
+    const routes = accessibleRoutes(html);
     for (let index = 0; index < 20; index++) {
-      expect(html).toContain(`Viewer ${index} ← ${index === 0 ? "Host" : `Viewer ${index - 1}`}`);
+      const expectedParent = index === 0 ? "Host" : `Viewer ${index - 1}`;
+      expect(routes).toContainEqual(expect.stringContaining(`Viewer ${index} ← ${expectedParent} ·`));
     }
   });
 });
@@ -496,8 +503,9 @@ describe("RouteGraph", () => {
     expect(html.match(/class="lr-route-edge /g)).toHaveLength(4);
     expect(html).toContain('class="lr-route-edge is-p2p is-pending is-presentation"');
     expect(html.match(/class="lr-route-edge is-p2p"/g)).toHaveLength(2);
-    expect(html).toContain("Viewer ← Relay");
-    expect(html).toContain("Viewer ← Viewer App");
+    const viewerRoutes = accessibleRoutes(html).find(item => item.startsWith("Viewer ←"));
+    expect(viewerRoutes).toContain("← Relay ·");
+    expect(viewerRoutes).toContain("← Viewer App ·");
     expect(html).not.toContain("SFU");
   });
 
