@@ -92,25 +92,25 @@ impl CoreBurst {
                 * 3,
             0,
         );
-        let icon: piik_channel_core::wire::IdentityIcon =
-            serde_json::from_value(serde_json::json!(format!(
-                "data:image/png;base64,{}",
-                base64::engine::general_purpose::STANDARD.encode(image)
-            )))?;
+        let picture = format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(image)
+        );
         // The catalog limit, with real stored policy and real HostRegister/HostOutput.
         for i in 0..32 {
             let id = format!("owned-room-{i:02}");
             let path = value._directory.path().join(format!("room-{i}.sqlite"));
-            let policy = RoomState::new(
+            let mut policy = RoomState::new(
                 id.clone(),
                 format!("Owned room {i}"),
-                icon.clone(),
+                Default::default(),
                 value.user,
                 RoomAccess::Public,
                 false,
                 None,
             )
             .map_err(anyhow::Error::msg)?;
+            policy.appearance.picture = Some(picture.clone());
             let host = HostedRoom::create(&path, policy)?;
             let summary = host.summary();
             value.hosts.insert(id.clone(), host);
@@ -133,6 +133,20 @@ impl CoreBurst {
             value.settle(e)?;
         }
         Ok(value)
+    }
+    pub fn browse_catalog(&mut self) -> Result<()> {
+        for room_id in self.room_ids.clone() {
+            let effects = self.command(
+                Command::Browse {
+                    room_id,
+                    active: true,
+                    relay_capacity: None,
+                },
+                None,
+            );
+            self.settle(effects)?;
+        }
+        Ok(())
     }
     pub fn command(&mut self, command: Command, request_id: Option<String>) -> Effects {
         self.now += 1;

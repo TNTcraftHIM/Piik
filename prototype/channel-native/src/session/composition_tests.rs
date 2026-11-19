@@ -20,6 +20,7 @@ fn frames(events: &[Event]) -> Result<Vec<String>> {
 #[tokio::test]
 async fn restored_host_catalog_preserves_event_order_and_expired_carrier_authority() -> Result<()> {
     let mut core = CoreBurst::new()?;
+    core.browse_catalog()?;
     let events = core.recovery()?;
     let texts = frames(&events)?;
     let charged: usize = texts
@@ -31,6 +32,33 @@ async fn restored_host_catalog_preserves_event_order_and_expired_carrier_authori
         .filter(|e| matches!(e, Event::HostInput { .. }))
         .count();
     ensure!(events.len() == 98 && host_inputs == 32);
+    let restored = events
+        .iter()
+        .rev()
+        .find_map(|event| match event {
+            Event::State { state } => Some(state),
+            _ => None,
+        })
+        .context("missing restored catalog")?;
+    ensure!(restored.channel.rooms.len() == 32);
+    ensure!(
+        restored.channel.rooms.iter().all(|room| {
+            room.authorized
+                && room.reading
+                && room.available
+                && room.picture.as_ref().is_some_and(|picture| {
+                    picture.len() >= piik_channel_core::wire::IDENTITY_IMAGE_URL_BYTES - 3
+                })
+        }),
+        "restored catalog lost an authorized maximum-size room picture"
+    );
+    ensure!(
+        texts
+            .iter()
+            .map(|text| text.matches("data:image/png;base64,").count())
+            .sum::<usize>()
+            == 32
+    );
     let mut reader = stream::iter(texts.into_iter().map(|s| Ok(Message::Text(s.into()))))
         .chain(stream::pending());
     let (tx, mut rx) = mpsc::channel(SIGNALING_QUEUE_BYTES / std::mem::size_of::<Incoming>() + 1);
