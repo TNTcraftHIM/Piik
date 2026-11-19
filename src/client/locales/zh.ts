@@ -559,7 +559,7 @@ export const zh = {
   "channel.error.externalInputUnavailable": "当前 App 无法接收本机推流。",
   "channel.error.externalVideoFormatUnsupported": "暂不支持此 OBS 视频格式。请先停止推流，将“设置 → 高级 → 视频 → 色彩格式”设为 NV12（8 位、4:2:0），并在“输出 → 直播”中选择 H.264 Baseline、Main 或 High，再重新推流。此连接无法自动将 High 10 降为 8 位。",
   "channel.error.externalVideoFormatReceived": "收到 H.264 {profile}，Level {level}（SPS {sps}）。",
-  "channel.error.externalInputFailed": "未能接收画面。请检查 OBS 的推流设置后重试。",
+  "channel.error.externalInputFailed": "未能接收 OBS 画面。请先停止推流，确认“输出 → 直播”使用 H.264，并将“设置 → 高级 → 视频 → 色彩格式”设为 NV12（8 位），然后重新推流。",
   "channel.error.invalidTitle": "标题不能超过 64 个字符。",
   "channel.error.captureFailed": "分享遇到问题，请重新选择窗口或屏幕。",
   "channel.error.captureAudioFailed": "无法分享声音，画面分享仍在继续。",
