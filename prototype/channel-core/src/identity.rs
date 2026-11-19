@@ -3,6 +3,7 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+use std::ops::Bound::{Excluded, Unbounded};
 use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
@@ -141,25 +142,40 @@ impl Identity {
             return Err("invalid_profile_query");
         }
         let query = query.to_lowercase();
-        let matching = || {
-            self.users.values().filter(|user| {
-                user.name
+        let matches = |user: &&User| {
+            query.is_empty()
+                || user
+                    .name
                     .nfc()
                     .collect::<String>()
                     .to_lowercase()
                     .contains(&query)
-            })
         };
-        let total = matching().count();
-        let mut page = matching().filter(|user| after.is_none_or(|cursor| user.id > cursor));
+        let start = after.map_or(Unbounded, Excluded);
+        let mut page = self
+            .users
+            .range((start, Unbounded))
+            .map(|(_, user)| user)
+            .filter(matches);
         let profiles: Vec<_> = page
             .by_ref()
             .take(PROFILE_PAGE_SIZE)
             .map(User::profile)
             .collect();
-        let next = page
-            .next()
-            .and_then(|_| profiles.last().map(|user| user.id));
+        let (has_more, total) = if query.is_empty() {
+            (page.next().is_some(), self.users.len())
+        } else {
+            let remaining = page.count();
+            let earlier = after.map_or(0, |cursor| {
+                self.users
+                    .range(..=cursor)
+                    .map(|(_, user)| user)
+                    .filter(matches)
+                    .count()
+            });
+            (remaining != 0, earlier + profiles.len() + remaining)
+        };
+        let next = profiles.last().filter(|_| has_more).map(|user| user.id);
         Ok((profiles, total, next))
     }
 

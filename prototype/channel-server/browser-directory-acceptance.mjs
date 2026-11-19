@@ -87,7 +87,7 @@ try {
     const online = await connect('Online only');
     const present = await connect('In room');
     await present.request({ type: 'browse', roomId: room.id, active: true }, 'ack');
-    window.directoryAcceptance = { sameIdentity, online, present };
+    window.directoryAcceptance = { sameIdentity, online, present, connect };
     return { self, room, offline, online: online.welcome.selfProfile.id, present: present.welcome.selfProfile.id,
       sameIdentity: sameIdentity.welcome.selfProfile.id };
   })()`);
@@ -127,7 +127,7 @@ try {
   await browser(0, "set", "viewport", "390", "844");
   if (await sample("document.querySelector('#c3-companion-trigger')?.getAttribute('aria-expanded') === 'false'"))
     await browser(0, "click", "#c3-companion-trigger");
-  for (let page = 0; page < 3 && (await rows()).length < expectedCount; page++) {
+  for (let page = 0; page < Math.ceil(expectedCount / 20) + 1 && (await rows()).length < expectedCount; page++) {
     await browser(0, "wait", more);
     const before = (await rows()).length;
     await browser(0, "click", more);
@@ -140,6 +140,23 @@ try {
   assert.equal(everyone.find(row => row.id === identities.online)?.group, "Online");
   assert.equal(everyone.find(row => row.id === identities.present)?.group, "This room");
   assert(await sample("document.documentElement.scrollWidth === innerWidth && document.querySelector('#c3-people').checkVisibility()"));
+  await browser(0, "click", "#c3-people .c3-pane-back button");
+  const lateId = await sample(`(async () => {
+    const { socket, welcome } = await window.directoryAcceptance.connect("Joined while closed");
+    window.directoryAcceptance.late = socket;
+    return welcome.selfProfile.id;
+  })()`);
+  await until("late member is online", () => sample(`${gate}.snapshot().state.sessions.some(session => session.userId === ${JSON.stringify(lateId)})`), Boolean);
+  await sample("(() => { window.directoryAcceptance.late.send(JSON.stringify({ type: 'leave' })); window.directoryAcceptance.late.close(); })()");
+  await until("late member retires", () => sample(`${gate}.snapshot().state.sessions.some(session => session.userId === ${JSON.stringify(lateId)})`), value => !value);
+  await browser(0, "click", "#c3-companion-trigger");
+  await browser(0, "wait", more);
+  for (let page = 0; page < Math.ceil(expectedCount / 20) + 1 && (await rows()).length < expectedCount + 1; page++) {
+    await browser(0, "click", more);
+    await until("directory page completes", () => sample("!document.querySelector('#c3-people p[role=status]')"), Boolean);
+  }
+  assert.equal((await rows()).find(row => row.id === lateId)?.group, "Offline");
+  assert.equal(await sample("Number(document.querySelector('#c3-people-heading span').textContent)"), expectedCount + 1);
   await sample("window.directoryAcceptance.sameIdentity.request({ type: 'set_profile', name: 'Renamed endpoint', avatar: null }, 'ack')");
   await until("rename updates the single self row", rows, value =>
     value.filter(row => row.self).length === 1 && value.some(row => row.self && row.name === "Renamed endpoint"));

@@ -131,6 +131,18 @@ fn retained_profiles_are_read_in_bounded_pages_without_consuming_live_identity_c
     }
     assert_eq!(listed.len(), 76);
     assert!(listed.windows(2).all(|pair| pair[0] < pair[1]));
+    // A cursor is an exclusive UUID bound even when no user owns that UUID.
+    for query in [None, Some("  ")] {
+        let effects = apply(
+            &mut core,
+            owner,
+            json!({
+                "type":"profiles","requestId":"late-page","after":Uuid::from_u128(u128::MAX),"query":query
+            }),
+            0,
+        );
+        assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Profiles {profiles,total:76,next_cursor:None,..} if profiles.is_empty())));
+    }
     for query in [
         json!({"type":"profiles","requestId":"bad","ids":vec![owner_id;33]}),
         json!({"type":"profiles","requestId":"bad","ids":[owner_id],"query":"Friend"}),

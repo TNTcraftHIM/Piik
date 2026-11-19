@@ -9,11 +9,10 @@ import { useEffect, useRef, useState } from "react";
 export function ChannelPeople({ channel, roomId, active, onBack }: { channel: ChannelController; roomId: string; active: boolean; onBack(): void }) {
   const { t } = useCopy();
   const { state, self } = channel;
-  const [directory, setDirectory] = useState<{ ids: string[]; next: string | null }>({ ids: [], next: null });
+  const [directory, setDirectory] = useState<{ ids: string[]; next?: string | null }>({ ids: [] });
   const [loading, setLoading] = useState(false), [failed, setFailed] = useState(false);
   const request = useRef<AbortController | null>(null);
-  const loaded = useRef(false);
-  const loadedIds = useRef<string[]>([]);
+  const loadedIds = useRef<string[] | null>(null);
   const load = async (after?: string) => {
     if (request.current || channel.connection !== "connected") return;
     const current = request.current = new AbortController();
@@ -21,9 +20,8 @@ export function ChannelPeople({ channel, roomId, active, onBack }: { channel: Ch
     try {
       const page = await channel.queryProfiles(after ? { after } : {}, current.signal);
       if (!current.signal.aborted) {
-        loaded.current = true;
-        loadedIds.current = [...new Set([...loadedIds.current, ...page.profiles.map(user => user.id)])];
         const pageIds = page.profiles.map(user => user.id);
+        loadedIds.current = [...new Set([...(loadedIds.current ?? []), ...pageIds])];
         setDirectory(previous => ({ ids: [...new Set([...previous.ids, ...pageIds])], next: page.nextCursor }));
       }
     } catch { if (!current.signal.aborted) setFailed(true); }
@@ -35,9 +33,8 @@ export function ChannelPeople({ channel, roomId, active, onBack }: { channel: Ch
     }
   };
   useEffect(() => {
-    loaded.current = false;
-    loadedIds.current = [];
-    setDirectory({ ids: [], next: null }); setLoading(false); setFailed(false);
+    loadedIds.current = null;
+    setDirectory({ ids: [] }); setLoading(false); setFailed(false);
     return () => {
       request.current?.abort();
       request.current = null;
@@ -45,7 +42,7 @@ export function ChannelPeople({ channel, roomId, active, onBack }: { channel: Ch
   }, [state?.channel.id, self?.id]);
   useEffect(() => {
     if (!active || channel.connection !== "connected") return;
-    if (!loaded.current) void load();
+    if (loadedIds.current === null) void load();
     else void channel.loadProfiles(loadedIds.current).catch(() => {});
   }, [active, state?.channel.id, self?.id, channel.connection]);
   useEffect(() => {
@@ -60,6 +57,8 @@ export function ChannelPeople({ channel, roomId, active, onBack }: { channel: Ch
     { label: t("channel.people.offline"), users: [] },
   ];
   const ids = new Set([...(state?.users.map(user => user.id) ?? []), ...directory.ids]);
+  // A new identity can sort before the last cursor while the panel is closed.
+  const missingAfterLastPage = directory.next === null && ids.size < (state?.channel.userCount ?? 0);
   for (const id of ids) {
     const user = state && userProfile(state, channel.profiles, id);
     if (user) groups[inRoom.has(id) ? 0 : online.has(id) ? 1 : 2].users.push(user);
@@ -81,7 +80,7 @@ export function ChannelPeople({ channel, roomId, active, onBack }: { channel: Ch
       </section>)}
       {loading && <p role="status">{t("channel.people.loadingPeople")}</p>}
       {failed && <p role="status">{t("channel.people.loadFailed")}</p>}
-      {(failed || directory.next) && <Btn icon={failed ? "refresh" : "arrowDown"} quiet size="compact" busy={loading}
+      {(failed || directory.next || missingAfterLastPage) && <Btn icon={failed ? "refresh" : "arrowDown"} quiet size="compact" busy={loading}
         disabled={channel.connection !== "connected"}
         title={{ text: failed ? t("channel.people.retry") : t("channel.people.morePeople") }}
         cap={{ text: failed ? t("channel.people.retry") : t("channel.people.morePeople") }}
