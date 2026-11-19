@@ -11,7 +11,7 @@ import { matchesRemoteShortcut, remoteTextAvailable, remoteGamepadAvailable } fr
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../../lib/room-preferences";
 import { RemoteKeyboard } from "./RemoteKeyboard";
 import { RemoteMouse, placeRemotePointer, remotePointerRoom } from "./RemoteMouse";
-import { Btn } from "./primitives";
+import { Btn, Pill } from "./primitives";
 import { videoFullscreenState, type FullscreenVideo } from "./video-fullscreen";
 import { picturePoint, pictureRect, rotatePicturePoint, rotatePictureDelta, videoRotation, type VideoFit, type VideoRotation } from "../../media/video-geometry";
 import "./remote-control.css";
@@ -27,11 +27,14 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
 }) {
   const { t } = useCopy();
   const [state, setState] = useState<RemoteInputState | null>(null);
+  const [interrupted, setInterrupted] = useState(false);
   const [locked, setLocked] = useState(false);
   const [lockFailed, setLockFailed] = useState(false);
   const [presentation, setPresentation] = useState<"playing" | "paused" | "external">("paused");
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [password, setPassword] = useState("");
+  const gamepad = useRef<RemoteGamepad | null>(null);
+  const leftStick = useCallback((x: number, y: number) => gamepad.current?.setLeftStick(x, y), []);
   const [gamepadConnected, setGamepadConnected] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [keyboardDocument, setKeyboardDocument] = useState<Document | null>(null);
@@ -48,7 +51,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const canControl = available && presentation === "playing";
   const active = state?.state === "active" && canControl && channel?.readyState === "open";
   const controlled = (state?.state === "active" || state?.state === "suspended") && canControl && channel?.readyState === "open";
-  const gamepadAvailable = state !== null && remoteGamepadAvailable(state) && typeof navigator.getGamepads === "function";
+  const gamepadAvailable = state !== null && remoteGamepadAvailable(state);
   const input = useCallback((event: RemoteInputEvent) => session.current?.input(event), []);
   const reset = useCallback(() => { mouseButtons.current.clear(); touchpad.current?.reset(); session.current?.input({ type: "reset" }); }, []);
   const closeKeyboard = () => {
@@ -67,7 +70,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     setState(null);
     setPasswordOpen(false); setPassword("");
     if (!channel) return;
-    const current = new RemoteInputSession(channel, setState);
+    const current = new RemoteInputSession(channel, setState, () => setInterrupted(true));
     session.current = current;
     return () => {
       current.dispose(); session.current = null;
@@ -86,10 +89,11 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   }, [active]);
   useEffect(() => {
     setGamepadConnected(false);
-    if (!controlled || !gamepadAvailable) return;
+    if (!active || !gamepadAvailable || keyboardOpen) return;
     const current = new RemoteGamepad(input, setGamepadConnected);
-    return () => current.dispose();
-  }, [controlled, gamepadAvailable, state?.grant, channel, input]);
+    gamepad.current = current;
+    return () => { gamepad.current = null; current.dispose(); };
+  }, [active, gamepadAvailable, keyboardOpen, state?.grant, channel, input]);
   useLayoutEffect(() => {
     const video = videoRef.current;
     const element = surface.current;
@@ -208,7 +212,9 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     return () => owners.forEach(owner => owner.removeEventListener("keydown", stop, true));
   }, [controlled, keyboardDocument, release, releaseKey]);
 
-  if (!channel || channel.readyState !== "open" || !state || state.mode === "off") return null;
+  const endedNotice = interrupted && <Pill icon="mouse" label={t("remote.ended")} comic="hint-remote-stop"
+    onDismiss={() => setInterrupted(false)} />;
+  if (!channel || channel.readyState !== "open" || !state || state.mode === "off") return endedNotice;
   const point = (clientX: number, clientY: number) => {
     const video = videoRef.current;
     return video ? picturePoint(video, clientX, clientY) : null;
@@ -217,6 +223,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const holding = controlled || requesting;
   const buttonTitle = holding ? controlled ? "remote.stop" : "remote.cancel" : "remote.request";
   const requestControl = () => {
+    setInterrupted(false);
     if (holding) { release(); return; }
     if (state.mode === "password") {
       release(); setPasswordOpen(true);
@@ -234,6 +241,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const parent = videoRef.current?.parentElement;
   return <>
     <span className="lr-remote-controls" role="group" aria-label={t("remote.title")}>
+      {endedNotice}
       <span className="lr-remote-viewer-control">
         <Btn icon="mouse" title={presentation === "external" ? "remote.inlineRequired" : presentation === "paused" ? "remote.playbackRequired" : state.state === "unavailable" ? "remote.unavailable" : buttonTitle}
           hint={holding ? "hint-remote-stop" : "hint-remote-control"}
@@ -338,7 +346,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           if (!event.nativeEvent.isComposing) input({ type: "key", code: event.code, down: true });
         }}
         onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }}>
-        {active && touchPointer && <RemoteMouse key={state.grant} pointer={touchPointer} positionRef={cursor} pointAt={point} touchMode={touchMode} />}
+        {active && touchPointer && <RemoteMouse key={state.grant} pointer={touchPointer} positionRef={cursor} pointAt={point} touchMode={touchMode} onLeftStick={gamepadAvailable && !keyboardOpen && !gamepadConnected ? leftStick : undefined} />}
       </div>}
       {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
         allowText={remoteTextAvailable(state)}

@@ -123,6 +123,8 @@ selects cursor-based touch control instead.
 
 ### Virtual mouse and keyboard
 
+Tap the gamepad button at the lower left of the picture to open the movement pad. With gamepad access in co-play it controls the analog left stick. Tap WASD for keyboard games. With keyboard-only access or a connected physical controller, the pad uses WASD. Lift your finger to release.
+
 Drag the mini mouse to reposition it; tap to expand its left and right buttons
 and combined scroll wheel / middle button. The cursor stays above and to the
 left of the mouse and moves with it. The picture pans at the edges to leave room

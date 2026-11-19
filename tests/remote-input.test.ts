@@ -158,6 +158,17 @@ it("maps standard gamepads into one negotiated grant and resets on focus loss, u
     // Polling also notices a device removed without a Browser event.
     pads = []; tick(119);
     expect(channel.sent.at(-1)).toEqual({ type: "gamepad-stop", grant });
+    controller.setLeftStick(0.25, -0.5); tick(136);
+    expect(channel.sent.at(-1)).toMatchObject({ type: "gamepad", gamepad: { leftX: 8192, leftY: -16384, buttons: 0 } });
+    controller.setLeftStick(0, 0);
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-reset", grant });
+    controller.setLeftStick(-0.75, 0.5);
+    pads = [pad]; tick(153);
+    controller.setLeftStick(0, 0);
+    expect(channel.sent.at(-1)).toEqual(report);
+    pads = []; tick(170);
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-stop", grant });
+    controller.setLeftStick(0.5, 0); tick(187);
     page.hidden = true; page.dispatchEvent(new Event("visibilitychange"));
     expect(frames.size).toBe(0);
     channel.receive({ platform: "windows", mode: "ask", state: "suspended", intent, grant, coPlay: true, capabilities: ["coPlay", "gamepad"] });
@@ -258,7 +269,7 @@ it("ends a pending request when its source becomes unavailable, even before the 
 it.each([
   [0, { x: .25, y: .75 }], [90, { x: .25, y: .25 }],
   [180, { x: .75, y: .25 }], [270, { x: .75, y: .75 }],
-] as const)("maps rotated picture pixels and relative motion back to source axes (%s°)", (rotation, shown) => {
+] as const)("maps rotated picture pixels and relative motion back to source axes (%s掳)", (rotation, shown) => {
   const video = { videoWidth: 1920, videoHeight: 1080,
     style: { objectFit: "fill" }, dataset: { pictureRotation: String(rotation) },
     getBoundingClientRect: () => ({ left: 100, top: 50, width: 800, height: 600 }),

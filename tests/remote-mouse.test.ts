@@ -5,6 +5,7 @@ import ts from "typescript";
 import { expect, it, vi } from "vitest";
 import { PLAYER_CONTROLS_IDLE_MS } from "../src/client/ui/control-timing";
 import { REMOTE_TOUCH_HOLD_MS } from "../src/client/remote-control/touchpad";
+import { RemoteDirectionPad } from "../src/client/components/living/RemoteDirectionPad";
 
 // Exercise the actual component callbacks without adding a DOM runtime. Native
 // click generation and pointer capture ordering still require Browser acceptance.
@@ -58,7 +59,7 @@ function mouse(left = 100, touchMode: "direct" | "trackpad" = "direct") {
       if (changed(current.deps, deps)) { current.deps = deps; current.value = callback; }
       return current.value;
     },
-    useEffect: effect, useLayoutEffect: effect, Glyph: () => null,
+    useEffect: effect, useLayoutEffect: effect, Glyph: () => null, RemoteDirectionPad,
   });
   const nodes = (element: Element): Element[] => [element, ...[element.props.children].flat(Infinity)
     .filter((child): child is Element => Boolean(child && typeof child === "object" && "props" in child)).flatMap(nodes)];

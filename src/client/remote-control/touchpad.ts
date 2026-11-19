@@ -44,6 +44,27 @@ export class RemoteTouchpad {
     }
   }
 
+  private directionKeys = new Set<string>();
+
+  direction(x: number, y: number): void {
+    const keys = new Set<string>();
+    // Ignore small thumb movements within the central quarter of the radius.
+    const deadZoneRadius = 0.25;
+    if (Math.hypot(x, y) > deadZoneRadius) {
+      // Eight equal sectors overlap adjacent keys in the diagonal directions.
+      const threshold = Math.max(Math.abs(x), Math.abs(y)) * Math.tan(Math.PI / 8);
+      if (Math.abs(x) > threshold) keys.add(x < 0 ? "KeyA" : "KeyD");
+      if (Math.abs(y) > threshold) keys.add(y < 0 ? "KeyW" : "KeyS");
+    }
+    for (const code of this.directionKeys) {
+      if (!keys.has(code)) this.input({ type: "key", code, down: false });
+    }
+    for (const code of keys) {
+      if (!this.directionKeys.has(code)) this.input({ type: "key", code, down: true });
+    }
+    this.directionKeys = keys;
+  }
+
   refresh(): void {
     this.changed(this.position);
   }
@@ -192,6 +213,7 @@ export class RemoteTouchpad {
   }
 
   reset(): void {
+    this.direction(0, 0);
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.frame = null;
     this.pair = null;

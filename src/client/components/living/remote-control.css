@@ -159,3 +159,13 @@
 :is([data-reduced-motion], [data-comic-reduced-motion]) .lr-remote-mouse-widget,
 :is([data-reduced-motion], [data-comic-reduced-motion]) .lr-remote-mouse-widget > *,
 :is([data-reduced-motion], [data-comic-reduced-motion]) .lr-remote-mouse > .lr-remote-mouse-minimize { transition: none; }
+.lr-remote-direction { position: absolute; inset-inline-start: 8px; bottom: 8px; display: flex; align-items: end; gap: 6px; pointer-events: none; }
+.lr-remote-direction > button { min-width: 44px; min-height: 44px; }
+.lr-remote-direction > button, .lr-remote-stick { pointer-events: auto; touch-action: none; }
+.lr-remote-stick { position: relative; width: 92px; height: 92px; border-radius: 50%; background: var(--paper); color: var(--ink); border: 2px solid currentColor; user-select: none; }
+.lr-remote-stick span { position: absolute; font: bold 12px/1 monospace; }
+.lr-remote-stick span:nth-child(1) { top: 6px; left: 46%; }
+.lr-remote-stick span:nth-child(2) { left: 6px; top: 44%; }
+.lr-remote-stick span:nth-child(3) { bottom: 6px; left: 46%; }
+.lr-remote-stick span:nth-child(4) { right: 6px; top: 44%; }
+.lr-remote-stick i { position: absolute; inset: 29%; border-radius: 50%; background: var(--primary); border: 2px solid var(--ink); transform: translate(var(--stick-x,0),var(--stick-y,0)); }
