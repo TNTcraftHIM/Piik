@@ -18,6 +18,13 @@ left, retained the invited reader's grant and history on restart, and hid the
 room from a stranger. These runs used disposable data. Physical display capture,
 microphone capture and public-network conditions require their own checks.
 
+On Windows, the hosted invite-only policy hid a visitor-created room from a
+stranger and admitted its invite recipient. On a lightweight site, the owner
+removed an offline room and its old invitation returned the reader to the overview.
+The packaged Windows App also exercised default WebView entry, explicit browser
+entry, WebView fallback and terminal quit. Linux WHIP playback coverage is recorded
+in the [local OBS input research](./research/room-interactions.md#local-obs-input).
+
 The matching Channel 33 Android test APK and Windows App ran on a controlled
 local network. On an API 35 x86_64 emulator, the Android launcher opened the
 system browser, which read a desktop message and displayed the captured Windows

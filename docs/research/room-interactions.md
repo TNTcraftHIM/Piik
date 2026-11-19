@@ -484,8 +484,9 @@ restored demand exercised existing derived encoding on the same source/feed/
 clock, retiring the limited encoder on return.
 
 On Linux, the App accepted a local FFmpeg WHIP stream with H264 video and
-Opus audio. A Windows browser subscribed to the publication. Its first decoded
-frame across the guest network still needs verification.
+Opus audio. An independent Firefox process on the same Linux host decoded both
+streams. The fixture ran at approximately 0.6 fps. Playback cadence under normal
+load and viewer decoding across the guest network still need verification.
 
 ## Attended Remote-Control Prototype
 

@@ -12,6 +12,8 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- Trace the locally reproduced hosted H.264 freeze during a second viewer's subscription. Correlate the last emitted frame with the relay input/output RTP clocks and the receiver jitter buffer on the same flow. Field correlation remains open. [Controlled observations](./research/network-lab.md#hosted-h264-with-two-viewers)
+
 ### Active work
 
 - [ ] **3.0 architecture convergence.** Trace product responsibilities through
@@ -25,9 +27,8 @@ the feedback period; they do not delay that delivery.
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
   coverage, connection attempts, idle cost and disruption. Exercise concurrent kinds on one uplink
   and recovery from a refused file branch before tuning fanout and retry/standby budgets.
-- [ ] **Matched-package room acceptance.** Exercise hosted/private history,
-  invite-only public Demo discovery, removal of offline rooms and archive
-  recovery on the supported distributions. The [hosting design](./research/server-hosting-plan.md)
+- [ ] **Matched-package room acceptance.** Verify archive recovery on the supported
+  distributions and invite-only discovery on the public Demo. The [hosting design](./research/server-hosting-plan.md)
   owns the lightweight, hosted and moderation contracts.
 - [ ] **Physical camera orientation.** Check portrait capture on a phone through
   Native and pooled Browser paths. Compare the orientation of the source and
@@ -37,8 +38,7 @@ the feedback period; they do not delay that delivery.
   STUN observations and ordinary/enhanced ICE outcome. Two open Apps do not
   establish that their Native endpoints participated in the media route.
 - [ ] **beta.33 Browser window selection stalls.** Reproduce manual selection
-  of another Chrome window on Windows. Determine whether the system picker
-  returns a capture track and whether that track produces its first frame.
+  of another Chrome window on the reporting machine, including window audio.
 - [ ] **beta.33 authenticated webpage sharing.** Reproduce the reported VIP
   video failure after the sharer has started and the viewer receives no picture.
   Use the user's authorized source. Distinguish page playback,
@@ -62,9 +62,7 @@ the feedback period; they do not delay that delivery.
   viewer playback on the reported accessible websites in matching Windows
   App and Web packages. Local replacement and pending-read shutdown controls
   are in the [verification record](./verification-status.md#current-evidence).
-- [ ] **Native console/terminal package acceptance.** Check the matching package's
-  silent native entry, explicit Browser terminal, unavailable-WebView fallback,
-  and interactive quit/update restart.
+- [ ] **Native console/terminal package acceptance.** Verify Windows update restart from the interactive terminal.
 - [ ] **2.x periodic brief picture stalls.** With a particular Host or Viewer,
   normally clear playback pauses for less than half a second every few seconds
   or tens of seconds, skips several frames and sometimes briefly blurs. A roughly
@@ -266,9 +264,10 @@ the feedback period; they do not delay that delivery.
   and Linux hardware encoding and physical sound. Retain the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-  Verify viewer decoding from Linux OBS input and exercise the macOS input.
+  Verify Linux OBS Studio input and viewer decoding across the guest network,
+  and exercise the macOS input.
   [Platform coverage](./research/room-interactions.md#local-obs-input) includes
-  Linux WHIP ingest and Windows OBS playback and retirement.
+  Linux FFmpeg-to-Firefox playback and Windows OBS playback and retirement.
 - [ ] **Enhanced microphone suppression on physical devices (#518).** Compare
   matched-level voice clarity, acoustic echo and mobile runtime cost for the
   optional RNNoise mode. The

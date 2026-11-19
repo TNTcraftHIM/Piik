@@ -245,6 +245,17 @@ and two on the new stream. These samples establish delivery under the measured
 conditions. Choosing production thresholds requires repeated trials on independent
 networks. [Chromium P2P network interceptor](https://chromium.googlesource.com/chromium/src/+/main/services/network/throttling/throttling_p2p_network_interceptor.cc)
 
+### Hosted H.264 with two viewers
+
+In a three-Chromium loopback run on `19948350`, the first viewer froze when a
+second viewer subscribed early under natural route selection, before that viewer
+left. On the same hosted H.264 inbound SSRC, `framesReceived` rose from 35 to
+165 while `jitterBufferEmittedCount`, `framesDecoded` and the video element's
+frame count stayed at 16. The visible source continued encoding. Direct playback
+continued in a separate control, and constraining the route to an established
+Server → first viewer → second viewer path also preserved playback. The failing
+transition still lacks a matched relay input/output RTP trace or field sample.
+
 ### Slow Direct Signaling And Early Relay Preparation
 
 Four loopback Chromium clients compared on-demand recovery at `3c7059b0`
