@@ -355,7 +355,7 @@ export const zh = {
   "host.start": "开始分享",
   "host.sourcePicker.title": "选择分享来源",
   "host.sourcePicker.browser": "选择画面",
-  "host.sourcePicker.browserHint": "在浏览器弹窗中选择屏幕、窗口或标签页。",
+  "host.sourcePicker.browserHint": "可选择屏幕、窗口或标签页。分享有声网页时，选播放内容的标签页并开启标签页音频。",
   "host.sourcePicker.camera": "分享摄像头：{title}",
   "host.camera.denied": "未获得摄像头权限，请允许访问后重试。",
   "host.camera.unavailable": "暂时无法使用摄像头，请检查连接，以及是否正被其他应用占用。",
