@@ -691,6 +691,11 @@ export class ChannelSession {
       const activity = state.watchActivities.find(value => value.id === id);
       if (!player.owner && !restoring && !state.watchSubscriptions.some(value => value.id === id) && this.view.state?.watchSubscriptions.some(value => value.id === id)) this.retireWatchPlayer(id);
       else if (activity) {
+        const retained = player.media.retainedByteSource;
+        if (player.owner && retained && !state.sessions.some(session => session.id === retained.sessionId)) {
+          void this.stopWatch(id).catch(() => {});
+          continue;
+        }
         const previousSource = this.view.state?.watchActivities.find(value => value.id === id)?.byteSource;
         const nextSource = activity.byteSource;
         if (player.mode === "peer" && previousSource && (!nextSource

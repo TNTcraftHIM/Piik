@@ -10271,6 +10271,21 @@ test('MPD whole-track selection stays private until explicit confirmation and us
     await confirming;
     expect(session.getSnapshot().watchPlayers.get(start.id as string)?.media.retainedByteSource).toEqual(source);
     expect(dispose).not.toHaveBeenCalled();
+    const state = structuredClone(session.getSnapshot().state!);
+    const native = { ...state.sessions[0], id: source.sessionId, online: true };
+    state.sessions.push(native);
+    state.watchActivities = [{ id: String(start.id), roomId: 'first', sessionId: 'endpoint', userId: 'self',
+      viewerSessionIds: [], source: { kind: 'website', url: page.url }, playback: { timeline: 'media', position: 0, rate: 1, paused: true, anchorTime: 1000 } }];
+    socket.receive({ type: 'state', state: structuredClone(state) });
+    native.online = false;
+    socket.receive({ type: 'state', state: structuredClone(state) });
+    expect(session.getSnapshot().watchPlayers.has(String(start.id))).toBe(true);
+    native.id = crypto.randomUUID();
+    socket.receive({ type: 'state', state: structuredClone(state) });
+    expect(session.getSnapshot().watchPlayers.has(String(start.id))).toBe(false);
+    const stop = socket.sent.findLast(command => command.type === 'stop_watch')!;
+    expect(stop.id).toBe(start.id);
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: stop.requestId, result: { type: 'done' } });
   } finally { session.close(); }
 });
 
