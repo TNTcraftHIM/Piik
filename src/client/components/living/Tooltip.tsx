@@ -39,6 +39,7 @@ const TOUCH_HIDE_MS = 1500;
 export const HOVER_ENTER_MS = 500;
 // Minimum clearance the re-picked alignment keeps to each viewport edge.
 const EDGE_MARGIN = 8;
+const CONTROL_GROUP_SELECTOR = ".lr-media-toolbar, [data-tooltip-controls]";
 export const HOVER_EXIT_GRACE_MS = 160;
 // Paper panel before its mounted content is measured.
 const FALLBACK_PANEL_HEIGHT = 96;
@@ -262,7 +263,7 @@ export function Tooltip({
     // control groups. Both media generations share the toolbar boundary;
     // other owners mark their control group without supplying geometry.
     // Reserve auto-hidden controls too: entering the player can reveal them.
-    const controls = [...(surface ?? wrap.ownerDocument).querySelectorAll<HTMLElement>(".lr-media-toolbar, [data-tooltip-controls]")]
+    const controls = [...(surface ?? wrap.ownerDocument).querySelectorAll<HTMLElement>(CONTROL_GROUP_SELECTOR)]
       .filter(element => !element.contains(wrap) && element.getClientRects().length)
       .map(element => element.getBoundingClientRect());
     const boundedLeft = (left: number) => Math.max(x + EDGE_MARGIN, Math.min(left, right - width - EDGE_MARGIN));
@@ -361,6 +362,14 @@ export function Tooltip({
     const surface = wrapRef.current?.closest<HTMLElement>("[popover]");
     const observer = new ResizeObserver(schedulePick);
     for (const element of [wrapRef.current, wrapRef.current?.firstElementChild, tipRef.current, surface]) if (element) observer.observe(element);
+    const containsControls = (node: Node) => node instanceof view.Element
+      && (node.matches(CONTROL_GROUP_SELECTOR) || node.querySelector(CONTROL_GROUP_SELECTOR) !== null);
+    const controls = new MutationObserver(records => {
+      if (records.some(record => Array.from(record.addedNodes).some(containsControls)
+        || Array.from(record.removedNodes).some(containsControls))) schedulePick();
+    });
+    // A remote share can add an actionable offer while a hint is open.
+    controls.observe(surface ?? ownerDocument.body, { childList: true, subtree: true });
     const movement = new MutationObserver(schedulePick);
     if (surface) movement.observe(surface, { attributes: true, attributeFilter: ["style"] });
     schedulePick();
@@ -373,6 +382,7 @@ export function Tooltip({
       view.cancelAnimationFrame(frame);
       observer.disconnect();
       movement.disconnect();
+      controls.disconnect();
       viewport?.removeEventListener("resize", schedulePick);
       viewport?.removeEventListener("scroll", schedulePick);
       view.removeEventListener("resize", schedulePick);
