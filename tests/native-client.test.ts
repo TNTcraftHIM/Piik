@@ -817,16 +817,22 @@ describe("native App private wire", () => {
     vi.stubGlobal("WebSocket", Socket);
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ...health,
-      nativeMedia: { ...health.nativeMedia, microphone: true, ...(supported ? { processAudioExclusion: true } : {}) },
+      nativeMedia: { ...health.nativeMedia, systemAudio: true, microphone: supported, shareVolume: true, processAudioExclusion: supported },
     }))));
     const client = (await NativeClient.connect())!;
     const input = { shareId: "share_123456", source: { kind: "display" as const, sourceId: "1", title: "Display" },
       audio: true, adapterIndex: 0, encoderIndex: 0, edgeCapacity: 1, profile: DEFAULT_QUALITY_SETTINGS, codec: "vp8" as const };
     const excludeAudio = { kind: "window" as const, sourceId: "2", pid: 123, creationTime: "456", title: "Voice fixture" };
     try {
+      expect(client.supportsMixedAudio).toBe(true);
       expect(client.health.nativeMedia.processAudioExclusion).toBe(supported);
       await client.startShare(input);
-      expect(requests.at(-1)).not.toHaveProperty("excludeAudio");
+      expect(requests.at(-1)?.microphoneMixing).toBe(true);
+      for (const audio of [false, true]) {
+        await client.replaceShareSource(input.shareId, input.source, audio, input);
+        expect(requests.at(-1)).toMatchObject({ type: "replace-share-source", shareId: input.shareId, source: input.source, audio });
+        expect(requests.at(-1)).not.toHaveProperty("excludeAudio");
+      }
       if (supported) {
         await client.startShare({ ...input, excludeAudio });
         await client.replaceShareSource(input.shareId, input.source, true, input, false, excludeAudio);

@@ -354,7 +354,7 @@ export class NativeClient {
         ...shareInput,
         ...(excludeAudio ? { excludeAudio } : {}),
         // Keep a stable output for source-audio toggles during sharing.
-        ...(this.health.nativeMedia.microphone || this.health.nativeMedia.shareVolume ? { microphoneMixing: true } : {}),
+        ...(this.supportsMixedAudio ? { microphoneMixing: true } : {}),
         ...(this.health.nativeMedia.remoteInput ? { remoteInput: true } : {}),
         ...(this.health.nativeMedia.captureBorderControl ? { showCaptureBorder } : {}),
         ...(this.health.nativeMedia.sourceCancellation ? { reportSourceCancellation: true } : {}),
@@ -380,6 +380,10 @@ export class NativeClient {
     if (response.shareId !== shareId) {
       throw new Error("Native share identity changed");
     }
+  }
+
+  get supportsMixedAudio(): boolean {
+    return Boolean(this.health.nativeMedia.microphone || this.health.nativeMedia.shareVolume);
   }
 
   private validateAudioExclusion(target: NativeCaptureTarget | undefined): void {

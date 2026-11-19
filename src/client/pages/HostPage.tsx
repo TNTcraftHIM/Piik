@@ -4331,15 +4331,15 @@ export function HostPage({
                     voiceProcessing={nativeActive ? undefined : commentaryInput.voiceProcessing}
                     onVoiceProcessing={voiceProcessing => { void changeCommentary(true, { ...commentaryInput, voiceProcessing }); }} /> : null}
               {phase === "live" && nativeActive && nativeSourceSelectionRef.current?.target.kind === "display" &&
-                nativeConnection.current?.health.nativeMedia.microphone && nativeConnection.current.health.nativeMedia.processAudioExclusion ? (
+                nativeConnection.current?.supportsMixedAudio && nativeConnection.current.health.nativeMedia.systemAudio ? (
                 <div className="lr-door-group lr-source-audio-settings">
                   <SwitchItem checked={nativeSourceSelectionRef.current.audio}
                     label={t("host.sourcePicker.systemAudio")} hint={nativeSourceSelectionRef.current.audio ? "hint-stop-audio" : "hint-share-audio"}
                     disabled={switchingSource || changingQuality || sharingPaused}
                     onChange={audio => changeNativeSourceAudio(audio, nativeSourceSelectionRef.current?.excludeAudio)} />
-                  <LiveAudioExclusion load={loadAudioApplications} value={nativeSourceSelectionRef.current.excludeAudio}
+                  {nativeConnection.current.health.nativeMedia.processAudioExclusion && <LiveAudioExclusion load={loadAudioApplications} value={nativeSourceSelectionRef.current.excludeAudio}
                     disabled={!nativeSourceSelectionRef.current.audio || switchingSource || changingQuality || sharingPaused}
-                    onChange={target => changeNativeSourceAudio(true, target)} />
+                    onChange={target => changeNativeSourceAudio(true, target)} />}
                 </div>
               ) : null}
               <AudioBitrateControl value={screenAudioBitrate(advancedQuality.maxAudioBitrate)}
