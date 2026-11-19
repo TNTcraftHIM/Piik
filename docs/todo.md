@@ -51,9 +51,9 @@ the feedback period; they do not delay that delivery.
   actual source/viewer endpoints, App control state, Native session generations,
   STUN observations and ordinary/enhanced ICE outcome. Two open Apps do not
   establish that their Native endpoints participated in the media route.
-- [ ] **beta.33 Browser window selection stalls.** Locate the first stalled
-  stage after choosing another Chrome window in the system screen picker.
-  Preserve the current share on failed replacement.
+- [ ] **beta.33 Browser window selection stalls.** Reproduce manual selection
+  of another Chrome window on Windows. Determine whether the system picker
+  returns a capture track and whether that track produces its first frame.
 - [ ] **beta.33 authenticated webpage sharing.** Reproduce the reported VIP
   video failure after the sharer has started and the viewer receives no picture.
   Use the user's authorized source. Distinguish page playback,

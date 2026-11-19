@@ -246,13 +246,13 @@ acquisition and drafts. The simple view keeps joined voice visible and permits
 leaving it. Browser and Native first-share checks verify explicit room creation,
 picker cancellation and retry in the same room, then normal capture and stop.
 
-A matching Windows App/Web package also verifies Browser source replacement in
-an App-hosted room with an independent Browser viewer. Rejected replacement
-preserves playback; cancelling preparation stops a late capture without replacing
-the incumbent. Successful replacement retains the publication and receiver
-stream, and explicit stop retires both players and all capture tracks. The input
-is a generated canvas on one machine; this does not establish real system-picker,
-Native capture or difficult-NAT behavior.
+In an App-hosted room, an independent Browser viewer kept receiving the original
+share through a cancelled or rejected source change. Successful replacement
+retained the publication and viewer stream. Chromium's native tab capture also
+switched between two different test tabs and delivered the new pixels over the
+same receiver connection. A controlled muted capture track exercised delayed
+readiness and retry. The reported stall after manually selecting another Chrome
+window in the Windows system picker still needs a reproduction.
 
 A three-Browser run verified picture and voice progress while receiving files
 through the same relay under controlled storage backpressure. Cancelling an
