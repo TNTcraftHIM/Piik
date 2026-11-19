@@ -4293,6 +4293,16 @@ test("topology read abort and close retire requests without a late error banner"
   } finally { session.close(); }
 });
 
+test("a mismatched reply rejects the requesting reader and keeps the socket connected", async () => {
+  const { session, socket } = await setup();
+  try {
+    const reading = session.roomTopology("first");
+    socket.receive({ type: "profiles", requestId: socket.sent.at(-1)!.requestId, profiles: [], total: 0, nextCursor: null });
+    expect(session.getSnapshot().connection).toBe("connected");
+    await expect(reading).rejects.toThrow("invalid_response");
+  } finally { session.close(); }
+});
+
 test("topology reads reject late data after binding access account or selection changes", async () => {
   for (const change of ["binding", "access", "account", "selection", "publication"] as const) {
     const { session, socket } = await setup();
@@ -8153,6 +8163,22 @@ test("history timeout remains explicit until a Domain retry, independently of pe
     await loading;
     expect(session.getSnapshot().messagesByRoom.first.map(value => value.seq)).toEqual([7]);
     expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
+test("leaving a room clears the deadline for its pending history read", async () => {
+  const { session, socket, peer } = await setup();
+  vi.useFakeTimers();
+  try {
+    const reading = session.loadLatestHistory("first");
+    const cancelled = expect(reading).rejects.toMatchObject({ name: "AbortError" });
+    await peer.next();
+    session.browse("second");
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await cancelled;
+    session.close();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(0);
   } finally { session.close(); }
 });
 test("browse admission gates Domain history and reconnect cancels the old socket before refreshing", async () => {

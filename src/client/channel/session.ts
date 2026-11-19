@@ -194,7 +194,7 @@ export class ChannelSession {
   private requests = new Map<string, {
     roomId?: string; bindingId?: string;
     history?: { before?: number; replace: boolean; refreshThrough?: number; entries: Map<number, { message?: ChannelMessage; snapshot?: MessageReactionSnapshot }> };
-    resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void; timer: ReturnType<typeof setTimeout>;
+    resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void;
   }>();
   private hostedRooms = new Map<string, { host: HostedRoom; bindingId?: string }>();
   private app: ChannelApp | undefined;
@@ -560,24 +560,21 @@ export class ChannelSession {
     } else if (event.type === "room_reply") {
       const request = event.requestId ? this.requests.get(event.requestId) : undefined;
       if (!request || request.roomId !== event.roomId || !event.requestId) return;
-      clearTimeout(request.timer);
       this.requests.delete(event.requestId);
       if (event.result.type === "error") request.reject(new Error(event.result.code ?? "operation_failed"));
       else {
-        try { request.result?.(event); request.resolve(); }
-        catch (error) { request.reject(error instanceof Error ? error : new Error("invalid_response")); }
+        request.result?.(event); request.resolve();
       }
     } else if (event.type === "room_created") {
       const request = event.requestId ? this.requests.get(event.requestId) : undefined;
       if (!request || !event.requestId) return;
-      clearTimeout(request.timer); this.requests.delete(event.requestId);
-      try { request.result?.(event); request.resolve(); }
-      catch (error) { request.reject(error instanceof Error ? error : new Error("invalid_response")); }
+      this.requests.delete(event.requestId);
+      request.result?.(event); request.resolve();
     } else if (event.type === "state") this.applyState(event.state);
     else if (event.type === "profiles") {
       const request = this.requests.get(event.requestId);
       if (!request) return;
-      clearTimeout(request.timer); this.requests.delete(event.requestId);
+      this.requests.delete(event.requestId);
       this.mergeProfiles(event.profiles);
       request.result?.(event); request.resolve();
     }
@@ -590,7 +587,6 @@ export class ChannelSession {
     else if (event.type === "ack" || event.type === "error") {
       const request = event.requestId ? this.requests.get(event.requestId) : null;
       if (request && event.requestId) {
-        clearTimeout(request.timer);
         this.requests.delete(event.requestId);
         if (event.type === "ack") request.resolve();
         else request.reject(new Error(event.code));
@@ -675,7 +671,6 @@ export class ChannelSession {
     for (const [id, request] of this.requests) if (request.bindingId
       && !state.channel.rooms.some(room => room.id === request.roomId && room.authorized
         && room.available && room.delivery?.bindingId === request.bindingId)) {
-      clearTimeout(request.timer);
       this.requests.delete(id);
       request.reject(new Error("room_unavailable"));
     }
@@ -762,26 +757,37 @@ export class ChannelSession {
     const abort = () => {
       const request = this.requests.get(requestId);
       if (!request) return;
-      clearTimeout(request.timer); this.requests.delete(requestId);
+      this.requests.delete(requestId);
       request.reject(signal?.reason instanceof Error ? signal.reason : new DOMException("Read cancelled", "AbortError"));
     };
+    let timer: ReturnType<typeof setTimeout>;
     return new Promise<void>((resolve, reject) => {
       // Conversation includes image upload and its host-confirmed response.
-      const timer = setTimeout(() => { this.requests.delete(requestId); reject(new Error("request_timeout")); }, conversation || command.type === "profiles" ? 30000 : 10000);
-      this.requests.set(requestId, { resolve, reject, timer, result, roomId,
+      timer = setTimeout(() => { this.requests.delete(requestId); reject(new Error("request_timeout")); }, conversation || command.type === "profiles" ? 30000 : 10000);
+      this.requests.set(requestId, { resolve, reject, roomId,
+        result: result && (event => {
+          try { result(event); }
+          catch (error) {
+            this.requests.delete(requestId);
+            reject(error instanceof Error ? error : new Error("invalid_response"));
+          }
+        }),
         ...(delivery && (conversation || command.type === "browse" || command.type === "room_topology") ? { bindingId: delivery.bindingId } : {}),
         ...(command.type === "history" ? { history: { before: command.before, replace: replaceHistory, refreshThrough, entries: new Map() } } : {}) });
       signal?.addEventListener("abort", abort, { once: true });
       if (conversation) void this.conversation.send(command, requestId).catch(error => {
         if (!this.requests.delete(requestId)) return;
-        clearTimeout(timer);
         reject(error instanceof Error ? error : new Error(String(error)));
       });
       else {
         if (command.type === "browse" && command.active) this.readingRooms.add(command.roomId);
         this.write({ ...command, requestId });
       }
-    }).finally(() => signal?.removeEventListener("abort", abort));
+    }).finally(() => {
+      this.requests.delete(requestId);
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+    });
   }
 
   private receiveConversation(reply: ConversationReply): void {
@@ -3251,7 +3257,7 @@ export class ChannelSession {
   };
 
   private rejectRequests(message: string): void {
-    for (const request of this.requests.values()) { clearTimeout(request.timer); request.reject(new Error(message)); }
+    for (const request of this.requests.values()) { request.reject(new Error(message)); }
     this.requests.clear();
   }
 
