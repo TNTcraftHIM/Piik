@@ -212,7 +212,7 @@ describe("Webpage watch presentation", () => {
     if (owned) expect(html).toContain('max="240"');
   });
 
-  it("offers manual App viewing only when the website has no Browser candidate", () => {
+  it("offers one way to start watching, preferring direct playback, then the sharer, then App", () => {
     setCopy({ lang: "en" });
     const source: WatchStageSource = { kind: "watch", id: "activity", userId: "friend", name: "Bo", title: "video.example/watch/evening",
       roomName: "Friday", audience: [], owned: false, subscribed: false, paused: true, website: true, originalPageAvailable: true, browserSource: false,
@@ -237,12 +237,16 @@ describe("Webpage watch presentation", () => {
     expect(render({ ...unsupported, browserSource: true })).not.toContain(t("en", "watch.pageUnsupported"));
     expect(render({ ...unsupported, receiving })).not.toContain(t("en", "watch.pageUnsupported"));
     const forwarded = render({ ...source, onAppWatch: undefined, receiving });
-    expect(forwarded).toContain('aria-label="Receive from sharer"');
+    expect(forwarded).toContain('aria-label="Watch"');
+    expect(forwarded).not.toContain('aria-label="Receive from sharer"');
     expect(forwarded).not.toContain("Connect Piik App");
     expect(forwarded).not.toContain('aria-label="Watch in App"');
     const directAndForwarded = render({ ...source, browserSource: true, receiving: { ...receiving, browserSource: true } });
     expect(directAndForwarded).toContain('aria-label="Watch"');
-    expect(directAndForwarded).toContain('aria-label="Receive from sharer"');
+    expect(directAndForwarded).not.toContain('aria-label="Receive from sharer"');
+    const insecure = render({ ...source, onAppWatch: undefined, receiving: { ...receiving, peerSupported: false } });
+    expect(insecure).toContain(t("en", "watch.forward.secure"));
+    expect(insecure).not.toContain('aria-label="Watch"');
   });
 });
 

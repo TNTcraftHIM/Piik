@@ -99,6 +99,27 @@ export interface WatchStageSource {
 export type ChannelStageSource = ScreenStageSource | WatchStageSource;
 const stageTitle = (source: ChannelStageSource, t: Copy["t"]) => source.kind === "watch" ? source.title : screenTitle(source, t);
 
+function SourceOfferAction({ source, disabled, onWatch }: {
+  source: ChannelStageSource; disabled: boolean; onWatch(id: string): void;
+}) {
+  const { t } = useCopy();
+  let join = () => onWatch(source.id);
+  if (source.kind === "watch") {
+    const { receiving } = source;
+    if (source.browserSource) join = source.onJoin;
+    else if (receiving?.peerAvailable && receiving.peerSupported) join = receiving.onPeer;
+    else if (source.onAppWatch) return <ChannelAction icon="window" label={t("watch.inApp")}
+      disabled={disabled} busy={source.pending} onClick={source.onAppWatch} />;
+    else {
+      const hint = receiving?.peerAvailable ? t("watch.forward.secure")
+        : source.originalPageUnavailable ?? (source.originalPageAvailable ? t("watch.connectApp") : undefined);
+      return hint ? <small>{hint}</small> : null;
+    }
+  }
+  return <ChannelAction icon="eye" label={t("screen.watch")} hint="hint-watch"
+    disabled={disabled} busy={source.pending} onClick={join} />;
+}
+
 export function SourceAudience({ people, joined = false }: { people: readonly ScreenAudiencePerson[]; joined?: false } | { people: readonly AudiencePerson[]; joined: true }) {
   const { t } = useCopy();
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
@@ -351,13 +372,7 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
           </div>
           {source.kind === "watch" ? <SourceAudience people={source.audience} joined /> : <SourceAudience people={source.audience} />}
           <div className="c3-monitor-offer-actions" data-tooltip-controls>
-            {source.kind === "watch" && !source.browserSource ? source.receiving?.peerAvailable && source.receiving.peerSupported ? null : source.onAppWatch
-              ? <ChannelAction icon="window" label={t("watch.inApp")} disabled={!canSubscribe || source.available === false} busy={source.pending} onClick={source.onAppWatch} />
-              : (source.originalPageAvailable || source.originalPageUnavailable) && <small>{source.originalPageUnavailable ?? t("watch.connectApp")}</small> : <ChannelAction icon="eye" label={t("screen.watch")}
-              hint="hint-watch"
-              disabled={!canSubscribe || source.available === false} busy={source.pending}
-              onClick={() => source.kind === "watch" ? source.onJoin() : onWatch(source.id)} />}
-            {source.kind === "watch" && source.receiving && <WatchPeerAction receiving={source.receiving} />}
+            <SourceOfferAction source={source} disabled={!canSubscribe || source.available === false} onWatch={onWatch} />
           </div>
         </div>)}
       </div>
