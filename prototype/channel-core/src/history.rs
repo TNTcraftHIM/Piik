@@ -346,6 +346,7 @@ pub enum HistoryRequest {
     React {
         room_id: String,
         message_seq: u64,
+        message_id: Uuid,
         nonce: u64,
         event: Option<crate::conversation::ReactionEvent>,
     },
@@ -372,6 +373,7 @@ impl HistoryRequest {
     ) -> Result<ReactionConfirmation, &'static str> {
         let Self::React {
             message_seq,
+            message_id,
             nonce,
             event,
             ..
@@ -380,12 +382,15 @@ impl HistoryRequest {
             return Err("not_a_reaction_update");
         };
         let mut message = message
-            .filter(|message| message.message.seq == *message_seq)
+            .filter(|message| {
+                message.message.seq == *message_seq && message.message.id == *message_id
+            })
             .ok_or("message_unavailable")?;
         if let Some(event) = event {
             if event.target
                 != (crate::conversation::ReactionTarget::Message {
                     message_seq: *message_seq,
+                    message_id: *message_id,
                 })
                 || !valid_message_reaction(&event.reaction)
             {

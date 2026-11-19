@@ -488,7 +488,10 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         owner,
         ConversationCommand::React {
             nonce: 1,
-            target: ReactionTarget::Message { message_seq: 1 },
+            target: ReactionTarget::Message {
+                message_seq: 1,
+                message_id: original_id.unwrap(),
+            },
             reaction: "wave".into(),
         },
     )
@@ -885,6 +888,7 @@ fn message_reaction_counts_commit_once_and_recover_without_replaying_effects() {
     let reaction = |reaction: &str, nonce| ConversationCommand::React {
         target: ReactionTarget::Message {
             message_seq: original.message.message.seq,
+            message_id: original.message.message.id,
         },
         reaction: reaction.into(),
         nonce,
@@ -925,7 +929,10 @@ fn message_reaction_counts_commit_once_and_recover_without_replaying_effects() {
             owner,
             viewer,
             ConversationCommand::React {
-                target: ReactionTarget::Message { message_seq: 99 },
+                target: ReactionTarget::Message {
+                    message_seq: 99,
+                    message_id: original.message.message.id
+                },
                 reaction: "wave".into(),
                 nonce: 2,
             }
@@ -1422,4 +1429,59 @@ fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
         std::fs::remove_file(frozen).unwrap();
     }
     std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn restored_sequence_rejects_reactions_for_its_previous_message() {
+    let owner = Uuid::new_v4();
+    let path = std::env::temp_dir().join(Uuid::new_v4().to_string());
+    std::fs::create_dir(&path).unwrap();
+    let mut host = StoredRoomHost::create(
+        &path.join("live"),
+        policy("same", owner, RoomAccess::Public),
+    )
+    .unwrap();
+    let empty_backup = host
+        .snapshot(&path.join("empty"), Uuid::new_v4(), None)
+        .unwrap();
+    let post = |text: &str| ConversationCommand::Chat {
+        nonce: text.into(),
+        text: text.into(),
+        mentions: vec![],
+        reply: None,
+        attachments: vec![],
+        inline_images: Default::default(),
+    };
+    let original = sent(peer(&mut host, owner, owner, post("original")))
+        .message
+        .message;
+    let click = |message_id| ConversationCommand::React {
+        target: ReactionTarget::Message {
+            message_seq: original.seq,
+            message_id,
+        },
+        reaction: "wave".into(),
+        nonce: 1,
+    };
+    host.replace(&empty_backup).unwrap();
+    let replacement = sent(peer(&mut host, owner, owner, post("replacement")))
+        .message
+        .message;
+    assert_eq!(original.seq, replacement.seq);
+    assert_ne!(original.id, replacement.id);
+    assert_eq!(
+        peer(&mut host, owner, owner, click(original.id)).err(),
+        Some("message_unavailable")
+    );
+    let HistoryResult::Reacted(result) =
+        peer(&mut host, owner, owner, click(replacement.id)).unwrap()
+    else {
+        panic!("expected the replacement message's reaction")
+    };
+    assert_eq!(result.snapshot.message_id, replacement.id);
+    assert_eq!(result.snapshot.reactions.counts["wave"], 1);
+    assert!(result.event.is_some());
+    drop(host);
+    drop(empty_backup);
+    std::fs::remove_dir_all(path).unwrap();
 }

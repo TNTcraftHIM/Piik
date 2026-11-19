@@ -19,7 +19,7 @@ const message = (id: string): RoomInteraction => ({ type: "room-interaction", id
 test("content reactions share confirmed events, cooldown and deduplication with person reactions", () => {
   const { session, send, feedback } = setup();
   session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
-  const target = { messageSeq: 7 };
+  const target = { messageSeq: 7, messageId: 'message-7' };
   expect(session.send({ kind: "reaction", reaction: "tomato" }, target)).toBe(true);
   const request = send.mock.calls.at(-1)![0];
   if (request.type !== "send-room-interaction") throw new Error("Expected content send");

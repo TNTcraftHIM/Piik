@@ -30,7 +30,7 @@ export function attachSupportBot(participant: Conversation, report: (error: unkn
       ].join('\n'),
       { reply: { seq: message.seq, messageId: message.id, notify: true } });
       // One attempt: a denied/rate-limited reaction never retries the confirmed reply.
-      if (!stopped) await participant.react(message.seq, 'wave');
+      if (!stopped) await participant.react(message.seq, message.id, 'wave');
     })().catch(report);
     pending.add(work);
     void work.finally(() => pending.delete(work));

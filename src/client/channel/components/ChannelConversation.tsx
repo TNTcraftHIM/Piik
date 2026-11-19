@@ -469,7 +469,7 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
     {message.text && <ChannelMessageContent message={message} users={users} selfUserId={selfUserId} />}
     {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments}
       inlineImage={message.inlineImages?.[file.id]} />)}
-    <ChannelContentReactions reactions={message.reactions} session={interaction} target={{ messageSeq: message.seq }} disabled={!available}
+    <ChannelContentReactions reactions={message.reactions} session={interaction} target={{ messageSeq: message.seq, messageId: message.id }} disabled={!available}
       effectAnchor={effectAnchor} effectsEnabled={effectsEnabled} actions={<>
       <Tooltip text={t("conversation.mention", { name })}><button type="button" className="lr-btn is-compact is-quiet c3-mention-author" aria-label={t("conversation.mention", { name })}
         disabled={!onMention} onClick={onMention}>@</button></Tooltip>

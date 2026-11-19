@@ -410,18 +410,18 @@ test("confirmed room events own personal feedback across text, attachments and t
     reaction("self-person", "self-user-1234", { type: "person", userId: "friend-user-1234" });
     reaction("to-person", "friend-user-1234", { type: "person", userId: "self-user-1234" });
     expect(play.mock.calls.length, "to-person").toBe(4);
-    reaction("to-message", "friend-user-1234", { type: "message", messageSeq: 90 }, "poop");
+    reaction("to-message", "friend-user-1234", { type: "message", messageSeq: 90, messageId: message(90).id }, "poop");
     expect(play.mock.calls.length, "to-message").toBe(5);
     reaction("to-screen", "friend-user-1234", { type: "publication", publicationId: "own-screen" });
     expect(play.mock.calls.length, "to-screen").toBe(6);
-    reaction("self-message", "self-user-1234", { type: "message", messageSeq: 91 });
+    reaction("self-message", "self-user-1234", { type: "message", messageSeq: 91, messageId: message(91).id });
     expect(play.mock.calls.length, "self-message").toBe(7);
     reaction("self-screen", "self-user-1234", { type: "publication", publicationId: "own-screen" }, "poop");
     expect(play.mock.calls.length, "self-screen").toBe(8);
     expect(play.mock.calls.map(([cue]) => cue)).toEqual(["message", "message", ...Array(6).fill("throw")]);
     reaction("emoji", "friend-user-1234", { type: "person", userId: "self-user-1234" }, "heart");
     reaction("bystander", "friend-user-1234", { type: "person", userId: "bystander" });
-    reaction("other-message", "friend-user-1234", { type: "message", messageSeq: 91 });
+    reaction("other-message", "friend-user-1234", { type: "message", messageSeq: 91, messageId: message(91).id });
     reaction("unknown-screen", "friend-user-1234", { type: "publication", publicationId: "other-screen" });
     document.hidden = true;
     reaction("hidden-throw", "friend-user-1234", { type: "person", userId: "self-user-1234" });
@@ -705,31 +705,31 @@ test("message reaction clicks count independently while nonce retries settle wit
   try {
     await peer.history([message(1)]);
     const interaction = session.getSnapshot().interactionsByRoom.get("first")!;
-    expect(interaction.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1 })).toBe(true);
+    expect(interaction.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1, messageId: message(1).id })).toBe(true);
     const first = peer.interactions.at(-1)!;
-    expect(first).toMatchObject({ type: "react", roomId: "first", reaction: "heart", target: { type: "message", messageSeq: 1 }, nonce: 1 });
+    expect(first).toMatchObject({ type: "react", roomId: "first", reaction: "heart", target: { type: "message", messageSeq: 1, messageId: message(1).id }, nonce: 1 });
     expect(first).not.toHaveProperty("userId");
     expect(session.getSnapshot().messagesByRoom.first[0].reactions).toEqual({ revision: 0, counts: {} });
-    const event = { id: "click-1", occurredAt: Date.now(), senderUserId: "self", reaction: "heart", target: { type: "message" as const, messageSeq: 1 } };
+    const event = { id: "click-1", occurredAt: Date.now(), senderUserId: "self", reaction: "heart", target: { type: "message" as const, messageSeq: 1, messageId: message(1).id } };
     const snapshot = { type: "message" as const, ...reactionSnapshot(1, 1, { heart: 1 }) };
     peer.reply(first, { type: "reaction", nonce: 1, event, snapshot });
     peer.reply(first, { type: "reaction", nonce: 1, event, snapshot });
     expect(interaction.getSnapshot().reactions).toHaveLength(1);
     expect(session.getSnapshot().messagesByRoom.first[0].reactions).toEqual({ revision: 1, counts: { heart: 1 } });
     vi.advanceTimersByTime(800);
-    expect(interaction.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1 })).toBe(true);
+    expect(interaction.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1, messageId: message(1).id })).toBe(true);
     const second = peer.interactions.at(-1)!;
-    expect(second).toMatchObject({ nonce: 2, target: { type: "message", messageSeq: 1 } });
+    expect(second).toMatchObject({ nonce: 2, target: { type: "message", messageSeq: 1, messageId: message(1).id } });
     peer.reply(second, { type: "reaction", nonce: 2, event: { ...event, id: "click-2" },
       snapshot: { ...snapshot, revision: 2, counts: { heart: 2 } } });
     expect(interaction.getSnapshot().reactions).toHaveLength(2);
     expect(session.getSnapshot().messagesByRoom.first[0].reactions).toEqual({ revision: 2, counts: { heart: 2 } });
     vi.advanceTimersByTime(800);
-    expect(interaction.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1 })).toBe(true);
+    expect(interaction.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1, messageId: message(1).id })).toBe(true);
     const unconfirmed = peer.interactions.at(-1)!;
     vi.advanceTimersByTime(5000);
     expect(interaction.getSnapshot().error).toBe("unconfirmed");
-    expect(interaction.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1 })).toBe(true);
+    expect(interaction.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1, messageId: message(1).id })).toBe(true);
     const retry = peer.interactions.at(-1)!;
     expect(retry).toEqual(unconfirmed);
     expect(retry).toMatchObject({ nonce: 3 });
@@ -914,11 +914,11 @@ test("content reaction targets and delayed events stay with the current room bin
   const { session, socket, peer } = await setup();
   try {
     const first = session.getSnapshot().interactionsByRoom.get("first")!;
-    expect(first.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1 })).toBe(true);
+    expect(first.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1, messageId: message(1).id })).toBe(true);
     const old = peer.interactions.at(-1)!;
     const record = { type: "reaction" as const, nonce: 1, snapshot: null, event: {
       id: "old-room-click", occurredAt: Date.now(), senderUserId: "self", reaction: "heart",
-      target: { type: "message" as const, messageSeq: 1 },
+      target: { type: "message" as const, messageSeq: 1, messageId: message(1).id },
     } };
     session.browse("second");
     const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;

@@ -14,7 +14,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
 export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 36;
+export const CHANNEL_PROTOCOL = 37;
 export const CHANNEL_SESSION_LIMIT = 128;
 export const CHANNEL_ROOM_LIMIT = 64;
 export const roomCreationPolicySchema = z.enum(["ordinary", "invite_only", "owner_only"]);
@@ -186,7 +186,7 @@ export type ChannelPublication = z.infer<typeof publicationSchema>;
 export interface MessageReactions { revision: number; counts: Record<string, number> }
 export interface MessageReactionSnapshot extends MessageReactions { messageId: string; messageSeq: number }
 export interface PublicationReactionSnapshot extends MessageReactions { publicationId: string }
-export type ReactionTarget = { type: "message"; messageSeq: number } | { type: "publication"; publicationId: string } | { type: "person"; userId: string };
+export type ReactionTarget = { type: "message"; messageSeq: number; messageId: string } | { type: "publication"; publicationId: string } | { type: "person"; userId: string };
 export interface ReactionEvent { id: string; occurredAt: number; senderUserId: string; target: ReactionTarget; reaction: string }
 export type ReactionSnapshot = ({ type: "message" } & MessageReactionSnapshot) | ({ type: "publication" } & PublicationReactionSnapshot);
 export type ChannelMessage = z.infer<typeof messageSchema> & { reactions?: MessageReactions };

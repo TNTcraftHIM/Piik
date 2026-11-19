@@ -310,7 +310,7 @@ pub enum ConversationCommand {
     deny_unknown_fields
 )]
 pub enum ReactionTarget {
-    Message { message_seq: u64 },
+    Message { message_seq: u64, message_id: Uuid },
     Publication { publication_id: Uuid },
     Person { user_id: Uuid },
 }
@@ -839,6 +839,7 @@ mod room_tests {
         else {
             panic!("retry expected")
         };
+        let message_id = confirmation.message.message.id;
         assert!(!confirmation.inserted);
         assert_eq!(
             serde_json::to_value(&confirmation.message).unwrap(),
@@ -859,7 +860,10 @@ mod room_tests {
                 address: address.clone(),
                 command: ConversationCommand::React {
                     nonce,
-                    target: ReactionTarget::Message { message_seq: 1 },
+                    target: ReactionTarget::Message {
+                        message_seq: 1,
+                        message_id,
+                    },
                     reaction: "heart".into(),
                 },
             };

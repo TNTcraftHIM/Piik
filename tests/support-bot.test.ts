@@ -19,7 +19,7 @@ test('one live help message gets a quoted Markdown answer and one reaction; othe
     client.emit('confirmed', { id: "help-message", seq: 1, text: '!help', userId: 'friend' });
     expect(client.chat).not.toHaveBeenCalled();
     send('!help');
-    await vi.waitFor(() => expect(client.react).toHaveBeenCalledExactlyOnceWith(1, 'wave'));
+    await vi.waitFor(() => expect(client.react).toHaveBeenCalledExactlyOnceWith(1, 'help-message', 'wave'));
     expect(client.chat).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('```text\nVersion:'), { reply: { messageId: "help-message", seq: 1, notify: true } });
     expect(report).not.toHaveBeenCalled();
     await detach(); send('!help');

@@ -375,15 +375,17 @@ window.runBrowserRoomCheck = async () => {
     check((await send("After reopen", "third")).message.seq === 3, "persisted sequence after reopen");
 
     let reactionNonce = 0, reactionTime = Date.now();
-    const react = async (reaction: string, nonce = ++reactionNonce, signal?: AbortSignal) => {
+    const react = async (reaction: string, nonce = ++reactionNonce, signal?: AbortSignal, messageId = first.message.id) => {
       reactionTime += 801;
       return JSON.parse(JSON.stringify(await host.dispatchPeer(peerPacket({ type: "react", nonce, reaction,
-        target: { type: "message", messageSeq: 1 } }), reactionTime, signal)))[0].record;
+        target: { type: "message", messageSeq: 1, messageId } }), reactionTime, signal)))[0].record;
     };
+    const staleReaction = await react("wave", ++reactionNonce, undefined, crypto.randomUUID());
+    check(staleReaction.type === "error" && staleReaction.code === "message_unavailable", "an obsolete reaction target cannot increment the replacement message");
     const firstReaction = await react("wave");
     check(firstReaction.type === "reaction" && firstReaction.event && firstReaction.snapshot.revision === 1
       && firstReaction.snapshot.counts.wave === 1, "confirmed reaction increments its aggregate");
-    const repeatedReaction = await react("wave", 1);
+    const repeatedReaction = await react("wave", reactionNonce);
     check(repeatedReaction.event === null && JSON.stringify(repeatedReaction.snapshot) === JSON.stringify(firstReaction.snapshot), "same nonce is idempotent and does not replay the event");
     const secondReaction = await react("wave");
     check(secondReaction.snapshot.revision === 2 && secondReaction.snapshot.counts.wave === 2, "another click adds one instead of toggling");

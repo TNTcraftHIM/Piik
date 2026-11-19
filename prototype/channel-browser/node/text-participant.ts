@@ -206,7 +206,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     return await this.conversation({ type: 'history', roomId: this.options.roomId, before }) as TextHistoryPage;
   }
 
-  async react(messageSeq: number, reaction: string): Promise<TextReactionResult> {
+  async react(messageSeq: number, messageId: string, reaction: string): Promise<TextReactionResult> {
     const socket = this.socket, session = this.sessionId, binding = this.summary().bindingId;
     const supported = await this.conversation({ type: 'interaction_ready', roomId: this.options.roomId }) as
       Extract<ConversationReply['record'], { type: 'interaction_ready' }>;
@@ -217,7 +217,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     if (room.delivery?.bindingId !== binding) throw new Error('room_host_changed');
     if (!supported.reactionIds.includes(reaction)) throw new Error('unsupported_reaction');
     return await this.conversation({ type: 'react', roomId: this.options.roomId, reaction,
-      target: { type: 'message', messageSeq }, nonce: ++this.reactionNonce }) as TextReactionResult;
+      target: { type: 'message', messageSeq, messageId }, nonce: ++this.reactionNonce }) as TextReactionResult;
   }
 
   private complete(id: string, value?: unknown, error?: Error) {

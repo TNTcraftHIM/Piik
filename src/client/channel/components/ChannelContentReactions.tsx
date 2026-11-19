@@ -25,7 +25,7 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
   const label = "messageSeq" in target ? t("channel.contentReactions.reactToThisMessage") : t("channel.contentReactions.reactToThisScreen");
   const trigger = useRef<HTMLButtonElement>(null), menu = useRef<HTMLDivElement>(null), id = useId();
   const [open, setOpen] = useState(false);
-  const targetId = "messageSeq" in target ? target.messageSeq : target.publicationId;
+  const targetId = "messageSeq" in target ? target.messageId : target.publicationId;
   // Mounting history or returning to a view must not replay already received events.
   const existingEvents = useMemo(() => new Set(state?.reactions.map(event => event.id)), [session, targetId, effectsEnabled]);
   useLayoutEffect(() => {
@@ -42,7 +42,7 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
     </button>;
   });
   const effects = effectsEnabled && state?.reactions.filter(event => !existingEvents.has(event.id) && event.contentTarget && ("messageSeq" in target
-    ? "messageSeq" in event.contentTarget && event.contentTarget.messageSeq === target.messageSeq
+    ? "messageSeq" in event.contentTarget && event.contentTarget.messageSeq === target.messageSeq && event.contentTarget.messageId === target.messageId
     : "publicationId" in event.contentTarget && event.contentTarget.publicationId === target.publicationId));
   return <div className="c3-message-reactions" data-has-counts={counts.length > 0 || undefined}>
     <span className="c3-message-reaction-counts lr-embedded-actions">{counts}</span>

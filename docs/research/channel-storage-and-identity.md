@@ -141,7 +141,8 @@ readable copies, not a permanent `available` flag on the saved message.
 
 All sixteen reactions count accepted actions, including repeated actions by the
 same person. The room owner confirms each action once and emits its live effect
-after the owning turn commits. Message totals are saved with the message;
+after the owning turn commits. For a message reaction the writer checks the
+selected message's room sequence and stable ID. Message totals are saved with the message;
 history restores totals without replaying effects. Picture totals belong to the
 publication and disappear when it retires. Reactions to people on the couch stay
 ephemeral and have no totals. These targets share room authorization and the

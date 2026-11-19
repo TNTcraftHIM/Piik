@@ -143,7 +143,7 @@ decision and any persistence of the original send.
 `react(messageSeq, reaction)` adds one counted reaction to a confirmed message:
 
 ```ts
-const result = await participant.react(confirmed.seq, 'heart');
+const result = await participant.react(confirmed.seq, confirmed.id, 'heart');
 if (result.snapshot?.type === 'message') consumeCounts(result.snapshot.counts);
 ```
 
@@ -170,7 +170,7 @@ handler instead of the CLI's plain `!ping` behavior:
 participant.on('live', message => {
   if (message.userId === participant.summary().userId || message.text !== '!ping') return;
   void participant.chat('pong', { reply: { seq: message.seq, messageId: message.id, notify: true } })
-    .then(() => participant.react(message.seq, 'wave'))
+    .then(() => participant.react(message.seq, message.id, 'wave'))
     .catch(error => console.error(error.message));
 });
 ```

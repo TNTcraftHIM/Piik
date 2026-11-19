@@ -6,7 +6,7 @@ import { CHAT_OVERLAY_DEFAULTS, CHAT_OVERLAY_LIMITS, readRoomPreferences, saveRo
 import { z } from "zod";
 
 const contentTargetSchema = z.union([
-  z.object({ messageSeq: z.number().int().positive() }).strict(),
+  z.object({ messageSeq: z.number().int().positive(), messageId: z.string().min(1) }).strict(),
   z.object({ publicationId: z.string().min(1).max(128) }).strict(),
 ]);
 const contentReactionSchema = z.object({ kind: z.literal("reaction"), reaction: z.enum(REACTION_IDS) }).strict();

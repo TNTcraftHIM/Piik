@@ -10,7 +10,7 @@ afterEach(() => vi.restoreAllMocks());
 test("the Browser room host fans out Core-selected reactions and suppresses an acknowledged nonce retry", async () => {
   const state = { channel: { rooms: [{ id: "room", delivery: { bindingId: "binding", hostSessionId: "host" } }] } } as ChannelSnapshot;
   const sent: SignedConversationPacket[] = [];
-  const event = { id: "event", occurredAt: 1000, senderUserId: "user", reaction: "heart", target: { type: "message" as const, messageSeq: 1 } };
+  const event = { id: "event", occurredAt: 1000, senderUserId: "user", reaction: "heart", target: { type: "message" as const, messageSeq: 1, messageId: "message" } };
   const snapshot = { type: "message" as const, messageId: "message", messageSeq: 1, revision: 1, counts: { heart: 1 } };
   let record: ConversationReply["record"] = { type: "interaction_ready", serverTime: 1000, reactionIds: ["heart"], publicationReactions: [] };
   let broadcast: ConversationReply["record"] | null = null;
@@ -106,7 +106,7 @@ test("signed conversation uses Domain delivery without peers and still fences si
 test("retiring a room during a conversation commit does not read or broadcast from its released host", async () => {
   const state = { channel: { rooms: [{ id: "room", delivery: { bindingId: "binding", hostSessionId: "host" } }] } } as ChannelSnapshot;
   const record: ConversationReply["record"] = { type: "reaction", nonce: 1,
-    event: { id: "event", occurredAt: 1000, senderUserId: "user", reaction: "heart", target: { type: "message", messageSeq: 1 } }, snapshot: null };
+    event: { id: "event", occurredAt: 1000, senderUserId: "user", reaction: "heart", target: { type: "message", messageSeq: 1, messageId: "message" } }, snapshot: null };
   let finish!: (replies: ConversationReply[]) => void;
   const committed = new Promise<ConversationReply[]>(resolve => { finish = resolve; });
   let began!: () => void;

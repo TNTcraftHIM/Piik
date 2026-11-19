@@ -95,12 +95,12 @@ export function useChannelGuideSample(multiRoom = false) {
     attachments.confirmed(roomId, message, prepared);
     setMessagesByRoom(previous => ({ ...previous, [roomId]: [...(previous[roomId] ?? []), message] }));
   };
-  const [messageReactions, setMessageReactions] = useState<Record<number, import("../channel/protocol").MessageReactions>>({});
+  const [messageReactions, setMessageReactions] = useState<Record<string, import("../channel/protocol").MessageReactions>>({});
   const [publicationReactions, setPublicationReactions] = useState(new Map<string, import("../channel/protocol").PublicationReactionSnapshot>());
   const { session: interaction } = usePreviewInteractions(false, { self: { peerId: "sample-ada", displayName: "Ada" }, friend: { peerId: "sample-bo", displayName: "Bo" } }, (reaction, target) => {
-    if ("messageSeq" in target) setMessageReactions(previous => ({ ...previous, [target.messageSeq]: {
-      revision: (previous[target.messageSeq]?.revision ?? 0) + 1,
-      counts: { ...previous[target.messageSeq]?.counts, [reaction]: (previous[target.messageSeq]?.counts[reaction] ?? 0) + 1 },
+    if ("messageSeq" in target) setMessageReactions(previous => ({ ...previous, [target.messageId]: {
+      revision: (previous[target.messageId]?.revision ?? 0) + 1,
+      counts: { ...previous[target.messageId]?.counts, [reaction]: (previous[target.messageId]?.counts[reaction] ?? 0) + 1 },
     } }));
     else setPublicationReactions(previous => new Map(previous).set(target.publicationId, {
       publicationId: target.publicationId, revision: (previous.get(target.publicationId)?.revision ?? 0) + 1,
@@ -176,7 +176,7 @@ export function useChannelGuideSample(multiRoom = false) {
     readByRoom: {}, markRead: () => {}, loadMessage: async () => {},
     quality, setQuality, encodingExecution, setEncodingExecution, screenEncodingExecution: () => undefined, videoCodecMode: codec, setVideoCodecMode: setCodec, ownedScreens: new Set<string>(), localScreens: new Set<string>(), streams: new Map<string, MediaStream>(),
     messagesByRoom: { ...Object.fromEntries(Object.entries(messagesByRoom).map(([roomId, messages]) => [roomId, visibleMessages(roomId, messages)])),
-      friday: sampleMessages.map(message => ({ ...message, reactions: messageReactions[message.seq] })) },
+      friday: sampleMessages.map(message => ({ ...message, reactions: messageReactions[message.id] })) },
     historyChangesByRoom,
     deleteMessage: async (roomId, seq, messageId) => {
       const messages = roomId === "friday" ? sampleMessages : messagesByRoom[roomId] ?? [];

@@ -1143,10 +1143,15 @@ impl RoomHost {
                         now,
                     )?)
                 };
-                if let ReactionTarget::Message { message_seq } = target {
+                if let ReactionTarget::Message {
+                    message_seq,
+                    message_id,
+                } = target
+                {
                     return Ok(ConversationWork::History(HistoryRequest::React {
                         room_id: self.room.policy().id.clone(),
                         message_seq,
+                        message_id,
                         nonce,
                         event,
                     }));

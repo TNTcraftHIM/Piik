@@ -385,7 +385,7 @@ export class ChannelSession {
     if (document.hidden || !isThrow(event.payload.reaction)) return;
     const target = event.contentTarget;
     const recipient = target ? "messageSeq" in target
-      ? this.view.messagesByRoom[roomId]?.find(message => message.seq === target.messageSeq)?.userId
+      ? this.view.messagesByRoom[roomId]?.find(message => message.seq === target.messageSeq && message.id === target.messageId)?.userId
       : this.view.state?.publications.find(source => source.id === target.publicationId)?.userId
       : event.payload.targetPeerId ?? event.sender.peerId;
     if (event.sender.peerId === self || recipient === self) this.feedbackAudio.play("throw");
@@ -829,7 +829,7 @@ export class ChannelSession {
           sender: { peerId: user.id, displayName: user.name, role: "viewer" },
           payload: { kind: "reaction", reaction: event.reaction as import("../../shared/room-interactions").ReactionId,
             ...(event.target.type === "person" ? { targetPeerId: event.target.userId } : {}) },
-          ...(event.target.type === "message" ? { contentTarget: { messageSeq: event.target.messageSeq } }
+          ...(event.target.type === "message" ? { contentTarget: { messageSeq: event.target.messageSeq, messageId: event.target.messageId } }
             : event.target.type === "publication" ? { contentTarget: { publicationId: event.target.publicationId } } : {}) });
         if (!event) interaction.confirm(reply.requestId, record.nonce);
         return;
@@ -1305,7 +1305,7 @@ export class ChannelSession {
         const command = message.type === "subscribe-room-interactions" ? { type: "interaction_ready" as const, roomId: current.roomId }
           : message.payload.kind === "reaction" ? { type: "react" as const, roomId: current.roomId, reaction: message.payload.reaction, nonce: nonce!,
             target: message.contentTarget ? ("messageSeq" in message.contentTarget
-              ? { type: "message" as const, messageSeq: message.contentTarget.messageSeq }
+              ? { type: "message" as const, messageSeq: message.contentTarget.messageSeq, messageId: message.contentTarget.messageId }
               : { type: "publication" as const, publicationId: message.contentTarget.publicationId })
               : { type: "person" as const, userId: message.payload.targetPeerId ?? this.view.self!.id } } : null;
         if (!command) return false;

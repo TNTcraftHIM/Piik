@@ -504,7 +504,7 @@ impl RoomRuntime {
             return Err("rate_limited");
         }
         match &target {
-            ReactionTarget::Message { message_seq } if *message_seq == 0 => {
+            ReactionTarget::Message { message_seq, .. } if *message_seq == 0 => {
                 return Err("message_unavailable")
             }
             ReactionTarget::Publication { publication_id } => {
