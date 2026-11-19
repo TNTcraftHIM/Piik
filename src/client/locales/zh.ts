@@ -324,7 +324,7 @@ export const zh = {
   "channel.attachment.waitingSource": "等待可用的文件副本…",
   "channel.attachment.receiving": "正在接收文件",
   "channel.attachment.finishing": "正在准备已接收的文件…",
-  "channel.attachment.downloadSent": "已交给浏览器下载",
+  "channel.attachment.downloadSent": "可在浏览器下载记录中查看进度",
   "channel.attachment.downloadRequested": "已请求下载",
   "channel.attachment.downloadCancelled": "已取消下载",
   "channel.attachment.saving": "正在保存，请查看下载窗口",

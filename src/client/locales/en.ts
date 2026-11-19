@@ -326,7 +326,7 @@ export const en: Record<CopyKey, string> = {
   "channel.attachment.waitingSource": "Waiting for an available file copy…",
   "channel.attachment.receiving": "Receiving file",
   "channel.attachment.finishing": "Preparing the completed file…",
-  "channel.attachment.downloadSent": "Sent to browser downloads",
+  "channel.attachment.downloadSent": "Check your browser’s downloads for progress",
   "channel.attachment.downloadRequested": "Download requested",
   "channel.attachment.downloadCancelled": "Download cancelled",
   "channel.attachment.saving": "Saving — see the download window",
