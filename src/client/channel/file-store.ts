@@ -70,8 +70,9 @@ export class FileStore {
     });
   }
 
-  list(roomIds: readonly string[]): Promise<RetainedFile[]> {
-    return this.roomEntries<StoredFile>("files", roomIds);
+  async list(roomIds: readonly string[]): Promise<RetainedFile[]> {
+    const entries = await this.roomEntries<StoredFile>("files", roomIds);
+    return entries.map(({ key, attachment, file }) => ({ key, attachment, file }));
   }
 
   private roomEntries<T>(table: "files" | "receipts", roomIds: readonly string[]): Promise<T[]> {
