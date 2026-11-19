@@ -552,6 +552,8 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
     let page_events = events.create_proxy();
     events.run_return(|event, target, flow| {
         *flow = ControlFlow::Wait;
+        let present_permission = matches!(&event, Event::UserEvent(ServiceEvent::Permission));
+        let had_prompt = prompt.is_some();
         match event {
             Event::UserEvent(ServiceEvent::Reveal(request, source, generation)) => {
                 if let Some(main) = &window {
@@ -797,7 +799,11 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             prompt.take();
             pending.borrow_mut().clear();
         } else {
-            while prompt.is_none() {
+            // Building a WebView during the previous decision can stall its controller creation.
+            if had_prompt && prompt.is_none() && !pending.borrow().is_empty() {
+                let _ = permission_events.send_event(ServiceEvent::Permission);
+            }
+            while present_permission && prompt.is_none() {
                 let Some(request) = pending.borrow_mut().pop_front() else {
                     break;
                 };
