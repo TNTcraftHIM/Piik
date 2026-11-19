@@ -5,7 +5,7 @@ import type { ChannelAttachment, RoomSettings, RoomSummary } from "./protocol";
 import type { FileEntry } from "@zip.js/zip.js";
 
 export interface RetainedBackupFile { messageSeq: number; attachment: ChannelAttachment }
-export type RoomCopyInfo = Pick<RoomSettings, "name" | "icon"> & { voiceBitrate: number; relayCapacity: number };
+export type RoomCopyInfo = Pick<RoomSettings, "name" | "icon" | "picture"> & { voiceBitrate: number; relayCapacity: number };
 export type BackupMetadata =
   | { kind: "domain"; version: 3; state: { id: string; name: string; icon: string; ownerId: string; hostedRooms: Record<string, RoomSummary> }; ownerKey: string }
   | { kind: "room"; version: 3; domainId: string; policy: RoomCopyInfo & Record<string, unknown> & { id: string; creatorId: string };

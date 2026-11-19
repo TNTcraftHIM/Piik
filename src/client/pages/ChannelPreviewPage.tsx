@@ -345,7 +345,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         <header className="c3-room-heading" data-tooltip-controls>
           <div className="c3-room-name">{layout !== "quick" && <span className="c3-pane-navigation"><Btn id="c3-rooms-trigger" icon="sidebar" quiet size="compact"
             title={{ text: t("channel.previewPage.roomList") }} hint="hint-room-list" controls="c3-room-list" expanded={mobilePane === "rooms"}
-            onClick={showRooms} /></span>}<ChannelIdentityMark icon={room?.icon ?? "couch"} size={25} />
+            onClick={showRooms} /></span>}<ChannelIdentityMark icon={room?.icon ?? "couch"} picture={room?.authorized && room.available && room.reading ? room.picture : undefined} size={25} />
             <Tooltip className="c3-room-title" overflow={{ text: room?.name ?? (unlistedRoom ? t("channel.previewPage.openRoom") : t("channel.previewPage.roomsOverview")), selector: "h2" }}>
               <h2>{room?.name ?? (unlistedRoom ? t("channel.previewPage.openRoom") : t("channel.previewPage.roomsOverview"))}</h2>
             </Tooltip>
@@ -476,7 +476,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           couch={room?.authorized && <ChannelCouch className="c3-room-company" people={state ? roomPeople(state, roomId, channel.profiles, channel) : []}
             floating={toolSurface.open && (layout !== "quick" || toolSurface.document !== document)} selfUserId={self?.id ?? null} session={channel.interactionsByRoom.get(roomId) ?? null} />}
           conversation={<>{room && !room.authorized && <ChannelRoomEntry key={room.id} channel={channel} room={room} />}
-            <ChannelConversation domainId={state?.channel.id} roomId={roomId} roomName={room?.name ?? ""} roomIcon={room?.icon} messages={channel.messagesByRoom[roomId] ?? []}
+            <ChannelConversation domainId={state?.channel.id} roomId={roomId} roomName={room?.name ?? ""} roomIcon={room?.icon} roomPicture={room?.authorized && room.available && room.reading ? room.picture : undefined} messages={channel.messagesByRoom[roomId] ?? []}
             users={state?.users ?? []} profiles={channel.profiles} queryProfiles={channel.queryProfiles} entry={self ? { kind: "site" } : { kind: "entry" }}
             canSend={connected && !!room?.authorized && room.available} sending={busy("chat", roomId)}
             attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.authorized && room.available}

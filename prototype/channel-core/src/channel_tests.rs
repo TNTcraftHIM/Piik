@@ -69,11 +69,8 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
         (IDENTITY_IMAGE_URL_BYTES - "data:image/png;base64,".len()) / 4 * 3,
         0,
     );
-    let icon = IdentityIcon::try_from(format!(
-        "data:image/png;base64,{}",
-        Base64::encode_string(&bytes)
-    ))
-    .unwrap();
+    let picture = format!("data:image/png;base64,{}", Base64::encode_string(&bytes));
+    let icon = IdentityIcon::try_from(picture.clone()).unwrap();
     let mut channel = Channel::new("owner".into(), vec![]);
     let sessions: Vec<_> = (0..20)
         .map(|index| {
@@ -97,18 +94,18 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
         .collect();
     let owner = channel.identity.sessions[&sessions[0]].user_id;
     let room_id = "r".repeat(128);
-    let mut host = RoomHost::new(
-        crate::RoomState::new(
-            room_id.clone(),
-            "房".repeat(64),
-            icon.clone(),
-            owner,
-            RoomAccess::Public,
-            false,
-            None,
-        )
-        .unwrap(),
-    );
+    let mut policy = crate::RoomState::new(
+        room_id.clone(),
+        "房".repeat(64),
+        RoomIcon::default(),
+        owner,
+        RoomAccess::Public,
+        false,
+        None,
+    )
+    .unwrap();
+    policy.appearance.picture = Some(picture.clone());
+    let mut host = RoomHost::new(policy);
     host.dispatch(HostInput {
         channel_owner_id: Uuid::nil(),
         service_endpoint: None,
@@ -126,6 +123,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
     // Full directory, three active rooms, both publication kinds, voice and one
     // attachment selection per active room. This is not a total catalog limit.
     output.projection.participant_session_ids = sessions.clone();
+    output.projection.picture = Some(picture.clone());
     output.projection.publications = sessions
         .iter()
         .flat_map(|session| {
@@ -176,6 +174,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
         })
         .collect();
     for view in output.projection.views.values_mut() {
+        view.reading = true;
         view.subscriptions = output
             .projection
             .publications
@@ -282,6 +281,8 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
             state.voice.extend(view.voice);
             state.files.extend(view.files);
         } else {
+            view.room.reading = false;
+            view.room.picture = None;
             view.room.participant_session_ids.clear();
             view.room.file_activity.clear();
             view.room.delivery = None;
@@ -334,13 +335,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
         .map(|user| StoredUser {
             id: user.id,
             name: user.name.clone(),
-            avatar: Some(
-                serde_json::to_value(&icon)
-                    .unwrap()
-                    .as_str()
-                    .unwrap()
-                    .into(),
-            ),
+            avatar: Some(picture.clone()),
             credential: [255; 32],
         })
         .collect();

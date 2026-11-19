@@ -92,6 +92,7 @@ export function RoomForm({ room, value, onChange, roomHost, inviteOnly, disabled
     {roomHost && <p>{roomHost === "server" ? t("room.create.serverHostedNote")
       : roomHost === "app" ? t("room.create.appHostedNote") : t("room.create.browserHostedNote")}</p>}
     <ChannelIdentityFields name={name} icon={icon} label={t("room.settings.name")}
+      roomPicture={{ value: value.picture === undefined ? room?.picture ?? null : value.picture, onChange: picture => change({ picture }) }}
       disabled={disabled} onName={name => change({ name })} onIcon={icon => change({ icon })} imageBusy={imageBusy} onImageBusyChange={setImageBusy} />
     {inviteOnly ? <p>{t("room.settings.inviteOnlyNote")}</p> : <>
       <fieldset className="lr-toggle c3-room-access" disabled={disabled}>

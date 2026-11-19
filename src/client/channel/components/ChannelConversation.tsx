@@ -26,8 +26,8 @@ type Draft = { text: string; mentions: NonNullable<ChatOptions["mentions"]>; rep
 const emptyDraft: Draft = { text: "", mentions: [] };
 
 /** Browsing owns the conversation; drafts and reading position belong to this pane. */
-export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entry, messages, users, profiles, queryProfiles, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, onMessage, unreadAfter, onRead, interaction, onBack, onDeleteMessage, canModerate, pending, historyChanges }: {
-  domainId: string | undefined; roomId: string; roomName: string; roomIcon?: string; messages: ChannelMessage[]; users: ChannelUserSummary[];
+export function ChannelConversation({ domainId, roomId, roomName, roomIcon, roomPicture, entry, messages, users, profiles, queryProfiles, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, onMessage, unreadAfter, onRead, interaction, onBack, onDeleteMessage, canModerate, pending, historyChanges }: {
+  domainId: string | undefined; roomId: string; roomName: string; roomIcon?: string; roomPicture?: string; messages: ChannelMessage[]; users: ChannelUserSummary[];
   profiles: ReadonlyMap<string, ChannelUser>; queryProfiles: ChannelController["queryProfiles"];
   entry?: ChannelEntry;
   selfUserId?: string | null;
@@ -318,7 +318,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
             });
           }} /></div>}
         {(!roomId || available) && !history?.hasMore && !messages.length && (!roomId || (!!history && !loadingHistory)) &&
-          <ChannelRoomStart icon={roomIcon} canSend={canSend} entry={!roomId ? entry ?? { kind: "entry" } : undefined} />}
+          <ChannelRoomStart icon={roomIcon} picture={roomPicture} canSend={canSend} entry={!roomId ? entry ?? { kind: "entry" } : undefined} />}
         {roomId && loadingHistory && !messages.length && <div className="c3-conversation-loading" role="status">
           <Glyph name="loader" className="lr-spin" size={18} /><span>{t("conversation.loading")}</span>
         </div>}

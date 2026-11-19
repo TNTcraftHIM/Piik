@@ -98,6 +98,7 @@ impl RemoteRoom {
         let replies = self.drain_replies();
         self.binding = None;
         if let Some(projection) = &mut self.projection {
+            projection.picture = None;
             projection.next_route_deadline = None;
             projection.flows.clear();
             projection.base_links.clear();
@@ -272,6 +273,7 @@ impl RemoteRoom {
                 id: summary.id.clone(),
                 name: summary.name.clone(),
                 icon: summary.icon.clone(),
+                picture: None,
                 creator_id: summary.creator_id,
                 access: summary.access,
                 hidden: summary.hidden,

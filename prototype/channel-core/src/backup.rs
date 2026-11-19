@@ -36,7 +36,8 @@ impl Metadata {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RoomCopyInfo {
     pub name: String,
-    pub icon: crate::wire::IdentityIcon,
+    #[serde(flatten)]
+    pub appearance: crate::RoomAppearance,
     pub voice_bitrate: u32,
     pub relay_capacity: u8,
 }
@@ -58,6 +59,7 @@ impl RoomCopyMetadata {
         }
         if self.room_info.as_ref().is_some_and(|info| {
             crate::wire::title(&info.name).as_deref() != Some(info.name.as_str())
+                || info.appearance.validate().is_err()
                 || !crate::access::valid_audio_bitrate(info.voice_bitrate)
                 || !(1..=crate::MAX_RELAY_CAPACITY).contains(&info.relay_capacity)
         }) || self

@@ -253,11 +253,13 @@ test("a hosted site creates and binds the room before the browser enters it", as
     const state = session.getSnapshot().state!;
     socket.receive({ type: "state", state: { ...state, channel: { ...state.channel, hostingMode: "hosted" } } });
     await vi.waitFor(() => expect(session.getSnapshot().state?.channel.hostingMode).toBe("hosted"));
-    const pending = session.createRoom({ name: "Hosted room", icon: "couch", access: "private", hidden: true, password: "fixture", allowServiceRelay: false });
+    const picture = "data:image/png;base64,YWJj";
+    const pending = session.createRoom({ name: "Hosted room", icon: "couch", picture, access: "private", hidden: true, password: "fixture", allowServiceRelay: false });
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("create_room"));
     const create = socket.sent.at(-1)!;
-    expect(create).toMatchObject({ type: "create_room", room: { access: "private", hidden: true, hasPassword: true },
-      password: "fixture", allowServiceRelay: false });
+    expect(create).toMatchObject({ type: "create_room", room: { icon: "couch", access: "private", hidden: true, hasPassword: true },
+      picture, password: "fixture", allowServiceRelay: false });
+    expect(create.room).not.toHaveProperty("picture");
     socket.receive({ type: "room_created", requestId: create.requestId, room: { ...create.room as object, id: "hosted-room" } });
     await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "browse", roomId: "hosted-room", active: true }));
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
@@ -8663,8 +8665,10 @@ test.each(["backup", "copy", "copy-with-settings"] as const)("%s without file or
   const { session, socket, state, snapshot, row, read } = await setupRoomBackup();
   read.mockRestore();
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...core, initializeRuntime: async () => {} } as never);
+  const picture = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1XcAAAAASUVORK5CYII=";
   const policy = JSON.parse(core.create_room_policy(JSON.stringify({ id: "first", creatorId: crypto.randomUUID(),
-    name: "Owned room", icon: "couch", access: "private", hidden: false })));
+    name: "Owned room", icon: "rocket", picture, access: "private", hidden: false })));
+  expect(policy).toMatchObject({ icon: "rocket", picture });
   snapshot.policy = JSON.stringify(policy);
   state.channel.id = crypto.randomUUID(); socket.receive({ type: "state", state });
   const hash = new core.AttachmentHash(); hash.update(new TextEncoder().encode("GIF89a"));
@@ -8681,7 +8685,7 @@ test.each(["backup", "copy", "copy-with-settings"] as const)("%s without file or
     const metadata = await backupArchive.readBackup(archive, { metadata: () => {}, row: value => { restored.push(value); }, content });
     expect(metadata).toMatchObject({ kind: kind === "backup" ? "room" : "room_copy", retainedFiles: [] });
     if (kind === "backup") expect(metadata).toMatchObject({ domainId: state.channel.id, policy });
-    else if (kind === "copy-with-settings") expect(metadata).toMatchObject({ roomInfo: { name: policy.name, icon: policy.icon, voiceBitrate: policy.voiceBitrate, relayCapacity: policy.relayCapacity } });
+    else if (kind === "copy-with-settings") expect(metadata).toMatchObject({ roomInfo: { name: policy.name, icon: "rocket", picture, voiceBitrate: policy.voiceBitrate, relayCapacity: policy.relayCapacity } });
     else expect(metadata).not.toHaveProperty("roomInfo");
     expect(restored).toEqual(rows); expect(content).not.toHaveBeenCalled(); expect(retained).not.toHaveBeenCalled();
     const zip = await import("@zip.js/zip.js/lib/zip-core-native.js"), reader = new zip.ZipReader(new zip.BlobReader(archive), { useWebWorkers: false });
@@ -9209,32 +9213,40 @@ test("a delayed source busy error cannot fail a cancelled file's successful retr
   } finally { next.abort(); files.reset(); upstream.free(); }
 });
 
-test("socket ingress hydrates room pictures and rejected frames recover with a full Welcome", async () => {
+test("socket ingress hydrates room pictures and rejection drops them until a full Welcome", async () => {
   const { session, socket } = await setup(1000, false);
+  const attachments = vi.spyOn(session.attachments, "update");
   try {
     const state = structuredClone(session.getSnapshot().state!);
     state.channel.icon = "data:image/png;base64,YWJj";
+    state.channel.rooms[0].picture = "data:image/png;base64,ZGVm";
     socket.receive({ type: "state", state });
     const { icon, rooms, ...channel } = state.channel;
-    const compact = { ...state, channel: { ...channel, rooms: rooms.map(({ icon, ...room }) => room) },
+    const compact = { ...state, channel: { ...channel, rooms: rooms.map(({ picture, ...room }) => room) },
       users: state.users.map(user => ({ ...user, name: "Updated" })),
     };
     socket.receive({ type: "state", state: compact });
     expect(session.getSnapshot().state?.users[0]).toMatchObject({ name: "Updated", version: profileVersion });
-    expect(session.getSnapshot().state?.channel.icon).toBe(state.channel.icon);
+    expect(session.getSnapshot().state?.channel.icon).toBe(icon);
+    expect(session.getSnapshot().state?.channel.rooms[0]).toMatchObject({ icon: "couch", picture: rooms[0].picture });
+    expect(attachments.mock.lastCall?.[3][0]).toMatchObject({ id: rooms[0].id, icon: "couch" });
+    expect(attachments.mock.lastCall?.[3][0]).not.toHaveProperty("picture");
     vi.useFakeTimers();
     const close = vi.spyOn(socket, "close"), invalid = structuredClone(state);
     invalid.users[0].name = "x".repeat(41);
     socket.receive({ type: "state", state: invalid });
     expect(close).toHaveBeenCalledWith();
     expect(session.getSnapshot()).toMatchObject({ connection: "reconnecting", error: "invalid_response" });
+    expect(session.getSnapshot().state?.channel.rooms[0]?.icon).toBe("couch");
+    expect(session.getSnapshot().state?.channel.rooms[0]?.picture).toBeUndefined();
     await vi.advanceTimersByTimeAsync(1000);
     const replacement = ChannelSocket.current;
     expect(replacement).not.toBe(socket); await replacement.onopen?.();
     replacement.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
     expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null });
     replacement.receive({ type: "state", state: compact });
-    expect(session.getSnapshot().state?.channel.icon).toBe(state.channel.icon);
+    expect(session.getSnapshot().state?.channel.icon).toBe(icon);
+    expect(session.getSnapshot().state?.channel.rooms[0]?.picture).toBe(rooms[0].picture);
     expect(session.getSnapshot().state?.users[0].name).toBe("Updated");
   } finally { session.close(); }
 });

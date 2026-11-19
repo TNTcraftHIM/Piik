@@ -6,7 +6,7 @@ use piik_channel_core::{
         ConfirmationInput, HistoryRequest, HistoryResult, MessageDraft, StoredMessage, HISTORY_PAGE,
     },
     host::{HostInput, RoomHost as SharedRoomHost},
-    wire::RoomAccess,
+    wire::{RoomAccess, RoomIcon},
     RoomState,
 };
 use serde::{Deserialize, Serialize};
@@ -28,7 +28,8 @@ fn encode(value: &impl Serialize) -> Result<String, JsValue> {
 struct NewRoom {
     id: String,
     name: String,
-    icon: piik_channel_core::wire::IdentityIcon,
+    icon: RoomIcon,
+    picture: Option<String>,
     creator_id: Uuid,
     access: RoomAccess,
     hidden: bool,
@@ -57,6 +58,7 @@ pub fn create_room_policy(input: &str) -> Result<String, JsValue> {
     if let Some(bitrate) = input.voice_bitrate {
         policy.voice_bitrate = bitrate;
     }
+    policy.appearance.picture = input.picture;
     policy.allow_service_relay = input.allow_service_relay.unwrap_or(false);
     policy.validate().map_err(error)?;
     encode(&policy)

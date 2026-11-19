@@ -1367,6 +1367,7 @@ impl Session {
                         socket,
                         &Command::CreateRoom {
                             room,
+                            picture: None,
                             password: None,
                             allow_service_relay: false,
                         },

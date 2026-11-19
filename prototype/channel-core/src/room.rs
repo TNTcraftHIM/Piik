@@ -275,6 +275,11 @@ impl RoomRuntime {
                 .collect(),
             last_message_seq: self.last_message_seq,
             summary: crate::host::RoomSummary::from_policy(&self.policy),
+            picture: if views.values().any(|view| view.authorized && view.reading) {
+                self.policy.appearance.picture.clone()
+            } else {
+                None
+            },
             capabilities: crate::wire::RoomCapabilities {
                 attachments: self.base.is_some(),
             },
@@ -576,7 +581,7 @@ impl RoomRuntime {
         &mut self,
         member: Member,
         name: String,
-        icon: crate::wire::IdentityIcon,
+        appearance: crate::RoomAppearance,
         access: RoomAccess,
         hidden: bool,
         password: Option<Option<String>>,
@@ -586,7 +591,8 @@ impl RoomRuntime {
         if voice_bitrate.is_some_and(|bitrate| !crate::access::valid_audio_bitrate(bitrate)) {
             return Err("invalid_audio_bitrate");
         }
-        self.policy.update(name, icon, access, hidden, password)?;
+        self.policy
+            .update(name, appearance, access, hidden, password)?;
         if let Some(bitrate) = voice_bitrate {
             self.policy.voice_bitrate = bitrate;
         }

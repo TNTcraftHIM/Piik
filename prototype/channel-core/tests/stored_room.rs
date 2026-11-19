@@ -81,6 +81,8 @@ fn enter(host: &mut StoredRoomHost, owner: Uuid, actor: Uuid, key: &str) -> Host
     )
 }
 
+const ROOM_PICTURE: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+
 fn policy(id: &str, owner: Uuid, access: RoomAccess) -> RoomState {
     RoomState::new(
         id.into(),
@@ -374,7 +376,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
     let mut room = policy("retained", owner, RoomAccess::Private);
     room.update(
         room.name.clone(),
-        room.icon.clone(),
+        room.appearance.clone(),
         RoomAccess::Private,
         true,
         Some(Some("private-room".into())),
@@ -387,7 +389,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         owner,
         owner,
         json!({"type":"update_room","roomId":"retained",
-        "name":"retained","icon":"couch","access":"private","hidden":true,"allowServiceRelay":true}),
+        "name":"retained","icon":"rocket","picture":ROOM_PICTURE,"access":"private","hidden":true,"allowServiceRelay":true}),
     );
     drop(host);
     let mut host = StoredRoomHost::open(&folder.join("live.sqlite")).unwrap();
@@ -504,9 +506,22 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
     );
     let manifest = serde_json::to_value(Metadata::Room(backup.metadata().clone())).unwrap();
     assert_eq!(manifest["kind"], "room");
+    assert_eq!(manifest["policy"]["icon"], "rocket");
+    assert_eq!(manifest["policy"]["picture"], ROOM_PICTURE);
     assert!(manifest.get("ownCredential").is_none());
     assert!(manifest.get("ownerKey").is_none());
     assert!(manifest.get("users").is_none());
+    let mut old_archive = manifest.clone();
+    old_archive["policy"]
+        .as_object_mut()
+        .unwrap()
+        .remove("picture");
+    old_archive["policy"]["icon"] = json!(ROOM_PICTURE);
+    let normalized = serde_json::from_value::<Metadata>(old_archive).unwrap();
+    normalized.validate().unwrap();
+    let normalized = serde_json::to_value(normalized).unwrap();
+    assert_eq!(normalized["policy"]["icon"], "couch");
+    assert_eq!(normalized["policy"]["picture"], ROOM_PICTURE);
     serde_json::from_value::<Metadata>(manifest)
         .unwrap()
         .validate()
@@ -521,7 +536,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
             version: 2,
             room_info: Some(RoomCopyInfo {
                 name: host.policy().name.clone(),
-                icon: host.policy().icon.clone(),
+                appearance: host.policy().appearance.clone(),
                 voice_bitrate: host.policy().voice_bitrate,
                 relay_capacity: host.policy().relay_capacity,
             }),
@@ -533,6 +548,18 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         };
         let encoded = serde_json::to_value(Metadata::RoomCopy(metadata.clone())).unwrap();
         assert_eq!(encoded["kind"], "room_copy");
+        assert_eq!(encoded["roomInfo"]["icon"], "rocket");
+        assert_eq!(encoded["roomInfo"]["picture"], ROOM_PICTURE);
+        let mut legacy = encoded.clone();
+        legacy["roomInfo"]
+            .as_object_mut()
+            .unwrap()
+            .remove("picture");
+        legacy["roomInfo"]["icon"] = json!(ROOM_PICTURE);
+        let normalized =
+            serde_json::to_value(serde_json::from_value::<Metadata>(legacy).unwrap()).unwrap();
+        assert_eq!(normalized["roomInfo"]["icon"], "couch");
+        assert_eq!(normalized["roomInfo"]["picture"], ROOM_PICTURE);
         for field in [
             "policy",
             "ownCredential",
@@ -1088,7 +1115,6 @@ fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() 
 
 #[test]
 fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activity() {
-    let image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
     let owner = Uuid::new_v4();
     let first = std::env::temp_dir().join(format!("piik-stored-first-{}.sqlite", Uuid::new_v4()));
     let second = std::env::temp_dir().join(format!("piik-stored-second-{}.sqlite", Uuid::new_v4()));
@@ -1116,7 +1142,7 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
             host,
             owner,
             owner,
-            json!({"type":"update_room","icon":image,"roomId":room,"name":format!("Saved {room}"),"access":"public","hidden":false,"relayCapacity":7}),
+            json!({"type":"update_room","icon":"rocket","picture":ROOM_PICTURE,"roomId":room,"name":format!("Saved {room}"),"access":"public","hidden":false,"relayCapacity":7}),
         );
         let personal = command(
             host,
@@ -1129,7 +1155,7 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
             host,
             owner,
             owner,
-            json!({"type":"update_room","icon":image,"roomId":room,"name":"Invalid","access":"public","hidden":false,"relayCapacity":0}),
+            json!({"type":"update_room","icon":"rocket","picture":ROOM_PICTURE,"roomId":room,"name":"Invalid","access":"public","hidden":false,"relayCapacity":0}),
         );
         assert!(
             matches!(invalid.reply.unwrap().result, RoomResult::Error { code } if code == "invalid_relay_capacity")
@@ -1179,14 +1205,12 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
             invitation: piik_channel_core::wire::RoomInvitation::Available { key }
         } if key == invitations[room])
         );
-        assert_eq!(
-            serde_json::to_value(restored.policy().icon.clone()).unwrap(),
-            image
-        );
-        assert_eq!(
-            serde_json::to_value(restored.summary().icon).unwrap(),
-            image
-        );
+        let appearance = serde_json::to_value(restored.policy()).unwrap();
+        assert_eq!(appearance["icon"], "rocket");
+        assert_eq!(appearance["picture"], ROOM_PICTURE);
+        let summary = serde_json::to_value(restored.summary()).unwrap();
+        assert_eq!(summary["icon"], "rocket");
+        assert!(summary.get("picture").is_none());
         let output = restored
             .dispatch(input(owner, owner, |_| HostAction::Sync))
             .unwrap();

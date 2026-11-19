@@ -18,10 +18,11 @@ export const CHANNEL_ICON_PRESETS: { icon: GlyphName; name: CopyKey }[] = [
 ];
 
 /** Unknown decorative keys stay in the model; only their presentation falls back. */
-export function ChannelIdentityMark({ icon, size = 24 }: { icon: string; size?: number }) {
+export function ChannelIdentityMark({ icon, picture, size = 24 }: { icon: string; picture?: string | null; size?: number }) {
   const [failed, setFailed] = useState("");
+  const image = picture ?? icon;
   return <span className="c3-identity-mark" style={{ width: size, height: size }} aria-hidden="true">
-    {isIdentityImage(icon) && failed !== icon ? <img src={icon} alt="" onError={() => setFailed(icon)} />
+    {isIdentityImage(image) && failed !== image ? <img src={image} alt="" onError={() => setFailed(image)} />
       : <Glyph name={CHANNEL_ICON_PRESETS.find(value => value.icon === icon)?.icon ?? "couch"} size={size} />}
   </span>;
 }
@@ -98,10 +99,11 @@ export function ChannelIdentityPicker({ value, onChange, disabled = false, busy,
   </fieldset>;
 }
 
-export function ChannelIdentityFields({ name, icon, label, disabled, onName, onIcon, imageBusy, onImageBusyChange }: {
+export function ChannelIdentityFields({ name, icon, label, disabled, onName, onIcon, imageBusy, onImageBusyChange, roomPicture }: {
   name: string; icon: string; label: string; disabled: boolean;
   onName(name: string): void; onIcon(icon: string): void;
   imageBusy: boolean; onImageBusyChange(busy: boolean): void;
+  roomPicture?: { value: string | null; onChange(picture: string | null): void };
 }) {
   const id = useId();
   const { t } = useCopy();
@@ -111,8 +113,14 @@ export function ChannelIdentityFields({ name, icon, label, disabled, onName, onI
         disabled={disabled} onChange={event => onName(event.target.value)} />
     </label>
     <details className="c3-identity-appearance">
-      <summary><ChannelIdentityMark icon={icon} size={24} /><span>{t("channel.identity.changeIconOrImage")}</span></summary>
-      <ChannelIdentityPicker value={icon} onChange={onIcon} disabled={disabled} busy={imageBusy} onBusyChange={onImageBusyChange} />
+      <summary><ChannelIdentityMark icon={icon} picture={roomPicture?.value} size={24} /><span>{t(roomPicture ? "room.settings.appearance" : "channel.identity.changeIconOrImage")}</span></summary>
+      {roomPicture ? <fieldset className="c3-identity-picker" disabled={disabled}>
+        <legend>{t("room.settings.publicIcon")}</legend>
+        <ChannelIconChoices value={icon} onChange={onIcon} disabled={disabled} />
+        <p className="c3-room-picture-label">{t("room.settings.picture")}</p>
+        <ChannelIdentityImageInput value={roomPicture.value} onChange={roomPicture.onChange}
+          disabled={disabled} busy={imageBusy} onBusyChange={onImageBusyChange} />
+      </fieldset> : <ChannelIdentityPicker value={icon} onChange={onIcon} disabled={disabled} busy={imageBusy} onBusyChange={onImageBusyChange} />}
     </details>
   </>;
 }

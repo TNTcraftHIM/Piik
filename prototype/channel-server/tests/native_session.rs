@@ -14,6 +14,8 @@ use tokio::{
 use tokio_tungstenite::{accept_async, tungstenite::Message, WebSocketStream};
 use uuid::Uuid;
 
+const ROOM_PICTURE: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+
 fn http_client(timeout: Duration) -> reqwest::Client {
     let _ = rustls::crypto::ring::default_provider().install_default();
     reqwest::Client::builder().timeout(timeout).build().unwrap()
@@ -558,17 +560,23 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
         .await;
     domain.until(|_, event| matches!(event, Event::State { state } if state.users.iter().any(|user| user.name == "Owner renamed"))).await;
 
-    let image: piik_channel_core::wire::IdentityIcon = serde_json::from_value(json!(
-        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="
-    )).unwrap();
     domain
         .command(
             domain.connection,
             json!({"type":"update_room", "roomId":"one", "name":"one",
-        "icon":image, "access":"public", "hidden":false}),
+        "icon":"star", "picture":ROOM_PICTURE, "access":"public", "hidden":false}),
         )
         .await;
-    domain.until(|_, event| matches!(event, Event::State { state } if state.channel.rooms.iter().any(|room| room.id == "one" && room.icon == image))).await;
+    domain.until(|connection, event| connection == guest && matches!(event, Event::State { state } if state.channel.rooms.iter().any(|room| room.id == "one" && room.reading && room.picture.as_deref() == Some(ROOM_PICTURE)))).await;
+    domain.events.clear();
+    domain
+        .command(guest, json!({"type":"browse","roomId":"one","active":false}))
+        .await;
+    domain.until(|connection, event| connection == guest && matches!(event, Event::State { state } if state.channel.rooms.iter().any(|room| room.id == "one" && !room.reading && room.picture.is_none() && serde_json::to_value(&room.icon).unwrap() == json!("star")))).await;
+    domain
+        .command(guest, json!({"type":"browse","roomId":"one","active":true}))
+        .await;
+    domain.until(|connection, event| connection == guest && matches!(event, Event::State { state } if state.channel.rooms.iter().any(|room| room.id == "one" && room.reading && room.picture.as_deref() == Some(ROOM_PICTURE)))).await;
 
     // A real socket loss resumes the same admitted session and live RoomHost.
     domain.events.clear();
@@ -672,8 +680,8 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
         StoredRoomHost::open(&folder.join("one.sqlite"))
             .unwrap()
             .policy()
-            .icon,
-        image
+            .appearance.picture.as_deref(),
+        Some(ROOM_PICTURE)
     );
     for id in ["one", "two"] {
         assert_eq!(
@@ -1062,6 +1070,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         })
         .unwrap();
     let room = policy.id.clone();
+    policy.appearance.picture = Some(ROOM_PICTURE.into());
     let policy = serde_json::to_string(&policy).unwrap();
     let open = json!({"id":"open","type":"open","policy":policy});
     page.send(Message::Text(open.to_string().into()))
@@ -1073,6 +1082,8 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     assert_eq!(opened["result"]["name"], "Saved private");
     assert_eq!(opened["result"]["access"], "private");
     assert_eq!(opened["result"]["hasPassword"], true);
+    assert!(opened["result"].get("picture").is_none());
+    assert!(!opened.to_string().contains(ROOM_PICTURE));
     let sites: Vec<_> = std::fs::read_dir(folder.join("rooms"))
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -1193,6 +1204,8 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         "a second App cannot own the same approval data directory"
     );
     domain.room_turn(&room).await;
+    domain.command(browser, json!({"type":"browse","roomId":room,"active":true})).await;
+    domain.until(|connection, event| connection == browser && matches!(event, Event::State { state } if state.channel.rooms.iter().any(|entry| entry.id == room && entry.reading && entry.picture.as_deref() == Some(ROOM_PICTURE)))).await;
     for (id, queried_room, publication, error) in [
         ("metrics", room.clone(), None, None),
         (
@@ -1412,7 +1425,14 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         .unwrap()
         .unwrap()
         .unwrap();
-    drop(HostedRoom::open(&path, &room, user).unwrap());
+    {
+        let mut store = piik_channel_core::storage::Storage::open_existing(&path).unwrap();
+        let mut checkpoint = store.load().unwrap().unwrap();
+        assert_eq!(checkpoint.as_object_mut().unwrap().remove("picture"), Some(json!(ROOM_PICTURE)));
+        // A previously released room file stores an upload directly in the icon slot.
+        checkpoint["icon"] = json!(ROOM_PICTURE);
+        store.save(&checkpoint).unwrap();
+    }
 
     // A new process/session restores the same committed policy without activities.
     let app_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1461,6 +1481,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     );
     let saved = StoredRoomHost::open(&path).unwrap();
     assert!(saved.policy().hidden);
+    assert_eq!(saved.policy().appearance.picture.as_deref(), Some(ROOM_PICTURE));
     saved
         .policy()
         .clone()

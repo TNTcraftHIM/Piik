@@ -631,6 +631,97 @@ fn public_discovery_ends_with_host_presence_while_known_sessions_keep_scoped_sta
 }
 
 #[test]
+fn room_picture_only_reaches_an_admitted_reader_while_the_room_is_online() {
+    let mut network = RoomNetwork::new();
+    let owner = Uuid::new_v4();
+    let writer = Uuid::new_v4();
+    let reader = Uuid::new_v4();
+    admit(
+        &mut network,
+        owner,
+        json!({"type":"join","name":"Site owner","ownerKey":"owner"}),
+    );
+    let (_, writer_key, _) = admit(&mut network, writer, json!({"type":"join","name":"Writer"}));
+    let (reader_session, _, reader_state) =
+        admit(&mut network, reader, json!({"type":"join","name":"Reader"}));
+    let reader_user = reader_state
+        .sessions
+        .iter()
+        .find(|s| s.id == reader_session)
+        .unwrap()
+        .user_id;
+    let id = room(&mut network, writer, "public", false);
+    let picture = "data:image/png;base64,iVBORw0KGgo=";
+    let edit = |access| json!({"type":"update_room","roomId":id,"name":"Studio","icon":"star","picture":picture,"access":access,"hidden":false});
+    let row = |net: &RoomNetwork, connection| {
+        let room = net
+            .state(connection)
+            .channel
+            .rooms
+            .iter()
+            .find(|r| r.id == id)
+            .unwrap();
+        serde_json::to_value(room).unwrap()
+    };
+    let browse = |active| json!({"type":"browse","roomId":id,"active":active});
+    command(&mut network, writer, edit("public"));
+    for visitor in [owner, reader] {
+        assert_eq!(row(&network, visitor)["icon"], "star");
+        assert!(row(&network, visitor).get("picture").is_none());
+    }
+    command(&mut network, reader, browse(true));
+    assert_eq!(row(&network, reader)["picture"], picture);
+    command(&mut network, reader, browse(false));
+    assert!(row(&network, reader).get("picture").is_none());
+
+    command(&mut network, writer, edit("private"));
+    let key = invite(&mut network, writer, &id);
+    let enter = json!({"type":"enter_room","roomId":id,"inviteKey":key});
+    command(&mut network, reader, enter.clone());
+    assert!(row(&network, reader).get("picture").is_none());
+    command(&mut network, reader, browse(true));
+    assert_eq!(row(&network, reader)["picture"], picture);
+    command(
+        &mut network,
+        writer,
+        json!({"type":"revoke_room_access","roomId":id,"userId":reader_user}),
+    );
+    assert!(row(&network, reader).get("picture").is_none());
+    assert!(row(&network, owner).get("picture").is_none());
+    command(&mut network, reader, enter);
+    command(&mut network, reader, browse(true));
+    assert_eq!(row(&network, reader)["picture"], picture);
+    let effects = network.authority.disconnect(writer, 200);
+    network.deliver(effects);
+    assert_eq!(row(&network, reader)["available"], false);
+    assert!(row(&network, reader).get("picture").is_none());
+
+    let metadata = network.authority.export_backup();
+    let archive = serde_json::to_value(metadata.archive_metadata().unwrap()).unwrap();
+    let summary = &archive["state"]["hostedRooms"][&id];
+    assert_eq!(summary["icon"], "star");
+    assert!(summary.get("picture").is_none());
+    let mut legacy = serde_json::to_value(metadata).unwrap();
+    legacy["state"]["hostedRooms"][&id]["icon"] = json!(picture);
+    let metadata: piik_channel_core::backup::DomainMetadata =
+        serde_json::from_value(legacy).unwrap();
+    let mut reopened = RoomNetwork::new();
+    reopened.authority = metadata.into_authority(vec![]).unwrap();
+    admit(
+        &mut reopened,
+        writer,
+        json!({"type":"join","name":"Writer","credential":writer_key}),
+    );
+    let offline = row(&reopened, writer);
+    assert_eq!(offline["icon"], "couch");
+    assert_eq!(offline["available"], false);
+    assert!(offline.get("picture").is_none());
+    assert!(!serde_json::to_string(&reopened.authority.export_backup())
+        .unwrap()
+        .contains(picture));
+}
+
+#[test]
 fn abandoned_reservations_and_stopped_guest_rooms_release_active_slots() {
     let mut network = RoomNetwork::new();
     let creator = Uuid::new_v4();

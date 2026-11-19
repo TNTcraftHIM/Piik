@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 31;
+pub const CHANNEL_PROTOCOL: u8 = 32;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -85,6 +85,12 @@ pub enum Command {
     },
     CreateRoom {
         room: crate::host::RoomSummary,
+        #[serde(
+            default,
+            deserialize_with = "avatar",
+            skip_serializing_if = "Option::is_none"
+        )]
+        picture: Option<String>,
         password: Option<String>,
         #[serde(default)]
         allow_service_relay: bool,
@@ -107,7 +113,13 @@ pub enum Command {
     UpdateRoom {
         room_id: String,
         name: String,
-        icon: IdentityIcon,
+        icon: RoomIcon,
+        #[serde(
+            default,
+            deserialize_with = "picture_patch",
+            skip_serializing_if = "Option::is_none"
+        )]
+        picture: Option<Option<String>>,
         access: RoomAccess,
         hidden: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -252,6 +264,12 @@ impl Request {
     }
 }
 
+fn picture_patch<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Option<String>>, D::Error> {
+    avatar(d).map(Some)
+}
+
 fn nullable_password<'de, D: serde::Deserializer<'de>>(
     d: D,
 ) -> Result<Option<Option<String>>, D::Error> {
@@ -322,6 +340,36 @@ pub(crate) fn avatar<'de, D: serde::Deserializer<'de>>(
     Ok(avatar)
 }
 
+fn icon_key(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+}
+
+/// A decorative key that can be published in a channel's room directory.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(try_from = "String")]
+pub struct RoomIcon(String);
+
+impl Default for RoomIcon {
+    fn default() -> Self {
+        Self("couch".into())
+    }
+}
+
+impl TryFrom<String> for RoomIcon {
+    type Error = &'static str;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if icon_key(&value) {
+            Ok(Self(value))
+        } else {
+            Err("invalid_room_icon")
+        }
+    }
+}
+
 /// A decorative key or a small retained raster, carried by its identity owner.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(try_from = "String")]
@@ -337,15 +385,7 @@ impl TryFrom<String> for IdentityIcon {
     type Error = &'static str;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        if !value.is_empty()
-            && value.len() <= 64
-            && value
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-        {
-            return Ok(Self(value));
-        }
-        if !identity_image(&value) {
+        if !icon_key(&value) && !identity_image(&value) {
             return Err("invalid_identity_icon");
         }
         Ok(Self(value))
@@ -708,7 +748,13 @@ pub struct Room {
     pub last_message_seq: u64,
     pub id: String,
     pub name: String,
-    pub icon: IdentityIcon,
+    pub icon: RoomIcon,
+    #[serde(
+        default,
+        deserialize_with = "avatar",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub picture: Option<String>,
     pub creator_id: Uuid,
     pub access: RoomAccess,
     pub hidden: bool,

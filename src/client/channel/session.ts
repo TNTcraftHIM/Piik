@@ -140,6 +140,16 @@ function stored(key: string, value?: string): string | null {
   } catch { return null; }
 }
 
+function withoutRoomPictures(state: ChannelSnapshot): ChannelSnapshot {
+  if (!state.channel.rooms.some(room => room.picture)) return state;
+  const rooms = state.channel.rooms.map(room => {
+    if (!room.picture) return room;
+    const { picture: _picture, ...rest } = room;
+    return rest;
+  });
+  return { ...state, channel: { ...state.channel, rooms } };
+}
+
 function mergeMessages(messages: ChannelMessage[]): ChannelMessage[] {
   const merged = new Map<string, ChannelMessage>();
   for (const message of messages) merged.set(message.id, mergeMessage(merged.get(message.id), message));
@@ -463,10 +473,12 @@ export class ChannelSession {
       }
     };
     socket.onclose = () => {
+      socket.onmessage = null; // Retire this socket's picture decoder.
       if (this.socket !== socket || this.closed) return;
       this.socket = null;
       this.rejectRequests("disconnected");
-      this.patch({ connection: "reconnecting" });
+      const state = this.view.state;
+      this.patch({ connection: "reconnecting", state: state ? withoutRoomPictures(state) : null });
       this.beginRecovery();
       this.retry = setTimeout(() => { this.retry = null; this.connect(acceptWelcome); }, 1000);
     };
@@ -727,8 +739,9 @@ export class ChannelSession {
         this.readingRooms.add(room.id);
       }
     }
-    this.forwardingState = state;
-    this.applyForwarding(sessionId, state, userId);
+    // Media routes and files can continue through recovery without retaining room pictures.
+    this.forwardingState = withoutRoomPictures(state);
+    this.applyForwarding(sessionId, this.forwardingState, userId);
     this.input.update();
     this.browseRooms();
     this.releaseUnusedMicrophone();
@@ -1443,7 +1456,7 @@ export class ChannelSession {
     let room: RoomSummary | undefined;
     const password = settings.access === "private" && settings.password ? settings.password : undefined;
     await this.request({ type: "create_room", room: roomSummarySchema.parse({ ...settings, id: "new", creatorId: this.view.self!.id, hasPassword: Boolean(password) }),
-      ...(serverHosted ? { password, allowServiceRelay: settings.allowServiceRelay } : {}) }, event => {
+      ...(serverHosted ? { picture: settings.picture ?? undefined, password, allowServiceRelay: settings.allowServiceRelay } : {}) }, event => {
       if (event.type === "room_created") room = event.room;
     });
     current();
@@ -1638,9 +1651,9 @@ export class ChannelSession {
           policy: JSON.parse(snapshot.policy), retainedFiles: [] };
       }
       if (copy) {
-        const { name, icon, voiceBitrate, relayCapacity } = metadata.policy;
+        const { name, icon, picture, voiceBitrate, relayCapacity } = metadata.policy;
         return await this.writeRoomSnapshot(snapshot!, { kind: "room_copy", version: 2,
-          roomInfo: copy.includeRoomInfo ? { name, icon, voiceBitrate, relayCapacity } : undefined,
+          roomInfo: copy.includeRoomInfo ? { name, icon, picture, voiceBitrate, relayCapacity } : undefined,
           authors: {}, retainedFiles: [] }, retained, owner.current);
       }
       if (metadata.policy.creatorId === this.view.self!.id && this.credential) metadata.ownCredential = { userId: this.view.self!.id, credential: this.credential };

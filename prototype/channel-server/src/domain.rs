@@ -266,7 +266,7 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
     };
     use piik_channel_native::session::{HostCommand, OpenRoom};
 
-    let (room, request_id, commands, password, allow_service_relay) = {
+    let (room, request_id, commands, password, picture, allow_service_relay) = {
         let mut hub = state.hub.lock().unwrap();
         if hub.authority.hosting_mode() == HostingMode::Lightweight {
             hub.request(connection, request);
@@ -275,6 +275,7 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
         let Command::CreateRoom {
             room,
             password,
+            picture,
             allow_service_relay,
         } = &mut request.command
         else {
@@ -282,6 +283,7 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
         };
         room.has_password = password.is_some();
         let password = password.take();
+        let picture = picture.take();
         let allow_service_relay = *allow_service_relay;
         let Some(Event::RoomCreated { room, request_id }) =
             hub.handle_request(connection, request, true)
@@ -293,6 +295,7 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
             request_id,
             hub.room_commands.clone(),
             password,
+            picture,
             allow_service_relay,
         )
     };
@@ -309,6 +312,7 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
                 room.hidden,
                 password,
             )?;
+            policy.appearance.picture = picture;
             policy.voice_bitrate = room.voice_bitrate;
             policy.relay_capacity = room.relay_capacity;
             policy.allow_service_relay = allow_service_relay;

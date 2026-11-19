@@ -17,7 +17,7 @@ use uuid::Uuid;
 pub struct RoomSummary {
     pub id: String,
     pub name: String,
-    pub icon: crate::wire::IdentityIcon,
+    pub icon: crate::wire::RoomIcon,
     pub creator_id: Uuid,
     pub access: RoomAccess,
     pub hidden: bool,
@@ -179,6 +179,12 @@ pub struct RoomProjection {
     pub last_message_seq: u64,
     pub next_route_deadline: Option<u64>,
     pub summary: RoomSummary,
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::avatar",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub picture: Option<String>,
     pub capabilities: RoomCapabilities,
     pub participant_session_ids: Vec<Uuid>,
     pub publications: Vec<PublicationInfo>,
@@ -231,6 +237,11 @@ impl RoomProjection {
                 id: self.summary.id.clone(),
                 name: self.summary.name.clone(),
                 icon: self.summary.icon.clone(),
+                picture: if available && view.authorized && view.reading {
+                    self.picture.clone()
+                } else {
+                    None
+                },
                 creator_id: self.summary.creator_id,
                 access: self.summary.access,
                 hidden: self.summary.hidden,
@@ -360,6 +371,7 @@ impl RoomRuntime {
             Command::UpdateRoom {
                 name,
                 icon,
+                picture,
                 access,
                 hidden,
                 password,
@@ -373,7 +385,19 @@ impl RoomRuntime {
                 {
                     return Err("invalid_relay_capacity");
                 }
-                self.update(member, name, icon, access, hidden, password, voice_bitrate)?;
+                let appearance = crate::RoomAppearance {
+                    icon,
+                    picture: picture.unwrap_or_else(|| self.policy().appearance.picture.clone()),
+                };
+                self.update(
+                    member,
+                    name,
+                    appearance,
+                    access,
+                    hidden,
+                    password,
+                    voice_bitrate,
+                )?;
                 if let Some(capacity) = relay_capacity {
                     self.set_default_relay_capacity(capacity);
                 }
@@ -827,7 +851,7 @@ mod tests {
     }
 
     #[test]
-    fn forwarding_a_room_update_preserves_omitted_password_and_explicit_removal() {
+    fn forwarded_room_updates_preserve_or_clear_the_password_and_picture() {
         let owner = Member {
             user_id: Uuid::new_v4(),
         };
@@ -844,14 +868,22 @@ mod tests {
             )
             .unwrap(),
         );
-        for (request, expected) in [
+        let image = "data:image/png;base64,iVBORw0KGgo=";
+        for (request, has_password, picture) in [
+            (
+                r#"{"type":"update_room","icon":"star","picture":"data:image/png;base64,iVBORw0KGgo=","roomId":"private","name":"Original","access":"private","hidden":true,"voiceBitrate":96000}"#,
+                true,
+                Some(image),
+            ),
             (
                 r#"{"type":"update_room","icon":"couch","roomId":"private","name":"Renamed","access":"private","hidden":true,"voiceBitrate":96000}"#,
                 true,
+                Some(image),
             ),
             (
-                r#"{"type":"update_room","icon":"couch","roomId":"private","name":"Renamed","access":"private","hidden":true,"password":null}"#,
+                r#"{"type":"update_room","icon":"couch","roomId":"private","name":"Renamed","access":"private","hidden":true,"password":null,"picture":null}"#,
                 false,
+                None,
             ),
         ] {
             let input = HostInput {
@@ -885,11 +917,12 @@ mod tests {
             let input = serde_json::from_str(&serde_json::to_string(&input).unwrap()).unwrap();
             assert!(host.dispatch(input).unwrap().policy.is_some());
             let output = host.finish(None).unwrap();
-            assert_eq!(output.projection.summary.has_password, expected);
+            assert_eq!(output.projection.summary.has_password, has_password);
             assert_eq!(output.projection.summary.voice_bitrate, 96_000);
             let restored: RoomState =
                 serde_json::from_str(&serde_json::to_string(host.policy()).unwrap()).unwrap();
             assert_eq!(restored.voice_bitrate, 96_000);
+            assert_eq!(restored.appearance.picture.as_deref(), picture);
         }
     }
 

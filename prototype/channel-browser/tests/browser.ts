@@ -259,10 +259,10 @@ window.runBrowserRoomCheck = async () => {
     try { png = await prepareIdentityImage(originalImage); }
     finally { HTMLCanvasElement.prototype.toDataURL = originalEncode; }
     check(png.startsWith("data:image/png;") && png.length <= IDENTITY_IMAGE_URL_BYTES, "native PNG fallback also fits the identity budget");
-    const imageChange = { type: "update_room", roomId: host.roomId, name: "Browser-owned room", icon, access: "public", hidden: false };
+    const imageChange = { type: "update_room", roomId: host.roomId, name: "Browser-owned room", icon: "future-room_7", picture: icon, access: "public", hidden: false };
     const imageSaved = await dispatch(imageChange);
-    check(imageSaved.reply?.result.type === "done" && imageSaved.projection.summary.icon === icon && imageSaved.projection.views[peerSession].authorized,
-      "shared Rust commits and projects identity images to authorized readers");
+    check(imageSaved.reply?.result.type === "done" && imageSaved.projection.summary.icon === "future-room_7" && !("picture" in imageSaved.projection.summary),
+      "the room directory keeps only the preset after the picture is saved");
     const imageAbort = new AbortController(), originalRoomPut = IDBObjectStore.prototype.put;
     IDBObjectStore.prototype.put = function (...args) {
       const request = originalRoomPut.apply(this, args);
@@ -270,14 +270,16 @@ window.runBrowserRoomCheck = async () => {
       return request;
     };
     try {
-      check((await dispatch({ ...imageChange, icon: png }, imageAbort.signal)).reply?.result.code === "AbortError",
+      check((await dispatch({ ...imageChange, picture: png }, imageAbort.signal)).reply?.result.code === "AbortError",
         "failed image replacement does not confirm after IndexedDB put success");
     } finally { IDBObjectStore.prototype.put = originalRoomPut; }
     await host.close(); host = await BrowserRoomHost.open(database, policy); await bindHost();
-    check(host.summary().icon === icon, "reopen preserves the committed image and excludes the aborted replacement");
-    await dispatch({ ...imageChange, icon: "future-room_7" });
+    const savedPolicyForHost = async () => (await BrowserRoomHost.storedPolicies(database))
+      .map(value => JSON.parse(value)).find(policy => policy.id === host.roomId);
+    check((await savedPolicyForHost()).picture === icon, "reopening preserves the committed picture after the replacement was aborted");
+    await dispatch({ ...imageChange, picture: null });
     await host.close(); host = await BrowserRoomHost.open(database, policy); await bindHost();
-    check(host.summary().icon === "future-room_7", "choosing a preset replaces the retained image");
+    check(host.summary().icon === "future-room_7" && !(await savedPolicyForHost()).picture, "clearing the picture keeps the room preset");
     try { await prepareIdentityImage(new Blob(["not an image"])); throw new Error("invalid image accepted"); }
     catch (error) { check(String(error) !== "Error: invalid image accepted", "native decoder rejects unsupported image contents"); }
     const initial = await dispatch({ type: "browse", active: true, roomId: host.roomId });
@@ -291,9 +293,11 @@ window.runBrowserRoomCheck = async () => {
     "shared Rust projects reading activity to every authorized view without inventing a seat for an idle endpoint");
     check(Object.values(initial.projection.views).every(view => !('room' in view) && !('publications' in view) && !('voice' in view)),
       "recipient projections retain their scoped facts without duplicated room/live state");
-    const privatePolicy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Hidden room", icon: "future-room_7", creatorId: owner.userId,
-      access: "private", hidden: true });
+    const privatePolicy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Hidden room", icon: "future-room_7", picture: png,
+      creatorId: owner.userId, access: "private", hidden: true });
     const privateHost = await BrowserRoomHost.open(database, privatePolicy);
+    check(JSON.parse(privatePolicy).picture === png && privateHost.summary().icon === "future-room_7" && !("picture" in privateHost.summary()),
+      "WASM room creation retains the picture and returns only its decorative key in the summary");
     await privateHost.bind(bindingId);
     try {
       const guestSession = crypto.randomUUID();
@@ -445,7 +449,7 @@ window.runBrowserRoomCheck = async () => {
     await replacement.bind(bindingId);
     try {
       const output = await dispatch({ type: "update_room", roomId: replacement.roomId,
-        name: "New binding policy", icon: "future-room_7", access: "public", hidden: false }, undefined, replacement);
+        name: "New binding policy", icon: "future-room_7", picture: png, access: "public", hidden: false }, undefined, replacement);
       check(output.reply?.result.type === "done" && output.projection.publications.length === 0,
         "new binding reloads policy without old activity");
       try { await lateClaim.bind(crypto.randomUUID()); throw new Error("late claim succeeded"); }
@@ -514,7 +518,7 @@ window.runBrowserRoomCheck = async () => {
       check(JSON.stringify(rows[0].reactions) === JSON.stringify({ revision: finalReaction.snapshot.revision, counts: finalReaction.snapshot.counts })
         && rows[0].attachments[0].sha256 === file.sha256,
         "snapshot retains reactions and complete attachment descriptors");
-      check(JSON.parse(savedPolicy).name === "New binding policy", "policy and history share the same snapshot before later writes");
+      check(JSON.parse(savedPolicy).name === "New binding policy" && JSON.parse(savedPolicy).picture === png, "the snapshot retains policy, private picture and history before later writes");
     } finally { await snapshot.close(); }
     host = await BrowserRoomHost.open(database, policy); await bindHost();
     const beforeImport = await history();
@@ -594,7 +598,7 @@ window.runBrowserRoomCheck = async () => {
     try { await host.bind(crypto.randomUUID()); throw new Error("old writer rebound after restore"); }
     catch (error) { check(String(error).includes("room_host_conflict"), "old writer cannot reacquire restored policy with its prior stored binding"); }
     await host.close(); host = await BrowserRoomHost.open(database, policy); bindingId = crypto.randomUUID(); await bindHost();
-    check(host.summary().name === "New binding policy" && host.currentReaders().length === 0,
+    check(host.summary().name === "New binding policy" && (await savedPolicyForHost()).picture === png && host.currentReaders().length === 0,
       "restore reopens stable policy with no previous live activity");
     check((await history()).messages.at(-1)?.seq === 112, "older restored history remains authoritative over the newer discarded sequence");
     check((await dispatch({ type: "browse", roomId: host.roomId, active: true })).projection.lastMessageSeq === 112,
@@ -672,7 +676,7 @@ window.runBrowserRoomCheck = async () => {
       invitationReadOnly: true, invitationReopen: true, invitationExplicitResetKeepsGrantAndHistory: true,
       signedPeerHistory: true, signedPeerIdentity: true, immediateAdmission: true, immediateBindingFence: true, immediateNotHistory: true,
       retainedReactions: true, countedClicksAndNonceIdempotency: true, reactionAbortAfterPutSuccess: reactionWriteSucceeded,
-      identityImage: true, identityPngFallback: true, identityAbortAfterPutSuccess: true, identityPresetReplacement: true,
+      identityImage: true, identityPngFallback: true, identityAbortAfterPutSuccess: true, independentRoomPicture: true,
       previousSchemaPreserved: true,
       consistentPortableSnapshot: true, stagedAtomicRestore: true, backupUniqueIndexes: true, restoreRollbackAfterCopy: restoreWriteSucceeded,
       mentionReplyStorage: true, seededLatestSequence: true, concurrentFirstUse: true,

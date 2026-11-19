@@ -11,9 +11,10 @@ const identityNameSchema = z.string().refine(name => name.length <= 64, "Name ex
 export const IDENTITY_IMAGE_URL_BYTES = 24 * 1024;
 export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
-export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
+export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 31;
+export const CHANNEL_PROTOCOL = 32;
 export const CHANNEL_SESSION_LIMIT = 128;
 export const CHANNEL_ROOM_LIMIT = 64;
 export const roomCreationPolicySchema = z.enum(["ordinary", "invite_only", "owner_only"]);
@@ -30,7 +31,7 @@ export const PROFILE_PAGE_SIZE = 32;
 export const profilePageSchema = z.object({ profiles: z.array(userSchema).max(PROFILE_PAGE_SIZE), total: z.number().int().nonnegative(), nextCursor: id.nullable() });
 export type ProfilePage = z.infer<typeof profilePageSchema>;
 export const roomSchema = z.object({
-  id, name: identityNameSchema, icon: identityIconSchema, creatorId: id, access: z.enum(["public", "private"]),
+  id, name: identityNameSchema, icon: roomIconSchema, picture: identityImageSchema.optional(), creatorId: id, access: z.enum(["public", "private"]),
   hidden: z.boolean(), hasPassword: z.boolean(), authorized: z.boolean(), canManage: z.boolean(),
   voiceBitrate: z.number().int().min(6_000).max(320_000).default(64_000),
   relayCapacity: z.number().int().min(1).max(MAX_RELAY_CAPACITY).default(DEFAULT_RELAY_CAPACITY),
@@ -207,24 +208,27 @@ const record = (value: unknown): value is Record<string, unknown> => value !== n
 export class ChannelEventDecoder {
   private channelId: string | null = null;
   private channelIcon: string | undefined;
-  private roomIcons = new Map<string, string>();
+  private roomPictures = new Map<string, string>();
 
   decode(raw: unknown, wireBytes: number): ChannelEvent {
     if (wireBytes > CHANNEL_EVENT_BYTES) throw new Error("Channel event exceeds frame limit");
     if (record(raw) && raw.type === "profiles" && wireBytes > 1024 * 1024) throw new Error("Profile page exceeds frame limit");
     let fullBytes = wireBytes;
-    if (record(raw) && raw.type === "state" && record(raw.state)) {
-      const state = raw.state, channel = state.channel;
-      const inherit = (subject: Record<string, unknown>, field: "avatar" | "icon", previous: string | null | undefined) => {
+    if (record(raw) && (raw.type === "welcome" || raw.type === "state") && record(raw.state)) {
+      const channel = raw.state.channel;
+      const sameDomain = record(channel) && raw.type === "state" && channel.id === this.channelId;
+      const inherit = (subject: Record<string, unknown>, field: "icon" | "picture", previous: string | undefined) => {
         if (Object.hasOwn(subject, field) || previous === undefined) return;
         subject[field] = previous;
-        // Pictures and preset identifiers are ASCII. Each object already has its id.
-        fullBytes += field.length + 4 + (previous === null ? 4 : previous.length + 2);
+        // Pictures are ASCII. These objects already contain their ids.
+        fullBytes += field.length + previous.length + 6;
       };
-      if (record(channel) && channel.id === this.channelId) {
-        inherit(channel, "icon", this.channelIcon);
+      if (record(channel)) {
+        if (sameDomain) inherit(channel, "icon", this.channelIcon);
         if (Array.isArray(channel.rooms)) for (const room of channel.rooms) {
-          if (record(room) && typeof room.id === "string") inherit(room, "icon", this.roomIcons.get(room.id));
+          if (!record(room)) continue;
+          if (room.authorized !== true || room.available !== true || room.reading !== true || room.picture === null) delete room.picture;
+          else if (sameDomain && typeof room.id === "string") inherit(room, "picture", this.roomPictures.get(room.id));
         }
       }
     }
@@ -233,7 +237,7 @@ export class ChannelEventDecoder {
     if (event.type === "welcome" || event.type === "state") {
       const { channel } = event.state;
       this.channelId = channel.id; this.channelIcon = channel.icon;
-      this.roomIcons = new Map(channel.rooms.map(room => [room.id, room.icon]));
+      this.roomPictures = new Map(channel.rooms.flatMap(room => room.picture ? [[room.id, room.picture] as const] : []));
     }
     return event;
   }
@@ -255,6 +259,7 @@ export type ConversationReply = ConversationAddress & { record:
 };
 export interface DomainSettings { name: string; icon: string }
 export interface RoomSettings extends DomainSettings {
+  picture?: string | null;
   access: "public" | "private"; hidden: boolean; password?: string | null;
   voiceBitrate?: number;
   relayCapacity?: number;
@@ -274,7 +279,7 @@ export type ChannelCommand =
   | { type: "profiles"; ids?: string[]; after?: string; query?: string }
   | { type: "input_register"; publicationId: string; flowId: string; secret: number[] }
   | { type: "host_register"; room: RoomSummary; resumeBinding?: string }
-  | { type: "create_room"; room: RoomSummary; password?: string; allowServiceRelay?: boolean }
+  | { type: "create_room"; room: RoomSummary; picture?: string; password?: string; allowServiceRelay?: boolean }
   | { type: "admit_room"; room: RoomSummary }
   | { type: "delete_room"; roomId: string; deleteData: boolean }
   | { type: "host_output"; roomId: string; output: unknown }

@@ -75,13 +75,12 @@ when the author is offline; they do not store separate copies of the avatar.
 Imported room copies retain a historical author name with a new, archive-only
 identity. That identity does not create a site account or receive room access.
 
-User summaries contain no avatar; `selfProfile` and `profiles` carry complete
-profiles, with an explicit null removing the picture. Each physical domain
-WebSocket starts with complete site and room icons. Later state frames may omit
-unchanged icons; the wire adapter restores them from that connection's previous
-valid frame before validation. A rejected frame closes the connection; recovery
-starts from a complete Welcome. Room access and identity membership remain
-authoritative in every frame.
+User avatars travel in `selfProfile` and `profiles`. An explicit null clears the
+picture. The first state on each WebSocket carries the channel icon and the room
+pictures visible to that session. Later frames may elide unchanged images on
+the same connection. The decoder drops a room picture when the session leaves
+the room, loses access or the room goes offline. A new connection starts with a
+complete Welcome.
 
 Site identity is established independently of room entry. Public rooms use a
 normal room URL; a private room's host confirms and saves its invitation or
@@ -425,11 +424,11 @@ budget covers the complete message including encoding overhead. Reading a
 thumbnail requires no file route. Original-image and avatar
 enlargement reuse one local lightbox; closing it keeps the conversation and file
 owners alive.
-User avatars and domain/room icons are small visible metadata: the Browser encodes a bounded
-square raster and its existing owner saves and projects that value alongside the
-name. User profiles follow domain identity visibility; room icons follow the
-authorized directory summary. They survive the uploader leaving, without
-an attachment offer, separate transfer or storage service.
+The Browser prepares small square images for profiles, channels and rooms.
+The channel owns user profiles and its own picture. Each room owns its uploaded
+picture and its choice of built-in icon. The directory and channel backup carry
+the built-in icon. An admitted reader sees the picture while reading the live
+room. Room backups retain both, as do copies that include room information.
 
 ### Image Quality Assessment
 

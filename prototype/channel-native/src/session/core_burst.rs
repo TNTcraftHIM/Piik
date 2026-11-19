@@ -241,6 +241,7 @@ impl CoreBurst {
                 room_id: self.room_ids[index].clone(),
                 name: name.into(),
                 icon: Default::default(),
+                picture: None,
                 access: RoomAccess::Public,
                 hidden: false,
                 voice_bitrate: None,

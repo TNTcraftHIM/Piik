@@ -81,7 +81,7 @@ fn private_room(net: &mut RoomNetwork, host: Uuid, viewer: Uuid) -> String {
 
 fn preference(net: &RoomNetwork, room: &str, enabled: bool) -> Value {
     let policy = net.policy(room);
-    json!({"type":"update_room","roomId":room,"name":policy.name,"icon":policy.icon,
+    json!({"type":"update_room","roomId":room,"name":policy.name,"icon":policy.appearance.icon,
         "access":policy.access,"hidden":policy.hidden,"allowServiceRelay":enabled})
 }
 

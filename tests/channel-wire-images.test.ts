@@ -6,9 +6,9 @@ const picture = "data:image/png;base64,YWJj";
 const version = "a".repeat(64);
 const snapshot = () => ({
   channel: { id: "domain", name: "Friends", icon: picture, ownerId: null, roomCreationPolicy: "ordinary", hostingMode: "lightweight", historyWindow: 1000, userCount: 1, managedRoomIds: [], rooms: [{
-    id: "room", name: "Room", icon: picture, creatorId: "user", access: "public", hidden: false,
+    id: "room", name: "Room", icon: "couch", picture: picture as string | null, creatorId: "user", access: "public", hidden: false,
     hasPassword: false, authorized: true, canManage: false, participantSessionIds: [], lastMessageSeq: 0, fileActivity: [],
-    available: true, reading: false, capabilities: { attachments: true },
+    available: true, reading: true, capabilities: { attachments: true },
   }] },
   users: [{ id: "user", name: "Friend", version }], sessions: [], publications: [], voice: [],
   subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
@@ -18,7 +18,7 @@ const welcome = (state = snapshot()) => ({ type: "welcome", protocol: CHANNEL_PR
 const omitted = (state = snapshot()) => {
   const { icon, rooms, ...channel } = state.channel;
   return { type: "state", state: { ...state,
-    channel: { ...channel, rooms: rooms.map(({ icon, ...room }) => room) },
+    channel: { ...channel, rooms: rooms.map(({ picture, ...room }) => room) },
   } };
 };
 const decode = (decoder: ChannelEventDecoder, event: unknown) => {
@@ -65,32 +65,47 @@ describe("physical socket site and room pictures", () => {
     if (event.type !== "state") throw new Error("Unexpected event");
     expect(event.state.users[0]).toEqual({ id: "user", name: "Renamed", version });
     expect(event.state.channel.icon).toBe(picture);
-    expect(event.state.channel.rooms[0].icon).toBe(picture);
-    const cleared = snapshot(); cleared.channel.icon = "star"; cleared.channel.rooms[0].icon = "couch";
+    expect(event.state.channel.rooms[0]).toMatchObject({ icon: "couch", picture });
+    const cleared = snapshot(); cleared.channel.icon = "star"; cleared.channel.rooms[0].icon = "star"; cleared.channel.rooms[0].picture = null;
     decode(decoder, { type: "state", state: cleared });
     const inherited = decode(decoder, omitted());
     expect(inherited).toMatchObject({ state: { channel: { icon: "star", rooms: [{ icon: "couch" }] } } });
+    expect(inherited).not.toHaveProperty("state.channel.rooms[0].picture");
   });
 
-  it("rejects unknown subjects, changed domains and retired identities", () => {
+  it("does not inherit from an unknown room, a different domain or a retired room", () => {
     const decoder = new ChannelEventDecoder(); decode(decoder, welcome());
     const unknown = omitted(); unknown.state.channel.rooms[0].id = "new-room";
-    expect(() => decode(decoder, unknown)).toThrow();
+    expect(decode(decoder, unknown)).not.toHaveProperty("state.channel.rooms[0].picture");
+    decode(decoder, welcome());
     const domain = omitted(); domain.state.channel.id = "new-domain";
-    expect(() => decode(decoder, domain)).toThrow();
+    expect(() => decode(decoder, domain)).toThrow(); // Site icon has no prior value in the new domain.
     const retired = snapshot(); retired.users = []; retired.channel.rooms = [];
     decode(decoder, { type: "state", state: retired });
-    expect(() => decode(decoder, omitted())).toThrow();
+    expect(decode(decoder, omitted())).not.toHaveProperty("state.channel.rooms[0].picture");
   });
 
-  it("requires full Welcome and isolates physical socket replacement", () => {
+  it.each(["authorized", "available", "reading"] as const)("drops room pictures when %s becomes false", flag => {
+    const decoder = new ChannelEventDecoder(); decode(decoder, welcome());
+    const unavailable = snapshot(); unavailable.channel.rooms[0][flag] = false;
+    expect(decode(decoder, { type: "state", state: unavailable })).not.toHaveProperty("state.channel.rooms[0].picture");
+    const restored = decode(decoder, omitted());
+    if (restored.type !== "state") throw new Error("Unexpected event");
+    expect(restored.state.channel.rooms[0].picture).toBeUndefined();
+    expect(decode(decoder, { type: "state", state: snapshot() })).toMatchObject({ state: { channel: { rooms: [{ picture }] } } });
+  });
+
+  it("requires a full site icon in Welcome, uses the new snapshot's pictures and isolates sockets", () => {
     const decoder = new ChannelEventDecoder(); decode(decoder, welcome());
     expect(() => decode(new ChannelEventDecoder(), omitted())).toThrow();
     expect(() => decode(decoder, { ...welcome(), state: omitted().state })).toThrow();
     expect(() => decode(decoder, omitted())).not.toThrow();
-    const renewed = snapshot(); renewed.channel.rooms[0].icon = "star";
+    const renewed = snapshot(); renewed.channel.rooms[0].icon = "star"; renewed.channel.rooms[0].picture = null;
     decode(decoder, welcome(renewed));
-    expect(decode(decoder, omitted())).toMatchObject({ state: { channel: { rooms: [{ icon: "star" }] } } });
+    const wire = omitted(renewed);
+    const event = decode(decoder, wire);
+    expect(event).toMatchObject({ state: { channel: { rooms: [{ icon: "star" }] } } });
+    expect(event).not.toHaveProperty("state.channel.rooms[0].picture");
   });
 
   it("keeps the previous cache when another field fails validation", () => {
@@ -116,6 +131,8 @@ describe("physical socket site and room pictures", () => {
   it("bounds both raw and expanded frames", () => {
     const decoder = new ChannelEventDecoder(); decode(decoder, welcome());
     expect(() => decoder.decode({ type: "ack", requestId: "request" }, CHANNEL_EVENT_BYTES + 1)).toThrow();
-    expect(() => decoder.decode(omitted(), CHANNEL_EVENT_BYTES - 1)).toThrow();
+    const { state } = omitted();
+    const wire = { type: "state", state: { ...state, channel: { ...state.channel, icon: "star" } } };
+    expect(() => decoder.decode(wire, CHANNEL_EVENT_BYTES - 1)).toThrow();
   });
 });

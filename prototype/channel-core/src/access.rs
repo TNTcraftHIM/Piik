@@ -1,4 +1,4 @@
-use crate::wire::{Room, RoomAccess};
+use crate::wire::{identity_image, Room, RoomAccess, RoomIcon};
 use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
@@ -14,12 +14,61 @@ pub enum RoomPermission {
     Manage,
 }
 
+/// The room host retains its picture alongside the public decorative key.
+#[derive(Clone, Default, Deserialize, Serialize)]
+#[serde(try_from = "SavedAppearance")]
+pub struct RoomAppearance {
+    pub icon: RoomIcon,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picture: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct SavedAppearance {
+    icon: String,
+    #[serde(default, deserialize_with = "crate::wire::avatar")]
+    picture: Option<String>,
+}
+
+impl TryFrom<SavedAppearance> for RoomAppearance {
+    type Error = &'static str;
+
+    fn try_from(saved: SavedAppearance) -> Result<Self, Self::Error> {
+        // Older room-owned saves used the icon slot for the uploaded picture.
+        if saved.icon.starts_with("data:") && saved.picture.is_none() && identity_image(&saved.icon)
+        {
+            return Ok(Self {
+                icon: RoomIcon::default(),
+                picture: Some(saved.icon),
+            });
+        }
+        Ok(Self {
+            icon: saved.icon.try_into()?,
+            picture: saved.picture,
+        })
+    }
+}
+
+impl RoomAppearance {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self
+            .picture
+            .as_deref()
+            .is_some_and(|picture| !identity_image(picture))
+        {
+            return Err("invalid_identity_image");
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomState {
     pub id: String,
     pub name: String,
-    pub icon: crate::wire::IdentityIcon,
+    #[serde(flatten)]
+    pub appearance: RoomAppearance,
     pub creator_id: Uuid,
     pub access: RoomAccess,
     pub hidden: bool,
@@ -74,6 +123,7 @@ pub(crate) fn accepts_password(hash: &str, value: &str) -> bool {
 impl RoomState {
     /// Validate retained policy without changing its password or invitation.
     pub fn validate(&self) -> Result<(), &'static str> {
+        self.appearance.validate()?;
         if !crate::wire::valid_id(&self.id)
             || !(1..=MAX_RELAY_CAPACITY).contains(&self.relay_capacity)
             || !valid_audio_bitrate(self.voice_bitrate)
@@ -98,7 +148,7 @@ impl RoomState {
     pub fn new(
         id: String,
         name: String,
-        icon: crate::wire::IdentityIcon,
+        icon: RoomIcon,
         creator_id: Uuid,
         access: RoomAccess,
         hidden: bool,
@@ -107,7 +157,7 @@ impl RoomState {
         let mut room = Self {
             id,
             name: String::new(),
-            icon: icon.clone(),
+            appearance: RoomAppearance::default(),
             creator_id,
             access,
             hidden,
@@ -119,7 +169,16 @@ impl RoomState {
             invite_key: None,
             grants: BTreeSet::new(),
         };
-        room.update(name, icon, access, hidden, password.map(Some))?;
+        room.update(
+            name,
+            RoomAppearance {
+                icon,
+                picture: None,
+            },
+            access,
+            hidden,
+            password.map(Some),
+        )?;
         Ok(room)
     }
 
@@ -133,11 +192,12 @@ impl RoomState {
     pub fn update(
         &mut self,
         name: String,
-        icon: crate::wire::IdentityIcon,
+        appearance: RoomAppearance,
         access: RoomAccess,
         hidden: bool,
         password: Option<Option<String>>,
     ) -> Result<(), &'static str> {
+        appearance.validate()?;
         let name = crate::wire::title(&name).ok_or("invalid_room_name")?;
         let hash = match password {
             Some(Some(value)) => {
@@ -153,7 +213,7 @@ impl RoomState {
             None => None,
         };
         self.name = name;
-        self.icon = icon;
+        self.appearance = appearance;
         self.access = access;
         self.hidden = hidden && access == RoomAccess::Private;
         if let Some(hash) = hash {
@@ -216,7 +276,8 @@ impl RoomState {
             delivery: None,
             id: self.id.clone(),
             name: self.name.clone(),
-            icon: self.icon.clone(),
+            icon: self.appearance.icon.clone(),
+            picture: None,
             creator_id: self.creator_id,
             access: self.access,
             hidden: self.hidden,

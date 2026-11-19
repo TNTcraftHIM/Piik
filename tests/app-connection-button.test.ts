@@ -363,19 +363,22 @@ describe("App connection approval", () => {
     } finally { page.cleanup(); }
   });
 
-  it("recognizes the current App through the shared entry's default discovery", async () => {
+  it("recognizes the current App and rejects an older channel protocol through the shared entry", async () => {
     const discovery = runInNewContext(ts.transpileModule(
       `function entry(${connectionProps}) { return discovery; } entry({});`,
       { compilerOptions: { target: ts.ScriptTarget.ES2022 } },
     ).outputText, { channelAppDiscovery }) as typeof channelAppDiscovery;
     expect(discovery).toBe(channelAppDiscovery);
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("http://127.0.0.1:8787/__status-preview") });
+    let domainProtocol = CHANNEL_PROTOCOL;
     vi.stubGlobal("fetch", vi.fn(async (input: string) => {
       const port = Number(new URL(input).port);
       if (port !== NATIVE_CLIENT_PORT_START) throw new TypeError("No fixture App");
-      return Response.json({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port, token: "fixture-token" });
+      return Response.json({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol, port, token: "fixture-token" });
     }));
     await expect(discovery.health()).resolves.toMatchObject({ port: NATIVE_CLIENT_PORT_START });
+    domainProtocol = CHANNEL_PROTOCOL - 1;
+    await expect(discovery.health()).rejects.toThrow("App room protocol is incompatible");
   });
 
   it("uses fresh authorized health instead of offering approval again", async () => {

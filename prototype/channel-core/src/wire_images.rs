@@ -20,7 +20,11 @@ impl Images {
                 .channel
                 .rooms
                 .iter()
-                .map(|room| (room.id.clone(), serde_json::to_value(&room.icon).unwrap()))
+                .filter(|room| room.available && room.authorized && room.reading)
+                .filter_map(|room| {
+                    let picture = room.picture.as_ref()?;
+                    Some((room.id.clone(), Value::String(picture.clone())))
+                })
                 .collect(),
         }
     }
@@ -52,7 +56,29 @@ impl Images {
                 .and_then(Value::as_str)
                 .and_then(|id| self.rooms.get(id))
                 .filter(|_| same_domain);
-            field(room, "icon", previous, decode)?;
+            let reading = ["available", "authorized", "reading"]
+                .iter()
+                .all(|flag| room.get(*flag).and_then(Value::as_bool) == Some(true));
+            if !reading {
+                room.remove("picture");
+            }
+            if decode {
+                if reading && !room.contains_key("picture") {
+                    if let Some(previous) = previous {
+                        room.insert("picture".into(), previous.clone());
+                    }
+                }
+            } else if let Some(previous) = previous {
+                match room.get("picture") {
+                    Some(picture) if picture == previous => {
+                        room.remove("picture");
+                    }
+                    None => {
+                        room.insert("picture".into(), Value::Null);
+                    }
+                    _ => {}
+                }
+            }
         }
         Ok(())
     }
@@ -96,11 +122,13 @@ impl StateImageEncoder {
             return serde_json::to_string(event);
         };
         let mut value = serde_json::to_value(event)?;
-        if matches!(event, Event::State { .. }) {
-            self.0
-                .transform(&mut value["state"], false)
-                .expect("typed complete snapshot");
-        }
+        let previous = match event {
+            Event::Welcome { .. } => &Images::default(),
+            _ => &self.0,
+        };
+        previous
+            .transform(&mut value["state"], false)
+            .expect("typed complete snapshot");
         self.0 = Images::from_snapshot(state);
         serde_json::to_string(&value)
     }
@@ -165,7 +193,7 @@ mod tests {
             crate::RoomState::new(
                 "room".into(),
                 "Room".into(),
-                image.clone().try_into().unwrap(),
+                crate::wire::RoomIcon::default(),
                 user,
                 crate::wire::RoomAccess::Public,
                 false,
@@ -175,6 +203,8 @@ mod tests {
             .view(user)
             .unwrap(),
         );
+        state.channel.rooms[0].reading = true;
+        state.channel.rooms[0].picture = Some(image.clone());
         let mut state = state.clone();
         let mut encoder = StateImageEncoder::default();
         let mut decoder = StateImageDecoder::default();
@@ -188,7 +218,10 @@ mod tests {
         let value: Value = serde_json::from_str(&compact).unwrap();
         assert!(value["state"]["users"][0].get("avatar").is_none());
         assert!(value["state"]["channel"].get("icon").is_none());
-        assert!(value["state"]["channel"]["rooms"][0].get("icon").is_none());
+        assert_eq!(value["state"]["channel"]["rooms"][0]["icon"], "couch");
+        assert!(value["state"]["channel"]["rooms"][0]
+            .get("picture")
+            .is_none());
         assert_eq!(
             serde_json::to_value(decoder.decode(&compact).unwrap()).unwrap()["state"],
             serde_json::to_value(&state).unwrap()
@@ -205,14 +238,15 @@ mod tests {
         );
         let mut new_subject = value.clone();
         new_subject["state"]["channel"]["rooms"][0]["id"] = json!(Uuid::new_v4());
-        assert_eq!(
-            decoder.decode(&new_subject.to_string()).err(),
-            Some("missing_identity_image")
-        );
+        let new_subject = decoder.decode(&new_subject.to_string()).unwrap();
+        assert!(snapshot(&new_subject).unwrap().channel.rooms[0]
+            .picture
+            .is_none());
+        decoder.decode(&full).unwrap();
         // A malformed frame never advances the last valid image facts.
         assert!(decoder.decode(&compact).is_ok());
         let replacement = image.replace("HwAFgAI", "HwAFgAJ");
-        state.channel.rooms[0].icon = replacement.try_into().unwrap();
+        state.channel.rooms[0].picture = Some(replacement);
         state.channel.icon = "star".to_owned().try_into().unwrap();
         let changed = encoder
             .encode(&Event::State {
@@ -221,32 +255,57 @@ mod tests {
             .unwrap();
         let changed_value: Value = serde_json::from_str(&changed).unwrap();
         assert!(changed_value["state"]["channel"]["rooms"][0]
-            .get("icon")
+            .get("picture")
             .is_some());
         assert_eq!(changed_value["state"]["channel"]["icon"], "star");
         decoder.decode(&changed).unwrap();
-        state.channel.rooms[0].icon = "couch".to_owned().try_into().unwrap();
-        let cleared = encoder
-            .encode(&Event::State {
-                state: state.clone(),
-            })
-            .unwrap();
-        assert_eq!(
-            serde_json::from_str::<Value>(&cleared).unwrap()["state"]["channel"]["rooms"][0]
-                ["icon"],
-            "couch"
-        );
-        decoder.decode(&cleared).unwrap();
+        for flag in ["reading", "authorized", "available", "picture"] {
+            let mut without_access = state.clone();
+            let room = &mut without_access.channel.rooms[0];
+            match flag {
+                "reading" => room.reading = false,
+                "authorized" => room.authorized = false,
+                "available" => room.available = false,
+                _ => room.picture = None,
+            }
+            let without_access = Event::State {
+                state: without_access,
+            };
+            let cleared = encoder.encode(&without_access).unwrap();
+            let cleared_wire: Value = serde_json::from_str(&cleared).unwrap();
+            assert_eq!(
+                cleared_wire["state"]["channel"]["rooms"][0].get("picture"),
+                Some(&Value::Null)
+            );
+            let event = decoder.decode(&cleared).unwrap();
+            assert!(snapshot(&event).unwrap().channel.rooms[0].picture.is_none());
+
+            let repeat = encoder.encode(&without_access).unwrap();
+            let repeat_wire: Value = serde_json::from_str(&repeat).unwrap();
+            assert!(repeat_wire["state"]["channel"]["rooms"][0]
+                .get("picture")
+                .is_none());
+            decoder.decode(&repeat).unwrap();
+
+            let restored = encoder
+                .encode(&Event::State {
+                    state: state.clone(),
+                })
+                .unwrap();
+            let restored_wire: Value = serde_json::from_str(&restored).unwrap();
+            assert!(restored_wire["state"]["channel"]["rooms"][0]["picture"].is_string());
+            decoder.decode(&restored).unwrap();
+        }
         state.users.clear();
         state.channel.rooms.clear();
         decoder
             .decode(&encoder.encode(&Event::State { state }).unwrap())
             .unwrap();
         assert!(decoder.0.rooms.is_empty());
-        assert_eq!(
-            decoder.decode(&compact).err(),
-            Some("missing_identity_image")
-        );
+        let returned = decoder.decode(&compact).unwrap();
+        assert!(snapshot(&returned).unwrap().channel.rooms[0]
+            .picture
+            .is_none());
         // A new Welcome is complete even when sender and receiver objects are reused.
         decoder.decode(&encoder.encode(&greeting).unwrap()).unwrap();
         let mut invalid_welcome: Value = serde_json::from_str(&compact).unwrap();

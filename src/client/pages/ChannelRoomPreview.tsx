@@ -106,7 +106,10 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const [sourceSounds, setSourceSounds] = useState<Partial<Record<string, { level: number; muted: boolean; bitrate?: number }>>>({});
   const canvases = useRef<HTMLCanvasElement[]>([]);
   const rooms = [...sample.channel.state!.channel.rooms.slice(0, roomCount),
-    ...createdRooms.map(room => ({ ...room, ...sample.settingsByRoom[room.id] }))].filter(room => !removedRooms.has(room.id));
+    ...createdRooms.map(room => {
+      const settings = sample.settingsByRoom[room.id];
+      return { ...room, ...settings, picture: settings?.picture === undefined ? room.picture : settings.picture ?? undefined };
+    })].filter(room => !removedRooms.has(room.id));
   const roomIds = new Set(rooms.map(room => room.id));
   const publications = (sharingRoom ? [{ audience: [], id: "sample-screen-2", roomId: sharingRoom,
     sessionId: sample.channel.sessionId!, userId: users[0].id, kind: "screen" as const, paused: false,
@@ -378,7 +381,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     createRoom: async settings => {
       const id = `sample-room-${crypto.randomUUID()}`;
       setCreatedRooms(previous => [...previous, { ...sample.channel.state!.channel.rooms[0], ...settings,
-        id, name: settings.name, participantSessionIds: [sample.channel.sessionId!],
+        id, name: settings.name, picture: settings.picture ?? undefined, participantSessionIds: [sample.channel.sessionId!],
         delivery: { hostSessionId: sample.channel.sessionId!, bindingId: `sample-binding-${id}`, nextHops: {} } }]);
       setSelected(id);
       return id;

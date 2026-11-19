@@ -27,7 +27,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
       <button type="button" className="lr-btn is-quiet c3-room-link" aria-label={room.name}
         aria-describedby={[unread ? unreadId : "", !room.available ? offlineId : ""].filter(Boolean).join(" ") || undefined}
         aria-current={selected ? "page" : undefined} onClick={onSelect}>
-        <ChannelIdentityMark icon={room.icon} size={21} />
+        <ChannelIdentityMark icon={room.icon} picture={selected && room.authorized && room.available && room.reading ? room.picture : undefined} size={21} />
         <strong>{room.name}</strong>
         <span className="c3-room-activity" aria-hidden="true">
           {room.access === "private" && <Glyph name="lock" size={13} />}

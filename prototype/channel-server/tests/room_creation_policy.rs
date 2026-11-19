@@ -215,6 +215,61 @@ async fn server_seeds_demo_policy_and_restores_later_admin_choice() {
     let (mut process, origin) = launch(command).await;
     let (_, welcome) = join(&origin, false).await;
     assert_eq!(welcome["state"]["channel"]["hostingMode"], "hosted");
+    let (mut owner, welcome) = join(&origin, true).await;
+    let picture = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+    let created = request(&mut owner, json!({
+        "type": "create_room",
+        "room": {"id": Uuid::new_v4(), "name": "Hosted picture", "icon": "couch", "access": "public", "hidden": false,
+            "creatorId": welcome["selfProfile"]["id"], "hasPassword": false},
+        "picture": picture
+    })).await;
+    assert_eq!(created["type"], "room_created", "{created}");
+    assert_eq!(created["room"]["icon"], "couch");
+    assert!(!created.to_string().contains(picture));
+    let id = created["room"]["id"].as_str().unwrap();
+    owner
+        .send(Message::Text(
+            json!({"type":"browse","roomId":id,"active":true})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+    next_event(&mut owner, |event| {
+        event["state"]["channel"]["rooms"]
+            .as_array()
+            .is_some_and(|rooms| {
+                rooms.iter().any(|room| {
+                    room["id"] == id && room["reading"] == true && room["picture"] == picture
+                })
+            })
+    })
+    .await;
+    owner
+        .send(Message::Text(
+            json!({
+                "type":"update_room","roomId":id,"name":"Hosted picture cleared",
+                "icon":"couch","access":"public","hidden":false,"picture":null
+            })
+            .to_string()
+            .into(),
+        ))
+        .await
+        .unwrap();
+    next_event(&mut owner, |event| {
+        event["state"]["channel"]["rooms"]
+            .as_array()
+            .is_some_and(|rooms| {
+                rooms.iter().any(|room| {
+                    room["id"] == id
+                        && room["name"] == "Hosted picture cleared"
+                        && room["reading"] == true
+                        && room["icon"] == "couch"
+                        && room.get("picture").is_some_and(Value::is_null)
+                })
+            })
+    })
+    .await;
     process.kill().await.unwrap();
     let app_open = Domain::open(&hosted_data, OWNER_KEY, origin, None, vec![]);
     assert_eq!(

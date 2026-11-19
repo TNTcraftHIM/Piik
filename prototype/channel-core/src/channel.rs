@@ -2184,7 +2184,29 @@ pub struct DomainStateHeader {
     pub(crate) name: String,
     pub(crate) icon: IdentityIcon,
     pub(crate) owner_id: Uuid,
+    #[serde(deserialize_with = "read_directory")]
     pub(crate) hosted_rooms: BTreeMap<String, RoomSummary>,
+}
+
+// Older checkpoints put the room's uploaded picture in its directory icon.
+// Keep the binding and let its room writer restore the picture.
+fn read_directory<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<String, RoomSummary>, D::Error> {
+    BTreeMap::<String, Value>::deserialize(deserializer)?
+        .into_iter()
+        .map(|(id, mut row)| {
+            if row
+                .get("icon")
+                .and_then(Value::as_str)
+                .is_some_and(identity_image)
+            {
+                row["icon"] = serde_json::to_value(RoomIcon::default()).unwrap();
+            }
+            let summary = serde_json::from_value(row).map_err(serde::de::Error::custom)?;
+            Ok((id, summary))
+        })
+        .collect()
 }
 
 impl DurableState {
