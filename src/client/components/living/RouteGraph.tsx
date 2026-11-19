@@ -147,10 +147,12 @@ export const RouteGraph = memo(function RouteGraph({ nodes, rootId, edges, selec
     <ul className="visually-hidden">
       {nodes.map(node => {
         const incoming = drawableEdges.filter(edge => edge.to === node.id);
-        return <li key={node.id}>{node.description ? <>{node.label} · {node.description}</> : incoming.length ? incoming.map((edge, index) => <span key={index}>
-          {index ? "; " : ""}{node.label} ← {byId.get(edge.from)!.label} · {t(edge.route === "sfu" ? "state.route.sfu" : "state.route.p2p")}
-          {edge.selected && edge.ready ? "" : ` · ${t("host.topology.pending")}`}
-        </span>) : <>{node.label}{node.host ? ` · ${t("common.host")}` : ""}</>}</li>;
+        return <li key={node.id}>{node.label}{node.host ? ` · ${t("common.host")}` : ""}
+          {node.description ? ` · ${node.description}` : incoming.map((edge, index) => <span key={index}>
+            {index ? "; " : " "}← {byId.get(edge.from)!.label} · {t(edge.route === "sfu" ? "state.route.sfu" : "state.route.p2p")}
+            {edge.selected && edge.ready ? "" : ` · ${t("host.topology.pending")}`}
+          </span>)}
+        </li>;
       })}
     </ul>
   </div>;

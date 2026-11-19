@@ -162,6 +162,9 @@ describe("channel connection presentation", () => {
     expect(otherSource.rootId).toBe("friend");
     expect(otherSource.nodes.find(node => node.id === "app")?.host).toBe(true);
     expect(otherSource.nodes.find(node => node.id === "friend")?.host).toBe(false);
+    fixture.topology.screen!.edges.push({ ...fixture.topology.screen!.edges[0], sender: "friend", receiver: "app", presentation: false });
+    const reader = renderToStaticMarkup(createElement(ChannelConnectionReport, fixture)).split('<ul class="visually-hidden">')[1].split("</ul>")[0];
+    expect(reader).toMatch(/<li>Nori \(App\) · [^<]+<span> ← Kiki/);
     fixture.topology.screen = null;
     const untyped = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
     expect(untyped.nodes.find(node => node.id === "app")?.label).toBe("Nori (connection.endpoint)");
