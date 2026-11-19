@@ -826,6 +826,30 @@ async fn restricted_profile_confirmation_retains_alternatives_but_rejects_wrong_
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_input_receives_h264_opus_reports_and_pli_then_joins_its_socket() -> Result<()> {
+    local_input_delivery(|offer| {
+        // OBS can advertise its LAN interfaces as well as connect to our local answer.
+        offer.replace(
+            "a=sendonly",
+            "a=candidate:lan 1 udp 1 192.0.2.1 49152 typ host\r\na=sendonly",
+        )
+    })
+    .await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn local_input_delivers_media_without_offered_candidates() -> Result<()> {
+    local_input_delivery(|offer| {
+        offer
+            .split_inclusive('\n')
+            .filter(|line| {
+                !line.starts_with("a=candidate:") && !line.starts_with("a=end-of-candidates")
+            })
+            .collect()
+    })
+    .await
+}
+
+async fn local_input_delivery(publisher_offer: impl FnOnce(&str) -> String) -> Result<()> {
     use crate::peer::tests::support::{endpoint, h264, send, video_payloads};
     use futures_util::{stream::FuturesUnordered, StreamExt};
     let sender_runtime = Runtime::new(None);
@@ -856,15 +880,14 @@ async fn local_input_receives_h264_opus_reports_and_pli_then_joins_its_socket() 
         .await?;
     sender.offer().await?;
     let (_, offer) = sender.local_description().await?;
-    // OBS can advertise its LAN interfaces as well as connect to our local answer.
-    let local_offer = offer.replace(
-        "a=sendonly",
-        "a=candidate:lan 1 udp 1 192.0.2.1 49152 typ host\r\na=sendonly",
-    );
+    ensure!(!offer.contains("urn:3gpp:video-orientation"));
+    ensure!(!offer.lines().any(|line| line == "a=ice-lite"));
+    let local_offer = publisher_offer(&offer);
     let mut input = receiver_runtime
         .accept_local_input(&local_offer)
         .await
         .context("local SDP accept/answer")?;
+    ensure!(input.answer.lines().any(|line| line == "a=ice-lite"));
     let answer = SdpAnswer::from_sdp_string(&input.answer)?;
     let address = answer
         .media_lines
@@ -995,7 +1018,12 @@ async fn local_input_rejects_direction_codec_and_extra_media() -> Result<()> {
     ] {
         ensure!(runtime.accept_local_input(&invalid).await.is_err());
     }
-    let accepted = runtime.accept_local_input(&offer).await?;
+    let orientation_offer = offer.replace(
+        "a=sendonly",
+        "a=extmap:13 urn:3gpp:video-orientation\r\na=sendonly",
+    );
+    let accepted = runtime.accept_local_input(&orientation_offer).await?;
+    ensure!(!accepted.answer.contains("urn:3gpp:video-orientation"));
     sender.accept("answer".into(), accepted.answer).await?;
     accepted.transport.close().await?;
     sender.create_channel("not-local-media").await?;

@@ -44,9 +44,9 @@ the feedback period; they do not delay that delivery.
   invite-only public Demo discovery, removal of offline rooms and archive
   recovery on the supported distributions. The [hosting design](./research/server-hosting-plan.md)
   owns the lightweight, hosted and moderation contracts.
-- [ ] **Video-orientation capability.** Align negotiated rotation extensions
-  with the metadata actually carried through Native and pooled Browser media.
-  Verify sender behavior before claiming rotated-camera interoperability.
+- [ ] **Physical camera orientation.** Check portrait capture on a phone through
+  Native and pooled Browser paths. Compare the orientation of the source and
+  the decoded viewer picture after a device rotation.
 - [ ] **Two-App connection failure.** Correlate the reported failed attempt's
   actual source/viewer endpoints, App control state, Native session generations,
   STUN observations and ordinary/enhanced ICE outcome. Two open Apps do not

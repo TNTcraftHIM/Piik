@@ -663,12 +663,22 @@ impl Runtime {
         ensure!(!sockets.is_empty(), "no UDP socket");
         let mut config = Rtc::builder()
             .clear_codecs()
+            // WHIP's fixed loopback socket can receive checks without initiating them.
+            .set_ice_lite(local_input)
             .set_rtp_mode(true)
             .enable_bwe(Some(Bitrate::bps(300_000)))
             // Forwarding awaits a source clock; use video's report cadence for audio too.
             .set_rtcp_report_interval_audio(Duration::from_secs(1))
             .set_stats_interval(Some(Duration::from_millis(500)))
             .set_sctp_max_buffered_amount(2 * 1024 * 1024);
+        // Encoded frames do not carry RTP orientation metadata across peers.
+        let mut extensions = str0m::rtp::ExtensionMap::empty();
+        for (id, extension) in config.extension_map().iter() {
+            if *extension != str0m::rtp::Extension::VideoOrientation {
+                extensions.set(id, extension.clone());
+            }
+        }
+        config = config.set_extension_map(extensions);
         *config.codec_config() = transport_codecs(
             local_input,
             crate::media::derived_codec(&RtpCodec::h264([0x42, 0xe0, 0x1f])).is_some(),
