@@ -310,6 +310,19 @@ A's pending request occupied the sole screen slot. With two slots, C received
 its pair assignment in 6–7 ms while A still had zero frames. In the last run B
 reused the existing B–C pair ID once the screen slot became available.
 
+### First frame on a cold and reused connection
+
+In two ordinary Linux kernel NAT trials on `1e00d9e0` (Core32), the source was
+already publishing through the Native host when the Chromium viewer joined voice.
+From `watch()` to the first `requestVideoFrameCallback` on the subscribed video,
+the cold trials took 1,465 and 1,253 ms. ICE first showed connected 279 and
+158 ms after `watch()`, leaving 1,187 and 1,095 ms until the frame callback.
+Including voice join, the cold totals were 2,064 and 1,685 ms. After withdrawing
+the subscription and watching again, first frames took 711 and 451 ms. In each
+trial the viewer retained the same `RTCPeerConnection`, selected ICE candidate
+pair ID and connected DTLS transport across withdrawal and resubscription.
+Both trials ran cold first, so the observed reduction includes any media warm-up.
+
 ### Playable Route Improvement
 
 On 2026-11-14, a controlled trial reused the `64e6281e` screen-routing

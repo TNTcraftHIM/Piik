@@ -405,6 +405,10 @@ child of the source, this candidate attains full coverage with the minimum
 of one new edge and one hop per waiting endpoint. It can be selected
 immediately. Otherwise eligible shared relays generate alternatives by
 attaching their branch first and then serving the remaining receivers.
+With $m$ waiting receivers and $k$ eligible shared relays, one planning pass
+makes at most $m+k(m+1)$ path-extension calls. Each extension checks current
+capacity and eligibility. The linear cost of one adjacency-list search
+therefore applies to only part of a planning pass.
 Small graphs admit exact comparisons by enumerating feasible trees. If every
 non-source endpoint requests the screen, every edge counts, and each endpoint
 can send to at most one downstream, a feasible tree is a simple path. Its
