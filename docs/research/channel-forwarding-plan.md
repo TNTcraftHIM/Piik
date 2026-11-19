@@ -367,10 +367,11 @@ treating them as additive edge costs. At comparable coverage and cost, prefer
 a healthy direct hop. A shared relay can improve coverage for a group.
 [Dijkstra's original algorithm](https://doi.org/10.1007/BF01386390)
 
-The planner compares two completed candidates on the same snapshot. One
-appends a short path per waiting receiver. The other first ranks eligible
-relay branches by their initial coverage and fills the remaining demand
-for the best seed. Compare the two results with the incumbent. Check the gap
+The planner starts with the delivering tree. Its first candidate appends a
+short path per waiting receiver. Each eligible shared relay supplies another
+candidate by attaching its branch first and then serving the remaining receivers.
+Compare the completed candidates by coverage, waiting order and path cost.
+The existing plan wins ties. Check the gap
 against an exact constrained-tree solver on small graphs. Even the static
 minimum-cost directed Steiner tree with prescribed terminals is NP-hard.
 The paper's approximation bounds concern its stated cost and graph model.

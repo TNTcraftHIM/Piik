@@ -184,7 +184,7 @@ impl Plan {
     }
 
     /// Append branches on confirmed room pairs. The incumbent and its media
-    /// proofs are read-only inputs to both candidates.
+    /// proofs are read-only inputs to all candidates.
     fn extend_confirmed(
         &mut self,
         screen: &ScreenDemand<'_>,
@@ -230,9 +230,9 @@ impl Plan {
         };
         let mut best = self.clone();
         fill(&mut best);
-        // The second candidate gives a shared upstream copy first use of a
+        // Each shared relay candidate gets first use of a
         // scarce slot. Compare complete trees after filling other demand.
-        let mut shared = None;
+        let mut best_score = rank(&best);
         for relay in screen.relays {
             if *relay == self.source
                 || self.parents.contains_key(relay)
@@ -267,17 +267,10 @@ impl Plan {
             for viewer in viewers {
                 candidate.parents.entry(viewer).or_insert(*relay);
             }
-            let score = rank(&candidate);
-            if shared
-                .as_ref()
-                .is_none_or(|(best_score, _)| score > *best_score)
-            {
-                shared = Some((score, candidate));
-            }
-        }
-        if let Some((_, mut candidate)) = shared {
             fill(&mut candidate);
-            if rank(&candidate) > rank(&best) {
+            let score = rank(&candidate);
+            if score > best_score {
+                best_score = score;
                 best = candidate;
             }
         }
@@ -1163,6 +1156,35 @@ impl BaseTree {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shared_relays_are_compared_after_remaining_viewers_join() {
+        let id = Uuid::from_u128;
+        let mut neighbors = BTreeMap::<_, BTreeSet<_>>::new();
+        for (left, right) in [
+            (0, 1),
+            (0, 2),
+            (0, 3),
+            (0, 5),
+            (0, 6),
+            (1, 2),
+            (5, 1),
+            (5, 2),
+            (6, 3),
+            (6, 4),
+        ] {
+            neighbors.entry(id(left)).or_default().insert(id(right));
+            neighbors.entry(id(right)).or_default().insert(id(left));
+        }
+        let order = [1, 2, 3, 4].map(id);
+        let screen = ScreenDemand {
+            order: &order,
+            neighbors: &neighbors,
+            relays: &[1, 5, 6].map(id).into(),
+        };
+        let mut plan = Plan::new(id(0));
+        plan.extend_confirmed(&screen, &BTreeMap::new(), &RelayLimits::default());
+        assert!(order.iter().all(|v| plan.confirmed_path(*v, &screen)));
+    }
     #[test]
     fn positive_endpoint_limits_apply_to_host_and_source_without_changing_zero_roots() {
         let id = Uuid::from_u128;
