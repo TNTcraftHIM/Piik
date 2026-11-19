@@ -5662,6 +5662,40 @@ async function receiveScreen(fixture: Awaited<ReturnType<typeof screenFixture>>,
   fixture.pc.ontrack?.({ streams: [stream] });
 }
 
+test("selected screen input changes notify only when the media projection changes", async () => {
+  const fixture = await screenFixture();
+  const { media, state, changed, session } = fixture;
+  try {
+    const stream = remoteStream("first-stream", [remoteTrack("video")]);
+    await receiveScreen(fixture, stream);
+    expect(changed.mock.lastCall?.[1].get("screen")?.[0]).toMatchObject({ flowId: "screen-flow", stream });
+    changed.mockClear();
+    media.update("a", state);
+    media.update("a", structuredClone(state));
+    const renamed = structuredClone(state);
+    renamed.channel.rooms.push({ ...state.channel.rooms[0], id: "unrelated", name: "Old name" });
+    media.update("a", renamed);
+    changed.mockClear();
+    media.update("a", renamed);
+    media.update("a", structuredClone(renamed));
+    renamed.channel.rooms.at(-1)!.name = "New name";
+    media.update("a", renamed);
+    const redundant = changed.mock.calls.length;
+
+    state.pairs[0].incoming[0].id = "replacement-flow";
+    media.update("a", state);
+    changed.mockClear();
+    const replacement = remoteStream("replacement-stream", [remoteTrack("video")]);
+    await receiveScreen(fixture, replacement);
+    expect(changed.mock.lastCall?.[1].get("screen")?.[0]).toMatchObject({ flowId: "replacement-flow", stream: replacement });
+    changed.mockClear();
+    state.pairs[0].incoming = [];
+    media.update("a", state);
+    expect(changed.mock.lastCall?.[1].size).toBe(0);
+    expect(redundant).toBe(0);
+  } finally { media.reset(); session.close(); }
+});
+
 test.each(["initial", "replacement", "proved replacement"])("an audio-first %s screen waits for decoded video on a currently connected transport", async stage => {
   const fixture = await screenFixture();
   const { media, session, pc, sent } = fixture;

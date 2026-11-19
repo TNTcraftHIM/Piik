@@ -548,22 +548,34 @@ export class ChannelMedia {
     // does not report a release; only normal retirement permits another try.
     if (released) for (const [transport, outgoing] of outgoingByPeer) transport.setOutgoing(outgoing, true);
     this.syncRelayMedia(relayMedia);
-    const changed = streams.size !== this.streams.size || [...streams].some(([id, stream]) => this.streams.get(id) !== stream);
-    this.streams = streams;
+    const streamsChanged = streams.size !== this.streams.size || [...streams].some(([id, stream]) => this.streams.get(id) !== stream);
     const screenInputs = new Map<string, ChannelScreenInput[]>();
     for (const peer of this.peers.values()) for (const flow of peer.plan.incoming) {
-      if (this.publications.find(publication => publication.id === flow.publicationId)?.kind !== "screen") continue;
+      const publication = this.publications.find(publication => publication.id === flow.publicationId);
+      if (publication?.kind !== "screen") continue;
       const input = peer.inputs.get(flow.id);
       if (!input || input.failed) continue;
       if (!flow.selected && !this.subscriptions.includes(flow.publicationId)) { input.stopQuality?.(); continue; }
       const values = screenInputs.get(flow.publicationId) ?? [];
       values.push({ flowId: flow.id, stream: input.stream, selected: flow.selected, switchReady: !!input.switchReady });
       screenInputs.set(flow.publicationId, values);
-      if (flow.selected || this.publications.find(publication => publication.id === flow.publicationId)?.paused) { input.stopQuality?.(); input.incumbent = undefined; }
+      if (flow.selected || publication.paused) { input.stopQuality?.(); input.incumbent = undefined; }
       else this.compareCandidate(peer, flow.id, flow.publicationId, input);
     }
-    if (changed || screenInputs.size || this.screenInputs.size) this.changed(new Map(streams), screenInputs);
-    this.screenInputs = screenInputs;
+    let inputsChanged = screenInputs.size !== this.screenInputs.size;
+    for (const [id, inputs] of screenInputs) {
+      const previous = this.screenInputs.get(id);
+      if (previous?.length === inputs.length && inputs.every((input, index) => {
+        const last = previous[index];
+        return input.flowId === last.flowId && input.stream === last.stream
+          && input.selected === last.selected && input.switchReady === last.switchReady;
+      })) screenInputs.set(id, previous);
+      else inputsChanged = true;
+    }
+    if (!streamsChanged && !inputsChanged) return;
+    if (streamsChanged) this.streams = streams;
+    if (inputsChanged) this.screenInputs = screenInputs;
+    this.changed(this.streams, this.screenInputs);
   }
 
   private syncRelayMedia(needed: ReadonlyMap<string, MediaStreamTrack[]>): void {
