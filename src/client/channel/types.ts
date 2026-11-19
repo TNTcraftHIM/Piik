@@ -61,6 +61,7 @@ export type ScreenBufferStatus = "supported" | "unsupported" | "failed" | null;
 export interface ChannelView {
   watchPlayers: ReadonlyMap<string, WatchPlayer>;
   pagePlayer: boolean;
+  externalScreenInputAvailable: boolean;
   screenBufferTargetMs: number | null;
   screenBufferStatus: ScreenBufferStatus;
   feedbackSound: RoomPreferences["feedbackSound"];

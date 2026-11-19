@@ -27,7 +27,7 @@ const SOURCE_ICONS = {
 
 export type NativeSourceList =
   | { kind: "browser" }
-  | { kind: "loading"; appDetected?: boolean; sources?: NativeCaptureTarget[]; externalInput?: boolean }
+  | { kind: "loading"; appDetected?: boolean; sources?: NativeCaptureTarget[] }
   | { kind: "unavailable" }
   | { kind: "incompatible" }
   | { kind: "unsupported" }

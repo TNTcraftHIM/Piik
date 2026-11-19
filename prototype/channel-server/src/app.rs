@@ -67,7 +67,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 21;
+const PROTOCOL: u8 = 22;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -702,6 +702,10 @@ async fn health(State(app): State<Arc<App>>) -> Json<Value> {
         "windowNavigation":app.config.window_navigation.is_some(),"updateSupported":app.update.supported()});
     if app.config.page_player.is_some() {
         state["pagePlayer"] = json!(true);
+    }
+    #[cfg(feature = "capture")]
+    if piik_channel_native::peer::supports_external_input() {
+        state["externalScreenInputAvailable"] = json!(true);
     }
     Json(state)
 }
@@ -2644,7 +2648,7 @@ async fn capture_targets() -> Result<Value> {
                 piik_channel_native::capture::targets()?
             };
             let audio = piik_channel_native::capture::audio_capabilities();
-            let mut result = json!({"externalInput": piik_channel_native::peer::supports_external_input(), "sources": sources, "codecs": codecs, "softwareEncodingCodecs": piik_channel_native::capture::software_video_codecs()?, "processAudio": audio.process_audio, "processAudioExclusion": audio.process_audio_exclusion, "systemAudio": audio.system_audio, "captureBorderControl": piik_channel_native::capture::capture_border_control(), "videoAdaptation": piik_channel_native::capture::supports_video_adaptation()});
+            let mut result = json!({"sources": sources, "codecs": codecs, "softwareEncodingCodecs": piik_channel_native::capture::software_video_codecs()?, "processAudio": audio.process_audio, "processAudioExclusion": audio.process_audio_exclusion, "systemAudio": audio.system_audio, "captureBorderControl": piik_channel_native::capture::capture_border_control(), "videoAdaptation": piik_channel_native::capture::supports_video_adaptation()});
             if let Some(activation) = piik_channel_native::capture::activation_url()? {
                 result["activationURL"] = json!(activation);
             }
@@ -2654,7 +2658,7 @@ async fn capture_targets() -> Result<Value> {
     #[cfg(not(feature = "capture"))]
     {
         Ok(
-            json!({"externalInput": false, "sources": [], "codecs": [], "softwareEncodingCodecs": [], "processAudio": false, "processAudioExclusion": false, "systemAudio": false, "captureBorderControl": false, "videoAdaptation": false}),
+            json!({"sources": [], "codecs": [], "softwareEncodingCodecs": [], "processAudio": false, "processAudioExclusion": false, "systemAudio": false, "captureBorderControl": false, "videoAdaptation": false}),
         )
     }
 }

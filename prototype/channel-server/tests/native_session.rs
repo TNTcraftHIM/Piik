@@ -900,7 +900,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let (status, discovery) = app_http(address, "GET", "/connect-discovery", None, None).await;
     assert_eq!(status, 200);
     assert_eq!(discovery["service"], "piik-channel-app");
-    assert_eq!(discovery["protocol"], 21);
+    assert_eq!(discovery["protocol"], 22);
     assert_eq!(
         discovery["domainProtocol"],
         piik_channel_core::wire::CHANNEL_PROTOCOL
@@ -944,6 +944,11 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     assert_eq!(status, 200);
     assert_eq!(health["service"], discovery["service"]);
     assert_eq!(health["protocol"], discovery["protocol"]);
+    assert_eq!(
+        health.get("externalScreenInputAvailable"),
+        piik_channel_native::peer::supports_external_input()
+            .then_some(&Value::Bool(true))
+    );
     assert_eq!(health["domainProtocol"], discovery["domainProtocol"]);
     assert_eq!(health["port"], address.port());
     let (status, launcher) = app_http(
@@ -1249,9 +1254,9 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     #[cfg(all(feature = "capture", target_os = "windows"))]
     {
         let target = json!({"kind":"window","sourceId":"0","title":"Unopened test target","pid":0});
-        let settings = json!({"width":1280,"height":720,"fps":24,"bitrate":2_000_000});
+        let settings = json!({"width":1280,"height":720,"fps":24,"bitrate":2_000_000,"degradationPreference":"balanced"});
         page.send(Message::Text(
-            json!({"id":"missing-capture-room","type":"prepare_capture","publicationId":Uuid::new_v4(),"codecMode":"auto",
+            json!({"id":"missing-capture-room","type":"prepare_capture","publicationId":Uuid::new_v4(),"codecMode":"auto","encodingExecution":"auto",
                 "roomId":"missing-capture-room","target":target,"settings":settings}).to_string().into(),
         )).await.unwrap();
         let denied = capture_reply(&mut domain, &mut page).await;
@@ -1259,7 +1264,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
 
         let publication = Uuid::new_v4();
         page.send(Message::Text(
-            json!({"id":"failed-prepare","type":"prepare_capture","codecMode":"auto",
+            json!({"id":"failed-prepare","type":"prepare_capture","codecMode":"auto","encodingExecution":"auto",
             "publicationId":publication,"roomId":room,"target":target,"settings":settings})
             .to_string()
             .into(),

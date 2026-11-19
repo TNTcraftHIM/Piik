@@ -2087,7 +2087,7 @@ test.each([
     const target = { kind: "display" as const, sourceId: "1", title: "Owned fixture" };
     const listing = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
-    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs, softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, externalInput: false, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false } });
+    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs, softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false } });
     await listing;
     const selecting = session.startNativeScreen("first", target).catch(error => error);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
@@ -2113,7 +2113,7 @@ test("Native capability catalog retains known choices without echoing future des
   const app = await startFixtureApp(session);
   const target = { kind: "window" as const, sourceId: "1", title: "Owned fixture", pid: 42, creationTime: "10" };
   const catalog = { sources: [target], codecs: ["h264"], softwareEncodingCodecs: ["h264"], videoAdaptation: true,
-    externalInput: false, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false };
+    processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false };
   const list = async (result: unknown) => {
     const previous = app.sent.at(-1)?.id;
     const listing = session.nativeSources();
@@ -3222,12 +3222,12 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     const excluded = { kind: "window" as const, sourceId: "2", title: "Room voice browser", pid: 42, creationTime: "1234" };
     const missingCapability = expect(listing).rejects.toThrow();
     app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs: ["h264"], videoAdaptation: true,
-      externalInput: false, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false } });
+      processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false } });
     await missingCapability;
     const previousTargetsId = app.sent.at(-1)!.id;
     const currentListing = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.id).not.toBe(previousTargetsId));
-    const sources = { sources: [target, excluded], codecs: ["h264", "vp8"], softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, externalInput: false, processAudio: true, processAudioExclusion: true, systemAudio: true, captureBorderControl: true, activationURL };
+    const sources = { sources: [target, excluded], codecs: ["h264", "vp8"], softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, processAudio: true, processAudioExclusion: true, systemAudio: true, captureBorderControl: true, activationURL };
     app.receive({ id: app.sent.at(-1)!.id, result: sources });
     await expect(currentListing).resolves.toEqual(sources);
     const abort = new AbortController();
@@ -3571,7 +3571,7 @@ test.each([
     const target = { kind: "picker" as const, sourceId: "1", title: "System picker" };
     const sources = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
-    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs: ["h264"], softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, externalInput: false, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false, activationURL: "piik://media" } });
+    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs: ["h264"], softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false, activationURL: "piik://media" } });
     await sources;
     const nativeSessionId = crypto.randomUUID(), oldCaptureId = crypto.randomUUID(), captureId = crypto.randomUUID();
     const starting = session.startNativeScreen("first", target);
@@ -3665,7 +3665,7 @@ test("pending Native capture stays page-owned through same-page stop and close",
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
     const target = { kind: "display" as const, sourceId: "1", title: "Test display" };
     const activationURL = "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end";
-    const sources = { sources: [target], codecs: ["h264", "vp8"], softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, externalInput: false, processAudio: false, processAudioExclusion: false, systemAudio: true, captureBorderControl: false, activationURL };
+    const sources = { sources: [target], codecs: ["h264", "vp8"], softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, processAudio: false, processAudioExclusion: false, systemAudio: true, captureBorderControl: false, activationURL };
     const capabilities = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
     app.receive({ id: app.sent.at(-1)!.id, result: sources });
@@ -10921,14 +10921,14 @@ test('shared live seek controls select available content while pause keeps its o
 
 test("review capability downgrade retains active Native source and resets a different App catalog", async () => {
   const health = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
-    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "strong", pagePlayer: true });
+    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "strong", pagePlayer: true, externalScreenInputAvailable: true });
   const { session } = await setup(); const app = await startFixtureApp(session);
   vi.spyOn(session, "watch").mockResolvedValue();
   const target = { kind: "display" as const, sourceId: "1", title: "Owned display" };
   const strong = { sources: [target], codecs: ["h264", "vp8"], softwareEncodingCodecs: ["h264"], videoAdaptation: true,
-    externalInput: true, processAudio: true, processAudioExclusion: true, systemAudio: true, captureBorderControl: true, activationURL: "piik://media" };
+    processAudio: true, processAudioExclusion: true, systemAudio: true, captureBorderControl: true, activationURL: "piik://media" };
   const weak = { sources: [{ kind: "picker" as const, sourceId: "0", title: "Screen or app" }], codecs: ["h264"], softwareEncodingCodecs: [], videoAdaptation: true,
-    externalInput: false, processAudio: false, processAudioExclusion: false, systemAudio: true, captureBorderControl: false };
+    processAudio: false, processAudioExclusion: false, systemAudio: true, captureBorderControl: false };
   const list = async (socket: ChannelSocket, catalog: unknown) => {
     const prior = socket.sent.at(-1)?.id, promise = session.nativeSources();
     await vi.waitFor(() => expect(socket.sent.at(-1)?.id).not.toBe(prior));
@@ -10937,7 +10937,14 @@ test("review capability downgrade retains active Native source and resets a diff
   try {
     await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
-    expect(session.getSnapshot().pagePlayer).toBe(true); await expect(list(app, strong)).resolves.toEqual(strong); session.setEncodingExecution("software");
+    expect(session.getSnapshot().pagePlayer).toBe(true); expect(session.getSnapshot().externalScreenInputAvailable).toBe(true);
+    const failedCatalog = session.nativeSources();
+    const rejection = expect(failedCatalog).rejects.toThrow("portal_failed");
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
+    app.receive({ id: app.sent.at(-1)!.id, error: "portal_failed" });
+    await rejection;
+    expect(session.getSnapshot().externalScreenInputAvailable).toBe(true);
+    await expect(list(app, strong)).resolves.toEqual(strong); session.setEncodingExecution("software");
     const starting = session.startNativeScreen("first", target);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture")); const publicationId=app.sent.at(-1)!.publicationId;
     app.receive({id:app.sent.at(-1)!.id,result:{captureId:crypto.randomUUID(),sessionId:crypto.randomUUID(),codec:"h264"}});
@@ -10949,10 +10956,12 @@ test("review capability downgrade retains active Native source and resets a diff
     expect(session.screenEncodingExecution(publicationId as string)).toBe("software");
     expect(session.getSnapshot().appConnected).toBe(true); expect(session.getSnapshot().error).toBeNull();
     app.close(); expect(session.getSnapshot().appConnected).toBe(false); expect(session.getSnapshot().pagePlayer).toBe(false);
+    expect(session.getSnapshot().externalScreenInputAvailable).toBe(false);
     health.mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8794, token: "weak" });
     const connecting=session.activateApp(); await vi.waitFor(()=>expect(ChannelSocket.current).not.toBe(app)); const next=ChannelSocket.current;
     await next.onopen?.(); next.receive({id:next.sent.at(-1)!.id,result:null}); await connecting;
-    expect(session.getSnapshot().pagePlayer).toBe(false); await expect(list(next,weak)).resolves.toEqual(weak);
+    expect(session.getSnapshot().pagePlayer).toBe(false); expect(session.getSnapshot().externalScreenInputAvailable).toBe(false);
+    await expect(list(next,weak)).resolves.toEqual(weak);
     const selecting=session.startNativeScreen("first",weak.sources[0]!).catch(e=>e);
     await vi.waitFor(()=>expect(next.sent.at(-1)?.type).toBe("prepare_capture"));
     expect(next.sent.at(-1)?.encodingExecution).toBe("auto");
@@ -10967,7 +10976,7 @@ test("review pending Native picker disconnect retires only that attempt and a ne
   vi.spyOn(appLink,"discoverChannelAppHealth").mockResolvedValue({service:"piik-channel-app",protocol:appLink.APP_PROTOCOL,domainProtocol:CHANNEL_PROTOCOL,port:8793,token:"approved"});
   const {session}=await setup();const app = await startFixtureApp(session);vi.spyOn(session,"watch").mockResolvedValue();
   const target={kind:"picker" as const,sourceId:"0",title:"System picker"};
-  const catalog={sources:[target],codecs:["h264"],softwareEncodingCodecs:[],videoAdaptation:true,externalInput:false,processAudio:false,processAudioExclusion:false,systemAudio:true,captureBorderControl:false,activationURL:"piik://media"};
+  const catalog={sources:[target],codecs:["h264"],softwareEncodingCodecs:[],videoAdaptation:true,processAudio:false,processAudioExclusion:false,systemAudio:true,captureBorderControl:false,activationURL:"piik://media"};
   async function connect(socket:ChannelSocket){await socket.onopen?.();socket.receive({id:socket.sent.at(-1)!.id,result:null});await vi.waitFor(()=>expect(session.getSnapshot().appConnected).toBe(true));}
   try {await connect(app);const listing=session.nativeSources();await vi.waitFor(()=>expect(app.sent.at(-1)?.type).toBe("targets"));app.receive({id:app.sent.at(-1)!.id,result:catalog});await listing;
     const pending=session.startNativeScreen("first",target).catch(e=>e);await vi.waitFor(()=>expect(app.sent.at(-1)?.type).toBe("prepare_capture"));

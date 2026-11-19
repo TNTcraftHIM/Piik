@@ -136,7 +136,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     if (!appConnected) { setSources({ kind: "browser" }); return; }
     setSources(previous => ({ kind: "loading", appDetected: true,
       ...(previous.kind === "ready" || previous.kind === "loading"
-        ? { sources: previous.sources, externalInput: previous.externalInput } : {}) }));
+        ? { sources: previous.sources } : {}) }));
     void nativeSources().then(result => {
       if (request.current === current) setSources({ kind: "ready", ...result });
     }, () => {
@@ -248,7 +248,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         onBrowser={() => start(() => startScreen(roomId))}
         onWatch={() => { close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true }); onWatch(); }}
         onCamera={deviceId => start(() => startScreen(roomId, "camera", deviceId))}
-        onExternalInput={(sources.kind === "ready" || sources.kind === "loading") && sources.externalInput ? () => {
+        onExternalInput={channel.externalScreenInputAvailable ? () => {
           close();
           if (externalInput) setExternalOpen(true);
           else void channel.startExternalScreen(roomId).then(() => setExternalOpen(true)).catch(() => {});

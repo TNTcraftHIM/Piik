@@ -172,7 +172,7 @@ function readingWindow(messages: ChannelMessage[], count: number, latest: boolea
 /** The live browser endpoint owns captures and reconnects; browsing owns neither. */
 export class ChannelSession {
   private view: ChannelView = {
-    watchPlayers: new Map(), pagePlayer: false,
+    watchPlayers: new Map(), pagePlayer: false, externalScreenInputAvailable: false,
     screenBufferTargetMs: readRoomPreferences().screenBufferTargetMs,
     screenBufferStatus: null,
     quality: readPreferredQuality(),
@@ -352,7 +352,8 @@ export class ChannelSession {
       if (publication.kind === "screen" && this.localNativeEndpoints.has(publication.sessionId)) localScreens.add(publication.id);
     }
     const remoteControls = new Map([...(patch.remoteControls ?? this.view.remoteControls)].filter(([id]) => ownedScreens.has(id)));
-    this.view = { ...this.view, ...patch, watchPlayers: new Map(this.watchPlayers), pagePlayer: this.app?.pagePlayer ?? false, appConnected: this.app?.connected ?? false, ownedScreens, localScreens, remoteControls };
+    this.view = { ...this.view, ...patch, watchPlayers: new Map(this.watchPlayers), pagePlayer: this.app?.pagePlayer ?? false, appConnected: this.app?.connected ?? false,
+      externalScreenInputAvailable: this.app?.connected === true && this.app.externalScreenInputAvailable, ownedScreens, localScreens, remoteControls };
     for (const listener of this.listeners) listener();
   }
 

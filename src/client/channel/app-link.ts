@@ -18,11 +18,12 @@ import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 import { debugEvent } from "../lib/debug";
 
-export const APP_PROTOCOL = 21;
+export const APP_PROTOCOL = 22;
 const APP_REQUEST_BYTES = 256 * 1024;
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
-  version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional(), updateSupported: z.boolean().optional(), pagePlayer: z.literal(true).optional() });
+  version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional(), updateSupported: z.boolean().optional(), pagePlayer: z.literal(true).optional(),
+  externalScreenInputAvailable: z.literal(true).optional() });
 type AppHealth = z.infer<typeof healthSchema>;
 const measured = z.number().finite().nonnegative();
 const nativeStreamMetricSchema = z.object({
@@ -58,7 +59,6 @@ const captureSourcesSchema = z.object({ sources: z.array(z.looseObject({ kind: z
   codecs: advertisedCodecs,
   softwareEncodingCodecs: advertisedCodecs,
   videoAdaptation: z.boolean(),
-  externalInput: z.boolean(),
   processAudio: z.boolean(), processAudioExclusion: z.boolean(), systemAudio: z.boolean(), captureBorderControl: z.boolean(), activationURL: z.string().url().max(512).optional() });
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
 export type NativeCaptureRequest = { publicationId: string; activationURL: string };
@@ -239,6 +239,7 @@ export class ChannelApp {
   private readonly roomHosting: NativeRoomHosting;
   private pages = new Map<string, AppPage>();
   readonly pagePlayer: boolean;
+  readonly externalScreenInputAvailable: boolean;
 
   get connected(): boolean { return this.authenticated && this.socket.readyState === WebSocket.OPEN; }
   get screens(): ReadonlySet<string> { return new Set([...this.captures.keys(), ...this.externalInputs.keys()]); }
@@ -264,6 +265,7 @@ export class ChannelApp {
     onExternalInput: (event: NativeExternalInputState) => void = () => {}) {
     const health = healthSchema.parse(verifiedHealth);
     this.pagePlayer = health.pagePlayer === true;
+    this.externalScreenInputAvailable = health.externalScreenInputAvailable === true;
     this.roomHosting = new NativeRoomHosting(`http://127.0.0.1:${health.port}/rooms/${channelId}/${userId}`,
       { Authorization: `Bearer ${health.token}`, "X-Piik-Credential": credential });
     const socket = this.socket = new WebSocket(`ws://127.0.0.1:${health.port}/rooms`, `piik-channel-rooms.${health.token}`);

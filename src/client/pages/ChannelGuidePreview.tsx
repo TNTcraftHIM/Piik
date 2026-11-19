@@ -26,7 +26,7 @@ const invitation = "https://friends.example/#room=friday&invite=sample";
 const pending = new Set<string>();
 const roomBackupAvailable = async () => false;
 const appSessionId = "sample-ada-app-session";
-const sources: NativeCaptureSources = { ...SOURCES, codecs: ["h264", "vp8"], softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, externalInput: false,
+const sources: NativeCaptureSources = { ...SOURCES, codecs: ["h264", "vp8"], softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true,
   sources: SOURCES.sources.filter(source => source.kind === "display" || source.sourceId === "101" || source.sourceId === "102") };
 
 /** Local samples have identities, but no measured or simulated network paths. */
@@ -192,7 +192,7 @@ export function useChannelGuideSample(multiRoom = false) {
     nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
     sourceSelectionCommitting: () => false,
     browserCapturePreparation: () => undefined,
-    pagePlayer: false, watchPage: () => undefined, watchEmbed: () => undefined,
+    pagePlayer: false, externalScreenInputAvailable: false, watchPage: () => undefined, watchEmbed: () => undefined,
     prepareWatchEmbed: async () => { throw new Error("watch_media_unsupported"); },
     confirmWatchEmbed: async () => { throw new Error("watch_source_unavailable"); },
     externalInput: () => undefined, startExternalScreen: async () => received(),
