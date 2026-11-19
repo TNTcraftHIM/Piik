@@ -48,11 +48,10 @@ the feedback period; they do not delay that delivery.
   encoder input/output, requested/applied quality, selected route and receiver
   cadence during an actual episode before attributing it to conservative probing.
   Check equivalent 2.x timeout owners separately from the new webpage-player path.
-- [ ] **beta.32/33: no media with a weak site and strong source.** Reproduce
-  the reported topology and locate the first missing picture/audio delivery fact
-  across room authority, selected source, forwarding plan and actual receiver.
-  Complete the separate Server-transit candidate's authority and matched-runtime
-  acceptance before considering it for this report.
+- [ ] **beta.32/33: no media with a weak site and strong source.** Capture the
+  affected peers' source limit, selected route and first received media on
+  independent networks. The [three-browser control](./research/network-lab.md#screen-capacity-with-an-unreachable-first-viewer)
+  measures how a prior viewer's pending assignment occupies a source slot.
 - [ ] **Native performance under the reported workload.** Measure capture,
   conversion, encoding and decoded cadence on the affected machines during
   normal use and contention. Identify the limiting stage before changing quality

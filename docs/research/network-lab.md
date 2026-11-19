@@ -290,6 +290,26 @@ source slots, median planning time fell from 125.2 to 6.6 µs. With only
 two source slots the same comparison measured 183.4 and 181.5 µs. Each
 measurement is the median of five batches of 200 plans on one machine.
 
+### Screen Capacity With An Unreachable First Viewer
+
+Nine loopback Chromium runs at `0fb4f74a` kept channel signaling available
+while blocking media signaling between channel owner A and both other peers.
+Room host B shared its screen. C subscribed once per run and decoded directly
+from B in all nine. Times start when C sent its subscription. These measurements
+cover only the local fixture.
+
+| Room direct limit | Viewing order | Runs | B selects B→C (s) | C first frame (s) |
+|---|---|---:|---:|---:|
+| 1 | C alone | 2 | 0.003 / 0.005 | 2.085 / 2.229 |
+| 1 | A first, stays subscribed | 2 | 19.926 / 19.896 | 21.984 / 22.174 |
+| 1 | A first, cancels about 2.3 s after C subscribes | 2 | 2.293 / 2.325 | 4.382 / 4.452 |
+| 2 | A first, still waiting at C's first frame | 2 | 0.003 / 0.004 | 2.483 / 2.588 |
+| 1 | A first, B–C already connected through a second authorized room | 1 | 19.899 | 20.787 |
+
+A's pending request occupied the sole screen slot. With two slots, C received
+its pair assignment in 6–7 ms while A still had zero frames. In the last run B
+reused the existing B–C pair ID once the screen slot became available.
+
 ### Playable Route Improvement
 
 On 2026-11-14, a controlled trial reused the `64e6281e` screen-routing
