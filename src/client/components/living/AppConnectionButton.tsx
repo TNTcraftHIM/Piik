@@ -231,7 +231,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
           attempt.open = undefined;
           setState("approving"); help.current?.hidePopover();
         };
-        setAutomaticHint(automatic);
+        setAutomaticHint(attempt.automatic);
         setState("approval");
       } catch (error) {
         if (!signal.aborted) finish(native?.isIncompatible(error) ? "incompatible" : "unavailable");
