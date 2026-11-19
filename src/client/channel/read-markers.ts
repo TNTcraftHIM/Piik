@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ChannelRoom } from "./protocol";
 
-type Room = Pick<ChannelRoom, "id" | "authorized" | "available" | "lastMessageSeq">;
+type Room = Pick<ChannelRoom, "id" | "authorized" | "available" | "lastMessageSeq" | "delivery">;
 type Positions = Record<string, number>;
 const savedPositions = z.record(z.string(), z.number().int().nonnegative());
 
@@ -15,6 +15,8 @@ export class RoomReadMarkers {
   private key: string | null = null;
   private saved: Positions = {};
   private positions: Positions = {};
+  private rooms: readonly Room[] = [];
+  private readonly staleBindings = new Map<string, string>();
 
   project(siteId: string, userId: string | undefined, rooms: readonly Room[]): Positions {
     const key = userId ? `piik.channel.read.${siteId}.${userId}` : null;
@@ -23,12 +25,19 @@ export class RoomReadMarkers {
       this.key = key;
       this.saved = {};
       this.positions = {};
+      this.rooms = [];
+      this.staleBindings.clear();
     }
     if (!key) return this.positions;
     // Read other tabs' cursors before initializing a room or recording a history rewind.
     const needsSave = rooms.some(room => room.authorized && (this.saved[room.id] === undefined
       || (room.available && this.positions[room.id] > room.lastMessageSeq)));
     if (changedIdentity || needsSave) this.load(key);
+    this.rooms = rooms;
+    for (const [id, binding] of this.staleBindings) {
+      const room = rooms.find(room => room.id === id && room.authorized);
+      if (!room || (room.delivery && room.delivery.bindingId !== binding)) this.staleBindings.delete(id);
+    }
     return this.update(key, rooms);
   }
 
@@ -47,7 +56,17 @@ export class RoomReadMarkers {
   }
 
   private load(key: string): void {
-    try { this.saved = savedPositions.parse(JSON.parse(localStorage.getItem(key) ?? "{}")); } catch { /* Keep local progress when storage is unavailable. */ }
+    try {
+      const saved = savedPositions.parse(JSON.parse(localStorage.getItem(key) ?? "{}"));
+      for (const room of this.rooms) {
+        const seq = saved[room.id];
+        // Another tab saw the history rewind. Its old writer can still be visible here until our next room update.
+        if (seq !== undefined && seq < this.saved[room.id] && room.lastMessageSeq > seq && room.delivery) {
+          this.staleBindings.set(room.id, room.delivery.bindingId);
+        }
+      }
+      this.saved = saved;
+    } catch { /* Keep local progress when storage is unavailable. */ }
   }
 
   private update(key: string, rooms: readonly Room[], advance?: { roomId: string; position: number }): Positions {
@@ -58,7 +77,7 @@ export class RoomReadMarkers {
       const prior = this.positions[room.id], saved = this.saved[room.id];
       let position = saved ?? prior ?? (room.available ? room.lastMessageSeq : 0);
       if (room.available && prior > room.lastMessageSeq) position = Math.min(position, room.lastMessageSeq);
-      if (advance?.roomId === room.id) position = Math.max(position, advance.position);
+      if (advance?.roomId === room.id && !this.staleBindings.has(room.id)) position = Math.max(position, advance.position);
       if (saved !== position) { this.saved[room.id] = position; changed = true; }
       next[room.id] = room.available ? Math.min(position, room.lastMessageSeq) : position;
     }
