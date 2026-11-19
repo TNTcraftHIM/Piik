@@ -16,6 +16,25 @@ class Video extends EventTarget {
 }
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
+test("a displayed frame suffices while paused and running playback needs data for the next frame", () => {
+  const element = Object.assign(new Video(), { videoWidth: 640, readyState: 2 });
+  const media: WatchMedia = { presentation: { kind: "video", element: element as unknown as HTMLVideoElement },
+    read: vi.fn(), patch: vi.fn(), ready: vi.fn(), listen: () => () => {}, close: vi.fn() };
+  const player = new WatchPlayer("room", false, media, vi.fn());
+  try {
+    expect(player.waitingForPicture).toBe(true);
+    player.presentFrame();
+    expect(player.waitingForPicture).toBe(false);
+    element.paused = false;
+    expect(player.waitingForPicture).toBe(true);
+    element.ended = true;
+    expect(player.waitingForPicture).toBe(false);
+    element.ended = false;
+    element.readyState = 3;
+    expect(player.waitingForPicture).toBe(false);
+  } finally { player.close(); }
+});
+
 test("one watch player retains its first-frame observation across presentation mounts and rejects a late retired callback", () => {
   const media: WatchMedia = { read: vi.fn(), patch: vi.fn(), ready: vi.fn(), listen: () => () => {}, close: vi.fn() };
   const changed = vi.fn(), player = new WatchPlayer('room', false, media, changed);

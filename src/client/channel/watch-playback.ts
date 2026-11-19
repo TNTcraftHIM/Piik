@@ -2,6 +2,8 @@ import { watchPlaybackSchema, type WatchPlayback, type WatchMode } from "./proto
 import { watchSeekPosition, type WatchMedia, type WatchMediaPatch, type WatchMediaState } from "./watch-media";
 
 const mediaFailure = (error?: unknown): string => error instanceof Error && error.message ? error.message : "watch_media_failed";
+const HAVE_CURRENT_DATA = 2;
+const HAVE_FUTURE_DATA = 3;
 
 export function watchPosition(playback: WatchPlayback, now: number): number {
   return playback.position + (playback.paused ? 0 : Math.max(0, now - playback.anchorTime) / 1000 * playback.rate);
@@ -23,8 +25,11 @@ export class WatchPlayer {
   private presented = false;
   get hasPresentedFrame(): boolean { return this.presented; }
   get waitingForPicture(): boolean {
-    return this.video ? this.video.readyState < 2 || this.video.videoWidth > 0 && !this.hasPresentedFrame
-      : !this.mediaState || this.mediaState.readyState < 2;
+    const video = this.video;
+    const media = video ?? this.mediaState;
+    if (!media) return true;
+    const required = media.paused || media.ended ? HAVE_CURRENT_DATA : HAVE_FUTURE_DATA;
+    return media.readyState < required || Boolean(video && video.videoWidth > 0 && !this.hasPresentedFrame);
   }
   presentFrame(): void {
     if (this.retired || this.presented) return;
@@ -141,13 +146,13 @@ export class WatchPlayer {
     this.observe(state); this.observedAt = now;
     if (this.owner) {
       // Some platform players expose time but no user-seek event. Reuse this observation turn.
-      if (this.media.seekEvents === false && previous && (state.readyState >= 3 || state.paused && previous.paused)
+      if (this.media.seekEvents === false && previous && (state.readyState >= HAVE_FUTURE_DATA || state.paused && previous.paused)
         && Math.abs(state.position - (previous.position + (previous.paused ? 0 : (now - previousAt) / 1000 * previous.rate))) > (this.media.seekTolerance ?? 0.35))
         void this.publish(true).catch(error => this.failMedia(error));
       return true;
     }
     if (this.retired || state.readyState < 1 || !this.playback || this.offset === null) return false;
-    if (this.media.seekEvents === false && previous && (state.readyState >= 3 && previous.readyState >= 3 || state.paused && previous.paused)
+    if (this.media.seekEvents === false && previous && (state.readyState >= HAVE_FUTURE_DATA && previous.readyState >= HAVE_FUTURE_DATA || state.paused && previous.paused)
       && Math.abs(state.position - (previous.position + (previous.paused ? 0 : (now - previousAt) / 1000 * previous.rate))) > (this.media.seekTolerance ?? 0.35)) {
       this.blocked = true; this.changed();
     }
@@ -166,7 +171,7 @@ export class WatchPlayer {
     }
     if (this.error === "watch_live_position_unavailable") { this.error = null; this.changed(); }
     // Unknown buffering permits explicit host commands, not invented periodic drift correction.
-    if ((force || state.readyState >= 3 && buffered) && displaced) patch.position = target;
+    if ((force || state.readyState >= HAVE_FUTURE_DATA && buffered) && displaced) patch.position = target;
     if (state.rate !== playback.rate) {
       if (this.media.playbackRates && !this.media.playbackRates().includes(playback.rate)) throw new Error("watch_media_unsupported");
       patch.rate = playback.rate;
