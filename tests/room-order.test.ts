@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { moveRoom, moveRoomWithinAvailability, orderedRooms, readRoomOrder, roomAvailabilityGroups, roomOrderKey } from "../src/client/channel/room-order";
+import { mergeVisibleRoomOrder, moveRoom, moveRoomWithinAvailability, orderedRooms, readRoomOrder, roomAvailabilityGroups, roomOrderKey } from "../src/client/channel/room-order";
 import type { ChannelRoom } from "../src/client/channel/protocol";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -39,6 +39,12 @@ test("availability groups keep personal order within each group after a host ret
   expect(groups(orderedRooms(rooms, offlineMove.ids))).toEqual([["e", "a", "b", "c"], ["d"]]);
   rooms[3].available = true;
   expect(groups(orderedRooms(rooms, offlineMove.ids))).toEqual([["e", "d", "a", "b", "c"]]);
+});
+
+test("reordering a partial room directory keeps omitted rooms in their saved positions", () => {
+  const saved = ["a", "offline", "b", "private"];
+  const visible = ["b", "a", "new"];
+  expect(mergeVisibleRoomOrder(saved, visible)).toEqual(["b", "offline", "a", "private", "new"]);
 });
 
 test("a move cannot use a room from outside the group where it started", () => {

@@ -31,6 +31,13 @@ export function moveRoom(ids: readonly string[], source: string, target: string)
   return next;
 }
 
+export function mergeVisibleRoomOrder(saved: readonly string[], visible: readonly string[]): string[] {
+  const visibleIds = new Set(visible);
+  let index = 0;
+  const merged = saved.map(id => visibleIds.has(id) ? visible[index++] : id);
+  return [...merged, ...visible.slice(index)];
+}
+
 export function roomAvailabilityGroups(rooms: readonly ChannelRoom[]) {
   return [
     { available: true, rooms: rooms.filter(room => room.available) },
@@ -62,7 +69,7 @@ export function useRoomOrder(rooms: readonly ChannelRoom[], siteId?: string, use
     if (!key) return;
     const moved = moveRoomWithinAvailability(ordered, available, source, target);
     if (!moved) return;
-    const { ids } = moved;
+    const ids = mergeVisibleRoomOrder(readRoomOrder(key), moved.ids);
     setSaved({ key, ids });
     try { localStorage.setItem(key, JSON.stringify(ids)); }
     catch { /* The order remains usable for this page when storage is unavailable. */ }
