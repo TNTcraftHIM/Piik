@@ -499,7 +499,7 @@ without a second deletion ledger.
 
 ### Backups
 
-The table describes current export formats and defaults. In the target, history exports carry message thumbnails. An explicit **Include files** export can add readable originals and report missing items. [Target storage and backup](./server-hosting-plan.md#storage-recovery-and-backup)
+The table describes current export formats and defaults. The [storage and backup contract](./server-hosting-plan.md#storage-recovery-and-backup) covers message thumbnails and attachment originals.
 
 | Export | Who provides it | Contents |
 | --- | --- | --- |

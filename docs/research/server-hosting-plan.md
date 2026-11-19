@@ -65,16 +65,16 @@ A person can share a cloud-drive link today. A future bot or integration can cop
 | A Windows App download completed on this device | Offer **Reveal in folder**. On confirmation, the App selects the saved file in Explorer. If the saved copy is missing, offer **Download** again |
 | A Browser accepted a download request | Direct the recipient to browser downloads for its progress and save location |
 | An authorized live holder can supply the original | Download or download again. A verified local copy may help other readers during the live share |
-| A valid source is reconnecting | Show that the original is temporarily unavailable |
-| The original share has ended and its live sources have retired | Show that the original has expired. The message, filename and saved thumbnail remain available to permitted history readers |
+| The room currently has no readable source for a download | Show that the original is temporarily unavailable. Keep the filename and thumbnail visible and allow a retry when a holder returns |
 | A member published a separate external link | Open the link under its provider's access rules |
 
 The Windows App records the path reported by the completed platform download.
 The attachment card stores an opaque reference scoped to the receiver's site,
 identity, room and attachment. Clearing the cache or deleting the message
 removes the card's reference. The recipient keeps their saved file.
-A sender going offline removes one live source. An independently retained
-thumbnail can still be viewed when the original is unavailable.
+A sender going offline removes its offer. Another admitted holder can still
+serve the same original. A future **Expired** status would require the room
+writer to record that the share ended.
 
 ## Room maintenance
 
@@ -106,7 +106,13 @@ independently on their devices.
 
 ## Storage, recovery and backup
 
-Room history exports include the descriptors and retained thumbnails that belong to the messages. An explicit **Include files** export can add readable originals from participants and list missing items. The resulting archive belongs to the person who requested it. Restoring a room restores its records and thumbnails. A restored descriptor alone does not advertise an available original. Channel directory exports continue to cover channel data and permitted summaries.
+Room backups and copies preserve message descriptors and thumbnails. **Include
+file originals from this device** is enabled by default. The export packages
+matching originals the exporting device can read from local sources or cache.
+The archive's file inventory lists the originals it contains. Other attachments
+are identified by their descriptors in message history. On restore, a readable
+original can become a live source again. Channel backups contain channel data
+and permitted room summaries.
 
 The [3.0 public Demo deployment profile](../../deploy/systemd/piik-demo.conf.example) starts a lightweight channel with invite-only guest creation. Visitor room histories and thumbnails stay with their own room hosts. The deployment separately controls media relay and STUN.
 

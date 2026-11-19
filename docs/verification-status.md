@@ -170,22 +170,22 @@ The isolated Browser exposed host candidates for the VM to reach its base path.
 These checks use synthetic media and a VM port forward, not difficult physical
 NATs or an endurance test.
 
-The newer conversation path passes normal Browser-hosted and App-hosted room
-checks with peer signaling blocked: history, bidirectional messages and saved
-reactions work without RTC connections. Attachment descriptions also arrive
-without RTC. Current image rendition checks verified a 4096px, 8 MB original
-arriving as a 2048px preview without a peer connection, then loading its unchanged
-original through P2P with the expected digest. Small PNG and GIF originals
-remained unchanged, and the preview was readable from Native history after its
-sender left. Preparation checks retain transparent alpha and skip Canvas for
-over-budget animations. Rendition and original validation, history pagination
-and backup/copy retention share the confirmed-message boundary.
-An actual sender TCP connection paced at 1 Mbps each way verified a full-budget
-inline image through both Native and Browser room hosts. Both committed once,
-received their confirmation and continued ordinary chat; the adjusted conversation
-deadline no longer reports failure before that confirmation arrives.
-Delivered candidates include peer-independent conversation and the current image
-path. Windows and Linux upgrade checks used copies of the previous candidate's
+Browser-hosted and App-hosted rooms delivered history, messages, reactions and
+attachment descriptions over signaling with RTC blocked. New image messages
+carry an optional thumbnail up to 640 pixels on its longer edge, within a shared
+512 KiB budget per message. In a protocol 31 hosted-room check, a 1,118-byte
+thumbnail remained visible after its sole file holder went offline. The original
+became available again when that holder reconnected. The receiver verified all
+2,802 bytes against the original digest.
+
+The earlier protocol 14 tests delivered a 2,048-pixel preview of an 8 MB,
+4,096-pixel image before fetching the original over P2P. That format could
+also carry small PNG and GIF originals inline. With the sender's TCP connection
+paced at 1 Mbps each way, Native and Browser room hosts each confirmed a
+512 KiB inline original once and continued delivering chat. Supported history
+readers still accept those retained originals.
+
+Windows and Linux upgrade checks used copies of the previous candidate's
 data, retaining room identity, credentials and confirmed history. Windows App
 restarts preserve the saved local origin, a newly retained file's exact bytes and
 the chosen interface layout. Old random-origin Browser caches are not migrated.
