@@ -33,20 +33,26 @@ export class FeedbackAudio {
   private context: AudioContext | null = null;
   private gain: GainNode | null = null;
   private activation: AbortController | null = null;
-  private stopCue: (() => void) | null = null;
-  private previewRequest: symbol | null = null;
+  private active: { cue: FeedbackCue; stop: () => void } | null = null;
+  private previewRequest: { cue: FeedbackCue } | null = null;
   private enabled = false;
   private volume = 1;
+  private muted: Partial<Record<FeedbackCue, boolean>> = {};
   private clips: FeedbackClips = {};
   private decoded = new Map<FeedbackCue, { data: string; buffer?: AudioBuffer; ready: Promise<void> }>();
 
-  configure({ enabled, volume, clips = {} }: { enabled: boolean; volume: number; clips?: FeedbackClips }): void {
+  configure({ enabled, volume, muted = {}, clips = {} }: { enabled: boolean; volume: number; muted?: Partial<Record<FeedbackCue, boolean>>; clips?: FeedbackClips }): void {
     for (const cue of ["message", "throw"] as const) {
-      if (this.clips[cue]?.data !== clips[cue]?.data) {
-        this.stopCue?.(); this.stopCue = null;
+      const changed = this.clips[cue]?.data !== clips[cue]?.data;
+      if (muted[cue] || changed) {
+        if (this.active?.cue === cue) { this.active.stop(); this.active = null; }
+        if (this.previewRequest?.cue === cue) this.previewRequest = null;
+      }
+      if (changed) {
         this.decoded.delete(cue);
       }
     }
+    this.muted = muted;
     this.clips = clips;
     this.enabled = enabled; this.volume = volume;
     if (this.gain) this.gain.gain.value = volume;
@@ -75,7 +81,7 @@ export class FeedbackAudio {
         this.gain.connect(context.destination);
         context.onstatechange = () => {
           if (this.context !== context) return;
-          if (context.state !== "running") { this.previewRequest = null; this.stopCue?.(); this.stopCue = null; }
+          if (context.state !== "running") { this.previewRequest = null; this.active?.stop(); this.active = null; }
           if (context.state === "closed") { this.gain?.disconnect(); this.gain = null; this.context = null; this.decoded.clear(); }
           this.armActivation();
         };
@@ -106,13 +112,13 @@ export class FeedbackAudio {
 
   play(cue: FeedbackCue): void {
     const context = this.context, gain = this.gain;
-    if (!this.enabled || this.volume === 0 || context?.state !== "running" || !gain || this.stopCue) return;
+    if (!this.enabled || this.volume === 0 || context?.state !== "running" || !gain || this.active || this.muted[cue]) return;
     const custom = this.clips[cue];
     const buffer = this.decoded.get(cue)?.buffer;
     if (custom && !buffer) return;
     try {
       let stop: () => void;
-      const ended = () => { if (this.stopCue === stop) this.stopCue = null; };
+      const ended = () => { if (this.active?.stop === stop) this.active = null; };
       if (buffer) {
         const source = context.createBufferSource();
         source.buffer = buffer; source.connect(gain);
@@ -120,12 +126,13 @@ export class FeedbackAudio {
         stop = () => { source.stop(); source.disconnect(); };
         source.start();
       } else stop = scheduleFeedbackCue(context, cue, gain, ended);
-      this.stopCue = stop;
+      this.active = { cue, stop };
     } catch { this.close(); }
   }
 
   preview = (cue: FeedbackCue = "message"): void => {
-    const request = this.previewRequest = Symbol();
+    if (this.muted[cue]) return;
+    const request = this.previewRequest = { cue };
     const clip = this.clips[cue];
     void this.resume().then(async ready => {
       if (!ready) return;
@@ -140,7 +147,7 @@ export class FeedbackAudio {
   close(): void {
     this.previewRequest = null;
     this.activation?.abort(); this.activation = null;
-    this.stopCue?.(); this.stopCue = null;
+    this.active?.stop(); this.active = null;
     this.gain?.disconnect(); this.gain = null;
     const context = this.context; this.context = null;
     this.decoded.clear();

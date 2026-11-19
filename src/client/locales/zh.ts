@@ -1121,7 +1121,7 @@ export const zh = {
   "voice.error.closed": "房主尚未开启房间语音。",
   "interaction.settings": "聊天设置",
   "interaction.feedbackSounds": "提示与互动声音",
-  "interaction.feedbackSoundsHint": "后台新消息提醒和投掷音效。",
+  "interaction.feedbackSoundsHint": "可分别开启后台消息提醒和投掷音效。",
   "interaction.feedbackMessageCue": "消息提醒",
   "interaction.feedbackThrowCue": "投掷音效",
   "interaction.feedbackBuiltIn": "内置",

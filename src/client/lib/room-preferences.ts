@@ -12,6 +12,7 @@ export type InterfaceLayout = z.infer<typeof interfaceLayoutSchema>;
 
 const roomPreferencesSchema = z.object({
   feedbackSound: z.object({ enabled: z.boolean(), volume: z.number().min(0).max(1),
+    muted: z.object({ message: z.boolean().optional(), throw: z.boolean().optional() }).optional(),
     clips: z.object({ message: feedbackClipSchema.optional(), throw: feedbackClipSchema.optional() }).optional(),
   }).default({ enabled: false, volume: 1 }),
   sharingView: z.boolean().default(false),

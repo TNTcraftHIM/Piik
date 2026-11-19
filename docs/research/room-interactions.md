@@ -356,8 +356,8 @@ Renaming changes presentation without replacing media paths or input grants.
 ### Sound Feedback
 
 Personal feedback sounds are off by default. **More options → Feedback sounds**
-enables them for this browser origin, with an independent volume and a local
-preview. A fresh message from another user, including an attachment-only message,
+sets the shared volume for this browser origin. Messages and throws can each be
+muted or previewed. A fresh message from another user, including an attachment-only message,
 plays a short cue while the page is hidden. Foreground tomato and poop throws
 play for their sender and addressed user, whether directed at a person, message
 or shared picture. Other reactions and routine connection changes stay silent.

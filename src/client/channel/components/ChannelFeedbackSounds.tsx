@@ -35,17 +35,21 @@ export function ChannelFeedbackSounds({ channel }: { channel: Pick<ChannelContro
         onChange={event => channel.setFeedbackSound({ volume: Number(event.target.value) / 100 })} />
       {(["message", "throw"] as const).map(cue => {
         const title = t(cue === "message" ? "interaction.feedbackMessageCue" : "interaction.feedbackThrowCue");
+        const muted = channel.feedbackSound.muted?.[cue] ?? false;
         const clip = channel.feedbackSound.clips?.[cue];
         const name = clip?.name ?? t("interaction.feedbackBuiltIn");
         return <div key={cue} className="c3-feedback-clip">
-          <div className="c3-feedback-clip-name"><strong>{title}</strong>
+          <SwitchItem checked={!muted} label={title} onChange={on => channel.setFeedbackSound({
+            muted: { ...channel.feedbackSound.muted, [cue]: !on },
+          })} />
+          <div className="c3-feedback-clip-name">
             <Tooltip overflow={{ text: name, selector: "span" }}><span>{name}</span></Tooltip></div>
           <div className="c3-feedback-clip-actions">
             <Btn icon="arrowUp" quiet size="compact" cap={{ text: t("interaction.feedbackChooseClip") }}
               title={{ text: t("interaction.feedbackChooseClipHint", { cue: title }) }} busy={busy === cue} disabled={busy !== null}
               onClick={() => { selection.current = cue; chooser.current?.click(); }} />
             <Btn icon="play" quiet size="compact" textTooltip title={{ text: t(volume === 0 ? "interaction.feedbackMutedHint" : "interaction.feedbackTryCue", { cue: title }) }}
-              disabled={volume === 0 || busy === cue} onClick={() => channel.previewFeedbackSound(cue)} />
+              disabled={muted || volume === 0 || busy === cue} onClick={() => channel.previewFeedbackSound(cue)} />
             {clip && <Btn icon="refresh" quiet size="compact" textTooltip title={{ text: t("interaction.feedbackResetCue", { cue: title }) }}
               disabled={busy !== null} onClick={() => { void replace(cue, null); }} />}
           </div>

@@ -136,3 +136,27 @@ test("suspension drops a pending preview while a new preview reuses the decoded 
   expect(AudioBoundary.instances).toHaveLength(1);
   audio.close();
 });
+
+test("muting a cue stops only that cue and cancels its pending preview", async () => {
+  vi.stubGlobal("document", new EventTarget()); vi.stubGlobal("AudioContext", AudioBoundary);
+  const audio = new FeedbackAudio();
+  const prefs = { enabled: true, volume: .4 };
+  audio.configure(prefs); audio.activate(); await Promise.resolve();
+  const context = AudioBoundary.instances[0];
+  audio.play("throw");
+  const throwNode = context.oscillators[0];
+  audio.configure({ ...prefs, muted: { message: true } });
+  expect(throwNode.stop).toHaveBeenCalledTimes(1);
+  audio.configure({ ...prefs, muted: { throw: true } });
+  expect(throwNode.stop).toHaveBeenCalledTimes(2);
+  audio.play("throw"); audio.preview("throw");
+  audio.preview("message");
+  audio.configure({ ...prefs, muted: { message: true } });
+  audio.configure(prefs);
+  await vi.waitFor(() => expect(context.resume).toHaveBeenCalledTimes(2));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(context.oscillators).toHaveLength(1);
+  audio.play("message");
+  expect(context.oscillators).toHaveLength(3);
+  audio.close();
+});

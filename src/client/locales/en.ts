@@ -1123,7 +1123,7 @@ export const en: Record<CopyKey, string> = {
   "voice.error.closed": "The Host has not opened room voice.",
   "interaction.settings": "Chat settings",
   "interaction.feedbackSounds": "Feedback sounds",
-  "interaction.feedbackSoundsHint": "Background message alerts and throw sounds.",
+  "interaction.feedbackSoundsHint": "Choose which sounds to hear for background messages and throws.",
   "interaction.feedbackMessageCue": "Message alerts",
   "interaction.feedbackThrowCue": "Throw sounds",
   "interaction.feedbackBuiltIn": "Built-in",
