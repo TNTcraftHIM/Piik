@@ -1,10 +1,10 @@
 # Piik 3.0 Room Data And Hosting
 
-This research records the prototype's storage, synchronization, delivery and recovery behavior alongside its original design rationale. The [hosting design](./server-hosting-plan.md) owns the target channel modes, directory, room permissions, thumbnails and backup behavior. [TODO](../todo.md) tracks implementation.
+This research records the prototype's storage, synchronization, delivery and recovery behavior alongside its original design rationale. The [hosting design](./server-hosting-plan.md) owns channel modes, the directory, room permissions, thumbnails and backup behavior. [TODO](../todo.md) tracks implementation.
 
 ## Ownership And Placement
 
-The channel binds a room ID to its creator. The room runtime confirms and stores its records. The target keeps the creator as room manager and assigns the writer by channel mode. A lightweight room runs on its creator's device. In hosted mode the Server runs the room writer.
+The channel binds a room ID to its creator, who manages the room. The room writer confirms and stores its records. It runs on the creator's device in a lightweight channel and on the Server in a hosted channel.
 
 The table describes current prototype placement.
 
@@ -88,8 +88,8 @@ password grant before entry succeeds. Other private or hidden rooms remain
 outside that grant. Access-mode changes retain an existing private invitation
 until its owner explicitly resets it; resetting retires old links without
 removing existing room grants. Public entry alone creates no grant for a later
-switch to private. A room creator may register and restore their own saved room;
-the target channel-owner removal action retires the directory binding. Reading messages or files still requires ordinary room admission.
+switch to private. A returning creator can reopen a saved room while its channel
+binding exists. The channel owner can remove that binding. Reading messages or files requires room admission.
 
 Scope local copies by domain, room and authenticated user, never nickname or
 room title. Source URLs locate the runtime; they are not the room's identity.

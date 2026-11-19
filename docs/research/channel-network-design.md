@@ -8,13 +8,11 @@ The [2.x routing contract](../standards/routing-transport.md) remains unchanged.
 
 ## Current Prototype Design
 
-The room owner operates its detailed state, management and distribution. Browser
-hosting ends with its page; App hosting ends when stopped or its process exits.
-Server is explicitly started for unattended operation. Ordinary URLs and manual
-bookmarks are the entry model; no separate file-storage service, automatic address
-discovery or automatic room takeover is selected.
+In a lightweight channel the creator's Browser or App hosts the room. In a
+hosted channel the Server keeps the room available after its creator leaves.
+Participants return through the channel URL or a saved bookmark.
 
-Conversation uses the existing domain WebSocket to reach its actual room owner.
+Conversation uses the existing domain WebSocket to reach its current room host.
 Use one room routing owner for media and files: a base tree carries voice,
 file bytes and file-pull control. Pictures start on usable existing paths, then converge locally towards
 source-rooted delivery through bounded background transitions. All authorized,
@@ -36,9 +34,9 @@ vocabulary across the UI and guides.
 | User | 用户 | Every participant, including site operators, room owners and sharers. |
 | Site | 站点 | The shared entry containing a room directory and the users' site identities. |
 | Domain | 站点后台 | The site's identity, room directory and coordination runtime; named `Channel` in code, without a separate entry or invitation layer. |
-| Site operator | 站点维护者 | The user operating the site's metadata and backup/restore, without room-wide authority over other users. |
+| Site operator | 站点维护者 | The user managing site metadata, backups and room bindings. |
 | Room | 房间 | A conversation, history and media scope within a site. |
-| Room owner | 房主 | The user operating that room's state, management and base distribution network. |
+| Room owner | 房主 | The user who manages the room. |
 | Sharer | 分享者 | The user originating a particular screen, voice publication or file offer. |
 
 Management and activities overlap: owners and ordinary users can share, watch
@@ -51,18 +49,20 @@ lifetimes. Moving a room requires explicit transfer of operation and saved state
 
 | Owner | Its authoritative state and work |
 | --- | --- |
-| Domain runtime | Domain identity, users, room-to-owner bindings and authorized room-directory summaries; signaling rendezvous and live conversation carriage to the actual room owner. |
-| Room runtime, operated by its room owner | Detailed room metadata, room admission and grants, confirmed conversation, file descriptions/available holders, base-tree planning and screen-route scheduling. |
+| Domain runtime | Owns channel identity, users and directory bindings. Publishes permitted room summaries and carries room commands to the current host. |
+| Room host runtime | Detailed room metadata, room admission and grants, confirmed conversation, file descriptions/available holders, base-tree planning and screen-route scheduling. |
 | Participant runtime | Local captures, playback, file copies and the actual peer transports/forwarding work it has admitted. |
 
 The domain directory projects room details; it is not a second writer of room
 metadata, private policy or history. Opening a site establishes or restores a
-personal identity. Users create and manage their own rooms; admission permits
+personal identity. Channel policy determines who can create rooms. Creators
+manage their rooms. Admission permits
 conversation, voice, sharing, watching and interactions without role groups or
 participation switches.
-In the target hosting model, the channel owner may remove any room from the
+The site operator may remove any room binding from the
 channel directory, including a hidden or offline room. Reading its content
 requires ordinary room admission. Source owners separately consent to remote input.
+[Room maintenance](./server-hosting-plan.md#room-maintenance)
 
 Public rooms admit site users through ordinary links. Private rooms require their
 host's invitation or password after the site connection; hidden rooms disclose
@@ -72,9 +72,8 @@ shared identity. Invalid invitations and unavailable rooms do not retire site
 identity. Only the local hosting owner retains its maintenance bootstrap key and
 saved credential; visiting the same site grants no maintenance authority.
 
-The domain directory binds each room to its owner's current authenticated runtime
-connection, separately from the owner's persistent user identity. With no runtime,
-the room is unavailable. One room has one current runtime binding. Reconnecting
+Each room has one current authenticated hosting runtime. When that runtime
+goes offline, the room becomes unavailable. Reconnecting
 the same retained runtime replaces its socket; a fresh hosting runtime obtains
 a new binding, without granting a stale session authority over its successor.
 The room projection carries its summary and common live publications, voice and
@@ -86,14 +85,14 @@ fence the whole projection, including host retirement and recovery.
 Room admission, initial offer/answer and broken-tree repair instructions travel
 through this existing domain rendezvous to the room
 runtime; establishing or repairing the tree cannot depend on that tree already
-working. The domain forwards these envelopes; the room owner decides room actions.
+working. The domain forwards these envelopes; the room host authorizes room actions.
 WebRTC leaves the signaling carrier to the application
 ([W3C connection establishment](https://www.w3.org/TR/webrtc/#introduction-1)).
 
 The App creates room runtimes through normal create/join actions, without a
 separate public URL, daemon, storage server or permission owner.
 
-After room admission, the room owner confirms room changes and message order.
+After room admission, the room host confirms room changes and message order.
 Chat, history, message reactions and live room interactions use the existing
 domain WebSocket after room admission. This is their normal, single transport,
 not a fallback after ICE failure. The domain verifies the sending connection,
@@ -110,7 +109,7 @@ carrier cannot substitute its identity or supply its own permission snapshot.
 Long-lived admission credentials are not conversation payloads.
 
 Forwarded requests use the same room authorization and storage operations as local
-execution. They run in the room owner's existing serialized turn without
+execution. They run in the room host's existing serialized turn without
 changing its routing state or becoming domain-issued turns. Their confirmations
 return to the request; domain revisions retain their authority/reply-fencing purpose.
 Projection order and request authority remain separate: an older room snapshot
@@ -190,7 +189,7 @@ work, while a star places that work on its root.
 
 ### One Base Tree Per Participating Room
 
-The room owner maintains one committed, bounded tree among admitted room
+The room host maintains one committed, bounded tree among admitted room
 participants. Its root identifies the coordination owner; data may travel in
 both directions. A connected tree already provides a unique path between any
 two members. Voice, sharing, watching and active file delivery establish the base
@@ -205,7 +204,7 @@ are ready; an open candidate DataChannel alone does not retire active media work
 
 | Traffic | Route and lifecycle |
 | --- | --- |
-| Room commands and conversation | The domain WebSocket carries commands to the actual room owner and signed conversation replies to authorized recipients; the room owns authorization and confirmation. |
+| Room commands and conversation | The domain WebSocket carries commands to the current room host and signed replies to authorized recipients. The room host authorizes and confirms the operation. |
 | Voice | Project each joined source to its listeners over the base tree's unique paths; send each source at most once over a required directed edge. |
 | File bytes and pull control | Use the existing base paths; the [room-data model](./channel-storage-and-identity.md#shared-delivery-on-existing-room-paths) develops shared range delivery and cached-source selection without another topology planner. |
 | Screen picture and source audio | One distribution plan per publication: start on usable existing paths, then improve affected branches while preserving selected viewers and necessary relays. |
