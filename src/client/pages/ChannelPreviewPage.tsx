@@ -13,7 +13,8 @@ import { useCopy } from "../ui/copy";
 import { useChannel } from "../channel/use-channel";
 import { channelErrorPresentation } from "../channel/error-presentation";
 import { rememberRoom, selectedRoom } from "../channel/navigation";
-import { RoomLayerHistory, useRoomPane } from "../channel/use-room-pane";
+import { useRoomPane } from "../channel/use-room-pane";
+import { LayerHistory } from "../ui/layer-history";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelStage, type WatchStageSource } from "../channel/components/ChannelStage";
 import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
@@ -285,7 +286,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const connectionLabel = connected ? t("channel.previewPage.connected") : connection === "connecting"
     ? t("channel.previewPage.connecting") : connection === "reconnecting" ? t("channel.previewPage.reconnecting") : t("channel.previewPage.disconnected");
 
-  return <RoomLayerHistory.Provider value={sidebarsInline ? null : track}><div className="lr-app c3-app">
+  return <LayerHistory.Provider value={sidebarsInline ? null : track}><div className="lr-app c3-app">
     {watchRoomId && <WatchSourceDialog key={`source:${watchRoomId}`} channel={channel} roomId={watchRoomId} onClose={() => setWatchRoomId(null)} />}
     {watches.filter(activity => activity.id === appWatchId).map(activity => <WatchSourceDialog key={activity.id} channel={channel}
       roomId={activity.roomId} activityId={activity.id} initialURL={activity.source.url} onClose={() => setAppWatchId(null)} />)}
@@ -514,5 +515,5 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           </section><ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={selectRoom} /></>} />
       </div>
     </main>
-  </div></RoomLayerHistory.Provider>;
+  </div></LayerHistory.Provider>;
 }

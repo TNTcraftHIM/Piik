@@ -1,17 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { rememberRoom } from "./navigation";
 
 type RoomPane = "room" | "rooms" | "people" | "chat";
-type TrackLayer = (element: HTMLElement) => () => void;
-export const RoomLayerHistory = createContext<TrackLayer | null>(null);
-
-/** Visibility stays with the native popover or dialog. */
-export function useRoomLayer(ref: RefObject<HTMLElement | null>, open: boolean) {
-  const track = useContext(RoomLayerHistory);
-  useLayoutEffect(() => {
-    if (open && ref.current && ref.current.ownerDocument === document) return track?.(ref.current);
-  }, [track, ref, open]);
-}
 
 function closeLayer(element: HTMLElement) {
   if (element instanceof HTMLDialogElement) {
@@ -44,7 +34,7 @@ export function useRoomPane() {
       history.back();
     }
   }, []);
-  const track = useCallback<TrackLayer>(element => {
+  const track = useCallback((element: HTMLElement) => {
     layers.current.push(element);
     syncLayer();
     return () => {

@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useLayerHistory } from "../../ui/layer-history";
 import { AudioVolumeControl } from "./AudioVolumeControl";
 import { HOVER_ENTER_MS, HOVER_EXIT_GRACE_MS, LONG_PRESS_MS } from "./Tooltip";
 import { useAnchoredPopover } from "./use-anchored-popover";
@@ -14,6 +15,8 @@ export function AudioVolumeMenu({ volume, onVolume, label, heading, disabled, ch
   const { t } = useCopy();
   const ownerDocument = useSurfaceDocument(), view = ownerDocument?.defaultView;
   const anchor = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
+  const [explicitlyOpen, setExplicitlyOpen] = useState(false);
+  useLayerHistory(panel, explicitlyOpen);
   const enter = useRef<number | null>(null), leave = useRef<number | null>(null);
   const touch = useRef<{ x: number; y: number } | null>(null), held = useRef(false);
   useAnchoredPopover(anchor, panel, { side: "above", align: "center" });
@@ -28,6 +31,10 @@ export function AudioVolumeMenu({ volume, onVolume, label, heading, disabled, ch
     if (!disabled && panel.current && !panel.current.matches(":popover-open")) {
       panel.current.showPopover({ source: anchor.current?.querySelector("button") ?? anchor.current! });
     }
+  };
+  const openExplicitly = () => {
+    open();
+    setExplicitlyOpen(panel.current?.matches(":popover-open") === true);
   };
   useLayoutEffect(() => {
     const menu = panel.current;
@@ -56,7 +63,7 @@ export function AudioVolumeMenu({ volume, onVolume, label, heading, disabled, ch
       clear(); held.current = false;
       if (disabled || event.pointerType !== "touch" || panel.current?.contains(event.target as Node)) return;
       touch.current = { x: event.clientX, y: event.clientY };
-      enter.current = view?.setTimeout(() => { held.current = true; open(); }, LONG_PRESS_MS) ?? null;
+      enter.current = view?.setTimeout(() => { held.current = true; openExplicitly(); }, LONG_PRESS_MS) ?? null;
     }}
     onPointerMoveCapture={event => {
       if (touch.current && Math.hypot(event.clientX - touch.current.x, event.clientY - touch.current.y) > 8) {
@@ -81,15 +88,16 @@ export function AudioVolumeMenu({ volume, onVolume, label, heading, disabled, ch
         held.current = false; event.preventDefault(); event.stopPropagation();
         // Native auto-popover dismissal finishes at pointer-up. The held
         // gesture's click restores the slider without activating mute.
-        open();
+        openExplicitly();
       }
     }}
     onKeyDownCapture={() => { held.current = false; }}
     onContextMenu={event => {
-      if (!disabled && !panel.current?.contains(event.target as Node)) { event.preventDefault(); open(); }
+      if (!disabled && !panel.current?.contains(event.target as Node)) { event.preventDefault(); openExplicitly(); }
     }}>
     {children}
     <div ref={panel} popover="auto" role="dialog" aria-label={heading ?? t(label)}
+      onToggle={event => { if (event.target === event.currentTarget && event.newState === "closed") setExplicitlyOpen(false); }}
       className="lr-floating-surface lr-audio-settings lr-audio-volume-popover">
       {heading && <b>{heading}</b>}
       <AudioVolumeControl volume={volume} onVolume={onVolume} label={label} max={max} />
