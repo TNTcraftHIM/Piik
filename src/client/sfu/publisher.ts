@@ -501,9 +501,13 @@ export class SfuPublisher {
     if (configureVideo) {
       const parameters = sender.getParameters();
       const encodings = this.encodings(profile);
-      parameters.encodings.forEach((encoding, index) =>
-        Object.assign(encoding, encodings[index]),
-      );
+      parameters.encodings.forEach((encoding, index) => {
+        const next = encodings[index];
+        encoding.active = next.active;
+        encoding.scaleResolutionDownBy = next.scaleResolutionDownBy;
+        encoding.maxBitrate = next.maxBitrate;
+        encoding.maxFramerate = next.maxFramerate;
+      });
       await peer.waitForOperation(() => sender.setParameters(parameters));
       if (this.peer !== peer) return false;
       const readback = await peer.waitForOperation(() => configureVideoSender(
