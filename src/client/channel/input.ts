@@ -100,7 +100,14 @@ export class ChannelInput {
       }, flow.flowId.replaceAll("-", ""));
       this.endpoints.set(publicationId, { ...flow, channel });
       void this.options.register({ type: "input_register", publicationId, flowId: flow.flowId, secret: Array.from(secret) })
-        .catch(() => channel.close());
+        .then(() => {
+          // Only a previously accepted registration can refresh on close.
+          const refresh = () => queueMicrotask(() => {
+            if (this.endpoints.get(publicationId)?.channel === channel) this.update();
+          });
+          if (channel.readyState === "closed") refresh();
+          else channel.addEventListener("close", refresh, { once: true });
+        }, () => channel.close());
       changed = true;
     }
     if (sessionId && state && this.runtime) for (const [key, binding] of this.bindings) {

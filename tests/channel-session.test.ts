@@ -5251,6 +5251,7 @@ test("input registration replies stay with their endpoint after its media flow r
     socket.receive({ type: "error", requestId: registration().requestId, code: "unassigned_input_route" });
     await vi.waitFor(() => expect(rejected.readyState).toBe("closed"));
     expect(session.getSnapshot().error).toBeNull();
+    expect(socket.sent.filter(command => command.type === "input_register" && command.flowId === flowId)).toHaveLength(1);
 
     flowId = crypto.randomUUID();
     socket.receive({ type: "state", state: state() });
@@ -5367,7 +5368,8 @@ test("screen input shares its existing pair and retains only the committed flow'
     expect(register).toHaveBeenCalledOnce();
     endpoint.close();
     expect(register).toHaveBeenCalledOnce(); // Logical close cannot synchronously create a replacement.
-    input.update();
+    // A healthy, idle room does not owe another state snapshot.
+    await vi.waitFor(() => expect(register).toHaveBeenCalledTimes(2));
     const refreshed = channels.get(publicationId)!;
     expect(refreshed).not.toBe(endpoint);
     expect(register).toHaveBeenCalledTimes(2);
@@ -5395,12 +5397,20 @@ test("screen input shares its existing pair and retains only the committed flow'
     expect(recovered.readyState).toBe("closed");
     expect(pc.close).not.toHaveBeenCalled();
     expect(pc.channels).toHaveLength(1);
-    media.update(local, state); input.update();
+    await Promise.resolve(); // Re-open the lost lane even with no new room snapshot.
     expect(pc.channels.map(channel => channel.label)).toEqual(["piik-input", "piik-input"]);
     pc.channels[1].open();
     expect(channels.get(publicationId)?.readyState).toBe("open");
     expect(channels.get(publicationId)).not.toBe(recovered);
     expect(RoomPeerConnection.instances).toHaveLength(1);
+    expect(register).toHaveBeenCalledTimes(5);
+    // A channel that never opened cannot keep attempting replacements on its own.
+    pc.channels[1].close();
+    await Promise.resolve();
+    expect(pc.channels).toHaveLength(3);
+    pc.channels[2].close();
+    await Promise.resolve();
+    expect(pc.channels).toHaveLength(3);
     expect(register).toHaveBeenCalledTimes(5);
 
     // Drive the actual Browser relay adapter through its shared-core boundary;
@@ -5445,7 +5455,7 @@ test("screen input shares its existing pair and retains only the committed flow'
         expect(transport.close).not.toHaveBeenCalled();
         expect(transport.channels.find(channel => channel.label === "piik-room")?.readyState).toBe("open");
       }
-      relayMedia.update(local, relayState); relayInput.update();
+      await Promise.resolve();
       const nextInput = down.channels.filter(channel => channel.label === "piik-input").at(-1)!;
       expect(nextInput).not.toBe(downInput);
       nextInput.open();

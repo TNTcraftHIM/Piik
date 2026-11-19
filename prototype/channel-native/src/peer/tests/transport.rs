@@ -1,5 +1,63 @@
 use super::*;
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn established_input_lane_reopens_after_peer_close_while_video_is_playing() -> Result<()> {
+    use crate::peer::tests::support::{vp8, Fixture};
+
+    let mut f = Fixture::new(vp8()).await?;
+    let result = async {
+        let id = f.sink;
+        let flow = f.plans.last().unwrap().outgoing[0].id;
+        let ready = |f: &Fixture| {
+            let pair = &f.driver.pairs[&id];
+            pair.input.as_ref().is_some_and(|(token, _, _)| {
+                pair.data
+                    .senders()
+                    .current(crate::data::Lane::Input, *token, true)
+            })
+        };
+        f.until(|f| {
+            ready(f)
+                && f.driver.pairs[&id]
+                    .outputs
+                    .contains_key(&(flow, MediaKind::Video))
+        })
+        .await?;
+        let (_, stream) = f.output(flow, MediaKind::Video);
+        f.until(|f| f.observed(&stream, MediaKind::Video).is_some())
+            .await?;
+        let (track, ssrc, before) = f.observed(&stream, MediaKind::Video).unwrap();
+        let original = f.driver.pairs[&id].input.as_ref().unwrap().0;
+        ensure!(!f.driver.pairs[&id].polite);
+        f.remote[&id]
+            .call(|engine| {
+                let channel = engine
+                    .channels
+                    .values()
+                    .find(|c| c.config.label == "piik-input")
+                    .and_then(|c| c.id)
+                    .context("peer input channel did not open")?;
+                engine.rtc.direct_api().close_data_channel(channel);
+                Ok(())
+            })
+            .await?;
+        f.until(|f| ready(f) && f.driver.pairs[&id].input.as_ref().unwrap().0 != original)
+            .await
+            .context("input must recover without another room snapshot")?;
+        f.until(|f| {
+            f.observed(&stream, MediaKind::Video)
+                .is_some_and(|(id, current_ssrc, ts)| {
+                    id == track && current_ssrc == ssrc && ts != before
+                })
+        })
+        .await?;
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+    f.close().await;
+    result
+}
+
 #[tokio::test]
 async fn source_ended_before_ready_fails_only_its_current_flow() -> Result<()> {
     use crate::{

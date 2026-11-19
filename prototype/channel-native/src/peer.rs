@@ -607,7 +607,7 @@ enum Input {
 }
 pub(crate) enum Event {
     InputMessage(Uuid, Uuid, piik_channel_core::input::InputFrame),
-    InputClosed(Uuid, Uuid),
+    InputClosed(Uuid, Uuid, bool),
     Negotiate(Uuid),
     Candidate(
         Uuid,
@@ -1386,12 +1386,12 @@ impl Driver {
             if senders.current(Lane::Input, token, true)
                 && senders.input.try_send(outgoing.message).is_err()
             {
-                pending.extend(self.close_input(outgoing.pair, token).await);
+                pending.extend(self.close_input(outgoing.pair, token, true).await);
             }
         }
     }
 
-    async fn close_input(&mut self, id: Uuid, token: Uuid) -> Vec<input::Outgoing> {
+    async fn close_input(&mut self, id: Uuid, token: Uuid, was_open: bool) -> Vec<input::Outgoing> {
         let Some(pair) = self.pairs.get_mut(&id) else {
             return vec![];
         };
@@ -1408,6 +1408,25 @@ impl Driver {
             task.abort();
             let _ = task.await;
             let _ = channel.close().await;
+        }
+        // A live picture can stay on this pair without another room update.
+        // An input lane that never opened waits for the next route update.
+        let screen_selected = pair
+            .plan
+            .incoming
+            .iter()
+            .chain(&pair.plan.outgoing)
+            .any(|flow| {
+                flow.selected
+                    && self
+                        .publications
+                        .get(&flow.publication_id)
+                        .is_some_and(|p| p.kind == piik_channel_core::wire::Kind::Screen)
+            });
+        if was_open && pair.connected() && screen_selected {
+            if let Err(error) = self.ensure_input(id).await {
+                eprintln!("Native input channel could not reopen: {error}");
+            }
         }
         messages
     }
@@ -2177,13 +2196,18 @@ impl Driver {
             let dc = p.pc.create_channel("piik-file").await?;
             self.install_dc(id, dc).await?;
         }
-        let p = self.pairs.get(&id).unwrap();
+        self.ensure_input(id).await
+    }
+
+    async fn ensure_input(&mut self, id: Uuid) -> Result<()> {
+        let p = &self.pairs[&id];
         if !p.polite && p.input.is_none() {
             let dc = p.pc.create_channel("piik-input").await?;
             self.install_dc(id, dc).await?;
         }
         Ok(())
     }
+
     async fn prepared(
         &mut self,
         pending: preparation::Pending,
@@ -2618,6 +2642,7 @@ impl Driver {
                         }
                     },
                     ChannelEvent::Close => {
+                        let was_open = lane == Lane::Input && ready.open();
                         if ready.set(false) {
                             if lane != Lane::Input {
                                 watches.closed(peer, lane, token).await;
@@ -2635,7 +2660,7 @@ impl Driver {
                             } else if lane == Lane::Bulk {
                                 Event::Bulk(id, token)
                             } else {
-                                Event::InputClosed(id, token)
+                                Event::InputClosed(id, token, was_open)
                             };
                             let _ = events.send(event).await;
                         }
@@ -2873,8 +2898,8 @@ impl Driver {
                     }
                 }
             }
-            Event::InputClosed(id, token) => {
-                for message in self.close_input(id, token).await {
+            Event::InputClosed(id, token, was_open) => {
+                for message in self.close_input(id, token, was_open).await {
                     self.send_input(message).await;
                 }
             }
@@ -2885,7 +2910,7 @@ impl Driver {
                 temporary,
             } => {
                 if lane == Lane::Input {
-                    for message in self.close_input(pair, token).await {
+                    for message in self.close_input(pair, token, true).await {
                         self.send_input(message).await;
                     }
                     return Ok(());

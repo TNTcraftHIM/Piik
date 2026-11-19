@@ -148,7 +148,10 @@ export class ChannelTransport {
     this.pc.onnegotiationneeded = () => { if (!this.localOfferFailed) this.offer(); };
     this.pc.onconnectionstatechange = () => {
       if (this.pc.connectionState === "connected") {
-        if (this.inputEnabled) options.input?.(this.input);
+        if (this.inputEnabled) {
+          if (this.input) options.input?.(this.input);
+          else this.reopenInput();
+        }
         options.dataState?.(this.rooms.size > 0 && !this.dataLifetime.signal.aborted);
         options.connected();
         this.reportBaseReady();
@@ -192,16 +195,27 @@ export class ChannelTransport {
   private installInput(channel: RTCDataChannel): void {
     this.input = channel;
     const current = () => !this.closed && this.input === channel;
-    channel.addEventListener("open", () => { if (current() && this.inputEnabled) this.options.input?.(channel); });
+    let opened = channel.readyState === "open";
+    channel.addEventListener("open", () => {
+      opened = true;
+      if (current() && this.inputEnabled) this.options.input?.(channel);
+    });
     const lost = () => {
       if (!current()) return;
       this.input = null;
       this.options.input?.(null);
       channel.close();
+      if (opened) queueMicrotask(() => this.reopenInput());
     };
     channel.addEventListener("close", lost);
     channel.addEventListener("error", lost);
     if (this.inputEnabled) this.options.input?.(channel);
+  }
+
+  private reopenInput(): void {
+    if (!this.inputEnabled || this.pc.connectionState !== "connected") return;
+    try { this.setInputEnabled(true, false); }
+    catch (error) { console.warn("Could not reopen the screen input channel", error); }
   }
 
   sendInput(frame: string): boolean {
