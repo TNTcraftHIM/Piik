@@ -41,6 +41,7 @@ export const roomSchema = z.object({
   fileActivity: z.array(z.object({ sessionId: id, sending: z.boolean(), receiving: z.boolean() })).max(CHANNEL_SESSION_LIMIT),
   available: z.boolean(), reading: z.boolean(),
   lastMessageSeq: z.number().int().nonnegative(),
+  serviceRelay: z.object({ enabled: z.boolean(), available: z.boolean() }).optional(),
   capabilities: z.object({ attachments: z.boolean() }),
   delivery: z.object({ hostSessionId: id, bindingId: id, nextHops: z.record(id, id) }).optional(),
 });

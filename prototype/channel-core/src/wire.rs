@@ -781,6 +781,8 @@ pub struct Room {
     #[serde(default = "crate::access::default_relay_capacity")]
     pub relay_capacity: u8,
     pub relay_override: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_relay: Option<ServiceRelay>,
     pub authorized: bool,
     pub can_manage: bool,
     pub available: bool,
@@ -792,6 +794,12 @@ pub struct Room {
     pub delivery: Option<RoomDelivery>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub members: Option<Vec<Uuid>>,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+pub struct ServiceRelay {
+    pub enabled: bool,
+    pub available: bool,
 }
 
 /// Active personal file operations; available copies and forwarding are not activity.

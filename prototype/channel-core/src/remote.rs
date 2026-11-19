@@ -281,6 +281,7 @@ impl RemoteRoom {
                 voice_bitrate: summary.voice_bitrate,
                 relay_capacity: summary.relay_capacity,
                 relay_override: None,
+                service_relay: None,
                 authorized: manager || known || summary.access == RoomAccess::Public,
                 can_manage: manager,
                 available: discoverable,

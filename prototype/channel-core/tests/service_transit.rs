@@ -455,6 +455,18 @@ fn public_owner_opt_in_readback_distinguishes_availability_selection_and_work() 
     join(&mut net, viewer, false);
     let relay = join(&mut net, service, true);
     let room = private_room(&mut net, host, viewer);
+    let projected = |net: &RoomNetwork, connection| {
+        let row = net
+            .state(connection)
+            .channel
+            .rooms
+            .iter()
+            .find(|row| row.id == room)?;
+        row.service_relay
+            .map(|relay| (relay.enabled, relay.available))
+    };
+    assert_eq!(projected(&net, host), Some((false, false)));
+    assert_eq!(projected(&net, viewer), None);
     let policy = serde_json::to_value(net.policy(&room)).unwrap();
     assert!(!topology(&mut net, host, &room).service_available);
     set_preference(&mut net, host, &room, true);
@@ -470,6 +482,8 @@ fn public_owner_opt_in_readback_distinguishes_availability_selection_and_work() 
     assert!(denied.events.iter().any(|(_, event)| matches!(event, Event::RoomReply { result: RoomResult::Error { code }, .. } if code == "forbidden")));
     set_preference(&mut net, host, &room, true);
     let state = topology(&mut net, host, &room);
+    assert_eq!(projected(&net, host), Some((true, true)));
+    assert_eq!(projected(&net, viewer), None);
     assert!(state.service_available && state.service_enabled && state.transit_session.is_none());
     assert!(net.state(service).pairs.is_empty());
     assert!(net.policy(&room).allow_service_relay);

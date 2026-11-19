@@ -277,6 +277,7 @@ impl RoomProjection {
                 voice_bitrate: self.summary.voice_bitrate,
                 relay_capacity: self.summary.relay_capacity,
                 relay_override: view.relay_override,
+                service_relay: None,
                 authorized: view.authorized,
                 can_manage: view.can_manage,
                 reading: view.reading,

@@ -285,6 +285,7 @@ impl RoomState {
             voice_bitrate: self.voice_bitrate,
             relay_capacity: self.relay_capacity,
             relay_override: None,
+            service_relay: None,
             authorized,
             can_manage,
             available: true,

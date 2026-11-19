@@ -1826,6 +1826,16 @@ impl Channel {
         })
     }
 
+    fn service_relay(
+        &self,
+        recipient: Option<&crate::room::RoomRecipient>,
+    ) -> crate::wire::ServiceRelay {
+        crate::wire::ServiceRelay {
+            available: self.service_endpoint.is_some(),
+            enabled: recipient.is_some_and(|view| view.allow_service_relay),
+        }
+    }
+
     pub(crate) fn room_topology(
         &self,
         id: &str,
@@ -1883,12 +1893,10 @@ impl Channel {
                 })
             })
             .transpose()?;
+        let relay = self.service_relay(projection.views.get(&session));
         Ok(RoomTopology {
-            service_available: self.service_endpoint.is_some(),
-            service_enabled: projection
-                .views
-                .get(&session)
-                .is_some_and(|view| view.allow_service_relay),
+            service_available: relay.available,
+            service_enabled: relay.enabled,
             binding_id: binding.id,
             transit_session: projection
                 .views
@@ -1971,17 +1979,24 @@ impl Channel {
                 if let Some(mut snapshot) =
                     room.snapshot(member, session_id, Self::host_online(&self.identity, room))
                 {
-                    snapshot.room.delivery = if snapshot.room.authorized {
-                        room.binding.as_ref().zip(room.projection.as_ref()).map(
-                            |(binding, projection)| RoomDelivery {
-                                host_session_id: binding.session,
-                                binding_id: binding.id,
-                                next_hops: room_next_hops(session_id, &projection.base_links),
-                            },
-                        )
-                    } else {
-                        None
-                    };
+                    let bound = room.binding.as_ref().zip(room.projection.as_ref());
+                    if let Some((binding, projection)) = bound.filter(|_| snapshot.room.authorized)
+                    {
+                        snapshot.room.delivery = Some(RoomDelivery {
+                            host_session_id: binding.session,
+                            binding_id: binding.id,
+                            next_hops: room_next_hops(session_id, &projection.base_links),
+                        });
+                        if snapshot.room.available
+                            && binding.applied_revision >= binding.projection_floor
+                        {
+                            snapshot.room.service_relay = projection
+                                .views
+                                .get(&session_id)
+                                .filter(|view| view.can_manage)
+                                .map(|view| self.service_relay(Some(view)));
+                        }
+                    }
                     rooms.push(snapshot.room);
                     publications.extend(snapshot.publications);
                     watch_activities.extend(snapshot.watch_activities);

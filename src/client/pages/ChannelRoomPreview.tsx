@@ -109,7 +109,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const rooms = [...sample.channel.state!.channel.rooms.slice(0, roomCount),
     ...createdRooms.map(room => {
       const settings = sample.settingsByRoom[room.id];
-      return { ...room, ...settings, picture: settings?.picture === undefined ? room.picture : settings.picture ?? undefined };
+      return { ...room, ...settings, serviceRelay: { enabled: settings?.allowServiceRelay ?? room.serviceRelay?.enabled ?? false, available: false }, picture: settings?.picture === undefined ? room.picture : settings.picture ?? undefined };
     })].filter(room => !removedRooms.has(room.id));
   const roomIds = new Set(rooms.map(room => room.id));
   const publications = (sharingRoom ? [{ audience: [], id: "sample-screen-2", roomId: sharingRoom,
@@ -202,7 +202,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     ownerId: guestPreview ? "sample-bo" : sample.channel.state!.channel.ownerId, roomCreationPolicy,
     hostingMode: new URLSearchParams(location.search).has("hosted") ? "hosted" as const : "lightweight" as const,
     managedRoomIds: guestPreview ? [] : [...roomIds, ...(extraRoomId && !removedRooms.has(extraRoomId) ? [extraRoomId] : [])],
-    rooms: rooms.map(room => ({ ...room, ...(hostOffline && room.id === "friday" ? { available: false, delivery: undefined,
+    rooms: rooms.map(room => ({ ...room, ...(hostOffline && room.id === "friday" ? { available: false, delivery: undefined, serviceRelay: undefined,
       ...(new URLSearchParams(location.search).has("offline-locked") ? { authorized: false, canManage: false } : {}) } : {}),
       name: longNames && room.id === "friday" ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,
       fileActivity: fileSample && room.id === "friday" && !hostOffline ? [
@@ -385,6 +385,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     createRoom: async settings => {
       const id = `sample-room-${crypto.randomUUID()}`;
       setCreatedRooms(previous => [...previous, { ...sample.channel.state!.channel.rooms[0], ...settings,
+        serviceRelay: { enabled: settings.allowServiceRelay ?? false, available: false },
         id, name: settings.name, picture: settings.picture ?? undefined, participantSessionIds: [sample.channel.sessionId!],
         delivery: { hostSessionId: sample.channel.sessionId!, bindingId: `sample-binding-${id}`, nextHops: {} } }]);
       setSelected(id);

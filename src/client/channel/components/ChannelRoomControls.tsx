@@ -5,7 +5,7 @@ import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { downloadBlob } from "../../lib/download";
 import { formatChatTranscript } from "../../lib/room-chat-export";
-import type { ChannelMessage, ChannelUser, ChannelRoom, RoomCreationPolicy, ChannelTopology } from "../protocol";
+import type { ChannelMessage, ChannelUser, ChannelRoom, RoomCreationPolicy } from "../protocol";
 import { MAX_RELAY_CAPACITY } from "../protocol";
 import { RoomCreationInterrupted, roomCreationPolicyFor, roomDraft, roomSettings, roomSettingsPatch, type RoomDraft } from "../room-creation";
 import type { ChannelController } from "../types";
@@ -51,27 +51,14 @@ function RelayLimit({ value, min, label, caption = label, note, disabled, onChan
 
 export function ServiceTransit({ channel, room, disabled, run }: { channel: ChannelController; room: ChannelRoom; disabled: boolean; run: SettingsAction }) {
   const { t } = useCopy();
-  const [topology, setTopology] = useState<ChannelTopology | null>(null);
-  const [reload, setReload] = useState(0);
-  const [failed, setFailed] = useState(false);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    const lifetime = new AbortController();
-    setFailed(false); setLoading(true);
-    if (!disabled) void channel.roomTopology(room.id, undefined, lifetime.signal).then(
-      value => { if (!lifetime.signal.aborted) { setTopology(value); setLoading(false); } },
-      () => { if (!lifetime.signal.aborted) { setFailed(true); setLoading(false); } });
-    return () => lifetime.abort();
-  }, [channel.roomTopology, room.id, room.delivery?.bindingId, channel.state, disabled, reload]);
+  const relay = room.serviceRelay;
+  if (!room.canManage || !room.authorized || !room.available || !relay) return null;
   return <section className="c3-room-relay">
     <h4>{t("room.transit.title")}</h4>
-    <SwitchItem checked={topology?.serviceEnabled ?? false} disabled={disabled || loading || failed || channel.pending.has(`room:${room.id}`)}
-      label={t("room.transit.allow")} onChange={enabled => { void run(async () => {
-        await channel.updateRoom(room.id, { allowServiceRelay: enabled }, false);
-        setReload(value => value + 1);
-      }); }} />
+    <SwitchItem checked={relay.enabled} disabled={disabled || channel.pending.has(`room:${room.id}`)}
+      label={t("room.transit.allow")} onChange={enabled => { void run(() => channel.updateRoom(room.id, { allowServiceRelay: enabled }, false)); }} />
     <p>{t("room.transit.note")}</p>
-    {(failed || loading || !topology?.serviceAvailable) && <p role="status">{t(failed ? "connection.topologyUnavailable" : loading ? "common.loading" : "room.transit.unavailable")}</p>}
+    {!relay.available && <p role="status">{t("room.transit.unavailable")}</p>}
   </section>;
 }
 
@@ -321,7 +308,7 @@ function RoomSettings({ channel, room, onClose }: {
           </section>
         </section>}
         {room.authorized && room.canManage && <section id={`${id}-relay`} role="tabpanel" aria-labelledby={`${id}-relay-tab`} hidden={selected !== "relay"}>
-          {room.canManage && <ServiceTransit key={`${room.id}/${room.delivery?.bindingId}`} channel={channel} room={room} disabled={!available || working} run={run} />}
+          <ServiceTransit channel={channel} room={room} disabled={!available || working} run={run} />
         </section>}
         {(room.authorized || room.canManage) && <section id={`${id}-data`} role="tabpanel" aria-labelledby={`${id}-data-tab`} hidden={selected !== "data"}>
           <h3>{t("room.settings.recordsTitle")}</h3>

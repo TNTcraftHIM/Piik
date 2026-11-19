@@ -31,9 +31,10 @@ const sources: NativeCaptureSources = { ...SOURCES, codecs: ["h264", "vp8"], sof
 
 /** Local samples have identities, but no measured or simulated network paths. */
 export function sampleRoomTopology(state: ChannelSnapshot, roomId: string, publicationId?: string): ChannelTopology {
-  const delivery = state.channel.rooms.find(room => room.id === roomId)!.delivery!;
+  const room = state.channel.rooms.find(room => room.id === roomId)!;
+  const delivery = room.delivery!;
   const screen = state.publications.find(value => value.roomId === roomId && value.id === publicationId && value.kind === "screen");
-  return { serviceAvailable: false, serviceEnabled: false, bindingId: delivery.bindingId, transitSession: null, base: { rootSessionId: delivery.hostSessionId, edges: [] },
+  return { serviceAvailable: room.serviceRelay?.available ?? false, serviceEnabled: room.serviceRelay?.enabled ?? false, bindingId: delivery.bindingId, transitSession: null, base: { rootSessionId: delivery.hostSessionId, edges: [] },
     screen: screen ? { publicationId: screen.id, sourceSessionId: screen.sessionId, edges: [] } : null };
 }
 
@@ -123,6 +124,7 @@ export function useChannelGuideSample(multiRoom = false) {
     .map(room => ({ creatorId: "sample-ada", access: "private" as const, hidden: false, hasPassword: false,
       authorized: true, canManage: true, available: true, reading: true, lastMessageSeq: room.id === "friday" ? sampleMessages.at(-1)?.seq ?? 0 : messagesByRoom[room.id]?.at(-1)?.seq ?? 0,
       delivery: { hostSessionId: appSessionId, bindingId: `sample-binding-${room.id}`, nextHops: {} },
+      serviceRelay: { enabled: settingsByRoom[room.id]?.allowServiceRelay ?? false, available: false },
       fileActivity: [],
       participantSessionIds: room.id === "studio" ? ["sample-coco-session", ...(voiceByRoom.studio ? ["sample-ada-session"] : [])]
         : ["sample-ada-session", "sample-bo-session", ...(multiRoom ? ["sample-dora-session"] : [])], capabilities: { attachments: true },
