@@ -299,7 +299,14 @@ export class ChannelAttachments {
     if (source && this.rooms.some(room => room.id === key.roomId && room.available && room.authorized)) {
       void this.command({ type: "file_offer", ...key, sha256: source.attachment.sha256, available: true }).then(() => {
         if (this.sources.get(keyOf(key)) === source) { source.status = idle; this.changed(); }
-      }).catch(() => { if (this.sources.get(keyOf(key)) === source) { source.status = { busy: false, error: "file_offer_failed" }; this.changed(); } });
+      }).catch(error => {
+        if (this.sources.get(keyOf(key)) !== source) return;
+        if (source.retained && errorOf(error).message === "attachment_unavailable") {
+          this.sources.delete(keyOf(key));
+          void this.store?.remove(key).catch(() => {});
+        } else source.status = { busy: false, error: "file_offer_failed" };
+        this.changed();
+      });
     }
   }
 

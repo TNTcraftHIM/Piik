@@ -203,6 +203,20 @@ test.each(["resolve", "reject"])("cancelling runtime preparation permits an imme
   } finally { finish(); files.reset(); }
 });
 
+test("reopening a room discards a cached original the host no longer has in history", async () => {
+  const file = new File(["GIF89a"], attachment.name);
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([{ key, attachment, file }]);
+  const remove = vi.spyOn(FileStore.prototype, "remove").mockResolvedValue();
+  const files = new ChannelAttachments(async command => {
+    if (command.type === "file_offer" && command.available) throw new Error("attachment_unavailable");
+  }, async () => {});
+  try {
+    files.update("new-endpoint", { domainId: "domain", userId: "reader" }, [],
+      [{ id: key.roomId, authorized: true, available: true }] as ChannelRoom[], []);
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledWith(key));
+  } finally { files.reset(); }
+});
+
 test("a file offer failure keeps its warning until a personal download supplies progress or a result", async () => {
   const files = setup(async command => { if (command.type === "file_offer") throw new Error("disconnected"); });
   vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new Error("optional_cache_unavailable"));
