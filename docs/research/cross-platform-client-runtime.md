@@ -221,7 +221,9 @@ No matched evidence establishes a universally more reachable replacement for
 Quick Tunnel, especially across mainland networks. These are candidates, not
 accepted Piik integrations. Viewers must only open the invitation in a Browser;
 requiring their own account, extra software or proxy/network configuration is
-outside this path. Operator-managed tunnels belong with self-hosted Sites.
+outside this path. An operator-managed HTTPS tunnel can also publish the App's
+local room service at a fixed origin. The operator runs the tunnel and Piik
+generates invitations for that origin. [App setup with frp](../operations/self-hosting.md#forward-a-piik-app-invitation)
 
 | Candidate | Relevant capability | Cost to Piik's account-free invitation |
 | --- | --- | --- |

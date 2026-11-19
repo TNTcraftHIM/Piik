@@ -246,6 +246,10 @@ equal `SFU_UDP_PORT`. Do not forward Piik's STUN ports through frp: its UDP prox
 STUN would report. Restart Piik and check HTTPS health, room access and
 **Server media** from another network.
 
+### Forward a Piik App invitation
+
+Run `piik-app --link --public-origin https://share.example.com --port 8787` on the App computer. Use the public HTTPS reverse proxy described above and only the `piik-web` TCP proxy in frpc, targeting `127.0.0.1:8787`. Start frps and frpc yourself. The Host opens its loopback entry. Viewer invitations and QR codes use the fixed HTTPS domain. Room access settings still apply. App media uses WebRTC P2P. Use `--local` for LAN invitations.
+
 ### Using a managed frp provider
 
 Services such as SakuraFrp supply the public server and their own client or

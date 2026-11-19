@@ -221,6 +221,10 @@ frpc 的本地与公网 UDP 端口必须都等于 `SFU_UDP_PORT`。
 [改变 STUN 所观察到的源地址映射](../research/nat-traversal.md#external-forwarding-and-participant-relays)。
 重启 Piik，从另一网络验证 HTTPS 健康检查、房间访问及**服务器转发**。
 
+### 转发 Piik App 的公网邀请
+
+在 App 电脑上运行 `piik-app --link --public-origin https://share.example.com --port 8787`。公网主机使用上文的 HTTPS 反向代理，frpc 仅配置 `piik-web` TCP 代理并转发至 `127.0.0.1:8787`。自行启动 frps 和 frpc。主持人打开本机回环入口，观众邀请和二维码使用固定的 HTTPS 域名。房间访问设置继续生效，音视频使用 WebRTC P2P。仅在局域网分享时使用 `--local`。
+
 ### 使用托管 frp 服务
 
 SakuraFrp 等服务会提供公网服务器和自己的客户端或启动器；按服务商教程配置，
