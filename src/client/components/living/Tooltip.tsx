@@ -188,8 +188,12 @@ export function Tooltip({
     const vh = viewport?.height ?? view.innerHeight;
     const x = viewport?.offsetLeft ?? 0, y = viewport?.offsetTop ?? 0;
     const right = x + vw, bottom = y + vh;
-    tipRef.current?.style.setProperty("--tooltip-max-width", `${Math.max(0, vw - EDGE_MARGIN * 2)}px`);
-    tipRef.current?.style.setProperty("--tooltip-max-height", `${Math.max(0, vh - EDGE_MARGIN * 2)}px`);
+    const tip = tipRef.current;
+    // Geometry is measured in viewport pixels; fixed CSS insets and panel
+    // dimensions still use the popover's inherited CSS zoom.
+    const zoom = tip?.currentCSSZoom || 1;
+    tip?.style.setProperty("--tooltip-max-width", `${Math.max(0, vw - EDGE_MARGIN * 2) / zoom}px`);
+    tip?.style.setProperty("--tooltip-max-height", `${Math.max(0, vh - EDGE_MARGIN * 2) / zoom}px`);
     // Grid/flex layouts may stretch the interaction wrapper beyond its control.
     // Aim at the visible trigger rather than the wrapper's unused space.
     const rect = (wrap.firstElementChild ?? wrap).getBoundingClientRect();
@@ -207,12 +211,12 @@ export function Tooltip({
     const below = playback
       ? mediaBoundary?.getBoundingClientRect().bottom ?? avoid.bottom
       : avoid.bottom;
-    const measured = panelMounted ? (tipRef.current?.offsetWidth ?? 0) : 0;
+    const measured = panelMounted ? (tip?.getBoundingClientRect().width ?? 0) : 0;
     const width = Math.max(0, Math.min(measured || 320, vw - EDGE_MARGIN * 2));
     // Same idea vertically: a control scrolled near the top has no room above,
     // and the panel would be cut off by the viewport edge.
     const panelHeight =
-      (panelMounted ? tipRef.current?.offsetHeight : 0) || FALLBACK_PANEL_HEIGHT;
+      (panelMounted ? tip?.getBoundingClientRect().height : 0) || FALLBACK_PANEL_HEIGHT;
     const fitsAbove = avoid.top - panelHeight - EDGE_MARGIN >= y + EDGE_MARGIN;
     const fitsBelow = !vh || below + panelHeight + EDGE_MARGIN <= bottom - EDGE_MARGIN;
     const preferredPlace = insideSurface(wrap.closest<HTMLElement>(".lr-tv-chin")) || controlBar?.classList.contains("lr-host-share-controls") ? "below" : place;
@@ -299,12 +303,12 @@ export function Tooltip({
       top = sideTop;
       caret = Math.max(14, Math.min(centerY - top, panelHeight - 14));
     }
-    const border = tipRef.current ? parseFloat(view.getComputedStyle(tipRef.current).borderLeftWidth) || 0 : 0;
+    const border = tip ? parseFloat(view.getComputedStyle(tip).borderLeftWidth) || 0 : 0;
     setPosition({
-      left,
-      top,
+      left: left / zoom,
+      top: top / zoom,
       // The caret's absolute position starts inside the panel's border.
-      caret: caret - border,
+      caret: caret / zoom - border,
       placement: livePlace,
     });
   };
@@ -356,7 +360,10 @@ export function Tooltip({
     };
     // A parent popover places itself after opening, and movable panels update
     // their inset without scrolling the page. Follow that owner's final layout.
+    const trigger = wrapRef.current?.firstElementChild;
     const surface = wrapRef.current?.closest<HTMLElement>("[popover]");
+    // A pawn can move on focus or hover without changing its layout box.
+    trigger?.addEventListener("transitionend", schedulePick);
     const observer = new ResizeObserver(schedulePick);
     for (const element of [wrapRef.current, wrapRef.current?.firstElementChild, tipRef.current, surface]) if (element) observer.observe(element);
     const movement = new MutationObserver(schedulePick);
@@ -370,6 +377,7 @@ export function Tooltip({
     return () => {
       view.cancelAnimationFrame(frame);
       observer.disconnect();
+      trigger?.removeEventListener("transitionend", schedulePick);
       movement.disconnect();
       viewport?.removeEventListener("resize", schedulePick);
       viewport?.removeEventListener("scroll", schedulePick);
