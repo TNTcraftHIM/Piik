@@ -176,6 +176,9 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       <Btn icon="window" title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />
     </div></div>}
     {player.error ? <div className="c3-mini-message" role="alert"><div className="c3-frame-wait c3-watch-result"><span>{failure}</span>
+      {!owned && receiving?.mode === "direct" && receiving.browserSource && surface.kind !== "external" &&
+        <Btn icon="refresh" title="common.retry" cap="common.retry" size="compact" disabled={disabled || receiving.disabled || receiving.pending}
+          busy={receiving.pending} onClick={receiving.onDirect} />}
       {owned && player.media.page && <Btn icon="window" title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />}
       {!owned && website && originalPageAvailable && surface.kind !== "external" && (onAppWatch
         ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={onAppWatch} />

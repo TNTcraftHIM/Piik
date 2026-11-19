@@ -286,7 +286,9 @@ website-connector work.
 The room offers one Watch action. It opens a directly playable source first,
 then uses the sharer's offered media transfer when that is the available browser
 path. A source that requires the original webpage offers Watch in App. Viewers
-can change an available receiving method in the player's settings.
+can change an available receiving method in the player's settings. If direct
+playback fails, Retry reopens the viewer's player for the same activity. Local
+volume and mute follow the viewer across the retry.
 
 When a discovered media URL loads in the sharer's Browser player, that player
 owns playback in the Piik stage. Prepare it before replacing the current share;

@@ -134,6 +134,20 @@ describe("Webpage watch presentation", () => {
     expect(render({ peerSupported: false })).not.toContain("<button");
   });
 
+  it("lets a browser viewer retry a failed direct source in place", () => {
+    setCopy({ lang: "en" });
+    const player = { video: null, presentation: { kind: "embed" }, media: {}, error: "watch_media_unavailable" } as unknown as WatchPlayer;
+    const html = renderToStaticMarkup(createElement(ChannelWatchVideo, {
+      player, owned: false, paused: true, label: "Source", presentation: "full", disabled: false,
+      website: false, originalPageAvailable: false, theaterMode: false, onToggleTheater: vi.fn(),
+      onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
+      receiving: { peerAvailable: false, peerSupported: true, mode: "direct", browserSource: true, failed: true,
+        onPeer: vi.fn(), onDirect: vi.fn() },
+    }));
+    expect(html).toContain('aria-label="Retry"');
+    expect(html).not.toContain('aria-label="Receive from sharer"');
+  });
+
   it.each(["watch_source_inspection_unavailable", "watch_media_unavailable", "watch_media_unsupported"])(
     "keeps %s factual when this platform has no original-page capability", error => {
       setCopy({ lang: "en" });
