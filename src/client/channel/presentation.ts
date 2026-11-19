@@ -1,7 +1,11 @@
 import type { Copy, CopyKey } from "../ui/copy";
 import type { GlyphName } from "../ui/icons";
-import type { ChannelMessage, ChannelPublication, ChannelSnapshot, ChannelUser, WatchActivity } from "./protocol";
+import type { ChannelMessage, ChannelPublication, ChannelRoom, ChannelSnapshot, ChannelUser, WatchActivity } from "./protocol";
 import type { WatchPlayer } from "./watch-playback";
+
+export function roomHasUnread(room: Pick<ChannelRoom, "authorized" | "lastMessageSeq">, readThrough?: number): boolean {
+  return room.authorized && readThrough !== undefined && room.lastMessageSeq > readThrough;
+}
 
 /** A visit's unread divider starts at another person's message, never our own send. */
 export function firstUnreadMessageId(messages: readonly Pick<ChannelMessage, "id" | "seq" | "userId">[], after: number | undefined, selfUserId?: string | null): string | undefined {

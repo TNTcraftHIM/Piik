@@ -1407,7 +1407,7 @@ export class ChannelSession {
     if (!this.view.messagesByRoom[roomId]?.some(message => message.seq === seq)) throw new Error("message_unavailable");
   };
 
-  private readMarkers(state: ChannelSnapshot, userId?: string): Record<string, number> {
+  private readMarkers(state: ChannelSnapshot, userId = state.sessions.find(session => session.id === this.view.sessionId)?.userId): Record<string, number> {
     if (!userId) { this.readMarkerKey = null; return {}; }
     const key = `piik.channel.read.${state.channel.id}.${userId}`;
     let saved: Record<string, number> = {};
@@ -1422,14 +1422,18 @@ export class ChannelSession {
     return markers;
   }
 
-  refreshReadMarkers = (): void => {
-    if (this.view.state) this.patch({ readByRoom: this.readMarkers(this.view.state, this.view.self?.id) });
+  refreshReadMarkers = (event?: StorageEvent): void => {
+    if (event?.key != null && event.key !== this.readMarkerKey) return;
+    const state = this.view.state;
+    if (state) this.patch({ readByRoom: this.readMarkers(state) });
   };
 
   markRead = (roomId: string, seq: number): void => {
-    const room = this.view.state?.channel.rooms.find(room => room.id === roomId && room.authorized);
-    if (!room || !this.readMarkerKey) return;
-    const current = this.readMarkers(this.view.state!, this.view.self?.id);
+    const state = this.view.state;
+    const room = state?.channel.rooms.find(room => room.id === roomId && room.authorized);
+    if (!state || !room) return;
+    const current = this.readMarkers(state);
+    if (!this.readMarkerKey) return;
     const read = Math.min(seq, room.lastMessageSeq);
     if ((current[roomId] ?? 0) >= read) return;
     const readByRoom = { ...current, [roomId]: read };

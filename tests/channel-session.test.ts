@@ -9616,6 +9616,22 @@ test("read markers stay personal and do not turn background room activity into r
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().readByRoom).toEqual({ first: 1, second: 8 });
     expect(JSON.parse(storage.get(key)!)).toEqual({ first: 1, second: 4 });
+    const siteId = state.channel.id;
+    const originalUser = session.getSnapshot().self!.id;
+    const otherUser = "other-reader";
+    storage.set(`piik.channel.read.${siteId}.${otherUser}`, JSON.stringify({ first: 0, second: 2 }));
+    state.users.push({ ...state.users.find(user => user.id === originalUser)!, id: otherUser });
+    const endpoint = state.sessions.find(value => value.id === session.getSnapshot().sessionId)!;
+    endpoint.userId = otherUser;
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().readByRoom).toEqual({ first: 0, second: 2 });
+    session.refreshReadMarkers();
+    expect(session.getSnapshot().readByRoom).toEqual({ first: 0, second: 2 });
+    session.markRead("second", 3);
+    endpoint.userId = originalUser;
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().readByRoom).toEqual({ first: 1, second: 8 });
+    expect(JSON.parse(storage.get(`piik.channel.read.${siteId}.${otherUser}`)!)).toEqual({ first: 0, second: 3 });
   } finally { session.close(); }
 });
 
