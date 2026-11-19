@@ -355,10 +355,10 @@ function RoomSettings({ channel, room, onClose }: {
             busy={backupBusy} onExport={() => channel.exportRoomBackup(room.id, includeFiles)} onRestore={async file => {
               try {
                 const result = await channel.restoreRoomBackup(file, room.id);
-                setDraft(null);
+                setDraft({});
                 return result;
               } catch (error) {
-                if (error instanceof Error && error.message === "room_restored_connection_failed") setDraft(null);
+                if (error instanceof Error && error.message === "room_restored_connection_failed") setDraft({});
                 throw error;
               }
             }} />}
