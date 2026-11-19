@@ -397,6 +397,9 @@ impl GraphicsCaptureApiHandler for Wgc {
         frame: &mut Frame,
         control: InternalCaptureControl,
     ) -> Result<()> {
+        if let Some(metrics) = &self.shared.capture_metrics {
+            metrics.callback();
+        }
         let qpc = frame.timestamp()?.Duration;
         {
             let state = self.shared.state.lock().unwrap();
@@ -413,6 +416,9 @@ impl GraphicsCaptureApiHandler for Wgc {
         }
         self.cadence.set_fps(self.fps.load(Ordering::Relaxed));
         if !self.cadence.accept(qpc) {
+            if let Some(metrics) = &self.shared.capture_metrics {
+                metrics.cadence_skipped();
+            }
             return Ok(());
         }
         let frame = self.copy(frame, qpc, color)?;

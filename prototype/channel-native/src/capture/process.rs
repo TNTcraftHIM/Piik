@@ -47,6 +47,7 @@ pub(super) struct Shared {
     changed: Notify,
     available: Notify,
     stop: watch::Sender<Option<Result<(), String>>>,
+    capture_metrics: Option<Arc<crate::diagnostics::CaptureFrames>>,
 }
 impl Shared {
     pub fn device_lost(&self, reason: HRESULT) {
@@ -164,6 +165,7 @@ impl Encoding {
         clock: CaptureClock,
         timing: FrameTiming,
         latest: Option<RawFrame>,
+        capture_metrics: Option<Arc<crate::diagnostics::CaptureFrames>>,
     ) -> Result<Self> {
         let (stop, stopped) = watch::channel(None);
         let shared = Arc::new(Shared {
@@ -174,6 +176,7 @@ impl Encoding {
             changed: Notify::new(),
             available: Notify::new(),
             stop,
+            capture_metrics,
         });
         let worker = shared.clone();
         let thread = thread::Builder::new()
@@ -480,6 +483,9 @@ async fn child(
                         ensure!(length <= worker::MAX_AU, "encoding IPC AU too large");
                         let mut bytes = vec![0; length];
                         output.read_exact(&mut bytes).await?;
+                        if let Some(metrics) = &reader_shared.capture_metrics {
+                            metrics.received();
+                        }
                         if codec == VideoCodec::H264
                             && keyframe
                             && !reader_shared.state.lock().unwrap().independent
@@ -593,6 +599,7 @@ mod tests {
                 changed: Notify::new(),
                 available: Notify::new(),
                 stop,
+                capture_metrics: None,
             }),
             thread: None,
             error_reported: false,

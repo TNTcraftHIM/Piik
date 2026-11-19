@@ -33,14 +33,16 @@ pub(super) struct Shared {
     pub state: Mutex<State>,
     stop_event: OwnedHandle,
     stopped: Notify,
+    pub(super) capture_metrics: Option<Arc<crate::diagnostics::CaptureFrames>>,
 }
 impl Shared {
-    fn new() -> Result<Self> {
+    fn new(capture_metrics: Option<Arc<crate::diagnostics::CaptureFrames>>) -> Result<Self> {
         let event = unsafe { CreateEventW(None, true, false, None)? };
         Ok(Self {
             state: Mutex::new(State::default()),
             stop_event: unsafe { OwnedHandle::from_raw_handle(event.0) },
             stopped: Notify::new(),
+            capture_metrics,
         })
     }
     pub fn wait_for_stop_or(&self, completion: &[HANDLE]) -> Result<()> {
@@ -83,6 +85,9 @@ impl Shared {
             return;
         }
         state.latest = Some(frame.clone());
+        if let Some(metrics) = &self.capture_metrics {
+            metrics.published();
+        }
         state.encodings.retain(|weak| {
             weak.upgrade()
                 .is_some_and(|encoding| encoding.input(frame.clone()))
@@ -128,7 +133,10 @@ pub(crate) struct Frames {
 impl Frames {
     pub fn new(timing: FrameTiming) -> Result<Self> {
         Ok(Self {
-            shared: Arc::new(Shared::new()?),
+            shared: Arc::new(Shared::new(match timing {
+                FrameTiming::Capture => crate::diagnostics::CaptureFrames::start(),
+                FrameTiming::Source => None,
+            })?),
             clock: CaptureClock::new()?,
             timing,
         })
@@ -173,6 +181,7 @@ impl Frames {
             self.clock,
             self.timing,
             state.latest.clone(),
+            self.shared.capture_metrics.clone(),
         )?;
         state.encodings.push(Arc::downgrade(&encoding.shared));
         Ok(encoding)
@@ -188,7 +197,7 @@ mod tests {
 
     #[test]
     fn capture_completion_and_stop_both_wake_the_owner() {
-        let shared = Arc::new(Shared::new().unwrap());
+        let shared = Arc::new(Shared::new(None).unwrap());
         let thread = thread::spawn(|| {
             Err::<(), _>(GraphicsCaptureApiError::FrameHandlerError(
                 "timestamp failed",

@@ -14,14 +14,19 @@ use std::{
 use uuid::Uuid;
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
+#[cfg(all(feature = "capture", windows))]
+mod capture_frames;
+#[cfg(all(feature = "capture", windows))]
+pub(crate) use capture_frames::CaptureFrames;
+
 const MAX_RECORDS: usize = 8_192;
 const MAX_BYTES: usize = 8 * 1024 * 1024;
 const MAX_RECORD_BYTES: usize = 8 * 1024;
-static RECORDER: Recorder = Recorder(Mutex::new(None));
+static RECORDER: Recorder = Recorder::new();
 static INSTALLED: OnceLock<std::result::Result<(), log::SetLoggerError>> = OnceLock::new();
 
 pub fn enabled() -> bool {
-    RECORDER.0.lock().unwrap().is_some()
+    RECORDER.0.lock().unwrap().buffer.is_some()
 }
 
 // Canonical UUID text permits offline correlation with Browser pairId; the
@@ -117,12 +122,18 @@ pub fn enable() -> Result<()> {
         })
         .as_ref()
         .map_err(|error| anyhow!("App diagnostics could not start: {error}"))?;
-    RECORDER.0.lock().unwrap().get_or_insert_with(Buffer::new);
+    let mut state = RECORDER.0.lock().unwrap();
+    state.buffer.get_or_insert_with(Buffer::new);
+    #[cfg(all(feature = "capture", windows))]
+    capture_frames::ENABLED.store(true, std::sync::atomic::Ordering::Relaxed);
     Ok(())
 }
 
 pub fn snapshot() -> Option<Snapshot> {
-    RECORDER.0.lock().unwrap().as_ref().map(|buffer| Snapshot {
+    let state = RECORDER.0.lock().unwrap();
+    state.buffer.as_ref().map(|buffer| Snapshot {
+        #[cfg(all(feature = "capture", windows))]
+        capture_sources: state.captures.samples(buffer.started),
         started_at_ms: buffer.started_at_ms,
         evicted: buffer.evicted,
         truncated: buffer.truncated,
@@ -203,11 +214,27 @@ fn target(value: &str) -> Option<&'static str> {
         _ => None,
     }
 }
-struct Recorder(Mutex<Option<Buffer>>);
+struct RecorderState {
+    buffer: Option<Buffer>,
+    #[cfg(all(feature = "capture", windows))]
+    captures: capture_frames::Captures,
+}
+
+struct Recorder(Mutex<RecorderState>);
 impl Recorder {
+    const fn new() -> Self {
+        Self(Mutex::new(RecorderState {
+            buffer: None,
+            #[cfg(all(feature = "capture", windows))]
+            captures: capture_frames::Captures::new(),
+        }))
+    }
+
     fn rtc_pair(&self, pair: Uuid, event: RtcPairEvent) {
         let mut state = self.0.lock().unwrap();
-        let Some(buffer) = state.as_mut() else { return };
+        let Some(buffer) = state.buffer.as_mut() else {
+            return;
+        };
         // No formatting or hashing before opt-in; fields are reviewed values,
         // never an upstream error string, address, SDP or preparation key.
         if let Ok(message) =
@@ -225,7 +252,9 @@ impl Recorder {
     #[cfg(any(test, all(feature = "capture", windows)))]
     fn system_audio_source(&self, process: Option<(u32, bool)>) {
         let mut state = self.0.lock().unwrap();
-        let Some(buffer) = state.as_mut() else { return };
+        let Some(buffer) = state.buffer.as_mut() else {
+            return;
+        };
         let (scope, process_id) = match process {
             None => ("default-output", None),
             Some((pid, true)) => ("include-process-tree", Some(pid)),
@@ -247,7 +276,7 @@ impl Log for Recorder {
     fn enabled(&self, metadata: &Metadata<'_>) -> bool {
         target(metadata.target()).is_some()
             && metadata.level() <= log::Level::Warn
-            && self.0.lock().unwrap().is_some()
+            && self.0.lock().unwrap().buffer.is_some()
     }
     fn log(&self, record: &Record<'_>) {
         // Log callers may bypass enabled(); the sink enforces its own boundary.
@@ -257,7 +286,7 @@ impl Log for Recorder {
         if record.level() > log::Level::Warn {
             return;
         }
-        if let Some(buffer) = self.0.lock().unwrap().as_mut() {
+        if let Some(buffer) = self.0.lock().unwrap().buffer.as_mut() {
             buffer.push(record, target);
         }
     }
@@ -317,6 +346,8 @@ fn technical_text(text: &str) -> String {
 }
 
 pub struct Snapshot {
+    #[cfg(all(feature = "capture", windows))]
+    capture_sources: Vec<capture_frames::Sample>,
     started_at_ms: u64,
     evicted: u64,
     truncated: u64,
@@ -346,6 +377,11 @@ impl Snapshot {
                 "evicted":self.evicted,"truncated":self.truncated,
             }),
         )?;
+        #[cfg(all(feature = "capture", windows))]
+        if !self.capture_sources.is_empty() {
+            zip.start_file("capture-frames.json", options)?;
+            serde_json::to_writer(&mut zip, &self.capture_sources)?;
+        }
         zip.start_file("events.ndjson", options)?;
         for event in self.events {
             serde_json::to_writer(&mut zip, &event)?;
@@ -359,14 +395,75 @@ impl Snapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(all(feature = "capture", windows))]
+    #[test]
+    fn capture_samples_keep_sources_and_stage_counts_separate() {
+        const CHILD: &str = "PIIK_CAPTURE_SAMPLE_TEST_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "diagnostics::tests::capture_samples_keep_sources_and_stage_counts_separate",
+                ])
+                .env(CHILD, "1")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stdout)
+            );
+            return;
+        }
+        let source = CaptureFrames::start().unwrap();
+        source.callback();
+        source.received();
+        assert!(snapshot().is_none());
+        enable().unwrap();
+        source.callback();
+        source.published();
+        source.callback();
+        source.cadence_skipped();
+        source.received();
+        source.received();
+        let second_source = CaptureFrames::start().unwrap();
+        second_source.callback();
+
+        let active = snapshot().unwrap().capture_sources;
+        assert_eq!(active.len(), 2);
+        assert_eq!(active[0].wgc_callbacks, 2);
+        assert_eq!(active[0].raw_published, 1);
+        assert_eq!(active[0].cadence_skipped, 1);
+        assert_eq!(active[0].encoded_aus_read_all_outputs, 2);
+        assert_eq!(active[1].wgc_callbacks, 1);
+        assert_eq!(active[1].encoded_aus_read_all_outputs, 0);
+        assert_ne!(active[0].source, active[1].source);
+        enable().unwrap();
+        assert_eq!(snapshot().unwrap().capture_sources[0].raw_published, 1);
+
+        drop(source);
+        let report = snapshot().unwrap();
+        assert_eq!(report.capture_sources.len(), 1);
+        assert_eq!(report.capture_sources[0].source, active[1].source);
+        let summaries: Vec<serde_json::Value> = report
+            .events
+            .iter()
+            .filter_map(|event| event.message.strip_prefix("Capture frame summary: "))
+            .map(|value| serde_json::from_str(value).unwrap())
+            .collect();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0]["source"], active[0].source);
+        assert_eq!(summaries[0]["encoded_aus_read_all_outputs"], 2);
+    }
+
     #[test]
     fn pair_stages_export_only_after_opt_in_without_conflating_preparation_and_ice() {
-        let recorder = Recorder(Mutex::new(None));
+        let recorder = Recorder::new();
         let first = Uuid::parse_str("00000000-0000-4000-8000-000000000001").unwrap();
         let second = Uuid::parse_str("00000000-0000-4000-8000-000000000002").unwrap();
         recorder.rtc_pair(first, RtcPairEvent::TransportConnected);
-        assert!(recorder.0.lock().unwrap().is_none());
-        *recorder.0.lock().unwrap() = Some(Buffer::new());
+        assert!(recorder.0.lock().unwrap().buffer.is_none());
+        recorder.0.lock().unwrap().buffer = Some(Buffer::new());
         recorder.rtc_pair(
             first,
             RtcPairEvent::Mappings {
@@ -397,8 +494,10 @@ mod tests {
             },
         );
         let state = recorder.0.lock().unwrap();
-        let buffer = state.as_ref().unwrap();
+        let buffer = state.buffer.as_ref().unwrap();
         let snapshot = Snapshot {
+            #[cfg(all(feature = "capture", windows))]
+            capture_sources: Vec::new(),
             started_at_ms: buffer.started_at_ms,
             evicted: buffer.evicted,
             truncated: buffer.truncated,
@@ -455,15 +554,15 @@ mod tests {
 
     #[test]
     fn audio_scope_is_opt_in_and_distinguishes_process_exclusion() {
-        let recorder = Recorder(Mutex::new(None));
+        let recorder = Recorder::new();
         recorder.system_audio_source(Some((42, false)));
-        assert!(recorder.0.lock().unwrap().is_none());
-        *recorder.0.lock().unwrap() = Some(Buffer::new());
+        assert!(recorder.0.lock().unwrap().buffer.is_none());
+        recorder.0.lock().unwrap().buffer = Some(Buffer::new());
         recorder.system_audio_source(None);
         recorder.system_audio_source(Some((41, true)));
         recorder.system_audio_source(Some((42, false)));
         let state = recorder.0.lock().unwrap();
-        let events = &state.as_ref().unwrap().events;
+        let events = &state.buffer.as_ref().unwrap().events;
         assert_eq!(events.len(), 3);
         assert!(events[0]
             .message
@@ -482,7 +581,7 @@ mod tests {
 
     #[test]
     fn opt_in_bounds_targets_and_export() {
-        let recorder = Recorder(Mutex::new(None));
+        let recorder = Recorder::new();
         let emit = |target: &str, args: fmt::Arguments<'_>| {
             recorder.log(
                 &Record::builder()
@@ -494,14 +593,15 @@ mod tests {
         };
         emit("piik.capture", format_args!("off"));
         emit("piik.rtc", format_args!("off transport"));
-        assert!(recorder.0.lock().unwrap().is_none());
-        *recorder.0.lock().unwrap() = Some(Buffer::new());
+        assert!(recorder.0.lock().unwrap().buffer.is_none());
+        recorder.0.lock().unwrap().buffer = Some(Buffer::new());
         emit("piik.capture.extra", format_args!("not an accepted target"));
         emit("str0m", format_args!("SDK body"));
         assert!(recorder
             .0
             .lock()
             .unwrap()
+            .buffer
             .as_ref()
             .unwrap()
             .events
@@ -510,7 +610,7 @@ mod tests {
             emit("piik.capture", format_args!("capture ended"));
         }
         let mut state = recorder.0.lock().unwrap();
-        let buffer = state.as_mut().unwrap();
+        let buffer = state.buffer.as_mut().unwrap();
         assert_eq!(buffer.events.len(), MAX_RECORDS);
         assert_eq!(buffer.evicted, 1);
         drop(state);
@@ -525,7 +625,7 @@ mod tests {
             format_args!("synthetic-chat-body synthetic-source-title"),
         );
         let state = recorder.0.lock().unwrap();
-        let buffer = state.as_ref().unwrap();
+        let buffer = state.buffer.as_ref().unwrap();
         assert!(buffer.bytes <= MAX_BYTES && buffer.truncated > 0);
         assert!(buffer
             .events
@@ -536,6 +636,8 @@ mod tests {
             "codec failed: [URL omitted] [private detail omitted]"
         );
         let snapshot = Snapshot {
+            #[cfg(all(feature = "capture", windows))]
+            capture_sources: Vec::new(),
             started_at_ms: buffer.started_at_ms,
             evicted: buffer.evicted,
             truncated: buffer.truncated,

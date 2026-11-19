@@ -491,6 +491,14 @@ Windows shared-sound configuration records distinguish default-output, process-t
 inclusion and process-tree exclusion, with the selected and Native process IDs.
 They contain no window titles, program paths, device identifiers or audio samples.
 
+On Windows, `capture-frames.json` lists active window and screen captures by
+an anonymous number. Compare two reports from the same App process to see how
+many capture callbacks arrived, how many frames the capture rate limit skipped,
+and how many raw frames entered the encoder pipeline. The encoded access-unit
+count covers all encoder outputs attached to that source. Counting starts
+when both capture and diagnostics are active. When the source ends, its final
+counters appear under the same number in `events.ndjson`.
+
 ## UI previews
 
 The full workspace is the default. An empty site without a saved interface choice
