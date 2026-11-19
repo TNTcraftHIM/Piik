@@ -350,6 +350,7 @@ impl RoomRuntime {
 
     fn relay_limits(&self) -> RelayLimits {
         RelayLimits {
+            shared: Default::default(),
             source_direct_limit: None,
             default: self.policy.relay_capacity as usize,
             host: self.base.as_ref().map_or(Uuid::nil(), BaseTree::root),
@@ -1321,7 +1322,7 @@ impl RoomRuntime {
                 neighbors.entry(b).or_default().insert(a);
             }
         }
-        let readers: BTreeMap<_, _> = self
+        let reader_capacity: BTreeMap<_, _> = self
             .activity
             .iter()
             .filter(|(session, activity)| {
@@ -1332,20 +1333,23 @@ impl RoomRuntime {
             .map(|(session, activity)| {
                 (
                     *session,
-                    activity
-                        .relay_capacity
-                        .map(usize::from)
-                        .unwrap_or(limits.default),
+                    (
+                        activity
+                            .relay_capacity
+                            .map(usize::from)
+                            .unwrap_or(limits.default),
+                        !demand.contains(session),
+                    ),
                 )
             })
             .collect();
-        let mut reserved = BTreeMap::<Uuid, usize>::new();
+        let mut reserved = BTreeMap::<(Uuid, Uuid), usize>::new();
         for flow in self.flows().filter(|flow| {
             !flow.presentation
                 && flow.input_flow_id.is_some()
                 && self.publications[&flow.publication_id].info.kind == Kind::Screen
         }) {
-            *reserved.entry(flow.sender).or_default() += 1;
+            *reserved.entry((flow.sender, flow.receiver)).or_default() += 1;
         }
         for (id, publication) in &mut self.publications {
             publication.retain_sessions(endpoints);
@@ -1370,21 +1374,9 @@ impl RoomRuntime {
             }
             if publication.info.kind == Kind::Screen {
                 for flow in publication.relay_flows(&helpers) {
-                    *reserved.get_mut(&flow.sender).unwrap() -= 1;
+                    *reserved.get_mut(&(flow.sender, flow.receiver)).unwrap() -= 1;
                 }
             }
-            let reader_capacity = readers
-                .iter()
-                .map(|(reader, capacity)| {
-                    (
-                        *reader,
-                        (
-                            capacity.saturating_sub(reserved.get(reader).copied().unwrap_or(0)),
-                            !demand.contains(reader),
-                        ),
-                    )
-                })
-                .collect();
             let mut screen_limits = limits.clone();
             if publication.info.kind == Kind::Screen {
                 // A screen source owns its outputs. Forwarders share their
@@ -1396,16 +1388,13 @@ impl RoomRuntime {
                     .as_ref()
                     .and_then(|s| s.direct_limit)
                     .map(usize::from);
-                for (&session, &used) in &reserved {
-                    if session != publication.info.session_id && used > 0 {
-                        let capacity = limits
-                            .overrides
-                            .get(&session)
-                            .copied()
-                            .unwrap_or(limits.default);
+                for (&(sender, receiver), &count) in &reserved {
+                    if count > 0 && sender != publication.info.session_id {
                         screen_limits
-                            .overrides
-                            .insert(session, capacity.saturating_sub(used));
+                            .shared
+                            .entry(sender)
+                            .or_default()
+                            .insert(receiver);
                     }
                 }
             }
@@ -1424,7 +1413,7 @@ impl RoomRuntime {
             publication.bound_screen_preparation(&screen_limits, &helpers);
             if publication.info.kind == Kind::Screen {
                 for flow in publication.relay_flows(&helpers) {
-                    *reserved.entry(flow.sender).or_default() += 1;
+                    *reserved.entry((flow.sender, flow.receiver)).or_default() += 1;
                 }
             }
             needs_repair |= publication.needs_repair(&subscribers, &connected);
@@ -2421,8 +2410,16 @@ mod tests {
         room.failed_pair(d, c);
         room.reconcile(&endpoints, 6);
         let outputs: Vec<_> = room.flows().filter(|f| f.sender == a).collect();
-        assert_eq!(outputs.len(), 1);
-        assert_eq!(outputs[0].id, output.id);
+        assert_eq!(outputs.len(), 2);
+        assert!(outputs.iter().any(|flow| flow.id == output.id));
+        assert!(outputs.iter().all(|flow| flow.receiver == c));
+        let second = outputs.iter().find(|f| f.publication_id == id(11)).unwrap();
+        room.flow_state(second.id, c, a, FlowState::Decoded, 6)
+            .unwrap();
+        room.subscribe(member(b), b, id(11), true, None).unwrap();
+        room.failed_pair(d, b);
+        room.reconcile(&endpoints, 6);
+        assert!(!room.flows().any(|f| f.sender == a && f.receiver == b));
         room.set_relay_capacity(member(a), a, Some(0)).unwrap();
         room.reconcile(&endpoints, 7);
         assert!(!room
@@ -2874,6 +2871,7 @@ mod tests {
             let count = if multiple_parents { 7 } else { 5 };
             let all: BTreeSet<_> = (1..=count).map(id).collect();
             let mut limits = RelayLimits {
+                shared: Default::default(),
                 source_direct_limit: None,
                 default: 3,
                 host: id(1),

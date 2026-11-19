@@ -6,6 +6,7 @@ const BASE_PREPARE_MS: u64 = 20_000;
 
 #[derive(Clone)]
 pub(crate) struct RelayLimits {
+    pub shared: BTreeMap<Uuid, BTreeSet<Uuid>>,
     pub source_direct_limit: Option<usize>,
     pub default: usize,
     pub host: Uuid,
@@ -14,6 +15,7 @@ pub(crate) struct RelayLimits {
 impl Default for RelayLimits {
     fn default() -> Self {
         Self {
+            shared: Default::default(),
             source_direct_limit: None,
             default: 2,
             host: Uuid::nil(),
@@ -298,18 +300,27 @@ impl Plan {
             let Some(peers) = screen.neighbors.get(relay) else {
                 continue;
             };
-            let viewers: Vec<_> = waiting
-                .iter()
-                .copied()
-                .filter(|viewer| {
-                    peers.contains(viewer)
-                        && !self
-                            .failed_parents
-                            .get(viewer)
-                            .is_some_and(|failed| failed.contains(relay))
-                })
-                .take(limits.get(*relay, self.source))
-                .collect();
+            let limit = limits.get(*relay, self.source);
+            if limit == 0 {
+                continue;
+            }
+            let shared = limits.shared.get(relay);
+            let mut remaining = limit.saturating_sub(shared.map_or(0, BTreeSet::len));
+            let mut viewers = Vec::new();
+            for &viewer in &waiting {
+                if !peers.contains(&viewer)
+                    || self.failed_parents.get(&viewer).is_some_and(|failed| failed.contains(relay))
+                {
+                    continue;
+                }
+                if !shared.is_some_and(|peers| peers.contains(&viewer)) {
+                    if remaining == 0 {
+                        continue;
+                    }
+                    remaining -= 1;
+                }
+                viewers.push(viewer);
+            }
             if viewers.len() + usize::from(waiting.contains(relay)) < 2 {
                 continue;
             }
@@ -358,12 +369,12 @@ impl Plan {
                 || previous
                     .get(&parent)
                     .is_some_and(|upstream| helpers.get(&parent) == Some(upstream))
-                || self.wan_outputs(parent, None, helpers) >= limits.get(parent, self.source)
             {
                 continue;
             }
             for &child in screen.neighbors.get(&parent).into_iter().flatten() {
-                if self.parents.contains_key(&child)
+                if !self.admitted_output(parent, child, helpers, limits)
+                    || self.parents.contains_key(&child)
                     || self
                         .failed_parents
                         .get(&child)
@@ -423,9 +434,7 @@ impl Plan {
                         .get(&child)
                         .is_some_and(|failed| failed.contains(parent))
             })
-            .filter(|parent| {
-                self.wan_outputs(*parent, Some(child), helpers) < limits.get(*parent, self.source)
-            })
+            .filter(|parent| self.admitted_output(*parent, child, helpers, limits))
             // Readiness changes must not revoke a valid equal-depth reservation.
             .min_by_key(|parent| {
                 (
@@ -459,6 +468,40 @@ impl Plan {
             .count()
     }
 
+    fn admitted_output(
+        &self,
+        parent: Uuid,
+        child: Uuid,
+        helpers: &BTreeMap<Uuid, Uuid>,
+        limits: &RelayLimits,
+    ) -> bool {
+        if helpers.get(&child) == Some(&parent) {
+            return true;
+        }
+        let limit = limits.get(parent, self.source);
+        limit > 0 && (limits.shared.get(&parent).is_some_and(|peers| peers.contains(&child))
+            || self.output_count(parent, Some(child), helpers, limits) < limit)
+    }
+    fn output_count(
+        &self,
+        parent: Uuid,
+        excluding: Option<Uuid>,
+        helpers: &BTreeMap<Uuid, Uuid>,
+        limits: &RelayLimits,
+    ) -> usize {
+        let shared = limits.shared.get(&parent);
+        shared.map_or(0, BTreeSet::len)
+            + self
+                .parents
+                .iter()
+                .filter(|(child, sender)| {
+                    **sender == parent
+                        && Some(**child) != excluding
+                        && helpers.get(child) != Some(&parent)
+                        && !shared.is_some_and(|peers| peers.contains(child))
+                })
+                .count()
+    }
     /// Move this receiver and its downstream branches behind a relay. Only
     /// the helper map gives a presentation edge its local fanout exemption.
     pub fn through_relay(
@@ -505,9 +548,9 @@ impl Plan {
         if candidate.parents == self.parents
             || candidate.parents.values().any(|parent| {
                 candidate.is_display(*parent, helpers)
-                    || candidate.wan_outputs(*parent, None, helpers)
+                    || candidate.output_count(*parent, None, helpers, limits)
                         > self
-                            .wan_outputs(*parent, None, helpers)
+                            .output_count(*parent, None, helpers, limits)
                             .max(limits.get(*parent, self.source))
             })
         {
@@ -541,7 +584,7 @@ impl Plan {
                     && !(limits.source_direct_limit.is_none()
                         && self.source == *parent
                         && origin_paths.contains(&(*parent, *child)))
-                    && self.wan_outputs(*parent, None, helpers) > limits.get(*parent, self.source))
+                    && !self.admitted_output(*parent, *child, helpers, limits))
                 .then_some(*child)
             })
             .collect()
@@ -579,12 +622,7 @@ impl Plan {
                 || ((parent != self.source || limits.source_direct_limit.is_some())
                     && helpers.get(&child) != Some(&parent)
                     && self.parents.get(&child) != Some(&parent)
-                    && self.wan_outputs(parent, Some(child), helpers)
-                        + suffix
-                            .iter()
-                            .filter(|(_, upstream)| *upstream == parent)
-                            .count()
-                        >= limits.get(parent, self.source))
+                    && !self.admitted_output(parent, child, helpers, limits))
                 || self
                     .failed_parents
                     .get(&child)
@@ -1386,6 +1424,7 @@ mod tests {
     fn positive_endpoint_limits_apply_to_host_and_source_without_changing_zero_roots() {
         let id = Uuid::from_u128;
         let mut limits = RelayLimits {
+            shared: Default::default(),
             source_direct_limit: None,
             default: 2,
             host: id(1),
@@ -1412,6 +1451,7 @@ mod tests {
         }
         let original = tree.plan.parents.clone();
         let mut limits = RelayLimits {
+            shared: Default::default(),
             source_direct_limit: None,
             default: 2,
             host: id(1),
@@ -1500,6 +1540,7 @@ mod tests {
         let mut demand = BTreeSet::new();
         let mut base = BaseTree::new(id(1));
         let mut limits = RelayLimits {
+            shared: Default::default(),
             source_direct_limit: None,
             default: 1,
             host: id(1),
