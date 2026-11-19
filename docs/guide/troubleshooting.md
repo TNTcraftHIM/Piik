@@ -461,14 +461,14 @@ and another network. See [room voice](./room-tools.md#room-voice) for its contro
 
 ### Echo or unwanted application audio
 
-Use headphones if speakers are feeding sound back into a microphone. Windows
-App screen capture can [exclude a voice app from source audio](./sharing.md#exclude-a-voice-app-from-screen-audio);
-this does not remove acoustic echo.
+If a viewer hears their own voice coming back through the stream, keep room voice on for this check.
 
-If a virtual microphone remains audible when muted in Piik, temporarily turn off
-**System sound**. If that removes it, the mixer's playback output is also entering
-source audio. Check its playback/monitoring route or share only the desired app's
-window audio. Piik's microphone mute does not mute that separate source.
+1. Ask the viewer to turn just that stream's playback volume to zero and speak. If the echo stops, turn the volume back up and continue to step 2. If it persists, check the microphones and monitoring settings below.
+2. Have the host temporarily turn off the source audio, labeled **System sound** for a full-screen share. If the echo stops while the host can still hear the viewer in the call, the share is capturing room voices.
+
+To keep both game audio and the conversation, select the game under **Apps / Windows** in the Windows App. For a full-screen share, use **Exclude application audio** and choose the window playing the call. If the game and the call use the same browser, share the game tab with tab audio. [Sharing sound settings](./sharing.md#exclude-a-voice-app-from-screen-audio)
+
+If muting source sound leaves the echo audible, try turning off the host's **share microphone**, then have anyone using speakers switch to headphones. Check a virtual mixer's playback and monitoring outputs if one is in use.
 
 ### Microphone or remote controls are unavailable
 
