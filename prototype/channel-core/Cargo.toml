@@ -2,7 +2,7 @@
 name = "piik-channel-core"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.86"
+rust-version = "1.91"
 publish = false
 
 [features]
