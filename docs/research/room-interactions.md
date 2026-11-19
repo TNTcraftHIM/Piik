@@ -336,11 +336,13 @@ including those of one user.
 
 ### Identity And Share Titles
 
-The selected personal-avatar treatment places the image inside the Pawn's body,
-keeping its head, identity colour, headset and motion. Use the same Pawn across
-conversation, voice lists and the couch; the unconfigured person retains its
-plain body. Image preparation, saving and synchronization reuse the existing
-identity owners, as defined by the [room-data model](./channel-storage-and-identity.md).
+The custom avatar sits upright on the couch as a rounded square. The headset
+follows its outer corners. The microphone extends along the lower edge when
+enabled and folds to the side when muted. The default Pawn fills the same seat
+when the image is absent or unavailable. Both use the same participant, voice
+state, name tag and interaction target. Image preparation, saving and
+synchronization use the existing identity owners in the
+[room-data model](./channel-storage-and-identity.md).
 
 A screen title belongs to its publication. Use available capture metadata as
 the automatic name, with a readable Screen/Camera fallback. A user override

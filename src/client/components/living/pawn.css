@@ -25,6 +25,12 @@
 .lr-person-mic-tip { transform: translate(2px, -8px); }
 .lr-person-status[data-microphone] .lr-person-mic-tip { transform: translate(-6px, 4.5px); }
 .lr-person-status[data-microphone][data-deafened] .lr-person-mic-tip { transform: translate(-6px, -7px); }
+.lr-person[data-avatar] .lr-person-status[data-deafened] :is(.lr-person-earcup-left, .lr-person-earcup-right) { transform: translateY(2px); }
+.lr-person[data-avatar] .lr-person-mic-position { transform: translate(43px, 43px); --mic-fold-angle: 130deg; }
+.lr-person[data-avatar] .lr-person-status[data-deafened] .lr-person-mic-position { transform: translate(43px, 45px); }
+.lr-person[data-avatar] .lr-person-status[data-microphone] .lr-person-mic-head { transform: none; opacity: 1; }
+.lr-person[data-avatar] .lr-person-status[data-microphone] .lr-person-mic-neck { opacity: 0; }
+.lr-person[data-avatar] .lr-person-status[data-microphone] .lr-person-mic-tip { transform: translate(-10px, 7px); }
 @media (prefers-reduced-motion: no-preference) {
   :where(html:not([data-reduced-motion])) {
     .lr-person-headset, .lr-person-collaboration { transition: opacity var(--motion-feedback) ease, transform var(--motion-control) ease-out; }

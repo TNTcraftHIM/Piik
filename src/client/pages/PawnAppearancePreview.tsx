@@ -37,9 +37,9 @@ export function PawnAppearancePreview({ guides, onGuides }: {
   }
   return <div id="pawn-appearance-preview" className="cp-pawn-preview" data-guides={guides || undefined}>
     <div className="cp-tools">
-      <h3>{en ? "Your picture, the same little person" : "自己的头像，熟悉的小人"}</h3>
+      <h3>{en ? "Custom avatar and default Pawn" : "自定义头像与默认小人"}</h3>
       <SwitchItem checked={!!avatar} onChange={value => { setImageError(false); setAvatar(value ? "/favicon.svg" : undefined); }}
-        label={en ? "Belly picture" : "腹部头像"} />
+        label={en ? "Custom avatar" : "自定义头像"} />
       <label className="cp-pawn-avatar-file">{en ? "Try a local picture" : "试试本地图片"}
         <input type="file" accept="image/*" onChange={event => {
           const file = event.currentTarget.files?.[0];
@@ -49,8 +49,8 @@ export function PawnAppearancePreview({ guides, onGuides }: {
       </label>
     </div>
     {imageError && <p className="cp-input-error" role="alert">{en ? "Couldn't open this image. Try another." : "这张图片无法打开，请换一张。"}</p>}
-    <p>{en ? "The colour stays around the picture. The face, headphones and gestures stay the same. This local preview does not save or upload the image."
-      : "头像外保留角色色边，头部、耳麦和动作不变。本地预览不会保存或上传图片。"}</p>
+    <p>{en ? "Headphones follow the avatar’s frame. Pictures selected here stay in this preview."
+      : "耳机沿头像外框佩戴。所选图片仅用于当前预览。"}</p>
     <div className="cp-pawn-avatar-surfaces">
       <section className="cp-pawn-avatar-couch">
         <h4>{en ? "Couch · 42 × 50" : "沙发 · 42 × 50"}</h4>
@@ -100,8 +100,8 @@ export function PawnAppearancePreview({ guides, onGuides }: {
       </figure>)}
     </div>
     <h3>{en ? "Headset states" : "耳麦状态对照"}</h3>
-    <p>{en ? "Headphones move from the head to the neck when listening is paused. The microphone and control permission stay independent."
-      : "正常收听时戴在头上，闭耳机时挂在脖子上。麦克风与远控权限仍独立显示。"}</p>
+    <p>{en ? "Pausing listening lowers the headphones. The microphone and control permission stay independent."
+      : "暂停收听时，耳机移到下方。麦克风与远控权限仍独立显示。"}</p>
     <div className="cp-pawn-headphone-comparison">
       {[false, true].flatMap(deafened => [true, false].map(microphone => <figure key={`${deafened}-${microphone}`}>
         <span className="cp-pawn-figure"><PawnSvg color={participantColor(SAMPLE_ID)} identity={SAMPLE_ID}
