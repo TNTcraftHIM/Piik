@@ -144,6 +144,24 @@ test("ending a share retires microphone permission completed after disposal", as
   expect(contexts.every(context => context.state === "closed")).toBe(true);
 });
 
+test("turning commentary off releases a granted microphone while the mixer is still resuming", async () => {
+  const { getUserMedia, contexts } = mixerSetup();
+  const microphone = new Track("audio");
+  getUserMedia.mockResolvedValue(media(microphone));
+  const audio = new HostAudio(media(new Track("video")));
+  audio.start();
+  contexts[0]!.resume.mockImplementation(() => new Promise<void>(() => {}));
+  const settings = { deviceId: "", volume: 1, voiceProcessing: true };
+  const pending = audio.setMicrophone(true, settings);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await audio.setMicrophone(false, settings);
+  await vi.waitFor(() => expect(microphone.stop).toHaveBeenCalledOnce());
+  await pending;
+  expect(audio.microphoneEnabled).toBe(false);
+  expect(contexts[1]!.close).toHaveBeenCalledOnce();
+  audio.dispose();
+});
+
 test("source-audio availability follows live input and replacement without owning video or room voice", () => {
   const video = new Track("video"), sound = new Track("audio"), next = new Track("audio");
   const changed = vi.fn(), audio = new HostAudio(media(video, sound), "browser", changed);

@@ -2,6 +2,7 @@ import type { BrowserCaptureSource } from "./quality";
 import { audioInputConstraints } from "./audio-capture";
 import { MicrophoneInput } from "./microphone-input";
 import { acquireMediaStream } from "./capture-stream";
+import { waitForConnectionOperation } from "../webrtc/connection-operation";
 import { debugOperation } from "../lib/debug";
 
 export interface CommentaryInput { deviceId: string; volume: number; voiceProcessing: boolean }
@@ -30,11 +31,16 @@ export class HostAudio {
   get outputGainAvailable(): boolean { return this.context !== null && this.destination !== null; }
   get commentaryAvailable(): boolean { return this.outputGainAvailable; }
   get microphoneEnabled(): boolean { return this.microphone !== null; }
-  private output(): MediaStream {
-    return this.destination ? new MediaStream([...this.source.getVideoTracks(), ...this.destination.stream.getAudioTracks()]) : this.source;
+  output(volume = this.volume): MediaStream {
+    if (volume !== this.volume) {
+      this.volume = volume;
+      if (this.gain) this.gain.gain.value = volume;
+    }
+    if (this.destination) return new MediaStream([...this.source.getVideoTracks(), ...this.destination.stream.getAudioTracks()]);
+    // An unavailable mixer can pass through unity gain. Keep other levels off the raw transport.
+    return volume === 1 || !this.sourceAudioAvailable ? this.source : new MediaStream(this.source.getVideoTracks());
   }
-  // Install one audio track before publishing, even when the selected picture
-  // has no sound. Input changes never replace the transport's output track.
+  // Use the source-selection gesture while the system picker is opening.
   static activate(): AudioContext | null {
     try {
       const context = new AudioContext();
@@ -42,6 +48,7 @@ export class HostAudio {
       return context;
     } catch { return null; }
   }
+  // A running graph keeps the same output track as inputs change.
   start(context: AudioContext | null = HostAudio.activate()): MediaStream {
     const complete = debugOperation("capture", "audio-prepare", { source: this.kind, sourceAudio: this.sourceAudioAvailable });
     this.context = context;
@@ -85,7 +92,7 @@ export class HostAudio {
       const resumed = Promise.all([context.resume(), this.context.resume()]).then(() => true, () => false);
       stream = await acquireMediaStream(() => navigator.mediaDevices.getUserMedia({ audio: { ...audioInputConstraints(settings.voiceProcessing),
         ...(settings.deviceId ? { deviceId: { exact: settings.deviceId } } : {}) }, video: false }), request.signal);
-      if (!await resumed) throw new Error("Microphone audio could not start");
+      if (!await waitForConnectionOperation(request.signal, () => resumed)) throw new Error("Microphone audio could not start");
       request.signal.throwIfAborted();
       if (!stream.getAudioTracks().some(track => track.readyState === "live")) throw new Error("No live microphone");
       input = new MicrophoneInput(stream, context, settings.volume, () => {

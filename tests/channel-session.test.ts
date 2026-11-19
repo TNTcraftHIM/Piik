@@ -2454,7 +2454,7 @@ function nextSocketCommand(socket: ChannelSocket, type: string): Promise<Record<
   });
 }
 
-test.each(["ended", "restore-rejected", "accepted", "stopped"] as const)("Browser replacement keeps its current picture and sound until room confirmation (%s)", async outcome => {
+test.each(["ended", "muted", "restore-rejected", "accepted", "stopped"] as const)("Browser replacement keeps its current picture and sound until room confirmation (%s)", async outcome => {
   const { session, socket } = await setup();
   const oldVideo = remoteTrack("video"), oldSound = remoteTrack("audio");
   const nextVideo = remoteTrack("video"), nextSound = remoteTrack("audio");
@@ -2487,12 +2487,16 @@ test.each(["ended", "restore-rejected", "accepted", "stopped"] as const)("Browse
       Object.defineProperty(nextVideo, "readyState", { value: "ended" });
       nextVideo.dispatchEvent(new Event("ended"));
     }
+    if (outcome === "muted") {
+      Object.defineProperty(nextVideo, "muted", { value: true });
+      nextVideo.dispatchEvent(new Event("mute"));
+    }
     if (outcome === "stopped") {
       const stopping = session.stopScreen(description.id);
       socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
       await stopping;
     }
-    const restoring = ended ? nextSocketCommand(socket, "publish") : undefined;
+    const restoring = ended || outcome === "muted" ? nextSocketCommand(socket, "publish") : undefined;
     if (outcome !== "stopped") socket.receive({ type: "state", state: { ...state, publications: [{ ...state.publications[0],
       source: (update.publication as typeof description).source }] } });
     socket.receive({ type: "ack", requestId: update.requestId });
@@ -2528,6 +2532,50 @@ test.each(["ended", "restore-rejected", "accepted", "stopped"] as const)("Browse
     }
     expect(socket.sent.some(command => command.type === "unpublish")).toBe(outcome === "stopped");
     expect(session.getSnapshot().ownedScreens.has(description.id)).toBe(outcome !== "stopped");
+    expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
+  } finally { session.close(); }
+});
+
+test("a muted window grant keeps the incumbent and can be cancelled and retried until the window is available", async () => {
+  const { session, socket } = await setup();
+  const oldVideo = remoteTrack("video"), cancelled = remoteTrack("video"), nextVideo = remoteTrack("video");
+  const original = remoteStream("current-window", [oldVideo]);
+  const replacement = remoteStream("new-window", [nextVideo]);
+  Object.defineProperty(cancelled, "muted", { value: true });
+  Object.defineProperty(nextVideo, "muted", { value: true, configurable: true });
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn().mockResolvedValueOnce(original)
+    .mockResolvedValueOnce(remoteStream("cancelled-window", [cancelled])).mockResolvedValueOnce(replacement) } });
+  session.setVideoCodecMode("vp8");
+  try {
+    const publishing = nextSocketCommand(socket, "publish");
+    const starting = session.startScreen("first");
+    const publish = await publishing;
+    const { id } = publish.publication as { id: string };
+    socket.receive({ type: "ack", requestId: publish.requestId });
+    await starting;
+
+    const pending = session.startScreen("first").catch(error => error);
+    await vi.waitFor(() => expect(session.browserCapturePreparation("first")).toBe("preparing"));
+    expect(session.sourceSelectionCommitting("first")).toBe(false);
+    await session.cancelScreenSelection("first");
+    expect(await pending).toMatchObject({ name: "AbortError" });
+    expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
+    expect(cancelled.stop).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().streams.get(id)).toBe(original);
+
+    const retry = session.startScreen("first");
+    await vi.waitFor(() => expect(session.browserCapturePreparation("first")).toBe("preparing"));
+    expect(socket.sent.some(command => command.type === "transfer_source")).toBe(false);
+    expect(oldVideo.stop).not.toHaveBeenCalled();
+    const transferring = nextSocketCommand(socket, "transfer_source");
+    Object.defineProperty(nextVideo, "muted", { value: false });
+    nextVideo.dispatchEvent(new Event("unmute"));
+    const transfer = await transferring;
+    socket.receive({ type: "ack", requestId: transfer.requestId });
+    await ackSourceUpdate(socket);
+    await retry;
+    expect(session.getSnapshot().streams.get(id)).toBe(replacement);
+    expect(oldVideo.stop).toHaveBeenCalledOnce();
     expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
   } finally { session.close(); }
 });
@@ -2832,6 +2880,10 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
         type: "error", requestId: command.requestId, code: "invalid_subscription",
       });
     });
+    if (outcome === "live") {
+      const silence = session.setSourceAudio(publication.id, { level: 0 });
+      await appCommand("capture_audio_settings"); appReply(); await silence;
+    }
     const browser = session.startScreen("first");
     const transferring = await appCommand("transfer_source");
     expect(transferring).toMatchObject({ publicationId: publication.id, captureId: secondCaptureId, toSessionId: "endpoint" });
@@ -2929,6 +2981,26 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
     expect(socket.sent.filter(command => command.type === "publish")).toHaveLength(2);
     expect(socket.sent.some(command => command.type === "unpublish")).toBe(false);
     expect(next.stop).not.toHaveBeenCalled();
+    // The Browser inherited zero gain on a picture-only fallback. A new source
+    // with audio must remain silent, including when the mixer is still unavailable.
+    const rawSound = remoteTrack("audio");
+    const raw = remoteStream("raw-replacement", [remoteTrack("video"), rawSound]);
+    const withSound = remoteStream("another-replacement", [remoteTrack("video"), remoteTrack("audio")]);
+    vi.mocked(navigator.mediaDevices.getDisplayMedia).mockResolvedValueOnce(raw).mockResolvedValueOnce(withSound);
+    async function replace() {
+      const changing = session.startScreen("first");
+      await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("transfer_source"));
+      coreReply(); await ackSourceUpdate(socket); await changing;
+    }
+    await replace();
+    expect(session.getSnapshot().streams.get(publication.id)!.getAudioTracks()).toEqual([]);
+    const recovered = microphoneMixer([]);
+    await replace();
+    expect(rawSound.stop).toHaveBeenCalledOnce();
+    expect(recovered[0].gain.gain.value).toBe(0);
+    await session.setSourceAudio(publication.id, { level: 1 });
+    expect(recovered[0].gain.gain.setTargetAtTime).toHaveBeenCalledWith(1, 0, .01);
+    expect(session.getSnapshot().streams.get(publication.id)!.getAudioTracks()).toHaveLength(1);
   } finally { session.close(); }
 });
 
@@ -11189,7 +11261,7 @@ test("capture stage diagnostics distinguish an unanswered picker and stop a late
   } finally { session.close(); }
 });
 
-test("capture stage diagnostics track publication with a suspended mixer", async () => {
+test.each([true, false])("capture publishes after the picker answers (mixer resumed %s)", async mixerResumed => {
   const events: { stage: string; outcome: string; details?: object }[] = [];
   vi.spyOn(browserDiagnostics, "debugOperation").mockImplementation((scope, stage) => {
     if (scope === "capture") events.push({ stage, outcome: "started" });
@@ -11198,25 +11270,37 @@ test("capture stage diagnostics track publication with a suspended mixer", async
   const { session, socket } = await setup();
   const video = remoteTrack("video"), audio = remoteTrack("audio");
   const source = remoteStream("owned-granted-window", [video]);
-  const resume = vi.fn(() => new Promise<void>(() => {})), close = vi.fn(async () => {});
-  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(async () => source) } });
+  const close = vi.fn(async () => {});
+  let finishResume!: () => void;
+  const resume = vi.fn(() => new Promise<void>(resolve => { finishResume = resolve; }));
+  let grant!: (stream: MediaStream) => void;
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(() => new Promise<MediaStream>(resolve => { grant = resolve; })) } });
   vi.spyOn(codecPreflight, "preferredVideoCodecForTrack").mockResolvedValue("vp8");
   vi.stubGlobal("AudioContext", class {
     state = "suspended";
-    resume = resume; close = close;
+    resume = async () => { await resume(); this.state = "running"; };
+    close = close;
     createMediaStreamDestination() { return { stream: remoteStream("owned-mixed", [audio]) }; }
     createGain() { return { gain: { value: 1 }, connect() {}, disconnect() {} }; }
   });
   session.setVideoCodecMode("auto");
   const starting = session.startScreen("first").catch(error => error);
   try {
+    expect(session.browserCapturePreparation("first")).toBe("picker");
+    expect(resume).toHaveBeenCalledOnce();
+    expect(close).not.toHaveBeenCalled();
+    if (mixerResumed) finishResume();
+    grant(source);
     const publish = await nextSocketCommand(socket, "publish");
     socket.receive({ type: "ack", requestId: publish.requestId });
     expect(await starting).toBeUndefined();
-    expect(events.at(-1)).toMatchObject({ stage: "audio-prepare", outcome: "fallback", details: { state: "suspended" } });
+    expect(events.at(-1)).toMatchObject({ stage: "audio-prepare", outcome: mixerResumed ? "resumed" : "fallback",
+      details: { state: mixerResumed ? "running" : "suspended" } });
+    const publication = publish.publication as { id: string };
+    expect(session.getSnapshot().streams.get(publication.id)?.getAudioTracks()).toEqual(mixerResumed ? [audio] : []);
     expect(session.getSnapshot().ownedScreens.size).toBe(1);
     expect(video.stop).not.toHaveBeenCalled();
-    expect(close).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledTimes(mixerResumed ? 0 : 1);
   } finally { session.close(); }
 });
 

@@ -13,14 +13,13 @@ import { STATUS_CATALOG } from "../ui/media-status";
 import { useCopy } from "../ui/copy";
 import { usePreviewInteractions } from "./use-preview-interactions";
 import { PreviewInput } from "./preview-input";
-import { HostAudio } from "../media/host-audio";
 import { relayVolunteerLimit } from "../media/relay-capability";
 import { DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY } from "../../shared/media-copy-accounting";
 import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../../shared/protocol";
 
 type PreviewRole = "host" | "viewer";
 
-export function testMedia(withAudio: boolean, portrait: boolean) {
+export function testMedia(withAudio: boolean, portrait: boolean, level = 1) {
   const canvas = document.createElement("canvas");
   canvas.width = portrait ? 480 : 640;
   // A 4:3 picture makes contain, crop and stretch visible in the 16:9 player.
@@ -59,7 +58,7 @@ export function testMedia(withAudio: boolean, portrait: boolean) {
     gain = audio.createGain();
     const destination = audio.createMediaStreamDestination();
     tone.frequency.value = 220;
-    gain.gain.value = 0.02;
+    gain.gain.value = 0.02 * level;
     tone.connect(gain).connect(destination);
     tone.start();
     stream.addTrack(destination.stream.getAudioTracks()[0]);
@@ -67,7 +66,7 @@ export function testMedia(withAudio: boolean, portrait: boolean) {
   return {
     stream,
     audio,
-    setAudioInput(available: boolean) { if (gain) gain.gain.value = available ? 0.02 : 0; },
+    setToneLevel(level: number) { if (gain) gain.gain.value = 0.02 * level; },
     stop() {
       cancelAnimationFrame(animation);
       stream.getTracks().forEach((track) => track.stop());
@@ -116,7 +115,6 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
   const { session, receiveSample } = usePreviewInteractions(viewer);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRef = useRef<ReturnType<typeof testMedia> | null>(null);
-  const sourceAudio = useRef<HostAudio | null>(null);
   const [shareVolume, setShareVolume] = useState({ level: 1, muted: false });
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [theaterMode, setTheaterMode] = useTheaterMode();
@@ -133,6 +131,7 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
   const [audioAvailable, setAudioAvailable] = useState(false);
   const [portraitSource, setPortraitSource] = useState(false);
   const hasAudio = Boolean(mediaRef.current?.stream.getAudioTracks().length);
+  const sourceLevel = shareVolume.muted ? 0 : shareVolume.level;
 
   function play() {
     const video = videoRef.current;
@@ -142,21 +141,23 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
     });
   }
 
-  async function start(withAudio: boolean, portrait = portraitSource) {
-    sourceAudio.current?.dispose();
-    sourceAudio.current = null;
+  function start(withAudio: boolean, portrait = portraitSource) {
     mediaRef.current?.stop();
-    const media = testMedia(withAudio, portrait);
+    const media = testMedia(withAudio, portrait, sourceLevel);
     mediaRef.current = media;
     setError("");
     setWaiting(false);
-    if (!viewer) {
-      sourceAudio.current = new HostAudio(media.stream);
-      sourceAudio.current.setVolume(shareVolume.muted ? 0 : shareVolume.level);
-    }
-    setStream(await sourceAudio.current?.start() ?? media.stream);
+    setStream(media.stream);
     setAudioAvailable(withAudio);
-    if (media.audio) void media.audio.resume().catch((cause: unknown) => setError(String(cause)));
+    if (media.audio) void media.audio.resume().catch((cause: unknown) => {
+      if (mediaRef.current !== media) return;
+      for (const track of media.stream.getAudioTracks()) {
+        track.stop();
+        media.stream.removeTrack(track);
+      }
+      setAudioAvailable(false);
+      setError(String(cause));
+    });
   }
 
   useEffect(() => {
@@ -165,7 +166,7 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
     if (stream) play();
   }, [stream]);
   const previewPlayback = useHostPreviewPlayback(videoRef, viewer ? null : stream, previewAutoPause);
-  useEffect(() => () => { sourceAudio.current?.dispose(); mediaRef.current?.stop(); }, []);
+  useEffect(() => () => { mediaRef.current?.stop(); mediaRef.current = null; }, []);
   useEffect(() => {
     const input = new PreviewInput();
     input.policy("room");
@@ -188,7 +189,7 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
             setPortraitSource(!portraitSource); start(hasAudio, !portraitSource);
           }}>{portraitSource ? (english ? "Use landscape source" : "切换横向画面") : (english ? "Use portrait source" : "切换竖向画面")}</button>
           <button className="lr-btn" type="button" disabled={!hasAudio} onClick={() => {
-            mediaRef.current?.setAudioInput(!audioAvailable);
+            mediaRef.current?.setToneLevel(audioAvailable ? 0 : sourceLevel);
             setAudioAvailable(!audioAvailable);
           }}>{audioAvailable ? (english ? "Stop audio input, keep track" : "关闭声音输入，保留音轨")
               : (english ? "Restore audio input" : "恢复声音输入")}</button>
@@ -218,7 +219,7 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
           <RoomChatOverlay session={session} visible={Boolean(stream) && !waiting && !previewPlayback.suspended} />
           <PlaybackControls videoRef={videoRef} stream={stream} audioAvailable={audioAvailable}
             sharingAudio={viewer ? undefined : { ...shareVolume, available: true, onChange: (level, muted) => {
-              sourceAudio.current?.setVolume(muted ? 0 : level); setShareVolume({ level, muted });
+              mediaRef.current?.setToneLevel(muted || !audioAvailable ? 0 : level); setShareVolume({ level, muted });
             } }}
             settings={{ pictureFit, setPictureFit, pictureRotation, setPictureRotation,
               buffering: viewer ? { target: bufferTarget, status: "supported", onChange: setBufferTarget } : undefined,

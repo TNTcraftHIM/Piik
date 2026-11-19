@@ -101,6 +101,24 @@ interface ScreenShare {
   native?: { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget; showCaptureBorder: boolean };
 }
 
+async function waitForDisplaySurface(track: MediaStreamTrack, signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted();
+  if (track.readyState !== "live") throw new Error("capture_unavailable");
+  const complete = debugOperation("capture", "display-unmute");
+  const listeners = new AbortController();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      track.addEventListener("unmute", () => resolve(), { signal: listeners.signal });
+      track.addEventListener("ended", () => reject(new Error("capture_unavailable")), { signal: listeners.signal });
+      signal.addEventListener("abort", () => reject(signal.reason), { signal: listeners.signal });
+    });
+    complete("available");
+  } catch (error) {
+    complete(signal.aborted ? "cancelled" : "failed", {}, error);
+    throw error;
+  } finally { listeners.abort(); }
+}
+
 function captureSource(track: MediaStreamTrack | undefined, camera = false): ScreenSource {
   const label = track?.label?.trim() ?? "";
   // Chromium DeviceName exposes DesktopMediaID or a generated tab token, not a content title.
@@ -2096,7 +2114,7 @@ export class ChannelSession {
   startScreen = (roomId: string, source: BrowserCaptureSource = "browser", deviceId = ""): Promise<void> => this.action(`screen:${roomId}`, async () => {
     if (source === "camera" ? !navigator.mediaDevices?.getUserMedia : !navigator.mediaDevices?.getDisplayMedia) throw new Error("capture_unavailable");
     const { share, selection, current } = this.selectScreen(roomId);
-    let context = this.local.get(share.id)?.audio ? null : HostAudio.activate();
+    let context = this.local.get(share.id)?.audio?.outputGainAvailable ? null : HostAudio.activate();
     let candidate: MediaStream | undefined;
     let audio: HostAudio | undefined;
     try {
@@ -2106,7 +2124,12 @@ export class ChannelSession {
       const video = candidate.getVideoTracks()[0];
       const metadata = captureSource(video, source === "camera");
       if (!video || video.readyState !== "live") throw new Error("capture_unavailable");
-      if (source === "browser") { selection.browserCaptureGranted = true; this.patch({}); }
+      if (source === "browser") {
+        selection.browserCaptureGranted = true;
+        this.patch({});
+        if (video.muted) await waitForDisplaySurface(video, selection.controller.signal);
+      }
+      const available = () => video.readyState === "live" && (source !== "browser" || !video.muted);
       let codec = share.codec;
       if (!codec) {
         const complete = debugOperation("capture", "codec-selection", { mode: share.codecMode });
@@ -2123,7 +2146,7 @@ export class ChannelSession {
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       share.codec = codec;
       const previous = this.local.get(share.id);
-      const retainedAudio = previous?.audio;
+      const retainedAudio = previous?.audio?.outputGainAvailable ? previous.audio : undefined;
       if (!retainedAudio) {
         const mixer = new HostAudio(candidate, source, () => {
           if (this.local.get(share.id)?.audio === mixer) this.patch({});
@@ -2132,10 +2155,11 @@ export class ChannelSession {
         audio.setVolume(share.volume.muted ? 0 : share.volume.level);
         candidate = audio.start(context);
         context = null;
-        if (!audio.outputGainAvailable && audio.sourceAudioAvailable && (share.volume.muted || share.volume.level !== 1)) throw new Error("source_audio_unavailable");
+        if (!audio.outputGainAvailable && audio.sourceAudioAvailable && !share.volume.muted
+          && share.volume.level !== 0 && share.volume.level !== 1) throw new Error("source_audio_unavailable");
       }
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
-      if (candidate.getVideoTracks()[0]?.readyState !== "live") throw new Error("capture_unavailable");
+      if (!available()) throw new Error("capture_unavailable");
       selection.committing = true;
       this.patch({});
       const app = this.app;
@@ -2158,7 +2182,7 @@ export class ChannelSession {
           this.send({ type: "unpublish", publicationId: share.id });
           throw new DOMException("Capture cancelled", "AbortError");
         }
-        if (candidate.getVideoTracks()[0]?.readyState !== "live") {
+        if (previous ? !available() : video.readyState !== "live") {
           if (!previous) {
             // The Native transfer already made this Browser the publication owner.
             this.send({ type: "unpublish", publicationId: share.id });
@@ -2173,13 +2197,14 @@ export class ChannelSession {
             this.send({ type: "unpublish", publicationId: share.id });
             throw new DOMException("Capture cancelled", "AbortError");
           }
-          if (candidate.getVideoTracks()[0]?.readyState !== "live") {
+          if (!available()) {
             await reportSource(captureSource(previous.stream.getVideoTracks()[0], previous.camera));
             if (!current()) throw new DOMException("Capture cancelled", "AbortError");
             throw new Error("capture_unavailable");
           }
         }
         if (retainedAudio) candidate = retainedAudio.attach(candidate, source);
+        else if (audio) candidate = audio.output(share.volume.muted ? 0 : share.volume.level);
         const mixed = retainedAudio ?? audio;
         const paused = share.paused = (previous ? share.paused : undefined)
           ?? this.view.state?.publications.find(publication => publication.id === share.id)?.paused ?? false;
@@ -2191,6 +2216,7 @@ export class ChannelSession {
         this.observeScreen(share.id, candidate);
         candidate = undefined;
         audio = undefined;
+        if (!retainedAudio) previous?.audio?.dispose();
         previous?.stream.getVideoTracks().forEach(track => track.stop());
         const reporting = !previous ? reportSource() : undefined;
         const stopping = !previous ? app!.stopCapture(share.id) : undefined;
@@ -2218,8 +2244,9 @@ export class ChannelSession {
       }
     } finally {
       void context?.close().catch(() => {});
+      const unownedTracks = audio ? candidate?.getVideoTracks() : candidate?.getTracks();
       audio?.dispose();
-      candidate?.getTracks().forEach(track => track.stop());
+      unownedTracks?.forEach(track => track.stop());
       this.finishScreenSelection(roomId, share, selection);
     }
   });
