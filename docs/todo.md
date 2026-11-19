@@ -260,8 +260,8 @@ the feedback period; they do not delay that delivery.
   without building a browser.
   Explain the complete trusted-site scope and local website-login behavior before
   use; media capability still does not grant room access or arbitrary native control.
-- [ ] **3.0 Native platform acceptance.** Build, install and validate the matching
-  Android candidate. Complete physical microphone/camera acceptance for the
+- [ ] **3.0 Native platform acceptance.** Verify physical Android capture and
+  recovery after loss of the media path. Complete physical microphone/camera acceptance for the
   Windows WebView entry; controlled runtime fallback, device
   permission and shutdown checks are in the
   [verification record](./verification-status.md#windows-and-android).

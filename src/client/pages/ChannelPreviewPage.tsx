@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { HeaderControls, LedStrip } from "../components/living/Header";
 import { StageTv } from "../components/living/Stage";
 import { BrandMark } from "../components/living/BrandMark";
-import { Btn, Cap } from "../components/living/primitives";
+import { BackButton, Btn, Cap } from "../components/living/primitives";
 import { PawnSvg } from "../components/living/Pawn";
 import { participantColor } from "../components/living/participant-color";
 import { Tooltip } from "../components/living/Tooltip";
@@ -13,6 +13,7 @@ import { useCopy } from "../ui/copy";
 import { useChannel } from "../channel/use-channel";
 import { channelErrorPresentation } from "../channel/error-presentation";
 import { rememberRoom, selectedRoom } from "../channel/navigation";
+import { RoomLayerHistory, useRoomPane } from "../channel/use-room-pane";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelStage, type WatchStageSource } from "../channel/components/ChannelStage";
 import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
@@ -74,11 +75,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const [appWatchId, setAppWatchId] = useState<string | null>(null);
   const [watchRoomId, setWatchRoomId] = useState<string | null>(null);
   const preparingShare = useRef<object | null>(null);
-  const [mobilePane, setMobilePane] = useState<"room" | "rooms" | "people" | "chat">("room");
+  const { pane: mobilePane, navigate: setMobilePane, showInitialRooms, track } = useRoomPane();
   const selectRoom = useCallback((id: string) => {
     preparingShare.current = null; setPickerRoom(null);
-    onSelect(id); setSourceView(null); setMobilePane("room");
-  }, [onSelect]);
+    onSelect(id); setSourceView(null); setMobilePane("room", id);
+  }, [onSelect, setMobilePane]);
   useEffect(() => {
     const navigate = () => {
       const room = new URLSearchParams(location.hash.slice(1)).get("room");
@@ -87,7 +88,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     window.addEventListener("hashchange", navigate);
     return () => window.removeEventListener("hashchange", navigate);
   }, [selectRoom]);
-  useEffect(() => { setMobilePane("room"); preparingShare.current = null; }, [selected]);
+  useEffect(() => { preparingShare.current = null; }, [selected]);
   useEffect(() => { if (pickerRoom && pickerRoom !== selected) setPickerRoom(null); }, [selected, pickerRoom]);
   useEffect(() => {
     if (watchRoomId && watchRoomId !== selected && !channel.sourceSelectionCommitting(watchRoomId)) {
@@ -106,7 +107,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const [managedRoomId, setManagedRoomId] = useState<string | null>(null);
   const [newRoomName, setNewRoomName] = useState<string | null>(null);
   const closeRoomSettings = useCallback(() => setManagedRoomId(null), []);
-  useEffect(() => { setMobilePane("room"); }, [sidebarsInline, layout]);
+  const previousLayout = useRef(layout);
+  useEffect(() => {
+    if (sidebarsInline || layout !== previousLayout.current) setMobilePane("room");
+    previousLayout.current = layout;
+  }, [sidebarsInline, layout, setMobilePane]);
   const [toolSurface, setToolSurface] = useState<RoomToolSurface>({ open: false, document: null });
   useLayoutEffect(() => { setToolSurface({ open: false, document: null }); }, [state?.channel.id, sessionId]);
   const couchSlot = useRef<HTMLDivElement>(null), conversationSlot = useRef<HTMLDivElement>(null), voiceSlot = useRef<HTMLDivElement>(null);
@@ -143,8 +148,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     if (state && managedRoomId && !managedRoom) setManagedRoomId(null);
   }, [state?.channel.id, managedRoomId, managedRoom?.id]);
   useEffect(() => {
-    if (sharingView && state && !rooms.length) setMobilePane("rooms");
-  }, [sharingView, state?.channel.id, rooms.length]);
+    if (!sidebarsInline && sharingView && state && !rooms.length) showInitialRooms();
+  }, [sharingView, state?.channel.id, rooms.length, sidebarsInline, showInitialRooms]);
   const toggleSharingView = () => {
     const next = !sharingView;
     setSharingView(next);
@@ -185,7 +190,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const otherScreens = activeSources.filter(source => !visibleScreens.includes(source));
   const focusedScreen = sourceView?.roomId === roomId ? sourceView.focusedId : null;
   const showSource = (sourceRoom: string, focusedId: string | null) => {
-    onSelect(sourceRoom); setSourceView({ roomId: sourceRoom, focusedId }); setMobilePane("room");
+    onSelect(sourceRoom); setSourceView({ roomId: sourceRoom, focusedId }); setMobilePane("room", sourceRoom);
   };
   useEffect(() => {
     const owned = [...mine, ...watches.filter(activity => activity.sessionId === sessionId)];
@@ -226,15 +231,25 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     channel.browse(roomId);
   }, [state?.channel.id, roomId, room?.authorized, room?.available]);
   useEffect(() => {
-    if (mobilePane === "room" || mobilePane === "chat") return;
-    const heading = document.getElementById(mobilePane === "rooms" ? "c3-room-list-heading" : "c3-people-heading");
+    if (sidebarsInline || mobilePane === "room") return;
+    const heading = mobilePane === "chat" ? document.querySelector<HTMLElement>(".c3-chat-panel .c3-chat-heading button")
+      : document.getElementById(mobilePane === "rooms" ? "c3-room-list-heading" : "c3-people-heading");
     heading?.focus();
-    const pane = heading?.closest("aside");
-    return () => {
-      if (pane?.contains(document.activeElement))
-        document.getElementById(mobilePane === "rooms" ? "c3-rooms-trigger" : "c3-companion-trigger")?.focus();
+    const pane = heading?.closest("aside, .c3-chat-panel");
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented && !event.isComposing &&
+        !document.querySelector('[popover="auto"]:popover-open, dialog:modal')) {
+        event.preventDefault();
+        setMobilePane("room");
+      }
     };
-  }, [mobilePane]);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("keydown", escape);
+      if (pane?.contains(document.activeElement))
+        document.getElementById(mobilePane === "rooms" ? "c3-rooms-trigger" : "c3-companion-trigger")?.focus({ preventScroll: true });
+    };
+  }, [mobilePane, sidebarsInline, setMobilePane]);
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
   const watchTitle = (url: string) => { const source = new URL(url); return source.host + source.pathname; };
   const watchSources: WatchStageSource[] = watches.filter(activity => activeWatches.includes(activity) || activity.roomId === roomId).map(activity => ({
@@ -264,7 +279,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const connectionLabel = connected ? t("channel.previewPage.connected") : connection === "connecting"
     ? t("channel.previewPage.connecting") : connection === "reconnecting" ? t("channel.previewPage.reconnecting") : t("channel.previewPage.disconnected");
 
-  return <div className="lr-app c3-app">
+  return <RoomLayerHistory.Provider value={sidebarsInline ? null : track}><div className="lr-app c3-app">
     {watchRoomId && <WatchSourceDialog key={`source:${watchRoomId}`} channel={channel} roomId={watchRoomId} onClose={() => setWatchRoomId(null)} />}
     {watches.filter(activity => activity.id === appWatchId).map(activity => <WatchSourceDialog key={activity.id} channel={channel}
       roomId={activity.roomId} activityId={activity.id} initialURL={activity.source.url} onClose={() => setAppWatchId(null)} />)}
@@ -294,12 +309,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           <ChannelForwardingSettings channel={channel} />
         </>} />
       </div></header>
-      <aside id="c3-room-list" className="c3-sidebar" onKeyDown={event => {
-        if (!sidebarsInline && mobilePane === "rooms" && event.key === "Escape" && !event.defaultPrevented && !event.nativeEvent.isComposing &&
-          !event.currentTarget.ownerDocument.querySelector('[popover="auto"]:popover-open, dialog:modal')) {
-          event.preventDefault(); setMobilePane("room");
-        }
-      }} aria-label={t("channel.previewPage.rooms")}>
+      <aside id="c3-room-list" className="c3-sidebar" aria-label={t("channel.previewPage.rooms")}>
         <div className="c3-sidebar-browse">
         <div className={`c3-room-navigation${!rooms.length ? " is-empty" : ""}`}>
           <div className="c3-section-label"><span id="c3-room-list-heading" tabIndex={-1} className="c3-section-caption"><Cap k={{ text: t("channel.previewPage.rooms") }} /></span>
@@ -309,6 +319,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               {canCreateRoom && <Btn icon="plus" size="dense" quiet hint="hint-create-room"
               title={{ text: t("channel.previewPage.createRoom") }} cap={!rooms.length ? { text: t("channel.previewPage.createRoom") } : undefined}
               expanded={newRoomName !== null} disabled={!connected} onClick={() => setNewRoomName("")} />}
+              {!sidebarsInline && mobilePane === "rooms" && <BackButton onClick={() => setMobilePane("room")} />}
               {sidebarsInline && <Btn icon="sidebar" size="dense" quiet title={{ text: t("channel.previewPage.collapseRoomList") }}
                 controls="c3-room-list" expanded={!sharingView} onClick={() => { if (!sharingView) toggleSharingView(); setMobilePane("room"); }} />}
             </div>
@@ -486,11 +497,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             onDeleteMessage={room?.authorized ? channel.deleteMessage : undefined}
             canModerate={room?.canManage || (!!self && self.id === state?.channel.ownerId)} pending={channel.pending}
             historyChanges={channel.historyChangesByRoom[roomId]}
-            onBack={!toolSurface.open && !sidebarsInline && visibleScreens.length > 0 ? () => {
-              setMobilePane("room");
-              // Let the narrow header become visible before returning focus.
-              requestAnimationFrame(() => document.getElementById("c3-companion-trigger")?.focus({ preventScroll: true }));
-            } : undefined}
+            onBack={!toolSurface.open && !sidebarsInline && visibleScreens.length > 0 ? () => setMobilePane("room") : undefined}
             interaction={channel.interactionsByRoom.get(roomId) ?? null}
             onSend={channel.sendMessage} floating={toolSurface.open} hidden={conversationHidden} /></>}
           voice={<><section className="c3-voice-entry" aria-label={t("channel.previewPage.voiceInThisRoom")}>
@@ -498,5 +505,5 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           </section><ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={selectRoom} /></>} />
       </div>
     </main>
-  </div>;
+  </div></RoomLayerHistory.Provider>;
 }

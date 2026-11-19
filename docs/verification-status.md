@@ -18,6 +18,13 @@ left, retained the invited reader's grant and history on restart, and hid the
 room from a stranger. These runs used disposable data. Physical display capture,
 microphone capture and public-network conditions require their own checks.
 
+The matching Channel 33 Android test APK and Windows App ran on a controlled
+local network. On an API 35 x86_64 emulator, the Android launcher opened the
+system browser, which read a desktop message and displayed the captured Windows
+test window. After the site connection returned, the same page resumed its room
+and viewing state. Peer media loss and physical handset behavior require
+separate measurements.
+
 Three loopback Chromium sessions kept B’s screen playing through A while
 B and C established an additional connection. After A left, the original
 subscription resumed on that same pair when both ends had confirmed it.

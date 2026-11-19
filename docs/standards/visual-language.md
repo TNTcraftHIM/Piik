@@ -215,6 +215,10 @@ cached copies belong to connection and file details.
 The couch anchors the bottom of the central body, aligned with the personal area's
 top edge; it does not span either sidebar. Sidebars can collapse independently.
 Narrow layouts use temporary drawers without replacing those desktop preferences.
+In a narrow room, Back dismisses the uppermost share picker or settings dialog,
+then the drawer that opened it. Once the room is visible, Back resumes normal
+page navigation. Closing a drawer preserves the chat draft and returns keyboard
+focus to its trigger.
 
 Let the media stage use the available workspace. Grid gives watched pictures
 equal weight; focus gives one picture the main area and keeps the others in a

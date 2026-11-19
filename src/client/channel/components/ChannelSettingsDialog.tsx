@@ -10,6 +10,7 @@ import { surfaceViewport } from "../../ui/window-appearance";
 import { navigateTabs } from "../../ui/tab-navigation";
 import { ChannelAction } from "./ChannelAction";
 import { channelErrorPresentation } from "../error-presentation";
+import { useRoomLayer } from "../use-room-pane";
 import "./channel-settings-dialog.css";
 
 /** Task contents keep their own state; the native modal owns focus and dismissal. */
@@ -47,6 +48,7 @@ export function ChannelSettingsDialog({ title, caption, compact = false, materia
       if (element.open) element.close();
     };
   }, [ownerDocument]);
+  useRoomLayer(dialog, !!ownerDocument);
   return ownerDocument && createPortal(<dialog ref={dialog} className={`c3-settings-dialog ${className}`} data-compact={compact || undefined} data-modal-material={material}
     closedby={closeDisabled ? "none" : dismissOnBackdrop ? "any" : "closerequest"}
     onCancel={event => { if (closeDisabled) event.preventDefault(); }}
