@@ -89,6 +89,7 @@ impl Fixture {
         };
         let publication = PublicationInfo {
             screen: Some(piik_channel_core::wire::ScreenInfo {
+                direct_limit: None,
                 source: Default::default(),
                 title: None,
             }),

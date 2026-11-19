@@ -55,6 +55,7 @@ export function useChannel(): ChannelController {
     screenCodecMode: session.screenCodecMode,
     setScreenPaused: session.setScreenPaused,
     setScreenTitle: session.setScreenTitle,
+    setScreenDirectLimit: session.setScreenDirectLimit,
     sourceAudio: session.sourceAudio, setSourceAudio: session.setSourceAudio,
     sourceMicrophone: session.sourceMicrophone, setSourceMicrophone: session.setSourceMicrophone,
     sourceMicrophones: session.sourceMicrophones,

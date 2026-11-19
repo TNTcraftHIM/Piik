@@ -853,7 +853,7 @@ async fn waiting_capture_prepare_retires_before_late_room_confirmation() {
 }
 
 #[tokio::test]
-async fn capture_settings_and_title_complete_only_on_the_correlated_room_reply() {
+async fn capture_settings_and_edits_complete_only_on_the_correlated_room_reply() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
     let (client, remote) = tokio::join!(tokio_tungstenite::connect_async(&url), async {
@@ -882,7 +882,7 @@ async fn capture_settings_and_title_complete_only_on_the_correlated_room_reply()
 
         snapshot_job: None,
     };
-    for title in [false, true] {
+    for edit in [false, true] {
         for result in [
             RoomResult::Done,
             RoomResult::Error {
@@ -893,15 +893,15 @@ async fn capture_settings_and_title_complete_only_on_the_correlated_room_reply()
             let id = Uuid::new_v4().to_string();
             session.pending_captures.insert(
                 id.clone(),
-                if title {
-                    PendingCapture::Title(TitleCapture {
+                if edit {
+                    PendingCapture::Edit(EditCapture {
                         scope: CaptureScope {
                             publication_id: Uuid::new_v4(),
                             room_id: "room".into(),
                             binding_id: Uuid::new_v4(),
                         },
                         capture_id: Uuid::new_v4(),
-                        title: Some("Demo".into()),
+                        edit: CaptureEdit::DirectLimit(Some(1)),
                         result: done,
                     })
                 } else {
@@ -1101,7 +1101,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
             state.publications = requests
                 .iter()
                 .map(|(id, _, _)| piik_channel_core::wire::PublicationInfo {
-                    screen: Some(piik_channel_core::wire::ScreenInfo { source: Default::default(), title: None }),
+                    screen: Some(piik_channel_core::wire::ScreenInfo { direct_limit: None, source: Default::default(), title: None }),
                     id: *id,
                     room_id: if *id == requests[0].0 {
                         "affected"

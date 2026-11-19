@@ -148,6 +148,20 @@ test("authenticated users, signed conversation and selective source ownership", 
 
   const publicationId = randomUUID();
   assert.equal((await friend.request({ type: "publish", publication: { id: publicationId, roomId, kind: "screen", videoSettings, source } })).type, "ack");
+  const initial = await other.wait(event => event.type === "state"
+    && event.state.publications.some(publication => publication.id === publicationId), "new screen publication");
+  const screen = initial.state.publications.find(publication => publication.id === publicationId);
+  assert.equal(Object.hasOwn(screen, "directLimit"), false);
+  assert.equal((await other.request({ type: "set_screen_direct_limit", publicationId, limit: 1 })).type, "error");
+  assert.equal((await friend.request({ type: "set_screen_direct_limit", publicationId, limit: 21 })).code, "invalid_relay_capacity");
+  assert.equal((await friend.request({ type: "set_screen_direct_limit", publicationId, limit: 1 })).type, "ack");
+  await other.wait(event => event.type === "state"
+    && event.state.publications.some(publication => publication.id === publicationId && publication.directLimit === 1),
+  "explicit screen source limit");
+  assert.equal((await friend.request({ type: "set_screen_direct_limit", publicationId, limit: null })).type, "ack");
+  await other.wait(event => event.type === "state"
+    && event.state.publications.some(publication => publication.id === publicationId && !Object.hasOwn(publication, "directLimit")),
+  "screen source limit restored to room default");
   assert.equal((await other.request({ type: "unpublish", publicationId })).type, "error");
   assert.equal((await other.request({ type: "subscribe", publicationId, enabled: true })).type, "ack");
   const routed = await other.wait(event => event.type === "state" && event.state.pairs.some(pair => pair.incoming.some(flow => flow.publicationId === publicationId)), "admitted subscription");

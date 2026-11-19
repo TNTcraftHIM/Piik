@@ -19,13 +19,39 @@ import type { ChannelController } from "../types";
 import type { WatchMediaSources } from "../watch-page-media";
 import { screenTitle } from "../presentation";
 import { channelErrorPresentation } from "../error-presentation";
-import { ChannelSettingsDialog, useSettingsAction } from "./ChannelSettingsDialog";
+import { ChannelSettingsDialog, ChannelSettingsError, useSettingsAction } from "./ChannelSettingsDialog";
 import { ChannelExternalInput } from "./ChannelExternalInput";
 import { ChannelAction } from "./ChannelAction";
-import { MAX_WATCH_URL_LENGTH, type ChannelPublication } from "../protocol";
+import { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY, MAX_WATCH_URL_LENGTH, type ChannelPublication } from "../protocol";
 import "./channel-share-control.css";
+import "./channel-interface-control.css";
 import { CaptureSourceCard } from "../../components/living/CaptureSourceCard";
 import { BrandLoader } from "../../components/living/BrandMark";
+
+function ScreenDirectLimit({ sharing, channel, roomLimit, disabled }: {
+  sharing: Extract<ChannelPublication, { kind: "screen" }>; channel: ChannelController; roomLimit: number; disabled: boolean;
+}) {
+  const { t } = useCopy();
+  const { error, run } = useSettingsAction();
+  const pending = channel.pending.has(`direct-limit:${sharing.id}`);
+  return <div aria-busy={pending}>
+    <label className="c3-interface-choice">
+      <span>{t("screen.directLimit")}</span>
+      <select className="lr-select" value={sharing.directLimit ?? ""} disabled={disabled || pending}
+        onChange={event => {
+          const value = event.target.value;
+          void run(() => channel.setScreenDirectLimit(sharing.id, value === "" ? null : Number(value)));
+        }}>
+        <option value="">{t("screen.directLimitDefault", { count: String(roomLimit) })}</option>
+        {Array.from({ length: MAX_RELAY_CAPACITY }, (_, index) => index + 1).map(limit =>
+          <option key={limit} value={limit}>{limit}</option>)}
+      </select>
+    </label>
+    <p>{t("screen.directLimitHelp")}</p>
+    {pending && <p role="status">{t("common.loading")}</p>}
+    <ChannelSettingsError error={error} />
+  </div>;
+}
 
 function ShareTitleEditor({ sharing, channel, disabled }: {
   sharing: Extract<ChannelPublication, { kind: "screen" }>; channel: ChannelController; disabled: boolean;
@@ -88,7 +114,8 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     (!publicationId || publication.id === publicationId) && publication.roomId === roomId && channel.ownedScreens.has(publication.id));
   const watching = channel.state?.watchActivities.find(activity => activity.roomId === roomId && activity.sessionId === channel.sessionId);
   const pageWatch = watching && !!channel.watchPlayers.get(watching.id)?.media.page;
-  const roomName = sharing ? channel.state?.channel.rooms.find(room => room.id === roomId)?.name : undefined;
+  const room = sharing ? channel.state?.channel.rooms.find(room => room.id === roomId) : undefined;
+  const roomName = room?.name;
   const settingsTitle = roomName
     ? t("screen.shareSettingsInRoom", { room: roomName })
     : settingsLabel;
@@ -123,6 +150,8 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const busy = channel.pending.has(`screen:${roomId}`) || !!sharing && channel.pending.has(`source-audio:${sharing.id}`);
   const cancellable = !!captureRequest || channel.pending.has(`screen:${roomId}`) && !channel.sourceSelectionCommitting(roomId);
   const preparation = channel.browserCapturePreparation(roomId);
+  const directLimit = settingsOpen && sharing?.kind === "screen" ? <ScreenDirectLimit key={sharing.id} sharing={sharing} channel={channel}
+    roomLimit={room?.relayCapacity ?? DEFAULT_RELAY_CAPACITY} disabled={disabled || busy} /> : undefined;
   const label = t(sharing || watching ? "host.switchSource" : "host.start");
   const sourceTitle = roomName
     ? t("screen.switchRoomSource", { room: roomName })
@@ -195,8 +224,10 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         : t("screen.shareSettingsNext")}</p>
       {settingsOpen && sharing?.kind === "screen" && <ShareTitleEditor key={sharing.id} sharing={sharing} channel={channel} disabled={disabled || busy} />}
       {externalInput?.state === "live" ? <div className="c3-settings-panels"><p>{t("screen.obsQualityHelp")}</p>
-        <ChannelAction icon="cast" label={t("screen.obsSettings")} onClick={() => { close(); setExternalOpen(true); }} /></div>
-        : <SharingSettings id={`${id}-quality`} open={settingsOpen} busy={qualityPending || microphonePending}
+        <ChannelAction icon="cast" label={t("screen.obsSettings")} onClick={() => { close(); setExternalOpen(true); }} />
+        {directLimit && <details className="lr-sharing-connection"><summary>{t("host.settings.connection")}</summary>{directLimit}</details>}
+      </div>
+        : <SharingSettings id={`${id}-quality`} open={settingsOpen} busy={qualityPending || microphonePending} connection={directLimit}
         presets={<QualityPresets selected={matchingQualityProfileId(quality)} disabled={busy} busy={qualityPending}
           onSelect={preset => setQuality({ ...QUALITY_PROFILES[preset], maxAudioBitrate: quality.maxAudioBitrate })} />}
         pictureSummary={<PictureSettingsSummary value={screenQuality?.applied ?? quality} />}

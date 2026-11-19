@@ -2804,6 +2804,11 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
     expect(session.getSnapshot().ownedScreens).toEqual(new Set([publication.id]));
     if (muteTransition) { expect(session.sourceAudio(publication.id)?.muted).toBe(true); return; }
     if (outcome === "live") {
+      const limiting = session.setScreenDirectLimit(publication.id, 2);
+      expect(app.sent.at(-1)).toMatchObject({ type: "capture_direct_limit", publicationId: publication.id, limit: 2 });
+      expect(app.sent.at(-1)).not.toHaveProperty("captureId");
+      appReply(); await limiting;
+      expect(socket.sent.some(command => command.type === "set_screen_direct_limit")).toBe(false);
       const titling = session.setScreenTitle(publication.id, "Native notes");
       expect(app.sent.at(-1)).toMatchObject({ type: "capture_title", publicationId: publication.id, captureId: firstCaptureId, title: "Native notes" });
       appReply(); await titling;
@@ -9339,6 +9344,17 @@ test("Browser capture titles use original metadata and confirmed overrides witho
     await expect(session.setScreenTitle(publication.id, "x".repeat(65))).rejects.toThrow("invalid_title");
     expect(channelErrorPresentation("invalid_title", key => en[key]).message).toBe("The title cannot exceed 64 characters.");
     expect(channelErrorPresentation("invalid_title", key => zh[key]).message).toBe("标题不能超过 64 个字符。");
+    await expect(session.setScreenDirectLimit(publication.id, 0)).rejects.toThrow("invalid_relay_capacity");
+    for (const limit of [2, null]) {
+      const limiting = session.setScreenDirectLimit(publication.id, limit);
+      const command = socket.sent.at(-1)!;
+      expect(command).toMatchObject({ type: "set_screen_direct_limit", publicationId: publication.id, limit });
+      expect(session.getSnapshot().pending.has("direct-limit:" + publication.id)).toBe(true);
+      const confirmed = { ...state.publications[0], ...(limit === null ? {} : { directLimit: limit }) };
+      socket.receive({ type: "state", state: { ...state, publications: [confirmed] } });
+      socket.receive({ type: "ack", requestId: command.requestId }); await limiting;
+      expect(session.getSnapshot().state!.publications[0].directLimit).toBe(limit ?? undefined);
+    }
     const editing = session.setScreenTitle(publication.id, "  Weekly review  ");
     const edit = socket.sent.at(-1)!;
     expect(edit).toMatchObject({ type: "set_title", publicationId: publication.id, title: "Weekly review" });
@@ -9355,6 +9371,7 @@ test("Browser capture titles use original metadata and confirmed overrides witho
     const update = socket.sent.at(-1)!;
     expect(update.publication).toMatchObject({ id: publication.id, source: { kind: "screen", name: "Updated notes" } });
     expect(update.publication).not.toHaveProperty("title");
+    expect(update.publication).not.toHaveProperty("directLimit");
     expect(session.getSnapshot().streams.get(publication.id)).toBe(first);
     const rejected = expect(replacing).rejects.toThrow("room_unavailable");
     socket.receive({ type: "error", requestId: update.requestId, code: "room_unavailable" }); await rejected;
@@ -9370,6 +9387,7 @@ test("Browser capture titles use original metadata and confirmed overrides witho
     expect(bind.mock.calls).toHaveLength(bindings);
     state = { ...state, publications: [{ ...state.publications[0], sessionId: "other-endpoint" }] };
     socket.receive({ type: "state", state });
+    await expect(session.setScreenDirectLimit(publication.id, 1)).rejects.toThrow("not_publication_owner");
     await expect(session.setScreenTitle(publication.id, "Not mine")).rejects.toThrow("not_publication_owner");
   } finally { session.close(); }
 });

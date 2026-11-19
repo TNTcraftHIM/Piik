@@ -350,6 +350,7 @@ impl RoomRuntime {
 
     fn relay_limits(&self) -> RelayLimits {
         RelayLimits {
+            source_direct_limit: None,
             default: self.policy.relay_capacity as usize,
             host: self.base.as_ref().map_or(Uuid::nil(), BaseTree::root),
             overrides: self
@@ -931,6 +932,7 @@ impl RoomRuntime {
                 Publication::new(PublicationInfo {
                     screen: if kind == Kind::Screen {
                         Some(crate::wire::ScreenInfo {
+                            direct_limit: None,
                             source: source.ok_or("invalid_screen_source")?,
                             title: None,
                         })
@@ -962,12 +964,11 @@ impl RoomRuntime {
         Ok(true)
     }
 
-    pub fn set_title(
+    fn owned_screen(
         &mut self,
         session: Uuid,
         id: Uuid,
-        title: Option<String>,
-    ) -> Result<(), &'static str> {
+    ) -> Result<&mut crate::wire::ScreenInfo, &'static str> {
         let publication = self
             .publications
             .get_mut(&id)
@@ -975,11 +976,32 @@ impl RoomRuntime {
         if publication.info.session_id != session {
             return Err("not_publication_owner");
         }
-        let screen = publication
+        publication
             .info
             .screen
             .as_mut()
-            .ok_or("invalid_screen_publication")?;
+            .ok_or("invalid_screen_publication")
+    }
+    pub(crate) fn set_screen_direct_limit(
+        &mut self,
+        session: Uuid,
+        id: Uuid,
+        limit: Option<u8>,
+    ) -> Result<(), &'static str> {
+        let screen = self.owned_screen(session, id)?;
+        if limit.is_some_and(|value| !(1..=crate::MAX_RELAY_CAPACITY).contains(&value)) {
+            return Err("invalid_relay_capacity");
+        }
+        screen.direct_limit = limit;
+        Ok(())
+    }
+    pub fn set_title(
+        &mut self,
+        session: Uuid,
+        id: Uuid,
+        title: Option<String>,
+    ) -> Result<(), &'static str> {
+        let screen = self.owned_screen(session, id)?;
         screen.title = title
             .as_deref()
             .filter(|value| !value.trim().is_empty())
@@ -1359,6 +1381,12 @@ impl RoomRuntime {
                 // A screen source owns its outputs. Forwarders share their
                 // remaining capacity across all other screens in the room.
                 screen_limits.host = publication.info.session_id;
+                screen_limits.source_direct_limit = publication
+                    .info
+                    .screen
+                    .as_ref()
+                    .and_then(|s| s.direct_limit)
+                    .map(usize::from);
                 for (&session, &used) in &reserved {
                     if session != publication.info.session_id && used > 0 {
                         let capacity = limits
@@ -2118,6 +2146,8 @@ mod tests {
         );
     }
 
+    mod screen_direct_limit;
+
     fn screen_on_room_base() -> (RoomRuntime, BTreeMap<Uuid, Endpoint>) {
         let id = Uuid::from_u128;
         let endpoints: BTreeMap<_, _> = (1..=4)
@@ -2731,6 +2761,7 @@ mod tests {
             let count = if multiple_parents { 7 } else { 5 };
             let all: BTreeSet<_> = (1..=count).map(id).collect();
             let mut limits = RelayLimits {
+                source_direct_limit: None,
                 default: 3,
                 host: id(1),
                 overrides: if multiple_parents {
@@ -2742,6 +2773,7 @@ mod tests {
             let mut base = BaseTree::new(id(1));
             let mut picture = Publication::new(PublicationInfo {
                 screen: Some(crate::wire::ScreenInfo {
+                    direct_limit: None,
                     source: Default::default(),
                     title: None,
                 }),

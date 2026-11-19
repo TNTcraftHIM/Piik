@@ -18,7 +18,7 @@ import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 import { debugEvent } from "../lib/debug";
 
-export const APP_PROTOCOL = 22;
+export const APP_PROTOCOL = 23;
 const APP_REQUEST_BYTES = 256 * 1024;
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
@@ -539,6 +539,11 @@ export class ChannelApp {
     if (!captureId) throw new Error("capture_unavailable");
     await this.request({ type: "capture_paused", publicationId, captureId, paused });
     if (this.captures.get(publicationId)?.id !== captureId) throw new DOMException("Capture cancelled", "AbortError");
+  }
+
+  async setCaptureDirectLimit(publicationId: string, limit: number | null): Promise<void> {
+    if (!this.screens.has(publicationId)) throw new Error("capture_unavailable");
+    await this.request({ type: "capture_direct_limit", publicationId, limit });
   }
 
   async setCaptureTitle(publicationId: string, title: string | null): Promise<void> {

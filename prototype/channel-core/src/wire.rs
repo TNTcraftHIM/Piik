@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 32;
+pub const CHANNEL_PROTOCOL: u8 = 33;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -190,6 +190,10 @@ pub enum Command {
     },
     Unpublish {
         publication_id: Uuid,
+    },
+    SetScreenDirectLimit {
+        publication_id: Uuid,
+        limit: Option<u8>,
     },
     SetTitle {
         publication_id: Uuid,
@@ -1037,6 +1041,8 @@ pub enum Event {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScreenInfo {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direct_limit: Option<u8>,
     pub source: ScreenSource,
     pub title: Option<String>,
 }

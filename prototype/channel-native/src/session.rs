@@ -395,10 +395,14 @@ pub struct PauseCapture {
     pub paused: bool,
     pub result: oneshot::Sender<Result<(), String>>,
 }
-pub struct TitleCapture {
+pub enum CaptureEdit {
+    Title(Option<String>),
+    DirectLimit(Option<u8>),
+}
+pub struct EditCapture {
     pub scope: CaptureScope,
     pub capture_id: Uuid,
-    pub title: Option<String>,
+    pub edit: CaptureEdit,
     pub result: oneshot::Sender<Result<(), String>>,
 }
 pub struct PublishCaptureSettings {
@@ -418,7 +422,7 @@ enum PendingCapture {
     Commit(CommitCapture),
     Transfer(TransferSource),
     Pause(PauseCapture),
-    Title(TitleCapture),
+    Edit(EditCapture),
     Settings(PublishCaptureSettings),
 }
 impl PendingCapture {
@@ -427,7 +431,7 @@ impl PendingCapture {
             Self::Prepare(_) | Self::External(_) | Self::Authorize { .. } => None,
             Self::Commit(r) => Some(&r.scope),
             Self::Transfer(r) => Some(&r.scope),
-            Self::Title(r) => Some(&r.scope),
+            Self::Edit(r) => Some(&r.scope),
             Self::Pause(r) => Some(&r.scope),
             Self::Settings(r) => Some(&r.scope),
         }
@@ -455,7 +459,7 @@ impl PendingCapture {
             Self::Authorize { result, .. } => result.is_closed(),
             Self::Commit(r) => r.result.is_closed(),
             Self::Transfer(r) => r.result.is_closed(),
-            Self::Title(r) => r.result.is_closed(),
+            Self::Edit(r) => r.result.is_closed(),
             Self::Pause(r) => r.result.is_closed(),
             Self::Settings(r) => r.result.is_closed(),
         }
@@ -477,7 +481,7 @@ impl PendingCapture {
             Self::Transfer(r) => {
                 let _ = r.result.send(Err(code));
             }
-            Self::Title(r) => {
+            Self::Edit(r) => {
                 let _ = r.result.send(Err(code));
             }
             Self::Pause(r) => {
@@ -569,7 +573,7 @@ pub enum HostCommand {
     CommitCapture(CommitCapture),
     TransferSource(TransferSource),
     PauseCapture(PauseCapture),
-    TitleCapture(TitleCapture),
+    EditCapture(EditCapture),
     PublishCaptureSettings(PublishCaptureSettings),
 }
 impl HostCommand {
@@ -618,7 +622,7 @@ impl HostCommand {
             Self::TransferSource(request) => {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
             }
-            Self::TitleCapture(request) => {
+            Self::EditCapture(request) => {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
             }
             Self::PauseCapture(request) => {
@@ -973,7 +977,7 @@ impl Session {
                                 HostCommand::AuthorizeInput { publication_id, room_id, result } => self.authorize_input(publication_id, room_id, result, socket).await?,
                                 HostCommand::CommitCapture(request) => self.commit_capture(request, socket).await?,
                                 HostCommand::TransferSource(request) => self.transfer_source(request, socket).await?,
-                                HostCommand::TitleCapture(request) => self.title_capture(request, socket).await?,
+                                HostCommand::EditCapture(request) => self.edit_capture(request, socket).await?,
                                 HostCommand::PauseCapture(request) => self.pause_capture(request, socket).await?,
                                 HostCommand::PublishCaptureSettings(request) => self.publish_capture_settings(request, socket).await?,
                             } }
@@ -1597,7 +1601,7 @@ impl Session {
                         (PendingCapture::Transfer(request), RoomResult::Done) => {
                             let _ = request.result.send(Ok(()));
                         }
-                        (PendingCapture::Title(request), RoomResult::Done) => {
+                        (PendingCapture::Edit(request), RoomResult::Done) => {
                             let _ = request.result.send(Ok(()));
                         }
                         (PendingCapture::Pause(request), RoomResult::Done) => {
@@ -1978,11 +1982,7 @@ impl Session {
         write(socket, &command, Some(&id)).await
     }
 
-    async fn title_capture(
-        &mut self,
-        request: TitleCapture,
-        socket: &mut Writer<'_>,
-    ) -> Result<()> {
+    async fn edit_capture(&mut self, request: EditCapture, socket: &mut Writer<'_>) -> Result<()> {
         if request.result.is_closed() {
             return Ok(());
         }
@@ -2011,13 +2011,20 @@ impl Session {
             let _ = request.result.send(Err("capture_unavailable".into()));
             return Ok(());
         }
-        let command = Command::SetTitle {
-            publication_id: request.scope.publication_id,
-            title: request.title.clone(),
+        let publication_id = request.scope.publication_id;
+        let command = match &request.edit {
+            CaptureEdit::Title(title) => Command::SetTitle {
+                publication_id,
+                title: title.clone(),
+            },
+            CaptureEdit::DirectLimit(limit) => Command::SetScreenDirectLimit {
+                publication_id,
+                limit: *limit,
+            },
         };
         let id = Uuid::new_v4().to_string();
         self.pending_captures
-            .insert(id.clone(), PendingCapture::Title(request));
+            .insert(id.clone(), PendingCapture::Edit(request));
         write(socket, &command, Some(&id)).await
     }
 

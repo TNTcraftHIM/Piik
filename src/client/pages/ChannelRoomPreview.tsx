@@ -102,6 +102,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const [unwatched, setUnwatched] = useState(new Set<string>());
   const [stopped, setStopped] = useState(new Set<string>());
   const [mixed, setMixed] = useState(false);
+  const [directLimits, setDirectLimits] = useState<Record<string, number | null>>({});
   const [titles, setTitles] = useState<Record<string, string | null>>({});
   const [sourceSounds, setSourceSounds] = useState<Partial<Record<string, { level: number; muted: boolean; bitrate?: number }>>>({});
   const canvases = useRef<HTMLCanvasElement[]>([]);
@@ -118,7 +119,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     sessionId: `${screenUsers[index].id}-session`, userId: screenUsers[index].id,
     kind: "screen" as const, source: { kind: index === 1 ? "camera" as const : "screen" as const, name: longNames ? "A shared evening with friends and a very long source name" : ["A little place to stay", "Studio camera", "Drawing together"][index % 3] }, title: null, paused: false, videoSettings: screenVideoSettings(sample.channel.quality) })))
     .filter(publication => roomIds.has(publication.roomId) && !stopped.has(publication.id))
-    .map(publication => ({ ...publication, title: titles[publication.id] ?? null, audience: audienceSample ? users.filter(user => user.id !== publication.userId).slice(0, 5)
+    .map(publication => ({ ...publication, title: titles[publication.id] ?? null, directLimit: directLimits[publication.id] ?? undefined, audience: audienceSample ? users.filter(user => user.id !== publication.userId).slice(0, 5)
       .map((user, index) => ({ sessionId: `${user.id}-session`, state: index < 3 ? "active" as const : index === 3 ? "preparing" as const : "failed" as const })) : [] }));
   const ownedScreens = new Set(publications.filter(publication => publication.userId === "sample-ada").map(publication => publication.id));
   const subscriptions = publications.filter(publication => !unwatched.has(publication.id)).map(publication => publication.id);
@@ -355,9 +356,12 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     retryPicture: async () => sample.received(),
     watch: async id => setUnwatched(previous => { const next = new Set(previous); next.delete(id); return next; }),
     unwatch: async id => setUnwatched(previous => new Set(previous).add(id)), stopScreen: async id => { setStopped(previous => new Set(previous).add(id)); setTitles(previous => { const next = { ...previous }; delete next[id]; return next; }); sample.received(); },
-    startScreen: async roomId => { setStopped(new Set()); setTitles({}); setSharingRoom(roomId); },
-    startNativeScreen: async roomId => { setStopped(new Set()); setTitles({}); setSharingRoom(roomId); },
+    startScreen: async roomId => { setStopped(new Set()); setTitles({}); setDirectLimits({}); setSharingRoom(roomId); },
+    startNativeScreen: async roomId => { setStopped(new Set()); setTitles({}); setDirectLimits({}); setSharingRoom(roomId); },
     setScreenPaused: async () => sample.received(),
+    setScreenDirectLimit: async (id, limit) => {
+      if (ownedScreens.has(id)) setDirectLimits(previous => ({ ...previous, [id]: limit }));
+    },
     setScreenTitle: async (id, title) => { if (ownedScreens.has(id)) setTitles(previous => ({ ...previous, [id]: title })); },
     inputPolicy: async () => sample.received(), inputDecide: async () => sample.received(), inputSimultaneous: async () => sample.received(),
     inputShortcut: async () => { throw new Error("No input device in this preview"); },

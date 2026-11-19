@@ -6,6 +6,7 @@ const BASE_PREPARE_MS: u64 = 20_000;
 
 #[derive(Clone)]
 pub(crate) struct RelayLimits {
+    pub source_direct_limit: Option<usize>,
     pub default: usize,
     pub host: Uuid,
     pub overrides: BTreeMap<Uuid, usize>,
@@ -13,6 +14,7 @@ pub(crate) struct RelayLimits {
 impl Default for RelayLimits {
     fn default() -> Self {
         Self {
+            source_direct_limit: None,
             default: 2,
             host: Uuid::nil(),
             overrides: BTreeMap::new(),
@@ -21,6 +23,11 @@ impl Default for RelayLimits {
 }
 impl RelayLimits {
     pub fn get(&self, endpoint: Uuid, source: Uuid) -> usize {
+        if endpoint == source {
+            if let Some(limit) = self.source_direct_limit {
+                return limit;
+            }
+        }
         match self.overrides.get(&endpoint).copied() {
             Some(0) if endpoint == source || endpoint == self.host => self.default,
             Some(capacity) => capacity,
@@ -523,7 +530,9 @@ impl Plan {
             .iter()
             .filter_map(|(child, parent)| {
                 (helpers.get(child) != Some(parent)
-                    && !(self.source == *parent && origin_paths.contains(&(*parent, *child)))
+                    && !(limits.source_direct_limit.is_none()
+                        && self.source == *parent
+                        && origin_paths.contains(&(*parent, *child)))
                     && self.wan_outputs(*parent, None, helpers) > limits.get(*parent, self.source))
                 .then_some(*child)
             })
@@ -559,7 +568,8 @@ impl Plan {
                 || !connected.contains(&child)
                 || !connected.contains(&parent)
                 || self.is_display(parent, helpers)
-                || (parent != self.source
+                || ((parent != self.source || limits.source_direct_limit.is_some())
+                    && helpers.get(&child) != Some(&parent)
                     && self.parents.get(&child) != Some(&parent)
                     && self.wan_outputs(parent, Some(child), helpers)
                         + suffix
@@ -1284,6 +1294,7 @@ mod tests {
     fn positive_endpoint_limits_apply_to_host_and_source_without_changing_zero_roots() {
         let id = Uuid::from_u128;
         let mut limits = RelayLimits {
+            source_direct_limit: None,
             default: 2,
             host: id(1),
             overrides: [(id(1), 1), (id(2), 4), (id(3), 3)].into(),
@@ -1309,6 +1320,7 @@ mod tests {
         }
         let original = tree.plan.parents.clone();
         let mut limits = RelayLimits {
+            source_direct_limit: None,
             default: 2,
             host: id(1),
             overrides: [(id(1), 3)].into(),
@@ -1396,6 +1408,7 @@ mod tests {
         let mut demand = BTreeSet::new();
         let mut base = BaseTree::new(id(1));
         let mut limits = RelayLimits {
+            source_direct_limit: None,
             default: 1,
             host: id(1),
             overrides: BTreeMap::new(),

@@ -289,12 +289,10 @@ did not trigger it. The final shared H264/VP8 timing path passes codec, preferen
 and recovery checks. These results do not establish improved game performance,
 physical GPU-overload detection or automatic hardware/software switching.
 
-The packaged endpoint-setting flow retains independent webpage and Native App
-overrides after reopening settings. With room default 1, webpage override 0 and
-Native host override 3, three synthetic voice participants established three ready
-direct base branches from that Native host. Leaving voice released their tracks
-and connections. This proves the positive App override for new base demand;
-screen-source fanout and media quality were not exercised.
+A prior package with room-scoped endpoint controls established three direct
+voice branches from a Native host with an override of three and a room default
+of one. Leaving voice released the tracks and connections. Current device
+contribution and screen-source controls follow the [forwarding model](./research/channel-forwarding-plan.md#contribution-budget).
 
 Windows has normal App window-capture, Browser viewing and attended input
 execution evidence. OS permission, protected/admin application and game

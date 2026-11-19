@@ -262,6 +262,7 @@ impl Channel {
             }
             Command::Unpublish { .. } => {}
             Command::Subscribe { .. }
+            | Command::SetScreenDirectLimit { .. }
             | Command::SetTitle { .. }
             | Command::SetPaused { .. }
             | Command::TransferSource { .. }
@@ -626,6 +627,7 @@ impl Channel {
             Command::RelayCapacity { room_id, .. } => Some(room_id.clone()),
             Command::Publish { publication } => Some(publication.room_id.clone()),
             Command::Unpublish { publication_id }
+            | Command::SetScreenDirectLimit { publication_id, .. }
             | Command::SetTitle { publication_id, .. }
             | Command::SetPaused { publication_id, .. }
             | Command::TransferSource { publication_id, .. }
@@ -1496,10 +1498,15 @@ impl Channel {
             if publications.insert(publication.id, publication).is_some()
                 || validate_video_settings(publication.kind, publication.video_settings).is_err()
                 || match (publication.kind, &publication.screen) {
-                    (Kind::Screen, Some(screen)) => [&screen.source.name, &screen.title]
-                        .into_iter()
-                        .flatten()
-                        .any(|value| title(value).as_deref() != Some(value.as_str())),
+                    (Kind::Screen, Some(screen)) => {
+                        screen
+                            .direct_limit
+                            .is_some_and(|n| !(1..=crate::MAX_RELAY_CAPACITY).contains(&n))
+                            || [&screen.source.name, &screen.title]
+                                .into_iter()
+                                .flatten()
+                                .any(|value| title(value).as_deref() != Some(value.as_str()))
+                    }
                     (Kind::Voice, None) => false,
                     _ => true,
                 }

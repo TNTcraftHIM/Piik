@@ -48,8 +48,8 @@ use piik_channel_native::{
         SourceMicrophoneSettings,
     },
     session::{
-        self, CommitCapture, HostCommand, Hosting, OpenRoom, PauseCapture, PrepareCapture,
-        PublishCaptureSettings, TitleCapture, TransferSource,
+        self, CaptureEdit, CommitCapture, EditCapture, HostCommand, Hosting, OpenRoom,
+        PauseCapture, PrepareCapture, PublishCaptureSettings, TransferSource,
     },
 };
 use serde::Deserialize;
@@ -67,7 +67,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 22;
+const PROTOCOL: u8 = 23;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -1128,6 +1128,10 @@ enum Operation {
         publication_id: Uuid,
         capture_id: Uuid,
         settings: Settings,
+    },
+    CaptureDirectLimit {
+        publication_id: Uuid,
+        limit: Option<u8>,
     },
     CaptureTitle {
         publication_id: Uuid,
@@ -2468,21 +2472,36 @@ async fn connection(
                                     Err(anyhow!("capture_unavailable"))
                                 }
                             }
-                            Operation::CaptureTitle {
-                                publication_id,
-                                capture_id,
-                                title,
-                            } => {
+                            operation @ (Operation::CaptureTitle { .. }
+                            | Operation::CaptureDirectLimit { .. }) => {
+                                let (publication_id, expected_capture, edit) = match operation {
+                                    Operation::CaptureTitle {
+                                        publication_id,
+                                        capture_id,
+                                        title,
+                                    } => (
+                                        publication_id,
+                                        Some(capture_id),
+                                        CaptureEdit::Title(title),
+                                    ),
+                                    Operation::CaptureDirectLimit {
+                                        publication_id,
+                                        limit,
+                                    } => (publication_id, None, CaptureEdit::DirectLimit(limit)),
+                                    _ => unreachable!(),
+                                };
                                 let lease = captures
                                     .get(&publication_id)
                                     .and_then(Capture::source)
-                                    .filter(|lease| lease.id() == capture_id);
+                                    .filter(|lease| {
+                                        expected_capture.is_none_or(|id| lease.id() == id)
+                                    });
                                 if let (Some(commands), Some(lease)) = (&host, lease) {
                                     let commands = commands.clone();
                                     let scope = lease.scope().clone();
                                     let capture_id = lease.producer_id();
                                     operations.push(async move {
-                                        let result = title_capture(&commands, scope, capture_id, title).await;
+                                        let result = edit_capture(&commands, scope, capture_id, edit).await;
                                         match result {
                                             Ok(()) => json!({"id":request.id,"result":null}),
                                             Err(error) => json!({"id":request.id,"error":error.to_string()}),
@@ -2788,18 +2807,18 @@ async fn pause_capture(
         .map_err(anyhow::Error::msg)
 }
 
-async fn title_capture(
+async fn edit_capture(
     commands: &mpsc::Sender<HostCommand>,
     scope: piik_channel_native::peer::CaptureScope,
     capture_id: Uuid,
-    title: Option<String>,
+    edit: CaptureEdit,
 ) -> Result<()> {
     let (result, response) = oneshot::channel();
     commands
-        .send(HostCommand::TitleCapture(TitleCapture {
+        .send(HostCommand::EditCapture(EditCapture {
             scope,
             capture_id,
-            title,
+            edit,
             result,
         }))
         .await

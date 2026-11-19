@@ -2980,6 +2980,18 @@ export class ChannelSession {
       throw error;
     } finally { this.finishScreenSelection(roomId, share, selection); }
   });
+  setScreenDirectLimit = async (publicationId: string, limit: number | null): Promise<void> => {
+    const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");
+    if (!publication) throw new Error("publication_unavailable");
+    if (this.view.connection !== "connected") throw new Error("disconnected");
+    if (limit !== null && (!Number.isInteger(limit) || limit < 1 || limit > MAX_RELAY_CAPACITY)) throw new Error("invalid_relay_capacity");
+    const key = "direct-limit:" + publicationId;
+    if (this.local.get(publicationId)?.kind === "screen" && publication.sessionId === this.view.sessionId) {
+      await this.action(key, () => this.request({ type: "set_screen_direct_limit", publicationId, limit }, undefined, publication.roomId), false);
+    } else if (this.app?.screens.has(publicationId)) {
+      await this.action(key, () => this.app!.setCaptureDirectLimit(publicationId, limit), false);
+    } else throw new Error("not_publication_owner");
+  };
   setScreenTitle = async (publicationId: string, title: string | null): Promise<void> => {
     const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");
     if (!publication) throw new Error("publication_unavailable");

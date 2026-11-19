@@ -146,3 +146,68 @@ fn cancelling_file_or_screen_preserves_the_other_on_the_same_pair() {
         }
     }
 }
+
+#[test]
+fn room_capacity_changes_apply_to_an_active_screen() {
+    let mut network = RoomNetwork::new();
+    let host = Uuid::from_u128(1);
+    let (source, _) = join(&mut network, host, None);
+    let viewers = [2, 3, 4].map(Uuid::from_u128);
+    let room = network.create(host, RoomAccess::Public, false);
+    let update = |network: &mut RoomNetwork, capacity| {
+        command(
+            network,
+            host,
+            json!({
+                "type":"update_room","roomId":room,"name":"Capacity","icon":"couch",
+                "access":"public","hidden":false,"relayCapacity":capacity
+            }),
+        )
+    };
+    update(&mut network, 1);
+    let screen = publish(&mut network, host, &room, "screen");
+    let inputs =
+        |network: &RoomNetwork| viewers.map(|viewer| screen_input(network, viewer, source, screen));
+    let decode = |network: &mut RoomNetwork, viewer| {
+        let (pair, flow) = screen_input(network, viewer, source, screen).unwrap();
+        command(
+            network,
+            viewer,
+            json!({"type":"flow_state","pairId":pair,"flowId":flow.id,"state":"decoded"}),
+        );
+    };
+    for viewer in viewers {
+        join(&mut network, viewer, None);
+        // A receiver cannot absorb another viewer when the source limit drops.
+        command(
+            &mut network,
+            viewer,
+            json!({"type":"relay_capacity","roomId":room,"capacity":0}),
+        );
+        subscribe_screen(&mut network, viewer, screen);
+        if viewer == viewers[0] {
+            decode(&mut network, viewer);
+        }
+    }
+    let [Some(first), None, None] = inputs(&network) else {
+        panic!("only the first subscriber should have an input");
+    };
+    update(&mut network, 3);
+    assert_eq!(inputs(&network)[0], Some(first));
+    for viewer in &viewers[1..] {
+        decode(&mut network, *viewer);
+    }
+    let admitted = inputs(&network);
+    update(&mut network, 1);
+    assert_eq!(inputs(&network), admitted);
+    for (now, remaining) in [(20_100, 2), (40_100, 1)] {
+        let effects = network.authority.expire(now);
+        network.deliver(effects);
+        let current = inputs(&network);
+        assert_eq!(current.iter().flatten().count(), remaining);
+        assert!(current
+            .iter()
+            .zip(admitted)
+            .all(|(input, old)| input.is_none() || *input == old));
+    }
+}

@@ -128,6 +128,14 @@ third-party business forwarding. A positive value limits distinct downstream pee
 for **each kind**. The baseline accounts for the peers of a Browser page or
 App runtime across the rooms it serves.
 
+The room manager sets the default number of downstream connections. A live
+screen follows the room default until its publisher chooses a direct limit
+for that share. A limit of one lets the publisher send to one viewer or
+relay, which can serve further viewers. The setting follows the publication
+when its capture source changes and expires when sharing stops. Changes use
+the existing route transition. The user's other publications, voice, file
+transfers and contributions keep their own limits.
+
 For a kind `k`, count a peer in `D[k]` from acceptance of its first forwarding
 assignment through preparation and active delivery. Release it after its last
 assignment of that kind ends or fails. With a custom limit `N`, each kind must

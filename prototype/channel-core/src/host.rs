@@ -491,6 +491,10 @@ impl RoomRuntime {
             Command::Unpublish { publication_id } => {
                 self.unpublish(session, publication_id)?;
             }
+            Command::SetScreenDirectLimit {
+                publication_id,
+                limit,
+            } => self.set_screen_direct_limit(session, publication_id, limit)?,
             Command::SetTitle {
                 publication_id,
                 title,

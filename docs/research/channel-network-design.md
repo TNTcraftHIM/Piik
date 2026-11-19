@@ -283,6 +283,11 @@ existing room authority carries playback state. The
 [implementation ledger](../todo.md) distinguishes direct-media delivery from
 website-connector work.
 
+The room offers one Watch action. It opens a directly playable source first,
+then uses the sharer's offered media transfer when that is the available browser
+path. A source that requires the original webpage offers Watch in App. Viewers
+can change an available receiving method in the player's settings.
+
 When a discovered media URL loads in the sharer's Browser player, that player
 owns playback in the Piik stage. Prepare it before replacing the current share;
 retire the discovery page after the room confirms the new activity. Loading
@@ -459,12 +464,11 @@ branches. Necessary reverse-base neighbors and a helper's local display edge are
 distinct from new forwarding branches. This is room-local topology policy, not a
 total upload/device-capacity promise or a domain budget divided among rooms.
 
-Connection settings name the webpage and its connected App separately. The
-Browser retains its per-room preference; the App changes its actual Native
-endpoint through the existing room confirmation. That setting lasts with the
-Native session and survives closing its control page. A new Native session
-follows the room default. Raising a limit preserves healthy branches and makes
-the added capacity available to subsequent planning.
+Room settings control the default fanout. Sharing settings can override it for
+the current screen's source. Raising the limit makes capacity available to waiting
+viewers while preserving healthy branches. Each webpage or linked App sets
+its contribution to other people's traffic in the channel's forwarding settings.
+[Publication and contribution limits](./channel-forwarding-plan.md#contribution-budget)
 
 Reducing a limit stops new excess branches and moves affected children through
 one bounded transition at that tree's existing owner. Choose a feasible necessary
