@@ -4616,16 +4616,16 @@ fn two_twenty_person_rooms_share_site_capacity_with_browser_app_and_bounded_prof
         command(
             &mut network,
             group[0].1,
-            json!({"type":"update_room","roomId":room,"name":"Full room","icon":image,"access":"public","hidden":false}),
+            json!({"type":"update_room","roomId":room,"name":"Full room","icon":"couch","picture":image,"access":"public","hidden":false}),
         );
     }
-    // The full directory can retain 32 maximum-size room icons without repeating avatars.
+    // Every room hosts a maximum-size picture. Only its active readers receive it.
     for _ in 2..32 {
         let room = network.create(people[0].1, RoomAccess::Public, false);
         command(
             &mut network,
             people[0].1,
-            json!({"type":"update_room","roomId":room,"name":"Idle room","icon":image,"access":"public","hidden":false}),
+            json!({"type":"update_room","roomId":room,"name":"Idle room","icon":"couch","picture":image,"access":"public","hidden":false}),
         );
     }
     command(
@@ -4633,6 +4633,19 @@ fn two_twenty_person_rooms_share_site_capacity_with_browser_app_and_bounded_prof
         operator,
         json!({"type":"update_domain","name":"Large friends site","icon":image}),
     );
+    let directory = &network.state(operator).channel.rooms;
+    assert_eq!(directory.len(), 32);
+    assert!(directory.iter().all(|room| room.picture.is_none()));
+    for (group, id) in people.chunks(20).zip(&rooms) {
+        let reading = network
+            .state(group[0].0)
+            .channel
+            .rooms
+            .iter()
+            .find(|room| &room.id == id)
+            .unwrap();
+        assert_eq!(reading.picture.as_deref(), Some(image.as_str()));
+    }
     let mut max_state_bytes = 0;
     for &(browser, app, _, _) in &people {
         for connection in [browser, app] {

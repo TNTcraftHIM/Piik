@@ -32,11 +32,12 @@ WebRTC connection. The recipient saved a file matching the sender's SHA-256.
 Its decoded screen frames advanced during the download and after the file
 transfer ended. The screen kept its original connection and media flow.
 
-The capacity scenario exercises the real Core with two rooms of 20 users, each
-using Browser and App endpoints, plus the Server endpoint. It includes screen,
-voice, watching and file plans. The largest observed full State was 970,935 bytes
-and HostOutput 409,583 bytes within the existing 4 MiB frame bound. This is route
-and serialization acceptance; the network/media checks below own transport evidence.
+The Core capacity run exercised two active rooms of 20 people each, their
+Browser and App endpoints, and one Server endpoint. All 32 rooms had a
+maximum-size uploaded picture. The lobby received built-in icons and each
+active reader received its room picture. With screen, voice and file demand,
+the largest observed full State was 200,775 bytes and HostOutput was 215,279
+bytes, both within the 4 MiB frame bound.
 Real Browser/Server checks admitted 65 new retained identities, read paged offline
 profiles without peer connections, applied rename and avatar removal, found an
 unloaded offline mention target, and exported an old author outside the reading
