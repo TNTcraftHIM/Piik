@@ -93,6 +93,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
     {!download.busy && (download.outcome === "requested" || download.outcome === "dispatched" || download.outcome === "saved") && <small role="status">{t(download.outcome === "saved"
       ? "channel.attachment.saved"
       : download.outcome === "requested" ? "channel.attachment.downloadRequested" : "channel.attachment.downloadSent")}</small>}
+    {download.outcome === "cancelled" && <small role="status">{t("channel.attachment.downloadCancelled")}</small>}
     {isImage && !preview && <ChannelAction icon={previewBusy ? "x" : "eye"} quiet
       label={previewBusy ? t("channel.attachment.cancelImageLoading") : t("channel.attachment.viewImage")}
       onClick={() => { if (previewBusy) cancelPreview(); else void showImage(); }} />}

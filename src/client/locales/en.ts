@@ -327,6 +327,7 @@ export const en: Record<CopyKey, string> = {
   "channel.attachment.finishing": "Preparing the completed file…",
   "channel.attachment.downloadSent": "Sent to browser downloads",
   "channel.attachment.downloadRequested": "Download requested",
+  "channel.attachment.downloadCancelled": "Download cancelled",
   "channel.attachment.saving": "Saving — see the download window",
   "channel.attachment.saved": "Saved",
   "channel.attachment.sourceUnavailable": "No readable copy is available right now. Try again when someone with a copy is online.",

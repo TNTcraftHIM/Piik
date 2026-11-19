@@ -170,6 +170,7 @@ test.each(["resolve", "reject"])("cancelling runtime preparation permits an imme
     await vi.waitFor(() => expect(initializeRuntime).toHaveBeenCalledOnce());
     expect(files.status(key)).toMatchObject({ busy: true });
     files.cancelDownload(key);
+    expect(files.status(key)).toMatchObject({ busy: false, outcome: "cancelled", error: null });
     const retry = files.download(key, attachment, inlineImage);
     expect(retry).not.toBe(first);
     await expect(first).rejects.toMatchObject({ name: "AbortError" });
@@ -270,22 +271,30 @@ test.each(["en", "zh", "zh-Hant", "ja", "ko"] as const)("archive budget guidance
 });
 
 
-test("file progress follows completed writes and is shared until the last consumer cancels", async () => {
-  const files = setup(), key = { roomId: "room", messageSeq: 1, attachmentId: attachment.id };
+test("shared file progress survives one consumer leaving and a cancelled writer cannot affect a retried download", async () => {
+  const command = vi.fn(async (_command: ChannelCommand) => {}), files = setup(command);
+  const file = new File(["GIF89a"], attachment.name);
+  const save = vi.spyOn(downloads, "downloadBlob").mockImplementation((_file, _name, options) => options?.outcome?.("dispatched"));
   let finishWrite!: () => void;
-  const written = vi.fn(() => "[]"), cancel = vi.fn(() => "[]"), remove = vi.fn(async () => {});
+  const written = vi.fn((_key: string, _offset: bigint, size: number) => JSON.stringify(size === file.size ? [{ type: "complete", key }] : []));
+  const cancel = vi.fn(() => "[]"), remove = vi.fn(async () => {});
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ initializeRuntime: async () => {},
     FileDelivery: class {
       start() { return "[]"; } update() { return "[]"; } next_deadline() { return undefined; }
       written = written; cancel = cancel; free() {}
-      control() { return JSON.stringify([{ type: "write", key, offset: 0, bytes: [1, 2, 3] }]); }
+      control(_peer: string, data: string) {
+        const bytes = data === "retry-write" ? [...new TextEncoder().encode("GIF89a")] : [1, 2, 3];
+        return JSON.stringify([{ type: "write", key, offset: 0, bytes }]);
+      }
     },
   } as never);
   vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
-    getFileHandle: async () => ({ createWritable: async () => ({ write: () => new Promise<void>(resolve => { finishWrite = resolve; }), abort: async () => {} }) }), removeEntry: remove,
+    getFileHandle: async () => ({ getFile: async () => file, createWritable: async () => ({
+      write: () => new Promise<void>(resolve => { finishWrite = resolve; }), close: async () => {}, abort: async () => {},
+    }) }), removeEntry: remove,
   }) }) } });
-  const first = new AbortController(), second = new AbortController();
-  const a = files.content(key, attachment, first.signal), b = files.content(key, attachment, second.signal);
+  const first = new AbortController();
+  const a = files.content(key, attachment, first.signal), b = files.download(key, attachment);
   void a.catch(() => {}); void b.catch(() => {});
   try {
     await vi.waitFor(() => expect(files.progress(key)).toEqual({ received: 0, total: attachment.size, state: "waiting" }));
@@ -298,9 +307,34 @@ test("file progress follows completed writes and is shared until the last consum
     expect(written).toHaveBeenCalledWith(JSON.stringify(key), 0n, 3);
     first.abort(); await expect(a).rejects.toMatchObject({ name: "AbortError" });
     expect(files.progress(key)?.received).toBe(3); expect(cancel).not.toHaveBeenCalled();
-    second.abort(); await expect(b).rejects.toMatchObject({ name: "AbortError" });
+    const firstWrite = finishWrite;
+    files.data("source", "control", "old-write");
+    await vi.waitFor(() => expect(finishWrite).not.toBe(firstWrite));
+    const oldWrite = finishWrite;
+    const cancellationSnapshots: boolean[] = [];
+    const unsubscribe = files.subscribe(() => cancellationSnapshots.push(files.status(key).busy));
+    try { files.cancelDownload(key); } finally { unsubscribe(); }
+    expect(cancellationSnapshots).toContain(false);
+    expect(cancellationSnapshots).not.toContain(true);
+    expect(files.progress(key)).toBeNull();
+    expect(cancel).toHaveBeenCalledOnce();
+    const retry = files.download(key, attachment);
+    void retry.catch(() => {});
+    await expect(b).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(files.progress(key)).toEqual({ received: 0, total: attachment.size, state: "waiting" }));
+    expect(remove).not.toHaveBeenCalled();
+    oldWrite();
     await vi.waitFor(() => expect(remove).toHaveBeenCalledOnce());
-    expect(files.progress(key)).toBeNull(); expect(cancel).toHaveBeenCalledOnce();
+    expect(files.progress(key)).toEqual({ received: 0, total: attachment.size, state: "waiting" });
+    expect(written).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(save).not.toHaveBeenCalled();
+    files.data("source", "control", "retry-write");
+    await vi.waitFor(() => expect(finishWrite).not.toBe(oldWrite));
+    finishWrite();
+    await retry;
+    expect(save).toHaveBeenCalledExactlyOnceWith(file, attachment.name, expect.anything());
+    expect(command).toHaveBeenCalledWith({ type: "file_offer", ...key, sha256: attachment.sha256, available: true });
   } finally { files.reset(); vi.unstubAllGlobals(); }
 });
 

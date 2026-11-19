@@ -325,6 +325,7 @@ export const zh = {
   "channel.attachment.finishing": "正在准备已接收的文件…",
   "channel.attachment.downloadSent": "已交给浏览器下载",
   "channel.attachment.downloadRequested": "已请求下载",
+  "channel.attachment.downloadCancelled": "已取消下载",
   "channel.attachment.saving": "正在保存，请查看下载窗口",
   "channel.attachment.saved": "已保存",
   "channel.attachment.sourceUnavailable": "暂时没有可读取的文件副本。持有副本的参与者上线后，可再次尝试。",

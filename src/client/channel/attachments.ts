@@ -346,11 +346,22 @@ export class ChannelAttachments {
         this.changed();
       } });
     })
-      .catch(error => { if (this.downloads.get(id) === download) download.status = { busy: false, error: download.controller.signal.aborted ? null : errorOf(error).message }; throw error; })
-      .finally(() => { if (this.downloads.get(id) === download) { download.status = { ...download.status, busy: false }; this.changed(); } });
+      .catch(error => {
+        if (this.downloads.get(id) === download && !download.controller.signal.aborted) {
+          download.status = { busy: false, error: errorOf(error).message };
+          this.changed();
+        }
+        throw error;
+      });
     return download.promise;
   }
-  cancelDownload(key: ChannelFileKey): void { this.downloads.get(keyOf(key))?.controller.abort(); }
+  cancelDownload(key: ChannelFileKey): void {
+    const download = this.downloads.get(keyOf(key));
+    if (!download?.status.busy) return;
+    download.status = { busy: false, error: null, outcome: "cancelled" };
+    download.controller.abort();
+    this.changed();
+  }
   async content(key: ChannelFileKey, attachment: ChannelAttachment, signal: AbortSignal, inlineImage?: ImageRendition): Promise<File> {
     signal.throwIfAborted();
     if (this.messageRemoved(key)) throw new Error("attachment_unavailable");
@@ -503,6 +514,7 @@ export class ChannelAttachments {
   private async disposeSink(sink: Sink, error: Error): Promise<void> {
     sink.lifetime.abort(); sink.reject(error);
     try { await sink.writer.abort(); } catch { /* A completed writer is already closed. */ }
+    await sink.tail;
     try { await sink.directory.removeEntry(sink.name); } catch { /* A failed creation may have no entry. */ }
   }
   reset(): void {
