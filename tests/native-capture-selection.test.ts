@@ -33,6 +33,18 @@ describe("native capture source selection", () => {
   const game = target("My Game", "1");
   afterEach(() => setCopy({ lang: "en", vis: true }));
 
+  it("lets a host clear a previous exclusion when the App only offers system audio", () => {
+    setCopy({ lang: "en", vis: false });
+    const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources: { kind: "ready", sources: [game, { kind: "display", sourceId: "2", title: "Screen" }],
+        processAudio: false, systemAudio: true, processAudioExclusion: false },
+      initialTab: "display", initialAudio: true, initialExcludeAudio: game, audioLocked: true,
+      onBrowser() {}, onNative() {}, onPreview: async () => null, onRefresh() {}, onCancel() {},
+    }));
+    expect(html).toMatch(/data-native-source="display:2"[^>]*disabled=""/);
+    expect(html).toContain(t("en", "host.sourcePicker.excludeNone"));
+    expect(html).toContain(t("en", "host.sourcePicker.excludeMissing"));
+  });
   it("shows one system chooser for picker-only Apps instead of duplicate desktop tabs", () => {
     setCopy({ lang: "en", vis: false });
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {

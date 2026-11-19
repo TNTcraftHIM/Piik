@@ -322,7 +322,7 @@ export function CaptureSourcePicker({
                   </Tooltip>
                 </div>
               ) : null}
-              {canExcludeAudio && shareAudio && anyNativeAudio ? (
+              {activeTab === "display" && shareAudio && anyNativeAudio && (canExcludeAudio || excludeAudio) ? (
                 <details className="lr-source-exclusion" onToggle={event => {
                   if (event.currentTarget.open) event.currentTarget.scrollIntoView({ block: "nearest" });
                 }}>
@@ -331,7 +331,7 @@ export function CaptureSourcePicker({
                     {!vis && <span>{t("host.sourcePicker.excludeAudio")}{excludeAudio ? `: ${excludeAudio.title}` : ""}</span>}
                     <Glyph name="chevron" size={14} />
                   </summary>
-                  <AudioExclusionSelect sources={applications} value={excludeAudio}
+                  <AudioExclusionSelect sources={canExcludeAudio ? applications : []} value={excludeAudio}
                     showLabel={false} disabled={selectionDisabled} onChange={setExcludeAudio} />
                 </details>
               ) : null}
