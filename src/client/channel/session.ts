@@ -13,9 +13,10 @@ import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
 import { selectedRoom } from "./navigation";
 import { RoomReadMarkers } from "./read-markers";
+import { historyProfileIds, mergeMessage, mergeMessages, readingWindow, redactReply } from "./message-history";
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
-import { messageRemoved, type ChannelActions, type ChannelView, type ChatOptions, type RoomHistoryChanges, type ScreenPresentation, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
+import { messageRemoved, type ChannelActions, type ChannelView, type ChatOptions, type ScreenPresentation, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
 import { validBackupSequence, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
 import type { BackupHistoryImport } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
@@ -157,35 +158,6 @@ function withoutRoomPictures(state: ChannelSnapshot): ChannelSnapshot {
     return rest;
   });
   return { ...state, channel: { ...state.channel, rooms } };
-}
-
-function mergeMessages(messages: ChannelMessage[]): ChannelMessage[] {
-  const merged = new Map<string, ChannelMessage>();
-  for (const message of messages) merged.set(message.id, mergeMessage(merged.get(message.id), message));
-  return [...merged.values()].sort((a, b) => a.seq - b.seq);
-}
-
-function mergeMessage(previous: ChannelMessage | undefined, message: ChannelMessage): ChannelMessage {
-  return previous?.reactions && (!message.reactions || previous.reactions.revision > message.reactions.revision)
-    ? { ...message, reactions: previous.reactions } : message;
-}
-
-function redactReply(message: ChannelMessage, changes: RoomHistoryChanges | undefined): ChannelMessage {
-  if (!message.reply || !messageRemoved(changes, message.reply.seq)) return message;
-  const { reply: _reply, ...remaining } = message;
-  return remaining;
-}
-
-/** A reading window retains a contiguous end of history, bounded by text and image bytes. */
-function readingWindow(messages: ChannelMessage[], count: number, latest: boolean): ChannelMessage[] {
-  const encoder = new TextEncoder(), maximum = 4 * 1024 * 1024;
-  let bytes = 0, kept = 0;
-  for (let index = latest ? messages.length - 1 : 0; index >= 0 && index < messages.length && kept < count; index += latest ? -1 : 1) {
-    const size = encoder.encode(JSON.stringify(messages[index])).length;
-    if (kept > 0 && bytes + size > maximum) break;
-    bytes += size; kept++;
-  }
-  return latest ? messages.slice(messages.length - kept) : messages.slice(0, kept);
 }
 
 /** The live browser endpoint owns captures and reconnects; browsing owns neither. */
@@ -343,13 +315,6 @@ export class ChannelSession {
     }
     return ids.flatMap(id => this.profileFresh(id) ? [this.view.profiles.get(id)!] : []);
   };
-  private historyProfileIds(messages = Object.values(this.view.messagesByRoom).flat()): string[] {
-    return messages.flatMap(message => [
-      ...(!message.archivedAuthorName ? [message.userId] : []),
-      ...(message.reply && !message.reply.archivedAuthorName ? [message.reply.userId] : []),
-      ...(message.mentions ?? []).map(mention => mention.userId),
-    ]);
-  }
   screenPresentation = (flowId: string, stream: MediaStream, state: ScreenPresentation): void => this.media.screenPresentation(flowId, stream, state);
   setQuality = (profile: QualityProfile): void => {
     if (!supportsCaptureProfile(profile)) throw new Error("capture_quality_unsupported");
@@ -729,7 +694,8 @@ export class ChannelSession {
         && canRead(publication.roomId) && !freshBindings.has(publication.roomId)))),
       historyByRoom: Object.fromEntries(Object.entries(this.view.historyByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
     });
-    void this.loadProfiles([...state.users.map(user => user.id), ...this.historyProfileIds()]).catch(() => {});
+    const historyProfiles = Object.values(this.view.messagesByRoom).flatMap(historyProfileIds);
+    void this.loadProfiles([...state.users.map(user => user.id), ...historyProfiles]).catch(() => {});
     if (refreshHelper) void this.syncAppWatching(true);
     for (const [id, hosted] of this.hostedRooms) if (!state.channel.rooms.some(room => room.id === id)) {
       this.hostedRooms.delete(id);
@@ -994,7 +960,7 @@ export class ChannelSession {
       || oldestSeq !== null && messages.length > 0 && messages[0].seq > oldestSeq);
     this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: messages },
       historyByRoom: { ...this.view.historyByRoom, [roomId]: { hasMore, before: messages[0]?.seq, atLatest } } });
-    void this.loadProfiles(this.historyProfileIds(messages)).catch(() => {});
+    void this.loadProfiles(historyProfileIds(messages)).catch(() => {});
   }
 
   private applyMessage(roomId: string, message: ChannelMessage): void {
@@ -1003,7 +969,7 @@ export class ChannelSession {
     const changes = this.view.historyChangesByRoom[roomId];
     if (messageRemoved(changes, message.seq)) return;
     message = redactReply(message, changes);
-    void this.loadProfiles(this.historyProfileIds([message])).catch(() => {});
+    void this.loadProfiles(historyProfileIds([message])).catch(() => {});
     const sender = state.users.find(user => user.id === message.userId) ?? this.view.profiles.get(message.userId) ?? { id: message.userId, name: message.archivedAuthorName ?? "User" };
     const points = Array.from(message.text.replace(/\s+/gu, " ").normalize("NFC").trim());
     const text = points.length > MAX_CHAT_CODE_POINTS ? `${points.slice(0, MAX_CHAT_CODE_POINTS - 1).join("")}…` : points.join("");
