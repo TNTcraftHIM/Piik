@@ -31,6 +31,22 @@ export function moveRoom(ids: readonly string[], source: string, target: string)
   return next;
 }
 
+export function roomAvailabilityGroups(rooms: readonly ChannelRoom[]) {
+  return [
+    { available: true, rooms: rooms.filter(room => room.available) },
+    { available: false, rooms: rooms.filter(room => !room.available) },
+  ].filter(group => group.rooms.length);
+}
+
+export function moveRoomWithinAvailability(rooms: readonly ChannelRoom[], available: boolean, source: string, target: string) {
+  const ids = rooms.filter(room => room.available === available).map(room => room.id);
+  const position = ids.indexOf(target);
+  if (position < 0 || source === target || !ids.includes(source)) return;
+  const reordered = moveRoom(ids, source, target);
+  let index = 0;
+  return { ids: rooms.map(room => room.available === available ? reordered[index++] : room.id), position: position + 1, total: ids.length };
+}
+
 /** Personal order uses the same site/user scope as local reading preferences. */
 export function useRoomOrder(rooms: readonly ChannelRoom[], siteId?: string, userId?: string) {
   const key = roomOrderKey(siteId, userId);
@@ -42,12 +58,15 @@ export function useRoomOrder(rooms: readonly ChannelRoom[], siteId?: string, use
     return () => window.removeEventListener("storage", changed);
   }, [key]);
   const ordered = orderedRooms(rooms, saved.key === key ? saved.ids : readRoomOrder(key));
-  const move = (source: string, target: string) => {
+  const move = (available: boolean, source: string, target: string) => {
     if (!key) return;
-    const ids = moveRoom(ordered.map(room => room.id), source, target);
+    const moved = moveRoomWithinAvailability(ordered, available, source, target);
+    if (!moved) return;
+    const { ids } = moved;
     setSaved({ key, ids });
     try { localStorage.setItem(key, JSON.stringify(ids)); }
     catch { /* The order remains usable for this page when storage is unavailable. */ }
+    return moved;
   };
   return { rooms: ordered, move };
 }

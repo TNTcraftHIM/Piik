@@ -188,7 +188,7 @@ export const en: Record<CopyKey, string> = {
   "room.item.offline": "Offline",
   "room.order.edit": "Reorder rooms",
   "room.order.done": "Finish reordering",
-  "room.order.help": "Only your order changes. Drag the handle, use its arrow keys, or use the up/down buttons.",
+  "room.order.help": "Only your order changes. Within a group, drag the handle, press its arrow keys, or use the up and down buttons.",
   "room.order.move": "Move {name}, position {position} of {total}",
   "room.order.up": "Move {name} up",
   "room.order.down": "Move {name} down",

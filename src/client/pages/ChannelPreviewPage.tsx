@@ -1,5 +1,5 @@
 import { canWatchInBrowser } from "../channel/watch-youtube-source";
-import { useRoomOrder } from "../channel/room-order";
+import { roomAvailabilityGroups, useRoomOrder } from "../channel/room-order";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { HeaderControls, LedStrip } from "../components/living/Header";
 import { StageTv } from "../components/living/Stage";
@@ -114,15 +114,18 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const previousOwnedScreens = useRef<ReadonlySet<string>>(new Set(channel.ownedScreens));
   const [voiceFocus, setVoiceFocus] = useState("");
   const { rooms, move: moveRoom } = useRoomOrder(state?.channel.rooms ?? [], state?.channel.id, self?.id);
-  const [orderingRooms, setOrderingRooms] = useState(false), [draggedRoom, setDraggedRoom] = useState<string | null>(null);
+  const roomGroups = roomAvailabilityGroups(rooms);
+  const canOrderRooms = roomGroups.some(group => group.rooms.length > 1);
+  const [orderingRooms, setOrderingRooms] = useState(false);
+  const [draggedRoom, setDraggedRoom] = useState<{ id: string; available: boolean } | null>(null);
   const [orderAnnouncement, setOrderAnnouncement] = useState("");
   useEffect(() => { setOrderingRooms(false); setDraggedRoom(null); setOrderAnnouncement(""); }, [state?.channel.id, self?.id]);
-  const reorderRoom = (source: string, target: string) => {
-    if (source === target) return;
-    const position = rooms.findIndex(room => room.id === target), name = rooms.find(room => room.id === source)?.name;
-    if (position < 0 || !name) return;
-    moveRoom(source, target);
-    setOrderAnnouncement(t("room.order.moved", { name, position: String(position + 1), total: String(rooms.length) }));
+  const activeDrag = draggedRoom && rooms.some(room => room.id === draggedRoom.id && room.available === draggedRoom.available) ? draggedRoom : null;
+  useEffect(() => { if (!activeDrag && draggedRoom) setDraggedRoom(null); }, [activeDrag, draggedRoom]);
+  const reorderRoom = (available: boolean, source: string, target: string) => {
+    const moved = moveRoom(available, source, target);
+    const name = rooms.find(value => value.id === source)?.name;
+    if (moved && name) setOrderAnnouncement(t("room.order.moved", { name, position: String(moved.position), total: String(moved.total) }));
   };
   const room = rooms.find(value => value.id === selected);
   const roomId = room?.id ?? "";
@@ -300,9 +303,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         <div className="c3-sidebar-browse">
         <div className={`c3-room-navigation${!rooms.length ? " is-empty" : ""}`}>
           <div className="c3-section-label"><span id="c3-room-list-heading" tabIndex={-1} className="c3-section-caption"><Cap k={{ text: t("channel.previewPage.rooms") }} /></span>
-            <div className="c3-room-list-actions">{self && rooms.length > 1 && <Btn icon={orderingRooms ? "check" : "grip"} size="dense" quiet textTooltip
+            <div className="c3-room-list-actions">{self && (canOrderRooms || orderingRooms) && <Btn icon={orderingRooms ? "check" : "grip"} size="dense" quiet textTooltip
               title={orderingRooms ? "room.order.done" : "room.order.edit"} pressed={orderingRooms}
-              onClick={() => { setOrderingRooms(!orderingRooms); setDraggedRoom(null); }} />}
+              onClick={() => { setOrderingRooms(!orderingRooms); setDraggedRoom(null); setOrderAnnouncement(""); }} />}
               {canCreateRoom && <Btn icon="plus" size="dense" quiet hint="hint-create-room"
               title={{ text: t("channel.previewPage.createRoom") }} cap={!rooms.length ? { text: t("channel.previewPage.createRoom") } : undefined}
               expanded={newRoomName !== null} disabled={!connected} onClick={() => setNewRoomName("")} />}
@@ -313,13 +316,19 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           {orderingRooms && <p id="c3-room-order-help" className="c3-room-order-help">{t("room.order.help")}</p>}
           <span className="visually-hidden" role="status">{orderAnnouncement}</span>
           <nav className="c3-rooms" aria-label={t("channel.previewPage.rooms")}>
-            {rooms.map((value, index) => <ChannelRoomListItem key={value.id} channel={channel} room={value}
-              selected={roomId === value.id} settingsOpen={managedRoomId === value.id}
-              ordering={orderingRooms ? { index, total: rooms.length, active: draggedRoom !== null,
-                onDrag: () => setDraggedRoom(value.id), onEnd: () => setDraggedRoom(null),
-                onDrop: () => { if (draggedRoom) reorderRoom(draggedRoom, value.id); setDraggedRoom(null); },
-                onMove: direction => { const target = rooms[index + direction]; if (target) reorderRoom(value.id, target.id); } } : undefined}
-              onSelect={() => selectRoom(value.id)} onManage={() => setManagedRoomId(value.id)} />)}
+            {roomGroups.flatMap(({ available, rooms: groupedRooms }) => [
+              <h3 key={available ? "group-online" : "group-offline"} className="c3-section-label c3-room-group-heading">
+                {t(available ? "channel.people.online" : "channel.people.offline")}<span>{groupedRooms.length}</span>
+              </h3>,
+              ...groupedRooms.map((value, index) => <ChannelRoomListItem key={`room-${value.id}`} channel={channel} room={value}
+                selected={roomId === value.id} settingsOpen={managedRoomId === value.id}
+                ordering={orderingRooms && groupedRooms.length > 1 ? { index, total: groupedRooms.length,
+                  active: activeDrag?.available === available && activeDrag.id !== value.id,
+                  onDrag: () => setDraggedRoom({ id: value.id, available }), onEnd: () => setDraggedRoom(null),
+                  onDrop: () => { if (activeDrag) reorderRoom(activeDrag.available, activeDrag.id, value.id); setDraggedRoom(null); },
+                  onMove: direction => { const target = groupedRooms[index + direction]; if (target) reorderRoom(available, value.id, target.id); } } : undefined}
+                onSelect={() => selectRoom(value.id)} onManage={() => setManagedRoomId(value.id)} />),
+            ])}
           </nav>
           {state && !rooms.length && <p className="c3-room-list-empty">{t("channel.previewPage.noRoomsAvailableYet")}</p>}
         </div>

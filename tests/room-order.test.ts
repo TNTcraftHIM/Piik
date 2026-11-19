@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { moveRoom, orderedRooms, readRoomOrder, roomOrderKey } from "../src/client/channel/room-order";
+import { moveRoom, moveRoomWithinAvailability, orderedRooms, readRoomOrder, roomAvailabilityGroups, roomOrderKey } from "../src/client/channel/room-order";
 import type { ChannelRoom } from "../src/client/channel/protocol";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -25,6 +25,30 @@ test("room order is personal, keeps offline rooms, and appends newly available d
   expect(moveRoom(["a", "c", "b"], "b", "a")).toEqual(["b", "a", "c"]);
   expect(moveRoom(["a", "b"], "unknown", "b")).toEqual(["a", "b"]);
   saved.set(key, '{"a":1}'); expect(readRoomOrder(key)).toEqual([]);
+});
+
+test("availability groups keep personal order within each group after a host returns", () => {
+  const rooms = ["a", "b", "c", "d", "e"].map(id => ({ id, available: id !== "b" && id !== "d" }) as ChannelRoom);
+  const groups = (ordered: readonly ChannelRoom[]) => roomAvailabilityGroups(ordered).map(group => group.rooms.map(room => room.id));
+  expect(groups(rooms)).toEqual([["a", "c", "e"], ["b", "d"]]);
+  const onlineMove = moveRoomWithinAvailability(rooms, true, "e", "a")!;
+  expect(onlineMove).toEqual({ ids: ["e", "b", "a", "d", "c"], position: 1, total: 3 });
+  const offlineMove = moveRoomWithinAvailability(orderedRooms(rooms, onlineMove.ids), false, "b", "d")!;
+  expect(groups(orderedRooms(rooms, offlineMove.ids))).toEqual([["e", "a", "c"], ["d", "b"]]);
+  rooms[1].available = true;
+  expect(groups(orderedRooms(rooms, offlineMove.ids))).toEqual([["e", "a", "b", "c"], ["d"]]);
+  rooms[3].available = true;
+  expect(groups(orderedRooms(rooms, offlineMove.ids))).toEqual([["e", "d", "a", "b", "c"]]);
+});
+
+test("a move cannot use a room from outside the group where it started", () => {
+  const rooms = ["a", "b", "c"].map(id => ({ id, available: id !== "c" }) as ChannelRoom);
+  expect(moveRoomWithinAvailability(rooms, true, "a", "c")).toBeUndefined();
+  expect(moveRoomWithinAvailability(rooms, true, "a", "missing")).toBeUndefined();
+  expect(moveRoomWithinAvailability(rooms, true, "missing", "b")).toBeUndefined();
+  rooms[0].available = false;
+  rooms[1].available = false;
+  expect(moveRoomWithinAvailability(rooms, true, "a", "b")).toBeUndefined();
 });
 
 test("room navigation and private entry use host availability, not the creator's endpoint presence", () => {

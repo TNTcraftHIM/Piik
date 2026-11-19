@@ -37,6 +37,9 @@
 .c3-room-navigation > .c3-section-label { min-height: var(--c3-heading-height); padding-inline: 4px; }
 .c3-room-list-actions { display: flex; align-items: center; gap: 2px; }
 .c3-rooms { display: grid; gap: 5px; margin-top: 8px; }
+.c3-room-group-heading { justify-content: flex-start; align-items: baseline; min-height: 0; margin: 0; font-size: 11px; }
+.c3-room-group-heading:not(:first-child) { margin-top: 12px; }
+.c3-room-group-heading > span { font-weight: 400; }
 .c3-room-list-empty { padding: 16px 10px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .c3-room-navigation.is-empty > .c3-section-label { flex-wrap: wrap; gap: 12px; }
 .c3-pane-back, .c3-pane-navigation { display: none; }

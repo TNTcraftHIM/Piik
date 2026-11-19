@@ -186,7 +186,7 @@ export const zh = {
   "room.item.offline": "离线",
   "room.order.edit": "调整房间顺序",
   "room.order.done": "完成排序",
-  "room.order.help": "仅改变你的顺序。拖动手柄、在手柄上按上下键，或使用上移/下移按钮。",
+  "room.order.help": "各组内的排序只对你生效。可拖动手柄、在手柄上按上下键，或使用上移和下移按钮。",
   "room.order.move": "移动{name}，第{position}项，共{total}项",
   "room.order.up": "上移{name}",
   "room.order.down": "下移{name}",
