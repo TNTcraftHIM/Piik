@@ -129,7 +129,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const canChooseExecution = sources.kind === "ready" && sources.softwareEncodingCodecs.includes("h264")
     && (codecMode === "auto" || codecMode === "h264")
     && (sharing ? !!selectedNative?.current && !externalInput : sources.sources.length > 0 && !externalInput);
-  const pickerSources: NativeSourceList = sources.kind === "ready" &&
+  const pickerSources: NativeSourceList = !appConnected ? { kind: "browser" } : sources.kind === "ready" &&
     !(codecMode === "auto" ? sources.codecs.length > 0 : sources.codecs.includes(codecMode))
     ? { kind: "unsupported" } : sources;
   const screenQuality = sharing ? channel.screenQuality(sharing.id) : undefined;
@@ -171,8 +171,15 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         ? { sources: previous.sources } : {}) }));
     void nativeSources().then(result => {
       if (request.current === current) setSources({ kind: "ready", ...result });
-    }, () => {
-      if (request.current === current) setSources({ kind: "failed" });
+    }, error => {
+      if (request.current !== current) return;
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setSources({ kind: "unavailable" });
+        return;
+      }
+      const code = error instanceof Error ? error.message : "";
+      setSources(code === "app_disconnected" || code === "app_context_changed"
+        ? { kind: "unavailable" } : { kind: "failed", error: code });
     });
   }, [appConnected, nativeSources]);
   useEffect(() => {
@@ -288,7 +295,8 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
           else void channel.startExternalScreen(roomId).then(() => setExternalOpen(true)).catch(() => {});
         } : undefined}
         onNative={(target, audio, border, excludeAudio) => start(() => startNativeScreen(roomId, target, audio, excludeAudio, border))}
-        onPreview={channel.nativePreview} onRefresh={refresh} onCancel={() => {
+        onPreview={channel.nativePreview} onRefresh={refresh} nativeFailureMessage={sources.kind === "failed" && sources.error
+          ? channelErrorPresentation(sources.error, t, "host.sourcePicker.failed").message ?? undefined : undefined} onCancel={() => {
           close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true });
         }} />}
     </div>

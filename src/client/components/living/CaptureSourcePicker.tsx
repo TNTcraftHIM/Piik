@@ -31,7 +31,7 @@ export type NativeSourceList =
   | { kind: "unavailable" }
   | { kind: "incompatible" }
   | { kind: "unsupported" }
-  | { kind: "failed" }
+  | { kind: "failed"; error?: string }
   | {
       kind: "ready";
       sources: NativeCaptureTarget[];
@@ -55,6 +55,7 @@ export function CaptureSourcePicker({
   onExternalInput,
   onPreview,
   onRefresh,
+  nativeFailureMessage,
   onCancel,
   browserSupported = true,
   cameraSupported = true,
@@ -82,6 +83,7 @@ export function CaptureSourcePicker({
     signal?: AbortSignal,
   ) => Promise<string | null>;
   onRefresh: () => void;
+  nativeFailureMessage?: string;
   onCancel: () => void;
   browserSupported?: boolean;
   cameraSupported?: boolean;
@@ -399,7 +401,7 @@ export function CaptureSourcePicker({
               <Glyph name="refresh" className="lr-spin" size={18} />{t("host.sourcePicker.loading")}
             </span>
           ) : issueKey ? (
-            <Pill icon="alert" label={t(issueKey)} comic="warning" />
+            <Pill icon="alert" label={nativeSources.kind === "failed" ? nativeFailureMessage ?? t(issueKey) : t(issueKey)} comic="warning" />
           ) : browserCapture || activeTab === "camera" || activeTab === "external" ? null : sources.length === 0 ? (
             <span
               className="lr-source-picker-status"

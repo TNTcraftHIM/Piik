@@ -2132,6 +2132,9 @@ test("Native capability catalog retains known choices without echoing future des
       codecs: ["future-codec", "h264"], softwareEncodingCodecs: ["h264", "future-codec"],
       sources: [{ ...target, futureDescription: "available" }, { kind: "future-source", opaque: "not-selectable" }] });
     expect(choices).toEqual(catalog);
+    const fullTitle = { ...target, sourceId: "2", title: "x".repeat(4094) + "\u{1f5a5}" };
+    const bothWindows = { ...catalog, sources: [target, fullTitle] };
+    await expect(list(bothWindows)).resolves.toEqual(bothWindows);
     await expect(list({ ...catalog, sources: [{ ...target, pid: "42" }] })).rejects.toThrow();
     await expect(list({ ...catalog, codecs: [42] })).rejects.toThrow();
     await expect(list({ ...catalog, sources: null })).rejects.toThrow();
@@ -3214,6 +3217,24 @@ test("a late source-ceiling rejection cannot configure a stopped capture or its 
   } finally { session.close(); }
 });
 
+test("a catalog reply cannot publish sources after its App connection retires", async () => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
+    service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved",
+  });
+  const { session } = await setup();
+  try {
+    const app = await startFixtureApp(session);
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const rejected = expect(session.nativeSources()).rejects.toThrow("app_context_changed");
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
+    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [], codecs: [], softwareEncodingCodecs: [],
+      videoAdaptation: false, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false } });
+    app.close();
+    await rejected;
+  } finally { session.close(); }
+});
 test("Native capture previews before its snapshot, keeps picture on audio failure, and stops through its App owner", async () => {
   vi.stubGlobal("navigator", { userAgent: "test", userActivation: { isActive: false } });
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });

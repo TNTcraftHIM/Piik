@@ -2665,6 +2665,9 @@ async fn capture_targets() -> Result<Value> {
                 Vec::new()
             } else {
                 piik_channel_native::capture::targets()?
+                    .into_iter()
+                    .map(Target::with_catalog_title)
+                    .collect()
             };
             let audio = piik_channel_native::capture::audio_capabilities();
             let mut result = json!({"sources": sources, "codecs": codecs, "softwareEncodingCodecs": piik_channel_native::capture::software_video_codecs()?, "processAudio": audio.process_audio, "processAudioExclusion": audio.process_audio_exclusion, "systemAudio": audio.system_audio, "captureBorderControl": piik_channel_native::capture::capture_border_control(), "videoAdaptation": piik_channel_native::capture::supports_video_adaptation()});

@@ -2705,7 +2705,8 @@ export class ChannelSession {
   nativeSources = async (): Promise<NativeCaptureSources> => {
     const app = await this.connectApp();
     const sources = await app.sources();
-    if (this.app === app && this.view.encodingExecution === "software" && !sources.softwareEncodingCodecs.length)
+    if (this.app !== app || !app.connected || this.closed) throw new Error("app_context_changed");
+    if (this.view.encodingExecution === "software" && !sources.softwareEncodingCodecs.length)
       this.patch({ encodingExecution: "auto" });
     return sources;
   };

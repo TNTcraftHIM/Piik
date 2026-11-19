@@ -1,3 +1,4 @@
+import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
@@ -930,4 +931,19 @@ it("uses the same automatic attempt on activated return and does not restart it 
   complete(); await settle();
   expect(page.activateClient).not.toHaveBeenCalled();
   page.cleanup();
+});
+
+it("keeps source enumeration failures distinct from access denial and App recovery", () => {
+  setCopy({ lang: "en" });
+  const render = (nativeSources: Parameters<typeof CaptureSourcePicker>[0]["nativeSources"]) =>
+    renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources, initialTab: "window", browserSupported: true,
+      onBrowser: vi.fn(), onNative: vi.fn(), onPreview: async () => null,
+      onRefresh: vi.fn(), nativeFailureMessage: nativeSources.kind === "failed" ? channelErrorPresentation(nativeSources.error ?? null, (key, vars) => t("en", key, vars), "host.sourcePicker.failed").message ?? undefined : undefined, onCancel: vi.fn(),
+    }));
+  expect(render({ kind: "failed", error: "portal_failed" })).toContain(t("en", "host.sourcePicker.failed"));
+  expect(render({ kind: "failed", error: "permission_denied" })).toContain(t("en", "channel.error.deviceAccessDenied"));
+  const unavailable = render({ kind: "unavailable" });
+
+  expect(unavailable).not.toContain(t("en", "host.sourcePicker.failed"));
 });

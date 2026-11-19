@@ -352,19 +352,35 @@ pub struct Target {
     pub creation_time: Option<String>,
 }
 impl Target {
-    pub(crate) fn screen_source(&self) -> piik_channel_core::wire::ScreenSource {
-        let named = self.kind == TargetKind::Window
-            || (cfg!(target_os = "windows") && self.kind == TargetKind::Display);
+    fn title_for(&self, max_utf16_units: usize) -> String {
         let mut units = 0;
-        let name: String = self
-            .title
+        self.title
             .trim()
             .chars()
             .take_while(|ch| {
                 units += ch.len_utf16();
-                units <= 64
+                units <= max_utf16_units
             })
-            .collect();
+            .collect()
+    }
+
+    pub fn with_catalog_title(mut self) -> Self {
+        // The App control wire accepts up to 4096 UTF-16 units per source label.
+        self.title = self.title_for(4096);
+        if self.title.is_empty() {
+            self.title = match self.kind {
+                TargetKind::Window => "Window".into(),
+                TargetKind::Display => "Display".into(),
+                TargetKind::Picker => "Screen or window".into(),
+            };
+        }
+        self
+    }
+
+    pub(crate) fn screen_source(&self) -> piik_channel_core::wire::ScreenSource {
+        let named = self.kind == TargetKind::Window
+            || (cfg!(target_os = "windows") && self.kind == TargetKind::Display);
+        let name = self.title_for(64);
         piik_channel_core::wire::ScreenSource {
             kind: piik_channel_core::wire::ScreenSourceKind::Screen,
             name: (named && !name.is_empty()).then_some(name),
@@ -502,6 +518,26 @@ mod tests {
             target.screen_source().name.unwrap().encode_utf16().count(),
             64
         );
+    }
+
+    #[test]
+    fn catalog_title_preserves_identity_and_whole_unicode_characters() {
+        let window = super::Target {
+            kind: super::TargetKind::Window,
+            source_id: "1".into(),
+            title: format!("{}\u{1f5a5}", "a".repeat(4095)),
+            pid: 42,
+            creation_time: Some("10".into()),
+        };
+        let advertised = window.clone().with_catalog_title();
+        assert!(window.same_source(&advertised));
+        assert_eq!(advertised.title, "a".repeat(4095));
+        let display = super::Target {
+            kind: super::TargetKind::Display,
+            title: String::new(),
+            ..window
+        };
+        assert_eq!(display.with_catalog_title().title, "Display");
     }
 
     use super::Settings;

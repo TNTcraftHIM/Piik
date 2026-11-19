@@ -140,7 +140,7 @@ fn creation_time(pid: u32) -> Result<u64> {
 pub fn targets() -> Result<Vec<Target>> {
     let mut targets = Vec::new();
     for window in Window::enumerate()? {
-        let title = window.title()?;
+        let Ok(title) = window.title() else { continue };
         if title.trim().is_empty() {
             continue;
         }
@@ -160,10 +160,23 @@ pub fn targets() -> Result<Vec<Target>> {
         });
     }
     for monitor in Monitor::enumerate()? {
+        let Some(title) = monitor
+            .name()
+            .ok()
+            .filter(|name| !name.trim().is_empty())
+            .or_else(|| {
+                monitor
+                    .device_name()
+                    .ok()
+                    .filter(|name| !name.trim().is_empty())
+            })
+        else {
+            continue;
+        };
         targets.push(Target {
             kind: TargetKind::Display,
             source_id: (monitor.as_raw_hmonitor() as usize).to_string(),
-            title: monitor.name()?,
+            title,
             pid: 0,
             creation_time: None,
         });
