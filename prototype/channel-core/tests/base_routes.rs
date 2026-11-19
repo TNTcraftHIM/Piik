@@ -1388,6 +1388,18 @@ fn voice_uses_only_mutually_ready_tree_paths_and_non_listeners_can_forward_both_
             "a speaker never gets its own publication back"
         );
     }
+    subscribe_screen(&mut network, b, relay_picture);
+    let (screen_pair, screen_flow) = screen_input(&network, b, cs, relay_picture).unwrap();
+    assert_eq!(screen_pair, cb.id);
+    let live_cd = pair(&network, d, cs, &room);
+    assert!(live_cd.incoming.iter().any(|flow| flow.publication_id == from_b));
+    command(
+        &mut network,
+        d,
+        json!({"type":"link_state","pairId":live_cd.id,"state":"failed"}),
+    );
+    let (retained_pair, retained_flow) = screen_input(&network, b, cs, relay_picture).unwrap();
+    assert_eq!((retained_pair, retained_flow.id), (screen_pair, screen_flow.id));
     command(
         &mut network,
         c,
@@ -1406,11 +1418,12 @@ fn voice_uses_only_mutually_ready_tree_paths_and_non_listeners_can_forward_both_
             .contains(&cs),
         "media transit does not create a seat"
     );
-    assert_eq!(
-        pair(&network, c, bs, &room).id,
-        cb.id,
-        "downstream demand retains the non-reading transit"
-    );
+    assert!(network.state(c).pairs.iter().all(|pair| pair
+        .incoming
+        .iter()
+        .chain(&pair.outgoing)
+        .all(|flow| flow.publication_id != from_b && flow.publication_id != from_d)));
+    browse(&mut network, c, &room, true);
     let screen = publish(&mut network, c, &room, "screen");
     command(
         &mut network,
@@ -1424,26 +1437,7 @@ fn voice_uses_only_mutually_ready_tree_paths_and_non_listeners_can_forward_both_
         .find(|p| p.incoming.iter().any(|flow| flow.publication_id == screen))
         .unwrap()
         .id;
-    assert_eq!(
-        independent, cb.id,
-        "base and screen share the existing compatible pair"
-    );
-    command(
-        &mut network,
-        d,
-        json!({"type":"link_state", "pairId":cd.id, "state":"failed"}),
-    );
-    assert_eq!(
-        network
-            .state(b)
-            .pairs
-            .iter()
-            .find(|p| p.incoming.iter().any(|flow| flow.publication_id == screen))
-            .unwrap()
-            .id,
-        independent,
-        "base failure must not retire an independent healthy screen branch"
-    );
+    assert_eq!(pair(&network, c, bs, &room).id, independent);
     voice(&mut network, b, &room, false);
     voice(&mut network, d, &room, false);
     assert_eq!(

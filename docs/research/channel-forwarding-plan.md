@@ -82,8 +82,11 @@ channel-wide standby.
 An activity reuses an existing delivery or searches its room's eligible
 edges, including channel edges it can use under the room grant. Looking
 outward expands discovery and rendezvous. An ordinary member in another
-room or the lobby can help establish a missing pair. Every endpoint carrying
-private content needs authorization for that room and payload. The room sets
+room or the lobby can help establish a missing pair. An ordinary endpoint
+can carry room payload while it reads that room or has an active business
+there. Once its last such activity ends, release its relay assignments.
+The room host and a selected service have their own explicit roles.
+Every endpoint carrying private content needs authorization for that room and payload. The room sets
 voice membership. Each speaker is the source of a separate stream.
 
 When an activity needs a missing pair, it requests it from the channel

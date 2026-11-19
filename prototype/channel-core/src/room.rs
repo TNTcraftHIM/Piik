@@ -1284,6 +1284,15 @@ impl RoomRuntime {
                 (endpoint.connected && routable.contains(session)).then_some(*session)
             })
             .collect();
+        let mut base_members = demand.clone();
+        base_members.extend(
+            self.activity
+                .iter()
+                .filter_map(|(id, activity)| activity.reading.then_some(*id)),
+        );
+        base_members.extend(self.base.as_ref().map(BaseTree::root));
+        base_members.extend(service);
+        base_members.retain(|id| routable.contains(id));
         let confirmed_demand = self.confirmed_delivery_pairs(&requested, confirmed_pairs);
         if let Some(base) = &mut self.base {
             if base.needs_repair(&demand, &connected) {
@@ -1294,7 +1303,7 @@ impl RoomRuntime {
             }
             base.reconcile_confirmed(
                 &demand,
-                &routable,
+                &base_members,
                 &connected,
                 &limits,
                 now,
@@ -1459,7 +1468,7 @@ impl RoomRuntime {
             let confirmed_demand = self.confirmed_delivery_pairs(&requested, confirmed_pairs);
             self.base.as_mut().unwrap().reconcile_confirmed(
                 &demand,
-                &routable,
+                &base_members,
                 &connected,
                 &limits,
                 now,
@@ -2424,6 +2433,110 @@ mod tests {
             .any(|flow| flow.receiver == a && flow.publication_id == id(10)));
     }
 
+    #[test]
+    fn voice_and_file_transit_release_after_the_last_room_activity() {
+        let id = Uuid::from_u128;
+        for file_mode in [true, false] {
+            let (old, ends) = screen_on_room_base();
+            let mut r = RoomRuntime::new(old.policy.clone());
+            r.set_host_session(id(1));
+            r.set_default_relay_capacity(1);
+            for n in 1..=3 {
+                r.set_voice(ends[&id(n)].member, id(n), true, true, false)
+                    .unwrap();
+                r.browse(ends[&id(n)].member, id(n), true).unwrap();
+                r.reconcile(&ends, 0);
+                for _ in 0..2 {
+                    let links: Vec<_> = r.base_links().collect();
+                    for l in links {
+                        r.base_state(l.parent, l.child, true).unwrap();
+                        r.base_state(l.child, l.parent, true).unwrap();
+                    }
+                    r.reconcile(&ends, 0);
+                }
+            }
+            if file_mode {
+                let a = crate::AttachmentDescriptor {
+                    id: id(20),
+                    name: "f".into(),
+                    size: 3,
+                    media_type: "application/octet-stream".into(),
+                    sha256: crate::attachment::sha256_hex(b"abc"),
+                };
+                r.files.install(id(1), 1, id(1), a.clone(), true).unwrap();
+                r.files.install(id(3), 1, id(1), a, false).unwrap();
+            } else {
+                r.publish(ends[&id(1)].member, id(1), id(20), Kind::Voice, None, None)
+                    .unwrap();
+            }
+            for t in [1, 2, 120001] {
+                if t == 2 {
+                    r.browse(ends[&id(2)].member, id(2), false).unwrap();
+                    r.set_voice(ends[&id(2)].member, id(2), false, true, false)
+                        .unwrap();
+                }
+                r.reconcile(&ends, t);
+                if file_mode {
+                    assert_eq!(
+                        t == 1,
+                        r.snapshot(ends[&id(2)].member, id(2))
+                            .unwrap()
+                            .files
+                            .iter()
+                            .any(|p| p.upstream == Some(id(1)) && p.downstream.contains(&id(3)))
+                    );
+                } else {
+                    assert_eq!(
+                        t == 1,
+                        r.flows().any(|f| f.sender == id(2) && f.receiver == id(3))
+                    );
+                }
+            }
+        }
+    }
+    #[test]
+    fn confirmed_screen_transit_ends_with_the_readers_last_room_activity() {
+        let id = Uuid::from_u128;
+        let (template, endpoints) = screen_on_room_base();
+        let mut room = RoomRuntime::new(template.policy.clone());
+        let (host, source, relay, viewer, screen) = (id(1), id(1), id(2), id(3), id(10));
+        let member = |session| endpoints[&session].member;
+        room.set_host_session(host);
+        room.browse(member(relay), relay, true).unwrap();
+        room.set_voice(member(relay), relay, true, true, false)
+            .unwrap();
+        room.publish(
+            member(source),
+            source,
+            screen,
+            Kind::Screen,
+            screen_settings(),
+            Some(Default::default()),
+        )
+        .unwrap();
+        room.subscribe(member(viewer), viewer, screen, true, None)
+            .unwrap();
+        let links = [(source, relay), (relay, viewer)].into();
+        room.reconcile_with_pairs(&endpoints, 0, &links);
+        let through = |room: &RoomRuntime| {
+            room.flows()
+                .any(|f| f.publication_id == screen && f.sender == relay && f.receiver == viewer)
+        };
+        assert!(through(&room));
+        room.browse(member(relay), relay, false).unwrap();
+        room.reconcile_with_pairs(&endpoints, 1, &links);
+        assert!(through(&room));
+        room.set_voice(member(relay), relay, false, true, false)
+            .unwrap();
+        room.reconcile_with_pairs(&endpoints, 2, &links);
+        assert!(
+            !through(&room),
+            "public admission and confirmed links cannot retain inactive screen transit"
+        );
+        assert!(!room
+            .flows()
+            .any(|f| f.publication_id == screen && f.receiver == relay));
+    }
     #[test]
     fn ready_file_copy_retires_unneeded_insertion_and_its_voice_candidate() {
         let id = Uuid::from_u128;

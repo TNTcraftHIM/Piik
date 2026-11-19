@@ -231,6 +231,9 @@ impl Publication {
                 .iter()
                 .filter_map(|(child, parent)| (parent == reader).then_some(*child))
                 .collect();
+            if readers.get(reader).is_some_and(|(_, idle)| !idle) && !requested.contains(reader) {
+                return !children.is_empty();
+            }
             for child in children.iter().skip(capacity) {
                 self.plan.detach(*child);
             }
@@ -276,7 +279,7 @@ impl Publication {
                         .parents
                         .values()
                         .filter(|reader| {
-                            readers.get(reader).is_some_and(|(_, idle)| *idle)
+                            readers.contains_key(reader)
                                 && **reader != self.plan.source
                                 && base.is_none_or(|base| base.root() != **reader)
                                 && !helpers.values().any(|helper| helper == *reader)
