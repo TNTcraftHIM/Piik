@@ -104,6 +104,7 @@ export const ko = {
   "room.settings.offlineHostedManager": "오프라인 상태인 방이에요. 방과 이 사이트에 저장된 데이터를 삭제할 수 있어요.",
   "room.settings.confirmHostedDelete": "“{name}” 방과 이 사이트에 저장된 방 데이터를 영구 삭제할까요? 이미 다운로드한 파일은 그대로 남아요.",
   "room.settings.roomDataRemovalUnconfirmed": "방이 목록에서 제거됐어요. 저장된 방 데이터가 삭제됐는지는 확인할 수 없어요.",
+  "room.settings.hostedRoomDeletionFailed": "방에 저장된 데이터를 삭제하지 못했어요. 사이트 소유자는 ‘사이트 설정 → 방’에서 다시 시도할 수 있어요.",
   "room.action.delete": "방 삭제",
   "room.action.remove": "목록에서 제거",
   "room.settings.confirmDelete": "“{name}” 방과 채팅 기록을 삭제할까요? 다운로드한 파일은 유지돼요. 호스팅이 오프라인 상태라면 목록에서만 제거해요.",

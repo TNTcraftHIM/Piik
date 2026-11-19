@@ -103,6 +103,7 @@ export const ja = {
   "room.settings.offlineHostedManager": "この部屋はオフラインです。部屋とサイト内に保存されたデータを削除できます。",
   "room.settings.confirmHostedDelete": "「{name}」とこのサイトに保存された部屋のデータを完全に削除しますか？ダウンロード済みのファイルは残ります。",
   "room.settings.roomDataRemovalUnconfirmed": "部屋を一覧から削除しました。保存データを削除できたか確認できませんでした。",
+  "room.settings.hostedRoomDeletionFailed": "部屋の保存データを削除できませんでした。サイト所有者は「サイト設定 → 部屋」から再試行できます。",
   "room.action.delete": "ルームを削除",
   "room.action.remove": "一覧から削除",
   "room.settings.confirmDelete": "「{name}」とチャット履歴を削除しますか？ダウンロード済みファイルは保持されます。ホストがオフラインの場合は、一覧の項目だけを削除します。",

@@ -29,6 +29,7 @@ pub struct Channel {
     pub(crate) room_writer: Option<crate::host::ServiceEndpoint>,
     room_creation_policy: RoomCreationPolicy,
     restorable_rooms: BTreeMap<String, Uuid>,
+    pub(crate) pending_room_deletions: BTreeMap<String, Uuid>,
     pub(crate) remote: BTreeMap<String, RemoteRoom>,
     transports: TransportBook,
     input_registrations: BTreeMap<Uuid, Vec<crate::input::InputRegistration>>,
@@ -75,6 +76,7 @@ impl Channel {
             room_writer: None,
             room_creation_policy: RoomCreationPolicy::default(),
             restorable_rooms: BTreeMap::new(),
+            pending_room_deletions: BTreeMap::new(),
             remote: BTreeMap::new(),
             transports: TransportBook::default(),
             input_registrations: BTreeMap::new(),
@@ -572,6 +574,7 @@ impl Channel {
                 hosting_mode: self.hosting_mode,
                 room_creation_policy: self.room_creation_policy,
                 restorable_rooms: self.restorable_rooms.clone(),
+                pending_room_deletions: self.pending_room_deletions.clone(),
                 id: self.id,
                 name: self.name.clone(),
                 icon: self.icon.clone(),
@@ -653,6 +656,7 @@ impl Channel {
                 .header
                 .restorable_rooms
                 .values()
+                .chain(state.header.pending_room_deletions.values())
                 .any(|creator| !identity.users.contains_key(creator))
         {
             return Err("invalid_state");
@@ -666,6 +670,7 @@ impl Channel {
         self.room_writer = None;
         self.room_creation_policy = state.header.room_creation_policy;
         self.restorable_rooms = state.header.restorable_rooms;
+        self.pending_room_deletions = state.header.pending_room_deletions;
         self.remote = state
             .header
             .hosted_rooms
@@ -889,7 +894,11 @@ impl Channel {
     fn insert_room(&mut self, room: RoomSummary) -> Result<(), &'static str> {
         room.validate()?;
         self.check_room_policy(&room)?;
-        if self.remote.len() + self.restorable_rooms.len() >= MAX_ROOMS
+        if self.pending_room_deletions.contains_key(&room.id) {
+            return Err("room_not_in_domain");
+        }
+        if self.remote.len() + self.restorable_rooms.len() + self.pending_room_deletions.len()
+            >= MAX_ROOMS
             && !self.restorable_rooms.contains_key(&room.id)
         {
             return Err("room_limit");
@@ -933,7 +942,11 @@ impl Channel {
         let member = self
             .identity
             .member(self.identity.sessions[&session].user_id)?;
-        let creator = self.remote.get(id).map(|room| room.summary.creator_id);
+        let creator = self
+            .remote
+            .get(id)
+            .map(|room| room.summary.creator_id)
+            .or_else(|| self.pending_room_deletions.get(id).copied());
         let owner = member.user_id == self.identity.owner_id;
         if creator.is_none() && !(owner && self.restorable_rooms.contains_key(id)) {
             return Err("room_not_in_domain");
@@ -2075,6 +2088,7 @@ impl Channel {
                     self.remote
                         .keys()
                         .chain(self.restorable_rooms.keys())
+                        .chain(self.pending_room_deletions.keys())
                         .cloned()
                         .collect()
                 } else {
@@ -2164,6 +2178,8 @@ pub struct DomainStateHeader {
     pub(crate) room_creation_policy: RoomCreationPolicy,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) restorable_rooms: BTreeMap<String, Uuid>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) pending_room_deletions: BTreeMap<String, Uuid>,
     pub(crate) id: Uuid,
     pub(crate) name: String,
     pub(crate) icon: IdentityIcon,
@@ -2195,7 +2211,17 @@ impl DomainStateHeader {
         if self.id.is_nil()
             || self.owner_id.is_nil()
             || title(&self.name).is_none()
-            || self.hosted_rooms.len() + self.restorable_rooms.len() > MAX_ROOMS
+            || self.hosted_rooms.len()
+                + self.restorable_rooms.len()
+                + self.pending_room_deletions.len()
+                > MAX_ROOMS
+            || self.pending_room_deletions.iter().any(|(id, creator)| {
+                self.hosting_mode != HostingMode::Hosted
+                    || !valid_id(id)
+                    || creator.is_nil()
+                    || self.hosted_rooms.contains_key(id)
+                    || self.restorable_rooms.contains_key(id)
+            })
             || self.restorable_rooms.iter().any(|(id, creator)| {
                 !valid_id(id)
                     || creator.is_nil()

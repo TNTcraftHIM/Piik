@@ -103,6 +103,7 @@ export const zhHant = {
   "room.settings.offlineHostedManager": "房間目前離線。你仍可刪除房間及本站儲存的資料。",
   "room.settings.confirmHostedDelete": "要永久刪除「{name}」及本站儲存的房間資料嗎？已下載的檔案仍會保留。",
   "room.settings.roomDataRemovalUnconfirmed": "房間已從目錄移除，無法確認已刪除儲存的房間資料。",
+  "room.settings.hostedRoomDeletionFailed": "未能刪除房間儲存的資料。站點所有者可以在「站點設定 → 房間」中重試。",
   "room.action.delete": "刪除房間",
   "room.action.remove": "從清單移除",
   "room.settings.confirmDelete": "要刪除「{name}」及其聊天記錄嗎？已下載的檔案會保留。若托管端已離線，只會從清單中移除。",

@@ -175,6 +175,7 @@ impl DomainArchiveCheck {
             seen: BTreeSet::new(),
             required: std::iter::once(metadata.state.owner_id)
                 .chain(metadata.state.restorable_rooms.values().copied())
+                .chain(metadata.state.pending_room_deletions.values().copied())
                 .chain(
                     metadata
                         .state

@@ -1908,12 +1908,20 @@ export class ChannelSession {
     }, reportError);
   deleteRoom = (roomId: string, deleteData: boolean, reportError = true): Promise<{ dataRemoved: boolean }> => this.action(`delete:${roomId}`, async () => {
     const socket = this.socket;
-    if (this.view.error === "room_data_removal_unconfirmed") this.clearError();
+    const hosted = this.view.state?.channel.hostingMode === "hosted";
+    if (this.view.error === "room_data_removal_unconfirmed" || this.view.error === "hosted_room_deletion_failed") this.clearError();
     let dataRemoved: boolean | undefined;
-    await this.request({ type: "delete_room", roomId, deleteData }, event => {
-      if (event.type !== "room_reply" || event.result.type !== "deleted" || typeof event.result.dataRemoved !== "boolean") throw new Error("invalid_response");
-      dataRemoved = event.result.dataRemoved;
-    });
+    try {
+      await this.request({ type: "delete_room", roomId, deleteData }, event => {
+        if (event.type !== "room_reply" || event.result.type !== "deleted" || typeof event.result.dataRemoved !== "boolean") throw new Error("invalid_response");
+        dataRemoved = event.result.dataRemoved;
+      });
+    } catch (error) {
+      if (!hosted || !(error instanceof Error) || error.message !== "storage_failed") throw error;
+      // The room can leave the lobby before the failure reaches the requester.
+      if (this.socket === socket) this.patch({ error: "hosted_room_deletion_failed" });
+      throw new Error("hosted_room_deletion_failed");
+    }
     if (dataRemoved === undefined) throw new Error("invalid_response");
     if (this.roomId === roomId) this.browse("");
     // The directory projection can close Room settings before the deletion result arrives.

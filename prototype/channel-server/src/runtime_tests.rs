@@ -1876,11 +1876,88 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
         s.channel.room_creation_policy == RoomCreationPolicy::OwnerOnly
     })
     .await;
-    send_request(
-        &mut operator,
-        json!({"type":"delete_room","roomId":room.id,"deleteData":false}),
+    let database = crate::room_directory(
+        folder.path(),
+        (state.channel.id, state.channel.owner_id.unwrap()),
     )
-    .await;
+    .join(format!("{}.sqlite", room.id));
+    let failure = rusqlite::Connection::open(&database).unwrap();
+    failure.execute_batch("CREATE TRIGGER refuse_delete BEFORE DELETE ON checkpoint BEGIN SELECT RAISE(ABORT,'held'); END;").unwrap();
+    let remove = json!({"type":"delete_room","roomId":room.id,"deleteData":false,"requestId":"remove-private"});
+    operator
+        .send(Message::Text(remove.to_string().into()))
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match event(&mut operator).await {
+                Event::Error { code, request_id }
+                    if request_id.as_deref() == Some("remove-private") =>
+                {
+                    assert_eq!(code, "storage_failed");
+                    break;
+                }
+                Event::RoomReply { .. } => panic!("confirmed a failed deletion"),
+                _ => {}
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        failure
+            .query_row("SELECT COUNT(*) FROM message", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    stop.send(()).unwrap();
+    task.await.unwrap().unwrap();
+    let (address, stop, task, _) = start_server(folder.path()).await;
+    let (mut operator, _, state) = connect(address, "owner", "Operator").await;
+    assert!(state.channel.managed_room_ids.contains(&room.id));
+    assert!(state.channel.rooms.iter().all(|entry| entry.id != room.id));
+    let (_, _, stranger) = connect(address, "invite", "Stranger").await;
+    assert!(stranger.channel.managed_room_ids.is_empty());
+    assert!(stranger
+        .channel
+        .rooms
+        .iter()
+        .all(|entry| entry.id != room.id));
+    failure.execute_batch("DROP TRIGGER refuse_delete").unwrap();
+    // The room database may commit before the directory can acknowledge it.
+    let directory_fault = rusqlite::Connection::open(folder.path().join("channel.sqlite")).unwrap();
+    directory_fault
+        .execute_batch(
+            "CREATE TRIGGER refuse_cleanup BEFORE UPDATE ON checkpoint
+         WHEN json_type(OLD.body,'$.state.pendingRoomDeletions') IS NOT NULL
+          AND json_type(NEW.body,'$.state.pendingRoomDeletions') IS NULL
+         BEGIN SELECT RAISE(ABORT,'held'); END;",
+        )
+        .unwrap();
+    send_request(&mut operator, remove.clone()).await;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match event(&mut operator).await {
+                Event::Error { code, .. } => {
+                    assert_eq!(code, "storage_failed");
+                    break;
+                }
+                Event::RoomReply { .. } => panic!("confirmed an uncommitted directory removal"),
+                _ => {}
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert!(storage::Storage::open_existing(&database)
+        .unwrap()
+        .load()
+        .unwrap()
+        .is_none());
+    directory_fault
+        .execute_batch("DROP TRIGGER refuse_cleanup")
+        .unwrap();
+    send_request(&mut operator, remove).await;
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             match event(&mut operator).await {
@@ -1898,11 +1975,14 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
     })
     .await
     .unwrap();
-    let database = crate::room_directory(
-        folder.path(),
-        (state.channel.id, state.channel.owner_id.unwrap()),
-    )
-    .join(format!("{}.sqlite", room.id));
+    assert_eq!(
+        failure
+            .query_row("SELECT COUNT(*) FROM message", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    let (_, _, state) = connect(address, "owner", "Operator").await;
+    assert!(!state.channel.managed_room_ids.contains(&room.id));
     assert!(storage::Storage::open_existing(&database)
         .unwrap()
         .load()

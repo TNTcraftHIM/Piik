@@ -336,7 +336,7 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
 
 async fn delete_room(state: &Domain, connection: Uuid, request: Request, id: String) {
     use piik_channel_native::session::HostCommand;
-    let (mut reply, creator, commands) = {
+    let (reply, creator, commands) = {
         let mut hub = state.hub.lock().unwrap();
         let Some(creator) = hub.authority.offline_hosted_creator(&id) else {
             hub.request(connection, request);
@@ -348,28 +348,56 @@ async fn delete_room(state: &Domain, connection: Uuid, request: Request, id: Str
         };
         (reply, creator, hub.room_commands.clone())
     };
-    if let (
-        Some(commands),
-        Event::RoomReply {
-            result: piik_channel_core::host::RoomResult::Deleted { data_removed },
-            ..
-        },
-    ) = (commands, &mut reply)
-    {
+    let Event::RoomReply {
+        room_id,
+        request_id,
+        ..
+    } = reply
+    else {
+        return;
+    };
+    let removed = if let Some(commands) = commands {
         let (result, response) = tokio::sync::oneshot::channel();
-        if commands
+        commands
             .send(HostCommand::DeleteRetired {
-                id,
+                id: id.clone(),
                 creator,
                 result,
             })
             .await
             .is_ok()
-        {
-            *data_removed = response.await.unwrap_or(false);
+            && response.await.unwrap_or(false)
+    } else {
+        false
+    };
+    let mut hub = state.hub.lock().unwrap();
+    if removed {
+        let before = hub.authority.clone();
+        let effects = hub.authority.finish_hosted_deletion(&id);
+        let checkpoint =
+            serde_json::to_value(hub.authority.export_backup()).expect("typed metadata");
+        let saved = hub.storage.lock().unwrap().save(&checkpoint).is_ok();
+        if saved {
+            hub.apply(effects);
+            hub.send(
+                connection,
+                Event::RoomReply {
+                    room_id,
+                    request_id,
+                    result: piik_channel_core::host::RoomResult::Deleted { data_removed: true },
+                },
+            );
+            return;
         }
+        hub.authority = before;
     }
-    state.hub.lock().unwrap().send(connection, reply);
+    hub.send(
+        connection,
+        Event::Error {
+            request_id,
+            code: "storage_failed".into(),
+        },
+    );
 }
 
 async fn dispatch_request(state: &Domain, connection: Uuid, request: Request) {

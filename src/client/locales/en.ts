@@ -150,6 +150,7 @@ export const en: Record<CopyKey, string> = {
   "room.settings.offlineHostedManager": "This room is offline. You can delete the room and its data stored on this site.",
   "room.settings.confirmHostedDelete": "Permanently delete “{name}” and its data stored on this site? Saved downloads are kept.",
   "room.settings.roomDataRemovalUnconfirmed": "The room was removed from the directory. Deletion of its stored data could not be confirmed.",
+  "room.settings.hostedRoomDeletionFailed": "Could not delete the room’s stored data. The site owner can retry from Site settings → Rooms.",
   "room.action.delete": "Delete room",
   "room.action.remove": "Remove from list",
   "room.settings.confirmDelete": "Delete “{name}” and its chat history? Downloaded files are kept. If hosting has gone offline, only its list entry will be removed.",

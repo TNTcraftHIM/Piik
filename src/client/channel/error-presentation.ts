@@ -31,6 +31,8 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.error.directoryStorageFailed");
   if (error === "room_data_removal_unconfirmed")
     return display("room.settings.roomDataRemovalUnconfirmed");
+  if (error === "hosted_room_deletion_failed")
+    return display("room.settings.hostedRoomDeletionFailed");
   if (error === "domain_restored_connection_failed")
     return display("channel.error.domainRestoredConnectionFailed", true);
   if (error === "room_restored_connection_failed")

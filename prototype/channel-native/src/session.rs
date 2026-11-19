@@ -2186,18 +2186,34 @@ impl Session {
             .live
             .as_mut()
             .ok_or_else(|| anyhow!("hosting_unavailable"))?;
-        if let Some(mut room) = live.room.rooms.remove(id) {
+        if let Some(room) = live.room.rooms.get_mut(id) {
             if room.summary().creator_id != creator {
                 bail!("owner_mismatch");
             }
             room.delete_data()?;
+            live.room.rooms.remove(id);
         } else {
-            // Imported rooms may have a local filename different from their policy ID.
-            let file = stored_rooms(&hosting.directory)?
-                .into_iter()
-                .find(|file| file.id == id)
-                .ok_or_else(|| anyhow!("room_unavailable"))?;
-            HostedRoom::open(&file.path, id, creator)?.delete_data()?;
+            // A committed SQLite deletion leaves an empty store. Verify the
+            // directory before acknowledging a retried deletion as complete.
+            let mut unreadable = None;
+            for entry in std::fs::read_dir(&hosting.directory)? {
+                let path = entry?.path();
+                if path.extension().and_then(|ext| ext.to_str()) != Some("sqlite") {
+                    continue;
+                }
+                match stored_room_policy(&path) {
+                    Ok(Some(policy)) if policy.id == id => {
+                        HostedRoom::open(&path, id, creator)?.delete_data()?;
+                        unreadable = None;
+                        break;
+                    }
+                    Err(error) => unreadable = Some(error),
+                    _ => {}
+                }
+            }
+            if let Some(error) = unreadable {
+                return Err(error);
+            }
         }
         self.files.retain(|file| file.id != id);
         Ok(())

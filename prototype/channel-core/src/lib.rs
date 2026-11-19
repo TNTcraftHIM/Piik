@@ -98,6 +98,9 @@ impl Authority {
     }
 
     pub fn offline_hosted_creator(&self, id: &str) -> Option<Uuid> {
+        if let Some(creator) = self.channel.pending_room_deletions.get(id) {
+            return Some(*creator);
+        }
         let room = self.channel.remote.get(id)?;
         (self.hosting_mode() == wire::HostingMode::Hosted
             && room.reservation.is_none()
@@ -114,6 +117,15 @@ impl Authority {
         {
             self.channel.remote.remove(room_id);
         }
+    }
+
+    /// The storage owner has confirmed that the retired room's records are gone.
+    pub fn finish_hosted_deletion(&mut self, id: &str) -> Effects {
+        let mut effects = Effects::default();
+        if self.channel.pending_room_deletions.remove(id).is_some() {
+            self.broadcast(None, &mut effects);
+        }
+        effects
     }
 
     /// Private hosting data for the domain's storage owner, never a client event.
@@ -324,6 +336,11 @@ impl Authority {
                         }
                     }
                 } else {
+                    if hosted_data {
+                        self.channel
+                            .pending_room_deletions
+                            .insert(room_id.clone(), room.unwrap().summary.creator_id);
+                    }
                     for (room, reply) in self.channel.remove_room(room_id, actor) {
                         self.room_reply(&room, reply, &mut effects);
                     }

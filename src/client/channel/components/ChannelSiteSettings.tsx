@@ -106,6 +106,8 @@ function ChannelRoomDirectory({ channel, disabled }: { channel: ChannelControlle
   const { error, run } = useSettingsAction();
   const directory = channel.state?.channel;
   const deleteData = directory?.hostingMode === "hosted";
+  const deletionError = channel.error === "room_data_removal_unconfirmed" || channel.error === "hosted_room_deletion_failed"
+    ? channel.error : null;
   const titledRooms = new Map(directory?.rooms.map(room => [room.id, room.name]));
   const rooms = (directory?.managedRoomIds ?? []).map(id => ({ id, name: titledRooms.get(id) }));
   rooms.sort((a, b) => Number(!a.name) - Number(!b.name) ||
@@ -130,6 +132,6 @@ function ChannelRoomDirectory({ channel, disabled }: { channel: ChannelControlle
           </li>;
         })}
       </ul>}
-    <ChannelSettingsError error={error ?? (channel.error === "room_data_removal_unconfirmed" ? channel.error : null)} />
+    <ChannelSettingsError error={error ?? deletionError} />
   </section>;
 }

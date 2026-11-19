@@ -148,6 +148,7 @@ export const zh = {
   "room.settings.offlineHostedManager": "房间当前离线。你仍可删除房间及本站保存的数据。",
   "room.settings.confirmHostedDelete": "永久删除“{name}”及本站保存的房间数据？已下载的文件仍会保留。",
   "room.settings.roomDataRemovalUnconfirmed": "房间已从目录移除，无法确认已删除保存的房间数据。",
+  "room.settings.hostedRoomDeletionFailed": "未能删除房间保存的数据。站点所有者可以在「站点设置 → 房间」中重试。",
   "room.action.delete": "删除房间",
   "room.action.remove": "从列表移除",
   "room.settings.confirmDelete": "删除“{name}”及其聊天记录？已下载的文件保留。若托管端已离线，则仅从列表中移除。",

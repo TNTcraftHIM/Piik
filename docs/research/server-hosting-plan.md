@@ -90,7 +90,10 @@ participant downloads remain under the recipient's control.
 
 The channel owner's management view exposes only the directory information
 needed to identify and remove a room. For a hosted room, removal deletes
-the Server's authoritative room records. For a lightweight room, an offline
+the Server's authoritative room records. If cleanup of an offline hosted room
+is interrupted, the channel withdraws it from discovery and keeps its ID in the
+owner's management list until cleanup succeeds. The owner can retry after a
+Server restart. For a lightweight room, an offline
 creator's device can retain its local data. That data cannot re-register
 the retired binding. A room action never erases files that members saved
 independently on their devices.
