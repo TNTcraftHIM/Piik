@@ -411,11 +411,14 @@ can send to at most one downstream, a feasible tree is a simple path. Its
 number of edges equals its viewer coverage. The
 [five-endpoint comparison](./network-lab.md#screen-coverage-on-five-endpoint-graphs)
 starts with an empty tree, confirmed pairs, eligible relays and no display helpers.
-Even the static
-minimum-cost directed Steiner tree with prescribed terminals is NP-hard.
-The paper's approximation bounds concern its stated cost and graph model.
-Piik also has fanout grants, changing links and handoff overlap.
-[Charikar et al., directed Steiner problems](https://chekuri.cs.illinois.edu/papers/dir-steiner-talg.pdf)
+
+With those constraints and a variable number of endpoints, deciding full
+coverage is NP-complete. Take any undirected graph of viewers and connect a
+new source to every viewer. A delivery path covers them all exactly when the
+original graph has a Hamiltonian path. The viewer order along the path is a
+certificate whose edges can be checked directly. Directed Steiner trees model
+the related problem of minimizing total cost for a specified terminal set.
+[Itai, Papadimitriou and Szwarcfiter, Hamilton Paths in Grid Graphs](https://www.cs.technion.ac.il/~itai/publications/Algorithms/Hamilton-paths.pdf#page=6) · [Charikar et al., directed Steiner problems](https://chekuri.cs.illinois.edu/papers/dir-steiner-talg.pdf)
 
 Each room owns its trees. Independent publications can plan separately. When
 plans compete for a slot of the same kind, the endpoint commits its local
