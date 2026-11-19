@@ -266,9 +266,9 @@ the feedback period; they do not delay that delivery.
   and Linux hardware encoding and physical sound. Retain the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-  Local OBS input still needs non-Windows desktop runtime coverage; its
-  [Windows path](./research/room-interactions.md#local-obs-input) has media,
-  retirement and matched-package evidence.
+  Verify viewer decoding from Linux OBS input and exercise the macOS input.
+  [Platform coverage](./research/room-interactions.md#local-obs-input) includes
+  Linux WHIP ingest and Windows OBS playback and retirement.
 - [ ] **Enhanced microphone suppression on physical devices (#518).** Compare
   matched-level voice clarity, acoustic echo and mobile runtime cost for the
   optional RNNoise mode. The

@@ -481,8 +481,11 @@ through the real App and independent Browser. H264 decoded; Opus retained stereo
 without speaker output. OBS restart, old DELETE, Piik stop and page close checked
 publication withdrawal, permission revocation and UDP release. Constrained and
 restored demand exercised existing derived encoding on the same source/feed/
-clock, retiring the limited encoder on return. This is neither a new congestion
-policy nor cross-NAT/other-platform acceptance.
+clock, retiring the limited encoder on return.
+
+On Linux, the App accepted a local FFmpeg WHIP stream with H264 video and
+Opus audio. A Windows browser subscribed to the publication. Its first decoded
+frame across the guest network still needs verification.
 
 ## Attended Remote-Control Prototype
 
