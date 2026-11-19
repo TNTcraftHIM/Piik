@@ -57,17 +57,16 @@ the feedback period; they do not delay that delivery.
   normal use and contention. Identify the limiting stage before changing quality
   policy. Explicit hardware-encoder failure recovery does not establish smooth
   playback or lower resource use while hardware encoding still succeeds.
-- [ ] **Current webpage-source and playback package acceptance.** Verify the
-  pending source-selection, popup/player association, provider hide/restore and
-  playback-control changes on the reported accessible websites in a matching
-  Windows App/Web package. Cover failed replacement retaining the active source,
-  original-page closure, and independent viewer playback with and without
-  explicit forwarding. Broader website/live coverage remains below.
+- [ ] **Current webpage-source and playback package acceptance.** Verify
+  source selection, player association, provider hide/restore and independent
+  viewer playback on the reported accessible websites in matching Windows
+  App and Web packages. Local replacement and pending-read shutdown controls
+  are in the [verification record](./verification-status.md#current-evidence).
 - [ ] **Native console/terminal package acceptance.** Check the matching package's
   silent native entry, explicit Browser terminal, unavailable-WebView fallback,
   and interactive quit/update restart.
-  Locate the shutdown stall observed after a controlled webpage-recovery run:
-  the source App reported stopped but its main window remained unresponsive.
+  Locate the first remaining window or worker if shutdown stalls after a
+  recovered webpage share.
 - [ ] **2.x periodic brief picture stalls.** With a particular Host or Viewer,
   normally clear playback pauses for less than half a second every few seconds
   or tens of seconds, skips several frames and sometimes briefly blurs. A roughly
