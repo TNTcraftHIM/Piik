@@ -63,6 +63,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.error.invalidRoomCopy");
   if (error === "app_disconnected" || error === "app_context_changed")
     return display("channel.error.appDisconnected");
+  if (error === "app_request_timeout") return display("native.fail.requestTimeout");
   if (error === "external_input_unavailable")
     return display("channel.error.externalInputUnavailable");
   if (error === "external_video_format_unsupported") {

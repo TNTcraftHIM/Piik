@@ -2135,6 +2135,8 @@ test("Native capability catalog retains known choices without echoing future des
     const fullTitle = { ...target, sourceId: "2", title: "x".repeat(4094) + "\u{1f5a5}" };
     const bothWindows = { ...catalog, sources: [target, fullTitle] };
     await expect(list(bothWindows)).resolves.toEqual(bothWindows);
+    const invalidTitle = { ...target, sourceId: "3", title: "x".repeat(4097) };
+    await expect(list({ ...catalog, sources: [invalidTitle, target] })).resolves.toEqual(catalog);
     await expect(list({ ...catalog, sources: [{ ...target, pid: "42" }] })).rejects.toThrow();
     await expect(list({ ...catalog, codecs: [42] })).rejects.toThrow();
     await expect(list({ ...catalog, sources: null })).rejects.toThrow();
@@ -2152,6 +2154,39 @@ test("Native capability catalog retains known choices without echoing future des
     expect(await selecting).toBeInstanceOf(Error);
     expect(app.sent.some(command => command.type === "commit_capture")).toBe(false);
     expect(session.getSnapshot().ownedScreens.size).toBe(0);
+  } finally { session.close(); }
+});
+
+test("a silent source request times out and a late reply cannot replace its refresh", async () => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  const { session } = await setup();
+  const app = await startFixtureApp(session);
+  try {
+    await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    vi.useFakeTimers();
+    let failure: string | undefined;
+    const stalled = session.nativeSources().catch(error => { failure = error.message; });
+    await vi.advanceTimersByTimeAsync(0);
+    const first = app.sent.at(-1)!;
+    expect(first.type).toBe("targets");
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(failure).toBe("app_request_timeout");
+    await stalled;
+    expect(session.getSnapshot().appConnected).toBe(true);
+    expect(app.sent.at(-1)?.id).toBe(first.id);
+    const refresh = session.nativeSources();
+    await vi.advanceTimersByTimeAsync(0);
+    const second = app.sent.at(-1)!;
+    expect(second.type).toBe("targets");
+    expect(second.id).not.toBe(first.id);
+    const catalog = { sources: [{ kind: "display", sourceId: "1", title: "Fixture display" }], codecs: ["h264"],
+      softwareEncodingCodecs: [], videoAdaptation: false, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false };
+    app.receive({ id: second.id, result: catalog });
+    await expect(refresh).resolves.toEqual(catalog);
+    app.receive({ id: first.id, result: null });
+    expect(session.getSnapshot().appConnected).toBe(true);
   } finally { session.close(); }
 });
 

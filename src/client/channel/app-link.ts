@@ -20,6 +20,7 @@ import { debugEvent } from "../lib/debug";
 
 export const APP_PROTOCOL = 23;
 const APP_REQUEST_BYTES = 256 * 1024;
+const SOURCE_LIST_TIMEOUT_MS = 8_000;
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
   version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional(), updateSupported: z.boolean().optional(), pagePlayer: z.literal(true).optional(),
@@ -53,9 +54,19 @@ const advertisedCodecs = z.array(z.string()).transform(codecs => codecs.flatMap(
   const known = nativeVideoCodecSchema.safeParse(codec);
   return known.success ? [known.data] : [];
 }));
-const captureSourcesSchema = z.object({ sources: z.array(z.looseObject({ kind: z.string() }))
-  .transform(sources => sources.filter(source => captureDescriptions.some(target => target.shape.kind.value === source.kind)))
-  .pipe(z.array(z.union(captureDescriptions))),
+const captureSourcesSchema = z.object({ sources: z.array(z.looseObject({ kind: z.string() })).transform((sources, ctx) => {
+    const selectable: NativeCaptureTarget[] = [];
+    let invalid = false;
+    for (const source of sources) {
+      const schema = captureDescriptions.find(target => target.shape.kind.value === source.kind);
+      if (!schema) continue;
+      const result = schema.safeParse(source);
+      if (result.success) selectable.push(result.data);
+      else invalid = true;
+    }
+    if (invalid && !selectable.length) ctx.addIssue({ code: "custom", message: "invalid capture sources" });
+    return selectable;
+  }),
   codecs: advertisedCodecs,
   softwareEncodingCodecs: advertisedCodecs,
   videoAdaptation: z.boolean(),
@@ -446,7 +457,11 @@ export class ChannelApp {
 
   async sources(): Promise<NativeCaptureSources> {
     await this.ready;
-    const sources = captureSourcesSchema.parse(await this.request({ type: "targets" }));
+    // Bound this Web read; the system's capture permission prompt belongs to the App.
+    const reading = new AbortController();
+    const timer = setTimeout(() => reading.abort(new Error("app_request_timeout")), SOURCE_LIST_TIMEOUT_MS);
+    const result = await this.request({ type: "targets" }, undefined, reading.signal).finally(() => clearTimeout(timer));
+    const sources = captureSourcesSchema.parse(result);
     this.activationURL = sources.activationURL;
     this.processAudioExclusion = sources.processAudioExclusion;
     this.captureCodecs = sources.codecs;

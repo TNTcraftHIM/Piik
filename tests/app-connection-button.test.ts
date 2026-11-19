@@ -943,6 +943,9 @@ it("keeps source enumeration failures distinct from access denial and App recove
     }));
   expect(render({ kind: "failed", error: "portal_failed" })).toContain(t("en", "host.sourcePicker.failed"));
   expect(render({ kind: "failed", error: "permission_denied" })).toContain(t("en", "channel.error.deviceAccessDenied"));
+  const timedOut = render({ kind: "failed", error: "app_request_timeout" });
+  expect(timedOut).toContain(t("en", "native.fail.requestTimeout"));
+  expect(timedOut).toMatch(new RegExp(`aria-label="${t("en", "host.sourcePicker.refresh")}"(?![^>]*disabled)`));
   const unavailable = render({ kind: "unavailable" });
 
   expect(unavailable).not.toContain(t("en", "host.sourcePicker.failed"));
