@@ -182,10 +182,12 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         ? { kind: "unavailable" } : { kind: "failed", error: code });
     });
   }, [appConnected, nativeSources]);
+  const settingsNeedSources = settingsOpen && !watching && externalInput?.state !== "live"
+    && (!sharing || selectedNative?.current === true);
   useEffect(() => {
-    if (open || settingsOpen) refresh();
+    if (open || settingsNeedSources) refresh();
     return () => { request.current = null; };
-  }, [open, settingsOpen, refresh]);
+  }, [open, settingsNeedSources, refresh]);
   useLayoutEffect(() => { close(); }, [roomId, publicationId, disabled, close]);
   useEffect(() => { setExternalOpen(false); }, [roomId]);
   useEffect(() => {
@@ -259,7 +261,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
                 hint={selectedNative.audio ? "hint-stop-audio" : "hint-share-audio"}
                 disabled={disabled || busy || qualityPending || microphonePending || sharing.paused}
                 onChange={audio => { void startNativeScreen(roomId, selectedNative.target, audio, selectedNative.excludeAudio, selectedNative.showCaptureBorder).catch(() => {}); }} />
-              {sources.processAudioExclusion && <LiveAudioExclusion load={loadAudioApplications} value={selectedNative.excludeAudio}
+              {sources.processAudioExclusion && <LiveAudioExclusion initialSources={sources.sources} load={loadAudioApplications} value={selectedNative.excludeAudio}
                 disabled={!selectedNative.audio || disabled || busy || qualityPending || microphonePending || sharing.paused}
                 onChange={excludeAudio => { void startNativeScreen(roomId, selectedNative.target, true, excludeAudio, selectedNative.showCaptureBorder).catch(() => {}); }} />}
             </div>}

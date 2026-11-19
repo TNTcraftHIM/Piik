@@ -42,15 +42,17 @@ export function AudioExclusionSelect({ sources, value, onChange, disabled, busy,
 }
 
 // Reuse native source enumeration. The Host owns applying the selected audio input.
-export function LiveAudioExclusion({ load, ...selection }: {
+export function LiveAudioExclusion({ initialSources, load, ...selection }: {
+  initialSources: NativeCaptureTarget[];
   load: () => Promise<NativeCaptureTarget[]>;
   value?: NativeCaptureTarget; onChange: (target: NativeCaptureTarget | undefined) => void; disabled?: boolean;
 }) {
-  const [sources, setSources] = useState<NativeCaptureTarget[]>([]);
-  const [busy, setBusy] = useState(true);
+  const [sources, setSources] = useState(initialSources);
+  const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [revision, setRevision] = useState(0);
   useEffect(() => {
+    if (!revision) return;
     let current = true;
     setBusy(true);
     void load().then(sources => {

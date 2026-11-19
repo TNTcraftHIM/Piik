@@ -165,7 +165,7 @@ export function ControlsPreview() {
           <div className="lr-door-group lr-source-audio-settings">
             <SwitchItem checked={sound} onChange={setSound} label={t("host.sourcePicker.systemAudio")}
               hint={sound ? "hint-stop-audio" : "hint-share-audio"} />
-            <LiveAudioExclusion load={previewApplications} value={excludedAudio} onChange={setExcludedAudio} disabled={!sound || paused} />
+            <LiveAudioExclusion initialSources={SOURCES.sources} load={previewApplications} value={excludedAudio} onChange={setExcludedAudio} disabled={!sound || paused} />
           </div>
           <ShareMicrophoneSettings available enabled={commentary} onEnabled={setCommentary}
             {...commentaryInput} loadDevices={async () => [{ id: "headset", label: "USB Headset" }, { id: "desk", label: "Desk Microphone" }]}
