@@ -1,5 +1,5 @@
 use super::*;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 fn limits() -> Limits {
     Limits {
         manifest_bytes: 1024 * 1024,
@@ -51,21 +51,21 @@ fn opaque_selected_resources_and_static_input_remain_source_owned() {
 }
 #[test]
 fn active_cancellation_interrupts_native_parser_and_subsequent_parse_succeeds() {
-    let stopped = Arc::new(AtomicBool::new(false));
-    let signal = stopped.clone();
-    let thread = std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(5));
-        signal.store(true, Ordering::Relaxed)
-    });
+    let polls = Arc::new(AtomicUsize::new(0));
+    let observed = polls.clone();
     let result = MpdSnapshot::inspect(
         Uuid::new_v4(),
         include_str!("../fixtures/bbb.mpd").into(),
         base(),
         limits(),
-        Arc::new(move || stopped.load(Ordering::Relaxed)),
+        // Let preflight finish, then cancel at the first QuickJS interrupt poll.
+        Arc::new(move || observed.fetch_add(1, Ordering::Relaxed) > 0),
     );
-    thread.join().unwrap();
     assert_eq!(result.err().unwrap().to_string(), "watch_source_retired");
+    assert!(
+        polls.load(Ordering::Relaxed) >= 3,
+        "expected preflight, an interrupt poll, and the post-drop check"
+    );
     assert!(MpdSnapshot::inspect(
         Uuid::new_v4(),
         include_str!("../fixtures/envivio.mpd").into(),
