@@ -31,10 +31,14 @@
 ## 遇到问题
 
 - **进不了房间、无法分享或听不到朋友：** 先看[对应的排查步骤](./troubleshooting.zh-CN.md#常见问题)。
-- **聊天正常，但画面、语音或文件连不上：** 再看[进阶网络排查](./network.zh-CN.md)。
 
 仍然没解决？可以[反馈问题](https://github.com/TNTcraftHIM/Piik/issues/new/choose)，
 附上版本、系统、浏览器和复现步骤。需要收集报告时，按[反馈说明](./troubleshooting.zh-CN.md#反馈问题)导出。
+
+## 网络连接
+
+- [用 frp 设置固定公网邀请](./frp.zh-CN.md)。在 App 或 Server 上操作，附樱花映射 SakuraFrp 示例。
+- [直连与媒体转发](./network.zh-CN.md)。网页能打开但画面连不上时，从这里排查。
 
 ## 为朋友搭建站点
 

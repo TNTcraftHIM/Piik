@@ -32,11 +32,15 @@ remains available separately.
 ## Get help
 
 - **Cannot join, share or hear a friend:** [find the checks for your problem](./troubleshooting.md#common-problems).
-- **Chat works, but picture, voice or files will not connect:** use [network checks](./network.md).
 
 Still stuck? [Report a problem](https://github.com/TNTcraftHIM/Piik/issues/new/choose)
 with your version, system, browser and reproduction steps. Follow the
 [reporting steps](./troubleshooting.md#reporting-a-problem) to collect diagnostics.
+
+## Networking
+
+- [Set up a fixed invitation with frp](./frp.md) for Piik App or Server, with a SakuraFrp walkthrough.
+- [Check direct and relayed connections](./network.md) when the room opens but the picture does not play.
 
 ## Run a site for your group
 

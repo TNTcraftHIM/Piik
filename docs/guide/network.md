@@ -121,3 +121,5 @@ Do not send `localhost`, which points to each recipient's own device.
 - **Microphone or remote-control permission is unavailable:** use the HTTPS invitation and review [browser permissions](./troubleshooting.md#microphone-or-remote-controls-are-unavailable).
 
 Join only with trusted friends. If the issue persists, [collect reports](./troubleshooting.md#reporting-a-problem) from the same attempt.
+
+To give an App or Server a fixed public invitation address, use a managed or self-hosted tunnel. [frp and SakuraFrp guide](./frp.md)
