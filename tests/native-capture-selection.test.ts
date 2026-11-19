@@ -31,6 +31,19 @@ describe("native capture source selection", () => {
   const game = target("My Game", "1");
   afterEach(() => setCopy({ lang: "en" }));
 
+  it("lets a host clear a previous exclusion when the App only offers system audio", () => {
+    setCopy({ lang: "en" });
+    const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources: { kind: "ready", sources: [game, { kind: "display", sourceId: "2", title: "Screen" }],
+        processAudio: false, systemAudio: true, processAudioExclusion: false },
+      initialTab: "display", initialAudio: true, initialExcludeAudio: game, audioLocked: true,
+      onBrowser() {}, onNative() {}, onPreview: async () => null, onRefresh() {}, onCancel() {},
+    }));
+    expect(html).toMatch(/data-native-source="display:2"[^>]*disabled=""/);
+    expect(html).toContain(t("en", "host.sourcePicker.excludeNone"));
+    expect(html).toContain(t("en", "host.sourcePicker.excludeMissing"));
+  });
+
   it("offers OBS only with input capability and waits for its explicit connect action", () => {
     setCopy({ lang: "en" });
     let preparations = 0;
