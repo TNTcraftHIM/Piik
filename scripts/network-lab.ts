@@ -63,7 +63,7 @@ async function run(name: keyof typeof cases): Promise<void> {
     : name === "browser-relay" ? ["preserve", "preserve", "preserve", "preserve"]
     : name === "ordinary" ? ["preserve", "preserve", "preserve"]
     : name === "prepared" ? [mapping, mapping] : ["preserve", "preserve"];
-  const result: any = { case: name, scope: cases[name], mapping, passed: false,
+  const result: any = { case: name, scope: cases[name], endpointMappings: modes, passed: false,
     sourceHead: process.env.SOURCE_HEAD ?? command("git", ["-C", source, "rev-parse", "HEAD"]), kernel: command("uname", ["-sr"]), node: process.version };
   let capture: LabProcess | undefined;
   try {

@@ -138,7 +138,10 @@ node --import tsx scripts/network-lab.ts --case ordinary --output build/network-
 ```
 
 `--mapping descending` selects decreasing sequential NAT allocation for
-`prepared` and `media`; the default is `sequential` (increasing). Calibration
+the Native pair in `prepared` and `media`. The default is `sequential`
+(increasing). Each report records the configured `endpointMappings` in the
+same order as its observed calibration results. The `ordinary` case uses
+port-preserving mappings at all three endpoints. Calibration
 checks the observed destination order, not just a sorted set of ports. Both
 variants keep the same preparation socket and packet budgets.
 The November 13 controlled comparison retained increasing-map playback, rejected
