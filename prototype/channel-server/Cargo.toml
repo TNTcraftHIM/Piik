@@ -16,7 +16,7 @@ path = "src/bin/app.rs"
 required-features = ["capture"]
 
 [features]
-capture = ["piik-channel-native/capture", "dep:wry", "dep:tao", "dep:webview2-com", "dep:windows-core"]
+capture = ["piik-channel-native/capture", "dep:wry", "dep:tao", "dep:webview2-com", "dep:windows-core", "dep:windows"]
 
 [dependencies]
 piik-channel-mpd = { path = "../channel-mpd" }
@@ -55,6 +55,7 @@ zip = { version = "=9.2.1", default-features = false, features = ["deflate-flate
 wry = { version = "=0.57.2", default-features = false, features = ["os-webview"], optional = true }
 tao = { version = "=0.37.2", default-features = false, features = ["rwh_06"], optional = true }
 webview2-com = { version = "=0.39.1", optional = true }
+windows = { version = "=0.62.2", optional = true, features = ["Win32_Storage_FileSystem"] }
 windows-core = { version = "=0.62.2", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]

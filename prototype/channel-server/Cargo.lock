@@ -4030,6 +4030,7 @@ dependencies = [
  "webbrowser",
  "webpki-roots",
  "webview2-com",
+ "windows",
  "windows-core",
  "wry",
  "zip",

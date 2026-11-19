@@ -81,7 +81,8 @@ A person can share a cloud-drive link today. A future bot or integration can cop
 | The room currently has no readable source for a download | Show that the original is temporarily unavailable. Keep the filename and thumbnail visible and allow a retry when a holder returns |
 | A member published a separate external link | Open the link under its provider's access rules |
 
-The Windows App records the path reported by the completed platform download.
+The Windows App records the path and file identity of a completed download.
+Opening its location checks that the path still contains the saved file.
 The attachment card stores an opaque reference scoped to the receiver's site,
 identity, room and attachment. Clearing the cache or deleting the message
 removes the card's reference. The recipient keeps their saved file.
