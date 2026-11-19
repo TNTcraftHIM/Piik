@@ -71,6 +71,13 @@ impl TransportBook {
         self.discovery.as_ref().map(|edge| edge.endpoints)
     }
 
+    pub(crate) fn failures(&self) -> impl Iterator<Item = &DiscoveryEdge> {
+        self.rejected.iter()
+    }
+    pub(crate) fn retain_failures(&mut self, needed: &BTreeSet<DiscoveryEdge>) {
+        self.rejected.retain(|edge| needed.contains(edge));
+    }
+
     pub(crate) fn rejected(&self, edge: &DiscoveryEdge) -> bool {
         self.rejected.contains(edge)
     }
@@ -85,7 +92,14 @@ impl TransportBook {
         flows: impl IntoIterator<Item = Flow>,
         base: impl IntoIterator<Item = BaseLink>,
     ) {
-        self.reconcile_with_standby(flows, base, &BTreeSet::new(), &BTreeSet::new(), 0);
+        self.reconcile_with_standby(
+            flows,
+            base,
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+            0,
+        );
     }
 
     pub(crate) fn reconcile_with_standby(
@@ -93,6 +107,7 @@ impl TransportBook {
         flows: impl IntoIterator<Item = Flow>,
         base: impl IntoIterator<Item = BaseLink>,
         standby: &BTreeSet<(Uuid, Uuid)>,
+        preparing: &BTreeSet<(Uuid, Uuid)>,
         candidates: &BTreeSet<DiscoveryEdge>,
         now: u64,
     ) {
@@ -127,11 +142,15 @@ impl TransportBook {
             };
             needed.entry(key).or_default().rooms.insert(link.room_id);
         }
-        self.rejected.retain(|edge| candidates.contains(edge));
+        for &pair in preparing {
+            if self.pairs.contains_key(&pair) {
+                needed.entry(pair).or_default();
+            }
+        }
         if self
             .discovery
             .as_ref()
-            .is_some_and(|edge| !candidates.contains(edge))
+            .is_some_and(|edge| !candidates.contains(edge) || preparing.contains(&edge.endpoints))
         {
             self.discovery_deadline = None;
             if let Some(old) = self.discovery.take() {
@@ -302,7 +321,13 @@ impl TransportBook {
         true
     }
 
-    pub fn retire(&mut self, id: Uuid) {
+    pub fn retire(&mut self, id: Uuid, identity: &crate::identity::Identity) {
+        if let Some((&endpoints, _)) = self.pairs.iter().find(|(_, pair)| pair.id == id) {
+            let connection = |id| identity.sessions.get(&id).and_then(|s| s.connection);
+            if let Some(sockets) = connection(endpoints.0).zip(connection(endpoints.1)) {
+                self.rejected.insert(DiscoveryEdge { endpoints, sockets });
+            }
+        }
         if self
             .discovery
             .as_ref()
@@ -356,5 +381,39 @@ impl TransportBook {
                 })
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn confirmed_demand_keeps_its_pair_and_releases_the_next_trial() {
+        let edge = |start| DiscoveryEdge {
+            endpoints: (Uuid::from_u128(start), Uuid::from_u128(start + 1)),
+            sockets: (Uuid::new_v4(), Uuid::new_v4()),
+        };
+        let first = edge(1);
+        let second = edge(3);
+        let candidates = [first.clone(), second.clone()].into();
+        let empty = BTreeSet::new();
+        let mut book = TransportBook::default();
+        book.reconcile_with_standby([], [], &empty, &empty, &candidates, 0);
+        let first_id = book.pairs[&first.endpoints].id;
+        let (a, b) = first.endpoints;
+        let (a_socket, b_socket) = first.sockets;
+        assert!(!book.connected(a, a_socket, Some(b_socket), first_id));
+        assert!(book.connected(b, b_socket, Some(a_socket), first_id));
+
+        let held = [first.endpoints].into();
+        book.reconcile_with_standby([], [], &held, &held, &candidates, 1);
+        assert_eq!(book.discovery_endpoints(), Some(second.endpoints));
+        assert_eq!(book.pairs[&first.endpoints].id, first_id);
+        assert!(book.has_pair(second.endpoints));
+
+        book.reconcile([], []);
+        assert!(book.discovery_endpoints().is_none());
+        assert!(book.pairs.is_empty());
     }
 }

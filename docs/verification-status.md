@@ -248,11 +248,12 @@ picker cancellation and retry in the same room, then normal capture and stop.
 
 In an App-hosted room, an independent Browser viewer kept receiving the original
 share through a cancelled or rejected source change. Successful replacement
-retained the publication and viewer stream. Chromium's native tab capture also
-switched between two different test tabs and delivered the new pixels over the
-same receiver connection. A controlled muted capture track exercised delayed
-readiness and retry. The reported stall after manually selecting another Chrome
-window in the Windows system picker still needs a reproduction.
+retained the publication and viewer stream. On Windows, Chrome 156 selected
+two owned windows in different processes by title and returned window capture
+tracks. The viewer kept decoding the first window through cancellation in the
+native picker, then received the second window's pixels on the same track.
+A separate controlled muted track exercised delayed readiness. Manual selection
+on the reporting machine and window audio remain unverified.
 
 A three-Browser run verified picture and voice progress while receiving files
 through the same relay under controlled storage backpressure. Cancelling an

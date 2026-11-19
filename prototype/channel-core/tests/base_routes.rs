@@ -4888,3 +4888,121 @@ fn reader_relay_reserves_capacity_across_publications_before_proof() {
         .iter()
         .all(|pair| pair.incoming.is_empty() && pair.outgoing.is_empty()));
 }
+
+#[test]
+fn screen_reaches_its_only_viewer_through_two_room_readers() {
+    use std::collections::BTreeSet;
+
+    for warm in [false, true] {
+        let mut network = RoomNetwork::new();
+        let mut peers = [(); 4].map(|_| {
+            let connection = Uuid::new_v4();
+            (join(&mut network, connection, None).0, connection)
+        });
+        peers.sort(); // Keep the planner's session ordering reproducible.
+        let sessions = peers.map(|(session, _)| session);
+        let connections = peers.map(|(_, connection)| connection);
+        let [publisher, first, second, viewer] = connections;
+        let room = network.create(publisher, RoomAccess::Public, false);
+        browse(&mut network, first, &room, true);
+        browse(&mut network, second, &room, true);
+        let mut handled = BTreeSet::new();
+        if warm {
+            let other = network.create(first, RoomAccess::Public, false);
+            join_base(&mut network, first, &other);
+            join_base(&mut network, second, &other);
+            let middle = pair(&network, first, sessions[2], &other).id;
+            for reader in [first, second] {
+                command(
+                    &mut network,
+                    reader,
+                    json!({"type":"link_state","pairId":middle,"state":"connected"}),
+                );
+            }
+            handled.insert(middle);
+        }
+        let pair_ids = |network: &RoomNetwork| {
+            connections
+                .iter()
+                .flat_map(|peer| network.state(*peer).pairs.iter().map(|pair| pair.id))
+                .collect::<BTreeSet<_>>()
+        };
+        let screen = publish(&mut network, publisher, &room, "screen");
+        assert_eq!(pair_ids(&network), handled);
+        subscribe_screen(&mut network, viewer, screen);
+
+        // Answer each assigned transport once. Only adjacent endpoints can connect.
+        while let Some((from, to, id)) = peers.iter().enumerate().find_map(|(from, &(_, peer))| {
+            network.state(peer).pairs.iter().find_map(|pair| {
+                let to = sessions.iter().position(|id| *id == pair.peer_id)?;
+                (from < to && !handled.contains(&pair.id)).then_some((from, to, pair.id))
+            })
+        }) {
+            assert!(
+                handled.len() < 12,
+                "discovery repeatedly allocated the same route"
+            );
+            handled.insert(id);
+            if to == from + 1 {
+                for connection in [connections[from], connections[to]] {
+                    command(
+                        &mut network,
+                        connection,
+                        json!({"type":"link_state","pairId":id,"state":"connected"}),
+                    );
+                }
+            } else {
+                command(
+                    &mut network,
+                    connections[from],
+                    json!({"type":"link_state","pairId":id,"state":"failed"}),
+                );
+            }
+        }
+        let chain = |network: &RoomNetwork| {
+            [0, 1, 2].map(|i| {
+                screen_input(network, connections[i + 1], sessions[i], screen)
+                    .expect("the viewer needs all three legs")
+            })
+        };
+        let proved = chain(&network);
+        let mut upstream = None;
+        for (i, (pair, flow)) in proved.iter().enumerate() {
+            assert!(flow.selected);
+            assert_eq!(flow.input_flow_id, upstream);
+            upstream = Some(flow.id);
+            let proof = if i == 2 { "decoded" } else { "forwardable" };
+            command(
+                &mut network,
+                connections[i + 1],
+                json!({"type":"flow_state","pairId":pair,"flowId":flow.id,"state":proof}),
+            );
+        }
+        let stable = pair_ids(&network);
+        for now in [5_100, 20_100, 40_100] {
+            let effects = network.authority.expire(now);
+            network.deliver(effects);
+            assert_eq!(pair_ids(&network), stable);
+            assert_eq!(chain(&network), proved);
+        }
+        for reader in [first, second] {
+            assert!(!network.state(reader).subscriptions.contains(&screen));
+        }
+        assert!(network.state(viewer).failed_subscriptions.is_empty());
+        network.command_at(
+            viewer,
+            json!({"type":"subscribe","publicationId":screen,"enabled":false}),
+            40_101,
+        );
+        for peer in connections {
+            assert!(network.state(peer).pairs.iter().all(|pair| pair
+                .incoming
+                .iter()
+                .chain(&pair.outgoing)
+                .all(|flow| flow.publication_id != screen)));
+        }
+    }
+}
+
+#[path = "base_routes/coexisting_demand.rs"]
+mod coexisting_demand;

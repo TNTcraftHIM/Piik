@@ -453,6 +453,13 @@ impl RoomRuntime {
             .get(&session)
             .is_some_and(|activity| activity.reading)
     }
+    fn required_base_sessions(&self) -> BTreeSet<Uuid> {
+        let mut required = self.files.demand();
+        required.extend(self.watch_byte_demand());
+        required.extend(self.voice().map(|voice| voice.session_id));
+        required
+    }
+
     fn media_sessions(&self) -> BTreeSet<Uuid> {
         self.activity
             .iter()
@@ -1229,9 +1236,9 @@ impl RoomRuntime {
             .keys()
             .map(|session| (*session, self.subscriptions(*session)))
             .collect();
+        let mut required_base = self.required_base_sessions();
         let mut demand = self.media_sessions();
-        demand.extend(self.watch_byte_demand());
-        demand.extend(self.files.demand());
+        demand.extend(&required_base);
         let mut routable = readable.clone();
         let service = self.selected_service().map(|service| service.session_id);
         if let Some(endpoint) = transit_endpoint {
@@ -1261,7 +1268,7 @@ impl RoomRuntime {
                 demand.extend(service);
             }
             if repair_due {
-                base.retry_required(&demand, &connected);
+                base.retry_required(&required_base, &connected);
             }
             base.reconcile_confirmed(
                 &demand,
@@ -1418,9 +1425,9 @@ impl RoomRuntime {
             .as_ref()
             .is_some_and(|base| self.files.select_ready_sources(base))
         {
+            required_base = self.required_base_sessions();
             demand = self.media_sessions();
-            demand.extend(self.watch_byte_demand());
-            demand.extend(self.files.demand());
+            demand.extend(&required_base);
             let confirmed_demand = self.confirmed_delivery_pairs(&requested, confirmed_pairs);
             self.base.as_mut().unwrap().reconcile_confirmed(
                 &demand,
@@ -1435,7 +1442,7 @@ impl RoomRuntime {
         needs_repair |= self
             .base
             .as_ref()
-            .is_some_and(|base| base.needs_repair(&demand, &connected));
+            .is_some_and(|base| base.needs_repair(&required_base, &connected));
         if needs_repair {
             self.repair_at
                 .get_or_insert(now.saturating_add(REQUIRED_REPAIR_MS));
@@ -3878,6 +3885,38 @@ mod tests {
         assert_eq!(transports.peer(id(3), prepared.id), Some(id(4)));
         assert_eq!(transports.peer(id(3), healthy.id), Some(id(1)));
         assert_eq!(room.next_route_deadline(), None);
+    }
+
+    #[test]
+    fn a_working_screen_only_retries_its_room_link_when_voice_needs_it() {
+        let id = Uuid::from_u128;
+        let (fixture, endpoints) = screen_on_room_base();
+        let mut room = RoomRuntime::new(fixture.policy.clone());
+        let (host, source, viewer) = (id(1), id(2), id(3));
+        room.set_host_session(host);
+        room.publish(
+            endpoints[&source].member, source, id(10), Kind::Screen, screen_settings(),
+            Some(crate::wire::ScreenSource::default()),
+        ).unwrap();
+        room.subscribe(endpoints[&viewer].member, viewer, id(10), true, None).unwrap();
+        room.reconcile(&endpoints, 0);
+        let picture = room.flows().find(|flow| flow.receiver == viewer).unwrap();
+        assert_eq!(picture.sender, source);
+        room.flow_state(picture.id, viewer, source, FlowState::Decoded, 1).unwrap();
+
+        for peer in [source, viewer] {
+            room.failed_pair(host, peer);
+        }
+        room.reconcile(&endpoints, 2);
+        assert!(room.flows().any(|flow| flow.id == picture.id && flow.proof == Some(FlowState::Decoded)));
+        assert_eq!(room.next_route_deadline(), None);
+
+        room.set_voice(endpoints[&viewer].member, viewer, true, false, false).unwrap();
+        room.reconcile(&endpoints, 3);
+        let retry = room.next_route_deadline().expect("voice needs a path on the room base");
+        room.reconcile(&endpoints, retry);
+        assert!(room.base_links().any(|link| link.child == viewer));
+        assert!(room.flows().any(|flow| flow.id == picture.id && flow.proof == Some(FlowState::Decoded)));
     }
 
     #[test]

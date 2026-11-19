@@ -195,6 +195,9 @@ participants. Its root identifies the coordination owner; data may travel in
 both directions. A connected tree already provides a unique path between any
 two members. Voice, sharing, watching and active file delivery establish the base
 paths they need; reading or writing conversation does not establish peer paths.
+Voice, file transfers and forwarded video bytes keep required base-link repair
+active. A screen publication handles its own stalled delivery and may replace
+an unproved path to a waiting viewer with a complete path on confirmed links.
 The base tree also considers better edges after relevant connectivity or capacity
 changes, using the same bounded admission and transition rules as screen plans.
 Replacing a base edge preserves its admitted flows until their replacement paths

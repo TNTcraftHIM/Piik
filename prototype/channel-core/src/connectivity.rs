@@ -9,6 +9,25 @@ pub(crate) fn candidate(
     demand: &BTreeSet<(Uuid, Uuid)>,
     available: impl Fn(Uuid, Uuid) -> bool,
 ) -> Option<(Uuid, Uuid)> {
+    select(sessions, confirmed, demand, available, false)
+}
+
+pub(crate) fn repair_candidate(
+    sessions: &BTreeSet<Uuid>,
+    confirmed: &BTreeSet<(Uuid, Uuid)>,
+    demand: &BTreeSet<(Uuid, Uuid)>,
+    available: impl Fn(Uuid, Uuid) -> bool,
+) -> Option<(Uuid, Uuid)> {
+    select(sessions, confirmed, demand, available, true)
+}
+
+fn select(
+    sessions: &BTreeSet<Uuid>,
+    confirmed: &BTreeSet<(Uuid, Uuid)>,
+    demand: &BTreeSet<(Uuid, Uuid)>,
+    available: impl Fn(Uuid, Uuid) -> bool,
+    expand_frontier: bool,
+) -> Option<(Uuid, Uuid)> {
     if sessions.len() < 2 || demand.is_empty() {
         return None;
     }
@@ -84,7 +103,27 @@ pub(crate) fn candidate(
             }
         }
     }
-    best.map(|(_, pair)| pair)
+    best.map(|(_, pair)| pair).or_else(|| {
+        if !expand_frontier {
+            return None;
+        }
+        for &(source, viewer) in &demands {
+            let left = graph.component[source];
+            let right = graph.component[viewer];
+            if left == right {
+                continue;
+            }
+            for (i, &a) in peers.iter().enumerate() {
+                for (j, &b) in peers.iter().enumerate().skip(i + 1) {
+                    let in_frontier = |k: usize| [left, right].contains(&graph.component[k]);
+                    if in_frontier(i) != in_frontier(j) && available(a, b) {
+                        return Some((a, b));
+                    }
+                }
+            }
+        }
+        None
+    })
 }
 
 // Credit each missing pair that would reconnect the two sides of a real

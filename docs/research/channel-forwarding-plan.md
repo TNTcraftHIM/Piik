@@ -274,6 +274,13 @@ standby edge both use local resources. Retire stale generations and pending
 attempts through the existing pair lifecycle. Application route selection
 runs for each source on the confirmed, authorized graph.
 
+When a direct screen connection fails, the channel can hold confirmed segments
+reachable from the publisher or the waiting viewer and try one missing link at
+a time through eligible room readers. Each trial has its own deadline. Once a
+pair is confirmed, other waiting activities can use the trial slot. Ending the
+subscription or losing room access releases the segments held for that request.
+Any other authorized use of the same connection continues.
+
 Middle peers can pass current candidate information and coordinate mutual
 connection attempts. An observed mapping belongs to its actual socket and
 destination context. The two endpoints validate the resulting candidate through

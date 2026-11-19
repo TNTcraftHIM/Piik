@@ -16,6 +16,9 @@ const MAX_ACTIVE_ROOMS: usize = 32;
 // Directory space for the live set plus one equally sized recovery set.
 const MAX_ROOMS: usize = 64;
 
+mod discovery;
+use discovery::Repair;
+
 /// Domain admission, hosted-room directory and shared transport leases.
 /// Browsing selects a presentation; it never owns another room's activities.
 #[derive(Clone)]
@@ -32,6 +35,7 @@ pub struct Channel {
     pub(crate) pending_room_deletions: BTreeMap<String, Uuid>,
     pub(crate) remote: BTreeMap<String, RemoteRoom>,
     transports: TransportBook,
+    repairs: BTreeMap<(Uuid, crate::transport::DiscoveryEdge), Repair>,
     input_registrations: BTreeMap<Uuid, Vec<crate::input::InputRegistration>>,
     ice_servers: Vec<Value>,
     pub(crate) service_endpoint: Option<crate::host::ServiceEndpoint>,
@@ -79,6 +83,7 @@ impl Channel {
             pending_room_deletions: BTreeMap::new(),
             remote: BTreeMap::new(),
             transports: TransportBook::default(),
+            repairs: BTreeMap::new(),
             input_registrations: BTreeMap::new(),
             ice_servers,
             service_endpoint: None,
@@ -239,7 +244,7 @@ impl Channel {
                 {
                     broadcast = true;
                 } else {
-                    self.transports.retire(pair_id);
+                    self.transports.retire(pair_id, &self.identity);
                     let affected: Vec<_> = self
                         .remote
                         .iter_mut()
@@ -476,84 +481,7 @@ impl Channel {
                 });
             }
         }
-        let confirmed: BTreeSet<_> = self.transports.confirmed_pairs(&self.identity).collect();
-        let discovery = self.transports.discovery_endpoints();
-        let mut standby = BTreeSet::new();
-        let mut candidates = BTreeSet::new();
-        for room in self
-            .remote
-            .values()
-            .filter(|room| Self::host_online(&self.identity, room))
-        {
-            let Some(projection) = &room.projection else {
-                continue;
-            };
-            let proposal = |(a, b)| crate::transport::DiscoveryEdge {
-                endpoints: (a, b),
-                sockets: (
-                    self.identity.sessions[&a].connection.unwrap(),
-                    self.identity.sessions[&b].connection.unwrap(),
-                ),
-            };
-            let demand = projection.requested_pairs();
-            // Keep a proven pair through repair while either endpoint still needs it.
-            if let Some((a, b)) = discovery.filter(|pair| confirmed.contains(pair)) {
-                if demand.contains(&(a, b)) {
-                    candidates.insert(proposal((a, b)));
-                }
-            }
-            let mut scope = room.planning_sessions(self.service_endpoint, None);
-            scope.retain(|id| endpoints.get(id).is_some_and(|endpoint| endpoint.connected));
-            let mut graph: BTreeSet<_> = confirmed
-                .iter()
-                .copied()
-                .filter(|(a, b)| scope.contains(a) && scope.contains(b))
-                .collect();
-            standby.extend(&graph);
-            // Test the continuing need for the optional edge against the graph
-            // without it. Its own confirmation must not immediately cancel it.
-            if let Some(pair) = discovery {
-                graph.remove(&pair);
-            }
-            if demand.is_empty() || graph.is_empty() {
-                continue;
-            }
-            let available = |a: Uuid, b: Uuid| {
-                let pair = (a.min(b), a.max(b));
-                Some(pair) == discovery || !self.transports.has_pair(pair)
-            };
-            if let Some(first) = crate::connectivity::candidate(&scope, &graph, &demand, available)
-            {
-                let edge = proposal(first);
-                // Keep a single alternative per room after a failed primary.
-                // Retaining both proposals keeps failed generations fenced.
-                if self.transports.rejected(&edge) {
-                    if let Some(next) =
-                        crate::connectivity::candidate(&scope, &graph, &demand, |a, b| {
-                            (a, b) != first && available(a, b)
-                        })
-                    {
-                        candidates.insert(proposal(next));
-                    }
-                }
-                candidates.insert(edge);
-            }
-        }
-        self.transports.reconcile_with_standby(
-            self.remote
-                .values()
-                .filter(|room| room.binding.is_some())
-                .filter_map(|room| room.projection.as_ref())
-                .flat_map(|projection| projection.flows.iter().cloned()),
-            self.remote
-                .values()
-                .filter(|room| room.binding.is_some())
-                .filter_map(|room| room.projection.as_ref())
-                .flat_map(|projection| projection.base_links.iter().cloned()),
-            &standby,
-            &candidates,
-            self.now,
-        );
+        self.reconcile_transports(&endpoints);
     }
 
     pub fn export_state(&self) -> DurableState {

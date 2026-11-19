@@ -123,6 +123,11 @@ impl Plan {
                     && !self.is_display(*child, helpers)
                     && !screen.is_some_and(|screen| self.confirmed_path(*child, screen))
                 {
+                    if let Some(screen) = screen {
+                        if self.replace_pending_path(*child, requested, screen, helpers, limits) {
+                            continue;
+                        }
+                    }
                     self.graft_base(*child, &base_parents, available, connected, helpers, limits);
                 }
             }
@@ -164,6 +169,41 @@ impl Plan {
                 self.parents.insert(*child, parent);
             }
         }
+    }
+
+    fn replace_pending_path(
+        &mut self,
+        viewer: Uuid,
+        requested: &BTreeSet<Uuid>,
+        screen: &ScreenDemand<'_>,
+        helpers: &BTreeMap<Uuid, Uuid>,
+        limits: &RelayLimits,
+    ) -> bool {
+        if !screen.neighbors.contains_key(&viewer)
+            || self.parents.values().any(|parent| *parent == viewer)
+        {
+            return false;
+        }
+        let mut candidate = self.clone();
+        let mut child = viewer;
+        // Release only the unproved suffix reserved exclusively for this viewer.
+        while let Some(parent) = candidate.parents.remove(&child) {
+            if parent == self.source
+                || requested.contains(&parent)
+                || self.ready.contains_key(&parent)
+                || candidate.parents.values().any(|other| *other == parent)
+            {
+                break;
+            }
+            child = parent;
+        }
+        if candidate.append_path(viewer, screen, helpers, limits)
+            && candidate.parents != self.parents
+        {
+            self.parents = candidate.parents;
+            return true;
+        }
+        false
     }
 
     fn confirmed_path(&self, mut child: Uuid, screen: &ScreenDemand<'_>) -> bool {
@@ -1156,6 +1196,61 @@ impl BaseTree {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn waiting_screen_reuses_confirmed_chain_without_disturbing_other_viewers() {
+        let [b, a, d, c, other] = [1, 2, 3, 4, 5].map(Uuid::from_u128);
+        let mut neighbors = BTreeMap::<_, BTreeSet<_>>::new();
+        for (x, y) in [(b, a), (a, d), (d, c)] {
+            neighbors.entry(x).or_default().insert(y);
+            neighbors.entry(y).or_default().insert(x);
+        }
+        let viewers = [c, other].into();
+        let online = [b, a, d, c, other].into();
+        let screen = ScreenDemand {
+            order: &[c, other],
+            neighbors: &neighbors,
+            relays: &[a].into(),
+        };
+        let limits = RelayLimits::default();
+        for prefix in [a, d] {
+            let mut plan = Plan::new(b);
+            plan.parents = [(prefix, b), (c, prefix), (other, b)].into();
+            plan.mark_ready(other, b, Readiness::Decoded);
+            if prefix == a {
+                plan.mark_ready(a, b, Readiness::Forwardable);
+            }
+            let before = plan.parents.clone();
+            plan.reconcile_demand(
+                &viewers,
+                &online,
+                &online,
+                None,
+                &BTreeMap::new(),
+                &limits,
+                Some(&screen),
+            );
+            assert_eq!(plan.parents, before);
+            let relays = [a, d].into();
+            let enabled = ScreenDemand {
+                relays: &relays,
+                ..screen
+            };
+            plan.reconcile_demand(
+                &viewers,
+                &online,
+                &online,
+                None,
+                &BTreeMap::new(),
+                &limits,
+                Some(&enabled),
+            );
+            assert_eq!(plan.parents, [(a, b), (d, a), (c, d), (other, b)].into());
+            assert!(plan.readiness(other) == Some(Readiness::Decoded));
+            if prefix == a {
+                assert!(plan.readiness(a) == Some(Readiness::Forwardable));
+            }
+        }
+    }
     #[test]
     fn shared_relays_are_compared_after_remaining_viewers_join() {
         let id = Uuid::from_u128;
