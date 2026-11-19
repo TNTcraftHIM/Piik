@@ -280,6 +280,7 @@ a time through eligible room readers. Each trial has its own deadline. Once a
 pair is confirmed, other waiting activities can use the trial slot. Ending the
 subscription or losing room access releases the segments held for that request.
 Any other authorized use of the same connection continues.
+[Four-browser comparison of on-demand and early relay preparation](./network-lab.md#slow-direct-signaling-and-early-relay-preparation)
 
 Middle peers can pass current candidate information and coordinate mutual
 connection attempts. An observed mapping belongs to its actual socket and
@@ -287,9 +288,7 @@ destination context. The two endpoints validate the resulting candidate through
 their ICE implementation. Native-only preparation retains its native owner.
 Browser peers use the capabilities exposed by Browser WebRTC. Existing relay
 paths remain usable while a direct upgrade is tested.
-[STUN](https://www.rfc-editor.org/rfc/rfc8489.html#section-14.2)
-and [DCUtR](https://github.com/libp2p/specs/blob/master/relay/DCUtR.md)
-provide the observation and coordination references.
+[STUN mapped addresses](https://www.rfc-editor.org/rfc/rfc8489.html#section-14.2) · [ICE connectivity checks](https://www.rfc-editor.org/rfc/rfc8445.html#section-7) · [DCUtR coordination](https://github.com/libp2p/specs/blob/master/relay/DCUtR.md)
 
 ### Finding a relay outside the publication
 

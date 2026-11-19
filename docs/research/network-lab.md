@@ -236,6 +236,29 @@ and two on the new stream. These samples establish delivery under the measured
 conditions. Choosing production thresholds requires repeated trials on independent
 networks. [Chromium P2P network interceptor](https://chromium.googlesource.com/chromium/src/+/main/services/network/throttling/throttling_p2p_network_interceptor.cc)
 
+### Slow Direct Signaling And Early Relay Preparation
+
+Four loopback Chromium clients compared on-demand recovery at `3c7059b0`
+with a variant that prepared relays while direct signaling was pending. Each
+build ran once per condition (ten runs). Before C subscribed to B's screen,
+the host had confirmed only the A–D middle link. Delayed runs buffered real
+B–C signaling and released it on the original pair. The blackhole suppressed
+B–C signaling throughout, leaving B–A–D–C as the only media path.
+
+| B–C signaling | First frame, on demand | First frame, early preparation | Distinct pair IDs, on demand / early |
+|---|---:|---:|---:|
+| Immediate | 2.083 s | 2.055 s | 1 / 2 |
+| 2 s delay | 3.058 s | 2.895 s | 1 / 3 |
+| 5 s delay | 5.885 s | 6.062 s | 1 / 2 |
+| 10 s delay | 10.862 s | 10.866 s | 1 / 3 |
+| Blackhole | 23.980 s | 23.906 s | 7 / 7 |
+
+All four successful direct conditions used the original B–C pair for playback.
+Both blackhole runs delivered through A and D, with 10 SDP offers on demand
+and 11 with early preparation. On-demand recovery remains the default because
+early preparation added one or two pair attempts when direct signaling succeeded,
+and the single blackhole comparison showed only a 74 ms first-frame difference.
+
 ### Playable Route Improvement
 
 On 2026-11-14, a controlled trial reused the `64e6281e` screen-routing

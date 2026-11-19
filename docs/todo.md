@@ -12,21 +12,6 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-### 3.0 implementation sequence
-
-1. Build the two Core changes in parallel. Channel creation assigns the room writer
-   and enforces directory policy and owner removal. The room planner consumes a
-   confirmed connection graph, scoped demand and per-kind grants. Check lightweight
-   and hosted creation, known and missing pairs, and independent flow retirement.
-2. Connect the existing Browser, App and Server adapters and shared Web UI.
-   Exercise room creation, moderation, history and thumbnail cleanup through
-   ordinary user actions. Exercise peer and service forwarding with an independent
-   receiver, including a failed attempt, an offline room and a working-path handoff.
-3. Measure startup, coverage, waiting time, attempts, idle cost and disruption
-   under matched workloads. Tune automatic fanout and retry/standby budgets from
-   those results. Retire superseded branches as each path is integrated and
-   resume the remaining frontend, backend and feature work below.
-
 ### Active work
 
 - [ ] **3.0 architecture convergence.** Trace product responsibilities through
@@ -37,9 +22,9 @@ the feedback period; they do not delay that delivery.
   continue independent confirmed fixes and scoped experiments in parallel.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
-  with on-demand routing on Browser/App combinations. Measure time to usable media,
-  coverage, idle cost and disruption. Exercise concurrent kinds on one uplink
-  and recovery from a refused file branch before tuning automatic fanout.
+  with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
+  coverage, connection attempts, idle cost and disruption. Exercise concurrent kinds on one uplink
+  and recovery from a refused file branch before tuning fanout and retry/standby budgets.
 - [ ] **Matched-package room acceptance.** Exercise hosted/private history,
   invite-only public Demo discovery, removal of offline rooms and archive
   recovery on the supported distributions. The [hosting design](./research/server-hosting-plan.md)
