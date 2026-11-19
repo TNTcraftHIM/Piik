@@ -277,6 +277,14 @@ impl Plan {
         };
         let mut best = self.clone();
         fill(&mut best);
+        // Direct inputs attain full coverage with one new edge and one hop per viewer.
+        if waiting
+            .iter()
+            .all(|viewer| best.parents.get(viewer) == Some(&self.source))
+        {
+            self.parents = best.parents;
+            return;
+        }
         // Each shared relay candidate gets first use of a
         // scarce slot. Compare complete trees after filling other demand.
         let mut best_score = rank(&best);

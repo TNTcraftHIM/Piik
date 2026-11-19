@@ -400,8 +400,11 @@ a healthy direct hop. A shared relay can improve coverage for a group.
 [Dijkstra's original algorithm](https://doi.org/10.1007/BF01386390)
 
 The planner starts with the delivering tree. Its first candidate appends a
-short path per waiting receiver. Each eligible shared relay supplies another
-candidate by attaching its branch first and then serving the remaining receivers.
+short path per waiting receiver. If every waiting endpoint is now a direct
+child of the source, this candidate attains full coverage with the minimum
+of one new edge and one hop per waiting endpoint. It can be selected
+immediately. Otherwise eligible shared relays generate alternatives by
+attaching their branch first and then serving the remaining receivers.
 Small graphs admit exact comparisons by enumerating feasible trees. If every
 non-source endpoint requests the screen, every edge counts, and each endpoint
 can send to at most one downstream, a feasible tree is a simple path. Its

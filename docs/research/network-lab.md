@@ -279,6 +279,14 @@ from three to four. Median cold planning time across five batches of 5,000
 runs rose from 38.2 to 48.4 µs. These comparisons concern planning on known
 links. [Delivery tree model](./channel-forwarding-plan.md#selecting-delivery-trees)
 
+Stopping at the proven maximum when the first candidate serves all waiting
+endpoints directly preserved every parent assignment in 6,144 comparisons
+with `579e337c` (1,024 graphs, three source limits and two starting trees).
+In a 20-endpoint cold-planning fixture with ten waiting viewers and ten
+source slots, median planning time fell from 125.2 to 6.6 µs. With only
+two source slots the same comparison measured 183.4 and 181.5 µs. Each
+measurement is the median of five batches of 200 plans on one machine.
+
 ### Playable Route Improvement
 
 On 2026-11-14, a controlled trial reused the `64e6281e` screen-routing
