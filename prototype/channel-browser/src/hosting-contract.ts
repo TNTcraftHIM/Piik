@@ -3,6 +3,12 @@ import type { ChannelMessage, ConversationReply, MessageReactions, RoomSummary, 
 
 export type DeletedHistoryRow = { seq: number; retryKey: string };
 export type BackupHistoryRow = DeletedHistoryRow | ChannelMessage & { nonce: string; reactions: MessageReactions };
+
+// Zero is the staging marker. All history consumers in JavaScript need exact sequence keys.
+export function validBackupSequence(seq: number): boolean {
+  return Number.isSafeInteger(seq) && seq > 0;
+}
+
 export interface BrowserRoomSnapshot {
   readonly policy: string;
   readonly rows: AsyncIterable<BackupHistoryRow>;

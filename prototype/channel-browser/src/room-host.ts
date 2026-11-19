@@ -4,7 +4,7 @@ let initialization: Promise<void> | undefined;
 export function initializeRuntime(): Promise<void> { return initialization ??= init().then(() => {}); }
 export async function createSessionSigner(seed: Uint8Array): Promise<SessionSigner> { await initializeRuntime(); return new SessionSigner(seed); }
 import type { ChannelMessage, ChatOptions, ConversationAddress, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket, ReactionEvent, MessageReactions } from "../../../src/client/channel/protocol";
-import type { BackupHistoryRow, BrowserRoomSnapshot, BrowserRoomStage, HostedRoom } from "./hosting-contract";
+import { validBackupSequence, type BackupHistoryRow, type BrowserRoomSnapshot, type BrowserRoomStage, type HostedRoom } from "./hosting-contract";
 
 export interface NewRoomPolicy extends RoomSettings {
   id: string; creatorId: string;
@@ -106,9 +106,7 @@ class RoomBackup implements BrowserRoomSnapshot, BrowserRoomStage {
   }
 
   append(row: BackupHistoryRow): Promise<void> {
-    // Core validated the row; reject sequence keys that IndexedDB's Number
-    // representation cannot retain exactly, including the reserved marker key.
-    if (!Number.isSafeInteger(row.seq) || row.seq <= 0) return Promise.reject(new Error("invalid_backup_history"));
+    if (!validBackupSequence(row.seq)) return Promise.reject(new Error("invalid_backup_history"));
     return this.turn(["backup"], "readwrite", tx => { tx.objectStore("backup").add(indexed(row)); }, () => {});
   }
 

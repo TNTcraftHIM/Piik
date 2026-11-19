@@ -16,7 +16,7 @@ import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventD
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
 import { messageRemoved, type ChannelActions, type ChannelView, type ChatOptions, type RoomHistoryChanges, type ScreenPresentation, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
-import type { HostedRoom, BrowserRoomSnapshot, BrowserRoomStage, BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
+import { validBackupSequence, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
 import type { BackupHistoryImport } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
 import { AppPage, ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState, type NativeRelayCapacity } from "./app-link";
 import type { NativeCaptureTarget, EncodingExecution, NativePageIndexedSelection, NativePageMpdSelection, NativePageMpdCatalog } from "../native/wire";
@@ -1834,14 +1834,19 @@ export class ChannelSession {
         metadata: async value => {
           initial();
           if (value.kind !== "room" || value.domainId !== this.view.state!.channel.id || (roomId && value.policy.id !== roomId)) throw new Error("backup_room_mismatch");
+          if (owner?.native) return;
           const runtime = await loadRoomHosting(); initial();
           stage = await runtime.BrowserRoomHost.stage(roomDatabaseName(value.domainId, value.policy.creatorId), JSON.stringify(value.policy));
         },
-        row: row => { initial(); return stage!.append(row); },
+        row: row => {
+          initial();
+          if (stage) return stage.append(row);
+          if (!validBackupSequence(row.seq)) throw new Error("invalid_backup_history");
+        },
         content: (digest, file) => { initial(); contents.set(digest, file); },
       });
       initial(); owner?.current();
-      if (metadata.kind !== "room" || !stage) throw new Error("invalid_backup");
+      if (metadata.kind !== "room") throw new Error("invalid_backup");
       if (!roomId && this.view.state!.channel.rooms.some(room => room.id === metadata.policy.id && room.available)) throw new Error("room_host_conflict");
       if (roomId && metadata.policy.creatorId !== this.view.self!.id) throw new Error("backup_identity_required");
       rollback = await this.admitBackupIdentity(metadata);
@@ -1863,6 +1868,7 @@ export class ChannelSession {
         }
       }
       else {
+        if (!stage) throw new Error("invalid_backup");
         await this.request({ type: "admit_room", room: roomSummarySchema.parse({ ...metadata.policy, hasPassword: metadata.policy.passwordHash != null }) });
         check(); owner?.current();
         const hosted = this.hostedRooms.get(target);

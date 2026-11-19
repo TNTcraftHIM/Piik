@@ -9063,7 +9063,8 @@ test("Native room restore preserves the explicit committed failure from its stor
     await expect(session.restoreRoomBackup(new Blob(), "first")).rejects.toThrow("room_restored_connection_failed");
     expect(fetch.mock.calls.map(call => call[0])).toEqual(["/prototype/channel/hosting", "/prototype/channel/rooms/backup"]);
     expect(stage.replace).not.toHaveBeenCalled();
-    expect(stage.close).toHaveBeenCalledOnce();
+    expect(stage.append).not.toHaveBeenCalled();
+    expect(stage.close).not.toHaveBeenCalled();
     expect(session.getSnapshot().self?.id).toBe("self");
     expect(session.getSnapshot().pending.has("room-backup")).toBe(false);
   } finally { session.close(); }
