@@ -116,6 +116,12 @@ preparation and recovery boundaries.
 At `3f52e4a8`, a Browser source and Browser receiver also delivered changing
 pictures, voice and source sound through a Native room operator. Confirmed
 history and a 1 MiB file with a matching digest traversed that ordinary path.
+In one Linux NAT trial on `8c1c9026`, Chromium downloaded its first 1 MiB file
+in 402.4 ms and verified its SHA-256 over the connection carrying live video,
+with the same selected ICE pair and ICE credentials before and after transfer.
+Median video frame interval was 100.0 ms across 30 intervals before download
+and 116.7 ms across the five overlapping it (maxima 133.2 and 149.9 ms).
+The browse-only control produced no standby connection during observation.
 A separate four-endpoint control forced the picture through two Native nodes:
 both Native routers used sequential mapping and destination-dependent filtering;
 the Browser routers used calibrated full-cone, port-preserving mappings. Core
