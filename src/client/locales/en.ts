@@ -342,6 +342,7 @@ export const en: Record<CopyKey, string> = {
   "channel.attachment.downloadCancelled": "Download cancelled",
   "channel.attachment.saving": "Saving — see the download window",
   "channel.attachment.saved": "Saved",
+  "channel.attachment.transferInterrupted": "File transfer interrupted. Try again to receive the file from the beginning.",
   "channel.attachment.sourceUnavailable": "No readable copy is available right now. Try again when someone with a copy is online.",
   "channel.attachment.saveFailed": "Could not save the file. Check the download window and try again.",
   "channel.attachment.downloadFailed": "Couldn't load this file. Try again.",

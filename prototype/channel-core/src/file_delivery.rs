@@ -540,9 +540,18 @@ impl FileDelivery {
     }
 
     fn fail_local(&mut self, key: &FileKey, code: &str) -> Vec<FileEffect> {
-        let active = self.receivers.remove(key).is_some();
+        let receiver = self.receivers.remove(key);
         let mut effects = self.remove_consumer(key, None, None, None);
-        if active {
+        if let Some(receiver) = receiver {
+            let code = if receiver.offset > 0
+                && matches!(
+                    code,
+                    "attachment_unavailable" | "file_source_unavailable" | "file_unavailable"
+                ) {
+                "file_transfer_interrupted"
+            } else {
+                code
+            };
             effects.push(FileEffect::Failed {
                 key: key.clone(),
                 code: code.into(),

@@ -355,6 +355,31 @@ fn one_upstream_copy_serves_two_consumers_and_slow_cancel_does_not_stop_sibling(
 }
 
 #[test]
+fn retired_plan_reports_interruption_only_after_a_written_range() {
+    for acknowledged in [false, true] {
+        let mut network = Network::new();
+        network.fanout();
+        network.hold_write = Some(id(3));
+        network.start(3);
+        network.run();
+        let (node, key, offset, length) = network.pending_writes.pop().unwrap();
+        let receiver = network.nodes.get_mut(&node).unwrap();
+        if acknowledged {
+            receiver.written(&key, offset, length);
+        }
+        let effects = receiver.update(vec![], room_peers(), 1);
+        let expected = if acknowledged {
+            "file_transfer_interrupted"
+        } else {
+            "attachment_unavailable"
+        };
+        assert!(effects
+            .iter()
+            .any(|effect| matches!(effect, FileEffect::Failed {code, ..} if code == expected)));
+    }
+}
+
+#[test]
 fn corrupted_content_never_completes_even_when_all_ranges_are_written() {
     let mut network = Network::new();
     network.fanout();

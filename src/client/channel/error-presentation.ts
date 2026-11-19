@@ -15,6 +15,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
   if (error === "room_creation_restricted") return display("channel.error.roomCreationRestricted");
   if (error === "attachment_unavailable" || error === "file_unavailable" || error === "file_source_unavailable")
     return display("channel.attachment.sourceUnavailable");
+  if (error === "file_transfer_interrupted") return display("channel.attachment.transferInterrupted");
   if (error === "saved_copy_missing") return display("channel.attachment.savedCopyMissing");
   if (error === "download_failed") return display("channel.attachment.saveFailed");
   if (error === "file_offer_failed") return display("channel.attachment.fileOfferFailed");

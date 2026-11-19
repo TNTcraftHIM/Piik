@@ -340,6 +340,7 @@ export const zh = {
   "channel.attachment.downloadCancelled": "已取消下载",
   "channel.attachment.saving": "正在保存，请查看下载窗口",
   "channel.attachment.saved": "已保存",
+  "channel.attachment.transferInterrupted": "文件传输已中断。可以重试，文件将从头接收。",
   "channel.attachment.sourceUnavailable": "暂时没有可读取的文件副本。持有副本的参与者上线后，可再次尝试。",
   "channel.attachment.saveFailed": "文件保存失败，请查看下载窗口后重试。",
   "channel.attachment.downloadFailed": "暂时无法读取，请重试。",
