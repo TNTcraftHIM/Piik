@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-18
+Last updated: 2026-11-19
 
 This page summarizes the current 3.0 evidence and limits that affect product
 claims. [Status](./status.md#isolated-30-prototype) owns delivery readiness;
@@ -26,6 +26,11 @@ pair. [Conditioned join and relay-departure trials](./research/network-lab.md#jo
 also recorded receiver RTP loss while the original publication remained available.
 WAN reachability, mobile power cost and typical recovery time require independent
 networks and devices.
+
+Two loopback browsers carried a screen and a 512 KiB attachment on one
+WebRTC connection. The recipient saved a file matching the sender's SHA-256.
+Its decoded screen frames advanced during the download and after the file
+transfer ended. The screen kept its original connection and media flow.
 
 The capacity scenario exercises the real Core with two rooms of 20 users, each
 using Browser and App endpoints, plus the Server endpoint. It includes screen,

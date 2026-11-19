@@ -88,3 +88,61 @@ fn file_receivers_in_one_or_two_rooms_share_the_discovery_slot() {
         }
     }
 }
+
+#[test]
+fn cancelling_file_or_screen_preserves_the_other_on_the_same_pair() {
+    for cancel_file in [false, true] {
+        let mut network = RoomNetwork::new();
+        let [source, viewer] = [1, 2].map(Uuid::from_u128);
+        let (upstream, _) = join(&mut network, source, None);
+        join(&mut network, viewer, None);
+        let room = network.create(source, RoomAccess::Public, false);
+        let screen = publish(&mut network, source, &room, "screen");
+        subscribe_screen(&mut network, viewer, screen);
+        let (shared, flow) = screen_input(&network, viewer, upstream, screen).unwrap();
+        let (seq, attachment) = offer_file(&mut network, source, &room, "shared.bin");
+        let receive = |n: &mut RoomNetwork, enabled| {
+            command(
+                n,
+                viewer,
+                json!({"type":"file_receive","roomId":room,"messageSeq":seq,"attachmentId":attachment.id,"enabled":enabled}),
+            )
+        };
+        receive(&mut network, true);
+        for socket in [source, viewer] {
+            command(
+                &mut network,
+                socket,
+                json!({"type":"link_state","pairId":shared,"state":"connected"}),
+            );
+            command(
+                &mut network,
+                socket,
+                json!({"type":"base_state","roomId":room,"pairId":shared,"ready":true}),
+            );
+        }
+        command(
+            &mut network,
+            viewer,
+            json!({"type":"flow_state","pairId":shared,"flowId":flow.id,"state":"decoded"}),
+        );
+        assert_eq!(network.state(viewer).files[0].upstream, Some(upstream));
+        if cancel_file {
+            receive(&mut network, false);
+            assert!(network.state(viewer).files.iter().all(|f| !f.receiving));
+            assert_eq!(
+                screen_input(&network, viewer, upstream, screen),
+                Some((shared, flow))
+            );
+        } else {
+            command(
+                &mut network,
+                viewer,
+                json!({"type":"subscribe","publicationId":screen,"enabled":false}),
+            );
+            assert!(screen_input(&network, viewer, upstream, screen).is_none());
+            assert_eq!(pair(&network, viewer, upstream, &room).id, shared);
+            assert_eq!(network.state(viewer).files[0].upstream, Some(upstream));
+        }
+    }
+}
