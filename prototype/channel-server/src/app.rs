@@ -439,7 +439,12 @@ pub async fn serve(
         .with_state(app.clone());
     let console = console::Console::new(None);
     let mut terminal = terminal::Terminal::start(terminal_enabled, terminal_notice.as_deref());
-    if terminal.is_none() { console.startup(BUILD_VERSION, BUILD_REVISION, address.port()); }
+    if terminal.is_none() {
+        console.startup(BUILD_VERSION, BUILD_REVISION, address.port());
+        if let Some(notice) = &terminal_notice {
+            eprintln!("{notice}");
+        }
+    }
     eprintln!("App room socket listening on {address}");
     if let Some(ready) = ready {
         let _ = ready.send(entry.clone());
