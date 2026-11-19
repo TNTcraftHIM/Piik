@@ -137,17 +137,17 @@ export class ChannelAttachments {
         this.savedReceipts.delete(id); this.changed();
       }
     }
-    if (opening || rooms.some(room => room.authorized && !previous.some(old => old.id === room.id && old.authorized))) {
+    const cacheRooms = rooms.filter(room => room.authorized && (opening || !previous.some(old => old.id === room.id && old.authorized))).map(room => room.id);
+    if (cacheRooms.length) {
       const revision = this.cacheRevision;
-      const authorized = rooms.filter(room => room.authorized).map(room => room.id);
       if (typeof window !== "undefined" && typeof window.piikRevealDownload === "function") {
-        const clearing = authorized.flatMap(roomId => this.cacheClears.get(cacheRoom(scope, roomId))?.pending ?? []);
-        void Promise.allSettled(clearing).then(() => store.receipts()).then(entries => {
+        const clearing = cacheRooms.flatMap(roomId => this.cacheClears.get(cacheRoom(scope, roomId))?.pending ?? []);
+        void Promise.allSettled(clearing).then(() => store.receipts(cacheRooms)).then(entries => {
           if (this.store !== store) return;
           let changed = false;
           for (const entry of entries) {
             const { key } = entry, id = keyOf(key);
-            if (!authorized.includes(key.roomId) || this.messageRemoved(key) || this.savedReceipts.has(id)
+            if (this.messageRemoved(key) || this.savedReceipts.has(id)
               || (this.cacheClears.get(cacheRoom(scope, key.roomId))?.revision ?? 0) > revision
               || !this.rooms.some(room => room.id === key.roomId && room.authorized)) continue;
             this.savedReceipts.set(id, entry); changed = true;
@@ -155,7 +155,7 @@ export class ChannelAttachments {
           if (changed) this.changed();
         }).catch(() => {});
       }
-      void this.listCachedFiles(store, scope, authorized).then(files => {
+      void this.listCachedFiles(store, scope, cacheRooms).then(files => {
         if (this.store !== store) return;
         for (const { key, attachment, file } of files) if ((this.cacheClears.get(cacheRoom(scope, key.roomId))?.revision ?? 0) <= revision
           && !this.messageRemoved(key) && this.rooms.some(room => room.id === key.roomId && room.authorized) && !this.sources.has(keyOf(key))) {
@@ -172,7 +172,7 @@ export class ChannelAttachments {
   }
   private listCachedFiles(store: FileStore, scope: FileScope, roomIds: string[]): Promise<RetainedFile[]> {
     const clearing = roomIds.flatMap(roomId => this.cacheClears.get(cacheRoom(scope, roomId))?.pending ?? []);
-    return clearing.length ? Promise.allSettled(clearing).then(() => store.list()) : store.list();
+    return clearing.length ? Promise.allSettled(clearing).then(() => store.list(roomIds)) : store.list(roomIds);
   }
   async clearLocalCache(roomId: string): Promise<void> {
     const store = this.store, scope = this.scope;

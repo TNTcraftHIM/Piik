@@ -6,6 +6,15 @@ export interface RetainedFile { key: ChannelFileKey; attachment: ChannelAttachme
 export interface SavedReceipt { key: ChannelFileKey; sha256: string; receipt: string }
 interface StoredFile extends RetainedFile { id?: number; cacheKey: string }
 const cacheKey = (key: ChannelFileKey) => JSON.stringify([key.roomId, key.messageSeq, key.attachmentId]);
+function roomKeys(roomId: string): IDBKeyRange {
+  // Serialized keys start with the quoted room ID and a comma. A hyphen
+  // immediately follows the comma in IndexedDB's string ordering.
+  const prefix = JSON.stringify([roomId]).slice(0, -1);
+  return IDBKeyRange.bound(prefix + ",", prefix + "-", true, true);
+}
+function roomIndex(store: IDBObjectStore): IDBIndex | IDBObjectStore {
+  return store.name === "files" ? store.index("key") : store;
+}
 
 /** Participant files and their room-confirmed descriptions commit together. */
 export class FileStore {
@@ -38,11 +47,8 @@ export class FileStore {
     } finally { database.close(); }
   }
 
-  receipts(): Promise<SavedReceipt[]> {
-    return this.transaction("receipts", "readonly", (transaction, done) => {
-      const request = transaction.objectStore("receipts").getAll();
-      request.onsuccess = () => done(request.result as SavedReceipt[]);
-    });
+  receipts(roomIds: readonly string[]): Promise<SavedReceipt[]> {
+    return this.roomEntries<SavedReceipt>("receipts", roomIds);
   }
 
   saveReceipt(entry: SavedReceipt, allowed: () => boolean): Promise<boolean> {
@@ -64,10 +70,23 @@ export class FileStore {
     });
   }
 
-  list(): Promise<RetainedFile[]> {
-    return this.transaction("files", "readonly", (transaction, done) => {
-      const request = transaction.objectStore("files").getAll();
-      request.onsuccess = () => done((request.result as StoredFile[]).map(({ key, attachment, file }) => ({ key, attachment, file })));
+  list(roomIds: readonly string[]): Promise<RetainedFile[]> {
+    return this.roomEntries<StoredFile>("files", roomIds);
+  }
+
+  private roomEntries<T>(table: "files" | "receipts", roomIds: readonly string[]): Promise<T[]> {
+    if (!roomIds.length) return Promise.resolve([]);
+    return this.transaction(table, "readonly", (transaction, done) => {
+      const index = roomIndex(transaction.objectStore(table));
+      const entries: T[] = [];
+      let pending = roomIds.length;
+      for (const roomId of roomIds) {
+        const request = index.getAll(roomKeys(roomId));
+        request.onsuccess = () => {
+          for (const entry of request.result as T[]) entries.push(entry);
+          if (--pending === 0) done(entries);
+        };
+      }
     });
   }
 
@@ -111,13 +130,14 @@ export class FileStore {
 
   removeMessages(roomId: string, removed: (seq: number) => boolean): Promise<void> {
     return this.transaction<void>(["files", "receipts"], "readwrite", transaction => {
+      const range = roomKeys(roomId);
       for (const name of transaction.objectStoreNames) {
-        const request = transaction.objectStore(name).openCursor();
+        const request = roomIndex(transaction.objectStore(name)).openCursor(range);
         request.onsuccess = () => {
           const cursor = request.result;
           if (!cursor) return;
           const { key } = cursor.value as StoredFile | SavedReceipt;
-          if (key.roomId === roomId && removed(key.messageSeq)) cursor.delete();
+          if (removed(key.messageSeq)) cursor.delete();
           cursor.continue();
         };
       }

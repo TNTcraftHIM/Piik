@@ -25,6 +25,23 @@ function setup(command = async (_command: ChannelCommand) => {}) {
   return files;
 }
 
+test("gaining access to another room reads only its cached attachments and download receipts", async () => {
+  vi.stubGlobal("window", { piikRevealDownload: vi.fn() });
+  const receipts = vi.spyOn(FileStore.prototype, "receipts").mockResolvedValue([]);
+  const files = setup();
+  try {
+    const room = { id: key.roomId, authorized: true, available: true } as ChannelRoom;
+    const second = { ...room, id: "second" };
+    const scope = { domainId: "domain", userId: "self" };
+    files.update("endpoint", scope, [], [room, { ...second, authorized: false }], []);
+    files.update("endpoint", scope, [], [room, second], []);
+    files.update("endpoint", scope, [], [room, second], []);
+    const expected = [[[room.id]], [[second.id]]];
+    expect(vi.mocked(FileStore.prototype.list).mock.calls).toEqual(expected);
+    await vi.waitFor(() => expect(receipts.mock.calls).toEqual(expected));
+  } finally { files.reset(); vi.unstubAllGlobals(); }
+});
+
 test("a confirmed attachment uses its committed readable copy after the selected disk file disappears", async () => {
   const files = setup();
   const selected = new File(["GIF89a"], attachment.name), retained = new File(["GIF89a"], attachment.name);
