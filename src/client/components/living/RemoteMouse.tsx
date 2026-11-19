@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
+import { RemoteDirectionPad } from "./RemoteDirectionPad";
 import { REMOTE_TOUCH_HOLD_MS, type RemoteTouchpad } from "../../remote-control/touchpad";
 import type { PicturePoint } from "../../media/video-geometry";
 import type { RoomPreferences } from "../../lib/room-preferences";
@@ -26,7 +27,8 @@ type MouseMode = "mini" | "expanded" | "left" | "right" | "top" | "bottom";
 type MouseContact = { x: number; y: number; moved: boolean; kind: "widget" | "pointer"; button?: 0 | 2 };
 type MouseWheel = { id: number; x: number; y: number; phase: "pending" | "scroll" | "middle"; timer: ReturnType<typeof setTimeout> | null };
 
-export function RemoteMouse({ pointer, positionRef, pointAt, touchMode }: {
+export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, onLeftStick }: {
+  onLeftStick?: (x: number, y: number) => void;
   pointer: RemoteTouchpad; positionRef: RefObject<HTMLDivElement | null>;
   pointAt: (clientX: number, clientY: number) => PicturePoint | null;
   touchMode: RoomPreferences["remoteTouchMode"];
@@ -206,6 +208,7 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode }: {
       event.stopPropagation();
       if (!event.currentTarget.contains(event.relatedTarget as Node | null)) release();
     }}>
+    <RemoteDirectionPad pointer={pointer} onLeftStick={onLeftStick} />
     {(expanded || touchMode === "trackpad") && <svg className="lr-remote-touch-cursor" viewBox="0 0 24 28" aria-hidden="true">
       <path d="M2 2v21l6-6 5 9 4-2-5-9h9Z" />
     </svg>}

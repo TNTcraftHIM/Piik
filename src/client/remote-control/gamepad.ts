@@ -27,6 +27,7 @@ export class RemoteGamepad {
   private nextReport = 0;
   private index: number | null = null;
   private connected = false;
+  private touchReport: RemoteGamepadReport | null = null;
   private disposed = false;
 
   constructor(private readonly input: (event: RemoteInputEvent) => void,
@@ -40,12 +41,22 @@ export class RemoteGamepad {
     this.resume();
   }
 
+  setLeftStick(x: number, y: number): void {
+    if (this.disposed || this.connected || this.page.hidden || !this.page.hasFocus()) return;
+    if (x === 0 && y === 0) {
+      if (this.touchReport) this.input({ type: "gamepad-reset" });
+      this.touchReport = null;
+      return;
+    }
+    this.touchReport = gamepadReport({ buttons: [], axes: [x, y] });
+  }
+
   private setConnected(value: boolean): void {
     if (this.connected !== value) { this.connected = value; this.changed(value); }
   }
   private readonly pause = (): void => {
     if (this.frame !== null) this.owner.cancelAnimationFrame(this.frame);
-    this.frame = null; this.nextReport = 0;
+    this.frame = null; this.nextReport = 0; this.touchReport = null;
     this.input({ type: "gamepad-reset" }); this.setConnected(false);
   };
   private readonly resume = (): void => {
@@ -62,16 +73,18 @@ export class RemoteGamepad {
     this.frame = null;
     if (this.disposed || this.page.hidden || !this.page.hasFocus()) { this.pause(); return; }
     let pad: Gamepad | undefined;
-    try { pad = Array.from(this.owner.navigator.getGamepads()).find(value => value?.connected && value.mapping === "standard") ?? undefined; }
+    try { pad = Array.from(this.owner.navigator.getGamepads?.() ?? []).find(value => value?.connected && value.mapping === "standard") ?? undefined; }
     catch { /* Browser permissions can deny controller access. Keep the grant neutral. */ }
     if (this.index !== null && this.index !== pad?.index) this.input({ type: "gamepad-stop" });
     this.index = pad?.index ?? null; this.setConnected(Boolean(pad));
-    if (pad && time >= this.nextReport) {
+    if (pad) this.touchReport = null;
+    const report = pad ? gamepadReport(pad) : this.touchReport;
+    if (report && time >= this.nextReport) {
       const interval = 1000 / 60;
       this.nextReport = time + interval - ((time - this.nextReport) % interval);
       // Repeat the complete current report so the native driver can enumerate
       // a newly attached virtual device even when the player holds still.
-      this.input({ type: "gamepad", gamepad: gamepadReport(pad) });
+      this.input({ type: "gamepad", gamepad: report });
     }
     this.resume();
   };

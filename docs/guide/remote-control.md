@@ -109,6 +109,7 @@ cursor. Two-finger tap is right-click; two-finger swipe scrolls. Pinch to zoom i
 or out, then use two fingers to pan, including into the blank space around the
 picture. **Playback settings → Default touch mode → Trackpad** keeps the simpler cursor
 mode available.
+Tap the gamepad button at the lower left of the picture and slide to move. A Windows co-play session with gamepad access uses the analog left stick. Tap WASD for keyboard games. Keyboard-only sessions use WASD automatically. Lift your finger to stop moving.
 
 Drag the mini mouse to reposition it; tap to expand its left and right buttons
 and combined scroll wheel / middle button. The cursor stays above and to the
