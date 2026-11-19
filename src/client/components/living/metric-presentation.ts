@@ -2,12 +2,18 @@ import type { CopyKey } from "../../ui/copy";
 import type { GlyphName } from "../../ui/icons";
 import type { HintKind } from "../../ui/visual-kinds";
 
+const decodedFps = { icon: "frames", hint: "hint-metric-fps", description: "stats.receiveFpsHint" } as const;
+const outputFps = { icon: "frames", hint: "hint-metric-fps", description: "stats.sendFpsHint" } as const;
+
 // The same metric keeps its icon and explanation in detail cells and headings.
 export const METRIC_PRESENTATION = {
   "stats.resolution": { icon: "expand", hint: "hint-metric-resolution" },
   "stats.resolutionRange": { icon: "expand", hint: "hint-metric-resolution" },
   "stats.fps": { icon: "frames", hint: "hint-metric-fps" },
-  "stats.fpsRange": { icon: "frames", hint: "hint-metric-fps" },
+  "stats.decodeFps": decodedFps,
+  "stats.decodeFpsRange": decodedFps,
+  "stats.outputFps": outputFps,
+  "stats.outputFpsRange": outputFps,
   "stats.bitrate": { icon: "gauge", hint: "hint-metric-bitrate" },
   "stats.totalBitrate": { icon: "gauge", hint: "hint-metric-bitrate", description: "stats.totalBitrateHint" },
   "stats.loss": { icon: "packetLoss", hint: "hint-metric-loss" },

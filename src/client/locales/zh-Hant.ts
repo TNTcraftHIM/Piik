@@ -930,7 +930,6 @@ export const zhHant = {
   "stats.avgRtt": "平均 RTT",
   "stats.avgJitter": "平均抖動",
   "stats.resolutionRange": "解析度範圍",
-  "stats.fpsRange": "影格率範圍",
   "voice.details.codec": "音訊編碼",
   "voice.listening": "收聽語音",
   "voice.listeningVolume": "總收聽音量",

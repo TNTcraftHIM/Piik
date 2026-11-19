@@ -936,7 +936,6 @@ export const ko = {
   "stats.avgRtt": "평균 RTT",
   "stats.avgJitter": "평균 지터",
   "stats.resolutionRange": "해상도 범위",
-  "stats.fpsRange": "프레임 레이트 범위",
   "voice.details.codec": "오디오 코덱",
   "voice.listening": "음성 듣기",
   "voice.listeningVolume": "전체 음성 볼륨",

@@ -930,7 +930,6 @@ export const ja = {
   "stats.avgRtt": "平均 RTT",
   "stats.avgJitter": "平均ジッター",
   "stats.resolutionRange": "解像度の範囲",
-  "stats.fpsRange": "フレームレートの範囲",
   "voice.details.codec": "音声コーデック",
   "voice.listening": "通話を聞く",
   "voice.listeningVolume": "通話全体の音量",

@@ -235,6 +235,12 @@ export function MetricDetailsToggle({ expanded, onToggle, controls }: {
   </Tooltip>;
 }
 
+function connectionFpsLabel(direction: "send" | "receive", measured: boolean, range = false): MetricLabel {
+  if (!measured) return "stats.fps";
+  if (direction === "receive") return range ? "stats.decodeFpsRange" : "stats.decodeFps";
+  return range ? "stats.outputFpsRange" : "stats.outputFps";
+}
+
 export function MetricCells({
   metrics,
   direction,
@@ -259,8 +265,7 @@ export function MetricCells({
   ] : [
     { label: "stats.resolution", value: metrics.resolution ?? t("stats.unknown") },
     {
-      label: "stats.fps",
-      description: direction === "receive" && Number.isFinite(metrics.framesPerSecond) ? "stats.receiveFpsHint" : undefined,
+      label: connectionFpsLabel(direction, Number.isFinite(metrics.framesPerSecond)),
       value: metrics.framesPerSecond === null || !Number.isFinite(metrics.framesPerSecond)
         ? t("stats.unknown")
         : `${metrics.framesPerSecond.toFixed(1)} fps`,
@@ -314,7 +319,7 @@ export function ConnectionSummaryCells({ samples, direction, media }: {
   const values: MetricValue[] = media === "video" ? [
     { label: resolutionRange ? "stats.resolutionRange" : "stats.resolution", value: summary.resolution
       ? resolutionRange ? summary.resolution.join(" – ") : summary.resolution[0] : t("stats.unknown") },
-    { label: fpsRange ? "stats.fpsRange" : "stats.fps", description: direction === "receive" && summary.framesPerSecond ? "stats.receiveFpsHint" : undefined, value: summary.framesPerSecond
+    { label: connectionFpsLabel(direction, !!summary.framesPerSecond, !!fpsRange), value: summary.framesPerSecond
       ? `${fpsRange ? summary.framesPerSecond.map(value => value.toFixed(1)).join("–") : summary.framesPerSecond[0].toFixed(1)} fps` : t("stats.unknown") },
   ] : [{ label: "stats.avgRtt", value: number(summary.rttMs, "ms") }];
   values.splice(media === "video" ? 2 : 0, 0, { label: "stats.totalBitrate", value: number(summary.bitrateKbps, "kbps") });
