@@ -29,9 +29,9 @@ support authenticated message deletion and clearing history.
 [Hosting and moderation](./research/server-hosting-plan.md)
 
 The room planner preserves existing delivery and compares alternatives for waiting
-screen viewers. Active screen demand can trigger one optional connection to join
-eligible components or bypass an intermediate. Both endpoints confirm the
-transport before another flow can use it. The Browser and Native App apply
+screen viewers. A media subscription or file request can trigger a shared
+connection attempt to join eligible components or bypass an intermediate.
+Both endpoints confirm the transport before another flow can use it. The Browser and Native App apply
 individual forwarding limits per kind across rooms. Field costs and automatic
 fanout calibration remain under [evaluation](./research/channel-forwarding-plan.md#review-and-validation-plan).
 

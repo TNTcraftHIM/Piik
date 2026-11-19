@@ -495,20 +495,10 @@ impl Channel {
                     self.identity.sessions[&b].connection.unwrap(),
                 ),
             };
-            let demand: BTreeSet<_> = projection
-                .publications
-                .iter()
-                .filter(|p| p.kind == Kind::Screen && !p.paused)
-                .flat_map(|p| {
-                    p.audience
-                        .iter()
-                        .map(|viewer| (p.session_id, viewer.session_id))
-                })
-                .collect();
-            // Keep the proven source-viewer pair through incumbent failure and
-            // a pending repair revision while the accepted subscription lives.
+            let demand = projection.requested_pairs();
+            // Keep a proven pair through repair while either endpoint still needs it.
             if let Some((a, b)) = discovery.filter(|pair| confirmed.contains(pair)) {
-                if demand.contains(&(a, b)) || demand.contains(&(b, a)) {
+                if demand.contains(&(a, b)) {
                     candidates.insert(proposal((a, b)));
                 }
             }

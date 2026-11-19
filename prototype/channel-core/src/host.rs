@@ -195,6 +195,34 @@ pub struct RoomProjection {
 }
 
 impl RoomProjection {
+    /// Physical connections are shared by the room's active media and file requests.
+    pub(crate) fn requested_pairs(&self) -> BTreeSet<(Uuid, Uuid)> {
+        let publishers: BTreeMap<_, _> = self
+            .publications
+            .iter()
+            .filter(|publication| !publication.paused)
+            .map(|publication| (publication.id, publication.session_id))
+            .collect();
+        let mut pairs = BTreeSet::new();
+        for (&receiver, view) in self.views.iter().filter(|(_, view)| view.authorized) {
+            let media = view
+                .subscriptions
+                .iter()
+                .filter_map(|id| publishers.get(id).copied());
+            let files = view
+                .files
+                .iter()
+                .filter(|plan| plan.receiving)
+                .filter_map(|plan| plan.source_id);
+            for source in media.chain(files) {
+                if source != receiver {
+                    pairs.insert((source.min(receiver), source.max(receiver)));
+                }
+            }
+        }
+        pairs
+    }
+
     fn file_activity(&self) -> Vec<crate::wire::FileActivity> {
         self.views
             .iter()

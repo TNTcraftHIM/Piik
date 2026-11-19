@@ -3900,6 +3900,72 @@ fn confirmed_business_pairs_follow_room_scope_sockets_and_flow_leases() {
 }
 
 #[test]
+fn file_and_voice_share_one_optional_connection_until_last_interest_ends() {
+    let mut network = RoomNetwork::new();
+    let source = Uuid::new_v4();
+    let relay = Uuid::new_v4();
+    let viewer = Uuid::new_v4();
+    let (a, _) = join(&mut network, source, None);
+    let (b, _) = join(&mut network, relay, None);
+    join(&mut network, viewer, None);
+    let room = network.create(source, RoomAccess::Public, false);
+    command(
+        &mut network,
+        source,
+        json!({"type":"update_room","roomId":room,"name":"Friends","icon":"couch","access":"public","hidden":false,"relayCapacity":1}),
+    );
+    for (child, parent, parent_session) in [(relay, source, a), (viewer, relay, b)] {
+        join_base(&mut network, child, &room);
+        let edge = pair(&network, child, parent_session, &room);
+        for socket in [child, parent] {
+            command(
+                &mut network,
+                socket,
+                json!({"type":"link_state","pairId":edge.id,"state":"connected"}),
+            );
+            command(
+                &mut network,
+                socket,
+                json!({"type":"base_state","roomId":room,"pairId":edge.id,"ready":true}),
+            );
+        }
+    }
+
+    let shortcut = |network: &RoomNetwork| {
+        network
+            .state(viewer)
+            .pairs
+            .iter()
+            .find(|p| p.peer_id == a)
+            .map(|p| p.id)
+    };
+    let (seq, attachment) = offer_file(&mut network, source, &room, "shared.bin");
+    assert!(shortcut(&network).is_none());
+    let receive = |network: &mut RoomNetwork, enabled: bool| {
+        command(
+            network,
+            viewer,
+            json!({"type":"file_receive","roomId":room,"messageSeq":seq,"attachmentId":attachment.id,"enabled":enabled}),
+        )
+    };
+    receive(&mut network, true);
+    let trial = shortcut(&network).expect("receiver requests direct connection");
+    let incumbent = pair(&network, viewer, b, &room).id;
+    voice(&mut network, source, &room, true);
+    voice(&mut network, viewer, &room, true);
+    let mic = publish(&mut network, source, &room, "voice");
+    receive(&mut network, false);
+    assert_eq!(shortcut(&network), Some(trial));
+    assert_eq!(pair(&network, viewer, b, &room).id, incumbent);
+    command(
+        &mut network,
+        source,
+        json!({"type":"unpublish","publicationId":mic}),
+    );
+    assert!(shortcut(&network).is_none());
+}
+
+#[test]
 fn demand_probes_one_shortcut_over_a_working_relay() {
     use piik_channel_core::wire::Request;
 
