@@ -9639,7 +9639,7 @@ test("a tab with a partial room view preserves the shared identity's read cursor
     session.refreshReadMarkers({ key, newValue: saved } as StorageEvent);
     session.markRead(publicRoom.id, 3);
     expect(session.getSnapshot().readByRoom).toEqual({ [publicRoom.id]: 3 });
-    expect.soft(JSON.parse(storage.get(key)!)).toEqual({ [publicRoom.id]: 3, [privateRoom.id]: 7 });
+    expect.soft(JSON.parse(storage.get(key)!)).toEqual({ [publicRoom.id]: { seq: 3, binding: "binding" }, [privateRoom.id]: 7 });
 
     const newer = JSON.stringify({ [publicRoom.id]: 8, [privateRoom.id]: 7 });
     storage.set(key, newer);
@@ -9669,7 +9669,7 @@ test("read markers stay personal and do not turn background room activity into r
     session.markRead("first", 2);
     expect(session.getSnapshot().readByRoom).toEqual({ first: 2, second: 0 });
     session.markRead("first", 99);
-    expect(JSON.parse(storage.get(key)!)).toEqual({ first: 5, second: 0 });
+    expect(JSON.parse(storage.get(key)!)).toEqual({ first: { seq: 5, binding: "binding" }, second: { seq: 0, binding: "binding" } });
     storage.set(key, JSON.stringify({ first: 5, second: 4 }));
     session.refreshReadMarkers({ key, newValue: storage.get(key)! } as StorageEvent);
     expect(session.getSnapshot().readByRoom.second).toBe(4);
@@ -9687,12 +9687,13 @@ test("read markers stay personal and do not turn background room activity into r
     expect(setItem.mock.calls.filter(([name]) => name === key)).toHaveLength(0);
     expect(getItem.mock.calls.filter(([name]) => name === key)).toHaveLength(0);
     state.channel.rooms[0].lastMessageSeq = 1;
+    state.channel.rooms[0].delivery!.bindingId = "restored";
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().readByRoom.first).toBe(1);
     state.channel.id = "another-site";
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().readByRoom).toEqual({ first: 1, second: 8 });
-    expect(JSON.parse(storage.get(key)!)).toEqual({ first: 1, second: 4 });
+    expect(JSON.parse(storage.get(key)!)).toEqual({ first: { seq: 1, binding: "restored" }, second: 4 });
     const siteId = state.channel.id;
     const originalUser = session.getSnapshot().self!.id;
     const otherUser = "other-reader";
@@ -9708,7 +9709,7 @@ test("read markers stay personal and do not turn background room activity into r
     endpoint.userId = originalUser;
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().readByRoom).toEqual({ first: 1, second: 8 });
-    expect(JSON.parse(storage.get(`piik.channel.read.${siteId}.${otherUser}`)!)).toEqual({ first: 0, second: 3 });
+    expect(JSON.parse(storage.get(`piik.channel.read.${siteId}.${otherUser}`)!)).toEqual({ first: { seq: 0, binding: "restored" }, second: { seq: 3, binding: "binding" } });
   } finally { session.close(); }
 });
 

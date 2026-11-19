@@ -3,20 +3,19 @@ import type { ChannelRoom } from "./protocol";
 
 type Room = Pick<ChannelRoom, "id" | "authorized" | "available" | "lastMessageSeq" | "delivery">;
 type Positions = Record<string, number>;
-const savedPositions = z.record(z.string(), z.number().int().nonnegative());
+const sequence = z.number().int().nonnegative();
+const savedMarkers = z.record(z.string(), z.union([sequence, z.object({ seq: sequence, binding: z.string() })]));
 
 function equalPositions(left: Positions, right: Positions): boolean {
   const keys = Object.keys(left);
   return keys.length === Object.keys(right).length && keys.every(id => left[id] === right[id]);
 }
 
-/** Room summaries bound local cursors. Other tabs can advance the same identity. */
 export class RoomReadMarkers {
   private key: string | null = null;
-  private saved: Positions = {};
+  private saved: z.infer<typeof savedMarkers> = {};
   private positions: Positions = {};
-  private rooms: readonly Room[] = [];
-  private readonly staleBindings = new Map<string, string>();
+  private readonly observed = new Map<string, string>();
 
   project(siteId: string, userId: string | undefined, rooms: readonly Room[]): Positions {
     const key = userId ? `piik.channel.read.${siteId}.${userId}` : null;
@@ -25,65 +24,61 @@ export class RoomReadMarkers {
       this.key = key;
       this.saved = {};
       this.positions = {};
-      this.rooms = [];
-      this.staleBindings.clear();
+      this.observed.clear();
     }
     if (!key) return this.positions;
-    // Read other tabs' cursors before initializing a room or recording a history rewind.
-    const needsSave = rooms.some(room => room.authorized && (this.saved[room.id] === undefined
-      || (room.available && this.positions[room.id] > room.lastMessageSeq)));
-    if (changedIdentity || needsSave) this.load(key);
-    this.rooms = rooms;
-    for (const [id, binding] of this.staleBindings) {
-      const room = rooms.find(room => room.id === id && room.authorized);
-      if (!room || (room.delivery && room.delivery.bindingId !== binding)) this.staleBindings.delete(id);
-    }
-    return this.update(key, rooms);
+    if (changedIdentity || rooms.some(room => room.authorized && room.available && room.delivery
+      && this.observed.get(room.id) !== room.delivery.bindingId)) this.load(key);
+    return this.update(rooms, true);
   }
 
   refresh(rooms: readonly Room[], changedKey?: string | null): Positions {
     if (!this.key || (changedKey != null && changedKey !== this.key)) return this.positions;
     this.load(this.key);
-    return this.update(this.key, rooms);
+    return this.update(rooms, false);
   }
 
   advance(rooms: readonly Room[], roomId: string, seq: number): Positions {
     const room = rooms.find(room => room.id === roomId && room.authorized);
-    const position = room && Math.min(seq, room.lastMessageSeq);
-    if (!this.key || position === undefined || position <= (this.positions[roomId] ?? 0)) return this.positions;
+    if (!this.key || !room?.available || !room.delivery || Math.min(seq, room.lastMessageSeq) <= (this.positions[roomId] ?? 0)) return this.positions;
     this.load(this.key);
-    return this.update(this.key, rooms, { roomId, position });
+    return this.update(rooms, false, { roomId, seq });
   }
 
   private load(key: string): void {
-    try {
-      const saved = savedPositions.parse(JSON.parse(localStorage.getItem(key) ?? "{}"));
-      for (const room of this.rooms) {
-        const seq = saved[room.id];
-        // Another tab saw the history rewind. Its old writer can still be visible here until our next room update.
-        if (seq !== undefined && seq < this.saved[room.id] && room.lastMessageSeq > seq && room.delivery) {
-          this.staleBindings.set(room.id, room.delivery.bindingId);
-        }
-      }
-      this.saved = saved;
-    } catch { /* Keep local progress when storage is unavailable. */ }
+    try { this.saved = savedMarkers.parse(JSON.parse(localStorage.getItem(key) ?? "{}")); }
+    catch { /* Keep local progress when storage is unavailable. */ }
   }
 
-  private update(key: string, rooms: readonly Room[], advance?: { roomId: string; position: number }): Positions {
+  private update(rooms: readonly Room[], fromAuthority: boolean, advance?: { roomId: string; seq: number }): Positions {
     let changed = false;
     const next: Positions = {};
     for (const room of rooms) {
       if (!room.authorized) continue;
-      const prior = this.positions[room.id], saved = this.saved[room.id];
-      let position = saved ?? prior ?? (room.available ? room.lastMessageSeq : 0);
-      if (room.available && prior > room.lastMessageSeq) position = Math.min(position, room.lastMessageSeq);
-      if (advance?.roomId === room.id && !this.staleBindings.has(room.id)) position = Math.max(position, advance.position);
-      if (saved !== position) { this.saved[room.id] = position; changed = true; }
-      next[room.id] = room.available ? Math.min(position, room.lastMessageSeq) : position;
+      const id = room.id, record = this.saved[id];
+      const saved = typeof record === "number" ? record : record?.seq;
+      const binding = room.available ? room.delivery?.bindingId : undefined;
+      let position = saved ?? this.positions[id] ?? (binding ? room.lastMessageSeq : 0);
+      if (binding) {
+        const entering = fromAuthority && this.observed.get(id) !== binding;
+        const storedBinding = typeof record === "object" ? record.binding : undefined;
+        const rebound = entering && storedBinding !== binding;
+        // Only a fresh authority projection may supersede another binding.
+        // Same-binding storage can be ahead of this tab's last projection.
+        if (rebound) position = Math.min(position, room.lastMessageSeq);
+        if (entering) this.observed.set(id, binding);
+        if (entering || !storedBinding || storedBinding === binding) {
+          if (advance?.roomId === id) position = Math.max(position, Math.min(advance.seq, room.lastMessageSeq));
+          if (position !== saved || rebound) {
+            this.saved[id] = { seq: position, binding };
+            changed = true;
+          }
+        }
+      }
+      next[id] = binding ? Math.min(position, room.lastMessageSeq) : position;
     }
-    // The directory is session-specific. An omitted room can still belong to another tab.
-    if (changed) {
-      try { localStorage.setItem(key, JSON.stringify(this.saved)); } catch { /* Reading still works without persistence. */ }
+    if (changed && this.key) {
+      try { localStorage.setItem(this.key, JSON.stringify(this.saved)); } catch { /* Volatile reading still works. */ }
     }
     if (!equalPositions(next, this.positions)) this.positions = next;
     return this.positions;
