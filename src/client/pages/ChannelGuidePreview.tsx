@@ -86,7 +86,8 @@ export function useChannelGuideSample(multiRoom = false) {
     const prepared = await attachments.describe(files, signal);
     signal?.throwIfAborted();
     const seq = nextMessage.current++;
-    const target = options.reply && [...(messagesByRoom[roomId] ?? []), ...sampleMessages].find(message => message.seq === options.reply?.seq);
+    const target = options.reply && [...(messagesByRoom[roomId] ?? []), ...sampleMessages].find(message => message.seq === options.reply?.seq && message.id === options.reply.messageId);
+    if (options.reply && !target) throw new Error("message_unavailable");
     const message: ChannelMessage = { id: `sample-${roomId}-${seq}`, seq, userId: "sample-ada", text, mentions: options.mentions,
       ...(target && options.reply ? { reply: { seq: target.seq, userId: target.userId, text: target.text.slice(0, 160), notify: options.reply.notify } } : {}),
       time: new Date(2020, 0, 1, 20, seq).getTime(), attachments: prepared.map(file => file.attachment),
@@ -177,7 +178,9 @@ export function useChannelGuideSample(multiRoom = false) {
     messagesByRoom: { ...Object.fromEntries(Object.entries(messagesByRoom).map(([roomId, messages]) => [roomId, visibleMessages(roomId, messages)])),
       friday: sampleMessages.map(message => ({ ...message, reactions: messageReactions[message.seq] })) },
     historyChangesByRoom,
-    deleteMessage: async (roomId, seq) => {
+    deleteMessage: async (roomId, seq, messageId) => {
+      const messages = roomId === "friday" ? sampleMessages : messagesByRoom[roomId] ?? [];
+      if (!visibleMessages(roomId, messages).some(message => message.seq === seq && message.id === messageId)) throw new Error("message_unavailable");
       setHistoryChangesByRoom(previous => ({ ...previous, [roomId]: { clearedThrough: previous[roomId]?.clearedThrough ?? 0,
         deleted: new Set([...(previous[roomId]?.deleted ?? []), seq]) } }));
     },

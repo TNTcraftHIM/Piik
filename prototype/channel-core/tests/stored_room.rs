@@ -194,25 +194,51 @@ fn private_room_moderation_removes_quotes_and_blocks_stale_retries_after_restart
         reply,
     };
     let target = || chat("target", "deleted quotation", None);
-    let delete = |message_seq| ConversationCommand::DeleteMessage { message_seq };
+    let delete = |message_seq, message_id| ConversationCommand::DeleteMessage {
+        message_seq,
+        message_id,
+    };
     let clear = || ConversationCommand::ClearHistory { through_seq: 2 };
-    sent(peer(&mut host, owner, author, target()));
-    sent(peer(
-        &mut host,
-        owner,
-        owner,
+    let original_id = sent(peer(&mut host, owner, author, target()))
+        .message
+        .message
+        .id;
+    let reply = |nonce: &str, message_id| {
         chat(
-            "reply",
+            nonce,
             "kept reply",
             Some(piik_channel_core::history::ReplyTarget {
                 seq: 1,
+                message_id,
                 notify: true,
             }),
-        ),
+        )
+    };
+    assert_eq!(
+        peer(&mut host, owner, owner, reply("wrong", Uuid::new_v4())).err(),
+        Some("message_unavailable")
+    );
+    let accepted = sent(peer(&mut host, owner, owner, reply("reply", original_id)));
+    let retry = sent(peer(
+        &mut host,
+        owner,
+        owner,
+        reply("reply", Uuid::new_v4()),
     ));
+    assert!(!retry.inserted);
+    assert_eq!(
+        serde_json::to_value(retry.message).unwrap(),
+        serde_json::to_value(&accepted.message).unwrap()
+    );
+    for actor in [author, owner] {
+        assert_eq!(
+            peer(&mut host, owner, actor, delete(1, Uuid::new_v4())).err(),
+            Some("message_unavailable")
+        );
+    }
     for command in [
         ConversationCommand::History { before: None },
-        delete(1),
+        delete(1, original_id),
         clear(),
     ] {
         assert_eq!(
@@ -221,7 +247,13 @@ fn private_room_moderation_removes_quotes_and_blocks_stale_retries_after_restart
         );
     }
     assert_eq!(
-        peer(&mut host, owner, author, delete(2)).err(),
+        peer(
+            &mut host,
+            owner,
+            author,
+            delete(2, accepted.message.message.id)
+        )
+        .err(),
         Some("forbidden")
     );
     assert_eq!(
@@ -229,9 +261,13 @@ fn private_room_moderation_removes_quotes_and_blocks_stale_retries_after_restart
         Some("forbidden")
     );
     assert!(matches!(
-        peer(&mut host, owner, author, delete(1)),
+        peer(&mut host, owner, author, delete(1, original_id)),
         Ok(HistoryResult::MessageDeleted { message_seq: 1 })
     ));
+    assert_eq!(
+        peer(&mut host, owner, owner, reply("deleted", original_id)).err(),
+        Some("message_unavailable")
+    );
     let HistoryResult::Page { messages, .. } = peer(
         &mut host,
         owner,
@@ -274,7 +310,14 @@ fn private_room_moderation_removes_quotes_and_blocks_stale_retries_after_restart
         matches!(peer(&mut host, owner, author, ConversationCommand::History { before: None }),
         Ok(HistoryResult::Page { messages, .. }) if messages.len() == 1 && messages[0].message.seq == 3)
     );
-    peer_with_owner(&mut host, owner, moderator, moderator, delete(3)).unwrap();
+    peer_with_owner(
+        &mut host,
+        owner,
+        moderator,
+        moderator,
+        delete(3, fresh.message.message.id),
+    )
+    .unwrap();
     drop(host);
     std::fs::remove_file(path).unwrap();
 }
@@ -405,8 +448,9 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         media_type: "image/gif".into(),
         sha256: piik_channel_core::attachment::sha256_hex(b"GIF89aabc"),
     };
+    let mut original_id = None;
     for seq in 1..=55 {
-        sent(peer(
+        let confirmation = sent(peer(
             &mut host,
             owner,
             owner,
@@ -416,7 +460,8 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
                     start: 0,
                     end: 6,
                 }],
-                reply: (seq > 1).then_some(piik_channel_core::history::ReplyTarget {
+                reply: original_id.map(|message_id| piik_channel_core::history::ReplyTarget {
+                    message_id,
                     seq: 1,
                     notify: true,
                 }),
@@ -435,6 +480,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
                 attachments: vec![attachment.clone()],
             },
         ));
+        original_id.get_or_insert(confirmation.message.message.id);
     }
     peer(
         &mut host,
@@ -1337,6 +1383,7 @@ fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
             },
             command: ConversationCommand::DeleteMessage {
                 message_seq: original.message.seq,
+                message_id: original.message.id,
             },
         };
         let packet = SessionSigner::from_seed([1; 32])

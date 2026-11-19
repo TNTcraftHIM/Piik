@@ -103,8 +103,8 @@ writer to record that the share ended.
 | Clear room history | The room owner or an admitted channel owner | The current writer confirms the purge. Preserve room identity, settings, grants and monotonic message sequence. Readers, reconnects and future exports reflect the deletion |
 | Remove a room from the channel | Its room owner or the channel owner | The channel owner can remove any binding, including hidden, private or offline rooms, without entering them. Old invites, registrations and activity for that binding retire |
 
-The room writer checks current admission for personal content actions,
-including deletion by the recorded author or a moderator. A host operating
+The room writer verifies the selected message's sequence and ID in the delete
+transaction and checks the caller's current admission and authority. A host operating
 the room's storage processes the content entrusted to it. Previously saved
 participant downloads remain under the recipient's control.
 

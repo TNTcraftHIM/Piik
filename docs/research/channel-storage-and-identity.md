@@ -114,9 +114,10 @@ site or every attachment's bytes.
 | Image presentation | Optional dimensions and preview reference on the same attachment; no separate image storage or delivery lifecycle. |
 
 Mentions refer to stable user IDs and UTF-16 ranges in the confirmed text;
-renaming a user does not retarget a mention. They grant no room access. Replies
-refer to a sequence within the same room. The storage transaction reads the
-original message, and Core confirms its author and a short excerpt. The sender
+renaming a user does not retarget a mention. They grant no room access. A reply
+addresses the original message by its room sequence and stable message ID.
+The room writer verifies both while saving the reply, then confirms the
+original author's identity and a short excerpt. The sender
 may turn off the reply's author notification. Copies remap historical identities
 while preserving room-local reference sequences.
 

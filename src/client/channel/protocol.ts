@@ -14,7 +14,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
 export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 35;
+export const CHANNEL_PROTOCOL = 36;
 export const CHANNEL_SESSION_LIMIT = 128;
 export const CHANNEL_ROOM_LIMIT = 64;
 export const roomCreationPolicySchema = z.enum(["ordinary", "invite_only", "owner_only"]);
@@ -190,7 +190,7 @@ export type ReactionTarget = { type: "message"; messageSeq: number } | { type: "
 export interface ReactionEvent { id: string; occurredAt: number; senderUserId: string; target: ReactionTarget; reaction: string }
 export type ReactionSnapshot = ({ type: "message" } & MessageReactionSnapshot) | ({ type: "publication" } & PublicationReactionSnapshot);
 export type ChannelMessage = z.infer<typeof messageSchema> & { reactions?: MessageReactions };
-export interface ChatOptions { mentions?: z.infer<typeof mentionSchema>[]; reply?: { seq: number; notify: boolean } }
+export interface ChatOptions { mentions?: z.infer<typeof mentionSchema>[]; reply?: { seq: number; messageId: string; notify: boolean } }
 export type ChannelAttachment = z.infer<typeof attachmentSchema>;
 export type ChannelFileKey = z.infer<typeof fileKeySchema>;
 export type ChannelFilePlan = z.infer<typeof filePlanSchema>;
@@ -291,7 +291,7 @@ export type ChannelCommand =
   | { type: "interaction_ready"; roomId: string }
   | { type: "react"; roomId: string; reaction: string; target: ReactionTarget; nonce: number }
   | { type: "history"; roomId: string; before?: number }
-  | { type: "delete_message"; roomId: string; messageSeq: number }
+  | { type: "delete_message"; roomId: string; messageSeq: number; messageId: string }
   | { type: "clear_history"; roomId: string; throughSeq: number }
   | ({ type: "chat"; roomId: string; text: string; nonce: string; attachments: ChannelAttachment[]; inlineImages?: Record<string, ImageRendition> } & ChatOptions)
   | ({ type: "file_offer"; sha256: string; available: boolean } & ChannelFileKey)

@@ -198,7 +198,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     return await this.conversation({ type: 'chat', roomId: this.options.roomId, text,
       nonce: options.nonce === undefined ? randomUUID() : options.nonce, attachments: [],
       ...(options.mentions && { mentions: options.mentions.map(({ userId, start, end }) => ({ userId, start, end })) }),
-      ...(options.reply && { reply: { seq: options.reply.seq, notify: options.reply.notify } }),
+      ...(options.reply && { reply: { seq: options.reply.seq, messageId: options.reply.messageId, notify: options.reply.notify } }),
     }) as ChannelMessage;
   }
 

@@ -338,12 +338,13 @@ impl Storage {
             HistoryRequest::DeleteMessage {
                 room_id,
                 message_seq,
+                message_id,
                 author_id,
             } => {
                 let owner: String = transaction
                     .query_row(
-                        "SELECT user_id FROM message WHERE room_id=?1 AND seq=?2",
-                        params![room_id, message_seq],
+                        "SELECT user_id FROM message WHERE room_id=?1 AND seq=?2 AND id=?3",
+                        params![room_id, message_seq, message_id.to_string()],
                         |row| row.get(0),
                     )
                     .optional()

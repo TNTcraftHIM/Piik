@@ -89,20 +89,22 @@ window.runBrowserRoomCheck = async () => {
       const attachment = { id: crypto.randomUUID(), name: "original.txt", mediaType: "application/octet-stream", size: 1, sha256: "9".repeat(64) };
       const first = (await chat(current, { text: "Original author text", nonce: "original", attachments: [attachment] }))[0].record;
       check(first.type === "confirmed" && first.message.seq === 1, "reference message is committed before replying");
-      const crossRoom = (await chat(other, { text: "Cross room", nonce: "cross-room", reply: { seq: 1, notify: true } }))[0].record;
+      const crossRoom = (await chat(other, { text: "Cross room", nonce: "cross-room", reply: { seq: 1, messageId: first.message.id, notify: true } }))[0].record;
       check(crossRoom.type === "error" && crossRoom.code === "message_unavailable", "reply lookup is scoped to the same room's IndexedDB key");
+      const wrong = (await chat(current, { text: "Wrong target", nonce: "wrong-target", reply: { seq: 1, messageId: crypto.randomUUID(), notify: true } }))[0].record;
+      check(wrong.type === "error" && wrong.code === "message_unavailable", "same sequence with a different message ID cannot be quoted");
       const mentions = [{ userId: owner.userId, start: 3, end: 9 }];
-      const replied = (await chat(current, { text: "Hi @Owner", nonce: "reply", mentions, reply: { seq: 1, notify: true } }))[0].record;
+      const replied = (await chat(current, { text: "Hi @Owner", nonce: "reply", mentions, reply: { seq: 1, messageId: first.message.id, notify: true } }))[0].record;
       check(replied.type === "confirmed" && replied.message.reply?.seq === 1 && replied.message.reply.userId === peerMember.userId
         && replied.message.reply.text === "Original author text" && replied.message.reply.notify
         && JSON.stringify(replied.message.mentions) === JSON.stringify(mentions), "Core confirms mention ranges and derives reply author/excerpt from the stored original");
-      const retried = (await chat(current, { text: "Changed", nonce: "reply", reply: { seq: 999, notify: false } }))[0].record;
+      const retried = (await chat(current, { text: "Changed", nonce: "reply", reply: { seq: 999, messageId: crypto.randomUUID(), notify: false } }))[0].record;
       check(retried.type === "confirmed" && !retried.inserted && JSON.stringify(retried.message) === JSON.stringify(replied.message),
         "a nonce retry returns the original reply without looking up the changed target");
       const cancellation = new AbortController(), add = IDBObjectStore.prototype.add;
       IDBObjectStore.prototype.add = function (...args) { const request = add.apply(this, args);
         if (this.name === "messages") request.addEventListener("success", () => cancellation.abort(), { once: true }); return request; };
-      try { const cancelled = (await chat(current, { text: "Aborted reply", nonce: "aborted", reply: { seq: 1, notify: false } }, cancellation.signal))[0].record;
+      try { const cancelled = (await chat(current, { text: "Aborted reply", nonce: "aborted", reply: { seq: 1, messageId: first.message.id, notify: false } }, cancellation.signal))[0].record;
         check(cancelled.type === "error" && cancelled.code === "AbortError", "reply insert aborts before a confirmation is returned");
       } finally { IDBObjectStore.prototype.add = add; }
       check((await sync()).projection.lastMessageSeq === 2, "aborted reply cannot advance the confirmed sequence");
@@ -123,10 +125,16 @@ window.runBrowserRoomCheck = async () => {
           sessionId: session, requestId: crypto.randomUUID(), now: Date.now() }, command: { type: "file_offer",
           roomId: current.roomId, messageSeq: 1, attachmentId: attachment.id, sha256: attachment.sha256, available: true } } }) as Output;
       check(offered.reply?.result.type === "done", "offer registered before the source message is deleted");
-      const deletion = await run({ type: "delete_message", messageSeq: 1 });
-      check(published.length === 1 && !JSON.stringify(published[0]).includes(attachment.id),
+      const updatesBeforeDelete = published.length;
+      const stale = await run({ type: "delete_message", messageSeq: 1, messageId: crypto.randomUUID() }, true);
+      check(stale[0].record.type === "error" && stale[0].record.code === "message_unavailable" && published.length === updatesBeforeDelete,
+        "late owner confirmation for another message leaves the current message and its offer intact");
+      const deletion = await run({ type: "delete_message", messageSeq: 1, messageId: first.message.id });
+      check(published.length === updatesBeforeDelete + 1 && !JSON.stringify(published[updatesBeforeDelete]).includes(attachment.id),
         "deleting an offered file publishes its removal to the directory");
       check(deletion[0]?.record.type === "message_deleted", "author deletes the original message");
+      const late = await run({ type: "delete_message", messageSeq: 1, messageId: first.message.id }, true);
+      check(late[0].record.type === "error" && late[0].record.code === "message_unavailable", "late owner confirmation cannot delete a tombstone");
       const redacted = await run({ type: "history", before: null });
       check(redacted.length === 3 && redacted[0].record.type === "history_message" && !redacted[0].record.message.reply
         && redacted[0].record.message.seq === 2, "deletion removes the body, reactions and embedded quote");
@@ -144,8 +152,14 @@ window.runBrowserRoomCheck = async () => {
       check(empty.length === 1 && empty[0].record.type === "history_end" && empty[0].record.count === 0, "reopened purged history is empty");
       const replay = (await chat(current, { text: "Original author text", nonce: "original" }))[0].record;
       check(replay.type === "error" && replay.code === "message_unavailable", "restored deletion rejects a stale send");
+
+
       const next = (await chat(current, { text: "New", nonce: "fresh" }))[0].record;
       check(next.type === "confirmed" && next.message.seq === 3, "post-restore send advances past deleted history");
+      const owned = (await run({ type: "chat", text: "Owner message", nonce: "owner-only", attachments: [] }, true))[0].record;
+      check(owned.type === "confirmed", "owner fixture is stored");
+      const denied = await run({ type: "delete_message", messageSeq: owned.message.seq, messageId: owned.message.id });
+      check(denied[0].record.type === "error" && denied[0].record.code === "forbidden", "matching message identity still requires delete authority");
     } finally { await current.close(); await other.close(); await new Promise<void>((resolve, reject) => {
       const request = indexedDB.deleteDatabase(name); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); }); }
   }

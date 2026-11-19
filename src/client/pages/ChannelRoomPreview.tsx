@@ -374,9 +374,13 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       setSelected(previous => previous === roomId ? "" : previous);
       return { dataRemoved: deleteData };
     },
-    deleteMessage: async (roomId, seq) => {
-      if (roomId === "friday" && seq === fileSampleSeq) setFileSample(false);
-      await sample.channel.deleteMessage(roomId, seq);
+    deleteMessage: async (roomId, seq, messageId) => {
+      if (roomId === "friday" && seq === fileSampleSeq && fileSample) {
+        if (!channel.messagesByRoom[roomId]?.some(message => message.seq === seq && message.id === messageId)) throw new Error("message_unavailable");
+        setFileSample(false);
+        return;
+      }
+      await sample.channel.deleteMessage(roomId, seq, messageId);
     },
     purgeRoomHistory: async roomId => {
       if (roomId === "friday") setFileSample(false);

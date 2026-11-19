@@ -477,10 +477,7 @@ impl LiveHistoryRow {
             attachments: message.attachments.clone(),
             inline_images: message.inline_images.clone(),
             mentions: message.mentions.clone(),
-            reply: message.reply.as_ref().map(|reply| crate::history::ReplyTarget {
-                seq: reply.seq,
-                notify: reply.notify,
-            }),
+            reply: None, // Stored references are validated above.
             time: message.time,
         }
         .validate(true)?;

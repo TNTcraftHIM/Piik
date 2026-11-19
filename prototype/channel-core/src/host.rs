@@ -1070,7 +1070,10 @@ impl RoomHost {
         let actor = endpoint.member.user_id;
         let moderator = self.room.policy().manages(actor) || actor == authority.channel_owner_id;
         let work = match request.command {
-            ConversationCommand::DeleteMessage { message_seq } => self
+            ConversationCommand::DeleteMessage {
+                message_seq,
+                message_id,
+            } => self
                 .room
                 .authorize(endpoint.member, crate::RoomPermission::Read)
                 .and_then(|()| {
@@ -1080,6 +1083,7 @@ impl RoomHost {
                     Ok(ConversationWork::History(HistoryRequest::DeleteMessage {
                         room_id: self.room.policy().id.clone(),
                         message_seq,
+                        message_id,
                         author_id: (!moderator).then_some(actor),
                     }))
                 }),

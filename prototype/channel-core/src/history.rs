@@ -28,9 +28,10 @@ pub struct Mention {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReplyTarget {
     pub seq: u64,
+    pub message_id: Uuid,
     pub notify: bool,
 }
 
@@ -254,7 +255,11 @@ impl MessageDraft {
                     .as_ref()
                     .map(|target| {
                         let original = reply
-                            .filter(|message| message.seq == target.seq && message.seq <= last_seq)
+                            .filter(|message| {
+                                message.seq == target.seq
+                                    && message.id == target.message_id
+                                    && message.seq <= last_seq
+                            })
                             .ok_or("message_unavailable")?;
                         let mut length = 0;
                         let text = original
@@ -331,6 +336,7 @@ pub enum HistoryRequest {
     DeleteMessage {
         room_id: String,
         message_seq: u64,
+        message_id: Uuid,
         author_id: Option<Uuid>,
     },
     ClearHistory {
@@ -750,6 +756,7 @@ mod reference_tests {
             vec![],
             Some(ReplyTarget {
                 seq: 1,
+                message_id: original.id,
                 notify: false,
             }),
         )

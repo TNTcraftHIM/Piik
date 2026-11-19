@@ -199,9 +199,9 @@ test("writer-confirmed moderation removes messages, quotations and transfers for
       await peer.history([message(1), message(2), quoted]);
     }
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
-    const deletion = moderator.session.deleteMessage("first", 1);
+    const deletion = moderator.session.deleteMessage("first", 1, message(1).id);
     const request = await moderator.peer.next();
-    expect(request).toMatchObject({ type: "delete_message", messageSeq: 1 });
+    expect(request).toMatchObject({ type: "delete_message", messageSeq: 1, messageId: message(1).id });
     expect(moderator.session.getSnapshot().messagesByRoom.first).toHaveLength(3);
     reader.peer.reply(request, { type: "message_deleted", messageSeq: 1 }, "retired-binding");
     expect(reader.session.getSnapshot().messagesByRoom.first).toHaveLength(3);
@@ -4922,7 +4922,7 @@ test.each(["timeout", "cancel"])("same draft retries its prepared attachment aft
   const controller = new AbortController();
   vi.useFakeTimers();
   try {
-    const first = session.sendMessage("first", "original", files, controller.signal, { reply: { seq: 1, notify: false } });
+    const first = session.sendMessage("first", "original", files, controller.signal, { reply: { seq: 1, messageId: message(1).id, notify: false } });
     const stopped = first.catch(error => error);
     const request = await peer.next();
     const reads = slice.mock.calls.length;
@@ -4931,7 +4931,7 @@ test.each(["timeout", "cancel"])("same draft retries its prepared attachment aft
     expect(session.getSnapshot().pending.has("chat:first")).toBe(false);
     expect(await stopped).toMatchObject(ending === "timeout" ? { message: "request_timeout" } : { name: "AbortError" });
     slice.mockImplementation(() => { throw new DOMException("Synthetic source removed", "NotReadableError"); });
-    const retry = session.sendMessage("first", "original", files, undefined, { reply: { seq: 1, notify: false } });
+    const retry = session.sendMessage("first", "original", files, undefined, { reply: { seq: 1, messageId: message(1).id, notify: false } });
     void retry.catch(() => {});
     await vi.advanceTimersByTimeAsync(0);
     expect(peer.sent).toHaveLength(2);
@@ -4977,11 +4977,11 @@ test("edited drafts replace one pending send and cancelled preparation never ins
   const describe = vi.spyOn(session.attachments, "describe").mockImplementation(async files => files.map(({ id, file }) => ({ id, file,
     attachment: { id, name: file.name, size: file.size, mediaType: "application/octet-stream", sha256: "a".repeat(64) } })));
   const attempts = [
-    { text: "@Me original", file: firstFile, options: { mentions: [{ userId: "self", start: 0, end: 3 }], reply: { seq: 1, notify: true } } },
-    { text: "@Me edited", file: firstFile, options: { mentions: [{ userId: "self", start: 0, end: 3 }], reply: { seq: 1, notify: true } } },
-    { text: "@Me edited", file: firstFile, options: { mentions: [], reply: { seq: 1, notify: true } } },
-    { text: "@Me edited", file: firstFile, options: { mentions: [], reply: { seq: 1, notify: false } } },
-    { text: "@Me edited", file: secondFile, options: { mentions: [], reply: { seq: 1, notify: false } } },
+    { text: "@Me original", file: firstFile, options: { mentions: [{ userId: "self", start: 0, end: 3 }], reply: { seq: 1, messageId: message(1).id, notify: true } } },
+    { text: "@Me edited", file: firstFile, options: { mentions: [{ userId: "self", start: 0, end: 3 }], reply: { seq: 1, messageId: message(1).id, notify: true } } },
+    { text: "@Me edited", file: firstFile, options: { mentions: [], reply: { seq: 1, messageId: message(1).id, notify: true } } },
+    { text: "@Me edited", file: firstFile, options: { mentions: [], reply: { seq: 1, messageId: message(1).id, notify: false } } },
+    { text: "@Me edited", file: secondFile, options: { mentions: [], reply: { seq: 1, messageId: message(1).id, notify: false } } },
   ];
   const nonces = new Set<string>();
   try {

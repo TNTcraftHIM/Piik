@@ -275,6 +275,7 @@ impl ConversationAddress {
 pub enum ConversationCommand {
     DeleteMessage {
         message_seq: u64,
+        message_id: Uuid,
     },
     ClearHistory {
         through_seq: u64,
@@ -608,6 +609,7 @@ mod tests {
                 )
             })
             .collect();
+        let original_id = Uuid::new_v4();
         let draft = crate::history::MessageDraft::new(
             Uuid::new_v4(),
             "\0".repeat(128),
@@ -623,6 +625,7 @@ mod tests {
                 .collect(),
             Some(crate::history::ReplyTarget {
                 seq: 1,
+                message_id: original_id,
                 notify: true,
             }),
             1,
@@ -644,7 +647,7 @@ mod tests {
                 last_seq: 1,
                 reply: Some(ChatMessage {
                     seq: 1,
-                    id: Uuid::new_v4(),
+                    id: original_id,
                     user_id: Uuid::new_v4(),
                     archived_author_name: Some("x".repeat(40)),
                     text: "\0".repeat(160),

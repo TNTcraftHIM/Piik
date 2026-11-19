@@ -8,7 +8,7 @@ function fixture() {
     chat: vi.fn(async () => ({ seq: 2 })), react: vi.fn(async () => ({})) });
   const report = vi.fn();
   const detach = attachSupportBot(client as unknown as TextParticipant, report);
-  const send = (text: string, userId = 'friend') => client.emit('live', { seq: 1, text, userId });
+  const send = (text: string, userId = 'friend') => client.emit('live', { id: "help-message", seq: 1, text, userId });
   return { client, report, detach, send };
 }
 
@@ -16,11 +16,11 @@ test('one live help message gets a quoted Markdown answer and one reaction; othe
   const { client, report, detach, send } = fixture();
   try {
     send('!help', 'bot'); send('hello');
-    client.emit('confirmed', { seq: 1, text: '!help', userId: 'friend' });
+    client.emit('confirmed', { id: "help-message", seq: 1, text: '!help', userId: 'friend' });
     expect(client.chat).not.toHaveBeenCalled();
     send('!help');
     await vi.waitFor(() => expect(client.react).toHaveBeenCalledExactlyOnceWith(1, 'wave'));
-    expect(client.chat).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('```text\nVersion:'), { reply: { seq: 1, notify: true } });
+    expect(client.chat).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('```text\nVersion:'), { reply: { messageId: "help-message", seq: 1, notify: true } });
     expect(report).not.toHaveBeenCalled();
     await detach(); send('!help');
     expect(client.chat).toHaveBeenCalledTimes(1);

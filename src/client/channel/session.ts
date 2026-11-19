@@ -1368,8 +1368,8 @@ export class ChannelSession {
     if (this.outgoingMessages.get(roomId) === attempt) this.outgoingMessages.delete(roomId);
     if (this.view.historyByRoom[roomId]?.atLatest === false) void this.requestHistory(roomId, undefined, false, { clearError: false }).catch(() => {});
   });
-  deleteMessage = (roomId: string, messageSeq: number): Promise<void> =>
-    this.action(`delete-message:${roomId}:${messageSeq}`, () => this.request({ type: "delete_message", roomId, messageSeq }), false);
+  deleteMessage = (roomId: string, messageSeq: number, messageId: string): Promise<void> =>
+    this.action(`delete-message:${roomId}:${messageId}`, () => this.request({ type: "delete_message", roomId, messageSeq, messageId }), false);
   purgeRoomHistory = (roomId: string): Promise<void> => this.action(`clear-history:${roomId}`, () => {
     const room = this.view.state?.channel.rooms.find(value => value.id === roomId && value.authorized && value.available);
     if (!room) throw new Error("room_unavailable");

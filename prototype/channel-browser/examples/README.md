@@ -107,7 +107,7 @@ while (page.hasMore) {
 }
 const confirmed = await participant.chat('@friend Build finished', {
   mentions: [{ userId: friendId, start: 0, end: 7 }],
-  reply: { seq: originalMessage.seq, notify: true },
+  reply: { seq: originalMessage.seq, messageId: originalMessage.id, notify: true },
 });
 ```
 
@@ -125,7 +125,7 @@ attempt, then pass them again after explicitly restoring the connection:
 
 ```ts
 const nonce = crypto.randomUUID();
-const options = { nonce, reply: { seq: originalMessage.seq, notify: true } };
+const options = { nonce, reply: { seq: originalMessage.seq, messageId: originalMessage.id, notify: true } };
 const confirmed = await participant.chat('Build finished', options);
 // If an earlier attempt lost its confirmation, reuse that saved nonce/options
 // for the same send. A fresh nonce starts another message.
@@ -169,7 +169,7 @@ handler instead of the CLI's plain `!ping` behavior:
 ```ts
 participant.on('live', message => {
   if (message.userId === participant.summary().userId || message.text !== '!ping') return;
-  void participant.chat('pong', { reply: { seq: message.seq, notify: true } })
+  void participant.chat('pong', { reply: { seq: message.seq, messageId: message.id, notify: true } })
     .then(() => participant.react(message.seq, 'wave'))
     .catch(error => console.error(error.message));
 });

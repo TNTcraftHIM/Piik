@@ -219,6 +219,7 @@ export const en: Record<CopyKey, string> = {
   "conversation.attachmentLimit": "Add up to {max} files per message.",
   "conversation.attachmentSizeLimit": "Each file can be up to {size}.",
   "conversation.sendFailed": "Couldn't send. Your draft is saved here; try again.",
+  "conversation.replyTargetGone": "The original message is no longer available. Your draft is saved. Choose another message to reply to, or send it on its own.",
   "conversation.roomChat": "Room chat",
   "conversation.chat": "Chat",
   "conversation.messages": "Messages",

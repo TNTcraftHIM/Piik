@@ -31,7 +31,7 @@ interface ReadRequest { type: "read"; roomId: string; before: number | null }
 interface AttachmentRequest { type: "attachment"; roomId: string; messageSeq: number; attachmentId: string }
 interface ReactionRequest { type: "react"; roomId: string; messageSeq: number; nonce: number; event: ReactionEvent | null }
 type HistoryRequest = SendRequest | ReadRequest | AttachmentRequest | ReactionRequest
-  | { type: "delete_message"; roomId: string; messageSeq: number; authorId?: string | null }
+  | { type: "delete_message"; roomId: string; messageSeq: number; messageId: string; authorId?: string | null }
   | { type: "clear_history"; roomId: string; throughSeq: number };
 interface HostWork { policy: object | null; history: HistoryRequest | null; delete: boolean }
 type ConversationWork = { type: "history"; value: HistoryRequest } | { type: "immediate"; value: ConversationReply["record"] };
@@ -421,7 +421,7 @@ export class BrowserRoomHost implements HostedRoom {
           if (row.seq <= through) {
             found = true;
             const message = live(row);
-            if (!message && single) throw new Error("message_unavailable");
+            if (single && message?.id !== request.messageId) throw new Error("message_unavailable");
             if (message) {
               if (single && request.authorId && request.authorId !== message.userId) throw new Error("forbidden");
               cursor.update({ roomId: row.roomId, seq: row.seq, retryKey: row.retryKey });

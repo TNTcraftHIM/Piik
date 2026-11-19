@@ -217,6 +217,7 @@ export const zh = {
   "conversation.attachmentLimit": "每条消息最多附带 {max} 个文件。",
   "conversation.attachmentSizeLimit": "单个文件不能超过 {size}。",
   "conversation.sendFailed": "未能发送，内容已保留，请重试。",
+  "conversation.replyTargetGone": "原消息已不可用，草稿已保留。可重新选择回复对象，或直接发送。",
   "conversation.roomChat": "房间聊天",
   "conversation.chat": "聊天",
   "conversation.messages": "消息",

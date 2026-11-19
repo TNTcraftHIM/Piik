@@ -189,16 +189,16 @@ test('text pagination, replies and mentions use signed Core commands and host co
     expect(page).toMatchObject({ hasMore: false, oldestSeq: 1, before: 2 });
     expect(await client.history(1)).toEqual({ messages: [], hasMore: false, oldestSeq: 1, before: 1 });
     const options = { mentions: [{ userId: owner, start: 0, end: 7, extra: 'discard' }],
-      reply: { seq: 2, notify: true, extra: 'discard' }, nonce: 'caller-send', text: 'override', extra: 'discard' };
+      reply: { seq: 2, messageId: messages[1].id, notify: true, extra: 'discard' }, nonce: 'caller-send', text: 'override', extra: 'discard' };
     const confirmed = await client.chat('@friend hi', options);
     expect(confirmed).toMatchObject({ userId: user, text: '@friend hi', mentions: [{ userId: owner, start: 0, end: 7 }],
       reply: { seq: 2, userId: owner, text: 'message 2', notify: true } });
     expect(received[1]).toEqual({ type: 'history', before: 2 });
     expect(received[3]).toEqual({ type: 'chat', text: '@friend hi', attachments: [], nonce: expect.any(String),
-      mentions: [{ userId: owner, start: 0, end: 7 }], reply: { seq: 2, notify: true } });
+      mentions: [{ userId: owner, start: 0, end: 7 }], reply: { seq: 2, messageId: messages[1].id, notify: true } });
     expect(received[3].nonce).toBe(options.nonce);
     await expect(client.chat('plain', { mentions: [{ userId: owner, start: 0, end: 5 }] })).rejects.toThrow('invalid_mentions');
-    await expect(client.chat('reply', { reply: { seq: 99, notify: false } })).rejects.toThrow('message_unavailable');
+    await expect(client.chat('reply', { reply: { seq: 99, messageId: randomUUID(), notify: false } })).rejects.toThrow('message_unavailable');
     malformedPage = 'count';
     await expect(client.history()).rejects.toThrow('incomplete_history');
     malformedPage = 'empty-more';

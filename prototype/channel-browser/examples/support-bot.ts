@@ -28,7 +28,7 @@ export function attachSupportBot(participant: Conversation, report: (error: unkn
         'Observed:',
         '```',
       ].join('\n'),
-      { reply: { seq: message.seq, notify: true } });
+      { reply: { seq: message.seq, messageId: message.id, notify: true } });
       // One attempt: a denied/rate-limited reaction never retries the confirmed reply.
       if (!stopped) await participant.react(message.seq, 'wave');
     })().catch(report);

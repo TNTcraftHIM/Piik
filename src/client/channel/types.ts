@@ -154,7 +154,7 @@ export interface ChannelActions {
   connectionMetrics(roomId: string, publicationId?: string): Promise<ChannelMediaMetrics>;
   appConnectionMetrics(roomId: string, publicationId?: string, signal?: AbortSignal): Promise<NativeConnectionMetrics>;
   sendMessage(roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal, options?: ChatOptions): Promise<void>;
-  deleteMessage(roomId: string, messageSeq: number): Promise<void>;
+  deleteMessage(roomId: string, messageSeq: number, messageId: string): Promise<void>;
   purgeRoomHistory(roomId: string): Promise<void>;
   clearLocalRoomCache(roomId: string): Promise<void>;
   markRead(roomId: string, seq: number): void;
