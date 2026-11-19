@@ -7,7 +7,7 @@ import { downloadBlob } from "../../lib/download";
 import { formatChatTranscript } from "../../lib/room-chat-export";
 import type { ChannelMessage, ChannelUser, ChannelRoom, RoomCreationPolicy, RoomSettings, ChannelTopology } from "../protocol";
 import { MAX_RELAY_CAPACITY } from "../protocol";
-import { roomCreationPolicyFor, roomDraft, roomSettings, type RoomDraft } from "../room-creation";
+import { RoomCreationInterrupted, roomCreationPolicyFor, roomDraft, roomSettings, type RoomDraft } from "../room-creation";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelAction";
 import { ChannelSettingsDialog, ChannelSettingsTabs, useSettingsAction, type SettingsAction } from "./ChannelSettingsDialog";
@@ -129,15 +129,16 @@ export function RoomForm({ room, value, onChange, roomHost, inviteOnly, disabled
 }
 
 /** Creation and management share the same form and modal surface. */
-export function ChannelRoomCreateDialog({ channel, initialName = "", creationPolicy, onCreated, onClose }: {
-  channel: ChannelController; initialName?: string; creationPolicy: RoomCreationPolicy; onCreated(id: string): void; onClose(): void;
+export function ChannelRoomCreateDialog({ channel, initialName = "", initialInterruption = null, creationPolicy, onCreated, onClose }: {
+  channel: ChannelController; initialName?: string; initialInterruption?: RoomCreationInterrupted | null; creationPolicy: RoomCreationPolicy; onCreated(id: string): void; onClose(): void;
 }) {
   const { t } = useCopy();
   const { error, run } = useSettingsAction();
   const [draft, setDraft] = useState<RoomDraft>(() => ({ ...roomDraft(), name: initialName }));
   const input = useRef<HTMLInputElement>(null);
   const [copy, setCopy] = useState<{ file: File; retainedFileCount: number } | null>(null), [inspecting, setInspecting] = useState(false);
-  const [completed, setCompleted] = useState<"uncached" | "restored-uncached" | RoomRestoreRecovery | null>(null);
+  const [completed, setCompleted] = useState<"uncached" | "restored-uncached" | RoomRestoreRecovery | RoomCreationInterrupted | null>(initialInterruption);
+  const interrupted = completed instanceof RoomCreationInterrupted ? completed : null;
   const [creating, setCreating] = useState(false);
   const connected = channel.connection === "connected";
   const inviteOnly = creationPolicy === "invite_only";
@@ -146,9 +147,18 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", creationPol
   const busy = channel.pending.has("create-room");
   const backupBusy = channel.pending.has("room-backup");
   const title = t("room.action.create");
+  const recovered = interrupted && connected && channel.state?.channel.rooms.some(room =>
+    room.id === interrupted.roomId && room.authorized && room.available);
   return <ChannelSettingsDialog title={title} compact error={error} onClose={onClose}>
       <div className="c3-settings-panels">
-        {completed ? <RoomRestoreResult onClose={onClose} unconfirmed={completed === "room_restore_unconfirmed"}
+        {interrupted ? <div className="c3-backup-confirm">
+          <p role="status">{t(recovered ? "room.create.recovered" : interrupted.committed
+            ? "room.create.committedReconnect" : "room.create.unconfirmed")}</p>
+          {recovered && <ChannelAction icon="couch" primary label={t("room.create.openRecovered")} onClick={() => {
+            onCreated(interrupted.roomId);
+            onClose();
+          }} />}
+        </div> : completed ? <RoomRestoreResult onClose={onClose} unconfirmed={completed === "room_restore_unconfirmed"}
           message={t(completed === "room_restore_unconfirmed" ? "channel.error.roomRestoreUnconfirmed"
             : completed === "room_restored_connection_failed" ? "room.create.reconnect"
             : completed === "restored-uncached" ? "room.create.restoredUncached" : "room.create.createdUncached")} />
@@ -183,7 +193,12 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", creationPol
                 return null;
               }
             }
-            return { roomId: await channel.createRoom(settings, false), cached: true };
+            try { return { roomId: await channel.createRoom(settings, false), cached: true }; }
+            catch (error) {
+              if (!(error instanceof RoomCreationInterrupted)) throw error;
+              setCompleted(error);
+              return null;
+            }
           }, result => { if (result) { onCreated(result.roomId); if (result.cached) onClose(); else setCompleted("uncached"); } }).finally(() => setCreating(false)); }} />
         {serverHosted ? <p className="c3-hosted-backup-note">{t("room.create.hostedBackupNote")}</p>
           : <details className="c3-settings-details"><summary>{t("room.backup.restore")}</summary>

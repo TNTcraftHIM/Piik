@@ -1,3 +1,4 @@
+import { RoomCreationInterrupted } from "./room-creation";
 import { YouTubeMedia } from "./watch-youtube-media";
 import { PageSuppliedMedia, preparePageSuppliedWatchMedia, preparePortableWatchMedia, observeWatchSources, type WatchMediaSources } from "./watch-page-media";
 import { canUseYouTubePlayer, youtubeVideoId, youtubeStartSeconds, youtubeSourceId, originalWatchURL } from "./watch-youtube-source";
@@ -1459,7 +1460,10 @@ export class ChannelSession {
       ...(serverHosted ? { picture: settings.picture ?? undefined, password, allowServiceRelay: settings.allowServiceRelay } : {}) }, event => {
       if (event.type === "room_created") room = event.room;
     });
-    current();
+    try { current(); } catch (error) {
+      if (room && serverHosted) throw new RoomCreationInterrupted(room.id, true);
+      throw error;
+    }
     if (!room) throw new Error("invalid_response");
     const roomId = room.id;
     return { room, cancel: () => {
@@ -1471,18 +1475,20 @@ export class ChannelSession {
     const current = this.sessionContext(), state = this.view.state!, self = this.view.self!;
     const { room, cancel } = await this.allocateRoom(settings);
     if (state.channel.hostingMode === "hosted") {
-      await this.request({ type: "browse", roomId: room.id, active: true });
+      try { await this.request({ type: "browse", roomId: room.id, active: true }); }
+      catch { throw new RoomCreationInterrupted(room.id, true); }
       return room.id;
     }
-    let mayCancel = true;
+    let creation: "reserved" | "dispatched" | "committed" = "reserved";
     try {
       const runtime = await loadRoomHosting();
       const policy = await runtime.createRoomPolicy({ ...settings, id: room.id, creatorId: self.id });
       current();
       if (app) {
         if (this.app !== app || !app.connected) throw new Error("app_disconnected");
-        mayCancel = false;
+        creation = "dispatched";
         const opened = await app.open(policy);
+        creation = "committed";
         current();
         await this.request({ type: "browse", roomId: opened.id, active: true });
         return opened.id;
@@ -1490,7 +1496,7 @@ export class ChannelSession {
       const storage = await this.browserStorage(state.channel.id, self.id);
       current();
       const host = await storage.open(policy);
-      mayCancel = false;
+      creation = "committed";
       try { current(); } catch (error) { await host.close(); throw error; }
       this.hostedRooms.set(room.id, { host });
       const summary = await host.summary();
@@ -1500,8 +1506,8 @@ export class ChannelSession {
       await this.request({ type: "browse", roomId: room.id, active: true });
       return room.id;
     } catch (error) {
-      if (mayCancel) cancel();
-      throw error;
+      if (creation === "reserved") { cancel(); throw error; }
+      throw new RoomCreationInterrupted(room.id, creation === "committed");
     }
   }, reportError);
   private sessionContext(): () => void {

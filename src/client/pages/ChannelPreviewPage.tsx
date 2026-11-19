@@ -26,7 +26,7 @@ import { ChannelFeedbackSounds } from "../channel/components/ChannelFeedbackSoun
 import { ChannelForwardingSettings } from "../channel/components/ChannelForwardingSettings";
 import { ChannelInterfaceControl, ChannelInterfaceSuggestion } from "../channel/components/ChannelInterfaceControl";
 import { ChannelRoomCreateDialog, ChannelRoomSettingsDialog } from "../channel/components/ChannelRoomControls";
-import { roomCreationPolicyFor, roomDraft, roomSettings } from "../channel/room-creation";
+import { RoomCreationInterrupted, roomCreationPolicyFor, roomDraft, roomSettings } from "../channel/room-creation";
 import { ChannelRoomEntry, ChannelUnlistedRoomEntry } from "../channel/components/ChannelRoomEntry";
 import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
 import { ChannelSiteSettings } from "../channel/components/ChannelSiteSettings";
@@ -105,7 +105,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const sidebarsInline = layout !== "quick" && workspaceWidth > 1080;
   const [companionOpen, setCompanionOpen] = useState({ people: false, chat: true });
   const [managedRoomId, setManagedRoomId] = useState<string | null>(null);
-  const [newRoomName, setNewRoomName] = useState<string | null>(null);
+  const [newRoom, setNewRoom] = useState<string | RoomCreationInterrupted | null>(null);
   const closeRoomSettings = useCallback(() => setManagedRoomId(null), []);
   const previousLayout = useRef(layout);
   useEffect(() => {
@@ -174,7 +174,12 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       const id = await channel.createRoom(roomSettings({ ...roomDraft(), name: t("channel.previewPage.screenSharing") }, creationPolicy === "invite_only"));
       if (preparingShare.current !== operation) return;
       selectRoom(id); setPickerRoom(id);
-    } catch { /* The session presents creation errors. */ }
+    } catch (error) {
+      if (error instanceof RoomCreationInterrupted && preparingShare.current === operation) {
+        channel.clearError();
+        setNewRoom(error);
+      }
+    }
     finally { if (preparingShare.current === operation) preparingShare.current = null; }
   };
   const publications = state?.publications ?? [];
@@ -289,8 +294,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     </div>}
     {managedRoom && <ChannelRoomSettingsDialog key={managedRoom.id} channel={channel} room={managedRoom}
       onClose={closeRoomSettings} />}
-    {newRoomName !== null && <ChannelRoomCreateDialog channel={channel} initialName={newRoomName} creationPolicy={creationPolicy}
-      onCreated={selectRoom} onClose={() => setNewRoomName(null)} />}
+    {newRoom !== null && <ChannelRoomCreateDialog channel={channel} creationPolicy={creationPolicy}
+      initialName={typeof newRoom === "string" ? newRoom : ""} initialInterruption={newRoom instanceof RoomCreationInterrupted ? newRoom : null}
+      onCreated={id => { selectRoom(id); if (newRoom instanceof RoomCreationInterrupted) setPickerRoom(id); }} onClose={() => setNewRoom(null)} />}
     <main ref={workspaceElement} className="c3-shell" data-app-shell data-layout={layout} data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"} data-sidebars={sidebarsInline ? "inline" : "overlay"} data-overview={overview || undefined}
       data-companion={companionVisible ? companionPane : "none"}>
       <header className="c3-site-bar"><div className="c3-site-identity">
@@ -319,7 +325,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               onClick={() => { setOrderingRooms(!orderingRooms); setDraggedRoom(null); setOrderAnnouncement(""); }} />}
               {canCreateRoom && <Btn icon="plus" size="dense" quiet hint="hint-create-room"
               title={{ text: t("channel.previewPage.createRoom") }} cap={!rooms.length ? { text: t("channel.previewPage.createRoom") } : undefined}
-              expanded={newRoomName !== null} disabled={!connected} onClick={() => setNewRoomName("")} />}
+              expanded={newRoom !== null} disabled={!connected} onClick={() => setNewRoom("")} />}
               {!sidebarsInline && mobilePane === "rooms" && <BackButton onClick={() => setMobilePane("room")} />}
               {sidebarsInline && <Btn icon="sidebar" size="dense" quiet title={{ text: t("channel.previewPage.collapseRoomList") }}
                 controls="c3-room-list" expanded={!sharingView} onClick={() => { if (!sharingView) toggleSharingView(); setMobilePane("room"); }} />}
@@ -417,7 +423,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
                 <p>{t(canCreateRoom ? "channel.previewPage.firstRoomHint" : "channel.previewPage.ownerCreatesRooms")}</p>
                 {canCreateRoom && <Btn id="c3-first-action" icon="plus" size="compact" tone="primary" hint="hint-create-room"
                   title={{ text: t("channel.previewPage.createYourFirstRoom") }} cap={{ text: t("channel.previewPage.createYourFirstRoom") }}
-                  expanded={newRoomName !== null} disabled={!connected} onClick={() => setNewRoomName(t("channel.previewPage.livingRoom"))} />}
+                  expanded={newRoom !== null} disabled={!connected} onClick={() => setNewRoom(t("channel.previewPage.livingRoom"))} />}
                 {offerLayout && onLayoutChange && connected && <ChannelInterfaceSuggestion value={layout}
                   onChange={chooseInitialLayout} onDismiss={() => chooseInitialLayout(layout)} />}
               </div>}

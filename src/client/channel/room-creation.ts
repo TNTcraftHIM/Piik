@@ -1,5 +1,11 @@
 import { DEFAULT_RELAY_CAPACITY, type ChannelRoom, type ChannelSnapshot, type RoomCreationPolicy, type RoomSettings } from "./protocol";
 
+export class RoomCreationInterrupted extends Error {
+  constructor(readonly roomId: string, readonly committed: boolean) {
+    super(committed ? "room_created_connection_failed" : "room_creation_unconfirmed");
+  }
+}
+
 export function roomCreationPolicyFor(channel: Pick<ChannelSnapshot["channel"], "ownerId" | "roomCreationPolicy">, userId: string): RoomCreationPolicy {
   return channel.ownerId === userId ? "ordinary" : channel.roomCreationPolicy;
 }

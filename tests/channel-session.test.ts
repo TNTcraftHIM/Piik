@@ -3,6 +3,7 @@ import { zh } from "../src/client/locales/zh";
 import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
 import { ChannelConversation } from "../src/client/channel/conversation";
 import { ChannelSession } from "../src/client/channel/session";
+import { RoomCreationInterrupted } from "../src/client/channel/room-creation";
 import { FeedbackAudio } from "../src/client/channel/feedback-audio";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 import * as hosting from "../src/client/channel/hosting";
@@ -4073,9 +4074,11 @@ test.each(["registered", "retry-registration"])("Browser hosting does not depend
     const register = socket.sent.find(command => command.type === "host_register")!;
     if (outcome === "retry-registration") {
       socket.receive({ type: "error", requestId: register.requestId, code: "room_host_conflict" });
-      await expect(creating).rejects.toThrow("room_host_conflict");
+      await expect(creating).rejects.toBeInstanceOf(RoomCreationInterrupted);
+      await expect(creating).rejects.toMatchObject({ roomId: host.roomId, committed: true, message: "room_created_connection_failed" });
       expect(socket.sent.some(command => command.type === "cancel_room_creation" || command.type === "delete_room")).toBe(false);
       const state = structuredClone(session.getSnapshot().state!);
+      state.channel.rooms[0].name = host.summary().name;
       state.channel.rooms.push({ ...state.channel.rooms[0], ...host.summary(), available: false, delivery: undefined });
       session.reconnect();
       const resumed = ChannelSocket.current;
@@ -4109,7 +4112,9 @@ test.each(["policy", "open"])("Browser room creation cancels its reservation aft
   } });
   if (failure === "open") open.mockRejectedValueOnce(new Error("open_failed"));
   try {
-    await expect(session.createRoom({ name: "Browser room", icon: "couch", access: "public", hidden: false })).rejects.toThrow(failure + "_failed");
+    const creating = session.createRoom({ name: "Browser room", icon: "couch", access: "public", hidden: false });
+    await expect(creating).rejects.toThrow(failure + "_failed");
+    await expect(creating).rejects.not.toBeInstanceOf(RoomCreationInterrupted);
     expect(socket.sent.filter(command => command.type === "cancel_room_creation")).toEqual([
       expect.objectContaining({ roomId: "domain-created-room" }),
     ]);

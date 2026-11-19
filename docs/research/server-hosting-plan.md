@@ -50,7 +50,9 @@ binds. That session releases its reservation when creation fails before the
 writer takes over. After an uncertain restore, the creator checks the room
 list on reconnect before retrying. Stopping a guest runtime releases its
 live slot. Offline recovery records are private and have a separate limit.
-Removing the directory entry retires its binding.
+An unbound reservation expires when its creating session ends. If a guest
+writer saved a new room locally but never registered it, that local draft
+cannot reopen the expired directory entry. Removing a bound entry retires it.
 [Prosody MUC room creation](https://prosody.im/doc/modules/mod_muc)
 
 ### Reopening a room
