@@ -241,10 +241,21 @@ The room derives the audience from joined watch subscriptions across all deliver
 modes. Participant lists and audience counts express that intent, independently
 of peer paths or decoded-frame readiness; multiple endpoints display one person.
 
-Playback anchors use domain time, sampled alongside the sharer's media position.
-Join confirmations provide domain-time samples for each viewer's local clock
-mapping. A late join or restored viewer applies the latest anchor after its media
-and clock are ready; autoplay refusal remains a local request to start playback.
+The sharer's anchor records position $p_0$ in seconds, domain time $t_0$ in
+milliseconds, playback rate $v$ and whether playback is advancing ($b=1$)
+or paused ($b=0$). At estimated domain time $t$, the target is
+
+$$
+p(t)=p_0+b\,v\,\max(0,t-t_0)/1000.
+$$
+
+A viewer estimates the offset of its local monotonic clock from a join reply.
+If the request was sent at local time $a$, the reply arrived at $z$, and it
+reported domain time $d$, the viewer uses $t=\mathrm{localNow}+d-(a+z)/2$.
+A late or reconnected viewer applies the latest anchor when its player and
+clock are ready. For ordinary video, a known duration bounds the target.
+Autoplay refusal leaves the viewer a local play action.
+[Playback clock](../../src/client/channel/watch-playback.ts)
 Actual playback start and recovery from buffering renew the sharer's anchor.
 Automatic drift correction waits until its target is locally buffered and the
 player can continue playback. An explicit sharer seek may select a new range.

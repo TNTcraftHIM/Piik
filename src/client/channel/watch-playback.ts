@@ -104,8 +104,8 @@ export class WatchPlayer {
       if (!this.publishPlayback) return;
       const playback = await this.sample(), previous = this.lastPublished;
       if (!force && previous && previous.position === playback.position && previous.paused === playback.paused && previous.rate === playback.rate) return;
-      this.lastPublished = playback;
       await this.publishPlayback?.(playback);
+      this.lastPublished = playback;
       if (!this.retired && this.error === "watch_update_failed") { this.error = null; this.changed(); }
     });
   }

@@ -181,6 +181,24 @@ test("admitted creator native playback events are serialized and use integer dom
   } finally { player.close(); }
 });
 
+test.each([false, true])("a paused creator retries a rejected update (forced retry: %s)", async force => {
+  const video = new Video(); video.readyState = 2; video.currentTime = 25; video.playbackRate = 1.5;
+  vi.stubGlobal("document", { createElement: () => video });
+  const player = new WatchPlayer("room", true, new HTMLVideoMedia("https://media.test/video.mp4", "file"), vi.fn());
+  const send = vi.fn(async () => {}).mockRejectedValueOnce(new Error("offline"));
+  try {
+    player.calibrate(5000, 0, 0);
+    player.activate(send);
+    video.dispatchEvent(new Event("pause"));
+    await player.serialize(async () => {});
+    expect(player.error).toBe("watch_update_failed");
+    await Promise.all([player.publish(force), player.publish()]);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ paused: true, position: 25, rate: 1.5 }));
+    expect(player.error).toBeNull();
+  } finally { player.close(); }
+});
+
 test("creator acknowledgements never seek; retiring suppresses queued sends", async () => {
   vi.useFakeTimers();
   const video = new Video(); video.readyState = 2; video.currentTime = 25;
