@@ -17,6 +17,7 @@ export interface BrowserRoomSnapshot {
 export interface BrowserRoomStage extends BrowserRoomSnapshot {
   append(row: BackupHistoryRow): Promise<void>;
   replace(signal?: AbortSignal): Promise<void>;
+  createRoom(policy: string, signal?: AbortSignal): Promise<void>;
 }
 
 export interface HostedRoom {

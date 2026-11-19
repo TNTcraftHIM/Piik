@@ -8453,7 +8453,7 @@ async function setupRoomBackup() {
   const row = { ...message(1), nonce: "sent-once" };
   const rows = () => (async function* () { yield row; })();
   const snapshot = { policy, get rows() { return rows(); }, close: vi.fn(async () => {}) };
-  const stage = { policy, get rows() { return rows(); }, append: vi.fn(async () => {}), replace: vi.fn(async () => {}), close: vi.fn(async () => {}) };
+  const stage = { policy, get rows() { return rows(); }, append: vi.fn(async () => {}), createRoom: vi.fn(async (_policy: string, _signal: AbortSignal) => {}), replace: vi.fn(async () => {}), close: vi.fn(async () => {}) };
   const host = {
     roomId: "first", summary: () => ({ id: "first", name: "First", icon: "couch", creatorId: "self", access: "public", hidden: false, hasPassword: false }),
     bind: vi.fn(async () => {}), close: vi.fn(async () => {}), snapshot: vi.fn(async () => snapshot),
@@ -8852,19 +8852,28 @@ test("room restore releases staging when its session reconnects during append", 
   } finally { session.close(); }
 });
 
-test.each(["success", "replace-failed", "registration-failed", "native-unconfirmed"] as const)("guest room copy under the channel-assigned ID: %s", async outcome => {
+test.each(["success", "create-failed", "registration-failed", "duplicate", "native-success", "native-unconfirmed"] as const)("guest room copy under the channel-assigned ID: %s", async outcome => {
   const { session, socket, state, read, stage, metadata, row, nextHost } = await setupRoomBackup();
   state.channel.ownerId = "another-owner";
   socket.receive({ type: "state", state });
   const id = "domain-created-room";
-  if (outcome === "native-unconfirmed") {
+  const native = outcome === "native-unconfirmed" || outcome === "native-success";
+  const encoded = new Blob(["encoded"]);
+  if (native) {
     vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
       domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
     const app = await startFixtureApp(session);
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
-    vi.spyOn(appLink.ChannelApp.prototype, "restoreRoom").mockRejectedValueOnce(new Error("room_restore_unconfirmed"));
+    vi.spyOn(appLink.ChannelApp.prototype, "restoreRoom").mockImplementationOnce(async archive => {
+      expect(archive).toBe(encoded);
+      if (outcome === "native-unconfirmed") throw new Error("room_restore_unconfirmed");
+      state.channel.rooms.push({ ...state.channel.rooms[0], id, delivery: { hostSessionId: "native-host", bindingId: "copied-binding", nextHops: {} } });
+      socket.receive({ type: "state", state });
+      return { ...metadata.policy, id, hasPassword: false };
+    });
+    vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: "native-host", roomIds: [id] });
   }
   const runtime = await hosting.loadRoomHosting();
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...runtime, createRoomPolicy: async () => stage.policy,
@@ -8875,14 +8884,16 @@ test.each(["success", "replace-failed", "registration-failed", "native-unconfirm
     const source = { ...copy, retainedFiles: [] };
     await visitor!.metadata(source); await visitor!.row(row); return source;
   });
-  vi.spyOn(backupArchive, "writeBackup").mockImplementationOnce(async converted => {
+  const write = vi.spyOn(backupArchive, "writeBackup").mockImplementationOnce(async converted => {
     if (converted.kind !== "room") throw new Error("expected converted room");
     metadata.policy = converted.policy;
     stage.policy = JSON.stringify(converted.policy);
-    return new Blob();
+    return encoded;
   });
+  stage.createRoom.mockImplementation(async policy => { metadata.policy = JSON.parse(policy); stage.policy = policy; });
   nextHost.summary = () => ({ ...metadata.policy, hasPassword: false });
-  if (outcome === "replace-failed") stage.replace.mockRejectedValueOnce(new Error("storage_failed"));
+  if (outcome === "create-failed") stage.createRoom.mockRejectedValueOnce(new Error("storage_failed"));
+  if (outcome === "duplicate") stage.createRoom.mockRejectedValueOnce(new Error("room_host_conflict"));
   vi.spyOn(session.attachments, "restoreRetained").mockResolvedValue(true);
   const send = socket.send.bind(socket);
   socket.send = data => {
@@ -8905,25 +8916,39 @@ test.each(["success", "replace-failed", "registration-failed", "native-unconfirm
   };
   try {
     const importing = session.importRoomCopy(new Blob(), metadata.policy);
-    if (outcome === "success") {
+    if (outcome === "success" || outcome === "native-success") {
       await expect(importing).resolves.toEqual({ roomId: id, cached: true });
       expect(socket.sent).toContainEqual(expect.objectContaining({ type: "browse", roomId: id }));
     } else {
-      const expected = { "replace-failed": "storage_failed", "registration-failed": "room_restored_connection_failed", "native-unconfirmed": "room_restore_unconfirmed" };
+      const expected = { duplicate: "room_host_conflict", "create-failed": "storage_failed", "registration-failed": "room_restored_connection_failed", "native-unconfirmed": "room_restore_unconfirmed" };
       await expect(importing).rejects.toThrow(expected[outcome]);
     }
-    expect(stage.append.mock.calls).toEqual([[row], [row]]);
-    expect(stage.replace).toHaveBeenCalledTimes(outcome === "native-unconfirmed" ? 0 : 1);
+    expect(read).toHaveBeenCalledOnce();
+    expect(stage.append.mock.calls).toEqual([[row]]);
+    expect(stage.replace).not.toHaveBeenCalled();
+    expect(write).toHaveBeenCalledTimes(native ? 1 : 0);
+    expect(stage.createRoom).toHaveBeenCalledTimes(native ? 0 : 1);
+    if (!native) {
+      expect(JSON.parse(stage.createRoom.mock.calls[0][0])).toMatchObject({ id, creatorId: "self" });
+      expect(stage.createRoom.mock.calls[0][1]).toBeInstanceOf(AbortSignal);
+      expect(runtime.BrowserRoomHost.stage).toHaveBeenCalledWith(hosting.roomDatabaseName("domain", "self"), expect.any(String));
+    }
     expect(session.getSnapshot().self?.id).toBe("self");
     expect(socket.sent.some(command => command.type === "delete_room")).toBe(false);
     expect(socket.sent.filter(command => command.type === "cancel_room_creation")).toEqual(
-      outcome === "replace-failed" ? [expect.objectContaining({ roomId: id })] : []);
+      outcome === "create-failed" || outcome === "duplicate" ? [expect.objectContaining({ roomId: id })] : []);
   } finally { session.close(); }
 });
 
 test("room copy preserves the archive conversion failure when staging cleanup rejects", async () => {
   const { session, socket, stage, read, metadata } = await setupRoomBackup();
   try {
+    vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+      domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+    const app = await startFixtureApp(session);
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
     const runtime = await hosting.loadRoomHosting();
     vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...runtime, createRoomPolicy: async () => stage.policy,
       CopyHistoryImport: class { finish() {} free() {} },
@@ -8940,7 +8965,7 @@ test("room copy preserves the archive conversion failure when staging cleanup re
   } finally { session.close(); }
 });
 
-test("room copy stops when its session reconnects during staging cleanup", async () => {
+test("room copy stops when its session reconnects during archive validation", async () => {
   const { session, socket, stage, read, state, metadata } = await setupRoomBackup();
   try {
     const runtime = await hosting.loadRoomHosting();
@@ -8949,16 +8974,16 @@ test("room copy stops when its session reconnects during staging cleanup", async
     } as unknown as typeof runtime);
     const copy = { kind: "room_copy", version: 2, authors: {}, retainedFiles: [] } as const;
     read.mockImplementationOnce(async (_blob, visitor) => {
-      await visitor?.metadata({ ...copy, retainedFiles: [] }); return { ...copy, retainedFiles: [] };
-    });
-    vi.spyOn(backupArchive, "writeBackup").mockResolvedValue(new Blob());
-    stage.close.mockImplementationOnce(async () => {
+      await visitor?.metadata({ ...copy, retainedFiles: [] });
       socket.close(); session.reconnect();
       const next = ChannelSocket.current; await next.onopen?.();
       next.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+      return { ...copy, retainedFiles: [] };
     });
     await expect(session.importRoomCopy(new Blob(), metadata.policy)).rejects.toThrow("disconnected");
     expect(read).toHaveBeenCalledOnce();
+    expect(stage.createRoom).not.toHaveBeenCalled();
+    expect(ChannelSocket.current.sent.some(command => command.type === "delete_room" || command.type === "cancel_room_creation")).toBe(false);
   } finally { session.close(); }
 });
 

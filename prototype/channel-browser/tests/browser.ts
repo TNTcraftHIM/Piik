@@ -607,6 +607,39 @@ window.runBrowserRoomCheck = async () => {
     check(!restoredRetry.inserted && restoredRetry.message.seq === 1 && restoredRetry.message.text === "Original", "restored retry nonce retains its original confirmation");
     check((await send("After restore", "after-restore")).message.seq === 113, "new writes continue the restored sequence floor");
 
+    const tempId = crypto.randomUUID(), unboundId = crypto.randomUUID(), targetId = crypto.randomUUID();
+    const localPolicy = (id: string) => JSON.stringify({ ...JSON.parse(savedPolicy), id });
+    const unbound = await BrowserRoomHost.open(database, localPolicy(unboundId));
+    await unbound.close();
+    const installed = await BrowserRoomHost.stage(database, localPolicy(tempId));
+    const copiedRow = { ...rows.find(row => "id" in row)!, id: crypto.randomUUID() };
+    try {
+      await installed.append(copiedRow);
+      const before = await BrowserRoomHost.storedPolicies(database);
+      for (const id of [host.roomId, unboundId]) {
+        try { await installed.createRoom(localPolicy(id)); throw new Error("existing room accepted"); }
+        catch (error) { check(String(error).includes("room_host_conflict"), "create rejects bound and unbound targets"); }
+      }
+      check(JSON.stringify(await BrowserRoomHost.storedPolicies(database)) === JSON.stringify(before), "conflicts preserve room policies");
+      const cancelled = new AbortController();
+      cancelled.abort();
+      try { await installed.createRoom(localPolicy(targetId), cancelled.signal); throw new Error("aborted create committed"); }
+      catch (error) { check(error instanceof DOMException && error.name === "AbortError", "create observes abort"); }
+      check(JSON.stringify(await BrowserRoomHost.storedPolicies(database)) === JSON.stringify(before), "abort preserves the database");
+      await installed.createRoom(localPolicy(targetId));
+      const after = (await BrowserRoomHost.storedPolicies(database)).map(value => JSON.parse(value).id);
+      check(!after.includes(tempId) && after.includes(targetId) && after.includes(unboundId), "only the formal room ID is installed");
+      const installedHost = await BrowserRoomHost.open(database, localPolicy(targetId));
+      try {
+        const snapshot = await installedHost.snapshot();
+        try {
+          const copied = [];
+          for await (const row of snapshot.rows) copied.push(row);
+          check(JSON.stringify(copied) === JSON.stringify([copiedRow]), "staged rows use the formal scope");
+        } finally { await snapshot.close(); }
+      } finally { await installedHost.close(); }
+    } finally { await installed.close(); }
+
     const previousSchema = `${database}-schema-3`;
     const schema3 = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(previousSchema, 3);

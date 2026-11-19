@@ -130,16 +130,30 @@ class RoomBackup implements BrowserRoomSnapshot, BrowserRoomStage {
   }
 
   replace(signal?: AbortSignal): Promise<void> {
+    return this.install({ id: this.roomId, policy: this.policy }, false, signal);
+  }
+
+  async createRoom(policy: string, signal?: AbortSignal): Promise<void> {
+    const room = new RoomHost(policy);
+    try {
+      await this.install({ id: room.room_id(), policy: room.policy() }, true, signal);
+    } finally { room.free(); }
+  }
+
+  private install(target: RoomRecord, create: boolean, signal?: AbortSignal): Promise<void> {
     return this.turn(["backup", "rooms", "messages"], "readwrite", (tx, abort) => {
-      read<RoomRecord | undefined>(tx.objectStore("rooms").get(this.roomId), record => {
-        if (record?.bindingId !== this.storedBindingId) throw new Error("room_host_conflict");
-        const messages = tx.objectStore("messages");
-        messages.delete(IDBKeyRange.bound([this.roomId], [this.roomId, Infinity]));
-        // Retire the prior durable write binding in the same commit as the data.
-        tx.objectStore("rooms").put({ id: this.roomId, policy: this.policy } satisfies RoomRecord);
+      const rooms = tx.objectStore("rooms"), messages = tx.objectStore("messages");
+      read<RoomRecord | undefined>(rooms.get(target.id), record => {
+        if (create ? record !== undefined : record?.bindingId !== this.storedBindingId) throw new Error("room_host_conflict");
+        if (create) rooms.add(target);
+        else {
+          messages.delete(IDBKeyRange.bound([target.id], [target.id, Infinity]));
+          // Retire the prior durable write binding in the same commit as the data.
+          rooms.put(target);
+        }
         read(tx.objectStore("backup").openCursor(IDBKeyRange.lowerBound(0, true)), cursor => {
           if (!cursor) { tx.objectStore("backup").clear(); return; }
-          messages.add({ ...cursor.value, roomId: this.roomId });
+          messages.add({ ...cursor.value, roomId: target.id });
           cursor.continue();
         }, abort);
       }, abort);
