@@ -98,7 +98,7 @@ pub(super) struct Permission {
     camera: bool,
 }
 impl Permission {
-    fn answer(&mut self, allowed: bool) {
+    fn complete(&mut self, allowed: bool) {
         if let Some(deferral) = self.deferral.take() {
             // SAFETY: Requests and decisions remain on the WebView UI thread.
             unsafe {
@@ -117,9 +117,28 @@ impl Permission {
 }
 impl Drop for Permission {
     fn drop(&mut self) {
-        self.answer(false);
+        self.complete(false);
     }
 }
+fn take_matching<T>(pending: &mut VecDeque<T>, matches: impl Fn(&T) -> bool) -> VecDeque<T> {
+    let (batch, remaining) = pending.drain(..).partition(matches);
+    *pending = remaining;
+    batch
+}
+
+impl Permission {
+    fn answer(&mut self, allowed: bool, pending: &PendingPermissions) {
+        // Detach the batch before completing COM deferrals: a retry is a new request.
+        let batch = take_matching(&mut pending.borrow_mut(), |next| {
+            next.owner == self.owner && next.origin == self.origin && next.camera == self.camera
+        });
+        self.complete(allowed);
+        for mut request in batch {
+            request.complete(allowed);
+        }
+    }
+}
+
 pub(super) type PendingPermissions = Rc<RefCell<VecDeque<Permission>>>;
 
 pub(super) fn permissions(
@@ -288,9 +307,14 @@ impl Prompt {
     pub(super) fn stale(&self, main: &super::MainWindow) -> bool {
         matches!(&self.request, Action::Reveal(request) if !request.current(main))
     }
-    pub(super) fn answer(mut self, allowed: bool, main: Option<&super::MainWindow>) {
+    pub(super) fn answer(
+        mut self,
+        allowed: bool,
+        main: Option<&super::MainWindow>,
+        pending: &PendingPermissions,
+    ) {
         match &mut self.request {
-            Action::Media(request) => request.answer(allowed),
+            Action::Media(request) => request.answer(allowed, pending),
             Action::Reveal(request) => {
                 if let Some(main) = main {
                     request.answer(main, allowed);
@@ -306,5 +330,28 @@ impl Drop for Prompt {
     fn drop(&mut self) {
         // Windows requires the owner to be enabled before destroying its dialog.
         self.owner.set_enable(true);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn concurrent_media_requests_share_only_the_first_pending_decision() {
+        let active = (1, "https://a.test", false);
+        let other = [
+            (2, active.1, false),
+            (1, "https://b.test", false),
+            (1, active.1, true),
+        ];
+        let mut queue = VecDeque::from([other[0], active, other[1], active, other[2]]);
+        assert_eq!(
+            take_matching(&mut queue, |key| key == &active),
+            [active, active]
+        );
+        assert_eq!(queue, other);
+        queue.push_back(active);
+        assert_eq!(queue.pop_back(), Some(active));
     }
 }

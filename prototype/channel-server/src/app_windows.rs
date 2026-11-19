@@ -694,7 +694,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 if prompt.as_ref().is_some_and(|prompt| prompt.id() == id) {
                     let current = prompt.take().unwrap();
                     let owner = current.owner();
-                    current.answer(allowed, window.as_ref());
+                    current.answer(allowed, window.as_ref(), &pending);
                     if let Some(main) = window.as_ref().filter(|main| main.window.id() == owner) {
                         let _ = main.content.focus();
                     } else if let Some(child) = popups
