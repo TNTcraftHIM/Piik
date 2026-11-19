@@ -13,7 +13,8 @@ import { ChannelAction } from "./ChannelAction";
 import { ChannelSettingsDialog, ChannelSettingsTabs, useSettingsAction, type SettingsAction } from "./ChannelSettingsDialog";
 import { ChannelIdentityFields } from "./ChannelIdentity";
 import "./channel-room-controls.css";
-import { BackupControls } from "./BackupControls";
+import { BackupControls, RoomRestoreResult } from "./BackupControls";
+import { roomRestoreRecovery, type RoomRestoreRecovery } from "../hosting-api";
 import { messageAuthorName, userProfile } from "../presentation";
 import { fileSize, type AttachmentLimits } from "../attachments";
 
@@ -135,8 +136,8 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", creationPol
   const { error, run } = useSettingsAction();
   const [draft, setDraft] = useState<RoomDraft>(() => ({ ...roomDraft(), name: initialName }));
   const input = useRef<HTMLInputElement>(null);
-  const [copy, setCopy] = useState<File | null>(null), [inspecting, setInspecting] = useState(false);
-  const [completed, setCompleted] = useState<"uncached" | "restored-uncached" | "reconnect" | null>(null);
+  const [copy, setCopy] = useState<{ file: File; retainedFileCount: number } | null>(null), [inspecting, setInspecting] = useState(false);
+  const [completed, setCompleted] = useState<"uncached" | "restored-uncached" | RoomRestoreRecovery | null>(null);
   const [creating, setCreating] = useState(false);
   const connected = channel.connection === "connected";
   const inviteOnly = creationPolicy === "invite_only";
@@ -147,12 +148,10 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", creationPol
   const title = t("room.action.create");
   return <ChannelSettingsDialog title={title} compact error={error} onClose={onClose}>
       <div className="c3-settings-panels">
-        {completed ? <div className="c3-backup-confirm"><p role="status">{completed === "reconnect"
-          ? t("room.create.reconnect")
-          : completed === "restored-uncached"
-          ? t("room.create.restoredUncached")
-          : t("room.create.createdUncached")}</p>
-          <ChannelAction icon="check" primary label={t("room.action.done")} onClick={onClose} /></div>
+        {completed ? <RoomRestoreResult onClose={onClose} unconfirmed={completed === "room_restore_unconfirmed"}
+          message={t(completed === "room_restore_unconfirmed" ? "channel.error.roomRestoreUnconfirmed"
+            : completed === "room_restored_connection_failed" ? "room.create.reconnect"
+            : completed === "restored-uncached" ? "room.create.restoredUncached" : "room.create.createdUncached")} />
         : creationPolicy === "owner_only" ? <div className="c3-backup-confirm">
           <p role="status">{t("channel.previewPage.ownerCreatesRooms")}</p>
           <ChannelAction icon="x" quiet label={t("room.action.cancel")} onClick={onClose} />
@@ -162,13 +161,13 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", creationPol
             const file = event.currentTarget.files?.[0]; event.currentTarget.value = "";
             if (!file) return;
             setInspecting(true);
-            void run(() => channel.inspectRoomCopy(file), info => {
-              setCopy(file); setDraft({ ...roomDraft(), ...info, name: info.name ?? initialName, icon: info.icon ?? "couch", access: "private", password: "", hidden: false });
+            void run(() => channel.inspectRoomCopy(file), ({ settings: info, retainedFileCount }) => {
+              setCopy({ file, retainedFileCount }); setDraft({ ...roomDraft(), ...info, name: info.name ?? initialName, icon: info.icon ?? "couch", access: "private", password: "", hidden: false });
             }).finally(() => setInspecting(false));
           }} />
           <ChannelAction icon="arrowUp" quiet label={t("room.copy.load")}
             disabled={!connected || busy || backupBusy || inspecting} busy={inspecting} onClick={() => input.current?.click()} />
-          {copy && <><p>{copy.name}</p><p>{t("room.copy.loadNote")}</p>
+          {copy && <><p>{copy.file.name}</p><p>{t("room.copy.retainedFileCount", { count: String(copy.retainedFileCount) })}</p><p>{t("room.copy.loadNote")}</p>
             <ChannelAction icon="x" quiet label={t("room.copy.remove")} disabled={busy || backupBusy} onClick={() => setCopy(null)} /></>}
         </section>}
         <RoomForm value={draft} onChange={fields => setDraft(previous => ({ ...previous, ...fields }))} roomHost={roomHost} inviteOnly={inviteOnly}
@@ -176,10 +175,12 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", creationPol
           createLabel={copy ? t("room.copy.create") : undefined}
           onCancel={onClose} onSave={settings => { setCreating(true); return run(async () => {
             if (copy) {
-              try { return await channel.importRoomCopy(copy, settings); }
+              try { return await channel.importRoomCopy(copy.file, settings); }
               catch (error) {
-                if (error instanceof Error && error.message === "room_restored_connection_failed") { setCompleted("reconnect"); return null; }
-                throw error;
+                const recovery = roomRestoreRecovery(error);
+                if (!recovery) throw error;
+                setCompleted(recovery);
+                return null;
               }
             }
             return { roomId: await channel.createRoom(settings, false), cached: true };
@@ -187,8 +188,8 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", creationPol
         {serverHosted ? <p className="c3-hosted-backup-note">{t("room.create.hostedBackupNote")}</p>
           : <details className="c3-settings-details"><summary>{t("room.backup.restore")}</summary>
           {inviteOnly && <p>{t("room.backup.inviteOnlyNote")}</p>}
-          <BackupControls run={run} disabled={!connected || busy} busy={backupBusy} replacing={false}
-            onRestore={async file => {
+          <BackupControls onClose={onClose} run={run} disabled={!connected || busy} busy={backupBusy} replacing={false}
+            onRecovery={setCompleted} onRestore={async file => {
               const result = await channel.restoreRoomBackup(file);
               onCreated(result.roomId);
               if (result.cached) onClose(); else setCompleted("restored-uncached");
@@ -333,7 +334,7 @@ function RoomSettings({ channel, room, onClose }: {
             disabled={!available || busy || removing} busy={backupBusy} />}
           {room.canManage && backupAvailable && <h3>{t("room.backup.title")}</h3>}
           {room.canManage && backupAvailable && inviteOnly && <p>{t("room.backup.inviteOnlyNote")}</p>}
-          {room.canManage && <BackupControls run={run} available={backupAvailable} disabled={!available || busy || removing || !backupAvailable}
+          {room.canManage && <BackupControls onClose={onClose} run={run} available={backupAvailable} disabled={!available || busy || removing || !backupAvailable}
             busy={backupBusy} onExport={() => channel.exportRoomBackup(room.id, includeFiles)} onRestore={async file => {
               try {
                 const result = await channel.restoreRoomBackup(file, room.id);

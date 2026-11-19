@@ -57,7 +57,7 @@ async function connect(t, join = {}) {
   const client = { socket, wait,
     async request(command) {
       const requestId = randomUUID();
-      const response = wait(event => event.requestId === requestId && ["ack", "error", "room_reply", "profiles"].includes(event.type), command.type);
+      const response = wait(event => event.requestId === requestId && ["ack", "error", "room_reply", "profiles", "room_created"].includes(event.type), command.type);
       socket.send(JSON.stringify({ ...command, requestId }));
       const result = await response;
       if (result.type === "error" || result.result?.type === "error") {
@@ -235,4 +235,22 @@ test("Server-owned private invitations admit new users, conceal content and revo
   assert.equal((await guest.request({ type: "history", roomId })).type, "error");
   assert.equal((await creator.request({ type: "unpublish", publicationId: privatePublication })).type, "ack");
   assert.equal((await creator.request({ type: "update_room", roomId, name: "Studio", icon: "couch", access: "public", hidden: false })).type, "ack");
+});
+
+test("a lightweight room cancellation round-trips on the current channel protocol", { timeout: 30_000 }, async t => {
+  const owner = await connect(t, { ownerKey });
+  assert.equal(owner.welcome.type, "welcome");
+  assert.equal(owner.welcome.protocol, CHANNEL_PROTOCOL);
+  const existing = owner.welcome.state.channel.rooms.find(room => room.available)
+    ?? (await owner.wait(event => event.type === "state" && event.state.channel.rooms.some(room => room.available),
+      "registered fixture room")).state.channel.rooms.find(room => room.available);
+  const reservation = await owner.request({ type: "create_room", room: {
+    id: randomUUID(), creatorId: owner.welcome.selfProfile.id, name: "Cancelled reservation",
+    icon: "couch", access: "public", hidden: false, hasPassword: false,
+  } });
+  assert.equal(reservation.type, "room_created");
+  assert.equal((await owner.request({ type: "cancel_room_creation", roomId: reservation.room.id })).type, "ack");
+  assert.equal((await owner.request({ type: "cancel_room_creation", roomId: existing.id })).type, "ack");
+  assert.equal((await owner.request({ type: "browse", roomId: existing.id, active: true })).type, "ack");
+  assert.equal((await owner.request({ type: "leave" })).type, "ack");
 });

@@ -177,7 +177,7 @@ export interface ChannelActions {
   roomBackupAvailable(roomId: string): Promise<boolean>;
   exportRoomBackup(roomId: string, includeFiles?: boolean): Promise<Blob>;
   exportRoomCopy(roomId: string, includeRoomInfo: boolean, includeFiles?: boolean): Promise<Blob>;
-  inspectRoomCopy(archive: Blob): Promise<Partial<RoomCopyInfo>>;
+  inspectRoomCopy(archive: Blob): Promise<{ settings: Partial<RoomCopyInfo>; retainedFileCount: number }>;
   importRoomCopy(archive: Blob, settings: RoomSettings): Promise<{ roomId: string; cached: boolean }>;
   restoreRoomBackup(archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }>;
   enterRoom(roomId: string, password: string): Promise<void>;

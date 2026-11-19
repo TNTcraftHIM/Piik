@@ -332,7 +332,7 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
     match result {
         Ok(room) => hub.send(connection, Event::RoomCreated { room, request_id }),
         Err(code) => {
-            hub.authority.cancel_room_reservation(&id);
+            hub.authority.cancel_room_reservation(connection, &id);
             hub.send(connection, Event::Error { code, request_id });
         }
     }

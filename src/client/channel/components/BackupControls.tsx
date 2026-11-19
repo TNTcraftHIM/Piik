@@ -1,17 +1,30 @@
 import { useRef, useState } from "react";
 import { downloadBlob } from "../../lib/download";
 import { useCopy } from "../../ui/copy";
+import { channelErrorPresentation } from "../error-presentation";
+import { roomRestoreRecovery, type RoomRestoreRecovery } from "../hosting-api";
 import { ChannelAction } from "./ChannelAction";
 import { ChannelSettingsError, useSettingsAction, type SettingsAction } from "./ChannelSettingsDialog";
 
+export function RoomRestoreResult({ message, unconfirmed = false, onClose }: {
+  message: string; unconfirmed?: boolean; onClose?: () => void;
+}) {
+  const { t } = useCopy();
+  return <div className="c3-backup-confirm">
+    <p role="status">{message}</p>
+    {onClose && <ChannelAction icon={unconfirmed ? "x" : "check"} primary label={t(unconfirmed ? "room.action.close" : "room.action.done")} onClick={onClose} />}
+  </div>;
+}
+
 /** File selection and confirmation are shared by backup consumers; the caller owns storage. */
-export function BackupControls({ disabled, busy, onExport, onRestore, replacing = true, available = true, kind = "room", run: dialogRun }: {
-  run?: SettingsAction; disabled?: boolean; busy: boolean; available?: boolean; onExport?: () => Promise<Blob>;
+export function BackupControls({ disabled, busy, onExport, onRestore, replacing = true, available = true, kind = "room", run: dialogRun, onClose, onRecovery }: {
+  run?: SettingsAction; onRecovery?: (recovery: RoomRestoreRecovery) => void; onClose?: () => void; disabled?: boolean; busy: boolean; available?: boolean; onExport?: () => Promise<Blob>;
   onRestore(file: File): Promise<{ cached: boolean } | void>; replacing?: boolean; kind?: "room" | "domain";
 }) {
   const { t } = useCopy();
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [recovery, setRecovery] = useState<RoomRestoreRecovery | null>(null);
   const [message, setMessage] = useState("");
   const local = useSettingsAction(!dialogRun);
   const run = dialogRun ?? local.run;
@@ -19,13 +32,22 @@ export function BackupControls({ disabled, busy, onExport, onRestore, replacing 
   const perform = <T,>(operation: "export" | "restore", work: () => Promise<T>, onSuccess?: (result: T) => void) => {
     setMessage(""); setActive(operation);
     void run(async () => {
-      try { return await work(); }
+      try { return { result: await work() }; }
       catch (error) {
-        if (error instanceof Error && (error.message === "domain_restored_connection_failed" || error.message === "room_restored_connection_failed")) setFile(null);
+        const result = operation === "restore" ? roomRestoreRecovery(error) : null;
+        if (result) {
+          if (onRecovery) onRecovery(result);
+          else setRecovery(result);
+          return null;
+        }
+        if (operation === "restore" && error instanceof Error && error.message === "domain_restored_connection_failed") setFile(null);
         throw error;
       }
-    }, onSuccess).finally(() => setActive(null));
+    }, outcome => { if (outcome) onSuccess?.(outcome.result); }).finally(() => setActive(null));
   };
+  if (recovery) return <RoomRestoreResult
+    message={channelErrorPresentation(recovery, t).message ?? ""}
+    unconfirmed={recovery === "room_restore_unconfirmed"} onClose={onClose} />;
   if (!available && !file && !message && !local.error) return null;
   return <section className="c3-backup-controls" aria-label={kind === "domain" ? t("channel.backupControls.siteBackup") : t("channel.backupControls.roomBackup")}>
     <p>{t(kind === "domain" ? "channel.backupControls.siteScopeNote" : "channel.backupControls.roomScopeNote")}</p>

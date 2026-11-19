@@ -108,15 +108,20 @@ impl Authority {
         .then_some(room.summary.creator_id)
     }
 
-    pub fn cancel_room_reservation(&mut self, room_id: &str) {
+    pub fn cancel_room_reservation(&mut self, connection: Uuid, room_id: &str) -> bool {
+        let Some(session) = self.channel.identity.session_for_connection(connection) else {
+            return false;
+        };
         if self
             .channel
             .remote
             .get(room_id)
-            .is_some_and(|room| room.reservation.is_some())
+            .is_some_and(|room| room.reservation == Some(session) && room.binding.is_none())
         {
             self.channel.remote.remove(room_id);
+            return true;
         }
+        false
     }
 
     /// The storage owner has confirmed that the retired room's records are gone.
@@ -276,6 +281,15 @@ impl Authority {
                         }
                     }
                     Err(code) => Self::error(connection, request.request_id, code, &mut effects),
+                }
+                return effects;
+            }
+            Command::CancelRoomCreation { room_id } => {
+                if self.cancel_room_reservation(connection, room_id) {
+                    self.broadcast(None, &mut effects);
+                }
+                if let Some(request_id) = request.request_id {
+                    effects.events.push((connection, Event::Ack { request_id }));
                 }
                 return effects;
             }

@@ -4,6 +4,12 @@ import { roomSchema, roomSummarySchema, type RoomSummary } from "./protocol";
 const descriptionSchema = z.object({ sessionId: z.uuid(), roomIds: z.array(roomSchema.shape.id) });
 export type NativeHostingDescription = z.infer<typeof descriptionSchema>;
 
+export type RoomRestoreRecovery = "room_restore_unconfirmed" | "room_restored_connection_failed";
+export function roomRestoreRecovery(error: unknown): RoomRestoreRecovery | null {
+  if (!(error instanceof Error)) return null;
+  return error.message === "room_restore_unconfirmed" || error.message === "room_restored_connection_failed" ? error.message : null;
+}
+
 /** The Native operator reports its live identity; a connected App alone is not room ownership. */
 export class NativeRoomHosting {
   constructor(private readonly roomsURL: string, private readonly authorization: HeadersInit,
@@ -18,8 +24,16 @@ export class NativeRoomHosting {
   }
 
   async restore(archive: Blob): Promise<RoomSummary> {
-    const value: unknown = await (await this.request(`${this.roomsURL}/backup`, archive)).json();
-    return z.object({ room: roomSummarySchema }).parse(value).room;
+    const response = await fetchHosting(`${this.roomsURL}/backup`, this.authorization, archive).catch(() => null);
+    const value: unknown = await response?.json().catch(() => null);
+    if (response?.ok) {
+      const result = z.object({ room: roomSummarySchema }).safeParse(value);
+      if (result.success) return result.data.room;
+    } else if (response && response.status >= 400 && response.status < 500) {
+      const failure = failureSchema.safeParse(value);
+      if (failure.success) throw new Error(failure.data.error);
+    }
+    throw new Error("room_restore_unconfirmed");
   }
 
   private async request(url: string, archive?: Blob): Promise<Response> {
@@ -42,13 +56,19 @@ export class NativeDomainHosting {
 }
 
 async function hostingRequest(url: string, authorization: HeadersInit, archive?: Blob, signal?: AbortSignal): Promise<Response> {
-  const headers = new Headers(authorization);
-  if (archive) headers.set("Content-Type", "application/zip");
-  const response = await fetch(url, { method: archive ? "PUT" : "GET", headers, body: archive, signal });
+  const response = await fetchHosting(url, authorization, archive, signal);
   if (!response.ok) {
     const value: unknown = await response.json().catch(() => null);
-    const failure = z.object({ error: z.string() }).safeParse(value);
+    const failure = failureSchema.safeParse(value);
     throw new Error(failure.success ? failure.data.error : "backup_failed");
   }
   return response;
+}
+
+const failureSchema = z.object({ error: z.string().min(1) });
+
+function fetchHosting(url: string, authorization: HeadersInit, archive?: Blob, signal?: AbortSignal): Promise<Response> {
+  const headers = new Headers(authorization);
+  if (archive) headers.set("Content-Type", "application/zip");
+  return fetch(url, { method: archive ? "PUT" : "GET", headers, body: archive, signal });
 }

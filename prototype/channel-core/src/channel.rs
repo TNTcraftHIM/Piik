@@ -148,6 +148,7 @@ impl Channel {
             }
             Command::HostRegister { .. }
             | Command::Conversation { .. }
+            | Command::CancelRoomCreation { .. }
             | Command::CreateRoom { .. }
             | Command::AdmitRoom { .. }
             | Command::DeleteRoom { .. }

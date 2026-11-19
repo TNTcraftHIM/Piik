@@ -14,7 +14,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
 export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 33;
+export const CHANNEL_PROTOCOL = 34;
 export const CHANNEL_SESSION_LIMIT = 128;
 export const CHANNEL_ROOM_LIMIT = 64;
 export const roomCreationPolicySchema = z.enum(["ordinary", "invite_only", "owner_only"]);
@@ -280,6 +280,7 @@ export type ChannelCommand =
   | { type: "input_register"; publicationId: string; flowId: string; secret: number[] }
   | { type: "host_register"; room: RoomSummary; resumeBinding?: string }
   | { type: "create_room"; room: RoomSummary; picture?: string; password?: string; allowServiceRelay?: boolean }
+  | { type: "cancel_room_creation"; roomId: string }
   | { type: "admit_room"; room: RoomSummary }
   | { type: "delete_room"; roomId: string; deleteData: boolean }
   | { type: "host_output"; roomId: string; output: unknown }

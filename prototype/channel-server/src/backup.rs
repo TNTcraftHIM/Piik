@@ -131,7 +131,7 @@ pub(crate) async fn restore(
         .map_err(|_| error(StatusCode::SERVICE_UNAVAILABLE, "hosting_unavailable"))?;
     let room = response
         .await
-        .map_err(|_| error(StatusCode::SERVICE_UNAVAILABLE, "hosting_unavailable"))?
+        .map_err(|_| error(StatusCode::SERVICE_UNAVAILABLE, "room_restore_unconfirmed"))?
         .map_err(|code| error(StatusCode::CONFLICT, code))?;
     Ok(Json(json!({"room":room})).into_response())
 }

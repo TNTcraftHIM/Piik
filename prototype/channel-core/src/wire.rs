@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 33;
+pub const CHANNEL_PROTOCOL: u8 = 34;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -82,6 +82,9 @@ pub enum Command {
     HostRegister {
         room: crate::host::RoomSummary,
         resume_binding: Option<Uuid>,
+    },
+    CancelRoomCreation {
+        room_id: String,
     },
     CreateRoom {
         room: crate::host::RoomSummary,

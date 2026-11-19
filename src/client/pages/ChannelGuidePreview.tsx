@@ -140,7 +140,7 @@ export function useChannelGuideSample(multiRoom = false) {
     inspectRoomCopy: async (file: Blob) => {
       const metadata = await readBackup(file);
       if (metadata.kind !== "room_copy") throw new Error("expected_room_copy");
-      return metadata.roomInfo ?? {};
+      return { settings: metadata.roomInfo ?? {}, retainedFileCount: metadata.retainedFiles.length };
     },
     exportRoomCopy: async () => { received(); throw new Error("preview_only"); },
     clearLocalRoomCache: async () => received(),

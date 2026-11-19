@@ -37,7 +37,7 @@ import { createOpaqueId } from "../lib/opaque-id";
 import { captureBrowserSource, setMediaPaused, type BrowserCaptureSource } from "../media/quality";
 import { loadCameraPreviews, type CameraPreview } from "../media/camera-previews";
 import { readBackup, writeBackup, type BackupMetadata, type RetainedBackupFile } from "./backup-archive";
-import { NativeDomainHosting, NativeRoomHosting } from "./hosting-api";
+import { NativeDomainHosting, NativeRoomHosting, roomRestoreRecovery } from "./hosting-api";
 import type { RetainedFile } from "./file-store";
 import { automaticVideoCodecPreference, manualVideoCodecPreference, supportsH264Receive, type BrowserVideoCodecMode, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
 import { preferredVideoCodecForTrack } from "../webrtc/video-codec-preflight";
@@ -1450,8 +1450,8 @@ export class ChannelSession {
   updateDomain = (settings: DomainSettings, reportError = true): Promise<void> => this.action("domain", () => this.request({ type: "update_domain", ...settings }), reportError);
   setRoomCreationPolicy = (policy: Extract<ChannelCommand, { type: "set_room_creation_policy" }>["policy"], reportError = true): Promise<void> =>
     this.action("domain", () => this.request({ type: "set_room_creation_policy", policy }), reportError);
-  private async allocateRoom(settings: RoomSettings): Promise<RoomSummary> {
-    const current = this.sessionContext();
+  private async allocateRoom(settings: RoomSettings) {
+    const current = this.sessionContext(), socket = this.socket;
     const serverHosted = this.view.state!.channel.hostingMode === "hosted";
     let room: RoomSummary | undefined;
     const password = settings.access === "private" && settings.password ? settings.password : undefined;
@@ -1461,34 +1461,48 @@ export class ChannelSession {
     });
     current();
     if (!room) throw new Error("invalid_response");
-    return room;
+    const roomId = room.id;
+    return { room, cancel: () => {
+      if (this.socket === socket) this.write({ type: "cancel_room_creation", roomId });
+    } };
   }
   createRoom = (settings: RoomSettings, reportError = true): Promise<string> => this.action("create-room", async () => {
     const app = this.app?.connected ? this.app : undefined;
-    const state = this.view.state, self = this.view.self, sessionId = this.view.sessionId;
-    if (!state || !self || !sessionId) throw new Error("disconnected");
-    const room = await this.allocateRoom(settings);
+    const current = this.sessionContext(), state = this.view.state!, self = this.view.self!;
+    const { room, cancel } = await this.allocateRoom(settings);
     if (state.channel.hostingMode === "hosted") {
       await this.request({ type: "browse", roomId: room.id, active: true });
       return room.id;
     }
-    const runtime = await loadRoomHosting(), roomId = room.id;
-    const policy = await runtime.createRoomPolicy({ ...settings, id: roomId, creatorId: self.id });
-    if (app) {
-      const room = await app.open(policy);
-      if (this.view.sessionId !== sessionId || this.closed) throw new Error("disconnected");
+    let mayCancel = true;
+    try {
+      const runtime = await loadRoomHosting();
+      const policy = await runtime.createRoomPolicy({ ...settings, id: room.id, creatorId: self.id });
+      current();
+      if (app) {
+        if (this.app !== app || !app.connected) throw new Error("app_disconnected");
+        mayCancel = false;
+        const opened = await app.open(policy);
+        current();
+        await this.request({ type: "browse", roomId: opened.id, active: true });
+        return opened.id;
+      }
+      const storage = await this.browserStorage(state.channel.id, self.id);
+      current();
+      const host = await storage.open(policy);
+      mayCancel = false;
+      try { current(); } catch (error) { await host.close(); throw error; }
+      this.hostedRooms.set(room.id, { host });
+      const summary = await host.summary();
+      current();
+      if (this.hostedRooms.get(room.id)?.host !== host) throw new Error("disconnected");
+      await this.request({ type: "host_register", room: summary });
       await this.request({ type: "browse", roomId: room.id, active: true });
       return room.id;
+    } catch (error) {
+      if (mayCancel) cancel();
+      throw error;
     }
-    const storage = await this.browserStorage(state.channel.id, self.id);
-    const host = await storage.open(policy);
-    if (this.view.sessionId !== sessionId || this.closed) { await host.close(); throw new Error("disconnected"); }
-    this.hostedRooms.set(roomId, { host });
-    const summary = await host.summary();
-    if (this.hostedRooms.get(roomId)?.host !== host || this.view.sessionId !== sessionId || this.closed) throw new Error("disconnected");
-    await this.request({ type: "host_register", room: summary });
-    await this.request({ type: "browse", roomId, active: true });
-    return roomId;
   }, reportError);
   private sessionContext(): () => void {
     const { sessionId, self, state } = this.view, socket = this.socket;
@@ -1634,13 +1648,8 @@ export class ChannelSession {
             metadata: async value => {
               owner.current();
               if (value.kind !== "room" || value.policy.id !== roomId || value.domainId !== this.view.state!.channel.id) throw new Error("invalid_backup");
-              metadata = value;
               stage = await (await loadRoomHosting()).BrowserRoomHost.stage(roomDatabaseName(value.domainId, this.view.self!.id), JSON.stringify(value.policy));
-            }, row: row => stage!.append(row), content(digest, file) {
-              for (const entry of metadata.retainedFiles.filter(entry => entry.attachment.sha256.toLowerCase() === digest)) {
-                retained.push({ key: { roomId, messageSeq: entry.messageSeq, attachmentId: entry.attachment.id }, attachment: entry.attachment, file });
-              }
-            },
+            }, row: row => stage!.append(row), content() {},
           });
           if (value.kind !== "room") throw new Error("invalid_backup");
           snapshot = stage; metadata = value;
@@ -1762,18 +1771,17 @@ export class ChannelSession {
   inspectRoomCopy = async (archive: Blob) => {
     const metadata = await readBackup(archive);
     if (metadata.kind !== "room_copy") throw new Error("expected_room_copy");
-    return metadata.roomInfo ?? {};
+    return { settings: metadata.roomInfo ?? {}, retainedFileCount: metadata.retainedFiles.length };
   };
 
   importRoomCopy = (archive: Blob, settings: RoomSettings): Promise<{ roomId: string; cached: boolean }> => this.action("room-backup", async () => {
     const current = this.sessionContext(), state = this.view.state!, self = this.view.self!;
-    const socket = this.socket;
     if (state.channel.hostingMode === "hosted") throw new Error("room_host_unavailable");
     const runtime = await loadRoomHosting();
     const policy = await runtime.createRoomPolicy({ ...settings, allowServiceRelay: false, id: crypto.randomUUID(), creatorId: self.id });
     current();
-    let stage: BrowserRoomStage | undefined, importer: BackupHistoryImport | undefined, converted: Blob;
-    let reservation: string | undefined;
+    let stage: BrowserRoomStage | undefined, importer: BackupHistoryImport | undefined;
+    let cancelReservation: (() => void) | undefined;
     const contents = new Map<string, File>();
     try {
       const metadata = await readBackup(archive, {
@@ -1788,23 +1796,23 @@ export class ChannelSession {
       });
       current(); importer!.finish();
       if (metadata.kind !== "room_copy") throw new Error("expected_room_copy");
-      const room = await this.allocateRoom(settings);
-      reservation = room.id;
-      converted = await writeBackup({ kind: "room", version: 3, domainId: state.channel.id,
+      const { room, cancel } = await this.allocateRoom(settings);
+      cancelReservation = cancel;
+      const converted = await writeBackup({ kind: "room", version: 3, domainId: state.channel.id,
         policy: { ...JSON.parse(policy), id: room.id }, retainedFiles: metadata.retainedFiles }, stage!.rows,
         async entry => contents.get(entry.attachment.sha256.toLowerCase())!);
       const finished = stage!;
       stage = undefined;
       await finished.close();
       current();
+      return await this.restoreRoomArchive(converted);
     } catch (error) {
-      if (reservation && this.socket === socket) this.write({ type: "delete_room", roomId: reservation, deleteData: false });
+      if (!roomRestoreRecovery(error)) cancelReservation?.();
       throw error;
     } finally {
       importer?.free();
       await stage?.close().catch(() => {});
     }
-    return this.restoreRoomArchive(converted);
   }, false);
 
   restoreRoomBackup = (archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }> =>
@@ -1880,9 +1888,8 @@ export class ChannelSession {
       const cached = await this.attachments.restoreRetained(target, entries);
       return { roomId: target, cached };
     } catch (error) {
-      if (committed || error instanceof Error && error.message === "room_restored_connection_failed") {
-        throw new Error("room_restored_connection_failed");
-      }
+      if (committed) throw new Error("room_restored_connection_failed");
+      if (roomRestoreRecovery(error)) throw error;
       await rollback?.();
       if (error instanceof Error && error.message === "room_not_in_domain") throw new Error("backup_room_not_admitted");
       throw error;

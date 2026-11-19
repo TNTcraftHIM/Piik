@@ -45,7 +45,12 @@ directory, search and invitation landing metadata. The operator can list
 their own public rooms in the shared lobby. A locked room that appears in
 a directory has different discovery behavior from an unlisted room.
 
-An abandoned room-creation reservation and a retired guest runtime must give back their live-room slots. Keep offline recovery data private and bounded separately from active room capacity. Removal by the channel owner still invalidates the prior registration. The public Demo can use a stable address even though visitor room hosts come and go.
+The channel reserves a live-room slot for the creating session until a writer
+binds. That session releases its reservation when creation fails before the
+writer takes over. After an uncertain restore, the creator checks the room
+list on reconnect before retrying. Stopping a guest runtime releases its
+live slot. Offline recovery records are private and have a separate limit.
+Removing the directory entry retires its binding.
 [Prosody MUC room creation](https://prosody.im/doc/modules/mod_muc)
 
 ### Reopening a room
@@ -115,8 +120,9 @@ independently on their devices.
 Room backups and copies preserve message descriptors and thumbnails. **Include
 file originals from this device** is enabled by default. The export packages
 matching originals the exporting device can read from local sources or cache.
-The archive's file inventory lists the originals it contains. Other attachments
-are identified by their descriptors in message history. On restore, a readable
+The file inventory counts message attachments with an included original. Two
+messages can reference the same original, which the ZIP stores once by digest.
+Other attachments are identified by their descriptors in message history. On restore, a readable
 original can become a live source again. Channel backups contain channel data
 and permitted room summaries.
 

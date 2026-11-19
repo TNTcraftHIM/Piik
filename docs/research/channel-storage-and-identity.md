@@ -568,8 +568,9 @@ remains unavailable rather than being recreated from its directory summary.
 
 Storage commit and renewed connectivity have separate outcomes. If room or domain
 data was restored but registration or reconnection fails, report that committed
-result, retain the restored identity and offer reconnection. Do not ask the user
-to reapply the archive or roll back the account after its data has been replaced.
+result and retain the restored identity for reconnection. If the Native room
+writer's reply is lost, report that the outcome is unknown. On reconnect the
+creator can check the room list before deciding whether to apply the archive again.
 
 A conversation export for reading contains no authentication secrets. A hosting
 backup needs private handling because it preserves authority. Exact export

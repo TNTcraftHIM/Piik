@@ -4050,15 +4050,18 @@ test("a room hosted by another page cannot block this page's other rooms from re
   } finally { session.close(); }
 });
 
-test("Browser hosting does not depend on automatic App activation", async () => {
+test.each(["registered", "retry-registration"])("Browser hosting does not depend on automatic App activation (%s)", async outcome => {
   const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue(null);
   const host = {
     roomId: "", summary: () => ({ id: host.roomId, name: "Browser room", icon: "couch", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false }),
     bind: async () => {}, close: async () => {},
   };
+  let storedPolicy: string | undefined;
+  vi.stubGlobal("indexedDB", {});
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
     createRoomPolicy: async (input: unknown) => JSON.stringify(input),
-    BrowserRoomHost: { open: async (_database: string, policy: string) => { host.roomId = JSON.parse(policy).id; return host; } },
+    BrowserRoomHost: { storedPolicies: async () => storedPolicy ? [storedPolicy] : [],
+      open: async (_database: string, policy: string) => { storedPolicy = policy; host.roomId = JSON.parse(policy).id; return host; } },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const { session, socket } = await setup();
   try {
@@ -4068,6 +4071,23 @@ test("Browser hosting does not depend on automatic App activation", async () => 
     acceptCreatedRoom(socket);
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === "host_register")).toBe(true));
     const register = socket.sent.find(command => command.type === "host_register")!;
+    if (outcome === "retry-registration") {
+      socket.receive({ type: "error", requestId: register.requestId, code: "room_host_conflict" });
+      await expect(creating).rejects.toThrow("room_host_conflict");
+      expect(socket.sent.some(command => command.type === "cancel_room_creation" || command.type === "delete_room")).toBe(false);
+      const state = structuredClone(session.getSnapshot().state!);
+      state.channel.rooms.push({ ...state.channel.rooms[0], ...host.summary(), available: false, delivery: undefined });
+      session.reconnect();
+      const resumed = ChannelSocket.current;
+      await resumed.onopen?.();
+      expect(resumed.sent.find(command => command.type === "join")).toMatchObject({ credential: "credential" });
+      resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+      await vi.waitFor(() => expect(resumed.sent).toContainEqual(expect.objectContaining({ type: "host_register", room: host.summary() })));
+      const retry = resumed.sent.find(command => command.type === "host_register")!;
+      resumed.receive({ type: "host_bound", roomId: host.roomId, bindingId: "retry-binding" });
+      resumed.receive({ type: "ack", requestId: retry.requestId });
+      return;
+    }
     socket.receive({ type: "host_bound", roomId: host.roomId, bindingId: "browser-binding" });
     socket.receive({ type: "ack", requestId: register.requestId });
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === "browse" && command.roomId === host.roomId)).toBe(true));
@@ -4077,6 +4097,23 @@ test("Browser hosting does not depend on automatic App activation", async () => 
     expect(discovery).not.toHaveBeenCalled();
     await expect(session.activateApp()).rejects.toThrow("app_disconnected");
     expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
+test.each(["policy", "open"])("Browser room creation cancels its reservation after %s fails", async failure => {
+  const { session, socket, stage, open } = await setupRoomBackup();
+  const runtime = await hosting.loadRoomHosting();
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...runtime, createRoomPolicy: async () => {
+    if (failure === "policy") throw new Error("policy_failed");
+    return stage.policy;
+  } });
+  if (failure === "open") open.mockRejectedValueOnce(new Error("open_failed"));
+  try {
+    await expect(session.createRoom({ name: "Browser room", icon: "couch", access: "public", hidden: false })).rejects.toThrow(failure + "_failed");
+    expect(socket.sent.filter(command => command.type === "cancel_room_creation")).toEqual([
+      expect.objectContaining({ roomId: "domain-created-room" }),
+    ]);
+    expect(socket.sent.some(command => command.type === "delete_room")).toBe(false);
   } finally { session.close(); }
 });
 
@@ -8800,11 +8837,20 @@ test("room restore releases staging when its session reconnects during append", 
   } finally { session.close(); }
 });
 
-test("a guest imports a room copy under the channel-assigned ID and opens its restored history", async () => {
+test.each(["success", "replace-failed", "registration-failed", "native-unconfirmed"] as const)("guest room copy under the channel-assigned ID: %s", async outcome => {
   const { session, socket, state, read, stage, metadata, row, nextHost } = await setupRoomBackup();
   state.channel.ownerId = "another-owner";
   socket.receive({ type: "state", state });
   const id = "domain-created-room";
+  if (outcome === "native-unconfirmed") {
+    vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+      domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+    const app = await startFixtureApp(session);
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    vi.spyOn(appLink.ChannelApp.prototype, "restoreRoom").mockRejectedValueOnce(new Error("room_restore_unconfirmed"));
+  }
   const runtime = await hosting.loadRoomHosting();
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...runtime, createRoomPolicy: async () => stage.policy,
     CopyHistoryImport: class { accept(line: string) { return line; } finish() {} free() {} },
@@ -8821,6 +8867,7 @@ test("a guest imports a room copy under the channel-assigned ID and opens its re
     return new Blob();
   });
   nextHost.summary = () => ({ ...metadata.policy, hasPassword: false });
+  if (outcome === "replace-failed") stage.replace.mockRejectedValueOnce(new Error("storage_failed"));
   vi.spyOn(session.attachments, "restoreRetained").mockResolvedValue(true);
   const send = socket.send.bind(socket);
   socket.send = data => {
@@ -8829,6 +8876,10 @@ test("a guest imports a room copy under the channel-assigned ID and opens its re
     if (request.room?.id !== id && request.roomId !== id) return;
     queueMicrotask(() => {
       if (request.type === "host_register") {
+        if (outcome === "registration-failed") {
+          socket.receive({ type: "error", requestId: request.requestId, code: "room_host_conflict" });
+          return;
+        }
         socket.receive({ type: "host_bound", roomId: id, bindingId: "copied-binding" });
         state.channel.rooms.push({ ...state.channel.rooms[0], id,
           delivery: { hostSessionId: "endpoint", bindingId: "copied-binding", nextHops: {} } });
@@ -8838,10 +8889,20 @@ test("a guest imports a room copy under the channel-assigned ID and opens its re
     });
   };
   try {
-    await expect(session.importRoomCopy(new Blob(), metadata.policy)).resolves.toEqual({ roomId: id, cached: true });
+    const importing = session.importRoomCopy(new Blob(), metadata.policy);
+    if (outcome === "success") {
+      await expect(importing).resolves.toEqual({ roomId: id, cached: true });
+      expect(socket.sent).toContainEqual(expect.objectContaining({ type: "browse", roomId: id }));
+    } else {
+      const expected = { "replace-failed": "storage_failed", "registration-failed": "room_restored_connection_failed", "native-unconfirmed": "room_restore_unconfirmed" };
+      await expect(importing).rejects.toThrow(expected[outcome]);
+    }
     expect(stage.append.mock.calls).toEqual([[row], [row]]);
-    expect(stage.replace).toHaveBeenCalledOnce();
-    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "browse", roomId: id }));
+    expect(stage.replace).toHaveBeenCalledTimes(outcome === "native-unconfirmed" ? 0 : 1);
+    expect(session.getSnapshot().self?.id).toBe("self");
+    expect(socket.sent.some(command => command.type === "delete_room")).toBe(false);
+    expect(socket.sent.filter(command => command.type === "cancel_room_creation")).toEqual(
+      outcome === "replace-failed" ? [expect.objectContaining({ roomId: id })] : []);
   } finally { session.close(); }
 });
 
@@ -8858,7 +8919,8 @@ test("room copy preserves the archive conversion failure when staging cleanup re
     stage.close.mockRejectedValueOnce(new Error("stage_cleanup_failed"));
     await expect(session.importRoomCopy(new Blob(), metadata.policy)).rejects.toThrow("archive_conversion_failed");
     expect(write.mock.calls[0][0]).toMatchObject({ policy: { id: "domain-created-room" } });
-    expect(socket.sent.at(-1)).toMatchObject({ type: "delete_room", roomId: "domain-created-room", deleteData: false });
+    expect(socket.sent.at(-1)).toMatchObject({ type: "cancel_room_creation", roomId: "domain-created-room" });
+    expect(socket.sent.some(command => command.type === "delete_room")).toBe(false);
     expect(stage.close).toHaveBeenCalledOnce();
   } finally { session.close(); }
 });
