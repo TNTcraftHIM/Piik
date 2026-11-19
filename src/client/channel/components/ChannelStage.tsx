@@ -350,7 +350,7 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
             <div><strong>{stageTitle(source, t)}</strong><small>{source.name}<span aria-hidden="true"> / </span>{source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}{source.paused ? ` / ${t("host.paused")}` : ""}</small></div>
           </div>
           {source.kind === "watch" ? <SourceAudience people={source.audience} joined /> : <SourceAudience people={source.audience} />}
-          <div className="c3-monitor-offer-actions">
+          <div className="c3-monitor-offer-actions" data-tooltip-controls>
             {source.kind === "watch" && !source.browserSource ? source.receiving?.peerAvailable && source.receiving.peerSupported ? null : source.onAppWatch
               ? <ChannelAction icon="window" label={t("watch.inApp")} disabled={!canSubscribe || source.available === false} busy={source.pending} onClick={source.onAppWatch} />
               : (source.originalPageAvailable || source.originalPageUnavailable) && <small>{source.originalPageUnavailable ?? t("watch.connectApp")}</small> : <ChannelAction icon="eye" label={t("screen.watch")}
