@@ -71,9 +71,10 @@ pub(super) fn available() -> Result<bool> {
     let Some(activation) = Activation::find()? else {
         return Ok(false);
     };
-    Ok(unsafe { activation.0.ActivateObject::<IMFTransform>() }
-        .and_then(|transform| transform.cast::<ICodecAPI>())
-        .is_ok())
+    // Drop the codec interface before its activation and COM apartment.
+    let codec_api = unsafe { activation.0.ActivateObject::<IMFTransform>() }
+        .and_then(|transform| transform.cast::<ICodecAPI>());
+    Ok(codec_api.is_ok())
 }
 
 pub(super) struct Encoder {
