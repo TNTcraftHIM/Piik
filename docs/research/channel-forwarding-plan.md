@@ -60,8 +60,15 @@ neighbors, cycles and multiple paths.
 Different rooms may overlap. Each endpoint pair has one transport owner and
 one pending connection attempt.
 
-The signaling authority supplies eligible candidates on demand. Only a current
-transport confirmed by the endpoints enters the usable graph. With n endpoints
+At time $t$, let $G_t=(V_t,E_t)$ be the channel graph. A vertex is an endpoint
+session. A pair $\{u,v\}$ enters $E_t$ when its two confirmations match the
+current connections of $u$ and $v$. A pending pair can already have demand.
+For a publication $p$ in room $r$, $E_{r,p}(t)$ contains the directions of
+confirmed pairs that the room authorizes and the payload can use. A relay
+assignment also requires capacity at the sending endpoint.
+[TransportBook](../../prototype/channel-core/src/transport.rs)
+
+The signaling authority supplies eligible candidates on demand. With n endpoints
 a full mesh has n(n−1)/2 pairs and n−1 neighbors per endpoint. Keeping at
 most d established neighbors per endpoint bounds the total by floor(nd/2).
 This physical resource budget is independent of the user's per-kind forwarding
@@ -136,12 +143,14 @@ when its capture source changes and expires when sharing stops. Changes use
 the existing route transition. The user's other publications, voice, file
 transfers and contributions keep their own limits.
 
-For a kind `k`, count a peer in `D[k]` from acceptance of its first forwarding
-assignment through preparation and active delivery. Release it after its last
-assignment of that kind ends or fails. With a custom limit `N`, each kind must
-satisfy `|D[k]| <= N`. Two screen flows to one peer use one screen slot and
-produce two outgoing streams. A pair carrying both voice and screen uses one
-physical connection and one slot in each of those two kinds.
+For sending endpoint $v$ and kind $k$, let $R_{v,k}$ be the set of distinct
+downstream endpoint IDs in proposed third-party forwarding assignments across
+its rooms in one snapshot. This includes assignments in preparation.
+With personal limit $L$, the admitted set $D_{v,k}$ satisfies
+$D_{v,k}\subseteq R_{v,k}$ and $|D_{v,k}|=\min(L,|R_{v,k}|)$. Auto removes
+that personal cap. Existing requests retain priority for available slots.
+Two screen flows to the same peer use one screen slot and produce two streams.
+Adding voice on that connection uses one voice slot. [ForwardingBudget](../../prototype/channel-core/src/forwarding.rs)
 
 When the last file relay to one downstream ends and the limit has space,
 the endpoint wakes rooms whose file demand it previously refused. Voice
@@ -356,22 +365,31 @@ edges from its subgraph using this payload's capabilities, room grants and
 current downstream counts. Missing edges are requests to the same channel
 pool. The planner consumes confirmations as they arrive.
 
-For each publication, a feasible tree has a path from its source to every
-served recipient and one parent per non-root vertex. Each intermediate endpoint
-must be eligible to forward that publication. For a new assignment to a
-downstream peer, apply the sender's per-kind count from
-[Contribution Budget](#contribution-budget). Sharing a physical pair or
-an existing slot can save setup. Distinct media copies, including old and
-new sends during a handoff, still consume real resources. Two receivers
-behind the same relay can share an upstream copy. Preserve working
-deliveries while admitting new demand.
+For a screen with source $s$, write $T$ for the selected delivery tree. Each
+non-root vertex has one parent and every parent chain ends at $s$. Relays can
+appear in $T$ without requesting the screen. If $Q_p$ contains the subscribed
+sessions, $A_p$ the sessions whose room-reported screen state is active, and
+$u(v)$ the user of session $v$, the displayed viewer count is
+$|\{u(v)\mid v\in Q_p\cap A_p,\ u(v)\ne u(s)\}|$. A received-frame report
+on the selected stream supplies the delivery proof. A prepared replacement
+may coexist with the selected route during handoff.
+[Room projection](../../prototype/channel-core/src/room.rs) · [Audience projection](../../src/client/channel/presentation.ts)
 
-The baseline preserves existing delivery and prefers the feasible plan that
-reaches more waiting receivers. At equal coverage prefer the older requests,
-lower extra upload and then lower path cost. Use the incumbent to break
-ties. Existing receivers may change parents after a successful handoff.
-Wait order applies within a planning snapshot. Measure individual waiting
-times as well as total coverage under sustained demand.
+Let $(w_1,\ldots,w_m)$ be the waiting endpoints considered in request order
+in one planning pass. Write $x_i(T)=1$ when $T$ assigns $w_i$ a parent, and
+$0$ otherwise. For the candidates it generates, the planner maximizes
+the following tuple in lexicographic order.
+
+$$
+\left(\sum_i x_i(T),\ (x_1(T),\ldots,x_m(T)),\ -|E(T)|,
+      -\sum_{i\,:\,x_i(T)=1} \operatorname{depth}_T(w_i)\right).
+$$
+
+The entries measure coverage, which requests can be served, total tree edges
+and total hop depth for the newly served requests. An edge is one planned
+delivery, irrespective of its bitrate. Each candidate extends existing
+delivery. A full tie keeps the earlier candidate. The tuple ranks assignments
+before the receivers report delivery. [Plan::extend_confirmed](../../prototype/channel-core/src/routes.rs)
 
 Reuse a flow already reaching the recipient. For a new branch, look up an
 [eligible relay path](#finding-a-relay-outside-the-publication).
@@ -384,9 +402,13 @@ a healthy direct hop. A shared relay can improve coverage for a group.
 The planner starts with the delivering tree. Its first candidate appends a
 short path per waiting receiver. Each eligible shared relay supplies another
 candidate by attaching its branch first and then serving the remaining receivers.
-Compare the completed candidates by coverage, waiting order and path cost.
-The existing plan wins ties. Check the gap
-against an exact constrained-tree solver on small graphs. Even the static
+Small graphs admit exact comparisons by enumerating feasible trees. If every
+non-source endpoint requests the screen, every edge counts, and each endpoint
+can send to at most one downstream, a feasible tree is a simple path. Its
+number of edges equals its viewer coverage. The
+[five-endpoint comparison](./network-lab.md#screen-coverage-on-five-endpoint-graphs)
+starts with an empty tree, confirmed pairs, eligible relays and no display helpers.
+Even the static
 minimum-cost directed Steiner tree with prescribed terminals is NP-hard.
 The paper's approximation bounds concern its stated cost and graph model.
 Piik also has fanout grants, changing links and handoff overlap.

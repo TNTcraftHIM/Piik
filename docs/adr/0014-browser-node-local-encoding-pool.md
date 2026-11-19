@@ -26,9 +26,13 @@ in [ADR-0011](./0011-browser-assisted-native-fanout.md) remains independently ow
 ## Decision
 
 1. A Browser source owner manages a bounded set of local encoding groups for
-   its direct children. Compatible consumers reuse one group; a missing
-   compatible output may require another group. No ancestor lookup, extra
-   upstream subscription, room-wide minimum or topology operation is introduced.
+   its direct children. A consumer $c$ and a healthy producer group $g$
+   are compatible when $K(c)=K(g)$. Here $K$ is the tuple of source track
+   identity, negotiated codec key and video quality profile. The profile
+   includes resolution, maximum frame rate, maximum bitrate and degradation
+   preference. Allocation and observed output determine whether to reuse a
+   compatible group. Current and pending consumers both keep a producer live.
+   [Browser encoding pool](../../src/client/media/browser-encoding-pool.ts)
 2. Each group uses stock WebRTC encoding and adaptation through an independent
    local producer. Each outgoing connection retains stock ICE, DTLS-SRTP,
    bandwidth estimation, RTP packetization, pacing and loss recovery. Piik

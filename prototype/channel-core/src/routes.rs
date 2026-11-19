@@ -1207,6 +1207,90 @@ impl BaseTree {
 mod tests {
     use super::*;
     #[test]
+    fn confirmed_routes_on_five_nodes_match_simple_path_bounds() {
+        // With one output per endpoint, any rooted delivery tree is a simple path.
+        fn longest_path(graph: &BTreeMap<Uuid, BTreeSet<Uuid>>, path: &mut Vec<Uuid>) -> usize {
+            let mut best = path.len() - 1;
+            for next in &graph[path.last().unwrap()] {
+                if !path.contains(next) {
+                    path.push(*next);
+                    best = best.max(longest_path(graph, path));
+                    path.pop();
+                }
+            }
+            best
+        }
+
+        let nodes = [0, 1, 2, 3, 4].map(Uuid::from_u128);
+        let source = nodes[0];
+        let viewers = &nodes[1..];
+        let relays = viewers.iter().copied().collect();
+        let limits = RelayLimits {
+            default: 1,
+            source_direct_limit: Some(1),
+            ..Default::default()
+        };
+        let edges: Vec<_> = nodes
+            .iter()
+            .enumerate()
+            .flat_map(|(i, &a)| nodes[i + 1..].iter().map(move |&b| (a, b)))
+            .collect();
+        let graph_count = 1 << edges.len();
+        let mut optimal_count = 0;
+        for mask in 0..graph_count {
+            let mut graph: BTreeMap<_, _> = nodes.map(|id| (id, BTreeSet::new())).into();
+            for (bit, &(a, b)) in edges.iter().enumerate() {
+                if mask & (1 << bit) != 0 {
+                    graph.get_mut(&a).unwrap().insert(b);
+                    graph.get_mut(&b).unwrap().insert(a);
+                }
+            }
+            let demand = ScreenDemand {
+                order: viewers,
+                neighbors: &graph,
+                relays: &relays,
+            };
+            let mut plan = Plan::new(source);
+            plan.extend_confirmed(&demand, &BTreeMap::new(), &limits);
+
+            assert!(!plan.parents.contains_key(&source), "graph {mask}");
+            let mut senders = BTreeSet::new();
+            for (&child, &parent) in &plan.parents {
+                assert!(
+                    graph[&parent].contains(&child),
+                    "unconfirmed edge in graph {mask}"
+                );
+                assert!(senders.insert(parent), "multiple outputs in graph {mask}");
+                let mut seen = BTreeSet::new();
+                let mut node = child;
+                while node != source {
+                    assert!(seen.insert(node), "cycle in graph {mask}");
+                    node = *plan
+                        .parents
+                        .get(&node)
+                        .expect("route must reach the source");
+                }
+            }
+            // An eligible neighbor of the free tail could be served by one more hop.
+            let tail = std::iter::once(&source)
+                .chain(plan.parents.keys())
+                .find(|node| !senders.contains(*node))
+                .expect("a finite path has a tail");
+            assert!(
+                graph[tail]
+                    .iter()
+                    .all(|neighbor| *neighbor == source || plan.parents.contains_key(neighbor)),
+                "unserved neighbor of the free tail in graph {mask}"
+            );
+            let optimum = longest_path(&graph, &mut vec![source]);
+            assert!(plan.parents.len() <= optimum, "graph {mask}");
+            if plan.parents.len() == optimum {
+                optimal_count += 1;
+            }
+        }
+        println!("optimal viewer coverage on {optimal_count}/{graph_count} five-node graphs");
+    }
+    #[test]
     fn waiting_screen_reuses_confirmed_chain_without_disturbing_other_viewers() {
         let [b, a, d, c, other] = [1, 2, 3, 4, 5].map(Uuid::from_u128);
         let mut neighbors = BTreeMap::<_, BTreeSet<_>>::new();

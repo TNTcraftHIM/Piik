@@ -15,7 +15,13 @@ prototype](#current-prototype-and-acceptance) for implementation scope.
 | Creator's device goes offline | The room goes offline when its hosting process stops. Its entry leaves the public lobby. Its own host can reopen its local data | The room stays available to permitted members while the Server runs |
 | Attachment originals | Participants provide the bytes during a live share. Recipients can save a local copy | The same participant file path |
 
-Starting a channel from App always uses lightweight mode. An App joining someone else's channel follows that channel's mode. At room creation the channel assigns one writer from its operating mode. The management identity and the machine doing the work are separate. Server media forwarding and peer routing retain their existing policies.
+An App starts a lightweight channel and follows the selected mode when joining
+another channel. For room $r$ at time $t$, let $W(r,t)$ be the set of valid
+bound writer processes. The invariant $|W(r,t)|\leq 1$ permits an offline room
+with no writer. The current writer commits a message before confirming it.
+Live history reads require a registered room, a serving writer and a session
+admitted by the room. The creator retains the management identity in both
+modes. [Room maintenance](#room-maintenance)
 
 ## Channel and room directory
 

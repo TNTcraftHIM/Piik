@@ -259,6 +259,26 @@ and 11 with early preparation. On-demand recovery remains the default because
 early preparation added one or two pair attempts when direct signaling succeeded,
 and the single blackhole comparison showed only a 74 ms first-frame difference.
 
+
+### Screen coverage on five-endpoint graphs
+
+At `b43edf0c`, all four receivers requested one source in a fixed order.
+Every endpoint could send to one downstream, all four receivers could relay,
+and the initial tree was empty. Across all $2^{10}=1{,}024$ labeled undirected
+graphs, the production planner matched the largest feasible viewer count in
+1,005 graphs. Enumerating simple paths from the source gave the exact count
+under these conditions. The Rust regression
+`confirmed_routes_on_five_nodes_match_simple_path_bounds` reproduces the comparison.
+
+For physical edges $(0,1),(0,2),(1,2),(1,3),(1,4),(2,3)$, the planned path was 0→1→2→3.
+The feasible path 0→2→3→1→4 serves all four. Trying one additional extension
+in reverse demand order and scoring it in the original request order reduced
+the number of misses from 19 to 10. It still missed this example. In a separate
+20-endpoint fixture with 12 requests and a default limit of two, coverage rose
+from three to four. Median cold planning time across five batches of 5,000
+runs rose from 38.2 to 48.4 µs. These comparisons concern planning on known
+links. [Delivery tree model](./channel-forwarding-plan.md#selecting-delivery-trees)
+
 ### Playable Route Improvement
 
 On 2026-11-14, a controlled trial reused the `64e6281e` screen-routing
