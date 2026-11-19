@@ -293,18 +293,23 @@ it("keeps return-to-source reachable for a healthy main player only while it ret
 });
 
 
-it("keeps an authority-reported screen delivery failure in the picture with an explicit retry", () => {
+it.each([
+  { awaitingRoute: true, deliveryFailed: false, paused: false, label: "screen.waitingRoute" },
+  { awaitingRoute: false, deliveryFailed: false, paused: false, label: "screen.connectingPicture" },
+  { awaitingRoute: true, deliveryFailed: true, paused: false, label: "screen.deliveryRetry" },
+  { awaitingRoute: true, deliveryFailed: true, paused: true, label: "host.pauseNotice" },
+] as const)("shows $label for a subscribed screen without a playable stream", ({ awaitingRoute, deliveryFailed, paused, label }) => {
   setCopy({ lang: "en" });
   const html = renderToStaticMarkup(createElement(ChannelStage, {
-    sources: [{ kind: "screen", id: "failed-picture", userId: "friend", name: "Friend", roomName: "Room",
+    sources: [{ kind: "screen", id: "picture", userId: "friend", name: "Friend", roomName: "Room",
       source: { kind: "screen", name: "Owned picture" }, title: null, owned: false, localSource: false,
-      subscribed: true, paused: false, audience: [], deliveryFailed: true }],
+      subscribed: true, paused, audience: [], awaitingRoute, deliveryFailed }],
     focusedId: null, canSubscribe: true, onFocus() {}, onWatch() {}, onUnwatch() {}, onRetryPicture() {}, onPause() {}, onStop() {},
     onInputPolicy: async () => {}, onInputDecide: async () => {}, onInputSimultaneous: async () => {}, onInputShortcut: async () => ({ key: 1, available: false }),
   }));
-  expect(html).toContain('data-publication-id="failed-picture"');
-  expect(html).toContain('data-failed="true"');
-  expect(html).toContain(t("en", "screen.deliveryRetry"));
-  expect(html).toContain('aria-label="' + t("en", "screen.retryPicture") + '"');
+  expect(html).toContain('data-publication-id="picture"');
+  expect(html.includes('data-failed="true"')).toBe(deliveryFailed && !paused);
+  expect(html).toContain(t("en", label));
+  expect(html.includes('aria-label="' + t("en", "screen.retryPicture") + '"')).toBe(!paused && (deliveryFailed || !awaitingRoute));
   expect(html).not.toContain(t("en", "channel.previewPage.reconnecting"));
 });

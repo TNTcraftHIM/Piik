@@ -259,6 +259,7 @@ export const zh = {
   "screen.localPreview": "本机预览",
   "screen.deliveryRetry": "画面传输失败，正在重试。",
   "screen.connectingPicture": "正在连接画面",
+  "screen.waitingRoute": "等待分配画面线路",
   "screen.focusNamed": "聚焦 {title}",
   "screen.returnToGrid": "返回平铺",
   "screen.sharingControls": "{title}的分享控制",

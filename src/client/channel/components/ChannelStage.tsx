@@ -69,6 +69,7 @@ export interface ScreenStageSource {
   audience: readonly ScreenAudiencePerson[];
   reactions?: MessageReactions;
   deliveryFailed?: boolean;
+  awaitingRoute?: boolean;
   stream?: MediaStream;
   sourceAudio?: SourceAudioControl;
   shareControls?: ReactNode;
@@ -299,10 +300,9 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
               label={`${title} / ${source.name} / ${source.roomName}`} />
               : <div className="c3-monitor-wait" data-failed={!source.paused && source.deliveryFailed || undefined} role="status">
                 {source.paused || source.deliveryFailed ? <Glyph name={source.paused ? "pause" : "x"} size={24} /> : <BrandLoader />}
-                <span>{source.paused ? t("host.pauseNotice") : source.deliveryFailed
-                  ? t("screen.deliveryRetry")
-                  : t("screen.connectingPicture")}</span>
-                {!source.owned && !source.localSource && onRetryPicture && <Btn icon="refresh" size="compact" quiet
+                <span>{t(source.paused ? "host.pauseNotice" : source.deliveryFailed ? "screen.deliveryRetry"
+                  : source.awaitingRoute ? "screen.waitingRoute" : "screen.connectingPicture")}</span>
+                {!source.paused && !source.owned && !source.localSource && (source.deliveryFailed || !source.awaitingRoute) && onRetryPicture && <Btn icon="refresh" size="compact" quiet
                   title="screen.retryPicture" cap="screen.retryPicture" disabled={!canSubscribe || source.pending}
                   onClick={() => onRetryPicture(source.id)} />}</div>}
             <footer>

@@ -181,6 +181,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const screens = publications.filter(value => value.kind === "screen");
   const mine = screens.filter(value => channel.ownedScreens.has(value.id));
   const watched = screens.filter(value => !channel.ownedScreens.has(value.id) && state?.subscriptions.includes(value.id));
+  const selectedInputs = new Set(state?.pairs.flatMap(pair => pair.incoming.filter(flow => flow.selected).map(flow => flow.publicationId)));
   const activeScreens = [...mine, ...watched];
   const watches = state?.watchActivities ?? [];
   const ownsWatch = (id: string) => watches.some(activity => activity.id === id && activity.sessionId === sessionId);
@@ -439,6 +440,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             paused: publication.paused, pausePending: publication.sessionId !== sessionId && busy("pause", publication.id),
             pauseAvailable: publication.sessionId === sessionId || connected,
             deliveryFailed: state?.failedSubscriptions.includes(publication.id),
+            awaitingRoute: connected && !channel.localScreens.has(publication.id) && !channel.ownedScreens.has(publication.id)
+              && state?.subscriptions.includes(publication.id) && !selectedInputs.has(publication.id),
             available: rooms.find(value => value.id === publication.roomId)?.available ?? false,
             subscribed: state?.subscriptions.includes(publication.id) ?? false, stream: streams.get(publication.id), inputs: channel.screenInputs.get(publication.id),
             interaction: channel.interactionsByRoom.get(publication.roomId) ?? null,

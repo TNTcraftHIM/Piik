@@ -261,6 +261,7 @@ export const en: Record<CopyKey, string> = {
   "screen.localPreview": "Local preview",
   "screen.deliveryRetry": "Picture delivery failed. Retrying.",
   "screen.connectingPicture": "Connecting picture",
+  "screen.waitingRoute": "Waiting for a video route",
   "screen.focusNamed": "Focus {title}",
   "screen.returnToGrid": "Return to grid",
   "screen.sharingControls": "Sharing controls: {title}",
