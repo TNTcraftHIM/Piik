@@ -8,6 +8,11 @@ import { buildVersion } from './release-version.mjs';
 import { recordChannelWeb, verifyChannelWeb } from './channel-web-artifact.mjs';
 import { assertCleanRevision } from './build-workspace.mjs';
 
+export function verifyCheckoutWeb(root, directory) {
+  const revision = assertCleanRevision(root);
+  return verifyChannelWeb(directory, { version: buildVersion(root, revision), revision });
+}
+
 /** @param {string} root @param {{ version: string; revision: string; cargoTarget?: string; web?: string }} options */
 export function buildChannelWeb(root, { version, revision, cargoTarget, web }) {
   if (web !== undefined) return verifyChannelWeb(web, { version, revision });

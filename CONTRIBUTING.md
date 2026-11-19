@@ -184,6 +184,9 @@ code instead of repeatedly running the full platform matrix for one candidate.
   [Run from source](./docs/README.md#run-from-source) first.
 - `npm run check:rust` owns the shared runtime, frontend build and protocol checks
   described by the [Rust verification owner](./prototype/channel-server/README.md#checks).
+  To test a packaged Web build, set `PIIK_CHANNEL_WEB_DIR` to its verified Web
+  directory and `PIIK_BUILD_VERSION` to its version in a clean checkout of the
+  matching commit. The check verifies the build receipt and tests those files.
   Capture is disabled here; desktop SDK compilation and physical capture/input
   acceptance belong to the platform checks.
 - `npm run typecheck` generates WASM before checking the shared UI, tooling/tests

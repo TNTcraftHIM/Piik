@@ -42,10 +42,10 @@ cargo("test", "native", "--no-default-features");
 // native_session launches the exact Native executable built above.
 cargo("test", "server");
 cargo("build", "server", "--bin", "piik-channel-prototype");
-const { buildChannelWeb } = await import(pathToFileURL(join(root, "scripts/build-channel-web.mjs")).href);
-env.PIIK_CHANNEL_WEB_DIR = buildChannelWeb(root, {
-  version: "development", revision: "development", cargoTarget: target,
-});
+const { buildChannelWeb, verifyCheckoutWeb } = await import(pathToFileURL(join(root, "scripts/build-channel-web.mjs")).href);
+env.PIIK_CHANNEL_WEB_DIR = env.PIIK_CHANNEL_WEB_DIR
+  ? verifyCheckoutWeb(root, env.PIIK_CHANNEL_WEB_DIR)
+  : buildChannelWeb(root, { version: "development", revision: "development", cargoTarget: target });
 run(process.execPath, ["node_modules/typescript/bin/tsc", "-p", "prototype/channel-browser/tsconfig.json"]);
 run(process.execPath, ["prototype/channel-server/run-browser-check.mjs", "--protocol"]);
 process.stdout.write("Rust, Web/WASM and protocol checks passed (capture disabled).\n");
