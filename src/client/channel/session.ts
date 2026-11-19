@@ -12,6 +12,7 @@ import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
 import { selectedRoom } from "./navigation";
+import { RoomReadMarkers } from "./read-markers";
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
 import { messageRemoved, type ChannelActions, type ChannelView, type ChatOptions, type RoomHistoryChanges, type ScreenPresentation, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
@@ -212,7 +213,7 @@ export class ChannelSession {
   private listeners = new Set<() => void>();
   private profileLoads = new Map<string, Promise<void>>();
   private missingProfiles = new Set<string>();
-  private readMarkerKey: string | null = null;
+  private readonly readMarkers = new RoomReadMarkers();
   private socket: WebSocket | null = null;
   private forwardingBudget: ReturnType<ChannelConversation["forwardingBudget"]>;
   private forwardingState: ChannelSnapshot | undefined;
@@ -657,7 +658,7 @@ export class ChannelSession {
       && [...this.watching.values()].some(watch => watch.helperSessionId && !state.sessions.some(endpoint => endpoint.id === watch.helperSessionId))
       && state.sessions.some(endpoint => endpoint.userId === userId && endpoint.online
         && !this.view.state?.sessions.some(previous => previous.id === endpoint.id && previous.online));
-    const readByRoom = this.readMarkers(state, userId);
+    const readByRoom = this.readMarkers.project(state.channel.id, userId, state.channel.rooms);
     for (const id of this.admittedPublications) {
       if (!state.publications.some(publication => publication.id === id)) {
         const roomId = this.local.get(id)?.roomId;
@@ -1414,38 +1415,18 @@ export class ChannelSession {
     if (!this.view.messagesByRoom[roomId]?.some(message => message.seq === seq)) throw new Error("message_unavailable");
   };
 
-  private readMarkers(state: ChannelSnapshot, userId = state.sessions.find(session => session.id === this.view.sessionId)?.userId): Record<string, number> {
-    if (!userId) { this.readMarkerKey = null; return {}; }
-    const key = `piik.channel.read.${state.channel.id}.${userId}`;
-    let saved: Record<string, number> = {};
-    try { saved = z.record(z.string(), z.number().int().nonnegative()).parse(JSON.parse(stored(key) ?? "{}")); } catch { /* Local reading preferences can be reset. */ }
-    const previous = this.readMarkerKey === key ? this.view.readByRoom : {};
-    this.readMarkerKey = key;
-    const markers = Object.fromEntries(state.channel.rooms.filter(room => room.authorized).map(room => {
-      const read = Math.max(saved[room.id] ?? 0, previous[room.id] ?? 0);
-      return [room.id, room.available ? Math.min(room.lastMessageSeq, saved[room.id] === undefined && previous[room.id] === undefined ? room.lastMessageSeq : read) : read];
-    }));
-    if (JSON.stringify(markers) !== JSON.stringify(saved)) stored(key, JSON.stringify(markers));
-    return markers;
-  }
-
   refreshReadMarkers = (event?: StorageEvent): void => {
-    if (event?.key != null && event.key !== this.readMarkerKey) return;
     const state = this.view.state;
-    if (state) this.patch({ readByRoom: this.readMarkers(state) });
+    if (!state) return;
+    const readByRoom = this.readMarkers.refresh(state.channel.rooms, event?.key);
+    if (readByRoom !== this.view.readByRoom) this.patch({ readByRoom });
   };
 
   markRead = (roomId: string, seq: number): void => {
     const state = this.view.state;
-    const room = state?.channel.rooms.find(room => room.id === roomId && room.authorized);
-    if (!state || !room) return;
-    const current = this.readMarkers(state);
-    if (!this.readMarkerKey) return;
-    const read = Math.min(seq, room.lastMessageSeq);
-    if ((current[roomId] ?? 0) >= read) return;
-    const readByRoom = { ...current, [roomId]: read };
-    stored(this.readMarkerKey, JSON.stringify(readByRoom));
-    this.patch({ readByRoom });
+    if (!state) return;
+    const readByRoom = this.readMarkers.advance(state.channel.rooms, roomId, seq);
+    if (readByRoom !== this.view.readByRoom) this.patch({ readByRoom });
   };
   private requestHistory(roomId: string, before?: number, replace = false, options: { clearError?: boolean } = {}): Promise<void> {
     const reading = this.reading?.roomId === roomId ? this.reading : null;

@@ -9622,11 +9622,40 @@ test("image-heavy reading windows stay bounded while older records remain reacha
   } finally { session.close(); }
 });
 
-test("read markers stay personal and do not turn background room activity into reading", async () => {
+test("a tab with a partial room view preserves the shared identity's read cursors", async () => {
   const { session, socket } = await setup(1000, false, "");
   const storage = new Map<string, string>();
   vi.stubGlobal("localStorage", { getItem: (key: string) => storage.get(key) ?? null,
     setItem: (key: string, value: string) => storage.set(key, value) });
+  const state = structuredClone(session.getSnapshot().state!);
+  const key = `piik.channel.read.${state.channel.id}.${session.getSnapshot().self!.id}`;
+  try {
+    const [publicRoom, privateRoom] = state.channel.rooms;
+    publicRoom.lastMessageSeq = 5;
+    state.channel.rooms = [publicRoom];
+    socket.receive({ type: "state", state });
+    const saved = JSON.stringify({ [publicRoom.id]: 1, [privateRoom.id]: 7 });
+    storage.set(key, saved);
+    session.refreshReadMarkers({ key, newValue: saved } as StorageEvent);
+    session.markRead(publicRoom.id, 3);
+    expect(session.getSnapshot().readByRoom).toEqual({ [publicRoom.id]: 3 });
+    expect.soft(JSON.parse(storage.get(key)!)).toEqual({ [publicRoom.id]: 3, [privateRoom.id]: 7 });
+
+    const newer = JSON.stringify({ [publicRoom.id]: 8, [privateRoom.id]: 7 });
+    storage.set(key, newer);
+    session.refreshReadMarkers({ key, newValue: newer } as StorageEvent);
+    expect.soft(JSON.parse(storage.get(key)!)).toEqual({ [publicRoom.id]: 8, [privateRoom.id]: 7 });
+    publicRoom.lastMessageSeq = 8;
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().readByRoom).toEqual({ [publicRoom.id]: 8 });
+  } finally { session.close(); }
+});
+test("read markers stay personal and do not turn background room activity into reading", async () => {
+  const { session, socket } = await setup(1000, false, "");
+  const storage = new Map<string, string>();
+  const getItem = vi.fn((key: string) => storage.get(key) ?? null);
+  const setItem = vi.fn((key: string, value: string) => storage.set(key, value));
+  vi.stubGlobal("localStorage", { getItem, setItem });
   const state = structuredClone(session.getSnapshot().state!);
   const key = `piik.channel.read.${state.channel.id}.${session.getSnapshot().self!.id}`;
   try {
@@ -9642,8 +9671,21 @@ test("read markers stay personal and do not turn background room activity into r
     session.markRead("first", 99);
     expect(JSON.parse(storage.get(key)!)).toEqual({ first: 5, second: 0 });
     storage.set(key, JSON.stringify({ first: 5, second: 4 }));
-    session.refreshReadMarkers();
+    session.refreshReadMarkers({ key, newValue: storage.get(key)! } as StorageEvent);
     expect(session.getSnapshot().readByRoom.second).toBe(4);
+    state.channel.rooms[1].available = false;
+    state.channel.rooms[1].lastMessageSeq = 0;
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().readByRoom.second).toBe(4);
+    state.channel.rooms[1].available = true;
+    state.channel.rooms[1].lastMessageSeq = 8;
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().readByRoom.second).toBe(4);
+    getItem.mockClear();
+    setItem.mockClear();
+    for (let index = 0; index < 20; index++) socket.receive({ type: "state", state });
+    expect(setItem.mock.calls.filter(([name]) => name === key)).toHaveLength(0);
+    expect(getItem.mock.calls.filter(([name]) => name === key)).toHaveLength(0);
     state.channel.rooms[0].lastMessageSeq = 1;
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().readByRoom.first).toBe(1);
