@@ -50,3 +50,4 @@
 
 .c3-settings-panels :is(.c3-room-relay, .c3-room-transcript) { margin-top: 0; padding-top: 0; border-top: 0; }
 .c3-settings-panels .c3-backup-controls { margin-top: 0; }
+.c3-connection-help { max-width: 42ch; text-align: center; }

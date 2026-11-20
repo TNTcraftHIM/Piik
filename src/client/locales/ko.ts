@@ -328,6 +328,7 @@ export const ko = {
   "channel.roomTool.popOutRoom": "방을 별도 창으로 열기",
   "channel.roomTool.interact": "소통",
   "channel.siteEntry.connectionHelp": "연결 도움말",
+  "channel.siteEntry.connectionAdvice": "다른 브라우저나 네트워크에서 같은 사이트 링크를 열어 보세요. 그래도 연결되지 않으면 여기에 표시된 오류 메시지 전체를 기록하세요.",
   "channel.siteEntry.connecting": "연결 중",
   "channel.siteEntry.connectionFailed": "이 사이트에 연결하지 못했어요",
   "channel.siteEntry.retrySavedIdentity": "저장된 계정으로 다시 시도",

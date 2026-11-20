@@ -327,6 +327,7 @@ export const ja = {
   "channel.roomTool.popOutRoom": "ルームを別ウィンドウで開く",
   "channel.roomTool.interact": "交流",
   "channel.siteEntry.connectionHelp": "接続のヘルプ",
+  "channel.siteEntry.connectionAdvice": "同じサイトのリンクを別のブラウザーまたはネットワークで開いてください。それでも接続できない場合は、ここに表示されるエラーの全文を控えてください。",
   "channel.siteEntry.connecting": "接続中",
   "channel.siteEntry.connectionFailed": "このサイトに接続できませんでした",
   "channel.siteEntry.retrySavedIdentity": "保存済みのアカウントで再試行",

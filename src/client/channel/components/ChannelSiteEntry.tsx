@@ -1,8 +1,6 @@
 import { useCopy } from "../../ui/copy";
-import { useProjectLink } from "../../lib/use-project-link";
 import { Glyph } from "../../ui/icons";
 import { BrandLoader } from "../../components/living/BrandMark";
-import { Tooltip } from "../../components/living/Tooltip";
 import type { ChannelController } from "../types";
 import type { ChannelErrorPresentation } from "../error-presentation";
 import { ChannelAction } from "./ChannelAction";
@@ -13,13 +11,10 @@ export function ChannelSiteEntry({ channel, failure }: {
   channel: Pick<ChannelController, "connection" | "error" | "reconnect" | "joinAsNewIdentity">;
   failure: ChannelErrorPresentation;
 }) {
-  const { lang, t } = useCopy();
-  const chineseGuide = lang.startsWith("zh");
+  const { t } = useCopy();
   const connecting = channel.connection === "connecting" || channel.connection === "reconnecting";
   const identityRejected = channel.error === "invalid_credential";
   const showConnectionHelp = !connecting && failure.connectionHelp;
-  const guide = useProjectLink(`/docs/${chineseGuide ? "zh/" : ""}troubleshooting.html#${chineseGuide ? "常见问题" : "common-problems"}`,
-    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/troubleshooting${chineseGuide ? ".zh-CN" : ""}.md#${chineseGuide ? "常见问题" : "common-problems"}`, showConnectionHelp);
   const helpLabel = t("channel.siteEntry.connectionHelp");
   const title = connecting ? t("channel.siteEntry.connecting") : t("channel.siteEntry.connectionFailed");
   return <main className="c3-locked-room c3-site-entry" aria-labelledby="c3-site-entry-title">
@@ -34,10 +29,9 @@ export function ChannelSiteEntry({ channel, failure }: {
             <p>{t("channel.siteEntry.newIdentityNote")}</p>
           </>}
         </>}
-    {showConnectionHelp && <Tooltip kind="hint-help" text={helpLabel}>
-      <a className="lr-btn is-compact is-quiet" href={guide} target="_blank" rel="noopener noreferrer" aria-label={helpLabel}>
-        <Glyph name="book" size={18} /><span className="lr-cap">{helpLabel}</span>
-      </a>
-    </Tooltip>}
+    {showConnectionHelp && <details className="c3-connection-help">
+      <summary className="lr-btn is-compact is-quiet"><Glyph name="book" size={18} />{helpLabel}</summary>
+      <p>{t("channel.siteEntry.connectionAdvice")}</p>
+    </details>}
   </main>;
 }

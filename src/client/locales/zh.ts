@@ -419,6 +419,7 @@ export const zh = {
   "channel.roomTool.popOutRoom": "弹出房间小窗",
   "channel.roomTool.interact": "互动",
   "channel.siteEntry.connectionHelp": "连接问题排查",
+  "channel.siteEntry.connectionAdvice": "用另一款浏览器或换个网络打开同一站点链接。如果仍然失败，请记下页面显示的完整错误。",
   "channel.siteEntry.connecting": "正在连接",
   "channel.siteEntry.connectionFailed": "未能连接此站点",
   "channel.siteEntry.retrySavedIdentity": "重试原身份",

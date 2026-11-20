@@ -421,6 +421,7 @@ export const en: Record<CopyKey, string> = {
   "channel.roomTool.popOutRoom": "Pop out room",
   "channel.roomTool.interact": "Interact",
   "channel.siteEntry.connectionHelp": "Connection help",
+  "channel.siteEntry.connectionAdvice": "Open the same site link in another browser or on another network. If it still fails, save the exact error shown here.",
   "channel.siteEntry.connecting": "Connecting",
   "channel.siteEntry.connectionFailed": "Could not connect to this site",
   "channel.siteEntry.retrySavedIdentity": "Retry saved identity",

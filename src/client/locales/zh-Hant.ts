@@ -327,6 +327,7 @@ export const zhHant = {
   "channel.roomTool.popOutRoom": "將房間以小視窗開啟",
   "channel.roomTool.interact": "互動",
   "channel.siteEntry.connectionHelp": "連線疑難排解",
+  "channel.siteEntry.connectionAdvice": "使用其他瀏覽器或網路開啟同一個站點連結。如果仍然失敗，請記下頁面顯示的完整錯誤。",
   "channel.siteEntry.connecting": "正在連線",
   "channel.siteEntry.connectionFailed": "未能連線此站點",
   "channel.siteEntry.retrySavedIdentity": "重試原身分",
