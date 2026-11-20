@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { AppPage } from "../src/client/channel/app-link";
-import { observeWatchSources, PageSuppliedMedia } from "../src/client/channel/watch-page-media";
+import { observeWatchSources, PageSuppliedMedia, preparePortableWatchMedia } from "../src/client/channel/watch-page-media";
 import * as indexedSource from "../src/client/channel/watch-indexed-source";
 import { HTMLVideoMedia } from "../src/client/channel/watch-media";
 class Video extends EventTarget {
@@ -56,4 +56,16 @@ test.each(['unsubscribe', 'caller', 'page'] as const)('page-source %s retirement
     expect(request.mock.calls.filter(([command]) => command.type === 'page_media_sources')).toHaveLength(1);
     expect(observeResources).toHaveBeenCalledOnce(); expect(observePage).toHaveBeenCalledOnce();
   } finally { observer.unsubscribe(); page.close(); }
+});
+
+test('leaving while preparing main playback keeps the original page playing', async () => {
+  const video = new Video(), selection = new AbortController();
+  vi.stubGlobal('document', { createElement: () => video });
+  const page = new AppPage(crypto.randomUUID(), 'https://source.test/video', vi.fn(), vi.fn(), vi.fn());
+  vi.spyOn(page, 'read').mockResolvedValue({ position: 12, rate: 1, paused: false, readyState: 4, duration: 30, ended: false, buffered: [] });
+  const pausePage = vi.spyOn(page, 'patch').mockResolvedValue();
+  vi.spyOn(HTMLVideoMedia.prototype, 'patch').mockImplementation(async () => { selection.abort(); });
+  await expect(preparePortableWatchMedia(page, 'https://source.test/file.mp4', selection.signal, 'file')).rejects.toMatchObject({ name: 'AbortError' });
+  expect(pausePage).not.toHaveBeenCalled();
+  expect(video.src).toBe('');
 });

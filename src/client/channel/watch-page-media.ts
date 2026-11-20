@@ -83,8 +83,10 @@ async function prepareMainPlayback(page: AppPage, media: HTMLVideoMedia, signal:
     const state = main.live ? undefined : await page.read();
     signal.throwIfAborted();
     await media.patch({ ...(state && { position: state.position, rate: state.rate }), paused: true });
+    signal.throwIfAborted();
     // The main player starts after room confirmation; avoid overlapping original-page sound.
     await page.patch({ paused: true });
+    signal.throwIfAborted();
   } catch (error) { media.close(); throw error; }
 }
 
