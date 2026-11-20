@@ -52,7 +52,9 @@ Keep a platform difference beside the step it changes. Put configuration
 tables, diagnostic commands and protocol details in the relevant reference.
 Name the person taking the action and the control they will see. For a value
 such as an address, say where to find it and where to use it. Name links for
-the task or destination. Lead with
+the task or destination. The documentation home and the sidebar use the
+destination's page or section title. In the product, place the relevant help
+beside the symptom and link directly to its solution. Lead with
 the answer or the first action, then say what success looks like. If it fails,
 use an observable difference to choose the next check. Verify each language's
 links, search terms and headings against realistic questions on a phone and desktop.

@@ -1,15 +1,15 @@
 # Your first Piik room
 
-English · [简体中文](./getting-started.zh-CN.md) · [Help center](./README.md)
+English · [简体中文](./getting-started.zh-CN.md) · [Documentation](./README.md)
 
 - [Watch a friend’s screen](#join-a-friends-room)
-- [Share from your browser](#use-piik-online) or [share with Piik App](#share-with-piik-app)
+- [Share from your browser](#share-your-screen-in-a-browser) or [share with Piik App](#share-with-piik-app)
 
 ## Join a friend's room
 
 1. Open the invitation link your friend sent in a browser on your phone or computer. You can watch without installing Piik App or creating an account.
 2. If Piik asks for a **Site passphrase** as soon as you open the link, ask your friend for the passphrase for that site. If the room shows **Enter room password**, select it, enter the password for that room and select **Join**. An invitation with **Skip passwords** takes you straight to the room.
-3. You’re watching when your friend’s picture appears. If you see a **Play** button, press it. Tap the picture or move your pointer over it for [playback controls](./sharing.md#playback-controls).
+3. If you see a **Play** button on your friend’s picture, select it. Tap the picture or move your pointer over it for [playback controls](./sharing.md#playback-controls).
 
 If you received only a four-digit room code, ask your friend for their Piik site address. Open that address, enter the **Site passphrase** if prompted, then select **Join a room**. Enter the four digits and select the arrow to join.
 
@@ -19,22 +19,24 @@ If you received only a four-digit room code, ask your friend for their Piik site
 
 [Get help joining or watching](./troubleshooting.md#common-problems).
 
-## Use Piik online
+<a id="use-piik-online"></a>
+
+## Share your screen in a browser
 
 1. Open [demo.piik.tv](https://demo.piik.tv) in your browser. You can share without an account or download.
 2. Select **Start sharing**. Choose **Browser** to share a screen, window, or tab, or **Camera** to share your camera. Pick what you want viewers to see and enable audio if the picker offers it.
-3. When your picture appears in the preview, select **Copy** in the **Admission** row and send the invitation to your friends. You can also show the room’s **QR code** for them to scan.
+3. When your picture appears in the preview, select **Copy** beside the invitation link and send the invitation to your friends. You can also show the room’s **QR code** for them to scan.
 4. Keep the sharing tab open while friends watch. Select **Stop sharing** when you’re done.
 
 For iPhone or iPad, see [screen sharing in Safari](./sharing.md#iphone-and-ipad-screen-sharing). If you can’t start sharing, see [sharing troubleshooting](./troubleshooting.md#starting-a-share).
 
-![The room’s admission controls include Copy and QR code. The link shown is an example.](../assets/guide/invite-copy.en.png)
+![The invitation link has Copy and QR code buttons. The link shown is an example.](../assets/guide/invite-copy.en.png)
 
 ![The invitation QR code opens in a small panel. Ask your friend to scan the code from your own room.](../assets/guide/invite-qr.en.png)
 
 ## Share with Piik App
 
-On iPhone or iPad, [use Piik in Safari](#use-piik-online).
+On iPhone or iPad, [use Piik in Safari](#share-your-screen-in-a-browser).
 
 1. Download **Piik App** for your platform from
    [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) or the
@@ -46,8 +48,8 @@ On iPhone or iPad, [use Piik in Safari](#use-piik-online).
 3. Choose **Public invite** for friends outside your local network, then select
    **Open Piik**. Other modes are explained below.
 4. Choose **Start sharing**, then select **Browser**, **Camera**, **Apps / Windows**, or
-   **Screens** as available. Pick the actual source and sound option.
-5. In **Admission**, select **Copy** and send the invitation to your friends. Keep both the App and sharing tab open.
+   **Screens** as available. Choose what friends should see and turn on sound if you want them to hear it.
+5. Select **Copy** beside the invitation link and send it to your friends. Keep both the App and sharing tab open.
 
 ![App source selector with Browser, Camera, Apps / Windows and Screens tabs, window previews and source-audio controls.](../assets/guide/share-source.en.png#gh-light-mode-only)
 ![App source selector with Browser, Camera, Apps / Windows and Screens tabs, window previews and source-audio controls.](../assets/guide/share-source.en.dark.png#gh-dark-mode-only)

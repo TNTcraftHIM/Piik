@@ -57,7 +57,7 @@ export default defineConfig({
         outline: { level: [2, 3], label: '本页内容' },
         docFooter: { prev: '上一页', next: '下一页' },
         editLink: { pattern: editPattern, text: '在 GitHub 上改进此页' },
-        sidebarMenuLabel: '帮助目录', returnToTopLabel: '回到顶部', darkModeSwitchLabel: '外观',
+        sidebarMenuLabel: '文档目录', returnToTopLabel: '回到顶部', darkModeSwitchLabel: '外观',
         lightModeSwitchTitle: '切换浅色', darkModeSwitchTitle: '切换深色', langMenuLabel: '切换语言',
         skipToContentLabel: '跳到正文',
       },
@@ -76,7 +76,7 @@ export default defineConfig({
       provider: 'local',
       options: {
         translations: {
-          button: { buttonText: 'Search the Help Center', buttonAriaLabel: 'Search the Help Center' },
+          button: { buttonText: 'Search Piik Documentation', buttonAriaLabel: 'Search Piik Documentation' },
           modal: { displayDetails: 'Show result excerpts', resetButtonTitle: 'Clear search terms', backButtonTitle: 'Close search' },
         },
         miniSearch: {
@@ -87,7 +87,7 @@ export default defineConfig({
         },
         locales: {
           zh: { translations: {
-            button: { buttonText: '搜索帮助中心', buttonAriaLabel: '搜索帮助中心' },
+            button: { buttonText: '搜索 Piik 文档中心', buttonAriaLabel: '搜索 Piik 文档中心' },
             modal: {
               displayDetails: '显示结果摘要', resetButtonTitle: '清除搜索词', backButtonTitle: '关闭搜索',
               noResultsText: '没有找到相关帮助：',

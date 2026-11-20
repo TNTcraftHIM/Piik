@@ -3,13 +3,13 @@ layout: page
 pageClass: help-home
 sidebar: false
 search: false
-title: Piik Help Center
+title: Piik Documentation
 description: Join a room, share your screen, and fix common problems with Piik.
 ---
 
 <header class="help-hero">
 
-# Piik Help Center
+# Piik Documentation
 
 Try searching for “can’t join”, “no sound”, or “joystick”.
 
@@ -25,9 +25,9 @@ Try searching for “can’t join”, “no sound”, or “joystick”.
 
 - [Join a friend's room](./getting-started.md#join-a-friends-room)<br>
   Use an invitation link or a four-digit room code.
-- [Share my screen](./getting-started.md#use-piik-online)<br>
-  Start in your browser and send an invitation to friends.
-- [Use my phone as a gamepad](./remote-control.md#play-on-your-phone-with-the-on-screen-joystick)<br>
+- [Share your screen in a browser](./getting-started.md#share-your-screen-in-a-browser)<br>
+  Open the online site and send friends an invitation link.
+- [Play on your phone with the on-screen joystick](./remote-control.md#play-on-your-phone-with-the-on-screen-joystick)<br>
   Request control and move with the on-screen joystick.
 
 </section>
@@ -36,13 +36,13 @@ Try searching for “can’t join”, “no sound”, or “joystick”.
 
 ## Fix a problem
 
-- [I’m in the room but can’t see the shared screen](./no-media-route.md)
-- [My invitation won’t open](./troubleshooting.md#i-cannot-join-my-friends-room)
+- [No picture after joining a room](./no-media-route.md)
+- [I cannot join my friend’s room](./troubleshooting.md#i-cannot-join-my-friends-room)
 - [The picture is blurry or keeps freezing](./troubleshooting.md#the-picture-is-blurry-or-keeps-freezing)
-- [I can see the picture but can’t hear the game](./sound-help.md#i-can-see-the-picture-but-cannot-hear-the-game)
-- [Friends can’t hear me speaking](./sound-help.md#my-friends-cannot-hear-me)
+- [I can see the picture but cannot hear the game](./sound-help.md#i-can-see-the-picture-but-cannot-hear-the-game)
+- [My friends cannot hear me](./sound-help.md#my-friends-cannot-hear-me)
 
-[More problems and fixes](./troubleshooting.md#common-problems) · [Report a problem](./troubleshooting.md#reporting-a-problem)
+[Troubleshooting](./troubleshooting.md) · [Reporting a problem](./troubleshooting.md#reporting-a-problem)
 
 </section>
 
@@ -50,10 +50,10 @@ Try searching for “can’t join”, “no sound”, or “joystick”.
 
 ## In the room
 
-- [Share a game with sound](./sharing.md)
-- [Share an iPhone or iPad screen](./sharing.md#iphone-and-ipad-screen-sharing)
-- [Talk to friends in room voice](./room-tools.md#room-voice)
-- [Play a local multiplayer game together](./remote-control.md#play-together)
+- [Sharing and playback](./sharing.md)
+- [iPhone and iPad screen sharing](./sharing.md#iphone-and-ipad-screen-sharing)
+- [Room voice](./room-tools.md#room-voice)
+- [Play together](./remote-control.md#play-together)
 
 </section>
 
@@ -61,7 +61,7 @@ Try searching for “can’t join”, “no sound”, or “joystick”.
 
 ## Run your own site
 
-[Deploy Piik](../operations/self-hosting.md) · [Update a site](../operations/service-management.md) · [Set a fixed invitation address](./frp.md) · [Check network connections](./network.md) · [App reference](../../cmd/piik-app/README.md)
+[Deploy Piik Server](../operations/self-hosting.md) · [Service Management](../operations/service-management.md) · [Use frp for a fixed Piik invitation address](./frp.md) · [Advanced network checks](./network.md) · [Piik App](../../cmd/piik-app/README.md)
 
 </section>
 

@@ -1,36 +1,42 @@
+import { readFileSync } from 'node:fs';
 import { posix } from 'node:path';
 
 // Explicit publication list: adding a repository document never publishes it automatically.
 export const pages = [
-  ['docs/guide/README.md', 'index.md', 'Help Center', 'Start here'],
-  ['docs/guide/getting-started.md', 'getting-started.md', 'Getting started', 'Start here'],
-  ['docs/guide/sharing.md', 'sharing.md', 'Sharing and playback', 'Using Piik'],
-  ['docs/guide/room-tools.md', 'room-tools.md', 'Chat, voice and remote control', 'Using Piik'],
-  ['docs/guide/remote-control.md', 'remote-control.md', 'Remote control and playing together', 'Using Piik'],
-  ['cmd/piik-app/README.md', 'app.md', 'App reference', 'Using Piik'],
-  ['docs/guide/troubleshooting.md', 'troubleshooting.md', 'Troubleshooting', 'Get help'],
-  ['docs/guide/no-media-route.md', 'no-media-route.md', 'No media route available', 'Get help'],
-  ['docs/guide/sound-help.md', 'sound-help.md', 'Sound and microphone', 'Get help'],
-  ['docs/guide/network.md', 'network.md', 'Network connections', 'Networking'],
-  ['docs/guide/frp.md', 'frp.md', 'Fixed invitations with frp', 'Networking'],
-  ['docs/operations/self-hosting.md', 'self-hosting.md', 'Deploy a site', 'Self-hosting'],
-  ['docs/operations/service-management.md', 'service-management.md', 'Run and update', 'Self-hosting'],
-  ['docs/guide/translating.md', 'translating.md', 'Translate Piik', 'Contribute'],
-  ['docs/guide/README.zh-CN.md', 'zh/index.md', '帮助中心', '开始使用'],
-  ['docs/guide/getting-started.zh-CN.md', 'zh/getting-started.md', '快速上手', '开始使用'],
-  ['docs/guide/sharing.zh-CN.md', 'zh/sharing.md', '分享与播放', '使用 Piik'],
-  ['docs/guide/room-tools.zh-CN.md', 'zh/room-tools.md', '聊天、语音与远程控制', '使用 Piik'],
-  ['docs/guide/remote-control.zh-CN.md', 'zh/remote-control.md', '远程控制与多人同乐', '使用 Piik'],
-  ['cmd/piik-app/README.zh-CN.md', 'zh/app.md', 'App 使用参考', '使用 Piik'],
-  ['docs/guide/troubleshooting.zh-CN.md', 'zh/troubleshooting.md', '问题排查', '遇到问题'],
-  ['docs/guide/no-media-route.zh-CN.md', 'zh/no-media-route.md', '没有可用的媒体线路', '遇到问题'],
-  ['docs/guide/sound-help.zh-CN.md', 'zh/sound-help.md', '声音和麦克风', '遇到问题'],
-  ['docs/guide/network.zh-CN.md', 'zh/network.md', '进阶网络排查', '网络连接'],
-  ['docs/guide/frp.zh-CN.md', 'zh/frp.md', '用 frp 设置固定邀请', '网络连接'],
-  ['docs/operations/self-hosting.zh-CN.md', 'zh/self-hosting.md', '部署站点', '自部署'],
-  ['docs/operations/service-management.zh-CN.md', 'zh/service-management.md', '运行与更新', '自部署'],
-  ['docs/guide/translating.zh-CN.md', 'zh/translating.md', '参与翻译', '参与项目'],
-].map(([source, path, text, group]) => ({ source, path, text, group }));
+  ['docs/guide/README.md', 'index.md', 'Start here'],
+  ['docs/guide/getting-started.md', 'getting-started.md', 'Start here'],
+  ['docs/guide/sharing.md', 'sharing.md', 'Using Piik'],
+  ['docs/guide/room-tools.md', 'room-tools.md', 'Using Piik'],
+  ['docs/guide/remote-control.md', 'remote-control.md', 'Using Piik'],
+  ['cmd/piik-app/README.md', 'app.md', 'Using Piik'],
+  ['docs/guide/troubleshooting.md', 'troubleshooting.md', 'Get help'],
+  ['docs/guide/no-media-route.md', 'no-media-route.md', 'Get help'],
+  ['docs/guide/sound-help.md', 'sound-help.md', 'Get help'],
+  ['docs/guide/network.md', 'network.md', 'Networking'],
+  ['docs/guide/frp.md', 'frp.md', 'Networking'],
+  ['docs/operations/self-hosting.md', 'self-hosting.md', 'Self-hosting'],
+  ['docs/operations/service-management.md', 'service-management.md', 'Self-hosting'],
+  ['docs/guide/translating.md', 'translating.md', 'Contribute'],
+  ['docs/guide/README.zh-CN.md', 'zh/index.md', '开始使用'],
+  ['docs/guide/getting-started.zh-CN.md', 'zh/getting-started.md', '开始使用'],
+  ['docs/guide/sharing.zh-CN.md', 'zh/sharing.md', '使用 Piik'],
+  ['docs/guide/room-tools.zh-CN.md', 'zh/room-tools.md', '使用 Piik'],
+  ['docs/guide/remote-control.zh-CN.md', 'zh/remote-control.md', '使用 Piik'],
+  ['cmd/piik-app/README.zh-CN.md', 'zh/app.md', '使用 Piik'],
+  ['docs/guide/troubleshooting.zh-CN.md', 'zh/troubleshooting.md', '遇到问题'],
+  ['docs/guide/no-media-route.zh-CN.md', 'zh/no-media-route.md', '遇到问题'],
+  ['docs/guide/sound-help.zh-CN.md', 'zh/sound-help.md', '遇到问题'],
+  ['docs/guide/network.zh-CN.md', 'zh/network.md', '网络连接'],
+  ['docs/guide/frp.zh-CN.md', 'zh/frp.md', '网络连接'],
+  ['docs/operations/self-hosting.zh-CN.md', 'zh/self-hosting.md', '自部署'],
+  ['docs/operations/service-management.zh-CN.md', 'zh/service-management.md', '自部署'],
+  ['docs/guide/translating.zh-CN.md', 'zh/translating.md', '参与项目'],
+].map(([source, path, group]) => {
+  const markdown = readFileSync(new URL('../../' + source, import.meta.url), 'utf8');
+  const text = /^# (.+)$/m.exec(markdown)?.[1].trim();
+  if (!text) throw new Error('Missing help page title in ' + source);
+  return { source, path, text, group };
+});
 
 export const repository = 'https://github.com/TNTcraftHIM/Piik';
 

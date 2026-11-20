@@ -19,7 +19,7 @@ function openSearch() {
 <template>
   <button ref="trigger" class="help-search" type="button" @click="openSearch">
     <span class="vp-icon DocSearch-Search-Icon" aria-hidden="true" />
-    {{ lang === 'zh-CN' ? '搜索帮助中心' : 'Search the Help Center' }}
+    {{ lang === 'zh-CN' ? '搜索 Piik 文档中心' : 'Search Piik Documentation' }}
     <kbd aria-hidden="true">/</kbd>
   </button>
 </template>

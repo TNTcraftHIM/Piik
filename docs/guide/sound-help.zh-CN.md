@@ -2,14 +2,16 @@
 
 [English](./sound-help.md) · 简体中文
 
+[游戏没声](#有画面但听不到游戏声音) · [听不到朋友](#听不到朋友说话) · [朋友听不到我](#朋友听不到我说话) · [听见回声](#我能听见自己的回声)
+
 ## 有画面但听不到游戏声音
 
-1. 让房主播放一段自己能听见的游戏声音。观众点一下画面显示播放控件，选 **取消静音**，再调高播放音量。如果另一位观众能听见，再检查你的耳机和设备音量。
-2. 如果所有观众都听不到，请房主重新选择分享的内容，并打开声音。iPhone Safari 分享屏幕时无法传送游戏声音。使用摄像头（包括 OBS 虚拟摄像头）时，房主需要另选音频输入。[分享来源与声音设置](./sharing.zh-CN.md)
+1. 请房主播放一段自己能听见的游戏声音。观众点一下画面，如果播放器已静音，点 **取消静音**，再调高音量。如果只有你听不到，检查你的耳机或扬声器。
+2. 如果所有观众都听不到，请房主重新选择分享的内容，并打开声音。iPhone 和 iPad 上的 Safari 分享屏幕时只能传画面，房主仍可开启 **分享麦克风**。使用摄像头（包括 OBS 虚拟摄像头）时，房主要单独选择音频输入。[分享来源与声音设置](./sharing.zh-CN.md)
 3. Windows App 分享整屏且未排除应用声音时，请房主在 Windows 声音设置里查看默认输出设备，确认游戏用的也是这个设备。房主也可以只选游戏窗口分享，再请观众试听。
 
-![Windows App 的选源窗口中，应用声音开关位于所选窗口的上方。](../assets/guide/share-source-confirm.zh-CN.png#gh-light-mode-only)
-![Windows App 的选源窗口中，应用声音开关位于所选窗口的上方。](../assets/guide/share-source-confirm.zh-CN.dark.png#gh-dark-mode-only)
+![房主在 Windows App 选择分享游戏窗口时，可在窗口预览上方打开「应用声音」。](../assets/guide/share-source-confirm.zh-CN.png#gh-light-mode-only)
+![房主在 Windows App 选择分享游戏窗口时，可在窗口预览上方打开「应用声音」。](../assets/guide/share-source-confirm.zh-CN.dark.png#gh-dark-mode-only)
 
 ## 听不到朋友说话
 

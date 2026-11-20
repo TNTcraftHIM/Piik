@@ -57,7 +57,7 @@
         <a href="#demo"><span lang="en">Use online</span><span lang="zh-CN">在线使用</span></a>
         <a href="#faq"><span lang="en">FAQ</span><span lang="zh-CN">常见问题</span></a>
         <a href="#download"><span lang="en">Download</span><span lang="zh-CN">下载</span></a>
-        <a href="./docs/?lang=en" data-doc-page=""><span lang="en">Help center</span><span lang="zh-CN">帮助中心</span></a>
+        <a href="./docs/?lang=en" data-doc-page=""><span lang="en">Documentation</span><span lang="zh-CN">文档中心</span></a>
       </nav>
       <div class="preferences" hidden>
         <span id="language" class="lr-lang" role="group" aria-label="Language">
@@ -610,12 +610,9 @@
             </ol>
             <p>
               <span lang="en"
-                >Only have a room code? Select <strong>Join a room</strong> on the same Piik site and enter the
-                four-digit code. Access depends on the host’s settings; a site passphrase or room password may be
-                required.</span
+                >Only have a four-digit room code? Ask your friend for the site address. Open it, select <strong>Join a room</strong> and enter the code. If the page asks for a passphrase or password, ask the host for it.</span
               ><span lang="zh-CN"
-                >只有房间号时，在同一个 Piik
-                站点选择<strong>加入房间</strong>，输入四位房间号。能否加入由房主设置决定，可能需要站点口令或房间密码。</span
+                >如果朋友只发了四位房间号，先请他发来站点网址。打开网址，选<strong>加入房间</strong>并输入房间号。如果页面要求密码，请向房主索取。</span
               >
             </p>
           </div>
@@ -624,43 +621,58 @@
 
       <section class="faq-section wrap" id="faq" aria-labelledby="faq-title">
         <div class="faq-intro">
-          <h2 id="faq-title"><span lang="en">Common questions</span><span lang="zh-CN">常见问题</span></h2>
-          <a class="text-link" href="./docs/?lang=en" data-doc-page=""><span lang="en">Help center</span><span lang="zh-CN">帮助中心</span><span aria-hidden="true">→</span></a>
+          <h2 id="faq-title"><span lang="en">Frequently asked questions</span><span lang="zh-CN">常见问题</span></h2>
+          <svg class="faq-tv" aria-hidden="true"><use href="#tv-mark" /></svg>
+          <nav class="faq-support" id="faq-help-title" aria-labelledby="faq-title">
+            <a href="./docs/?lang=en" data-doc-page="">
+              <strong><span lang="en">Documentation</span><span lang="zh-CN">文档中心</span></strong>
+              <span class="faq-link-arrow" aria-hidden="true">→</span>
+              <small><span lang="en">Guides to sharing, watching and remote control</span><span lang="zh-CN">查阅分享、观看和远控教程</span></small>
+            </a>
+            <a href="./docs/troubleshooting.html?lang=en" data-doc-page="troubleshooting.html">
+              <strong id="faq-support-title"><span lang="en">Troubleshooting</span><span lang="zh-CN">疑难解答</span></strong>
+              <span class="faq-link-arrow" aria-hidden="true">→</span>
+              <small><span lang="en">Fix joining, picture and sound problems</span><span lang="zh-CN">解决进不去、没画面或没声音的问题</span></small>
+            </a>
+          </nav>
         </div>
         <div class="questions">
-          <details id="faq-what" open>
+          <details id="faq-what">
             <summary><span lang="en">How do I share my screen with friends?</span><span lang="zh-CN">怎么把我的屏幕分享给朋友？</span></summary>
-            <p lang="en">Open Piik online, select <strong>Start sharing</strong> and choose a window or your whole screen. When the preview appears, send friends the invitation link so they can watch and chat with you. <a href="#demo">Follow the online sharing guide</a>.</p>
-            <p lang="zh-CN">打开 Piik 在线版，点<strong>开始分享</strong>，选一个窗口或整个屏幕。预览出现后，把邀请链接发给朋友，就能边看边聊。<a href="#demo">查看在线分享步骤</a></p>
+            <p lang="en">Open Piik online, select <strong>Start sharing</strong> and choose a window or your whole screen. Once you see your preview, send friends the invitation link. They can watch in their browser without installing the App or creating an account. <a href="./docs/getting-started.html?lang=en#share-your-screen-in-a-browser">Share your screen in a browser</a></p>
+            <p lang="zh-CN">打开 Piik 在线版，点<strong>开始分享</strong>，选一个窗口或整个屏幕。看到预览后，把邀请链接发给朋友。朋友用浏览器打开就能看，无需安装 App 或注册账号。<a href="./docs/zh/getting-started.html#用浏览器分享屏幕">用浏览器分享屏幕</a></p>
+          </details>
+          <details id="faq-platforms">
+            <summary><span lang="en">Which devices can I use?</span><span lang="zh-CN">哪些设备可以用 Piik？</span></summary>
+            <p lang="en">Friends can watch on a phone, tablet or computer. Piik App is available for Windows, macOS, Linux and Android. On iPhone and iPad, use Safari. Sharing the device screen requires iOS or iPadOS 27 or later, and game and video audio are unavailable during screen sharing. <a href="./docs/sharing.html?lang=en#iphone-and-ipad-screen-sharing">iPhone and iPad screen sharing</a></p>
+            <p lang="zh-CN">手机、平板和电脑都能用浏览器观看。Windows、macOS、Linux 和 Android 也有 Piik App。iPhone 和 iPad 用 Safari 观看。分享设备屏幕需要 iOS 或 iPadOS 27 及以上版本，分享时观众听不到游戏或视频的声音。<a href="./docs/zh/sharing.html#iphone-与-ipad-屏幕分享">iPhone 与 iPad 屏幕分享</a></p>
           </details>
           <details id="faq-app">
-            <summary><span lang="en">Do my friends need the App or an account to watch?</span><span lang="zh-CN">观看需要安装 App 或注册账号吗？</span></summary>
-            <p lang="en">No. Open the invitation in a browser on your phone or computer. The person sharing can also use a browser, or use Piik App to let a friend control their computer or share just one app’s sound on Windows.</p>
-            <p lang="zh-CN">不用。朋友用手机或电脑浏览器打开邀请就能观看。你也可以用浏览器分享屏幕。想让朋友操作你的电脑，或在 Windows 上只分享某个应用的声音时，可以用 Piik App。</p>
+            <summary><span lang="en">When would I use the App instead of the browser?</span><span lang="zh-CN">有了在线版，什么时候需要 App？</span></summary>
+            <p lang="en">You can share, watch, chat and talk in a browser. Use Piik App to host a room on your device, let a friend control your computer, or share sound from one Windows app. To use these features on an existing site, start Piik App, select <strong>App</strong> at the top right of the site and approve the connection.</p>
+            <p lang="zh-CN">浏览器里就能分享、观看、聊天和通话。想用自己的设备开房间、让朋友操作你的电脑，或只分享某个 Windows 程序的声音时，可以用 Piik App。如果已经在一个 Piik 站点里，先启动 App，再点站点右上角的 <strong>App</strong> 并允许连接。</p>
           </details>
           <details id="faq-network-title">
-            <summary><span lang="en">How many friends can I invite?</span><span lang="zh-CN">一个房间可以邀请多少位朋友？</span></summary>
-            <p lang="en">Each room fits one host and up to 20 viewers. Send friends the full invitation link. Anyone with a password-free invitation can join. If you allow joining by code, friends can also <a href="./docs/getting-started.html?lang=en#join-a-friends-room">enter the four-digit room code on your Piik site</a>.</p>
-            <p lang="zh-CN">一间房可以有 1 位房主和最多 20 位观众。把完整的邀请链接发给朋友即可。拿到免密邀请的人都能加入。如果你允许用房间号加入，朋友也可以<a href="./docs/zh/getting-started.html#加入朋友的房间">在你使用的 Piik 站点输入四位房间号</a>。</p>
+            <summary><span lang="en">How many friends can join, and how do I invite them?</span><span lang="zh-CN">一个房间能邀请多少人？怎么邀请？</span></summary>
+            <p lang="en">One host can share with up to 20 viewers. Copy the full invitation link or show its QR code. Anyone who receives a password-free invitation can use it. If a friend has only the four-digit room code, send them your site address so they can select <strong>Join a room</strong> there and enter the code.</p>
+            <p lang="zh-CN">一个房间可以有 1 位房主和最多 20 位观众。可以复制完整的邀请链接，也可以让朋友扫邀请二维码。拿到免密邀请的人都能使用它。如果朋友只有四位房间号，再把你使用的站点网址发给他，让他打开后点<strong>加入房间</strong>并输入房间号。</p>
+          </details>
+          <details id="faq-sound">
+            <summary><span lang="en">Can my friends hear the game and talk to me?</span><span lang="zh-CN">朋友能听到游戏声音，也能和我语音聊天吗？</span></summary>
+            <p lang="en">Yes. When choosing a screen or window, turn on the sound option if one is available. For a browser game, share its tab and include tab audio. To talk to each other, open <strong>Interact → Voice</strong> and turn on your microphones. <a href="./docs/sound-help.html?lang=en">Missing game sound, quiet microphones and echo</a></p>
+            <p lang="zh-CN">可以。选屏幕或窗口时，如果有声音开关，把它打开。分享网页游戏时，可以选游戏所在的标签页并勾选分享标签页音频。想边看边聊，双方在<strong>互动 → 语音</strong>里加入并打开麦克风。<a href="./docs/zh/sound-help.html">游戏没声音、听不到朋友或有回声</a></p>
           </details>
           <details id="faq-coplay">
             <summary><span lang="en">Can a friend play the game on my computer?</span><span lang="zh-CN">朋友能一起玩我电脑上的游戏吗？</span></summary>
-            <p lang="en">Yes. Share the game window or screen from Piik App, turn on <strong>Remote control</strong> and accept your friend’s request. Games with local multiplayer can have several players. Friends on phones can <a href="./docs/remote-control.html?lang=en#play-on-your-phone-with-the-on-screen-joystick">use the on-screen joystick</a>.</p>
-            <p lang="zh-CN">可以。用电脑上的 Piik App 分享游戏窗口或屏幕，打开<strong>远程控制</strong>，同意朋友的控制请求。游戏支持本地多人模式时，几位朋友可以一起玩。用手机的朋友可以<a href="./docs/zh/remote-control.html#用手机玩电脑游戏屏幕摇杆">打开屏幕摇杆</a>。</p>
+            <p lang="en">Yes. Share your game from the desktop App, enable <strong>Remote control</strong> and accept your friend’s request. Games with local multiplayer can have several players. A friend on a phone can use the on-screen joystick. <a href="./docs/remote-control.html?lang=en">Remote control and playing together</a></p>
+            <p lang="zh-CN">可以。用电脑上的 Piik App 分享游戏，打开<strong>远程控制</strong>，同意朋友的控制请求。游戏支持本地多人模式时，几位朋友可以一起玩。用手机的朋友也可以打开屏幕摇杆。<a href="./docs/zh/remote-control.html">远程控制与多人同乐</a></p>
           </details>
           <details id="faq-hosting">
-            <summary><span lang="en">Do I need a server to share over the internet?</span><span lang="zh-CN">和异地朋友分享，要搭服务器吗？</span></summary>
-            <p lang="en">No. Use Piik online or choose <strong>Public invite</strong> in the App. To give your group a permanent address or let a server forward the stream when a direct connection fails, you can <a href="./docs/self-hosting.html?lang=en">host your own Piik site</a>.</p>
-            <p lang="zh-CN">不用。可以用在线版，也可以在 App 里选<strong>公网邀请</strong>。如果想长期用同一个网址，或希望两台设备连不上时由服务器转发画面，可以<a href="./docs/zh/self-hosting.html">搭建自己的 Piik 站点</a>。</p>
+            <summary><span lang="en">Do I need a server to share with friends elsewhere?</span><span lang="zh-CN">和异地的朋友分享，要自己搭服务器吗？</span></summary>
+            <p lang="en">No. Use Piik online or select <strong>Public invite</strong> in Piik App to get a temporary internet address. For a permanent site for your group, you can host Piik on your own server. <a href="./docs/self-hosting.html?lang=en">Deploy Piik Server</a></p>
+            <p lang="zh-CN">不用。可以使用在线版，也可以在 Piik App 里选<strong>公网邀请</strong>，生成一个临时网址发给朋友。如果想让大家长期使用同一个站点，可以自行部署。<a href="./docs/zh/self-hosting.html">部署 Piik Server</a></p>
           </details>
         </div>
-        <nav class="faq-support" id="faq-help-title" aria-labelledby="faq-support-title">
-          <h3 id="faq-support-title"><span lang="en">Joining and playback</span><span lang="zh-CN">进房和播放问题</span></h3>
-          <a lang="en" href="./docs/troubleshooting.html?lang=en#i-cannot-join-my-friends-room">I can’t join a room</a>
-          <a lang="zh-CN" href="./docs/zh/troubleshooting.html#进不去朋友的房间">进不去房间</a>
-          <a href="./docs/no-media-route.html?lang=en" data-doc-page="no-media-route.html"><span lang="en">No picture</span><span lang="zh-CN">进房后没画面</span></a>
-          <a href="./docs/sound-help.html?lang=en" data-doc-page="sound-help.html"><span lang="en">No sound</span><span lang="zh-CN">听不到声音</span></a>
-        </nav>
       </section>
 
       <section class="download-section wrap" id="download" aria-labelledby="download-title">
@@ -813,7 +825,7 @@
         </section>
         <div class="download-help">
           <a class="lr-btn button" href="https://github.com/TNTcraftHIM/Piik"><span lang="en">View on GitHub</span><span lang="zh-CN">GitHub 项目</span><span aria-hidden="true"> ↗</span></a>
-          <p><span lang="en">Need help? Start with <a href="./docs/troubleshooting.html?lang=en">troubleshooting</a>, or <a href="https://github.com/TNTcraftHIM/Piik/issues">report a problem</a>.</span><span lang="zh-CN">遇到问题？先看<a href="./docs/zh/troubleshooting.html">问题排查</a>，或向我们<a href="https://github.com/TNTcraftHIM/Piik/issues">反馈</a>。</span></p>
+          <p><span lang="en">Need help? Start with <a href="./docs/troubleshooting.html?lang=en">Troubleshooting</a>, or <a href="https://github.com/TNTcraftHIM/Piik/issues">report a problem</a>.</span><span lang="zh-CN">遇到问题？先看<a href="./docs/zh/troubleshooting.html">疑难解答</a>，或向我们<a href="https://github.com/TNTcraftHIM/Piik/issues">反馈</a>。</span></p>
         </div>
       </section>
 
@@ -835,11 +847,11 @@
               Windows 程序包支持 x64，Linux 程序包和 Docker 镜像支持 x64／ARM64。</span
             >
           </p>
-          <a class="docs-index" href="./docs/self-hosting.html" lang="en">Server downloads and setup<span aria-hidden="true"> ↗</span></a>
-          <a class="docs-index" href="./docs/zh/self-hosting.html" lang="zh-CN">服务端下载与部署指南<span aria-hidden="true"> ↗</span></a>
+          <a class="docs-index" href="./docs/self-hosting.html" lang="en">Deploy Piik Server<span aria-hidden="true"> ↗</span></a>
+          <a class="docs-index" href="./docs/zh/self-hosting.html" lang="zh-CN">部署 Piik Server<span aria-hidden="true"> ↗</span></a>
           <ul class="docs-links">
             <li>
-              <a href="./docs/?lang=en" data-doc-page=""><span lang="en">Help center</span><span lang="zh-CN">帮助中心</span><span aria-hidden="true"> ↗</span></a>
+              <a href="./docs/?lang=en" data-doc-page=""><span lang="en">Documentation</span><span lang="zh-CN">文档中心</span><span aria-hidden="true"> ↗</span></a>
               <p>
                 <span lang="en">Join a room, share your screen or troubleshoot a connection.</span
                 ><span lang="zh-CN">加入房间、分享屏幕或排查连接问题。</span>
@@ -857,7 +869,7 @@
             </li>
             <li>
               <a href="./docs/service-management.html" data-doc-page="service-management.html"
-                ><span lang="en">Service management</span><span lang="zh-CN">长期运行与容器</span
+                ><span lang="en">Service Management</span><span lang="zh-CN">服务管理</span
                 ><span aria-hidden="true"> ↗</span></a
               >
               <p>
@@ -886,7 +898,7 @@
         <a href="./docs/?lang=en" data-doc-page=""
           ><span lang="en">Documentation</span><span lang="zh-CN">文档中心</span></a
         ><a href="./docs/troubleshooting.html?lang=en" data-doc-page="troubleshooting.html"
-          ><span lang="en">Troubleshooting</span><span lang="zh-CN">问题排查</span></a
+          ><span lang="en">Troubleshooting</span><span lang="zh-CN">疑难解答</span></a
         ><a href="https://github.com/TNTcraftHIM/Piik"
           ><span lang="en">Source on GitHub</span><span lang="zh-CN">GitHub 源码</span
           ><span aria-hidden="true"> ↗</span></a

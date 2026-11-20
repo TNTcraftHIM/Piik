@@ -6,28 +6,13 @@ outline: 2
 
 English · [简体中文](./troubleshooting.zh-CN.md) · [Documentation](./README.md)
 
-Find your symptom below. Try its checks in order and stop when it works.
-If it persists, [save a diagnostic report](#reporting-a-problem) before refreshing.
-
 ## Common problems
 
-Start at the first thing that fails:
-
-| What you see | Check first |
-| --- | --- |
-| Invitation never opens, or only the page title appears | [Check the invitation](#i-cannot-join-my-friends-room). |
-| You entered the room but the TV has no picture | [Check the sharing connection](#when-video-will-not-connect). |
-| App is not ready | Start App on the sharing device and [authorize the current site](./getting-started.md#use-app-with-an-existing-site). |
-| iPhone Safari shares the screen but friends hear no game audio | Safari screen sharing excludes system audio. See [iPhone and iPad screen sharing](./sharing.md#iphone-and-ipad-screen-sharing). |
-| Source picker is missing or sharing will not start | [Source and capture checks](#starting-a-share). |
-| Picture blurs or stutters | [Picture quality](#the-picture-is-blurry-or-keeps-freezing). |
-| Phone fullscreen or playback controls are missing | [Fullscreen and controls](#fullscreen-or-playback-after-sleep). |
-| Picture works, but no game/movie sound | [Check game sound](./sound-help.md#i-can-see-the-picture-but-cannot-hear-the-game). |
-| Cannot hear a friend, or cannot use the microphone | [Check room voice](./sound-help.md#i-cannot-hear-a-friend-speaking) and [permissions](#microphone-or-remote-controls-are-unavailable). |
-| Gamepad does not respond | [Gamepad checks](#gamepads). |
-
-Leave [advanced network checks](./network.md) until the matching
-symptom's simple checks have failed. Change one thing at a time.
+- [I cannot join my friend’s room, or the invitation opens to a blank page](#i-cannot-join-my-friends-room)
+- [I joined the room but see “No media route available”](./no-media-route.md)
+- [I see the picture but cannot hear the game or my friend](./sound-help.md)
+- [The picture is blurry or keeps freezing](#the-picture-is-blurry-or-keeps-freezing)
+- [I selected a source but sharing didn’t start](#sharing-does-not-start-after-source-selection)
 
 
 ## Opening App and joining a room
@@ -252,10 +237,9 @@ checks for that stage and **Copy failure details**; follow the checks before ret
 
 ### No screen picker
 
-Allow screen recording when your OS asks. Browser screen capture needs HTTPS or
-`localhost`; try sharing from a desktop computer. In the source picker, choose
-**Browser → Choose what to share** to open the browser's screen, window or tab
-chooser. Missing App sources are covered below.
+On the Host’s device, open the picker and select **Browser → Choose what to share**. Allow screen recording if prompted, then choose a screen, window or tab.
+
+If the chooser never opens, try the full HTTPS invitation on a desktop. Browser capture also works on `localhost` on the sharing device. For an empty App list, see [missing windows or screens](#app-windows-or-screens-are-missing).
 
 ### App windows or screens are missing
 
@@ -289,10 +273,14 @@ Still failing? Save [matching Web and App reports](#reporting-a-problem) with th
 1. **Compare codecs on the same source.** In **Sharing settings → Picture → Fine-tune picture**, change the
    video codec from **H264** to **Auto** or **VP8**, then start sharing again.
    If VP8 works, you can keep using it while checking the H264 path.
-2. **Update and restart.** Update Piik App and Chrome, and install the appropriate
+
+<details>
+<summary>If you need H264, check graphics drivers and Chrome settings</summary>
+
+1. **Update and restart.** Update Piik App and Chrome, and install the appropriate
    graphics driver from your computer or GPU manufacturer's official support
    page. On laptops with two GPUs, check both drivers. Restart after installation.
-3. **For Chrome, check graphics acceleration and GPU preference.** In Chrome's
+2. **For Chrome, check graphics acceleration and GPU preference.** In Chrome's
    **Settings → System**, enable graphics acceleration if it was disabled, then
    restart Chrome ([Google's setting instructions](https://support.google.com/meet/answer/10058482?hl=en)).
    On a multi-GPU Windows PC, open **Settings → System → Display → Graphics**,
@@ -304,6 +292,8 @@ Chrome's graphics preference applies to browser capture. Piik App selects its
 native encoder separately. If it still fails, [save reports](#reporting-a-problem)
 with the codec comparison. If both codecs fail, also check
 [WebRTC restrictions](./network.md#browser-webrtc-restrictions).
+
+</details>
 
 ## Picture and playback
 
@@ -348,11 +338,9 @@ Include the game and window mode in your [report](#reporting-a-problem).
 
 ### HDR picture looks too bright or washed out
 
-Windows App capture through **Apps / Windows** or **Screens** converts HDR to SDR
-for viewers. The **Browser** picker uses browser capture instead; some HDR sources
-can look overexposed. Try the App categories above,
-or temporarily turn off HDR in Windows display settings and select the source again.
-Higher resolution or bitrate cannot restore clipped highlights.
+If bright areas look washed out to Viewers but look normal on the Host’s screen, share again using **Apps / Windows** or **Screens** in the Windows App. App converts the HDR picture to SDR for playback.
+
+To keep using **Browser** capture, temporarily turn off HDR in Windows display settings and select the source again. Recapturing the picture can recover highlight detail that raising the bitrate or resolution cannot.
 
 If it persists, report the HDR setting and GPU/display model with source/viewer
 comparison pictures. See [HDR capture notes](../research/media-fidelity.md#hdr-to-sdr) for background.
@@ -472,28 +460,14 @@ Viewers only need their browser. Driver checks and installation belong on the Ho
 
 ## Advanced network checks
 
-If the page opens but picture or voice will not connect, use the [network guide](./network.md). Choose a section below:
-
-### Campus networks and strict NAT
-
-Choose a connection option for campus or work networks. [View steps](./network.md#campus-networks-and-strict-nat).
-
-### Browser WebRTC restrictions
-
-Check settings when the same invitation works in another browser. [View steps](./network.md#browser-webrtc-restrictions).
-
-### STUN, IPv6 and router checks
-
-Read discovery logs or check a router you manage. [View steps](./network.md#stun-ipv6-and-router-checks).
-
-### Optional: a virtual LAN
-
-Friends elsewhere cannot reach a local invitation, or direct media still will not
-connect? A virtual LAN provides another connection option. [View steps](./network.md#optional-a-virtual-lan).
+- <a id="campus-networks-and-strict-nat"></a>[Video works on a hotspot but fails on campus or at work](./network.md#campus-networks-and-strict-nat)
+- <a id="browser-webrtc-restrictions"></a>[The same invitation works in another browser](./network.md#browser-webrtc-restrictions)
+- <a id="stun-ipv6-and-router-checks"></a>[Check your router or discovery logs](./network.md#stun-ipv6-and-router-checks)
+- <a id="optional-a-virtual-lan"></a>[Join a local room with friends elsewhere over a virtual LAN](./network.md#optional-a-virtual-lan)
 
 ## Reporting a problem
 
-If sharing fails, the Host can click the error icon below the TV and copy the message. Include the device, time, what you clicked and what appeared. If the Host sees the preview but the Viewer sees no picture, record the time of the same attempt on both devices.
+To [report a problem on GitHub](https://github.com/TNTcraftHIM/Piik/issues), include your device, what you clicked and what appeared. Logs are optional. If sharing failed, the Host can click the error icon below the TV to copy its message.
 
 <details>
 <summary>When a report is needed · Collect diagnostics</summary>
