@@ -584,7 +584,10 @@ export class ChannelAttachments {
               sink.lifetime.signal.throwIfAborted();
               if (!this.current(runtime) || this.sinks.get(fileKeyString(key)) !== entry) return;
               // Progress counts completed sink writes, never requested or queued bytes.
-              entry.progress = { received: effect.offset + bytes.length, total: sink.attachment.size, state: "receiving" }; this.changed();
+              const progress = entry.progress;
+              entry.progress = { ...progress, received: effect.offset + bytes.length,
+                state: progress.state === "waiting" ? "receiving" : progress.state };
+              this.changed();
               this.invoke(runtime, () => runtime.delivery.written(JSON.stringify(key), BigInt(effect.offset), bytes.length));
             } else {
               // Complete is emitted only after shared Rust verifies the digest and written ranges.

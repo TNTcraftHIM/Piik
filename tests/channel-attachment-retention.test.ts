@@ -436,8 +436,12 @@ test.each(["cancel", "revoke"])("shared file progress survives leaving the view 
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ initializeRuntime: async () => {},
     FileDelivery: class {
       start() { return "[]"; } update() { return "[]"; } next_deadline() { return undefined; }
+      peer_unavailable() { return "[]"; }
       written = written; cancel = cancel; free() {}
       control(_peer: string, data: string) {
+        if (data === "queued-write" || data === "resumed-write") {
+          return JSON.stringify([{ type: "write", key, offset: data === "queued-write" ? 3 : 4, bytes: [4] }]);
+        }
         const bytes = data === "retry-write" ? [...new TextEncoder().encode("GIF89a")] : [1, 2, 3];
         return JSON.stringify([{ type: "write", key, offset: 0, bytes }]);
       }
@@ -462,19 +466,36 @@ test.each(["cancel", "revoke"])("shared file progress survives leaving the view 
     files.data("source", "control", "owned-write");
     await vi.waitFor(() => expect(finishWrite).toBeTypeOf("function"));
     expect(files.progress(key)?.received).toBe(0); expect(written).not.toHaveBeenCalled();
+    const firstWrite = finishWrite;
+    files.data("source", "control", "queued-write");
+    const sourceGone = { ...plan, sourceId: null, upstream: null };
+    files.update("endpoint", scope, [sourceGone], [room], []);
     finishWrite();
-    await vi.waitFor(() => expect(files.progress(key)).toEqual({ received: 3, total: attachment.size, state: "receiving" }));
+    await vi.waitFor(() => expect(files.progress(key)).toEqual({ received: 3, total: attachment.size, state: "waiting-source" }));
     expect(written).toHaveBeenCalledWith(JSON.stringify(key), 0n, 3);
+    await vi.waitFor(() => expect(finishWrite).not.toBe(firstWrite));
     first.abort(); await expect(a).rejects.toMatchObject({ name: "AbortError" });
     expect(files.progress(key)?.received).toBe(3); expect(cancel).not.toHaveBeenCalled();
-    files.update("endpoint", scope, [{ ...plan, sourceId: null, upstream: null }], [room], []);
+    const otherRoom = { ...room, id: "second", reading: true };
+    files.update("endpoint", scope, [sourceGone], [{ ...room, reading: false }, otherRoom], []);
     expect(files.progress(key)).toMatchObject({ received: 3, state: "waiting-source" });
     const alternate = { ...plan, sourceId: "alternate", upstream: "alternate" };
-    files.update("endpoint", scope, [alternate], [room], []);
+    files.update("endpoint", scope, [alternate], [{ ...room, reading: true }, { ...otherRoom, reading: false }], []);
     expect(files.progress(key)).toMatchObject({ received: 3, state: "waiting" });
-    const firstWrite = finishWrite;
-    files.data("source", "control", "old-write");
-    await vi.waitFor(() => expect(finishWrite).not.toBe(firstWrite));
+    files.peerState("alternate", false);
+    expect(files.progress(key)).toMatchObject({ received: 3, state: "connecting" });
+    const queuedWrite = finishWrite;
+    queuedWrite();
+    await vi.waitFor(() => expect(files.progress(key)).toMatchObject({ received: 4, state: "connecting" }));
+    files.peerState("alternate", true);
+    expect(files.progress(key)).toMatchObject({ received: 4, state: "waiting" });
+    files.data("alternate", "control", "resumed-write");
+    await vi.waitFor(() => expect(finishWrite).not.toBe(queuedWrite));
+    const resumedWrite = finishWrite;
+    resumedWrite();
+    await vi.waitFor(() => expect(files.progress(key)).toMatchObject({ received: 5, state: "receiving" }));
+    files.data("alternate", "control", "old-write");
+    await vi.waitFor(() => expect(finishWrite).not.toBe(resumedWrite));
     const oldWrite = finishWrite;
     const cancellationSnapshots: boolean[] = [];
     const unsubscribe = files.subscribe(() => cancellationSnapshots.push(files.status(key).busy));
@@ -498,7 +519,7 @@ test.each(["cancel", "revoke"])("shared file progress survives leaving the view 
     oldWrite();
     await vi.waitFor(() => expect(remove).toHaveBeenCalledOnce());
     expect(files.progress(key)).toEqual({ received: 0, total: attachment.size, state: "waiting" });
-    expect(written).toHaveBeenCalledOnce();
+    expect(written).toHaveBeenCalledTimes(3);
     expect(cancel).toHaveBeenCalledOnce();
     expect(save).not.toHaveBeenCalled();
     files.data("source", "control", "retry-write");
