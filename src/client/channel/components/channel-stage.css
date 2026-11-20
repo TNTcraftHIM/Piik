@@ -76,7 +76,13 @@
 }
 /* Keep the shared dense targets square; only complete action groups may wrap. */
 .c3-monitor-source-row.lr-media-overlay .lr-btn:not(:where(.c3-monitor-source-row [popover] *)) { --button-size: var(--control-dense-size); --button-padding: 0; min-width: var(--button-size); height: var(--button-size); gap: 2px; }
-.c3-monitor-tile:has(> .c3-video[data-controls-hidden="true"]) > footer .c3-monitor-source-row { opacity: 0; pointer-events: none; transform: translateY(-4px); }
+.c3-monitor-tile:not(.is-thumbnail):has(> .c3-video[data-controls-hidden="true"]) > footer .c3-monitor-source-row { opacity: 0; pointer-events: none; transform: translateY(-4px); }
+.c3-monitor-tile.is-thumbnail:has(> .c3-video[data-controls-hidden="true"]) > footer .c3-monitor-source-row { visibility: hidden; }
+.c3-monitor-tile.is-thumbnail:has(> .c3-video[data-controls-hidden="true"]) > footer .c3-monitor-close {
+  visibility: visible;
+  border-radius: var(--c3-inset-radius);
+  background: var(--paper-translucent);
+}
 .c3-monitor-wait { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; aspect-ratio: 16 / 9; padding: 18px; border-radius: var(--c3-media-radius) var(--c3-media-radius) 0 0; background: var(--stage, var(--wall-2)); color: var(--muted); font-size: 12px; }
 .c3-monitor-wait[data-failed] > svg { color: var(--danger); }
 .c3-monitor-wait-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; max-width: 100%; }
