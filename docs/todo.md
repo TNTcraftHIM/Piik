@@ -12,7 +12,7 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- Check reports of visible hosted H.264 stalls with the player open. Record its displayed size and last presented frame on the selected route while another viewer joins. The reproduced counter plateaus were on hidden players. [Foreground and background controls](./research/network-lab.md#hosted-h264-with-two-viewers)
+- Capture a visible H.264 stall on an affected setup. Correlate presented frames, received frames and the selected route across the stall. Two foreground viewers continued playing in the [direct and Server relay controls](./research/network-lab.md#hosted-h264-with-two-viewers).
 
 ### Active work
 

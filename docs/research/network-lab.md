@@ -274,6 +274,14 @@ frames. In a separate run on `a38c21fd`, opening chat hid the player. The
 Return banner restored the 640 × 254 player and frames advanced on the same
 selected flow, stream and track.
 
+At `8d18463c`, a generated 640 × 360 H.264 clock fed two visible Chromium
+players. On a direct route the first viewer's presented frame count advanced
+from 245 to 417 across the second viewer's arrival. In a separate run each
+browser could reach only the test Server. Both viewers reported server relay.
+The first viewer kept the same SSRC and advanced from 63 to 959 presented
+frames over about 49 seconds. The second advanced from 221 to 532 over about
+16 seconds. Both reported 20 fps at the final sample.
+
 ### Slow Direct Signaling And Early Relay Preparation
 
 Four loopback Chromium clients compared on-demand recovery at `3c7059b0`
