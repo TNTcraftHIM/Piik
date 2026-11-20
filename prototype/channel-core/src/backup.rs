@@ -451,7 +451,7 @@ impl LiveHistoryRow {
                 reply.seq == 0
                     || reply.seq >= message.seq
                     || reply.user_id.is_nil()
-                    || reply.text.encode_utf16().count() > 160
+                    || reply.text.encode_utf16().count() > crate::history::REPLY_TEXT_UTF16_LIMIT
                     || reply
                         .archived_author_name
                         .as_deref()

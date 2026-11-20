@@ -1,4 +1,4 @@
-import init, { attachment_result, create_room_policy, HistoryPage, history_page_size, message_retry_key, prepare_confirmation, reaction_result, RoomHost, SessionSigner } from "../pkg/piik_channel_browser.js";
+import init, { attachment_result, backup_message_reply, create_room_policy, HistoryPage, history_page_size, message_retry_key, prepare_confirmation, reaction_result, RoomHost, SessionSigner } from "../pkg/piik_channel_browser.js";
 export { AttachmentHash, BackupHistoryImport, CopyHistoryImport, DomainArchiveCheck, FileDelivery, ForwardingBudget, WatchDelivery, attachment_limits, attachment_media_type, backup_metadata, backup_record_bytes, message_mention_limit, conversation_broadcast, decode_control, encode_control, verify_conversation, route_input, input_binding_current, verify_reply } from "../pkg/piik_channel_browser.js";
 let initialization: Promise<void> | undefined;
 export function initializeRuntime(): Promise<void> { return initialization ??= init().then(() => {}); }
@@ -109,7 +109,17 @@ class RoomBackup implements BrowserRoomSnapshot, BrowserRoomStage {
 
   append(row: BackupHistoryRow): Promise<void> {
     if (!validBackupSequence(row.seq)) return Promise.reject(new Error("invalid_backup_history"));
-    return this.turn(["backup"], "readwrite", tx => { tx.objectStore("backup").add(indexed(row)); }, () => {});
+    return this.turn(["backup"], "readwrite", (tx, abort) => {
+      const store = tx.objectStore("backup");
+      if (!("id" in row) || !row.reply) { store.add(indexed(row)); return; }
+      const { reply, ...message } = row;
+      read(store.get(reply.seq), target => {
+        const original = live(target);
+        if (!original) { store.add(indexed(message)); return; }
+        const quote = backup_message_reply(BigInt(original.seq), original.userId, original.text, original.archivedAuthorName, reply.notify);
+        store.add(indexed({ ...message, reply: JSON.parse(quote) }));
+      }, abort);
+    }, () => {});
   }
 
   get rows(): AsyncIterable<BackupHistoryRow> { return this.readRows(); }

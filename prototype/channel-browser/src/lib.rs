@@ -95,6 +95,20 @@ impl DomainArchiveCheck {
 }
 
 #[wasm_bindgen]
+pub fn backup_message_reply(
+    seq: u64,
+    user_id: &str,
+    text: &str,
+    archived_author_name: Option<String>,
+    notify: bool,
+) -> Result<String, JsValue> {
+    let user = Uuid::parse_str(user_id).map_err(|_| error("invalid_backup_history"))?;
+    encode(&piik_channel_core::history::MessageReply::from_original(
+        seq, user, text, archived_author_name, notify,
+    ))
+}
+
+#[wasm_bindgen]
 pub struct BackupHistoryImport(piik_channel_core::backup::HistoryImport);
 
 #[wasm_bindgen]

@@ -567,6 +567,10 @@ file bytes are hash-verified; attachment descriptions remain when their bytes
 are no longer retained. This reuses the existing archive and room storage paths,
 without automatic replication, ownership transfer or a second storage role.
 
+Both restore and copy rebuild reply excerpts and author labels from the earlier
+message in the imported history. If that message was deleted or is missing,
+the reply keeps its own body and loses its quotation.
+
 Use the storage platform's consistent snapshot mechanism; native SQLite provides
 the [online backup API](https://www.sqlite.org/backup.html). For a room restore,
 replace its data and retire the previous durable writer in one transaction.

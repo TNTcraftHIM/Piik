@@ -586,6 +586,22 @@ window.runBrowserRoomCheck = async () => {
       check(count === 113, "old snapshot close cannot clear the successor slot");
     } finally { await staleSnapshot.close(); await currentSnapshot.close(); }
 
+    const quoteStage = await BrowserRoomHost.stage(database, savedPolicy);
+    try {
+      const original = { ...rows[0], archivedAuthorName: "Original author", text: "x".repeat(159) + "🌱" };
+      const forged = { seq: original.seq, userId: crypto.randomUUID(), archivedAuthorName: "Forged", text: "Forged", notify: true };
+      await quoteStage.append(original);
+      await quoteStage.append({ seq: rows[1].seq, retryKey: "deleted-original" });
+      await quoteStage.append({ ...rows[2], reply: forged });
+      await quoteStage.append({ ...rows[3], reply: { ...forged, seq: rows[1].seq } });
+      const staged: BackupHistoryRow[] = [];
+      for await (const row of quoteStage.rows) staged.push(row);
+      const rebuilt = "id" in staged[2] && staged[2].reply;
+      check(rebuilt && rebuilt.userId === original.userId && rebuilt.archivedAuthorName === original.archivedAuthorName
+        && rebuilt.text === "x".repeat(159) && rebuilt.notify, "staging rebuilds the quote from its live original");
+      check("id" in staged[3] && !staged[3].reply, "staging removes a deleted original's quote and notification");
+    } finally { await quoteStage.close(); }
+
     const duplicates = await BrowserRoomHost.stage(database, savedPolicy);
     try {
       await duplicates.append(rows[0]);

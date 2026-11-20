@@ -294,7 +294,31 @@ impl Storage {
                     continue;
                 }
             };
-            let message = row.message.message;
+            let mut message = row.message.message;
+            if let Some(reply) = &message.reply {
+                message.reply = transaction
+                    .query_row(
+                        "SELECT user_id,text,archived_author_name FROM message WHERE room_id=?1 AND seq=?2",
+                        params![policy.id, reply.seq],
+                        |row| {
+                            let author: String = row.get(0)?;
+                            let text: String = row.get(1)?;
+                            let name = row.get(2)?;
+                            Ok((author, text, name))
+                        },
+                    )
+                    .optional()?
+                    .map(|(author, text, name)| {
+                        Ok::<_, uuid::Error>(crate::history::MessageReply::from_original(
+                            reply.seq,
+                            Uuid::parse_str(&author)?,
+                            &text,
+                            name,
+                            reply.notify,
+                        ))
+                    })
+                    .transpose()?;
+            }
             transaction.execute(
                 "INSERT INTO message(room_id,seq,id,user_id,nonce,text,time,attachments,reactions,archived_author_name,inline_images,mentions,reply)
                  VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",

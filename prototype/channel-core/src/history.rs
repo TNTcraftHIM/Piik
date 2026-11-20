@@ -18,6 +18,7 @@ pub const HISTORY_WINDOW: usize = 1000;
 pub const HISTORY_PAGE: usize = 50;
 pub const HISTORY_PAGE_BYTES: usize = 256 * 1024;
 pub const MESSAGE_MENTION_LIMIT: usize = 64;
+pub(crate) const REPLY_TEXT_UTF16_LIMIT: usize = 160;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -44,6 +45,32 @@ pub struct MessageReply {
     pub archived_author_name: Option<String>,
     pub text: String,
     pub notify: bool,
+}
+
+impl MessageReply {
+    pub fn from_original(
+        seq: u64,
+        user_id: Uuid,
+        text: &str,
+        archived_author_name: Option<String>,
+        notify: bool,
+    ) -> Self {
+        let mut units = 0;
+        let excerpt = text
+            .chars()
+            .take_while(|c| {
+                units += c.len_utf16();
+                units <= REPLY_TEXT_UTF16_LIMIT
+            })
+            .collect();
+        Self {
+            seq,
+            user_id,
+            archived_author_name,
+            text: excerpt,
+            notify,
+        }
+    }
 }
 
 fn validate_mentions(text: &str, mentions: &[Mention]) -> Result<(), &'static str> {
@@ -261,22 +288,13 @@ impl MessageDraft {
                                     && message.seq <= last_seq
                             })
                             .ok_or("message_unavailable")?;
-                        let mut length = 0;
-                        let text = original
-                            .text
-                            .chars()
-                            .take_while(|c| {
-                                length += c.len_utf16();
-                                length <= 160
-                            })
-                            .collect();
-                        Ok::<_, &'static str>(MessageReply {
-                            seq: original.seq,
-                            user_id: original.user_id,
-                            archived_author_name: original.archived_author_name,
-                            text,
-                            notify: target.notify,
-                        })
+                        Ok::<_, &'static str>(MessageReply::from_original(
+                            original.seq,
+                            original.user_id,
+                            &original.text,
+                            original.archived_author_name,
+                            target.notify,
+                        ))
                     })
                     .transpose()?;
                 Ok(MessageConfirmation {

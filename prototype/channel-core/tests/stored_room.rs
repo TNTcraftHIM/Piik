@@ -831,6 +831,74 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
     };
     assert_eq!(messages.last().unwrap().message.seq, 55);
 
+    // Imported reply snapshots are rebuilt from the target in this archive.
+    let mut stale = rows[2].clone();
+    let stale_reply = stale.message.message.reply.as_mut().unwrap();
+    stale_reply.text = "Stale preview".into();
+    stale_reply.user_id = Uuid::new_v4();
+    stale_reply.archived_author_name = Some("Stale identity".into());
+    let mut deleted = rows[4].clone();
+    deleted.message.message.reply.as_mut().unwrap().seq = 4;
+    let mut missing = rows[6].clone();
+    missing.message.message.reply.as_mut().unwrap().seq = 6;
+    let reply_archive = RoomBackup::stage(
+        &folder.join("reply-import.sqlite"),
+        backup.metadata().clone(),
+        [
+            HistoryRow::Message(rows[0].clone()),
+            HistoryRow::Message(rows[1].clone()),
+            HistoryRow::Message(stale),
+            HistoryRow::Deleted(piik_channel_core::backup::DeletedHistoryRow {
+                seq: 4,
+                retry_key: "a".repeat(64),
+            }),
+            HistoryRow::Message(deleted),
+            HistoryRow::Message(missing),
+        ]
+        .into_iter()
+        .map(Ok),
+    )
+    .unwrap();
+    let mut replies = Vec::new();
+    reply_archive
+        .for_each_row(|row| {
+            if let HistoryRow::Message(row) = row {
+                replies.push(row.message.message.reply);
+            }
+            Ok(())
+        })
+        .unwrap();
+    assert!(replies[0].is_none());
+    let authentic = replies[1].as_ref().unwrap();
+    assert_eq!(authentic.text, rows[0].message.message.text);
+    assert_eq!(
+        serde_json::to_value(&replies[2]).unwrap(),
+        serde_json::to_value(authentic).unwrap()
+    );
+    assert!(replies[3].is_none());
+    assert!(replies[4].is_none());
+    host.replace(&reply_archive).unwrap();
+    let HistoryResult::Page { messages, .. } = peer(
+        &mut host,
+        owner,
+        owner,
+        ConversationCommand::History { before: None },
+    )
+    .unwrap() else {
+        panic!("history expected");
+    };
+    assert_eq!(
+        serde_json::to_value(
+            messages
+                .into_iter()
+                .map(|row| row.message.reply)
+                .collect::<Vec<_>>()
+        )
+        .unwrap(),
+        serde_json::to_value(replies).unwrap()
+    );
+    drop(reply_archive);
+
     // A malformed stream rolls back its staging transaction, never the live room.
     let mut duplicate = rows[0].clone();
     duplicate.message.message.seq = 2;
