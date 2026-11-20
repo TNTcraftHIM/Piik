@@ -39,6 +39,14 @@ use their own invitation or password; send those invitations only to intended
 guests. Each room owner manages that room's access and invitation resets;
 see [getting started](./getting-started.md).
 
+## Share video and audio from OBS
+
+1. Open Piik App on the computer running OBS. In the room, select **Start sharing → OBS / WHIP**.
+2. In OBS, open **Settings → Stream** and set **Service** to **WHIP**. Copy **Server** and **Bearer Token** from Piik into the matching fields in OBS. [OBS settings screenshot](https://obsproject.com/kb/whip-streaming-guide)
+3. Set OBS to use **H.264** video and **Opus** audio, then select **Start Streaming**. Once Piik shows the OBS picture is live, viewers can select **Watch** in the room.
+
+If Piik reports an unsupported video format, stop streaming, select **NV12** under **Settings → Advanced → Video → Color Format**, then start streaming again. Some Linux builds of OBS stay on “Connecting.” To share through the virtual camera instead, start it in OBS and follow [Cameras and virtual audio inputs](#cameras-and-virtual-audio-inputs) to set up video and sound.
+
 ## Watch a webpage video together
 
 In a 3.0 test room, select **Start sharing → Watch together** and paste a direct video URL or copy the page address from your browser’s address bar.
