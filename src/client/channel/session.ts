@@ -496,8 +496,8 @@ export class ChannelSession {
       this.patch({ sessionId: event.sessionId, self: event.selfProfile, profiles: new Map([[event.selfProfile.id, event.selfProfile]]), connection: "connected", error: null, siteURL: this.siteURL(), forwardingLimit });
       this.readings.clear();
       for (const room of event.state.channel.rooms) if (room.reading) this.readingRooms.add(room.id);
-      for (const [id, candidate] of this.pendingWatchPlayers) {
-        if (candidate.mode !== null && this.watchPlayers.get(id) !== candidate) this.retirePendingWatchPlayer(id);
+      for (const id of this.pendingWatchPlayers.keys()) {
+        if (this.hasJoiningWatchCandidate(id)) this.retirePendingWatchPlayer(id);
       }
       for (const activity of event.state.watchActivities) {
         if (activity.sessionId === event.sessionId && !this.watchPlayers.has(activity.id))
@@ -2403,11 +2403,15 @@ export class ChannelSession {
     }, player.roomId, { signal: player.signal });
     player.signal.throwIfAborted();
   }
+  private hasJoiningWatchCandidate(id: string): boolean {
+    const candidate = this.pendingWatchPlayers.get(id);
+    return !!candidate?.mode && candidate !== this.watchPlayers.get(id);
+  }
   resumeWatches = async (): Promise<void> => {
     if (this.view.connection !== "connected") return;
     await Promise.all([...this.watchPlayers].map(async ([id, player]) => {
       // Once the candidate requests its mode, it owns the subscription until commit or cancellation.
-      if (player.mode === null || this.pendingWatchPlayers.get(id)?.mode) return;
+      if (player.mode === null || this.hasJoiningWatchCandidate(id)) return;
       try {
         await this.joinWatchAndSyncClock(id, player, player.mode);
         if (player.owner && this.watchPlayers.get(id) === player) await this.reconcileWatchBytes(id, player);

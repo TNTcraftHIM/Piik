@@ -11044,6 +11044,56 @@ test('cancelling indexed preparation closes its page and prevents late preparati
   } finally { session.close(); }
 });
 
+test("a committed embed resumes during the stage handoff", async () => {
+  const { session, socket } = await setup(1000, false);
+  const id = "embed-handoff", url = "https://www.youtube.com/embed/M7lc1UVf-VE";
+  const { YouTubeMedia } = await import("../src/client/channel/watch-youtube-media");
+  vi.stubGlobal("window", { YT: { Player: class {} } });
+  vi.stubGlobal("document", { createElement: () => ({ remove() {} }) });
+  const sample = { position: 0, paused: true, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [] };
+  vi.spyOn(YouTubeMedia.prototype, "ready").mockResolvedValue();
+  vi.spyOn(YouTubeMedia.prototype, "read").mockImplementation(async () => ({ ...sample }));
+  vi.spyOn(YouTubeMedia.prototype, "playbackAvailable").mockReturnValue(true);
+  const patch = vi.spyOn(YouTubeMedia.prototype, "patch").mockImplementation(async value => { Object.assign(sample, value); });
+  const page = new appLink.AppPage(crypto.randomUUID(), url, async () => sample, vi.fn(), () => {});
+  vi.spyOn(session as unknown as { connectApp(): Promise<appLink.ChannelApp> }, "connectApp")
+    .mockResolvedValue({ preparePage: async () => page } as unknown as appLink.ChannelApp);
+  const activity = { id, roomId: "first", viewerSessionIds: [], sessionId: "other", userId: "other",
+    source: { kind: "website", url }, playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } };
+  const state = { ...session.getSnapshot().state!, watchActivities: [activity], watchSubscriptions: [{ id, mode: "direct" }] };
+  try {
+    socket.receive({ type: "state", state });
+    await session.prepareWatchPage("first", url, id);
+    const candidate = crypto.randomUUID();
+    page.receive({ type: "page_candidates", pageId: page.id, url, candidates: [{ id: candidate, title: "Video", url: null, duration: 60 }] });
+    const selecting = session.selectWatchPage("first", candidate, id);
+    await vi.waitFor(() => expect(socket.sent.some(c => c.type === "join_watch")).toBe(true));
+    const join = socket.sent.findLast(c => c.type === "join_watch")!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: join.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+    await selecting;
+    const switching = session.joinWatch(id);
+    await vi.waitFor(() => expect(session.getSnapshot().watchPlayers.get(id)?.presentation.kind).toBe("embed"));
+    const player = session.getSnapshot().watchPlayers.get(id)!;
+    expect(session.watchEmbedPreparation(id)).toBe(player.media);
+    session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    expect(player.signal.aborted).toBe(false);
+    expect(session.getSnapshot().watchPlayers.get(id)).toBe(player);
+    const rejoin = resumed.sent.findLast(c => c.type === "join_watch");
+    expect(rejoin).toMatchObject({ id, mode: "direct" });
+    resumed.receive({ type: "room_reply", roomId: "first", requestId: rejoin!.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+    for (const paused of [false, true]) {
+      resumed.receive({ type: "state", state: { ...state, watchActivities: [{ ...activity, playback: { ...activity.playback, paused } }] } });
+      await vi.waitFor(() => expect(patch).toHaveBeenCalledWith(expect.objectContaining({ paused })));
+    }
+    (player.media as InstanceType<typeof YouTubeMedia>).presentation.mounted();
+    await switching;
+    expect(session.watchEmbedPreparation(id)).toBeUndefined();
+  } finally { session.close(); }
+});
+
 test.each(["cancel", "select", "stopped"])("opening an original webpage preserves the current receiver before %s", async outcome => {
   const { session, socket } = await setup(1000, false);
   const video = Object.assign(new WatchTestVideo(), { volume: 1, muted: false });
