@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { pullRequestNotes, releaseNotes } from "../scripts/release-notes.mjs";
+import { pullRequestNotes, releaseNotes, releaseNotesSection } from "../scripts/release-notes.mjs";
 import { splitReleaseHeadline } from "../src/shared/release-headline.mjs";
 import { buildVersion, isReleaseVersion, releaseCommits, stableTags } from "../scripts/release-version.mjs";
 import { readReleaseArtifacts } from "../scripts/release-artifacts.mjs";
@@ -157,19 +157,22 @@ describe("release automation", () => {
       expect(releaseNotes(root, "v1.1.0", next, "fixture/Piik")).toBe(notes);
       // A checkout may have advanced; generation still uses the requested SHA.
       expect(releaseNotes(root, "v1.0.0", launch, "fixture/Piik")).toBe(first);
-      for (const section of ["", "## Release notes", "## Release notes\n<!-- Fill in -->\n### Changes",
-        "## Release notes\n- One\n## Release notes\n- Two", `## Release notes\n${opening}`]) {
-        git("checkout", "--quiet", "--detach", next);
-        const invalid = commit(`chore: maintenance\n\n${section}`);
-        expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Piik")).toThrow("one nonempty");
-      }
-      for (const damaged of ["????????????", "Updated \uFFFD capture"]) {
-        git("checkout", "--quiet", "--detach", next);
-        const invalid = commit(`fix: capture\n\n## Release notes\n${damaged}`);
-        expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Piik")).toThrow("damaged Release notes");
-      }
+      const invalid = commit("chore: maintenance");
+      expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Piik")).toThrow(`Commit ${invalid} needs one nonempty`);
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 15_000); // Real Git subprocesses share the runner with the rest of the suite.
+
+  it("rejects empty, duplicate, heading-only and damaged notes", () => {
+    const headline = "**Play together!**\n\n**一起玩！**";
+    for (const section of ["", "## Release notes", "## Release notes\n<!-- Fill in -->\n### Changes",
+      "## Release notes\n- One\n## Release notes\n- Two", `## Release notes\n${headline}`]) {
+      expect(() => releaseNotesSection(`chore: maintenance\n\n${section}`, "Fixture")).toThrow("one nonempty");
+    }
+    for (const damaged of ["????????????", "Updated \uFFFD capture"]) {
+      expect(() => releaseNotesSection(`fix: capture\n\n## Release notes\n${damaged}`, "Fixture"))
+        .toThrow("damaged Release notes");
+    }
+  });
 
   it("plans from immutable tags and all unreleased main changes without editing version files", () => {
     const root = mkdtempSync(join(tmpdir(), "piik-release-plan-"));
