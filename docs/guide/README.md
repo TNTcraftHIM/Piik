@@ -4,7 +4,7 @@ English · [简体中文](./README.zh-CN.md) · [Website](https://piik.tv/?lang=
 
 Start with the 3.0 test App you received or a friend's 3.0 link.
 Public online rooms and published downloads still use 2.x; their
-[2.6 getting-started guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/getting-started.md)
+[stable documentation](https://piik.tv/docs/?lang=en)
 remains available separately.
 
 ## Start using Piik
@@ -18,7 +18,7 @@ remains available separately.
 - **[Use Piik without installing](./getting-started.md#use-a-30-link-without-installing)**<br>
   Use a friend's 3.0 link to watch, chat, join voice or share from your browser.
 - **[Use my group's Piik site](./getting-started.md#share-from-an-existing-site)**<br>
-  Open its 3.0 site. Choose Browser or App hosting before creating a room.
+  Open its 3.0 site to join a room or create one if the channel allows it.
 
 </div>
 
@@ -45,7 +45,7 @@ with your version, system, browser and reproduction steps. Follow the
 ## Run a site for your group
 
 For a 3.0 test site, use the current [Server runtime instructions](../../prototype/channel-server/README.md#run).
-For a published 2.x deployment, use the [2.6 self-hosting guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/operations/self-hosting.md).
+For a 2.x deployment, follow the [stable self-hosting guide](https://piik.tv/docs/self-hosting.html?lang=en).
 
 ## Help improve Piik
 

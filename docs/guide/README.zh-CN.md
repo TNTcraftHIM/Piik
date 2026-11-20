@@ -4,7 +4,7 @@
 
 从收到的 3.0 内测 App 或朋友的 3.0 链接开始。
 公开在线版与正式下载仍使用 2.x，对应的
-[2.6 入门指南](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/getting-started.zh-CN.md)可单独查阅。
+[正式版文档](https://piik.tv/docs/zh/)可单独查阅。
 
 ## 开始使用
 
@@ -17,7 +17,7 @@
 - **[免安装使用](./getting-started.zh-CN.md#免安装使用-30-链接)**<br>
   通过朋友的 3.0 链接观看、聊天、加入语音，或用浏览器分享。
 - **[使用已有站点](./getting-started.zh-CN.md#使用已有站点分享)**<br>
-  打开 3.0 站点，创建房间前选择由网页或 App 托管。
+  打开 3.0 站点，加入房间，或在频道允许时创建房间。
 
 </div>
 
@@ -43,7 +43,7 @@
 ## 为朋友搭建站点
 
 搭建 3.0 测试站点时，请看当前 [Server 运行说明](../../prototype/channel-server/README.md#run)。
-部署已发布的 2.x 时，请看 [2.6 自部署指南](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/operations/self-hosting.zh-CN.md)。
+部署正式版 2.x 时，请看[自部署指南](https://piik.tv/docs/zh/self-hosting.html)。
 
 ## 一起改进 Piik
 

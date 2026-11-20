@@ -4,16 +4,16 @@ English · [简体中文](./getting-started.zh-CN.md) · [Documentation](./READM
 
 This guide is for the **3.0 test App and 3.0 links** supplied to testers.
 The public online site and published downloads still belong to 2.x; use the
-[published 2.6 guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/getting-started.md)
+[stable documentation](https://piik.tv/docs/?lang=en)
 for those versions.
 
 | You have… | Start here |
 | --- | --- |
 | A friend's 3.0 link | [Join their room](#join-a-friends-room). A browser is enough to watch. |
 | A 3.0 test App package | [Create a room with App](#share-with-piik-app). |
-| An existing 3.0 site | [Create a room in that site](#share-from-an-existing-site), with Browser or App hosting. |
+| An existing 3.0 site | [Join or create a room](#share-from-an-existing-site), depending on channel settings. |
 
-A **site** contains your group's rooms. Anyone can create their own room. People in a room can
+A **site** contains your group's rooms. Channel settings determine who can create rooms and whether members must create hidden, invitation-only rooms. People in a room can
 chat, join voice, share their own picture and choose which pictures to watch.
 
 ## Join a friend's room
@@ -46,12 +46,9 @@ site, not the entry for this test version.
 1. Use the **3.0 test package you received**. On Windows, extract the whole
    archive and open `piik-app.exe`; on Android, install the supplied APK and
    open Piik. Keep the desktop package's files together.
-2. The launcher opens in your system browser. Choose a mode below, then
-   select **Open Piik**. A fresh visit opens the room overview; the Piik mark
-   returns there without stopping your shares, watches or voice.
-3. On an empty site, select **Create your first room**. The name starts as
-   **Living room**; change it if you like. Choose **Public** for everyone in the
-   site or **Private** for invitation/password access. Check the hosting note,
+2. On Windows the launcher opens in the Piik window by default. You can also use the system browser.
+   Choose a mode below and select **Open Piik**. Your first visit opens the room overview. Select the Piik mark to return to it later.
+3. If the channel lets you create rooms, select **Create your first room** on an empty site. You can rename **Living room**. If the form offers a choice, select **Public** or **Private**. Check the hosting note,
    then select **Create room** to enter it. Later, use **Create room** in the
    room list (**Rooms** on a narrow screen) to open the same form.
 4. [Invite your friends](#invite-friends), then select **Start sharing**.
@@ -115,11 +112,10 @@ working, while existing access and the room password remain.
 1. Keep the 3.0 App running and open your group's **3.0** site.
 2. Select **App → Open App page**. Allow local-network access if your browser
    asks. Check the site's address on the local page, then select **Allow access**.
-3. Return to the site. Connect App **before creating a room** if you want App
-   hosting; the creation form tells you which runtime will host it.
+3. Return to the site. In a lightweight channel, a new room runs in App if connected when you create it, or in the browser page otherwise. In a hosted channel, the server manages the room and keeps it available after you leave. Check the hosting note on the creation form.
 4. In a room, **Start sharing** now also offers the App's supported sources.
 
-Connecting App keeps an existing Browser-hosted room with its current host.
+Connecting App adds supported device features. Existing rooms keep their host.
 Manage approved sites from the App launcher. See the
 [App reference](../../prototype/channel-server/README.md#local-app-link) for details.
 
@@ -134,10 +130,8 @@ Public 2.x downloads are not the 3.0 test update.
 
 ## Share from an existing site
 
-Open your group's 3.0 address or room invitation, then select
-**Create room** or choose a room you can enter. Follow
-[the room and sharing steps above](#share-with-piik-app), starting at step 3.
-You can chat and join voice before anyone shares a picture.
+Open your group's 3.0 address or room invitation and choose a room you can enter.
+You can also select **Create room** if the site allows it. Once inside, select **Start sharing** to show your screen or **Watch** beside a friend's screen. You can chat and join voice before anyone starts sharing.
 
 Browser screen/camera access needs HTTPS or a localhost address. Available
 sources and sound options depend on the browser and operating system. App is
