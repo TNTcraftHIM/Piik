@@ -14,6 +14,7 @@ import { useHostPreviewPlayback } from "../../components/living/use-host-preview
 import { usePictureInPicture } from "../../components/living/use-picture-in-picture";
 import { toggleVideoFullscreen, videoFullscreenState } from "../../components/living/video-fullscreen";
 import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio";
+import { observeDebugPlayback } from "../../lib/debug-webrtc";
 import { observeCompositedVideoFrame } from "../../media/video-frame-proof";
 import { playbackFailure } from "../../media/viewer-playback";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
@@ -118,6 +119,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     if (surface.kind === "external") return;
     const element = surface.element, target = slot.current;
     let stopFrame: (() => void) | undefined;
+    let stopDebug: (() => void) | undefined;
     element.dataset.watchSurface = "true";
     if (target && element.parentNode !== target) {
       if (surface.kind === "embed" && element.isConnected) target.moveBefore(element, null);
@@ -127,10 +129,14 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     if (surface.kind === "embed") surface.setVisible(presentation !== "background" && element.ownerDocument.visibilityState === "visible", automaticPlayback);
     if (surface.kind === "video") {
       element.setAttribute("aria-label", label); element.dataset.selected = "true"; element.tabIndex = -1;
+      stopDebug = observeDebugPlayback(surface.element, () => ({
+        source: "watch", selected: !element.closest("[inert]"), presentedFrame: player.hasPresentedFrame,
+      }));
       if (!player.hasPresentedFrame) stopFrame = observeCompositedVideoFrame(surface.element, null, () => player.presentFrame());
     }
     return () => {
       stopFrame?.();
+      stopDebug?.();
       if (element.parentNode === target) {
         if (surface.kind === "embed") surface.setVisible(false);
         else element.remove();
@@ -267,9 +273,13 @@ function ChannelVideoInput({ input, negotiatedFlowId, visible, interactive, labe
     const stop = observeChannelInputFrame(element, input.stream, negotiatedFlowId, () => {
       setComposited(true); frame(input, element);
     });
+    const stopDebug = observeDebugPlayback(element, () => ({
+      source: "screen", flowId: negotiatedFlowId, selected: element.dataset.selected === "true",
+      presentedFrame: element.dataset.composited === "true",
+    }));
     let active = true;
     void element.play().catch(error => { if (active) issue(input, element, error); });
-    return () => { active = false; stop(); element.muted = true; element.pause(); element.srcObject = null; };
+    return () => { active = false; stop(); stopDebug(); element.muted = true; element.pause(); element.srcObject = null; };
   }, [input.flowId, input.stream, negotiatedFlowId, frame, issue]);
   return <video ref={attach} playsInline muted inert={!interactive} style={{ objectFit: fit }} aria-label={visible ? label : undefined} aria-hidden={!visible}
     data-flow-id={input.flowId} data-selected={visible} data-composited={composited} data-switch-ready={input.switchReady}

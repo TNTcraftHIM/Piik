@@ -68,12 +68,14 @@ export function observeDebugConnection(connection: RTCPeerConnection, identity: 
   return () => { linearCandidates.delete(connection); connections.delete(connection); release(); };
 }
 
-export function observeDebugPlayback(video: HTMLVideoElement, identity: object): () => void {
+export function observeDebugPlayback(video: HTMLVideoElement, context: () => { source: "screen" | "watch"; flowId?: string; selected: boolean; presentedFrame: boolean }): () => void {
   return registerDebugCollector("playback", () => {
     const quality = video.getVideoPlaybackQuality?.();
-    debugEvent("playback", "snapshot", { ...identity,
+    const decoded = (video as HTMLVideoElement & { webkitDecodedFrameCount?: number }).webkitDecodedFrameCount;
+    debugEvent("playback", "snapshot", { ...context(),
       width: video.videoWidth, height: video.videoHeight, readyState: video.readyState,
-      paused: video.paused, ended: video.ended, visibility: document.visibilityState,
+      paused: video.paused, ended: video.ended, visibility: video.ownerDocument.visibilityState,
+      decodedVideoFrames: decoded ?? null,
       totalVideoFrames: quality?.totalVideoFrames ?? null,
       droppedVideoFrames: quality?.droppedVideoFrames ?? null,
     });

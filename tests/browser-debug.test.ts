@@ -156,10 +156,13 @@ describe("opt-in Browser diagnostics", () => {
     });
     const releaseConnection = rtc.observeDebugConnection(connection as unknown as RTCPeerConnection,
       { role: "native-preview", generation: 3 });
+    let presentedFrame = false;
     const releasePlayback = rtc.observeDebugPlayback({
       videoWidth: 854, videoHeight: 480, readyState: 4, paused: false, ended: false,
       getVideoPlaybackQuality: () => ({ totalVideoFrames: 7, droppedVideoFrames: 1 }),
-    } as unknown as HTMLVideoElement, { role: "host-preview", generation: 3 });
+      ownerDocument: { visibilityState: "hidden" }, src: "private-video-url", title: "private-video-title",
+    } as unknown as HTMLVideoElement, () => ({ source: "screen", flowId: "flow-0", selected: true, presentedFrame }));
+    presentedFrame = true;
     expect(connection.getStats).not.toHaveBeenCalled();
     decoded = 8;
     const report = JSON.parse(await debug.exportBrowserDebug());
@@ -169,8 +172,9 @@ describe("opt-in Browser diagnostics", () => {
       stats: [expect.objectContaining({ framesDecoded: 8, bytesReceived: 1234 })],
     }) }));
     expect(report.events).toContainEqual(expect.objectContaining({ event: "snapshot", details: expect.objectContaining({
-      role: "host-preview", generation: 3, width: 854, height: 480, totalVideoFrames: 7, droppedVideoFrames: 1,
+      source: "screen", flowId: "flow-0", selected: true, presentedFrame: true, visibility: "hidden", width: 854, height: 480, totalVideoFrames: 7, droppedVideoFrames: 1,
     }) }));
+    expect(JSON.stringify(report)).not.toMatch(/private-video-(url|title)/);
     connection.connectionState = "closed";
     releaseConnection(); // Browser close() need not dispatch a state-change event.
     releasePlayback();
