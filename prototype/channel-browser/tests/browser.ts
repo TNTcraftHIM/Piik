@@ -177,6 +177,25 @@ window.runBrowserRoomCheck = async () => {
       } finally { IDBCursor.prototype.continue = advance; }
       await seek(owned.message.seq, backlog.message.seq);
       await seek(backlog.message.seq, null);
+
+      const lateWrite = (await chat(current, { text: "Arrived after clear was selected", nonce: "late-clear",
+        reply: { seq: owned.message.seq, messageId: owned.message.id, notify: false }, attachments: [attachment] }))[0].record;
+      check(lateWrite.type === "confirmed" && lateWrite.message.reply?.seq === owned.message.seq, "late write quotes a message in the selected range");
+      const partialClear = await run({ type: "clear_history", throughSeq: owned.message.seq }, true);
+      check(partialClear[0]?.record.type === "history_cleared", "clear accepts the earlier selected boundary");
+      const partialSnapshot = await current.snapshot(), retained: BackupHistoryRow[] = [];
+      try { for await (const row of partialSnapshot.rows) retained.push(row); } finally { await partialSnapshot.close(); }
+      check(retained.length === lateWrite.message.seq && retained.slice(0, owned.message.seq).every(row =>
+        Object.keys(row).sort().join() === "retryKey,seq"), "snapshot retains only tombstones through the clear boundary");
+      const restored = await BrowserRoomHost.stage(name, replyPolicy);
+      try { for (const row of retained) await restored.append(row); await restored.replace(); } finally { await restored.close(); }
+      await current.close(); current = await BrowserRoomHost.open(name, replyPolicy);
+      check((await sync()).projection.lastMessageSeq === lateWrite.message.seq, "partial clear and restore retain the latest committed sequence");
+      const available = (await run({ type: "history", before: null }))
+        .flatMap(({ record }) => record.type === "history_message" ? [record.message] : []);
+      check(available.length === 2 && available.some(message => message.id === backlog.message.id)
+        && available.some(message => message.id === lateWrite.message.id && !message.reply && message.attachments[0]?.id === attachment.id),
+      "post-boundary rows and attachment metadata survive restart and restore with the purged quote removed");
     } finally { await current.close(); await other.close(); await new Promise<void>((resolve, reject) => {
       const request = indexedDB.deleteDatabase(name); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); }); }
   }
