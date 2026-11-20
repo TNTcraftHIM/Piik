@@ -237,6 +237,14 @@ remain the same when a different eligible holder supplies the bytes.
 
 ### Server transit by payload
 
+In a hosted room the writer authorizes room activity and stores its history.
+A chat-only reader can open that room before a sender and receiver arrive.
+Start their route between the active participants. If the pair fails, an
+eligible reader in the room can relay the transfer. A peer that refuses a
+file branch can still send or receive its own files. A confirmed direct
+connection can serve the pending download once both ends acknowledge its
+room grant.
+
 A service node is a candidate under the same room grant, route selection
 and delivery proof as other eligible relays. Audio and video use media
 tracks. File transit uses the reliable bulk DataChannel, reads and forwards

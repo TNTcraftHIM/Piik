@@ -763,6 +763,7 @@ mod room_tests {
             ),
         ]);
         let input = |action, binding_id| HostInput {
+            hosting_mode: Default::default(),
             channel_owner_id: Uuid::nil(),
             service_endpoint: None,
             now: 0,

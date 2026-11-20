@@ -55,6 +55,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
         now: 0,
     };
     host.dispatch(HostInput {
+        hosting_mode: Default::default(),
         channel_owner_id: Uuid::nil(),
         service_endpoint: None,
         now: 0,
@@ -93,6 +94,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
     endpoints.remove(&publisher);
     let work = host
         .dispatch(HostInput {
+            hosting_mode: Default::default(),
             channel_owner_id: Uuid::nil(),
             service_endpoint: None,
             now: 0,

@@ -218,6 +218,7 @@ mod tests {
         assert_eq!(host.binding(), None);
         assert!(HostedRoom::open(&path, "room", owner).is_err());
         let stale = || HostInput {
+            hosting_mode: Default::default(),
             channel_owner_id: Uuid::nil(),
             service_endpoint: None,
             now: 1,
@@ -323,6 +324,7 @@ mod tests {
             ),
         ]);
         let input = |endpoints: &BTreeMap<Uuid, Endpoint>, binding_id| HostInput {
+            hosting_mode: Default::default(),
             channel_owner_id: Uuid::nil(),
             service_endpoint: None,
             now: 0,

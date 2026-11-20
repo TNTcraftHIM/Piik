@@ -1025,6 +1025,7 @@ impl Channel {
             return Err("room_host_offline");
         }
         let (session, input) = remote.input(
+            self.hosting_mode,
             self.identity.owner_id,
             endpoints,
             self.service_endpoint,
@@ -1692,9 +1693,13 @@ impl Channel {
                 return Err("invalid_room_projection");
             }
         }
+        let base_root = projection.base_root(binding.session);
+        if self.hosting_mode == HostingMode::Lightweight && base_root != binding.session {
+            return Err("invalid_room_projection");
+        }
         let mut base_parents = BTreeMap::new();
         for link in projection.base_links.iter().filter(|link| link.selected) {
-            if link.child == binding.session
+            if link.child == base_root
                 || base_parents.insert(link.child, link.parent).is_some()
             {
                 return Err("invalid_room_projection");
@@ -1703,7 +1708,7 @@ impl Channel {
         for child in base_parents.keys() {
             let mut path = BTreeSet::new();
             let mut node = *child;
-            while node != binding.session {
+            while node != base_root {
                 if !path.insert(node) {
                     return Err("invalid_room_projection");
                 }
@@ -1742,7 +1747,7 @@ impl Channel {
         for link in candidates {
             let mut path = BTreeSet::new();
             let mut parent = link.child;
-            while parent != binding.session {
+            while parent != base_root {
                 if !path.insert(parent) {
                     return Err("invalid_room_projection");
                 }
@@ -1937,7 +1942,7 @@ impl Channel {
                 .iter()
                 .find_map(|(session, view)| view.transit_endpoint.is_some().then_some(*session)),
             base: BaseTopology {
-                root_session_id: binding.session,
+                root_session_id: projection.base_root(binding.session),
                 edges: projection
                     .base_links
                     .iter()

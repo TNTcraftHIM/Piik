@@ -922,3 +922,74 @@ fn service_socket_reconnect_cannot_revive_a_lease_even_when_host_missed_disconne
         Some(relay)
     );
 }
+
+#[test]
+fn hosted_writer_accepts_participant_rooted_room_projection() {
+    use piik_channel_core::{
+        host::{RoomSummary, ServiceEndpoint},
+        wire::HostingMode,
+        RoomState,
+    };
+    let mut net = RoomNetwork::new();
+    net.authority.set_hosting_mode(HostingMode::Hosted);
+    let (writer, a, b) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+    let writer_session = join(&mut net, writer, false);
+    let source = join(&mut net, a, true);
+    let receiver = join(&mut net, b, false);
+    net.authority
+        .set_room_writer(ServiceEndpoint {
+            session_id: writer_session,
+            connection_id: writer,
+        })
+        .unwrap();
+    let owner = net
+        .state(a)
+        .sessions
+        .iter()
+        .find(|s| s.id == source)
+        .unwrap()
+        .user_id;
+    let mut policy = RoomState::new(
+        "room".into(),
+        "Room".into(),
+        Default::default(),
+        owner,
+        RoomAccess::Public,
+        false,
+        None,
+    )
+    .unwrap();
+    let creation = net
+        .authority
+        .prepare_hosted_creation(source, a, RoomSummary::from_policy(&policy))
+        .unwrap();
+    net.authority.reserve_hosted_creation(&creation).unwrap();
+    policy.id = creation.summary().id.clone();
+    let room = net.restore_room(writer, policy);
+    assert_eq!(
+        topology(&mut net, a, &room).base.root_session_id,
+        writer_session
+    );
+    for peer in [a, b] {
+        command(
+            &mut net,
+            peer,
+            json!({"type":"voice","roomId":room,"joined":true,"muted":false,"deafened":false}),
+        );
+    }
+    let base = topology(&mut net, a, &room).base;
+    assert_eq!(base.root_session_id, source);
+    assert_eq!(base.edges.len(), 1);
+    assert_eq!(
+        (base.edges[0].sender, base.edges[0].receiver),
+        (source, receiver)
+    );
+    assert_eq!(
+        net.state(a).channel.rooms[0]
+            .delivery
+            .as_ref()
+            .unwrap()
+            .host_session_id,
+        writer_session
+    );
+}

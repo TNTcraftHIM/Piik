@@ -107,6 +107,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
     policy.appearance.picture = Some(picture.clone());
     let mut host = RoomHost::new(policy);
     host.dispatch(HostInput {
+        hosting_mode: Default::default(),
         channel_owner_id: Uuid::nil(),
         service_endpoint: None,
         now: 0,

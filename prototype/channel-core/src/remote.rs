@@ -166,6 +166,7 @@ impl RemoteRoom {
 
     pub fn input(
         &mut self,
+        hosting_mode: crate::wire::HostingMode,
         channel_owner_id: Uuid,
         endpoints: BTreeMap<Uuid, Endpoint>,
         service_endpoint: Option<ServiceEndpoint>,
@@ -222,6 +223,7 @@ impl RemoteRoom {
         Ok((
             binding.session,
             HostInput {
+                hosting_mode,
                 channel_owner_id,
                 now,
                 binding_id: binding.id,

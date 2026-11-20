@@ -122,6 +122,8 @@ pub struct ServiceEndpoint {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostInput {
+    #[serde(default)]
+    pub hosting_mode: crate::wire::HostingMode,
     pub channel_owner_id: Uuid,
     pub now: u64,
     pub binding_id: Uuid,
@@ -195,6 +197,19 @@ pub struct RoomProjection {
 }
 
 impl RoomProjection {
+    pub(crate) fn base_root(&self, writer: Uuid) -> Uuid {
+        let children: BTreeSet<_> = self
+            .base_links
+            .iter()
+            .filter(|link| link.selected)
+            .map(|link| link.child)
+            .collect();
+        self.base_links
+            .iter()
+            .find(|link| link.selected && !children.contains(&link.parent))
+            .map_or(writer, |link| link.parent)
+    }
+
     /// Physical connections are shared by the room's active media and file requests.
     pub(crate) fn requested_pairs(&self) -> BTreeSet<(Uuid, Uuid)> {
         let publishers: BTreeMap<_, _> = self
@@ -390,7 +405,7 @@ impl RoomRuntime {
                     downstream_id,
                 )?;
             }
-            Command::ForwardingAvailable { kind, .. } => self.forwarding_available(session,kind),
+            Command::ForwardingAvailable { kind, .. } => self.forwarding_available(session, kind),
             Command::FileReceive {
                 message_seq,
                 attachment_id,
@@ -571,6 +586,128 @@ mod tests {
     use crate::wire::Request;
 
     #[test]
+    fn hosted_writer_sync_plans_cold_file_and_voice_between_participants() {
+        let id = Uuid::from_u128;
+        let (writer, source, receiver) = (id(1), id(2), id(3));
+        let member = Member { user_id: source };
+        let endpoints: BTreeMap<_, _> = [writer, source, receiver, id(6)]
+            .into_iter()
+            .map(|session| {
+                (
+                    session,
+                    Endpoint {
+                        member: Member { user_id: session },
+                        signing_key: [0; 32],
+                        connected: true,
+                    },
+                )
+            })
+            .collect();
+        for voice in [false, true] {
+            let mut host = RoomHost::new(
+                RoomState::new(
+                    "room".into(),
+                    "Room".into(),
+                    Default::default(),
+                    source,
+                    crate::wire::RoomAccess::Public,
+                    false,
+                    None,
+                )
+                .unwrap(),
+            );
+            let mut input = HostInput {
+                hosting_mode: crate::wire::HostingMode::Hosted,
+                channel_owner_id: writer,
+                service_endpoint: None,
+                now: 0,
+                binding_id: id(4),
+                host_session_id: writer,
+                revision: 1,
+                confirmed_pairs: Default::default(),
+                failed_pairs: vec![],
+                endpoints: endpoints.clone(),
+                action: HostAction::Sync,
+            };
+            host.dispatch(input.clone()).unwrap();
+            assert!(
+                host.finish(None)
+                    .unwrap()
+                    .projection
+                    .capabilities
+                    .attachments
+            );
+            // A chat reader is available before either participant starts delivery.
+            let reader = Member { user_id: id(6) };
+            host.room.browse(reader, id(6), true).unwrap();
+            if voice {
+                host.room.set_relay_capacity(reader, id(6), Some(0)).unwrap();
+            }
+            host.room.reconcile(&endpoints, 0);
+            assert!(host.room.base_links().next().is_none());
+            assert!(host.room.flows().next().is_none());
+            if voice {
+                for session in [source, receiver] {
+                    host.room
+                        .set_voice(Member { user_id: session }, session, true, true, false)
+                        .unwrap();
+                }
+                host.room
+                    .publish(member, source, id(5), crate::wire::Kind::Voice, None, None)
+                    .unwrap();
+            } else {
+                let attachment = crate::AttachmentDescriptor {
+                    id: id(5),
+                    name: "file".into(),
+                    media_type: "application/octet-stream".into(),
+                    size: 3,
+                    sha256: crate::attachment::sha256_hex(b"abc"),
+                };
+                host.room
+                    .finish_file(source, 1, source, attachment.clone(), true, true)
+                    .unwrap();
+                host.room
+                    .finish_file(receiver, 1, source, attachment, false, true)
+                    .unwrap();
+            }
+            input.revision += 1;
+            host.dispatch(input.clone()).unwrap();
+            let links = host.finish(None).unwrap().projection.base_links;
+            assert_eq!(links.len(), 1);
+            assert_eq!((links[0].parent, links[0].child), (source, receiver));
+            host.room.base_state(source, receiver, true).unwrap();
+            host.room.base_state(receiver, source, true).unwrap();
+            input.revision += 1;
+            host.dispatch(input).unwrap();
+            let projection = host.finish(None).unwrap().projection;
+            if voice {
+                assert!(projection
+                    .flows
+                    .iter()
+                    .any(|flow| flow.sender == source && flow.receiver == receiver));
+            } else {
+                assert_eq!(projection.views[&receiver].files[0].upstream, Some(source));
+                // When the direct pair fails, the available reader can carry the same request.
+                host.room.failed_pair(source, receiver);
+                for now in [1, 2, 10_000, 10_001] {
+                    host.room.reconcile(&endpoints, now);
+                    let links: Vec<_> = host.room.base_links().collect();
+                    for link in links {
+                        if [link.parent, link.child].contains(&id(6)) {
+                            host.room.base_state(link.parent, link.child, true).unwrap();
+                            host.room.base_state(link.child, link.parent, true).unwrap();
+                        }
+                    }
+                }
+                host.room.reconcile(&endpoints, 10_002);
+                let projection = host.room.projection(&endpoints);
+                assert_eq!(projection.views[&receiver].files[0].upstream, Some(id(6)));
+                assert_eq!(projection.views[&id(6)].files[0].upstream, Some(source));
+            }
+        }
+    }
+
+    #[test]
     fn counted_reactions_commit_after_storage_and_follow_each_publication_lifetime() {
         use crate::conversation::{
             ConversationAddress, ConversationCommand, ConversationRecord, ConversationRequest,
@@ -616,6 +753,7 @@ mod tests {
             .unwrap(),
         );
         host.dispatch(HostInput {
+            hosting_mode: Default::default(),
             channel_owner_id: Uuid::nil(),
             service_endpoint: None,
             now: 0,
@@ -849,6 +987,7 @@ mod tests {
                 endpoints.insert(native, endpoint(friend));
             }
             let input = HostInput {
+                hosting_mode: Default::default(),
                 channel_owner_id: Uuid::nil(),
                 service_endpoint: None,
                 now: 0,
@@ -923,6 +1062,7 @@ mod tests {
             ),
         ] {
             let input = HostInput {
+                hosting_mode: Default::default(),
                 channel_owner_id: Uuid::nil(),
                 service_endpoint: None,
                 now: 0,
@@ -1334,7 +1474,8 @@ impl RoomHost {
             endpoints: input.endpoints.clone(),
             reaction_nonces,
         });
-        self.room.set_host_session(input.host_session_id);
+        self.room
+            .set_writer(input.host_session_id, input.hosting_mode);
         self.room
             .reconcile_with_pairs(&input.endpoints, input.now, &input.confirmed_pairs);
         let before = self.room.clone();

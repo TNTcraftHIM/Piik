@@ -150,6 +150,29 @@ impl FileRoom {
             })
         })
     }
+    pub fn blocked_direct_source(
+        &self,
+        base: &BaseTree,
+        confirmed: &BTreeSet<(Uuid, Uuid)>,
+    ) -> Option<Uuid> {
+        self.files.values().find_map(|file| {
+            let source = file.source?;
+            if source == base.root() || file.refused.is_empty() {
+                return None;
+            }
+            file.receivers
+                .iter()
+                .any(|&receiver| {
+                    confirmed.contains(&(source.min(receiver), source.max(receiver)))
+                        && !file.refused.contains(&(source, receiver))
+                        && !base
+                            .project(source, &BTreeSet::from([receiver]))
+                            .is_disjoint(&file.refused)
+                })
+                .then_some(source)
+        })
+    }
+
     pub fn demand(&self) -> BTreeSet<Uuid> {
         self.files
             .values()

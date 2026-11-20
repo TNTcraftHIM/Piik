@@ -16,6 +16,7 @@ use uuid::Uuid;
 
 fn input(owner: Uuid, actor: Uuid, action: impl FnOnce(RequestContext) -> HostAction) -> HostInput {
     HostInput {
+        hosting_mode: Default::default(),
         channel_owner_id: Uuid::nil(),
         service_endpoint: None,
         now: 0,

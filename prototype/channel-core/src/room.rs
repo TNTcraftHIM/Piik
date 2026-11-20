@@ -48,6 +48,7 @@ pub struct RoomRuntime {
     publications: BTreeMap<Uuid, Publication>,
     watch_activities: BTreeMap<Uuid, Watch>,
     base: Option<BaseTree>,
+    hosted_writer: Option<Uuid>,
     transit_endpoint: Option<crate::host::ServiceEndpoint>,
     repair_at: Option<u64>,
     files: crate::file_room::FileRoom,
@@ -96,6 +97,7 @@ impl RoomRuntime {
             publications: BTreeMap::new(),
             watch_activities: BTreeMap::new(),
             base: None,
+            hosted_writer: None,
             transit_endpoint: None,
             repair_at: None,
             files: Default::default(),
@@ -281,7 +283,7 @@ impl RoomRuntime {
                 None
             },
             capabilities: crate::wire::RoomCapabilities {
-                attachments: self.base.is_some(),
+                attachments: self.attachments_available(),
                 history_seek: true,
             },
             participant_session_ids: self
@@ -367,13 +369,20 @@ impl RoomRuntime {
         }
     }
 
+    pub(crate) fn set_writer(&mut self, session: Uuid, mode: crate::wire::HostingMode) {
+        self.hosted_writer = (mode == crate::wire::HostingMode::Hosted).then_some(session);
+        if self.hosted_writer.is_none() {
+            self.set_host_session(session);
+        }
+    }
+
     pub fn set_host_session(&mut self, session: Uuid) {
         if self.base.as_ref().is_none_or(|base| base.root() != session) {
             self.base = Some(BaseTree::new(session));
         }
     }
     pub fn attachments_available(&self) -> bool {
-        self.base.is_some()
+        self.base.is_some() || self.hosted_writer.is_some()
     }
     pub(crate) fn remove_message_files(&mut self, from: u64, through: u64) -> bool {
         self.files.remove_messages(from, through)
@@ -1230,7 +1239,6 @@ impl RoomRuntime {
                 .get(&service.session_id)
                 .is_some_and(|endpoint| endpoint.connected)
         });
-        let limits = self.relay_limits();
         let repair_due = self.repair_at.is_some_and(|deadline| deadline <= now);
         if repair_due {
             self.repair_at = None;
@@ -1297,8 +1305,11 @@ impl RoomRuntime {
                 routable.remove(&session);
             }
         }
+        if let Some(writer) = self.hosted_writer {
+            routable.remove(&writer);
+        }
         routable.extend(service);
-        let connected = endpoints
+        let connected: BTreeSet<_> = endpoints
             .iter()
             .filter_map(|(session, endpoint)| {
                 (endpoint.connected && routable.contains(session)).then_some(*session)
@@ -1310,12 +1321,47 @@ impl RoomRuntime {
                 .iter()
                 .filter_map(|(id, activity)| activity.reading.then_some(*id)),
         );
+        if let Some(writer) = self.hosted_writer {
+            let eligible =
+                |id: &Uuid| *id != writer && connected.contains(id) && base_members.contains(id);
+            let willing =
+                |id: &Uuid| self.activity.get(id).and_then(|a| a.relay_capacity) != Some(0);
+            let preferred = demand.iter().find(|id| eligible(id) && willing(id));
+            let direct_source = self
+                .base
+                .as_ref()
+                .and_then(|base| self.files.blocked_direct_source(base, confirmed_pairs))
+                .filter(eligible);
+            if let Some(source) = direct_source {
+                self.base.as_mut().unwrap().reseat(source);
+            } else if self.base.as_ref().is_none_or(|base| {
+                !eligible(&base.root())
+                    || (!willing(&base.root()) && preferred.is_some())
+                    || (!demand.contains(&base.root()) && base.links().next().is_none())
+            }) {
+                self.base = preferred
+                    .or_else(|| demand.iter().find(|id| eligible(id)))
+                    .copied()
+                    .map(BaseTree::new);
+            }
+        }
         base_members.extend(self.base.as_ref().map(BaseTree::root));
         base_members.extend(service);
         base_members.retain(|id| routable.contains(id));
+        let limits = self.relay_limits();
         let confirmed_demand = self.confirmed_delivery_pairs(&requested, confirmed_pairs);
         if let Some(base) = &mut self.base {
             if base.needs_repair(&demand, &connected) {
+                if self.hosted_writer.is_some() {
+                    if let Some(helper) = base_members.iter().find(|id| {
+                        !demand.contains(id)
+                            && connected.contains(id)
+                            && Some(**id) != service
+                            && limits.get(**id, base.root()) > 0
+                    }) {
+                        demand.insert(*helper);
+                    }
+                }
                 demand.extend(service);
             }
             if repair_due {
@@ -2220,6 +2266,47 @@ mod tests {
             .unwrap();
         room.reconcile(&endpoints, 0);
         (room, endpoints)
+    }
+
+    #[test]
+    fn refused_file_transit_reuses_confirmed_pair_with_zero_forwarding() {
+        let id = Uuid::from_u128;
+        let (fixture, endpoints) = screen_on_room_base();
+        let (a, b, c, writer) = (id(1), id(2), id(3), id(4));
+        let mut room = RoomRuntime::new(fixture.policy);
+        room.set_writer(writer, crate::wire::HostingMode::Hosted);
+        for session in [a, b, c] {
+            room.set_relay_capacity(endpoints[&session].member, session, Some(0))
+                .unwrap();
+            room.set_voice(endpoints[&session].member, session, true, true, false)
+                .unwrap();
+            room.reconcile(&endpoints, 0);
+        }
+        for link in room.base_links().collect::<Vec<_>>() {
+            room.base_state(link.parent, link.child, true).unwrap();
+            room.base_state(link.child, link.parent, true).unwrap();
+        }
+        let file = crate::AttachmentDescriptor {
+            id: id(9),
+            name: "sample".into(),
+            size: 3,
+            media_type: "application/octet-stream".into(),
+            sha256: crate::attachment::sha256_hex(b"abc"),
+        };
+        room.finish_file(b, 1, b, file.clone(), true, true).unwrap();
+        room.finish_file(c, 1, b, file.clone(), false, true)
+            .unwrap();
+        let confirmed = BTreeSet::from([(b, c)]);
+        room.reconcile_with_pairs(&endpoints, 1, &confirmed);
+        room.refuse_file_branch(a, 1, file.id, b, c).unwrap();
+        room.reconcile_with_pairs(&endpoints, 2, &confirmed);
+        room.base_state(b, c, true).unwrap();
+        room.base_state(c, b, true).unwrap();
+        room.reconcile_with_pairs(&endpoints, 3, &confirmed);
+        let views = room.projection(&endpoints).views;
+        assert_eq!(views[&c].files[0].upstream, Some(b));
+        assert_eq!(views[&b].files[0].downstream, vec![c]);
+        assert!(views[&a].files.is_empty() && views[&writer].files.is_empty());
     }
 
     #[test]

@@ -861,6 +861,11 @@ impl BaseTree {
             operation: None,
         }
     }
+    pub fn reseat(&mut self, root: Uuid) {
+        self.plan = Plan::new(root);
+        self.operation = None;
+        // Reconciliation prunes acknowledgements for pairs whose room lease ends.
+    }
     pub fn root(&self) -> Uuid {
         self.plan.source
     }
@@ -949,6 +954,13 @@ impl BaseTree {
             .failed_parents
             .retain(|child, _| demand.contains(child) || self.plan.parents.contains_key(child));
         self.prune_proofs();
+        for (&child, &parent) in &self.plan.parents {
+            if self.acknowledged.contains(&(child, parent))
+                && self.acknowledged.contains(&(parent, child))
+            {
+                self.plan.ready.insert(child, Readiness::Forwardable);
+            }
+        }
         if self
             .operation
             .as_ref()
