@@ -1851,7 +1851,6 @@ export class ChannelSession {
         const cancel = new AbortController();
         const unsubscribe = this.subscribe(() => { try { check(); } catch { cancel.abort(); } });
         try {
-          check();
           if (source.kind === "copy") await stage.createRoom(policy, cancel.signal);
           else await stage.replace(cancel.signal);
           committed = true;
