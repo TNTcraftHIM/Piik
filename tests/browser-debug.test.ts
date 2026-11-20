@@ -20,6 +20,35 @@ afterEach(() => {
 });
 
 describe("opt-in Browser diagnostics", () => {
+  it.each(["frame", "timeout", "close"])("exports a visible playback sample on %s", async outcome => {
+    browser();
+    vi.useFakeTimers();
+    const { observeDebugPlayback } = await import("../src/client/lib/debug-webrtc");
+    const { exportBrowserDebug } = await import("../src/client/lib/debug");
+    const request = vi.fn<(cb: VideoFrameRequestCallback) => number>(() => 42);
+    const cancel = vi.fn();
+    const video = { requestVideoFrameCallback: request, cancelVideoFrameCallback: cancel,
+      getBoundingClientRect: () => ({ width: 320, height: 180 }), ownerDocument: document,
+      getVideoPlaybackQuality: () => ({ totalVideoFrames: 99 }) } as unknown as HTMLVideoElement;
+    const release = observeDebugPlayback(video, () => ({ source: "screen", selected: true, presentedFrame: true }));
+    expect(request).not.toHaveBeenCalled();
+    const pending = exportBrowserDebug();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(request).toHaveBeenCalledTimes(1);
+    if (outcome === "frame") request.mock.calls[0][0](0, { presentedFrames: 75 } as VideoFrameCallbackMetadata);
+    if (outcome === "timeout") await vi.advanceTimersByTimeAsync(250);
+    if (outcome === "close") release();
+    const report = JSON.parse(await pending);
+    expect(report.partial).toBe(false);
+    const events = report.events.filter((event: { scope: string }) => event.scope === "playback");
+    if (outcome === "close") expect(events).toEqual([]);
+    else expect(events[0].details).toMatchObject({ displayWidth: 320, displayHeight: 180,
+      totalVideoFrames: 99, presentedFrames: outcome === "frame" ? 75 : null });
+    if (outcome !== "frame") expect(cancel).toHaveBeenCalledWith(42);
+    release();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it.each([false, true])("exports the first composited frame only for negotiated flows (opt-in %s)", async enabled => {
     browser(enabled ? "?debug=1" : "");
     vi.stubGlobal("document", { documentElement: {}, visibilityState: "visible" });
@@ -158,6 +187,7 @@ describe("opt-in Browser diagnostics", () => {
       { role: "native-preview", generation: 3 });
     let presentedFrame = false;
     const releasePlayback = rtc.observeDebugPlayback({
+      getBoundingClientRect: () => ({ width: 0, height: 0 }),
       videoWidth: 854, videoHeight: 480, readyState: 4, paused: false, ended: false,
       getVideoPlaybackQuality: () => ({ totalVideoFrames: 7, droppedVideoFrames: 1 }),
       ownerDocument: { visibilityState: "hidden" }, src: "private-video-url", title: "private-video-title",
@@ -172,7 +202,7 @@ describe("opt-in Browser diagnostics", () => {
       stats: [expect.objectContaining({ framesDecoded: 8, bytesReceived: 1234 })],
     }) }));
     expect(report.events).toContainEqual(expect.objectContaining({ event: "snapshot", details: expect.objectContaining({
-      source: "screen", flowId: "flow-0", selected: true, presentedFrame: true, visibility: "hidden", width: 854, height: 480, totalVideoFrames: 7, droppedVideoFrames: 1,
+      source: "screen", flowId: "flow-0", selected: true, presentedFrame: true, visibility: "hidden", displayWidth: 0, displayHeight: 0, presentedFrames: null, width: 854, height: 480, totalVideoFrames: 7, droppedVideoFrames: 1,
     }) }));
     expect(JSON.stringify(report)).not.toMatch(/private-video-(url|title)/);
     connection.connectionState = "closed";

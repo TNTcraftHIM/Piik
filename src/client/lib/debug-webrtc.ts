@@ -68,11 +68,38 @@ export function observeDebugConnection(connection: RTCPeerConnection, identity: 
   return () => { linearCandidates.delete(connection); connections.delete(connection); release(); };
 }
 
+const PLAYBACK_FRAME_SAMPLE_WAIT_MS = 250;
+
 export function observeDebugPlayback(video: HTMLVideoElement, context: () => { source: "screen" | "watch"; flowId?: string; selected: boolean; presentedFrame: boolean }): () => void {
-  return registerDebugCollector("playback", () => {
+  if (!browserDebugEnabled) return () => {};
+  const lifetime = new AbortController();
+  const unregister = registerDebugCollector("playback", async () => {
+    if (lifetime.signal.aborted) return;
+    const stream = video.srcObject, url = video.currentSrc;
+    let presentedFrames: number | null = null;
+    if (video.requestVideoFrameCallback && video.ownerDocument.visibilityState === "visible") {
+      presentedFrames = await new Promise<number | null>(resolve => {
+        const handle = video.requestVideoFrameCallback((_now, metadata) => {
+          lifetime.signal.removeEventListener("abort", cancel);
+          clearTimeout(timer);
+          resolve(metadata.presentedFrames ?? null);
+        });
+        function cancel() {
+          lifetime.signal.removeEventListener("abort", cancel);
+          clearTimeout(timer);
+          video.cancelVideoFrameCallback(handle);
+          resolve(null);
+        }
+        const timer = setTimeout(cancel, PLAYBACK_FRAME_SAMPLE_WAIT_MS);
+        lifetime.signal.addEventListener("abort", cancel);
+      });
+    }
+    if (lifetime.signal.aborted || video.srcObject !== stream || video.currentSrc !== url) return;
+    const box = video.getBoundingClientRect();
     const quality = video.getVideoPlaybackQuality?.();
     const decoded = (video as HTMLVideoElement & { webkitDecodedFrameCount?: number }).webkitDecodedFrameCount;
     debugEvent("playback", "snapshot", { ...context(),
+      displayWidth: box.width, displayHeight: box.height, presentedFrames,
       width: video.videoWidth, height: video.videoHeight, readyState: video.readyState,
       paused: video.paused, ended: video.ended, visibility: video.ownerDocument.visibilityState,
       decodedVideoFrames: decoded ?? null,
@@ -80,6 +107,7 @@ export function observeDebugPlayback(video: HTMLVideoElement, context: () => { s
       droppedVideoFrames: quality?.droppedVideoFrames ?? null,
     });
   });
+  return () => { lifetime.abort(); unregister(); };
 }
 
 export function debugRtcStats(connection: RTCPeerConnection, report: RTCStatsReport): void {
