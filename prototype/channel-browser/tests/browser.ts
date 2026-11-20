@@ -173,7 +173,7 @@ window.runBrowserRoomCheck = async () => {
       IDBCursor.prototype.continue = function (...args) { advances++; return advance.apply(this, args); };
       try {
         await seek(0, owned.message.seq);
-        check(advances === 3, "seek skips both tombstones and the reader's own message and stops at the first match");
+        check(advances === 1, "seek skips the restored tombstone prefix and stops after the reader's own message");
       } finally { IDBCursor.prototype.continue = advance; }
       await seek(owned.message.seq, backlog.message.seq);
       await seek(backlog.message.seq, null);
@@ -196,6 +196,78 @@ window.runBrowserRoomCheck = async () => {
       check(available.length === 2 && available.some(message => message.id === backlog.message.id)
         && available.some(message => message.id === lateWrite.message.id && !message.reply && message.attachments[0]?.id === attachment.id),
       "post-boundary rows and attachment metadata survive restart and restore with the purged quote removed");
+
+      const fixtureDb = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open(name);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = fixtureDb.transaction("messages", "readwrite");
+          tx.oncomplete = () => resolve();
+          tx.onabort = () => reject(tx.error);
+          const store = tx.objectStore("messages");
+          for (let seq = lateWrite.message.seq + 1; seq <= 2100; seq++) {
+            store.add({ ...backlog.message, roomId: current.roomId, seq, id: crypto.randomUUID(), nonce: "paging-" + seq,
+              retryKey: "paging-" + seq, reactions: { revision: 0, counts: {} } });
+          }
+        });
+      } finally { fixtureDb.close(); }
+      await current.close(); current = await BrowserRoomHost.open(name, replyPolicy);
+      await sync();
+      const largeClear = await run({ type: "clear_history", throughSeq: 2000 }, true);
+      check(largeClear[0]?.record.type === "history_cleared", "clear commits a 2,000-row prefix");
+      await current.close(); current = await BrowserRoomHost.open(name, replyPolicy);
+      await sync();
+      advances = 0;
+      IDBCursor.prototype.continue = function (...args) { advances++; return advance.apply(this, args); };
+      try {
+        const page = (await run({ type: "history", before: 2051 })).at(-1)?.record;
+        check(page?.type === "history_end" && page.oldestSeq === 2001 && page.count === 50 && !page.hasMore,
+          "older page reaches the first live message after reopen");
+        check(advances === 49, "older page cursor advances: " + advances);
+        const emptyPage = (await run({ type: "history", before: 2001 })).at(-1)?.record;
+        check(emptyPage?.type === "history_end" && emptyPage.oldestSeq === 2001 && emptyPage.count === 0 && !emptyPage.hasMore
+          && advances === 49, "exclusive paging at oldest returns empty without visiting the purged prefix");
+        await seek(0, 2001);
+        check(advances === 49, "seek from before the purge finds another author without advancing the cursor");
+        const repeated = await run({ type: "clear_history", throughSeq: 1999 }, true);
+        check(repeated[0]?.record.type === "history_cleared" && advances === 149,
+          "repeated clear only visits the 100 retained rows");
+      } finally { IDBCursor.prototype.continue = advance; }
+
+      const largeSnapshot = await current.snapshot(), largeRows: BackupHistoryRow[] = [];
+      try { for await (const row of largeSnapshot.rows) largeRows.push(row); } finally { await largeSnapshot.close(); }
+      const largeRestore = await BrowserRoomHost.stage(name, replyPolicy);
+      try { for (const row of largeRows) await largeRestore.append(row); await largeRestore.replace(); } finally { await largeRestore.close(); }
+      await current.close(); current = await BrowserRoomHost.open(name, replyPolicy);
+      await sync();
+      advances = 0;
+      IDBCursor.prototype.continue = function (...args) { advances++; return advance.apply(this, args); };
+      try {
+        const page = (await run({ type: "history", before: 2051 })).at(-1)?.record;
+        check(page?.type === "history_end" && page.oldestSeq === 2001 && page.count === 50 && !page.hasMore,
+          "restored history retains the first live sequence");
+        await seek(0, 2001);
+        check(advances === 49, "restored paging and seek both skip the imported 2,000-row tombstone prefix");
+      } finally { IDBCursor.prototype.continue = advance; }
+
+      const firstLive = (await run({ type: "history", before: 2002 }))
+        .find(({ record }) => record.type === "history_message")?.record;
+      check(firstLive?.type === "history_message" && firstLive.message.seq === 2001, "first live row is available after clear");
+      const deleteFirstLive = await run({ type: "delete_message", messageSeq: 2001, messageId: firstLive.message.id }, true);
+      check(deleteFirstLive[0]?.record.type === "message_deleted", "owner can delete the first remaining row");
+      const afterDelete = (await run({ type: "history", before: 2003 })).at(-1)?.record;
+      check(afterDelete?.type === "history_end" && afterDelete.oldestSeq === 2002 && afterDelete.count === 1 && !afterDelete.hasMore,
+        "paging skips an isolated deletion above the clear boundary");
+      const olderBackup = await BrowserRoomHost.stage(name, replyPolicy);
+      try { for (const row of retained) await olderBackup.append(row); await olderBackup.replace(); } finally { await olderBackup.close(); }
+      await current.close(); current = await BrowserRoomHost.open(name, replyPolicy);
+      await sync();
+      const afterRestore = (await run({ type: "history", before: null })).at(-1)?.record;
+      check(afterRestore?.type === "history_end" && afterRestore.oldestSeq === backlog.message.seq && afterRestore.count === 2,
+        "restoring an earlier backup resets the clear boundary before the restored rows");
     } finally { await current.close(); await other.close(); await new Promise<void>((resolve, reject) => {
       const request = indexedDB.deleteDatabase(name); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); }); }
   }

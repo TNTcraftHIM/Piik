@@ -9,7 +9,7 @@ import { validBackupSequence, type BackupHistoryRow, type BrowserRoomSnapshot, t
 export interface NewRoomPolicy extends RoomSettings {
   id: string; creatorId: string;
 }
-interface RoomRecord { id: string; policy: string; bindingId?: string }
+interface RoomRecord { id: string; policy: string; bindingId?: string; clearedThrough?: number }
 interface RetainedMessage extends ChannelMessage { reactions: MessageReactions }
 type StoredRow = BackupHistoryRow & { roomId: string; retryKey: string };
 function indexed(row: BackupHistoryRow) { return "id" in row ? { ...row, retryKey: message_retry_key(row.userId, row.nonce) } : row; }
@@ -157,15 +157,23 @@ class RoomBackup implements BrowserRoomSnapshot, BrowserRoomStage {
       const rooms = tx.objectStore("rooms"), messages = tx.objectStore("messages");
       read<RoomRecord | undefined>(rooms.get(target.id), record => {
         if (create ? record !== undefined : record?.bindingId !== this.storedBindingId) throw new Error("room_host_conflict");
-        if (create) rooms.add(target);
-        else {
-          messages.delete(IDBKeyRange.bound([target.id], [target.id, Infinity]));
-          // Retire the prior durable write binding in the same commit as the data.
-          rooms.put(target);
-        }
+        if (!create) messages.delete(IDBKeyRange.bound([target.id], [target.id, Infinity]));
+        let firstLive: number | undefined;
+        let lastSeq = 0;
         read(tx.objectStore("backup").openCursor(IDBKeyRange.lowerBound(0, true)), cursor => {
-          if (!cursor) { tx.objectStore("backup").clear(); return; }
-          messages.add({ ...cursor.value, roomId: target.id });
+          if (!cursor) {
+            const clearedThrough = firstLive === undefined ? lastSeq : firstLive - 1;
+            const installed = { ...target, clearedThrough };
+            // Retire the prior durable write binding in the same commit as the data.
+            if (create) rooms.add(installed);
+            else rooms.put(installed);
+            tx.objectStore("backup").clear();
+            return;
+          }
+          const row: StoredRow = cursor.value;
+          lastSeq = row.seq;
+          if (live(row)) firstLive ??= row.seq;
+          messages.add({ ...row, roomId: target.id });
           cursor.continue();
         }, abort);
       }, abort);
@@ -328,12 +336,12 @@ export class BrowserRoomHost implements HostedRoom {
 
   /** Read the owner and execute all work in one transaction with a competing claim. */
   private roomTransaction<T>(stores: string[], mode: IDBTransactionMode,
-    start: (tx: IDBTransaction, abort: (error: Error) => void) => void,
+    start: (tx: IDBTransaction, abort: (error: Error) => void, record: RoomRecord) => void,
     complete: () => T, signal?: AbortSignal): Promise<T> {
     return this.transaction(stores, mode, (tx, abort) => {
       read<RoomRecord | undefined>(tx.objectStore("rooms").get(this.roomId), record => {
         if (!this.bindingId || record?.bindingId !== this.bindingId) throw new Error("stale_room_host");
-        start(tx, abort);
+        start(tx, abort, record);
       }, abort);
     }, complete, signal);
   }
@@ -353,8 +361,8 @@ export class BrowserRoomHost implements HostedRoom {
           }, () => {}, signal);
           this.bindingId = undefined;
         } else if (work.history) result = await this.executeHistory(work.history, work.policy, signal);
-        else await this.roomTransaction(["rooms"], work.policy ? "readwrite" : "readonly", tx => {
-          this.savePolicy(tx, work.policy);
+        else await this.roomTransaction(["rooms"], work.policy ? "readwrite" : "readonly", (tx, _abort, record) => {
+          this.savePolicy(tx, record, work.policy);
         }, () => {}, signal);
         return JSON.parse(this.room.finish(result && JSON.stringify(result)));
       } catch (error) {
@@ -389,15 +397,19 @@ export class BrowserRoomHost implements HostedRoom {
     });
   }
 
-  private savePolicy(tx: IDBTransaction, policy: object | null): void {
-    if (policy) tx.objectStore("rooms").put({ id: this.roomId, policy: JSON.stringify(policy), bindingId: this.bindingId });
+  private savePolicy(tx: IDBTransaction, record: RoomRecord, policy: object | null, clearedThrough = record.clearedThrough): void {
+    if (policy || clearedThrough !== record.clearedThrough) {
+      tx.objectStore("rooms").put({ ...record, policy: policy ? JSON.stringify(policy) : record.policy, clearedThrough });
+    }
   }
 
   private executeHistory(request: HistoryRequest, policy: object | null, signal?: AbortSignal): Promise<HistoryResult> {
     let page = request.type === "read" ? new HistoryPage() : undefined;
     let oldest: number | undefined, result: HistoryResult;
-    return this.roomTransaction(["rooms", "messages"], request.type === "send" || request.type === "delete_message" || request.type === "clear_history" || request.type === "react" && request.event !== null || policy ? "readwrite" : "readonly", (tx, abort) => {
-      this.savePolicy(tx, policy);
+    return this.roomTransaction(["rooms", "messages"], request.type === "send" || request.type === "delete_message" || request.type === "clear_history" || request.type === "react" && request.event !== null || policy ? "readwrite" : "readonly", (tx, abort, record) => {
+      const clearedThrough = record.clearedThrough ?? 0;
+      this.savePolicy(tx, record, policy, request.type === "clear_history"
+        ? Math.max(clearedThrough, request.throughSeq) : record.clearedThrough);
       const messages = tx.objectStore("messages");
       if (request.type === "send") {
         const retryKey = message_retry_key(request.draft.userId, request.draft.nonce);
@@ -422,7 +434,7 @@ export class BrowserRoomHost implements HostedRoom {
         const single = request.type === "delete_message";
         const through = single ? request.messageSeq : request.throughSeq;
         result = single ? { type: "message_deleted", messageSeq: through } : { type: "history_cleared", throughSeq: through };
-        const range = IDBKeyRange.bound([request.roomId, single ? through : 0], [request.roomId, Infinity]);
+        const range = IDBKeyRange.bound([request.roomId, single ? through : clearedThrough], [request.roomId, Infinity], !single);
         let found = false;
         read(messages.openCursor(range), cursor => {
           if (!cursor) {
@@ -461,20 +473,22 @@ export class BrowserRoomHost implements HostedRoom {
           result = JSON.parse(attachment_result(JSON.stringify(request), JSON.stringify(live(value) ?? null)));
         }, abort);
       } else if (request.type === "seek") {
-        const range = IDBKeyRange.bound([request.roomId, request.after], [request.roomId, Infinity], true);
+        const range = IDBKeyRange.bound([request.roomId, Math.max(request.after, clearedThrough)], [request.roomId, Infinity], true);
         read(messages.openCursor(range), cursor => {
           const message = live(cursor?.value);
           if (cursor && (!message || message.userId === request.excludeAuthor)) cursor.continue();
           else result = { type: "seek", after: request.after, seq: message?.seq ?? null };
         }, abort);
       } else {
-        const range = IDBKeyRange.bound([request.roomId], [request.roomId, request.before ?? Infinity], false, request.before !== null);
-        const cursor = messages.openCursor(range, "prev");
-        read(cursor, value => {
-          if (!value) return;
-          if (!live(value.value) || page!.push(JSON.stringify(value.value))) value.continue();
-        }, abort);
-        read(messages.openCursor(IDBKeyRange.bound([request.roomId], [request.roomId, Infinity])), value => {
+        const lower = [request.roomId, clearedThrough];
+        if (request.before === null || request.before > clearedThrough) {
+          const range = IDBKeyRange.bound(lower, [request.roomId, request.before ?? Infinity], true, request.before !== null);
+          read(messages.openCursor(range, "prev"), value => {
+            if (!value) return;
+            if (!live(value.value) || page!.push(JSON.stringify(value.value))) value.continue();
+          }, abort);
+        }
+        read(messages.openCursor(IDBKeyRange.bound(lower, [request.roomId, Infinity], true)), value => {
           if (value && !live(value.value)) value.continue();
           else oldest = value?.value.seq;
         }, abort);
