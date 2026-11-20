@@ -1425,11 +1425,20 @@ impl RoomRuntime {
         if let Some(base) = &mut self.base {
             if base.needs_repair(&demand, &connected) {
                 if self.hosted_writer.is_some() {
-                    if let Some(helper) = base_members.iter().find(|id| {
+                    let helpers = base_members.iter().filter(|id| {
                         !demand.contains(id)
                             && connected.contains(id)
                             && Some(**id) != service
                             && limits.get(**id, base.root()) > 0
+                    });
+                    let has_link =
+                        |a: Uuid, b: Uuid| confirmed_pairs.contains(&(a.min(b), a.max(b)));
+                    let root = base.root();
+                    if let Some(helper) = helpers.min_by_key(|&&id| {
+                        !(has_link(root, id)
+                            && demand.iter().any(|&peer| {
+                                peer != root && !base.ready(peer) && has_link(peer, id)
+                            }))
                     }) {
                         demand.insert(*helper);
                     }
@@ -2481,6 +2490,47 @@ mod tests {
         assert_eq!(views[&c].files[0].upstream, Some(b));
         assert_eq!(views[&b].files[0].downstream, vec![c]);
         assert!(views[&a].files.is_empty() && views[&writer].files.is_empty());
+    }
+
+    #[test]
+    fn hosted_file_repair_uses_a_reader_with_both_confirmed_links() {
+        let id = Uuid::from_u128;
+        let (prior, endpoints) = screen_on_room_base();
+        let mut room = RoomRuntime::new(prior.policy.clone());
+        room.set_writer(id(5), crate::wire::HostingMode::Hosted);
+        let (b, c, a, d) = (id(1), id(2), id(3), id(4));
+        for (&peer, endpoint) in &endpoints {
+            room.browse(endpoint.member, peer, true).unwrap();
+        }
+        let file = crate::attachment::AttachmentDescriptor {
+            id: id(9),
+            name: "sample".into(),
+            size: 3,
+            media_type: "application/octet-stream".into(),
+            sha256: crate::attachment::sha256_hex(b"abc"),
+        };
+        room.files.install(b, 1, b, file.clone(), true).unwrap();
+        room.files.install(c, 1, b, file.clone(), false).unwrap();
+        let pairs = BTreeSet::from([(b, d), (c, d)]);
+        room.reconcile_with_pairs(&endpoints, 0, &pairs);
+        room.failed_pair(b, c);
+        room.reconcile_with_pairs(&endpoints, 1, &pairs);
+        assert!(room
+            .base_links()
+            .any(|link| link.parent == b && link.child == d));
+        for (parent, child) in [(b, d), (d, c)] {
+            room.base_state(parent, child, true).unwrap();
+            room.base_state(child, parent, true).unwrap();
+            room.reconcile_with_pairs(&endpoints, 2, &pairs);
+        }
+        assert_eq!(
+            room.snapshot(endpoints[&c].member, c).unwrap().files[0].upstream,
+            Some(d)
+        );
+        assert!(!room.base_links().any(|link| link.child == a));
+        room.files.remove(c, 1, file.id, false);
+        room.reconcile_with_pairs(&endpoints, 3, &pairs);
+        assert_eq!(room.base_links().count(), 0);
     }
 
     #[test]
