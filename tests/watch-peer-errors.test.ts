@@ -14,20 +14,28 @@ function element() {
     play: vi.fn(async () => {}), pause: vi.fn(), load: vi.fn(), remove: vi.fn(), removeAttribute: vi.fn() });
 }
 
+function nextHlsAttachment(): Promise<Hls> {
+  vi.spyOn(Hls, "isSupported").mockReturnValue(true);
+  vi.spyOn(Hls.prototype, "loadSource").mockImplementation(() => {});
+  return new Promise(resolve => {
+    vi.spyOn(Hls.prototype, "attachMedia").mockImplementation(function (this: Hls) {
+      resolve(this);
+    });
+  });
+}
+
 test.each([
   { code: "watch_path_unavailable", copy: "channel.error.roomCommunicationFailed", connectionHelp: true },
   { code: "watch_source_unavailable", copy: "watch.forward.sourceUnavailable", connectionHelp: false },
   { code: "watch_read_timeout", copy: "watch.forward.readTimeout", connectionHelp: false },
   { code: "watch_resource_limit", copy: "watch.forward.unsupported", connectionHelp: false },
 ])("a known peer $code stays actionable after the media element reports unsupported source", async value => {
-  vi.spyOn(Hls, "isSupported").mockReturnValue(true);
-  vi.spyOn(Hls.prototype, "loadSource").mockImplementation(() => {});
-  vi.spyOn(Hls.prototype, "attachMedia").mockImplementation(() => {});
+  const attached = nextHlsAttachment();
   const video = element(); vi.stubGlobal("document", { createElement: () => video });
   const media = createPeerWatchMedia({ resourceId: crypto.randomUUID(), format: "hls" }, async () => { throw Error("unused_read"); });
   const player = new WatchPlayer("owned", false, media, () => {});
-  const hls = (media as unknown as { hls: Hls }).hls;
   try {
+    const hls = await attached;
     hls.trigger(Hls.Events.ERROR, { fatal: true, type: Hls.ErrorTypes.NETWORK_ERROR,
       details: Hls.ErrorDetails.FRAG_LOAD_ERROR, response: { code: 0, text: value.code } } as never);
     await expect.poll(() => player.error).toBe(value.code);
@@ -46,14 +54,13 @@ test.each([
   { status: 403, details: Hls.ErrorDetails.FRAG_LOAD_ERROR, type: Hls.ErrorTypes.NETWORK_ERROR, expected: "watch_media_unavailable" },
   { status: 0, details: Hls.ErrorDetails.BUFFER_INCOMPATIBLE_CODECS_ERROR, type: Hls.ErrorTypes.MEDIA_ERROR, expected: "watch_media_unsupported" },
 ])("typed HLS $status/$details wins over generic platform source rejection", async value => {
-  vi.spyOn(Hls, "isSupported").mockReturnValue(true);
-  vi.spyOn(Hls.prototype, "loadSource").mockImplementation(() => {});
-  vi.spyOn(Hls.prototype, "attachMedia").mockImplementation(() => {});
+  const attached = nextHlsAttachment();
   const video = element(); vi.stubGlobal("document", { createElement: () => video });
   const media = new HTMLVideoMedia("https://owned.test/manifest.m3u8", "hls"),player = new WatchPlayer("owned", false, media, () => {});
   try {
+    const hls = await attached;
     video.error = { code: 4, message: "platform source rejection" };
-    (media as unknown as { hls: Hls }).hls.trigger(Hls.Events.ERROR, { fatal: true, type: value.type, details: value.details, response: { code: value.status, text: "" } } as never);
+    hls.trigger(Hls.Events.ERROR, { fatal: true, type: value.type, details: value.details, response: { code: value.status, text: "" } } as never);
     await expect.poll(() => player.error).toBe(value.expected);
     expect(channelErrorPresentation(player.error, key => key).connectionHelp).toBe(false);
   } finally { player.close(); }
@@ -73,9 +80,7 @@ test("actual Session explicit peer command retains the admitted root and reader 
   vi.stubGlobal("location", { origin: "https://owned.test", hash: "" });
   vi.stubGlobal("history", { state: null });
   vi.stubGlobal("document", { createElement: () => element() });
-  vi.spyOn(Hls, "isSupported").mockReturnValue(true);
-  vi.spyOn(Hls.prototype, "loadSource").mockImplementation(() => {});
-  vi.spyOn(Hls.prototype, "attachMedia").mockImplementation(() => {});
+  const attached = nextHlsAttachment();
   const session = new ChannelSession();
   const view = session.getSnapshot();
   const request = vi.fn(async (command: unknown, reply?: (value: unknown) => void) => {
@@ -87,8 +92,7 @@ test("actual Session explicit peer command retains the admitted root and reader 
     expect(commands).toEqual([{ type: "join_watch", roomId: activity.roomId, id: activity.id, mode: "peer" }]);
     const player = session.getSnapshot().watchPlayers.get(activity.id)!;
     expect(player.mode).toBe("peer");expect(player).not.toBe(old);
-    const media = player.media as HTMLVideoMedia;
-    const hls = (media as unknown as { hls: Hls }).hls;
+    const hls = await attached;
     const Loader = hls.config.loader,loader = new Loader(hls.config),failed=vi.fn();
     loader.load({ url: `https://watch-media.invalid/${root.resourceId}`, responseType: "arraybuffer", type: LoaderContextType.MANIFEST }, { loadPolicy: { maxTimeToFirstByteMs: 1000, maxLoadTimeMs: 1000 } } as never,
       { onError: failed, onSuccess: vi.fn(), onTimeout: vi.fn() } as never);
@@ -106,13 +110,12 @@ test("actual Session explicit peer command retains the admitted root and reader 
 });
 
 test("a generic append failure still uses a proven platform decode error", async () => {
-  vi.spyOn(Hls, "isSupported").mockReturnValue(true);
-  vi.spyOn(Hls.prototype, "loadSource").mockImplementation(() => {});
-  vi.spyOn(Hls.prototype, "attachMedia").mockImplementation(() => {});
+  const attached = nextHlsAttachment();
   const video=element();video.error={code:3,message:"platform decode error"};vi.stubGlobal("document",{createElement:()=>video});
   const media=new HTMLVideoMedia("https://owned.test/manifest.m3u8","hls"),player=new WatchPlayer("owned",false,media,()=>{});
   try{
-    (media as unknown as {hls:Hls}).hls.trigger(Hls.Events.ERROR,{fatal:true,type:Hls.ErrorTypes.MEDIA_ERROR,details:Hls.ErrorDetails.BUFFER_APPEND_ERROR}as never);
+    const hls = await attached;
+    hls.trigger(Hls.Events.ERROR,{fatal:true,type:Hls.ErrorTypes.MEDIA_ERROR,details:Hls.ErrorDetails.BUFFER_APPEND_ERROR}as never);
     await expect.poll(()=>player.error).toBe("watch_media_decode_failed");
   }finally{player.close()}
 });
