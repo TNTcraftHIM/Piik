@@ -14,13 +14,13 @@ afterEach(async () => {
   vi.resetModules();
 });
 
-async function runtime(delay: number) {
+async function runtime(delay: number, capabilities: { pagePlayer?: boolean; externalScreenInputAvailable?: boolean } = {}) {
   for (let port = NATIVE_CLIENT_PORT_END; port >= NATIVE_CLIENT_PORT_START; port--) {
     const server = createServer((request, response) => {
       setTimeout(() => {
         response.setHeader("Content-Type", "application/json");
         response.end(JSON.stringify({ protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, service: "piik-channel-app",
-          port, token: "fixture-token",
+          port, token: "fixture-token", ...(request.url === "/health" ? capabilities : {}),
           ...(request.url === "/connect-discovery" ? { connectURL: `http://127.0.0.1:${port}/client` } : {}),
         }));
       }, delay);
@@ -40,8 +40,8 @@ async function runtime(delay: number) {
 }
 
 it("selects the launched runtime over a faster resident App and never substitutes it after exit", async () => {
-  const old = await runtime(0);
-  const selected = await runtime(30);
+  const old = await runtime(0, { externalScreenInputAvailable: false });
+  const selected = await runtime(30, { pagePlayer: false, externalScreenInputAvailable: true });
   const fetchHTTP = globalThis.fetch;
   const requestedPorts: number[] = [];
   // Keep the real HTTP fixtures independent of Apps already running locally.
@@ -76,7 +76,7 @@ it("selects the launched runtime over a faster resident App and never substitute
   requestedPorts.length = 0;
   // Another local client can probe the same listening port during this assertion.
   await (await fetchHTTP(`http://127.0.0.1:${old.port}/connect-discovery`)).text();
-  await expect(discoverChannelAppHealth()).resolves.toMatchObject({ port: selected.port });
+  await expect(discoverChannelAppHealth()).resolves.toMatchObject({ port: selected.port, pagePlayer: false, externalScreenInputAvailable: true });
   await expect(channelAppDiscovery.connect()).resolves.toContain(`127.0.0.1:${selected.port}/client?`);
   expect(requestedPorts).not.toContain(old.port);
   expect(page.location.href).toBe("http://127.0.0.1:8787/");
