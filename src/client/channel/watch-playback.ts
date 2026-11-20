@@ -13,7 +13,7 @@ export function watchPosition(playback: WatchPlayback, now: number): number {
 export class WatchPlayer {
   get presentation() { return this.media.presentation ?? { kind: "external" as const }; }
   get video(): HTMLVideoElement | null { return this.presentation.kind === "video" ? this.presentation.element : null; }
-  mode: WatchMode = "direct";
+  mode: WatchMode | null = null;
   blocked = false;
   error: string | null = null;
   private localState: WatchMediaState | null = null;

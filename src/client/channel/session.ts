@@ -2386,18 +2386,21 @@ export class ChannelSession {
     this.watchPlayers.delete(id);
     player?.close();
   }
-  private async sampleWatchClock(id: string, player: WatchPlayer): Promise<void> {
+  private async joinWatchAndSyncClock(id: string, player: WatchPlayer, mode: WatchMode): Promise<void> {
+    player.mode = mode;
     const start = performance.now();
-    await this.request({ type: "join_watch", roomId: player.roomId, id, mode: player.mode }, event => {
+    await this.request({ type: "join_watch", roomId: player.roomId, id, mode }, event => {
       if (this.watchPlayers.get(id) === player && event.type === "room_reply" && event.result.type === "watch_ready"
         && typeof event.result.serverTime === "number") player.calibrate(event.result.serverTime, start);
     }, player.roomId, { signal: player.signal });
+    player.signal.throwIfAborted();
   }
   resumeWatches = async (): Promise<void> => {
     if (this.view.connection !== "connected") return;
     await Promise.all([...this.watchPlayers].map(async ([id, player]) => {
+      if (player.mode === null) return;
       try {
-        await this.sampleWatchClock(id, player);
+        await this.joinWatchAndSyncClock(id, player, player.mode);
         if (player.owner && this.watchPlayers.get(id) === player) await this.reconcileWatchBytes(id, player);
         if (player.owner && this.watchPlayers.get(id) === player) await player.publish(true);
       }
@@ -2646,7 +2649,7 @@ export class ChannelSession {
       await page.select(candidateId);
       await player.ready();
       if (this.watchPlayers.get(id) !== player) throw new DOMException("Cancelled", "AbortError");
-      await this.sampleWatchClock(id, player);
+      await this.joinWatchAndSyncClock(id, player, "direct");
       this.browseRooms();
     }, reportError);
   }
@@ -2674,6 +2677,7 @@ export class ChannelSession {
       }, roomId);
       if (!current() || this.watchPlayers.get(id) !== player) throw new DOMException("Cancelled", "AbortError");
       committed = true;
+      player.mode = "direct";
       delete selection.watchCandidate;
       if (media instanceof PageSuppliedMedia) void media.page.hide().catch(() => {});
       player.activate(async playback => {
@@ -2734,7 +2738,6 @@ export class ChannelSession {
     }
     this.retireWatchPlayer(id);
     const player = this.makeWatchPlayer(id, activity.roomId, false, media);
-    player.mode = mode;
     this.watchPlayers.set(id, player);
     player.update(activity.playback);
     this.patch({});
@@ -2744,7 +2747,7 @@ export class ChannelSession {
         this.patch({});
       }
     });
-    try { await this.sampleWatchClock(id, player); player.signal.throwIfAborted(); this.browseRooms(); }
+    try { await this.joinWatchAndSyncClock(id, player, mode); this.browseRooms(); }
     catch (error) { if (this.watchPlayers.get(id) === player) this.retireWatchPlayer(id); this.patch({}); throw error; }
   }
   leaveWatch = async (id: string): Promise<void> => {
