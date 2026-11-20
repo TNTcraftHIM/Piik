@@ -5,6 +5,7 @@ use std::{
     os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
     sync::Arc,
     thread,
+    time::{Duration, Instant},
 };
 use tokio::sync::{mpsc, oneshot};
 use wasapi::{AudioClient, DeviceEnumerator, Direction, SampleType, StreamMode, WaveFormat};
@@ -370,6 +371,76 @@ fn run(
     result
 }
 
+#[derive(Default)]
+struct PacketAssembly {
+    samples: Vec<f32>,
+    first: Option<Instant>,
+    next_packet: Option<Instant>,
+    position: super::AudioPosition,
+}
+
+fn sample_duration(frames: usize) -> Duration {
+    Duration::from_nanos(frames as u64 * 1_000_000_000 / 48_000)
+}
+
+impl PacketAssembly {
+    // The non-silent buffer must contain count stereo f32 sample pairs.
+    unsafe fn packet(
+        &mut self,
+        clock: &CaptureClock,
+        data: *const u8,
+        count: u32,
+        flags: u32,
+        timestamp: u64,
+        mut deliver: impl FnMut(AudioFrame) -> bool,
+    ) -> bool {
+        if flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32 != 0 {
+            self.samples.clear();
+            self.first = None;
+            self.next_packet = None;
+            self.position.discontinuity();
+        }
+        let count = count as usize;
+        let duration = sample_duration(count);
+        let packet_time = if flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32 == 0 {
+            clock.instant(timestamp as i64)
+        } else {
+            // Continue the sample clock. For an unanchored segment, estimate
+            // the first sample from the current monotonic time and packet length.
+            self.next_packet
+                .unwrap_or_else(|| Instant::now() - duration)
+        };
+        self.next_packet = Some(packet_time + duration);
+
+        for index in 0..count {
+            if self.samples.is_empty() {
+                self.first = Some(packet_time + sample_duration(index));
+            }
+            let sample = if flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0 {
+                [0.0, 0.0]
+            } else {
+                unsafe {
+                    [
+                        data.cast::<f32>().add(index * 2).read_unaligned(),
+                        data.cast::<f32>().add(index * 2 + 1).read_unaligned(),
+                    ]
+                }
+            };
+            self.samples.extend_from_slice(&sample);
+            if self.samples.len() == 1920 {
+                let frame = self.position.frame(
+                    std::mem::replace(&mut self.samples, Vec::with_capacity(1920)),
+                    self.first.take().unwrap(),
+                );
+                if deliver(frame) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
+
 fn run_capture(
     input: Input,
     control: &AudioControl,
@@ -416,9 +487,7 @@ fn run_capture(
         let _ = ready.send(Ok(()));
     }
     let result = (|| {
-        let mut samples = Vec::with_capacity(1920);
-        let mut first = None;
-        let mut position = super::AudioPosition::default();
+        let mut assembly = PacketAssembly::default();
         loop {
             let signaled = unsafe { WaitForMultipleObjects(&handles, false, INFINITE) };
             if signaled == WAIT_FAILED {
@@ -446,56 +515,15 @@ fn run_capture(
                 if let Some(counts) = counts {
                     counts.packet(count, flags);
                 }
-                if flags
-                    & (AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0
-                        | AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0) as u32
-                    != 0
-                {
-                    samples.clear();
-                    first = None;
-                    position.discontinuity();
-                }
-                let mut closed = false;
-                if flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32 == 0 {
-                    for index in 0..count as usize {
-                        if samples.is_empty() {
-                            first = Some(
-                                clock.instant(timestamp as i64)
-                                    + std::time::Duration::from_nanos(
-                                        index as u64 * 1_000_000_000 / 48_000,
-                                    ),
-                            );
+                let closed = unsafe {
+                    assembly.packet(&clock, data, count, flags, timestamp, |frame| {
+                        let result = frames.try_send(frame);
+                        if let Some(counts) = counts {
+                            counts.delivery(&result);
                         }
-                        let sample = if flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0 {
-                            [0.0, 0.0]
-                        } else {
-                            unsafe {
-                                [
-                                    data.cast::<f32>().add(index * 2).read_unaligned(),
-                                    data.cast::<f32>().add(index * 2 + 1).read_unaligned(),
-                                ]
-                            }
-                        };
-                        samples.extend_from_slice(&sample);
-                        if samples.len() == 1920 {
-                            let frame = position.frame(
-                                std::mem::replace(&mut samples, Vec::with_capacity(1920)),
-                                first.take().unwrap(),
-                            );
-                            let result = frames.try_send(frame);
-                            if let Some(counts) = counts {
-                                counts.delivery(&result);
-                            }
-                            match result {
-                                Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}
-                                Err(mpsc::error::TrySendError::Closed(_)) => {
-                                    closed = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
+                        matches!(result, Err(mpsc::error::TrySendError::Closed(_)))
+                    })
+                };
                 unsafe { capture.ReleaseBuffer(count)? };
                 if closed {
                     return Ok(());
@@ -509,6 +537,61 @@ fn run_capture(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timestamp_errors_preserve_pcm_silence_and_sample_progression() -> Result<()> {
+        let clock = CaptureClock::new()?;
+        let qpc = clock.now()?;
+        let timestamp_error = AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32;
+        let silent = AUDCLNT_BUFFERFLAGS_SILENT.0 as u32;
+        let discontinuity = AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32;
+        let mut assembly = PacketAssembly::default();
+        let mut output = Vec::new();
+        let mut packet = |value: f32, count, flags, timestamp| {
+            let pcm = vec![value; count as usize * 2];
+            let data = if flags & silent != 0 {
+                std::ptr::null()
+            } else {
+                pcm.as_ptr().cast()
+            };
+            assert!(!unsafe {
+                assembly.packet(&clock, data, count, flags, timestamp, |frame| {
+                    output.push(frame);
+                    false
+                })
+            });
+        };
+        packet(0.25_f32, 480, 0, qpc as u64);
+        packet(0.5, 480, timestamp_error, u64::MAX);
+        packet(-0.5, 480, timestamp_error, u64::MAX);
+        packet(99.0, 480, timestamp_error | silent, u64::MAX);
+        packet(0.75, 960, 0, (qpc + 400_000) as u64);
+        packet(-0.25, 480, 0, (qpc + 600_000) as u64);
+        let earliest = Instant::now() - Duration::from_millis(20);
+        packet(1.0, 960, timestamp_error | discontinuity, u64::MAX);
+        let latest = Instant::now() - Duration::from_millis(20);
+
+        assert_eq!(output.len(), 4);
+        for (index, (first, second)) in [(0.25, 0.5), (-0.5, 0.0), (0.75, 0.75)]
+            .into_iter()
+            .enumerate()
+        {
+            let frame = &output[index];
+            assert_eq!(frame.segment, 0);
+            assert_eq!(frame.sample_position, index as u64 * 960);
+            assert_eq!(
+                frame.presentation_time,
+                clock.instant(qpc) + sample_duration(index * 960)
+            );
+            assert_eq!(frame.samples[..960], [first; 960]);
+            assert_eq!(frame.samples[960..], [second; 960]);
+        }
+        let reset = &output[3];
+        assert_eq!((reset.segment, reset.sample_position), (1, 0));
+        assert_eq!(reset.samples, [1.0; 1920]);
+        assert!((earliest..=latest).contains(&reset.presentation_time));
+        Ok(())
+    }
 
     #[test]
     #[ignore = "requires a running Windows audio service"]
