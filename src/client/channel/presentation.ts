@@ -8,7 +8,8 @@ export function roomHasUnread(room: Pick<ChannelRoom, "authorized" | "lastMessag
 }
 
 /** A visit's unread divider starts at another person's message, never our own send. */
-export function firstUnreadMessageId(messages: readonly Pick<ChannelMessage, "id" | "seq" | "userId">[], after: number | undefined, selfUserId?: string | null): string | undefined {
+export function firstUnreadMessageId(messages: readonly Pick<ChannelMessage, "id" | "seq" | "userId">[], after: number | undefined, selfUserId?: string | null, hasEarlier = false): string | undefined {
+  if (after !== undefined && hasEarlier && (messages[0]?.seq ?? 0) > after + 1) return undefined;
   return after === undefined ? undefined : messages.find(message => message.seq > after && message.userId !== selfUserId)?.id;
 }
 

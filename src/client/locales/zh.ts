@@ -240,6 +240,7 @@ export const zh = {
   "conversation.message": "消息内容",
   "conversation.placeholder": "说点什么…",
   "conversation.send": "发送",
+  "conversation.jumpToNew": "跳转到新消息",
   "conversation.newMessages": "新消息",
   "conversation.mention": "提及 {name}",
   "conversation.replyUnavailable": "房间重新连接后可回复",

@@ -60,7 +60,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
   const jumpRequest = useRef<object | null>(null);
   const [jumpFailed, setJumpFailed] = useState(false);
   const [unreadBoundary, setUnreadBoundary] = useState({ scope: conversationScope, after: unreadAfter });
-  const unreadMessage = firstUnreadMessageId(messages, unreadBoundary.scope === conversationScope ? unreadBoundary.after : undefined, selfUserId);
+  const unreadMessage = firstUnreadMessageId(messages, unreadBoundary.scope === conversationScope ? unreadBoundary.after : undefined, selfUserId, history?.hasMore ?? true);
   // Capture a visit's divider before markRead advances the durable personal cursor.
   useLayoutEffect(() => {
     setUnreadBoundary(previous => previous.scope !== conversationScope
@@ -77,6 +77,17 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
   const composing = useRef(false);
   const chooser = useRef<HTMLInputElement>(null);
   const log = useRef<HTMLDivElement>(null);
+  const [offscreenUnread, setOffscreenUnread] = useState<string>();
+  useLayoutEffect(() => {
+    setOffscreenUnread(undefined);
+    const root = log.current, marker = root?.querySelector(".c3-unread-divider");
+    if (hidden || !unreadMessage || !root || !marker) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      setOffscreenUnread(entry.isIntersecting ? undefined : unreadMessage);
+    }, { root });
+    observer.observe(marker);
+    return () => observer.disconnect();
+  }, [conversationScope, unreadMessage, hidden, surfaceDocument]);
   const content = useRef<HTMLDivElement>(null);
   const reading = useRef({ position: 0, following: true });
   const readingAnchor = useRef<{ scope: string; message: string; offset: number } | null>(null);
@@ -304,6 +315,10 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
     }}>
     <div className="c3-chat-heading">{onBack ? <BackButton onClick={onBack} /> : <><Glyph name="chat" size={18} /><strong>{t("conversation.chat")}</strong></>}
       <span>{roomName}</span></div>
+    {unreadMessage && offscreenUnread === unreadMessage && <div className="c3-history-more"><ChannelAction icon="chat" quiet label={t("conversation.jumpToNew")} onClick={() => {
+        const target = messages.find(message => message.id === unreadMessage);
+        if (target) void showMessage(target.seq);
+      }} /></div>}
     <div className="c3-message-log" ref={log} role="log" aria-label={t("conversation.messages")}
       onScroll={event => {
         const node = event.currentTarget, saved = reading.current;

@@ -70,6 +70,9 @@ it("projects joined watch people independently of transport and deduplicates the
 it("starts unread messages at another person without consuming earlier unread history", () => {
   const own = { id: "own", seq: 1, userId: "self" };
   const other = { id: "other", seq: 2, userId: "friend" };
+  expect(firstUnreadMessageId([other], 0, "self", true)).toBeUndefined();
+  expect(firstUnreadMessageId([other], 1, "self", true)).toBe("other");
+  expect(firstUnreadMessageId([other], 0, "self", false)).toBe("other");
   expect(firstUnreadMessageId([own], 0, "self")).toBeUndefined();
   expect(firstUnreadMessageId([own, other], 0, "self")).toBe("other");
   expect(firstUnreadMessageId([other, { ...own, seq: 3 }], 0, "self")).toBe("other");

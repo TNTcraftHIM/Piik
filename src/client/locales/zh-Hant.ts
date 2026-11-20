@@ -176,6 +176,7 @@ export const zhHant = {
   "conversation.message": "訊息內容",
   "conversation.placeholder": "說點什麼…",
   "conversation.send": "傳送",
+  "conversation.jumpToNew": "跳至新訊息",
   "conversation.newMessages": "新訊息",
   "conversation.mention": "提及 {name}",
   "conversation.replyUnavailable": "房間重新連線後即可回覆",

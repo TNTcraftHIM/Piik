@@ -177,6 +177,7 @@ export const ko = {
   "conversation.message": "메시지",
   "conversation.placeholder": "이야기를 나눠 보세요…",
   "conversation.send": "보내기",
+  "conversation.jumpToNew": "새 메시지로 이동",
   "conversation.newMessages": "새 메시지",
   "conversation.mention": "{name} 멘션",
   "conversation.replyUnavailable": "방이 재연결되면 답장할 수 있어요",

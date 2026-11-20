@@ -176,6 +176,7 @@ export const ja = {
   "conversation.message": "メッセージ",
   "conversation.placeholder": "メッセージを入力…",
   "conversation.send": "送信",
+  "conversation.jumpToNew": "新しいメッセージに移動",
   "conversation.newMessages": "新しいメッセージ",
   "conversation.mention": "{name}にメンション",
   "conversation.replyUnavailable": "ルームの再接続後に返信できます",

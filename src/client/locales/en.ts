@@ -242,6 +242,7 @@ export const en: Record<CopyKey, string> = {
   "conversation.message": "Message",
   "conversation.placeholder": "Say something…",
   "conversation.send": "Send",
+  "conversation.jumpToNew": "Jump to new messages",
   "conversation.newMessages": "New messages",
   "conversation.mention": "Mention {name}",
   "conversation.replyUnavailable": "Reply after the room reconnects",
