@@ -1,37 +1,37 @@
-# Piik 文档中心
+# Piik 帮助中心
 
-[English](./README.md) · 简体中文 · [官网](https://piik.tv/?lang=zh-CN)
-
-按你要做的事查找指南：开始分享、使用房间工具，或解决遇到的问题。
+[English](./README.md) · 简体中文 · [Piik 官网](https://piik.tv/?lang=zh-CN)
 
 ## 开始使用
 
-<div class="guide-task-index">
-
-- **[看朋友的分享](./getting-started.zh-CN.md#加入朋友的房间)**<br>
-  打开邀请链接，用电脑或手机浏览器观看，无须安装。
-- **[分享自己的屏幕](./getting-started.zh-CN.md#用-piik-app-分享)**<br>
-  下载并运行 Piik App，选好画面，发送邀请。
-- **[免安装使用](./getting-started.zh-CN.md#使用在线版)**<br>
-  在在线版中分享屏幕或摄像头。
-- **[使用已有站点](./getting-started.zh-CN.md#使用已有站点分享)**<br>
-  直接用浏览器分享，也可连接 App 使用更多功能。
-
-</div>
-
-## 使用房间工具
-
-- [分享与播放](./sharing.zh-CN.md)：画质、摄像头、来源声音与观看控制。
-- [聊天、语音与远程控制](./room-tools.zh-CN.md)：表情互动、聊天，或让朋友接手操作。
-- [远程控制与多人同乐](./remote-control.zh-CN.md)：授权、共用键鼠与手柄设置。
-- [App 使用参考](../../cmd/piik-app/README.zh-CN.md)：模式记忆、站点授权、命令行参数与诊断。
+- [用 Piik App 分享屏幕](./getting-started.zh-CN.md#用-piik-app-分享)
+- [加入朋友的房间](./getting-started.zh-CN.md#加入朋友的房间)
+- [用浏览器分享屏幕](./getting-started.zh-CN.md#使用在线版)
 
 ## 遇到问题
 
-- **进不了房间、无法分享或听不到朋友：** 先看[对应的排查步骤](./troubleshooting.zh-CN.md#常见问题)。
+- [打开邀请链接后白屏或报错](./troubleshooting.zh-CN.md#邀请打不开或只有标题)
+- [已加入房间，但一直没有画面](./troubleshooting.zh-CN.md#画面连接不上)
+- [画面模糊、卡顿或卡住](./troubleshooting.zh-CN.md#画面模糊卡顿或中断)
+- [用 iPhone Safari 分享屏幕，朋友听不到屏幕声音](./sharing.zh-CN.md#iphone-与-ipad-屏幕分享)
+- [有画面，但听不到分享的声音](./troubleshooting.zh-CN.md#有画面但没有来源声音)
+- [无法使用远程控制](./troubleshooting.zh-CN.md#无法使用麦克风或远程控制)
 
-仍然没解决？可以[反馈问题](https://github.com/TNTcraftHIM/Piik/issues/new/choose)，
-附上版本、系统、浏览器和复现步骤。需要收集报告时，按[反馈说明](./troubleshooting.zh-CN.md#反馈问题)导出。
+[全部排查主题](./troubleshooting.zh-CN.md#常见问题) · [进阶网络排查](./network.zh-CN.md) · [反馈问题](./troubleshooting.zh-CN.md#反馈问题)
+
+## 使用房间工具
+
+- [调整播放](./sharing.zh-CN.md#播放控制)
+- [聊天与发送表情](./room-tools.zh-CN.md#聊天与表情)
+- [在房间里语音聊天](./room-tools.zh-CN.md#房间语音)
+- [让朋友接手操作或一起玩](./remote-control.zh-CN.md#开始远程控制)
+
+## 分享者设置
+
+- [选择 App 模式](./getting-started.zh-CN.md#选择-app-模式)
+- [使用已有 Piik 站点分享](./getting-started.zh-CN.md#使用已有站点分享)
+- [调整画面与声音设置](./sharing.zh-CN.md#画面与声音设置)
+- [查阅 App 设置和诊断方法](../../cmd/piik-app/README.zh-CN.md)
 
 ## 网络连接
 
@@ -40,15 +40,8 @@
 
 ## 为朋友搭建站点
 
-<p><a href="../operations/self-hosting.zh-CN.md#使用-docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="使用 Docker Compose 部署 Piik Server"></a></p>
-
-需要长期使用的群组站点时，可部署 Piik Server，准备可访问的地址、HTTPS 和所需网络端口。
-
-- [部署 Piik Server](../operations/self-hosting.zh-CN.md)：使用 Docker Compose 或服务端程序包。
-- [长期运行与更新](../operations/service-management.zh-CN.md)。
-- [完整配置参考（英文）](../standards/configuration.md)。
+[部署 Piik Server](../operations/self-hosting.zh-CN.md) · [维护与更新](../operations/service-management.zh-CN.md) · [配置参考（英文）](../standards/configuration.md)
 
 ## 一起改进 Piik
 
-可以从[参与翻译](./translating.zh-CN.md)、[贡献指南](../../CONTRIBUTING.md)，
-或[开发与维护文档](../README.md)开始。
+[参与翻译](./translating.zh-CN.md) · [贡献指南](../../CONTRIBUTING.md) · [开发与维护文档](../README.md)

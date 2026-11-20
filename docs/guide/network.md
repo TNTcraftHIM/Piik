@@ -19,17 +19,21 @@ Web pages and chat use a separate connection from picture and sound:
 
 ## Campus networks and strict NAT
 
-**Open the same invitation on a phone hotspot first.** If it works there but not
-on the original network, investigate that network's shared gateway or firewall.
+**Try opening the same invitation on a phone hotspot.** If you can watch there, keep using the hotspot or ask the person who manages your usual network for help.
 
 For regular use, choose an option that fits your group:
 
-- **You have a Piik site:** ask its operator to [enable server media forwarding (SFU)](../operations/self-hosting.md#optional-media-fallback). The Host turns off **Privacy mode** so forwarding can be tried if direct connections fail. For App capture, [approve the new site](./getting-started.md#use-app-with-an-existing-site), then send its invitation.
+- **You have a Piik site:** ask its operator to [forward picture and sound](../operations/self-hosting.md#optional-media-fallback). The Host turns off **Privacy mode** so forwarding can be tried if direct connections fail. For App capture, [approve the new site](./getting-started.md#use-app-with-an-existing-site), then send its invitation.
 - **No usable forwarding site, and direct media still will not connect:** a [virtual LAN](#optional-a-virtual-lan) offers another path. Everyone joins the same virtual network, then uses the App's **Local room**.
 - **The required connections are blocked:** use an available network or ask its administrator to review access.
 
-> **Media requires UDP.** `demo.piik.tv` and App **Public invite** use P2P-only media.
-> SFU forwarding requires a site with that feature enabled and a reachable UDP endpoint.
+<details>
+<summary>For site administrators · Media forwarding</summary>
+
+**Media requires UDP.** `demo.piik.tv` and App **Public invite** use P2P-only media.
+SFU forwarding requires a site with that feature enabled and a reachable UDP endpoint.
+
+</details>
 
 ## Browser WebRTC restrictions
 

@@ -1,38 +1,37 @@
-# Piik documentation
+# Piik Help Center
 
-English · [简体中文](./README.zh-CN.md) · [Website](https://piik.tv/?lang=en)
-
-Choose a guide to start sharing, use room tools or solve a problem.
+English · [简体中文](./README.zh-CN.md) · [Piik website](https://piik.tv/?lang=en)
 
 ## Start using Piik
 
-<div class="guide-task-index">
-
-- **[Watch a friend](./getting-started.md#join-a-friends-room)**<br>
-  Open an invitation in a computer or phone browser. No installation needed.
-- **[Share my screen](./getting-started.md#share-with-piik-app)**<br>
-  Download and run Piik App, choose a picture and send an invitation.
-- **[Use Piik without installing](./getting-started.md#use-piik-online)**<br>
-  Share a screen or camera from the online site.
-- **[Use my group's Piik site](./getting-started.md#share-from-an-existing-site)**<br>
-  Share in your browser, or connect App for more features.
-
-</div>
-
-## Use the room tools
-
-- [Sharing and playback](./sharing.md): picture quality, cameras, source sound and viewing controls.
-- [Chat, voice and remote control](./room-tools.md): reactions, conversations and letting a friend take control.
-- [Remote control and playing together](./remote-control.md): permissions, shared keyboard/mouse and gamepads.
-- [App reference](../../cmd/piik-app/README.md): saved modes, site access, command-line options and diagnostics.
+- [Share my screen with Piik App](./getting-started.md#share-with-piik-app)
+- [Join a friend's room](./getting-started.md#join-a-friends-room)
+- [Share from my browser](./getting-started.md#use-piik-online)
 
 ## Get help
 
-- **Cannot join, share or hear a friend:** [find the checks for your problem](./troubleshooting.md#common-problems).
+- [The invitation opens to a blank page or shows an error](./troubleshooting.md#the-invitation-opens-to-a-blank-page)
+- [I joined the room, but the picture never loads](./troubleshooting.md#when-video-will-not-connect)
+- [The picture is blurry, stutters, or freezes](./troubleshooting.md#picture-blurs-stutters-or-stops)
+- [I’m sharing from iPhone Safari and my friends can’t hear the screen audio](./sharing.md#iphone-and-ipad-screen-sharing)
+- [I can see the picture but can’t hear its sound](./troubleshooting.md#picture-but-no-source-sound)
+- [I can’t use remote control](./troubleshooting.md#microphone-or-remote-controls-are-unavailable)
 
-Still stuck? [Report a problem](https://github.com/TNTcraftHIM/Piik/issues/new/choose)
-with your version, system, browser and reproduction steps. Follow the
-[reporting steps](./troubleshooting.md#reporting-a-problem) to collect diagnostics.
+[All troubleshooting topics](./troubleshooting.md#common-problems) · [Advanced network checks](./network.md) · [Report a problem](./troubleshooting.md#reporting-a-problem)
+
+## Use the room tools
+
+- [Adjust playback](./sharing.md#playback-controls)
+- [Chat and send reactions](./room-tools.md#chat-and-reactions)
+- [Talk in the room](./room-tools.md#room-voice)
+- [Let a friend take control or play together](./remote-control.md#start-remote-control)
+
+## Hosting options
+
+- [Choose an App mode](./getting-started.md#choose-an-app-mode)
+- [Share from an existing Piik site](./getting-started.md#share-from-an-existing-site)
+- [Adjust picture and sound settings](./sharing.md#picture-and-sound-settings)
+- [Look up App settings and diagnostics](../../cmd/piik-app/README.md)
 
 ## Networking
 
@@ -41,16 +40,8 @@ with your version, system, browser and reproduction steps. Follow the
 
 ## Run a site for your group
 
-<p><a href="../operations/self-hosting.md#docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="Deploy Piik Server with Docker Compose"></a></p>
-
-For a permanent group site, deploy Piik Server on a reachable address with HTTPS
-and the required network ports.
-
-- [Deploy Piik Server](../operations/self-hosting.md) with Docker Compose or the server package.
-- [Keep it running and update](../operations/service-management.md).
-- [Look up configuration settings](../standards/configuration.md).
+[Deploy Piik Server](../operations/self-hosting.md) · [Maintain and update it](../operations/service-management.md) · [Configuration reference](../standards/configuration.md)
 
 ## Help improve Piik
 
-[Translate Piik](./translating.md), [contribute](../../CONTRIBUTING.md), or explore the
-[developer and maintainer documentation](../README.md).
+[Translate Piik](./translating.md) · [Contribute](../../CONTRIBUTING.md) · [Developer and maintainer docs](../README.md)

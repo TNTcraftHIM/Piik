@@ -41,6 +41,22 @@ symptom-based checks to troubleshooting, and build/release procedures to maintai
 references. Remove repaired incident narratives instead of appending them to the
 reader's path; retain checks for current platform and network limitations.
 
+### Writing public help
+
+The homepage FAQ introduces Piik to a first-time visitor. Answer what people
+can do together, what each person needs, who can join and when hosting helps.
+The help center starts from a task or a symptom in the reader's own words.
+
+Give a task its own page when it has an independent outcome and entry point.
+Keep a platform difference beside the step it changes. Put configuration
+tables, diagnostic commands and protocol details in the relevant reference.
+Name the person taking the action and the control they will see. Lead with
+the answer or the first action, then say what success looks like. If it fails,
+use an observable difference to choose the next check. Verify each language's
+links, search terms and headings against realistic questions on a phone and desktop.
+[Diátaxis how-to guides](https://diataxis.fr/how-to-guides/) ·
+[Microsoft procedure style](https://learn.microsoft.com/en-us/style-guide/procedures-instructions/writing-step-by-step-instructions)
+
 The public documentation website renders selected repository Markdown without
 owning another copy. Its [reader index](../guide/README.md) serves usage and support;
 the repository map remains the developer/maintainer entry. The

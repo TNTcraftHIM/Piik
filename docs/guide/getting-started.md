@@ -2,33 +2,22 @@
 
 English · [简体中文](./getting-started.zh-CN.md) · [Back to Piik](../../README.md)
 
-Piik lets one Host share with up to 20 invited Viewers. Choose your starting point:
-
-| You want to… | Start here |
-| --- | --- |
-| Watch a friend | [Open their invitation](#join-a-friends-room). No installation. |
-| Share with friends elsewhere | [Piik App → Public invite](#share-with-piik-app). Keep App running. |
-| Share without installing | [Piik online](#use-piik-online), in your browser. |
-| Use your group's site | [Open that site](#share-from-an-existing-site); App capture is optional. |
-
-![Three steps: pick a window, copy its room invitation, and join friends on the sofa.](../assets/quickstart.svg)
+- **Someone sent me a link.** Open it in your browser. [Join a friend’s room](#join-a-friends-room)
+- **I want to share my screen.** [Start in your browser](#use-piik-online). To share one app’s sound or host a room on your computer, [use Piik App](#share-with-piik-app).
 
 ## Join a friend's room
 
 1. Open the invitation link your friend sent in a desktop or mobile browser.
-2. Wait for their screen to appear. If the browser blocks autoplay, press **Play**.
-3. Move the pointer over the picture or tap it to show the playback bar.
+2. If the page asks for a passphrase or room password, ask the friend who invited you. An invitation copied with **Skip passwords** takes you straight to the room.
+3. Wait for their screen to appear. If the browser blocks autoplay, press **Play**.
+4. Move the pointer over the picture or tap it to show the playback bar.
 
 The playback bar controls only your own picture and sound.
 See [playback controls](./sharing.md#playback-controls) for fullscreen, display and sound options.
 
-Only have a four-digit code? Open the same Piik site and select **Join a room**.
-Enter the site passphrase or room password if asked. If code entry is unavailable
-or an old link fails, ask the Host for their current invitation.
+Only have a four-digit code? Open the same Piik site and enter its passphrase if prompted. Select **Join a room**, enter the code, and provide the room password if asked. If code entry is unavailable or an old link fails, ask the Host for their current invitation.
 
-Each App's Local room or Public invite creates a separate site, so your friend's
-code does not work on your own App page. Open their full invitation instead;
-you do not need to create a room in your App to watch them.
+Open your friend’s full invitation if they created the room with App. Their code belongs to their App’s site.
 
 ## Use Piik online
 
@@ -36,26 +25,30 @@ you do not need to create a room in your App to watch them.
 2. Select **Start sharing**, then **Browser** for a screen, window or tab, or
    **Camera** where your computer or phone browser supports it. Enable source
    audio if the picker offers it.
-3. Confirm the preview and select **Copy invite link**, or show the **QR code**
-   for another device to scan. Both use the currently selected invitation link.
-4. Select **Stop sharing** when finished.
+3. Check that the picture you chose appears in the preview. Your share is ready when **Copy invite link** is available.
+4. Select **Copy invite link** and send it to your friends, or show the **QR code** for another device to scan.
+5. Keep the sharing tab open while friends watch. Select **Stop sharing** when finished.
 
 On iPhone/iPad, screen sharing requires **Safari on iOS/iPadOS 27 or later**.
 See [iPhone and iPad screen sharing](./sharing.md#iphone-and-ipad-screen-sharing)
 for sound support and the separate requirements for watching and cameras.
 
-The online version is provided by the project. Media travels only between participants (P2P);
-restrictive networks may load the page but block video.
+The online version sends the picture directly between devices.
+Some networks may let you open the page but block the picture.
+
+![Three steps: pick a window, copy its room invitation, and join friends on the sofa.](../assets/quickstart.svg)
 
 ## Share with Piik App
 
+On iPhone or iPad, [use Piik in Safari](#use-piik-online).
+
 1. Download **Piik App** for your platform from
    [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) or the
-   [AtomGit mirror](https://atomgit.com/TNTcraftHIM/Piik/releases). On phones and tablets,
+   [AtomGit mirror](https://atomgit.com/TNTcraftHIM/Piik/releases). On Android phones and tablets,
    install the APK directly. On a computer,
    extract the whole archive and keep its directory structure intact.
 2. Open `piik-app.exe` on Windows, `Piik App.app` on macOS, or `./piik-app` on Linux.
-   On phones and tablets, open Piik after installation. The launcher opens in your system browser.
+   On Android phones and tablets, open Piik after installation. The launcher opens in your system browser.
 3. Choose **Public invite** for friends outside your local network, then select
    **Open Piik**. Other modes are explained below.
 4. Choose **Start sharing**, then select **Browser**, **Camera**, **Apps / Windows**, or
@@ -97,9 +90,7 @@ See the [App guide](../../cmd/piik-app/README.md) for package and runtime detail
 
 For Local room and Public invite, expand **Site passphrase** to set an optional
 access passphrase.
-Local invitations use HTTPS. On first access, confirm the local certificate
-against the Host's App terminal before continuing; see the
-[certificate guide](./troubleshooting.md#local-https-certificate-warning).
+If your browser shows a warning, check with the host before opening the local invitation. [How to check a local invitation](./troubleshooting.md#local-https-certificate-warning)
 
 <details>
 <summary>Return to the launcher or change mode</summary>
@@ -155,8 +146,8 @@ Invitation links grant access to that room; share them with the people you want 
 
 To use App capture on that same site, follow [Use App with an existing site](#use-app-with-an-existing-site).
 The site manages rooms and invitations; the App supplies native capture.
-If its operator has enabled SFU forwarding, turn off **Privacy mode** before
-sharing to allow that fallback. The project's online site uses P2P only.
+If the site can relay video for viewers who cannot connect directly, turn off **Privacy mode** before
+sharing to allow that option.
 
 ## Next steps
 
