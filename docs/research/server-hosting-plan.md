@@ -120,7 +120,7 @@ independently on their devices.
 
 ## Storage, recovery and backup
 
-Room backups and copies preserve message descriptors and thumbnails. **Include
+The room creator authorizes full backups, copies and restores in the room’s Records panel, including when Server hosts the writer. Channel moderation grants directory removal. Other admitted members can export their loaded chat text. The remote writer exchanges room settings, history, attachment descriptors and thumbnails. The browser adds local originals to the downloaded ZIP and retains readable originals locally on restore. **Include
 file originals from this device** is enabled by default. The export packages
 matching originals the exporting device can read from local sources or cache.
 The file inventory counts message attachments with an included original. Two

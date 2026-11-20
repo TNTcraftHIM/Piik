@@ -7,6 +7,8 @@ afterEach(() => vi.unstubAllGlobals());
 test.each([
   [Response.json({ error: "expected_room_backup" }, { status: 400 }), "expected_room_backup"],
   [Response.json({ error: "storage_failed" }, { status: 409 }), "storage_failed"],
+  [Response.json({ error: "restore_scratch_limit" }, { status: 413 }), "restore_scratch_limit"],
+  [Response.json({ error: "restore_scratch_limit" }, { status: 507 }), "restore_scratch_limit"],
   [Response.json({ error: "room_restored_connection_failed" }, { status: 409 }), "room_restored_connection_failed"],
   [Response.json({ error: "upstream unavailable" }, { status: 503 }), "room_restore_unconfirmed"],
   [new Response("bad gateway", { status: 502 }), "room_restore_unconfirmed"],

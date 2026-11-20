@@ -74,7 +74,7 @@ pub(super) async fn export(
 ) -> ApiResult {
     let owner = owner(&app, &headers, domain, user).await?;
     owner.require_ready()?;
-    backup::export(owner.commands, room, owner.credential).await
+    backup::export(owner.commands, room, None, owner.credential).await
 }
 
 pub(super) async fn describe(
@@ -139,5 +139,5 @@ pub(super) async fn restore(
 ) -> ApiResult {
     let owner = owner(&app, &headers, domain, user).await?;
     owner.require_ready()?;
-    backup::restore(owner.commands, &headers, body).await
+    backup::restore(owner.commands, None, &headers, body).await
 }

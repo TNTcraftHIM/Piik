@@ -93,12 +93,31 @@ pub fn write_room<R: Read>(
 /// Read into an empty caller-owned directory. An error leaves only disposable
 /// staging files; no live writer or authority is touched here.
 pub fn stage(input: impl Read + Seek, directory: &Path) -> Result<StagedBackup> {
+    stage_archive(input, directory, false)
+}
+
+pub fn stage_hosted_room(input: impl Read + Seek, directory: &Path) -> Result<StagedBackup> {
+    stage_archive(input, directory, true)
+}
+
+fn stage_archive(
+    input: impl Read + Seek,
+    directory: &Path,
+    hosted_room: bool,
+) -> Result<StagedBackup> {
     let mut zip = ZipArchive::new(input)?;
     if zip.has_duplicate_names() {
         bail!("invalid_backup_entries");
     }
     let metadata: Metadata = serde_json::from_slice(&read_record(zip.by_name(MANIFEST)?)?)?;
     metadata.validate().map_err(anyhow::Error::msg)?;
+    if hosted_room {
+        match &metadata {
+            Metadata::Room(room) if room.retained_files.is_empty() => {}
+            Metadata::Room(_) => bail!("invalid_backup_entries"),
+            _ => bail!("expected_room_backup"),
+        }
+    }
     let mut expected = BTreeSet::from([MANIFEST.to_owned()]);
     if matches!(metadata, Metadata::RoomCopy(_)) {
         bail!("expected_room_backup");
@@ -378,6 +397,14 @@ mod tests {
         assert_eq!(opens, 1, "identical content is stored once");
         let directory = folder.join("import");
         std::fs::create_dir(&directory)?;
+        let rejected = stage_hosted_room(Cursor::new(&bytes), &directory);
+        assert_eq!(rejected.err().unwrap().to_string(), "invalid_backup_entries");
+        assert_eq!(std::fs::read_dir(&directory)?.count(), 0);
+        let hosted = folder.join("hosted");
+        std::fs::create_dir(&hosted)?;
+        let mut history_only = vec![];
+        write_room(&snapshot, &[], &mut history_only, |_| Ok(Cursor::new(b"")))?;
+        assert!(matches!(stage_hosted_room(Cursor::new(history_only), &hosted)?, StagedBackup::Room { .. }));
         let StagedBackup::Room {
             snapshot: restored,
             content,

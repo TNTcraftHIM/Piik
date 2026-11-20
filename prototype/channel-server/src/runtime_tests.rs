@@ -1747,7 +1747,9 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
         .unwrap(),
     );
     let (address, stop, task, _) = start_server(folder.path()).await;
-    let (mut creator, creator_session, _, _) =
+    let (mut operator, operator_session, _, operator_credential) =
+        connect_with_credential(address, "owner", "Operator").await;
+    let (mut creator, creator_session, _, creator_credential) =
         connect_with_credential(address, "invite", "Manager").await;
     send_request(
         &mut creator,
@@ -1794,6 +1796,105 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
             .any(|r| r.id == room.id && r.authorized && r.available && !r.can_manage)
     };
     let initial = state_when(&mut reader, readable).await;
+    assert_ne!(creator_session, operator_session);
+    assert_ne!(creator_credential, operator_credential);
+    assert_ne!(credential, creator_credential);
+    assert_ne!(credential, operator_credential);
+    let room_backup_path = format!("/prototype/channel/rooms/{}/backup", room.id);
+    let (status, archive) =
+        room_backup_http(address, &room_backup_path, &creator_credential, None).await;
+    assert_eq!(status, 200, "{:?}", String::from_utf8_lossy(&archive));
+    for unauthorized in [&credential, &operator_credential] {
+        assert_eq!(
+            room_backup_http(address, &room_backup_path, unauthorized, None)
+                .await
+                .0,
+            403
+        );
+        assert_eq!(
+            room_backup_http(address, &room_backup_path, unauthorized, Some(Vec::new()))
+                .await
+                .0,
+            403
+        );
+    }
+    send_request(
+        &mut creator,
+        json!({"type":"create_room","room":{"id":"other","name":"Other guest room","icon":"couch",
+        "creatorId":Uuid::nil(),"access":"public","hidden":false,"hasPassword":false}}),
+    )
+    .await;
+    let other_room = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            match event(&mut creator).await {
+                Event::RoomCreated { room, .. } => break room,
+                Event::Error { code, .. } => panic!("creation failed: {code}"),
+                _ => {}
+            }
+        }
+    })
+    .await
+    .unwrap();
+    let other_backup_path = format!("/prototype/channel/rooms/{}/backup", other_room.id);
+    state_when(&mut creator, |state| {
+        state
+            .channel
+            .rooms
+            .iter()
+            .any(|room| room.id == other_room.id && room.available)
+    })
+    .await;
+    let (status, wrong_room) =
+        room_backup_http(address, &other_backup_path, &creator_credential, None).await;
+    assert_eq!(status, 200);
+    let (status, response) = room_backup_http(
+        address,
+        &room_backup_path,
+        &creator_credential,
+        Some(wrong_room),
+    )
+    .await;
+    assert_eq!(status, 409, "{:?}", String::from_utf8_lossy(&response));
+    assert_eq!(
+        serde_json::from_slice::<Value>(&response).unwrap()["error"],
+        "backup_room_mismatch"
+    );
+    let (status, response) = room_backup_http(
+        address,
+        &room_backup_path,
+        &creator_credential,
+        Some(archive),
+    )
+    .await;
+    assert_eq!(status, 200, "{:?}", String::from_utf8_lossy(&response));
+    for path in ["/prototype/channel/backup", "/prototype/channel/hosting"] {
+        assert_eq!(
+            room_backup_http(address, path, &creator_credential, None)
+                .await
+                .0,
+            403
+        );
+    }
+    let (status, domain_archive) = room_backup_http(
+        address,
+        "/prototype/channel/backup",
+        &operator_credential,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        room_backup_http(
+            address,
+            "/prototype/channel/backup",
+            &creator_credential,
+            Some(domain_archive)
+        )
+        .await
+        .0,
+        403
+    );
+    send_request(&mut operator, json!({"type":"leave"})).await;
     assert_ne!(
         initial
             .channel

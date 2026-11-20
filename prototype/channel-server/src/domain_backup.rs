@@ -7,8 +7,15 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use piik_channel_core::backup::{DomainMetadata, OwnCredential};
-use piik_channel_native::{backup::StagedBackup, session::HostCommand};
+use piik_channel_core::{
+    backup::{DomainMetadata, OwnCredential},
+    wire::HostingMode,
+    Authority,
+};
+use piik_channel_native::{
+    backup::StagedBackup,
+    session::{ExistingRoomRestore, HostCommand},
+};
 use std::sync::MutexGuard;
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
@@ -19,9 +26,10 @@ pub(crate) struct RestoreDomain {
     pub result: oneshot::Sender<Result<Uuid, String>>,
 }
 
-fn owner<'a>(
+fn authorized<'a>(
     domain: &'a Domain,
     headers: &HeaderMap,
+    permits: impl FnOnce(&Authority, Uuid) -> bool,
 ) -> Result<(OwnCredential, MutexGuard<'a, Hub>), ApiError> {
     let forbidden = || backup::error(StatusCode::FORBIDDEN, "forbidden");
     let credential = backup::bearer(headers).ok_or_else(forbidden)?;
@@ -34,28 +42,48 @@ fn owner<'a>(
         return Err(forbidden());
     }
     let hub = domain.hub.lock().unwrap();
-    if !hub.authority.is_owner_credential(credential) {
+    let user_id = hub
+        .authority
+        .user_for_credential(credential)
+        .ok_or_else(forbidden)?
+        .id;
+    if !permits(&hub.authority, user_id) {
         return Err(forbidden());
     }
     Ok((
         OwnCredential {
-            user_id: hub.authority.identity().1,
+            user_id,
             credential: credential.into(),
         },
         hub,
     ))
 }
 
-fn room_owner(
+fn owner<'a>(
+    domain: &'a Domain,
+    headers: &HeaderMap,
+) -> Result<(OwnCredential, MutexGuard<'a, Hub>), ApiError> {
+    authorized(domain, headers, |authority, user| {
+        authority.identity().1 == user
+    })
+}
+
+fn room_commands(hub: &Hub) -> Result<mpsc::Sender<HostCommand>, ApiError> {
+    hub.room_commands
+        .clone()
+        .ok_or_else(|| backup::error(StatusCode::SERVICE_UNAVAILABLE, "hosting_unavailable"))
+}
+
+fn room_creator(
     domain: &Domain,
     headers: &HeaderMap,
+    room: &str,
 ) -> Result<(mpsc::Sender<HostCommand>, OwnCredential), ApiError> {
-    let (credential, hub) = owner(domain, headers)?;
-    let commands = hub
-        .room_commands
-        .clone()
-        .ok_or_else(|| backup::error(StatusCode::SERVICE_UNAVAILABLE, "hosting_unavailable"))?;
-    Ok((commands, credential))
+    let (credential, hub) = authorized(domain, headers, |authority, user| {
+        authority.is_room_creator(room, user)
+            && (authority.hosting_mode() == HostingMode::Hosted || authority.identity().1 == user)
+    })?;
+    Ok((room_commands(&hub)?, credential))
 }
 
 pub(super) async fn export(
@@ -63,12 +91,12 @@ pub(super) async fn export(
     Path(room): Path<String>,
     headers: HeaderMap,
 ) -> ApiResult {
-    let (commands, credential) = room_owner(&domain, &headers)?;
-    backup::export(commands, room, credential).await
+    let (commands, credential) = room_creator(&domain, &headers, &room)?;
+    backup::export(commands, room, Some(credential.user_id), credential).await
 }
 
 pub(super) async fn describe(State(domain): State<Domain>, headers: HeaderMap) -> ApiResult {
-    let (commands, _) = room_owner(&domain, &headers)?;
+    let commands = room_commands(&owner(&domain, &headers)?.1)?;
     backup::describe(commands).await
 }
 
@@ -77,8 +105,27 @@ pub(super) async fn restore(
     headers: HeaderMap,
     body: Body,
 ) -> ApiResult {
-    let (commands, _) = room_owner(&domain, &headers)?;
-    backup::restore(commands, &headers, body).await
+    let commands = room_commands(&owner(&domain, &headers)?.1)?;
+    backup::restore(commands, None, &headers, body).await
+}
+
+pub(super) async fn restore_existing(
+    State(domain): State<Domain>,
+    Path(room): Path<String>,
+    headers: HeaderMap,
+    body: Body,
+) -> ApiResult {
+    let (commands, credential) = room_creator(&domain, &headers, &room)?;
+    let scratch = domain
+        .room_restore
+        .try_acquire_owned()
+        .map_err(|_| backup::error(StatusCode::CONFLICT, "room_busy"))?;
+    let target = ExistingRoomRestore {
+        room_id: room,
+        creator: credential.user_id,
+        scratch,
+    };
+    backup::restore(commands, Some(target), &headers, body).await
 }
 
 pub(super) async fn export_domain(State(domain): State<Domain>, headers: HeaderMap) -> ApiResult {

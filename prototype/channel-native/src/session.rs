@@ -321,6 +321,7 @@ impl OpeningRoom {
 
 pub struct SnapshotRoom {
     pub room_id: String,
+    pub creator: Option<Uuid>,
     pub own_credential: Option<OwnCredential>,
     pub result: oneshot::Sender<Result<RoomSnapshot, String>>,
 }
@@ -342,8 +343,16 @@ impl Drop for SnapshotJob {
     }
 }
 
+/// The authenticated room target owns the scratch slot through staging and installation.
+pub struct ExistingRoomRestore {
+    pub room_id: String,
+    pub creator: Uuid,
+    pub scratch: tokio::sync::OwnedSemaphorePermit,
+}
+
 pub struct RestoreRoom {
     pub snapshot: RoomSnapshot,
+    pub existing: Option<ExistingRoomRestore>,
     pub result: oneshot::Sender<Result<RoomSummary, String>>,
 }
 
@@ -2322,12 +2331,19 @@ impl Session {
                 .hosting
                 .as_ref()
                 .ok_or_else(|| anyhow!("hosting_unavailable"))?;
-            let host = self
+            let live = self
                 .live
                 .as_ref()
-                .and_then(|live| live.room.rooms.get(&request.room_id))
-                .filter(|host| host.creator_id() == hosting.identity.1)
                 .ok_or_else(|| anyhow!("room_unavailable"))?;
+            let host = live
+                .room
+                .rooms
+                .get(&request.room_id)
+                .filter(|host| host.creator_id() == request.creator.unwrap_or(hosting.identity.1))
+                .ok_or_else(|| anyhow!("room_unavailable"))?;
+            if request.creator.is_some() && host.binding().is_none() {
+                bail!("room_unavailable");
+            }
             Ok((host.snapshot_source(), hosting.identity.0))
         })();
         let ((source, room, creator), domain) = match source {
@@ -2367,6 +2383,9 @@ impl Session {
     async fn restore_room(&mut self, request: RestoreRoom, socket: &mut Writer<'_>) -> Result<()> {
         if request.result.is_closed() {
             return Ok(());
+        }
+        if request.existing.is_some() {
+            return self.install_room_backup(request, socket).await;
         }
         let id = request.snapshot.room.metadata().policy.id.clone();
         let admission = (|| -> Result<()> {
@@ -2424,6 +2443,32 @@ impl Session {
                 .live
                 .as_mut()
                 .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+            if let Some(target) = &request.existing {
+                if target.room_id != id {
+                    bail!("backup_room_mismatch");
+                }
+                let state = live.room.snapshot.borrow();
+                let channel = &state
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("hosting_unavailable"))?
+                    .channel;
+                let summary = RoomSummary::from_policy(&request.snapshot.room.metadata().policy);
+                let host = live
+                    .room
+                    .rooms
+                    .get_mut(&id)
+                    .filter(|host| host.creator_id() == target.creator)
+                    .ok_or_else(|| anyhow!("room_unavailable"))?;
+                let previous = host.binding().ok_or_else(|| anyhow!("room_unavailable"))?;
+                if !channel
+                    .room_creation_policy
+                    .permits(channel.owner_id, &summary)
+                {
+                    bail!("room_creation_restricted");
+                }
+                host.replace(&request.snapshot.room, (hosting.identity.0, target.creator))?;
+                return Ok((host.summary(), Some(previous)));
+            }
             if !live.room.snapshot.borrow().as_ref().is_some_and(|state| {
                 state
                     .channel

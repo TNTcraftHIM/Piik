@@ -23,15 +23,17 @@ export class NativeRoomHosting {
     return (await this.request(`${this.roomsURL}/${encodeURIComponent(roomId)}/backup`)).blob();
   }
 
-  async restore(archive: Blob): Promise<RoomSummary> {
-    const response = await fetchHosting(`${this.roomsURL}/backup`, this.authorization, archive).catch(() => null);
+  async restore(archive: Blob, roomId?: string): Promise<RoomSummary> {
+    const url = roomId === undefined ? `${this.roomsURL}/backup` : `${this.roomsURL}/${encodeURIComponent(roomId)}/backup`;
+    const response = await fetchHosting(url, this.authorization, archive).catch(() => null);
     const value: unknown = await response?.json().catch(() => null);
     if (response?.ok) {
       const result = z.object({ room: roomSummarySchema }).safeParse(value);
       if (result.success) return result.data.room;
-    } else if (response && response.status >= 400 && response.status < 500) {
+    } else if (response && response.status >= 400) {
       const failure = failureSchema.safeParse(value);
-      if (failure.success) throw new Error(failure.data.error);
+      if (failure.success && (response.status < 500 || (response.status === 507 && failure.data.error === "restore_scratch_limit")))
+        throw new Error(failure.data.error);
     }
     throw new Error("room_restore_unconfirmed");
   }

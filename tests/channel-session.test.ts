@@ -8823,6 +8823,16 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     const result = await backupArchive.readBackup(converted, { metadata: () => {}, row: value => { restored.push(value); }, content: () => {} });
     expect(result).toMatchObject({ kind: "room", policy: { creatorId: creator, access: "private", grants: [], inviteHash: null, passwordHash: null } });
     expect(result).not.toHaveProperty("ownCredential"); expect(policy).not.toHaveProperty("inviteKey");
+    let writerArchive: Blob | undefined;
+    const originals: File[] = [];
+    await backupArchive.readBackup(converted, { metadata() {}, row() {}, content(_, file) { originals.push(file); },
+      hostedArchive(value) { writerArchive = value; } });
+    expect(await originals[0].text()).toBe("owned copy bytes");
+    const uploaded: BackupHistoryRow[] = [];
+    const stripped = await backupArchive.readBackup(writerArchive!, { metadata() {}, row(value) { uploaded.push(value); },
+      content() { throw new Error("unexpected hosted content"); }, hostedArchive(value) { expect(value).toBe(writerArchive); } });
+    expect(stripped).toEqual({ ...result, retainedFiles: [] });
+    expect(uploaded).toEqual(restored);
     expect(restored).toEqual([copied]); expect(snapshot.close).toHaveBeenCalledOnce();
   } finally { importer?.free(); session.close(); }
 });
@@ -12567,5 +12577,37 @@ test.each(['accepted', 'rejected'])('screen quality commits only after its poole
     expect(source.stop).not.toHaveBeenCalled();
     expect(RoomPeerConnection.instances).toHaveLength(1);
     expect(RoomPeerConnection.instances[0].close).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
+test("hosted room archives use the room creator credential independently of App and domain ownership", async () => {
+  const { session, socket, state, read, metadata, row } = await setupRoomBackup();
+  const fetch = vi.fn().mockResolvedValueOnce(new Response("room archive"));
+  vi.stubGlobal("fetch", fetch);
+  try {
+    state.channel.hostingMode = "hosted";
+    state.channel.ownerId = "another-user";
+    socket.receive({ type: "state", state });
+    expect(await session.roomBackupAvailable("first")).toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await (await session.exportRoomBackup("first", false)).text()).toBe("room archive");
+    expect(fetch.mock.calls[0][0]).toBe("/prototype/channel/rooms/first/backup");
+    fetch.mockResolvedValueOnce(Response.json({error:"room_restored_connection_failed"},{status:409}));
+    const participantArchive = new Blob(["with participant contents"]), writerArchive = new Blob(["validated stripped ZIP"]);
+    read.mockImplementationOnce(async (_blob, visitor) => {
+      await visitor!.metadata(metadata); await visitor!.row(row); visitor!.hostedArchive!(writerArchive); return metadata;
+    });
+    await expect(session.restoreRoomBackup(participantArchive,"first")).rejects.toThrow("room_restored_connection_failed");
+    expect(fetch.mock.calls[1][0]).toBe("/prototype/channel/rooms/first/backup");
+    expect(fetch.mock.calls[1][1].method).toBe("PUT");
+    expect(fetch.mock.calls[1][1].body).toBe(writerArchive);
+    state.channel.rooms[0].creatorId = "another-creator";
+    for (const ownerId of ["another-user", "self"]) {
+      state.channel.ownerId = ownerId;
+      socket.receive({ type: "state", state });
+      expect(await session.roomBackupAvailable("first")).toBe(false);
+      await expect(session.exportRoomBackup("first", false)).rejects.toThrow("room_host_unavailable");
+    }
+    expect(fetch).toHaveBeenCalledTimes(2);
   } finally { session.close(); }
 });

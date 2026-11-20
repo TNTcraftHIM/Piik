@@ -49,6 +49,8 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.error.backupIdentityRequired");
   if (error === "backup_room_mismatch")
     return display("channel.error.backupRoomMismatch");
+  if (error === "restore_scratch_limit")
+    return display("channel.error.restoreScratchLimit");
   if (error === "backup_room_not_admitted")
     return display("channel.error.backupRoomNotAdmitted");
   if (error === "unsupported_storage_version")

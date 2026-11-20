@@ -152,6 +152,13 @@ impl Authority {
             .is_some_and(|user| user.id == self.channel.identity.owner_id)
     }
 
+    pub fn is_room_creator(&self, room_id: &str, user_id: Uuid) -> bool {
+        self.channel
+            .remote
+            .get(room_id)
+            .is_some_and(|room| room.summary.creator_id == user_id)
+    }
+
     /// Verify a supplied personal credential without creating or changing a session.
     pub fn user_for_credential(&self, credential: &str) -> Option<&User> {
         let id = self.channel.identity.user_for_credential(credential)?;

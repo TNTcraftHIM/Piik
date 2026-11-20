@@ -178,7 +178,7 @@ async fn backup_controls_only_expose_rooms_created_by_the_hosting_identity() {
     }
     assert_eq!(session.hosting_description().unwrap().room_ids, ["own"]);
     let (result, response) = oneshot::channel();
-    session.snapshot_room(SnapshotRoom { room_id: "guest".into(), own_credential: None, result }).await;
+    session.snapshot_room(SnapshotRoom { room_id: "guest".into(), creator: None, own_credential: None, result }).await;
     assert_eq!(response.await.unwrap().err().unwrap(), "room_unavailable");
     assert!(session.snapshot_job.is_none());
 }
@@ -231,6 +231,7 @@ async fn missing_room_restore_waits_for_domain_admission_and_drops_denied_or_ret
         session
             .restore_room(
                 RestoreRoom {
+                    existing: None,
                     snapshot: RoomSnapshot {
                         room,
                         directory: staging,
@@ -273,6 +274,137 @@ async fn missing_room_restore_waits_for_domain_admission_and_drops_denied_or_ret
         );
         assert!(stored_rooms(directory.path()).unwrap().is_empty());
         assert!(session.opening.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn hosted_private_backup_checks_creator_and_policy_before_replacing_bound_writer() {
+    use piik_channel_core::{
+        backup::RoomMetadata,
+        wire::{Request, RoomCreationPolicy},
+        RoomBackup,
+    };
+    let (mut session, mut socket, mut remote, mut state) = capture_projection_session().await;
+    let directory = tempfile::tempdir().unwrap();
+    let owner = Uuid::new_v4();
+    let creator = Uuid::new_v4();
+    let binding = Uuid::new_v4();
+    let (_send, commands) = mpsc::channel(1);
+    session.hosting = Some(Hosting {
+        directory: directory.path().into(),
+        identity: (state.channel.id, owner),
+        commands,
+        ready: watch::channel(None).0,
+        desktop: None,
+    });
+    state.channel.rooms.clear();
+    state.channel.owner_id = Some(owner);
+    state.channel.room_creation_policy = RoomCreationPolicy::InviteOnly;
+    session.state(state.clone(), &mut socket).await.unwrap();
+    let policy = RoomState::new(
+        "guest".into(),
+        "Private".into(),
+        Default::default(),
+        creator,
+        RoomAccess::Private,
+        true,
+        None,
+    )
+    .unwrap();
+    let mut host =
+        HostedRoom::create(&directory.path().join("guest.sqlite"), policy.clone()).unwrap();
+    host.bind(binding).unwrap();
+    session
+        .live
+        .as_mut()
+        .unwrap()
+        .room
+        .rooms
+        .insert("guest".into(), host);
+    for caller in [owner, creator] {
+        let (result, response) = oneshot::channel();
+        session
+            .snapshot_room(SnapshotRoom {
+                room_id: "guest".into(),
+                creator: Some(caller),
+                own_credential: None,
+                result,
+            })
+            .await;
+        let result = response.await.unwrap();
+        if caller == owner {
+            assert_eq!(result.err().unwrap(), "room_unavailable");
+        } else {
+            assert_eq!(result.unwrap().room.metadata().policy.name, "Private");
+        }
+    }
+    for access in [RoomAccess::Public, RoomAccess::Private] {
+        let directory = tempfile::tempdir().unwrap();
+        let mut replacement = policy.clone();
+        replacement.name = "Restored".into();
+        replacement.access = access;
+        replacement.hidden = access == RoomAccess::Private;
+        let room = RoomBackup::stage(
+            &directory.path().join("room.sqlite"),
+            RoomMetadata {
+                version: 3,
+                domain_id: state.channel.id,
+                policy: replacement,
+                own_credential: None,
+                retained_files: vec![],
+            },
+            std::iter::empty(),
+        )
+        .unwrap();
+        let (result, response) = oneshot::channel();
+        session
+            .restore_room(
+                RestoreRoom {
+                    existing: Some(ExistingRoomRestore {
+                        room_id: "guest".into(),
+                        creator,
+                        scratch: Arc::new(tokio::sync::Semaphore::new(1)).try_acquire_owned().unwrap(),
+                    }),
+                    snapshot: RoomSnapshot { room, directory },
+                    result,
+                },
+                &mut socket,
+            )
+            .await
+            .unwrap();
+        if access == RoomAccess::Public {
+            assert_eq!(
+                response.await.unwrap().err().unwrap(),
+                "room_creation_restricted"
+            );
+            let host = &session.live.as_ref().unwrap().room.rooms["guest"];
+            assert_eq!(host.binding(), Some(binding));
+            assert_eq!(host.summary().name, "Private");
+        } else {
+            let registration =
+                Request::parse(remote.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+            assert!(matches!(registration.command, Command::HostRegister { .. }));
+            session
+                .event(
+                    Event::HostBound {
+                        room_id: "guest".into(),
+                        binding_id: Uuid::new_v4(),
+                    },
+                    &mut socket,
+                )
+                .await
+                .unwrap();
+            session
+                .event(
+                    Event::Ack {
+                        request_id: registration.request_id.unwrap(),
+                    },
+                    &mut socket,
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.await.unwrap().unwrap().name, "Restored");
+        }
     }
 }
 
@@ -351,6 +483,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
         session
             .restore_room(
                 RestoreRoom {
+                    existing: None,
                     snapshot: RoomSnapshot {
                         room,
                         directory: staging,

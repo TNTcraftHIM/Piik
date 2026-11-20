@@ -12,6 +12,7 @@ export type BackupMetadata =
       ownCredential?: { userId: string; credential: string }; retainedFiles: RetainedBackupFile[] }
   | { kind: "room_copy"; version: 2; roomInfo?: RoomCopyInfo; authors: Record<string, string>; retainedFiles: RetainedBackupFile[] };
 export interface BackupVisitor {
+  hostedArchive?(value: Blob): void;
   metadata(value: BackupMetadata): void | Promise<void>;
   row(value: BackupHistoryRow): void | Promise<void>;
   content(digest: string, file: File): void | Promise<void>;
@@ -87,6 +88,20 @@ async function readArchive(blob: Blob, visitor?: BackupVisitor): Promise<BackupM
             check.stream.readable.pipeTo(output.writable)]);
           await visitor.content(hash, new File([await output.getData()], descriptor.name, { type: descriptor.mediaType }));
         } finally { check.free(); }
+      }
+      if (visitor.hostedArchive && metadata.kind === "room") {
+        if (!files.size) visitor.hostedArchive(blob);
+        else {
+          const output = new zip.BlobWriter("application/zip");
+          const writer = new zip.ZipWriter(output, zipOptions);
+          try {
+            await writer.add(manifest, new zip.Uint8ArrayReader(encoder.encode(JSON.stringify({ ...metadata, retainedFiles: [] }))));
+            const stream = new TransformStream<Uint8Array, Uint8Array>();
+            await Promise.all([writer.add(history, stream.readable),
+              entries.get(history)!.getData(stream.writable, { useWebWorkers: false, checkSignature: true })]);
+            visitor.hostedArchive(await writer.close());
+          } catch (error) { await writer.close().catch(() => {}); throw error; }
+        }
       }
     }
     return metadata;

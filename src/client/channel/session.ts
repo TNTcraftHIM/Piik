@@ -1541,6 +1541,11 @@ export class ChannelSession {
       const next = this.view.state?.channel.rooms.find(room => room.id === roomId)?.delivery;
       if (next?.bindingId !== delivery.bindingId || next.hostSessionId !== delivery.hostSessionId) throw new Error("room_host_conflict");
     };
+    if (state.channel.hostingMode === "hosted") {
+      if (!this.credential) throw new Error("room_host_unavailable");
+      const native = new NativeRoomHosting("/prototype/channel/rooms", { Authorization: `Bearer ${this.credential}` });
+      return { current, native: { snapshot: () => native.snapshot(roomId), restore: (blob: Blob) => native.restore(blob, roomId) } };
+    }
     const hosted = this.hostedRooms.get(roomId);
     if (hosted && delivery.hostSessionId === this.view.sessionId && hosted.bindingId === delivery.bindingId) {
       return { current, snapshot: () => hosted.host.snapshot() };
@@ -1786,9 +1791,11 @@ export class ChannelSession {
     const initial = this.sessionContext(), owner = roomId ? await this.backupOwner(roomId) : undefined;
     if (!roomId && this.view.state!.channel.hostingMode === "hosted") throw new Error("room_host_unavailable");
     let stage: BrowserRoomStage | undefined;
+    let writerArchive = archive;
     const contents = new Map<string, File>();
     try {
       const metadata = await readBackup(archive, {
+        hostedArchive: roomId && this.view.state!.channel.hostingMode === "hosted" ? value => { writerArchive = value; } : undefined,
         metadata: async value => {
           initial();
           if (value.kind !== "room" || value.domainId !== this.view.state!.channel.id || (roomId && value.policy.id !== roomId)) throw new Error("backup_room_mismatch");
@@ -1805,7 +1812,7 @@ export class ChannelSession {
       });
       initial(); owner?.current();
       if (metadata.kind !== "room") throw new Error("invalid_backup");
-      return await this.installRoomHistory(metadata, contents, { kind: "restore", archive, stage, owner });
+      return await this.installRoomHistory(metadata, contents, { kind: "restore", archive: writerArchive, stage, owner });
     } finally {
       await stage?.close().catch(() => {});
     }

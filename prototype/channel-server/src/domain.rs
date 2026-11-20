@@ -188,6 +188,7 @@ impl Hub {
 pub struct Domain {
     hub: Arc<Mutex<Hub>>,
     sockets: Arc<Semaphore>,
+    room_restore: Arc<Semaphore>,
     closing: watch::Sender<bool>,
     origin: String,
     restores: Option<mpsc::Sender<RestoreDomain>>,
@@ -660,6 +661,7 @@ impl Domain {
                 room_commands: None,
             })),
             sockets: Arc::new(Semaphore::new(2 * piik_channel_core::MAX_SESSIONS)),
+            room_restore: Arc::new(Semaphore::new(1)),
             closing: watch::channel(false).0,
             origin,
             restores: None,
@@ -795,7 +797,7 @@ impl Domain {
             )
             .route(
                 "/prototype/channel/rooms/{room}/backup",
-                get(backup::export),
+                get(backup::export).put(backup::restore_existing),
             )
             .route("/prototype/channel/rooms/backup", put(backup::restore))
             .route("/prototype/channel/hosting", get(backup::describe))

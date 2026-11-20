@@ -839,10 +839,10 @@ impl Channel {
         self.room_creation_policy = policy;
         let mut replies = Vec::new();
         self.remote.retain(|_, room| {
-            room.reservation.is_none() || policy.permits(self.identity.owner_id, &room.summary)
+            room.reservation.is_none() || policy.permits(Some(self.identity.owner_id), &room.summary)
         });
         for room in self.remote.values_mut() {
-            if !policy.permits(self.identity.owner_id, &room.summary) {
+            if !policy.permits(Some(self.identity.owner_id), &room.summary) {
                 replies.extend(room.pause());
                 room.projection = None;
             }
@@ -853,7 +853,7 @@ impl Channel {
     fn check_room_policy(&self, summary: &RoomSummary) -> Result<(), &'static str> {
         if self
             .room_creation_policy
-            .permits(self.identity.owner_id, summary)
+            .permits(Some(self.identity.owner_id), summary)
         {
             Ok(())
         } else {
@@ -1939,7 +1939,7 @@ impl Channel {
                 if member.user_id != room.summary.creator_id
                     && !self
                         .room_creation_policy
-                        .permits(self.identity.owner_id, &room.summary)
+                        .permits(Some(self.identity.owner_id), &room.summary)
                 {
                     continue;
                 }
@@ -2159,8 +2159,8 @@ impl DurableState {
 }
 
 impl RoomCreationPolicy {
-    fn permits(self, owner_id: Uuid, room: &RoomSummary) -> bool {
-        room.creator_id == owner_id
+    pub fn permits(self, owner_id: Option<Uuid>, room: &RoomSummary) -> bool {
+        Some(room.creator_id) == owner_id
             || match self {
                 Self::Ordinary => true,
                 Self::InviteOnly => {

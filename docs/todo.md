@@ -27,8 +27,7 @@ the feedback period; they do not delay that delivery.
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
   coverage, connection attempts, idle cost and disruption. Exercise concurrent kinds on one uplink
   and recovery from a refused file branch before tuning fanout and retry/standby budgets.
-- [ ] **Matched-package room acceptance.** Verify room archive recovery on the
-  Windows package and invite-only discovery on the public Demo. The [hosting design](./research/server-hosting-plan.md)
+- [ ] **Matched-package room acceptance.** Verify invite-only discovery on the public Demo. The [hosting design](./research/server-hosting-plan.md)
   owns the lightweight, hosted and moderation contracts.
 - [ ] **Physical camera orientation.** Check portrait capture on a phone through
   Native and pooled Browser paths. Compare the orientation of the source and
