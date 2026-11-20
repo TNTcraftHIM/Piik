@@ -44,6 +44,10 @@ symptom-based checks to troubleshooting, and build/release procedures to maintai
 references. Remove repaired incident narratives instead of appending them to the
 reader's path; retain checks for current platform and network limitations.
 
+For public help, name the person taking the action and the control they will
+see. For a value such as an address, say where to find it and where to use it.
+Name links for the task or destination. [W3C link purpose](https://www.w3.org/WAI/WCAG22/Understanding/link-purpose-in-context.html)
+
 The public documentation website renders selected repository Markdown without
 owning another copy. Its [reader index](../guide/README.md) serves usage and support;
 the repository map remains the developer/maintainer entry. The

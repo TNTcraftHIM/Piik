@@ -4,12 +4,11 @@ outline: 2
 
 # Troubleshooting
 
-This guide covers the 3.0 internal test. For published 2.x, use the [2.6.1 troubleshooting guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/troubleshooting.md).
+These instructions cover the 3.0 internal test. For the public release, see the [published guide](https://piik.tv/docs/troubleshooting.html).
 
 English · [简体中文](./troubleshooting.zh-CN.md) · [Documentation](./README.md)
 
-Find your symptom below. Try its checks in order and stop when it works.
-If it persists, [save a diagnostic report](#reporting-a-problem) before refreshing.
+Find the symptom that matches what you see. If the problem continues, [save a diagnostic report](#reporting-a-problem) before refreshing.
 
 ## Common problems
 
@@ -28,8 +27,7 @@ Start at the first thing that fails:
 | Cannot hear a friend, or cannot use the microphone | [Room voice](#cannot-hear-someone-speaking) and [permissions](#microphone-or-remote-controls-are-unavailable). |
 | Gamepad does not respond | [Gamepad checks](#gamepads). |
 
-Leave [advanced network checks](./network.md) until the matching
-symptom's simple checks have failed. Change one thing at a time.
+If you can enter the room and chat but media or files cannot connect, use the [network checks](./network.md). Change one setting at a time so you can compare results.
 
 ## Opening App and joining a room
 
@@ -129,8 +127,7 @@ for the requirements. You do not need to open an inbound port on your router.
 If the temporary address is unavailable, you can use an existing **3.0** site.
 To switch this App to [Local network](./network.md#optional-a-virtual-lan), finish
 its current shares, quit normally and reopen App, then select that mode.
-The public Demo and published 2.x
-sites are separate versions. If a site at its permanent address is unavailable, ask its
+The public Demo runs the published 2.x version. If a site at its permanent address is unavailable, ask its
 operator to check the service. Once the page opens, distinguish
 [chat/hosting problems](#chat-or-history-will-not-load) from [peer connection problems](#when-video-will-not-connect).
 
@@ -321,9 +318,9 @@ with the codec comparison. If both codecs fail, also check
 
 ### When video will not connect
 
-1. **Viewer.** Select **Retry picture** on the affected picture. If it still fails, try another network such as a phone hotspot.
+1. **Viewer.** If you can enter and chat but the share stays on the connection screen, select **Retry picture** on the affected picture. If it still fails, try another network such as a phone hotspot.
 2. **Person sharing.** Check that the preview for that share is playing. If the preview is blank, check the selected window or screen.
-3. **Site owner.** Check that the site's media forwarding service is configured and reachable. A room manager must also turn on **Allow site forwarding** for that room before Piik can use it.
+3. **Site operator and room manager.** The site operator makes the forwarding service available. A room manager opens **Room settings → Connection** and enables **Allow site forwarding** for that room. Once both are in place, Piik can use the service automatically when the route needs it.
 
 If the preview plays and the picture still fails to connect, see [advanced network checks](./network.md).
 

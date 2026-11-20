@@ -41,11 +41,11 @@ see [getting started](./getting-started.md).
 
 ## Watch a webpage video together
 
-In a 3.0 test room, select **Start sharing → Watch together** and paste the video or webpage address.
+In a 3.0 test room, select **Start sharing → Watch together** and paste a direct video URL or copy the page address from your browser’s address bar.
 
 - **Direct video link or YouTube.** Select **Play direct video URL** or, for YouTube, **Watch together**. Everyone can use a browser. Each person plays the video from its original source.
-- **Watch on the original webpage.** In the Windows App, select **Open webpage and select video**. Sign in on the website if needed and play the video. Return to Piik, select the player and choose **Share original webpage only**. If the player has a **Choose playback source** button, use it to see the options. Each viewer opens the same page in their own App, signs in with their own account if needed and selects the player. The webpage then appears inside the room’s main picture. The sharer controls play, pause and seeking for everyone.
-- **Forward to a viewer in a browser.** For a video you can share, open **Choose playback source** and select **Forward through App**. Viewers can select **Receive from sharer**. This uses the sharer’s upload bandwidth. If access expires, restore it on the source website and ask the viewer to select **Retry** beside the error.
+- **Watch on the original webpage.** In the Windows App, select **Open webpage and select video**. Sign in on the website if needed and play the video. Return to Piik, select the player and choose **Share original webpage only**. If the player has a **Choose playback source** button, use it to see the options. Each viewer uses Piik App on Windows and selects **Open webpage and select video** in the room. Piik opens the page the sharer chose. Each viewer signs in with their own account if needed and selects the player. The webpage then appears inside the room’s main picture. The sharer controls play, pause and seeking for everyone.
+- **Forward to a viewer in a browser.** For a video you can share, open **Choose playback source** and select **Forward through App**. Viewers can select **Receive from sharer**. The video uses the sharer’s internet upload bandwidth and needs a working media connection to the viewers. If access expires, the sharer restores playback on the original website, then the viewer selects **Retry** beside the error.
 
 With direct links, YouTube and original webpages, each viewer loads the video from its origin. A cloud tunnel used to reach the room carries the playback controls and position. To switch episodes, the sharer selects **Switch source** and viewers join the new activity.
 

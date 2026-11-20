@@ -11,10 +11,9 @@ for those versions.
 | --- | --- |
 | A friend's 3.0 link | [Join their room](#join-a-friends-room). A browser is enough to watch. |
 | A 3.0 test App package | [Create a room with App](#share-with-piik-app). |
-| An existing 3.0 site | [Join or create a room](#share-from-an-existing-site), depending on channel settings. |
+| Your group's 3.0 site address | [Join a room on that site](#share-from-an-existing-site). |
 
-A **site** contains your group's rooms. Channel settings determine who can create rooms and whether members must create hidden, invitation-only rooms. People in a room can
-chat, join voice, share their own picture and choose which pictures to watch.
+A **site** can have several rooms. The site owner decides who can create them and can require members’ rooms to be invitation-only. Once in a room, you can chat, join voice, share your screen or watch a friend.
 
 ## Join a friend's room
 
@@ -32,7 +31,7 @@ volume and local pause affect only your own viewing. Move the pointer over the
 picture, tap it or focus a playback button to reveal its controls.
 
 You do not need to launch your own App or create another room to watch a friend.
-Keep their full link: opening your own App starts a different site.
+Keep the full invitation link your friend sent. Opening your own App launcher takes you to your own site.
 
 ## Use a 3.0 link without installing
 
@@ -48,7 +47,7 @@ site, not the entry for this test version.
    open Piik. Keep the desktop package's files together.
 2. On Windows the launcher opens in the Piik window by default. You can also use the system browser.
    Choose a mode below and select **Open Piik**. Your first visit opens the room overview. Select the Piik mark to return to it later.
-3. If the channel lets you create rooms, select **Create your first room** on an empty site. You can rename **Living room**. If the form offers a choice, select **Public** or **Private**. Check the hosting note,
+3. If the site lets you create rooms, select **Create your first room** on an empty site. You can rename **Living room**. If the form offers a choice, select **Public** or **Private**. Check the hosting note,
    then select **Create room** to enter it. Later, use **Create room** in the
    room list (**Rooms** on a narrow screen) to open the same form.
 4. [Invite your friends](#invite-friends), then select **Start sharing**.
@@ -130,7 +129,7 @@ Public 2.x downloads are not the 3.0 test update.
 
 ## Share from an existing site
 
-Open your group's 3.0 address or room invitation and choose a room you can enter.
+Open the 3.0 site address your group gave you or the invitation your friend sent. Choose a room you can enter.
 You can also select **Create room** if the site allows it. Once inside, select **Start sharing** to show your screen or **Watch** beside a friend's screen. You can chat and join voice before anyone starts sharing.
 
 Browser screen/camera access needs HTTPS or a localhost address. Available

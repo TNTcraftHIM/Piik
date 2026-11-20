@@ -3,11 +3,11 @@
 English · [简体中文](./remote-control.zh-CN.md) · [Documentation](./README.md)
 
 This guide covers the 3.0 test version. For published 2.x, use the
-[2.6.1 guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/remote-control.md).
+[remote control guide for the current release](https://piik.tv/docs/remote-control.html?lang=en).
 
 Let a friend operate your shared computer, or play a local multiplayer game
 together. Each sharer controls access to their own picture, independently of
-site maintenance or room ownership. Friends watch and request control in their browsers.
+site maintenance or room ownership. Only the person sharing needs Piik App. Friends watch and request control in their own browsers.
 
 ## Start remote control
 

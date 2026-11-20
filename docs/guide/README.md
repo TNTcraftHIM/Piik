@@ -14,7 +14,7 @@ remains available separately.
 - **[Watch a friend](./getting-started.md#join-a-friends-room)**<br>
   Open the 3.0 invitation, choose a room and select the picture to watch.
 - **[Create a room with App](./getting-started.md#share-with-piik-app)**<br>
-  Open your test App, open its site, create a room and invite friends.
+  Launch the 3.0 test App and select **Open Piik**. Create a room and use its invitation button to send friends a link.
 - **[Use Piik without installing](./getting-started.md#use-a-30-link-without-installing)**<br>
   Use a friend's 3.0 link to watch, chat, join voice or share from your browser.
 - **[Use my group's Piik site](./getting-started.md#share-from-an-existing-site)**<br>

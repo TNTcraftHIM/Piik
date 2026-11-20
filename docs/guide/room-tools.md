@@ -1,20 +1,15 @@
 # Chat, voice and remote control
 
-This guide covers the 3.0 internal test. For the published version, use the [maintenance guide](https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/room-tools.md).
+This guide covers the 3.0 internal test. For the published version, use the [room tools guide](https://piik.tv/docs/room-tools.html?lang=en).
 
 English · [简体中文](./room-tools.zh-CN.md) · [Documentation](./README.md)
 
-A site contains rooms. Select a room in the sidebar to read its conversation.
-Once admitted to that room, you can chat, join voice, share a picture or watch
-someone else's share. Anyone can create a room and manage their own rooms.
-The site's maintainer manages its name, image and backup.
+Choose a room you can enter from the sidebar to read chat, join voice, share your screen or watch a friend.
+The site owner decides who can create rooms and can remove rooms from the site. Each room owner manages that room’s settings and invitations. To read messages in a private room, the site owner needs access to it too.
 
-The people panel groups site users into **This room**, **Online** and **Offline**.
-Select **More people** to continue through the offline directory. Mention search
-also finds people whose profiles have not yet been loaded in that list.
-Under each room, the left list shows people participating in voice, sharing,
-watching or file transfers, including those actively forwarding. Headset, sharing
-and watching icons show their activities. Folding the list keeps those activities running.
+- **The couch** shows who is in the current room, including people who are just reading chat.
+- **Under a room name on the left**, you see people in voice, sharing, watching or transferring files, including anyone forwarding to others. The icons beside their names show what they are doing.
+- **The people list on the right** covers the whole site. It groups people into **This room**, **Online** and **Offline**. Select **More people** to see more offline members, or type `@` in chat to search by name.
 
 Use **Edit profile** beside your name to change your nickname or picture.
 The same picture appears on your little person's body in chat, voice and the couch.
@@ -206,5 +201,4 @@ approve the friend's request. Room admission alone does not permit control.
 The viewer requests control from that picture's playback bar and can select
 **End control** when finished. The sharer can withdraw permission or stop that share.
 
-See [Native input setup](../../prototype/channel-native/README.md) for platform
-requirements. Another person's share has its own control permission.
+For supported computers and step-by-step instructions for both players, see [Remote control and playing together](./remote-control.md).
