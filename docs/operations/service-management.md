@@ -2,8 +2,7 @@
 
 English · [简体中文](./service-management.zh-CN.md) · [Documentation](../guide/README.md)
 
-For first installation, use the [short self-hosting guide](./self-hosting.md).
-This reference covers a persistent Linux service and container maintenance.
+Use systemd to run Piik Server in the background on Linux. If you deployed with Docker Compose, use the container section for updates and backups. For a first installation, follow the [deployment guide](./self-hosting.md).
 
 ## systemd
 
@@ -22,6 +21,8 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now piik
 sudo systemctl status piik
 ```
+
+In the service status, look for `Active: active (running)`. With the default address and port, request `http://127.0.0.1:8787/healthz` from the server. Piik should respond with `{"status":"ok"}`.
 
 Keep HTTP bound to loopback when the HTTPS proxy runs on the same host.
 STUN and optional SFU use their own public UDP listeners. An existing nginx

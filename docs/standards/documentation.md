@@ -50,7 +50,9 @@ The help center starts from a task or a symptom in the reader's own words.
 Give a task its own page when it has an independent outcome and entry point.
 Keep a platform difference beside the step it changes. Put configuration
 tables, diagnostic commands and protocol details in the relevant reference.
-Name the person taking the action and the control they will see. Lead with
+Name the person taking the action and the control they will see. For a value
+such as an address, say where to find it and where to use it. Name links for
+the task or destination. Lead with
 the answer or the first action, then say what success looks like. If it fails,
 use an observable difference to choose the next check. Verify each language's
 links, search terms and headings against realistic questions on a phone and desktop.
@@ -58,7 +60,8 @@ For a common error, use its on-screen wording and link each observable symptom
 to an action. Place an annotated image or a crop from the real interface beside
 a step when readers need to find a control or recognize a result.
 [Diátaxis how-to guides](https://diataxis.fr/how-to-guides/) ·
-[Microsoft procedure style](https://learn.microsoft.com/en-us/style-guide/procedures-instructions/writing-step-by-step-instructions)
+[Microsoft procedure style](https://learn.microsoft.com/en-us/style-guide/procedures-instructions/writing-step-by-step-instructions) ·
+[W3C link purpose](https://www.w3.org/WAI/WCAG22/Understanding/link-purpose-in-context.html)
 
 The public documentation website renders selected repository Markdown without
 owning another copy. Its [reader index](../guide/README.md) serves usage and support;

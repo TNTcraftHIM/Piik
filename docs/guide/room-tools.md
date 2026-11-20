@@ -73,10 +73,7 @@ listening volumes, and noise/echo reduction. On supporting sites, the Host can
 also set **Room voice bitrate**; the default is 64 kbps per speaker.
 Browser and App-backed sharing use these same voice controls.
 
-**Connection topology** at the bottom of the room shows current media routes.
-Idle room members stay visible without a connecting state. **Connection details**
-groups shared picture/audio and room voice separately; voice routes remain
-available after picture sharing stops.
+If a friend joins voice but you cannot hear them, ask them to speak and check whether their microphone icon lights up. Check your headphone button and the speaker button next to their name. To check the connection, select **Show connection details** at the bottom of the room and look for **Room voice**. You can check voice there even after picture sharing stops. **Show connection topology** also lists people who are just sitting in the room.
 
 Voice stays connected when picture sharing stops. It also stays active when you
 close or detach the interaction window. Viewers choose **Leave voice** to leave;

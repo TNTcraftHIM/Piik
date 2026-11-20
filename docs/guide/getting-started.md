@@ -1,17 +1,17 @@
 # Your first Piik room
 
-English · [简体中文](./getting-started.zh-CN.md) · [Back to Piik](../../README.md)
+English · [简体中文](./getting-started.zh-CN.md) · [Help center](./README.md)
 
 - [Watch a friend’s screen](#join-a-friends-room)
 - [Share from your browser](#use-piik-online) or [share with Piik App](#share-with-piik-app)
 
 ## Join a friend's room
 
-1. Open the invitation in a browser on your phone or computer. You can watch without installing Piik App or creating an account.
-2. If the first page asks for a **Site passphrase**, enter the passphrase for that Piik site. If the room asks for a **Room password**, choose **Enter room password** and enter the password for that room. Ask your friend for whichever the page requests. A link your friend copied with **Skip passwords** lets you skip both prompts.
+1. Open the invitation link your friend sent in a browser on your phone or computer. You can watch without installing Piik App or creating an account.
+2. If Piik asks for a **Site passphrase** as soon as you open the link, ask your friend for the passphrase for that site. If the room shows **Enter room password**, select it, enter the password for that room and select **Join**. An invitation with **Skip passwords** takes you straight to the room.
 3. You’re watching when your friend’s picture appears. If you see a **Play** button, press it. Tap the picture or move your pointer over it for [playback controls](./sharing.md#playback-controls).
 
-If you received a four-digit room code, open the same Piik site your friend used, select **Join a room**, and enter the code. If the site asks for a passphrase first, enter it on the opening page.
+If you received only a four-digit room code, ask your friend for their Piik site address. Open that address, enter the **Site passphrase** if prompted, then select **Join a room**. Enter the four digits and select the arrow to join.
 
 ![Four room-code boxes and the arrow that submits the code.](../assets/guide/join-code.en.png)
 
@@ -47,7 +47,7 @@ On iPhone or iPad, [use Piik in Safari](#use-piik-online).
    **Open Piik**. Other modes are explained below.
 4. Choose **Start sharing**, then select **Browser**, **Camera**, **Apps / Windows**, or
    **Screens** as available. Pick the actual source and sound option.
-5. Copy and send the room invitation. Keep both the App and sharing tab open.
+5. In **Admission**, select **Copy** and send the invitation to your friends. Keep both the App and sharing tab open.
 
 ![App source selector with Browser, Camera, Apps / Windows and Screens tabs, window previews and source-audio controls.](../assets/guide/share-source.en.png#gh-light-mode-only)
 ![App source selector with Browser, Camera, Apps / Windows and Screens tabs, window previews and source-audio controls.](../assets/guide/share-source.en.dark.png#gh-dark-mode-only)
@@ -130,7 +130,7 @@ To run your own site, follow [self-hosting](../operations/self-hosting.md).
 2. Choose **Start sharing**, then **Browser** to select a screen, window or tab,
    or **Camera** where your computer or phone browser supports it.
    Enable source audio if the picker offers it.
-3. Check the preview, then choose **Copy invite link** and send it to your friends.
+3. When the preview shows your picture, select **Copy** under **Admission** and send the invitation to your friends.
 4. Keep the sharing tab open. Use **Pause sharing**, **Switch source**, or
    **Stop sharing** when you need them.
 

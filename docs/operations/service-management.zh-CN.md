@@ -2,7 +2,7 @@
 
 [English](./service-management.md) · 简体中文 · [文档导航](../guide/README.zh-CN.md)
 
-首次安装请从[部署指南](./self-hosting.zh-CN.md)开始。本页介绍 Linux 常驻服务与容器维护。
+在 Linux 上使用 systemd 可让 Piik Server 在后台常驻。如果已通过 Docker Compose 部署，请到容器一节查看更新与备份。首次安装请先阅读[部署指南](./self-hosting.zh-CN.md)。
 
 ## systemd
 
@@ -19,6 +19,8 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now piik
 sudo systemctl status piik
 ```
+
+状态输出应显示 `Active: active (running)`。使用默认地址和端口时，在服务器上访问 `http://127.0.0.1:8787/healthz`，应看到 `{"status":"ok"}`。
 
 HTTPS 代理与 Piik 在同一主机时，让 HTTP 继续绑定回环地址。
 STUN 和可选的 SFU 使用各自的公网 UDP 监听器。已有 nginx 时，可修改

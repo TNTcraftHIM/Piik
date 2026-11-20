@@ -123,7 +123,8 @@ App 启动错误需同时翻译网页与终端的说明，保留共用的原因�
 避免时效热点、直接照搬台词，以及虚构进度、成功状态或剩余时间的说法。
 
 轮换时间遵循[俏皮话生命周期](../standards/visual-language.md#playful-copy-lifecycle)。
-欢迎语及其暗号在 `/__tooltip-preview` 预览；等待短句与标题在 `/__status-preview` 预览。
+启动本地开发界面后，在浏览器打开 `http://localhost:8787/__tooltip-preview` 查看欢迎语及其暗号，
+打开 `http://localhost:8787/__status-preview` 查看等待短句与标题。
 检查窄窗口和切换语言的效果。官网构建会自动使用更新后的欢迎语，其他官网文案单独维护。
 
 ## 预览与检查

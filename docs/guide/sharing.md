@@ -16,7 +16,7 @@ Share a game, a window, or your whole screen with friends. You can choose whethe
    | An entire desktop screen | With Piik App connected, choose **Screens** if available and select the display. |
    | A camera | Choose **Camera**, allow access, and select a camera. |
 
-3. In the browser chooser, turn on audio if offered. In Piik App, select the window or screen, then set **Application sound** or **System sound** if available. Select **Start sharing** at the bottom of the picker to confirm.
+3. If you chose **Browser**, enable audio if offered and confirm in the browser chooser. For an App window or screen, set **Application sound** or **System sound** if available, then select **Start sharing** at the bottom of Piik's picker.
 4. Check your preview and keep the room page open while you share. If you want friends to hear you too, see [how to include your microphone](#include-your-microphone).
 
 For a missing chooser or a share that will not start, see [starting a share](./troubleshooting.md#starting-a-share). If friends see the picture but hear no game sound, see [picture but no source sound](./troubleshooting.md#picture-but-no-source-sound).
@@ -50,7 +50,7 @@ who joined with the old invitation.
 
 Move the pointer over the picture or tap it to show the playback bar.
 
-- **Playback and sound:** pausing the picture affects only your own preview. The Host's volume changes the shared sound for everyone (0%–200%); Viewer volume changes only their own listening. The Host's preview stays muted to avoid playing the source twice. Room voice has separate controls.
+- The play/pause button on the picture pauses only your own viewing. If you are sharing, the volume on the picture changes the sound sent to everyone. Your preview stays muted to avoid playing the source twice. If you are watching, the volume changes only what you hear.
 - **Pause the picture for friends:** select **Pause sharing** below the picture. This affects everyone watching.
 - **Control your microphone and listening:** open **Interact → Voice**. These controls are separate from picture sound.
 
@@ -103,9 +103,7 @@ raise the room limit or their personal limit to make another path available.
 | Picture and sound quality | Both still adapt to the source, device and available bandwidth. |
 
 If the picture stays blurry or slow for several viewers, try a lower resolution
-or frame rate and check the Host preview. If only the Viewer’s picture pauses
-briefly while the Host preview runs smoothly, try **Increase playback buffering**
-where offered. It adds delay, so turn it off if controls feel sluggish.
+or frame rate and check the Host preview. If the Host's preview runs smoothly but your picture pauses briefly, open **Playback settings** on the picture and turn on **Increase playback buffering** if available. It adds delay, so turn it off if controls feel sluggish.
 See [picture troubleshooting](./troubleshooting.md#the-picture-is-blurry-or-keeps-freezing) for more checks.
 
 Applied settings are remembered for the current site. Opening Piik through an

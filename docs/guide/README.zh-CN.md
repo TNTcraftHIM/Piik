@@ -24,9 +24,9 @@ description: 了解如何加入房间、分享屏幕，以及解决 Piik 的常�
 ## 开始使用
 
 - [加入朋友的房间](./getting-started.zh-CN.md#加入朋友的房间)<br>
-  用手机或电脑打开邀请，在浏览器里观看。
+  用邀请链接或四位房间号加入。
 - [分享我的屏幕](./getting-started.zh-CN.md#使用在线版)<br>
-  选一个窗口，把邀请发给朋友。
+  在浏览器里开始分享，再把邀请发给朋友。
 - [用手机当手柄](./remote-control.zh-CN.md#用手机玩电脑游戏屏幕摇杆)<br>
   请求控制，用屏幕上的摇杆操作朋友的游戏。
 
@@ -36,13 +36,13 @@ description: 了解如何加入房间、分享屏幕，以及解决 Piik 的常�
 
 ## 遇到问题
 
-- [进了房间没画面，提示「没有可用的媒体线路」](./no-media-route.zh-CN.md)
+- [进了房间却看不到分享画面](./no-media-route.zh-CN.md)
 - [邀请链接打不开](./troubleshooting.zh-CN.md#进不去朋友的房间)
 - [画面模糊，或者总是卡住](./troubleshooting.zh-CN.md#画面模糊卡顿或中断)
 - [有画面，却听不到游戏声音](./sound-help.zh-CN.md#有画面但听不到游戏声音)
 - [朋友听不到我说话](./sound-help.zh-CN.md#朋友听不到我说话)
 
-[查看全部排查主题](./troubleshooting.zh-CN.md#常见问题) · [反馈问题](./troubleshooting.zh-CN.md#反馈问题)
+[更多问题和解决办法](./troubleshooting.zh-CN.md#常见问题) · [反馈问题](./troubleshooting.zh-CN.md#反馈问题)
 
 </section>
 

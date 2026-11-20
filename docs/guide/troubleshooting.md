@@ -64,12 +64,7 @@ Ask the Host for the current invitation and open the full link in your browser.
 Download the APK from the [App installation steps](./getting-started.md#share-with-piik-app).
 If Android asks, allow this browser or file manager to install the downloaded APK.
 
-If installation reports a conflicting package or signature and you previously
-installed a test build, uninstall that test App before installing the official
-APK. The test build and official release use different signing keys. Uninstalling
-clears App settings, including approved sites and the starred startup site;
-browser settings are stored separately. Later official updates can be installed
-over the existing official App.
+If Android reports a conflicting package or signature, check whether a Piik test build is installed. Uninstalling it clears App settings, including approved sites and the starred startup site. Browser settings stay on the device. If you have the test build, uninstall it and install the official APK. The two builds use different signing keys. Future official updates can install over the official App.
 
 ### macOS blocks first launch
 
@@ -211,9 +206,7 @@ unexpected warning on a public HTTPS site needs investigation by its operator.
 
 ### Room code does not work
 
-Open the Host's current full invitation link first. A room code works only on
-its original Piik site. A site with empty-room recycling may have reclaimed the
-room; the Host can create a new one. See [joining a room](./getting-started.md#join-a-friends-room).
+Ask the Host to copy the full invitation from the current room. Open that link on the Viewer’s device. Each room code belongs to the site where the Host created the room. If the old room has expired, the Host can create a room and send a fresh invitation. [Join a friend’s room](./getting-started.md#join-a-friends-room)
 
 If all room codes on the site are in use, retry later or use another Piik site.
 Administrators can configure [empty-room retention](../operations/self-hosting.md#1-configure-and-start-piik)
@@ -345,10 +338,9 @@ If sharing ended, read the reason below the TV. [Export reports before refreshin
 
 ### Game capture is black or sharing stops
 
-Check that you selected the game's window or the screen displaying it, then try
-the game's borderless window mode. Compare an ordinary window, and try both App
-capture and the **Browser** source picker. Protected content may be unavailable
-for capture.
+Check the Host’s preview. If it is black, have the Host select the game window or the screen showing it. Switch the game to borderless window mode and check the preview again.
+
+If the game stays black, share an ordinary window. If that window appears, switch between App capture and the **Browser** picker and try sharing the game again. Protected content may block capture.
 
 If Piik returns to the start screen after you enter a game, read the reason below
 the TV and follow [sharing startup checks](#sharing-does-not-start-after-source-selection).
@@ -446,6 +438,8 @@ If this keeps happening, choose **Help → Debug** before starting the next shar
 
 ### Picture but no source sound
 
+Tap the picture and check its playback volume. Ask the Host to play game audio they can hear, then check whether another Viewer hears it.
+
 [I can see the picture but cannot hear the game](./sound-help.md#i-can-see-the-picture-but-cannot-hear-the-game).
 
 ### Cannot hear someone speaking
@@ -499,7 +493,7 @@ connect? A virtual LAN provides another connection option. [View steps](./networ
 
 ## Reporting a problem
 
-Describe what you clicked, what you expected and what appeared. Include the exact error, time and device. If the Viewer cannot see the picture, ask the Host to note the time of the same attempt.
+If sharing fails, the Host can click the error icon below the TV and copy the message. Include the device, time, what you clicked and what appeared. If the Host sees the preview but the Viewer sees no picture, record the time of the same attempt on both devices.
 
 <details>
 <summary>When a report is needed · Collect diagnostics</summary>

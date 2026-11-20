@@ -156,8 +156,8 @@ brief and natural in context. Avoid temporary trends, literal borrowed dialogue
 and statements that invent progress, success or remaining time.
 
 Timing follows the [playful-copy lifecycle](../standards/visual-language.md#playful-copy-lifecycle).
-Preview welcome text and its cipher at
-`/__tooltip-preview`; use `/__status-preview` for waiting captions and titles.
+With the local development UI running, open `http://localhost:8787/__tooltip-preview`
+for welcome text and its cipher, or `http://localhost:8787/__status-preview` for waiting captions and titles.
 Check both narrow windows and language changes. The website's build picks up
 welcome edits automatically; its other copy remains separate.
 

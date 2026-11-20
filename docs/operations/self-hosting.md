@@ -2,8 +2,7 @@
 
 English · [简体中文](./self-hosting.zh-CN.md) · [Documentation](../guide/README.md)
 
-Piik Server packages the web interface, room management and optional media
-forwarding in **one server binary**. Extract and run it; room data is stored in SQLite.
+Use Piik Server to provide a Piik site at an address you manage. You can try it on the server itself, share it on a private LAN, or publish it at an HTTPS domain. The server includes the web interface and stores room data in SQLite.
 
 The default P2P configuration handles room management, signaling and STUN; shared
 video and audio travel between participants. Enabling SFU adds media-forwarding
@@ -49,7 +48,7 @@ curl -fsSLo compose.yaml https://raw.githubusercontent.com/TNTcraftHIM/Piik/main
 curl -fsSLo .env https://raw.githubusercontent.com/TNTcraftHIM/Piik/main/deploy/container/.env.example
 ```
 
-Replace `share.example.com` in `.env` with your domain, then start Piik:
+In `.env`, set `PUBLIC_BASE_URL` to the HTTPS address people will open. In `STUN_URLS`, replace `share.example.com` with the domain that resolves directly to the server for UDP traffic. Run the first command to check the settings. If it succeeds, run the second to start Piik.
 
 ```sh
 docker compose run --rm piik --check-config
@@ -180,7 +179,7 @@ See the [complete port table](../standards/configuration.md#public-and-private-p
 for optional services. Embedded SFU media shares the single UDP port set by
 `SFU_UDP_PORT`.
 
-Open `https://share.example.com/healthz`; it should return `{"status":"ok"}`.
+Open your public HTTPS address with `/healthz` appended. The response should be `{"status":"ok"}`.
 Then open the site, share a screen and join from another device. This initial
 configuration uses P2P media, so participants need a usable UDP path.
 

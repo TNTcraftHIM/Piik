@@ -4,9 +4,9 @@ English · [简体中文](./sound-help.zh-CN.md)
 
 ## I can see the picture but cannot hear the game
 
-1. Ask the Host to play game audio they can hear. Tap the picture, unmute the video and turn up playback volume. If another Viewer hears the game, check your headphones and device volume.
+1. Ask the Host to play game audio they can hear. As a Viewer, tap the picture to reveal the playback controls, select **Unmute**, and turn up playback volume. If another Viewer hears the game, check your headphones and device volume.
 2. If nobody hears the game, ask the Host to pick what to share again and enable sound. Safari screen sharing on iPhone does not include game audio. With a camera, including OBS Virtual Camera, the Host selects an audio input separately. [Sharing sources and sound settings](./sharing.md)
-3. Windows App full-screen capture uses the default playback device when no applications are excluded. Route the game there or share its window, then ask a Viewer to listen again.
+3. When the Windows App shares the entire screen without excluding any apps, ask the Host to check the default output device in Windows sound settings and make sure the game uses it. The Host can also share just the game window and ask a Viewer to listen again.
 
 ![In the Windows App source picker, Application sound sits above the selected window.](../assets/guide/share-source-confirm.en.png#gh-light-mode-only)
 ![In the Windows App source picker, Application sound sits above the selected window.](../assets/guide/share-source-confirm.en.dark.png#gh-dark-mode-only)
@@ -15,13 +15,13 @@ English · [简体中文](./sound-help.zh-CN.md)
 
 Ask how your friend is speaking. If the Host enabled **Include my microphone**, their voice plays with the picture. The Host can check **Sharing settings → Sound**, and Viewers can unmute the video.
 
-For room voice, the Host selects **Open room voice** and both people join **Interact → Voice**. Ask the speaker to turn on their microphone. If others hear them, check whether you paused listening or muted that person. [Room voice controls](./room-tools.md#room-voice)
+For room voice, the Host selects **Open room voice** and both people open **Interact → Voice** and select **Join voice**. Ask the speaker to turn on their microphone. If others hear them, check whether you paused listening or muted that person. [Room voice controls](./room-tools.md#room-voice)
 
 ## My friends cannot hear me
 
-1. In **Voice settings**, choose the microphone you are using and check input volume. Allow microphone access in the browser and ask a friend to listen. **Pause listening** only pauses what you hear.
-2. If the browser cannot enable the microphone, reopen the full HTTPS invitation from the Host. If your device warns about the certificate, ask for a current **Public invite**.
-3. If both people see a voice connection error, try another browser or a phone hotspot. [Check the voice connection](./network.md)
+1. Open **Interact → Voice → Voice settings**, choose the microphone you are using and check input volume. Allow microphone access in the browser and ask a friend to listen. **Pause listening** only pauses what you hear.
+2. If the browser cannot enable the microphone, reopen the full HTTPS invitation from the Host. If the invitation is for a local room and your browser shows a certificate warning, confirm the certificate with the Host. If the browser cannot accept the local certificate, ask the Host for an HTTPS invitation your browser trusts. [Confirm the local certificate](./troubleshooting.md#local-https-certificate-warning)
+3. If both people see **Voice connection issue**, open the same invitation in another browser. If voice still fails, try again on a phone hotspot. [Check the voice connection](./network.md)
 
 ## I hear my own voice twice
 

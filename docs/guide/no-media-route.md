@@ -11,13 +11,12 @@ You’re in the room, but the stream hasn’t reached your screen. Reload once t
 
 - **Try another browser.** Open the same invitation there. If the picture plays, you can keep watching in that browser. [Connection settings in the original browser](./network.md#browser-webrtc-restrictions)
 - **Try another network.** Open the same **public invitation** using mobile data or a phone hotspot. If the picture plays, you can keep watching on that network.
-
 - **Only people who joined later are stuck.** Ask someone who can watch to keep the room open. If their **My relay limit** is **0**, they can raise it under **Playback settings → Connection**. The other viewers can then reload. [Forwarding limits](./sharing.md#connection-preferences)
 
 ## Nobody gets a picture
 
-- **The Host’s preview is black or sharing has stopped.** The Host can select an ordinary window, choose **Start sharing**, and check that the window appears in the preview. [Choose what to share](./sharing.md#start-sharing)
-- **The Host sees the preview, but friends can’t watch.** Connect over a virtual LAN. Everyone joins the same virtual network. In Piik App, the Host opens **Local room → Local invitation address**, selects the IP from the virtual LAN tool, enters the room and starts sharing. Send friends the complete new invitation. [Choose the address with screenshots](./network.md#optional-a-virtual-lan)
+- **The Host’s preview is black or sharing has stopped.** Ask the Host to share a window with visible content, such as a browser window. Once it appears in the Host’s preview, friends can open the invitation again. [How to start sharing](./sharing.md#start-sharing)
+- **The Host sees the preview, but friends can’t watch.** Everyone can [join the same virtual LAN](./network.md#optional-a-virtual-lan). The Host looks up their own device’s IPv4 address in the networking tool, then selects the matching address in Piik App under **Local room → Local invitation address**. Once sharing starts, the Host sends friends the complete new invitation link.
 - **You have a site that can forward media.** Ask its operator to confirm media forwarding (SFU) is enabled. The Host turns off **Privacy mode** on that site, starts sharing, and sends the new room invitation. Piik can then try the server when a direct connection fails. [Use Piik App with an existing site](./getting-started.md#use-app-with-an-existing-site)
 
 App’s public invitation service makes the room page reachable. When you use that invitation or Piik online, the Host or another viewer sends the picture.

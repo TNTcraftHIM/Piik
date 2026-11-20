@@ -48,9 +48,11 @@ App selects a sole active address or sole private IPv4 automatically. When
 several are available, choose **Local invitation address** in the launcher.
 For a [virtual LAN](../../docs/guide/network.md#optional-a-virtual-lan), choose its virtual IPv4.
 
-Friends use the HTTPS invitation on that address; the Host uses the local
-loopback page. On first access, friends must [confirm the certificate](../../docs/guide/troubleshooting.md#local-https-certificate-warning)
-against the App terminal. Repeat confirmation after App restarts.
+Use the local loopback page on the computer running App. Send friends the HTTPS
+invitation for the selected LAN address. On their first visit, compare the
+fingerprint shown on their device with the one in your App terminal before they
+[confirm the certificate](../../docs/guide/troubleshooting.md#local-https-certificate-warning).
+Repeat confirmation after App restarts.
 
 ### Public Invite
 

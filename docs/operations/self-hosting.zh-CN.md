@@ -2,8 +2,7 @@
 
 [English](./self-hosting.md) · 简体中文 · [文档导航](../guide/README.zh-CN.md)
 
-Piik Server 将网页、房间管理和可选的媒体转发打包在**一个服务端程序**中。
-解压后即可运行，房间数据保存在 SQLite 中。
+用 Piik Server 可以在自己管理的地址上提供 Piik 站点。你可以先在服务器本机试用，也可以开放给局域网，或使用公网 HTTPS 域名。服务端自带网页，房间数据保存在 SQLite 中。
 
 默认的 P2P 配置由服务器负责房间管理、信令和 STUN，画面与声音在参与者之间传输。
 启用 SFU 后，服务器还会承担媒体转发的带宽和处理开销。配置较低的服务器可以先用默认设置，
@@ -44,7 +43,7 @@ curl -fsSLo compose.yaml https://raw.githubusercontent.com/TNTcraftHIM/Piik/main
 curl -fsSLo .env https://raw.githubusercontent.com/TNTcraftHIM/Piik/main/deploy/container/.env.example
 ```
 
-将 `.env` 中的 `share.example.com` 换成自己的域名，然后启动：
+在 `.env` 中，将 `PUBLIC_BASE_URL` 设为参与者打开的 HTTPS 网址。在 `STUN_URLS` 中，将 `share.example.com` 换成直接解析到服务器的域名，以便接收 UDP 流量。先运行第一条命令检查配置，通过后再启动 Piik。
 
 ```sh
 docker compose run --rm piik --check-config

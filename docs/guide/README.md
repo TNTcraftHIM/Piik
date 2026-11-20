@@ -24,9 +24,9 @@ Try searching for “can’t join”, “no sound”, or “joystick”.
 ## Start here
 
 - [Join a friend's room](./getting-started.md#join-a-friends-room)<br>
-  Open the invitation on your phone or computer and watch in your browser.
+  Use an invitation link or a four-digit room code.
 - [Share my screen](./getting-started.md#use-piik-online)<br>
-  Choose a window and send your friends an invitation.
+  Start in your browser and send an invitation to friends.
 - [Use my phone as a gamepad](./remote-control.md#play-on-your-phone-with-the-on-screen-joystick)<br>
   Request control and move with the on-screen joystick.
 
@@ -36,13 +36,13 @@ Try searching for “can’t join”, “no sound”, or “joystick”.
 
 ## Fix a problem
 
-- [I’m in the room, but there’s no picture or media route](./no-media-route.md)
+- [I’m in the room but can’t see the shared screen](./no-media-route.md)
 - [My invitation won’t open](./troubleshooting.md#i-cannot-join-my-friends-room)
 - [The picture is blurry or keeps freezing](./troubleshooting.md#the-picture-is-blurry-or-keeps-freezing)
 - [I can see the picture but can’t hear the game](./sound-help.md#i-can-see-the-picture-but-cannot-hear-the-game)
 - [Friends can’t hear me speaking](./sound-help.md#my-friends-cannot-hear-me)
 
-[Browse all troubleshooting topics](./troubleshooting.md#common-problems) · [Report a problem](./troubleshooting.md#reporting-a-problem)
+[More problems and fixes](./troubleshooting.md#common-problems) · [Report a problem](./troubleshooting.md#reporting-a-problem)
 
 </section>
 

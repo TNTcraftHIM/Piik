@@ -10,8 +10,7 @@ together. The Host shares an App window or screen; friends join in their browser
 1. Share through Piik App using **Apps / Windows** or **Screens**.
 2. Open **Remote control** below the picture and turn it on. It starts with
    **Ask each time**.
-3. Your friend selects **Request control** in their playback bar. On the Host
-   page, choose **Allow** when the request arrives.
+3. In the browser, your friend opens the room invitation and hovers over or taps the picture to show the playback bar. They select the mouse icon, then **Request control**. On your sharing page, open **Remote control** and select **Allow** next to their request.
 
 When sharing a window, switch back to it after allowing control. Input pauses
 while another window is active and resumes when you return.
@@ -132,7 +131,7 @@ choice needs **Allow Viewers** before it applies again. Passwords are not saved.
 
 ## Mouse, touch and permissions
 
-On a touch device with active control, open the directional control using the gamepad button.
+On your phone, open the gamepad button in the lower-left corner of the picture after receiving control. Press and drag the stick in the direction you want to move. Lift your finger to center it.
 
 | Control | What the Host receives | When to use it |
 | --- | --- | --- |

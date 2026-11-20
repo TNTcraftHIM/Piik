@@ -6,7 +6,7 @@ Use frp to give a desktop Piik App or a privately hosted Piik Server a fixed pub
 
 | Where it goes | What to enter |
 | --- | --- |
-| Local target in frp | The local IP and port of the Piik **website**. This guide uses `127.0.0.1:8787` with the tunnel client on the Piik machine. |
+| Local target in frp | The local IP and port of the Piik **website**. This guide uses `127.0.0.1:8787` with SakuraFrp Launcher running on the same machine as Piik. |
 | Public address in Piik | The HTTPS hostname your friends can reach, including the assigned public port. Replace the example `https://piik.example.nyat.app:21080` with yours. |
 
 ## Get a public address
@@ -21,8 +21,8 @@ This example uses **SakuraFrp (樱花映射)**. If you run frps or use another p
 
 ### Desktop App
 
-- **3.0 beta.** In the launcher choose **Public invite → Existing address** and enter your public HTTPS address. Match the tunnel's local target to the **Local forwarding target** shown in Piik, then enter Piik from the launcher. The host uses the page the App opens.
-- **2.x maintenance build.** Open PowerShell in the extracted App directory. Run `.\piik-app.exe --help` and check for `public-origin` before using the command below. With the published v2.7.0, use the Server option below for a fixed address.
+- **3.0 beta.** In the launcher choose **Public invite → Existing address** and enter your public HTTPS address. In the SakuraFrp TCP tunnel settings, set the local IP and port to the **Local forwarding target** shown in Piik, then enter Piik from the launcher. The host uses the page the App opens.
+- **2.x maintenance build.** Open PowerShell in the extracted App directory. Run `.\piik-app.exe --help` and check for `public-origin` before using the command below. Replace the example HTTPS address with the public address from the tunnel log and replace the example port with the local port in the TCP tunnel settings. With the published v2.7.0, use the Server option below for a fixed address.
 
 ```powershell
 .\piik-app.exe --link --public-origin https://piik.example.nyat.app:21080 --port 8787
@@ -43,7 +43,7 @@ Enter the origin through the port. Piik adds the room path and any private invit
 
 Copy the **full invitation** from the room or show its QR code. Ask a friend to open it over cellular data. Entering the room and receiving a new chat message verifies the website and signaling path. Keep Piik and the tunnel running, start a share, then check picture and sound.
 
-- **The site fails to load or the certificate is untrusted.** Check the invitation's hostname and public port. Look in the SakuraFrp log for a running tunnel and a certificate loaded for that subdomain. [SakuraFrp troubleshooting](https://doc.natfrp.com/faq/site-inaccessible.html)
+- **The site fails to load or the certificate is untrusted.** In SakuraFrp Launcher, open the tunnel log to see whether the tunnel started and loaded the certificate. Enter the hostname and public port from the log in Piik, then copy a fresh invitation. [SakuraFrp troubleshooting](https://doc.natfrp.com/faq/site-inaccessible.html)
 - **Chat works but the picture will not connect.** The web tunnel is working. Picture and sound use WebRTC. Try switching one device to a phone hotspot. [Media network checks](./network.md)
 
 <details>
