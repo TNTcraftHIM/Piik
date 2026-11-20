@@ -373,6 +373,14 @@ A's pending request occupied the sole screen slot. With two slots, C received
 its pair assignment in 6–7 ms while A still had zero frames. In the last run B
 reused the existing B–C pair ID once the screen slot became available.
 
+With the direct limit set to one, a second comparison used the packaged Web
+UI and three Chromium sessions. B and C first established a connection in
+voice. A requested B's screen first and its media signaling was blocked.
+From C clicking Watch to its first video frame callback, one run took
+20,545 ms at `9e3ca608` and one took 889 ms at `9bb55c3e`. The publisher
+selected at most one screen output in each run. This fixture exercises reuse
+of a confirmed pair on loopback. Independent-network coverage remains open.
+
 ### First frame on a cold and reused connection
 
 In two ordinary Linux kernel NAT trials on `1e00d9e0` (Core32), the source was
