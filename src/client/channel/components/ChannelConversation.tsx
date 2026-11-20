@@ -26,7 +26,7 @@ type Draft = { text: string; mentions: NonNullable<ChatOptions["mentions"]>; rep
 const emptyDraft: Draft = { text: "", mentions: [] };
 
 /** Browsing owns the conversation; drafts and reading position belong to this pane. */
-export function ChannelConversation({ domainId, roomId, roomName, roomIcon, roomPicture, entry, messages, users, profiles, queryProfiles, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, onMessage, findUnreadMessage, unreadAfter, onRead, interaction, onBack, onDeleteMessage, canModerate, pending, historyChanges }: {
+export function ChannelConversation({ domainId, roomId, roomName, roomIcon, roomPicture, entry, messages, users, profiles, queryProfiles, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, onMessage, findUnreadMessage, unreadAfter, lastMessageSeq, onRead, interaction, onBack, onDeleteMessage, canModerate, pending, historyChanges }: {
   domainId: string | undefined; roomId: string; roomName: string; roomIcon?: string; roomPicture?: string; messages: ChannelMessage[]; users: ChannelUserSummary[];
   profiles: ReadonlyMap<string, ChannelUser>; queryProfiles: ChannelController["queryProfiles"];
   entry?: ChannelEntry;
@@ -43,7 +43,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
   canModerate?: boolean;
   pending?: ReadonlySet<string>;
   historyChanges?: ChannelController["historyChangesByRoom"][string];
-  unreadAfter?: number; onRead?: (roomId: string, seq: number) => void;
+  unreadAfter?: number; lastMessageSeq?: number; onRead?: (roomId: string, seq: number) => void;
   interaction: RoomInteractionSession | null;
   onBack?: () => void;
 }) {
@@ -200,13 +200,13 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
       if (seq !== undefined) onRead?.(roomId, seq);
     }
   }
-  useEffect(() => {
+  useLayoutEffect(() => {
     const doc = surfaceDocument, view = doc?.defaultView;
     const frame = view?.requestAnimationFrame(readVisible);
     doc?.addEventListener("visibilitychange", readVisible);
     view?.addEventListener("focus", readVisible);
     return () => { if (frame !== undefined) view?.cancelAnimationFrame(frame); doc?.removeEventListener("visibilitychange", readVisible); view?.removeEventListener("focus", readVisible); };
-  }, [conversationScope, messages, hidden, available, loadingHistory, history?.atLatest, surfaceDocument, onRead]);
+  }, [conversationScope, messages, hidden, available, loadingHistory, history?.atLatest, lastMessageSeq, unreadLookupBusy, jump?.id, surfaceDocument, onRead]);
   useLayoutEffect(() => {
     if (!jump || jump.scope !== conversationScope || hidden || loadingHistory) return;
     const target = log.current?.querySelector<HTMLElement>(`[data-message-seq="${jump.seq}"]`);

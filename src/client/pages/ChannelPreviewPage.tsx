@@ -520,7 +520,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)}
             onHistory={channel.loadHistory} onLatest={channel.loadLatestHistory}
             findUnreadMessage={room?.capabilities.historySeek === true ? channel.findUnreadMessage : undefined}
-            onMessage={channel.loadMessage} onRead={channel.markRead} unreadAfter={channel.readByRoom[roomId]} selfUserId={self?.id}
+            onMessage={channel.loadMessage} onRead={channel.markRead} unreadAfter={channel.readByRoom[roomId]} lastMessageSeq={room?.lastMessageSeq} selfUserId={self?.id}
             onDeleteMessage={room?.authorized ? channel.deleteMessage : undefined}
             canModerate={room?.canManage || (!!self && self.id === state?.channel.ownerId)} pending={channel.pending}
             historyChanges={channel.historyChangesByRoom[roomId]}

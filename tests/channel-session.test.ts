@@ -9835,6 +9835,27 @@ test("a tab with a partial room view preserves the shared identity's read cursor
     expect(session.getSnapshot().readByRoom).toEqual({ [publicRoom.id]: 8 });
   } finally { session.close(); }
 });
+test("a foreground read can advance after a signed row precedes the room summary", async () => {
+  const { session, socket, peer } = await setup(1000, false, "");
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    const [first, second] = state.channel.rooms;
+    first.lastMessageSeq = 0;
+    second.lastMessageSeq = 2;
+    socket.receive({ type: "state", state });
+    peer.live(message(1));
+    const displayedSequence = session.getSnapshot().messagesByRoom.first.at(-1)!.seq;
+    session.markRead("first", displayedSequence);
+    expect(session.getSnapshot().readByRoom).toEqual({ first: 0, second: 0 });
+
+    first.lastMessageSeq = 1;
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().messagesByRoom.first.at(-1)?.seq).toBe(displayedSequence);
+    session.markRead("first", displayedSequence);
+    expect(session.getSnapshot().readByRoom).toEqual({ first: 1, second: 0 });
+  } finally { session.close(); }
+});
+
 test("read markers stay personal and do not turn background room activity into reading", async () => {
   const { session, socket } = await setup(1000, false, "");
   const storage = new Map<string, string>();
