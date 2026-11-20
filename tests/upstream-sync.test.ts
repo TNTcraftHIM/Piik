@@ -11,7 +11,9 @@ it("replays a real patch stack, drops upstream equivalents and preserves conflic
     ...process.env,
     GIT_AUTHOR_NAME: "Piik fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid",
     GIT_COMMITTER_NAME: "Piik fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid",
-    GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "commit.gpgsign", GIT_CONFIG_VALUE_0: "false",
+    GIT_CONFIG_COUNT: "2",
+    GIT_CONFIG_KEY_0: "commit.gpgsign", GIT_CONFIG_VALUE_0: "false",
+    GIT_CONFIG_KEY_1: "maintenance.auto", GIT_CONFIG_VALUE_1: "false",
   };
   const git = (cwd: string, ...args: string[]) => execFileSync("git", args, {
     cwd, env, encoding: "utf8", windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
