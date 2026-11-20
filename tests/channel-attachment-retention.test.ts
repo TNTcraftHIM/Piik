@@ -303,7 +303,7 @@ test.each(["en", "zh", "zh-Hant", "ja", "ko"] as const)("archive budget guidance
 });
 
 
-test("shared file progress survives one consumer leaving and a cancelled writer cannot affect a retried download", async () => {
+test.each(["cancel", "revoke"])("shared file progress survives leaving the view and a retired writer cannot affect a retry after %s", async retirement => {
   const command = vi.fn(async (_command: ChannelCommand) => {}), files = setup(command);
   const file = new File(["GIF89a"], attachment.name);
   const save = vi.spyOn(downloads, "downloadBlob").mockImplementation((_file, _name, options) => options?.outcome?.("dispatched"));
@@ -326,6 +326,11 @@ test("shared file progress survives one consumer leaving and a cancelled writer 
     }) }), removeEntry: remove,
   }) }) } });
   const first = new AbortController();
+  const scope = { domainId: "domain", userId: "self" };
+  const room = { id: key.roomId, authorized: true, available: true } as ChannelRoom;
+  const plan = { roomId: key.roomId, messageSeq: key.messageSeq, attachment, authorId: "author",
+    sourceId: "source", upstream: "source", downstream: [], receiving: true };
+  files.update("endpoint", scope, [plan], [room], []);
   const a = files.content(key, attachment, first.signal), b = files.download(key, attachment);
   void a.catch(() => {}); void b.catch(() => {});
   try {
@@ -339,17 +344,29 @@ test("shared file progress survives one consumer leaving and a cancelled writer 
     expect(written).toHaveBeenCalledWith(JSON.stringify(key), 0n, 3);
     first.abort(); await expect(a).rejects.toMatchObject({ name: "AbortError" });
     expect(files.progress(key)?.received).toBe(3); expect(cancel).not.toHaveBeenCalled();
+    files.update("endpoint", scope, [{ ...plan, sourceId: null, upstream: null }], [room], []);
+    expect(files.progress(key)).toMatchObject({ received: 3, state: "waiting-source" });
+    const alternate = { ...plan, sourceId: "alternate", upstream: "alternate" };
+    files.update("endpoint", scope, [alternate], [room], []);
+    expect(files.progress(key)).toMatchObject({ received: 3, state: "waiting" });
     const firstWrite = finishWrite;
     files.data("source", "control", "old-write");
     await vi.waitFor(() => expect(finishWrite).not.toBe(firstWrite));
     const oldWrite = finishWrite;
     const cancellationSnapshots: boolean[] = [];
     const unsubscribe = files.subscribe(() => cancellationSnapshots.push(files.status(key).busy));
-    try { files.cancelDownload(key); } finally { unsubscribe(); }
+    try {
+      if (retirement === "cancel") files.cancelDownload(key);
+      else files.update("endpoint", scope, [], [{ ...room, authorized: false, available: false }], []);
+    } finally { unsubscribe(); }
     expect(cancellationSnapshots).toContain(false);
     expect(cancellationSnapshots).not.toContain(true);
     expect(files.progress(key)).toBeNull();
-    expect(cancel).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+    if (retirement === "revoke") {
+      await expect(files.content(key, attachment, new AbortController().signal, inlineImage)).rejects.toThrow("room_unavailable");
+      files.update("new-endpoint", scope, [alternate], [room], []);
+    }
     const retry = files.download(key, attachment);
     void retry.catch(() => {});
     await expect(b).rejects.toMatchObject({ name: "AbortError" });

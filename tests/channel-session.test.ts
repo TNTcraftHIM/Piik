@@ -7252,8 +7252,9 @@ test("rejected file admission cancels its shared-core consumer and releases the 
     getFileHandle: async () => ({ createWritable: async () => ({ abort }) }), removeEntry,
   }) }) } });
   const files = new ChannelAttachments(async command => { if (command.type === "file_receive" && command.enabled) throw new Error("forbidden"); }, async () => {});
-  files.update("session", { domainId: "domain", userId: "user" }, [], [], []);
   const key = { roomId: "room", messageSeq: 1, attachmentId: crypto.randomUUID() };
+  files.update("session", { domainId: "domain", userId: "user" }, [],
+    [{ id: key.roomId, authorized: true, available: true }] as import("../src/client/channel/protocol").ChannelRoom[], []);
   const attachment = { id: key.attachmentId, name: "file", size: 1, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
   try {
     await expect(files.download(key, attachment)).rejects.toThrow("forbidden");
