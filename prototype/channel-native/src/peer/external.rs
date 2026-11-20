@@ -140,10 +140,7 @@ async fn run(
                     if let Some((kind, result)) = next {
                         if kind == MediaKind::Video { break result; }
                         // Audio has its own output lifetime; it cannot end a working picture.
-                        tokio::select! {
-                            _ = events.send(Event::CaptureAudioEnded { publication_id: publication, source: audio }) => {},
-                            _ = cancelled.wait_for(|cancelled| *cancelled).map(|_| ()) => break Ok(()),
-                        }
+                        report_audio_end(&events, publication, audio, &mut cancelled, &mut stopped).await;
                     }
                 },
                 track = input.tracks.recv() => {
@@ -179,6 +176,20 @@ async fn run(
         }
     }
     error
+}
+
+async fn report_audio_end(
+    events: &mpsc::Sender<Event>,
+    publication: Uuid,
+    audio: Uuid,
+    cancelled: &mut watch::Receiver<bool>,
+    stopped: &mut watch::Receiver<Option<&'static str>>,
+) {
+    tokio::select! {
+        _ = events.send(Event::CaptureAudioEnded { publication_id: publication, source: audio }) => {},
+        _ = cancelled.wait_for(|value| *value) => {},
+        _ = stopped.wait_for(Option::is_some) => {},
+    }
 }
 
 fn failure_reason(error: &anyhow::Error) -> &'static str {
@@ -328,6 +339,26 @@ async fn receive_track(
 mod tests {
     use super::*;
     use crate::peer::tests::support::{endpoint, h264, send, video_payloads};
+
+    #[tokio::test]
+    async fn stopping_external_input_releases_backpressured_audio_end() {
+        let (events, _receiver) = mpsc::channel(1);
+        let _capacity = events.reserve().await.unwrap();
+        let (_session, mut cancelled) = watch::channel(false);
+        let control = ExternalControl(watch::channel(None).0, Default::default());
+        let mut stopped = control.0.subscribe();
+        let report = report_audio_end(
+            &events,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            &mut cancelled,
+            &mut stopped,
+        );
+        tokio::pin!(report);
+        assert!(futures_util::poll!(&mut report).is_pending());
+        control.stop();
+        assert!(futures_util::poll!(&mut report).is_ready());
+    }
 
     #[tokio::test]
     async fn audio_end_before_ready_retires_only_that_external_source() -> Result<()> {
