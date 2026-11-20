@@ -3844,6 +3844,20 @@ fn failed_link_input_keeps_confirmed_links_between_room_readers() {
 
 #[test]
 fn base_failure_then_duplicate_transport_failure_keeps_confirmed_alternate() {
+    check_file_repair(true, false);
+}
+
+#[test]
+fn hosted_file_repair_reuses_three_confirmed_pairs() {
+    check_file_repair(true, true);
+}
+
+#[test]
+fn browser_host_file_repair_reuses_three_confirmed_pairs() {
+    check_file_repair(false, true);
+}
+
+fn check_file_repair(hosted: bool, two_relays: bool) {
     use piik_channel_core::{
         host::{RoomSummary, ServiceEndpoint},
         wire::{HostingMode, Request},
@@ -3851,8 +3865,10 @@ fn base_failure_then_duplicate_transport_failure_keeps_confirmed_alternate() {
     };
 
     let mut network = RoomNetwork::new();
-    network.authority.set_hosting_mode(HostingMode::Hosted);
-    let [writer, b, c, first_reader, second_reader] = std::array::from_fn(|_| Uuid::new_v4());
+    if hosted {
+        network.authority.set_hosting_mode(HostingMode::Hosted);
+    }
+    let [writer, b, c, first_reader, second_reader, e] = std::array::from_fn(|_| Uuid::new_v4());
     let (writer_session, _) = join(&mut network, writer, None);
     let (bs, _) = join(&mut network, b, None);
     let (cs, _) = join(&mut network, c, None);
@@ -3863,19 +3879,25 @@ fn base_failure_then_duplicate_transport_failure_keeps_confirmed_alternate() {
     };
     let (first_session, _) = join(&mut network, first_reader, None);
     let (second_session, _) = join(&mut network, second_reader, None);
+    let (es, _) = join(&mut network, e, None);
     let (a, d, ds) = if first_session < second_session {
         (first_reader, second_reader, second_session)
     } else {
         (second_reader, first_reader, first_session)
     };
-    network
-        .authority
-        .set_room_writer(ServiceEndpoint {
-            session_id: writer_session,
-            connection_id: writer,
-        })
-        .unwrap();
+    if hosted {
+        network
+            .authority
+            .set_room_writer(ServiceEndpoint {
+                session_id: writer_session,
+                connection_id: writer,
+            })
+            .unwrap();
+    }
     let mut create = |actor, session, name: &str| {
+        if !hosted {
+            return network.create(actor, RoomAccess::Public, false);
+        }
         let owner = network
             .state(actor)
             .sessions
@@ -3904,13 +3926,32 @@ fn base_failure_then_duplicate_transport_failure_keeps_confirmed_alternate() {
         policy.id = creation.summary().id.clone();
         network.restore_room(writer, policy)
     };
-    let other = create(d, ds, "Other room");
     let room = create(b, bs, "File room");
-    voice(&mut network, d, &other, true);
-    for peer in [b, c] {
+    let mut chain = if two_relays {
+        vec![(c, cs), (e, es), (d, ds), (b, bs)]
+    } else {
+        vec![(c, cs), (d, ds), (b, bs)]
+    };
+    if !hosted {
+        chain.reverse();
+    }
+    let leases: Vec<_> = chain
+        .windows(2)
+        .enumerate()
+        .map(|(i, nodes)| {
+            (
+                create(nodes[0].0, nodes[0].1, &format!("Voice room {i}")),
+                nodes,
+            )
+        })
+        .collect();
+    let mut confirmed = Vec::new();
+    for (other, nodes) in leases {
+        let [(parent, parent_session), (peer, peer_session)] = [nodes[0], nodes[1]];
+        voice(&mut network, parent, &other, true);
         voice(&mut network, peer, &other, true);
-        let edge = pair(&network, peer, ds, &other);
-        for socket in [peer, d] {
+        let edge = pair(&network, peer, parent_session, &other);
+        for socket in [peer, parent] {
             command(
                 &mut network,
                 socket,
@@ -3922,9 +3963,13 @@ fn base_failure_then_duplicate_transport_failure_keeps_confirmed_alternate() {
                 json!({"type":"base_state","roomId":other,"pairId":edge.id,"ready":true}),
             );
         }
+        confirmed.push((parent, parent_session, peer, peer_session, edge.id));
     }
     for peer in [a, b, c, d] {
         browse(&mut network, peer, &room, true);
+    }
+    if two_relays {
+        browse(&mut network, e, &room, true);
     }
     let (seq, attachment) = offer_file(&mut network, b, &room, "held.bin");
     command(
@@ -3947,45 +3992,59 @@ fn base_failure_then_duplicate_transport_failure_keeps_confirmed_alternate() {
                 Event::HostInput { room_id, input } if room_id == &room => Some(input),
                 _ => None,
             }) {
-                assert!(
-                    input.confirmed_pairs.contains(&(bs.min(ds), bs.max(ds))),
-                    "{report}"
-                );
-                assert!(
-                    input.confirmed_pairs.contains(&(cs.min(ds), cs.max(ds))),
-                    "{report}"
-                );
+                for &(_, from, _, to, _) in &confirmed {
+                    assert!(
+                        input
+                            .confirmed_pairs
+                            .contains(&(from.min(to), from.max(to))),
+                        "{report}"
+                    );
+                }
             }
             network.deliver(effects);
         }
     }
-    let tree = topology(&mut network, c, &room, None).base;
-    for (peer, session) in [(c, cs), (b, bs)] {
-        let edge = network
-            .state(d)
-            .pairs
-            .iter()
-            .find(|pair| pair.peer_id == session && pair.rooms.contains(&room))
-            .unwrap_or_else(|| {
-                panic!(
-                    "confirmed edge to {session} has no file-room lease; B={bs}, C={cs}, D={ds}, file-room tree={}",
-                    serde_json::to_string(&tree).unwrap(),
-                )
-            })
-            .clone();
-        for socket in [peer, d] {
+    for (parent, from, peer, to, id) in confirmed {
+        let tree = topology(&mut network, c, &room, None).base;
+        assert!(
+            network
+                .state(parent)
+                .pairs
+                .iter()
+                .any(|pair| pair.id == id && pair.rooms.contains(&room)),
+            "confirmed edge {from}–{to} has no file-room lease: {}",
+            serde_json::to_string(&tree).unwrap()
+        );
+        for socket in [peer, parent] {
+            assert!(network
+                .state(c)
+                .files
+                .iter()
+                .all(|file| file.room_id != room || file.upstream.is_none()));
             command(
                 &mut network,
                 socket,
-                json!({"type":"base_state","roomId":room,"pairId":edge.id,"ready":true}),
+                json!({"type":"base_state","roomId":room,"pairId":id,"ready":true}),
             );
         }
     }
-    assert!(network
-        .state(c)
-        .files
-        .iter()
-        .any(|file| file.room_id == room && file.upstream == Some(ds)));
+    if !hosted {
+        chain.reverse();
+    }
+    for nodes in chain.windows(2) {
+        let (receiver, receiver_session) = nodes[0];
+        let (sender, sender_session) = nodes[1];
+        assert!(network
+            .state(receiver)
+            .files
+            .iter()
+            .any(|file| file.room_id == room && file.upstream == Some(sender_session)));
+        assert!(network
+            .state(sender)
+            .files
+            .iter()
+            .any(|file| file.room_id == room && file.downstream.contains(&receiver_session)));
+    }
 }
 
 #[test]

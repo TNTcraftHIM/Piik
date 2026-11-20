@@ -1421,39 +1421,45 @@ impl RoomRuntime {
         base_members.extend(service);
         base_members.retain(|id| routable.contains(id));
         let limits = self.relay_limits();
+        let mut neighbors = BTreeMap::<Uuid, BTreeSet<Uuid>>::new();
+        for &(a, b) in confirmed_pairs {
+            if connected.contains(&a) && connected.contains(&b) {
+                neighbors.entry(a).or_default().insert(b);
+                neighbors.entry(b).or_default().insert(a);
+            }
+        }
         let mut confirmed_demand = self.confirmed_delivery_pairs(&requested, confirmed_pairs);
         if let Some(base) = &mut self.base {
             let repairing = base.needs_repair(&demand, &connected);
-            if self.hosted_writer.is_some()
-                && (repairing || demand.iter().any(|&peer| base.pending_after_direct_failure(peer)))
+            if repairing
+                || demand
+                    .iter()
+                    .any(|&peer| base.pending_after_direct_failure(peer))
             {
                 let root = base.root();
-                let has_link = |a: Uuid, b: Uuid| confirmed_pairs.contains(&(a.min(b), a.max(b)));
-                let helpers = base_members.iter().copied().filter(|id| {
-                    !demand.contains(id)
-                        && connected.contains(id)
-                        && Some(*id) != service
-                        && limits.get(*id, root) > 0
-                });
-                let bridges_waiting_peer = |helper| {
-                    has_link(root, helper)
-                        && demand.iter().any(|&peer| {
-                            peer != root && !base.ready(peer) && has_link(peer, helper)
-                        })
-                };
-                let helper = helpers
-                    .filter_map(|id| {
-                        let confirmed = bridges_waiting_peer(id);
-                        (repairing || confirmed).then_some((!confirmed, id))
+                let relays: BTreeSet<_> = base_members
+                    .iter()
+                    .copied()
+                    .filter(|id| {
+                        connected.contains(id) && Some(*id) != service && limits.get(*id, root) > 0
                     })
-                    .min();
-                if let Some((_, helper)) = helper {
-                    confirmed_demand.extend(
-                        demand.iter().copied().chain([root])
-                            .filter(|&peer| has_link(peer, helper))
-                            .map(|peer| (peer.min(helper), peer.max(helper))),
-                    );
-                    demand.insert(helper);
+                    .collect();
+                let paths = base.confirmed_repair_paths(&demand, &neighbors, &relays, &limits);
+                if paths.is_empty() && repairing && self.hosted_writer.is_some() {
+                    if let Some(helper) = relays.difference(&demand).next().copied() {
+                        confirmed_demand.extend(
+                            neighbors.get(&helper).into_iter().flatten()
+                                .filter(|&&peer| peer == root || demand.contains(&peer))
+                                .map(|&peer| (peer.min(helper), peer.max(helper))),
+                        );
+                        demand.insert(helper);
+                    }
+                }
+                for (parent, child) in paths {
+                    confirmed_demand.insert((parent.min(child), parent.max(child)));
+                    if parent == root || base.ready(parent) {
+                        demand.insert(child);
+                    }
                 }
             }
             if repairing {
@@ -1471,15 +1477,10 @@ impl RoomRuntime {
                 &confirmed_demand,
             );
         }
-        let mut neighbors = BTreeMap::<Uuid, BTreeSet<Uuid>>::new();
-        for (a, b) in confirmed_pairs.iter().copied().chain(
-            self.base_links()
-                .filter(|link| link.ready && link.selected)
-                .map(|link| (link.parent, link.child)),
-        ) {
-            if connected.contains(&a) && connected.contains(&b) {
-                neighbors.entry(a).or_default().insert(b);
-                neighbors.entry(b).or_default().insert(a);
+        for link in self.base_links().filter(|link| link.ready && link.selected) {
+            if connected.contains(&link.parent) && connected.contains(&link.child) {
+                neighbors.entry(link.parent).or_default().insert(link.child);
+                neighbors.entry(link.child).or_default().insert(link.parent);
             }
         }
         let reader_capacity: BTreeMap<_, _> = self

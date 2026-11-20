@@ -854,6 +854,39 @@ impl BaseOperation {
 }
 
 impl BaseTree {
+    pub fn confirmed_repair_paths(
+        &self,
+        demand: &BTreeSet<Uuid>,
+        neighbors: &BTreeMap<Uuid, BTreeSet<Uuid>>,
+        relays: &BTreeSet<Uuid>,
+        limits: &RelayLimits,
+    ) -> BTreeSet<(Uuid, Uuid)> {
+        let graph = ScreenDemand {
+            order: &[],
+            neighbors,
+            relays,
+        };
+        let mut plan = self.plan.clone();
+        let mut edges = BTreeSet::new();
+        for &target in demand {
+            if target == self.root() || self.ready(target) {
+                continue;
+            }
+            if plan.parents.contains_key(&target) && !plan.confirmed_path(target, &graph) {
+                plan.replace_pending_path(target, demand, &graph, &BTreeMap::new(), limits);
+            } else {
+                plan.append_path(target, &graph, &BTreeMap::new(), limits);
+            }
+            if plan.confirmed_path(target, &graph) {
+                let mut child = target;
+                while let Some(&parent) = plan.parents.get(&child) {
+                    edges.insert((parent, child));
+                    child = parent;
+                }
+            }
+        }
+        edges
+    }
     pub fn pending_after_direct_failure(&self, peer: Uuid) -> bool {
         !self.ready(peer)
             && self
