@@ -42,7 +42,9 @@ export interface WatchReceiving {
 export function WatchPeerAction({ receiving }: { receiving: WatchReceiving }) {
   const { t } = useCopy();
   if (!receiving.peerAvailable && receiving.mode !== "peer" || receiving.mode === "peer" && !receiving.failed) return null;
-  return receiving.peerSupported ? <Btn icon="share" title="watch.forward.peer" cap="watch.forward.peer" size="compact"
+  const retry = receiving.mode === "peer";
+  const label = retry ? "common.retry" : "watch.forward.peer";
+  return receiving.peerSupported ? <Btn icon={retry ? "refresh" : "share"} title={label} cap={label} size="compact"
     disabled={!receiving.peerAvailable || receiving.disabled || receiving.pending} busy={receiving.pending} onClick={receiving.onPeer} />
     : <small>{t("watch.forward.secure")}</small>;
 }
@@ -64,7 +66,7 @@ function WatchPlaybackSettings({ receiving, playback, children, audioAvailable =
       {receiving && <><b>{t("watch.forward.viewing")}</b><p>{t("watch.forward.receiveHelp")}</p>
       {receiving.peerSupported ? <Btn icon="share" title="watch.forward.peer" cap="watch.forward.peer" size="compact"
         pressed={receiving.mode === "peer"} disabled={!receiving.peerAvailable || receiving.disabled || receiving.pending
-          || receiving.mode === "peer" && !receiving.failed} busy={receiving.pending} onClick={receiving.onPeer} />
+          || receiving.mode === "peer"} busy={receiving.pending} onClick={receiving.onPeer} />
         : <small>{t("watch.forward.secure")}</small>}
       {receiving.browserSource && <Btn icon="globe" quiet title="watch.forward.direct" cap="watch.forward.direct" pressed={receiving.mode === "direct"}
         disabled={receiving.disabled || receiving.pending || receiving.mode === "direct" && !receiving.failed} onClick={receiving.onDirect} />}</>}
@@ -197,7 +199,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
         ? <Btn icon="window" title="watch.openPage" cap="watch.openPage" disabled={disabled || receiving?.pending} onClick={onAppWatch} />
         : !(receiving?.peerAvailable && receiving.peerSupported) && (originalPageUnavailable
           ? <small>{originalPageUnavailable}</small> : originalPageAvailable && <small>{t("watch.connectApp")}</small>))}
-      {receiving && <WatchPeerAction receiving={receiving} />}
+      {receiving && <WatchPeerAction receiving={{ ...receiving, failed: true, disabled: disabled || receiving.disabled }} />}
     </div></div>
       : player.blocked && <div className="c3-mini-message"><Btn icon="play" title="watch.resume" cap="watch.resume" onClick={onResume} /></div>}
     {hasControls && <div ref={controls} id={controlsId} className="c3-mini-controls lr-media-toolbar lr-media-overlay lr-media-controls" role="group" aria-label={t("playback.controls")}>

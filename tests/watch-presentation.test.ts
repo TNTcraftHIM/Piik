@@ -206,7 +206,7 @@ describe("Webpage watch presentation", () => {
     expect(render()).toContain('aria-label="Receive from sharer"');
     expect(render({ peerAvailable: false })).toBe("");
     expect(render({ mode: "peer" })).toBe("");
-    expect(render({ mode: "peer", failed: true })).toContain('aria-label="Receive from sharer"');
+    expect(render({ mode: "peer", failed: true })).toContain('aria-label="Retry"');
     expect(render({ mode: "peer", failed: true, peerAvailable: false })).toMatch(/<button\b[^>]*disabled/);
     expect(render({ peerSupported: false })).toContain("trusted HTTPS address");
     expect(render({ peerSupported: false })).not.toContain("<button");

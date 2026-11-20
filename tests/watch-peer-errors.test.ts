@@ -50,8 +50,8 @@ test.each([
 });
 
 test.each([
-  { status: 401, details: Hls.ErrorDetails.FRAG_LOAD_ERROR, type: Hls.ErrorTypes.NETWORK_ERROR, expected: "watch_media_unavailable" },
-  { status: 403, details: Hls.ErrorDetails.FRAG_LOAD_ERROR, type: Hls.ErrorTypes.NETWORK_ERROR, expected: "watch_media_unavailable" },
+  { status: 401, details: Hls.ErrorDetails.FRAG_LOAD_ERROR, type: Hls.ErrorTypes.NETWORK_ERROR, expected: "watch_media_access_denied" },
+  { status: 403, details: Hls.ErrorDetails.FRAG_LOAD_ERROR, type: Hls.ErrorTypes.NETWORK_ERROR, expected: "watch_media_access_denied" },
   { status: 0, details: Hls.ErrorDetails.BUFFER_INCOMPATIBLE_CODECS_ERROR, type: Hls.ErrorTypes.MEDIA_ERROR, expected: "watch_media_unsupported" },
 ])("typed HLS $status/$details wins over generic platform source rejection", async value => {
   const attached = nextHlsAttachment();
