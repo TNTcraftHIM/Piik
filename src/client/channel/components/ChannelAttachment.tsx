@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import type { ChannelAttachment as Attachment, ImageRendition } from "../protocol";
-import { type ChannelAttachments, fileSize } from "../attachments";
+import { type ChannelAttachments, fileSize, isNativeSavePending } from "../attachments";
 import { inlineImageFile } from "../image-preview";
 import { ChannelAction } from "./ChannelAction";
 import { Tooltip } from "../../components/living/Tooltip";
@@ -71,14 +71,15 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   const imageStatus = previewBusy ? progress ? `${progressLabel} · ${progressBytes}` : t("channel.attachment.loadingOriginalImage")
     : previewMessage ?? imageDescription;
   const saving = download.outcome === "started", savedBytes = download.saveProgress;
+  const savePending = isNativeSavePending(download.outcome);
   const canReveal = savedCopy && typeof (downloadSurface.current?.ownerDocument.defaultView ?? window).piikRevealDownload === "function";
   return <div className="c3-attachment" ref={downloadSurface}>
     <div className="c3-attachment-file"><Glyph name="save" size={21} />
       <div><Tooltip overflow={{ text: file.name, selector: "strong" }}><strong>{file.name}</strong></Tooltip><small>{fileSize(file.size)}</small></div>
       <ChannelAction icon={download.busy ? "x" : canReveal ? "folder" : "arrowDown"}
-        label={download.busy ? t("channel.attachment.cancelDownload") : canReveal ? t("channel.attachment.revealSaved")
-          : isImage ? t("channel.attachment.downloadOriginal") : t("channel.attachment.download")}
-        quiet busy={revealing && !download.busy}
+        label={download.busy ? t("channel.attachment.cancelDownload") : savePending ? t(saving ? "channel.attachment.saving" : "channel.attachment.downloadRequested")
+          : canReveal ? t("channel.attachment.revealSaved") : isImage ? t("channel.attachment.downloadOriginal") : t("channel.attachment.download")}
+        quiet iconOnly={savePending} busy={savePending || (revealing && !download.busy)}
         onClick={() => {
           if (download.busy) { client.cancelDownload(key); return; }
           const surface = downloadSurface.current;

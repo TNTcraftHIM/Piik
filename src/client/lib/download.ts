@@ -26,9 +26,13 @@ export function downloadBlob(blob: Blob, filename: string, options: DownloadOpti
   link.href = url; link.download = filename;
   const close = () => {
     link.removeEventListener("piik-native-download", result);
-    view.removeEventListener("pagehide", close);
+    view.removeEventListener("pagehide", retire);
     options.signal?.removeEventListener("abort", close);
     link.remove();
+  };
+  const retire = () => {
+    close();
+    options.outcome?.("dispatched");
   };
   const result = (event: Event) => {
     const detail: unknown = (event as CustomEvent).detail;
@@ -53,7 +57,7 @@ export function downloadBlob(blob: Blob, filename: string, options: DownloadOpti
       link.hidden = true; link.dataset.piikDownload = "";
       if (options.rememberSaved && typeof view.piikRevealDownload === "function") link.dataset.piikRemember = "";
       link.addEventListener("piik-native-download", result);
-      view.addEventListener("pagehide", close, { once: true });
+      view.addEventListener("pagehide", retire, { once: true });
       options.signal?.addEventListener("abort", close, { once: true });
       owner.body.append(link);
       options.outcome?.("requested");

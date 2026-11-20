@@ -27,6 +27,10 @@ interface Sink {
 }
 export interface AttachmentProgress { received: number; total: number; state: "waiting" | "connecting" | "waiting-source" | "receiving" | "finishing" }
 interface PendingSink { key: ChannelFileKey; ready: Promise<Sink>; consumers: Set<symbol>; progress: AttachmentProgress }
+export function isNativeSavePending(outcome?: DownloadOutcome): boolean {
+  return outcome === "requested" || outcome === "started";
+}
+
 interface Download { key: ChannelFileKey; controller: AbortController; promise: Promise<void>; status: { busy: boolean; error: string | null; outcome?: DownloadOutcome; saveProgress?: DownloadProgress } }
 interface Source { key: ChannelFileKey; attachment: ChannelAttachment; file: File; status: typeof idle; retained: boolean; adoptedCacheCopy?: boolean }
 interface CacheClear { revision: number; pending?: Promise<void> }
@@ -240,12 +244,13 @@ export class ChannelAttachments {
     void this.command({ type: "file_offer", ...key, sha256: source.attachment.sha256, available: false }).catch(() => {});
     if (removeStored) void this.store?.remove(key).catch(() => {});
   }
-  private async retain(key: ChannelFileKey, attachment: ChannelAttachment, file: File): Promise<File | null> {
+  private async retain(key: ChannelFileKey, attachment: ChannelAttachment, file: File, ownsFile?: () => boolean): Promise<File | null> {
     const store = this.store, scope = this.scope;
     if (!store || !scope) return null;
     const id = cacheRoom(scope, key.roomId), clear = this.cacheClears.get(id);
     if (clear?.pending) return null;
     const allowed = () => this.store === store && this.cacheClears.get(id) === clear
+      && (ownsFile?.() ?? true)
       && this.rooms.some(room => room.id === key.roomId && room.authorized)
       && !this.messageRemoved(key) && this.matchesPlan({ key, attachment });
     try {
@@ -398,7 +403,8 @@ export class ChannelAttachments {
   download(key: ChannelFileKey, attachment: ChannelAttachment, inlineImage?: ImageRendition, surface?: Element): Promise<void> {
     const id = keyOf(key), previous = this.downloads.get(id), store = this.store, scope = this.scope;
     const cacheRevision = scope ? this.cacheClears.get(cacheRoom(scope, key.roomId))?.revision : undefined;
-    if (previous?.status.busy && !previous.controller.signal.aborted) return previous.promise;
+    if (previous && !previous.controller.signal.aborted
+      && (previous.status.busy || isNativeSavePending(previous.status.outcome))) return previous.promise;
     previous?.controller.abort();
     const download: Download = { key, controller: new AbortController(), promise: Promise.resolve(), status: { busy: true, error: null } };
     this.downloads.set(id, download); this.changed();
@@ -571,7 +577,8 @@ export class ChannelAttachments {
               if (!this.current(runtime) || this.sinks.get(keyOf(key)) !== entry) return;
               if (file.size !== sink.attachment.size) throw new Error("file_size_mismatch");
               sink.complete = true;
-              const retained = await this.retain(key, sink.attachment, file);
+              const retained = await this.retain(key, sink.attachment, file,
+                () => this.sinks.get(keyOf(key)) === entry);
               sink.lifetime.signal.throwIfAborted();
               if (!this.current(runtime) || this.sinks.get(keyOf(key)) !== entry || this.messageRemoved(key)) return;
               const readable = retained ?? file;

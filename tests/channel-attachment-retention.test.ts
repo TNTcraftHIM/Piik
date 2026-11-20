@@ -387,6 +387,53 @@ test.each(["cancel", "revoke"])("shared file progress survives leaving the view 
   } finally { files.reset(); vi.unstubAllGlobals(); }
 });
 
+test.each(["cancel", "revoke"])("a retired download cannot retain its OPFS file during completion after %s", async retirement => {
+  const files = setup(), file = new File(["GIF89a"], attachment.name);
+  const removeEntry = vi.fn(async (_name: string) => {});
+  const getFileHandle = vi.fn(async (_name: string) => ({
+    getFile: async () => file, createWritable: async () => ({ close: async () => {}, abort: async () => {} }),
+  }));
+  let commit!: () => void;
+  const retain = vi.spyOn(FileStore.prototype, "retain").mockImplementation((_entry, _limits, allowed) =>
+    new Promise(resolve => { commit = () => resolve({ file: allowed?.() ? file : null, evicted: [] }); }));
+  const save = vi.spyOn(downloads, "downloadBlob").mockImplementation(() => {});
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({
+    ...await vi.mocked(hosting.loadRoomHosting)(),
+    FileDelivery: class {
+      start() { return "[]"; } update() { return "[]"; } cancel() { return "[]"; } free() {}
+      next_deadline() { return undefined; }
+      control() { return JSON.stringify([{ type: "complete", key }]); }
+    },
+  } as never);
+  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({
+    getDirectoryHandle: async () => ({ getFileHandle, removeEntry }),
+  }) } });
+  const scope = { domainId: "domain", userId: "self" };
+  const room = { id: key.roomId, authorized: true, available: true } as ChannelRoom;
+  const pending = files.download(key, attachment);
+  void pending.catch(() => {});
+  try {
+    await vi.waitFor(() => expect(files.progress(key)).not.toBeNull());
+    files.data("source", "control", "verified");
+    await vi.waitFor(() => expect(retain).toHaveBeenCalledOnce());
+    expect(files.progress(key)?.state).toBe("finishing");
+    if (retirement === "cancel") files.cancelDownload(key);
+    else {
+      files.update("endpoint", scope, [], [{ ...room, authorized: false }], []);
+      files.update("endpoint", scope, [], [room], []);
+    }
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    const retry = files.download(key, attachment);
+    void retry.catch(() => {});
+    await vi.waitFor(() => expect(getFileHandle).toHaveBeenCalledTimes(2));
+    expect(retain.mock.calls[0][2]?.()).toBe(false);
+    commit();
+    await vi.waitFor(() => expect(removeEntry).toHaveBeenCalledExactlyOnceWith(getFileHandle.mock.calls[0][0]));
+    expect(files.progress(key)?.state).toBe("waiting");
+    expect(save).not.toHaveBeenCalled();
+  } finally { commit?.(); files.reset(); vi.unstubAllGlobals(); }
+});
+
 test("small and animated images retain their original file and send a separate thumbnail", async () => {
   const files = setup();
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ initializeRuntime: async () => {},

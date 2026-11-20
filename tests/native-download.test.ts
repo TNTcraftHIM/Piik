@@ -43,17 +43,29 @@ test.each(["saved", "cancelled", "failed"])("Native %s belongs to its still-live
   f.report(url, "started"); expect(outcomes.at(-1)).toBe(status);
 });
 
-test("page retirement removes its anchor and a navigation receives no old result", () => {
+test.each([false, true])("page retirement releases observation (started=%s)", started => {
   const f = fixture(), outcome = vi.fn();
   downloadBlob(new Blob(["owned"]), "owned.txt", { outcome });
   const url = f.clicked[0].href;
+  if (started) f.report(url, "started");
   f.view.dispatchEvent(new Event("pagehide"));
   expect(f.anchors).toEqual([]);
-  f.report(url, "saved"); expect(outcome).toHaveBeenCalledTimes(1);
+  f.report(url, "saved");
+  expect(outcome.mock.calls.flat()).toEqual(started ? ["requested", "started", "dispatched"] : ["requested", "dispatched"]);
   const next = fixture(true, "https://next.test", false), unexpected = vi.fn();
   const link = next.document.createElement("a"); link.href = url;
   link.addEventListener("piik-native-download", unexpected); next.document.body.append(link);
   next.report(url, "saved"); expect(unexpected).not.toHaveBeenCalled();
+});
+
+test("aborting observation removes both page and native listeners", () => {
+  const f = fixture(), outcome = vi.fn(), controller = new AbortController();
+  downloadBlob(new Blob(["owned"]), "owned.txt", { outcome, signal: controller.signal });
+  controller.abort();
+  f.view.dispatchEvent(new Event("pagehide"));
+  f.report(f.clicked[0].href, "saved");
+  expect(f.anchors).toEqual([]);
+  expect(outcome.mock.calls.flat()).toEqual(["requested"]);
 });
 
 test("a completed result cannot be overwritten by a later starting notification", () => {
@@ -133,20 +145,28 @@ test("confirmed attachment receipts restore only for the current identity and or
   files.reset();
 });
 
-test("no-start retries keep one attachment observer and reset releases it", async () => {
+test("one attachment save owns the request through its native result", async () => {
   const f = fixture();
   const files = new ChannelAttachments(async () => {}, async () => {});
   const file = { id: "owned", name: "owned.txt", size: 5, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
   const key = { roomId: "owned", messageSeq: 1, attachmentId: file.id };
   vi.spyOn(files, "content").mockResolvedValue(new File(["owned"], file.name));
-  for (let i = 0; i < 3; i++) {
-    await files.download(key, file); expect(f.anchors).toHaveLength(1);
-    expect(files.status(key).outcome).toBe("requested");
-  }
-  f.report(f.clicked[0].href, "saved"); expect(files.status(key).outcome).toBe("requested");
-  f.report(f.clicked.at(-1)!.href, "failed"); expect(files.status(key).error).toBe("download_failed");
+  const save = files.download(key, file);
+  await save;
+  expect(files.status(key).outcome).toBe("requested");
+  expect(files.download(key, file)).toBe(save);
+  const first = f.clicked[0];
+  f.report(first.href, "started");
+  expect(files.status(key).outcome).toBe("started");
+  expect(files.download(key, file)).toBe(save);
+  files.cancelDownload(key);
+  expect(f.clicked).toEqual([first]);
+  expect(f.anchors).toEqual([first]);
+  f.report(first.href, "failed"); expect(files.status(key).error).toBe("download_failed");
   expect(f.anchors).toEqual([]);
-  await files.download(key, file); files.reset(); expect(f.anchors).toEqual([]);
+  await files.download(key, file);
+  expect(f.clicked).toHaveLength(2);
+  files.reset(); expect(f.anchors).toEqual([]);
 });
 
 test("an adopted attachment uses its current document and window when bytes arrive", async () => {
