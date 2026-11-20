@@ -170,6 +170,7 @@ export function useChannelGuideSample({ multiRoom = false, showSampleAttachment 
     exportRoomCopy: async () => { received(); throw new Error("preview_only"); },
     clearLocalRoomCache: async () => received(),
     importRoomCopy: async () => { received(); throw new Error("preview_only"); },
+    setConversationPopout: () => {},
     feedbackSound, setFeedbackSound: updateFeedback,
     setFeedbackClip: async (cue: FeedbackCue, file: File | null) => {
       const current = ++feedbackImport.current;

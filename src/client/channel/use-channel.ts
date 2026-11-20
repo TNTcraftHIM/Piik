@@ -46,6 +46,7 @@ export function useChannel(): ChannelController {
     stopWatch: session.stopWatch, setWatchPlayback: session.setWatchPlayback, resumeWatch: session.resumeWatch,
     setScreenBufferTarget: session.setScreenBufferTarget,
     queryProfiles: session.queryProfiles, loadProfiles: session.loadProfiles,
+    setConversationPopout: session.setConversationPopout,
     setFeedbackSound: session.setFeedbackSound, previewFeedbackSound: session.previewFeedbackSound,
     setFeedbackClip: session.setFeedbackClip,
     setQuality: session.setQuality,

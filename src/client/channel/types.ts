@@ -130,6 +130,7 @@ export interface ChannelActions {
   setScreenBufferTarget(target: number | null): void;
   queryProfiles(query: { after?: string; query?: string }, signal?: AbortSignal): Promise<ProfilePage>;
   loadProfiles(ids: readonly string[]): Promise<ChannelUser[]>;
+  setConversationPopout(roomId: string, document: Document | null): void;
   setFeedbackSound(patch: Partial<RoomPreferences["feedbackSound"]>): void;
   previewFeedbackSound(cue?: FeedbackCue): void;
   setFeedbackClip(cue: FeedbackCue, file: File | null): Promise<void>;

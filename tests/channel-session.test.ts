@@ -399,40 +399,48 @@ test("confirmed room events own personal feedback across text, attachments and t
     await peer.history([fresh(90, "self-user-1234"), fresh(91)]);
     expect(session.getSnapshot().messagesByRoom.first.find(message => message.seq === 90)?.userId).toBe("self-user-1234");
     expect(play.mock.calls.map(([cue]) => cue)).toEqual(["message", "message"]);
-    document.hidden = false;
+    const popout = { hidden: false, hasFocus: () => true } as Document;
+    session.setConversationPopout("first", popout);
     peer.live(fresh(92));
+    expect(play).toHaveBeenCalledTimes(2);
+    session.setConversationPopout("second", popout);
+    peer.live(fresh(93));
+    expect(play).toHaveBeenCalledTimes(3);
+
+    document.hidden = false;
+    peer.live(fresh(94));
     const reaction = (id: string, senderUserId: string, target: import("../src/client/channel/protocol").ReactionTarget, reaction = "tomato") => {
       peer.reply(peer.interactions[0], { type: "reaction", nonce: 1, snapshot: null,
         event: { id, senderUserId, target, reaction, occurredAt: Date.now() } });
     };
     reaction("self-person", "self-user-1234", { type: "person", userId: "friend-user-1234" });
-    expect(play.mock.calls.length, "self-person").toBe(3);
+    expect(play.mock.calls.length, "self-person").toBe(4);
     reaction("self-person", "self-user-1234", { type: "person", userId: "friend-user-1234" });
     reaction("to-person", "friend-user-1234", { type: "person", userId: "self-user-1234" });
-    expect(play.mock.calls.length, "to-person").toBe(4);
+    expect(play.mock.calls.length, "to-person").toBe(5);
     reaction("to-message", "friend-user-1234", { type: "message", messageSeq: 90, messageId: message(90).id }, "poop");
-    expect(play.mock.calls.length, "to-message").toBe(5);
+    expect(play.mock.calls.length, "to-message").toBe(6);
     reaction("to-screen", "friend-user-1234", { type: "publication", publicationId: "own-screen" });
-    expect(play.mock.calls.length, "to-screen").toBe(6);
+    expect(play.mock.calls.length, "to-screen").toBe(7);
     reaction("self-message", "self-user-1234", { type: "message", messageSeq: 91, messageId: message(91).id });
-    expect(play.mock.calls.length, "self-message").toBe(7);
+    expect(play.mock.calls.length, "self-message").toBe(8);
     reaction("self-screen", "self-user-1234", { type: "publication", publicationId: "own-screen" }, "poop");
-    expect(play.mock.calls.length, "self-screen").toBe(8);
-    expect(play.mock.calls.map(([cue]) => cue)).toEqual(["message", "message", ...Array(6).fill("throw")]);
+    expect(play.mock.calls.length, "self-screen").toBe(9);
+    expect(play.mock.calls.map(([cue]) => cue)).toEqual(["message", "message", "message", ...Array(6).fill("throw")]);
     reaction("emoji", "friend-user-1234", { type: "person", userId: "self-user-1234" }, "heart");
     reaction("bystander", "friend-user-1234", { type: "person", userId: "bystander" });
     reaction("other-message", "friend-user-1234", { type: "message", messageSeq: 91, messageId: message(91).id });
     reaction("unknown-screen", "friend-user-1234", { type: "publication", publicationId: "other-screen" });
     document.hidden = true;
     reaction("hidden-throw", "friend-user-1234", { type: "person", userId: "self-user-1234" });
-    expect(play).toHaveBeenCalledTimes(8);
+    expect(play).toHaveBeenCalledTimes(9);
     session.setFeedbackSound({ enabled: false });
     peer.live(fresh(93));
-    expect(play).toHaveBeenCalledTimes(8);
+    expect(play).toHaveBeenCalledTimes(9);
   } finally { session.close(); }
   expect(close).toHaveBeenCalledOnce();
   peer.live(fresh(94));
-  expect(play).toHaveBeenCalledTimes(8);
+  expect(play).toHaveBeenCalledTimes(9);
 });
 
 test("the site overview does not select a room or load its history", async () => {

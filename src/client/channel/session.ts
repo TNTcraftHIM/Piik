@@ -377,11 +377,18 @@ export class ChannelSession {
     } finally { if (this.feedbackImports.get(cue) === operation) this.feedbackImports.delete(cue); }
   };
 
+  private conversationPopout: { roomId: string; document: Document } | null = null;
+  setConversationPopout = (roomId: string, document: Document | null): void => {
+    this.conversationPopout = document ? { roomId, document } : null;
+  };
+
   private playFeedback(roomId: string, event: RoomInteraction): void {
     const self = this.view.self?.id;
     if (this.closed || !self || !this.view.feedbackSound.enabled) return;
     if (event.payload.kind === "chat") {
-      if (document.hidden && event.sender.peerId !== self) this.feedbackAudio.play("message");
+      const popout = this.conversationPopout;
+      const visibleInPopout = popout?.roomId === roomId && !popout.document.hidden && popout.document.hasFocus();
+      if (document.hidden && !visibleInPopout && event.sender.peerId !== self) this.feedbackAudio.play("message");
       return;
     }
     if (document.hidden || !isThrow(event.payload.reaction)) return;

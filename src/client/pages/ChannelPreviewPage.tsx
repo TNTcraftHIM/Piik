@@ -213,6 +213,12 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const inlineChatOpen = companionVisible && companionPane === "chat";
   const conversationHidden = room?.authorized === false || (!toolSurface.open && (layout === "quick"
     || (visibleScreens.length > 0 ? !inlineChatOpen : !sidebarsInline && mobilePane !== "room")));
+  const setConversationPopout = channel.setConversationPopout;
+  useLayoutEffect(() => {
+    const popout = toolSurface.open && !conversationHidden && toolSurface.document !== document ? toolSurface.document : null;
+    setConversationPopout(roomId, popout);
+    return () => setConversationPopout(roomId, null);
+  }, [roomId, conversationHidden, toolSurface.open, toolSurface.document, setConversationPopout]);
   const mainConversationHome = useCallback((node: HTMLDivElement | null) => { if (!visibleScreens.length) conversationSlot.current = node; }, [!!visibleScreens.length]);
   const sideConversationHome = useCallback((node: HTMLDivElement | null) => { if (visibleScreens.length) conversationSlot.current = node; }, [!!visibleScreens.length]);
   const availableScreens = screens.filter(value => value.roomId === roomId && !activeScreens.includes(value));
