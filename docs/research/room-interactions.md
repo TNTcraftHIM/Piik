@@ -488,6 +488,14 @@ Opus audio. An independent Firefox process on the same Linux host decoded both
 streams. The fixture ran at approximately 0.6 fps. Playback cadence under normal
 load and viewer decoding across the guest network still need verification.
 
+Alpine OBS 32.1.2 and Flathub OBS 33.0.1 completed WHIP signaling with the
+same H264 and Opus parameters as the App, then failed to connect to its
+loopback media address. Both packages used libnice. With the same Alpine OBS
+binary and libdatachannel 0.24.3 built with libjuice, Firefox decoded 166 video
+frames and received audio. The tested OBS WHIP output also ignored the profile's
+network bind address. Stock Linux package compatibility remains open.
+[OBS 32.1.2 WHIP output](https://github.com/obsproject/obs-studio/blob/32.1.2/plugins/obs-webrtc/whip-output.cpp#L279)
+
 ## Attended Remote-Control Prototype
 
 Reviewed 2026-10-19. Remote control is included in the accepted release scope.

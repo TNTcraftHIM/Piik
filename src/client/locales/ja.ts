@@ -442,7 +442,7 @@ export const ja = {
   "channel.error.appDisconnected": "App との接続が切れました。起動していることを確認し、再試行してください。",
   "channel.error.externalInputUnavailable": "この App はローカルの配信入力を受信できません。",
   "channel.error.externalVideoFormatUnsupported": "この OBS の映像形式には対応していません。配信を停止し、「設定 → 詳細設定 → 映像 → 色形式」を NV12（8 ビット、4:2:0）に、「出力 → 配信」を H.264 Baseline・Main・High のいずれかに設定して、配信を再開してください。この接続では High 10 を自動で 8 ビットに変換できません。",
-  "channel.error.externalInputFailed": "映像を受信できませんでした。OBS の配信設定を確認して再試行してください。",
+  "channel.error.externalInputFailed": "Piik はこのパソコンの OBS から映像や音声を受信できませんでした。OBS の配信接続とログを確認し、再度配信してください。",
   "channel.error.invalidTitle": "タイトルは 64 文字以内にしてください。",
   "channel.error.captureFailed": "共有中に問題が発生しました。ウィンドウまたは画面を選び直してください。",
   "channel.error.captureAudioFailed": "音声を共有できませんでした。画面共有は継続します。",

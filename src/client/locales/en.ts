@@ -564,7 +564,7 @@ export const en: Record<CopyKey, string> = {
   "channel.error.externalInputUnavailable": "This App cannot receive local streaming input.",
   "channel.error.externalVideoFormatUnsupported": "This OBS video format is unsupported. Stop streaming, set Settings → Advanced → Video → Color Format to NV12 (8-bit, 4:2:0), and choose H.264 Baseline, Main or High in Output → Streaming. Then restart streaming. High 10 cannot be downgraded by this connection.",
   "channel.error.externalVideoFormatReceived": "Received H.264 {profile}, Level {level} (SPS {sps}).",
-  "channel.error.externalInputFailed": "Could not receive the OBS picture. Stop streaming and check that Output → Streaming uses H.264 and Settings → Advanced → Video → Color Format is NV12 (8-bit). Then restart streaming.",
+  "channel.error.externalInputFailed": "Piik couldn’t receive media from OBS on this computer. Check the streaming connection and log in OBS, then try streaming again.",
   "channel.error.invalidTitle": "The title cannot exceed 64 characters.",
   "channel.error.captureFailed": "Sharing encountered a problem. Choose a window or screen again.",
   "channel.error.captureAudioFailed": "Could not share sound. Screen sharing continues.",

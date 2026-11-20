@@ -443,7 +443,7 @@ export const ko = {
   "channel.error.appDisconnected": "App 연결이 끊겼어요. 실행 중인지 확인하고 다시 시도하세요.",
   "channel.error.externalInputUnavailable": "이 App은 로컬 스트리밍 입력을 받을 수 없어요.",
   "channel.error.externalVideoFormatUnsupported": "이 OBS 영상 형식은 지원하지 않아요. 스트리밍을 중지하고 설정 → 고급 → 비디오 → 색상 형식을 NV12(8비트, 4:2:0)로, 출력 → 방송을 H.264 Baseline, Main 또는 High로 설정한 뒤 다시 시작하세요. 이 연결은 High 10을 자동으로 8비트로 변환할 수 없어요.",
-  "channel.error.externalInputFailed": "화면을 받지 못했어요. OBS 스트리밍 설정을 확인하고 다시 시도하세요.",
+  "channel.error.externalInputFailed": "Piik이 이 컴퓨터의 OBS에서 영상이나 음성을 받지 못했어요. OBS의 스트리밍 연결과 로그를 확인한 뒤 다시 스트리밍하세요.",
   "channel.error.invalidTitle": "제목은 64자를 넘을 수 없어요.",
   "channel.error.captureFailed": "공유 중 문제가 생겼어요. 창이나 화면을 다시 선택하세요.",
   "channel.error.captureAudioFailed": "소리를 공유하지 못했어요. 화면 공유는 계속돼요.",
