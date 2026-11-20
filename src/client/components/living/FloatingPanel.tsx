@@ -1,3 +1,4 @@
+import { DRAG_ACTIVATION_DISTANCE_PX } from "../../ui/control-timing";
 import { useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useCopy } from "../../ui/copy";
@@ -211,7 +212,7 @@ export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpe
         const drag = gesture.current;
         if (!drag || drag.pointerId !== event.pointerId) return;
         const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
-        if (!suppressDragClick.current && Math.hypot(dx, dy) < 4) return;
+        if (!suppressDragClick.current && Math.hypot(dx, dy) < DRAG_ACTIVATION_DISTANCE_PX) return;
         suppressDragClick.current = true;
         placePanel.current?.(drag.kind === "move" ? { x: drag.rect.left + dx, y: drag.rect.top + dy }
           : { rect: drag.rect, corner: drag.kind, dx, dy });
