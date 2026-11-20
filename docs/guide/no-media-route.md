@@ -2,7 +2,9 @@
 
 <a id="no-picture-after-joining-a-room-no-media-route-available"></a>
 
-If you see “No media route available”, ask the host to look at their sharing preview.
+## No media route available
+
+Ask the host to look at their sharing preview.
 
 - **The host sees a blank preview too.** Ask them to share an open window, such as a browser window. Once it appears in the preview, open the invitation again. [Start sharing](./sharing.md#start-sharing)
 - **The host can see the picture.** Ask whether anyone else can watch. Choose [only my picture is missing](#i-get-no-picture-but-other-viewers-can-watch) or [nobody gets a picture](#nobody-gets-a-picture).
