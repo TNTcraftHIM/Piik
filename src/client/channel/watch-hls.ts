@@ -1,6 +1,7 @@
 import Hls, { type ErrorData } from "hls.js";
 export { default as Hls, M3U8Parser, PlaylistLevelType } from "hls.js";
 export function watchHlsFailure(error: Pick<ErrorData, "type" | "details" | "response">, fromReader = false): string {
+  if (error.type === Hls.ErrorTypes.NETWORK_ERROR && (error.response?.code === 401 || error.response?.code === 403)) return "watch_media_access_denied";
   const readCode = error.response?.text;
   if (fromReader && error.type === Hls.ErrorTypes.NETWORK_ERROR && error.response?.code === 0 && readCode
     && /^watch_(?:path_unavailable|read_(?:timeout|busy)|source_(?:failed|unavailable|changed|retired)|resource_limit)$/.test(readCode)) return readCode;

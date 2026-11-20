@@ -82,6 +82,8 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
   }
   if (error === "external_input_failed")
     return display("channel.error.externalInputFailed");
+  if (error === "watch_media_unplayable") return display("watch.sourceUnplayable");
+  if (error === "watch_media_access_denied") return display("watch.mediaAccessDenied");
   if (error === "watch_media_decode_failed")
     return display("watch.decodeFailed");
   if (error === "watch_live_position_unavailable") return display("watch.livePositionUnavailable");

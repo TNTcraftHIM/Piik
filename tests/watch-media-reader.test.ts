@@ -43,7 +43,7 @@ test("failed format inspection remains unknown for a creator while explicit file
   await expect(viewer.read()).resolves.toMatchObject({ readyState: 2 }); viewer.close();
 });
 
-test.each([[2, "watch_media_unavailable"], [3, "watch_media_decode_failed"], [4, "watch_media_unsupported"]])(
+test.each([[2, "watch_media_unavailable"], [3, "watch_media_decode_failed"], [4, "watch_media_unplayable"]])(
   "MediaError code %s reaches the player as %s without exposing the platform message", async (code, expected) => {
     const v = video(); vi.stubGlobal("document", { createElement: () => v });
     const media = new HTMLVideoMedia("https://media.test/private?grant=secret", "file");
@@ -56,12 +56,18 @@ test.each([[2, "watch_media_unavailable"], [3, "watch_media_decode_failed"], [4,
       if (code === 4) {
         for (const lang of ["en", "zh", "zh-Hant", "ja", "ko"] as const) {
           const failure = channelErrorPresentation(player.error, key => t(lang, key));
-          expect(failure.message).toBe(t(lang, "watch.playbackUnsupported"));
+          expect(failure.message).toBe(t(lang, "watch.sourceUnplayable"));
           expect(failure.connectionHelp).toBe(false);
         }
       }
     } finally { player.close(); }
   });
+
+test.each([401, 403])("HLS HTTP %s presents the source access failure", code => {
+  const error = watchHlsFailure({ type: Hls.ErrorTypes.NETWORK_ERROR, details: Hls.ErrorDetails.FRAG_LOAD_ERROR,
+    response: { url: "https://private.invalid/?token=secret", code, data: undefined, text: "private response" } });
+  expect(channelErrorPresentation(error, key => t("en", key)).message).toBe(t("en", "watch.mediaAccessDenied"));
+});
 
 test("fatal HLS facts distinguish codec support and input loading without guessing decode", () => {
   expect(watchHlsFailure({ type: Hls.ErrorTypes.MEDIA_ERROR, details: Hls.ErrorDetails.BUFFER_INCOMPATIBLE_CODECS_ERROR })).toBe("watch_media_unsupported");
