@@ -381,6 +381,21 @@ From C clicking Watch to its first video frame callback, one run took
 selected at most one screen output in each run. This fixture exercises reuse
 of a confirmed pair on loopback. Independent-network coverage remains open.
 
+### Recovery after a screen relay leaves
+
+Four Chromium sessions at `9bb55c3e` shared a synthetic screen through a
+relay. Closing the relay and then allowing direct signaling let the downstream
+viewer resume on its original subscription. In one run the viewer presented
+a frame on the new video track 330 ms after the relay window closed. The gap
+between the last presented frame on the old track and the first on the new
+track was 1,478 ms, including time spent closing the window.
+
+A separate run observed the direct route 335 ms after closure and first met
+its page-wide video frame-count condition at 20.19 s. That run did not record
+per-track video statistics or presentation callbacks, so the duration of its
+visible interruption is unknown. An independent room voice connection kept
+the same receiver and SSRC, with increasing received samples and audio energy.
+
 ### First frame on a cold and reused connection
 
 In two ordinary Linux kernel NAT trials on `1e00d9e0` (Core32), the source was
