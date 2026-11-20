@@ -1089,7 +1089,9 @@ async fn upgrade(
                 return;
             }
             tokio::select! {
-                _ = closing.changed() => {}, _ = revoked.changed() => {},
+                biased;
+                _ = closing.changed() => {},
+                _ = revoked.changed() => {},
                 _ = connection(socket, &app, &site, &permission) => {},
             }
         })
@@ -2672,6 +2674,7 @@ async fn connection(
         };
         tokio::pin!(reading, processing);
         tokio::select! {
+            biased;
             result = &mut reading => result,
             result = &mut processing => result,
         }
