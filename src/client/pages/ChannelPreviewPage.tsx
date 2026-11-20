@@ -281,7 +281,10 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     originalPageUnavailable: activity.source.kind === "website" && activity.playback.timeline === "media" && channel.appConnected && !channel.pagePlayer
       ? t("watch.pageUnsupported") : undefined,
     browserSource: canWatchInBrowser(activity.source),
-    onAppWatch: !ownsWatch(activity.id) && activity.playback.timeline !== "program" && activity.source.kind === "website" && channel.appConnected && channel.pagePlayer && channel.watchPlayers.get(activity.id)?.presentation.kind !== "external" ? () => setAppWatchId(activity.id) : undefined,
+    onAppWatch: !ownsWatch(activity.id) && activity.playback.timeline !== "program" && activity.source.kind === "website" && channel.appConnected && channel.pagePlayer && channel.watchPlayers.get(activity.id)?.presentation.kind !== "external" ? () => {
+      showSource(activity.roomId, activity.id);
+      setAppWatchId(activity.id);
+    } : undefined,
     roomName: nameOfRoom(activity.roomId), avatar: userProfile(state, channel.profiles, activity.userId)?.avatar ?? undefined,
     owned: ownsWatch(activity.id), subscribed: state?.watchSubscriptions.some(value => value.id === activity.id) ?? false,
     audience: state ? watchAudience(state, activity, channel.profiles) : [],
