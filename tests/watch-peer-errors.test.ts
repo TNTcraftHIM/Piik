@@ -74,26 +74,28 @@ test.each([false, true])("initial HLS readiness uses the current failure with an
   const player = new WatchPlayer("owned", false, media, () => {});
   const controller = new AbortController();
   const read = media.read.bind(media);
-  const olderRead = Promise.withResolvers<void>();
-  const snapshotTaken = Promise.withResolvers<void>();
+  let releaseRead!: () => void;
+  const olderRead = new Promise<void>(resolve => { releaseRead = resolve; });
+  let markSnapshotTaken!: () => void;
+  const snapshotTaken = new Promise<void>(resolve => { markSnapshotTaken = resolve; });
   try {
     const hls = await attached;
     video.readyState = 2;
     vi.spyOn(media, "read").mockImplementationOnce(async () => {
       const snapshot = await read();
-      snapshotTaken.resolve();
-      await olderRead.promise;
+      markSnapshotTaken();
+      await olderRead;
       return snapshot;
     });
     const result = player.ready(controller.signal).catch(error => error);
-    await snapshotTaken.promise;
+    await snapshotTaken;
     hls.trigger(Hls.Events.ERROR, { fatal: true, type: Hls.ErrorTypes.NETWORK_ERROR,
       details: Hls.ErrorDetails.FRAG_LOAD_ERROR, response: { code: 0, text: "watch_source_unavailable" } } as never);
     if (cancelled) controller.abort();
     await expect.poll(() => player.error).toBe("watch_source_unavailable");
-    olderRead.resolve();
+    releaseRead();
     await expect(result).resolves.toMatchObject(cancelled ? { name: "AbortError" } : { message: player.error });
-  } finally { olderRead.resolve(); player.close(); }
+  } finally { releaseRead(); player.close(); }
 });
 
 test("actual Session explicit peer command retains the admitted root and reader binding after direct failure", async () => {
