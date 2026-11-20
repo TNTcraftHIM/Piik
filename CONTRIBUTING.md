@@ -261,6 +261,14 @@ Do not add a changelog file or release-note archive.
 Standalone website, documentation and maintenance phases do not need product
 release notes; their public description stays in the PR.
 
+For internal candidate review, name the previous release and the exact revisions
+of the packages and guides being tried. Group changes by the task a person can
+try. Give each distinct user-visible change an action, its expected result and
+the evidence available at that entry. A screenshot can show a new control. A
+short recording can show its motion. For a backend fix, give the triggering
+condition and observed outcome, including the platform or simulation used.
+Mark field checks that remain open. Keep this checklist with the candidate.
+
 Durable semantic or current-snapshot changes must update their single owner in the same integration boundary. Ordinary implementation and bug fixes may be complete with code plus focused evidence.
 
 ## Local Hooks
