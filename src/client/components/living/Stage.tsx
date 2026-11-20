@@ -1,6 +1,6 @@
 // The TV stage: frame, screen, status slot. Pages render their own <video>
 // (stream binding stays with the page); shared overlays are provided here.
-import { useProjectLink } from "../../lib/use-project-link";
+import { useGuideLink } from "../../lib/use-project-link";
 import type { ViewerStage } from "../../media/viewer-presentation";
 import type { ReactNode } from "react";
 import { Glyph, type GlyphName } from "../../ui/icons";
@@ -65,9 +65,7 @@ export function StageOverlay({
 }) {
   const { vis, lang, t } = useCopy();
   const routeFailed = viewerStage === "route-failed";
-  const chinese = lang.startsWith("zh");
-  const guide = useProjectLink(`/docs/${chinese ? "zh/" : ""}no-media-route.html`,
-    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/no-media-route${chinese ? ".zh-CN" : ""}.md`, routeFailed);
+  const guide = useGuideLink(lang, "no-media-route", routeFailed);
   const isWaiting = waiting && !onActivate;
   const content = (
     <>

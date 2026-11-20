@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
-import { useProjectLink } from "../../lib/use-project-link";
+import { useGuideLink, type GuideAnchors } from "../../lib/use-project-link";
 import type { StatusDescriptor } from "../../ui/media-status";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
@@ -8,6 +8,17 @@ import { HintComic, isHintKind } from "./hints";
 import { BrowserDiagnosticsButton } from "./Header";
 import { StatusIndicator } from "./StatusIndicator";
 import "./share-failure-help.css";
+
+const CHECK_SECTIONS: Partial<Record<CopyKey, GuideAnchors>> = {
+  "shareHelp.appConnection": { en: "app-windows-or-screens-are-missing", zh: "app-找不到窗口或屏幕" },
+  "shareHelp.permission": { en: "no-screen-picker", zh: "没有屏幕选择弹窗" },
+  "shareHelp.source": { en: "sharing-does-not-start-after-source-selection", zh: "选源后无法开始分享" },
+};
+
+export function shareFailureGuideSection(code: string, checks: readonly CopyKey[]): GuideAnchors | undefined {
+  if (code === "site/http-403") return { en: "room-creation-returns-403", zh: "创建房间返回-403" };
+  return checks.map(check => CHECK_SECTIONS[check]).find(section => section !== undefined);
+}
 
 /** The current status owns this disclosure; closing/replacing it retains no error history. */
 export function ShareFailureHelp({ status, label, code, checks }: {
@@ -40,8 +51,7 @@ export function ShareFailureHelp({ status, label, code, checks }: {
     };
   }, [open]);
   const hint = (status.tooltip ?? status.comic)!;
-  const guide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}troubleshooting.html`,
-    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/troubleshooting${lang === "zh" ? ".zh-CN" : ""}.md`, open);
+  const guide = useGuideLink(lang, "troubleshooting", open, shareFailureGuideSection(code, checks));
   return <>
     <StatusIndicator status={status} label={label} onActivate={() => {
       copyRequest.current = null;
