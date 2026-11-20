@@ -2,7 +2,7 @@ import { createHash, generateKeyPairSync } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { signUpdateIndex } from "../scripts/release-update-index.mjs";
 
 const { command, notes } = vi.hoisted(() => ({
@@ -11,6 +11,13 @@ const { command, notes } = vi.hoisted(() => ({
 vi.mock("node:child_process", () => ({ execFileSync: command }));
 vi.mock("../scripts/release-notes.mjs", () => ({ releaseNotes: notes }));
 vi.mock("node:timers/promises", () => ({ setTimeout: async () => undefined }));
+
+let activeImport: Promise<unknown> | undefined;
+afterEach(async () => {
+  // Vitest can time out while a script still owns process-wide mocks.
+  // Wait for the fixture's finally block before another case installs mocks.
+  while (activeImport) await activeImport.catch(() => {});
+});
 
 const directory = mkdtempSync(join(tmpdir(), "piik-publisher-"));
 const version = "v1.0.1", revision = "a".repeat(40);
@@ -166,7 +173,8 @@ describe("AtomGit mirror publication", () => {
     let failure: string | undefined;
     try {
       const script = "../scripts/mirror-release.mjs";
-      await import(script);
+      activeImport = import(script);
+      await activeImport;
     } catch (error) {
       failure = error instanceof Error ? error.message : String(error);
     } finally {
@@ -174,6 +182,7 @@ describe("AtomGit mirror publication", () => {
       output.mockRestore();
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
+      activeImport = undefined;
     }
     return { mutations, failure };
   }
@@ -348,13 +357,15 @@ async function publish(releases: Release[], tag: "absent" | "annotated" | "wrong
   let failure: string | undefined;
   try {
     const script = "../scripts/publish-release.mjs";
-    await import(script);
+    activeImport = import(script);
+    await activeImport;
   } catch (error) {
     if (error !== exited) failure = error instanceof Error ? error.message : String(error);
   } finally {
     process.argv = argv;
     exit.mockRestore();
     output.mockRestore();
+    activeImport = undefined;
     if (notesPath) expect(existsSync(notesPath)).toBe(false);
   }
   return { failure, mutations };
