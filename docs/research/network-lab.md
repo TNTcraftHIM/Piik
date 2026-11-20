@@ -253,8 +253,24 @@ left. On the same hosted H.264 inbound SSRC, `framesReceived` rose from 35 to
 165 while `jitterBufferEmittedCount`, `framesDecoded` and the video element's
 frame count stayed at 16. The visible source continued encoding. Direct playback
 continued in a separate control, and constraining the route to an established
-Server → first viewer → second viewer path also preserved playback. The failing
-transition still lacks a matched relay input/output RTP trace or field sample.
+Server → first viewer → second viewer path also preserved playback.
+
+A second frozen run on the same revision matched all 153 video timestamps on
+the selected relay input to the first viewer's RTP writer. Its 300 output
+packets had consecutive sequence numbers. Payload digests matched for 148
+access units. The other five contained H.264 aggregation packets. The viewer's
+received frame count rose from 20 to 140 while its decoded count and
+jitter-buffer output stayed at 13. The trace ends at the RTP writer. Two
+controls waited for the first viewer to render over the Server before the
+second subscribed, immediately or five seconds later. Both kept playing, and
+all 18 sampled presentation timestamps matched the writer. The last presented
+RTP timestamp on a frozen run remains unknown.
+
+On `0d23f337`, two Chromium viewers kept decoding with a direct and a Server
+branch, with a Server branch followed by peer forwarding, and with two
+independent Server branches. In the last run the viewers' decoded
+counts advanced from 308 to 698 and from 55 to 445 during the same interval.
+Each route ran once with a synthetic source. Field correlation remains open.
 
 ### Slow Direct Signaling And Early Relay Preparation
 
@@ -294,7 +310,11 @@ and presented 129 frames with a maximum gap of 194 ms. At the first sample
 showing playback, 10.138 s after requesting the screen, C had displayed six
 frames. With candidate video stalled, A presented 135 frames (maximum gap
 125 ms), the switch stayed unapproved and C displayed zero frames in 12 samples.
-Each condition ran once on one fixed graph with a synthetic screen.
+Each initial condition ran once on one fixed graph with a synthetic screen.
+In a longer run with both paths from the viewers to C blocked, C still had zero
+frames at 46.961 s. In a separate run, opening A→C at 26.216 s after the
+request, once the candidate had expired, let C display video by 30.165 s on
+the original subscription.
 
 ### Screen coverage on five-endpoint graphs
 

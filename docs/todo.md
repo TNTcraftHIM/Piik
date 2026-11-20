@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-18
+Last reviewed: 2026-11-19
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -12,7 +12,7 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- Trace the locally reproduced hosted H.264 freeze during a second viewer's subscription. Correlate the last emitted frame with the relay input/output RTP clocks and the receiver jitter buffer on the same flow. Field correlation remains open. [Controlled observations](./research/network-lab.md#hosted-h264-with-two-viewers)
+- Trace the first stalled picture when a second viewer joins a hosted H.264 stream. Match the receiver's last rendered RTP timestamp and parameter sets to packets sent on its selected flow. Field correlation remains open. [Controlled observations](./research/network-lab.md#hosted-h264-with-two-viewers)
 
 ### Active work
 
