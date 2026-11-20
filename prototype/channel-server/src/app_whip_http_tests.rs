@@ -38,6 +38,7 @@ fn fixture() -> (
         launch: Mutex::new(None),
         desktop: Desktop::new().unwrap(),
         external_inputs: Inputs::default(),
+        capture_targets: Default::default(),
         update: update::Owner::disabled(),
     });
     let binding = Uuid::new_v4();

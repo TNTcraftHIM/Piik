@@ -54,7 +54,7 @@ use piik_channel_native::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::{collections::BTreeMap, future::Future, path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, future::Future, path::PathBuf, sync::{Arc, Weak}, time::Duration};
 use tokio::{
     net::TcpListener,
     sync::{mpsc, oneshot, watch, Mutex},
@@ -153,6 +153,16 @@ impl Registry {
             .or_else(|| self.approvals.get(site))
     }
 }
+type CaptureCatalog = Option<Result<Value, String>>;
+type CaptureTargets = watch::Receiver<CaptureCatalog>;
+
+#[derive(Default)]
+struct CaptureTargetReader {
+    active: Mutex<Weak<watch::Sender<CaptureCatalog>>>,
+    #[cfg(test)]
+    test_read: Option<Arc<dyn Fn() -> BoxFuture<'static, Result<Value>> + Send + Sync>>,
+}
+
 struct App {
     config: Config,
     port: u16,
@@ -163,6 +173,34 @@ struct App {
     desktop: Desktop,
     external_inputs: whip::Inputs,
     update: update::Owner,
+    capture_targets: CaptureTargetReader,
+}
+
+impl CaptureTargetReader {
+    async fn read(&self) -> CaptureTargets {
+        let mut active = self.active.lock().await;
+        if let Some(result) = active.upgrade() {
+            if result.borrow().is_none() {
+                return result.subscribe();
+            }
+        }
+        let (result, read) = watch::channel(None);
+        let result = Arc::new(result);
+        *active = Arc::downgrade(&result);
+        #[cfg(test)]
+        let test_read = self.test_read.clone();
+        tokio::spawn(async move {
+            #[cfg(test)]
+            let catalog = match test_read {
+                Some(read) => read().await,
+                None => capture_targets().await,
+            };
+            #[cfg(not(test))]
+            let catalog = capture_targets().await;
+            result.send_replace(Some(catalog.map_err(|error| error.to_string())));
+        });
+        read
+    }
 }
 
 impl App {
@@ -382,6 +420,7 @@ pub async fn serve(
     let app = Arc::new(App {
         desktop: Desktop::new()?,
         external_inputs: whip::Inputs::default(),
+        capture_targets: CaptureTargetReader::default(),
         config,
         port: address.port(),
         token: Uuid::new_v4().to_string(),
@@ -1462,6 +1501,7 @@ async fn connection(
             let mut input_states = FuturesUnordered::new();
             let mut audio_states = FuturesUnordered::new();
             let mut operations = FuturesUnordered::new();
+            let mut targets: Option<(String, CaptureTargets)> = None;
             let mut previews = FuturesUnordered::new();
             let (external_requests, mut external_queue) = mpsc::channel(8);
             let mut external_page = whip::Page::default();
@@ -1710,6 +1750,21 @@ async fn connection(
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                             audio_states.push(next_audio_state(publication_id, changed));
                         }
+                        continue;
+                    }
+                    result = async {
+                        let (_, read) = targets.as_mut().expect("target request pending");
+                        match read.wait_for(Option::is_some).await {
+                            Ok(value) => value.as_ref().expect("target catalog resolved").clone(),
+                            Err(_) => Err("capture_targets_failed".into()),
+                        }
+                    }, if targets.is_some() => {
+                        let (id, _) = targets.take().expect("target request pending");
+                        let response = match result {
+                            Ok(value) => json!({"id":id,"result":value}),
+                            Err(error) => json!({"id":id,"error":error}),
+                        };
+                        timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         continue;
                     }
                     Some(response) = operations.next(), if !operations.is_empty() => {
@@ -2157,7 +2212,13 @@ async fn connection(
                                 None => Err(anyhow!("hello_required")),
                             },
                             Operation::Targets => match &host {
-                                Some(_) => capture_targets().await,
+                                Some(_) => {
+                                    if let Some((id, _)) = targets.replace((request.id, app.capture_targets.read().await)) {
+                                        let response = json!({"id":id,"error":"request_cancelled"});
+                                        timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
+                                    }
+                                    continue;
+                                }
                                 None => Err(anyhow!("hello_required")),
                             },
                             Operation::Microphones => match &host {
@@ -2878,6 +2939,9 @@ mod lifecycle_tests {
         let (commands, mut receiver) = mpsc::channel(1);
         let (ready, admitted) = watch::channel(None);
         let (stop, mut stopped) = watch::channel(false);
+        let (entered, mut target_reads) = mpsc::unbounded_channel();
+        let release_targets = Arc::new(tokio::sync::Semaphore::new(0));
+        let target_gate = release_targets.clone();
         let host = Host {
             credential: "owned".into(),
             commands: commands.clone(),
@@ -2913,6 +2977,17 @@ mod lifecycle_tests {
             launch: Mutex::new(None),
             desktop: Desktop::new().unwrap(),
             external_inputs: whip::Inputs::default(),
+            capture_targets: CaptureTargetReader {
+                test_read: Some(Arc::new(move || {
+                    entered.send(()).unwrap();
+                    let target_gate = target_gate.clone();
+                    async move {
+                        target_gate.acquire().await.unwrap().forget();
+                        Ok(json!({"sources":[]}))
+                    }.boxed()
+                })),
+                ..Default::default()
+            },
             update: update::Owner::disabled(),
         });
         // The Native readiness producer is held before Welcome/bindings. Restoring
@@ -3036,6 +3111,12 @@ mod lifecycle_tests {
             // loses admission. Identity reads do not reuse the readiness gate.
             ready.send_replace(None);
             if !revoke {
+                socket.send(WsMessage::Text(json!({"id":"old-targets","type":"targets"}).to_string().into())).await.unwrap();
+                timeout(IO_TIMEOUT, target_reads.recv()).await.unwrap().unwrap();
+                socket.send(WsMessage::Text(json!({"id":"refresh-targets","type":"targets"}).to_string().into())).await.unwrap();
+                let cancelled = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
+                assert_eq!(serde_json::from_str::<Value>(cancelled.to_text().unwrap()).unwrap(),
+                    json!({"id":"old-targets","error":"request_cancelled"}));
                 for endpoint in [Some(Uuid::new_v4()), None] {
                     socket
                         .send(WsMessage::Text(
@@ -3055,6 +3136,17 @@ mod lifecycle_tests {
                     );
                     assert!(ready.borrow().is_none());
                 }
+                assert!(target_reads.try_recv().is_err());
+                release_targets.add_permits(1);
+                let refreshed = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
+                assert_eq!(serde_json::from_str::<Value>(refreshed.to_text().unwrap()).unwrap(),
+                    json!({"id":"refresh-targets","result":{"sources":[]}}));
+                socket.send(WsMessage::Text(json!({"id":"new-targets","type":"targets"}).to_string().into())).await.unwrap();
+                timeout(IO_TIMEOUT, target_reads.recv()).await.unwrap().unwrap();
+                release_targets.add_permits(1);
+                let refreshed = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
+                assert_eq!(serde_json::from_str::<Value>(refreshed.to_text().unwrap()).unwrap(),
+                    json!({"id":"new-targets","result":{"sources":[]}}));
             }
             socket
                 .send(WsMessage::Text(
@@ -3208,6 +3300,7 @@ mod lifecycle_tests {
             launch: Mutex::new(None),
             desktop: Desktop::new().unwrap(),
             external_inputs: whip::Inputs::default(),
+            capture_targets: CaptureTargetReader::default(),
             update: update::Owner::disabled(),
         });
         let server_app = app.clone();
@@ -3413,6 +3506,7 @@ mod lifecycle_tests {
             launch: Mutex::new(None),
             desktop: Desktop::new().unwrap(),
             external_inputs: whip::Inputs::default(),
+            capture_targets: CaptureTargetReader::default(),
             update: update::Owner::disabled(),
         });
         let router = Router::new()
@@ -3651,6 +3745,7 @@ mod lifecycle_tests {
             launch: Mutex::new(None),
             desktop: Desktop::new().unwrap(),
             external_inputs: whip::Inputs::default(),
+            capture_targets: CaptureTargetReader::default(),
             update: update::Owner::disabled(),
         });
         let router = Router::new()
@@ -3837,6 +3932,7 @@ mod lifecycle_tests {
                 launch: Mutex::new(None),
                 desktop: Desktop::new().unwrap(),
                 external_inputs: whip::Inputs::default(),
+                capture_targets: CaptureTargetReader::default(),
                 update: update::Owner::disabled(),
             })
         };
@@ -4029,6 +4125,7 @@ mod lifecycle_tests {
             launch: Mutex::new(None),
             desktop: Desktop::new().unwrap(),
             external_inputs: whip::Inputs::default(),
+            capture_targets: CaptureTargetReader::default(),
             update: update::Owner::disabled(),
         });
         // Observe the actual HTTP handler future being dropped, without replacing

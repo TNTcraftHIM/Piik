@@ -79,6 +79,7 @@ impl Fixture {
             launch: Mutex::new(None),
             desktop: Desktop::new().unwrap(),
             external_inputs: whip::Inputs::default(),
+            capture_targets: Default::default(),
             update: update::Owner::disabled(),
         });
         let router = Router::new()
