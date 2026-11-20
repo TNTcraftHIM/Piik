@@ -247,30 +247,23 @@ networks. [Chromium P2P network interceptor](https://chromium.googlesource.com/c
 
 ### Hosted H.264 with two viewers
 
-In a three-Chromium loopback run on `19948350`, the first viewer froze when a
-second viewer subscribed early under natural route selection, before that viewer
-left. On the same hosted H.264 inbound SSRC, `framesReceived` rose from 35 to
-165 while `jitterBufferEmittedCount`, `framesDecoded` and the video element's
-frame count stayed at 16. The visible source continued encoding. Direct playback
-continued in a separate control, and constraining the route to an established
-Server → first viewer → second viewer path also preserved playback.
+In three Chromium loopback runs on `19948350`, the first viewer's selected video
+element measured 0 × 0 in all nine samples while its frame count stayed at 16,
+14 or 13. In the 16-frame run, received frames rose from 35 to 165. In another
+0 × 0 run the element advanced from 35 to 169 frames. The cause of the plateaus
+remains unresolved.
 
-A second frozen run on the same revision matched all 153 video timestamps on
-the selected relay input to the first viewer's RTP writer. Its 300 output
-packets had consecutive sequence numbers. Payload digests matched for 148
-access units. The other five contained H.264 aggregation packets. The viewer's
-received frame count rose from 20 to 140 while its decoded count and
-jitter-buffer output stayed at 13. The trace ends at the RTP writer. Two
-controls waited for the first viewer to render over the Server before the
-second subscribed, immediately or five seconds later. Both kept playing, and
-all 18 sampled presentation timestamps matched the writer. The last presented
-RTP timestamp on a frozen run remains unknown.
+In the 13-frame run, received frames rose from 20 to 140 while jitter-buffer
+output and decoded frames stayed at 13. All 153 timestamps from the selected
+relay input matched the first viewer's RTP writer, which recorded 300 packets
+with consecutive sequence numbers. Payload digests matched for 148 access
+units. The other five contained H.264 aggregation packets.
 
-On `0d23f337`, two Chromium viewers kept decoding with a direct and a Server
-branch, with a Server branch followed by peer forwarding, and with two
-independent Server branches. In the last run the viewers' decoded
-counts advanced from 308 to 698 and from 55 to 445 during the same interval.
-Each route ran once with a synthetic source. Field correlation remains open.
+Two controls opened the foreground player with the Watch button. The selected
+element measured 640 × 254 and advanced from 14 to 137 and from 25 to 158
+frames. In a separate run on `a38c21fd`, opening chat hid the player. The
+Return banner restored the 640 × 254 player and frames advanced on the same
+selected flow, stream and track.
 
 ### Slow Direct Signaling And Early Relay Preparation
 

@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-19
+Last reviewed: 2026-11-20
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -12,7 +12,7 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- Trace the first stalled picture when a second viewer joins a hosted H.264 stream. Match the receiver's last rendered RTP timestamp and parameter sets to packets sent on its selected flow. Field correlation remains open. [Controlled observations](./research/network-lab.md#hosted-h264-with-two-viewers)
+- Check reports of visible hosted H.264 stalls with the player open. Record its displayed size and last presented frame on the selected route while another viewer joins. The reproduced counter plateaus were on hidden players. [Foreground and background controls](./research/network-lab.md#hosted-h264-with-two-viewers)
 
 ### Active work
 
