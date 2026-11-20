@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { pullRequestNotes, releaseNotes } from "../scripts/release-notes.mjs";
 import { splitReleaseHeadline } from "../src/shared/release-headline.mjs";
-import { buildVersion, isReleaseVersion, stableTags } from "../scripts/release-version.mjs";
+import { buildVersion, isReleaseVersion, releaseCommits, stableTags } from "../scripts/release-version.mjs";
 import { readReleaseArtifacts } from "../scripts/release-artifacts.mjs";
 
 const planner = fileURLToPath(new URL("../scripts/release-version.mjs", import.meta.url));
@@ -244,18 +244,20 @@ describe("release automation", () => {
       git("add", ".");
       git("commit", "-m", "feat: launch");
       git("tag", "v1.0.0");
-      for (const path of ["src/client/styles.css", "src/shared/protocol.ts", "prototype/channel-server/src/domain.rs",
+      const inputs = ["src/client/styles.css", "src/shared/protocol.ts", "prototype/channel-server/src/domain.rs",
         "cmd/piik-app/piik.ico", "scripts/windows-capture-deps.mjs", "public/guide.md",
         "licenses/NOTICE.md", "LICENSE", "package-lock.json", ".go-version",
         "scripts/check-rust.mjs", "scripts/app-package-targets.mjs", ".github/workflows/repository-hygiene.yml",
-        "new-product-input.json"]) {
-        git("checkout", "--quiet", "--detach", "v1.0.0");
+        "new-product-input.json"];
+      for (const path of inputs) {
         mkdirSync(dirname(join(root, path)), { recursive: true });
         writeFileSync(join(root, path), "Changed product input");
         git("add", "--", path);
-        git("commit", "-m", "fix: update product input");
-        expect(plan(), path).toMatchObject({ version: "v1.0.1", publish: true });
+        git("commit", "-m", `fix: update ${path}`);
       }
+      const selected = releaseCommits(root, "HEAD", "v1.0.0");
+      expect(selected.map(({ message }) => message.trim())).toEqual(inputs.map(path => `fix: update ${path}`));
+      expect(plan()).toMatchObject({ version: "v1.0.1", publish: true });
       git("checkout", "--quiet", "--detach", "v1.0.0");
       mkdirSync(join(root, "site"), { recursive: true });
       git("mv", "public/asset.svg", "site/asset.svg");
