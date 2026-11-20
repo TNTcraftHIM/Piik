@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ChannelRoomListItem } from "../src/client/channel/components/ChannelRoomListItem";
 import { ChannelRoomEntry } from "../src/client/channel/components/ChannelRoomEntry";
 import type { ChannelController } from "../src/client/channel/types";
-import { setCopy } from "../src/client/ui/copy";
+import { setCopy, t } from "../src/client/ui/copy";
 
 afterEach(() => vi.unstubAllGlobals());
 test("room order is personal, keeps offline rooms, and appends newly available directory entries", () => {
@@ -70,11 +70,11 @@ test("room navigation and private entry use host availability, not the creator's
   const entry = () => renderToStaticMarkup(createElement(ChannelRoomEntry, { channel, room }));
   expect(list()).not.toContain('data-offline');
   expect(entry().match(/<input\b[^>]*>/)?.[0]).not.toContain('disabled');
-  expect(entry()).toContain('Enter its password');
+  expect(entry()).toContain(t("en", "room.entry.passwordNote"));
   channel.state!.sessions[0].online = true; // A different endpoint's presence cannot revive an unavailable host.
   room.available = false;
   expect(list()).toContain('data-offline="true"');
   expect(list()).toContain('aria-label="Retained room"');
-  expect(entry()).toContain('room is temporarily offline');
+  expect(entry()).toContain(t("en", "room.offline.access"));
   expect(entry().match(/<input\b[^>]*>/)?.[0]).toContain('disabled');
 });
