@@ -59,7 +59,8 @@ fn source_direct_limit_replans_live_outputs() {
     let screen = id(10);
     room.set_host_session(source);
     room.set_default_relay_capacity(1);
-    room.set_relay_capacity(endpoints[&source].member, source, Some(2)).unwrap();
+    room.set_relay_capacity(endpoints[&source].member, source, Some(2))
+        .unwrap();
     room.publish(
         endpoints[&source].member,
         source,
@@ -80,13 +81,34 @@ fn source_direct_limit_replans_live_outputs() {
             .filter(|flow| flow.publication_id == screen && flow.sender == source && flow.selected)
             .count()
     };
-    for (now, limit, expected) in [(0, Some(1), 1), (1, Some(3), 3), (2, None, 2)] {
+    room.reconcile(&endpoints, 0);
+    assert_eq!(direct(&room), 1);
+    let incumbent = room
+        .flows()
+        .find(|flow| flow.publication_id == screen)
+        .unwrap()
+        .clone();
+    room.flow_state(
+        incumbent.id,
+        incumbent.receiver,
+        source,
+        FlowState::Decoded,
+        0,
+    )
+    .unwrap();
+    let transition = crate::publication::SCREEN_PREPARE_MS;
+    for (now, limit, expected) in [(1, Some(3), 3), (2, Some(2), 2), (3 + transition, None, 1)] {
         room.set_screen_direct_limit(source, screen, limit).unwrap();
         room.reconcile(&endpoints, now);
-        if limit.is_none() {
+        if now >= 2 {
             room.expire_media(now + crate::publication::SCREEN_PREPARE_MS);
             room.reconcile(&endpoints, now + crate::publication::SCREEN_PREPARE_MS);
         }
         assert_eq!(direct(&room), expected);
+        if now == 1 {
+            assert!(room
+                .flows()
+                .any(|flow| flow.id == incumbent.id && flow.selected));
+        }
     }
 }

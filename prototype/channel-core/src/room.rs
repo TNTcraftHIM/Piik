@@ -1382,6 +1382,7 @@ impl RoomRuntime {
                 // A screen source owns its outputs. Forwarders share their
                 // remaining capacity across all other screens in the room.
                 screen_limits.host = publication.info.session_id;
+                screen_limits.overrides.remove(&publication.info.session_id);
                 screen_limits.source_direct_limit = publication
                     .info
                     .screen
