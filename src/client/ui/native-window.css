@@ -18,6 +18,9 @@ html[data-piik-native-window="integrated"] :is(.c3-site-bar, .lr-app > .lr-top, 
   background: var(--wall);
 }
 html[data-piik-native-window="integrated"] .c3-site-bar { height: var(--native-caption-height); }
+html[data-piik-native-window="integrated"] .lr-header-controls .lr-btn.is-quiet:not([popover] .lr-btn) {
+  --muted: var(--ink);
+}
 /* The native header stays outside the page's scrollport. */
 html[data-piik-native-window] .lr-app:has(> .lr-top) { height: 100dvh; min-height: 0; overflow: hidden; }
 html[data-piik-native-window] .lr-app:has(> .lr-top) > main { flex: 1; min-height: 0; overflow-y: auto; }

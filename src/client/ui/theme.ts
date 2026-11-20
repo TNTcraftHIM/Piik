@@ -36,6 +36,7 @@ const state: { theme: Theme; explicit: boolean; initialized: boolean } = {
   initialized: false,
 };
 const listeners = new Set<() => void>();
+let followsWindowTheme = false;
 
 function commitTheme(theme: Theme): void {
   if (state.theme === theme) return;
@@ -44,7 +45,14 @@ function commitTheme(theme: Theme): void {
   listeners.forEach((listener) => listener());
 }
 
+/** A native utility window follows the main window without saving a site preference. */
+export function applyWindowTheme(theme: Theme): void {
+  followsWindowTheme = true;
+  commitTheme(theme);
+}
+
 export function applyTheme(theme: Theme): void {
+  followsWindowTheme = false;
   state.explicit = true;
   commitTheme(theme);
   try {
@@ -55,7 +63,7 @@ export function applyTheme(theme: Theme): void {
 }
 
 export function currentThemePreference(): Theme | null {
-  return state.explicit ? state.theme : null;
+  return state.explicit && !followsWindowTheme ? state.theme : null;
 }
 
 export function initTheme(preference?: Theme | null, explicitChoice = true): void {
@@ -76,7 +84,7 @@ export function initTheme(preference?: Theme | null, explicitChoice = true): voi
   if (!state.initialized && typeof window.matchMedia === "function") {
     state.initialized = true;
     window.matchMedia(DARK_THEME_QUERY).addEventListener("change", (event) => {
-      if (!state.explicit) commitTheme(event.matches ? "dark" : "light");
+      if (!state.explicit && !followsWindowTheme) commitTheme(event.matches ? "dark" : "light");
     });
   }
 }

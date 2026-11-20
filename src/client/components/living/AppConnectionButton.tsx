@@ -118,7 +118,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
     destination.searchParams.delete("site");
     destination.searchParams.set("bookmarks", "1");
     destination.hash = new URLSearchParams({ site: window.location.origin, "piik-client": "1" }).toString();
-    return clientLaunchURL(destination.href, { lang, theme, explicit: ["copy", "theme"] });
+    return clientLaunchURL(destination.href, { lang, theme, explicit: window.piikNativeWindow ? ["copy"] : ["copy", "theme"] });
   }
 
   async function connect(wake = false, automatic = false): Promise<void> {

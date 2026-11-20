@@ -1,5 +1,6 @@
 import controls from "./window-controls.json";
 import { windowAppearance } from "./window-appearance";
+import { applyWindowTheme } from "./theme";
 import "./native-window.css";
 
 declare global {
@@ -19,6 +20,12 @@ if (window.piikNativeWindow) {
 
 if (window.piikNativeWindow && window.ipc) {
   const integrated = window.piikNativeWindow === "integrated";
+  if (!integrated && location.pathname === "/client" && new URLSearchParams(location.search).has("bookmarks")) {
+    window.addEventListener("piik-window-theme", event => {
+      const { detail } = event as CustomEvent<unknown>;
+      if (detail === "light" || detail === "dark") applyWindowTheme(detail);
+    });
+  }
   const ipc = window.ipc;
   const root = document.documentElement;
   const headers = ".c3-site-bar,.lr-app > .lr-top,.c3-monitor.is-theater > .c3-monitor-heading";

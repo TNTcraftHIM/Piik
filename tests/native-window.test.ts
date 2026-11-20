@@ -58,6 +58,7 @@ test("standalone App captions follow their document's modal material without int
   const root = { lang: "en", dataset: { theme: "dark" } as Record<string, string>, style: { setProperty: vi.fn() } };
   let dialogs: string[] = [];
   let changed: () => void = () => {};
+  vi.stubGlobal("location", new URL("https://piik.test/client"));
   vi.stubGlobal("window", { piikNativeWindow: "system", ipc: {
     postMessage: (message: string) => messages.push(JSON.parse(message)),
   } });

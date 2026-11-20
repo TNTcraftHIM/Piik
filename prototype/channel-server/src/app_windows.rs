@@ -162,6 +162,7 @@ enum ServiceEvent {
     Mount(watch_mount::Request, String, u64),
     Finished,
     PopupClosed(WindowId),
+    PopupLoaded(WindowId),
     PopupPresentation(WindowId, popup::Message),
     PopupAppearance(WindowId, Theme, Language, Option<ModalMaterial>),
     Reveal(reveal::Request, String, u64),
@@ -298,6 +299,28 @@ struct PopupWindow {
     content: WebView,
     window: Rc<Window>,
 }
+impl PopupWindow {
+    fn follow_main_theme(&self, launcher: Option<&url::Origin>, theme: &Theme, language: Language) {
+        let Some(page) = self.content.url().ok().and_then(|url| url::Url::parse(&url).ok()) else {
+            return;
+        };
+        if launcher.is_some_and(|origin| *origin == page.origin())
+            && page.path() == "/client"
+            && page.query_pairs().any(|(key, _)| key == "bookmarks")
+        {
+            let origin = serde_json::json!(page.origin().ascii_serialization());
+            let theme = serde_json::json!(theme.code());
+            let _ = self.content.evaluate_script(&format!(
+                "if(location.origin==={origin}&&location.pathname==='/client'&&new URLSearchParams(location.search).has('bookmarks'))window.dispatchEvent(new CustomEvent('piik-window-theme',{{detail:{theme}}}));"
+            ));
+        } else if page.scheme() == "https"
+            && page.host_str() == Some("piik.tv")
+            && page.path().starts_with("/docs/")
+        {
+            self.caption.appearance(theme, language, None);
+        }
+    }
+}
 type Popups = Rc<RefCell<Vec<PopupWindow>>>;
 
 // Fields drop in this order: both WebViews retire before their native owner.
@@ -370,11 +393,17 @@ impl MainWindow {
                     let id = window.id();
                     let presentation = popup_events.clone();
                     let title_events = popup_events.clone();
+                    let load_events = popup_events.clone();
                     let webview = WebViewBuilder::new()
                         .with_environment(features.opener.environment)
                         .with_initialization_script(SYSTEM_PRESENTATION)
                         .with_initialization_script(download::SCRIPT)
                         .with_document_title_changed_handler(move |title| { let _ = title_events.send_event(ServiceEvent::PopupTitle(id, title)); })
+                        .with_on_page_load_handler(move |event, _| {
+                            if matches!(event, PageLoadEvent::Finished) {
+                                let _ = load_events.send_event(ServiceEvent::PopupLoaded(id));
+                            }
+                        })
                         .with_ipc_handler(move |request| {
                             if let Ok(message) = serde_json::from_str::<popup::Message>(request.body()) {
                                 let _ = presentation.send_event(ServiceEvent::PopupPresentation(id, message));
@@ -552,6 +581,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
     let mut result = Ok(());
     let mut language = Language::En;
     let mut theme = Theme::Light;
+    let mut launcher_origin = None;
     let mut prompt: Option<Prompt> = None;
     let mut slot = None;
     let mut minimum_scale = window.as_ref().map(|main| main.window.scale_factor());
@@ -595,6 +625,9 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                     main.caption.appearance(&theme, language, material);
                 }
                 pages.appearance(&theme, language);
+                for child in popups.borrow().iter() {
+                    child.follow_main_theme(launcher_origin.as_ref(), &theme, language);
+                }
                 if let Some(prompt) = &prompt {
                     prompt.update_appearance(&theme, language);
                 }
@@ -755,7 +788,13 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                     }));
                 }
             }
+            Event::UserEvent(ServiceEvent::PopupLoaded(id)) => {
+                if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == id) {
+                    child.follow_main_theme(launcher_origin.as_ref(), &theme, language);
+                }
+            }
             Event::UserEvent(ServiceEvent::Ready { entry }) => {
+                launcher_origin = url::Url::parse(&entry).ok().map(|url| url.origin());
                 let opened = match &window {
                     Some(main) => main.content.load_url(&entry).map_err(anyhow::Error::from),
                     None => Ok(()),
