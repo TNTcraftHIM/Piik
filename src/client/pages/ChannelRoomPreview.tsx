@@ -56,7 +56,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
         id: "10000000-0000-4000-8000-000000000007", name: "Other film" },
         catalog: { ...mpdTracks[0].catalog!, sourceId: "10000000-0000-4000-8000-000000000008" } }] : [])];
   const { lang } = useCopy(), zh = lang === "zh";
-  const sample = useChannelGuideSample(true);
+  const sample = useChannelGuideSample({ multiRoom: true });
   const guestPreview = new URLSearchParams(location.search).has("guest");
   const [roomCreationPolicy, setRoomCreationPolicy] = useState<RoomCreationPolicy>(() => {
     const requested = roomCreationPolicySchema.safeParse(new URLSearchParams(location.search).get("creation-policy"));

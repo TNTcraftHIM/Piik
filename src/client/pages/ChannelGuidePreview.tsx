@@ -1,3 +1,4 @@
+import sampleThumbnail from "../../../public/favicon.png?inline";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { z } from "zod";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
@@ -23,6 +24,20 @@ import "./channel-preview.css";
 import "./channel-guide-preview.css";
 
 const invitation = "https://friends.example/#room=friday&invite=sample";
+const sampleAttachment = {
+  id: "sample-thumbnail", size: 11076, mediaType: "image/png" as const,
+  sha256: "525b0ef5296cb8e7ecdc0bc8c07e85e7e8dabd2daff3453baf9394548acd01e2",
+};
+const sampleAttachmentSeq = 3;
+
+class GuideAttachments extends ChannelAttachments {
+  override originalAvailability(...args: Parameters<ChannelAttachments["originalAvailability"]>) {
+    const [key] = args;
+    if (key.roomId === "friday" && key.messageSeq === sampleAttachmentSeq && key.attachmentId === sampleAttachment.id) return false;
+    return super.originalAvailability(...args);
+  }
+}
+
 const pending = new Set<string>();
 const roomBackupAvailable = async () => false;
 const appSessionId = "sample-ada-app-session";
@@ -39,7 +54,7 @@ export function sampleRoomTopology(state: ChannelSnapshot, roomId: string, publi
 }
 
 /** Guide and room previews share local sample props, never a Session or backend. */
-export function useChannelGuideSample(multiRoom = false) {
+export function useChannelGuideSample({ multiRoom = false, showSampleAttachment = false } = {}) {
   const { lang } = useCopy(), zh = lang === "zh";
   const [site, setSite] = useState({ name: "Friends", icon: "couch" });
   const [settingsByRoom, setSettingsByRoom] = useState<Record<string, Partial<RoomSettings>>>({});
@@ -79,8 +94,8 @@ export function useChannelGuideSample(multiRoom = false) {
   const [messagesByRoom, setMessagesByRoom] = useState<Record<string, ChannelMessage[]>>({});
   const [historyChangesByRoom, setHistoryChangesByRoom] = useState<ChannelController["historyChangesByRoom"]>({});
   // No session or FileStore is attached: these confirmed sample bytes stay in this page.
-  const [attachments] = useState(() => new ChannelAttachments(async () => {}, async () => {}));
-  const nextMessage = useRef(3);
+  const [attachments] = useState(() => new GuideAttachments(async () => {}, async () => {}));
+  const nextMessage = useRef(showSampleAttachment ? sampleAttachmentSeq + 1 : 3);
   useEffect(() => () => attachments.reset(), [attachments]);
   const onSend: ChannelController["sendMessage"] = async (roomId, text, files = [], signal, options = {}) => {
     const prepared = await attachments.describe(files, signal);
@@ -110,6 +125,12 @@ export function useChannelGuideSample(multiRoom = false) {
   const sampleMessages = visibleMessages("friday", [
     { id: "hello", seq: 1, userId: "sample-ada", text: zh ? "晚上好！先在这里聊聊。" : "Hi! We can chat here first.", time: new Date(2020, 0, 1, 20, 0).getTime(), attachments: [] },
     { id: "ready", seq: 2, userId: "sample-bo", text: zh ? "我也加入语音了，随时可以开始。" : "I've joined voice too. Ready when you are.", time: new Date(2020, 0, 1, 20, 1).getTime(), attachments: [] },
+    ...(showSampleAttachment ? [{
+      id: "sample-image", seq: sampleAttachmentSeq, userId: "sample-bo", text: "",
+      time: new Date(2020, 0, 1, 20, 2).getTime(),
+      attachments: [{ ...sampleAttachment, name: zh ? "皮克图标.png" : "Piik icon.png" }],
+      inlineImages: { [sampleAttachment.id]: { data: sampleThumbnail.split(",")[1], mediaType: "image/png" as const, original: false, width: 96, height: 96 } },
+    }] : []),
     ...(messagesByRoom.friday ?? []),
   ]);
   function visibleMessages(roomId: string, messages: ChannelMessage[]): ChannelMessage[] {
@@ -234,7 +255,7 @@ export function useChannelGuideSample(multiRoom = false) {
 /** Guide images use these production controls with local sample props. */
 export function ChannelGuidePreview() {
   const { lang } = useCopy(), zh = lang === "zh";
-  const { channel, roomName, notice, received, onSend } = useChannelGuideSample();
+  const { channel, roomName, notice, received, onSend } = useChannelGuideSample({ showSampleAttachment: true });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
   const state = channel.state!;
