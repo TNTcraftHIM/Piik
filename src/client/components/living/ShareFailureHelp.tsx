@@ -72,13 +72,16 @@ export function ShareFailureHelp({ status, label, code, checks }: {
         <nav aria-label={t("shareHelp.title")}>
           <a className="lr-btn" href={guide} target="_blank" rel="noopener noreferrer" aria-label={t("shareHelp.guide")}>{!vis && t("shareHelp.guide")}<Glyph name="arrowRight" size={16} /></a>
           <BrowserDiagnosticsButton />
-          <button type="button" className="lr-btn" aria-label={t(copied === "done" ? "shareHelp.copied" : "shareHelp.copy")} onClick={() => {
+          <button type="button" className="lr-btn" aria-label={t(copied === "done" ? "shareHelp.copied" : "shareHelp.copy")} onClick={async () => {
             // Deliberately excludes URLs, invitation credentials and raw exceptions.
             const version = import.meta.env.VITE_PIIK_VERSION ?? "development";
             const request = copyRequest.current = {};
-            void Promise.resolve().then(() => navigator.clipboard.writeText(`Piik Web ${version}\n${label}\n${code}`)).then(
-              () => { if (copyRequest.current === request) setCopied("done"); },
-              () => { if (copyRequest.current === request) setCopied("failed"); });
+            try {
+              await navigator.clipboard.writeText(`Piik Web ${version}\n${label}\n${code}`);
+              if (copyRequest.current === request) setCopied("done");
+            } catch {
+              if (copyRequest.current === request) setCopied("failed");
+            }
           }}><Glyph name={copied === "done" ? "check" : "copy"} size={16} />{!vis && t(copied === "done" ? "shareHelp.copied" : "shareHelp.copy")}</button>
         </nav>
         <span role="status">{copied === "failed" ? t("shareHelp.copyFailed") : ""}</span>
