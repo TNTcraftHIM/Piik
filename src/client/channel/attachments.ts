@@ -138,6 +138,7 @@ export class ChannelAttachments {
     const previous = this.rooms;
     const authorized = new Set(rooms.filter(room => room.authorized).map(room => room.id));
     plans = plans.filter(plan => authorized.has(plan.roomId) && !this.messageRemoved(plan));
+    const previousPlans = this.plans;
     this.rooms = rooms; this.plans = plans;
     this.roomPeers = pairs.map(pair => [pair.peerId, pair.rooms]);
     let changed = this.availability.update(scope, previous);
@@ -150,8 +151,13 @@ export class ChannelAttachments {
         continue;
       }
       if (entry.progress.state === "finishing") continue;
-      const plan = plans.find(plan => fileKeyString({ roomId: plan.roomId, messageSeq: plan.messageSeq, attachmentId: plan.attachment.id }) === id);
-      const state = !plan?.sourceId ? "waiting-source" : entry.progress.state === "waiting-source" ? "waiting" : entry.progress.state;
+      const matches = (plan: ChannelFilePlan) => plan.roomId === entry.key.roomId && plan.messageSeq === entry.key.messageSeq
+        && plan.attachment.id === entry.key.attachmentId;
+      const plan = plans.find(matches);
+      let state = entry.progress.state;
+      if (!plan?.sourceId) state = "waiting-source";
+      else if (!plan.upstream) state = "connecting";
+      else if (state === "waiting-source" || (state === "connecting" && !previousPlans.find(matches)?.upstream)) state = "waiting";
       if (state !== entry.progress.state) { entry.progress = { ...entry.progress, state }; changed = true; }
     }
     for (const [id, download] of this.downloads) {

@@ -494,6 +494,12 @@ test.each(["cancel", "revoke"])("shared file progress survives leaving the view 
     const resumedWrite = finishWrite;
     resumedWrite();
     await vi.waitFor(() => expect(files.progress(key)).toMatchObject({ received: 5, state: "receiving" }));
+    files.update("endpoint", scope, [alternate], [room], []);
+    expect(files.progress(key)).toMatchObject({ received: 5, state: "receiving" });
+    files.update("endpoint", scope, [{ ...alternate, upstream: null }], [room], []);
+    expect(files.progress(key)).toMatchObject({ received: 5, state: "connecting" });
+    files.update("endpoint", scope, [alternate], [room], []);
+    expect(files.progress(key)).toMatchObject({ received: 5, state: "waiting" });
     files.data("alternate", "control", "old-write");
     await vi.waitFor(() => expect(finishWrite).not.toBe(resumedWrite));
     const oldWrite = finishWrite;
