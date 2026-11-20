@@ -11,7 +11,7 @@ If you still cannot connect, choose what matches:
 - **Logs mention STUN, or you manage the router:** [discovery and router checks](#stun-ipv6-and-router-checks).
 
 If a [public-invitation page will not open](./troubleshooting.md#public-invitation-fails-or-shows-1033)
-or [video plays but blurs or stutters](./troubleshooting.md#picture-blurs-stutters-or-stops), follow that symptom instead.
+or [video plays but blurs or stutters](./troubleshooting.md#the-picture-is-blurry-or-keeps-freezing), follow that symptom instead.
 
 Web pages and chat use a separate connection from picture and sound:
 

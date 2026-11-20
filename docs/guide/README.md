@@ -32,9 +32,9 @@ Find your way into a room, start sharing, or get a stuck stream working again.
 
 ## Fix a problem
 
-- [My invitation won’t open](./troubleshooting.md#the-invitation-opens-to-a-blank-page)
+- [My invitation won’t open](./troubleshooting.md#i-cannot-join-my-friends-room)
 - [I’m in the room but the picture won’t load](./troubleshooting.md#when-video-will-not-connect)
-- [The picture is blurry or keeps freezing](./troubleshooting.md#picture-blurs-stutters-or-stops)
+- [The picture is blurry or keeps freezing](./troubleshooting.md#the-picture-is-blurry-or-keeps-freezing)
 - [I can see the picture but can’t hear it](./troubleshooting.md#picture-but-no-source-sound)
 - [Friends can’t hear my iPhone or iPad screen](./sharing.md#iphone-and-ipad-screen-sharing)
 - [My microphone or remote control is unavailable](./troubleshooting.md#microphone-or-remote-controls-are-unavailable)

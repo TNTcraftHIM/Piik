@@ -15,12 +15,12 @@ Start at the first thing that fails:
 
 | What you see | Check first |
 | --- | --- |
-| Invitation never opens, or only the page title appears | [Check the invitation](#the-invitation-opens-to-a-blank-page). |
+| Invitation never opens, or only the page title appears | [Check the invitation](#i-cannot-join-my-friends-room). |
 | You entered the room but the TV has no picture | [Check the sharing connection](#when-video-will-not-connect). |
 | App is not ready | Start App on the sharing device and [authorize the current site](./getting-started.md#use-app-with-an-existing-site). |
 | iPhone Safari shares the screen but friends hear no game audio | Safari screen sharing excludes system audio. See [iPhone and iPad screen sharing](./sharing.md#iphone-and-ipad-screen-sharing). |
 | Source picker is missing or sharing will not start | [Source and capture checks](#starting-a-share). |
-| Picture blurs or stutters | [Picture quality](#picture-blurs-stutters-or-stops). |
+| Picture blurs or stutters | [Picture quality](#the-picture-is-blurry-or-keeps-freezing). |
 | Phone fullscreen or playback controls are missing | [Fullscreen and controls](#fullscreen-or-playback-after-sleep). |
 | Picture works, but no game/movie sound | [Source sound](#picture-but-no-source-sound). |
 | Cannot hear a friend, or cannot use the microphone | [Room voice](#cannot-hear-someone-speaking) and [permissions](#microphone-or-remote-controls-are-unavailable). |
@@ -38,9 +38,11 @@ symptom's simple checks have failed. Change one thing at a time.
 
 <span id="invite-blank"></span>
 
-### The invitation opens to a blank page
+<a id="the-invitation-opens-to-a-blank-page"></a>
 
-Ask the Host to confirm the room is open and copy the full invitation again. Open it directly in your browser. If only your browser shows a blank page, try the same link in another browser. If friends also cannot reach it, check the type of invitation. A [local invitation](#local-invitation-will-not-open) needs a reachable local network. For a public address or error 1033, ask the Host to [check the public invitation](#public-invitation-fails-or-shows-1033).
+### I cannot join my friend’s room
+
+Ask the Host to send the current invitation and open the full link in your browser. If only your browser shows a blank page, try the same link in another browser. If friends also cannot reach it, check the type of invitation. A [local invitation](#local-invitation-will-not-open) needs a reachable local network. For a public address or error 1033, ask the Host to [check the public invitation](#public-invitation-fails-or-shows-1033).
 
 <span id="app-not-ready"></span>
 
@@ -308,7 +310,7 @@ with the codec comparison. If both codecs fail, also check
 
 ## Picture and playback
 
-[No connection](#when-video-will-not-connect) · [Blur / stutter](#picture-blurs-stutters-or-stops) ·
+[No connection](#when-video-will-not-connect) · [Blur / stutter](#the-picture-is-blurry-or-keeps-freezing) ·
 [Black game capture](#game-capture-is-black-or-sharing-stops) · [Washed-out HDR](#hdr-picture-looks-too-bright-or-washed-out) ·
 [Capture border](#yellow-capture-border-on-windows) · [Fullscreen / sleep](#fullscreen-or-playback-after-sleep)
 
@@ -324,7 +326,9 @@ If it still fails, save [diagnostic reports](#reporting-a-problem) from the Host
 
 <span id="playback-stalls"></span>
 
-### Picture blurs, stutters or stops
+<a id="picture-blurs-stutters-or-stops"></a>
+
+### The picture is blurry or keeps freezing
 
 1. When playback stalls, watch the Host preview at the same time. If it freezes too, check that the source is updating and whether the game is saturating the CPU or GPU. Try lowering resolution or frame rate in **Sharing settings → Picture**, one at a time.
 2. If the preview stays smooth, ask another Viewer whether they see the pauses. If only your picture stalls periodically, try **Increase playback buffering** where available. Compare the same movement. Restore the previous setting if stalls persist or the extra delay affects controls, then compare another browser or hotspot.

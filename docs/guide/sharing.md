@@ -77,7 +77,7 @@ If the picture stays blurry or slow for several viewers, try a lower resolution
 or frame rate and check the Host preview. If only the Viewer’s picture pauses
 briefly while the Host preview runs smoothly, try **Increase playback buffering**
 where offered. It adds delay, so turn it off if controls feel sluggish.
-See [picture troubleshooting](./troubleshooting.md#picture-blurs-stutters-or-stops) for more checks.
+See [picture troubleshooting](./troubleshooting.md#the-picture-is-blurry-or-keeps-freezing) for more checks.
 
 Applied settings are remembered for the current site. Opening Piik through an
 updated App also keeps sharing-quality settings when a public-invite address changes.

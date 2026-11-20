@@ -32,7 +32,7 @@ description: 了解如何加入房间、分享屏幕，以及解决 Piik 的常�
 
 ## 遇到问题
 
-- [邀请链接打不开](./troubleshooting.zh-CN.md#邀请打不开或只有标题)
+- [邀请链接打不开](./troubleshooting.zh-CN.md#进不去朋友的房间)
 - [进了房间却一直没画面](./troubleshooting.zh-CN.md#画面连接不上)
 - [画面模糊，或者总是卡住](./troubleshooting.zh-CN.md#画面模糊卡顿或中断)
 - [有画面，却听不到分享的声音](./troubleshooting.zh-CN.md#有画面但没有来源声音)
