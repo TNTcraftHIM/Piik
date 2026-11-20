@@ -14,4 +14,9 @@ test("picture retry is immediately available for waiting remote screens",()=>{
   for(const difference of[{owned:true},{localSource:true}])expect(renderToStaticMarkup(createElement(ChannelStage,{...props,sources:[{...source,...difference}]}))).not.toContain('aria-label="Retry picture"');
   const disabled=renderToStaticMarkup(createElement(ChannelStage,{...props,canSubscribe:false}));
   expect(disabled).toMatch(/aria-label="Retry picture"[^>]*disabled/);
+  expect(disabled).toMatch(/<button[^>]*aria-label="Picture help"(?![^>]*disabled)/);
+  for (const state of [{ deliveryFailed: false }, { paused: true }, { owned: true }, { localSource: true }, { stream }, { hidden: true }]) {
+    const markup = renderToStaticMarkup(createElement(ChannelStage, { ...props, sources: [{ ...source, ...state }] }));
+    expect(markup).not.toContain('aria-label="Picture help"');
+  }
 });

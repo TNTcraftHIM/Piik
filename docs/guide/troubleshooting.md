@@ -321,14 +321,11 @@ with the codec comparison. If both codecs fail, also check
 
 ### When video will not connect
 
-Check the particular share rather than treating all room traffic as one connection:
+1. **Viewer.** Select **Retry picture** on the affected picture. If it still fails, try another network such as a phone hotspot.
+2. **Person sharing.** Check that the preview for that share is playing. If the preview is blank, check the selected window or screen.
+3. **Site owner.** Check that the site's media forwarding service is configured and reachable. A room manager must also turn on **Allow site forwarding** for that room before Piik can use it.
 
-1. Confirm that its owner is still sharing and has not paused it. Select **Watch** on that source; automatic retry is shown in its picture tile.
-2. Compare [browser WebRTC settings](./network.md#browser-webrtc-restrictions), especially if chat works.
-3. Try another network such as a hotspot. Review the VPN/proxy's UDP policy; ask an administrator on a managed network.
-
-Use [advanced network checks](./network.md) if these checks do not help. Record
-whether the same room's chat and other pictures still work.
+If the preview plays and the picture still fails to connect, see [advanced network checks](./network.md).
 
 ### Picture blurs, stutters or stops
 

@@ -24,6 +24,22 @@ import type { MessageReactions } from "../protocol";
 import { ChannelContentReactions } from "./ChannelContentReactions";
 import { BrandLoader } from "../../components/living/BrandMark";
 import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
+import { ChannelSettingsDialog } from "./ChannelSettingsDialog";
+
+function PictureDeliveryHelp() {
+  const { t } = useCopy();
+  const [open, setOpen] = useState(false);
+  return <>
+    <ChannelAction icon="help" label={t("screen.pictureHelp")} iconOnly quiet onClick={() => setOpen(true)} />
+    {open && <ChannelSettingsDialog compact title={t("screen.pictureHelp")} onClose={() => setOpen(false)}>
+      <ol className="c3-picture-help">
+        <li>{t("screen.pictureHelpViewer")}</li>
+        <li>{t("screen.pictureHelpPublisher")}</li>
+        <li>{t("screen.pictureHelpForwarding", { setting: t("room.transit.allow") })}</li>
+      </ol>
+    </ChannelSettingsDialog>}
+  </>;
+}
 
 interface SourceAudioControl {
   level: number; muted: boolean; hasAudio: boolean; available: boolean; busy: boolean;
@@ -298,13 +314,17 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
                 onFocus(source.id); setTheater(!theater);
               }}
               label={`${title} / ${source.name} / ${source.roomName}`} />
-              : <div className="c3-monitor-wait" data-failed={!source.paused && source.deliveryFailed || undefined} role="status">
+              : <div className="c3-monitor-wait" data-failed={!source.paused && source.deliveryFailed || undefined}>
                 {source.paused || source.deliveryFailed ? <Glyph name={source.paused ? "pause" : "x"} size={24} /> : <BrandLoader />}
-                <span>{t(source.paused ? "host.pauseNotice" : source.deliveryFailed ? "screen.deliveryRetry"
+                <span role="status">{t(source.paused ? "host.pauseNotice" : source.deliveryFailed ? "screen.deliveryRetry"
                   : source.awaitingRoute ? "screen.waitingRoute" : "screen.connectingPicture")}</span>
-                {!source.paused && !source.owned && !source.localSource && (source.deliveryFailed || !source.awaitingRoute) && onRetryPicture && <Btn icon="refresh" size="compact" quiet
-                  title="screen.retryPicture" cap="screen.retryPicture" disabled={!canSubscribe || source.pending}
-                  onClick={() => onRetryPicture(source.id)} />}</div>}
+                {!source.paused && !source.owned && !source.localSource && (source.deliveryFailed || !source.awaitingRoute) &&
+                  <div className="c3-monitor-wait-actions">
+                    {onRetryPicture && <Btn icon="refresh" size="compact" quiet
+                      title="screen.retryPicture" cap="screen.retryPicture" disabled={!canSubscribe || source.pending}
+                      onClick={() => onRetryPicture(source.id)} />}
+                    {source.deliveryFailed && !source.hidden && <PictureDeliveryHelp />}
+                  </div>}</div>}
             <footer>
               <div className="c3-monitor-source-row lr-media-overlay" data-tooltip-controls data-playback-controls>
                 <div className="c3-monitor-source-info">
