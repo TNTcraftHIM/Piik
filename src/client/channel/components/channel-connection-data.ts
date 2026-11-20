@@ -7,8 +7,8 @@ import { EMPTY_METRICS } from "../../types";
 
 type Translate = (key: CopyKey, vars?: Record<string, string>) => string;
 
-function hopRoute(topology: ChannelTopology | null, from: string, to: string, presentation = false): "p2p" | "sfu" {
-  return !presentation && [from, to].includes(topology?.transitSession ?? "") ? "sfu" : "p2p";
+function hopRoute(topology: ChannelTopology, from: string, to: string, presentation = false): "p2p" | "sfu" {
+  return !presentation && (from === topology.transitSession || to === topology.transitSession) ? "sfu" : "p2p";
 }
 
 export function hasSelectedLocalDisplay(topology: ChannelTopology | null, sessionId: string): boolean {
@@ -87,7 +87,8 @@ export function channelConnectionRows(state: ChannelSnapshot, sessionId: string,
       : t("voice.details.sendTo", { name: peer });
     // Without picture topology, a sample may be the App's local display hop.
     return [{ key: `${sample.ownerSessionId}/${sample.flowId}/${sample.metrics.rtpStatsId}`, connectionId: sample.connectionId,
-      media: publication.kind === "voice" ? "audio" : "video", direction: sample.direction, route: hopRoute(topology, from, to, localDisplay), label, metrics,
+      media: publication.kind === "voice" ? "audio" : "video", direction: sample.direction,
+      route: topology ? hopRoute(topology, from, to, localDisplay) : undefined, label, metrics,
       detailOnly: publication.kind === "screen" && !topology?.screen || localDisplay || !sample.selected || undefined }];
   });
 }

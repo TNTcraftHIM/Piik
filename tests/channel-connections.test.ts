@@ -93,6 +93,10 @@ describe("channel connection presentation", () => {
     const rows = channelConnectionRows(routed.state, routed.sessionId, routed.topology, [sample], t);
     expect(rows).toHaveLength(1);
     expect(rows[0].route).toBe("sfu");
+    const withoutTopology = channelConnectionRows(routed.state, routed.sessionId, null, [sample], t);
+    expect(withoutTopology).toHaveLength(1);
+    expect(withoutTopology[0].metrics).toEqual(rows[0].metrics);
+    expect(withoutTopology[0].route).toBeUndefined();
     expect(renderToStaticMarkup(createElement(ChannelConnectionReport, routed))).toContain("is-sfu");
   });
   it("merges room audience by user without counting publishers, retired identities or relay paths", () => {
