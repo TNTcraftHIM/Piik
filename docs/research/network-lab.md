@@ -280,6 +280,22 @@ early preparation added one or two pair attempts when direct signaling succeeded
 and the single blackhole comparison showed only a 74 ms first-frame difference.
 
 
+### Moving an incumbent to admit a waiting viewer
+
+A four-browser loopback experiment at `e04f46a0` tested a live switch alongside
+the five-endpoint graph comparison below. A and B already received the source.
+Moving A behind B would free a direct slot for C. In the baseline, assigning C
+to A made C depend on the input being replaced. Core retired the candidate
+2.523 s after A reported decoding it. C displayed zero frames across 12 samples.
+
+Deferring C's first parent assignment during the switch preserved the existing
+quality and presentation checks. A reported `SwitchReady` 6.021 s after decoding
+and presented 129 frames with a maximum gap of 194 ms. At the first sample
+showing playback, 10.138 s after requesting the screen, C had displayed six
+frames. With candidate video stalled, A presented 135 frames (maximum gap
+125 ms), the switch stayed unapproved and C displayed zero frames in 12 samples.
+Each condition ran once on one fixed graph with a synthetic screen.
+
 ### Screen coverage on five-endpoint graphs
 
 At `b43edf0c`, all four receivers requested one source in a fixed order.
