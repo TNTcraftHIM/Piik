@@ -245,6 +245,15 @@ and two on the new stream. These samples establish delivery under the measured
 conditions. Choosing production thresholds requires repeated trials on independent
 networks. [Chromium P2P network interceptor](https://chromium.googlesource.com/chromium/src/+/main/services/network/throttling/throttling_p2p_network_interceptor.cc)
 
+A separate four-browser run kept direct signaling from the publisher to both
+viewers closed until after their sole chat relay left. Both viewers had
+presented three frames through the relay. The test opened direct signaling
+2.71 seconds after starting relay shutdown. Both viewers then presented three
+frames from the publisher on their newly selected direct paths.
+In a separate run, the same two viewers also spoke directly in another room.
+Both voice players continued advancing on their original publications while
+the screen relay left and the two screen routes recovered.
+
 ### Hosted H.264 with two viewers
 
 In three Chromium loopback runs on `19948350`, the first viewer's selected video
