@@ -264,8 +264,18 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     };
   }, [mobilePane, sidebarsInline, setMobilePane]);
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
+  const stageWatches = watches.filter(activity => activity.roomId === roomId || activeWatches.includes(activity));
+  const [hlsSupported, setHlsSupported] = useState(false);
+  const inspectHls = stageWatches.some(activity => activity.sessionId !== sessionId && activity.byteSource?.format === "hls")
+    && !canReceivePeerWatch("hls");
+  useEffect(() => {
+    if (!inspectHls) return;
+    let current = true;
+    void import("../channel/watch-hls").then(({ Hls }) => { if (current) setHlsSupported(Hls.isSupported()); }, () => {});
+    return () => { current = false; };
+  }, [inspectHls]);
   const watchTitle = (url: string) => { const source = new URL(url); return source.host + source.pathname; };
-  const watchSources: WatchStageSource[] = watches.filter(activity => activeWatches.includes(activity) || activity.roomId === roomId).map(activity => ({
+  const watchSources: WatchStageSource[] = stageWatches.map(activity => ({
     kind: "watch", id: activity.id, userId: activity.userId, name: nameOfUser(activity.userId), title: watchTitle(activity.source.url),
     website: activity.source.kind === "website", originalPageAvailable: activity.playback.timeline === "media" && (!channel.appConnected || channel.pagePlayer), onFocusWindow: () => run(channel.focusWatch(activity.id)),
     originalPageUnavailable: activity.source.kind === "website" && activity.playback.timeline === "media" && channel.appConnected && !channel.pagePlayer
@@ -275,7 +285,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     roomName: nameOfRoom(activity.roomId), avatar: userProfile(state, channel.profiles, activity.userId)?.avatar ?? undefined,
     owned: ownsWatch(activity.id), subscribed: state?.watchSubscriptions.some(value => value.id === activity.id) ?? false,
     audience: state ? watchAudience(state, activity, channel.profiles) : [],
-    receiving: !ownsWatch(activity.id) ? { peerAvailable: !!activity.byteSource, peerSupported: canReceivePeerWatch(activity.byteSource?.format),
+    receiving: !ownsWatch(activity.id) ? { peerAvailable: !!activity.byteSource, peerSupported: canReceivePeerWatch(activity.byteSource?.format, hlsSupported),
       failed: !!channel.watchPlayers.get(activity.id)?.error,
       mode: channel.watchPlayers.get(activity.id)?.mode ?? state?.watchSubscriptions.find(value => value.id === activity.id)?.mode ?? "direct",
       browserSource: canWatchInBrowser(activity.source), pending: busy("watch-video", activity.id), disabled: !connected,

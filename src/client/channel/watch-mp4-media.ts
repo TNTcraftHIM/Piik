@@ -1,4 +1,4 @@
-import Hls from "hls.js";
+import type Hls from "hls.js";
 import type { ISOFile, Movie, Track } from "mp4box";
 import { readWatchWindows, WATCH_READ_AHEAD, WATCH_READ_SIZE } from "./watch-read-windows";
 import type { WatchByteReader, WatchByteResult } from "./watch-resource";
@@ -52,7 +52,7 @@ export class WatchMp4Media {
   private appendBytes = 0;
   private closed = false;
   // The shipped HLS player supplies the same MSE cache/forward/back-buffer policy.
-  private budget = Hls.DefaultConfig.maxBufferSize;
+  private policy!: Pick<typeof Hls.DefaultConfig, "maxBufferSize" | "maxBufferLength">;
   private seek = () => {
     const time = this.video.currentTime;
     for (let i = 0; i < this.video.buffered.length; i++)
@@ -73,11 +73,13 @@ export class WatchMp4Media {
     if (!canReadWatchMp4()) throw new Error("watch_mp4_mse_unavailable");
     if (this.first.totalSize === null || !Number.isSafeInteger(this.first.totalSize) || this.first.totalSize < this.first.bytes.length)
       throw new Error("watch_media_size_unavailable");
-    this.mp4box = await import("mp4box").catch(error => {
+    const [mp4box, { Hls }] = await Promise.all([import("mp4box"), import("./watch-hls")]).catch(error => {
       this.signal.throwIfAborted();
       throw new Error("watch_media_unsupported", { cause: error });
     });
     this.signal.throwIfAborted();
+    this.mp4box = mp4box;
+    this.policy = Hls.DefaultConfig;
     const mediaSource = this.mediaSource = new MediaSource();
     this.url = URL.createObjectURL(mediaSource);
     await waitEvent(mediaSource, "sourceopen", this.signal, () => { this.video.src = this.url!; });
@@ -97,7 +99,7 @@ export class WatchMp4Media {
     this.tracks = [info.videoTracks[0], info.audioTracks[0]].filter((track): track is Track => !!track);
     const mime = `video/mp4; codecs="${this.tracks.map(track => track.codec).join(",")}"`;
     if (!this.tracks.length || !MediaSource.isTypeSupported(mime)) { this.fail(new Error("watch_mp4_mse_unavailable")); return; }
-    if (this.tracks.some(track => this.parser!.getTrackSamplesInfo(track.id).some(sample => sample.size > this.budget))) {
+    if (this.tracks.some(track => this.parser!.getTrackSamplesInfo(track.id).some(sample => sample.size > this.policy.maxBufferSize))) {
       this.fail(new Error("watch_resource_limit")); return;
     }
     try {
@@ -144,7 +146,7 @@ export class WatchMp4Media {
     if (initial) {
       offset = parser.appendBuffer(MP4BoxBuffer.fromArrayBuffer(this.first.bytes.slice().buffer, 0));
       parseBytes = this.first.bytes.length;
-      if (parser.getAllocatedSampleDataSize() + this.appendBytes > this.budget) throw new Error("watch_resource_limit");
+      if (parser.getAllocatedSampleDataSize() + this.appendBytes > this.policy.maxBufferSize) throw new Error("watch_resource_limit");
       await this.drain(signal);
     }
     while (offset < size) {
@@ -153,7 +155,7 @@ export class WatchMp4Media {
         await this.backpressure(signal);
         next = parser.appendBuffer(MP4BoxBuffer.fromArrayBuffer(window.bytes.slice().buffer, window.offset));
         if (!this.buffer) parseBytes += window.bytes.length;
-        if (parseBytes > this.budget || parser.getAllocatedSampleDataSize() + this.appendBytes > this.budget)
+        if (parseBytes > this.policy.maxBufferSize || parser.getAllocatedSampleDataSize() + this.appendBytes > this.policy.maxBufferSize)
           throw new Error("watch_resource_limit");
         await this.drain(signal);
         // A metadata-tail read can return to an earlier media offset without ending playback.
@@ -196,7 +198,7 @@ export class WatchMp4Media {
       for (let i = 0; i < this.video.buffered.length; i++)
         if (this.video.currentTime >= this.video.buffered.start(i) && this.video.currentTime <= this.video.buffered.end(i))
           ahead = this.video.buffered.end(i) - this.video.currentTime;
-      if (ahead < Hls.DefaultConfig.maxBufferLength) break;
+      if (ahead < this.policy.maxBufferLength) break;
       await waitEvent(this.video, "timeupdate", signal);
     }
   }

@@ -1,7 +1,7 @@
-﻿import Hls from "hls.js";
+import Hls from "hls.js";
 import { afterEach, expect, test, vi } from "vitest";
 import { AppPageMedia, canReceivePeerWatch, createPeerWatchMedia, HTMLVideoMedia, type WatchMediaEvent, type WatchMediaState } from "../src/client/channel/watch-media";
-import { watchHlsFailure } from "../src/client/channel/watch-media-failure";
+import { watchHlsFailure } from "../src/client/channel/watch-hls";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 import { t } from "../src/client/ui/copy";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
@@ -104,9 +104,9 @@ test("a slow resource setup and later media event complete without an invented r
 test("HLS can receive through the Reader when Service Workers are unavailable", async () => {
   vi.spyOn(Hls, "isSupported").mockReturnValue(true);
   vi.stubGlobal("isSecureContext", false); vi.stubGlobal("navigator", {});
-  expect(canReceivePeerWatch("hls")).toBe(true); expect(canReceivePeerWatch("file")).toBe(false);
+  expect(canReceivePeerWatch("hls", Hls.isSupported())).toBe(true); expect(canReceivePeerWatch("file")).toBe(false);
   vi.spyOn(Hls, "isSupported").mockReturnValue(false);
-  expect(canReceivePeerWatch("hls")).toBe(false);
+  expect(canReceivePeerWatch("hls", Hls.isSupported())).toBe(false);
   const v = video(); vi.stubGlobal("document", { createElement: () => v });
   const media = createPeerWatchMedia({ resourceId: "11111111-1111-4111-8111-111111111111", format: "hls" }, vi.fn());
   await expect(media.ready(new AbortController().signal)).rejects.toThrow("watch_peer_requires_secure_context"); media.close();
