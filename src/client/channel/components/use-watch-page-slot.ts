@@ -62,8 +62,11 @@ export function useWatchPageSlot(pageId: string | undefined) {
     resize.observe(node);
     const intersection = new IntersectionObserver(update);
     intersection.observe(node);
-    const mutation = new MutationObserver(update);
-    mutation.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["open", "hidden", "inert", "class"] });
+    const mutation = new MutationObserver(records => {
+      if (records.some(record => record.type === "attributes" || [...record.addedNodes, ...record.removedNodes]
+        .some(node => node instanceof Element && (node.matches("dialog, [popover]") || node.querySelector("dialog, [popover]"))))) update();
+    });
+    mutation.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["open", "hidden", "inert", "class"] });
     update();
     return () => {
       closed = true;

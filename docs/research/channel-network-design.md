@@ -290,7 +290,11 @@ playability. HLS uses a supported playlist player and its timeline checks.
 Each viewer fetches the media from its origin. The Native client supplies
 the webpage-player connector without a separate browser extension. Website
 windows retain their own browsing context and do not inherit Piik device
-authority or room credentials. Browser-only website integration uses a documented
+authority or room credentials. The Windows App can place a selected original
+page in its room window. The native page keeps its document, site login and
+player. The room surface owns its visible bounds. Opening a room dialog or
+leaving the stage releases the surface. An external browser uses the App's
+separate page window. Browser-only website integration uses a documented
 player-control API. A portable media URL can use the direct-media path; webpage
 synchronization controls each participant's original player instead of requiring
 that URL. Source access stays with each viewer's platform account, while the

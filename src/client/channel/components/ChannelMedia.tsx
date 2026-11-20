@@ -91,7 +91,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const controlsId = useId();
   const surface = player.presentation, embedded = surface.kind === "embed";
   const pageId = surface.kind === "external" && nativeStage && presentation === "full" && !player.error &&
-    typeof window !== "undefined" && window.piikMountWatchPage ? player.media.page?.id : undefined;
+    typeof window !== "undefined" && window.piikMountWatchPage && player.media.page?.selectedCandidateId ? player.media.page.id : undefined;
   const native = useWatchPageSlot(pageId);
   const audioTracks = player.media.audioTracks?.() ?? [];
   const audioOptions = audioTracks.map(track => ({ ...track, label: [mediaLanguageLabel(track.language, lang) || track.name,

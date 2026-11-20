@@ -44,10 +44,10 @@ see [getting started](./getting-started.md).
 In a 3.0 test room, select **Start sharing → Watch together** and paste the video or webpage address.
 
 - **Direct video link or YouTube.** Select **Play direct video URL** or, for YouTube, **Watch together**. Everyone can use a browser. Each person plays the video from its original source.
-- **Other websites.** In a Piik App that supports webpage playback, select **Open webpage and select video**. Sign in on the original page if needed, start playback, and return to Piik to select the player. If offered, choose **Share original webpage only**. Viewers use a compatible Piik App to open the page, sign in with their own accounts if needed, and select the player.
-- **Forward to a viewer in a browser.** If the video supports it, the sharer can turn on **Forward through App**. The viewer then selects **Receive from sharer**. This uses the sharer’s upload bandwidth and needs a working media connection.
+- **Watch on the original webpage.** In the Windows App, select **Open webpage and select video**. Sign in on the website if needed and play the video. Return to Piik, select the player and choose **Share original webpage only**. If the player has a **Choose playback source** button, use it to see the options. Each viewer opens the same page in their own App, signs in with their own account if needed and selects the player. The webpage then appears inside the room’s main picture. The sharer controls play, pause and seeking for everyone.
+- **Forward to a viewer in a browser.** For a video you can share, open **Choose playback source** and select **Forward through App**. Viewers can select **Receive from sharer**. This uses the sharer’s upload bandwidth. If access expires, restore it on the source website and ask the viewer to select **Retry** beside the error.
 
-For direct links, YouTube, and original webpage playback, a cloud tunnel used for the room carries playback controls and progress, while the original source delivers the video.
+With direct links, YouTube and original webpages, each viewer loads the video from its origin. A cloud tunnel used to reach the room carries the playback controls and position. To switch episodes, the sharer selects **Switch source** and viewers join the new activity.
 
 ## Share settings
 

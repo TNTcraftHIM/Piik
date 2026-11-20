@@ -35,8 +35,8 @@ function withWatchDocument(render: () => string): string {
 
 describe("Webpage watch presentation", () => {
   it("reserves a native slot only for a full stage with a local page and shell bridge", () => {
-    const render = (pageId?: string, nativeStage = true) => renderToStaticMarkup(createElement(ChannelWatchVideo, {
-      player: { video: null, media: { page: { id: pageId } }, presentation: { kind: "external" } } as unknown as WatchPlayer,
+    const render = (pageId?: string, nativeStage = true, selected = true) => renderToStaticMarkup(createElement(ChannelWatchVideo, {
+      player: { video: null, media: { page: { id: pageId, selectedCandidateId: selected ? "selected" : undefined } }, presentation: { kind: "external" } } as unknown as WatchPlayer,
       owned: false, paused: true, label: "Original page", presentation: "full", disabled: false,
       website: true, originalPageAvailable: true, theaterMode: false, onToggleTheater: vi.fn(),
       nativeStage, onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
@@ -48,6 +48,7 @@ describe("Webpage watch presentation", () => {
       expect(render("local")).toContain("c3-watch-native-slot");
       expect(render()).not.toContain("c3-watch-native-slot");
       expect(render("local", false)).not.toContain("c3-watch-native-slot");
+      expect(render("local", true, false)).not.toContain("c3-watch-native-slot");
       return "";
     });
   });

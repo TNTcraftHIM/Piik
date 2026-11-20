@@ -113,7 +113,12 @@ export class AppPage implements AppPagePort {
     return this.request({ type, pageId: this.id, ...values }, this.lifetime.signal);
   }
   async prepare(): Promise<void> { z.object({ pageId: z.literal(this.id) }).strict().parse(await this.command("page_prepare", { url: this.url })); }
-  async select(candidateId: string): Promise<void> { nativePageStateSchema.parse(await this.command("page_select", { candidateId })); }
+  selectedCandidateId?: string;
+  async select(candidateId: string): Promise<void> {
+    nativePageStateSchema.parse(await this.command("page_select", { candidateId }));
+    this.selectedCandidateId = candidateId;
+    this.changed();
+  }
   async read(): Promise<WatchMediaState> { return nativePageStateSchema.parse(await this.command("page_read")); }
   async patch(patch: WatchMediaPatch): Promise<void> { await this.command("page_patch", { patch }); }
   async focus(): Promise<void> { await this.command("page_focus"); }
