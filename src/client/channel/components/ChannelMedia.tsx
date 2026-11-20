@@ -49,10 +49,11 @@ export function WatchPeerAction({ receiving }: { receiving: WatchReceiving }) {
     : <small>{t("watch.forward.secure")}</small>;
 }
 
-function WatchPlaybackSettings({ receiving, playback, children, audioAvailable = true }: { receiving?: WatchReceiving; children?: ReactNode; audioAvailable?: boolean; playback?: {
+function WatchPlaybackSettings({ receiving, originalPage, playback, children, audioAvailable = true }: { receiving?: WatchReceiving; originalPage: boolean; children?: ReactNode; audioAvailable?: boolean; playback?: {
   rate: number; rates: readonly number[]; disabled: boolean; onRate(rate: number): void;
 } }) {
   const { t } = useCopy();
+  const directSelected = receiving?.mode === "direct" && !originalPage;
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
   useAnchoredPopover(trigger, panel, { side: "above", align: "end" });
   return <span ref={trigger}><Btn icon="sliders" quiet title="playback.more" popoverTarget={id} />
@@ -64,12 +65,12 @@ function WatchPlaybackSettings({ receiving, playback, children, audioAvailable =
         </select></label> : audioAvailable && <p>{t("watch.following")}</p>}
       {!audioAvailable && <p>{t("playback.noAudio")}</p>}
       {receiving && <><b>{t("watch.forward.viewing")}</b><p>{t("watch.forward.receiveHelp")}</p>
-      {receiving.peerSupported ? <Btn icon="share" title="watch.forward.peer" cap="watch.forward.peer" size="compact"
+      {(receiving.peerAvailable || receiving.mode === "peer") && (receiving.peerSupported ? <Btn icon="share" title="watch.forward.peer" cap="watch.forward.peer" size="compact"
         pressed={receiving.mode === "peer"} disabled={!receiving.peerAvailable || receiving.disabled || receiving.pending
           || receiving.mode === "peer"} busy={receiving.pending} onClick={receiving.onPeer} />
-        : <small>{t("watch.forward.secure")}</small>}
-      {receiving.browserSource && <Btn icon="globe" quiet title="watch.forward.direct" cap="watch.forward.direct" pressed={receiving.mode === "direct"}
-        disabled={receiving.disabled || receiving.pending || receiving.mode === "direct" && !receiving.failed} onClick={receiving.onDirect} />}</>}
+        : <small>{t("watch.forward.secure")}</small>)}
+      {receiving.browserSource && <Btn icon="globe" quiet title="watch.forward.direct" cap="watch.forward.direct" pressed={directSelected}
+        disabled={receiving.disabled || receiving.pending || directSelected && !receiving.failed} onClick={receiving.onDirect} />}</>}
       {children}
     </div>
   </span>;
@@ -112,8 +113,10 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const [fullscreen, setFullscreen] = useState(() => player.video ? videoFullscreenState(player.video)
     : { supported: false, ready: false, active: false, nativeActive: false });
   const [fullscreenFailed, setFullscreenFailed] = useState(false);
-  const receivingSettings = receiving && (receiving.peerAvailable || receiving.mode === "peer") ? receiving : undefined;
-  const localControls = !!player.video || !!receivingSettings || owned && !embedded;
+  const receivingSettings = receiving && (receiving.peerAvailable || receiving.mode === "peer" || surface.kind === "external" && receiving.browserSource) ? receiving : undefined;
+  const openOriginal = !owned && website && originalPageAvailable && surface.kind !== "external" ? onAppWatch : undefined;
+  const settingsOriginal = !player.error && openOriginal;
+  const localControls = !!player.video || !!receivingSettings || !!settingsOriginal || owned && !embedded;
   const hasControls = owned && !embedded || localControls;
   const failure = channelErrorPresentation(player.error, t,
     receiving?.mode === "peer" ? "watch.forward.failed" : website && player.video ? "watch.browserFailed" : "watch.failed").message;
@@ -195,8 +198,8 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
         <Btn icon="refresh" title="common.retry" cap="common.retry" size="compact" disabled={disabled || receiving.disabled || receiving.pending}
           busy={receiving.pending} onClick={receiving.onDirect} />}
       {owned && player.media.page && <Btn icon="window" title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />}
-      {!owned && website && surface.kind !== "external" && (onAppWatch
-        ? <Btn icon="window" title="watch.openPage" cap="watch.openPage" disabled={disabled || receiving?.pending} onClick={onAppWatch} />
+      {!owned && website && surface.kind !== "external" && (openOriginal
+        ? <Btn icon="window" title="watch.openPage" cap="watch.openPage" disabled={disabled || receiving?.pending} onClick={openOriginal} />
         : !(receiving?.peerAvailable && receiving.peerSupported) && (originalPageUnavailable
           ? <small>{originalPageUnavailable}</small> : originalPageAvailable && <small>{t("watch.connectApp")}</small>))}
       {receiving && <WatchPeerAction receiving={{ ...receiving, failed: true, disabled: disabled || receiving.disabled }} />}
@@ -234,9 +237,11 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
           aria-label={t("playback.volumeBasic")} aria-valuetext={`${media.muted ? 0 : Math.round(media.volume * 100)}%`}
           onChange={event => { if (player.video) { player.video.volume = Number(event.target.value) / 100; player.video.muted = false; } }} />
         </> : null}
-        {(owned && !embedded || receivingSettings || player.video) && <WatchPlaybackSettings receiving={receivingSettings} audioAvailable={audioAvailable}
+        <WatchPlaybackSettings originalPage={surface.kind === "external"} receiving={receivingSettings} audioAvailable={audioAvailable}
           playback={owned && !embedded ? { rate: media.rate, rates: player.media.playbackRates?.() ?? [0.5, 0.75, 1, 1.25, 1.5, 2], disabled,
             onRate: rate => onPlayback({ rate }) } : undefined}>
+          {settingsOriginal && <Btn icon="window" quiet title="watch.openPage" cap="watch.openPage" size="compact"
+            disabled={disabled || receiving?.disabled || receiving?.pending} onClick={settingsOriginal} />}
           {audioTracks.length > 0 && <label className="c3-watch-audio"><span>{t("watch.audioTrack")}</span>
             <select className="lr-select" aria-label={t("watch.audioTrack")} value={audioTracks.find(track => track.selected)?.id ?? ""} disabled={audioTracks.length === 1}
               onChange={event => player.media.selectAudioTrack?.(Number(event.target.value))}>
@@ -245,7 +250,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
             </select></label>}
           {owned && player.media.page && <Btn icon="window" quiet title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />}
           {windowControls && <div className="c3-watch-settings-window">{windowControls}</div>}
-        </WatchPlaybackSettings>}
+        </WatchPlaybackSettings>
         {owned && player.video && player.media.page && !player.error && <Btn icon="window" quiet size="dense"
           title="watch.focusWindow" onClick={onFocusWindow} />}
         {windowControls}

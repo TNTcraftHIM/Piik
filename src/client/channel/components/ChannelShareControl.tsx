@@ -397,7 +397,7 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   }, [roomId, activityId]);
   const close = () => {
     if (!activityId && channel.sourceSelectionCommitting(roomId)) return;
-    if (activityId) void channel.leaveWatch(activityId).catch(() => {});
+    if (activityId) channel.cancelWatchPage(activityId);
     else if (busy || page || embed) void channel.cancelScreenSelection(roomId).catch(() => {});
     onClose();
   };

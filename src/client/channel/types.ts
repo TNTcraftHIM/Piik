@@ -123,6 +123,8 @@ export interface ChannelActions {
   selectWatchIndexedSource(roomId: string, videoId: string, audioId?: string, reportError?: boolean): Promise<void>;
   selectWatchForwardSource(roomId: string, choiceId: string, reportError?: boolean): Promise<void>;
   setWatchByteSource(id: string, choice: string | NativePageIndexedSelection | NativePageMpdSelection | null, signal?: AbortSignal): Promise<void>;
+  watchEmbedPreparation(id: string): import("./watch-media").WatchMedia | undefined;
+  cancelWatchPage(id: string): void;
   leaveWatch(id: string): Promise<void>;
   stopWatch(id: string): Promise<void>;
   setWatchPlayback(id: string, patch: Partial<Pick<WatchPlayback, "paused" | "position" | "rate">>): Promise<void>;

@@ -401,6 +401,7 @@ export const ko = {
   "channel.previewPage.voiceInThisRoom": "이 방의 음성",
   "channel.previewPage.currentRoom": "현재 방",
   "watch.embedHelp": "미리보기에서 동영상을 재생한 후 공유를 확인하세요. 확인할 때까지 현재 공유는 유지됩니다.",
+  "watch.embedReceiveHelp": "미리보기에서 재생하면 플레이어가 전환됩니다.",
   "watch.start": "함께 보기",
   "watch.sourceHint": "동영상 직접 링크를 사용하거나 App에서 웹페이지 동영상을 선택하세요. 진행은 공유자가 제어해요.",
   "watch.url": "동영상 또는 웹페이지 URL",

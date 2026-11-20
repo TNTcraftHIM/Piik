@@ -20,7 +20,7 @@ const watchButtonClicks = vi.hoisted(() => new Map<string, () => void>());
 vi.mock("../src/client/components/living/primitives", async importOriginal => {
   const actual = await importOriginal<typeof import("../src/client/components/living/primitives")>();
   return { ...actual, Btn: (props: Parameters<typeof actual.Btn>[0]) => {
-    if ((props.title === "watch.play" || props.title === "watch.pause") && props.onClick) {
+    if ((props.title === "watch.play" || props.title === "watch.pause" || props.title === "watch.forward.direct") && props.onClick) {
       const click = props.onClick;
       watchButtonClicks.set(props.title, click);
     }
@@ -52,6 +52,45 @@ describe("Webpage watch presentation", () => {
       return "";
     });
   });
+  it("switches an original webpage to its direct URL without a peer offer", () => {
+    setCopy({ lang: "en" });
+    const onDirect = vi.fn();
+    const html = withWatchDocument(() => renderToStaticMarkup(createElement(ChannelWatchVideo, {
+      player: { video: null, presentation: { kind: "external" }, media: {} } as unknown as WatchPlayer,
+      owned: false, paused: false, label: "Page", presentation: "full", theaterMode: false, disabled: false,
+      website: true, originalPageAvailable: true, onFocusWindow: vi.fn(), onToggleTheater: vi.fn(),
+      onResume: vi.fn(), onPlayback: vi.fn(), receiving: { peerAvailable: false, peerSupported: true,
+        mode: "direct", browserSource: true, onDirect, onPeer: vi.fn() },
+    })));
+    const direct = html.match(/<button[^>]*aria-label="Play directly from website"[^>]*>/)?.[0];
+    expect(direct).toBeDefined();
+    expect(direct).toContain('aria-pressed="false"');
+    expect(direct).not.toContain("disabled");
+    watchButtonClicks.get("watch.forward.direct")?.();
+    expect(onDirect).toHaveBeenCalledOnce();
+  });
+  it.each(["video", "embed", "external"] as const)("offers the viewer original page in playback settings for %s", kind => {
+    setCopy({ lang: "en" });
+    const render = (owned: boolean, available: boolean, error: string | null = null) => withWatchDocument(() =>
+      renderToStaticMarkup(createElement(ChannelWatchVideo, {
+        player: { presentation: { kind }, video: kind === "video" ? {} : null, media: {}, error } as unknown as WatchPlayer,
+        owned, paused: false, label: "Source", presentation: "full", disabled: false, website: true,
+        originalPageAvailable: available, onAppWatch: vi.fn(), onFocusWindow: vi.fn(), theaterMode: false,
+        onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(),
+      })));
+    const label = t("en", "watch.openPage");
+    const html = render(false, true);
+    if (kind === "external") expect(html).not.toContain(label);
+    else {
+      expect(html.slice(html.indexOf("c3-watch-receiving"))).toContain(label);
+      const failed = render(false, true, "watch_media_failed");
+      expect(failed.slice(failed.indexOf("c3-watch-receiving"))).not.toContain(label);
+      expect(failed).toContain(label);
+    }
+    expect(render(true, true)).not.toContain(label);
+    expect(render(false, false)).not.toContain(label);
+  });
+
   it.each(["video", "external"])("allows the sharer to pause a buffering %s after the room clock stops", kind => {
     setCopy({ lang: "en" });
     watchButtonClicks.clear();

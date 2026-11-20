@@ -18,6 +18,8 @@ import { LayerHistory } from "../ui/layer-history";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelStage, type WatchStageSource } from "../channel/components/ChannelStage";
 import { useTheaterMode } from "../components/living/use-theater-mode";
+import { ChannelSettingsDialog } from "../channel/components/ChannelSettingsDialog";
+import { WatchEmbedPreview } from "../channel/components/WatchEmbedPreview";
 import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
 import { ChannelJoinVoice } from "../channel/components/ChannelJoinVoice";
@@ -309,6 +311,14 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     ? t("channel.previewPage.connecting") : connection === "reconnecting" ? t("channel.previewPage.reconnecting") : t("channel.previewPage.disconnected");
 
   return <LayerHistory.Provider value={sidebarsInline ? null : track}><div className="lr-app c3-app">
+    {stageWatches.map(activity => {
+      const media = channel.watchEmbedPreparation(activity.id);
+      if (!media) return null;
+      const cancel = () => channel.cancelWatchPage(activity.id);
+      return <ChannelSettingsDialog key={activity.id} compact title={t("watch.forward.direct")} onClose={cancel}>
+        <WatchEmbedPreview media={media} busy={false} onCancel={cancel} />
+      </ChannelSettingsDialog>;
+    })}
     {watchRoomId && <WatchSourceDialog key={`source:${watchRoomId}`} channel={channel} roomId={watchRoomId} onClose={() => setWatchRoomId(null)} />}
     {watches.filter(activity => activity.id === appWatchId).map(activity => <WatchSourceDialog key={activity.id} channel={channel}
       roomId={activity.roomId} activityId={activity.id} initialURL={activity.source.url} onClose={() => setAppWatchId(null)} />)}

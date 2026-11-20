@@ -328,6 +328,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
         userId: "sample-ada", sessionId: "sample-ada-session", playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 0 } });
     },
     joinWatch: async (_id, mode = "direct") => { setReceiveMode(mode); setWatchMode(watchActivity?.playback.timeline === "program" ? "live-viewer" : "viewer"); },
+    watchEmbedPreparation: () => undefined, cancelWatchPage: () => setPageSample(undefined),
     leaveWatch: async () => { setWatchMode("available"); setPageSample(undefined); }, stopWatch: async () => setWatchActivity(null),
     resumeWatch: async id => { const player = watchPlayers.get(id); if (player) { player.blocked = false; await player.play(); setWatchPlayers(new Map(watchPlayers)); } },
     setWatchPlayback: async (_id, patch) => {

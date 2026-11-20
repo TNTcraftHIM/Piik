@@ -84,6 +84,20 @@ export class WatchPlayer {
     this.error = mediaFailure(error);
     this.changed();
   }
+  private listening?: Pick<HTMLVideoElement, "volume" | "muted">;
+  inheritListening(previous?: WatchPlayer): void {
+    const settings = previous?.video ?? previous?.listening;
+    if (!settings) return;
+    const { volume, muted } = settings;
+    const video = this.video;
+    if (video) {
+      video.volume = volume;
+      video.muted = muted;
+    } else {
+      this.listening = { volume, muted };
+    }
+  }
+  inheritClock(player: WatchPlayer): void { this.offset = player.offset; }
   calibrate(serverTime: number, start: number, end = performance.now()): void {
     this.offset = serverTime - (start + end) / 2;
     void this.align(true);

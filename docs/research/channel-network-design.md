@@ -308,7 +308,9 @@ If the sharer also offers the media bytes, viewers can receive them over the
 room route. Browser-only viewers can join that transfer directly. Viewers can
 change an available receiving method in the player's settings. If direct
 playback fails, Retry reopens the viewer's player for the same activity. Local
-volume and mute follow the viewer across the retry.
+volume and mute follow the viewer across the retry. While a viewer chooses a
+player on the original webpage, the current player retains its subscription.
+The candidate replaces it after media readiness and room confirmation.
 
 When a discovered media URL loads in the sharer's Browser player, that player
 owns playback in the Piik stage. Prepare it before replacing the current share;

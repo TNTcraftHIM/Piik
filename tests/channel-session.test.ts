@@ -10369,11 +10369,10 @@ test('App viewer preparation has an independent lifetime from the same room shar
     const viewing = session.prepareWatchPage('first', activity.source.url, activity.id);
     const viewerCancelled = expect(viewing).rejects.toMatchObject({ name: 'AbortError' });
     await vi.waitFor(() => expect(connected).toBeDefined());
-    expect(session.getSnapshot().watchPlayers.has(activity.id)).toBe(true);
-    const leaving = session.leaveWatch(activity.id);
-    const leave = socket.sent.findLast(command => command.type === 'join_watch')!;
-    socket.receive({ type: 'room_reply', roomId: 'first', requestId: leave.requestId, result: { type: 'done' } });
-    await leaving;
+    expect(session.getSnapshot().pending.has(`watch-video:${activity.id}`)).toBe(true);
+    expect(session.getSnapshot().watchPlayers.has(activity.id)).toBe(false);
+    session.cancelWatchPage(activity.id);
+    expect(socket.sent.some(command => command.type === 'join_watch' && command.id === activity.id)).toBe(false);
     expect(session.getSnapshot().pending.has('screen:first')).toBe(true);
     expect(video.src).toBe('https://media.test/new.mp4');
     connected({ preparePage } as unknown as appLink.ChannelApp);
@@ -11045,6 +11044,75 @@ test('cancelling indexed preparation closes its page and prevents late preparati
   } finally { session.close(); }
 });
 
+test.each(["cancel", "select", "stopped"])("opening an original webpage preserves the current receiver before %s", async outcome => {
+  const { session, socket } = await setup(1000, false);
+  const video = Object.assign(new WatchTestVideo(), { volume: 1, muted: false });
+  vi.stubGlobal("document", { createElement: () => video });
+  const id = "viewer-switch", url = "https://video.test/film";
+  const dispose = vi.fn(), candidateId = crypto.randomUUID();
+  const page = new appLink.AppPage(crypto.randomUUID(), url, async () => ({
+    position: 7, paused: true, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]],
+  }), dispose, () => {});
+  vi.spyOn(session as unknown as { connectApp(): Promise<appLink.ChannelApp> }, "connectApp")
+    .mockResolvedValue({ preparePage: async () => page } as unknown as appLink.ChannelApp);
+  try {
+    const state = { ...session.getSnapshot().state!, watchActivities: [{
+      id, roomId: "first", viewerSessionIds: [], sessionId: "other", userId: "other",
+      source: { kind: "website", url, mediaUrl: url + ".mp4" },
+      byteSource: { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" },
+      playback: { timeline: "media", position: 7, paused: true, rate: 1, anchorTime: 1000 },
+    }] };
+    socket.receive({ type: "state", state });
+    const joining = session.joinWatch(id, outcome === "select" ? "peer" : "direct");
+    const join = socket.sent.findLast(command => command.type === "join_watch")!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: join.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+    await joining;
+    video.volume = .37;
+    video.muted = true;
+    await session.prepareWatchPage("first", url, id);
+    expect(session.getSnapshot().watchPlayers.get(id)?.video).toBe(video);
+    if (outcome === "select") {
+      page.receive({ type: "page_candidates", pageId: page.id, url, candidates: [{ id: candidateId, title: "Film", url: null, duration: 60 }] });
+      const selecting = session.selectWatchPage("first", candidateId, id);
+      await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "join_watch")).toHaveLength(2));
+      expect(session.getSnapshot().watchPlayers.get(id)?.video).toBe(video);
+      const nextJoin = socket.sent.findLast(command => command.type === "join_watch")!;
+      const foreground = session.resumeWatches();
+      const modes = socket.sent.filter(command => command.type === "join_watch").map(command => command.mode);
+      socket.receive({ type: "room_reply", roomId: "first", requestId: nextJoin.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+      await selecting;
+      expect(modes).toEqual(["peer", "direct"]);
+      await foreground;
+      expect(session.getSnapshot().watchPlayers.get(id)?.media.page).toBe(page);
+
+      const direct = Object.assign(new WatchTestVideo(), { volume: 1, muted: false }), failed = new WatchTestVideo();
+      vi.stubGlobal("document", { createElement: vi.fn().mockReturnValueOnce(failed).mockReturnValueOnce(direct) });
+      const ready = vi.spyOn(HTMLVideoMedia.prototype, "ready").mockRejectedValueOnce(new Error("watch_media_failed")).mockResolvedValueOnce(undefined);
+      await expect(session.joinWatch(id, "direct")).rejects.toThrow("watch_media_failed");
+      expect(session.getSnapshot().watchPlayers.get(id)?.media.page).toBe(page);
+      await session.joinWatch(id, "direct");
+      expect(session.getSnapshot().watchPlayers.get(id)?.video).toBe(direct);
+      expect(direct.volume).toBe(.37);
+      expect(direct.muted).toBe(true);
+      expect(dispose).toHaveBeenCalledOnce();
+      expect(socket.sent.filter(command => command.type === "join_watch").map(command => command.mode)).toEqual(["peer", "direct"]);
+      ready.mockRestore();
+      expect(video.src).toBe("");
+    } else {
+      if (outcome === "cancel") {
+        session.cancelWatchPage(id);
+        expect(session.getSnapshot().watchPlayers.get(id)?.video).toBe(video);
+        expect(video.volume).toBe(.37);
+      } else {
+        socket.receive({ type: "state", state: { ...state, watchActivities: [] } });
+        expect(session.getSnapshot().watchPlayers.has(id)).toBe(false);
+      }
+      expect(dispose).toHaveBeenCalledOnce();
+      expect(socket.sent.filter(command => command.type === "join_watch")).toHaveLength(1);
+    }
+  } finally { session.close(); }
+});
+
 test.each(['select', 'cancel'] as const)('an unselected viewer webpage stays local through foreground and reconnect before %s', async outcome => {
   const { session, socket } = await setup(1000, false);
   const id = 'web-viewer', candidateId = crypto.randomUUID(), url = 'https://video.test/film';
@@ -11108,12 +11176,7 @@ test.each(['creator', 'viewer'] as const)('the %s focuses and retires its acquir
     (session as unknown as { app: appLink.ChannelApp }).app = { stopCaptures: vi.fn(), close: vi.fn() } as unknown as appLink.ChannelApp;
     await session.focusWatchPage('first', activityId);
     expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: 'page_focus' }), expect.any(AbortSignal));
-    if (activityId) {
-      const leaving = session.leaveWatch(activityId);
-      const command = socket.sent.findLast(value => value.type === 'join_watch')!;
-      socket.receive({ type: 'room_reply', roomId: 'first', requestId: command.requestId, result: { type: 'done' } });
-      await leaving;
-    } else await session.cancelScreenSelection('first');
+    if (activityId) session.cancelWatchPage(activityId); else await session.cancelScreenSelection('first');
     expect(dispose).toHaveBeenCalledOnce();
     expect(session.watchPage('first', activityId)).toBeUndefined();
   } finally { session.close(); }
