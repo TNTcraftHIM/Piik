@@ -2391,7 +2391,7 @@ export class ChannelSession {
     await this.request({ type: "join_watch", roomId: player.roomId, id, mode: player.mode }, event => {
       if (this.watchPlayers.get(id) === player && event.type === "room_reply" && event.result.type === "watch_ready"
         && typeof event.result.serverTime === "number") player.calibrate(event.result.serverTime, start);
-    }, player.roomId);
+    }, player.roomId, { signal: player.signal });
   }
   resumeWatches = async (): Promise<void> => {
     if (this.view.connection !== "connected") return;
@@ -2744,7 +2744,7 @@ export class ChannelSession {
         this.patch({});
       }
     });
-    try { await this.sampleWatchClock(id, player); this.browseRooms(); }
+    try { await this.sampleWatchClock(id, player); player.signal.throwIfAborted(); this.browseRooms(); }
     catch (error) { if (this.watchPlayers.get(id) === player) this.retireWatchPlayer(id); this.patch({}); throw error; }
   }
   leaveWatch = async (id: string): Promise<void> => {

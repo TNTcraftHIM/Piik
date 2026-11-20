@@ -37,6 +37,7 @@ export class WatchPlayer {
     this.presented = true; this.changed();
   }
   private lifetime = new AbortController();
+  get signal(): AbortSignal { return this.lifetime.signal; }
   private timer: ReturnType<typeof setInterval>;
   private unlisten: () => void;
   private operations = Promise.resolve();

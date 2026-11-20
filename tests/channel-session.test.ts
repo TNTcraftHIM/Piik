@@ -10230,6 +10230,28 @@ test("local video leave clears its audience membership through recovery without 
   } finally { session.close(); }
 });
 
+test("watch retirement cancels a viewer still waiting for the join reply", async () => {
+  const { session, socket } = await setup(1000, false);
+  const video = new WatchTestVideo();
+  vi.stubGlobal("document", { createElement: () => video });
+  const activity = { id: "watch-retired", roomId: "first", viewerSessionIds: [], sessionId: "other", userId: "other",
+    source: { kind: "media" as const, url: "https://media.test/one.mp4" },
+    playback: { timeline: "media" as const, position: 10, paused: true, rate: 1, anchorTime: 1000 } };
+  try {
+    const state = { ...session.getSnapshot().state!, watchActivities: [activity] };
+    socket.receive({ type: "state", state });
+    const cancelled = expect(session.joinWatch(activity.id)).rejects.toMatchObject({ name: "AbortError" });
+    const join = socket.sent.findLast(command => command.type === "join_watch")!;
+    socket.receive({ type: "state", state: { ...state, watchActivities: [] } });
+    expect(video.src).toBe("");
+    expect(session.getSnapshot().watchPlayers.has(activity.id)).toBe(false);
+    await cancelled;
+    expect(session.getSnapshot().pending.has("watch-video:" + activity.id)).toBe(false);
+    socket.receive({ type: "room_reply", roomId: "first", requestId: join.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+    expect(session.getSnapshot().watchPlayers.has(activity.id)).toBe(false);
+  } finally { session.close(); }
+});
+
 test.each(['activity', 'subscription'] as const)('watch authority %s removal retires playback during another source selection', async removal => {
   const { session, socket } = await setup(1000, false);
   const video = new WatchTestVideo(), candidate = new WatchTestVideo(); candidate.readyState = 0;
