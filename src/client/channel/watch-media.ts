@@ -308,6 +308,7 @@ async function requireNativeHlsVod(url: string, signal: AbortSignal): Promise<vo
 
 /** The App link owns the selected webpage and rejects outstanding reads on close. */
 export interface AppPagePort {
+  readonly id?: string;
   read(): Promise<WatchMediaState>;
   patch(value: WatchMediaPatch): Promise<void>;
   listen(changed: (event: WatchMediaEvent) => void): () => void;

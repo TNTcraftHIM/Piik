@@ -34,6 +34,23 @@ function withWatchDocument(render: () => string): string {
 }
 
 describe("Webpage watch presentation", () => {
+  it("reserves a native slot only for a full stage with a local page and shell bridge", () => {
+    const render = (pageId?: string, nativeStage = true) => renderToStaticMarkup(createElement(ChannelWatchVideo, {
+      player: { video: null, media: { page: { id: pageId } }, presentation: { kind: "external" } } as unknown as WatchPlayer,
+      owned: false, paused: true, label: "Original page", presentation: "full", disabled: false,
+      website: true, originalPageAvailable: true, theaterMode: false, onToggleTheater: vi.fn(),
+      nativeStage, onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
+    }));
+    withWatchDocument(() => {
+      vi.stubGlobal("window", {});
+      expect(render("local")).not.toContain("c3-watch-native-slot");
+      window.piikMountWatchPage = vi.fn();
+      expect(render("local")).toContain("c3-watch-native-slot");
+      expect(render()).not.toContain("c3-watch-native-slot");
+      expect(render("local", false)).not.toContain("c3-watch-native-slot");
+      return "";
+    });
+  });
   it.each(["video", "external"])("allows the sharer to pause a buffering %s after the room clock stops", kind => {
     setCopy({ lang: "en" });
     watchButtonClicks.clear();

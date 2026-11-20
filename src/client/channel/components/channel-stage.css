@@ -59,7 +59,7 @@
 .c3-monitor-source-row { position: absolute; inset: 6px 6px auto; z-index: 5; display: flex; flex-wrap: wrap; padding: 2px 4px; gap: 2px; color: var(--ink); border-radius: var(--c3-inset-radius); transition: opacity var(--motion-feedback) ease, transform var(--motion-control) ease; }
 .c3-monitor-source-info { display: grid; grid-template-columns: 20px minmax(5ch, 1fr) minmax(0, auto); flex: 1 1 128px; align-items: center; gap: 2px; min-width: 0; }
 .c3-monitor-social { display: flex; align-items: center; gap: 2px; min-width: 0; }
-.c3-monitor-tile[data-embed] > footer .c3-monitor-source-row {
+.c3-monitor-tile:is([data-embed], :has(> [data-native-page])) > footer .c3-monitor-source-row {
   position: static;
   inset: auto;
   opacity: 1;

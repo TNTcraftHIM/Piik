@@ -1447,9 +1447,10 @@ async fn connection(
         };
         let processing = async {
             let (page_events, mut page_queue) = mpsc::channel(64);
-            let pages = Arc::new(page::Connection::new(
+            let pages = Arc::new(page::Connection::for_site(
                 app.config.page_player.clone(),
                 page_events,
+                site.to_owned(),
             ));
             let mut host: Option<mpsc::Sender<HostCommand>> = None;
             let mut captures: BTreeMap<Uuid, Capture> = BTreeMap::new();

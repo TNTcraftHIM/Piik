@@ -216,6 +216,7 @@ pub fn valid_url(value: &str) -> bool {
 }
 #[derive(Clone)]
 pub struct Events {
+    pub(crate) origin: String,
     queue: mpsc::Sender<Value>,
     overflow: watch::Sender<bool>,
 }
@@ -296,12 +297,17 @@ impl Drop for ResourceRead {
     }
 }
 impl Connection {
+    #[cfg(test)]
     pub fn new(dispatch: Option<Dispatcher>, events: mpsc::Sender<Value>) -> Self {
+        Self::for_site(dispatch, events, String::new())
+    }
+    pub fn for_site(dispatch: Option<Dispatcher>, events: mpsc::Sender<Value>, origin: String) -> Self {
         let (overflow, failed) = watch::channel(false);
         Self {
             owner: Uuid::new_v4(),
             dispatch,
             events: Events {
+                origin,
                 queue: events,
                 overflow,
             },

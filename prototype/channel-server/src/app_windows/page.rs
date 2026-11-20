@@ -14,7 +14,7 @@ use std::{
 use tao::{
     dpi::LogicalSize,
     event_loop::{EventLoopProxy, EventLoopWindowTarget},
-    platform::windows::WindowBuilderExtWindows,
+    platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
     window::{Window, WindowId},
 };
 use tokio::sync::oneshot;
@@ -126,8 +126,54 @@ struct PageView {
     view: WebView,
     window: Window,
     document: Option<Uuid>,
+    mounted: Option<(isize, wry::Rect)>,
     media: Rc<RefCell<media::Media>>,
 }
+impl PageView {
+    fn mount(&mut self, parent: isize, bounds: wry::Rect) -> Result<()> {
+        if let Some((current, _)) = self.mounted {
+            if current != parent {
+                self.release_mount()?;
+            }
+        }
+        if self.mounted.is_none() {
+            let scale = self.window.scale_factor();
+            let previous = self.view.bounds()?;
+            let standalone_bounds = wry::Rect {
+                position: previous.position.to_logical::<f64>(scale).into(),
+                size: previous.size.to_logical::<f64>(scale).into(),
+            };
+            self.view.set_visible(false)?;
+            if let Err(error) = self.view.reparent(parent) {
+                let _ = self.view.set_visible(true);
+                return Err(error.into());
+            }
+            self.mounted = Some((parent, standalone_bounds));
+            self.window.set_visible(false);
+        }
+        if let Err(error) = self
+            .view
+            .set_bounds(bounds)
+            .and_then(|()| self.view.set_visible(true))
+        {
+            let _ = self.release_mount();
+            return Err(error.into());
+        }
+        Ok(())
+    }
+
+    fn release_mount(&mut self) -> Result<()> {
+        if let Some((_, bounds)) = self.mounted {
+            self.view.set_visible(false)?;
+            self.view.reparent(self.window.hwnd())?;
+            self.mounted = None;
+            self.view.set_bounds(bounds)?;
+            self.view.set_visible(true)?;
+        }
+        Ok(())
+    }
+}
+
 impl Drop for PageView {
     fn drop(&mut self) {
         let pending = std::mem::take(&mut *self.popups.borrow_mut());
@@ -139,6 +185,7 @@ struct Page {
     root: Uuid,
     views: Views,
     owner: Uuid,
+    origin: String,
     id: Uuid,
     events: page::Events,
     candidates: BTreeMap<Uuid, Candidate>,
@@ -227,17 +274,112 @@ impl Pages {
     pub fn clear(&mut self) {
         self.pages.clear();
     }
+    pub fn mount(
+        &mut self,
+        page_id: Uuid,
+        origin: &str,
+        main: &Window,
+        bounds: Option<wry::Rect>,
+    ) -> bool {
+        let Some(page) = self
+            .pages
+            .values()
+            .find(|page| page.id == page_id && page.origin == origin)
+        else {
+            return false;
+        };
+        let Some(candidate) = page.selected.and_then(|id| page.candidates.get(&id)) else {
+            return false;
+        };
+        let view_id = candidate.view;
+        let views = page.views.clone();
+        if bounds.is_some() {
+            for page in self.pages.values() {
+                for (id, view) in page.views.borrow_mut().iter_mut() {
+                    if *id != view_id && view.release_mount().is_err() {
+                        return false;
+                    }
+                }
+            }
+        }
+        let mut views = views.borrow_mut();
+        let Some(view) = views
+            .get_mut(&view_id)
+            .filter(|view| view.document.is_some())
+        else {
+            return false;
+        };
+        match bounds {
+            Some(bounds) => view.mount(main.hwnd(), bounds).is_ok(),
+            None => view.release_mount().is_ok(),
+        }
+    }
+
+    pub fn release_mounts(&mut self) {
+        for page in self.pages.values() {
+            for view in page.views.borrow_mut().values_mut() {
+                let _ = view.release_mount();
+            }
+        }
+    }
+
     pub fn appearance(&self, theme: &Theme, language: Language) {
-        for page in self.pages.values() { for view in page.views.borrow().values() { view.caption.appearance(theme, language, None); } }
+        for page in self.pages.values() {
+            for view in page.views.borrow().values() {
+                view.caption.appearance(theme, language, None);
+            }
+        }
     }
     pub fn window_action(&self, id: WindowId, action: &WindowAction) {
-        for page in self.pages.values() { if let Some(view) = page.views.borrow().values().find(|view| view.window.id() == id) { caption::apply(&view.window, action); return; } }
+        for page in self.pages.values() {
+            if let Some(view) = page
+                .views
+                .borrow()
+                .values()
+                .find(|view| view.window.id() == id)
+            {
+                caption::apply(&view.window, action);
+                return;
+            }
+        }
     }
-    pub fn caption_ready(&self, id: WindowId, theme: &Theme, language: Language, controls: &WindowControls) {
-        for page in self.pages.values() { if let Some(view) = page.views.borrow().values().find(|view| view.window.id() == id) { view.caption.ready(theme, language); view.caption.title(&view.window.title()); view.caption.layout(&view.window, &view.view, controls); return; } }
+    pub fn caption_ready(
+        &self,
+        id: WindowId,
+        theme: &Theme,
+        language: Language,
+        controls: &WindowControls,
+    ) {
+        for page in self.pages.values() {
+            if let Some(view) = page
+                .views
+                .borrow()
+                .values()
+                .find(|view| view.window.id() == id)
+            {
+                view.caption.ready(theme, language);
+                view.caption.title(&view.window.title());
+                if view.mounted.is_none() {
+                    view.caption.layout(&view.window, &view.view, controls);
+                }
+                return;
+            }
+        }
     }
     pub fn resize(&self, id: WindowId, controls: &WindowControls) {
-        for page in self.pages.values() { if let Some(view) = page.views.borrow().values().find(|view| view.window.id() == id) { view.caption.layout(&view.window, &view.view, controls); return; } }
+        for page in self.pages.values() {
+            if let Some(view) = page
+                .views
+                .borrow()
+                .values()
+                .find(|view| view.window.id() == id)
+            {
+                if view.mounted.is_none() {
+                    view.caption.layout(&view.window, &view.view, controls);
+                }
+                return;
+            }
+        }
     }
     pub fn close_window(&mut self, id: WindowId) -> bool {
         let found = self.pages.iter().find_map(|(key, page)| {
@@ -510,6 +652,16 @@ impl Pages {
                     return;
                 }
                 if page.selected.is_some_and(|id| id != candidate_id) {
+                    if let Err(error) = page
+                        .views
+                        .borrow_mut()
+                        .get_mut(&page.selected_view())
+                        .unwrap()
+                        .release_mount()
+                    {
+                        let _ = reply.send(Err(error.to_string()));
+                        return;
+                    }
                     page.views.borrow()[&page.selected_view()]
                         .media
                         .borrow_mut()
@@ -537,8 +689,12 @@ impl Pages {
                 let _ = reply.send(result);
             }
             Operation::PageFocus { .. } => {
-                let views = page.views.borrow();
-                let view = &views[&page.selected_view()];
+                let mut views = page.views.borrow_mut();
+                let view = views.get_mut(&page.selected_view()).unwrap();
+                if let Err(error) = view.release_mount() {
+                    let _ = reply.send(Err(error.to_string()));
+                    return;
+                }
                 view.window.set_visible(true);
                 view.window.set_minimized(false);
                 view.window.set_focus();
@@ -587,6 +743,7 @@ impl Pages {
                 root: key,
                 views,
                 owner,
+                origin: outgoing.origin.clone(),
                 id,
                 events: outgoing,
                 candidates: BTreeMap::new(),
@@ -835,7 +992,10 @@ fn page_view(
         .with_title("Piik · Video")
         .with_decorations(false)
         .with_undecorated_shadow(true)
-        .with_inner_size(caption::window_size(LogicalSize::new(1000., 720.), &controls))
+        .with_inner_size(caption::window_size(
+            LogicalSize::new(1000., 720.),
+            &controls,
+        ))
         .build(target)?;
     let messages = events.clone();
     let navigating = events.clone();
@@ -908,6 +1068,7 @@ fn page_view(
         view,
         window,
         document: None,
+        mounted: None,
         media,
     })
 }

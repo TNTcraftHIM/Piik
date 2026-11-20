@@ -2,6 +2,7 @@
 mod console;
 mod caption;
 mod reveal;
+mod watch_mount;
 mod download;
 mod page;
 mod permission;
@@ -158,6 +159,7 @@ enum ServiceEvent {
     },
     Navigate(String),
     ContentLoading,
+    Mount(watch_mount::Request, String, u64),
     Finished,
     PopupClosed(WindowId),
     PopupPresentation(WindowId, popup::Message),
@@ -338,6 +340,7 @@ impl MainWindow {
         let content = WebViewBuilder::new_with_web_context(context).with_url("about:blank")
             .with_initialization_script(CAPABILITY)
             .with_initialization_script(reveal::SCRIPT)
+            .with_initialization_script_for_main_only(watch_mount::SCRIPT, true)
             .with_initialization_script(download::SCRIPT)
             .with_on_page_load_handler(move |event, _| {
                 // Wry maps Started to top-level ContentLoading, after cancellation is resolved.
@@ -347,6 +350,10 @@ impl MainWindow {
                 }
             })
             .with_ipc_handler(move |request| {
+                if let Ok(request_body) = serde_json::from_str::<watch_mount::Request>(request.body()) {
+                    let _ = content_events.send_event(ServiceEvent::Mount(request_body, request.uri().to_string(), ipc_document.get()));
+                    return;
+                }
                 if let Ok(message) = serde_json::from_str::<reveal::Request>(request.body()) {
                     let _ = content_events.send_event(ServiceEvent::Reveal(message, request.uri().to_string(), ipc_document.get()));
                     return;
@@ -592,7 +599,11 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                     prompt.update_appearance(&theme, language);
                 }
             }
+            Event::UserEvent(ServiceEvent::Mount(request, source, generation)) => {
+                if let Some(main) = &window { request.apply(main, &mut pages, &source, generation); }
+            }
             Event::UserEvent(ServiceEvent::ContentLoading) => {
+                pages.release_mounts();
                 if let Some(main) = &window {
                     if prompt.as_ref().is_some_and(|dialog| dialog.stale(main)) { prompt.take(); }
                     main.caption.content_loading();
