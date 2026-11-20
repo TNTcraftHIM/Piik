@@ -2508,6 +2508,36 @@ mod tests {
     }
 
     #[test]
+    fn hosted_repair_reuses_the_helpers_confirmed_hop() {
+        let id = Uuid::from_u128;
+        let (prior, endpoints) = screen_on_room_base();
+        let mut room = RoomRuntime::new(prior.policy);
+        room.set_writer(id(5), crate::wire::HostingMode::Hosted);
+        let (source, first_receiver, helper, waiting) = (id(1), id(2), id(3), id(4));
+        for (&peer, endpoint) in &endpoints {
+            room.browse(endpoint.member, peer, true).unwrap();
+        }
+        let file = crate::AttachmentDescriptor {
+            id: id(9), name: "sample".into(), size: 3,
+            media_type: "application/octet-stream".into(),
+            sha256: crate::attachment::sha256_hex(b"abc"),
+        };
+        room.finish_file(source, 1, source, file.clone(), true, true).unwrap();
+        room.finish_file(first_receiver, 1, source, file.clone(), false, true).unwrap();
+        let pairs = BTreeSet::from([(source, first_receiver), (first_receiver, helper)]);
+        room.reconcile_with_pairs(&endpoints, 0, &pairs);
+        room.base_state(source, first_receiver, true).unwrap();
+        room.base_state(first_receiver, source, true).unwrap();
+        room.finish_file(waiting, 1, source, file, false, true).unwrap();
+        room.reconcile_with_pairs(&endpoints, 1, &pairs);
+        room.failed_pair(source, waiting);
+        room.reconcile_with_pairs(&endpoints, 2, &pairs);
+        room.failed_pair(first_receiver, waiting);
+        room.reconcile_with_pairs(&endpoints, 3, &pairs);
+        assert!(room.base_links().any(|link| link.parent == first_receiver && link.child == helper));
+    }
+
+    #[test]
     fn hosted_file_repair_uses_a_reader_with_both_confirmed_links() {
         let id = Uuid::from_u128;
         let (prior, endpoints) = screen_on_room_base();
