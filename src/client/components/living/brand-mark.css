@@ -1,10 +1,10 @@
 @import "../../../../site/assets/brand-motion.css";
 
 .lr-brand-lockup { display: flex; align-items: baseline; }
-.lr-brand-lockup.is-compact { align-items: center; gap: 8px; font-size: 16px; letter-spacing: -.03em; }
+.lr-brand-lockup.is-compact { gap: 8px; font-size: 16px; letter-spacing: -.03em; }
 .lr-brand-lockup.is-compact small { margin-inline-start: .4em; font-size: .7em; font-weight: 500; color: var(--muted); }
 /* The mascot's feet sit at y=29 in its 32-unit canvas; align them to the wordmark baseline. */
-.lr-brand-lockup:not(.is-compact) > .lr-brand-mark { translate: 0 9.375%; }
+.lr-brand-lockup > .lr-brand-mark { translate: 0 9.375%; }
 .lr-brand-dot { color: #e77d38; }
 
 .lr-brand-mark {
