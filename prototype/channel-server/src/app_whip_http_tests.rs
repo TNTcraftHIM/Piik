@@ -39,6 +39,7 @@ fn fixture() -> (
         desktop: Desktop::new().unwrap(),
         external_inputs: Inputs::default(),
         capture_targets: Default::default(),
+        capture_microphones: Default::default(),
         update: update::Owner::disabled(),
     });
     let binding = Uuid::new_v4();

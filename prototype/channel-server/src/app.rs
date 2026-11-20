@@ -155,6 +155,8 @@ impl Registry {
 }
 type CaptureCatalog = Option<Result<Value, String>>;
 type CaptureTargets = watch::Receiver<CaptureCatalog>;
+#[derive(Clone, Copy)]
+enum CaptureCatalogKind { Targets, Microphones }
 
 #[derive(Default)]
 struct CaptureTargetReader {
@@ -174,10 +176,11 @@ struct App {
     external_inputs: whip::Inputs,
     update: update::Owner,
     capture_targets: CaptureTargetReader,
+    capture_microphones: CaptureTargetReader,
 }
 
 impl CaptureTargetReader {
-    async fn read(&self) -> CaptureTargets {
+    async fn read(&self, kind: CaptureCatalogKind) -> CaptureTargets {
         let mut active = self.active.lock().await;
         if let Some(result) = active.upgrade() {
             if result.borrow().is_none() {
@@ -193,13 +196,37 @@ impl CaptureTargetReader {
             #[cfg(test)]
             let catalog = match test_read {
                 Some(read) => read().await,
-                None => capture_targets().await,
+                None => kind.read().await,
             };
             #[cfg(not(test))]
-            let catalog = capture_targets().await;
+            let catalog = kind.read().await;
             result.send_replace(Some(catalog.map_err(|error| error.to_string())));
         });
         read
+    }
+}
+
+impl CaptureCatalogKind {
+    async fn read(self) -> Result<Value> {
+        match self {
+            Self::Targets => capture_targets().await,
+            Self::Microphones => tokio::task::spawn_blocking(|| {
+                Ok(serde_json::to_value(piik_channel_native::capture::microphones()?)?)
+            }).await?,
+        }
+    }
+}
+
+async fn catalog_reply(pending: &mut Option<(String, CaptureTargets)>) -> Value {
+    let Some((_, read)) = pending.as_mut() else { return std::future::pending().await; };
+    let result = match read.wait_for(Option::is_some).await {
+        Ok(value) => value.as_ref().expect("capture catalog resolved").clone(),
+        Err(_) => Err("capture_targets_failed".into()),
+    };
+    let (id, _) = pending.take().expect("capture catalog pending");
+    match result {
+        Ok(value) => json!({"id":id,"result":value}),
+        Err(error) => json!({"id":id,"error":error}),
     }
 }
 
@@ -421,6 +448,7 @@ pub async fn serve(
         desktop: Desktop::new()?,
         external_inputs: whip::Inputs::default(),
         capture_targets: CaptureTargetReader::default(),
+        capture_microphones: CaptureTargetReader::default(),
         config,
         port: address.port(),
         token: Uuid::new_v4().to_string(),
@@ -1503,7 +1531,8 @@ async fn connection(
             let mut input_states = FuturesUnordered::new();
             let mut audio_states = FuturesUnordered::new();
             let mut operations = FuturesUnordered::new();
-            let mut targets: Option<(String, CaptureTargets)> = None;
+            let mut targets = None;
+            let mut microphones = None;
             let mut previews = FuturesUnordered::new();
             let (external_requests, mut external_queue) = mpsc::channel(8);
             let mut external_page = whip::Page::default();
@@ -1754,18 +1783,12 @@ async fn connection(
                         }
                         continue;
                     }
-                    result = async {
-                        let (_, read) = targets.as_mut().expect("target request pending");
-                        match read.wait_for(Option::is_some).await {
-                            Ok(value) => value.as_ref().expect("target catalog resolved").clone(),
-                            Err(_) => Err("capture_targets_failed".into()),
+                    response = async {
+                        tokio::select! {
+                            response = catalog_reply(&mut targets) => response,
+                            response = catalog_reply(&mut microphones) => response,
                         }
-                    }, if targets.is_some() => {
-                        let (id, _) = targets.take().expect("target request pending");
-                        let response = match result {
-                            Ok(value) => json!({"id":id,"result":value}),
-                            Err(error) => json!({"id":id,"error":error}),
-                        };
+                    }, if targets.is_some() || microphones.is_some() => {
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         continue;
                     }
@@ -2213,24 +2236,17 @@ async fn connection(
                                 Some(_) => Err(anyhow!("request_pending")),
                                 None => Err(anyhow!("hello_required")),
                             },
-                            Operation::Targets => match &host {
+                            operation @ (Operation::Targets | Operation::Microphones) => match &host {
                                 Some(_) => {
-                                    if let Some((id, _)) = targets.replace((request.id, app.capture_targets.read().await)) {
+                                    let (kind, reader, pending) = match operation {
+                                        Operation::Targets => (CaptureCatalogKind::Targets, &app.capture_targets, &mut targets),
+                                        _ => (CaptureCatalogKind::Microphones, &app.capture_microphones, &mut microphones),
+                                    };
+                                    if let Some((id, _)) = pending.replace((request.id, reader.read(kind).await)) {
                                         let response = json!({"id":id,"error":"request_cancelled"});
                                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                                     }
                                     continue;
-                                }
-                                None => Err(anyhow!("hello_required")),
-                            },
-                            Operation::Microphones => match &host {
-                                Some(_) => {
-                                    tokio::task::spawn_blocking(|| {
-                                        Ok(serde_json::to_value(
-                                            piik_channel_native::capture::microphones()?,
-                                        )?)
-                                    })
-                                    .await?
                                 }
                                 None => Err(anyhow!("hello_required")),
                             },
@@ -2945,6 +2961,9 @@ mod lifecycle_tests {
         let (entered, mut target_reads) = mpsc::unbounded_channel();
         let release_targets = Arc::new(tokio::sync::Semaphore::new(0));
         let target_gate = release_targets.clone();
+        let (mic_entered, mut mic_reads) = mpsc::unbounded_channel();
+        let release_microphones = Arc::new(tokio::sync::Semaphore::new(0));
+        let microphone_gate = release_microphones.clone();
         let host = Host {
             credential: "owned".into(),
             commands: commands.clone(),
@@ -2987,6 +3006,17 @@ mod lifecycle_tests {
                     async move {
                         target_gate.acquire().await.unwrap().forget();
                         Ok(json!({"sources":[]}))
+                    }.boxed()
+                })),
+                ..Default::default()
+            },
+            capture_microphones: CaptureTargetReader {
+                test_read: Some(Arc::new(move || {
+                    mic_entered.send(()).unwrap();
+                    let microphone_gate = microphone_gate.clone();
+                    async move {
+                        microphone_gate.acquire().await.unwrap().forget();
+                        Ok(json!([{"id":"mic","label":"Fixture microphone"}]))
                     }.boxed()
                 })),
                 ..Default::default()
@@ -3113,6 +3143,8 @@ mod lifecycle_tests {
             // A previously approved control remains valid while its Native Host
             // loses admission. Identity reads do not reuse the readiness gate.
             ready.send_replace(None);
+            socket.send(WsMessage::Text(json!({"id":"microphones","type":"microphones"}).to_string().into())).await.unwrap();
+            timeout(IO_TIMEOUT, mic_reads.recv()).await.unwrap().unwrap();
             if !revoke {
                 socket.send(WsMessage::Text(json!({"id":"old-targets","type":"targets"}).to_string().into())).await.unwrap();
                 timeout(IO_TIMEOUT, target_reads.recv()).await.unwrap().unwrap();
@@ -3140,6 +3172,11 @@ mod lifecycle_tests {
                     assert!(ready.borrow().is_none());
                 }
                 assert!(target_reads.try_recv().is_err());
+                assert!(mic_reads.try_recv().is_err());
+                release_microphones.add_permits(1);
+                let microphones = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
+                assert_eq!(serde_json::from_str::<Value>(microphones.to_text().unwrap()).unwrap(),
+                    json!({"id":"microphones","result":[{"id":"mic","label":"Fixture microphone"}]}));
                 release_targets.add_permits(1);
                 let refreshed = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
                 assert_eq!(serde_json::from_str::<Value>(refreshed.to_text().unwrap()).unwrap(),
@@ -3159,13 +3196,21 @@ mod lifecycle_tests {
                 ))
                 .await
                 .unwrap();
-            let HostCommand::LocalEndpoint(mut result) = timeout(IO_TIMEOUT, receiver.recv())
-                .await.unwrap().unwrap() else { panic!("pending local endpoint read expected") };
+            let pending = timeout(IO_TIMEOUT, receiver.recv()).await;
             if revoke {
                 permission.revoked.send_replace(true);
+                let closed = timeout(IO_TIMEOUT, socket.next()).await.unwrap();
+                assert!(match closed {
+                    None | Some(Err(_)) | Some(Ok(WsMessage::Close(_))) => true,
+                    _ => false,
+                });
+                release_microphones.add_permits(1);
             } else {
                 socket.close(None).await.unwrap();
             }
+            let HostCommand::LocalEndpoint(mut result) = pending
+                .expect("mic enumeration blocked the authorized control socket")
+                .unwrap() else { panic!("pending local endpoint read expected") };
             timeout(IO_TIMEOUT, result.closed()).await.unwrap();
             assert!(!*stop.borrow(), "control retirement stopped its independent Host");
         }
@@ -3304,6 +3349,7 @@ mod lifecycle_tests {
             desktop: Desktop::new().unwrap(),
             external_inputs: whip::Inputs::default(),
             capture_targets: CaptureTargetReader::default(),
+            capture_microphones: CaptureTargetReader::default(),
             update: update::Owner::disabled(),
         });
         let server_app = app.clone();
@@ -3510,6 +3556,7 @@ mod lifecycle_tests {
             desktop: Desktop::new().unwrap(),
             external_inputs: whip::Inputs::default(),
             capture_targets: CaptureTargetReader::default(),
+            capture_microphones: CaptureTargetReader::default(),
             update: update::Owner::disabled(),
         });
         let router = Router::new()
@@ -3749,6 +3796,7 @@ mod lifecycle_tests {
             desktop: Desktop::new().unwrap(),
             external_inputs: whip::Inputs::default(),
             capture_targets: CaptureTargetReader::default(),
+            capture_microphones: CaptureTargetReader::default(),
             update: update::Owner::disabled(),
         });
         let router = Router::new()
@@ -3936,6 +3984,7 @@ mod lifecycle_tests {
                 desktop: Desktop::new().unwrap(),
                 external_inputs: whip::Inputs::default(),
                 capture_targets: CaptureTargetReader::default(),
+                capture_microphones: CaptureTargetReader::default(),
                 update: update::Owner::disabled(),
             })
         };
@@ -4129,6 +4178,7 @@ mod lifecycle_tests {
             desktop: Desktop::new().unwrap(),
             external_inputs: whip::Inputs::default(),
             capture_targets: CaptureTargetReader::default(),
+            capture_microphones: CaptureTargetReader::default(),
             update: update::Owner::disabled(),
         });
         // Observe the actual HTTP handler future being dropped, without replacing

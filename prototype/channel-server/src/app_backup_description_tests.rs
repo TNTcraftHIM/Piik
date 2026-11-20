@@ -80,6 +80,7 @@ impl Fixture {
             desktop: Desktop::new().unwrap(),
             external_inputs: whip::Inputs::default(),
             capture_targets: Default::default(),
+            capture_microphones: Default::default(),
             update: update::Owner::disabled(),
         });
         let router = Router::new()
