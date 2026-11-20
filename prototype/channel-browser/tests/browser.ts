@@ -1,3 +1,4 @@
+import { FileStore } from "../../../src/client/channel/file-store";
 import { BrowserRoomHost, conversation_broadcast, createRoomPolicy, createSessionSigner, initializeRuntime, decode_control, encode_control, verify_reply, type SentResult } from "../src/room-host";
 import type { SignedConversationPacket } from "../../../src/client/channel/protocol";
 import { IDENTITY_IMAGE_URL_BYTES, identityIconSchema } from "../../../src/client/channel/protocol";
@@ -834,6 +835,33 @@ window.runBrowserRoomCheck = async () => {
       }
     } finally { db.close(); }
     await checkReplyStorage();
+    const fileScope = { domainId: crypto.randomUUID(), userId: owner.userId };
+    const fileStore = new FileStore(fileScope);
+    try {
+      const file = new File(["copy"], "copy.txt", { type: "application/octet-stream" });
+      const attachment = { id: crypto.randomUUID(), name: file.name, size: file.size, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
+      const roomId = host.roomId, otherRoom = crypto.randomUUID();
+      for (const key of [{ roomId, messageSeq: 1 }, { roomId, messageSeq: 2 }, { roomId: otherRoom, messageSeq: 1 }]) {
+        const fullKey = { ...key, attachmentId: attachment.id };
+        const retained = await fileStore.retain({ key: fullKey, attachment, file }, { maxRetainedBytes: 1024, maxRetainedFiles: 10 });
+        check(retained.file?.size === file.size, "attachment enters the browser cache");
+        check(await fileStore.saveReceipt({ key: fullKey, sha256: attachment.sha256, receipt: crypto.randomUUID() }, () => true),
+          "native save receipt enters the browser index");
+      }
+      await fileStore.removeMessages(roomId, seq => seq <= 1);
+      const reopened = new FileStore(fileScope);
+      check((await reopened.list([roomId])).map(entry => entry.key.messageSeq).join() === "2"
+        && (await reopened.receipts([roomId])).map(entry => entry.key.messageSeq).join() === "2",
+      "clear removes scoped cached bytes and saved-file receipts through the boundary");
+      check((await reopened.list([otherRoom])).length === 1 && (await reopened.receipts([otherRoom])).length === 1,
+        "clear preserves independently cached attachments and receipts in other rooms");
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        const request = indexedDB.deleteDatabase("piik.channel.files." + fileScope.domainId + "." + fileScope.userId);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    }
     await checkImageHistoryBudget();
     await new Promise<void>((resolve, reject) => {
       const upgrade = indexedDB.open(database, 8);
