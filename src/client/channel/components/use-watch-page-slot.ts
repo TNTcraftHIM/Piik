@@ -22,12 +22,26 @@ export function useWatchPageSlot(pageId: string | undefined) {
     let closed = false, revision = 0, previous: string | undefined;
     const update = () => {
       const rect = node.getBoundingClientRect();
-      const visible = document.visibilityState === "visible" && node.checkVisibility()
+      let left = Math.max(0, rect.left), top = Math.max(0, rect.top);
+      let right = Math.min(window.innerWidth, rect.right), bottom = Math.min(window.innerHeight, rect.bottom);
+      for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+        const style = getComputedStyle(parent);
+        if (style.overflowX === "visible" && style.overflowY === "visible") continue;
+        const box = parent.getBoundingClientRect();
+        if (style.overflowX !== "visible") {
+          left = Math.max(left, box.left + parent.clientLeft);
+          right = Math.min(right, box.left + parent.clientLeft + parent.clientWidth);
+        }
+        if (style.overflowY !== "visible") {
+          top = Math.max(top, box.top + parent.clientTop);
+          bottom = Math.min(bottom, box.top + parent.clientTop + parent.clientHeight);
+        }
+      }
+      left = Math.ceil(left); top = Math.ceil(top);
+      right = Math.floor(right); bottom = Math.floor(bottom);
+      const visible = document.visibilityState === "visible" && node.checkVisibility() && !node.closest("[inert]")
         && !document.querySelector("dialog[open], :popover-open");
-      const left = Math.max(0, Math.ceil(rect.left)), top = Math.max(0, Math.ceil(rect.top));
-      const right = Math.min(window.innerWidth, Math.floor(rect.right)), bottom = Math.min(window.innerHeight, Math.floor(rect.bottom));
-      const bounds = visible && right > left && bottom > top &&
-        [[left, top], [right - 1, top], [left, bottom - 1], [right - 1, bottom - 1]].every(([x,y]) => document.elementFromPoint(x,y) === node)
+      const bounds = visible && right > left && bottom > top
         ? { x: left, y: top, width: right - left, height: bottom - top } : null;
       const key = JSON.stringify(bounds);
       if (key === previous) return;
@@ -35,8 +49,11 @@ export function useWatchPageSlot(pageId: string | undefined) {
       if (!bounds && revision === 0) return;
       const request = ++revision;
       void mount(pageId, bounds).then(ok => {
-        if (!closed && request === revision) setMounted(!!bounds && ok);
-      }, () => { if (!closed && request === revision) setMounted(false); });
+        if (!closed && request === revision) {
+          if (!ok && bounds) previous = undefined;
+          setMounted(!!bounds && ok);
+        }
+      }, () => { if (!closed && request === revision) { previous = undefined; setMounted(false); } });
     };
     const listeners = new AbortController();
     const options = { capture: true, signal: listeners.signal };

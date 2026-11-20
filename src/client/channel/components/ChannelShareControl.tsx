@@ -434,9 +434,12 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
         <Btn icon="globe" quiet title="watch.browserSource.skip" cap="watch.browserSource.skip" disabled={busy}
           onClick={() => { void run(() => channel.selectWatchBrowserSource(roomId, null, false), onClose); }} />
       </> : page.candidates.length ? <div className="lr-source-picker-list">
-        {page.candidates.map((candidate, index) => <CaptureSourceCard key={candidate.id} title={candidate.title || t("watch.videoNumber", { number: String(index + 1) })}
+        {page.candidates.map((candidate, index) => <div key={candidate.id} className="c3-external-input"><CaptureSourceCard title={candidate.title || t("watch.videoNumber", { number: String(index + 1) })}
           action={t("watch.selectVideoNamed", { name: candidate.title || String(index + 1) })} icon="play" hint="hint-source-picker" disabled={busy}
-          onSelect={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, activityId, false), committed => { if (committed) onClose(); }); }} />)}
+          onSelect={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, activityId, false), committed => { if (committed) onClose(); }); }} />
+          {!activityId && candidate.url && <Btn icon="sliders" quiet title="watch.browserSource.title" cap="watch.browserSource.title" disabled={busy}
+            onClick={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, undefined, false, "choose-source")); }} />}
+        </div>)}
       </div> : <div className="lr-source-picker-status" role="status">{busy && <BrandLoader />}<span>{t("watch.waitForVideo")}</span></div>}
       <Btn icon="x" quiet title="common.cancel" cap="common.cancel" disabled={committing} onClick={close} />
     </div> : activityId ? <div className="c3-settings-panels c3-external-input"><p role="status">{busy ? t("watch.openingPage") : t("watch.pageUnavailable")}</p>

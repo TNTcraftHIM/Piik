@@ -143,6 +143,18 @@ describe("Webpage watch presentation", () => {
     expect(html).toMatch(/type="button"[^>]*aria-label="Play direct video URL"[^>]*disabled=""/);
   });
 
+  it.each([[undefined, true, true], ["watch", true, false], [undefined, false, false]] as const)(
+    "shows playback source selection for an eligible creator candidate (%s, %s)",
+    (activityId, hasURL, expected) => {
+      setCopy({ lang: "en" });
+      const channel = { pending: new Set(), sourceSelectionCommitting: () => false, watchEmbed: () => undefined,
+        watchPage: () => ({ candidates: [{ id: "video", url: hasURL ? "https://video.test/video.mp4" : undefined }] }),
+      } as unknown as ChannelController;
+      const html = renderToStaticMarkup(createElement(WatchSourceDialog, { channel, roomId: "room", activityId, onClose: vi.fn() }));
+      expect(html.includes('aria-label="Choose playback source"')).toBe(expected);
+    },
+  );
+
   it.each([true, false])("explains original-page access before sharing with a direct candidate=%s", direct => {
     setCopy({ lang: "en" });
     const channel = { appConnected: true, pagePlayer: true, pending: new Set(), watchEmbed: () => undefined,

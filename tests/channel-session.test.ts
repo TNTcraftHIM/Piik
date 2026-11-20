@@ -11138,7 +11138,7 @@ test('recovery cancels a disconnected watch candidate once using its Welcome act
   } finally { session.close(); }
 });
 
-test('webpage discovery requires an explicit browser source choice without preparing an upload', async () => {
+test.each([false, true])('webpage discovery requires an explicit source choice (portable candidate %s)', async portable => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response('#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2,\nsegment.ts\n#EXT-X-ENDLIST\n')));
   vi.stubGlobal('document', { createElement: () => new WatchTestVideo() });
   vi.spyOn(HTMLVideoMedia.prototype, 'ready').mockResolvedValue();
@@ -11147,9 +11147,12 @@ test('webpage discovery requires an explicit browser source choice without prepa
     { id: crypto.randomUUID(), displayURL: 'https://media.test/other.m3u8', name: 'Other', format: 'hls' as const },
   ];
   const indexed = { id: crypto.randomUUID(), name: 'Observed track', hostname: 'media.test', mimeType: 'video/mp4', totalSize: 1000000 };
-  const { session, candidateId, commit, request, socket } = await websiteSourceSelection(async () => ({ choices, indexedCandidates: [indexed], byteSource: null }));
+  const { session, page, candidateId, commit, request, socket } = await websiteSourceSelection(async () => ({ choices, indexedCandidates: [indexed], byteSource: null }));
   try {
-    await expect(session.selectWatchPage('first', candidateId)).resolves.toBe(false);
+    if (portable) page.receive({ type: 'page_candidates', pageId: page.id, url: page.url, candidates: [
+      { id: candidateId, title: 'Film', url: 'https://video.test/film.mp4', duration: 60 },
+    ] });
+    await expect(session.selectWatchPage('first', candidateId, undefined, false, portable ? 'choose-source' : undefined)).resolves.toBe(false);
     expect(session.watchPage('first')?.watchSources?.choices).toEqual(choices);
     expect(session.getSnapshot().watchPlayers.size).toBe(0);
     expect(commit).not.toHaveBeenCalled();

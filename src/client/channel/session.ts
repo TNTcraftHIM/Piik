@@ -2465,7 +2465,7 @@ export class ChannelSession {
     const selection = this.sourceSelections.get(roomId), page = selection?.page;
     return page ? { url: page.url, candidates: page.candidates, watchSources: selection?.watchSources } : undefined;
   };
-  selectWatchPage = async (roomId: string, candidateId: string, activityId?: string, reportError = true): Promise<boolean> => {
+  selectWatchPage = async (roomId: string, candidateId: string, activityId?: string, reportError = true, mode?: "choose-source"): Promise<boolean> => {
     if (activityId) { await this.selectWatchingPage(activityId, candidateId, reportError); return true; }
     return this.action(`screen:${roomId}`, async () => {
       const selection = this.sourceSelections.get(roomId), page = selection?.page;
@@ -2489,7 +2489,7 @@ export class ChannelSession {
         });
         await discovery.ready;
       };
-      if (!selected.url) { await discover(); return false; }
+      if (!selected.url || mode === "choose-source") { await discover(); return false; }
       try {
         await this.commitPortableWatch(roomId, page, selection, selected.url);
         return true;

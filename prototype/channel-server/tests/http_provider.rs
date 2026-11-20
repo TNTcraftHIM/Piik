@@ -20,6 +20,7 @@ async fn app_startup_precedes_first_page_http_client() -> Result<()> {
     assert!(rustls::crypto::CryptoProvider::get_default().is_none());
     let directory = tempfile::tempdir()?;
     let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let site = format!("http://{}", listener.local_addr()?);
     let (stop, stopped) = oneshot::channel();
     let (ready, started) = oneshot::channel();
     let app = tokio::spawn(app::serve(
@@ -87,7 +88,7 @@ async fn app_startup_precedes_first_page_http_client() -> Result<()> {
         true
     });
     let (events, _) = mpsc::channel(8);
-    let connection = Arc::new(page::Connection::new(Some(dispatch), events));
+    let connection = Arc::new(page::Connection::for_site(Some(dispatch), events, site));
     let (commands, mut requests) = mpsc::channel(8);
     let host = tokio::spawn(async move {
         let (_provider_alive, provider_retired) = tokio::sync::watch::channel(false);
