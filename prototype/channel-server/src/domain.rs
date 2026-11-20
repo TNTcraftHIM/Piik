@@ -8,16 +8,17 @@ use axum::{
     },
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, put},
+    routing::{get, post, put},
     Json, Router,
 };
 pub(crate) use backup::RestoreDomain;
 use futures_util::{stream::FuturesUnordered, FutureExt, Sink, SinkExt, StreamExt};
 use piik_channel_core::{
     backup::DomainMetadata,
+    host::RoomSummary,
     storage,
     wire::{Event, HostingMode, Request, RoomCreationPolicy},
-    Authority, Effects,
+    Authority, Effects, RoomState,
 };
 use std::{
     collections::BTreeMap,
@@ -261,10 +262,7 @@ async fn send_frame(
 }
 
 async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
-    use piik_channel_core::{
-        wire::{Command, HostingMode},
-        RoomState,
-    };
+    use piik_channel_core::wire::Command;
     use piik_channel_native::session::{HostCommand, OpenRoom};
 
     let (room, request_id, commands, password, picture, allow_service_relay) = {
@@ -304,21 +302,7 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
     let result = async {
         let commands = commands.ok_or_else(|| "hosting_unavailable".to_owned())?;
         let policy = tokio::task::spawn_blocking(move || {
-            let mut policy = RoomState::new(
-                room.id,
-                room.name,
-                room.icon,
-                room.creator_id,
-                room.access,
-                room.hidden,
-                password,
-            )?;
-            policy.appearance.picture = picture;
-            policy.voice_bitrate = room.voice_bitrate;
-            policy.relay_capacity = room.relay_capacity;
-            policy.allow_service_relay = allow_service_relay;
-            policy.validate()?;
-            Ok::<_, &'static str>(policy)
+            hosted_room_policy(room, password, picture, allow_service_relay)
         })
         .await
         .map_err(|_| "hosting_unavailable")??;
@@ -337,6 +321,29 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
             hub.send(connection, Event::Error { code, request_id });
         }
     }
+}
+
+fn hosted_room_policy(
+    room: RoomSummary,
+    password: Option<String>,
+    picture: Option<String>,
+    allow_service_relay: bool,
+) -> Result<RoomState, &'static str> {
+    let mut policy = RoomState::new(
+        room.id,
+        room.name,
+        room.icon,
+        room.creator_id,
+        room.access,
+        room.hidden,
+        password,
+    )?;
+    policy.appearance.picture = picture;
+    policy.voice_bitrate = room.voice_bitrate;
+    policy.relay_capacity = room.relay_capacity;
+    policy.allow_service_relay = allow_service_relay;
+    policy.validate()?;
+    Ok(policy)
 }
 
 async fn delete_room(state: &Domain, connection: Uuid, request: Request, id: String) {
@@ -800,6 +807,7 @@ impl Domain {
                 get(backup::export).put(backup::restore_existing),
             )
             .route("/prototype/channel/rooms/backup", put(backup::restore))
+            .route("/prototype/channel/rooms/copy", post(backup::create_copy))
             .route("/prototype/channel/hosting", get(backup::describe))
             .route(
                 "/prototype/channel/limits",

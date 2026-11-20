@@ -1,7 +1,7 @@
 import { DEFAULT_RELAY_CAPACITY, type ChannelRoom, type ChannelSnapshot, type RoomCreationPolicy, type RoomSettings } from "./protocol";
 
 export class RoomCreationInterrupted extends Error {
-  constructor(readonly roomId: string, readonly committed: boolean) {
+  constructor(readonly roomId: string | undefined, readonly committed: boolean) {
     super(committed ? "room_created_connection_failed" : "room_creation_unconfirmed");
   }
 }

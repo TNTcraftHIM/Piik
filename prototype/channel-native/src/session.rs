@@ -283,23 +283,18 @@ enum OpeningWork {
     Register {
         previous_binding: Option<Uuid>,
         replies: Vec<OpeningReply>,
+        unpublished_copy: bool,
     },
     AdmitRestore(RestoreRoom),
     Create(RoomFile),
 }
 struct OpeningReply {
     result: oneshot::Sender<Result<RoomSummary, String>>,
-    restored: bool,
+    committed_error: Option<&'static str>,
 }
 impl OpeningReply {
     fn finish(self, result: Result<RoomSummary, String>) {
-        let result = result.map_err(|code| {
-            if self.restored {
-                "room_restored_connection_failed".into()
-            } else {
-                code
-            }
-        });
+        let result = result.map_err(|code| self.committed_error.map(str::to_owned).unwrap_or(code));
         let _ = self.result.send(result);
     }
 }
@@ -565,6 +560,11 @@ pub enum HostCommand {
         result: oneshot::Sender<Result<NativeConnectionMetrics, String>>,
     },
     Open(OpenRoom),
+    CreateCopy {
+        snapshot: RoomSnapshot,
+        scratch: tokio::sync::OwnedSemaphorePermit,
+        result: oneshot::Sender<Result<RoomSummary, String>>,
+    },
     DeleteRetired {
         id: String,
         creator: Uuid,
@@ -606,6 +606,9 @@ impl HostCommand {
             }
             Self::DeleteRetired { result, .. } => {
                 let _ = result.send(false);
+            }
+            Self::CreateCopy { result, .. } => {
+                let _ = result.send(Err("hosting_unavailable".into()));
             }
             Self::Open(request) => {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
@@ -831,6 +834,15 @@ impl Session {
                     signing_key: self.signer.signing_key(),
                 };
                 let result = self.connected(&mut socket, join, stop).await;
+                for opening in self.opening.values_mut() {
+                    if let OpeningWork::Register {
+                        unpublished_copy, ..
+                    } = &mut opening.work
+                    {
+                        // The authority may have accepted registration before the link closed.
+                        *unpublished_copy = false;
+                    }
+                }
                 self.hosting_unready();
                 self.fail_pending_requests("disconnected");
                 if let Some(live) = &mut self.live {
@@ -978,7 +990,11 @@ impl Session {
                                     let removed = self.delete_retired_room(&id, creator).is_ok();
                                     let _ = result.send(removed);
                                 }
-                                HostCommand::Open(request) => self.open_room(request, socket).await?,
+                                HostCommand::Open(request) => self.open_room(request, None, socket).await?,
+                                HostCommand::CreateCopy { snapshot, scratch: _scratch, result } => {
+                                    let request = OpenRoom { policy: snapshot.room.metadata().policy.clone(), result };
+                                    self.open_room(request, Some(snapshot), socket).await?;
+                                }
                                 HostCommand::Snapshot(request) => self.snapshot_room(request).await,
                                 HostCommand::Restore(request) => self.restore_room(request, socket).await?,
                                 HostCommand::PrepareCapture(request) => self.prepare_capture(request, socket).await?,
@@ -1438,6 +1454,16 @@ impl Session {
                     .as_mut()
                     .and_then(|live| live.room.rooms.get_mut(&room_id))
                 {
+                    if let Some(OpeningRoom {
+                        work:
+                            OpeningWork::Register {
+                                unpublished_copy, ..
+                            },
+                        ..
+                    }) = self.opening.get_mut(&room_id)
+                    {
+                        *unpublished_copy = false;
+                    }
                     hosted.bind(binding_id)?;
                     eprintln!("Native room bound: {room_id}");
                 }
@@ -1625,13 +1651,40 @@ impl Session {
                 }
             }
             Event::Error { code, request_id } => {
-                if let Some(room) = self.opening.iter().find_map(|(room, opening)| {
-                    (!matches!(opening.work, OpeningWork::Register { .. })
-                        && request_id.as_ref() == Some(&opening.request_id))
-                    .then(|| room.clone())
-                }) {
-                    self.opening.remove(&room).unwrap().fail(&code);
-                    return Ok(());
+                let opening_id = self.opening.iter().find_map(|(room, opening)| {
+                    (request_id.as_ref() == Some(&opening.request_id)).then(|| room.clone())
+                });
+                if let Some(id) = &opening_id {
+                    match &self.opening[id].work {
+                        OpeningWork::Register {
+                            unpublished_copy: true,
+                            ..
+                        } => {
+                            self.live
+                                .as_mut()
+                                .unwrap()
+                                .room
+                                .rooms
+                                .remove(id)
+                                .unwrap()
+                                .discard_unpublished()?;
+                            self.files.retain(|file| &file.id != id);
+                            if let OpeningWork::Register { replies, .. } =
+                                self.opening.remove(id).unwrap().work
+                            {
+                                for reply in replies {
+                                    let _ = reply.result.send(Err(code.clone()));
+                                }
+                            }
+                            self.hosting_ready();
+                            return Ok(());
+                        }
+                        OpeningWork::Register { .. } => {}
+                        _ => {
+                            self.opening.remove(id).unwrap().fail(&code);
+                            return Ok(());
+                        }
+                    }
                 }
                 if let Some(request) = request_id
                     .as_ref()
@@ -1640,14 +1693,7 @@ impl Session {
                     request.fail(code);
                     return Ok(());
                 }
-                let request_id = request_id.map(|id| {
-                    self.opening
-                        .iter()
-                        .find_map(|(room, opening)| {
-                            (opening.request_id == id).then(|| room.clone())
-                        })
-                        .unwrap_or(id)
-                });
+                let request_id = opening_id.or(request_id);
                 if request_id.as_ref().is_some_and(|id| {
                     self.live
                         .as_ref()
@@ -2236,8 +2282,14 @@ impl Session {
         Ok(())
     }
 
-    async fn open_room(&mut self, request: OpenRoom, socket: &mut Writer<'_>) -> Result<()> {
+    async fn open_room(
+        &mut self,
+        request: OpenRoom,
+        copy: Option<RoomSnapshot>,
+        socket: &mut Writer<'_>,
+    ) -> Result<()> {
         let id = request.policy.id.clone();
+        let copied = copy.is_some();
         let installed = (|| -> Result<RoomSummary> {
             let hosting = self
                 .hosting
@@ -2250,12 +2302,32 @@ impl Session {
                 .live
                 .as_mut()
                 .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+            if copied
+                && (live.room.rooms.contains_key(&id)
+                    || self.opening.contains_key(&id)
+                    || self.files.iter().any(|file| file.id == id))
+            {
+                bail!("room_already_exists");
+            }
             if !live.room.rooms.contains_key(&id) {
                 if Uuid::parse_str(&id)?.to_string() != id {
                     bail!("invalid_room_id");
                 }
                 let path = hosting.directory.join(format!("{id}.sqlite"));
-                let host = if path.try_exists()? {
+                let host = if let Some(snapshot) = copy {
+                    if path.try_exists()? {
+                        bail!("room_already_exists");
+                    }
+                    let metadata = snapshot.room.metadata();
+                    if metadata.own_credential.is_some() || !metadata.retained_files.is_empty() {
+                        bail!("backup_room_mismatch");
+                    }
+                    HostedRoom::from_backup(
+                        &path,
+                        &snapshot.room,
+                        (hosting.identity.0, request.policy.creator_id),
+                    )?
+                } else if path.try_exists()? {
                     HostedRoom::open(&path, &id, request.policy.creator_id)?
                 } else {
                     HostedRoom::create(&path, request.policy)?
@@ -2287,9 +2359,10 @@ impl Session {
         self.register_room(
             summary,
             None,
+            copied,
             OpeningReply {
                 result: request.result,
-                restored: false,
+                committed_error: copied.then_some("room_created_connection_failed"),
             },
             socket,
         )
@@ -2516,9 +2589,10 @@ impl Session {
                 self.register_room(
                     summary,
                     previous,
+                    false,
                     OpeningReply {
                         result: request.result,
-                        restored: true,
+                        committed_error: Some("room_restored_connection_failed"),
                     },
                     socket,
                 )
@@ -2535,6 +2609,7 @@ impl Session {
         &mut self,
         summary: RoomSummary,
         previous_binding: Option<Uuid>,
+        unpublished_copy: bool,
         reply: OpeningReply,
         socket: &mut Writer<'_>,
     ) -> Result<()> {
@@ -2547,6 +2622,7 @@ impl Session {
                 work: OpeningWork::Register {
                     previous_binding,
                     replies: vec![],
+                    unpublished_copy,
                 },
             });
         let OpeningWork::Register { replies, .. } = &mut opening.work else {

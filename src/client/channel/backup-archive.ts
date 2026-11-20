@@ -1,7 +1,7 @@
 import { loadRoomHosting } from "./hosting";
 import type { AttachmentHash } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
 import type { BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
-import type { ChannelAttachment, RoomSettings, RoomSummary } from "./protocol";
+import type { ChannelAttachment, ChannelCommand, RoomSettings, RoomSummary } from "./protocol";
 import type { FileEntry } from "@zip.js/zip.js";
 
 export interface RetainedBackupFile { messageSeq: number; attachment: ChannelAttachment }
@@ -13,6 +13,7 @@ export type BackupMetadata =
   | { kind: "room_copy"; version: 2; roomInfo?: RoomCopyInfo; authors: Record<string, string>; retainedFiles: RetainedBackupFile[] };
 export interface BackupVisitor {
   hostedArchive?(value: Blob): void;
+  hostedCopySettings?: Extract<ChannelCommand, { type: "create_room" }>;
   metadata(value: BackupMetadata): void | Promise<void>;
   row(value: BackupHistoryRow): void | Promise<void>;
   content(digest: string, file: File): void | Promise<void>;
@@ -89,13 +90,16 @@ async function readArchive(blob: Blob, visitor?: BackupVisitor): Promise<BackupM
           await visitor.content(hash, new File([await output.getData()], descriptor.name, { type: descriptor.mediaType }));
         } finally { check.free(); }
       }
-      if (visitor.hostedArchive && metadata.kind === "room") {
-        if (!files.size) visitor.hostedArchive(blob);
+      if (visitor.hostedArchive) {
+        if (!files.size && !visitor.hostedCopySettings) visitor.hostedArchive(blob);
         else {
           const output = new zip.BlobWriter("application/zip");
           const writer = new zip.ZipWriter(output, zipOptions);
           try {
             await writer.add(manifest, new zip.Uint8ArrayReader(encoder.encode(JSON.stringify({ ...metadata, retainedFiles: [] }))));
+            if (visitor.hostedCopySettings) {
+              await writer.add("settings.json", new zip.Uint8ArrayReader(encoder.encode(JSON.stringify(visitor.hostedCopySettings))));
+            }
             const stream = new TransformStream<Uint8Array, Uint8Array>();
             await Promise.all([writer.add(history, stream.readable),
               entries.get(history)!.getData(stream.writable, { useWebWorkers: false, checkSignature: true })]);

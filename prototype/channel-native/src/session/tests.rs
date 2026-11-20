@@ -513,6 +513,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
                     policy,
                     result: opened,
                 },
+                None,
                 &mut socket,
             )
             .await

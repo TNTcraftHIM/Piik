@@ -115,8 +115,8 @@ committed files and saved logs. Server does not print key-bearing URLs.
 
 The [Compose recipe](../../deploy/container/compose.yaml) keeps the root filesystem
 read-only. `piik-data` holds durable site/room data; the separate `piik-tmp` disk
-volume at `/tmp` holds backup snapshots and restore staging. The Server stages one
-room creator's restore at a time and accepts a history ZIP up to one eighth of
+volume at `/tmp` holds backup snapshots and room import staging. The Server stages one
+full room restore or room copy import at a time and accepts a history ZIP up to one eighth of
 the scratch space available at the start of that upload. SQLite staging and
 installation also require free space on the temporary and data volumes.
 Normal completion, rejection and
@@ -663,9 +663,9 @@ neither room histories nor participant retained files belong in a domain archive
 
 Room settings → Records separates personal text export, a full room backup and
 a room copy. The room creator can use both archive actions when Server hosts the writer.
-With device hosting, load a room copy from Create room to reuse its history and available files under
-your own identity; choose new access settings before creating it. A full backup
-instead restores the original room and owner. The
+In either hosting mode, load a room copy from Create room and choose the new
+room's access settings. For a Server-hosted room, restore a full backup from
+the original room's Records panel. The
 [data model](../../docs/research/channel-storage-and-identity.md#backups) owns
 these scopes.
 

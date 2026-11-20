@@ -2821,3 +2821,249 @@ async fn domain_backup_restarts_its_operator_and_preserves_other_domain_room_fil
     task.await.unwrap().unwrap();
     drop((owner, hub));
 }
+
+async fn room_copy_http(
+    address: std::net::SocketAddr,
+    credential: &str,
+    session: Uuid,
+    archive: &[u8],
+) -> (u16, Value) {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .unwrap()
+        .post(format!("http://{address}/prototype/channel/rooms/copy"))
+        .bearer_auth(credential)
+        .header("X-Piik-Session", session.to_string())
+        .header("Content-Type", "application/zip")
+        .body(archive.to_vec())
+        .send()
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    let bytes = response.bytes().await.unwrap();
+    let body = serde_json::from_slice(&bytes)
+        .unwrap_or_else(|_| panic!("HTTP {status}: {}", String::from_utf8_lossy(&bytes)));
+    (status, body)
+}
+
+#[tokio::test]
+async fn hosted_room_copy_installs_history_under_fresh_authority() {
+    use piik_channel_core::wire::{HostingMode, RoomCreationPolicy};
+    use std::io::Write;
+
+    let folder = tempfile::tempdir().unwrap();
+    drop(
+        Domain::open_with_options(
+            folder.path(),
+            "owner",
+            "http://localhost".into(),
+            None,
+            vec![],
+            RoomCreationPolicy::Ordinary,
+            Some(HostingMode::Hosted),
+        )
+        .unwrap(),
+    );
+    let (address, stop, task, hub) = start_server(folder.path()).await;
+    let (mut operator, operator_session, _, owner_credential) =
+        connect_with_credential(address, "owner", "Operator").await;
+    let (mut creator, creator_session, _, creator_credential) =
+        connect_with_credential(address, "invite", "Creator").await;
+    send_request(
+        &mut operator,
+        json!({"type":"create_room","room":{
+            "id":"source","name":"Backup source","icon":"couch","creatorId":Uuid::nil(),
+            "access":"public","hidden":false,"hasPassword":false
+        }}),
+    )
+    .await;
+    let source = state_when(&mut operator, |state| {
+        state
+            .channel
+            .rooms
+            .iter()
+            .any(|room| room.name == "Backup source" && room.available)
+    })
+    .await
+    .channel
+    .rooms
+    .into_iter()
+    .find(|room| room.name == "Backup source")
+    .unwrap();
+    let backup_path = format!("/prototype/channel/rooms/{}/backup", source.id);
+
+    // A normal browser copy carries history and archived names, without room credentials.
+    let source_author = Uuid::new_v4();
+    let message_id = Uuid::new_v4();
+    let image_id = Uuid::new_v4();
+    let thumbnail = "UklGRmFiY2RXRUJQcHJldmlldw==";
+    let manifest = json!({
+        "kind": "room_copy", "version": 2,
+        "authors": {(source_author.to_string()): "Source author"}, "retainedFiles": []
+    });
+    let message = json!({
+        "nonce":"source-retry",
+        "id":message_id, "seq":1, "userId":source_author, "text":"Copied history", "time":1,
+        "attachments":[{"id":image_id,"name":"image.png","size":1000,"mediaType":"image/png","sha256":"a".repeat(64)}],
+        "inlineImages":{(image_id.to_string()):{"data":thumbnail,"mediaType":"image/webp","original":false,"width":48,"height":32}},
+        "reactions":{"revision":1,"counts":{"wave":1}}
+    });
+    let pack = |history: &str, settings: &Value| {
+        let mut archive = Vec::new();
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        let mut zip = zip::ZipWriter::new_stream(&mut archive);
+        zip.start_file("manifest.json", options)
+            .unwrap();
+        zip.write_all(manifest.to_string().as_bytes()).unwrap();
+        zip.start_file("history.ndjson", options)
+            .unwrap();
+        zip.write_all(history.as_bytes()).unwrap();
+        zip.start_file("settings.json", options)
+            .unwrap();
+        zip.write_all(settings.to_string().as_bytes()).unwrap();
+        zip.finish().unwrap();
+        archive
+    };
+    let (status, full) = room_backup_http(address, &backup_path, &owner_credential, None).await;
+    assert_eq!(status, 200);
+    let settings = json!({
+        "type":"create_room",
+        "room":{"id":"living","name":"Imported conversation","icon":"couch",
+                "creatorId":source_author,"access":"private","hidden":true,"hasPassword":false}
+    });
+    let history = format!("{message}\n");
+    let valid = pack(&history, &settings);
+    let malformed = pack("invalid history", &settings);
+    let interrupted = &valid[..valid.len() - 32];
+    let authority = || serde_json::to_value(hub.lock().unwrap().authority.export_backup()).unwrap();
+    let before = authority();
+    for (session, archive, expected_status) in [
+        (operator_session, valid.as_slice(), 403),
+        (creator_session, malformed.as_slice(), 400),
+        (creator_session, full.as_slice(), 400),
+        (creator_session, b"invalid archive".as_slice(), 400),
+        // Simulate an upload ending before the ZIP directory.
+        (creator_session, interrupted, 400),
+    ] {
+        let (status, body) = room_copy_http(address, &creator_credential, session, archive).await;
+        assert_eq!(status, expected_status, "{body}");
+        assert!(body["error"].is_string(), "{body}");
+        assert_eq!(authority(), before);
+    }
+
+    for (policy, name) in [
+        (RoomCreationPolicy::InviteOnly, "invite_only"),
+        (RoomCreationPolicy::OwnerOnly, "owner_only"),
+        (RoomCreationPolicy::Ordinary, "ordinary"),
+    ] {
+        send_request(
+            &mut operator,
+            json!({"type":"set_room_creation_policy","policy":name}),
+        )
+        .await;
+        state_when(&mut operator, |state| {
+            state.channel.room_creation_policy == policy
+        })
+        .await;
+        if policy != RoomCreationPolicy::Ordinary {
+            let before = authority();
+            let mut public = settings.clone();
+            public["room"]["access"] = json!("public");
+            public["room"]["hidden"] = json!(false);
+            let (status, body) = room_copy_http(
+                address,
+                &creator_credential,
+                creator_session,
+                &pack(&history, &public),
+            )
+            .await;
+            assert_eq!(status, 403, "{body}");
+            assert_eq!(authority(), before);
+        }
+    }
+
+    let (status, body) =
+        room_copy_http(address, &creator_credential, creator_session, &valid).await;
+    assert!((200..300).contains(&status), "{status}: {body}");
+    let room: piik_channel_core::host::RoomSummary =
+        serde_json::from_value(body["room"].clone()).unwrap();
+    assert_ne!(room.id, source.id);
+    assert_ne!(room.creator_id, source_author);
+    let creator_ready = state_when(&mut creator, |state| {
+        state
+            .channel
+            .rooms
+            .iter()
+            .any(|r| r.id == room.id && r.can_manage && r.available)
+    })
+    .await;
+    let creator_info = creator_ready
+        .sessions
+        .iter()
+        .find(|session| session.id == creator_session)
+        .unwrap();
+    assert_eq!(room.creator_id, creator_info.user_id);
+    assert_ne!(Some(room.creator_id), creator_ready.channel.owner_id);
+    send_request(&mut creator, json!({"type":"room_invite","roomId":room.id})).await;
+    let invite = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match event(&mut creator).await {
+                Event::RoomInvite { key, .. } => break key,
+                Event::Error { code, .. } => panic!("invite failed: {code}"),
+                _ => {}
+            }
+        }
+    })
+    .await
+    .unwrap();
+    let (mut reader, reader_session, initial) = connect(address, "invite", "Reader").await;
+    assert!(!initial.channel.rooms.iter().any(|r| r.id == room.id));
+    send_request(
+        &mut reader,
+        json!({"type":"enter_room","roomId":room.id,"inviteKey":invite}),
+    )
+    .await;
+    state_when(&mut reader, |state| {
+        state
+            .channel
+            .rooms
+            .iter()
+            .any(|r| r.id == room.id && r.authorized && r.available && !r.can_manage)
+    })
+    .await;
+    send_request(
+        &mut reader,
+        json!({"type":"browse","roomId":room.id,"active":true}),
+    )
+    .await;
+    let readable = state_when(&mut reader, |state| {
+        state
+            .channel
+            .rooms
+            .iter()
+            .any(|r| r.id == room.id && r.reading)
+    })
+    .await;
+    let history = room_conversation(
+        &mut reader,
+        reader_session,
+        &readable,
+        &room.id,
+        ConversationCommand::History { before: None },
+    )
+    .await;
+    assert!(matches!(history.as_slice(), [
+        ConversationRecord::HistoryMessage { message },
+        ConversationRecord::MessageReactions { snapshot },
+        ConversationRecord::HistoryEnd { count: 1, .. },
+    ] if message.id != message_id && message.user_id != source_author && message.user_id != room.creator_id
+        && message.archived_author_name.as_deref() == Some("Source author")
+        && message.text == "Copied history"
+        && message.inline_images.get(&image_id).is_some_and(|image| image.data == thumbnail)
+        && snapshot.message_id == message.id && snapshot.reactions.counts.get("wave") == Some(&1)));
+    stop.send(()).unwrap();
+    task.await.unwrap().unwrap();
+}

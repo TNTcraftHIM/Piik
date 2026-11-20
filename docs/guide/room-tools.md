@@ -68,7 +68,7 @@ it, choose **Restore full backup**, select the ZIP and confirm the replacement.
 In a Server-hosted room, its creator uses this room’s Records panel. The site owner can manage and remove rooms, and can export full backups of rooms they created. Other admitted members can export the chat text loaded on their page. The backup includes settings, full history and thumbnails. Select **Include file originals from this device** to add originals your browser can read locally.
 
 To give someone a copy, choose **Export room copy**, optionally including room
-information. With device hosting they select **Create room → Load a room copy**, choose the new name
+information. They select **Create room → Load a room copy**, choose the new name
 and access settings, then create it. Messages, reaction counts and available
 files remain; their own account manages the new room.
 

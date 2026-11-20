@@ -8,12 +8,12 @@ use axum::{
     Json,
 };
 use piik_channel_core::{
-    backup::{DomainMetadata, OwnCredential},
-    wire::HostingMode,
+    backup::{DomainMetadata, OwnCredential, RoomMetadata},
+    wire::{Command, HostingMode},
     Authority,
 };
 use piik_channel_native::{
-    backup::StagedBackup,
+    backup::{self as native_backup, RoomSnapshot, StagedBackup},
     session::{ExistingRoomRestore, HostCommand},
 };
 use std::sync::MutexGuard;
@@ -126,6 +126,133 @@ pub(super) async fn restore_existing(
         scratch,
     };
     backup::restore(commands, Some(target), &headers, body).await
+}
+
+fn creation_error(code: &str) -> ApiError {
+    let status = match code {
+        "forbidden" | "room_creation_restricted" => StatusCode::FORBIDDEN,
+        "disconnected" | "room_limit" | "room_already_exists" | "room_busy" => StatusCode::CONFLICT,
+        "hosting_unavailable" => StatusCode::SERVICE_UNAVAILABLE,
+        _ => StatusCode::BAD_REQUEST,
+    };
+    backup::error(status, code)
+}
+
+pub(super) async fn create_copy(
+    State(domain): State<Domain>,
+    headers: HeaderMap,
+    body: Body,
+) -> ApiResult {
+    let session: Uuid = headers
+        .get("x-piik-session")
+        .and_then(|value| value.to_str().ok()?.parse().ok())
+        .ok_or_else(|| creation_error("forbidden"))?;
+    let connection = {
+        let (creator, hub) = authorized(&domain, &headers, |auth, _| {
+            auth.hosting_mode() == HostingMode::Hosted
+        })?;
+        hub.authority
+            .member_connection(session, creator.user_id)
+            .ok_or_else(|| creation_error("forbidden"))?
+    };
+    let scratch = domain
+        .room_restore
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| creation_error("room_busy"))?;
+    let (archive, directory, scratch) =
+        backup::receive_copy_upload(&headers, body, scratch).await?;
+    let authority = domain.hub.clone();
+    let (creation, snapshot, scratch) = tokio::task::spawn_blocking(move || {
+        let (command, submission) =
+            native_backup::open_room_copy(archive).map_err(backup::upload_error)?;
+        let Command::CreateRoom {
+            mut room,
+            picture,
+            password,
+            allow_service_relay,
+        } = command
+        else {
+            return Err(creation_error("expected_create_room"));
+        };
+        room.has_password = password.is_some();
+        let (domain_id, creation) = {
+            let hub = authority.lock().unwrap();
+            let creation = hub
+                .authority
+                .prepare_hosted_creation(session, connection, room)
+                .map_err(creation_error)?;
+            (hub.authority.identity().0, creation)
+        };
+        let policy = super::hosted_room_policy(
+            creation.summary().clone(),
+            password,
+            picture,
+            allow_service_relay,
+        )
+        .map_err(creation_error)?;
+        let metadata = RoomMetadata {
+            version: 3,
+            domain_id,
+            policy,
+            own_credential: None,
+            retained_files: vec![],
+        };
+        let room = submission
+            .stage(directory.path(), metadata)
+            .map_err(backup::upload_error)?;
+        Ok((creation, RoomSnapshot { room, directory }, scratch))
+    })
+    .await
+    .map_err(|cause| backup::error(StatusCode::INTERNAL_SERVER_ERROR, cause))??;
+
+    let (result, response) = oneshot::channel();
+    {
+        let mut hub = domain.hub.lock().unwrap();
+        let writer = room_commands(&hub)?
+            .try_reserve_owned()
+            .map_err(|error| match error {
+                mpsc::error::TrySendError::Full(_) => creation_error("room_busy"),
+                mpsc::error::TrySendError::Closed(_) => creation_error("hosting_unavailable"),
+            })?;
+        hub.authority
+            .reserve_hosted_creation(&creation)
+            .map_err(creation_error)?;
+        writer.send(HostCommand::CreateCopy {
+            snapshot,
+            scratch,
+            result,
+        });
+    }
+    // After handoff, the room writer's outcome owns the reservation even if the HTTP client leaves.
+    tokio::spawn(async move {
+        let room_id = &creation.summary().id;
+        match response.await {
+            Ok(Ok(room)) => Ok((
+                StatusCode::CREATED,
+                Json(serde_json::json!({ "room": room })),
+            )
+                .into_response()),
+            Ok(Err(code)) if code == "room_created_connection_failed" => Err((
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({ "error": code, "roomId": room_id })),
+            )),
+            Ok(Err(code)) => {
+                let mut hub = domain.hub.lock().unwrap();
+                let effects = hub.authority.cancel_hosted_creation(&creation);
+                hub.apply(effects);
+                Err(creation_error(&code))
+            }
+            Err(_) => Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(
+                    serde_json::json!({ "error": "room_creation_unconfirmed", "roomId": room_id }),
+                ),
+            )),
+        }
+    })
+    .await
+    .map_err(|cause| backup::error(StatusCode::INTERNAL_SERVER_ERROR, cause))?
 }
 
 pub(super) async fn export_domain(State(domain): State<Domain>, headers: HeaderMap) -> ApiResult {

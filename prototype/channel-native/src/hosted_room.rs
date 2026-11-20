@@ -126,6 +126,13 @@ impl HostedRoom {
         self.host.dispatch_peer(packet, now)
     }
 
+    pub(crate) fn discard_unpublished(self) -> Result<()> {
+        drop(self.host);
+        // Keep the stable advisory lock held until SQLite and its file are gone.
+        std::fs::remove_file(self.path)?;
+        Ok(())
+    }
+
     pub(crate) fn delete_data(&mut self) -> Result<()> {
         self.host.delete_data().map_err(storage_error)
     }

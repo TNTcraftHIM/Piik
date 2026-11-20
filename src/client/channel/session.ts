@@ -1414,13 +1414,18 @@ export class ChannelSession {
   updateDomain = (settings: Partial<DomainSettings>, reportError = true): Promise<void> => this.action("domain", () => this.request({ type: "update_domain", ...settings }), reportError);
   setRoomCreationPolicy = (policy: Extract<ChannelCommand, { type: "set_room_creation_policy" }>["policy"], reportError = true): Promise<void> =>
     this.action("domain", () => this.request({ type: "set_room_creation_policy", policy }), reportError);
+  private roomCreationCommand(settings: RoomSettings): Extract<ChannelCommand, { type: "create_room" }> {
+    const serverHosted = this.view.state!.channel.hostingMode === "hosted";
+    const password = settings.access === "private" && settings.password ? settings.password : undefined;
+    return { type: "create_room", room: roomSummarySchema.parse({ ...settings, id: "new", creatorId: this.view.self!.id, hasPassword: Boolean(password) }),
+      ...(serverHosted ? { picture: settings.picture ?? undefined, password, allowServiceRelay: settings.allowServiceRelay } : {}) };
+  }
+
   private async allocateRoom(settings: RoomSettings) {
     const current = this.sessionContext(), socket = this.socket;
     const serverHosted = this.view.state!.channel.hostingMode === "hosted";
     let room: RoomSummary | undefined;
-    const password = settings.access === "private" && settings.password ? settings.password : undefined;
-    await this.request({ type: "create_room", room: roomSummarySchema.parse({ ...settings, id: "new", creatorId: this.view.self!.id, hasPassword: Boolean(password) }),
-      ...(serverHosted ? { picture: settings.picture ?? undefined, password, allowServiceRelay: settings.allowServiceRelay } : {}) }, event => {
+    await this.request(this.roomCreationCommand(settings), event => {
       if (event.type === "room_created") room = event.room;
     });
     try { current(); } catch (error) {
@@ -1750,7 +1755,7 @@ export class ChannelSession {
 
   importRoomCopy = (archive: Blob, settings: RoomSettings): Promise<{ roomId: string; cached: boolean }> => this.action("room-backup", async () => {
     const current = this.sessionContext(), state = this.view.state!, self = this.view.self!;
-    if (state.channel.hostingMode === "hosted") throw new Error("room_host_unavailable");
+    if (state.channel.hostingMode === "hosted") return this.importHostedRoomCopy(archive, settings, current);
     const runtime = await loadRoomHosting();
     const policy = await runtime.createRoomPolicy({ ...settings, allowServiceRelay: false, id: crypto.randomUUID(), creatorId: self.id });
     current();
@@ -1783,6 +1788,41 @@ export class ChannelSession {
       await stage?.close().catch(() => {});
     }
   }, false);
+
+  private async importHostedRoomCopy(archive: Blob, settings: RoomSettings, current: () => void): Promise<{ roomId: string; cached: boolean }> {
+    const credential = this.credential, sessionId = this.view.sessionId;
+    if (!credential || !sessionId) throw new Error("disconnected");
+    const command = this.roomCreationCommand(settings);
+    const contents = new Map<string, File>();
+    let writerArchive: Blob | undefined;
+    const metadata = await readBackup(archive, {
+      metadata(value) {
+        current();
+        if (value.kind !== "room_copy") throw new Error("expected_room_copy");
+      },
+      row: () => current(),
+      content(digest, file) { current(); contents.set(digest, file); },
+      hostedArchive(value) { writerArchive = value; },
+      hostedCopySettings: command,
+    });
+    current();
+    if (metadata.kind !== "room_copy" || !writerArchive) throw new Error("expected_room_copy");
+    const hosted = new NativeRoomHosting("/prototype/channel/rooms", { Authorization: `Bearer ${credential}` });
+    const room = await hosted.importCopy(writerArchive, command.room.creatorId, sessionId);
+    try {
+      current();
+      await this.waitForState(() => this.view.state?.channel.rooms.some(candidate =>
+        candidate.id === room.id && candidate.authorized && candidate.available && !!candidate.delivery) ?? false);
+      current();
+      this.browse(room.id);
+      await this.readings.get(room.id)?.ready;
+      current();
+      const cached = await this.cacheRoomBackupFiles(room.id, metadata.retainedFiles, contents);
+      return { roomId: room.id, cached };
+    } catch {
+      throw new RoomCreationInterrupted(room.id, true);
+    }
+  }
 
   restoreRoomBackup = (archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }> =>
     this.action("room-backup", () => this.restoreRoomArchive(archive, roomId), false);
@@ -1880,9 +1920,7 @@ export class ChannelSession {
       check();
       this.browse(target);
       await this.reading?.ready; check();
-      const entries = metadata.retainedFiles.map(value => ({ key: { roomId: target, messageSeq: value.messageSeq, attachmentId: value.attachment.id },
-        attachment: value.attachment, file: contents.get(value.attachment.sha256.toLowerCase())! }));
-      const cached = await this.attachments.restoreRetained(target, entries);
+      const cached = await this.cacheRoomBackupFiles(target, metadata.retainedFiles, contents);
       return { roomId: target, cached };
     } catch (error) {
       if (committed) throw new Error("room_restored_connection_failed");
@@ -1891,6 +1929,15 @@ export class ChannelSession {
       if (error instanceof Error && error.message === "room_not_in_domain") throw new Error("backup_room_not_admitted");
       throw error;
     }
+  }
+
+  private cacheRoomBackupFiles(roomId: string, retainedFiles: RetainedBackupFile[], contents: ReadonlyMap<string, File>): Promise<boolean> {
+    const entries = retainedFiles.map(({ messageSeq, attachment }) => ({
+      key: { roomId, messageSeq, attachmentId: attachment.id },
+      attachment,
+      file: contents.get(attachment.sha256.toLowerCase())!,
+    }));
+    return this.attachments.restoreRetained(roomId, entries);
   }
 
   updateRoom = (roomId: string, settings: Partial<RoomSettings>, reportError = true): Promise<void> => this.action(`room:${roomId}`, () => this.request({ type: "update_room", roomId, ...settings }), reportError);

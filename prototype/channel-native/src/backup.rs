@@ -4,9 +4,10 @@ use anyhow::{bail, Result};
 use piik_channel_core::{
     attachment::AttachmentHash,
     backup::{
-        DomainMetadata, HistoryImport, Metadata, RetainedFile, StoredUser, RECORD_BYTES,
+        CopyHistoryImport, DomainMetadata, HistoryImport, Metadata, RetainedFile, RoomMetadata, StoredUser, RECORD_BYTES,
     },
     storage::StoreResult,
+    wire::Command,
     AttachmentDescriptor, RoomBackup,
 };
 use serde::{de::DeserializeOwned, Serialize};
@@ -20,6 +21,7 @@ use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
 const MANIFEST: &str = "manifest.json";
 const HISTORY: &str = "history.ndjson";
+const SETTINGS: &str = "settings.json";
 const USERS: &str = "users.ndjson";
 
 /// The SQLite handle closes before its disposable directory is removed, even
@@ -105,46 +107,12 @@ fn stage_archive(
     directory: &Path,
     hosted_room: bool,
 ) -> Result<StagedBackup> {
-    let mut zip = ZipArchive::new(input)?;
-    if zip.has_duplicate_names() {
-        bail!("invalid_backup_entries");
-    }
-    let metadata: Metadata = serde_json::from_slice(&read_record(zip.by_name(MANIFEST)?)?)?;
-    metadata.validate().map_err(anyhow::Error::msg)?;
+    let (mut zip, metadata) = read_archive(input, false)?;
     if hosted_room {
         match &metadata {
             Metadata::Room(room) if room.retained_files.is_empty() => {}
             Metadata::Room(_) => bail!("invalid_backup_entries"),
             _ => bail!("expected_room_backup"),
-        }
-    }
-    let mut expected = BTreeSet::from([MANIFEST.to_owned()]);
-    if matches!(metadata, Metadata::RoomCopy(_)) {
-        bail!("expected_room_backup");
-    }
-    if matches!(metadata, Metadata::Domain(_)) {
-        expected.insert(USERS.into());
-    }
-    if let Metadata::Room(room) = &metadata {
-        expected.insert(HISTORY.into());
-        for file in &room.retained_files {
-            expected.insert(format!(
-                "content/{}",
-                file.attachment.sha256.to_ascii_lowercase()
-            ));
-        }
-    }
-    if zip.len() != expected.len()
-        || zip
-            .file_names()
-            .any(|name| name.map_or(true, |name| !expected.contains(name.as_ref())))
-    {
-        bail!("invalid_backup_entries");
-    }
-    for index in 0..zip.len() {
-        let entry = zip.by_index(index)?;
-        if !entry.is_file() || entry.compression() != CompressionMethod::Stored {
-            bail!("unsupported_backup_entry");
         }
     }
     match metadata {
@@ -182,6 +150,81 @@ fn stage_archive(
             Ok(StagedBackup::Room { snapshot, content })
         }
     }
+}
+
+pub struct RoomCopySubmission<R> {
+    zip: ZipArchive<R>,
+    import: CopyHistoryImport,
+}
+
+impl<R: Read + Seek> RoomCopySubmission<R> {
+    /// Stage the opened history under the new room's server-owned authority.
+    pub fn stage(mut self, directory: &Path, destination: RoomMetadata) -> Result<RoomBackup> {
+        let history = BufReader::new(self.zip.by_name(HISTORY)?);
+        let rows = records(history).map(|row| Ok(self.import.accept(row?)?));
+        let snapshot = RoomBackup::stage(&directory.join("room.sqlite"), destination, rows)
+            .map_err(anyhow::Error::from_boxed)?;
+        self.import.finish().map_err(anyhow::Error::msg)?;
+        Ok(snapshot)
+    }
+}
+
+pub fn open_room_copy<R: Read + Seek>(input: R) -> Result<(Command, RoomCopySubmission<R>)> {
+    let (mut zip, metadata) = read_archive(input, true)?;
+    let Metadata::RoomCopy(copy) = metadata else {
+        bail!("expected_room_copy");
+    };
+    if !copy.retained_files.is_empty() {
+        bail!("invalid_backup_entries");
+    }
+    let settings = serde_json::from_slice(&read_record(zip.by_name(SETTINGS)?)?)?;
+    if !matches!(settings, Command::CreateRoom { .. }) {
+        bail!("expected_create_room");
+    }
+    let import = CopyHistoryImport::new(copy).map_err(anyhow::Error::msg)?;
+    Ok((settings, RoomCopySubmission { zip, import }))
+}
+
+fn read_archive<R: Read + Seek>(input: R, copy_submission: bool) -> Result<(ZipArchive<R>, Metadata)> {
+    let mut zip = ZipArchive::new(input)?;
+    if zip.has_duplicate_names() {
+        bail!("invalid_backup_entries");
+    }
+    let metadata: Metadata = serde_json::from_slice(&read_record(zip.by_name(MANIFEST)?)?)?;
+    metadata.validate().map_err(anyhow::Error::msg)?;
+    let mut expected = BTreeSet::from([MANIFEST.to_owned()]);
+    if copy_submission {
+        expected.insert(SETTINGS.into());
+    }
+    if matches!(metadata, Metadata::RoomCopy(_)) {
+        expected.insert(HISTORY.into());
+    }
+    if matches!(metadata, Metadata::Domain(_)) {
+        expected.insert(USERS.into());
+    }
+    if let Metadata::Room(room) = &metadata {
+        expected.insert(HISTORY.into());
+        for file in &room.retained_files {
+            expected.insert(format!(
+                "content/{}",
+                file.attachment.sha256.to_ascii_lowercase()
+            ));
+        }
+    }
+    if zip.len() != expected.len()
+        || zip
+            .file_names()
+            .any(|name| name.map_or(true, |name| !expected.contains(name.as_ref())))
+    {
+        bail!("invalid_backup_entries");
+    }
+    for index in 0..zip.len() {
+        let entry = zip.by_index(index)?;
+        if !entry.is_file() || entry.compression() != CompressionMethod::Stored {
+            bail!("unsupported_backup_entry");
+        }
+    }
+    Ok((zip, metadata))
 }
 
 fn options() -> SimpleFileOptions {
@@ -369,6 +412,69 @@ mod tests {
         }
         zip.finish().unwrap();
         bytes
+    }
+
+    #[test]
+    fn stage_copy_preserves_history_under_destination_authority() -> Result<()> {
+        let (destination, rows, _) = room();
+        let folder = tempfile::tempdir()?;
+        let manifest = record(&Metadata::RoomCopy(piik_channel_core::backup::RoomCopyMetadata {
+            version: 2,
+            room_info: None,
+            authors: BTreeMap::new(),
+            retained_files: vec![],
+        }))?;
+        let settings = serde_json::json!({
+            "type": "create_room",
+            "room": { "id": "new-room", "name": "Copy", "icon": "couch",
+                "creatorId": destination.policy.creator_id, "access": "private",
+                "hidden": false, "hasPassword": true },
+            "password": "synthetic", "allowServiceRelay": true
+        });
+        let archive = |history| pack(vec![
+            (MANIFEST, manifest.clone()), (HISTORY, history),
+            (SETTINGS, serde_json::to_vec(&settings).unwrap()),
+        ]);
+        let portable = pack(vec![(MANIFEST, manifest.clone()), (HISTORY, vec![])]);
+        assert!(open_room_copy(Cursor::new(portable)).is_err());
+        let wrong = pack(vec![(MANIFEST, manifest.clone()), (HISTORY, vec![]),
+            (SETTINGS, br#"{"type":"leave"}"#.to_vec())]);
+        assert!(open_room_copy(Cursor::new(wrong)).is_err());
+        let full = pack(vec![
+            (MANIFEST, record(&Metadata::Room(destination.clone()))?),
+            (HISTORY, vec![]),
+        ]);
+        assert!(open_room_copy(Cursor::new(full)).is_err());
+        let malformed = tempfile::tempdir()?;
+        let invalid = archive(b"invalid".to_vec());
+        assert!(open_room_copy(Cursor::new(invalid))?.1.stage(malformed.path(), destination.clone()).is_err());
+        let mut history = Vec::new();
+        for row in &rows {
+            history.extend(record(row)?);
+            history.push(b'\n');
+        }
+        let (settings, submission) = open_room_copy(Cursor::new(archive(history)))?;
+        let Command::CreateRoom { room, password, allow_service_relay, .. } = settings else {
+            panic!("expected create_room");
+        };
+        assert_eq!(room.name, "Copy");
+        assert_eq!(password.as_deref(), Some("synthetic"));
+        assert!(allow_service_relay);
+        let snapshot = submission.stage(folder.path(), destination.clone())?;
+        assert_eq!(snapshot.metadata().domain_id, destination.domain_id);
+        let mut count = 0;
+        snapshot.for_each_row(|row| {
+            let (HistoryRow::Message(copy), HistoryRow::Message(source)) = (row, &rows[count]) else {
+                panic!("expected message");
+            };
+            assert_ne!(copy.message.message.user_id, source.message.message.user_id);
+            assert_ne!(copy.nonce, source.nonce);
+            assert_eq!(copy.message.message.inline_images, source.message.message.inline_images);
+            count += 1;
+            Ok(())
+        }).map_err(anyhow::Error::from_boxed)?;
+        assert_eq!(count, rows.len());
+        Ok(())
     }
 
     #[test]

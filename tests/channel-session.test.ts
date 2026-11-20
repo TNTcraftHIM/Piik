@@ -8807,6 +8807,31 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     // A copy excludes room authority; it is not anonymized history before import.
     expect(history).toEqual([row]);
     expect(await content.get(attachment.sha256)!.text()).toBe("owned copy bytes");
+    let copyWriterArchive: Blob | undefined;
+    await backupArchive.readBackup(archive, { metadata() {}, row() {}, content() {},
+      hostedArchive(value) { copyWriterArchive = value; } });
+    const copyRows: BackupHistoryRow[] = [];
+    const copyWriterMetadata = await backupArchive.readBackup(copyWriterArchive!, {
+      metadata() {}, row(value) { copyRows.push(value); }, content() { throw new Error("unexpected hosted content"); },
+    });
+    expect(copyWriterMetadata).toEqual({ ...metadata, retainedFiles: [] });
+    expect(copyRows).toEqual([row]);
+    const hostedCopySettings = { type: "create_room" as const, room: {
+      id: "new", creatorId: author, name: "Hosted copy", icon: "couch", access: "public" as const, hidden: false,
+      hasPassword: false, voiceBitrate: 64_000, relayCapacity: 4,
+    } };
+    let requestArchive: Blob | undefined;
+    await backupArchive.readBackup(archive, { metadata() {}, row() {}, content() {}, hostedCopySettings,
+      hostedArchive(value) { requestArchive = value; } });
+    const zip = await import("@zip.js/zip.js/lib/zip-core-native.js");
+    const reader = new zip.ZipReader(new zip.BlobReader(requestArchive!), { useWebWorkers: false });
+    try {
+      const entries = await reader.getEntries();
+      expect(entries.map(entry => entry.filename).sort()).toEqual(["history.ndjson", "manifest.json", "settings.json"]);
+      const settingsEntry = entries.find(entry => entry.filename === "settings.json")!;
+      if (settingsEntry.directory) throw new Error("invalid settings entry");
+      expect(JSON.parse(await settingsEntry.getData(new zip.TextWriter()))).toEqual(hostedCopySettings);
+    } finally { await reader.close(); }
     importer = new core.CopyHistoryImport(JSON.stringify(metadata));
     const copied = JSON.parse(importer.accept(JSON.stringify(history[0]))) as BackupHistoryRow;
     importer.finish();
@@ -12577,6 +12602,69 @@ test.each(['accepted', 'rejected'])('screen quality commits only after its poole
     expect(source.stop).not.toHaveBeenCalled();
     expect(RoomPeerConnection.instances).toHaveLength(1);
     expect(RoomPeerConnection.instances[0].close).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
+test("hosted room copy waits for the server's new room and restores originals under its ID", async () => {
+  const { session, socket } = await setup(1000, false, "");
+  const state = structuredClone(session.getSnapshot().state!);
+  state.channel.hostingMode = "hosted";
+  state.channel.ownerId = "another-user";
+  socket.receive({ type: "state", state });
+  const retained = { messageSeq: 7, attachment: { id: crypto.randomUUID(), sha256: "a".repeat(64) } };
+  const source = new Blob(["with originals"]), writerArchive = new Blob(["history only"]);
+  const original = new File(["kept locally"], "original.txt");
+  const metadata = { kind: "room_copy", version: 2, authors: {}, retainedFiles: [retained] } as backupArchive.BackupMetadata;
+  vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => {
+    await visitor!.metadata(metadata);
+    await visitor!.content(retained.attachment.sha256, original);
+    expect(visitor!.hostedCopySettings).toMatchObject({ type: "create_room", password: "fresh",
+      room: { id: "new", creatorId: "self", name: "A new room", access: "private", hidden: true, hasPassword: true } });
+    visitor!.hostedArchive!(writerArchive);
+    return metadata;
+  });
+  const settings = { name: "A new room", icon: "couch", access: "private", hidden: true, password: "fresh" } as const;
+  const created = { ...state.channel.rooms[0], ...settings, id: crypto.randomUUID(), hasPassword: true };
+  const fetch = vi.fn()
+    .mockResolvedValueOnce(Response.json({ error: "forbidden" }, { status: 403 }))
+    .mockResolvedValueOnce(Response.json({ error: "restore_scratch_limit" }, { status: 507 }))
+    .mockResolvedValueOnce(Response.json({ error: "hosting_unavailable" }, { status: 503 }))
+    .mockResolvedValueOnce(Response.json({ error: "storage_failed", roomId: created.id }, { status: 500 }))
+    .mockRejectedValueOnce(new TypeError("connection lost"))
+    .mockResolvedValueOnce(Response.json({ room: created }));
+  vi.stubGlobal("fetch", fetch);
+  const cache = vi.spyOn(session.attachments, "restoreRetained").mockResolvedValue(false);
+  try {
+    await expect(session.importRoomCopy(source, settings)).rejects.toThrow("forbidden");
+    await expect(session.importRoomCopy(source, settings)).rejects.toThrow("restore_scratch_limit");
+    await expect(session.importRoomCopy(source, settings)).rejects.toThrow("hosting_unavailable");
+    await expect(session.importRoomCopy(source, settings)).rejects.toMatchObject({
+      message: "room_creation_unconfirmed", committed: false, roomId: created.id,
+    });
+    await expect(session.importRoomCopy(source, settings)).rejects.toMatchObject({
+      message: "room_creation_unconfirmed", committed: false, roomId: undefined,
+    });
+    expect(fetch).toHaveBeenCalledTimes(5);
+    const imported = session.importRoomCopy(source, settings);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(6));
+    const [url, request] = fetch.mock.calls[5];
+    expect(url).toBe("/prototype/channel/rooms/copy");
+    expect(request.method).toBe("POST");
+    const headers = new Headers(request.headers);
+    expect(headers.get("Authorization")).toBe("Bearer credential");
+    expect(headers.get("X-Piik-Session")).toBe("endpoint");
+    expect(headers.get("Content-Type")).toBe("application/zip");
+    expect(request.body).toBe(writerArchive);
+    expect(cache).not.toHaveBeenCalled();
+    expect(socket.sent.some(command => command.type === "create_room" || command.type === "admit_room" || command.type === "host_register")).toBe(false);
+    state.channel.rooms.push(created);
+    socket.receive({ type: "state", state });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "browse" && command.roomId === created.id)).toBe(true));
+    const browse = socket.sent.find(command => command.type === "browse" && command.roomId === created.id)!;
+    socket.receive({ type: "ack", requestId: browse.requestId });
+    await expect(imported).resolves.toEqual({ roomId: created.id, cached: false });
+    expect(cache).toHaveBeenCalledWith(created.id, [{ key: { roomId: created.id, messageSeq: 7, attachmentId: retained.attachment.id },
+      attachment: retained.attachment, file: original }]);
   } finally { session.close(); }
 });
 

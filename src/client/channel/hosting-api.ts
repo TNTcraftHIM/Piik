@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { roomSchema, roomSummarySchema, type RoomSummary } from "./protocol";
+import { RoomCreationInterrupted } from "./room-creation";
 
 const descriptionSchema = z.object({ sessionId: z.uuid(), roomIds: z.array(roomSchema.shape.id) });
 export type NativeHostingDescription = z.infer<typeof descriptionSchema>;
@@ -36,6 +37,31 @@ export class NativeRoomHosting {
         throw new Error(failure.data.error);
     }
     throw new Error("room_restore_unconfirmed");
+  }
+
+  async importCopy(archive: Blob, creatorId: string, sessionId: string): Promise<RoomSummary> {
+    const headers = new Headers(this.authorization);
+    headers.set("X-Piik-Session", sessionId);
+    headers.set("Content-Type", "application/zip");
+    const response = await fetch(`${this.roomsURL}/copy`, { method: "POST", headers, body: archive }).catch(() => null);
+    const value: unknown = await response?.json().catch(() => null);
+    if (response?.ok) {
+      const result = z.object({ room: roomSummarySchema }).safeParse(value);
+      if (result.success && result.data.room.creatorId === creatorId) return result.data.room;
+    } else if (response) {
+      const failure = failureSchema.extend({ roomId: roomSchema.shape.id.optional() }).safeParse(value);
+      if (failure.success) {
+        if (failure.data.error === "room_created_connection_failed")
+          throw new RoomCreationInterrupted(failure.data.roomId, true);
+        if (failure.data.error === "room_creation_unconfirmed")
+          throw new RoomCreationInterrupted(failure.data.roomId, false);
+        if ((response.status >= 400 && response.status < 500) || failure.data.error === "hosting_unavailable"
+          || (response.status === 507 && failure.data.error === "restore_scratch_limit"))
+          throw new Error(failure.data.error);
+        throw new RoomCreationInterrupted(failure.data.roomId, false);
+      }
+    }
+    throw new RoomCreationInterrupted(undefined, false);
   }
 
   private async request(url: string, archive?: Blob): Promise<Response> {

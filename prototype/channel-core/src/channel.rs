@@ -684,8 +684,7 @@ impl Channel {
         if !assigned {
             return Err("forbidden");
         }
-        summary.validate()?;
-        self.check_room_policy(&summary)?;
+        self.validate_room_summary(&summary)?;
         let room_id = summary.id.clone();
         if self
             .remote
@@ -759,17 +758,42 @@ impl Channel {
     pub(crate) fn create_room(
         &mut self,
         session: Uuid,
-        mut room: RoomSummary,
+        room: RoomSummary,
     ) -> Result<RoomSummary, &'static str> {
-        let member = self
+        let creation = self.prepare_creation(session, room)?;
+        self.reserve_creation(&creation)?;
+        Ok(creation.summary)
+    }
+
+    pub(crate) fn prepare_creation(
+        &self,
+        session: Uuid,
+        mut room: RoomSummary,
+    ) -> Result<crate::RoomCreation, &'static str> {
+        let endpoint = self
             .identity
-            .member(self.identity.sessions[&session].user_id)?;
+            .sessions
+            .get(&session)
+            .ok_or("disconnected")?;
+        let connection = endpoint.connection.ok_or("disconnected")?;
         room.id = Uuid::new_v4().to_string();
-        room.creator_id = member.user_id;
+        room.creator_id = self.identity.member(endpoint.user_id)?.user_id;
+        Ok(crate::RoomCreation {
+            summary: room,
+            session,
+            connection,
+        })
+    }
+
+    pub(crate) fn reserve_creation(
+        &mut self,
+        creation: &crate::RoomCreation,
+    ) -> Result<(), &'static str> {
         self.check_active_room_limit()?;
-        self.insert_room(room.clone())?;
-        self.remote.get_mut(&room.id).unwrap().reservation = Some(session);
-        Ok(room)
+        self.validate_room_summary(&creation.summary)?;
+        self.insert_validated_room(creation.summary.clone())?;
+        self.remote.get_mut(&creation.summary.id).unwrap().reservation = Some(creation.session);
+        Ok(())
     }
 
     pub(crate) fn admit_room(
@@ -784,8 +808,7 @@ impl Channel {
             return Err("forbidden");
         }
         self.identity.member(room.creator_id)?;
-        room.validate()?;
-        self.check_room_policy(&room)?;
+        self.validate_room_summary(&room)?;
         if let Some(current) = self.remote.get(&room.id) {
             return if current.summary.creator_id == room.creator_id {
                 Ok(())
@@ -798,7 +821,7 @@ impl Channel {
         {
             return Err("room_not_in_domain");
         }
-        self.insert_room(room)
+        self.insert_validated_room(room)
     }
 
     fn check_active_room_limit(&self) -> Result<(), &'static str> {
@@ -814,9 +837,12 @@ impl Channel {
         Ok(())
     }
 
-    fn insert_room(&mut self, room: RoomSummary) -> Result<(), &'static str> {
+    pub(crate) fn validate_room_summary(&self, room: &RoomSummary) -> Result<(), &'static str> {
         room.validate()?;
-        self.check_room_policy(&room)?;
+        self.check_room_policy(room)
+    }
+
+    fn insert_validated_room(&mut self, room: RoomSummary) -> Result<(), &'static str> {
         if self.pending_room_deletions.contains_key(&room.id) {
             return Err("room_not_in_domain");
         }

@@ -18,7 +18,7 @@ use std::{
     fs::File,
     io::{self, Read, Seek, SeekFrom},
 };
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, OwnedSemaphorePermit};
 use tokio_util::io::{ReaderStream, StreamReader, SyncIoBridge};
 
 pub(crate) type ApiError = (StatusCode, Json<serde_json::Value>);
@@ -148,6 +148,36 @@ pub(crate) async fn stage(
     Ok((staged, directory))
 }
 
+pub(crate) async fn receive_copy_upload(
+    headers: &HeaderMap,
+    body: Body,
+    scratch: OwnedSemaphorePermit,
+) -> Result<(File, tempfile::TempDir, OwnedSemaphorePermit), ApiError> {
+    require_zip(headers)?;
+    let mut reader = upload_reader(body);
+    tokio::task::spawn_blocking(move || {
+        // Keep the permit until copying and any temporary file cleanup finish.
+        let scratch = scratch;
+        let (archive, directory) = receive_zip(&mut reader, true)?;
+        Ok((archive, directory, scratch))
+    })
+    .await
+    .map_err(|cause| error(StatusCode::INTERNAL_SERVER_ERROR, cause))?
+    .map_err(upload_error)
+}
+
+pub(crate) fn upload_error(cause: anyhow::Error) -> ApiError {
+    match cause.downcast_ref::<io::Error>().map(io::Error::kind) {
+        Some(io::ErrorKind::StorageFull) => {
+            error(StatusCode::INSUFFICIENT_STORAGE, "restore_scratch_limit")
+        }
+        Some(io::ErrorKind::FileTooLarge) => {
+            error(StatusCode::PAYLOAD_TOO_LARGE, "restore_scratch_limit")
+        }
+        _ => error(StatusCode::BAD_REQUEST, cause),
+    }
+}
+
 type Upload = (StagedBackup, tempfile::TempDir, Option<ExistingRoomRestore>);
 
 async fn stage_upload(
@@ -155,27 +185,10 @@ async fn stage_upload(
     body: Body,
     existing: Option<ExistingRoomRestore>,
 ) -> std::result::Result<Upload, ApiError> {
-    if headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        != Some("application/zip")
-    {
-        return Err(error(StatusCode::UNSUPPORTED_MEDIA_TYPE, "expected_backup"));
-    }
-    let reader = StreamReader::new(body.into_data_stream().map_err(io::Error::other));
-    let mut reader = SyncIoBridge::new(reader);
+    require_zip(headers)?;
+    let mut reader = upload_reader(body);
     tokio::task::spawn_blocking(move || -> Result<Upload> {
-        let directory = tempfile::Builder::new().prefix("piik-restore-").tempdir()?;
-        // The uploaded ZIP is needed only while building its SQLite snapshot.
-        let mut archive = tempfile::tempfile_in(directory.path())?;
-        if existing.is_some() {
-            const SCRATCH_HEADROOM_FACTOR: u64 = 8;
-            let budget = fs4::available_space(directory.path())? / SCRATCH_HEADROOM_FACTOR;
-            copy_bounded(&mut reader, &mut archive, budget)?;
-        } else {
-            io::copy(&mut reader, &mut archive)?;
-        }
-        archive.seek(SeekFrom::Start(0))?;
+        let (archive, directory) = receive_zip(&mut reader, existing.is_some())?;
         let staged = if existing.is_some() {
             backup::stage_hosted_room(archive, directory.path())?
         } else {
@@ -185,19 +198,38 @@ async fn stage_upload(
     })
     .await
     .map_err(|error| self::error(StatusCode::INTERNAL_SERVER_ERROR, error))?
-    .map_err(
-        |cause| match cause.downcast_ref::<io::Error>().map(io::Error::kind) {
-            Some(io::ErrorKind::StorageFull) => {
-                error(StatusCode::INSUFFICIENT_STORAGE, "restore_scratch_limit")
-            }
-            Some(io::ErrorKind::FileTooLarge) => {
-                error(StatusCode::PAYLOAD_TOO_LARGE, "restore_scratch_limit")
-            }
-            _ => error(StatusCode::BAD_REQUEST, cause),
-        },
-    )
+    .map_err(upload_error)
 }
 
+fn require_zip(headers: &HeaderMap) -> Result<(), ApiError> {
+    if headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        != Some("application/zip")
+    {
+        return Err(error(StatusCode::UNSUPPORTED_MEDIA_TYPE, "expected_backup"));
+    }
+    Ok(())
+}
+
+fn upload_reader(body: Body) -> impl Read + Send {
+    let reader = StreamReader::new(body.into_data_stream().map_err(io::Error::other));
+    SyncIoBridge::new(reader)
+}
+
+fn receive_zip(input: &mut impl Read, bounded: bool) -> io::Result<(File, tempfile::TempDir)> {
+    let directory = tempfile::Builder::new().prefix("piik-restore-").tempdir()?;
+    let mut archive = tempfile::tempfile_in(directory.path())?;
+    if bounded {
+        const SCRATCH_HEADROOM_FACTOR: u64 = 8;
+        let budget = fs4::available_space(directory.path())? / SCRATCH_HEADROOM_FACTOR;
+        copy_bounded(input, &mut archive, budget)?;
+    } else {
+        io::copy(input, &mut archive)?;
+    }
+    archive.seek(SeekFrom::Start(0))?;
+    Ok((archive, directory))
+}
 fn copy_bounded(input: &mut impl Read, output: &mut impl io::Write, budget: u64) -> io::Result<()> {
     io::copy(&mut input.take(budget), output)?;
     if input.read(&mut [0])? != 0 {

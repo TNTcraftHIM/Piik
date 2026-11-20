@@ -61,6 +61,19 @@ pub struct Authority {
     channel: Channel,
 }
 
+/// A server-assigned room identity tied to the creator's current connection.
+pub struct RoomCreation {
+    summary: host::RoomSummary,
+    session: Uuid,
+    connection: Uuid,
+}
+
+impl RoomCreation {
+    pub fn summary(&self) -> &host::RoomSummary {
+        &self.summary
+    }
+}
+
 impl Authority {
     pub fn new(owner_key: String, ice_servers: Vec<Value>) -> Result<Self, &'static str> {
         if !wire::valid_id(&owner_key) {
@@ -112,6 +125,10 @@ impl Authority {
         let Some(session) = self.channel.identity.session_for_connection(connection) else {
             return false;
         };
+        self.cancel_reservation(session, room_id)
+    }
+
+    fn cancel_reservation(&mut self, session: Uuid, room_id: &str) -> bool {
         if self
             .channel
             .remote
@@ -229,6 +246,47 @@ impl Authority {
 
     pub fn current_connection(&self, session: Uuid) -> Option<Uuid> {
         self.channel.identity.sessions.get(&session)?.connection
+    }
+
+    pub fn prepare_hosted_creation(
+        &self,
+        session: Uuid,
+        connection: Uuid,
+        summary: host::RoomSummary,
+    ) -> Result<RoomCreation, &'static str> {
+        let creation = self.channel.prepare_creation(session, summary)?;
+        if self.hosting_mode() != wire::HostingMode::Hosted || creation.connection != connection {
+            return Err("disconnected");
+        }
+        self.channel.validate_room_summary(&creation.summary)?;
+        Ok(creation)
+    }
+
+    /// Only an installed or actively installing room needs a directory reservation.
+    pub fn reserve_hosted_creation(&mut self, creation: &RoomCreation) -> Result<(), &'static str> {
+        if self.hosting_mode() != wire::HostingMode::Hosted
+            || self.current_connection(creation.session) != Some(creation.connection)
+        {
+            return Err("disconnected");
+        }
+        self.channel.reserve_creation(creation)
+    }
+
+    pub fn member_connection(&self, session: Uuid, user: Uuid) -> Option<Uuid> {
+        self.channel
+            .identity
+            .sessions
+            .get(&session)
+            .filter(|endpoint| endpoint.user_id == user)?
+            .connection
+    }
+
+    pub fn cancel_hosted_creation(&mut self, creation: &RoomCreation) -> Effects {
+        let mut effects = Effects::default();
+        if self.cancel_reservation(creation.session, &creation.summary.id) {
+            self.broadcast(None, &mut effects);
+        }
+        effects
     }
 
     /// Apply a validated request only through its current connection binding.
