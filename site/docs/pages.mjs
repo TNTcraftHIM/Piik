@@ -9,6 +9,7 @@ export const pages = [
   ['docs/guide/remote-control.md', 'remote-control.md', 'Remote control and playing together', 'Using Piik'],
   ['cmd/piik-app/README.md', 'app.md', 'App reference', 'Using Piik'],
   ['docs/guide/troubleshooting.md', 'troubleshooting.md', 'Troubleshooting', 'Get help'],
+  ['docs/guide/sound-help.md', 'sound-help.md', 'Sound and microphone', 'Get help'],
   ['docs/guide/network.md', 'network.md', 'Network connections', 'Networking'],
   ['docs/guide/frp.md', 'frp.md', 'Fixed invitations with frp', 'Networking'],
   ['docs/operations/self-hosting.md', 'self-hosting.md', 'Deploy a site', 'Self-hosting'],
@@ -21,6 +22,7 @@ export const pages = [
   ['docs/guide/remote-control.zh-CN.md', 'zh/remote-control.md', '远程控制与多人同乐', '使用 Piik'],
   ['cmd/piik-app/README.zh-CN.md', 'zh/app.md', 'App 使用参考', '使用 Piik'],
   ['docs/guide/troubleshooting.zh-CN.md', 'zh/troubleshooting.md', '问题排查', '遇到问题'],
+  ['docs/guide/sound-help.zh-CN.md', 'zh/sound-help.md', '声音和麦克风', '遇到问题'],
   ['docs/guide/network.zh-CN.md', 'zh/network.md', '进阶网络排查', '网络连接'],
   ['docs/guide/frp.zh-CN.md', 'zh/frp.md', '用 frp 设置固定邀请', '网络连接'],
   ['docs/operations/self-hosting.zh-CN.md', 'zh/self-hosting.md', '部署站点', '自部署'],
@@ -29,6 +31,19 @@ export const pages = [
 ].map(([source, path, text, group]) => ({ source, path, text, group }));
 
 export const repository = 'https://github.com/TNTcraftHIM/Piik';
+
+// Repository readers switch translations below the title. On the website the header owns this control.
+export function documentBody(markdown, source) {
+  const file = posix.basename(source);
+  const languageLinks = file.endsWith('.zh-CN.md')
+    ? `[English](./${file.replace('.zh-CN.md', '.md')}) · 简体中文`
+    : `English · [简体中文](./${file.replace(/\.md$/, '.zh-CN.md')})`;
+  return markdown.replace(/^(# [^\r\n]+\r?\n\r?\n)([^\r\n]+)\r?\n\r?\n/m, (original, title, row) => {
+    if (!row.startsWith(languageLinks)) return original;
+    const guideLink = row.slice(languageLinks.length);
+    return /^(?: · \[[^\]]+\]\(\.{1,2}\/[^)]+\.md\))?$/.test(guideLink) ? title : original;
+  });
+}
 
 function repositoryReference(href, source) {
   if (/^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i.test(href)) return null;

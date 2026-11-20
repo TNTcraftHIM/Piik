@@ -37,15 +37,13 @@ SFU forwarding requires a site with that feature enabled and a reachable UDP end
 
 ## Browser WebRTC restrictions
 
-Browser WebRTC settings, VPNs and privacy extensions can block media UDP,
-including the browser-to-App connection on the same computer.
-
-1. Open the same invitation in a browser profile with default settings and no relevant privacy extensions.
-2. If it works, check **WebRTC** or **IP-leak protection** in the original browser and restore a policy that allows WebRTC UDP.
-3. Reload Piik and retry sharing or viewing. School/company-managed settings need an administrator's review.
+1. Open the same invitation in another browser. If the picture appears, you can keep watching there.
+2. To keep using your original browser, try a fresh profile with default settings. If that works, check the privacy extensions in your original profile. If neither browser shows the picture, try a phone hotspot.
 
 <details>
-<summary>Chrome / Vivaldi settings</summary>
+<summary>Advanced · Chrome and Vivaldi privacy settings</summary>
+
+Browser or VPN policies can block picture connections, including capture through App on the same computer. Check **WebRTC** or **IP-leak protection** in the original profile. For a school or work device, ask the administrator.
 
 `disable_non_proxied_udp` restricts UDP that does not use a proxy. Compare with
 the browser default. Chrome extensions may control this policy without a visible

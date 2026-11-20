@@ -89,6 +89,34 @@ If the gamepad does not respond, check the Host's driver and App support, then
 turn **Remote control** off and on. Keyboard/mouse co-play and ordinary remote control
 remain available without the gamepad driver.
 
+<a id="use-the-on-screen-joystick"></a>
+
+## Play on your phone with the on-screen joystick
+
+1. On your phone, tap the picture to reveal the playback bar and select the
+   mouse icon labeled **Request control**. In **Ask each time** mode, the Host
+   selects **Allow** in **Remote control**.
+2. Once control is active, tap the gamepad icon at the bottom left of the
+   picture. The joystick opens beside the icon.
+3. Drag the stick in the direction you want to move. Lift your finger to center
+   it and release the movement input. Tap the gamepad icon again to close it.
+
+![Viewer's on-screen controls with the gamepad icon at left, the stick held up and right, and the WASD switch at right.](../assets/guide/touch-joystick.png)
+
+*Viewer controls over a sample picture.*
+
+- **Gamepad icon missing?** The on-screen controls appear on touch devices
+  such as phones while remote control is active. Wait for approval if your
+  request is pending.
+- **Seeing W, A, S and D on the stick?** It sends keyboard movement. The
+  analog stick requires versions that support playing together, gamepad support
+  from the Host and no active physical
+  controller on the viewing device. On a Windows x64 Host, check the driver
+  setup under [Gamepads](#gamepads). When analog is available, tap **WASD**
+  to switch to keyboard movement and tap it again to return to analog.
+- **Lost the connection?** Once the picture returns, select **Request control**
+  again. After control is active, tap the gamepad icon to reopen the joystick.
+
 ## End control
 
 Either person can choose **End control**. The Host can stop all remote input with
@@ -109,7 +137,6 @@ cursor. Two-finger tap is right-click; two-finger swipe scrolls. Pinch to zoom i
 or out, then use two fingers to pan, including into the blank space around the
 picture. **Playback settings → Default touch mode → Trackpad** keeps the simpler cursor
 mode available.
-Tap the gamepad button at the lower left of the picture and slide to move. A Windows co-play session with gamepad access uses the analog left stick. Tap WASD for keyboard games. Keyboard-only sessions use WASD automatically. Lift your finger to stop moving.
 
 Drag the mini mouse to reposition it; tap to expand its left and right buttons
 and combined scroll wheel / middle button. The cursor stays above and to the

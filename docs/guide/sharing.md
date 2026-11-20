@@ -2,11 +2,35 @@
 
 English · [简体中文](./sharing.zh-CN.md) · [Documentation](./README.md)
 
-To start sharing or join an invitation, see [your first room](./getting-started.md).
+Share a game, a window, or your whole screen with friends. You can choose whether they hear the game and whether they hear your microphone.
 
-- **Share game or app sound.** Enable source audio when you pick what to share, if your browser or App offers it. **Safari on iPhone and iPad can share the screen from version 27. Screen sharing carries no game or system sound.** [iPhone and iPad screen sharing](#iphone-and-ipad-screen-sharing)
-- **Talk over the picture.** Use [Include my microphone](#include-your-microphone) so everyone watching can hear you.
-- **Talk back and forth.** Open **Interact → Voice** to join [room voice](./room-tools.md#room-voice), which has its own microphone and volume controls.
+## Start sharing
+
+1. In the room, select **Start sharing**. If you still need a room, see [the getting started guide](./getting-started.md).
+2. Pick what you want friends to see.
+
+   | What to share | What to select |
+   | --- | --- |
+   | A browser tab, window, or screen | Choose **Browser**, then **Choose what to share**. The options in the next window depend on your browser and device. |
+   | A desktop game or an app | With Piik App connected, choose **Apps / Windows** if available and select the game or app. |
+   | An entire desktop screen | With Piik App connected, choose **Screens** if available and select the display. |
+   | A camera | Choose **Camera**, allow access, and select a camera. |
+
+3. To include the game or app sound, turn on the audio option before picking your source. In the browser's chooser, turn on audio if offered. With Piik App on Windows, use **Application sound** for an app or **System sound** for a screen.
+4. Check your preview and keep the room page open while you share. If you want friends to hear you too, see [how to include your microphone](#include-your-microphone).
+
+For a missing chooser or a share that will not start, see [starting a share](./troubleshooting.md#starting-a-share). If friends see the picture but hear no game sound, see [picture but no source sound](./troubleshooting.md#picture-but-no-source-sound).
+
+## Share from a phone or tablet
+
+- **Android.** Use Piik App on Android 10 or later. Open Piik from the installed App and approve Android's screen-sharing prompt. It shares the whole display and can include sound from apps that allow Android to capture it. [Install and open Piik App](./getting-started.md#share-with-piik-app)
+- **iPhone and iPad.** Use Safari on iOS or iPadOS 27 or later for screen sharing. [iPhone and iPad screen sharing](#iphone-and-ipad-screen-sharing)
+
+## Switch, cancel, or stop sharing
+
+- **Switch to a different picture.** Select **Switch source** below the picture and choose what to share next.
+- **Cancel while choosing.** Close the Piik picker, or select the cancel option in the browser or system prompt. If you opened the picker from **Switch source**, friends keep seeing the current share.
+- **Stop an active share.** Select **Stop sharing** below the picture. On a phone, return to the room page first.
 
 ## Invitations
 

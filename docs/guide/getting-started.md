@@ -2,41 +2,29 @@
 
 English · [简体中文](./getting-started.zh-CN.md) · [Back to Piik](../../README.md)
 
-- **Someone sent me a link.** Open it in your browser. [Join a friend’s room](#join-a-friends-room)
-- **I want to share my screen.** [Start in your browser](#use-piik-online). To share one app’s sound or host a room on your computer, [use Piik App](#share-with-piik-app).
+- [Watch a friend’s screen](#join-a-friends-room)
+- [Share from your browser](#use-piik-online) or [share with Piik App](#share-with-piik-app)
 
 ## Join a friend's room
 
-1. Open the invitation link your friend sent in a desktop or mobile browser.
-2. If the page asks for a passphrase or room password, ask the friend who invited you. An invitation copied with **Skip passwords** takes you straight to the room.
-3. Wait for their screen to appear. If the browser blocks autoplay, press **Play**.
-4. Move the pointer over the picture or tap it to show the playback bar.
+1. Open the invitation in a browser on your phone or computer. You can watch without installing Piik App or creating an account.
+2. If the first page asks for a **Site passphrase**, enter the passphrase for that Piik site. If the room asks for a **Room password**, choose **Enter room password** and enter the password for that room. Ask your friend for whichever the page requests. A link your friend copied with **Skip passwords** lets you skip both prompts.
+3. You’re watching when your friend’s picture appears. If you see a **Play** button, press it. Tap the picture or move your pointer over it for [playback controls](./sharing.md#playback-controls).
 
-The playback bar controls only your own picture and sound.
-See [playback controls](./sharing.md#playback-controls) for fullscreen, display and sound options.
+If you received a four-digit room code, open the same Piik site your friend used, select **Join a room**, and enter the code. If the site asks for a passphrase first, enter it on the opening page.
 
-Only have a four-digit code? Open the same Piik site and enter its passphrase if prompted. Select **Join a room**, enter the code, and provide the room password if asked. If code entry is unavailable or an old link fails, ask the Host for their current invitation.
-
-Open your friend’s full invitation if they created the room with App. Their code belongs to their App’s site.
+[Get help joining or watching](./troubleshooting.md#common-problems).
 
 ## Use Piik online
 
-1. Open [demo.piik.tv](https://demo.piik.tv) in your browser.
-2. Select **Start sharing**, then **Browser** for a screen, window or tab, or
-   **Camera** where your computer or phone browser supports it. Enable source
-   audio if the picker offers it.
-3. Check that the picture you chose appears in the preview. Your share is ready when **Copy invite link** is available.
-4. Select **Copy invite link** and send it to your friends, or show the **QR code** for another device to scan.
-5. Keep the sharing tab open while friends watch. Select **Stop sharing** when finished.
+1. Open [demo.piik.tv](https://demo.piik.tv) in your browser. You can share without an account or download.
+2. Select **Start sharing**. Choose **Browser** to share a screen, window, or tab, or **Camera** to share your camera. Pick what you want viewers to see and enable audio if the picker offers it.
+3. When your picture appears in the preview, select **Copy** in the **Admission** row and send the invitation to your friends. You can also show the room’s **QR code** for them to scan.
+4. Keep the sharing tab open while friends watch. Select **Stop sharing** when you’re done.
 
-On iPhone/iPad, screen sharing requires **Safari on iOS/iPadOS 27 or later**.
-See [iPhone and iPad screen sharing](./sharing.md#iphone-and-ipad-screen-sharing)
-for sound support and the separate requirements for watching and cameras.
+For iPhone or iPad, see [screen sharing in Safari](./sharing.md#iphone-and-ipad-screen-sharing). If you can’t start sharing, see [sharing troubleshooting](./troubleshooting.md#starting-a-share).
 
-The online version sends the picture directly between devices.
-Some networks may let you open the page but block the picture.
-
-![Three steps: pick a window, copy its room invitation, and join friends on the sofa.](../assets/quickstart.svg)
+![Pick a window, copy its invitation, and watch together.](../assets/quickstart.svg)
 
 ## Share with Piik App
 

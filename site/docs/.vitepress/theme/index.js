@@ -8,6 +8,7 @@ import { initialLanguage, rememberLanguage } from '../../../assets/language.js';
 import '../../../assets/brand.css';
 import HelpSearch from './HelpSearch.vue';
 import './style.css';
+import './article.css';
 
 const DocumentationBrand = {
   setup() {
@@ -38,6 +39,10 @@ export default {
     const { lang } = useData();
     return h(DefaultTheme.Layout, null, {
       'nav-bar-title-before': () => h(DocumentationBrand),
+      'doc-before': () => h('a', {
+        class: 'article-home',
+        href: withBase(lang.value === 'zh-CN' ? '/zh/' : '/'),
+      }, [h('span', { 'aria-hidden': 'true' }, '←'), lang.value === 'zh-CN' ? '帮助中心' : 'Help Center']),
       'doc-bottom': () => h('p', { class: 'docs-license' }, [
         h('a', { href: withBase('/third-party-licenses.txt') },
           lang.value === 'zh-CN' ? '第三方软件许可' : 'Third-party licenses'),

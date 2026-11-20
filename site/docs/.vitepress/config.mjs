@@ -16,7 +16,7 @@ const sidebar = chinese => {
     text: chinese ? '完整配置参考（英文）' : 'Configuration reference',
     link: `${repository}/blob/main/docs/standards/configuration.md`,
   });
-  return Array.from(groups, ([text, items]) => ({ text, items }));
+  return Array.from(groups, ([text, items]) => ({ text, items, collapsed: true }));
 };
 
 export default defineConfig({

@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { documentLink } from "../site/docs/pages.mjs";
+import { documentBody, documentLink } from "../site/docs/pages.mjs";
 import { githubSlug } from "../scripts/markdown-slug.mjs";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { THEME_STORAGE_KEY } from "../src/client/ui/theme";
 
 describe("reader documentation publication", () => {
+  it("omits the repository language row while keeping ordinary linked instructions", () => {
+    const title = "# Join a room\n\n";
+    const navigation = "English · [简体中文](./joining.zh-CN.md)";
+    const start = "Open your [invitation](./invite.md).\n";
+    expect(documentBody(title + navigation + " · [Back to Piik](../../README.md)\n\n" + start, "docs/guide/joining.md"))
+      .toBe(title + start);
+    const linkedNote = title + navigation + " is available in the reader menu.\n\n" + start;
+    expect(documentBody(linkedNote, "docs/guide/joining.md")).toBe(linkedNote);
+  });
+
   it("uses the shared appearance key before the native documentation runtime starts", () => {
     const config = readFileSync(new URL("../site/docs/.vitepress/config.mjs", import.meta.url), "utf8");
     const template = config.match(/appearance\[2\] = (`[\s\S]*?`);/)?.[1];

@@ -22,8 +22,8 @@ Start at the first thing that fails:
 | Source picker is missing or sharing will not start | [Source and capture checks](#starting-a-share). |
 | Picture blurs or stutters | [Picture quality](#the-picture-is-blurry-or-keeps-freezing). |
 | Phone fullscreen or playback controls are missing | [Fullscreen and controls](#fullscreen-or-playback-after-sleep). |
-| Picture works, but no game/movie sound | [Source sound](#picture-but-no-source-sound). |
-| Cannot hear a friend, or cannot use the microphone | [Room voice](#cannot-hear-someone-speaking) and [permissions](#microphone-or-remote-controls-are-unavailable). |
+| Picture works, but no game/movie sound | [Check game sound](./sound-help.md#i-can-see-the-picture-but-cannot-hear-the-game). |
+| Cannot hear a friend, or cannot use the microphone | [Check room voice](./sound-help.md#i-cannot-hear-a-friend-speaking) and [permissions](#microphone-or-remote-controls-are-unavailable). |
 | Gamepad does not respond | [Gamepad checks](#gamepads). |
 
 Leave [advanced network checks](./network.md) until the matching
@@ -42,7 +42,11 @@ symptom's simple checks have failed. Change one thing at a time.
 
 ### I cannot join my friend’s room
 
-Ask the Host to send the current invitation and open the full link in your browser. If only your browser shows a blank page, try the same link in another browser. If friends also cannot reach it, check the type of invitation. A [local invitation](#local-invitation-will-not-open) needs a reachable local network. For a public address or error 1033, ask the Host to [check the public invitation](#public-invitation-fails-or-shows-1033).
+Ask the Host for the current invitation and open the full link in your browser.
+
+- **The browser says the site cannot be reached.** A [local invitation](#local-invitation-will-not-open) needs a network both devices can reach. If you’re in different locations, ask for a **Public invite**. If a public address shows 1033, ask the Host to [check the invitation](#public-invitation-fails-or-shows-1033).
+- **The tab shows a title but the page stays blank.** Try the same link in another browser. If it stays blank, ask a friend to try it too and tell the Host which devices can open it.
+- **The room opens but the TV stays empty.** Ask the Host to check their preview, then follow the [picture connection checks](#when-video-will-not-connect).
 
 <span id="app-not-ready"></span>
 
@@ -332,7 +336,14 @@ If it still fails, save [diagnostic reports](#reporting-a-problem) from the Host
 
 1. When playback stalls, watch the Host preview at the same time. If it freezes too, check that the source is updating and whether the game is saturating the CPU or GPU. Try lowering resolution or frame rate in **Sharing settings → Picture**, one at a time.
 2. If the preview stays smooth, ask another Viewer whether they see the pauses. If only your picture stalls periodically, try **Increase playback buffering** where available. Compare the same movement. Restore the previous setting if stalls persist or the extra delay affects controls, then compare another browser or hotspot.
-3. If all Viewers are affected, check **Connection details → Video codec** on the Host. Windows Auto may select VP8 when H264 is unavailable, its check is incomplete or it cannot sustain the frame rate. Software encoding competes with the game for CPU time. For Browser capture, follow the [graphics checks](#h264-sharing-fails-on-windows) or compare App window/screen capture. Keep Auto or VP8 if the H264 check fails.
+3. If everyone sees the pauses, ask the Host to share an ordinary window. If that window plays smoothly, use the Windows encoding checks below when returning to the game.
+
+<details>
+<summary>Windows Hosts · Check which video codec is in use</summary>
+
+If all Viewers are affected, check **Connection details → Video codec** on the Host. Windows Auto may select VP8 when H264 is unavailable, its check is incomplete or it cannot sustain the frame rate. Software encoding competes with the game for CPU time. For Browser capture, follow the [graphics checks](#h264-sharing-fails-on-windows) or compare App window/screen capture. Keep Auto or VP8 if the H264 check fails.
+
+</details>
 
 If sharing ended, read the reason below the TV. [Export reports before refreshing](#reporting-a-problem) from the Host, affected Viewer and any App handling capture.
 
@@ -430,43 +441,24 @@ To end a share from your phone, return to the sharing page and select **Stop sha
 
 ## Sound and browser permissions
 
-[Source sound](#picture-but-no-source-sound) · [Room voice](#cannot-hear-someone-speaking) ·
+[Check game sound](./sound-help.md#i-can-see-the-picture-but-cannot-hear-the-game) · [Check room voice](./sound-help.md#i-cannot-hear-a-friend-speaking) ·
 [Echo / unwanted sound](#echo-or-unwanted-application-audio) · [Microphone / control permissions](#microphone-or-remote-controls-are-unavailable)
 
 ### Picture but no source sound
 
-1. Unmute the video and turn up playback volume. Ask the Host to check that sound is enabled for the selected source.
-2. On iPhone Safari, screen sharing excludes game audio. For camera video or OBS, select the audio input separately. See [sharing and playback](./sharing.md).
-3. With Windows App screen capture and no application exclusions, check the game is playing through the default playback device. Route it there and restart sharing, or share the game window to capture its process audio.
-
-If speech is missing, follow the [microphone and room voice checks](#cannot-hear-someone-speaking).
+[I can see the picture but cannot hear the game](./sound-help.md#i-can-see-the-picture-but-cannot-hear-the-game).
 
 ### Cannot hear someone speaking
 
-1. Ask how the speaker joined. For **Include my microphone**, the Host checks **Sharing settings → Sound** and the Viewer checks [picture sound](#picture-but-no-source-sound).
-2. For room voice, the Host selects **Open room voice** and both people join **Interact → Voice**. Each speaker turns on their microphone and checks site permission, input device and volume in **Voice settings**. Microphone access requires HTTPS or `localhost`.
-3. Check whether you paused listening or muted that person locally. **Pause listening** leaves your own microphone on.
-
-If voice reports a connection failure, compare another network and check [browser WebRTC settings](./network.md#browser-webrtc-restrictions).
+[I cannot hear a friend speaking](./sound-help.md#i-cannot-hear-a-friend-speaking).
 
 ### Echo or unwanted application audio
 
-If a viewer hears their own voice coming back through the stream, keep room voice on for this check.
-
-1. Ask the viewer to turn just that stream's playback volume to zero and speak. If the echo stops, turn the volume back up and continue to step 2. If it persists, check the microphones and monitoring settings below.
-2. Have the host temporarily turn off the source audio, labeled **System sound** for a full-screen share. If the echo stops while the host can still hear the viewer in the call, the share is capturing room voices.
-
-To keep both game audio and the conversation, select the game under **Apps / Windows** in the Windows App. For a full-screen share, use **Exclude application audio** and choose the window playing the call. If the game and the call use the same browser, share the game tab with tab audio. [Sharing sound settings](./sharing.md#exclude-a-voice-app-from-screen-audio)
-
-If muting source sound leaves the echo audible, try turning off the host's **share microphone**, then have anyone using speakers switch to headphones. Check a virtual mixer's playback and monitoring outputs if one is in use.
+[I hear my own voice twice](./sound-help.md#i-hear-my-own-voice-twice).
 
 ### Microphone or remote controls are unavailable
 
-1. Open the full HTTPS invitation on the Viewer’s device. For a local invitation, [confirm its certificate](#local-https-certificate-warning). Plain HTTP LAN pages support viewing, chat and listening. Microphone, camera and remote input require a secure context. Changing the URL prefix cannot enable HTTPS, and `localhost` refers to the current device.
-2. For microphone access, check site permission and the selected input device. If the browser rejects the local certificate, use **Public invite** or a site with a trusted HTTPS certificate.
-3. For remote control, ask the Host to share a desktop App window or screen and enable control, then request access. Request it again after a source change, share stop or disconnect. Android Viewers can control desktops. Android Hosts, Browser capture and camera sources cannot receive remote input.
-
-If controls are still missing, update the Host App and site, refresh the Viewer page and repeat the [authorization steps](./room-tools.md#let-a-friend-control-your-shared-screen).
+[My friends cannot hear me](./sound-help.md#my-friends-cannot-hear-me). For remote input, follow the [remote control checks](./remote-control.md).
 
 ## Gamepads
 
