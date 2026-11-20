@@ -126,8 +126,12 @@ history. The domain projects only current-host confirmations into authorized
 room summaries, so a closed conversation can show an unread dot without joining
 media routes or loading every room's history. A read marker belongs to the local
 browser's site/user/room scope. Only a visible, focused conversation at its latest
-messages advances it. Background voice, watching and transport reading are not
-read receipts, and sequence differences are not exact unread counts. Inline
+messages advances it. A supporting room writer can locate the first surviving
+message from another author after a reader-supplied sequence. It returns the
+sequence privately, and the reader loads the surrounding page through ordinary
+history. Older writers retain manual pagination. Background voice, watching
+and transport reading are not read receipts, and sequence differences are not
+exact unread counts. Inline
 mentions and replies highlight the addressed user in received conversation;
 there is no separate offline push or global mention-count service.
 

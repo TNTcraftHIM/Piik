@@ -9,6 +9,7 @@ interface Context { sessionId: string | null; state: ChannelSnapshot | null; con
 interface ConversationOptions {
   context(): Context;
   host(roomId: string): HostedRoom | undefined;
+  pending?(requestId: string, bindingId: string): boolean;
   send(packet: SignedConversationPacket, requestId: string): void;
   file(peer: string, control: string): void;
   watch?(peer: string, control: string): void;
@@ -48,12 +49,13 @@ export class ChannelConversation {
     return new TextDecoder().decode(runtime.encode_control(JSON.stringify({ kind: "file", body: JSON.parse(control) })));
   }
 
-  async send(command: Extract<ChannelCommand, { type: "chat" | "history" | "delete_message" | "clear_history" | "react" | "interaction_ready" }>, requestId: string): Promise<void> {
+  async send(command: Extract<ChannelCommand, { type: "chat" | "history" | "history_seek" | "delete_message" | "clear_history" | "react" | "interaction_ready" }>, requestId: string, bindingId?: string): Promise<void> {
     const { signer } = await this.ready();
+    if (bindingId && !this.options.pending?.(requestId, bindingId)) throw new DOMException("Request cancelled", "AbortError");
     const { state, sessionId, connected } = this.options.context();
     if (!connected || !sessionId) throw new Error("disconnected");
     const delivery = state?.channel.rooms.find(room => room.id === command.roomId)?.delivery;
-    if (!delivery) throw new Error("room_host_offline");
+    if (!delivery || (bindingId && delivery.bindingId !== bindingId)) throw new Error("room_host_offline");
     const { roomId, ...body } = command;
     const packet: SignedConversationPacket = JSON.parse(signer.sign(sessionId, JSON.stringify({
       roomId, bindingId: delivery.bindingId, sender: sessionId, recipient: delivery.hostSessionId, requestId, command: body,

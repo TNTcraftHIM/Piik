@@ -282,6 +282,7 @@ impl RoomRuntime {
             },
             capabilities: crate::wire::RoomCapabilities {
                 attachments: self.base.is_some(),
+                history_seek: true,
             },
             participant_session_ids: self
                 .media_sessions()
@@ -636,6 +637,24 @@ impl RoomRuntime {
         Ok(HistoryRequest::Read {
             room_id: self.policy.id.clone(),
             before,
+        })
+    }
+
+    pub(crate) fn seek_history(
+        &self,
+        member: Member,
+        after: u64,
+    ) -> Result<HistoryRequest, &'static str> {
+        self.authorize(member, RoomPermission::Read)?;
+        // Both SQLite and the Browser's numeric IndexedDB keys must represent the cursor exactly.
+        const MAX_SAFE_CURSOR: u64 = (1u64 << f64::MANTISSA_DIGITS) - 1;
+        if after > MAX_SAFE_CURSOR {
+            return Err("invalid_history_cursor");
+        }
+        Ok(HistoryRequest::Seek {
+            room_id: self.policy.id.clone(),
+            after,
+            exclude_author: member.user_id,
         })
     }
 
@@ -4983,6 +5002,19 @@ mod tests {
 
         let admitted = room.snapshot(viewer, viewer_session).unwrap();
         assert!(admitted.room.authorized);
+        assert!(admitted.room.capabilities.history_seek);
+        let projection = room.project(BTreeMap::from([(
+            viewer_session,
+            room.recipient(viewer, viewer_session).unwrap(),
+        )]));
+        assert!(
+            !projection
+                .snapshot(viewer_session, false)
+                .unwrap()
+                .room
+                .capabilities
+                .history_seek
+        );
         assert_eq!(
             admitted
                 .room
@@ -5034,6 +5066,7 @@ mod tests {
         );
         let locked = room.snapshot(viewer, viewer_session).unwrap();
         assert!(!locked.room.authorized);
+        assert!(!locked.room.capabilities.history_seek);
         assert!(!locked.room.can_manage);
         assert!(locked.room.participant_session_ids.is_empty());
         assert!(locked.room.file_activity.is_empty());

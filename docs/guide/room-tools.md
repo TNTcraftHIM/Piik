@@ -87,9 +87,10 @@ backs up their own rooms, without centralizing everyone's records at the site op
    the current conversation.
 
 An unread dot beside a room means it has messages beyond your last reading
-position. Reading the latest messages to the bottom in a focused conversation
-clears it. This browser remembers that position; background voice or watching
-does not mark messages as read.
+position. Select **Jump to new messages** to go to the first message someone
+else sent after you last read the room. If an older room does not offer the
+jump, use **Earlier messages**. Reading to the bottom of the latest messages
+clears the dot. This browser remembers your position.
 
 Messages allow up to 2,000 characters and support Markdown emphasis, lists, quotes,
 links and code. Wrap inline code in backticks, or put a code block between lines

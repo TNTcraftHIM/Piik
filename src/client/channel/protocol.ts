@@ -42,7 +42,7 @@ export const roomSchema = z.object({
   available: z.boolean(), reading: z.boolean(),
   lastMessageSeq: z.number().int().nonnegative(),
   serviceRelay: z.object({ enabled: z.boolean(), available: z.boolean() }).optional(),
-  capabilities: z.object({ attachments: z.boolean() }),
+  capabilities: z.object({ attachments: z.boolean(), historySeek: z.boolean().optional() }),
   delivery: z.object({ hostSessionId: id, bindingId: id, nextHops: z.record(id, id) }).optional(),
 });
 export const roomSummarySchema = roomSchema.pick({ id: true, name: true, icon: true, creatorId: true, access: true, hidden: true, hasPassword: true, voiceBitrate: true, relayCapacity: true });
@@ -243,7 +243,7 @@ export class ChannelEventDecoder {
     return event;
   }
 }
-export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" | "room_invite_state" | "room_reply" | "room_created" | "profiles" }> | Extract<ConversationReply["record"], { type: "confirmed" }>;
+export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" | "room_invite_state" | "room_reply" | "room_created" | "profiles" }> | Extract<ConversationReply["record"], { type: "confirmed" | "history_seek_result" }>;
 export type SignedConversationPacket = z.infer<typeof signedConversationPacketSchema>;
 export type RoomInvitationState = { state: "available"; url: string } | { state: "missing" };
 export interface ConversationAddress { roomId: string; bindingId: string; sender: string; recipient: string; requestId: string }
@@ -255,6 +255,7 @@ export type ConversationReply = ConversationAddress & { record:
   | { type: "history_message" | "live_message"; message: ChannelMessage }
   | { type: "message_deleted"; messageSeq: number }
   | { type: "history_cleared"; throughSeq: number }
+  | { type: "history_seek_result"; after: number; seq: number | null }
   | { type: "history_end"; count: number; hasMore: boolean; oldestSeq: number | null; before: number | null }
   | { type: "error"; code: string }
 };
@@ -290,6 +291,7 @@ export type ChannelCommand =
   | { type: "relay_capacity"; roomId: string; capacity: number | null }
   | { type: "interaction_ready"; roomId: string }
   | { type: "react"; roomId: string; reaction: string; target: ReactionTarget; nonce: number }
+  | { type: "history_seek"; roomId: string; after: number }
   | { type: "history"; roomId: string; before?: number }
   | { type: "delete_message"; roomId: string; messageSeq: number; messageId: string }
   | { type: "clear_history"; roomId: string; throughSeq: number }

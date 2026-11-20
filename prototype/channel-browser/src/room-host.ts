@@ -25,12 +25,14 @@ export interface PageResult {
 }
 interface AttachmentResult { type: "attachment"; messageSeq: number; attachment: ChannelMessage["attachments"][number] }
 interface ReactionResult { type: "reacted"; nonce: number; snapshot: MessageReactions & { messageId: string; messageSeq: number }; event: ReactionEvent | null }
-type HistoryResult = SentResult | PageResult | AttachmentResult | ReactionResult | { type: "message_deleted"; messageSeq: number } | { type: "history_cleared"; throughSeq: number };
+type HistoryResult = SentResult | PageResult | AttachmentResult | ReactionResult | { type: "message_deleted"; messageSeq: number } | { type: "history_cleared"; throughSeq: number }
+  | { type: "seek"; after: number; seq: number | null };
 interface SendRequest { type: "send"; roomId: string; draft: ChatOptions & { userId: string; nonce: string; text: string; time: number; attachments: ChannelMessage["attachments"]; inlineImages?: ChannelMessage["inlineImages"] } }
 interface ReadRequest { type: "read"; roomId: string; before: number | null }
 interface AttachmentRequest { type: "attachment"; roomId: string; messageSeq: number; attachmentId: string }
 interface ReactionRequest { type: "react"; roomId: string; messageSeq: number; nonce: number; event: ReactionEvent | null }
 type HistoryRequest = SendRequest | ReadRequest | AttachmentRequest | ReactionRequest
+  | { type: "seek"; roomId: string; after: number; excludeAuthor: string }
   | { type: "delete_message"; roomId: string; messageSeq: number; messageId: string; authorId?: string | null }
   | { type: "clear_history"; roomId: string; throughSeq: number };
 interface HostWork { policy: object | null; history: HistoryRequest | null; delete: boolean }
@@ -447,6 +449,13 @@ export class BrowserRoomHost implements HostedRoom {
       } else if (request.type === "attachment") {
         read<StoredRow | undefined>(messages.get([request.roomId, request.messageSeq]), value => {
           result = JSON.parse(attachment_result(JSON.stringify(request), JSON.stringify(live(value) ?? null)));
+        }, abort);
+      } else if (request.type === "seek") {
+        const range = IDBKeyRange.bound([request.roomId, request.after], [request.roomId, Infinity], true);
+        read(messages.openCursor(range), cursor => {
+          const message = live(cursor?.value);
+          if (cursor && (!message || message.userId === request.excludeAuthor)) cursor.continue();
+          else result = { type: "seek", after: request.after, seq: message?.seq ?? null };
         }, abort);
       } else {
         const range = IDBKeyRange.bound([request.roomId], [request.roomId, request.before ?? Infinity], false, request.before !== null);

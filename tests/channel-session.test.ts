@@ -107,7 +107,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
   } });
   vi.stubGlobal("WebSocket", ChannelSocket);
   const session = new ChannelSession();
-  type PeerRequest = Extract<ChannelCommand, { type: "chat" | "history" | "delete_message" | "clear_history" }> & { requestId: string };
+  type PeerRequest = Extract<ChannelCommand, { type: "chat" | "history" | "history_seek" | "delete_message" | "clear_history" }> & { requestId: string };
   type InteractionRequest = Extract<ChannelCommand, { type: "interaction_ready" | "react" }> & { requestId: string };
   const sent: PeerRequest[] = [], pending: PeerRequest[] = [];
   const interactions: InteractionRequest[] = [];
@@ -742,6 +742,101 @@ test("message reaction clicks count independently while nonce retries settle wit
     peer.reply(chat, { type: "confirmed", message: message(1), inserted: false });
     await sending;
     expect(session.getSnapshot().messagesByRoom.first[0].reactions?.revision).toBe(2);
+  } finally { session.close(); }
+});
+
+function enableUnreadLookup({ session, socket }: Awaited<ReturnType<typeof setup>>) {
+  const state = structuredClone(session.getSnapshot().state!);
+  const room = state.channel.rooms[0];
+  room.capabilities.historySeek = true;
+  room.lastMessageSeq = 8;
+  socket.receive({ type: "state", state });
+  return state;
+}
+
+test("unread lookup skips seek when an older host omits the capability", async () => {
+  const { session, peer } = await setup();
+  try {
+    await expect(session.findUnreadMessage("first", 0, new AbortController().signal)).rejects.toThrow("room_unavailable");
+    expect(peer.sent).toEqual([]);
+  } finally { session.close(); }
+});
+
+test("unread lookup accepts an empty seek result and preserves the read marker", async () => {
+  const fixture = await setup();
+  const { session, peer } = fixture;
+  try {
+    enableUnreadLookup(fixture);
+    session.markRead("first", 2);
+    const key = "piik.channel.read.domain.self";
+    const saved = localStorage.getItem(key);
+    const loading = session.findUnreadMessage("first", 2, new AbortController().signal);
+    const seek = await peer.next();
+    expect(seek).toMatchObject({ type: "history_seek", after: 2 });
+    peer.reply(seek, { type: "history_seek_result", after: 2, seq: null });
+    await expect(loading).resolves.toBeNull();
+    expect(peer.sent).toEqual([seek]);
+    expect(session.getSnapshot().readByRoom.first).toBe(2);
+    expect(localStorage.getItem(key)).toBe(saved);
+  } finally { session.close(); }
+});
+
+test.each([
+  { after: 1, seq: 4 },
+  { after: 2, seq: 2 },
+])("unread lookup rejects an invalid seek result %j", async result => {
+  const fixture = await setup();
+  const { session, peer } = fixture;
+  try {
+    enableUnreadLookup(fixture);
+    const loading = session.findUnreadMessage("first", 2, new AbortController().signal);
+    const seek = await peer.next();
+    peer.reply(seek, { type: "history_seek_result", ...result });
+    await expect(loading).rejects.toThrow("invalid_response");
+    expect(peer.sent).toEqual([seek]);
+  } finally { session.close(); }
+});
+
+test.each(["abort", "rebind"])("unread lookup skips fetching context after %s", async interruption => {
+  const fixture = await setup();
+  const { session, socket, peer } = fixture;
+  try {
+    const state = enableUnreadLookup(fixture);
+    const controller = new AbortController();
+    const loading = session.findUnreadMessage("first", 2, controller.signal);
+    const seek = await peer.next();
+    peer.reply(seek, { type: "history_seek_result", after: 2, seq: 4 });
+    // Change the lookup's owner before its continuation can fetch context.
+    if (interruption === "abort") controller.abort();
+    else {
+      state.channel.rooms[0].delivery!.bindingId = "new-binding";
+      socket.receive({ type: "state", state });
+    }
+    await expect(loading).rejects.toThrow();
+    expect(peer.sent).toEqual([seek]);
+  } finally { session.close(); }
+});
+
+test("unread lookup advances past a row deleted between seek and history", async () => {
+  const fixture = await setup();
+  const { session, peer } = fixture;
+  try {
+    enableUnreadLookup(fixture);
+    const loading = session.findUnreadMessage("first", 2, new AbortController().signal);
+    const seek = await peer.next();
+    expect(seek).toMatchObject({ type: "history_seek", after: 2 });
+    peer.reply(seek, { type: "history_seek_result", after: 2, seq: 4 });
+    const page = await peer.next();
+    expect(page).toMatchObject({ type: "history", before: 5 });
+    peer.page(page, [message(2)], false, 2);
+    const retry = await peer.next();
+    expect(retry).toMatchObject({ type: "history_seek", after: 4 });
+    peer.reply(retry, { type: "history_seek_result", after: 4, seq: 6 });
+    const context = await peer.next();
+    expect(context).toMatchObject({ type: "history", before: 7 });
+    peer.page(context, [message(2), message(6)], false, 2);
+    await expect(loading).resolves.toEqual(message(6));
+    expect(peer.sent).toEqual([seek, page, retry, context]);
   } finally { session.close(); }
 });
 

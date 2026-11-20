@@ -289,7 +289,10 @@ impl RemoteRoom {
                 participant_session_ids: Vec::new(),
                 last_message_seq: 0,
                 file_activity: Vec::new(),
-                capabilities: RoomCapabilities { attachments: false },
+                capabilities: RoomCapabilities {
+                    attachments: false,
+                    history_seek: false,
+                },
                 members: None,
             },
             files: vec![],

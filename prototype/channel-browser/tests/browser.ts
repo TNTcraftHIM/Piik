@@ -160,6 +160,23 @@ window.runBrowserRoomCheck = async () => {
       check(owned.type === "confirmed", "owner fixture is stored");
       const denied = await run({ type: "delete_message", messageSeq: owned.message.seq, messageId: owned.message.id });
       check(denied[0].record.type === "error" && denied[0].record.code === "forbidden", "matching message identity still requires delete authority");
+      const backlog = (await run({ type: "chat", text: "Later owner message", nonce: "owner-later", attachments: [] }, true))[0].record;
+      check(backlog.type === "confirmed", "later owner fixture is stored");
+      const seek = async (after: number, seq: number | null) => {
+        const records = await run({ type: "history_seek", after });
+        const [reply] = records;
+        check(records.length === 1 && JSON.stringify(reply.record) === JSON.stringify({ type: "history_seek_result", after, seq }),
+          "seek returns exactly the first live sequence from another author after the exclusive boundary");
+      };
+      const advance = IDBCursor.prototype.continue;
+      let advances = 0;
+      IDBCursor.prototype.continue = function (...args) { advances++; return advance.apply(this, args); };
+      try {
+        await seek(0, owned.message.seq);
+        check(advances === 3, "seek skips both tombstones and the reader's own message and stops at the first match");
+      } finally { IDBCursor.prototype.continue = advance; }
+      await seek(owned.message.seq, backlog.message.seq);
+      await seek(backlog.message.seq, null);
     } finally { await current.close(); await other.close(); await new Promise<void>((resolve, reject) => {
       const request = indexedDB.deleteDatabase(name); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); }); }
   }

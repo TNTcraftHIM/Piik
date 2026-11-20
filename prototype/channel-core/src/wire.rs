@@ -824,6 +824,35 @@ pub struct RoomDelivery {
 #[serde(rename_all = "camelCase")]
 pub struct RoomCapabilities {
     pub attachments: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub history_seek: bool,
+}
+
+#[cfg(test)]
+#[test]
+fn history_seek_capability_is_optional() {
+    let old = serde_json::json!({ "attachments": true });
+    let mut capabilities: RoomCapabilities = serde_json::from_value(old.clone()).unwrap();
+    assert!(!capabilities.history_seek);
+    assert_eq!(serde_json::to_value(&capabilities).unwrap(), old);
+
+    capabilities.history_seek = true;
+    let new = serde_json::to_value(&capabilities).unwrap();
+    assert_eq!(
+        new,
+        serde_json::json!({ "attachments": true, "historySeek": true })
+    );
+
+    #[derive(Deserialize)]
+    struct LegacyCapabilities {
+        attachments: bool,
+    }
+
+    assert!(
+        serde_json::from_value::<LegacyCapabilities>(new)
+            .unwrap()
+            .attachments
+    );
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]

@@ -300,6 +300,9 @@ pub enum ConversationCommand {
     History {
         before: Option<u64>,
     },
+    HistorySeek {
+        after: u64,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -378,6 +381,10 @@ pub enum ConversationRecord {
     },
     HistoryMessage {
         message: ChatMessage,
+    },
+    HistorySeekResult {
+        after: u64,
+        seq: Option<u64>,
     },
     HistoryEnd {
         #[serde(deserialize_with = "history_count")]
@@ -494,6 +501,9 @@ impl ConversationAddress {
                     snapshot: Some(ReactionSnapshot::Message(confirmation.snapshot)),
                     event: confirmation.event,
                 }]
+            }
+            Ok(ConversationResult::History(HistoryResult::Seek { after, seq })) => {
+                vec![ConversationRecord::HistorySeekResult { after, seq }]
             }
             Ok(ConversationResult::History(HistoryResult::Page {
                 messages,
@@ -914,6 +924,33 @@ mod room_tests {
                 }
             }
         }
+        let seek = |after| {
+            sender_key
+                .sign(
+                    sender,
+                    &ConversationRequest {
+                        address: address.clone(),
+                        command: ConversationCommand::HistorySeek { after },
+                    },
+                )
+                .unwrap()
+        };
+        let seek_packet = seek(0);
+        let outcome = host.dispatch_peer(&seek_packet, 29).unwrap();
+        assert!(outcome.projection_update.is_none());
+        let replies = outcome.replies().unwrap();
+        assert_eq!(replies.len(), 1);
+        let reply = &replies[0];
+        assert_eq!(reply.address, address.reply());
+        assert!(reply.record.broadcast().is_none());
+        assert_eq!(
+            serde_json::to_value(&reply.record).unwrap(),
+            serde_json::json!({"type":"history_seek_result","after":0,"seq":null}),
+            "seek excludes the authenticated reader's own message"
+        );
+        let invalid = host.dispatch_peer(&seek(1u64 << f64::MANTISSA_DIGITS), 29).unwrap();
+        assert!(matches!(invalid.result, Err("invalid_history_cursor")));
+
         let context = RequestContext {
             connection: Uuid::new_v4(),
             session_id: host_session,
@@ -929,6 +966,8 @@ mod room_tests {
         ))
         .unwrap();
         assert!(host.current_readers().is_empty());
+        let denied_seek = host.dispatch_peer(&seek_packet, 31).unwrap();
+        assert!(matches!(denied_seek.result, Err("room_access_required")));
         let denied = host.dispatch_peer(&packet, 31).unwrap();
         assert!(
             denied.result.is_err(),

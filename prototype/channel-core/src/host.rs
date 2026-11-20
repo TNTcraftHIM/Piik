@@ -284,7 +284,10 @@ impl RoomProjection {
                 available,
                 delivery: None,
                 members: view.members.clone(),
-                capabilities: self.capabilities.clone(),
+                capabilities: RoomCapabilities {
+                    history_seek: self.capabilities.history_seek && view.authorized && available,
+                    ..self.capabilities.clone()
+                },
                 participant_session_ids: if view.authorized && available {
                     self.participant_session_ids.clone()
                 } else {
@@ -1192,6 +1195,10 @@ impl RoomHost {
             ConversationCommand::History { before } => self
                 .room
                 .history(endpoint.member, before)
+                .map(ConversationWork::History),
+            ConversationCommand::HistorySeek { after } => self
+                .room
+                .seek_history(endpoint.member, after)
                 .map(ConversationWork::History),
         };
         Ok(PreparedConversation {

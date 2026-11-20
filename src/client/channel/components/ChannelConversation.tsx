@@ -26,7 +26,7 @@ type Draft = { text: string; mentions: NonNullable<ChatOptions["mentions"]>; rep
 const emptyDraft: Draft = { text: "", mentions: [] };
 
 /** Browsing owns the conversation; drafts and reading position belong to this pane. */
-export function ChannelConversation({ domainId, roomId, roomName, roomIcon, roomPicture, entry, messages, users, profiles, queryProfiles, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, onMessage, unreadAfter, onRead, interaction, onBack, onDeleteMessage, canModerate, pending, historyChanges }: {
+export function ChannelConversation({ domainId, roomId, roomName, roomIcon, roomPicture, entry, messages, users, profiles, queryProfiles, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, onMessage, findUnreadMessage, unreadAfter, onRead, interaction, onBack, onDeleteMessage, canModerate, pending, historyChanges }: {
   domainId: string | undefined; roomId: string; roomName: string; roomIcon?: string; roomPicture?: string; messages: ChannelMessage[]; users: ChannelUserSummary[];
   profiles: ReadonlyMap<string, ChannelUser>; queryProfiles: ChannelController["queryProfiles"];
   entry?: ChannelEntry;
@@ -38,6 +38,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
   onLatest: (roomId: string) => Promise<void>;
   onSend: (roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal, options?: ChatOptions) => Promise<void>;
   onMessage?: (roomId: string, seq: number) => Promise<void>;
+  findUnreadMessage?: (roomId: string, after: number, signal: AbortSignal) => Promise<ChannelMessage | null>;
   onDeleteMessage?: (roomId: string, seq: number, messageId: string) => Promise<void>;
   canModerate?: boolean;
   pending?: ReadonlySet<string>;
@@ -56,15 +57,25 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
   const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const mentionId = useId();
-  const [jump, setJump] = useState<{ scope: string; seq: number } | null>(null);
+  const [jump, setJump] = useState<{ scope: string; seq: number; id?: string } | null>(null);
   const jumpRequest = useRef<object | null>(null);
   const [jumpFailed, setJumpFailed] = useState(false);
+  const unreadLookup = useRef<AbortController | null>(null);
+  const [unreadLookupBusy, setUnreadLookupBusy] = useState(false);
+  const [unreadLookupError, setUnreadLookupError] = useState<string | null>(null);
   const [unreadBoundary, setUnreadBoundary] = useState({ scope: conversationScope, after: unreadAfter });
-  const unreadMessage = firstUnreadMessageId(messages, unreadBoundary.scope === conversationScope ? unreadBoundary.after : undefined, selfUserId, history?.hasMore ?? true);
+  const [unreadLookupResult, setUnreadLookupResult] = useState<{ through: number; target?: string } | null>(null);
+  const after = unreadBoundary.scope === conversationScope ? unreadBoundary.after : undefined;
+  const lastSeq = messages.at(-1)?.seq ?? 0;
+  const verifiedTarget = unreadLookupResult?.target;
+  const unreadMessage = after !== undefined && verifiedTarget && messages.some(message => message.id === verifiedTarget)
+    ? verifiedTarget : firstUnreadMessageId(messages, after, selfUserId, history?.hasMore ?? true);
+  const canSeekUnread = findUnreadMessage && after !== undefined && history?.hasMore
+    && (messages[0]?.seq ?? 0) > after + 1
+    && (!unreadLookupResult || !!verifiedTarget || lastSeq > unreadLookupResult.through);
   // Capture a visit's divider before markRead advances the durable personal cursor.
   useLayoutEffect(() => {
-    setUnreadBoundary(previous => previous.scope !== conversationScope
-      || (!hidden && unreadAfter !== undefined && unreadAfter < (messages.at(-1)?.seq ?? 0))
+    setUnreadBoundary(previous => previous.scope !== conversationScope || !hidden
       ? { scope: conversationScope, after: unreadAfter } : previous);
   }, [conversationScope, hidden]);
   const [draftFiles, setDraftFiles] = useState<Record<string, DraftFile[]>>({});
@@ -183,7 +194,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
   }
   function readVisible() {
     const node = log.current, doc = node?.ownerDocument;
-    if (!hidden && roomId && available && !loadingHistory && history?.atLatest && node?.getClientRects().length
+    if (!hidden && !unreadLookup.current && !unreadLookupBusy && !jump?.id && roomId && available && !loadingHistory && history?.atLatest && node?.getClientRects().length
       && doc?.visibilityState === "visible" && doc.hasFocus() && node.scrollHeight - node.scrollTop - node.clientHeight < 4) {
       const seq = messages.at(-1)?.seq;
       if (seq !== undefined) onRead?.(roomId, seq);
@@ -197,18 +208,19 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
     return () => { if (frame !== undefined) view?.cancelAnimationFrame(frame); doc?.removeEventListener("visibilitychange", readVisible); view?.removeEventListener("focus", readVisible); };
   }, [conversationScope, messages, hidden, available, loadingHistory, history?.atLatest, surfaceDocument, onRead]);
   useLayoutEffect(() => {
-    if (!jump || jump.scope !== conversationScope || loadingHistory) return;
+    if (!jump || jump.scope !== conversationScope || hidden || loadingHistory) return;
     const target = log.current?.querySelector<HTMLElement>(`[data-message-seq="${jump.seq}"]`);
-    if (target) {
+    if (target && (!jump.id || target.dataset.messageId === jump.id)) {
       target.scrollIntoView({ block: "center" }); target.focus({ preventScroll: true });
       if (!target.ownerDocument.defaultView?.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         target.animate([{ backgroundColor: "color-mix(in srgb, var(--action) 18%, transparent)" }, { backgroundColor: getComputedStyle(target).backgroundColor }], { duration: motionDuration(target, "emphasis"), easing: "ease-out" });
       }
       reading.current = { position: log.current!.scrollTop, following: false }; setJump(null);
     }
-  }, [jump, conversationScope, loadingHistory, messages]);
+  }, [jump, conversationScope, hidden, loadingHistory, messages]);
   useLayoutEffect(() => { setSelection(null); setJump(null); jumpRequest.current = null; setJumpFailed(false); composing.current = false; }, [conversationScope]);
   async function showMessage(seq: number) {
+    cancelUnreadLookup();
     setJumpFailed(false); readingAnchor.current = null; reading.current.following = false;
     const request = { scope: conversationScope, seq };
     jumpRequest.current = request; setJump(request);
@@ -216,6 +228,46 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
     try { if (!onMessage) throw new Error("unavailable"); await onMessage(roomId, seq); }
     catch { if (jumpRequest.current === request) { setJump(null); setJumpFailed(true); } }
   }
+  async function jumpToUnread() {
+    const target = messages.find(message => message.id === unreadMessage);
+    if (target) { await showMessage(target.seq); return; }
+    if (!findUnreadMessage || after === undefined || hidden || !available) return;
+    cancelUnreadLookup();
+    setJump(null); jumpRequest.current = null; setJumpFailed(false);
+    const controller = unreadLookup.current = new AbortController();
+    setUnreadLookupBusy(true);
+    try {
+      const message = await findUnreadMessage(roomId, after, controller.signal);
+      if (controller.signal.aborted) return;
+      setUnreadLookupResult({ through: lastSeq, target: message?.id });
+      if (message) {
+        readingAnchor.current = null; reading.current.following = false;
+        setJump({ scope: conversationScope, seq: message.seq, id: message.id });
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) setUnreadLookupError(error instanceof Error ? error.message : "operation_failed");
+    }
+    finally { if (unreadLookup.current === controller) { unreadLookup.current = null; setUnreadLookupBusy(false); } }
+  }
+  function cancelUnreadLookup() {
+    unreadLookup.current?.abort();
+    unreadLookup.current = null;
+    setUnreadLookupBusy(false);
+    setUnreadLookupError(null);
+    setJump(previous => previous?.id ? null : previous);
+  }
+  useLayoutEffect(() => {
+    cancelUnreadLookup();
+    const onVisibilityChange = () => {
+      if (surfaceDocument?.visibilityState === "hidden") cancelUnreadLookup();
+    };
+    surfaceDocument?.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      surfaceDocument?.removeEventListener("visibilitychange", onVisibilityChange);
+      unreadLookup.current?.abort();
+    };
+  }, [conversationScope, hidden, available, unreadBoundary, findUnreadMessage, surfaceDocument]);
+  useLayoutEffect(() => setUnreadLookupResult(null), [unreadBoundary]);
   useEffect(() => {
     const request = new AbortController();
     void loadRoomHosting().then(async runtime => {
@@ -315,10 +367,10 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
     }}>
     <div className="c3-chat-heading">{onBack ? <BackButton onClick={onBack} /> : <><Glyph name="chat" size={18} /><strong>{t("conversation.chat")}</strong></>}
       <span>{roomName}</span></div>
-    {unreadMessage && offscreenUnread === unreadMessage && <div className="c3-history-more"><ChannelAction icon="chat" quiet label={t("conversation.jumpToNew")} onClick={() => {
-        const target = messages.find(message => message.id === unreadMessage);
-        if (target) void showMessage(target.seq);
-      }} /></div>}
+    {(unreadLookupBusy || (unreadMessage ? offscreenUnread === unreadMessage : canSeekUnread)) &&
+      <div className="c3-history-more"><ChannelAction icon="chat" quiet busy={unreadLookupBusy || loadingHistory} disabled={!available}
+        label={t("conversation.jumpToNew")} onClick={() => { void jumpToUnread(); }} /></div>}
+    <ChannelSettingsError error={unreadLookupError} />
     <div className="c3-message-log" ref={log} role="log" aria-label={t("conversation.messages")}
       onScroll={event => {
         const node = event.currentTarget, saved = reading.current;
@@ -330,6 +382,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
       <div className="c3-message-content" ref={content}>
         {history?.hasMore && <div className="c3-history-more"><ChannelAction icon="arrowUp" quiet label={t("conversation.earlier")}
           busy={loadingHistory} disabled={!available} onClick={() => {
+            cancelUnreadLookup();
             const node = log.current;
             if (node) {
               const top = node.getBoundingClientRect().top;
@@ -362,7 +415,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
           return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name} authorMessageId={authorMessageId}
             avatar={(!summary || summary.version === author?.version ? author?.avatar : null) ?? undefined}
             users={displayUsers} selfUserId={selfUserId} unread={newMessages} onMessage={loadingHistory ? undefined : seq => { void showMessage(seq); }}
-            onReply={() => { updateDraft(value => ({ ...value, reply: { seq: message.seq, messageId: message.id, notify: true, name, text: message.text || t("conversation.attachment") } })); input.current?.focus(); }}
+            onReply={() => { cancelUnreadLookup(); updateDraft(value => ({ ...value, reply: { seq: message.seq, messageId: message.id, notify: true, name, text: message.text || t("conversation.attachment") } })); input.current?.focus(); }}
             onDelete={onDeleteMessage && (canModerate || message.userId === selfUserId)
               ? () => {
                 setDeleteFailure(null);
@@ -384,6 +437,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
     {jumpFailed && <p className="c3-file-error" role="status">{t("conversation.originalUnavailable")}</p>}
     {roomId && (history?.atLatest === false || (!history && (!loadingHistory || messages.length > 0))) && <div className="c3-history-more"><ChannelAction icon={history ? "arrowDown" : "refresh"} quiet
       label={history ? t("conversation.latest") : t("conversation.load")} busy={loadingHistory} disabled={!available} onClick={() => {
+        cancelUnreadLookup();
         readingAnchor.current = null;
         reading.current.following = true;
         void onLatest(roomId).catch(() => {});

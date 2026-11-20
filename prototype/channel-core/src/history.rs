@@ -359,6 +359,11 @@ pub enum HistoryRequest {
         room_id: String,
         before: Option<u64>,
     },
+    Seek {
+        room_id: String,
+        after: u64,
+        exclude_author: Uuid,
+    },
     Send {
         room_id: String,
         draft: MessageDraft,
@@ -452,6 +457,10 @@ pub enum HistoryResult {
         author_id: Uuid,
         message_seq: u64,
         attachment: AttachmentDescriptor,
+    },
+    Seek {
+        after: u64,
+        seq: Option<u64>,
     },
     Page {
         messages: Vec<StoredMessage>,

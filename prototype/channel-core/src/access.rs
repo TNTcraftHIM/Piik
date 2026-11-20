@@ -293,7 +293,10 @@ impl RoomState {
             participant_session_ids: Vec::new(),
             last_message_seq: 0,
             file_activity: Vec::new(),
-            capabilities: crate::wire::RoomCapabilities { attachments: false },
+            capabilities: crate::wire::RoomCapabilities {
+                attachments: false,
+                history_seek: false,
+            },
             members: can_manage.then(|| self.grants.iter().copied().collect()),
         })
     }

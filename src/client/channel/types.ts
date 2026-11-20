@@ -158,6 +158,7 @@ export interface ChannelActions {
   purgeRoomHistory(roomId: string): Promise<void>;
   clearLocalRoomCache(roomId: string): Promise<void>;
   markRead(roomId: string, seq: number): void;
+  findUnreadMessage(roomId: string, after: number, signal: AbortSignal): Promise<ChannelMessage | null>;
   loadMessage(roomId: string, seq: number): Promise<void>;
   loadHistory(roomId: string): Promise<void>;
   loadLatestHistory(roomId: string): Promise<void>;

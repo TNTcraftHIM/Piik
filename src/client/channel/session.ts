@@ -202,6 +202,7 @@ export class ChannelSession {
   private roomId = selectedRoom();
   private requests = new Map<string, {
     roomId?: string; bindingId?: string;
+    seekAfter?: number;
     history?: { before?: number; replace: boolean; refreshThrough?: number; entries: Map<number, { message?: ChannelMessage; snapshot?: MessageReactionSnapshot }> };
     resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void;
   }>();
@@ -230,6 +231,7 @@ export class ChannelSession {
   private conversation = new ChannelConversation({
     context: () => ({ sessionId: this.view.sessionId, state: this.view.state, connected: this.view.connection === "connected" }),
     host: roomId => this.hostedRooms.get(roomId)?.host,
+    pending: (requestId, bindingId) => this.requests.get(requestId)?.bindingId === bindingId,
     send: (packet, requestId) => {
       if (this.view.connection !== "connected" || this.socket?.readyState !== WebSocket.OPEN) throw new Error("disconnected");
       this.write({ type: "conversation", packet, requestId });
@@ -292,7 +294,7 @@ export class ChannelSession {
     let page: ProfilePage | undefined;
     await this.request({ type: "profiles", ...query }, event => {
       if (event.type === "profiles") page = { profiles: event.profiles, total: event.total, nextCursor: event.nextCursor };
-    }, undefined, signal);
+    }, undefined, { signal });
     if (!page) throw new Error("invalid_response");
     return page;
   }
@@ -755,16 +757,20 @@ export class ChannelSession {
     else if (command.type === "signal" && this.signals.length < 256) this.signals.push(command);
   }
 
-  private async request(command: ChannelCommand, result?: (event: ChannelReply) => void, roomId = this.commandRoom(command), signal?: AbortSignal, replaceHistory = false, refreshThrough?: number): Promise<void> {
+  private async request(command: ChannelCommand, result?: (event: ChannelReply) => void, roomId = this.commandRoom(command), options: {
+    signal?: AbortSignal; replaceHistory?: boolean; refreshThrough?: number; bindingId?: string;
+  } = {}): Promise<void> {
+    const { signal, replaceHistory = false, refreshThrough, bindingId } = options;
     const reading = roomId ? this.readings.get(roomId) : undefined;
-    const conversation = command.type === "chat" || command.type === "history" || command.type === "react"
+    const conversation = command.type === "chat" || command.type === "history" || command.type === "history_seek" || command.type === "react"
       || command.type === "delete_message" || command.type === "clear_history";
     if (conversation && reading && reading.roomId === roomId) await reading.ready;
     signal?.throwIfAborted();
+    if (bindingId && reading !== this.readings.get(roomId!)) throw new DOMException("Read cancelled", "AbortError");
     if (this.view.connection !== "connected") return Promise.reject(new Error("disconnected"));
     const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
     const delivery = room?.delivery;
-    if (conversation && (!room?.available || !delivery)) return Promise.reject(new Error("room_unavailable"));
+    if (conversation && (!room?.available || !delivery || (bindingId && (!room.authorized || delivery.bindingId !== bindingId)))) return Promise.reject(new Error("room_unavailable"));
     const requestId = crypto.randomUUID();
     const abort = () => {
       const request = this.requests.get(requestId);
@@ -785,9 +791,10 @@ export class ChannelSession {
           }
         }),
         ...(delivery && (conversation || command.type === "browse" || command.type === "room_topology") ? { bindingId: delivery.bindingId } : {}),
+        ...(command.type === "history_seek" ? { seekAfter: command.after } : {}),
         ...(command.type === "history" ? { history: { before: command.before, replace: replaceHistory, refreshThrough, entries: new Map() } } : {}) });
       signal?.addEventListener("abort", abort, { once: true });
-      if (conversation) void this.conversation.send(command, requestId).catch(error => {
+      if (conversation) void this.conversation.send(command, requestId, delivery!.bindingId).catch(error => {
         if (!this.requests.delete(requestId)) return;
         reject(error instanceof Error ? error : new Error(String(error)));
       });
@@ -849,6 +856,17 @@ export class ChannelSession {
     }
     const request = this.requests.get(reply.requestId);
     if (!request || request.roomId !== reply.roomId || request.bindingId !== reply.bindingId) return;
+    if (request.seekAfter !== undefined && record.type !== "error") {
+      if (record.type !== "history_seek_result" || record.after !== request.seekAfter
+        || (record.seq !== null && (!Number.isSafeInteger(record.seq) || record.seq <= record.after))) {
+        this.receive({ type: "error", requestId: reply.requestId, code: "invalid_response" });
+        return;
+      }
+      request.result?.(record);
+    } else if (record.type === "history_seek_result") {
+      this.receive({ type: "error", requestId: reply.requestId, code: "invalid_response" });
+      return;
+    }
     if (record.type === "history_message") {
       const entries = request.history?.entries, entry = entries?.get(record.message.seq);
       if (!entries || entry?.message || (!entry && entries.size >= 100)
@@ -1244,7 +1262,7 @@ export class ChannelSession {
         const before = this.view.historyByRoom[id]?.atLatest === false && latestInWindow !== undefined ? latestInWindow + 1 : undefined;
         const refreshThrough = latestInWindow === undefined ? undefined : before === undefined ? room.lastMessageSeq : latestInWindow;
         current.history = this.action(`history:${id}`, () =>
-          this.request({ type: "history", roomId: id, ...(before === undefined ? {} : { before }) }, undefined, id, undefined, before !== undefined, refreshThrough).catch(error => {
+          this.request({ type: "history", roomId: id, ...(before === undefined ? {} : { before }) }, undefined, id, { replaceHistory: before !== undefined, refreshThrough }).catch(error => {
             if (this.readings.get(id) === current && this.socket === current.socket) throw error;
           }), true, { clearError: false });
         void current.history.catch(() => {});
@@ -1264,7 +1282,7 @@ export class ChannelSession {
     for (const id of this.view.interactionsByRoom.keys()) if (!keep.has(id)) this.closeInteraction(id);
     for (const [id] of this.readings) if (!keep.has(id)) {
       this.closeInteraction(id); this.readings.delete(id);
-      for (const [requestId, request] of this.requests) if (request.roomId === id && request.history) {
+      for (const [requestId, request] of this.requests) if (request.roomId === id && (request.history || request.seekAfter !== undefined)) {
         this.requests.delete(requestId);
         request.reject(new DOMException("Read cancelled", "AbortError"));
       }
@@ -1364,7 +1382,7 @@ export class ChannelSession {
     this.outgoingMessages.set(roomId, attempt);
     await this.request(attempt.command, event => {
       if (event.type === "confirmed") this.attachments.confirmed(roomId, event.message, prepared);
-    }, roomId, signal);
+    }, roomId, { signal });
     if (this.outgoingMessages.get(roomId) === attempt) this.outgoingMessages.delete(roomId);
     if (this.view.historyByRoom[roomId]?.atLatest === false) void this.requestHistory(roomId, undefined, false, { clearError: false }).catch(() => {});
   });
@@ -1380,10 +1398,52 @@ export class ChannelSession {
   loadHistory = (roomId: string): Promise<void> => this.requestHistory(roomId, this.view.historyByRoom[roomId]?.before);
   loadLatestHistory = (roomId: string): Promise<void> => this.requestHistory(roomId);
   loadMessage = async (roomId: string, seq: number): Promise<void> => {
+    await this.ensureMessage(roomId, seq);
+  };
+
+  private async ensureMessage(roomId: string, seq: number, options: { signal?: AbortSignal; bindingId?: string } = {}): Promise<ChannelMessage> {
     if (!this.view.messagesByRoom[roomId]?.some(message => message.seq === seq)) {
-      await this.requestHistory(roomId, seq + 1, true);
+      await this.requestHistory(roomId, seq + 1, true, { ...options, clearError: !options.signal });
     }
-    if (!this.view.messagesByRoom[roomId]?.some(message => message.seq === seq)) throw new Error("message_unavailable");
+    options.signal?.throwIfAborted();
+    const message = this.view.messagesByRoom[roomId]?.find(message => message.seq === seq);
+    if (!message) throw new Error("message_unavailable");
+    return message;
+  }
+
+  findUnreadMessage = async (roomId: string, after: number, signal: AbortSignal): Promise<ChannelMessage | null> => {
+    signal.throwIfAborted();
+    if (!Number.isSafeInteger(after) || after < 0) throw new Error("invalid_cursor");
+    const sessionId = this.view.sessionId;
+    const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
+    const bindingId = room?.delivery?.bindingId;
+    const reading = this.readings.get(roomId);
+    const guard = () => {
+      signal.throwIfAborted();
+      if (this.view.connection !== "connected" || this.view.sessionId !== sessionId) throw new Error("disconnected");
+      if (this.readings.get(roomId) !== reading || !this.wantedReadings().has(roomId)) throw new DOMException("Read cancelled", "AbortError");
+      if (!bindingId || !this.view.state?.channel.rooms.some(room => room.id === roomId && room.authorized
+        && room.available && room.delivery?.bindingId === bindingId && room.capabilities.historySeek)) throw new Error("room_unavailable");
+    };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      guard();
+      let seq: number | null | undefined;
+      await this.request({ type: "history_seek", roomId, after }, event => {
+        if (event.type === "history_seek_result") seq = event.seq;
+      }, roomId, { signal, bindingId });
+      guard();
+      if (seq === undefined) throw new Error("invalid_response");
+      if (seq === null) return null;
+      try {
+        const message = await this.ensureMessage(roomId, seq, { signal, bindingId });
+        guard();
+        return message;
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== "message_unavailable" || attempt === 1) throw error;
+        after = seq;
+      }
+    }
+    throw new Error("message_unavailable");
   };
 
   refreshReadMarkers = (event?: StorageEvent): void => {
@@ -1399,11 +1459,11 @@ export class ChannelSession {
     const readByRoom = this.readMarkers.advance(state.channel.rooms, roomId, seq);
     if (readByRoom !== this.view.readByRoom) this.patch({ readByRoom });
   };
-  private requestHistory(roomId: string, before?: number, replace = false, options: { clearError?: boolean } = {}): Promise<void> {
+  private requestHistory(roomId: string, before?: number, replace = false, options: { clearError?: boolean; signal?: AbortSignal; bindingId?: string } = {}): Promise<void> {
     const reading = this.reading?.roomId === roomId ? this.reading : null;
     const pending = this.view.pending.has(`history:${roomId}`);
     const loading = this.action(`history:${roomId}`, () => this.request(
-      { type: "history", roomId, ...(before !== undefined ? { before } : {}) }, undefined, roomId, undefined, replace), true, options);
+      { type: "history", roomId, ...(before !== undefined ? { before } : {}) }, undefined, roomId, { signal: options.signal, replaceHistory: replace, bindingId: options.bindingId }), !options.signal, options);
     if (reading && !pending) reading.history = loading;
     return loading;
   }
@@ -1512,7 +1572,7 @@ export class ChannelSession {
       const parsed = channelTopologySchema.safeParse(event.result.topology);
       if (!parsed.success) throw new Error("invalid_response");
       topology = parsed.data;
-    }, roomId, signal);
+    }, roomId, { signal });
     current(); signal?.throwIfAborted();
     context.current();
     if (!topology || topology.bindingId !== context.bindingId || (publicationId

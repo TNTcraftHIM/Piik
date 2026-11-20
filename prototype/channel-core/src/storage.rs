@@ -322,9 +322,9 @@ impl Storage {
     /// Sequence, retry identity and embedded descriptions commit together.
     pub fn history(&mut self, request: &HistoryRequest) -> Result<HistoryResult, &'static str> {
         let behavior = match request {
-            HistoryRequest::Read { .. } | HistoryRequest::Attachment { .. } => {
-                TransactionBehavior::Deferred
-            }
+            HistoryRequest::Read { .. }
+            | HistoryRequest::Attachment { .. }
+            | HistoryRequest::Seek { .. } => TransactionBehavior::Deferred,
             HistoryRequest::Send { .. }
             | HistoryRequest::React { .. }
             | HistoryRequest::DeleteMessage { .. }
@@ -400,6 +400,21 @@ impl Storage {
                     params![room_id, message_seq], read_message).optional().map_err(|_| "storage_failed")?
                     ;
                 request.attachment_result(message)?
+            }
+            HistoryRequest::Seek {
+                room_id,
+                after,
+                exclude_author,
+            } => {
+                let seq = transaction
+                    .query_row(
+                        "SELECT seq FROM message WHERE room_id=?1 AND seq>?2 AND user_id<>?3 ORDER BY seq ASC LIMIT 1",
+                        params![room_id, after, exclude_author.to_string()],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .map_err(|_| "storage_failed")?;
+                HistoryResult::Seek { after: *after, seq }
             }
             HistoryRequest::Read { room_id, before } => {
                 let newest = before
@@ -757,6 +772,61 @@ mod tests {
             }
             _ => panic!("read returned a message confirmation"),
         }
+    }
+
+    #[test]
+    fn history_seek_returns_first_live_message_from_another_author() {
+        let mut store = Storage::open(Path::new(":memory:")).unwrap();
+        let requester = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let seek = |store: &mut Storage, after, expected| {
+            let result = store
+                .history(&HistoryRequest::Seek {
+                    room_id: "room".into(),
+                    after,
+                    exclude_author: requester,
+                })
+                .unwrap();
+            assert!(matches!(
+                result,
+                HistoryResult::Seek { after: boundary, seq }
+                    if boundary == after && seq == expected
+            ));
+        };
+        seek(&mut store, 0, None);
+        for (room, user, nonce) in [
+            ("another-room", other, "outside"),
+            ("room", requester, "own"),
+            ("room", other, "deleted"),
+            ("room", other, "first-live"),
+            ("room", other, "newest"),
+        ] {
+            let draft = MessageDraft::new(
+                user,
+                nonce.into(),
+                "message".into(),
+                vec![],
+                Default::default(),
+                vec![],
+                None,
+                1,
+            )
+            .unwrap();
+            let (message, _) = confirmed(&mut store, room, &draft);
+            if nonce == "deleted" {
+                store
+                    .history(&HistoryRequest::DeleteMessage {
+                        room_id: room.into(),
+                        message_seq: message.seq,
+                        message_id: message.id,
+                        author_id: Some(other),
+                    })
+                    .unwrap();
+            }
+        }
+        seek(&mut store, 0, Some(3));
+        seek(&mut store, 3, Some(4));
+        seek(&mut store, 4, None);
     }
 
     #[test]
