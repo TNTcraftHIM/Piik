@@ -150,6 +150,19 @@ be available; changing only the URL will not move the service.
 
 Changing permissions may require an administrator; see
 [Microsoft's instructions](https://support.microsoft.com/en-us/windows/security/firewall/risks-of-allowing-apps-through-windows-firewall).
+If the tab shows **Piik** but the page stays blank or keeps loading, open the
+browser's **Developer Tools → Network** and reload the invitation. Check the
+document and the main JavaScript request.
+
+- If a request stays pending or times out, try the same Host on a shared LAN
+  if possible. If it works there and stalls on the virtual LAN, check the
+  virtual network path, including whether it can deliver larger packets.
+- If JavaScript returns `404`, reopen the current invitation in a private
+  window. If it persists, tell the Host which build is running and that the
+  script returned `404`.
+- If JavaScript finishes downloading and the page still stalls, check the
+  browser's **Console** for a JavaScript error.
+
 If the page opens but video does not connect, continue with
 [media connection checks](#when-video-will-not-connect).
 

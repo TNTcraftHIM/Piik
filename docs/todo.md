@@ -43,9 +43,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   also removes its other audio. Browser own-document exclusion and Native
   process-tree exclusion are already implemented; acoustic echo and duplicate
   commentary retain their separate microphone owners.
-- [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
-  title appears and the page never loads. Static compression reduces transfer
-  size; capture the stalled document/script response to locate this failure.
+- [ ] **Virtual-LAN page loading.** Identify where the affected invitation stalls
+  by comparing document and script results on the affected path and a working
+  path. Controlled tests reproduce size-dependent HTTP stalls and fresh HTTPS
+  timeouts with path-MTU feedback blocked.
+  [Startup resource transfer](./research/nat-traversal.md#startup-resource-transfer).
 - [ ] **Native H264 scene-change latency.** Reduce large-AU send-queue delay
   while preserving bitrate restoration. The
   [end-to-end control](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)

@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+	"regexp"
 	"strings"
 
 	"github.com/TNTcraftHIM/Piik/internal/httpassets"
@@ -43,6 +44,9 @@ var staticContentTypes = map[string]string{
 	".ico":         "", // Preserve the published empty type without sniffing.
 }
 
+// Vite emits assets/[name]-[hash] for its generated scripts and styles.
+var viteBundle = regexp.MustCompile(`^assets/[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8}\.(js|css)$`)
+
 // staticHandler serves embedded assets and falls back to index.html for SPA
 // routes. Missing files use the application's JSON 404 handler.
 func staticHandler(assets fs.FS, notFound http.Handler) http.Handler {
@@ -71,6 +75,11 @@ func staticHandler(assets fs.FS, notFound http.Handler) http.Handler {
 			}
 			writer.Header().Set("X-Content-Type-Options", "nosniff")
 			writer.Header().Set("Referrer-Policy", "no-referrer")
+			if viteBundle.MatchString(candidate) {
+				writer.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+				// Identity and gzip encode the same fingerprinted resource.
+				writer.Header().Set("ETag", `W/"`+path.Base(candidate)+`"`)
+			}
 			// Set Content-Type explicitly, possibly to "", so ServeContent
 			// never sniffs; the empty name keeps it from guessing either.
 			writer.Header()["Content-Type"] = []string{staticContentTypes[strings.ToLower(path.Ext(candidate))]}

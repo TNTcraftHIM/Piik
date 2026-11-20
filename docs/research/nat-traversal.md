@@ -1148,6 +1148,20 @@ compression or an endpoint MTU below 1500 is insufficient. The field report
 still needs its actual resource transfer and route evidence to distinguish this
 case from tunnel interruption, filtering or Browser execution failure.
 
+In a controlled HTTP A/B with the smaller startup build, dropping path-MTU
+feedback still allowed the 887-byte HTML and a 512-byte script range (HTTP 206).
+The full entry script received zero bytes in five seconds. Allowing feedback
+restored the complete 62,073-byte gzip response. The HTTPS control also stalled
+on fresh connections before curl recorded TLS completion or any HTTP response.
+With feedback allowed, v2.7.0 served 755-byte HTML and a 62,014-byte gzip entry
+script over HTTPS. These controls show that a smaller entry still depends on the
+network path and that a failed load can begin before any resource request.
+
+Independent reports describe similar size-dependent stalls on virtual network
+paths. The cause of the Piik field report still needs confirmation from the
+affected path. [ZeroTier #935](https://github.com/zerotier/ZeroTierOne/issues/935),
+[ClawPatrol #790](https://github.com/denoland/clawpatrol/issues/790).
+
 ## Primary Sources
 
 - [RFC 8445: Interactive Connectivity Establishment](https://datatracker.ietf.org/doc/html/rfc8445)
