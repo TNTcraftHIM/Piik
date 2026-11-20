@@ -98,6 +98,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     const value = Number(new URLSearchParams(location.search).get("screens"));
     return screenCounts.includes(value) ? value : 0;
   });
+  const picture = new URLSearchParams(location.search).get("picture");
+  const samplePictureId = "sample-screen-0";
+  const omitSamplePicture = !sharingRoom && (picture === "failed" || picture === "connecting" || picture === "paused");
   const [streams, setStreams] = useState(new Map<string, MediaStream>());
   const [unwatched, setUnwatched] = useState(new Set<string>());
   const [stopped, setStopped] = useState(new Set<string>());
@@ -117,7 +120,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     source: { kind: "screen" as const, name: "A little place to stay" }, title: null,
     videoSettings: screenVideoSettings(sample.channel.quality) }] : Array.from({ length: count }, (_, index) => ({ audience: [], id: `sample-screen-${index}`, roomId: "friday",
     sessionId: `${screenUsers[index].id}-session`, userId: screenUsers[index].id,
-    kind: "screen" as const, source: { kind: index === 1 ? "camera" as const : "screen" as const, name: longNames ? "A shared evening with friends and a very long source name" : ["A little place to stay", "Studio camera", "Drawing together"][index % 3] }, title: null, paused: false, videoSettings: screenVideoSettings(sample.channel.quality) })))
+    kind: "screen" as const, source: { kind: index === 1 ? "camera" as const : "screen" as const, name: longNames ? "A shared evening with friends and a very long source name" : ["A little place to stay", "Studio camera", "Drawing together"][index % 3] }, title: null, paused: index === 0 && picture === "paused", videoSettings: screenVideoSettings(sample.channel.quality) })))
     .filter(publication => roomIds.has(publication.roomId) && !stopped.has(publication.id))
     .map(publication => ({ ...publication, title: titles[publication.id] ?? null, directLimit: directLimits[publication.id] ?? undefined, audience: audienceSample ? users.filter(user => user.id !== publication.userId).slice(0, 5)
       .map((user, index) => ({ sessionId: `${user.id}-session`, state: index < 3 ? "active" as const : index === 3 ? "preparing" as const : "failed" as const })) : [] }));
@@ -218,6 +221,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     voice: sample.channel.state!.voice.filter(voice => !watchOnly && roomIds.has(voice.roomId) && !(hostOffline && voice.roomId === "friday")),
     users,
     subscriptions,
+    failedSubscriptions: omitSamplePicture && picture === "failed" && subscriptions.includes(samplePictureId) ? [samplePictureId] : [],
     watchActivities: watchActivity ? [{ ...watchActivity, viewerSessionIds: watchViewerSessionIds, ...(forwarding ? { byteSource: { sessionId: "sample-ada-session", resourceId: "sample-resource", format: "file" as const } } : {}) }] : [],
     watchSubscriptions: watchActivity && watchMode !== "available" ? [{ id: watchActivity.id, mode: receiveMode }] : [],
     watchBytes: [],
@@ -262,7 +266,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       userId: "sample-ada", sessionId: "sample-ada-session", playback: { timeline: "media" as const, position: 42, paused: true, rate: 1, anchorTime: 0 } });
     setWatchMode(activityId ? "native-viewer" : "native-owner"); setPageSample(undefined);
   };
-  const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams, error: null, siteURL: "https://friends.example/",
+  const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams: omitSamplePicture ? new Map([...streams].filter(([id]) => id !== samplePictureId)) : streams, error: null, siteURL: "https://friends.example/",
     pending: browserSourcePending ? new Set([...sample.channel.pending, `screen:${browserSourcePending}`]) : sample.channel.pending,
     watchPlayers,
     watchMediaChoices: async () => new URLSearchParams(location.search).has("mpd-tracks") ? { choices: [], indexed: [], mpd: mpdSample.map(({ candidate }) => ({ candidate })) }
