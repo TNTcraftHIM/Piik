@@ -6,6 +6,7 @@ import { THEME_STORAGE_KEY } from '../../../../src/client/ui/theme.ts';
 import { bindBrandMotion, brandMarkup } from '../../../assets/brand.js';
 import { initialLanguage, rememberLanguage } from '../../../assets/language.js';
 import '../../../assets/brand.css';
+import HelpSearch from './HelpSearch.vue';
 import './style.css';
 
 const DocumentationBrand = {
@@ -43,7 +44,8 @@ export default {
       ]),
     });
   },
-  enhanceApp({ router }) {
+  enhanceApp({ app, router }) {
+    app.component('HelpSearch', HelpSearch);
     if (import.meta.env.SSR) return;
     const base = import.meta.env.BASE_URL;
     if (location.pathname === base && initialLanguage() === 'zh-CN') {

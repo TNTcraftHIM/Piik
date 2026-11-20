@@ -45,3 +45,53 @@ html.dark { color-scheme: dark; }
 .docs-license { margin-top: 24px; color: var(--vp-c-text-2); font-size: 12px; }
 .docs-license a { text-decoration: underline; text-underline-offset: 3px; }
 html[data-reduced-motion] .identity * { animation: none !important; }
+
+.help-home .VPNavBarSearch #local-search { display: none; }
+.help-home .VPPage { max-width: 1220px; padding: clamp(16px, 3vw, 44px) clamp(16px, 4vw, 56px) 64px; margin: auto; }
+.help-hero {
+  position: relative; isolation: isolate; overflow: hidden;
+  padding: clamp(32px, 5vw, 76px) clamp(24px, 4vw, 60px);
+  border-radius: 32px; background: var(--control-selected); color: var(--control-selected-ink);
+}
+.help-hero::after {
+  content: ""; position: absolute; z-index: -1; inset: 0 0 0 55%;
+  background: url("../../../assets/living-room.svg#still") center / contain no-repeat;
+}
+.help-hero h1 { max-width: 55%; font-size: clamp(38px, 5vw, 70px); line-height: 1.06; font-weight: 760; letter-spacing: -.055em; }
+.help-hero p { max-width: 50%; margin: 16px 0 26px; font-size: 18px; line-height: 1.55; }
+.help-search {
+  display: flex; align-items: center; gap: 12px; width: min(48%, 390px); min-height: 54px;
+  padding: 0 18px; border: 1px solid var(--control-edge); border-radius: 14px;
+  background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); font-weight: 600;
+}
+.help-search kbd { margin-left: auto; color: var(--muted); }
+.help-sections { display: grid; grid-template-columns: 1.15fr 1fr; gap: 36px 56px; margin-top: 36px; }
+.help-actions { grid-column: 1 / -1; }
+.help-sections h2 { margin-bottom: 14px; font-size: clamp(22px, 3vw, 30px); line-height: 1.2; letter-spacing: -.035em; font-weight: 700; }
+.help-actions ul { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.help-sections li { position: relative; color: var(--muted); }
+.help-actions li { padding: 20px 48px 20px 24px; background: var(--wall); border: 1px solid var(--line); border-radius: 18px; }
+.help-sections li a { color: var(--action-text); font-weight: 650; }
+.help-actions li a { display: block; font-size: 21px; }
+.help-sections li a:only-of-type::before { content: ""; position: absolute; inset: 0; }
+.help-sections li:has(a:hover) { background: var(--control-hover); }
+.help-sections li:has(a:focus-visible), .help-search:focus-visible { outline: 3px solid var(--action); outline-offset: 3px; }
+.help-actions li::after { content: "→"; position: absolute; right: 20px; top: 20px; pointer-events: none; color: var(--action-text); }
+.help-issues li, .help-resources li { padding: 12px 4px; border-bottom: 1px solid var(--line); }
+.help-home .header-anchor { display: none; }
+.vp-doc h1 { font-size: clamp(32px, 4vw, 46px); line-height: 1.13; }
+.vp-doc h1 + p { color: var(--muted); font-size: 1.1em; }
+.vp-doc details { background: var(--wall); }
+.vp-doc details summary { color: var(--action-text); }
+@media (max-width: 700px) {
+  .help-hero { border-radius: 24px; }
+  .help-hero::after { inset: 0 0 auto auto; width: 31%; height: 98px; }
+  .help-hero h1 { max-width: 70%; }
+  .help-hero p, .help-search { max-width: none; width: 100%; }
+  .help-sections, .help-actions ul { grid-template-columns: 1fr; }
+  .help-sections { gap: 30px; }
+}
+
+.help-sections > section > p { margin-top: 16px; }
+.help-sections > section > p a { color: var(--action-text); text-decoration: underline; text-underline-offset: 3px; }
+.help-actions li > a + br { display: none; }

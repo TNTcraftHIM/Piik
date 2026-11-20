@@ -1,47 +1,67 @@
+---
+layout: page
+pageClass: help-home
+title: Piik Help Center
+description: Join a room, share your screen, and fix common problems with Piik.
+---
+
+<header class="help-hero">
+
 # Piik Help Center
 
-English · [简体中文](./README.zh-CN.md) · [Piik website](https://piik.tv/?lang=en)
+Find your way into a room, start sharing, or get a stuck stream working again.
 
-## Start using Piik
+<HelpSearch />
 
-- [Share my screen with Piik App](./getting-started.md#share-with-piik-app)
-- [Join a friend's room](./getting-started.md#join-a-friends-room)
-- [Share from my browser](./getting-started.md#use-piik-online)
+</header>
 
-## Get help
+<div class="help-sections">
 
-- [The invitation opens to a blank page or shows an error](./troubleshooting.md#the-invitation-opens-to-a-blank-page)
-- [I joined the room, but the picture never loads](./troubleshooting.md#when-video-will-not-connect)
-- [The picture is blurry, stutters, or freezes](./troubleshooting.md#picture-blurs-stutters-or-stops)
-- [I’m sharing from iPhone Safari and my friends can’t hear the screen audio](./sharing.md#iphone-and-ipad-screen-sharing)
-- [I can see the picture but can’t hear its sound](./troubleshooting.md#picture-but-no-source-sound)
-- [I can’t use remote control](./troubleshooting.md#microphone-or-remote-controls-are-unavailable)
+<section class="help-actions">
 
-[All troubleshooting topics](./troubleshooting.md#common-problems) · [Advanced network checks](./network.md) · [Report a problem](./troubleshooting.md#reporting-a-problem)
+## Start here
 
-## Use the room tools
+- [Join a friend's room](./getting-started.md#join-a-friends-room)<br>
+  Open an invitation or enter a room code to watch in your browser.
+- [Share your screen](./getting-started.md)<br>
+  Start in your browser, or follow the same guide to share with Piik App.
 
-- [Adjust playback](./sharing.md#playback-controls)
-- [Chat and send reactions](./room-tools.md#chat-and-reactions)
-- [Talk in the room](./room-tools.md#room-voice)
-- [Let a friend take control or play together](./remote-control.md#start-remote-control)
+</section>
 
-## Hosting options
+<section class="help-issues">
 
-- [Choose an App mode](./getting-started.md#choose-an-app-mode)
-- [Share from an existing Piik site](./getting-started.md#share-from-an-existing-site)
-- [Adjust picture and sound settings](./sharing.md#picture-and-sound-settings)
-- [Look up App settings and diagnostics](../../cmd/piik-app/README.md)
+## Fix a problem
 
-## Networking
+- [My invitation won’t open](./troubleshooting.md#the-invitation-opens-to-a-blank-page)
+- [I’m in the room but the picture won’t load](./troubleshooting.md#when-video-will-not-connect)
+- [The picture is blurry or keeps freezing](./troubleshooting.md#picture-blurs-stutters-or-stops)
+- [I can see the picture but can’t hear it](./troubleshooting.md#picture-but-no-source-sound)
+- [Friends can’t hear my iPhone or iPad screen](./sharing.md#iphone-and-ipad-screen-sharing)
+- [My microphone or remote control is unavailable](./troubleshooting.md#microphone-or-remote-controls-are-unavailable)
 
-- [Set up a fixed invitation with frp](./frp.md) for Piik App or Server, with a SakuraFrp walkthrough.
-- [Check direct and relayed connections](./network.md) when the room opens but the picture does not play.
+[Browse all troubleshooting topics](./troubleshooting.md#common-problems) · [Report a problem](./troubleshooting.md#reporting-a-problem)
 
-## Run a site for your group
+</section>
 
-[Deploy Piik Server](../operations/self-hosting.md) · [Maintain and update it](../operations/service-management.md) · [Configuration reference](../standards/configuration.md)
+<section class="help-resources">
 
-## Help improve Piik
+## Explore more
 
-[Translate Piik](./translating.md) · [Contribute](../../CONTRIBUTING.md) · [Developer and maintainer docs](../README.md)
+- [Sharing and playback](./sharing.md)<br>
+  Adjust what you share and how it plays.
+- [Chat, voice and remote control](./room-tools.md)<br>
+  Talk in a room or let a friend take control.
+- [Advanced network checks](./network.md)<br>
+  Diagnose connections when the invitation works but the picture doesn’t start.
+- [Set a fixed invitation with frp](./frp.md)<br>
+  Give Piik App or Server a stable public address.
+- [Run your own Piik site](../operations/self-hosting.md)<br>
+  Deploy Piik Server for your group.
+- [Help translate Piik](./translating.md)<br>
+  Improve the words people see when they use Piik.
+
+</section>
+
+</div>
+
+[简体中文](./README.zh-CN.md) · [Piik website](https://piik.tv/?lang=en)

@@ -1,47 +1,67 @@
+---
+layout: page
+pageClass: help-home
+title: Piik 帮助中心
+description: 了解如何加入房间、分享屏幕，以及解决 Piik 的常见问题。
+---
+
+<header class="help-hero">
+
 # Piik 帮助中心
 
-[English](./README.md) · 简体中文 · [Piik 官网](https://piik.tv/?lang=zh-CN)
+加入朋友的房间、分享自己的屏幕，或解决观看和分享时遇到的问题。
+
+<HelpSearch />
+
+</header>
+
+<div class="help-sections">
+
+<section class="help-actions">
 
 ## 开始使用
 
-- [用 Piik App 分享屏幕](./getting-started.zh-CN.md#用-piik-app-分享)
-- [加入朋友的房间](./getting-started.zh-CN.md#加入朋友的房间)
-- [用浏览器分享屏幕](./getting-started.zh-CN.md#使用在线版)
+- [加入朋友的房间](./getting-started.zh-CN.md#加入朋友的房间)<br>
+  打开邀请链接或输入房间号，就能在浏览器里观看。
+- [分享屏幕](./getting-started.zh-CN.md)<br>
+  用浏览器开始分享，也可以按指南使用 Piik App。
+
+</section>
+
+<section class="help-issues">
 
 ## 遇到问题
 
-- [打开邀请链接后白屏或报错](./troubleshooting.zh-CN.md#邀请打不开或只有标题)
-- [已加入房间，但一直没有画面](./troubleshooting.zh-CN.md#画面连接不上)
-- [画面模糊、卡顿或卡住](./troubleshooting.zh-CN.md#画面模糊卡顿或中断)
-- [用 iPhone Safari 分享屏幕，朋友听不到屏幕声音](./sharing.zh-CN.md#iphone-与-ipad-屏幕分享)
-- [有画面，但听不到分享的声音](./troubleshooting.zh-CN.md#有画面但没有来源声音)
-- [无法使用远程控制](./troubleshooting.zh-CN.md#无法使用麦克风或远程控制)
+- [邀请链接打不开](./troubleshooting.zh-CN.md#邀请打不开或只有标题)
+- [进了房间却一直没画面](./troubleshooting.zh-CN.md#画面连接不上)
+- [画面模糊，或者总是卡住](./troubleshooting.zh-CN.md#画面模糊卡顿或中断)
+- [有画面，却听不到分享的声音](./troubleshooting.zh-CN.md#有画面但没有来源声音)
+- [朋友听不到我分享的 iPhone 或 iPad 屏幕声音](./sharing.zh-CN.md#iphone-与-ipad-屏幕分享)
+- [麦克风或远程控制用不了](./troubleshooting.zh-CN.md#无法使用麦克风或远程控制)
 
-[全部排查主题](./troubleshooting.zh-CN.md#常见问题) · [进阶网络排查](./network.zh-CN.md) · [反馈问题](./troubleshooting.zh-CN.md#反馈问题)
+[查看全部排查主题](./troubleshooting.zh-CN.md#常见问题) · [反馈问题](./troubleshooting.zh-CN.md#反馈问题)
 
-## 使用房间工具
+</section>
 
-- [调整播放](./sharing.zh-CN.md#播放控制)
-- [聊天与发送表情](./room-tools.zh-CN.md#聊天与表情)
-- [在房间里语音聊天](./room-tools.zh-CN.md#房间语音)
-- [让朋友接手操作或一起玩](./remote-control.zh-CN.md#开始远程控制)
+<section class="help-resources">
 
-## 分享者设置
+## 更多指南
 
-- [选择 App 模式](./getting-started.zh-CN.md#选择-app-模式)
-- [使用已有 Piik 站点分享](./getting-started.zh-CN.md#使用已有站点分享)
-- [调整画面与声音设置](./sharing.zh-CN.md#画面与声音设置)
-- [查阅 App 设置和诊断方法](../../cmd/piik-app/README.zh-CN.md)
+- [分享与播放](./sharing.zh-CN.md)<br>
+  选择分享内容，调整画面和声音。
+- [聊天、语音与远程控制](./room-tools.zh-CN.md)<br>
+  在房间里聊天，或让朋友接手操作。
+- [进阶网络排查](./network.zh-CN.md)<br>
+  邀请能打开却连不上画面时，检查网络连接。
+- [用 frp 设置固定邀请地址](./frp.zh-CN.md)<br>
+  给 Piik App 或 Server 设置固定的公网地址。
+- [搭建自己的 Piik 站点](../operations/self-hosting.zh-CN.md)<br>
+  部署 Piik Server，供你和朋友使用。
+- [参与 Piik 翻译](./translating.zh-CN.md)<br>
+  改进大家在 Piik 里看到的文案。
 
-## 网络连接
+</section>
 
-- [用 frp 设置固定公网邀请](./frp.zh-CN.md)。在 App 或 Server 上操作，附樱花映射 SakuraFrp 示例。
-- [直连与媒体转发](./network.zh-CN.md)。网页能打开但画面连不上时，从这里排查。
+</div>
 
-## 为朋友搭建站点
-
-[部署 Piik Server](../operations/self-hosting.zh-CN.md) · [维护与更新](../operations/service-management.zh-CN.md) · [配置参考（英文）](../standards/configuration.md)
-
-## 一起改进 Piik
-
-[参与翻译](./translating.zh-CN.md) · [贡献指南](../../CONTRIBUTING.md) · [开发与维护文档](../README.md)
+[English](./README.md) · [Piik 官网](https://piik.tv/?lang=zh-CN)
