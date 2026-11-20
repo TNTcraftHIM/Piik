@@ -175,12 +175,16 @@ export class HTMLVideoMedia implements WatchMedia {
       this.video.src = url;
     }
   }
+  private playbackError(): Error | null {
+    if (this.failure) return this.failure;
+    const code = watchElementFailure(this.video.error);
+    return code ? new Error(code) : null;
+  }
   async read(): Promise<WatchMediaState> {
     await this.setup;
     const video = this.video;
-    if (this.failure) throw this.failure;
-    const elementFailure = watchElementFailure(video.error);
-    if (elementFailure) throw new Error(elementFailure);
+    const error = this.playbackError();
+    if (error) throw error;
     const program = video.readyState >= 1 ? this.hlsTimeline?.read(video) : null;
     return { position: video.currentTime, paused: video.paused, rate: video.playbackRate,
       duration: program ? null : Number.isFinite(video.duration) ? video.duration : null, readyState: video.readyState,
@@ -203,16 +207,19 @@ export class HTMLVideoMedia implements WatchMedia {
     });
   }
   async ready(signal: AbortSignal): Promise<void> {
+    const lifetime = AbortSignal.any([signal, this.lifetime.signal]);
     try {
-      const lifetime = AbortSignal.any([signal, this.lifetime.signal]);
       lifetime.throwIfAborted();
       if (!this.initialDataReady) {
         await waitForWatchMedia(this, lifetime, this.setup);
         this.initialDataReady = true;
       } else await this.read();
       lifetime.throwIfAborted();
+    } catch (error) {
+      const reason = lifetime.aborted ? error : this.playbackError() ?? error;
+      this.dispose();
+      throw reason;
     }
-    catch (error) { this.dispose(); throw error; }
   }
   audioAvailable(): boolean | undefined { return this.dash?.audioAvailable(); }
   listen(changed: (event: WatchMediaEvent) => void): () => void {

@@ -66,6 +66,36 @@ test.each([
   } finally { player.close(); }
 });
 
+test.each([false, true])("initial HLS readiness uses the current failure with an older read in flight (cancelled: %s)", async cancelled => {
+  const attached = nextHlsAttachment();
+  const video = element();
+  vi.stubGlobal("document", { createElement: () => video });
+  const media = createPeerWatchMedia({ resourceId: crypto.randomUUID(), format: "hls" }, async () => { throw Error("unused_read"); });
+  const player = new WatchPlayer("owned", false, media, () => {});
+  const controller = new AbortController();
+  const read = media.read.bind(media);
+  const olderRead = Promise.withResolvers<void>();
+  const snapshotTaken = Promise.withResolvers<void>();
+  try {
+    const hls = await attached;
+    video.readyState = 2;
+    vi.spyOn(media, "read").mockImplementationOnce(async () => {
+      const snapshot = await read();
+      snapshotTaken.resolve();
+      await olderRead.promise;
+      return snapshot;
+    });
+    const result = player.ready(controller.signal).catch(error => error);
+    await snapshotTaken.promise;
+    hls.trigger(Hls.Events.ERROR, { fatal: true, type: Hls.ErrorTypes.NETWORK_ERROR,
+      details: Hls.ErrorDetails.FRAG_LOAD_ERROR, response: { code: 0, text: "watch_source_unavailable" } } as never);
+    if (cancelled) controller.abort();
+    await expect.poll(() => player.error).toBe("watch_source_unavailable");
+    olderRead.resolve();
+    await expect(result).resolves.toMatchObject(cancelled ? { name: "AbortError" } : { message: player.error });
+  } finally { olderRead.resolve(); player.close(); }
+});
+
 test("actual Session explicit peer command retains the admitted root and reader binding after direct failure", async () => {
   const root = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "hls" as const };
   const activity = { id: "owned-published", roomId: "owned-room", source: { kind: "website", url: "https://owned.test/official", mediaUrl: "https://owned.test/direct.mp4" }, byteSource: root, playback: { timeline: "media", paused: true, position: 2, rate: 1, anchorTime: 1000 } };
