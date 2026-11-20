@@ -404,6 +404,14 @@ delivery, irrespective of its bitrate. Each candidate extends existing
 delivery. A full tie keeps the earlier candidate. The tuple ranks assignments
 before the receivers report delivery. [Plan::extend_confirmed](../../prototype/channel-core/src/routes.rs)
 
+If a viewer already has a confirmed connection to the publisher, first try
+the paths that fit the current tree, including an available relay. When all
+publisher outputs are reserved, a viewer still waiting to connect to the
+publisher can yield its exclusive slot if nobody else depends on that branch.
+It stays subscribed and can be served when another path or slot becomes
+available. Active delivery, confirmed pairs and slots shared with other rooms
+keep their assignments.
+
 Reuse a flow already reaching the recipient. For a new branch, look up an
 [eligible relay path](#finding-a-relay-outside-the-publication).
 Dijkstra minimizes the sum of non-negative edge costs on a known graph.

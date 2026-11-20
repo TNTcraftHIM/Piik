@@ -162,6 +162,7 @@ impl Plan {
         }
         if let Some(screen) = screen {
             self.extend_confirmed(screen, helpers, limits);
+            self.reassign_pending_direct(screen, helpers, limits);
         }
         // Unknown paths use the existing admission and repair policy.
         for child in requested {
@@ -176,6 +177,46 @@ impl Plan {
             }
             if let Some(parent) = self.candidate_parent(*child, connected, helpers, limits) {
                 self.parents.insert(*child, parent);
+            }
+        }
+    }
+
+    fn reassign_pending_direct(
+        &mut self,
+        screen: &ScreenDemand<'_>,
+        helpers: &BTreeMap<Uuid, Uuid>,
+        limits: &RelayLimits,
+    ) {
+        let Some(connected) = screen.neighbors.get(&self.source) else {
+            return;
+        };
+        let shared = limits.shared.get(&self.source);
+        for &viewer in screen.order {
+            if viewer == self.source
+                || self.parents.contains_key(&viewer)
+                || !connected.contains(&viewer)
+                || self.failed_parents.get(&viewer).is_some_and(|failed| failed.contains(&self.source))
+            {
+                continue;
+            }
+            // Preserve every usable, shared or assisted branch. Only an exclusive
+            // unconfirmed leaf can release a source output for this viewer.
+            let leaf = screen.order.iter().rev().copied().find(|peer| {
+                self.parents.get(peer) == Some(&self.source)
+                    && !connected.contains(peer)
+                    && !self.ready.contains_key(peer)
+                    && !shared.is_some_and(|others| others.contains(peer))
+                    && !self.parents.values().any(|parent| parent == peer)
+                    && !helpers.contains_key(peer)
+                    && !helpers.values().any(|helper| helper == peer)
+            });
+            if let Some(leaf) = leaf {
+                self.parents.remove(&leaf);
+                if self.admitted_output(self.source, viewer, helpers, limits) {
+                    self.parents.insert(viewer, self.source);
+                } else {
+                    self.parents.insert(leaf, self.source);
+                }
             }
         }
     }
@@ -1301,6 +1342,70 @@ impl BaseTree {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn confirmed_viewer_reuses_only_an_exclusive_pending_source_slot() {
+        let id = Uuid::from_u128;
+        let (source, exclusive, shared, viewer) = (id(1), id(2), id(3), id(4));
+        let order = [exclusive, shared, viewer];
+        let members = [source, exclusive, shared, viewer].into();
+        let neighbors = [(source, [viewer].into()), (viewer, [source].into())].into();
+        let graph = ScreenDemand { order: &order, neighbors: &neighbors, relays: &BTreeSet::new() };
+        let mut plan = Plan::new(source);
+        plan.parents.extend([(exclusive, source), (shared, source)]);
+        let limits = RelayLimits {
+            source_direct_limit: Some(2),
+            shared: [(source, [shared].into())].into(),
+            ..Default::default()
+        };
+        plan.reconcile_demand(&order.into(), &members, &members, None, &BTreeMap::new(), &limits, Some(&graph));
+        assert_eq!(plan.parents, [(viewer, source), (shared, source)].into());
+    }
+
+    #[test]
+    fn confirmed_relay_serves_new_viewer_without_displacing_pending_direct_slot() {
+        let id = Uuid::from_u128;
+        let (source, pending, relay, viewer) = (id(1), id(2), id(3), id(4));
+        let order = [pending, relay, viewer];
+        let members = [source, pending, relay, viewer].into();
+        let neighbors = [
+            (source, [relay, viewer].into()),
+            (relay, [source, viewer].into()),
+            (viewer, [source, relay].into()),
+        ]
+        .into();
+        let graph = ScreenDemand {
+            order: &order,
+            neighbors: &neighbors,
+            relays: &[relay].into(),
+        };
+        let limits = RelayLimits {
+            source_direct_limit: Some(2),
+            default: 1,
+            ..Default::default()
+        };
+        let mut plan = Plan::new(source);
+        plan.parents.extend([(pending, source), (relay, source)]);
+        plan.ready.insert(relay, Readiness::Decoded);
+
+        plan.reconcile_demand(
+            &order.into(),
+            &members,
+            &members,
+            None,
+            &BTreeMap::new(),
+            &limits,
+            Some(&graph),
+        );
+
+        assert_eq!(plan.parents.get(&pending), Some(&source));
+        assert!(!plan.ready.contains_key(&pending));
+        assert_eq!(plan.parents.get(&relay), Some(&source));
+        assert!(matches!(plan.ready.get(&relay), Some(Readiness::Decoded)));
+        assert_eq!(plan.parents.get(&viewer), Some(&relay));
+        assert_eq!(plan.parents.values().filter(|&&parent| parent == source).count(), 2);
+        assert_eq!(plan.parents.values().filter(|&&parent| parent == relay).count(), 1);
+    }
+
     #[test]
     fn confirmed_routes_on_five_nodes_match_simple_path_bounds() {
         // With one output per endpoint, any rooted delivery tree is a simple path.
