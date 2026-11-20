@@ -92,7 +92,8 @@ test("unknown iframe buffering applies explicit updates without inventing period
     expect(state.position).toBe(60); patch.mockClear(); state.position = 20;
     await vi.advanceTimersByTimeAsync(3000);
     expect(patch.mock.calls.every(([value]) => !("position" in value))).toBe(true);
-    player.update({ timeline: "media" as const, position: 10, paused: true, rate: 1.25, anchorTime: 8000 }); await player.serialize(async () => {});
+    player.update({ timeline: "media" as const, position: 10, paused: true, rate: 1.25, anchorTime: 8000 });
+ await player.serialize(async () => {});
     expect(player.error).toBe("watch_media_unsupported");
     expect(patch.mock.calls.every(([value]) => !("rate" in value))).toBe(true);
   } finally { player.close(); }
@@ -262,11 +263,24 @@ test("creator playing reanchors initial start and buffer recovery even at the sa
     video.dispatchEvent(new Event("playing"));
     await player.serialize(async () => {});
     expect(send).toHaveBeenLastCalledWith({ timeline: "media" as const, position: 20, paused: false, rate: 1, anchorTime: 6000 });
+    video.dispatchEvent(new Event("waiting"));
+    video.dispatchEvent(new Event("waiting"));
+    await player.serialize(async () => {});
+    expect(send).toHaveBeenCalledTimes(3);
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ position: 20, paused: true }));
+    expect(video.paused).toBe(false);
     clock.mockReturnValue(3100);
     video.dispatchEvent(new Event("playing"));
     await player.serialize(async () => {});
-    expect(send).toHaveBeenCalledTimes(3);
+    expect(send).toHaveBeenCalledTimes(4);
     expect(send).toHaveBeenLastCalledWith({ timeline: "media" as const, position: 20, paused: false, rate: 1, anchorTime: 8000 });
+    video.dispatchEvent(new Event("waiting"));
+    await player.serialize(async () => {});
+    video.pause();
+    video.dispatchEvent(new Event("pause"));
+    video.dispatchEvent(new Event("playing"));
+    await player.serialize(async () => {});
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ paused: true }));
   } finally { player.close(); }
 });
 
@@ -425,4 +439,19 @@ test("media parse errors survive readiness and late error events, while retireme
   expect(changed).not.toHaveBeenCalled();
   expect(latePlayer.error).toBe("watch_mp4_parse_failed");
   player.close();
+});
+
+test("a paused aligned viewer observes three idle ticks without writes or UI notifications", async () => {
+  vi.useFakeTimers();
+  const state = { position: 12, rate: 1, paused: true, duration: 60, ended: false, readyState: 4, buffered: [] };
+  const patch = vi.fn(), changed = vi.fn(), read = vi.fn(async () => state);
+  const player = new WatchPlayer("room", false, { read, patch, ready: vi.fn(), listen: () => () => {}, close: vi.fn() }, changed);
+  try {
+    player.calibrate(0, 0, 0);
+    player.update({ timeline: "media", position: 12, rate: 1, paused: true, anchorTime: 0 });
+    await vi.advanceTimersByTimeAsync(0);
+    patch.mockClear(); changed.mockClear(); read.mockClear();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect([read.mock.calls.length, patch.mock.calls.length, changed.mock.calls.length]).toEqual([3, 0, 0]);
+  } finally { player.close(); }
 });

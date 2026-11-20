@@ -4,6 +4,7 @@ import { PageSuppliedMedia, preparePageSuppliedWatchMedia, preparePortableWatchM
 import { canUseYouTubePlayer, youtubeVideoId, youtubeStartSeconds, youtubeSourceId, originalWatchURL } from "./watch-youtube-source";
 import { indexedMediaSelection } from "./watch-indexed-source";
 import { WatchBytes } from "./watch-bytes";
+import { directWatchFormat } from "../../shared/watch-format";
 import { z } from "zod";
 import { WatchPlayer } from "./watch-playback";
 import { HTMLVideoMedia, AppPageMedia, createPeerWatchMedia, waitForWatchMedia, type WatchMedia } from "./watch-media";
@@ -2428,7 +2429,8 @@ export class ChannelSession {
   startWatch = (roomId: string, rawURL: string, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const source = this.watchSource(rawURL);
     const selection = this.selectSource(roomId);
-    await this.commitWatch(roomId, source, new HTMLVideoMedia(source.url), selection);
+    const media = new HTMLVideoMedia(source.url, directWatchFormat(new URL(source.url)));
+    await this.commitWatch(roomId, source, media, selection);
   }, reportError);
   private watchSource(rawURL: string): Extract<WatchSource, { kind: "media" }> {
     try { return watchSourceSchema.parse({ kind: "media", url: new URL(rawURL).href }) as Extract<WatchSource, { kind: "media" }>; }
@@ -2717,7 +2719,8 @@ export class ChannelSession {
     const embed = youtubeSourceId(activity.source);
     const url = activity.source.kind === "media" ? activity.source.url : activity.source.mediaUrl;
     if (!url && !embed) throw new Error("watch_page_required");
-    await this.joinWatchMedia(id, embed ? new YouTubeMedia(embed) : new HTMLVideoMedia(url!, undefined, activity.playback.timeline));
+    const format = activity.source.kind === "media" ? directWatchFormat(new URL(activity.source.url)) : undefined;
+    await this.joinWatchMedia(id, embed ? new YouTubeMedia(embed) : new HTMLVideoMedia(url!, format, activity.playback.timeline));
   });
   private async joinWatchMedia(id: string, media: WatchMedia, mode: WatchMode = "direct"): Promise<void> {
     const activity = this.view.state?.watchActivities.find(value => value.id === id);

@@ -1,12 +1,14 @@
 # Sharing and playback
 
-This guide covers the 3.0 internal test. For the published version, use the [2.6.1 guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/sharing.md).
+This guide covers the 3.0 internal test. For the published version, use the [stable documentation](https://piik.tv/docs/?lang=en).
 
 English · [简体中文](./sharing.zh-CN.md) · [Documentation](./README.md)
 
 To open a site or create a room, start with [getting started](./getting-started.md).
 Each admitted participant can share in a room; several people can share at once.
 You choose which pictures to watch.
+
+[Watch a webpage video together](#watch-a-webpage-video-together)
 
 ## Start or change a share
 
@@ -36,6 +38,16 @@ Send the site address or a public-room link for ordinary access. Private rooms
 use their own invitation or password; send those invitations only to intended
 guests. Each room owner manages that room's access and invitation resets;
 see [getting started](./getting-started.md).
+
+## Watch a webpage video together
+
+In a 3.0 test room, select **Start sharing → Watch together** and paste the video or webpage address.
+
+- **Direct video link or YouTube.** Select **Play direct video URL** or, for YouTube, **Watch together**. Everyone can use a browser. Each person plays the video from its original source.
+- **Other websites.** In a Piik App that supports webpage playback, select **Open webpage and select video**. Sign in on the original page if needed, start playback, and return to Piik to select the player. If offered, choose **Share original webpage only**. Viewers use a compatible Piik App to open the page, sign in with their own accounts if needed, and select the player.
+- **Forward to a viewer in a browser.** If the video supports it, the sharer can turn on **Forward through App**. The viewer then selects **Receive from sharer**. This uses the sharer’s upload bandwidth and needs a working media connection.
+
+For direct links, YouTube, and original webpage playback, a cloud tunnel used for the room carries playback controls and progress, while the original source delivers the video.
 
 ## Share settings
 

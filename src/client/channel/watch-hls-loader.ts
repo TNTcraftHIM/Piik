@@ -50,7 +50,7 @@ export function createWatchHlsLoader(sourceRead: WatchByteReader, lifetime: Abor
         if (!this.finish()) return;
         const stats = this.stats;
         stats.loading.end = performance.now();
-        const elapsed = stats.loading.end - stats.loading.first;
+        const elapsed = stats.loading.end - stats.loading.start;
         stats.bwEstimate = elapsed > 0 ? stats.loaded * 8000 / elapsed : 0;
         callbacks.onProgress?.(stats, context, data, null);
         callbacks.onSuccess({ url: context.url, code: 200, data }, stats, context, null);
@@ -73,21 +73,21 @@ export function createWatchHlsLoader(sourceRead: WatchByteReader, lifetime: Abor
         throw new Error("invalid_watch_range");
       // A live playlist is one atomic response; stat-then-range reads could mix revisions.
       const text = context.responseType !== "arraybuffer";
-      const stat = await read(id, 0, text ? WATCH_READ_SIZE : 1, signal);
+      const firstLength = Math.min(WATCH_READ_SIZE, (requestedEnd ?? Infinity) - start);
+      const initial = await read(id, start, firstLength, signal);
       signal.throwIfAborted(); first();
-      const size = stat.totalSize;
+      const size = initial.totalSize;
       if (size === null || !Number.isSafeInteger(size) || size < 0) throw new Error("watch_media_size_unavailable");
       const end = requestedEnd ?? size;
       if (end > size || start > end) throw new Error("watch_media_truncated");
       if (end - start > (text ? mediaManifestBytes() : mediaFragmentBytes())) throw new Error("watch_resource_limit");
       const bytes = new Uint8Array(end - start);
       this.stats.total = bytes.length;
-      let next = start;
-      if (text) {
-        if (start !== 0 || stat.bytes.length !== Math.min(size, WATCH_READ_SIZE) || stat.eof !== (stat.bytes.length === size))
-          throw new Error("watch_media_truncated");
-        bytes.set(stat.bytes); next = stat.bytes.length; this.stats.loaded = next;
-      }
+      if (initial.bytes.length !== Math.min(end - start, firstLength) || (text && (start !== 0 || initial.eof !== (initial.bytes.length === size))))
+        throw new Error("watch_media_truncated");
+      bytes.set(initial.bytes);
+      const next = start + initial.bytes.length;
+      this.stats.loaded = initial.bytes.length;
       for await (const window of readWatchWindows(read, id, { start: next, end, size }, signal, length => { this.stats.loaded += length; }))
         bytes.set(window.bytes, window.offset - start);
       return context.responseType === "arraybuffer" ? bytes.buffer : new TextDecoder().decode(bytes);

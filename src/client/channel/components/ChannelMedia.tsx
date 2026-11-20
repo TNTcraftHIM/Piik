@@ -1,3 +1,4 @@
+import { useWatchPageSlot } from "./use-watch-page-slot";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Btn } from "../../components/living/primitives";
 import { BrandMark } from "../../components/living/BrandMark";
@@ -73,23 +74,28 @@ function WatchPlaybackSettings({ receiving, playback, children, audioAvailable =
 }
 
 /** The session owns loading and playback; presentation only mounts its existing element. */
-export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled, website, originalPageAvailable, onAppWatch, onFocusWindow, receiving, automaticPlayback = true }: {
+export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled, website, originalPageAvailable, originalPageUnavailable, onAppWatch, onFocusWindow, receiving, automaticPlayback = true, nativeStage = false }: {
   player: WatchPlayer; owned: boolean; paused: boolean; label: string; presentation: "full" | "thumbnail" | "background";
   theaterMode: boolean; onToggleTheater(): void; disabled: boolean;
   onPlayback(patch: Partial<Pick<WatchPlayback, "paused" | "position" | "rate">>): void; onResume(): void;
-  website: boolean; originalPageAvailable: boolean; onAppWatch?: () => void; onFocusWindow(): void;
+  website: boolean; originalPageAvailable: boolean; originalPageUnavailable?: string; onAppWatch?: () => void; onFocusWindow(): void;
   receiving?: WatchReceiving;
   automaticPlayback?: boolean;
+  nativeStage?: boolean;
 }) {
   const { lang, t } = useCopy();
   const slot = useRef<HTMLDivElement>(null), controls = useRef<HTMLDivElement>(null);
   const videoRef = useMemo(() => ({ current: player.video }), [player]);
   const controlsId = useId();
   const surface = player.presentation, embedded = surface.kind === "embed";
+  const pageId = surface.kind === "external" && nativeStage && presentation === "full" && !player.error &&
+    typeof window !== "undefined" && window.piikMountWatchPage ? player.media.page?.id : undefined;
+  const native = useWatchPageSlot(pageId);
   const audioTracks = player.media.audioTracks?.() ?? [];
   const audioOptions = audioTracks.map(track => ({ ...track, label: [mediaLanguageLabel(track.language, lang) || track.name,
     track.channels ? t("watch.forward.channels", { count: track.channels }) : undefined].filter(Boolean).join(" · ") }));
   const preparing = player.waitingForPicture;
+  const ownerPaused = player.video?.paused ?? player.mediaState?.paused ?? paused;
   const audioAvailable = player.media.audioAvailable?.() !== false;
   const [htmlMedia, setMedia] = useState({ position: 0, duration: 0, volume: 1, muted: false, rate: 1 });
   const live = player.mediaState?.live;
@@ -171,13 +177,14 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     document.addEventListener("fullscreenchange", sync); sync();
     return () => { for (const name of events) video.removeEventListener(name, sync); document.removeEventListener("fullscreenchange", sync); };
   }, [player]);
-  return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-external={surface.kind === "external" || undefined} data-embed={embedded || undefined} data-failed={!!player.error || undefined}
+  return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-native-page={pageId ? true : undefined} data-external={surface.kind === "external" || undefined} data-embed={embedded || undefined} data-failed={!!player.error || undefined}
     data-standalone={!embedded && (!player.video || !!player.error && player.error !== "watch_update_failed") || undefined} data-thumbnail={!embedded && presentation === "thumbnail" || undefined}
     data-controls-hidden={!embedded && visibility.hidden} inert={presentation === "background"}>
     {surface.kind !== "external" && preparing && !player.error && !player.blocked && <div className="c3-mini-message" role="status">
       <span className="c3-frame-wait"><BrandMark size={32} motion="loop" />{t("watch.waiting")}</span>
     </div>}
-    {surface.kind === "external" && !player.error && <div className="c3-mini-message"><div className="c3-frame-wait c3-watch-result">
+    {pageId && <div ref={native.slot} className="c3-watch-native-slot" />}
+    {surface.kind === "external" && !player.error && !native.mounted && <div className="c3-mini-message"><div className="c3-frame-wait c3-watch-result">
       {preparing && <BrandMark size={32} motion="loop" />}<span>{t(preparing ? "watch.waiting" : "watch.inWindow")}</span>
       <Btn icon="window" title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />
     </div></div>}
@@ -186,16 +193,17 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
         <Btn icon="refresh" title="common.retry" cap="common.retry" size="compact" disabled={disabled || receiving.disabled || receiving.pending}
           busy={receiving.pending} onClick={receiving.onDirect} />}
       {owned && player.media.page && <Btn icon="window" title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />}
-      {!owned && website && originalPageAvailable && surface.kind !== "external" && (onAppWatch
-        ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={onAppWatch} />
-        : !(receiving?.peerAvailable && receiving.peerSupported) && <small>{t("watch.connectApp")}</small>)}
+      {!owned && website && surface.kind !== "external" && (onAppWatch
+        ? <Btn icon="window" title="watch.openPage" cap="watch.openPage" disabled={disabled || receiving?.pending} onClick={onAppWatch} />
+        : !(receiving?.peerAvailable && receiving.peerSupported) && (originalPageUnavailable
+          ? <small>{originalPageUnavailable}</small> : originalPageAvailable && <small>{t("watch.connectApp")}</small>))}
       {receiving && <WatchPeerAction receiving={receiving} />}
     </div></div>
       : player.blocked && <div className="c3-mini-message"><Btn icon="play" title="watch.resume" cap="watch.resume" onClick={onResume} /></div>}
     {hasControls && <div ref={controls} id={controlsId} className="c3-mini-controls lr-media-toolbar lr-media-overlay lr-media-controls" role="group" aria-label={t("playback.controls")}>
       {!embedded && <div className="c3-watch-shared" role="group" aria-label={t(owned ? "watch.sharedControls" : "watch.following")}>
-        {owned && <Btn icon={paused ? "play" : "pause"} quiet size="dense"
-          title={paused ? "watch.play" : "watch.pause"} disabled={disabled} onClick={() => onPlayback({ paused: !paused })} />}
+        {owned && <Btn icon={ownerPaused ? "play" : "pause"} quiet size="dense"
+          title={ownerPaused ? "watch.play" : "watch.pause"} disabled={disabled} onClick={() => onPlayback({ paused: !ownerPaused })} />}
         {live && <span className="c3-watch-status">{t(live.active ? "watch.live" : "watch.liveEnded")}</span>}
         <div className="c3-watch-timeline" data-seeking={seekPreview !== null || undefined}>
         {owned ? <input type="range" min={seekStart} max={seekEnd || 1} step="0.1" value={position}

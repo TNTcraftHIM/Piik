@@ -129,7 +129,7 @@ test("actual Session explicit peer command retains the admitted root and reader 
     loader.load({ url: `https://watch-media.invalid/${root.resourceId}`, responseType: "arraybuffer", type: LoaderContextType.MANIFEST }, { loadPolicy: { maxTimeToFirstByteMs: 1000, maxLoadTimeMs: 1000 } } as never,
       { onError: failed, onSuccess: vi.fn(), onTimeout: vi.fn() } as never);
     await expect.poll(() => read.mock.calls.length).toBe(1);
-    expect(read.mock.calls[0]).toEqual([activity.roomId, activity.id, root, root.resourceId, 0, 1, expect.any(AbortSignal)]);
+    expect(read.mock.calls[0]).toEqual([activity.roomId, activity.id, root, root.resourceId, 0, 65536, expect.any(AbortSignal)]);
     await expect.poll(() => failed.mock.calls.length).toBe(1);
     expect(failed.mock.calls[0][0]).toEqual({ code: 0, text: "watch_source_unavailable" });
     hls.trigger(Hls.Events.ERROR, { fatal: true, type: Hls.ErrorTypes.NETWORK_ERROR,

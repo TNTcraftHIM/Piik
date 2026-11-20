@@ -10046,11 +10046,16 @@ test('watch creator uses domain confirmation, keeps its element and retires with
   const { session, socket } = await setup(1000, false);
   const video = new WatchTestVideo();
   vi.stubGlobal('document', { createElement: () => video });
+  const inspectOrigin = vi.fn(() => Promise.reject(new TypeError('Cross-origin response cannot be read')));
+  vi.stubGlobal('fetch', inspectOrigin);
   try {
-    const opening = session.startWatch('first', 'https://media.test/video.mp4');
+    const url = 'https://media.test/video.mp4?edition=original';
+    const opening = session.startWatch('first', url);
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
     const start = socket.sent.findLast(command => command.type === 'start_watch')!;
     expect(start.playback).toMatchObject({ paused: true, position: 0 });
+    expect(start.source).toEqual({ kind: 'media', url });
+    expect(inspectOrigin).not.toHaveBeenCalled();
     expect(start).not.toHaveProperty('byteSource');
     socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [{
       id: start.id, roomId: 'first', viewerSessionIds: [], sessionId: 'endpoint', userId: 'self', source: start.source, playback: start.playback,
@@ -10064,7 +10069,7 @@ test('watch creator uses domain confirmation, keeps its element and retires with
     await opening;
     expect(session.getSnapshot().watchPlayers.get(start.id as string)?.video).toBe(video);
     session.browse('second');
-    expect(video.src).toBe('https://media.test/video.mp4');
+    expect(video.src).toBe(url);
     expect(socket.sent.some(command => command.type === 'publish')).toBe(false);
     const stopping = session.stopWatch(start.id as string);
     const stop = socket.sent.findLast(command => command.type === 'stop_watch')!;

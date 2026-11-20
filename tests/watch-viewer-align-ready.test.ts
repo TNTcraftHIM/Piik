@@ -42,10 +42,12 @@ test("Viewer accepts a late shared clock at metadata while current-frame readine
     expect(video.currentTime).toBe(0);
     expect(video.play).toHaveBeenCalled();
     expect(ready).toBe(false);
+    vi.mocked(performance.now).mockReturnValue(1277);
     video.readyState = 2;
     video.dispatchEvent(new Event("loadeddata"));
     await opening;
     expect(ready).toBe(true);
+    expect(video.currentTime).toBe(0);
     expect(player.hasPresentedFrame).toBe(false);
     expect(player.error).toBeNull();
   } finally { player.close(); await opening.catch(() => {}); }

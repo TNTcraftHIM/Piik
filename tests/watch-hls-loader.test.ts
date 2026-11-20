@@ -22,7 +22,7 @@ function delayedReader(delay = 10) {
     calls.push({ offset, length, signal }); active++; peak = Math.max(peak, active);
     try {
       await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => { signal.removeEventListener("abort", abort); resolve(); }, length === 1 ? 5 : delay);
+        const timer = setTimeout(() => { signal.removeEventListener("abort", abort); resolve(); }, delay);
         const abort = () => { clearTimeout(timer); reject(signal.reason); };
         signal.addEventListener("abort", abort, { once: true });
       });
@@ -37,14 +37,16 @@ test("HLS ranges use four overlapping 64KiB windows and real byte/time statistic
   const reader = delayedReader(), lifetime = new AbortController();
   const Loader = createWatchHlsLoader(reader.read, lifetime.signal), loader = new Loader(Hls.DefaultConfig), cb = callbacks();
   loader.load(context(123, 300123), config(), cb);
-  await vi.advanceTimersByTimeAsync(5);
-  expect(reader.active()).toBe(4); expect(reader.calls.slice(1).map(c => c.offset)).toEqual([123, 65659, 131195, 196731]);
-  await vi.advanceTimersByTimeAsync(20);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(reader.calls.map(c => c.offset)).toEqual([123]);
+  await vi.advanceTimersByTimeAsync(10);
+  expect(reader.active()).toBe(4); expect(reader.calls.slice(1).map(c => c.offset)).toEqual([65659, 131195, 196731, 262267]);
+  await vi.advanceTimersByTimeAsync(10);
   expect(cb.onSuccess).toHaveBeenCalledOnce(); expect(cb.onError).not.toHaveBeenCalled();
   expect(new Uint8Array(cb.onSuccess.mock.calls[0][0].data as ArrayBuffer)).toEqual(bytes.slice(123, 300123));
   expect(reader.peak()).toBe(4); expect(reader.calls.every(c => c.length <= 65536)).toBe(true);
   expect(loader.stats.loaded).toBe(300000); expect(loader.stats.total).toBe(300000);
-  expect(loader.stats.loading.end - loader.stats.loading.first).toBe(20);
+  expect(loader.stats.loading.end - loader.stats.loading.first).toBe(10);
   expect(loader.stats.bwEstimate).toBe(120000000); expect(vi.getTimerCount()).toBe(0);
 });
 
@@ -70,8 +72,8 @@ test("first-byte and overall deadlines cancel Reader I/O without late callbacks"
   await vi.advanceTimersByTimeAsync(3);
   expect(cb.onTimeout).toHaveBeenCalledOnce(); expect(reader.calls[0].signal.aborted).toBe(true);
   const second = new Loader(Hls.DefaultConfig), other = callbacks();
-  second.load(context(), config(10, 50), other);
-  await vi.advanceTimersByTimeAsync(49); expect(other.onTimeout).not.toHaveBeenCalled();
+  second.load(context(), config(110, 150), other);
+  await vi.advanceTimersByTimeAsync(149); expect(other.onTimeout).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(1); expect(other.onTimeout).toHaveBeenCalledOnce();
   await vi.advanceTimersByTimeAsync(200);
   expect(other.onSuccess).not.toHaveBeenCalled(); expect(other.onError).not.toHaveBeenCalled();
@@ -92,21 +94,25 @@ test("destroy suppresses callbacks and late replies", async () => {
 test("out-of-order windows preserve media bytes and lifetime stop cancels sibling fetches", async () => {
   const pending: { offset: number; length: number; resolve(value: WatchByteResult): void; signal: AbortSignal }[] = [];
   const read: WatchByteReader = async (_id, offset, length, signal) => {
-    if (length === 1) return result(0, 1);
     return new Promise((resolve, reject) => {
       pending.push({ offset, length, resolve, signal });
       signal.addEventListener("abort", () => reject(signal.reason), { once: true });
     });
   };
   const lifetime = new AbortController(), Loader = createWatchHlsLoader(read, lifetime.signal), cb = callbacks();
-  new Loader(Hls.DefaultConfig).load(context(0, 200000), config(), cb);
+  new Loader(Hls.DefaultConfig).load(context(0, 300000), config(), cb);
+  await vi.waitFor(() => expect(pending).toHaveLength(1));
+  const first = pending.shift()!;
+  first.resolve(result(first.offset, first.length));
   await vi.waitFor(() => expect(pending).toHaveLength(4));
   for (const part of pending.toReversed()) part.resolve(result(part.offset, part.length));
   await vi.waitFor(() => expect(cb.onSuccess).toHaveBeenCalledOnce());
-  expect(new Uint8Array(cb.onSuccess.mock.calls[0][0].data as ArrayBuffer)).toEqual(bytes.slice(0, 200000));
+  expect(new Uint8Array(cb.onSuccess.mock.calls[0][0].data as ArrayBuffer)).toEqual(bytes.slice(0, 300000));
   pending.length = 0;
   const siblings = Array.from({ length: 2 }, () => ({ loader: new Loader(Hls.DefaultConfig), cb: callbacks() }));
   for (const item of siblings) item.loader.load(context(), config(), item.cb);
+  await vi.waitFor(() => expect(pending).toHaveLength(2));
+  for (const part of pending.splice(0)) part.resolve(result(part.offset, part.length));
   await vi.waitFor(() => expect(pending).toHaveLength(4));
   lifetime.abort();
   await vi.waitFor(() => expect(pending.every(part => part.signal.aborted)).toBe(true));
@@ -151,7 +157,7 @@ test("large immutable VOD playlists keep the first window and read only the rema
 });
 
 test.each([
-  { responseType: "arraybuffer", size: 60000001, statLength: 1 },
+  { responseType: "arraybuffer", size: 60000001, statLength: 65536 },
   { responseType: "text", size: 1048577, statLength: 65536 },
 ] as const)("HLS rejects an oversized $responseType before reading its body", async ({ responseType, size, statLength }) => {
   const read = vi.fn<WatchByteReader>(async (_id, _offset, length) => {
@@ -177,6 +183,6 @@ test("HLS keeps small byte ranges from a file larger than the fragment budget", 
   await vi.waitFor(() => expect(cb.onSuccess).toHaveBeenCalledOnce());
   expect(new Uint8Array(cb.onSuccess.mock.calls[0][0].data as ArrayBuffer))
     .toEqual(Uint8Array.from({ length: 243 }, (_, i) => (310 + i) % 251));
-  expect(read.mock.calls.map(([, offset, length]) => [offset, length])).toEqual([[0, 1], [310, 243]]);
+  expect(read.mock.calls.map(([, offset, length]) => [offset, length])).toEqual([[310, 243]]);
   expect(cb.onError).not.toHaveBeenCalled();
 });

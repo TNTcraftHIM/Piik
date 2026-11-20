@@ -13,14 +13,21 @@ export function youtubeVideoId(raw: string): string | null {
   } catch { return null; }
 }
 
-/** Official iframe start is a local initial position, not the selected video's identity. */
+/** Start the preview at the selected position, keeping the shared video identity stable. */
 export function youtubeStartSeconds(raw: string): number | undefined {
   if (!youtubeVideoId(raw)) return;
   const url = new URL(raw);
-  if (!url.pathname.startsWith("/embed/")) return;
-  const values = url.searchParams.getAll("start");
-  if (values.length !== 1 || !/^\d+$/.test(values[0])) return;
-  const seconds = Number(values[0]);
+  const embed = url.pathname.startsWith("/embed/");
+  const values = url.searchParams.getAll(embed ? "start" : "t");
+  if (values.length !== 1 || !values[0]) return;
+  const value = values[0];
+  let seconds: number;
+  if (/^\d+$/.test(value)) seconds = Number(value);
+  else {
+    const units = !embed && /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(value);
+    if (!units) return;
+    seconds = Number(units[1] ?? 0) * 3600 + Number(units[2] ?? 0) * 60 + Number(units[3] ?? 0);
+  }
   return Number.isSafeInteger(seconds) && seconds > 0 ? seconds : undefined;
 }
 

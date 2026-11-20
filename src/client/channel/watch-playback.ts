@@ -20,6 +20,7 @@ export class WatchPlayer {
   get mediaState(): Readonly<WatchMediaState> | null { return this.localState; }
   private offset: number | null = null;
   private playback: WatchPlayback | null = null;
+  private alignedPlayback: WatchPlayback | null = null;
   private retired = false;
   private prepared = false;
   private presented = false;
@@ -44,6 +45,7 @@ export class WatchPlayer {
   private publishPlayback: ((playback: WatchPlayback) => Promise<void>) | null = null;
   private lastPublished: WatchPlayback | null = null;
   private observedAt = 0;
+  private ownerWaiting = false;
 
   constructor(readonly roomId: string, readonly owner: boolean, readonly media: WatchMedia,
     private changed: () => void, private closed: () => void = () => {}) {
@@ -54,7 +56,12 @@ export class WatchPlayer {
       if (event === "blocked") { this.blocked = true; this.changed(); }
       if (event === "audiotracks" || event === "waiting" || event === "loadeddata") this.changed();
       if (event === "loadedmetadata") void this.align(true);
-      if (owner && ["play", "playing", "pause", "seeked", "ratechange", "ended"].includes(event))
+      if (!owner) return;
+      if (event === "waiting") {
+        if (this.ownerWaiting) return;
+        this.ownerWaiting = true;
+      } else if (event === "playing" || event === "pause" || event === "ended") this.ownerWaiting = false;
+      if (["waiting", "play", "playing", "pause", "seeked", "ratechange", "ended"].includes(event))
         void this.publish(event === "playing").catch(() => {
           if (!this.retired) { this.error = "watch_update_failed"; this.changed(); }
         });
@@ -85,7 +92,7 @@ export class WatchPlayer {
     const start = performance.now(), state = await this.media.read(), end = performance.now();
     if (this.retired) throw new Error("watch_retired");
     this.observe(state);
-    return { timeline: state.live ? "program" : "media", position: state.position, paused: state.paused, rate: state.rate, anchorTime: Math.round((start + end) / 2 + this.offset) };
+    return { timeline: state.live ? "program" : "media", position: state.position, paused: state.paused || this.ownerWaiting || state.ended, rate: state.rate, anchorTime: Math.round((start + end) / 2 + this.offset) };
   }
   private observe(state: WatchMediaState): void {
     if (this.retired) return;
@@ -100,8 +107,9 @@ export class WatchPlayer {
   }
   update(playback: WatchPlayback): void {
     const changed = !this.playback || Object.entries(playback).some(([key, value]) => this.playback![key as keyof WatchPlayback] !== value);
+    if (!changed) return;
     this.playback = playback;
-    if (!this.owner && changed) void this.align(true);
+    if (!this.owner) void this.align(true);
   }
   activate(publish: (playback: WatchPlayback) => Promise<void>): void { this.publishPlayback = publish; }
   publish(force = false): Promise<void> {
@@ -162,6 +170,7 @@ export class WatchPlayer {
     const target = playback.timeline === "program" ? position : Math.min(position, state.duration ?? Infinity);
     const patch: WatchMediaPatch = {};
     if (!explicit && this.media.playbackAvailable?.() === false) return false;
+    force = explicit || force && this.alignedPlayback !== playback;
     const buffered = state.buffered?.some(([start, end]) => start <= target && target < end);
     const displaced = Math.abs(state.position - target) > (this.media.seekTolerance ?? (force ? 0.12 : 0.35));
     if (state.live && displaced && !buffered && !state.live.seekable.some(([start, end]) => start <= target && target <= end)) {
@@ -178,8 +187,10 @@ export class WatchPlayer {
     }
     if (playback.paused && !state.paused) patch.paused = true;
     else if (!playback.paused && state.paused && !this.blocked && !state.ended) patch.paused = false;
-    await this.apply(patch);
-    return !this.error || this.error === "watch_update_failed";
+    if (Object.keys(patch).length) await this.apply(patch);
+    if (this.error && this.error !== "watch_update_failed") return false;
+    this.alignedPlayback = playback;
+    return true;
   }
   /** Called within the player's serialized turn; explicit failures reject. */
   async editPlayback(patch: WatchMediaPatch): Promise<void> {

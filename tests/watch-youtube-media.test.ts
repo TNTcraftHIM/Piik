@@ -143,3 +143,12 @@ test("only an unambiguous documented integer embed start is an initial position"
   expect(youtubeVideoId("https://www.youtube.com/embed?listType=playlist&list=PLowned")).toBeNull();
   expect(youtubeSourceId({ kind: "website", url: "https://www.youtube.com/embed/M7lc1UVf-VE?start=90" })).toBeNull();
 });
+
+test("share links preserve seconds and ordered time units on the selected video", () => {
+  expect(youtubeStartSeconds("https://youtu.be/M7lc1UVf-VE?t=90")).toBe(90);
+  expect(youtubeStartSeconds("https://www.youtube.com/watch?v=M7lc1UVf-VE&t=1m30s")).toBe(90);
+  expect(youtubeStartSeconds("https://youtu.be/M7lc1UVf-VE?t=1h2m3s")).toBe(3723);
+  for (const query of ["", "t=0", "t=1s2m", "t=-3", "t=1.5", "t=9007199254740992", "t=3&t=4", "start=90"])
+    expect(youtubeStartSeconds("https://youtu.be/M7lc1UVf-VE?" + query)).toBeUndefined();
+  expect(youtubeStartSeconds("https://www.youtube.com/embed/M7lc1UVf-VE?t=90")).toBeUndefined();
+});

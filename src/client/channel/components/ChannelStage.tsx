@@ -124,9 +124,13 @@ function SourceOfferAction({ source, disabled, onWatch }: {
   if (source.kind === "watch") {
     const { receiving } = source;
     if (source.browserSource) join = source.onJoin;
+    else if (source.onAppWatch) return <>
+      <ChannelAction icon="window" label={t("watch.openPage")}
+        disabled={disabled} busy={source.pending} onClick={source.onAppWatch} />
+      {receiving?.peerAvailable && receiving.peerSupported && <ChannelAction icon="share" label={t("watch.forward.peer")} quiet
+        disabled={disabled || receiving.disabled} busy={source.pending} onClick={receiving.onPeer} />}
+    </>;
     else if (receiving?.peerAvailable && receiving.peerSupported) join = receiving.onPeer;
-    else if (source.onAppWatch) return <ChannelAction icon="window" label={t("watch.inApp")}
-      disabled={disabled} busy={source.pending} onClick={source.onAppWatch} />;
     else {
       const hint = receiving?.peerAvailable ? t("watch.forward.secure")
         : source.originalPageUnavailable ?? (source.originalPageAvailable ? t("watch.connectApp") : undefined);
@@ -414,8 +418,8 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
       if (focusable && !(event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) onFocus(source.id);
     }}>
     {source.player ? <ChannelWatchVideo player={source.player} owned={source.owned} paused={source.paused} label={source.title}
-      website={source.website} originalPageAvailable={source.originalPageAvailable} onAppWatch={source.onAppWatch} onFocusWindow={source.onFocusWindow}
-      receiving={source.receiving} automaticPlayback={automaticPlayback}
+      website={source.website} originalPageAvailable={source.originalPageAvailable} originalPageUnavailable={source.originalPageUnavailable} onAppWatch={source.onAppWatch} onFocusWindow={source.onFocusWindow}
+      receiving={source.receiving} automaticPlayback={automaticPlayback} nativeStage={focused || !focusable && !thumbnail}
       disabled={source.available === false} presentation={source.hidden ? "background" : thumbnail ? "thumbnail" : "full"}
       theaterMode={theaterMode} onToggleTheater={onToggleTheater}
       onPlayback={patch => { if (embedded && patch.paused === false) onFocus(source.id); source.onPlayback(patch); }}
@@ -427,9 +431,10 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
         source.onResume();
       }} />
       : <div className="c3-monitor-wait" role="status">{source.website && !source.pending ? <><Glyph name="globe" size={25} /><span>{t("watch.browserFailed")}</span>
-        {!source.owned && source.originalPageAvailable && (source.onAppWatch
-          ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={source.onAppWatch} />
-          : !(source.receiving?.peerAvailable && source.receiving.peerSupported) && <small>{t("watch.connectApp")}</small>)}
+        {!source.owned && (source.onAppWatch
+          ? <Btn icon="window" title="watch.openPage" cap="watch.openPage" disabled={source.available === false} onClick={source.onAppWatch} />
+          : !(source.receiving?.peerAvailable && source.receiving.peerSupported) && (source.originalPageUnavailable
+            ? <small>{source.originalPageUnavailable}</small> : source.originalPageAvailable && <small>{t("watch.connectApp")}</small>))}
         {source.receiving && <WatchPeerAction receiving={source.receiving} />}</>
         : <><BrandLoader /><span>{t("watch.waiting")}</span></>}</div>}
     <footer><div className="c3-monitor-source-row lr-media-overlay" data-tooltip-controls data-playback-controls>

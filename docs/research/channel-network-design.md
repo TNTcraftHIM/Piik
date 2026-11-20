@@ -256,7 +256,9 @@ A late or reconnected viewer applies the latest anchor when its player and
 clock are ready. For ordinary video, a known duration bounds the target.
 Autoplay refusal leaves the viewer a local play action.
 [Playback clock](../../src/client/channel/watch-playback.ts)
-Actual playback start and recovery from buffering renew the sharer's anchor.
+When the sharer's player waits for data, the room clock pauses at its measured
+position. Actual playback resumes the clock. A viewer's local buffering affects
+only that viewer. Joining applies the initial position once for a given anchor.
 Automatic drift correction waits until its target is locally buffered and the
 player can continue playback. An explicit sharer seek may select a new range.
 
@@ -283,7 +285,9 @@ whether to join the new source. Cross-kind replacement stops the previous screen
 or synchronized video after the new source is confirmed. Explicitly stopping an
 activity also prevents a pending confirmation from restoring its player.
 
-Direct HTTP(S) media uses the Browser's own player. The Native client supplies
+For explicit MP4, WebM and Ogg video links the Browser's own player verifies
+playability. HLS uses a supported playlist player and its timeline checks.
+Each viewer fetches the media from its origin. The Native client supplies
 the webpage-player connector without a separate browser extension. Website
 windows retain their own browsing context and do not inherit Piik device
 authority or room credentials. Browser-only website integration uses a documented
@@ -294,10 +298,11 @@ existing room authority carries playback state. The
 [implementation ledger](../todo.md) distinguishes direct-media delivery from
 website-connector work.
 
-The room offers one Watch action. It opens a directly playable source first,
-then uses the sharer's offered media transfer when that is the available browser
-path. A source that requires the original webpage offers Watch in App. Viewers
-can change an available receiving method in the player's settings. If direct
+The room offers direct playback first. For a source that needs the original
+webpage, viewers with a capable App can open that page and select their player.
+If the sharer also offers the media bytes, viewers can receive them over the
+room route. Browser-only viewers can join that transfer directly. Viewers can
+change an available receiving method in the player's settings. If direct
 playback fails, Retry reopens the viewer's player for the same activity. Local
 volume and mute follow the viewer across the retry.
 
