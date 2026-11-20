@@ -59,8 +59,10 @@ export class YouTubeMedia implements WatchMedia {
   private presented!: () => void;
   private readonly presentationReady = new Promise<void>(resolve => { this.presented = resolve; });
   readonly presentation = { kind: "embed" as const, element: this.element, setVisible: (visible: boolean, automaticPlayback = true) => {
+    const wasAvailable = this.playbackAvailable();
     this.automaticPlayback = automaticPlayback;
     this.setVisible(visible);
+    if (!wasAvailable && this.playbackAvailable()) this.emit("visibility-resumed");
   }, mounted: () => this.presented() };
   readonly seekTolerance = 2;
   readonly seekEvents = false;
@@ -77,7 +79,7 @@ export class YouTubeMedia implements WatchMedia {
   private played = false;
   private readonly visibility = new EventTarget();
 
-  constructor(private readonly id: string, private readonly startSeconds?: number) {
+  constructor(private readonly id: string, private readonly startSeconds?: number, private readonly suspendWhenHidden = false) {
     if (!/^[A-Za-z0-9_-]{11}$/.test(id)) throw new Error("invalid_watch_url");
     this.sdk = loadYouTube();
     this.element.className = "c3-watch-embed";
@@ -108,10 +110,7 @@ export class YouTubeMedia implements WatchMedia {
     this.visible = visible;
     this.visibility.dispatchEvent(new Event("change"));
     if (!visible) {
-      if (this.apiReady && this.played) {
-        this.player!.pauseVideo();
-        this.emit("blocked");
-      }
+      if (this.suspendWhenHidden && this.apiReady && this.played && !this.paused) this.player!.pauseVideo();
       return;
     }
     if (!this.mounted && this.element.isConnected) {
@@ -181,9 +180,9 @@ export class YouTubeMedia implements WatchMedia {
     if (!Object.keys(value).length) return;
     this.lifetime.signal.throwIfAborted();
     if (this.failure) throw this.failure;
-    if (!this.visible || !this.mounted) throw new Error("watch_autoplay_blocked");
+    if (!this.visible || !this.mounted) return;
     await abortable(this.mounted, this.lifetime.signal);
-    if (value.paused === false) await this.waitForEligibility();
+    if (value.paused === false && !await this.waitForEligibility()) return;
     const p = this.player!;
     if (value.rate !== undefined && !this.playbackRates().includes(value.rate)) throw new Error("watch_media_unsupported");
     // Issue the final pause after seekTo, which can itself start a non-paused player.
@@ -197,12 +196,12 @@ export class YouTubeMedia implements WatchMedia {
     if (this.failure) throw this.failure;
   }
 
-  private waitForEligibility(): Promise<void> {
+  private waitForEligibility(): Promise<boolean> {
     this.lifetime.signal.throwIfAborted();
     return new Promise((resolve, reject) => {
-      const finish = (error?: unknown) => { this.visibility.removeEventListener("change", check); this.lifetime.signal.removeEventListener("abort", abort); error ? reject(error) : resolve(); };
-      const check = () => { if (!this.visible) finish(new Error("watch_autoplay_blocked")); else if (this.automaticPlayback) finish(); };
-      const abort = () => finish(this.lifetime.signal.reason);
+      const cleanup = () => { this.visibility.removeEventListener("change", check); this.lifetime.signal.removeEventListener("abort", abort); };
+      const check = () => { if (!this.visible || this.automaticPlayback) { cleanup(); resolve(this.visible); } };
+      const abort = () => { cleanup(); reject(this.lifetime.signal.reason); };
       this.visibility.addEventListener("change", check); this.lifetime.signal.addEventListener("abort", abort, { once: true }); check();
     });
   }

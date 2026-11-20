@@ -19,7 +19,7 @@ export interface WatchMediaState {
   live?: WatchLiveWindow;
 }
 export type WatchMediaPatch = Partial<Pick<WatchMediaState, "position" | "paused" | "rate">>;
-export type WatchMediaEvent = "loadedmetadata" | "loadeddata" | "play" | "playing" | "pause" | "seeked" | "ratechange" | "ended" | "waiting" | "error" | "blocked" | "closed" | "audiotracks";
+export type WatchMediaEvent = "loadedmetadata" | "loadeddata" | "play" | "playing" | "pause" | "seeked" | "ratechange" | "ended" | "waiting" | "error" | "blocked" | "closed" | "audiotracks" | "visibility-resumed";
 
 /** Local player access only. Domain clocks and shared playback belong to WatchPlayer. */
 export type WatchPresentation = { kind: "video"; element: HTMLVideoElement }

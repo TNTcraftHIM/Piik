@@ -24,7 +24,7 @@ class Player {
   destroy() { this.destroyed=true;this.frame.remove(); }
 }
 let players: Player[] = [];
-async function setup(cold=false, startSeconds?: number) {
+async function setup(cold=false, startSeconds?: number, suspendWhenHidden = false) {
   vi.resetModules();players=[];
   const head=new Element();head.isConnected=true;
   const window: {YT?:object;onYouTubeIframeAPIReady?:()=>void}={};
@@ -32,7 +32,7 @@ async function setup(cold=false, startSeconds?: number) {
   vi.stubGlobal('window',window);vi.stubGlobal('location',{origin:'https://piik.test'});
   vi.stubGlobal('document',{head,documentElement:{moveBefore(){}},createElement:()=>new Element()});
   const {YouTubeMedia}=await import('../src/client/channel/watch-youtube-media');
-  const media=new YouTubeMedia('M7lc1UVf-VE', startSeconds);
+  const media=new YouTubeMedia('M7lc1UVf-VE', startSeconds,suspendWhenHidden);
   const mount=async()=>{(media.presentation.element as unknown as Element).isConnected=true;media.presentation.setVisible(true);await Promise.resolve();await Promise.resolve();};
   return {media,mount,head,window};
 }
@@ -95,16 +95,26 @@ test('presentation handoff waits for the actual stage and aborts with its source
   const moved=media.waitForPresentation(new AbortController().signal);media.presentation.mounted();await moved;media.close();
 });
 
-test('a receiver can mount without state-preserving moves and hiding requires explicit resumption', async () => {
-  const {media,mount}=await setup();
+test('a receiver can mount without state-preserving moves and hiding suspends local playback without reporting autoplay denial', async () => {
+  const {media,mount}=await setup(false, undefined, true);
   delete (document.documentElement as unknown as {moveBefore?:unknown}).moveBefore;
   const {YouTubeMedia}=await import('../src/client/channel/watch-youtube-media');
   const receiver=new YouTubeMedia('M7lc1UVf-VE');receiver.close();
   const events:string[]=[];media.listen(event=>events.push(event));await mount();
   players[0].fire('onReady');players[0].playVideo();await media.ready(new AbortController().signal);
   media.presentation.setVisible(false);media.presentation.setVisible(true);
-  expect(events).toContain('blocked');expect((await media.read()).paused).toBe(true);
+  expect(events).not.toContain('blocked');expect(events).toContain('visibility-resumed');expect((await media.read()).paused).toBe(true);players[0].fire('onAutoplayBlocked');expect(events).toContain('blocked');
   await media.patch({paused:false});expect((await media.read()).paused).toBe(false);media.close();
+});
+
+test('hiding the sharer does not pause the SDK player', async () => {
+  const {media, mount} = await setup();
+  await mount();
+  players[0].fire('onReady');
+  players[0].playVideo();
+  media.presentation.setVisible(false);
+  expect((await media.read()).paused).toBe(false);
+  media.close();
 });
 
 test('scripted play waits for observed visible eligibility after focus changes', async () => {

@@ -2768,7 +2768,7 @@ export class ChannelSession {
     const url = activity.source.kind === "media" ? activity.source.url : activity.source.mediaUrl;
     if (!url && !embed) throw new Error("watch_page_required");
     const format = activity.source.kind === "media" ? directWatchFormat(new URL(activity.source.url)) : undefined;
-    await this.joinWatchMedia(id, embed ? new YouTubeMedia(embed) : new HTMLVideoMedia(url!, format, activity.playback.timeline));
+    await this.joinWatchMedia(id, embed ? new YouTubeMedia(embed, undefined, true) : new HTMLVideoMedia(url!, format, activity.playback.timeline));
   });
   private async joinWatchMedia(id: string, media: WatchMedia, mode: WatchMode = "direct"): Promise<void> {
     const activity = this.view.state?.watchActivities.find(value => value.id === id);
