@@ -4065,6 +4065,7 @@ export function HostPage({
                 initialCamera={cameraDevice}
                 activeCameraVideo={hostAudioRef.current?.sourceKind === "camera" ? videoRef.current : null}
                 onNative={startNativeShareFromPicker}
+                changingSource={phase === "live"}
                 onPreview={loadNativeSourcePreview}
                 onRefresh={openCaptureSourcePicker}
                 onCancel={closeCaptureSourcePicker}
@@ -4263,7 +4264,8 @@ export function HostPage({
           />
           <div className="lr-stage-notices" role="status" aria-live="polite">
             {details?.hasSourceAudio === false && stream ? (
-              <Pill icon="speakerOff" label={t("host.noAudio")} comic="no-audio" tone="off" />
+              <Pill icon="speakerOff" label={t("host.noAudio")} comic="no-audio" tone="off"
+                detail={!nativeActive && hostAudioRef.current?.sourceKind === "browser" ? t("host.noBrowserAudioDetail") : undefined} />
             ) : null}
             {hostSfuWarningText ? (
               <Pill icon="alert" label={hostSfuWarningText} comic="warning" />

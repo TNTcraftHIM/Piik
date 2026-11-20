@@ -72,6 +72,8 @@ On Windows, this control applies to system sound from **Screens**. **Apps / Wind
 captures only the selected application's process tree. **Camera** shares video;
 its microphone or virtual audio input requires explicitly enabled source commentary or room voice.
 
+If Piik and the content you want to share are in different tabs of the same browser, choose the browser source, select the content tab, and enable tab audio. You can hear the room while sharing that tab’s sound. Excluding the browser process in Windows can also remove the other tabs’ sound.
+
 1. Open **Screens** and enable **System sound**.
 2. Under **Exclude application audio**, select the voice app's window. Open its
    window and refresh the list if missing.

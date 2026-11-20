@@ -419,7 +419,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-tv-screen:has(> .lr-playback) > .lr-tv-overlay.lr-source-picker { grid-area: 1 / 1 / -1 / 2; }
 .lr-source-picker-panel {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   width: min(720px, 100%);
   min-width: 0;
   min-height: 0;
@@ -498,6 +498,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   padding: 8px;
   margin: -8px;
 }
+.lr-source-picker-footer { display: flex; justify-content: flex-end; min-width: 0; }
 .lr-source-picker-body > [role="status"] { text-align: center; }
 .lr-source-picker-list {
   display: grid;
@@ -532,7 +533,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   box-shadow: inset 0 0 0 1px var(--action), var(--control-shadow);
 }
 .lr-source-option:active:not(:disabled) { transform: var(--control-press-transform); box-shadow: none; transition-duration: 80ms; }
-.lr-source-option[aria-current="true"] { border-color: var(--action); background: var(--control-selected); color: var(--control-selected-ink); }
+.lr-source-option:is([aria-current="true"], [aria-pressed="true"]) { border-color: var(--action); background: var(--control-selected); color: var(--control-selected-ink); }
 .lr-source-option:not(.is-action) {
   display: grid;
   align-items: stretch;

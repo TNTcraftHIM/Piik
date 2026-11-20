@@ -4,16 +4,16 @@ import { Tooltip } from "./Tooltip";
 import type { HintKind } from "./hints";
 
 /** One visual source card; its caller owns discovery and preview resources. */
-export function CaptureSourceCard({ title, action, icon, hint, preview, disabled, selected,
+export function CaptureSourceCard({ title, action, icon, hint, preview, disabled, selected, pressed,
   nativeKey, cameraKey, buttonRef, onPreview, onSelect }: {
   title: string; action: string; icon: GlyphName; hint: HintKind; preview?: string | null;
-  disabled?: boolean; selected?: boolean; nativeKey?: string; cameraKey?: string;
+  disabled?: boolean; selected?: boolean; pressed?: boolean; nativeKey?: string; cameraKey?: string;
   buttonRef?: Ref<HTMLButtonElement>; onPreview?: () => void; onSelect: () => void;
 }) {
   return <Tooltip kind={hint} text={title} className="lr-source-option-hint">
     <button ref={buttonRef} type="button" className={`lr-source-option${preview === undefined ? " is-action" : ""}`}
       data-native-source={nativeKey} data-camera-source={cameraKey}
-      aria-label={action} aria-current={selected || undefined} disabled={disabled}
+      aria-label={action} aria-current={selected || undefined} aria-pressed={pressed} disabled={disabled}
       onMouseEnter={onPreview} onFocus={onPreview} onClick={onSelect}>
       {preview === undefined && <span className="lr-source-option-icon" aria-hidden="true"><Glyph name={icon} size={23} /></span>}
       <span className="lr-source-option-copy"><strong>{title}</strong></span>

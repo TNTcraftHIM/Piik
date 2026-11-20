@@ -233,6 +233,7 @@ export function Pill({
   icon,
   tone,
   label,
+  detail,
   alert,
   comic,
   motion = "still",
@@ -241,6 +242,7 @@ export function Pill({
   icon: GlyphName;
   tone?: ComicTone;
   label: string;
+  detail?: string;
   alert?: boolean;
   comic: ComicKind | HintKind;
   motion?: ComicMotion;
@@ -252,6 +254,7 @@ export function Pill({
     <button
       type="button"
       className="lr-pill"
+      aria-description={detail}
     >
       <Glyph name={icon} size={16} />
       {vis ? <span className="visually-hidden">{label}</span> : <span>{label}</span>}
@@ -260,7 +263,7 @@ export function Pill({
   return (
     <span className={`lr-notice is-${resolvedTone === "live" ? "good" : resolvedTone}${onDismiss ? " is-dismissible" : ""}`} role={alert ? "alert" : "status"}>
       <Tooltip toggleOnClick kind={comic} tone={resolvedTone} motion={motion}
-        text={vis ? undefined : label}>{body}</Tooltip>
+        text={vis ? undefined : detail ?? label}>{body}</Tooltip>
       {onDismiss && <span className="lr-notice-dismiss"><Btn icon="x" size="dense" quiet
         title="notice.dismiss" hint="hint-close" onClick={onDismiss} /></span>}
     </span>
