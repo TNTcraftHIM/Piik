@@ -27,8 +27,8 @@ the feedback period; they do not delay that delivery.
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
   coverage, connection attempts, idle cost and disruption. Exercise concurrent kinds on one uplink
   and recovery from a refused file branch before tuning fanout and retry/standby budgets.
-- [ ] **Matched-package room acceptance.** Verify archive recovery on the supported
-  distributions and invite-only discovery on the public Demo. The [hosting design](./research/server-hosting-plan.md)
+- [ ] **Matched-package room acceptance.** Verify room archive recovery on the
+  Windows package and invite-only discovery on the public Demo. The [hosting design](./research/server-hosting-plan.md)
   owns the lightweight, hosted and moderation contracts.
 - [ ] **Physical camera orientation.** Check portrait capture on a phone through
   Native and pooled Browser paths. Compare the orientation of the source and
@@ -62,7 +62,6 @@ the feedback period; they do not delay that delivery.
   viewer playback on the reported accessible websites in matching Windows
   App and Web packages. Local replacement and pending-read shutdown controls
   are in the [verification record](./verification-status.md#current-evidence).
-- [ ] **Native console/terminal package acceptance.** Verify Windows update restart from the interactive terminal.
 - [ ] **2.x periodic brief picture stalls.** With a particular Host or Viewer,
   normally clear playback pauses for less than half a second every few seconds
   or tens of seconds, skips several frames and sometimes briefly blurs. A roughly

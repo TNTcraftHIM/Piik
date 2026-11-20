@@ -21,8 +21,12 @@ microphone capture and public-network conditions require their own checks.
 On Windows, the hosted invite-only policy hid a visitor-created room from a
 stranger and admitted its invite recipient. On a lightweight site, the owner
 removed an offline room and its old invitation returned the reader to the overview.
-The packaged Windows App also exercised default WebView entry, explicit browser
-entry, WebView fallback and terminal quit. Linux WHIP playback coverage is recorded
+The Linux Server and Android emulator restored room archives with chat, replies
+and thumbnails. The Linux Server also restored private admission. The Windows
+App exercised default WebView entry, explicit browser entry, WebView fallback
+and terminal quit. A separate build with a test signing key returned to the
+interactive terminal after an update and accepted keyboard input there.
+Linux WHIP playback coverage is recorded
 in the [local OBS input research](./research/room-interactions.md#local-obs-input).
 
 The matching Channel 33 Android test APK and Windows App ran on a controlled
