@@ -435,6 +435,10 @@ To end a share from your phone, return to the sharing page and select **Stop sha
   sharing tab. Start sharing again if needed; browser and OS suspension can
   interrupt capture or playback.
 
+**Sharing stopped after switching apps on Android.** Return to your sharing page, choose **Start sharing**, select your screen again and confirm Android’s screen-sharing prompt if it appears. If Piik App has closed, reopen it first.
+
+If this keeps happening, choose **Help → Debug** before starting the next share and confirm the page reload. Start sharing and switch apps to reproduce the problem. Return to the same sharing page and choose **Help → Web report**. Include the report from that attempt, your Piik version, phone model, Android version, and the app you switched to.
+
 ## Sound and browser permissions
 
 [Check game sound](./sound-help.md#i-can-see-the-picture-but-cannot-hear-the-game) · [Check room voice](./sound-help.md#i-cannot-hear-a-friend-speaking) ·
