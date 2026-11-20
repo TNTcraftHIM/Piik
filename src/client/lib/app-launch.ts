@@ -7,6 +7,10 @@ const CLIENT_ACTIVATION_EVENT = "piik-client-activation";
 const APP_MODE_PREFERENCE_KEY = "piik:app-mode";
 export type AppMode = "local" | "link";
 
+export function isStartupSite(origin: string, startupSite: string, mode: AppMode | undefined, ownedSites: readonly string[]): boolean {
+  return origin === startupSite || Boolean(mode && ownedSites.includes(origin));
+}
+
 export function readPreferredAppMode(): AppMode {
   try { return window.localStorage.getItem(APP_MODE_PREFERENCE_KEY) === "local" ? "local" : "link"; }
   catch { return "link"; }

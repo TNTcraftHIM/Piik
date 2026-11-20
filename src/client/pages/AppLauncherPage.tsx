@@ -15,7 +15,7 @@ import { hasCopyPreference, isCopyKey, useCopy } from "../ui/copy";
 import { consoleLanguage } from "../locales";
 import { Glyph } from "../ui/icons";
 import { currentThemePreference, subscribeTheme } from "../ui/theme";
-import { clientLaunchURL, readPreferredAppMode, savePreferredAppMode, type AppMode, type ClientLaunchPresentation } from "../lib/app-launch";
+import { clientLaunchURL, isStartupSite, readPreferredAppMode, savePreferredAppMode, type AppMode, type ClientLaunchPresentation } from "../lib/app-launch";
 import { useReleaseUpdate } from "../lib/use-release-update";
 import { AppSiteBookmarks } from "./AppSiteBookmarks";
 import type { SiteManagementProps } from "../components/living/SiteManagement";
@@ -101,7 +101,7 @@ export function AppLauncherPage() {
     } catch { return false; }
   })();
   const approvalCurrent = validSite && (localSite === requestedSite || sites.includes(requestedSite));
-  const openSiteOnStart = Boolean(approvalCurrent && (startupSite === requestedSite || startupMode && ownedSites.includes(requestedSite)));
+  const openSiteOnStart = Boolean(approvalCurrent && isStartupSite(requestedSite, startupSite, startupMode, ownedSites));
 
   useEffect(() => {
     // The App's saved exact origin owns permission, including repeat connections.

@@ -3,7 +3,7 @@ import { BackButton, Btn, Pill } from "./primitives";
 import { Glyph } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import { siteEntryURL } from "../../lib/site-address";
-import type { AppMode } from "../../lib/app-launch";
+import { isStartupSite, type AppMode } from "../../lib/app-launch";
 import type { SiteBookmark } from "../../lib/site-address";
 import "./site-management.css";
 
@@ -43,7 +43,7 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
   const selectedBookmark = bookmarks.find(site => site.origin === selected);
   const automatic = Boolean(selected && selected === localSite);
   const approved = automatic || Boolean(selected && sites.includes(selected));
-  const opensOnStart = (origin: string) => startupSite === origin || Boolean(ownedStartup && ownedSites.includes(origin));
+  const opensOnStart = (origin: string) => isStartupSite(origin, startupSite, ownedStartup, ownedSites);
   useLayoutEffect(() => {
     if (detail) {
       panel.current?.querySelector<HTMLElement>(".lr-site-detail-heading")?.focus();
