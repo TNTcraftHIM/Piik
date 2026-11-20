@@ -54,6 +54,9 @@ Name the person taking the action and the control they will see. Lead with
 the answer or the first action, then say what success looks like. If it fails,
 use an observable difference to choose the next check. Verify each language's
 links, search terms and headings against realistic questions on a phone and desktop.
+For a common error, use its on-screen wording and link each observable symptom
+to an action. Place an annotated image or a crop from the real interface beside
+a step when readers need to find a control or recognize a result.
 [Diátaxis how-to guides](https://diataxis.fr/how-to-guides/) ·
 [Microsoft procedure style](https://learn.microsoft.com/en-us/style-guide/procedures-instructions/writing-step-by-step-instructions)
 
@@ -63,7 +66,8 @@ the repository map remains the developer/maintainer entry. The
 [website runbook](../operations/website.md#documentation-build) owns generation and
 publication. The troubleshooting guide indexes symptoms and collects reports.
 Sound and microphone checks belong to the [sound guide](../guide/sound-help.md);
-browser and network connection procedures belong to the network guide.
+the [no-media-route guide](../guide/no-media-route.md) covers a room with no
+working picture path. The network guide owns virtual LAN setup and network configuration.
 Introductions and the general guide link to those procedures rather than duplicate them.
 
 ## Updating A Rule

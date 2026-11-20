@@ -90,6 +90,23 @@ try {
       await openSection('sharing-troubleshooting', lang, theme, '/__status-preview');
       await run('click', '#sharing-troubleshooting article:first-child button');
       await capture('dialog.lr-share-help[open]', `share-failure.${suffix}`);
+
+      await openSection('viewer-stage-preview', lang, theme, '/__status-preview');
+      await run('click', '.sp-scenarios button[data-scenario=initial-route-failed]');
+      await run('wait', '#viewer-stage-preview .lr-tv-route-help');
+      await evaluate(`(() => {
+        const stage = document.getElementById('viewer-stage-preview');
+        stage.style.position = 'fixed';
+        stage.style.inset = '0 auto auto 0';
+        stage.style.width = '480px';
+        stage.style.background = 'var(--wall)';
+        stage.style.zIndex = '1';
+        stage.style.padding = '12px';
+        stage.querySelectorAll(':scope > :not(.sp-stage-toolbar):not(.lr-tv)').forEach(element => {
+          element.style.display = 'none';
+        });
+      })()`);
+      await capture('#viewer-stage-preview', `viewer-route-failure.${suffix}`);
     }
   }
   if (readmePreview) {

@@ -1,5 +1,7 @@
 // The TV stage: frame, screen, status slot. Pages render their own <video>
 // (stream binding stays with the page); shared overlays are provided here.
+import { useProjectLink } from "../../lib/use-project-link";
+import type { ViewerStage } from "../../media/viewer-presentation";
 import type { ReactNode } from "react";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
@@ -46,6 +48,7 @@ export function StageOverlay({
   comic,
   tone,
   progress,
+  viewerStage,
   onActivate,
   still,
 }: {
@@ -56,10 +59,15 @@ export function StageOverlay({
   comic?: ComicKind;
   tone?: ComicTone;
   progress?: string;
+  viewerStage?: ViewerStage;
   onActivate?: () => void;
   still?: boolean;
 }) {
-  const { vis } = useCopy();
+  const { vis, lang, t } = useCopy();
+  const routeFailed = viewerStage === "route-failed";
+  const chinese = lang.startsWith("zh");
+  const guide = useProjectLink(`/docs/${chinese ? "zh/" : ""}no-media-route.html`,
+    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/no-media-route${chinese ? ".zh-CN" : ""}.md`, routeFailed);
   const isWaiting = waiting && !onActivate;
   const content = (
     <>
@@ -91,12 +99,15 @@ export function StageOverlay({
   return (
     <div
       // Passive state layer: it must not intercept clicks meant for the
-      // playback controls it covers (it owns no controls itself).
+      // playback controls it covers. Only the guide link accepts pointer input.
       className={`lr-tv-overlay is-passive${dim ? " is-dim" : ""}${comic ? " has-comic" : ""}`}
       role="status"
       aria-label={message}
     >
       {content}
+      {routeFailed && <a className="lr-tv-route-help" href={guide} target="_blank" rel="noopener noreferrer">
+        {t("help.troubleshooting")}
+      </a>}
     </div>
   );
 }

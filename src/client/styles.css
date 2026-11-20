@@ -326,6 +326,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   text-align: center;
 }
 .lr-tv-overlay.is-passive { pointer-events: none; }
+.lr-tv-route-help { pointer-events: auto; color: inherit; text-decoration: underline; font-size: .875rem; padding: 4px; }
 .lr-tv-status-content { display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .lr-tv-progress { display: inline-flex; align-items: center; gap: 6px; }
 .lr-tooltip-preview { max-width: 1440px; }

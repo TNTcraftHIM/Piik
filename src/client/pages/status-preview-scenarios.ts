@@ -98,6 +98,9 @@ export const STATUS_SCENARIOS: readonly StatusScenario[] = [
     { type: "frame-proof-reset", generation: 1, revision: 1 },
     { type: "connection", revision: 1, connection: "reconnecting" },
   ]),
+  scenario("initial-route-failed", "首次媒体连接失败", "仍连着房间，但首次媒体连接未建立。", [
+    ...ready, { type: "route-status", revision: 1, state: "failed" },
+  ]),
   scenario("route-failed", "媒体线路已失败", "权威线路失败；最后画面只是留存，不冒充正在播放。", [
     ...playing, { type: "route-status", revision: 1, state: "failed" },
   ]),

@@ -13,6 +13,10 @@
 
 如果朋友只发了四位房间号，打开朋友使用的同一个 Piik 站点，点击 **加入房间** 并输入房间号。若首页要求输入站点口令，先在首页填写。
 
+![四格房间号输入框及提交房间号的箭头。](../assets/guide/join-code.zh-CN.png)
+
+![展开「输入房间密码」后显示密码框和「加入」按钮。](../assets/guide/join-password.zh-CN.png)
+
 [加入或观看遇到问题](./troubleshooting.zh-CN.md#常见问题)。
 
 ## 使用在线版
@@ -24,7 +28,9 @@
 
 使用 iPhone 或 iPad 时，请查看 [Safari 屏幕分享说明](./sharing.zh-CN.md#iphone-与-ipad-屏幕分享)。如果无法开始分享，请查看[分享问题排查](./troubleshooting.zh-CN.md#开始分享)。
 
-![选择窗口、复制邀请，和朋友一起观看。](../assets/quickstart.svg)
+![房间准入区域的「复制」和「二维码」按钮，图中为示例链接。](../assets/guide/invite-copy.zh-CN.png)
+
+![「邀请二维码」会在小面板里打开。请朋友扫描你的房间里显示的二维码。](../assets/guide/invite-qr.zh-CN.png)
 
 ## 用 Piik App 分享
 

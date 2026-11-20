@@ -322,11 +322,7 @@ with the codec comparison. If both codecs fail, also check
 
 ### When video will not connect
 
-1. Ask the Host to start sharing and check their preview. If it also stays black or frozen, [check the capture source](#sharing-does-not-start-after-source-selection).
-2. If the preview works and the Viewer sees **No media route available**, select **Reconnect**. If unavailable, reopen the invitation and let the attempt finish.
-3. Try a phone hotspot. If the picture appears, tell the administrator of the original network that you can enter the room but cannot receive video. See [network troubleshooting](./network.md).
-
-If it still fails, save [diagnostic reports](#reporting-a-problem) from the Host and affected Viewer for the same attempt.
+If the room opens but the Viewer sees no picture, check what the Host sees in their preview. [No media route available](./no-media-route.md)
 
 <span id="playback-stalls"></span>
 

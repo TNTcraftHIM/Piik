@@ -2,6 +2,8 @@
 
 [English](./network.md) · 简体中文 · [问题排查](./troubleshooting.zh-CN.md)
 
+房间能打开，但观众收不到画面？请房主看看预览，按你们看到的情况选择办法。[没有可用的媒体线路](./no-media-route.zh-CN.md)
+
 先做[连接问题的基本检查](./troubleshooting.zh-CN.md#常见问题)。
 仍然连不上时，再按现象选择：
 

@@ -111,11 +111,11 @@ function StatusCatalog() {
           </label>
           <nav className="sp-scenarios" aria-label="选择状态场景">
             {STATUS_SCENARIOS.map((item) => <button key={item.id} type="button"
-              aria-pressed={selected === item.id} onClick={() => choose(item.id)}>
+              data-scenario={item.id} aria-pressed={selected === item.id} onClick={() => choose(item.id)}>
               <span>{item.name}</span><Glyph name="arrowRight" size={14} />
             </button>)}
           </nav>
-          <section className="sp-stage-panel" aria-label="真实组件组合预览">
+          <section id="viewer-stage-preview" className="sp-stage-panel" aria-label="真实组件组合预览">
             <div className="sp-browser-title"><Glyph name="tv" size={15} />
               <span>{title}</span><span aria-hidden="true">×</span>
             </div>
@@ -136,7 +136,7 @@ function StatusCatalog() {
               {status.overlay ? <StageOverlay icon={status.overlay.status.icon}
                 comic={status.overlay.status.comic} message={t(status.overlay.status.labelKey)}
                 tone={status.overlay.status.tone}
-                waiting={status.overlay.waiting} dim={status.overlay.mode === "blocking"}
+                viewerStage={presentation.stage} waiting={status.overlay.waiting} dim={status.overlay.mode === "blocking"}
                 still={reducedMotion}
                 onActivate={presentation.stage === "needs-play" ? () => choose("playing") : undefined} /> : null}
             </StageTv>

@@ -36,8 +36,8 @@ Try searching for “can’t join”, “no sound”, or “joystick”.
 
 ## Fix a problem
 
+- [I’m in the room, but there’s no picture or media route](./no-media-route.md)
 - [My invitation won’t open](./troubleshooting.md#i-cannot-join-my-friends-room)
-- [I’m in the room but the picture won’t load](./troubleshooting.md#when-video-will-not-connect)
 - [The picture is blurry or keeps freezing](./troubleshooting.md#the-picture-is-blurry-or-keeps-freezing)
 - [I can see the picture but can’t hear the game](./sound-help.md#i-can-see-the-picture-but-cannot-hear-the-game)
 - [Friends can’t hear me speaking](./sound-help.md#my-friends-cannot-hear-me)

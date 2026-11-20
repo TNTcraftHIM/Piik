@@ -2,6 +2,8 @@
 
 English · [简体中文](./network.zh-CN.md) · [Troubleshooting](./troubleshooting.md)
 
+If the room opens but the Viewer sees no picture, check what the Host sees in their preview. [No media route available](./no-media-route.md)
+
 Start with the [basic connection checks](./troubleshooting.md#common-problems).
 If you still cannot connect, choose what matches:
 

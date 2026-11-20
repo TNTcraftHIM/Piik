@@ -16,10 +16,15 @@ Share a game, a window, or your whole screen with friends. You can choose whethe
    | An entire desktop screen | With Piik App connected, choose **Screens** if available and select the display. |
    | A camera | Choose **Camera**, allow access, and select a camera. |
 
-3. To include the game or app sound, turn on the audio option before picking your source. In the browser's chooser, turn on audio if offered. With Piik App on Windows, use **Application sound** for an app or **System sound** for a screen.
+3. In the browser chooser, turn on audio if offered. In Piik App, select the window or screen, then set **Application sound** or **System sound** if available. Select **Start sharing** at the bottom of the picker to confirm.
 4. Check your preview and keep the room page open while you share. If you want friends to hear you too, see [how to include your microphone](#include-your-microphone).
 
 For a missing chooser or a share that will not start, see [starting a share](./troubleshooting.md#starting-a-share). If friends see the picture but hear no game sound, see [picture but no source sound](./troubleshooting.md#picture-but-no-source-sound).
+
+![A window is selected in the App picker, with Application sound and Start sharing visible.](../assets/guide/share-source-confirm.en.png#gh-light-mode-only)
+![A window is selected in the App picker, with Application sound and Start sharing visible.](../assets/guide/share-source-confirm.en.dark.png#gh-dark-mode-only)
+
+If your preview works but your friend still sees no picture, check [the connection between you and your friend](./no-media-route.md).
 
 ## Share from a phone or tablet
 

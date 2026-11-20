@@ -132,6 +132,16 @@ choice needs **Allow Viewers** before it applies again. Passwords are not saved.
 
 ## Mouse, touch and permissions
 
+On a touch device with active control, open the directional control using the gamepad button.
+
+| Control | What the Host receives | When to use it |
+| --- | --- | --- |
+| Left stick | Analog left-stick axes. The arrows show directions. | For analog movement when the Host supports gamepads and the browser has detected no standard-layout physical controller. |
+| WASD | W, A, S and D key presses. Diagonals hold two keys. | Select **WASD** when the analog stick is available. Otherwise the directional control already uses these keys. |
+| Physical gamepad | Standard gamepad buttons and both sticks. | For games that use a right stick to turn the camera. The first recognized standard-layout controller takes priority over the on-screen analog stick. |
+
+For desktop tasks on a phone, tap a visible target or use the trackpad to position the cursor precisely. Both touch modes send positions within the shared picture. For continuous mouse look, use **Game mouse** in a supported desktop browser.
+
 On a phone, touch the picture directly to click and hold to drag, without a
 cursor. Two-finger tap is right-click; two-finger swipe scrolls. Pinch to zoom in
 or out, then use two fingers to pan, including into the blank space around the

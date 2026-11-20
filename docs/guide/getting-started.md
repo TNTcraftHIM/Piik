@@ -13,6 +13,10 @@ English · [简体中文](./getting-started.zh-CN.md) · [Back to Piik](../../RE
 
 If you received a four-digit room code, open the same Piik site your friend used, select **Join a room**, and enter the code. If the site asks for a passphrase first, enter it on the opening page.
 
+![Four room-code boxes and the arrow that submits the code.](../assets/guide/join-code.en.png)
+
+![The Enter room password control opens a password field and a Join button.](../assets/guide/join-password.en.png)
+
 [Get help joining or watching](./troubleshooting.md#common-problems).
 
 ## Use Piik online
@@ -24,7 +28,9 @@ If you received a four-digit room code, open the same Piik site your friend used
 
 For iPhone or iPad, see [screen sharing in Safari](./sharing.md#iphone-and-ipad-screen-sharing). If you can’t start sharing, see [sharing troubleshooting](./troubleshooting.md#starting-a-share).
 
-![Pick a window, copy its invitation, and watch together.](../assets/quickstart.svg)
+![The room’s admission controls include Copy and QR code. The link shown is an example.](../assets/guide/invite-copy.en.png)
+
+![The invitation QR code opens in a small panel. Ask your friend to scan the code from your own room.](../assets/guide/invite-qr.en.png)
 
 ## Share with Piik App
 

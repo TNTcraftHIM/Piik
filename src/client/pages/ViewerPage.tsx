@@ -2418,6 +2418,7 @@ export function ViewerPage({
                 comic={viewerStatus.activity.comic}
                 tone={viewerStatus.activity.tone}
                 message={stageMessage}
+                viewerStage={presentation.stage}
                 progress={connectionProgress}
               />
             )}
@@ -2444,6 +2445,7 @@ export function ViewerPage({
                   comic={viewerStatus.activity.comic}
                   tone={viewerStatus.activity.tone}
                   message={stageMessage}
+                  viewerStage={presentation.stage}
                   progress={connectionProgress}
                   waiting={viewerStatus.overlay?.waiting}
                 />
