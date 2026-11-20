@@ -49,24 +49,20 @@ static void session_created(GObject *source, GAsyncResult *result,
 }
 
 gboolean piik_portal_available(void) {
-  GError *error = NULL;
-  GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
-  if (bus == NULL) {
-    g_clear_error(&error);
-    return FALSE;
-  }
-  GVariant *reply = g_dbus_connection_call_sync(
-      bus, "org.freedesktop.DBus", "/org/freedesktop/DBus",
-      "org.freedesktop.DBus", "NameHasOwner",
-      g_variant_new("(s)", "org.freedesktop.portal.Desktop"),
-      G_VARIANT_TYPE("(b)"), G_DBUS_CALL_FLAGS_NONE, 1000, NULL, &error);
+  GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
+  if (bus == NULL) return FALSE;
+  GVariant *reply = g_dbus_connection_call_sync(bus,
+      "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+      "org.freedesktop.DBus.Properties", "Get",
+      g_variant_new("(ss)", "org.freedesktop.portal.ScreenCast", "AvailableSourceTypes"),
+      G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, 1000, NULL, NULL);
   g_object_unref(bus);
-  if (reply == NULL) {
-    g_clear_error(&error);
-    return FALSE;
-  }
-  gboolean available = FALSE;
-  g_variant_get(reply, "(b)", &available);
+  if (reply == NULL) return FALSE;
+  GVariant *value = NULL;
+  g_variant_get(reply, "(v)", &value);
+  gboolean available = g_variant_is_of_type(value, G_VARIANT_TYPE_UINT32) &&
+      (g_variant_get_uint32(value) & (XDP_OUTPUT_MONITOR | XDP_OUTPUT_WINDOW)) != 0;
+  g_variant_unref(value);
   g_variant_unref(reply);
   return available;
 }
