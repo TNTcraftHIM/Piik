@@ -13,6 +13,7 @@ import { STATUS_CATALOG } from "../ui/media-status";
 import { Btn } from "../components/living/primitives";
 import type { RemoteControlRequest } from "../native/wire";
 import type { RemoteInputEvent } from "../remote-control/input-session";
+import { gamepadReport } from "../remote-control/gamepad";
 import { picturePoint, pictureRect, rotatePicturePoint, videoRotation } from "../media/video-geometry";
 import { RemoteTouchpad } from "../remote-control/touchpad";
 import { RemoteViewport } from "../remote-control/viewport";
@@ -28,7 +29,7 @@ const participants = [
   { peerId: "preview-gamepad", name: "Player 3" },
 ];
 
-export function RemoteControlsPreview() {
+export function RemoteControlsPreview({ joystick = false }: { joystick?: boolean }) {
   const { lang, t } = useCopy();
   const en = lang === "en";
   const [platform, setPlatform] = useState<RemoteInputPlatform>("windows");
@@ -37,6 +38,11 @@ export function RemoteControlsPreview() {
   const [requests, setRequests] = useState<(RemoteControlRequest & { name: string })[]>([]);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [lastInput, setLastInput] = useState("");
+  const [axes, setAxes] = useState({ x: 0, y: 0 });
+  const leftStick = useCallback((x: number, y: number) => {
+    const report = gamepadReport({ buttons: [], axes: [x, y] });
+    setAxes({ x: report.leftX / (report.leftX < 0 ? 32768 : 32767), y: report.leftY / (report.leftY < 0 ? 32768 : 32767) });
+  }, []);
   const mouseVideo = useRef<HTMLVideoElement>(null);
   const mouseLayer = useRef<HTMLDivElement>(null);
   const mouseSurface = useRef<HTMLDivElement>(null);
@@ -97,11 +103,14 @@ export function RemoteControlsPreview() {
     document.getElementById("preview-remote-keyboard-toggle")?.focus();
   };
 
-  return <><PermissionRequestPreview /><section id="remote-control-preview" className="cp-section">
+  return <>{!joystick && <PermissionRequestPreview />}<section id={joystick ? "joystick-preview" : "remote-control-preview"} className="cp-section">
     <header className="cp-section-head"><div>
-      <h2>{t("remote.inputTools")}</h2>
-      <p>{en ? "Expand the mini mouse and drag its lower half to move the pointer. Hold and move L or R to drag, or hold a button with one finger and move the lower half with another. Pinch or pan the picture with two fingers to adjust the local view. Tap the wheel to middle-click, swipe to scroll, or hold to drag. Try direct touch or the compact trackpad below. Input stays in the local log."
+      <h2>{t(joystick ? "remote.leftStick" : "remote.inputTools")}</h2>
+      {joystick ? <p>{en ? "Control granted by the local simulated host. Open the gamepad button, then drag the stick and release it to recenter."
+        : "本地模拟房主已授予控制权限。点开手柄按钮，拖动摇杆，松手即可归中。"}</p>
+        : <p>{en ? "Expand the mini mouse and drag its lower half to move the pointer. Hold and move L or R to drag, or hold a button with one finger and move the lower half with another. Pinch or pan the picture with two fingers to adjust the local view. Tap the wheel to middle-click, swipe to scroll, or hold to drag. Try direct touch or the compact trackpad below. Input stays in the local log."
         : "展开迷你鼠标，拖动下半部移动光标。按住 L 或 R 后移动即可拖拽，也可用一指按住按钮、另一指拖动下半部。在画面上双指缩放或平移可调整本地视图。滚轮可轻点中击、滑动滚动、长按后拖动。下方可切换直接触摸或光标触控板，输入仅记录在本地。"}</p>
+        }
     </div></header>
     <div className="cp-stage" style={{ maxWidth: 480 }}>
       <StageTv live label={en ? "Local mouse example" : "本地鼠标示例"}>
@@ -120,10 +129,15 @@ export function RemoteControlsPreview() {
           onLostPointerCapture={event => pointer?.cancel(event.pointerId)}
           onContextMenu={event => event.preventDefault()}>
           {pointer && <RemoteMouse pointer={pointer} positionRef={mouseLayer} touchMode={touchMode}
+            onLeftStick={joystick ? leftStick : undefined}
             pointAt={(x, y) => mouseVideo.current && picturePoint(mouseVideo.current, x, y)} />}
         </div>
       </StageTv>
     </div>
+    {joystick ? <p className="cp-input-output">
+      <span>{en ? "Left stick axes" : "左摇杆轴值"}</span>
+      <output aria-live="off">X {axes.x.toFixed(2)} · Y {axes.y.toFixed(2)}</output>
+    </p> : <>
     <div className="lr-viewer-settings is-single" style={{ maxWidth: 480 }}>
       <RemoteTouchSettings mode={touchMode} onChange={setTouchMode} />
     </div>
@@ -174,6 +188,7 @@ export function RemoteControlsPreview() {
         return { key: person.peerId, name: person.name, status: STATUS_CATALOG.connected, selectable: false,
           collaboration: Boolean(grant) };
       })} />
+    </>}
   </section></>;
 }
 

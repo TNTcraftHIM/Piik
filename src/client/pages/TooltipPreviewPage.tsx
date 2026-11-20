@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AppHeader, LedStrip } from "../components/living/Header";
 import { Tooltip } from "../components/living/Tooltip";
 import { ControlsPreview } from "./ControlsPreview";
+import { RemoteControlsPreview } from "./RemoteControlsPreview";
 import { WelcomeLine, WelcomeCipher } from "../components/living/WelcomeLine";
 import { locales } from "../locales";
 import { HINT_KINDS, HintComic, isHintKind, type HintKind } from "../components/living/hints";
@@ -63,6 +64,11 @@ export function TooltipPreviewPage() {
   const en = lang === "en";
   const [reducedMotion, setReducedMotion] = useState(false);
   usePreviewReducedMotion(reducedMotion);
+  if (new URLSearchParams(location.search).get("control") === "joystick") {
+    return <div className="lr-app"><main className="lr-room lr-tooltip-preview">
+      <RemoteControlsPreview joystick />
+    </main></div>;
+  }
   return (
     <div className="lr-app" data-comic-reduced-motion={reducedMotion || undefined}>
       <AppHeader led={<LedStrip state="live" label={t("state.signal.connected")} comic="signal-connected" />} />
