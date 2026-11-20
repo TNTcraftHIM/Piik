@@ -540,7 +540,8 @@ describe("native App private wire", () => {
 
   it("notifies the owner once on an unexpected close and stays silent on cleanup", async () => {
     const debug = vi.spyOn(nativeDebug, "debugEvent");
-    vi.stubGlobal("document", { visibilityState: "hidden" });
+    const pageDocument = Object.assign(new EventTarget(), { visibilityState: "visible" });
+    vi.stubGlobal("document", pageDocument);
     const sockets: FakeWebSocket[] = [];
     const token = "a".repeat(43);
     let failureCode = "operation-failed";
@@ -583,11 +584,11 @@ describe("native App private wire", () => {
       }
     }
     vi.stubGlobal("WebSocket", FakeWebSocket);
-    vi.stubGlobal("window", {
+    vi.stubGlobal("window", Object.assign(new EventTarget(), {
       setTimeout: globalThis.setTimeout,
       clearTimeout: globalThis.clearTimeout,
       location: new URL("https://piik.example/"),
-    });
+    }));
     vi.stubGlobal("fetch", vi.fn(async () =>
       new Response(JSON.stringify({
         protocol: 10,
@@ -608,6 +609,13 @@ describe("native App private wire", () => {
     expect(client).not.toBeNull();
     const unexpected = vi.fn();
     client!.onClose(unexpected);
+    pageDocument.visibilityState = "hidden";
+    pageDocument.dispatchEvent(new Event("visibilitychange"));
+    pageDocument.dispatchEvent(new Event("freeze"));
+    window.dispatchEvent(Object.assign(new Event("pagehide"), { persisted: true }));
+    window.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true }));
+    pageDocument.visibilityState = "visible";
+    pageDocument.dispatchEvent(new Event("visibilitychange"));
     await expect(client!.updateShare("share_123456", DEFAULT_QUALITY_SETTINGS))
       .rejects.toMatchObject({ name: "NativeRequestError", reason: "rejected", operation: "update-share" });
     failureCode = "source-canceled";
@@ -628,6 +636,8 @@ describe("native App private wire", () => {
     window.clearTimeout = globalThis.clearTimeout;
     const pending = client!.sources();
     const closedRequest = expect(pending).rejects.toMatchObject({ name: "NativeRequestError", reason: "disconnected", operation: "list-sources" });
+    pageDocument.visibilityState = "hidden";
+    pageDocument.dispatchEvent(new Event("visibilitychange"));
     sockets[0]!.emitUnexpectedClose();
     sockets[0]!.emitUnexpectedClose();
     expect(unexpected).toHaveBeenCalledOnce();
@@ -637,6 +647,7 @@ describe("native App private wire", () => {
 
     const cleanClient = await NativeClient.connect();
     expect(cleanClient).not.toBeNull();
+    await cleanClient!.ping();
     const intentional = vi.fn();
     cleanClient!.onClose(intentional);
     cleanClient!.close();
