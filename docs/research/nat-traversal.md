@@ -1157,6 +1157,15 @@ With feedback allowed, v2.7.0 served 755-byte HTML and a 62,014-byte gzip entry
 script over HTTPS. These controls show that a smaller entry still depends on the
 network path and that a failed load can begin before any resource request.
 
+Recovery belongs to the tunnel path. Restoring path-MTU feedback lets TCP
+adapt. Where the provider confirms the effective path MTU, align both virtual
+interfaces to that limit. The isolated Linux gateway control restored transfer
+with a TCP MSS clamp scoped to the tunnel flow. A separate Linux listener
+control recovered fresh TLS with the smaller MSS advertised in the SYN-ACK.
+A Windows server-side socket MTU limit constrains outbound packets only. The
+peer can still send a ClientHello in a segment too large for the tunnel, so
+that setting alone cannot cover both directions.
+
 Independent reports describe similar size-dependent stalls on virtual network
 paths. The cause of the Piik field report still needs confirmation from the
 affected path. [ZeroTier #935](https://github.com/zerotier/ZeroTierOne/issues/935),

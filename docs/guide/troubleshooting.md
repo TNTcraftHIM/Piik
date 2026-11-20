@@ -163,6 +163,19 @@ document and the main JavaScript request.
 - If JavaScript finishes downloading and the page still stalls, check the
   browser's **Console** for a JavaScript error.
 
+If a small response (such as the page document) arrives while the full script
+times out, the tunnel may be dropping larger packets. A fresh connection may
+also time out during TLS before the browser receives any HTTP response. To
+compare before and after on your virtual LAN:
+
+1. Confirm which virtual adapter carries the invitation on both devices. Record
+   its MTU (maximum packet size) and test the same invitation on a fresh connection.
+2. Use the provider's supported controls to restore path-MTU feedback (such as
+   ICMP Packet Too Big) or set both virtual adapters to an MTU supported by the
+   known tunnel path. If the provider manages these settings, ask its support team.
+3. Open a fresh connection and check whether both the document and full script
+   load. Restore the original settings if the change does not help.
+
 If the page opens but video does not connect, continue with
 [media connection checks](#when-video-will-not-connect).
 
