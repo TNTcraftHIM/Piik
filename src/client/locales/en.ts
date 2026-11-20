@@ -348,6 +348,7 @@ export const en: Record<CopyKey, string> = {
   "channel.attachment.saveFailed": "Could not save the file. Check the download window and try again.",
   "channel.attachment.downloadFailed": "Couldn't load this file. Try again.",
   "channel.attachment.originalUnavailable": "Original image unavailable. The preview is still available.",
+  "channel.attachment.noOriginalSource": "No one is currently offering the original.",
   "channel.attachment.previewFailed": "Couldn't preview this image. Retry or download the file.",
   "channel.contentReactions.reactToThisMessage": "React to this message",
   "channel.contentReactions.reactToThisScreen": "React to this screen",

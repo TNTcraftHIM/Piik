@@ -25,6 +25,129 @@ function setup(command = async (_command: ChannelCommand) => {}) {
   return files;
 }
 
+function setupObservations() {
+  const command = vi.fn(async (_command: ChannelCommand) => {});
+  const files = setup(command);
+  const room = { id: key.roomId, authorized: true, available: true, reading: true,
+    capabilities: { attachments: true, fileAvailabilityLimit: 2 },
+    delivery: { bindingId: "binding" } } as ChannelRoom;
+  const update = (changes: Partial<ChannelRoom> = {}) =>
+    files.update("endpoint", { domainId: "domain", userId: "self" }, [], [{ ...room, ...changes }], []);
+  const observations = () => command.mock.calls.map(([event]) => event).filter(event => event.type === "observe_files");
+  update();
+  return { files, room, update, command, observations };
+}
+
+test("reader observations batch by room, match current binding and fit within the host limit", async () => {
+  const { files, room, update, command, observations } = setupObservations();
+  const retain = vi.spyOn(FileStore.prototype, "retain");
+  const second = { ...key, messageSeq: 2 }, overflow = { ...key, messageSeq: 3 };
+  const availability = (fileKey = key) => files.originalAvailability(fileKey, attachment, false);
+  try {
+    const release = files.observe(key), releaseDuplicate = files.observe(key);
+    const releaseSecond = files.observe(second), releaseOverflow = files.observe(overflow);
+    await Promise.resolve();
+    const [first] = observations();
+    expect(observations()).toHaveLength(1);
+    expect(first).toMatchObject({ roomId: key.roomId, observationId: expect.stringMatching(/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i), keys: [[1, attachment.id], [2, attachment.id]] });
+    update({ fileAvailability: { observationId: first.observationId, available: [true] } });
+    expect(availability()).toBeUndefined();
+    const report = { observationId: first.observationId, available: [true, false] };
+    update({ fileAvailability: report });
+    expect([availability(), availability(second), availability(overflow)]).toEqual([true, false, undefined]);
+
+    release();
+    await Promise.resolve();
+    expect(observations()).toEqual([first]);
+    releaseDuplicate();
+    await Promise.resolve();
+    const migrated = observations().at(-1)!;
+    expect(migrated.keys).toEqual([[2, attachment.id], [3, attachment.id]]);
+    expect(availability(overflow)).toBeUndefined();
+    update({ fileAvailability: { observationId: migrated.observationId, available: [false, true] } });
+    expect(availability(overflow)).toBe(true);
+
+    const delivery = { ...room.delivery!, bindingId: "new-binding" };
+    const staleReport = { observationId: migrated.observationId, available: [false, true] };
+    update({ delivery, fileAvailability: staleReport });
+    expect(availability(overflow)).toBeUndefined();
+    await Promise.resolve();
+    const rebound = observations().at(-1)!;
+    expect(rebound.observationId).not.toBe(migrated.observationId);
+    expect(availability(overflow)).toBeUndefined();
+    update({ delivery, fileAvailability: { observationId: rebound.observationId, available: [true, false] } });
+    expect([availability(second), availability(overflow)]).toEqual([true, false]);
+    releaseSecond();
+    releaseOverflow();
+    await Promise.resolve();
+    expect(observations().at(-1)?.keys).toEqual([]);
+    expect(command.mock.calls.map(([event]) => event)).toEqual(observations());
+    expect(retain).not.toHaveBeenCalled();
+  } finally { files.reset(); }
+});
+
+test("reader observations are unknown on legacy and offline hosts and stop when reading ends", async () => {
+  const { files, update, observations } = setupObservations();
+  try {
+    const release = files.observe(key);
+    update({ capabilities: { attachments: true } });
+    await Promise.resolve();
+    expect(observations()).toEqual([]);
+    expect(files.originalAvailability(key, attachment, false)).toBeUndefined();
+    update();
+    await Promise.resolve();
+    const [request] = observations();
+    const fileAvailability = { observationId: request.observationId, available: [false] };
+    update({ fileAvailability });
+    expect(files.originalAvailability(key, attachment, false)).toBe(false);
+    update({ available: false, fileAvailability });
+    expect(files.originalAvailability(key, attachment, false)).toBeUndefined();
+
+    update({ reading: false });
+    release();
+    await Promise.resolve();
+    expect(observations()).toEqual([request]);
+  } finally { files.reset(); }
+});
+
+test("reader observations resume with a fresh identity after reconnecting to the same scope", async () => {
+  const { files, room, observations } = setupObservations();
+  const release = files.observe(key);
+  try {
+    await Promise.resolve();
+    const [first] = observations();
+    files.reset();
+    files.update("new-endpoint", { domainId: "domain", userId: "self" }, [], [room], []);
+    await Promise.resolve();
+    const [, resumed] = observations();
+    expect(resumed.keys).toEqual(first.keys);
+    expect(resumed.observationId).not.toBe(first.observationId);
+    files.reset();
+    files.update("third-endpoint", { domainId: "domain", userId: "other" }, [], [room], []);
+    await Promise.resolve();
+    expect(observations()).toEqual([first, resumed]);
+  } finally { release(); files.reset(); }
+});
+
+test("local originals remain available when the host is offline", async () => {
+  const { files, update } = setupObservations();
+  const file = new File(["GIF89a"], attachment.name);
+  const signal = new AbortController().signal;
+  vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new Error("quota"));
+  try {
+    files.confirmed(key.roomId, message, [{ id: attachment.id, attachment, file }]);
+    update({ available: false });
+    expect(files.originalAvailability(key, attachment, false)).toBe(true);
+    expect(files.originalAvailability(key, { ...attachment, sha256: "b".repeat(64) }, false)).toBeUndefined();
+    await expect(files.content(key, attachment, signal)).resolves.toBe(file);
+
+    const inlineKey = { ...key, messageSeq: 2 };
+    expect(files.originalAvailability(inlineKey, attachment, true)).toBe(true);
+    const inline = await files.content(inlineKey, attachment, signal, inlineImage);
+    expect(await inline.text()).toBe("GIF89a");
+  } finally { files.reset(); }
+});
+
 test("gaining access to another room reads only its cached attachments and download receipts", async () => {
   vi.stubGlobal("window", { piikRevealDownload: vi.fn() });
   const receipts = vi.spyOn(FileStore.prototype, "receipts").mockResolvedValue([]);

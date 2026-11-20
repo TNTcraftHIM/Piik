@@ -257,6 +257,7 @@ export const zhHant = {
   "channel.attachment.fileOfferFailed": "訊息已儲存，檔案暫時無法分享。",
   "channel.attachment.downloadFailed": "暫時無法讀取，請重試。",
   "channel.attachment.originalUnavailable": "原圖暫不可用，仍可查看預覽。",
+  "channel.attachment.noOriginalSource": "原件暫時無人提供。",
   "channel.attachment.previewFailed": "圖片預覽失敗，可重試或下載原始檔案。",
   "channel.contentReactions.reactToThisMessage": "回應這則訊息",
   "channel.contentReactions.reactToThisScreen": "回應此畫面",

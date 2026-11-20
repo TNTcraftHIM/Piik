@@ -8,6 +8,35 @@ import { ChannelAction } from "./ChannelAction";
 import { Tooltip } from "../../components/living/Tooltip";
 import { ChannelImageDialog } from "./ChannelImageDialog";
 import { channelErrorPresentation } from "../error-presentation";
+import { useSurfaceDocument } from "../../ui/panel-window";
+
+const visibilityObservers = new WeakMap<Document, {
+  observer: IntersectionObserver;
+  callbacks: Map<Element, (visible: boolean) => void>;
+}>();
+
+function observeCard(element: Element, onVisibility: (visible: boolean) => void) {
+  const doc = element.ownerDocument;
+  const Observer = doc.defaultView?.IntersectionObserver;
+  if (!Observer) return;
+  let visibility = visibilityObservers.get(doc);
+  if (!visibility) {
+    const callbacks = new Map<Element, (visible: boolean) => void>();
+    const observer = new Observer(entries => {
+      for (const entry of entries) callbacks.get(entry.target)?.(entry.isIntersecting);
+    });
+    visibility = { observer, callbacks };
+    visibilityObservers.set(doc, visibility);
+  }
+  const { observer, callbacks } = visibility;
+  callbacks.set(element, onVisibility);
+  observer.observe(element);
+  return () => {
+    observer.unobserve(element);
+    callbacks.delete(element);
+    if (!callbacks.size) { observer.disconnect(); visibilityObservers.delete(doc); }
+  };
+}
 
 export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImage }: {
   roomId: string; messageSeq: number; file: Attachment; client: ChannelAttachments; inlineImage?: ImageRendition;
@@ -15,14 +44,30 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   const { t } = useCopy();
   const key = { roomId, messageSeq, attachmentId: file.id };
   const downloadSurface = useRef<HTMLDivElement>(null);
-  const download = useSyncExternalStore(client.subscribe, () => client.status(key));
-  const savedCopy = useSyncExternalStore(client.subscribe, () => client.hasSavedCopy(key, file));
+  const surfaceDocument = useSurfaceDocument();
+  const downloadStatus = () => client.status(key);
+  const savedStatus = () => client.hasSavedCopy(key, file);
+  const originalStatusSnapshot = () => client.originalAvailability(key, file, inlineImage?.original === true);
+  const transferProgress = () => client.progress(key);
+  const download = useSyncExternalStore(client.subscribe, downloadStatus, downloadStatus);
+  const savedCopy = useSyncExternalStore(client.subscribe, savedStatus, savedStatus);
+  const unavailable = useSyncExternalStore(client.subscribe, originalStatusSnapshot, originalStatusSnapshot) === false;
   const [revealing, setRevealing] = useState(false);
-  const progress = useSyncExternalStore(client.subscribe, () => client.progress(key));
+  const progress = useSyncExternalStore(client.subscribe, transferProgress, transferProgress);
   const [preview, setPreview] = useState<string | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [imageOpen, setImageOpen] = useState(false);
+  const [cardVisible, setCardVisible] = useState(false);
+  useEffect(() => {
+    setCardVisible(false);
+    const element = downloadSurface.current;
+    if (element) return observeCard(element, setCardVisible);
+  }, [surfaceDocument]);
+  const observing = cardVisible || imageOpen;
+  useEffect(() => {
+    if (observing) return client.observe({ roomId, messageSeq, attachmentId: file.id });
+  }, [observing, client, roomId, messageSeq, file.id]);
   const [originalShown, setOriginalShown] = useState(false);
   const resource = useRef<{ request: AbortController; url: string | null } | null>(null);
   useEffect(() => {
@@ -61,6 +106,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   }
   const isImage = file.mediaType.startsWith("image/");
   const imageDescription = !originalShown && inlineImage ? t("channel.attachment.thumbnail") : undefined;
+  const originalStatus = unavailable ? t("channel.attachment.noOriginalSource") : undefined;
   const previewMessage = channelErrorPresentation(previewError, t, preview ? "channel.attachment.originalUnavailable" : "channel.attachment.previewFailed").message;
   const downloadMessage = channelErrorPresentation(download.error, t, "channel.attachment.downloadFailed").message;
   const progressLabel = progress ? t(progress.state === "waiting-source" ? "channel.attachment.waitingSource"
@@ -69,10 +115,12 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
     : t(previewBusy ? "channel.attachment.loadingOriginalImage" : "channel.attachment.waitingData");
   const progressBytes = progress ? `${fileSize(progress.received)} / ${fileSize(progress.total)}${progress.total > 0 ? ` · ${Math.floor(progress.received / progress.total * 100)}%` : ""}` : null;
   const imageStatus = previewBusy ? progress ? `${progressLabel} · ${progressBytes}` : t("channel.attachment.loadingOriginalImage")
-    : previewMessage ?? imageDescription;
+    : (!originalShown ? originalStatus : undefined) ?? previewMessage ?? imageDescription;
   const saving = download.outcome === "started", savedBytes = download.saveProgress;
   const savePending = isNativeSavePending(download.outcome);
-  const canReveal = savedCopy && typeof (downloadSurface.current?.ownerDocument.defaultView ?? window).piikRevealDownload === "function";
+  const canReveal = savedCopy && typeof (downloadSurface.current?.ownerDocument ?? surfaceDocument)?.defaultView?.piikRevealDownload === "function";
+  const cardStatus = (!imageOpen && !download.busy && !previewBusy && !savePending ? originalStatus : undefined)
+    ?? downloadMessage ?? (!imageOpen ? previewMessage : undefined);
   return <div className="c3-attachment" ref={downloadSurface}>
     <div className="c3-attachment-file"><Glyph name="save" size={21} />
       <div><Tooltip overflow={{ text: file.name, selector: "strong" }}><strong>{file.name}</strong></Tooltip><small>{fileSize(file.size)}</small></div>
@@ -80,6 +128,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
         label={download.busy ? t("channel.attachment.cancelDownload") : savePending ? t(saving ? "channel.attachment.saving" : "channel.attachment.downloadRequested")
           : canReveal ? t("channel.attachment.revealSaved") : isImage ? t("channel.attachment.downloadOriginal") : t("channel.attachment.download")}
         quiet iconOnly={savePending} busy={savePending || (revealing && !download.busy)}
+        disabled={unavailable && !download.busy && !savePending && !canReveal}
         onClick={() => {
           if (download.busy) { client.cancelDownload(key); return; }
           const surface = downloadSurface.current;
@@ -110,6 +159,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
       : download.outcome === "requested" ? "channel.attachment.downloadRequested" : "channel.attachment.downloadSent")}</small>}
     {download.outcome === "cancelled" && <small role="status">{t("channel.attachment.downloadCancelled")}</small>}
     {isImage && !preview && <ChannelAction icon={previewBusy ? "x" : "eye"} quiet
+      disabled={unavailable && !previewBusy}
       label={previewBusy ? t("channel.attachment.cancelImageLoading") : t("channel.attachment.viewImage")}
       onClick={() => { if (previewBusy) cancelPreview(); else void showImage(); }} />}
     {preview && <button type="button" className="c3-attachment-preview" aria-label={t("channel.attachment.openImage", { name: file.name })}
@@ -121,8 +171,8 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
       setPreview(null); setPreviewError("image_decode_failed"); setImageOpen(false);
     }} /></button>}
     {imageOpen && preview && <ChannelImageDialog src={preview} name={file.name} description={imageStatus}
-      original={!originalShown ? { busy: previewBusy, onLoad: () => { void showImage(); }, onCancel: cancelPreview } : undefined}
+      original={!originalShown ? { busy: previewBusy, disabled: unavailable, onLoad: () => { void showImage(); }, onCancel: cancelPreview } : undefined}
       onClose={() => { if (previewBusy) cancelPreview(); setImageOpen(false); }} />}
-    {(downloadMessage || previewMessage) && <small role="status">{downloadMessage ?? previewMessage}</small>}
+    {cardStatus && <small role="status">{cardStatus}</small>}
   </div>;
 }

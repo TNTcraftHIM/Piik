@@ -42,7 +42,12 @@ export const roomSchema = z.object({
   available: z.boolean(), reading: z.boolean(),
   lastMessageSeq: z.number().int().nonnegative(),
   serviceRelay: z.object({ enabled: z.boolean(), available: z.boolean() }).optional(),
-  capabilities: z.object({ attachments: z.boolean(), historySeek: z.boolean().optional() }),
+  capabilities: z.object({
+    attachments: z.boolean(),
+    historySeek: z.boolean().optional(),
+    fileAvailabilityLimit: z.number().int().positive().optional(),
+  }),
+  fileAvailability: z.object({ observationId: z.uuid(), available: z.array(z.boolean()) }).optional(),
   delivery: z.object({ hostSessionId: id, bindingId: id, nextHops: z.record(id, id) }).optional(),
 });
 export const roomSummarySchema = roomSchema.pick({ id: true, name: true, icon: true, creatorId: true, access: true, hidden: true, hasPassword: true, voiceBitrate: true, relayCapacity: true });
@@ -193,6 +198,7 @@ export type ChannelMessage = z.infer<typeof messageSchema> & { reactions?: Messa
 export interface ChatOptions { mentions?: z.infer<typeof mentionSchema>[]; reply?: { seq: number; messageId: string; notify: boolean } }
 export type ChannelAttachment = z.infer<typeof attachmentSchema>;
 export type ChannelFileKey = z.infer<typeof fileKeySchema>;
+export const fileKeyString = (key: ChannelFileKey) => JSON.stringify([key.roomId, key.messageSeq, key.attachmentId]);
 export type ChannelFilePlan = z.infer<typeof filePlanSchema>;
 export type ChannelUser = z.infer<typeof userSchema>;
 export type ChannelUserSummary = z.infer<typeof userSummarySchema>;
@@ -298,6 +304,7 @@ export type ChannelCommand =
   | ({ type: "chat"; roomId: string; text: string; nonce: string; attachments: ChannelAttachment[]; inlineImages?: Record<string, ImageRendition> } & ChatOptions)
   | ({ type: "file_offer"; sha256: string; available: boolean } & ChannelFileKey)
   | ({ type: "file_receive"; enabled: boolean } & ChannelFileKey)
+  | { type: "observe_files"; roomId: string; observationId: string; keys: [number, string][] }
   | ({ type: "file_branch_refused"; downstreamId: string; sourceId: string } & ChannelFileKey)
   | { type: "forwarding_available"; roomId: string; kind?: "voice" | "file" | "screen" }
   | ({ type: "update_room"; roomId: string } & Partial<RoomSettings>)

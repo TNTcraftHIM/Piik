@@ -357,6 +357,13 @@ covers thumbnail persistence and original-file availability in both channel mode
 | The room runtime stops | Pause remote room operations and delivery; existing local copies remain readable. |
 | Access is removed or the attachment is withdrawn | Stop authorized delivery. Previously downloaded copies remain with their recipients. |
 
+An active reader can observe the original availability of the attachments in
+view. The room writer answers from its connected holders, returning one
+boolean per requested key. The advertised limit covers one history page at
+the maximum attachment count per message. Changing the room binding or
+leaving the read session retires its observation. A local original can be
+opened immediately. Older writers leave availability unknown until download.
+
 [Jami's file transfers](https://jami.net/swarm-file-transfers/) demonstrate the
 separation between a file announcement, on-demand download and retained peer
 copies. Piik's proposed tree path supplies the carrier; it does not adopt Jami's

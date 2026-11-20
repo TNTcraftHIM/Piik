@@ -22,11 +22,18 @@ const REQUIRED_REPAIR_MS: u64 = 5_000;
 #[derive(Clone, Default)]
 struct Activity {
     reading: bool,
+    file_observation: Option<FileObservation>,
     watch_subscriptions: BTreeMap<Uuid, crate::wire::WatchMode>,
     watching: BTreeMap<Uuid, Option<Uuid>>,
     voice: Option<VoiceInfo>,
     relay_capacity: Option<u8>,
     next_interaction_at: u64,
+}
+
+#[derive(Clone)]
+struct FileObservation {
+    id: Uuid,
+    keys: Vec<(u64, Uuid)>,
 }
 
 #[derive(Clone)]
@@ -80,6 +87,8 @@ pub struct RoomRecipient {
     pub authorized: bool,
     pub can_manage: bool,
     pub reading: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_availability: Option<crate::wire::FileAvailability>,
     pub relay_override: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub members: Option<Vec<Uuid>>,
@@ -157,7 +166,7 @@ impl RoomRuntime {
 
     #[cfg(test)]
     pub(crate) fn snapshot(&self, member: Member, session: Uuid) -> Option<RoomSnapshot> {
-        let view = self.recipient(member, session)?;
+        let view = self.recipient(member, session, |_| true)?;
         self.project(BTreeMap::from([(session, view)]))
             .snapshot(session, true)
     }
@@ -170,14 +179,21 @@ impl RoomRuntime {
             endpoints
                 .iter()
                 .filter_map(|(session, endpoint)| {
-                    self.recipient(endpoint.member, *session)
-                        .map(|view| (*session, view))
+                    self.recipient(endpoint.member, *session, |id| {
+                        endpoints.get(id).is_some_and(|endpoint| endpoint.connected)
+                    })
+                    .map(|view| (*session, view))
                 })
                 .collect(),
         )
     }
 
-    fn recipient(&self, member: Member, session: Uuid) -> Option<RoomRecipient> {
+    fn recipient(
+        &self,
+        member: Member,
+        session: Uuid,
+        is_live: impl Fn(&Uuid) -> bool,
+    ) -> Option<RoomRecipient> {
         let room = self.policy.view(member.user_id);
         let authorized = room.as_ref().is_some_and(|room| room.authorized);
         let transit_endpoint = self.selected_service().filter(|service| {
@@ -224,6 +240,19 @@ impl RoomRuntime {
             can_manage: room.as_ref().is_some_and(|room| room.can_manage),
             members: room.and_then(|room| room.members),
             reading: authorized && self.reading(session),
+            file_availability: self
+                .activity
+                .get(&session)
+                .filter(|activity| activity.reading && authorized && is_live(&session))
+                .and_then(|activity| activity.file_observation.as_ref())
+                .map(|observation| crate::wire::FileAvailability {
+                    observation_id: observation.id,
+                    available: observation
+                        .keys
+                        .iter()
+                        .map(|key| self.files.available(key, &is_live))
+                        .collect(),
+                }),
             relay_override: self
                 .activity
                 .get(&session)
@@ -285,6 +314,7 @@ impl RoomRuntime {
             capabilities: crate::wire::RoomCapabilities {
                 attachments: self.attachments_available(),
                 history_seek: true,
+                file_availability_limit: Some(crate::wire::FILE_AVAILABILITY_LIMIT),
             },
             participant_session_ids: self
                 .media_sessions()
@@ -488,7 +518,41 @@ impl RoomRuntime {
         active: bool,
     ) -> Result<(), &'static str> {
         self.authorize(member, RoomPermission::Read)?;
-        self.activity.entry(session).or_default().reading = active;
+        let activity = self.activity.entry(session).or_default();
+        activity.reading = active;
+        if !active {
+            activity.file_observation = None;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn observe_files(
+        &mut self,
+        member: Member,
+        session: Uuid,
+        observation_id: Uuid,
+        keys: Vec<(u64, Uuid)>,
+    ) -> Result<(), &'static str> {
+        self.authorize(member, RoomPermission::Read)?;
+        let Some(activity) = self
+            .activity
+            .get_mut(&session)
+            .filter(|activity| activity.reading)
+        else {
+            return Err("room_not_reading");
+        };
+        if keys.len() > crate::wire::FILE_AVAILABILITY_LIMIT
+            || observation_id.is_nil()
+            || keys
+                .iter()
+                .any(|(seq, id)| *seq == 0 || *seq > i64::MAX as u64 || id.is_nil())
+        {
+            return Err("invalid_file_observation");
+        }
+        activity.file_observation = (!keys.is_empty()).then_some(FileObservation {
+            id: observation_id,
+            keys,
+        });
         Ok(())
     }
 
@@ -1268,6 +1332,14 @@ impl RoomRuntime {
             .retain(|_, publication| readable.contains(&publication.info.session_id));
         self.activity
             .retain(|session, _| readable.contains(session));
+        for (session, activity) in &mut self.activity {
+            if !endpoints
+                .get(session)
+                .is_some_and(|endpoint| endpoint.connected)
+            {
+                activity.file_observation = None;
+            }
+        }
         for activity in self.activity.values_mut() {
             activity
                 .watch_subscriptions
@@ -2211,6 +2283,108 @@ mod tests {
     }
 
     mod screen_direct_limit;
+
+    #[test]
+    fn file_observation_is_private_and_tracks_live_holders_without_routing() {
+        use crate::wire::Command;
+
+        let reader = Uuid::from_u128(1);
+        let holder = Uuid::from_u128(2);
+        let member = Member { user_id: reader };
+        let mut endpoints = BTreeMap::from([
+            (
+                reader,
+                Endpoint {
+                    member,
+                    connected: true,
+                    signing_key: [1; 32],
+                },
+            ),
+            (
+                holder,
+                Endpoint {
+                    member: Member { user_id: holder },
+                    connected: true,
+                    signing_key: [2; 32],
+                },
+            ),
+        ]);
+        let mut room = RoomRuntime::new(
+            RoomState::new(
+                "files".into(),
+                "Files".into(),
+                Default::default(),
+                reader,
+                RoomAccess::Public,
+                false,
+                None,
+            )
+            .unwrap(),
+        );
+        let attachment = crate::AttachmentDescriptor {
+            id: Uuid::from_u128(3),
+            name: "file.txt".into(),
+            size: 1,
+            media_type: "text/plain".into(),
+            sha256: crate::attachment::sha256_hex(b"a"),
+        };
+        let observation_id = Uuid::from_u128(4);
+        let observe = |keys| Command::ObserveFiles {
+            room_id: "files".into(),
+            observation_id,
+            keys,
+        };
+        let keys = vec![(1, attachment.id)];
+        assert_eq!(
+            room.command(member, reader, observe(keys.clone()), &endpoints)
+                .err(),
+            Some("room_not_reading"),
+        );
+        room.browse(member, reader, true).unwrap();
+        room.command(member, reader, observe(keys.clone()), &endpoints)
+            .unwrap();
+        for (now, available) in [(1, false), (2, true), (3, false)] {
+            if now == 2 {
+                room.files
+                    .install(holder, 1, holder, attachment.clone(), true)
+                    .unwrap();
+            }
+            if now == 3 {
+                endpoints.get_mut(&holder).unwrap().connected = false;
+            }
+            room.reconcile(&endpoints, now);
+            let projection = room.projection(&endpoints);
+            let reader_view = projection.snapshot(reader, true).unwrap();
+            let observation = reader_view.room.file_availability.unwrap();
+            assert_eq!(observation.observation_id, observation_id);
+            assert_eq!(observation.available, vec![available]);
+            assert!(projection
+                .snapshot(holder, true)
+                .unwrap()
+                .room
+                .file_availability
+                .is_none());
+            assert!(reader_view.files.is_empty() && room.base_links().next().is_none());
+        }
+        room.command(member, reader, observe(vec![]), &endpoints)
+            .unwrap();
+        assert!(room
+            .snapshot(member, reader)
+            .unwrap()
+            .room
+            .file_availability
+            .is_none());
+        room.command(member, reader, observe(keys), &endpoints)
+            .unwrap();
+        room.browse(member, reader, false).unwrap();
+        room.browse(member, reader, true).unwrap();
+        assert!(room
+            .snapshot(member, reader)
+            .unwrap()
+            .room
+            .file_availability
+            .is_none());
+    }
 
     fn screen_on_room_base() -> (RoomRuntime, BTreeMap<Uuid, Endpoint>) {
         let id = Uuid::from_u128;
@@ -5092,7 +5266,7 @@ mod tests {
         assert!(admitted.room.capabilities.history_seek);
         let projection = room.project(BTreeMap::from([(
             viewer_session,
-            room.recipient(viewer, viewer_session).unwrap(),
+            room.recipient(viewer, viewer_session, |_| true).unwrap(),
         )]));
         assert!(
             !projection

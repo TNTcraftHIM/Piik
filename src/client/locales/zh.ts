@@ -346,6 +346,7 @@ export const zh = {
   "channel.attachment.saveFailed": "文件保存失败，请查看下载窗口后重试。",
   "channel.attachment.downloadFailed": "暂时无法读取，请重试。",
   "channel.attachment.originalUnavailable": "原图暂不可用，仍可查看预览。",
+  "channel.attachment.noOriginalSource": "原件暂时无人提供。",
   "channel.attachment.previewFailed": "图片预览失败，可重试或下载原文件。",
   "channel.contentReactions.reactToThisMessage": "回应这条消息",
   "channel.contentReactions.reactToThisScreen": "回应此画面",

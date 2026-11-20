@@ -1,0 +1,43 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import { ChannelAttachment } from "../src/client/channel/components/ChannelAttachment";
+import type { ChannelAttachments } from "../src/client/channel/attachments";
+import { t } from "../src/client/ui/copy";
+
+function renderCard(availability: boolean | undefined, busy = false) {
+  const client = {
+    subscribe: () => () => {},
+    status: () => ({ busy, error: null }),
+    progress: () => undefined,
+    hasSavedCopy: () => false,
+    originalAvailability: () => availability,
+  };
+  return renderToStaticMarkup(createElement(ChannelAttachment, {
+    client: client as unknown as ChannelAttachments,
+    roomId: "room",
+    messageSeq: 10,
+    file: { id: "image", name: "room.png", mediaType: "image/png", size: 1024, sha256: "0".repeat(64) },
+  }));
+}
+
+describe("attachment original availability", () => {
+  it("disables both original actions when a visible file has no holder", () => {
+    const markup = renderCard(false);
+    expect(markup.match(/<button\b[^>]* disabled=""/g)).toHaveLength(2);
+    expect(markup).toContain(t("zh", "channel.attachment.noOriginalSource"));
+  });
+
+  it.each([undefined, true])("leaves both actions available when availability is %s", availability => {
+    const markup = renderCard(availability);
+    expect(markup).not.toContain('disabled=""');
+    expect(markup).not.toContain(t("zh", "channel.attachment.noOriginalSource"));
+  });
+
+  it("keeps cancellation available after the last holder leaves an active transfer", () => {
+    const markup = renderCard(false, true);
+    expect(markup.match(/<button\b[^>]* disabled=""/g)).toHaveLength(1);
+    expect(markup).toContain(t("zh", "channel.attachment.cancelDownload"));
+    expect(markup).not.toContain(t("zh", "channel.attachment.noOriginalSource"));
+  });
+});

@@ -86,6 +86,11 @@ pub enum Command {
         attachment_id: Uuid,
         enabled: bool,
     },
+    ObserveFiles {
+        room_id: String,
+        observation_id: Uuid,
+        keys: Vec<(u64, Uuid)>,
+    },
     HostRegister {
         room: crate::host::RoomSummary,
         resume_binding: Option<Uuid>,
@@ -789,6 +794,8 @@ pub struct Room {
     pub reading: bool,
     pub participant_session_ids: Vec<Uuid>,
     pub file_activity: Vec<FileActivity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_availability: Option<FileAvailability>,
     pub capabilities: RoomCapabilities,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delivery: Option<RoomDelivery>,
@@ -826,6 +833,68 @@ pub struct RoomCapabilities {
     pub attachments: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub history_seek: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_availability_limit: Option<usize>,
+}
+
+pub const FILE_AVAILABILITY_LIMIT: usize =
+    crate::history::HISTORY_PAGE * crate::attachment::ATTACHMENT_LIMITS.max_attachments_per_message;
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileAvailability {
+    pub observation_id: Uuid,
+    pub available: Vec<bool>,
+}
+
+#[cfg(test)]
+#[test]
+fn file_availability_wire_is_additive() {
+    let observation_id = Uuid::from_u128(1);
+    let attachment_id = Uuid::from_u128(2);
+    let command = serde_json::json!({
+        "type": "observe_files",
+        "roomId": "room",
+        "observationId": observation_id,
+        "keys": [[7, attachment_id]]
+    });
+    let decoded: Command = serde_json::from_value(command.clone()).unwrap();
+    assert!(
+        matches!(&decoded, Command::ObserveFiles { keys, .. } if keys == &[(7, attachment_id)])
+    );
+    assert_eq!(serde_json::to_value(decoded).unwrap(), command);
+
+    let policy = crate::RoomState::new(
+        "room".into(),
+        "Room".into(),
+        Default::default(),
+        observation_id,
+        RoomAccess::Private,
+        false,
+        None,
+    )
+    .unwrap();
+    let mut room = policy.view(observation_id).unwrap();
+    let legacy = serde_json::to_value(&room).unwrap();
+    assert!(legacy.get("fileAvailability").is_none());
+    assert!(legacy["capabilities"]
+        .get("fileAvailabilityLimit")
+        .is_none());
+    let decoded: Room = serde_json::from_value(legacy).unwrap();
+    assert!(decoded.file_availability.is_none());
+    assert!(decoded.capabilities.file_availability_limit.is_none());
+
+    room.file_availability = Some(FileAvailability {
+        observation_id,
+        available: vec![true, false],
+    });
+    room.capabilities.file_availability_limit = Some(FILE_AVAILABILITY_LIMIT);
+    let encoded = serde_json::to_value(room).unwrap();
+    assert_eq!(
+        encoded["fileAvailability"],
+        serde_json::json!({ "observationId": observation_id, "available": [true, false] })
+    );
+    assert_eq!(encoded["capabilities"]["fileAvailabilityLimit"], 400);
 }
 
 #[cfg(test)]

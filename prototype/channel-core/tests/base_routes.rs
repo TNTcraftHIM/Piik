@@ -3069,6 +3069,41 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
             })
             .unwrap();
         let output = network.host_turn(&room, input);
+        if outcome == "pending" {
+            use piik_channel_core::wire::{FileAvailability, FILE_AVAILABILITY_LIMIT};
+
+            for (limit, count, authorized, reading) in [
+                (Some(FILE_AVAILABILITY_LIMIT + 1), 1, true, true),
+                (Some(1), 2, true, true),
+                (Some(1), 1, true, false),
+                (Some(1), 1, false, true),
+                (None, 1, true, true),
+            ] {
+                let mut invalid = output.clone();
+                invalid.projection.capabilities.file_availability_limit = limit;
+                let view = invalid
+                    .projection
+                    .views
+                    .get_mut(&_publisher_session)
+                    .unwrap();
+                view.authorized = authorized;
+                view.reading = reading;
+                view.file_availability = Some(FileAvailability {
+                    observation_id: Uuid::new_v4(),
+                    available: vec![true; count],
+                });
+                let rejected = network.command(
+                    host,
+                    json!({"type":"host_output","roomId":room,"output":invalid}),
+                );
+                assert!(
+                    rejected.events.iter().any(|(_, event)| matches!(
+                        event, Event::Error { code, .. } if code == "invalid_room_projection"
+                    )),
+                    "accepted invalid observation ({limit:?}, {count}, {authorized}, {reading})"
+                );
+            }
+        }
         let mut invalid = output.clone();
         invalid.projection.summary.id = "wrong-room".into();
         let rejected = network.command(

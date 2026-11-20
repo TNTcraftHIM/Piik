@@ -42,6 +42,12 @@ pub(crate) struct FileRoom {
     files: BTreeMap<(u64, Uuid), File>,
 }
 impl FileRoom {
+    pub fn available(&self, key: &(u64, Uuid), is_live: impl Fn(&Uuid) -> bool) -> bool {
+        self.files
+            .get(key)
+            .is_some_and(|file| file.holders.iter().any(is_live))
+    }
+
     pub fn install(
         &mut self,
         session: Uuid,

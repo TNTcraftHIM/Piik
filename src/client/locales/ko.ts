@@ -258,6 +258,7 @@ export const ko = {
   "channel.attachment.fileOfferFailed": "메시지를 저장했지만 아직 파일을 제공하지 못했어요.",
   "channel.attachment.downloadFailed": "파일을 불러오지 못했어요. 다시 시도해 주세요.",
   "channel.attachment.originalUnavailable": "원본 이미지를 사용할 수 없어요. 미리보기는 계속 볼 수 있어요.",
+  "channel.attachment.noOriginalSource": "현재 원본을 제공할 수 있는 사용자가 없어요.",
   "channel.attachment.previewFailed": "이미지를 미리 볼 수 없어요. 다시 시도하거나 파일을 다운로드하세요.",
   "channel.contentReactions.reactToThisMessage": "이 메시지에 반응",
   "channel.contentReactions.reactToThisScreen": "이 화면에 반응",

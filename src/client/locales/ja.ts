@@ -257,6 +257,7 @@ export const ja = {
   "channel.attachment.fileOfferFailed": "メッセージを保存しました。ファイルはまだ提供できませんでした。",
   "channel.attachment.downloadFailed": "ファイルを読み込めませんでした。再試行してください。",
   "channel.attachment.originalUnavailable": "元の画像は利用できません。プレビューは表示できます。",
+  "channel.attachment.noOriginalSource": "現在オリジナルを提供できる人はいません。",
   "channel.attachment.previewFailed": "画像をプレビューできませんでした。再試行するかファイルをダウンロードしてください。",
   "channel.contentReactions.reactToThisMessage": "このメッセージにリアクション",
   "channel.contentReactions.reactToThisScreen": "この画面にリアクション",

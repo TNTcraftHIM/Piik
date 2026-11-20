@@ -7,7 +7,7 @@ import "./channel-image-dialog.css";
 /** The caller keeps the image URL alive; this surface only owns its presentation. */
 export function ChannelImageDialog({ src, name, description, original, onClose }: {
   src: string; name: string; description?: string;
-  original?: { busy: boolean; onLoad(): void; onCancel(): void };
+  original?: { busy: boolean; disabled?: boolean; onLoad(): void; onCancel(): void };
   onClose(): void;
 }) {
   const { t } = useCopy();
@@ -24,6 +24,7 @@ export function ChannelImageDialog({ src, name, description, original, onClose }
       <ChannelAction icon="expand" quiet label={zoomLabel} onClick={() => setZoomed(value => !value)} />
       {description && <p role="status">{description}</p>}
       {original && <ChannelAction icon={original.busy ? "x" : "eye"} quiet
+        disabled={original.disabled && !original.busy}
         label={original.busy ? t("channel.imageDialog.cancelOriginalImage") : t("channel.imageDialog.viewOriginal")}
         onClick={original.busy ? original.onCancel : original.onLoad} />}
     </div>

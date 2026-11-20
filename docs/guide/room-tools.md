@@ -109,16 +109,16 @@ to its original message, then **Latest messages** to return.
 On a desktop, Enter sends and Shift+Enter adds a line. On a touchscreen, Return
 adds a line and **Send** sends the message. Ctrl+Enter or Command+Enter also sends.
 
-Confirmed messages and their reaction counts are saved by the room's host. Refreshing
-or returning to the room loads its history again when that host is available.
-Chat and history use the site connection and do not wait for a P2P link.
-The site forwards message text; it does not keep the room's history.
+In a lightweight site, the room creator’s device saves messages and reactions.
+In a hosted site, the server saves them. Open the room to read its history while
+that device or server is online. Chat uses the site connection.
 Images use a shared 512 KiB budget per message for immediate display. Small
 originals stay unchanged; larger still images get a clear preview up to 2048px.
 Select a picture to enlarge it, then **View original** for its full resolution.
-**Download original** always retrieves the original file. Preview images remain
-in history even when the sender leaves; obtaining a larger original needs a
-participant who still holds it.
+**Download original** saves the full file. If the card says **No one is currently
+offering the original**, you can still open its thumbnail. Download becomes
+available again when someone with a copy returns. In the desktop App you can
+also open the folder holding a copy you already saved.
 
 GIF, animated PNG and animated WebP retain their animation. If an animated
 original exceeds its share of the message budget, **View image** loads it over

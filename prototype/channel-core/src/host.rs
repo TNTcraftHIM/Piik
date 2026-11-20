@@ -301,8 +301,16 @@ impl RoomProjection {
                 members: view.members.clone(),
                 capabilities: RoomCapabilities {
                     history_seek: self.capabilities.history_seek && view.authorized && available,
+                    file_availability_limit: self
+                        .capabilities
+                        .file_availability_limit
+                        .filter(|_| view.authorized && available),
                     ..self.capabilities.clone()
                 },
+                file_availability: view
+                    .file_availability
+                    .clone()
+                    .filter(|_| view.authorized && view.reading && available),
                 participant_session_ids: if view.authorized && available {
                     self.participant_session_ids.clone()
                 } else {
@@ -381,6 +389,11 @@ impl RoomRuntime {
                 }
                 self.browse(member, session, active)?;
             }
+            Command::ObserveFiles {
+                observation_id,
+                keys,
+                ..
+            } => self.observe_files(member, session, observation_id, keys)?,
             Command::FileOffer {
                 message_seq,
                 attachment_id,

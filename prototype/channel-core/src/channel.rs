@@ -621,6 +621,7 @@ impl Channel {
             | Command::FileBranchRefused { room_id, .. }
             | Command::ForwardingAvailable { room_id, .. }
             | Command::FileReceive { room_id, .. }
+            | Command::ObserveFiles { room_id, .. }
             | Command::UpdateRoom { room_id, .. }
             | Command::EnterRoom { room_id, .. }
             | Command::RoomInvite { room_id }
@@ -1294,8 +1295,11 @@ impl Channel {
         }
         let projection = &output.projection;
         self.check_room_policy(&projection.summary)?;
+        let file_availability_limit = projection.capabilities.file_availability_limit;
         if projection.summary.validate().is_err()
             || projection.last_message_seq > i64::MAX as u64
+            || file_availability_limit
+                .is_some_and(|limit| !(1..=crate::wire::FILE_AVAILABILITY_LIMIT).contains(&limit))
             || projection.summary.id != id
             || projection.summary.creator_id != room.summary.creator_id
         {
@@ -1401,6 +1405,12 @@ impl Channel {
         }
         for (recipient, view) in &projection.views {
             if view.allow_service_relay && !view.can_manage
+                || view.file_availability.as_ref().is_some_and(|observation| {
+                    !view.authorized
+                        || !view.reading
+                        || !file_availability_limit
+                            .is_some_and(|limit| observation.available.len() <= limit)
+                })
                 || view
                     .transit_endpoint
                     .is_some_and(|endpoint| Some(endpoint) != self.service_endpoint)
