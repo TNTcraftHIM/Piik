@@ -13,7 +13,7 @@ import type { ChannelRemoteControlState, ChannelStopShortcut } from "../app-link
 import { HostRemoteControl } from "../../components/living/HostRemoteControl";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { stageColumns } from "../stage-layout";
-import { useTheaterMode } from "../../components/living/use-theater-mode";
+import type { useTheaterMode } from "../../components/living/use-theater-mode";
 import { VoiceMicrophoneButton } from "../../room-voice/VoiceAudioButtons";
 import { Btn, Cap } from "../../components/living/primitives";
 import { Tooltip } from "../../components/living/Tooltip";
@@ -164,6 +164,7 @@ export function SourceAudience({ people, joined = false }: { people: readonly Sc
 }
 
 export interface ChannelStageProps {
+  theaterMode: ReturnType<typeof useTheaterMode>;
   buffering?: import("../../components/living/PlaybackSettings").PlaybackSettingsProps["buffering"];
   sources: ChannelStageSource[];
   focusedId: string | null;
@@ -193,7 +194,7 @@ function SourceControl({ source, onInputPolicy, onInputDecide, onInputSimultaneo
 }
 
 /** Subscription belongs to the caller. Focus only changes the layout of existing players. */
-export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFocus, onWatch, onUnwatch, onRetryPicture, onPause, onStop, onPresentation,
+export function ChannelStage({ theaterMode: [theater, setTheater], buffering, sources, focusedId, canSubscribe, onFocus, onWatch, onUnwatch, onRetryPicture, onPause, onStop, onPresentation,
   onInputPolicy, onInputDecide, onInputSimultaneous, onInputShortcut }: ChannelStageProps) {
   const { lang, t } = useCopy();
   const retained = sources.filter(source => source.owned || source.subscribed);
@@ -203,7 +204,6 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
   const automaticEmbed = (focused?.kind === "watch" && focused.player?.presentation.kind === "embed" ? focused
     : active.find(source => source.kind === "watch" && source.player?.presentation.kind === "embed"))?.id;
   const layoutSources = JSON.stringify([active.map(source => source.id), available.map(source => source.id)]);
-  const [theater, setTheater] = useTheaterMode();
   const stage = useRef<HTMLElement>(null), grid = useRef<HTMLDivElement>(null);
   const [columns, setColumns] = useState<number>();
   useLayoutEffect(() => {

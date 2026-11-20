@@ -322,7 +322,7 @@ describe("Webpage watch presentation", () => {
     const source: WatchStageSource = { kind: "watch", id: "activity", userId: "friend", name: "Bo", title: "video.example/watch/evening",
       roomName: "Friday", audience: [], owned: false, subscribed: false, paused: true, website: true, originalPageAvailable: true, browserSource: false,
       onRoom: vi.fn(), onJoin: vi.fn(), onLeave: vi.fn(), onStop: vi.fn(), onResume: vi.fn(), onPlayback: vi.fn(), onFocusWindow: vi.fn(), onAppWatch: vi.fn() };
-    const render = (value: WatchStageSource) => renderToStaticMarkup(createElement(ChannelStage, { sources: [value], focusedId: null, canSubscribe: true,
+    const render = (value: WatchStageSource) => renderToStaticMarkup(createElement(ChannelStage, { theaterMode: [false, vi.fn()], sources: [value], focusedId: null, canSubscribe: true,
       onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
       onInputPolicy: vi.fn(), onInputDecide: vi.fn(), onInputSimultaneous: vi.fn(), onInputShortcut: vi.fn() }));
     expect(render(source)).toContain('aria-label="Open webpage and select video"');
@@ -395,7 +395,7 @@ it.each([
   { awaitingRoute: true, deliveryFailed: true, paused: true, label: "host.pauseNotice" },
 ] as const)("shows $label for a subscribed screen without a playable stream", ({ awaitingRoute, deliveryFailed, paused, label }) => {
   setCopy({ lang: "en" });
-  const html = renderToStaticMarkup(createElement(ChannelStage, {
+  const html = renderToStaticMarkup(createElement(ChannelStage, { theaterMode: [false, vi.fn()],
     sources: [{ kind: "screen", id: "picture", userId: "friend", name: "Friend", roomName: "Room",
       source: { kind: "screen", name: "Owned picture" }, title: null, owned: false, localSource: false,
       subscribed: true, paused, audience: [], awaitingRoute, deliveryFailed }],

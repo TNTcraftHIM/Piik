@@ -17,6 +17,7 @@ import { useRoomPane } from "../channel/use-room-pane";
 import { LayerHistory } from "../ui/layer-history";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelStage, type WatchStageSource } from "../channel/components/ChannelStage";
+import { useTheaterMode } from "../components/living/use-theater-mode";
 import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
 import { ChannelJoinVoice } from "../channel/components/ChannelJoinVoice";
@@ -196,6 +197,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const visibleScreens = activeSources.filter(source => source.roomId === roomId && sourceView?.roomId === roomId);
   const otherScreens = activeSources.filter(source => !visibleScreens.includes(source));
   const focusedScreen = sourceView?.roomId === roomId ? sourceView.focusedId : null;
+  const theaterMode = useTheaterMode();
+  const theaterVisible = theaterMode[0] && visibleScreens.some(source => source.id === focusedScreen);
   const showSource = (sourceRoom: string, focusedId: string | null) => {
     onSelect(sourceRoom); setSourceView({ roomId: sourceRoom, focusedId }); setMobilePane("room", sourceRoom);
   };
@@ -211,7 +214,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     ? companionOpen[companionKind]
     : mobilePane === "people" || mobilePane === "chat");
   const inlineChatOpen = companionVisible && companionPane === "chat";
-  const conversationHidden = room?.authorized === false || (!toolSurface.open && (layout === "quick"
+  const conversationHidden = room?.authorized === false || (!toolSurface.open && (layout === "quick" || theaterVisible
     || (visibleScreens.length > 0 ? !inlineChatOpen : !sidebarsInline && mobilePane !== "room")));
   const setConversationPopout = channel.setConversationPopout;
   useLayoutEffect(() => {
@@ -453,7 +456,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             <div className="c3-quick-start"><ChannelShareControl channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)} disabled={!connected || !room.available}
               openRequested={pickerRoom === roomId} onPickerOpened={() => setPickerRoom(null)} /></div>
           </StageTv></div>}
-          <ChannelStage buffering={{ target: channel.screenBufferTargetMs, status: channel.screenBufferStatus, onChange: channel.setScreenBufferTarget }} sources={[...[...activeScreens, ...availableScreens].map(publication => ({
+          <ChannelStage theaterMode={theaterMode} buffering={{ target: channel.screenBufferTargetMs, status: channel.screenBufferStatus, onChange: channel.setScreenBufferTarget }} sources={[...[...activeScreens, ...availableScreens].map(publication => ({
             kind: "screen" as const, id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
             hidden: !displayedSources.has(publication.id),
             source: publication.source, title: publication.title, onRoom: () => selectRoom(publication.roomId),

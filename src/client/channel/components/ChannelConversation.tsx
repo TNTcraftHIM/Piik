@@ -195,7 +195,8 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
   function readVisible() {
     const node = log.current, doc = node?.ownerDocument;
     if (!hidden && !unreadLookup.current && !unreadLookupBusy && !jump?.id && roomId && available && !loadingHistory && history?.atLatest && node?.getClientRects().length
-      && doc?.visibilityState === "visible" && doc.hasFocus() && node.scrollHeight - node.scrollTop - node.clientHeight < 4) {
+      && doc?.visibilityState === "visible" && doc.hasFocus() && doc.defaultView?.getComputedStyle(node).visibility === "visible"
+      && (!doc.fullscreenElement || doc.fullscreenElement.contains(node)) && node.scrollHeight - node.scrollTop - node.clientHeight < 4) {
       const seq = messages.at(-1)?.seq;
       if (seq !== undefined) onRead?.(roomId, seq);
     }
@@ -203,9 +204,15 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
   useLayoutEffect(() => {
     const doc = surfaceDocument, view = doc?.defaultView;
     const frame = view?.requestAnimationFrame(readVisible);
+    doc?.addEventListener("fullscreenchange", readVisible);
     doc?.addEventListener("visibilitychange", readVisible);
     view?.addEventListener("focus", readVisible);
-    return () => { if (frame !== undefined) view?.cancelAnimationFrame(frame); doc?.removeEventListener("visibilitychange", readVisible); view?.removeEventListener("focus", readVisible); };
+    return () => {
+      if (frame !== undefined) view?.cancelAnimationFrame(frame);
+      doc?.removeEventListener("fullscreenchange", readVisible);
+      doc?.removeEventListener("visibilitychange", readVisible);
+      view?.removeEventListener("focus", readVisible);
+    };
   }, [conversationScope, messages, hidden, available, loadingHistory, history?.atLatest, lastMessageSeq, unreadLookupBusy, jump?.id, surfaceDocument, onRead]);
   useLayoutEffect(() => {
     if (!jump || jump.scope !== conversationScope || hidden || loadingHistory) return;
