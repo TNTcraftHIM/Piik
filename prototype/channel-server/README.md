@@ -430,6 +430,14 @@ received-video adaptation used by this input and does not expose this choice.
 Windows OBS-to-Browser media and retirement have been exercised; other desktop
 platforms still need their runtime acceptance.
 
+On Linux, Alpine OBS Studio 32.1.2 and Flathub OBS Studio 33.0.1 can reach
+the WHIP endpoint but fail to connect media. Both packages use libnice, which
+skipped the loopback interface in local tests. Piik accepts media on loopback.
+The OBS **Bind to IP** setting did not enable loopback for WHIP on Alpine.
+FFmpeg with WHIP output delivered H.264 and Opus to Firefox on Linux. Alpine
+OBS also delivered picture and sound with a test build of libdatachannel 0.24.3
+using libjuice. The ICE backend is selected when libdatachannel is built.
+
 ## Watching video together
 
 Choose **Start sharing → Browser → Watch together**. A direct video address plays
