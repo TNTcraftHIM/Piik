@@ -191,10 +191,6 @@ impl FileDelivery {
                 }
             }
             file.ranges.retain(|_, range| !range.consumers.is_empty());
-            if file.plan.source_id.is_none() {
-                effects.extend(self.fail(&key, "attachment_unavailable"));
-                continue;
-            }
             if stopped_receiving && self.receivers.contains_key(&key) {
                 effects.extend(self.fail_local(&key, "attachment_unavailable"));
             }
@@ -614,7 +610,7 @@ impl FileDelivery {
                             code: "attachment_hash_mismatch".into(),
                         }
                     });
-                } else {
+                } else if file.plan.source_id.is_some() {
                     effects.extend(self.request(key, receiver.offset, None));
                 }
             }

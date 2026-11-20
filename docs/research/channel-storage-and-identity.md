@@ -324,8 +324,10 @@ windows bounded: a slow recipient resumes from its retained offset or an availab
 complete cache instead of forcing every other branch to wait or retain unlimited
 data. File traffic still consumes the real forwarding capacity of each endpoint.
 
-Ordinary disconnection may resume a temporary download from its written offset,
-but that prefix is not yet verified. Final digest failure discards the temporary
+An admitted download keeps its written offset while its source or upstream
+changes. When an authorized replacement becomes reachable, it resumes from
+that offset. Cancelling or withdrawing the receiving plan releases the
+temporary file. Final digest failure discards the temporary
 copy and reports failure; whole-file verification cannot identify a good prefix or
 the particular source/relay responsible for corruption. Retrying starts a new
 download, without a second automatic source-recovery policy. Do not promote bad content or ban a

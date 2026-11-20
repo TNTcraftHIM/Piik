@@ -416,6 +416,18 @@ fn authorized_source_and_route_change_preserve_written_prefix_and_ignore_old_sou
     network.run();
     assert_eq!(network.sinks[&id(3)].len(), FILE_RANGE_BYTES);
     network.hold_read = Some(id(5));
+    let mut waiting = plan(5, None, &[], true, &network.bytes);
+    waiting.source_id = None;
+    let effects = network
+        .nodes
+        .get_mut(&id(3))
+        .unwrap()
+        .update(vec![waiting], room_peers(), 0);
+    assert!(
+        effects.is_empty(),
+        "source turnover preserves the in-flight write"
+    );
+    network.update(3, 5, Some(2), &[], true);
     network.hold_write = None;
     for (node, key, offset, length) in std::mem::take(&mut network.pending_writes) {
         let effects = network
