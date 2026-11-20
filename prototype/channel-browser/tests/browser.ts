@@ -232,9 +232,10 @@ window.runBrowserRoomCheck = async () => {
           && advances === 49, "exclusive paging at oldest returns empty without visiting the purged prefix");
         await seek(0, 2001);
         check(advances === 49, "seek from before the purge finds another author without advancing the cursor");
+        advances = 0;
         const repeated = await run({ type: "clear_history", throughSeq: 1999 }, true);
-        check(repeated[0]?.record.type === "history_cleared" && advances === 149,
-          "repeated clear only visits the 100 retained rows");
+        check(repeated[0]?.record.type === "history_cleared" && advances === 0,
+          "repeating a confirmed clear does not scan the retained messages");
       } finally { IDBCursor.prototype.continue = advance; }
 
       const largeSnapshot = await current.snapshot(), largeRows: BackupHistoryRow[] = [];

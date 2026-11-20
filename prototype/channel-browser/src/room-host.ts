@@ -434,6 +434,7 @@ export class BrowserRoomHost implements HostedRoom {
         const single = request.type === "delete_message";
         const through = single ? request.messageSeq : request.throughSeq;
         result = single ? { type: "message_deleted", messageSeq: through } : { type: "history_cleared", throughSeq: through };
+        if (!single && through <= clearedThrough) return;
         const range = IDBKeyRange.bound([request.roomId, single ? through : clearedThrough], [request.roomId, Infinity], !single);
         let found = false;
         read(messages.openCursor(range), cursor => {
