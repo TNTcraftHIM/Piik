@@ -23,9 +23,13 @@ function captureProbe(name) {
     localStorage.setItem('piik:ui-lang', 'en');
     localStorage.setItem('piik:ui-mode', 'text');
     const peers = [], sockets = [], captures = [], contexts = [], protocol = [], channels = [], warnings = [], flowStates = [], audioSources = [], qualitySamples = [], restoredVideo = [], trackEvents = [], flowFailures = [], playbackEvents = [];
-    const trackObjects = new WeakMap();
-    const trackObjectId = track => { if (!trackObjects.has(track)) trackObjects.set(track, crypto.randomUUID()); return trackObjects.get(track); };
-    const trackState = track => ({ id: track.id, objectId: trackObjectId(track), kind: track.kind,
+    const objectIds = new WeakMap();
+    const objectId = value => {
+      if (!value) return null;
+      if (!objectIds.has(value)) objectIds.set(value, crypto.randomUUID());
+      return objectIds.get(value);
+    };
+    const trackState = track => ({ id: track.id, objectId: objectId(track), kind: track.kind,
       readyState: track.readyState, enabled: track.enabled, muted: track.muted });
     const videoState = video => ({ flowId: video.dataset.flowId, selected: video.dataset.selected,
       readyState: video.readyState, streamId: video.srcObject?.id,
@@ -182,7 +186,7 @@ function captureProbe(name) {
     AudioContext.prototype.createMediaStreamSource = function(stream) {
       const source = createAudioSource.call(this, stream);
       const track = stream.getAudioTracks()[0];
-      const owner = { trackId: track.id, trackObjectId: trackObjectId(track), context: this, connected: false };
+      const owner = { trackId: track.id, trackObjectId: objectId(track), context: this, connected: false };
       audioSources.push(owner);
       const connect = source.connect.bind(source), disconnect = source.disconnect.bind(source);
       source.connect = (...args) => { owner.connected = true; return connect(...args); };
@@ -223,7 +227,7 @@ function captureProbe(name) {
       if (captureAudio) for (const audio of microphone(true).getAudioTracks()) stream.addTrack(audio);
       return stream;
     };
-    window.__channelProbe = { peers, sockets, captures, contexts,
+    window.__channelProbe = { peers, sockets, captures, contexts, objectId,
       clearProtocol() { protocol.length = 0; },
       captureAudio(enabled) { captureAudio = enabled; },
       captureFramerate(value) { captureFramerate = value; },
@@ -300,7 +304,6 @@ function captureProbe(name) {
           streamId: snapshot.streams.get(publicationId)?.id,
           inputs: (snapshot.screenInputs.get(publicationId) ?? []).map(input => {
             const element = [...document.querySelectorAll('video')].find(video => video.dataset.flowId === input.flowId);
-            if (element) element.__allocationIdentity ??= crypto.randomUUID();
             const rect = element?.getBoundingClientRect();
             const hit = rect && document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
             const buttons = element?.parentElement?.querySelectorAll('.c3-mini-controls button');
@@ -313,8 +316,8 @@ function captureProbe(name) {
                 receivers: peers.flatMap((pc, pcIndex) => pc.getTransceivers().filter(value => value.receiver.track === track)
                   .map(value => ({ pcIndex, connectionState: pc.connectionState, mid: value.mid,
                     direction: value.direction, currentDirection: value.currentDirection }))) })),
-              audio: input.stream.getAudioTracks().map(track => track.id), audioObjects: input.stream.getAudioTracks().map(trackObjectId),
-              video: input.stream.getVideoTracks().map(track => track.id), elementId: element?.__allocationIdentity,
+              audio: input.stream.getAudioTracks().map(track => track.id), audioObjects: input.stream.getAudioTracks().map(objectId),
+              video: input.stream.getVideoTracks().map(track => track.id), elementId: objectId(element),
               displayed: element?.dataset.selected, composited: element?.dataset.composited, muted: element?.muted,
               paused: element?.paused, fullscreen: !!element && document.fullscreenElement === element.parentElement,
               rect: rect && { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
@@ -558,8 +561,11 @@ const picture = async (index, publicationId, observe) => {
   const value = await evaluate(index, `(() => {
   const stream = ${hook}.snapshot().streams.get(${JSON.stringify(publicationId)});
   const video = [...document.querySelectorAll('video')].find(element => element.srcObject === stream);
-  return { received: !!stream, frames: video?.getVideoPlaybackQuality().totalVideoFrames ?? 0,
-    time: video?.currentTime ?? 0, live: stream?.getVideoTracks().some(track => track.readyState === 'live') ?? false };
+  const track = stream?.getVideoTracks()[0];
+  return { received: !!stream, elementId: window.__channelProbe.objectId(video),
+    trackObjectId: window.__channelProbe.objectId(track),
+    frames: video?.getVideoPlaybackQuality().totalVideoFrames ?? 0,
+    time: video?.currentTime ?? 0, live: track?.readyState === 'live' };
 })()`);
   await observe?.(value);
   return value;
@@ -572,10 +578,12 @@ async function progressing(index, publicationId, observe, minimumFrames = 1) {
   let before = await playing(index, publicationId, observe);
   return until(`browser ${index} advances ${publicationId}`, () => picture(index, publicationId, observe),
     sample => {
-      const advanced = sample.live && sample.frames >= before.frames + minimumFrames && sample.time > before.time;
-      // A repaired route can replace the player and reset its frame/time counters.
-      if (sample.frames < before.frames || sample.time < before.time) before = sample;
-      return advanced;
+      if (sample.elementId !== before.elementId || sample.trackObjectId !== before.trackObjectId
+        || sample.frames < before.frames || sample.time < before.time) {
+        before = sample;
+        return false;
+      }
+      return sample.live && sample.frames >= before.frames + minimumFrames && sample.time > before.time;
     });
 }
 const publishScreen = (index, roomId) => action(index,
