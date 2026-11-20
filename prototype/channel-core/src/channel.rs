@@ -726,6 +726,7 @@ impl Channel {
                 connection,
                 revision: 0,
                 projection_floor: 0,
+                scope_floor: 0,
                 applied_revision: 0,
                 replies: BTreeMap::new(),
                 failed_pairs: BTreeMap::new(),
@@ -751,7 +752,7 @@ impl Channel {
             .binding
             .as_mut()
             .unwrap();
-        binding.projection_floor = binding.revision;
+        binding.invalidate_scope();
         self.reconcile();
         Ok((events, replies))
     }
@@ -1195,7 +1196,7 @@ impl Channel {
                 let event = self.host_input(&id, HostAction::Sync).ok()?;
                 if invalidate_projection {
                     let binding = self.remote.get_mut(&id).unwrap().binding.as_mut().unwrap();
-                    binding.projection_floor = binding.revision;
+                    binding.invalidate_scope();
                 }
                 Some(event)
             })

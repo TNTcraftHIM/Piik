@@ -266,10 +266,10 @@ impl Channel {
             // While the host acknowledges a failed pair, only carry existing uses
             // from that projection. Other invalidations wait for fresh room grants.
             if scope.is_empty()
-                && room.binding.as_ref().is_some_and(|b| {
-                    b.projection_floor == b.applied_revision + 1
-                        && b.failed_pairs.values().any(|v| *v == b.projection_floor)
-                })
+                && room
+                    .binding
+                    .as_ref()
+                    .is_some_and(|binding| binding.awaiting_pair_failure())
             {
                 plan.preparing
                     .extend(discovery.confirmed.intersection(&demand).copied());

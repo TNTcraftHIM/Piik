@@ -1,6 +1,29 @@
 use super::*;
 
 #[test]
+fn pair_repair_uses_only_an_acknowledged_room_scope() {
+    for invalidate_scope in [false, true] {
+        let mut binding = crate::remote::Binding {
+            id: Uuid::from_u128(1),
+            session: Uuid::from_u128(2),
+            connection: Uuid::from_u128(3),
+            revision: 24,
+            applied_revision: 23,
+            projection_floor: 23,
+            scope_floor: 23,
+            replies: Default::default(),
+            failed_pairs: Default::default(),
+        };
+        if invalidate_scope {
+            binding.invalidate_scope();
+        }
+        binding.revision += 1;
+        binding.projection_floor = binding.revision;
+        assert_eq!(binding.awaiting_pair_failure(), !invalidate_scope);
+    }
+}
+
+#[test]
 fn decorative_icon_keys_are_bounded_but_not_a_preset_enum() {
     let key = "future-Preset_42";
     let icon: IdentityIcon = serde_json::from_value(serde_json::json!(key)).unwrap();

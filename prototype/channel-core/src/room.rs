@@ -1421,28 +1421,42 @@ impl RoomRuntime {
         base_members.extend(service);
         base_members.retain(|id| routable.contains(id));
         let limits = self.relay_limits();
-        let confirmed_demand = self.confirmed_delivery_pairs(&requested, confirmed_pairs);
+        let mut confirmed_demand = self.confirmed_delivery_pairs(&requested, confirmed_pairs);
         if let Some(base) = &mut self.base {
-            if base.needs_repair(&demand, &connected) {
-                if self.hosted_writer.is_some() {
-                    let helpers = base_members.iter().filter(|id| {
-                        !demand.contains(id)
-                            && connected.contains(id)
-                            && Some(**id) != service
-                            && limits.get(**id, base.root()) > 0
-                    });
-                    let has_link =
-                        |a: Uuid, b: Uuid| confirmed_pairs.contains(&(a.min(b), a.max(b)));
-                    let root = base.root();
-                    if let Some(helper) = helpers.min_by_key(|&&id| {
-                        !(has_link(root, id)
-                            && demand.iter().any(|&peer| {
-                                peer != root && !base.ready(peer) && has_link(peer, id)
-                            }))
-                    }) {
-                        demand.insert(*helper);
-                    }
+            let repairing = base.needs_repair(&demand, &connected);
+            if self.hosted_writer.is_some()
+                && (repairing || demand.iter().any(|&peer| base.pending_after_direct_failure(peer)))
+            {
+                let root = base.root();
+                let has_link = |a: Uuid, b: Uuid| confirmed_pairs.contains(&(a.min(b), a.max(b)));
+                let helpers = base_members.iter().copied().filter(|id| {
+                    !demand.contains(id)
+                        && connected.contains(id)
+                        && Some(*id) != service
+                        && limits.get(*id, root) > 0
+                });
+                let bridges_waiting_peer = |helper| {
+                    has_link(root, helper)
+                        && demand.iter().any(|&peer| {
+                            peer != root && !base.ready(peer) && has_link(peer, helper)
+                        })
+                };
+                let helper = helpers
+                    .filter_map(|id| {
+                        let confirmed = bridges_waiting_peer(id);
+                        (repairing || confirmed).then_some((!confirmed, id))
+                    })
+                    .min();
+                if let Some((_, helper)) = helper {
+                    confirmed_demand.extend(
+                        demand.iter().copied().chain([root])
+                            .filter(|&peer| has_link(peer, helper))
+                            .map(|peer| (peer.min(helper), peer.max(helper))),
+                    );
+                    demand.insert(helper);
                 }
+            }
+            if repairing {
                 demand.extend(service);
             }
             if repair_due {
@@ -2514,6 +2528,11 @@ mod tests {
         let pairs = BTreeSet::from([(b, d), (c, d)]);
         room.reconcile_with_pairs(&endpoints, 0, &pairs);
         room.failed_pair(b, c);
+        room.reconcile_with_pairs(&endpoints, 1, &BTreeSet::new());
+        room.base_state(b, a, true).unwrap();
+        room.base_state(a, b, true).unwrap();
+        room.reconcile_with_pairs(&endpoints, 1, &BTreeSet::new());
+        room.base_state(a, c, true).unwrap();
         room.reconcile_with_pairs(&endpoints, 1, &pairs);
         assert!(room
             .base_links()

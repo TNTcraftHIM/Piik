@@ -240,7 +240,9 @@ remain the same when a different eligible holder supplies the bytes.
 In a hosted room the writer authorizes room activity and stores its history.
 A chat-only reader can open that room before a sender and receiver arrive.
 Start their route between the active participants. If the pair fails, an
-eligible reader in the room can relay the transfer. A peer that refuses a
+eligible reader in the room can relay the transfer. Prefer a reader already
+connected to both ends of a waiting route. Each replacement hop still needs
+both room acknowledgments before it can carry file data. A peer that refuses a
 file branch can still send or receive its own files. A confirmed direct
 connection can serve the pending download once both ends acknowledge its
 room grant.

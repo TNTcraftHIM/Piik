@@ -14,11 +14,23 @@ pub(crate) struct Binding {
     pub session: Uuid,
     pub connection: Uuid,
     pub revision: u64,
-    // Invalidations can advance the floor before the host's covering output arrives.
+    // A failed link retires routes. A new binding or scope update also retires the previous participant set.
     pub projection_floor: u64,
+    pub scope_floor: u64,
     pub applied_revision: u64,
     pub replies: BTreeMap<u64, ReplyOwner>,
     pub failed_pairs: BTreeMap<(Uuid, Uuid), u64>,
+}
+
+impl Binding {
+    pub(crate) fn invalidate_scope(&mut self) {
+        self.projection_floor = self.revision;
+        self.scope_floor = self.revision;
+    }
+
+    pub(crate) fn awaiting_pair_failure(&self) -> bool {
+        self.scope_floor <= self.applied_revision && self.applied_revision < self.projection_floor
+    }
 }
 
 #[derive(Clone)]
@@ -141,6 +153,15 @@ impl RemoteRoom {
         if binding.applied_revision < binding.projection_floor {
             return BTreeSet::new();
         }
+        Self::projected_sessions(binding, projection, service, actor)
+    }
+
+    fn projected_sessions(
+        binding: &Binding,
+        projection: &RoomProjection,
+        service: Option<ServiceEndpoint>,
+        actor: Option<Uuid>,
+    ) -> BTreeSet<Uuid> {
         let mut sessions: BTreeSet<_> = projection
             .participant_session_ids
             .iter()
@@ -178,7 +199,12 @@ impl RemoteRoom {
             HostAction::Command { context, .. } => Some(context.session_id),
             _ => None,
         };
-        let sessions = self.planning_sessions(service_endpoint, actor);
+        let sessions = match self.binding.as_ref().zip(self.projection.as_ref()) {
+            Some((binding, projection)) if binding.applied_revision >= binding.scope_floor => {
+                Self::projected_sessions(binding, projection, service_endpoint, actor)
+            }
+            _ => BTreeSet::new(),
+        };
         let confirmed_pairs = pairs
             .filter(|(a, b)| sessions.contains(a) && sessions.contains(b))
             .collect();
@@ -215,7 +241,7 @@ impl RemoteRoom {
         }
         binding.revision += 1;
         if matches!(action, HostAction::RouteWake) {
-            binding.projection_floor = binding.revision;
+            binding.invalidate_scope();
         }
         if let Some(owner) = owner {
             binding.replies.insert(binding.revision, owner);

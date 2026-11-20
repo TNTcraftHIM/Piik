@@ -854,6 +854,15 @@ impl BaseOperation {
 }
 
 impl BaseTree {
+    pub fn pending_after_direct_failure(&self, peer: Uuid) -> bool {
+        !self.ready(peer)
+            && self
+                .plan
+                .failed_parents
+                .get(&peer)
+                .is_some_and(|parents| parents.contains(&self.root()))
+    }
+
     pub fn new(root: Uuid) -> Self {
         Self {
             plan: Plan::new(root),
@@ -925,25 +934,20 @@ impl BaseTree {
             .collect();
         for child in pending {
             let current = self.plan.parents[&child];
-            // Keep the current room handshake once either endpoint has acknowledged it.
+            // Preserve a confirmed physical pair while the other endpoint acknowledges its room grant.
             let acknowledging = self.acknowledged.contains(&(current, child))
                 || self.acknowledged.contains(&(child, current));
             if acknowledging && confirmed_demand.contains(&(current.min(child), current.max(child)))
             {
                 continue;
             }
-            let parent = if acknowledging {
-                self.plan
-                    .candidate_parent(child, connected, &BTreeMap::new(), limits)
-            } else {
-                self.plan.preferred_parent(
-                    child,
-                    connected,
-                    &BTreeMap::new(),
-                    limits,
-                    confirmed_demand,
-                )
-            };
+            let parent = self.plan.preferred_parent(
+                child,
+                connected,
+                &BTreeMap::new(),
+                limits,
+                confirmed_demand,
+            );
             if let Some(parent) = parent {
                 self.plan.parents.insert(child, parent);
             }
