@@ -3252,6 +3252,58 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
 }
 
 #[test]
+fn room_default_reduction_converges_through_the_room_host() {
+    let mut network = RoomNetwork::new();
+    let [source, a, b] = [(); 3].map(|_| Uuid::new_v4());
+    let (session, _) = join(&mut network, source, None);
+    for viewer in [a, b] {
+        join(&mut network, viewer, None);
+    }
+    let room = network.create(source, RoomAccess::Public, false);
+    for viewer in [a, b] {
+        join_base(&mut network, viewer, &room);
+        let edge = pair(&network, viewer, session, &room).id;
+        for endpoint in [source, viewer] {
+            command(
+                &mut network,
+                endpoint,
+                json!({"type":"base_state","roomId":room,"pairId":edge,"ready":true}),
+            );
+        }
+    }
+    let picture = publish(&mut network, source, &room, "screen");
+    for viewer in [a, b] {
+        subscribe_screen(&mut network, viewer, picture);
+        let (edge, flow) = screen_input(&network, viewer, session, picture).unwrap();
+        command(
+            &mut network,
+            viewer,
+            json!({"type":"flow_state","pairId":edge,"flowId":flow.id,"state":"decoded"}),
+        );
+    }
+    let outputs = |network: &RoomNetwork| {
+        network
+            .state(source)
+            .pairs
+            .iter()
+            .flat_map(|pair| &pair.outgoing)
+            .filter(|flow| flow.selected && flow.publication_id == picture)
+            .count()
+    };
+    assert_eq!(outputs(&network), 2);
+    command(
+        &mut network,
+        source,
+        json!({"type":"update_room","roomId":room,"name":"Friends","icon":"couch","access":"public","hidden":false,"relayCapacity":1}),
+    );
+    assert_eq!(outputs(&network), 2);
+    let effects = network.authority.expire(20_100);
+    assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::HostInput { room_id, input } if room_id == &room && matches!(input.action, piik_channel_core::host::HostAction::RouteWake))));
+    network.deliver(effects);
+    assert_eq!(outputs(&network), 1);
+}
+
+#[test]
 fn hosted_media_deadline_wakes_room_without_fencing_an_earlier_request() {
     use piik_channel_core::{
         host::{HostAction, RoomResult},

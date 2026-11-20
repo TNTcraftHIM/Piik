@@ -1549,7 +1549,13 @@ impl RoomRuntime {
                     .screen
                     .as_ref()
                     .and_then(|s| s.direct_limit)
-                    .map(usize::from);
+                    .map(usize::from)
+                    .or_else(|| {
+                        self.base
+                            .as_ref()
+                            .filter(|base| base.root() == publication.info.session_id)
+                            .map(|_| limits.default)
+                    });
                 for (&(sender, receiver), &count) in &reserved {
                     if count > 0 && sender != publication.info.session_id {
                         screen_limits
