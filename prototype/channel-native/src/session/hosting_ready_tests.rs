@@ -14,6 +14,15 @@ async fn local_endpoint(commands: &mpsc::Sender<HostCommand>) -> Result<Option<U
 
 #[tokio::test]
 async fn current_host_readiness_retires_between_actual_admissions_and_on_stop() -> Result<()> {
+    check_readmission(true).await
+}
+
+#[tokio::test]
+async fn fresh_admission_resolves_registration_for_an_absent_room() -> Result<()> {
+    check_readmission(false).await
+}
+
+async fn check_readmission(room_in_domain: bool) -> Result<()> {
     let directory = tempfile::tempdir()?;
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let mut authority = Authority::new("owned-ready".into(), vec![]).map_err(anyhow::Error::msg)?;
@@ -176,24 +185,26 @@ async fn current_host_readiness_retires_between_actual_admissions_and_on_stop() 
             }
         }
 
-        let admitted = authority.handle(
-            connection,
-            Request {
-                request_id: None,
-                command: Command::AdmitRoom {
-                    room: RoomSummary::from_policy(&policy),
+        if room_in_domain {
+            let admitted = authority.handle(
+                connection,
+                Request {
+                    request_id: None,
+                    command: Command::AdmitRoom {
+                        room: RoomSummary::from_policy(&policy),
+                    },
                 },
-            },
-            1,
-        );
-        ensure!(
-            !admitted
-                .events
-                .iter()
-                .any(|(_, event)| matches!(event, Event::Error { .. })),
-            "{:?}",
-            serde_json::to_string(&admitted.events)?
-        );
+                1,
+            );
+            ensure!(
+                !admitted
+                    .events
+                    .iter()
+                    .any(|(_, event)| matches!(event, Event::Error { .. })),
+                "{:?}",
+                serde_json::to_string(&admitted.events)?
+            );
+        }
         first.close(None).await?;
         status.wait_for(Option::is_none).await?;
         ensure!(
@@ -236,20 +247,22 @@ async fn current_host_readiness_retires_between_actual_admissions_and_on_stop() 
             next.send(Message::Text(serde_json::to_string(&event)?.into()))
                 .await?;
         }
-        let retry = next
-            .next()
-            .await
-            .context("missing copy re-registration")??;
-        let retry = Request::parse(retry.to_text()?).map_err(|e| anyhow!("{e:?}"))?;
-        ensure!(matches!(retry.command, Command::HostRegister { .. }));
-        next.send(Message::Text(
-            serde_json::to_string(&Event::Error {
-                code: "fixture_denied".into(),
-                request_id: retry.request_id,
-            })?
-            .into(),
-        ))
-        .await?;
+        if room_in_domain {
+            let retry = next
+                .next()
+                .await
+                .context("missing copy re-registration")??;
+            let retry = Request::parse(retry.to_text()?).map_err(|e| anyhow!("{e:?}"))?;
+            ensure!(matches!(retry.command, Command::HostRegister { .. }));
+            next.send(Message::Text(
+                serde_json::to_string(&Event::Error {
+                    code: "fixture_denied".into(),
+                    request_id: retry.request_id,
+                })?
+                .into(),
+            ))
+            .await?;
+        }
         status
             .wait_for(|value| matches!(value, Some(Ok(()))))
             .await?;

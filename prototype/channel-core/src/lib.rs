@@ -272,13 +272,17 @@ impl Authority {
         self.channel.reserve_creation(creation)
     }
 
-    pub fn member_connection(&self, session: Uuid, user: Uuid) -> Option<Uuid> {
-        self.channel
+    pub fn creation_connection(&self, session: Uuid, user: Uuid) -> Result<Uuid, &'static str> {
+        let connection = self
+            .channel
             .identity
             .sessions
             .get(&session)
-            .filter(|endpoint| endpoint.user_id == user)?
-            .connection
+            .filter(|endpoint| endpoint.user_id == user)
+            .and_then(|endpoint| endpoint.connection)
+            .ok_or("forbidden")?;
+        self.channel.check_room_creator(user)?;
+        Ok(connection)
     }
 
     pub fn cancel_hosted_creation(&mut self, creation: &RoomCreation) -> Effects {

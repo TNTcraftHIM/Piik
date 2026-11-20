@@ -39,7 +39,7 @@ import { validateCustomFeedbackClip } from "./feedback-clip";
 import { createOpaqueId } from "../lib/opaque-id";
 import { captureBrowserSource, setMediaPaused, type BrowserCaptureSource } from "../media/quality";
 import { loadCameraPreviews, type CameraPreview } from "../media/camera-previews";
-import { readBackup, writeBackup, type BackupMetadata, type RetainedBackupFile } from "./backup-archive";
+import { prepareHostedRoomArchive, readBackup, writeBackup, type BackupMetadata, type RetainedBackupFile } from "./backup-archive";
 import { NativeDomainHosting, NativeRoomHosting, roomRestoreRecovery } from "./hosting-api";
 import type { RetainedFile } from "./file-store";
 import { automaticVideoCodecPreference, manualVideoCodecPreference, supportsH264Receive, type BrowserVideoCodecMode, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
@@ -1793,20 +1793,7 @@ export class ChannelSession {
     const credential = this.credential, sessionId = this.view.sessionId;
     if (!credential || !sessionId) throw new Error("disconnected");
     const command = this.roomCreationCommand(settings);
-    const contents = new Map<string, File>();
-    let writerArchive: Blob | undefined;
-    const metadata = await readBackup(archive, {
-      metadata(value) {
-        current();
-        if (value.kind !== "room_copy") throw new Error("expected_room_copy");
-      },
-      row: () => current(),
-      content(digest, file) { current(); contents.set(digest, file); },
-      hostedArchive(value) { writerArchive = value; },
-      hostedCopySettings: command,
-    });
-    current();
-    if (metadata.kind !== "room_copy" || !writerArchive) throw new Error("expected_room_copy");
+    const { metadata, archive: writerArchive, contents } = await prepareHostedRoomArchive(archive, { kind: "room_copy", settings: command }, current);
     const hosted = new NativeRoomHosting("/prototype/channel/rooms", { Authorization: `Bearer ${credential}` });
     const room = await hosted.importCopy(writerArchive, command.room.creatorId, sessionId);
     try {
@@ -1829,13 +1816,19 @@ export class ChannelSession {
 
   private async restoreRoomArchive(archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }> {
     const initial = this.sessionContext(), owner = roomId ? await this.backupOwner(roomId) : undefined;
-    if (!roomId && this.view.state!.channel.hostingMode === "hosted") throw new Error("room_host_unavailable");
+    initial();
+    if (this.view.state!.channel.hostingMode === "hosted") {
+      if (!roomId || !owner) throw new Error("room_host_unavailable");
+      const target = { kind: "room" as const, domainId: this.view.state!.channel.id, roomId };
+      const prepared = await prepareHostedRoomArchive(archive, target, initial);
+      owner.current();
+      if (prepared.metadata.kind !== "room") throw new Error("invalid_backup");
+      return this.installRoomHistory(prepared.metadata, prepared.contents, { kind: "restore", archive: prepared.archive, owner });
+    }
     let stage: BrowserRoomStage | undefined;
-    let writerArchive = archive;
     const contents = new Map<string, File>();
     try {
       const metadata = await readBackup(archive, {
-        hostedArchive: roomId && this.view.state!.channel.hostingMode === "hosted" ? value => { writerArchive = value; } : undefined,
         metadata: async value => {
           initial();
           if (value.kind !== "room" || value.domainId !== this.view.state!.channel.id || (roomId && value.policy.id !== roomId)) throw new Error("backup_room_mismatch");
@@ -1852,7 +1845,7 @@ export class ChannelSession {
       });
       initial(); owner?.current();
       if (metadata.kind !== "room") throw new Error("invalid_backup");
-      return await this.installRoomHistory(metadata, contents, { kind: "restore", archive: writerArchive, stage, owner });
+      return await this.installRoomHistory(metadata, contents, { kind: "restore", archive, stage, owner });
     } finally {
       await stage?.close().catch(() => {});
     }

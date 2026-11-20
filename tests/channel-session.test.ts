@@ -8807,22 +8807,12 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     // A copy excludes room authority; it is not anonymized history before import.
     expect(history).toEqual([row]);
     expect(await content.get(attachment.sha256)!.text()).toBe("owned copy bytes");
-    let copyWriterArchive: Blob | undefined;
-    await backupArchive.readBackup(archive, { metadata() {}, row() {}, content() {},
-      hostedArchive(value) { copyWriterArchive = value; } });
-    const copyRows: BackupHistoryRow[] = [];
-    const copyWriterMetadata = await backupArchive.readBackup(copyWriterArchive!, {
-      metadata() {}, row(value) { copyRows.push(value); }, content() { throw new Error("unexpected hosted content"); },
-    });
-    expect(copyWriterMetadata).toEqual({ ...metadata, retainedFiles: [] });
-    expect(copyRows).toEqual([row]);
     const hostedCopySettings = { type: "create_room" as const, room: {
       id: "new", creatorId: author, name: "Hosted copy", icon: "couch", access: "public" as const, hidden: false,
       hasPassword: false, voiceBitrate: 64_000, relayCapacity: 4,
     } };
-    let requestArchive: Blob | undefined;
-    await backupArchive.readBackup(archive, { metadata() {}, row() {}, content() {}, hostedCopySettings,
-      hostedArchive(value) { requestArchive = value; } });
+    const { archive: requestArchive } = await backupArchive.prepareHostedRoomArchive(archive,
+      { kind: "room_copy", settings: hostedCopySettings }, () => {});
     const zip = await import("@zip.js/zip.js/lib/zip-core-native.js");
     const reader = new zip.ZipReader(new zip.BlobReader(requestArchive!), { useWebWorkers: false });
     try {
@@ -8848,14 +8838,14 @@ test("a copy without room information round-trips real ZIP content and remaps hi
     const result = await backupArchive.readBackup(converted, { metadata: () => {}, row: value => { restored.push(value); }, content: () => {} });
     expect(result).toMatchObject({ kind: "room", policy: { creatorId: creator, access: "private", grants: [], inviteHash: null, passwordHash: null } });
     expect(result).not.toHaveProperty("ownCredential"); expect(policy).not.toHaveProperty("inviteKey");
-    let writerArchive: Blob | undefined;
-    const originals: File[] = [];
-    await backupArchive.readBackup(converted, { metadata() {}, row() {}, content(_, file) { originals.push(file); },
-      hostedArchive(value) { writerArchive = value; } });
-    expect(await originals[0].text()).toBe("owned copy bytes");
+    const target = { kind: "room" as const, domainId: result.kind === "room" ? result.domainId : "", roomId: policy.id };
+    await expect(backupArchive.prepareHostedRoomArchive(archive, target, () => {})).rejects.toThrow("backup_room_mismatch");
+    const { archive: writerArchive, contents } = await backupArchive.prepareHostedRoomArchive(converted, target, () => {});
+    expect(await contents.get(attachment.sha256)!.text()).toBe("owned copy bytes");
     const uploaded: BackupHistoryRow[] = [];
     const stripped = await backupArchive.readBackup(writerArchive!, { metadata() {}, row(value) { uploaded.push(value); },
-      content() { throw new Error("unexpected hosted content"); }, hostedArchive(value) { expect(value).toBe(writerArchive); } });
+      content() { throw new Error("unexpected hosted content"); } });
+    expect((await backupArchive.prepareHostedRoomArchive(writerArchive, target, () => {})).archive).toBe(writerArchive);
     expect(stripped).toEqual({ ...result, retainedFiles: [] });
     expect(uploaded).toEqual(restored);
     expect(restored).toEqual([copied]); expect(snapshot.close).toHaveBeenCalledOnce();
@@ -12615,13 +12605,11 @@ test("hosted room copy waits for the server's new room and restores originals un
   const source = new Blob(["with originals"]), writerArchive = new Blob(["history only"]);
   const original = new File(["kept locally"], "original.txt");
   const metadata = { kind: "room_copy", version: 2, authors: {}, retainedFiles: [retained] } as backupArchive.BackupMetadata;
-  vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => {
-    await visitor!.metadata(metadata);
-    await visitor!.content(retained.attachment.sha256, original);
-    expect(visitor!.hostedCopySettings).toMatchObject({ type: "create_room", password: "fresh",
+  vi.spyOn(backupArchive, "prepareHostedRoomArchive").mockImplementation(async (_blob, target) => {
+    expect(target.kind === "room_copy" && target.settings).toMatchObject({ type: "create_room", password: "fresh",
       room: { id: "new", creatorId: "self", name: "A new room", access: "private", hidden: true, hasPassword: true } });
-    visitor!.hostedArchive!(writerArchive);
-    return metadata;
+    return { metadata: metadata as Extract<backupArchive.BackupMetadata, { kind: "room_copy" }>,
+      archive: writerArchive, contents: new Map([[retained.attachment.sha256, original]]) };
   });
   const settings = { name: "A new room", icon: "couch", access: "private", hidden: true, password: "fresh" } as const;
   const created = { ...state.channel.rooms[0], ...settings, id: crypto.randomUUID(), hasPassword: true };
@@ -12669,7 +12657,7 @@ test("hosted room copy waits for the server's new room and restores originals un
 });
 
 test("hosted room archives use the room creator credential independently of App and domain ownership", async () => {
-  const { session, socket, state, read, metadata, row } = await setupRoomBackup();
+  const { session, socket, state, metadata } = await setupRoomBackup();
   const fetch = vi.fn().mockResolvedValueOnce(new Response("room archive"));
   vi.stubGlobal("fetch", fetch);
   try {
@@ -12682,9 +12670,7 @@ test("hosted room archives use the room creator credential independently of App 
     expect(fetch.mock.calls[0][0]).toBe("/prototype/channel/rooms/first/backup");
     fetch.mockResolvedValueOnce(Response.json({error:"room_restored_connection_failed"},{status:409}));
     const participantArchive = new Blob(["with participant contents"]), writerArchive = new Blob(["validated stripped ZIP"]);
-    read.mockImplementationOnce(async (_blob, visitor) => {
-      await visitor!.metadata(metadata); await visitor!.row(row); visitor!.hostedArchive!(writerArchive); return metadata;
-    });
+    vi.spyOn(backupArchive, "prepareHostedRoomArchive").mockResolvedValueOnce({ metadata, archive: writerArchive, contents: new Map() });
     await expect(session.restoreRoomBackup(participantArchive,"first")).rejects.toThrow("room_restored_connection_failed");
     expect(fetch.mock.calls[1][0]).toBe("/prototype/channel/rooms/first/backup");
     expect(fetch.mock.calls[1][1].method).toBe("PUT");

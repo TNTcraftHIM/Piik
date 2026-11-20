@@ -765,6 +765,14 @@ impl Channel {
         Ok(creation.summary)
     }
 
+    pub(crate) fn check_room_creator(&self, user: Uuid) -> Result<(), &'static str> {
+        if self.room_creation_policy.permits_request(user == self.identity.owner_id, None) {
+            Ok(())
+        } else {
+            Err("room_creation_restricted")
+        }
+    }
+
     pub(crate) fn prepare_creation(
         &self,
         session: Uuid,
@@ -2186,14 +2194,18 @@ impl DurableState {
 
 impl RoomCreationPolicy {
     pub fn permits(self, owner_id: Option<Uuid>, room: &RoomSummary) -> bool {
-        Some(room.creator_id) == owner_id
-            || match self {
-                Self::Ordinary => true,
-                Self::InviteOnly => {
-                    room.access == RoomAccess::Private && room.hidden && !room.has_password
-                }
-                Self::OwnerOnly => false,
-            }
+        self.permits_request(Some(room.creator_id) == owner_id, Some(room))
+    }
+
+    // Before an upload is read, only the requesting user's role is available.
+    fn permits_request(self, is_owner: bool, settings: Option<&RoomSummary>) -> bool {
+        is_owner || match self {
+            Self::Ordinary => true,
+            Self::InviteOnly => settings.is_none_or(|room| {
+                room.access == RoomAccess::Private && room.hidden && !room.has_password
+            }),
+            Self::OwnerOnly => false,
+        }
     }
 }
 

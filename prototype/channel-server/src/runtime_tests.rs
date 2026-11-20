@@ -2954,36 +2954,48 @@ async fn hosted_room_copy_installs_history_under_fresh_authority() {
         assert_eq!(authority(), before);
     }
 
-    for (policy, name) in [
-        (RoomCreationPolicy::InviteOnly, "invite_only"),
-        (RoomCreationPolicy::OwnerOnly, "owner_only"),
-        (RoomCreationPolicy::Ordinary, "ordinary"),
-    ] {
-        send_request(
-            &mut operator,
-            json!({"type":"set_room_creation_policy","policy":name}),
-        )
-        .await;
-        state_when(&mut operator, |state| {
-            state.channel.room_creation_policy == policy
-        })
-        .await;
-        if policy != RoomCreationPolicy::Ordinary {
-            let before = authority();
-            let mut public = settings.clone();
-            public["room"]["access"] = json!("public");
-            public["room"]["hidden"] = json!(false);
-            let (status, body) = room_copy_http(
-                address,
-                &creator_credential,
-                creator_session,
-                &pack(&history, &public),
-            )
-            .await;
-            assert_eq!(status, 403, "{body}");
-            assert_eq!(authority(), before);
-        }
+    send_request(
+        &mut operator,
+        json!({"type":"set_room_creation_policy","policy":"owner_only"}),
+    )
+    .await;
+    state_when(&mut operator, |state| {
+        state.channel.room_creation_policy == RoomCreationPolicy::OwnerOnly
+    })
+    .await;
+    let before = authority();
+    for archive in [&[][..], valid.as_slice()] {
+        let (status, body) =
+            room_copy_http(address, &creator_credential, creator_session, archive).await;
+        assert_eq!(status, 403, "{body}");
+        assert_eq!(body["error"], "room_creation_restricted");
+        assert_eq!(authority(), before);
     }
+
+    send_request(
+        &mut operator,
+        json!({"type":"set_room_creation_policy","policy":"invite_only"}),
+    )
+    .await;
+    state_when(&mut operator, |state| {
+        state.channel.room_creation_policy == RoomCreationPolicy::InviteOnly
+    })
+    .await;
+    let before = authority();
+    let mut public = settings.clone();
+    public["room"]["access"] = json!("public");
+    public["room"]["hidden"] = json!(false);
+    let (status, body) = room_copy_http(
+        address,
+        &creator_credential,
+        creator_session,
+        &pack(&history, &public),
+    )
+    .await;
+    assert_eq!(status, 403, "{body}");
+    assert_eq!(body["error"], "room_creation_restricted");
+    assert_eq!(authority(), before);
+
 
     let (status, body) =
         room_copy_http(address, &creator_credential, creator_session, &valid).await;

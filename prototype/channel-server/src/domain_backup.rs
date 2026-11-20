@@ -152,8 +152,8 @@ pub(super) async fn create_copy(
             auth.hosting_mode() == HostingMode::Hosted
         })?;
         hub.authority
-            .member_connection(session, creator.user_id)
-            .ok_or_else(|| creation_error("forbidden"))?
+            .creation_connection(session, creator.user_id)
+            .map_err(creation_error)?
     };
     let scratch = domain
         .room_restore

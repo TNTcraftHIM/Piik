@@ -1,6 +1,6 @@
 import { loadRoomHosting } from "./hosting";
 import type { AttachmentHash } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
-import type { BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
+import { validBackupSequence, type BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
 import type { ChannelAttachment, ChannelCommand, RoomSettings, RoomSummary } from "./protocol";
 import type { FileEntry } from "@zip.js/zip.js";
 
@@ -12,12 +12,13 @@ export type BackupMetadata =
       ownCredential?: { userId: string; credential: string }; retainedFiles: RetainedBackupFile[] }
   | { kind: "room_copy"; version: 2; roomInfo?: RoomCopyInfo; authors: Record<string, string>; retainedFiles: RetainedBackupFile[] };
 export interface BackupVisitor {
-  hostedArchive?(value: Blob): void;
-  hostedCopySettings?: Extract<ChannelCommand, { type: "create_room" }>;
   metadata(value: BackupMetadata): void | Promise<void>;
   row(value: BackupHistoryRow): void | Promise<void>;
   content(digest: string, file: File): void | Promise<void>;
 }
+type HostedArchiveTarget =
+  | { kind: "room"; domainId: string; roomId: string }
+  | { kind: "room_copy"; settings: Extract<ChannelCommand, { type: "create_room" }> };
 
 type Runtime = Awaited<ReturnType<typeof loadRoomHosting>>;
 const encoder = new TextEncoder();
@@ -42,10 +43,32 @@ function inventory(metadata: BackupMetadata): Map<string, RetainedBackupFile> {
 
 /** Inspect metadata; domain records are preflighted before restore, room visitors validate history and content. */
 export function readBackup(blob: Blob, visitor?: BackupVisitor): Promise<BackupMetadata> {
-  return readArchive(blob, visitor).catch(backupFailure);
+  return readArchive(blob, visitor).then(({ metadata }) => metadata).catch(backupFailure);
 }
 
-async function readArchive(blob: Blob, visitor?: BackupVisitor): Promise<BackupMetadata> {
+export async function prepareHostedRoomArchive(blob: Blob, target: HostedArchiveTarget, current: () => void) {
+  const contents = new Map<string, File>();
+  const { metadata, archive } = await readArchive(blob, {
+    metadata(value) {
+      current();
+      if (target.kind === "room_copy") {
+        if (value.kind !== "room_copy") throw new Error("expected_room_copy");
+      } else if (value.kind !== "room" || value.domainId !== target.domainId || value.policy.id !== target.roomId) {
+        throw new Error("backup_room_mismatch");
+      }
+    },
+    row(row) {
+      current();
+      if (target.kind === "room" && !validBackupSequence(row.seq)) throw new Error("invalid_backup_history");
+    },
+    content(digest, file) { current(); contents.set(digest, file); },
+  }, target).catch(backupFailure);
+  current();
+  if (metadata.kind === "domain" || !archive) throw new Error("invalid_backup");
+  return { metadata, archive, contents };
+}
+
+async function readArchive(blob: Blob, visitor?: BackupVisitor, hosted?: HostedArchiveTarget): Promise<{ metadata: BackupMetadata; archive?: Blob }> {
   const [module, zip] = await Promise.all([runtime(), import("@zip.js/zip.js/lib/zip-core-native.js")]);
   const reader = new zip.ZipReader(new zip.BlobReader(blob), { useWebWorkers: false });
   try {
@@ -70,7 +93,7 @@ async function readArchive(blob: Blob, visitor?: BackupVisitor): Promise<BackupM
         check.finish();
       } finally { check.free(); }
     }
-    if (!visitor) return metadata;
+    if (!visitor) return { metadata };
     await visitor.metadata(metadata);
     if (metadata.kind !== "domain") {
       const importer = new module.BackupHistoryImport(JSON.stringify(metadata));
@@ -90,25 +113,23 @@ async function readArchive(blob: Blob, visitor?: BackupVisitor): Promise<BackupM
           await visitor.content(hash, new File([await output.getData()], descriptor.name, { type: descriptor.mediaType }));
         } finally { check.free(); }
       }
-      if (visitor.hostedArchive) {
-        if (!files.size && !visitor.hostedCopySettings) visitor.hostedArchive(blob);
-        else {
-          const output = new zip.BlobWriter("application/zip");
-          const writer = new zip.ZipWriter(output, zipOptions);
-          try {
-            await writer.add(manifest, new zip.Uint8ArrayReader(encoder.encode(JSON.stringify({ ...metadata, retainedFiles: [] }))));
-            if (visitor.hostedCopySettings) {
-              await writer.add("settings.json", new zip.Uint8ArrayReader(encoder.encode(JSON.stringify(visitor.hostedCopySettings))));
-            }
-            const stream = new TransformStream<Uint8Array, Uint8Array>();
-            await Promise.all([writer.add(history, stream.readable),
-              entries.get(history)!.getData(stream.writable, { useWebWorkers: false, checkSignature: true })]);
-            visitor.hostedArchive(await writer.close());
-          } catch (error) { await writer.close().catch(() => {}); throw error; }
-        }
+      if (hosted) {
+        if (!files.size && hosted.kind === "room") return { metadata, archive: blob };
+        const output = new zip.BlobWriter("application/zip");
+        const writer = new zip.ZipWriter(output, zipOptions);
+        try {
+          await writer.add(manifest, new zip.Uint8ArrayReader(encoder.encode(JSON.stringify({ ...metadata, retainedFiles: [] }))));
+          if (hosted.kind === "room_copy") {
+            await writer.add("settings.json", new zip.Uint8ArrayReader(encoder.encode(JSON.stringify(hosted.settings))));
+          }
+          const stream = new TransformStream<Uint8Array, Uint8Array>();
+          await Promise.all([writer.add(history, stream.readable),
+            entries.get(history)!.getData(stream.writable, { useWebWorkers: false, checkSignature: true })]);
+          return { metadata, archive: await writer.close() };
+        } catch (error) { await writer.close().catch(() => {}); throw error; }
       }
     }
-    return metadata;
+    return { metadata };
   } finally { await reader.close(); }
 }
 

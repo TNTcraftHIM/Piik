@@ -1304,6 +1304,13 @@ impl Session {
                         }
                         self.files.push(file);
                     }
+                    // Only reopened rooms will receive a registration reply on this session.
+                    for (_, opening) in self.opening.extract_if(.., |id, opening| {
+                        matches!(opening.work, OpeningWork::Register { .. })
+                            && !rooms.contains_key(id)
+                    }) {
+                        opening.fail("room_unavailable");
+                    }
                     let ice = state
                         .ice_servers
                         .iter()
