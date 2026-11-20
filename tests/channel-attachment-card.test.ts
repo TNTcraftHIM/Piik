@@ -5,10 +5,10 @@ import { ChannelAttachment } from "../src/client/channel/components/ChannelAttac
 import type { ChannelAttachments } from "../src/client/channel/attachments";
 import { t } from "../src/client/ui/copy";
 
-function renderCard(availability: boolean | undefined, busy = false) {
+function renderCard(availability: boolean | undefined, busy = false, error: string | null = null) {
   const client = {
     subscribe: () => () => {},
-    status: () => ({ busy, error: null }),
+    status: () => ({ busy, error }),
     progress: () => undefined,
     hasSavedCopy: () => false,
     originalAvailability: () => availability,
@@ -39,5 +39,13 @@ describe("attachment original availability", () => {
     expect(markup.match(/<button\b[^>]* disabled=""/g)).toHaveLength(1);
     expect(markup).toContain(t("zh", "channel.attachment.cancelDownload"));
     expect(markup).not.toContain(t("zh", "channel.attachment.noOriginalSource"));
+  });
+
+  it("reports an expired saved file after the user opens its folder", () => {
+    const markup = renderCard(false, false, "saved_copy_missing");
+    expect(markup).toContain(`${t("zh", "channel.attachment.savedCopyMissing")} ${t("zh", "channel.attachment.noOriginalSource")}`);
+    const availableMarkup = renderCard(true, false, "saved_copy_missing");
+    expect(availableMarkup).toContain(t("zh", "channel.attachment.savedCopyMissing"));
+    expect(availableMarkup).not.toContain('disabled=""');
   });
 });

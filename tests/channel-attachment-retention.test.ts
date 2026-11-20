@@ -426,6 +426,52 @@ test.each(["en", "zh", "zh-Hant", "ja", "ko"] as const)("archive budget guidance
 });
 
 
+test("cancel while waiting for a source permits retry before the old receive command settles", async () => {
+  let rejectOldReceive!: (reason: Error) => void;
+  const oldReceive = new Promise<void>((_, reject) => { rejectOldReceive = reject; });
+  let starts = 0;
+  const command = vi.fn(async (command: ChannelCommand) => {
+    if (command.type === "file_receive" && command.enabled && ++starts === 1) await oldReceive;
+  });
+  const files = setup(command);
+  const cancel = vi.fn(() => "[]"), removeEntry = vi.fn(async (_name: string) => {});
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ initializeRuntime: async () => {},
+    FileDelivery: class {
+      start() { return "[]"; } update() { return "[]"; } next_deadline() { return undefined; }
+      cancel = cancel; free() {}
+    },
+  } as never);
+  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+    getFileHandle: async () => ({ createWritable: async () => ({ abort: async () => {} }) }),
+    removeEntry,
+  }) }) } });
+  const room = { id: key.roomId, authorized: true, available: true } as ChannelRoom;
+  const scope = { domainId: "domain", userId: "self" };
+  const plan = { roomId: key.roomId, messageSeq: key.messageSeq, attachment, authorId: "author",
+    sourceId: null, upstream: null, downstream: [], receiving: true };
+  try {
+    files.update("endpoint", scope, [plan], [room], []);
+    const first = files.download(key, attachment);
+    void first.catch(() => {});
+    await vi.waitFor(() => expect(starts).toBe(1));
+    files.update("endpoint", scope, [plan], [room], []);
+    expect(files.progress(key)).toMatchObject({ received: 0, state: "waiting-source" });
+    files.cancelDownload(key);
+    expect(files.progress(key)).toBeNull();
+    const retry = files.download(key, attachment);
+    void retry.catch(() => {});
+    await expect(first).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(starts).toBe(2));
+    rejectOldReceive(new Error("retired_receive_failed"));
+    await vi.waitFor(() => expect(removeEntry).toHaveBeenCalledOnce());
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(files.status(key)).toMatchObject({ busy: true, error: null });
+    expect(files.progress(key)).toMatchObject({ received: 0 });
+    files.cancelDownload(key);
+    await expect(retry).rejects.toMatchObject({ name: "AbortError" });
+  } finally { files.reset(); vi.unstubAllGlobals(); }
+});
+
 test.each(["cancel", "revoke"])("shared file progress survives leaving the view and a retired writer cannot affect a retry after %s", async retirement => {
   const command = vi.fn(async (_command: ChannelCommand) => {}), files = setup(command);
   const file = new File(["GIF89a"], attachment.name);

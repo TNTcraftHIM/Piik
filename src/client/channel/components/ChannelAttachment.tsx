@@ -119,8 +119,10 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   const saving = download.outcome === "started", savedBytes = download.saveProgress;
   const savePending = isNativeSavePending(download.outcome);
   const canReveal = savedCopy && typeof (downloadSurface.current?.ownerDocument ?? surfaceDocument)?.defaultView?.piikRevealDownload === "function";
-  const cardStatus = (!imageOpen && !download.busy && !previewBusy && !savePending ? originalStatus : undefined)
-    ?? downloadMessage ?? (!imageOpen ? previewMessage : undefined);
+  const originalNotice = !imageOpen && !download.busy && !previewBusy && !savePending ? originalStatus : undefined;
+  const cardStatus = originalNotice && download.error === "saved_copy_missing"
+    ? `${downloadMessage} ${originalNotice}`
+    : originalNotice ?? downloadMessage ?? (!imageOpen ? previewMessage : undefined);
   return <div className="c3-attachment" ref={downloadSurface}>
     <div className="c3-attachment-file"><Glyph name="save" size={21} />
       <div><Tooltip overflow={{ text: file.name, selector: "strong" }}><strong>{file.name}</strong></Tooltip><small>{fileSize(file.size)}</small></div>

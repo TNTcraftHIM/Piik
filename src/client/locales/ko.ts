@@ -252,7 +252,7 @@ export const ko = {
   "channel.attachment.loadingOriginalImage": "원본 이미지 불러오는 중…",
   "channel.attachment.originalLoadFailed": "원본 이미지를 불러오지 못했어요.",
   "channel.attachment.cancelDownload": "다운로드 취소",
-  "channel.attachment.savedCopyMissing": "저장된 파일을 찾을 수 없습니다. 다시 다운로드할 수 있습니다.",
+  "channel.attachment.savedCopyMissing": "저장된 파일을 찾을 수 없어요.",
   "channel.attachment.revealSaved": "폴더에서 보기",
   "channel.attachment.downloadOriginal": "원본 다운로드",
   "channel.attachment.download": "다운로드",
