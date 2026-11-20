@@ -8,6 +8,9 @@ English · [简体中文](./sound-help.zh-CN.md)
 2. If nobody hears the game, ask the Host to pick what to share again and enable sound. Safari screen sharing on iPhone does not include game audio. With a camera, including OBS Virtual Camera, the Host selects an audio input separately. [Sharing sources and sound settings](./sharing.md)
 3. Windows App full-screen capture uses the default playback device when no applications are excluded. Route the game there or share its window, then ask a Viewer to listen again.
 
+![In the Windows App source picker, Application sound sits above the selected window.](../assets/guide/share-source-confirm.en.png#gh-light-mode-only)
+![In the Windows App source picker, Application sound sits above the selected window.](../assets/guide/share-source-confirm.en.dark.png#gh-dark-mode-only)
+
 ## I cannot hear a friend speaking
 
 Ask how your friend is speaking. If the Host enabled **Include my microphone**, their voice plays with the picture. The Host can check **Sharing settings → Sound**, and Viewers can unmute the video.

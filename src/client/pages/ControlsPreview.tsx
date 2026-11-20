@@ -408,6 +408,7 @@ export function ControlsPreview() {
           lan={{ selected: launchLan, onChange: setLaunchLan, addresses: [
             { address: "192.0.2.10", name: "Wi-Fi" },
             { address: "192.0.2.20", name: "vEthernet (Example Virtual Network Adapter with a Long Name)" },
+            { address: "192.0.2.30", name: "vEthernet (Virtual LAN)" },
           ] }}
           localAccessPassword={launchPassword} onLocalAccessPasswordChange={setLaunchPassword}
           onSubmit={event => event.preventDefault()}>

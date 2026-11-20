@@ -8,6 +8,9 @@
 2. 如果所有观众都听不到，请房主重新选择分享的内容，并打开声音。iPhone Safari 分享屏幕时无法传送游戏声音。使用摄像头（包括 OBS 虚拟摄像头）时，房主需要另选音频输入。[分享来源与声音设置](./sharing.zh-CN.md)
 3. Windows App 分享整屏且未排除应用声音时，游戏需要通过默认播放设备发声。房主也可以只选游戏窗口分享，再请观众试听。
 
+![Windows App 的选源窗口中，应用声音开关位于所选窗口的上方。](../assets/guide/share-source-confirm.zh-CN.png#gh-light-mode-only)
+![Windows App 的选源窗口中，应用声音开关位于所选窗口的上方。](../assets/guide/share-source-confirm.zh-CN.dark.png#gh-dark-mode-only)
+
 ## 听不到朋友说话
 
 先问朋友是通过哪种方式说话。如果房主打开了 **分享麦克风**，声音随画面播放。请房主检查 **分享设置 → 声音**，观众取消画面静音。

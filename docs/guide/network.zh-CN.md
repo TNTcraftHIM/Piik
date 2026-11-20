@@ -108,6 +108,12 @@ STUN 服务会接收到参与者的公网 IP，请选择信任的服务。
 
 1. **加入同一网络。** 房主和朋友都运行组网工具，进入同一个虚拟局域网。
 2. **房主选择虚拟地址。** 在新版 Piik App 选择 **本地房间**，展开 **局域网邀请地址**，选择组网工具提供的 IP，然后进入房间并分享。
+
+   按组网工具显示的 IPv4 地址选择。图中选中的是示例虚拟网卡。
+
+   ![局域网邀请地址字段显示选中的示例虚拟网卡及其 IPv4 地址。](../assets/guide/virtual-lan-address.zh-CN.png#gh-light-mode-only)
+   ![局域网邀请地址字段显示选中的示例虚拟网卡及其 IPv4 地址。](../assets/guide/virtual-lan-address.zh-CN.dark.png#gh-dark-mode-only)
+
 3. **发送完整邀请。** 朋友打开该虚拟 IP 下的 HTTPS 邀请，首次访问先与房主[核对本地证书](./troubleshooting.zh-CN.md#本地-https-证书提示)，再进入房间。不要发送 `localhost` 地址或只发房间号。
 4. **确认画面和声音。** 所有设备保持组网工具运行，房主同时保持 Piik App 运行。虚拟 IP 变化后，房主需重新选择地址并发送新邀请。
 

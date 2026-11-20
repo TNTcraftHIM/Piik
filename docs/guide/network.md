@@ -120,6 +120,12 @@ not suffice. Choose a tool available to everyone in your group:
 
 1. **Join the same network.** The Host and friends run the tool and join the same virtual LAN.
 2. **Host selects its address.** In the updated Piik App, choose **Local room**, expand **Local invitation address**, select the tool's virtual IP, then enter the room and share.
+
+   Match the IPv4 address in your networking tool. Here the example virtual adapter is selected.
+
+   ![The Local invitation address field shows the selected example virtual adapter and its IPv4 address.](../assets/guide/virtual-lan-address.en.png#gh-light-mode-only)
+   ![The Local invitation address field shows the selected example virtual adapter and its IPv4 address.](../assets/guide/virtual-lan-address.en.dark.png#gh-dark-mode-only)
+
 3. **Send the complete invitation.** Friends open the HTTPS invitation on that virtual IP. On first access, [confirm the local certificate](./troubleshooting.md#local-https-certificate-warning) with the Host before entering. Do not send `localhost` or only a room code.
 4. **Check picture and sound.** Everyone keeps the networking tool running; the Host also keeps Piik App running. If the virtual IP changes, the Host selects the new address and sends a new invitation.
 

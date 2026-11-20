@@ -67,6 +67,13 @@ try {
       const suffix = `${locale}${theme === 'dark' ? '.dark' : ''}`;
       await openSection('launcher-preview', lang, theme);
       await capture('.lr-client-modes', `app-modes.${suffix}`);
+      await run('set', 'viewport', '440', '900');
+      await run('click', '#launcher-preview .lr-client-modes > :last-child [role="radio"]');
+      const lan = '#launcher-preview .lr-client-access-options:has(.lr-client-lan)';
+      await run('click', `${lan} summary`);
+      await run('select', `${lan} select`, '192.0.2.30');
+      await capture(lan, `virtual-lan-address.${suffix}`);
+      await run('set', 'viewport', '1280', '900');
 
       await openSection('source-preview', lang, theme);
       await run('click', '#source-preview .cp-stage-action button');
