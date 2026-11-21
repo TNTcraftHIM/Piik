@@ -1,24 +1,22 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
-import type { RemoteTouchpad } from "../../remote-control/touchpad";
+import { useCallback, useEffect, useRef, type PointerEvent } from "react";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 
-export function RemoteDirectionPad({ pointer, onLeftStick }: { pointer: RemoteTouchpad; onLeftStick?: (x: number, y: number) => void }) {
+export function RemoteDirectionPad({ right = false, keyboard, open, toggleOpen, toggleMapping, onMove }: {
+  right?: boolean; keyboard: boolean; open: boolean; toggleOpen(): void; toggleMapping?: () => void; onMove(x: number, y: number): void;
+}) {
   const { t } = useCopy();
-  const [open, setOpen] = useState(false);
+
   const pad = useRef<HTMLDivElement>(null);
   const contact = useRef<number | null>(null);
-  const [keyboard, setKeyboard] = useState(false);
-  const analog = keyboard ? undefined : onLeftStick;
-  const label = t(analog ? "remote.leftStick" : "remote.directionPad");
+  const label = t(right ? (keyboard ? "remote.mouseStick" : "remote.rightStick") : (keyboard ? "remote.directionPad" : "remote.leftStick"));
   const thumb = useRef<HTMLElement>(null);
   const release = useCallback(() => {
     contact.current = null;
-    if (analog) analog(0, 0);
-    else pointer.direction(0, 0);
+    onMove(0, 0);
     pad.current?.style.removeProperty("--stick-x");
     pad.current?.style.removeProperty("--stick-y");
-  }, [pointer, analog]);
+  }, [onMove]);
   useEffect(() => {
     if (!open) return;
     const doc = pad.current!.ownerDocument;
@@ -41,16 +39,15 @@ export function RemoteDirectionPad({ pointer, onLeftStick }: { pointer: RemoteTo
     const scale = travel / radius;
     e.currentTarget.style.setProperty("--stick-x", x * scale + "px");
     e.currentTarget.style.setProperty("--stick-y", y * scale + "px");
-    if (analog) analog(x / radius, y / radius);
-    else pointer.direction(x, y);
+    onMove(x / radius, y / radius);
   }
   function end(e: PointerEvent<HTMLDivElement>) {
     if (contact.current !== e.pointerId) return;
     release();
   }
-  return <div className="lr-remote-direction">
+  return <div className="lr-remote-direction" data-side={right ? "right" : "left"}>
     <button type="button" className="lr-btn is-compact" aria-label={label} aria-expanded={open}
-      onClick={() => setOpen(!open)}><Glyph name="gamepad" size={20} /></button>
+      onClick={toggleOpen}><Glyph name="gamepad" size={20} /><span aria-hidden="true">{right ? "R" : "L"}</span></button>
     {open && <div ref={pad} className="lr-remote-stick" role="group" aria-label={label}
       onPointerDown={e => {
         if (contact.current !== null || e.button !== 0) return;
@@ -59,9 +56,9 @@ export function RemoteDirectionPad({ pointer, onLeftStick }: { pointer: RemoteTo
         e.currentTarget.setPointerCapture(e.pointerId);
         move(e);
       }} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
-      {(!analog ? ["W", "A", "S", "D"] : ["↑", "←", "↓", "→"]).map(value => <span key={value}>{value}</span>)}<i ref={thumb} />
+      {(!right && keyboard ? ["W", "A", "S", "D"] : ["↑", "←", "↓", "→"]).map(value => <span key={value}>{value}</span>)}<i ref={thumb} />
     </div>}
-    {open && onLeftStick && <button type="button" className="lr-chip" aria-pressed={keyboard}
-      onClick={() => setKeyboard(!keyboard)}>WASD</button>}
+    {open && toggleMapping && <button type="button" className="lr-chip" aria-label={t(keyboard ? "remote.switchToGamepad" : "remote.switchToKeyboardMouse")}
+      onClick={toggleMapping}>{t(keyboard ? "remote.keyboardMouseMode" : "remote.gamepadMode")} ⇄</button>}
   </div>;
 }

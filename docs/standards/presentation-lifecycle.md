@@ -250,6 +250,14 @@ One presentation hook owns visibility for the current player, using one idle
 timer; it never changes playback or route state. Controls
 follow the shared [motion grammar](./visual-language.md#motion-grammar).
 
+On touch devices, the two on-screen sticks are available while the current
+picture is playing and its authorized remote-control channel is ready. The
+left and right sticks start collapsed and expand independently. One mapping
+applies to both sticks. Gamepad mode sends left and right stick axes when
+available. Keyboard and mouse mode sends WASD and mouse movement and remains
+available with a physical gamepad active. Collapsing a stick releases its
+input. Focus loss or a control disconnect neutralizes both sticks.
+
 A picture click does not pause playback; the playback button and focused-video
 keyboard shortcut own that action. Desktop double-click toggles the available
 fullscreen action. Remote-control input consumes its own clicks and key presses;

@@ -27,13 +27,22 @@ type MouseMode = "mini" | "expanded" | "left" | "right" | "top" | "bottom";
 type MouseContact = { x: number; y: number; moved: boolean; kind: "widget" | "pointer"; button?: 0 | 2 };
 type MouseWheel = { id: number; x: number; y: number; phase: "pending" | "scroll" | "middle"; timer: ReturnType<typeof setTimeout> | null };
 
-export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, onLeftStick }: {
+export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, onLeftStick, onRightStick, onStickMouse }: {
   onLeftStick?: (x: number, y: number) => void;
+  onRightStick?: (x: number, y: number) => void;
+  onStickMouse?: (x: number, y: number) => void;
   pointer: RemoteTouchpad; positionRef: RefObject<HTMLDivElement | null>;
   pointAt: (clientX: number, clientY: number) => PicturePoint | null;
   touchMode: RoomPreferences["remoteTouchMode"];
 }) {
   const { t } = useCopy();
+  const [keyboard, setKeyboard] = useState(false);
+  const [leftOpen, setLeftOpen] = useState(false);
+  const [rightOpen, setRightOpen] = useState(false);
+  const toggleMapping = onLeftStick ? () => setKeyboard(value => !value) : undefined;
+  const useKeys = keyboard || !onLeftStick;
+  const direction = useCallback((x: number, y: number) => pointer.direction(x, y), [pointer]);
+  const rightStick = useKeys ? onStickMouse : onRightStick;
   const owner = useSurfaceDocument();
   const id = useId();
   const [mode, setMode] = useState<MouseMode>("mini");
@@ -208,7 +217,10 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, onLeftSt
       event.stopPropagation();
       if (!event.currentTarget.contains(event.relatedTarget as Node | null)) release();
     }}>
-    <RemoteDirectionPad pointer={pointer} onLeftStick={onLeftStick} />
+    <RemoteDirectionPad keyboard={useKeys} open={leftOpen} toggleOpen={() => setLeftOpen(!leftOpen)} toggleMapping={toggleMapping}
+      onMove={useKeys ? direction : onLeftStick} />
+    {rightStick && <RemoteDirectionPad right keyboard={useKeys} open={rightOpen} toggleOpen={() => setRightOpen(!rightOpen)}
+      toggleMapping={leftOpen ? undefined : toggleMapping} onMove={rightStick} />}
     {(expanded || touchMode === "trackpad") && <svg className="lr-remote-touch-cursor" viewBox="0 0 24 28" aria-hidden="true">
       <path d="M2 2v21l6-6 5 9 4-2-5-9h9Z" />
     </svg>}

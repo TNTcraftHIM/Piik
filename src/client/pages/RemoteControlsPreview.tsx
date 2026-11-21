@@ -43,6 +43,10 @@ export function RemoteControlsPreview({ joystick = false }: { joystick?: boolean
     const report = gamepadReport({ buttons: [], axes: [x, y] });
     setAxes({ x: report.leftX / (report.leftX < 0 ? 32768 : 32767), y: report.leftY / (report.leftY < 0 ? 32768 : 32767) });
   }, []);
+  const [rightAxes, setRightAxes] = useState({ x: 0, y: 0 });
+  const [mouseAxes, setMouseAxes] = useState({ x: 0, y: 0 });
+  const rightStick = useCallback((x: number, y: number) => setRightAxes({ x, y }), []);
+  const stickMouse = useCallback((x: number, y: number) => setMouseAxes({ x, y }), []);
   const mouseVideo = useRef<HTMLVideoElement>(null);
   const mouseLayer = useRef<HTMLDivElement>(null);
   const mouseSurface = useRef<HTMLDivElement>(null);
@@ -105,9 +109,9 @@ export function RemoteControlsPreview({ joystick = false }: { joystick?: boolean
 
   return <>{!joystick && <PermissionRequestPreview />}<section id={joystick ? "joystick-preview" : "remote-control-preview"} className="cp-section">
     <header className="cp-section-head"><div>
-      <h2>{t(joystick ? "remote.leftStick" : "remote.inputTools")}</h2>
-      {joystick ? <p>{en ? "Control granted by the local simulated host. Open the gamepad button, then drag the stick and release it to recenter."
-        : "本地模拟房主已授予控制权限。点开手柄按钮，拖动摇杆，松手即可归中。"}</p>
+      <h2>{joystick ? (en ? "Touch joysticks" : "触屏双摇杆") : t("remote.inputTools")}</h2>
+      {joystick ? <p>{en ? "Open L and R to try both sticks. Tap the mode switch for WASD movement on the left and mouse movement on the right. Input stays on this page."
+        : "点 L、R 可分别展开摇杆。点「手柄 ⇄」切换到键鼠：左杆按 WASD，右杆移动鼠标。输入仅显示在本页。"}</p>
         : <p>{en ? "Expand the mini mouse and drag its lower half to move the pointer. Hold and move L or R to drag, or hold a button with one finger and move the lower half with another. Pinch or pan the picture with two fingers to adjust the local view. Tap the wheel to middle-click, swipe to scroll, or hold to drag. Try direct touch or the compact trackpad below. Input stays in the local log."
         : "展开迷你鼠标，拖动下半部移动光标。按住 L 或 R 后移动即可拖拽，也可用一指按住按钮、另一指拖动下半部。在画面上双指缩放或平移可调整本地视图。滚轮可轻点中击、滑动滚动、长按后拖动。下方可切换直接触摸或光标触控板，输入仅记录在本地。"}</p>
         }
@@ -129,7 +133,7 @@ export function RemoteControlsPreview({ joystick = false }: { joystick?: boolean
           onLostPointerCapture={event => pointer?.cancel(event.pointerId)}
           onContextMenu={event => event.preventDefault()}>
           {pointer && <RemoteMouse pointer={pointer} positionRef={mouseLayer} touchMode={touchMode}
-            onLeftStick={joystick ? leftStick : undefined}
+            onLeftStick={joystick ? leftStick : undefined} onRightStick={joystick ? rightStick : undefined} onStickMouse={joystick ? stickMouse : undefined}
             pointAt={(x, y) => mouseVideo.current && picturePoint(mouseVideo.current, x, y)} />}
         </div>
       </StageTv>
@@ -137,6 +141,8 @@ export function RemoteControlsPreview({ joystick = false }: { joystick?: boolean
     {joystick ? <p className="cp-input-output">
       <span>{en ? "Left stick axes" : "左摇杆轴值"}</span>
       <output aria-live="off">X {axes.x.toFixed(2)} · Y {axes.y.toFixed(2)}</output>
+      <span>{t("remote.rightStick")}</span><output>X {rightAxes.x.toFixed(2)} · Y {rightAxes.y.toFixed(2)}</output>
+      <span>{t("remote.mouseStick")}</span><output>X {mouseAxes.x.toFixed(2)} · Y {mouseAxes.y.toFixed(2)}</output>
     </p> : <>
     <div className="lr-viewer-settings is-single" style={{ maxWidth: 480 }}>
       <RemoteTouchSettings mode={touchMode} onChange={setTouchMode} />

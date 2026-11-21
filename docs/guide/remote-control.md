@@ -92,29 +92,15 @@ remain available without the gamepad driver.
 
 ## Play on your phone with the on-screen joystick
 
-1. On your phone, tap the picture to reveal the playback bar and select the
-   mouse icon labeled **Request control**. In **Ask each time** mode, the Host
-   selects **Allow** in **Remote control**.
-2. Once control is active, tap the gamepad icon at the bottom left of the
-   picture. The joystick opens beside the icon.
-3. Drag the stick in the direction you want to move. Lift your finger to center
-   it and release the movement input. Tap the gamepad icon again to close it.
+On a touchscreen, tap **Request control** in the playback bar. If the host approves requests individually, wait for them to select **Allow**. Once you have control, **L** and **R** appear on the playing picture. Touchscreen laptops work too.
 
-![Viewer's on-screen controls with the gamepad icon at left, the stick held up and right, and the WASD switch at right.](../assets/guide/touch-joystick.png)
+**L** and **R** start collapsed. Tap either button to open or close that stick. When gamepad input is available, **Gamepad ⇄** sends native left and right stick input. In **Keys + mouse ⇄**, **L** holds **W**, **A**, **S**, or **D** and **R** moves the mouse. If a physical gamepad is active on your device, you can still use touch in **Keys + mouse** mode.
 
-*Viewer controls over a sample picture.*
+The mode switch applies to both sticks. With only **R** open, use the switch beside **R**. With both open, it appears beside **L**. Lift your finger to center a stick and release its input. Closing a stick, losing focus, or disconnecting also releases its input. After reconnecting, select **Request control** again.
 
-- **Gamepad icon missing?** The on-screen controls appear on touch devices
-  such as phones while remote control is active. Wait for approval if your
-  request is pending.
-- **Seeing W, A, S and D on the stick?** It sends keyboard movement. The
-  analog stick requires versions that support playing together, gamepad support
-  from the Host and no active physical
-  controller on the viewing device. On a Windows x64 Host, check the driver
-  setup under [Gamepads](#gamepads). When analog is available, tap **WASD**
-  to switch to keyboard movement and tap it again to return to analog.
-- **Lost the connection?** Once the picture returns, select **Request control**
-  again. After control is active, tap the gamepad icon to reopen the joystick.
+![The Viewer’s L and R sticks are both open, with the Gamepad mode switch next to L.](../assets/guide/touch-joystick.en.png)
+
+Tap the mode switch beside **L** to switch both sticks between gamepad and keyboard-and-mouse input.
 
 ## End control
 
@@ -130,14 +116,6 @@ remembered, but control never turns on automatically. A remembered **Room Viewer
 choice needs **Allow Viewers** before it applies again. Passwords are not saved.
 
 ## Mouse, touch and permissions
-
-On your phone, open the gamepad button in the lower-left corner of the picture after receiving control. Press and drag the stick in the direction you want to move. Lift your finger to center it.
-
-| Control | What the Host receives | When to use it |
-| --- | --- | --- |
-| Left stick | Analog left-stick axes. The arrows show directions. | For analog movement when the Host supports gamepads and the browser has detected no standard-layout physical controller. |
-| WASD | W, A, S and D key presses. Diagonals hold two keys. | Select **WASD** when the analog stick is available. Otherwise the directional control already uses these keys. |
-| Physical gamepad | Standard gamepad buttons and both sticks. | For games that use a right stick to turn the camera. The first recognized standard-layout controller takes priority over the on-screen analog stick. |
 
 For desktop tasks on a phone, tap a visible target or use the trackpad to position the cursor precisely. Both touch modes send positions within the shared picture. For continuous mouse look, use **Game mouse** in a supported desktop browser.
 

@@ -28,6 +28,7 @@ export class RemoteGamepad {
   private index: number | null = null;
   private connected = false;
   private touchReport: RemoteGamepadReport | null = null;
+  private touchAxes = [0, 0, 0, 0];
   private disposed = false;
 
   constructor(private readonly input: (event: RemoteInputEvent) => void,
@@ -42,13 +43,23 @@ export class RemoteGamepad {
   }
 
   setLeftStick(x: number, y: number): void {
+    this.setStick(0, x, y);
+  }
+
+  setRightStick(x: number, y: number): void {
+    this.setStick(2, x, y);
+  }
+
+  private setStick(index: 0 | 2, x: number, y: number): void {
     if (this.disposed || this.connected || this.page.hidden || !this.page.hasFocus()) return;
-    if (x === 0 && y === 0) {
+    this.touchAxes[index] = x;
+    this.touchAxes[index + 1] = y;
+    if (this.touchAxes.every(axis => axis === 0)) {
       if (this.touchReport) this.input({ type: "gamepad-reset" });
       this.touchReport = null;
       return;
     }
-    this.touchReport = gamepadReport({ buttons: [], axes: [x, y] });
+    this.touchReport = gamepadReport({ buttons: [], axes: this.touchAxes });
   }
 
   private setConnected(value: boolean): void {
@@ -57,6 +68,7 @@ export class RemoteGamepad {
   private readonly pause = (): void => {
     if (this.frame !== null) this.owner.cancelAnimationFrame(this.frame);
     this.frame = null; this.nextReport = 0; this.touchReport = null;
+    this.touchAxes.fill(0);
     this.input({ type: "gamepad-reset" }); this.setConnected(false);
   };
   private readonly resume = (): void => {
@@ -77,7 +89,10 @@ export class RemoteGamepad {
     catch { /* Browser permissions can deny controller access. Keep the grant neutral. */ }
     if (this.index !== null && this.index !== pad?.index) this.input({ type: "gamepad-stop" });
     this.index = pad?.index ?? null; this.setConnected(Boolean(pad));
-    if (pad) this.touchReport = null;
+    if (pad && this.touchReport) {
+      this.touchReport = null;
+      this.touchAxes.fill(0);
+    }
     const report = pad ? gamepadReport(pad) : this.touchReport;
     if (report && time >= this.nextReport) {
       const interval = 1000 / 60;
