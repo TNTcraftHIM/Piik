@@ -310,6 +310,10 @@ function ChannelVideoInput({ input, negotiatedFlowId, visible, interactive, labe
     }} />;
 }
 
+function readStickPositions() {
+  return readRoomPreferences().stickPositions;
+}
+
 export function ChannelVideo({ stream, owned, localSource, label, presentation = "full", inputs, onPresentation, input, interaction = null, buffering, onRetryPicture, retryAvailable = true, theaterMode, onToggleTheater }: {
   stream: MediaStream; owned: boolean; localSource: boolean; label: string; inputs?: readonly ChannelScreenInput[];
   presentation?: "full" | "thumbnail" | "background";
@@ -526,7 +530,10 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
       <span className="c3-mini-space" />
       <RoomChatToggle session={interaction} quiet />
       {!owned && <RemoteControl channel={input ?? null} videoRef={playbackRef} available={interactive && ready && displayed.flowId === target.flowId}
-        pictureFit={pictureFit} pictureRotation={pictureRotation} touchMode={remoteTouchMode} />}
+        pictureFit={pictureFit} pictureRotation={pictureRotation} touchMode={remoteTouchMode}
+        readStickPositions={readStickPositions} onStickPositionChange={(side, position) => {
+          saveRoomPreferences({ stickPositions: { ...readStickPositions(), [side]: position } });
+        }} />}
       <span ref={pictureTrigger} className="lr-playback-more"><Btn icon="sliders" quiet title="playback.more" hint="hint-advanced"
         popoverTarget={pictureId} controls={pictureId} expanded={pictureOpen} /></span>
       <div ref={panel => {

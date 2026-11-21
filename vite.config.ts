@@ -1,4 +1,3 @@
-import { startupFallback } from "./scripts/startup-fallback.ts";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { buildFilmControls } from "./scripts/build-film-controls.mjs";
@@ -8,7 +7,7 @@ import { buildFilmControls } from "./scripts/build-film-controls.mjs";
 const server = `http://127.0.0.1:${process.env.PIIK_CHANNEL_PORT ?? 8791}`;
 
 export default defineConfig({
-  plugins: [react(), startupFallback(), {
+  plugins: [react(), {
     name: "film-controls",
     apply: "serve",
     configureServer(vite) {

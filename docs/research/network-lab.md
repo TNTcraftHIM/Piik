@@ -305,6 +305,17 @@ and 11 with early preparation. On-demand recovery remains the default because
 early preparation added one or two pair attempts when direct signaling succeeded,
 and the single blackhole comparison showed only a 74 ms first-frame difference.
 
+In a four-browser loopback run on frozen `c40d335c` (protocol 38), every
+link started cold. The browser probe dropped SDP and ICE signaling between
+nonadjacent peers, leaving B–A–D–C as the only media path. B dropped the first
+direct offer 1.192 s after C requested playback. Core opened the next trial by
+21.082 s, while B's parallel transport timer reported the original link
+failed at 21.136 s. C presented its first frame at 66.099 s and advanced from
+2 to 34 frames on the same track. The run saw 10 distinct signaled pair IDs.
+All four browsers released their peer connections after C stopped watching
+and both helpers left. This single signaling fault run measures neither NAT
+failure recovery rates nor the effect of shortening the timers. The warm
+middle-edge measurements above use a different revision.
 
 ### Moving an incumbent to admit a waiting viewer
 

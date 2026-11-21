@@ -27,9 +27,11 @@ type MouseMode = "mini" | "expanded" | "left" | "right" | "top" | "bottom";
 type MouseContact = { x: number; y: number; moved: boolean; kind: "widget" | "pointer"; button?: 0 | 2 };
 type MouseWheel = { id: number; x: number; y: number; phase: "pending" | "scroll" | "middle"; timer: ReturnType<typeof setTimeout> | null };
 
-export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, mapping = "keyboard", virtualSticksEnabled, touchOnlySticks, onLeftStick, onRightStick, onStickMouse }: {
+export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, mapping = "keyboard", virtualSticksEnabled, touchOnlySticks, onLeftStick, onRightStick, onStickMouse, readStickPositions, onStickPositionChange }: {
   virtualSticksEnabled: boolean;
   touchOnlySticks?: boolean;
+  readStickPositions?(): RoomPreferences["stickPositions"];
+  onStickPositionChange?(side: "left" | "right", position: { x: number; y: number }): void;
   mapping?: "keyboard" | "gamepad";
   onLeftStick?: (x: number, y: number) => void;
   onRightStick?: (x: number, y: number) => void;
@@ -224,8 +226,10 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, mapping 
       }
     }}>
     {virtualSticksEnabled && <RemoteDirectionPad touchOnly={touchOnlySticks} keyboard={useKeys} open={leftOpen} toggleOpen={() => setLeftOpen(!leftOpen)}
+      readPosition={() => readStickPositions?.().left} onPositionChange={position => onStickPositionChange?.("left", position)}
       onMove={useKeys ? direction : onLeftStick} />}
     {virtualSticksEnabled && rightStick && <RemoteDirectionPad right touchOnly={touchOnlySticks} keyboard={useKeys} open={rightOpen} toggleOpen={() => setRightOpen(!rightOpen)}
+      readPosition={() => readStickPositions?.().right} onPositionChange={position => onStickPositionChange?.("right", position)}
       onMove={rightStick} />}
     {(expanded || touchMode === "trackpad") && <svg className="lr-remote-touch-cursor" viewBox="0 0 24 28" aria-hidden="true">
       <path d="M2 2v21l6-6 5 9 4-2-5-9h9Z" />
