@@ -2,12 +2,20 @@
 
 [English](./self-hosting.md) · 简体中文 · [文档导航](../guide/README.zh-CN.md)
 
-用 Piik Server 可以在自己管理的地址上提供 Piik 站点。你可以先在服务器本机试用，也可以开放给局域网，或使用公网 HTTPS 域名。服务端自带网页，房间数据保存在 SQLite 中。
+在自己的服务器上部署 Piik，让朋友用浏览器打开你管理的网址。
 
-默认的 P2P 配置由服务器负责房间管理、信令和 STUN，画面与声音在参与者之间传输。
-启用 SFU 后，服务器还会承担媒体转发的带宽和处理开销。配置较低的服务器可以先用默认设置，
-按预计的房间数和观众数观察 CPU、内存与网络占用，再决定是否开启 SFU。
-降低画面分辨率主要减轻参与者设备的采集和编码负担。
+<div class="guide-task-index">
+
+- [先在本机试用](#先在本机试用)<br>
+  下载程序，打开本机网页。
+- [使用 Docker Compose](#使用-docker-compose)<br>
+  在 Linux 上部署容器。
+- [对外提供服务](#对外提供服务)<br>
+  配置域名、HTTPS 和防火墙。
+- [无域名的内网部署](#无域名的内网部署)<br>
+  用内网 IP 在家里或虚拟局域网分享。
+
+</div>
 
 ## 先在本机试用
 
@@ -50,44 +58,7 @@ docker compose run --rm piik --check-config
 docker compose up -d
 ```
 
-`ghcr.io/tntcrafthim/piik:latest` 镜像包含网页、信令、STUN 和可选 SFU。
-Docker 会自动选择对应架构的镜像。
-接着完成下方的 [HTTPS 配置](#2-配置-https)和[端口放行](#3-放行端口并检查)。
-默认使用 P2P；如需 SFU 兜底，按 `.env` 中的说明启用即可。
-请保留 `piik-data` 数据卷，房间数据和可选诊断文件都保存在其中。
-更新与备份见[容器维护说明](./service-management.zh-CN.md#容器)。
-
-## 无域名的内网部署
-
-NAS、家用服务器或虚拟局域网可以直接使用 Piik 提供的 HTTPS，无需另装反向代理。
-在服务端程序旁创建 `.env`，填写以下配置，将所有 `192.168.1.10` 换成服务器在该网络中的 IP：
-
-```dotenv
-PIIK_ENV=production
-LISTEN_HOST=0.0.0.0
-PORT=8787
-PUBLIC_BASE_URL=https://192.168.1.10:8787
-TLS_SELF_SIGNED=true
-STUN_URLS=stun:192.168.1.10:3478
-```
-
-在该目录先运行 `./piik-server --check-config`，检查通过后运行 `./piik-server`；Windows 加上 `.exe`。
-在该网络放行 TCP 8787 和 UDP 3478，然后用各台设备打开上述 **HTTPS** 地址。
-不需要公网 IP 或域名。如果使用 Docker Compose，还需把网页端口映射
-`127.0.0.1:8787:8787/tcp` 改为 `8787:8787/tcp`，让内网设备可以访问。
-
-浏览器会提示证书不受信任。请先核对证书的 SHA-256 指纹，与服务端启动时的
-**HTTPS certificate** 信息一致后再继续，见[本地证书确认说明](../guide/troubleshooting.zh-CN.md#本地-https-证书提示)。
-临时证书只保存在内存中，重启 Piik 后会更换，需要重新确认。
-开麦、摄像头和远控仍需浏览器支持相关接口，并完成各自的正常授权。
-
-如果已有自己的证书，关闭 `TLS_SELF_SIGNED`，同时设置 `TLS_CERT_FILE` 和 `TLS_KEY_FILE`，
-指向 PEM 格式的证书和私钥文件。Docker 中需将文件只读挂载，并使用容器内的路径。
-证书需覆盖 `PUBLIC_BASE_URL` 中的域名或 IP；
-`--check-config` 会检查文件配对、地址与有效期，替换文件后需重启 Piik。
-Piik 不负责申请或续期证书。长期对外服务的站点建议使用下方自动管理证书的 HTTPS 代理。
-网页端口被占用时，先停止占用服务，或同时修改 `PORT` 与 `PUBLIC_BASE_URL` 中的端口，
-再重新发送邀请。
+接着[配置 HTTPS](#2-配置-https)并[放行端口](#3-放行端口并检查)。保留 `piik-data` 数据卷，其中保存房间数据。需要备份或升级时，见[容器维护](./service-management.zh-CN.md#容器)。
 
 ## 对外提供服务
 
@@ -125,6 +96,9 @@ Windows 请在 PowerShell 中改用 `./piik-server.exe --check-config` 和
 只使用这个地址时，`ALLOWED_ORIGINS` 不设置或留空即可；已有的非空值会覆盖此默认值，
 旧地址未更新可能导致[创建房间返回 403](../guide/troubleshooting.zh-CN.md#创建房间返回-403)。
 
+<details>
+<summary>调整观众上限和空房间保留时间</summary>
+
 `MAX_VIEWERS_PER_ROOM` 可设置每房观众上限，不含房主，支持 `1..20`，修改后重启生效。
 人数越多，对网络和转发资源的需求也可能增加。默认值及 App 房间的区别见
 [人数限制](../standards/configuration.md#room-capacity)。
@@ -133,6 +107,8 @@ Windows 请在 PowerShell 中改用 `./piik-server.exe --check-config` 和
 回收；房间号用满时，会提前回收最早创建的空房间，仍有人在线的房间不受影响。
 被回收的房间需要重新创建并发送邀请。不设置或设为 `0` 则保持默认的长期保留行为，
 详见[房间保留策略](../standards/configuration.md#room-retention)。
+
+</details>
 
 ### 2. 配置 HTTPS
 
@@ -163,14 +139,49 @@ TCP 8787 仅供本机反向代理访问。STUN 域名需要直接解析到服务
 随后打开站点，分享一个画面，并用另一台设备加入验证。
 上述基础配置使用 P2P 传输，参与者之间需要可用的 UDP 通路。
 
+## 无域名的内网部署
+
+NAS、家用服务器或虚拟局域网可以直接使用 Piik 提供的 HTTPS，无需另装反向代理。
+在服务端程序旁创建 `.env`，填写以下配置，将所有 `192.168.1.10` 换成服务器在该网络中的 IP：
+
+```dotenv
+PIIK_ENV=production
+LISTEN_HOST=0.0.0.0
+PORT=8787
+PUBLIC_BASE_URL=https://192.168.1.10:8787
+TLS_SELF_SIGNED=true
+STUN_URLS=stun:192.168.1.10:3478
+```
+
+在该目录先运行 `./piik-server --check-config`，检查通过后运行 `./piik-server`；Windows 加上 `.exe`。
+在该网络放行 TCP 8787 和 UDP 3478，然后用各台设备打开上述 **HTTPS** 地址。
+不需要公网 IP 或域名。如果使用 Docker Compose，还需把网页端口映射
+`127.0.0.1:8787:8787/tcp` 改为 `8787:8787/tcp`，让内网设备可以访问。
+
+浏览器会提示证书不受信任。请先核对证书的 SHA-256 指纹，与服务端启动时的
+**HTTPS certificate** 信息一致后再继续，见[本地证书确认说明](../guide/troubleshooting.zh-CN.md#本地-https-证书提示)。
+临时证书只保存在内存中，重启 Piik 后会更换，需要重新确认。
+开麦、摄像头和远控仍需浏览器支持相关接口，并完成各自的正常授权。
+
+<details>
+<summary>使用自己的证书</summary>
+
+如果已有自己的证书，关闭 `TLS_SELF_SIGNED`，同时设置 `TLS_CERT_FILE` 和 `TLS_KEY_FILE`，
+指向 PEM 格式的证书和私钥文件。Docker 中需将文件只读挂载，并使用容器内的路径。
+证书需覆盖 `PUBLIC_BASE_URL` 中的域名或 IP；
+`--check-config` 会检查文件配对、地址与有效期，替换文件后需重启 Piik。
+
+</details>
+
+网页端口被占用时，先停止占用服务，或同时修改 `PORT` 与 `PUBLIC_BASE_URL` 中的端口，
+再重新发送邀请。
+
 ## 可选：启用媒体兜底
 
 在 `.env` 中添加 `SFU_UDP_PORT=7882`，放行 UDP 7882，再重启 Piik，即可启用自动 SFU 兜底。
 如果服务器处于 NAT 后方，还需将 `SFU_PUBLIC_IP` 设置为外部可达的公网 IPv4 地址或 DDNS 域名。
-域名应直接指向该 IPv4，关闭 CDN 代理。Piik 启动时解析域名，之后每分钟更新一次。
-DDNS 更新后，新媒体连接使用最新地址，无需重启服务。若地址变化打断了当前分享，房主重新开播，观众重新进入房间。
+域名应直接指向该 IPv4，关闭 CDN 代理。
 公网和内部映射的 UDP 端口都应与 `SFU_UDP_PORT` 一致。
-这项功能由同一个服务端程序提供。
 服务器需要为实际经由 SFU 观看的观众承担转发负载和出口带宽。
 房主需要在开始分享前关闭 **隐私模式**，才会允许使用这条线路。
 直连和 SFU 媒体都需要可用的 UDP 通路。
@@ -180,6 +191,11 @@ DDNS 更新后，新媒体连接使用最新地址，无需重启服务。若地
 服务器线路失败时，此模式不会改走 P2P。
 
 ## 可选：通过 frp 转发已有服务
+
+需要固定公网地址时，可以使用[公网邀请 frp 指南](../guide/frp.zh-CN.md)。
+
+<details>
+<summary>自行配置 frps 和 frpc</summary>
 
 如果 Piik 位于 NAT 后方，且你有一台公网 frps 主机，可用 frp 转发已有的网页和 SFU 端口。
 P2P 的 ICE 探测方式保持不变。
@@ -219,6 +235,8 @@ frpc 的本地与公网 UDP 端口必须都等于 `SFU_UDP_PORT`。
 不要通过 frp 转发 Piik 的 STUN 端口：UDP 代理会
 [改变 STUN 所观察到的源地址映射](../research/nat-traversal.md#external-forwarding-and-participant-relays)。
 重启 Piik，从另一网络验证 HTTPS 健康检查、房间访问及**服务器转发**。
+
+</details>
 
 ### 转发 Piik App 的公网邀请
 

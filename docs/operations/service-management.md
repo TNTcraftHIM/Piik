@@ -2,7 +2,66 @@
 
 English · [简体中文](./service-management.zh-CN.md) · [Documentation](../guide/README.md)
 
-Use systemd to run Piik Server in the background on Linux. If you deployed with Docker Compose, use the container section for updates and backups. For a first installation, follow the [deployment guide](./self-hosting.md).
+Update or back up Piik Server, set it to start at boot, or check that your site is working. For a first installation, see the [deployment guide](./self-hosting.md).
+
+- [Start Piik automatically with systemd](#systemd)
+- [Back up and update the container](#back-up-and-update-the-container)
+- [Check that Piik is running](#operational-verification)
+
+## Container
+
+For a first installation, see the [Docker Compose setup](./self-hosting.md#docker-compose).
+
+### Back up and update the container
+
+1. Back up `.env` separately and record the current image tag or digest. Set `PIIK_IMAGE` in `.env` to the 2.x image tag or digest you want to install.
+2. Run the commands below from your existing deployment directory. Use a new backup directory each time. Stop Piik before copying SQLite so the database and journal are consistent.
+
+```sh
+docker compose pull
+docker compose stop
+docker compose cp piik:/home/nonroot ./piik-data-backup
+docker compose up -d
+docker compose logs --tail=50 piik
+```
+
+Protect both backups as room credentials. Keep the same Compose project and directory to retain the named volume. The command `docker compose down --volumes` deletes that volume.
+
+After startup, check the health response and test a share. [Operational verification](#operational-verification)
+
+### Roll back the container
+
+Restore the previous `PIIK_IMAGE` setting and its compatible configuration, then run `docker compose up -d` in the deployment directory. Check the release notes before crossing a storage-format boundary. Repeat [operational verification](#operational-verification).
+
+<details>
+<summary>Change container ports, volumes or diagnostics</summary>
+
+Use the existing [production configuration](../standards/configuration.md).
+Keep `LISTEN_HOST=0.0.0.0` inside the container and retain the host's existing
+HTTPS/WebSocket proxy. With Docker port mapping, set `SFU_PUBLIC_IP` to the
+reachable server IPv4 address when SFU is enabled; container-private candidates
+are not Internet-reachable. Advertised STUN names must resolve to the server's
+public address, and UDP must reach the container directly.
+
+The [Compose file](../../deploy/container/compose.yaml) keeps HTTP on host
+loopback, publishes the standard UDP ports and enables automatic restart.
+Publishing a port does not enable its service; `.env` controls optional listeners.
+Edit both the application setting and port mapping if changing a listener port.
+Run a host proxy, or adapt the proxy's container networking deliberately: its
+own `127.0.0.1` does not reach Piik in another container.
+
+The image's `/home/nonroot` is owned by UID/GID `65532:65532` with mode `0700`.
+A new named volume inherits that directory; an existing volume or bind mount
+must already be writable by that identity. Keep this volume when replacing the
+container. Set `ROOM_DATABASE_PATH=:memory:` for memory-only room authority. Diagnostics
+remain opt-in and use `/home/nonroot/logs`; [export and retention](../standards/configuration.md#diagnostics)
+remain the operator's responsibility. Do not mount application files writable.
+With diagnostics enabled, `docker compose kill --signal=SIGUSR1 piik` requests a local
+export without stopping the container; the ZIP remains in the mounted log directory.
+
+</details>
+
+[Image versions and distribution](../standards/versioning.md#container-distribution)
 
 ## systemd
 
@@ -28,66 +87,6 @@ Keep HTTP bound to loopback when the HTTPS proxy runs on the same host.
 STUN and optional SFU use their own public UDP listeners. An existing nginx
 installation can use the [proxy example](../../deploy/nginx/piik.conf.example)
 after adapting the domain and certificate paths.
-
-## Container
-
-Use the [Docker Compose setup](./self-hosting.md#docker-compose) for installation.
-The image is `ghcr.io/tntcrafthim/piik`, with `latest` and matching product version
-tags (`vMAJOR.MINOR.PATCH`). Docker selects **linux/amd64** or **linux/arm64**
-to match the host. Set `PIIK_IMAGE` in `.env`
-to pin a version or image digest. Updates are explicit; pulling an image does not
-replace a running container.
-
-The [runtime Dockerfile](../../deploy/container/Dockerfile) wraps the verified
-Server archive, including its Web UI, license notices and `REVISION`.
-Its pinned [Distroless non-root base](https://github.com/GoogleContainerTools/distroless)
-includes CA certificates and has no shell or package manager. The
-[release workflow](../standards/versioning.md#container-distribution) owns
-building, checking and publishing the image.
-
-Use the existing [production configuration](../standards/configuration.md).
-Keep `LISTEN_HOST=0.0.0.0` inside the container and retain the host's existing
-HTTPS/WebSocket proxy. With Docker port mapping, set `SFU_PUBLIC_IP` to the
-reachable server IPv4 address when SFU is enabled; container-private candidates
-are not Internet-reachable. Advertised STUN names must resolve to the server's
-public address, and UDP must reach the container directly.
-
-The [Compose file](../../deploy/container/compose.yaml) keeps HTTP on host
-loopback, publishes the standard UDP ports and enables automatic restart.
-Publishing a port does not enable its service; `.env` controls optional listeners.
-Edit both the application setting and port mapping if changing a listener port.
-Run a host proxy, or adapt the proxy's container networking deliberately: its
-own `127.0.0.1` does not reach Piik in another container.
-
-The image's `/home/nonroot` is owned by UID/GID `65532:65532` with mode `0700`.
-A new named volume inherits that directory; an existing volume or bind mount
-must already be writable by that identity. Keep this volume when replacing the
-container. Set `ROOM_DATABASE_PATH=:memory:` for memory-only room authority. Diagnostics
-remain opt-in and use `/home/nonroot/logs`; [export and retention](../standards/configuration.md#diagnostics)
-remain the operator's responsibility. Do not mount application files writable.
-With diagnostics enabled, `docker compose kill --signal=SIGUSR1 piik` requests a local
-export without stopping the container; the ZIP remains in the mounted log directory.
-
-Check `/healthz` from the host and public proxy, then verify configured STUN/SFU
-UDP and room/media behavior using [operational verification](#operational-verification).
-There is no shell-based healthcheck in the image. Retain the previous image,
-environment and volume backup before replacement. Record the previous image tag or digest for rollback, then set `PIIK_IMAGE` in `.env` to the 2.x release you intend to install. From the deployment directory:
-
-```sh
-docker compose pull
-docker compose stop
-docker compose cp piik:/home/nonroot ./piik-data-backup
-docker compose up -d
-docker compose logs --tail=50 piik
-```
-
-Use a new backup directory each time. Stop Piik before copying SQLite so its
-database and journal are consistent. Preserve `.env` separately and protect both
-backups as room credentials. Keep the same Compose project/directory so the named
-volume is reused; `docker compose down --volumes` deletes that data. To roll back,
-restore the previous image setting and compatible configuration, then recreate
-the service. Read release notes before crossing a storage-format boundary.
-The bare-metal `release-server.sh` wrapper does not manage containers.
 
 ## Operational Verification
 

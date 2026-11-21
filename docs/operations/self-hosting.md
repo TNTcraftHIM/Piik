@@ -2,14 +2,20 @@
 
 English · [简体中文](./self-hosting.zh-CN.md) · [Documentation](../guide/README.md)
 
-Use Piik Server to provide a Piik site at an address you manage. You can try it on the server itself, share it on a private LAN, or publish it at an HTTPS domain. The server includes the web interface and stores room data in SQLite.
+Run Piik on your own server and give friends an address they can open in their browser.
 
-The default P2P configuration handles room management, signaling and STUN; shared
-video and audio travel between participants. Enabling SFU adds media-forwarding
-bandwidth and processing on the server. For a small server, start with the default
-and measure CPU, memory and network use with your intended number of rooms and
-viewers before enabling SFU. Lowering picture resolution primarily reduces
-participants' capture and encoding work.
+<div class="guide-task-index">
+
+- [Try it locally](#try-it-locally)<br>
+  Download the server and open Piik on the same machine.
+- [Docker Compose](#docker-compose)<br>
+  Run Piik in a container on Linux.
+- [Put it online](#put-it-online)<br>
+  Set up your domain, HTTPS and firewall.
+- [Private LAN without a domain](#private-lan-without-a-domain)<br>
+  Use a private IP to share on a LAN or virtual LAN.
+
+</div>
 
 ## Try it locally
 
@@ -55,50 +61,7 @@ docker compose run --rm piik --check-config
 docker compose up -d
 ```
 
-The `ghcr.io/tntcrafthim/piik:latest` image includes the Web UI, signaling, STUN
-and optional SFU. Docker selects the matching architecture automatically. Complete [HTTPS](#2-enable-https) and
-[firewall configuration](#3-open-the-ports-and-verify) below. The default is P2P;
-the sample `.env` also shows how to enable SFU fallback. Keep the `piik-data`
-volume, which stores room data and optional diagnostics. See
-[container maintenance](./service-management.md#container) for updates and backups.
-
-## Private LAN without a domain
-
-For a NAS, home server or virtual LAN, Piik can serve HTTPS directly. Save the
-following as `.env` beside the server binary, replacing every `192.168.1.10`
-with the server's address on that network:
-
-```dotenv
-PIIK_ENV=production
-LISTEN_HOST=0.0.0.0
-PORT=8787
-PUBLIC_BASE_URL=https://192.168.1.10:8787
-TLS_SELF_SIGNED=true
-STUN_URLS=stun:192.168.1.10:3478
-```
-
-From that directory, run `./piik-server --check-config`, then `./piik-server`
-(use `.exe` on Windows).
-Allow TCP 8787 and UDP 3478 on that network. Open the **HTTPS** address on each
-device; no public IP, domain or reverse proxy is needed. With Docker Compose,
-also change the web port mapping from `127.0.0.1:8787:8787/tcp` to
-`8787:8787/tcp` so LAN devices can reach it.
-
-The browser will warn about the self-signed certificate. Compare its SHA-256
-fingerprint with the server's **HTTPS certificate** startup message before
-continuing; see [local certificate confirmation](../guide/troubleshooting.md#local-https-certificate-warning).
-The certificate stays in memory and changes when Piik restarts, so confirm the
-new one after a restart. Browser microphone, camera and remote control still
-require their ordinary permissions and supported APIs.
-
-To keep your own certificate, turn off `TLS_SELF_SIGNED` and set both
-`TLS_CERT_FILE` and `TLS_KEY_FILE` to its PEM files. With Docker, mount those
-files read-only and use their paths inside the container. The certificate must cover
-the host in `PUBLIC_BASE_URL`. `--check-config` checks the pair and validity;
-restart Piik after replacing the files. Piik does not obtain or renew these
-certificates. For a long-running public site, use the automatic HTTPS proxy below.
-If the web port is occupied, stop the conflicting service or change both `PORT`
-and the port in `PUBLIC_BASE_URL`, then send new invitations.
+Next, [enable HTTPS](#2-enable-https) and [open the ports](#3-open-the-ports-and-verify). Keep the `piik-data` volume, which stores your rooms. For backups and upgrades, see [container maintenance](./service-management.md#container).
 
 ## Put it online
 
@@ -138,6 +101,9 @@ and any non-default port. Leave `ALLOWED_ORIGINS` unset or empty for this single
 address. An existing non-empty value overrides that default; a stale value can
 cause [403 when creating a room](../guide/troubleshooting.md#room-creation-returns-403).
 
+<details>
+<summary>Set viewer capacity and empty-room retention</summary>
+
 `MAX_VIEWERS_PER_ROOM` sets the room's Viewer limit, excluding the Host. Choose
 `1..20` and restart to apply it. More Viewers can require more network and relay
 resources. See [room capacity](../standards/configuration.md#room-capacity)
@@ -148,6 +114,8 @@ Rooms with nobody connected are reclaimed after an hour; if all room codes are
 used, the oldest empty room can be reclaimed earlier. Occupied rooms keep working.
 Reclaimed rooms need new invitations. Unset or `0` keeps the default indefinite
 retention; see [room retention](../standards/configuration.md#room-retention).
+
+</details>
 
 ### 2. Enable HTTPS
 
@@ -183,17 +151,57 @@ Open your public HTTPS address with `/healthz` appended. The response should be 
 Then open the site, share a screen and join from another device. This initial
 configuration uses P2P media, so participants need a usable UDP path.
 
+## Private LAN without a domain
+
+For a NAS, home server or virtual LAN, Piik can serve HTTPS directly. Save the
+following as `.env` beside the server binary, replacing every `192.168.1.10`
+with the server's address on that network:
+
+```dotenv
+PIIK_ENV=production
+LISTEN_HOST=0.0.0.0
+PORT=8787
+PUBLIC_BASE_URL=https://192.168.1.10:8787
+TLS_SELF_SIGNED=true
+STUN_URLS=stun:192.168.1.10:3478
+```
+
+From that directory, run `./piik-server --check-config`, then `./piik-server`
+(use `.exe` on Windows).
+Allow TCP 8787 and UDP 3478 on that network. Open the **HTTPS** address on each
+device; no public IP, domain or reverse proxy is needed. With Docker Compose,
+also change the web port mapping from `127.0.0.1:8787:8787/tcp` to
+`8787:8787/tcp` so LAN devices can reach it.
+
+The browser will warn about the self-signed certificate. Compare its SHA-256
+fingerprint with the server's **HTTPS certificate** startup message before
+continuing; see [local certificate confirmation](../guide/troubleshooting.md#local-https-certificate-warning).
+The certificate stays in memory and changes when Piik restarts, so confirm the
+new one after a restart. Browser microphone, camera and remote control still
+require their ordinary permissions and supported APIs.
+
+<details>
+<summary>Use your own certificate</summary>
+
+To keep your own certificate, turn off `TLS_SELF_SIGNED` and set both
+`TLS_CERT_FILE` and `TLS_KEY_FILE` to its PEM files. With Docker, mount those
+files read-only and use their paths inside the container. The certificate must cover
+the host in `PUBLIC_BASE_URL`. `--check-config` checks the pair and validity;
+restart Piik after replacing the files. Piik does not obtain or renew these
+certificates.
+
+</details>
+
+If the web port is occupied, stop the conflicting service or change both `PORT`
+and the port in `PUBLIC_BASE_URL`, then send new invitations.
+
 ## Optional: media fallback
 
 Add `SFU_UDP_PORT=7882` to `.env`, allow UDP 7882, and restart Piik to enable
 automatic SFU fallback. When the server is behind NAT, also set `SFU_PUBLIC_IP`
 to its reachable public IPv4 address or DDNS hostname and forward the same external
 and internal UDP port as `SFU_UDP_PORT`. Use a hostname pointing directly to that
-IPv4, with the CDN proxy disabled. Piik resolves it at startup and every minute.
-After DDNS updates, new media connections use the updated address without a
-service restart. If the address change interrupted an ongoing share, the Host
-can restart sharing and Viewers can rejoin the room.
-The same binary provides the fallback.
+IPv4, with the CDN proxy disabled.
 Allow server forwarding capacity and outbound bandwidth for Viewers actually
 using the SFU.
 The Host must turn off **Privacy mode** before sharing to allow this route.
@@ -204,6 +212,11 @@ The sharing settings will show **Server media**. Plan server bandwidth for every
 Viewer; this mode does not fall back to P2P if the server route fails.
 
 ## Optional: forward an existing server with frp
+
+For a fixed public address, follow the [frp invitation guide](../guide/frp.md).
+
+<details>
+<summary>Configure your own frps and frpc</summary>
 
 If Piik runs behind NAT and you control a public frps host, frp can forward its
 existing web and SFU endpoints. P2P ICE discovery remains unchanged.
@@ -244,6 +257,8 @@ equal `SFU_UDP_PORT`. Do not forward Piik's STUN ports through frp: its UDP prox
 [changes the source mapping](../research/nat-traversal.md#external-forwarding-and-participant-relays)
 STUN would report. Restart Piik and check HTTPS health, room access and
 **Server media** from another network.
+
+</details>
 
 ### Forward a Piik App invitation
 
