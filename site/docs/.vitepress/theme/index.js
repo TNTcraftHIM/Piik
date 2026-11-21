@@ -51,7 +51,7 @@ export default {
         class: 'article-home',
         href: withBase(lang.value === 'zh-CN' ? '/zh/' : '/'),
       }, [h('span', { 'aria-hidden': 'true' }, '←'), lang.value === 'zh-CN' ? 'Piik 文档中心' : 'Piik Documentation']),
-      'doc-bottom': () => h('p', { class: 'docs-license' }, [
+      'doc-after': () => h('p', { class: 'docs-license' }, [
         h('a', { href: withBase('/third-party-licenses.txt') },
           lang.value === 'zh-CN' ? '第三方软件许可' : 'Third-party licenses'),
       ]),
