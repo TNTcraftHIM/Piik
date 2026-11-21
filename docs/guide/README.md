@@ -11,6 +11,8 @@ description: Join a room, share your screen, and fix common problems with Piik.
 
 # Piik Documentation
 
+English · [简体中文](./README.zh-CN.md)
+
 Try searching for “can’t join”, “no sound”, or “remote control”.
 
 <HelpSearch />
@@ -34,7 +36,13 @@ Try searching for “can’t join”, “no sound”, or “remote control”.
 
 <section class="help-issues">
 
+<header class="help-issues-heading">
+
 ## Fix a problem
+
+[All troubleshooting →](./troubleshooting.md)
+
+</header>
 
 - [No picture after joining a room](./no-media-route.md)
 - [I can’t join my friend’s room](./troubleshooting.md#i-cant-join-my-friends-room)
@@ -42,7 +50,8 @@ Try searching for “can’t join”, “no sound”, or “remote control”.
 - [I can see the picture but cannot hear the game](./sound-help.md#i-can-see-the-picture-but-cannot-hear-the-game)
 - [My friends cannot hear me](./sound-help.md#my-friends-cannot-hear-me)
 
-[Troubleshooting](./troubleshooting.md) · [Reporting a problem](./troubleshooting.md#reporting-a-problem)
+
+If the problem persists, [report it](./troubleshooting.md#reporting-a-problem).
 
 </section>
 
@@ -57,14 +66,17 @@ Try searching for “can’t join”, “no sound”, or “remote control”.
 
 </section>
 
-<section class="help-hosting">
+<section class="help-actions">
 
 ## Run your own site
 
-[Deploy Piik Server](../operations/self-hosting.md) · [Service Management](../operations/service-management.md) · [Use frp for a fixed Piik invitation address](./frp.md) · [Advanced network checks](./network.md) · [Piik App](../../cmd/piik-app/README.md)
+- [Deploy Piik Server](../operations/self-hosting.md)<br>
+  Try it locally or deploy to a LAN or the internet.
+- [Service Management](../operations/service-management.md)<br>
+  Run Piik in the background, update it, and back up room data.
+- [Use frp for a fixed Piik invitation address](./frp.md)<br>
+  Forward your site through an existing frp server.
 
 </section>
 
 </div>
-
-[简体中文](./README.zh-CN.md) · [Help translate Piik](./translating.md) · [Piik website](https://piik.tv/?lang=en)

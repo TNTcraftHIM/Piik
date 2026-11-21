@@ -17,14 +17,14 @@ describe("reader documentation publication", () => {
     expect(documentBody(linkedNote, "docs/guide/joining.md")).toBe(linkedNote);
   });
 
-  it("keeps both documentation homepages linked to published article and section titles", () => {
+  it("names homepage task entries after their published article or section", () => {
     const read = (source: string) => readFileSync(new URL("../" + source, import.meta.url), "utf8");
     expect(pages.filter(page => !page.path.startsWith("zh/"))).toHaveLength(14);
     expect(pages.filter(page => page.path.startsWith("zh/"))).toHaveLength(14);
     for (const homepage of pages.filter(page => page.path === "index.md" || page.path === "zh/index.md")) {
       const entrances = read(homepage.source).match(/<div class="help-sections">([\s\S]*?)<\/div>/)?.[1];
       expect(entrances, homepage.source).toBeTruthy();
-      const links = [...entrances!.matchAll(/\[([^\]]+)\]\((\.{1,2}\/[^)#]+\.md)(?:#([^)]*))?\)/g)];
+      const links = [...entrances!.matchAll(/^- \[([^\]]+)\]\((\.{1,2}\/[^)#]+\.md)(?:#([^)]*))?\)/gm)];
       expect(links.length, homepage.source).toBeGreaterThan(0);
       for (const [, label, path, fragment] of links) {
         const source = posix.join(posix.dirname(homepage.source), path);

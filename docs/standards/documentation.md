@@ -56,10 +56,10 @@ the task or destination. The documentation home and the sidebar use the
 destination's page or section title. In the product, place the relevant help
 beside the symptom and link directly to its solution. Lead with
 the answer or the first action, then say what success looks like. If it fails,
-use an observable difference to choose the next check. Verify each language's
-links, search terms and headings against realistic questions on a phone and desktop.
-For a common error, use its on-screen wording and link each observable symptom
-to an action. Place an annotated image or a crop from the real interface beside
+use an observable difference to choose the next check. Verify affected languages'
+links, search terms and headings against realistic questions; check phone and
+desktop layouts when navigation or presentation changes. Use the on-screen
+wording for common errors. Place an annotated image or a crop from the real interface beside
 a step when readers need to find a control or recognize a result.
 [Diátaxis how-to guides](https://diataxis.fr/how-to-guides/) ·
 [Microsoft procedure style](https://learn.microsoft.com/en-us/style-guide/procedures-instructions/writing-step-by-step-instructions) ·
