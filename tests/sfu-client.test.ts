@@ -248,7 +248,7 @@ function feedVideoStats(
 }
 
 describe("embedded SFU browser transport", () => {
-  it("preserves the omitted browser RID on a single encoding", async () => {
+  it.each([undefined, "q"])("declares the sender's single encoding RID (%s)", async (rid) => {
     const video = new FakeTrack("video");
     video.getSettings.mockReturnValue({ width: 320, height: 180, frameRate: 30 });
     const clone = new FakeTrack("video");
@@ -258,7 +258,8 @@ describe("embedded SFU browser transport", () => {
     vi.spyOn(FakePc.prototype, "addTransceiver").mockImplementation(function (this: FakePc, ...args) {
       const transceiver = addTransceiver.apply(this, args);
       if (args[0] !== "audio" && transceiver.sender.parameters.encodings.length === 1) {
-        delete transceiver.sender.parameters.encodings[0]!.rid;
+        if (rid === undefined) delete transceiver.sender.parameters.encodings[0]!.rid;
+        else transceiver.sender.parameters.encodings[0]!.rid = rid;
       }
       return transceiver;
     });
@@ -270,10 +271,10 @@ describe("embedded SFU browser transport", () => {
     await expect(host.activate(stream(video), QUALITY_PROFILES["720p30"], "h264")).resolves.toBe(true);
     const sender = FakePc.instances[0]!.transceivers[0]!.sender;
     expect(sender.parameters.encodings).toHaveLength(1);
-    expect(sender.parameters.encodings[0]!.rid).toBeUndefined();
+    expect(sender.parameters.encodings[0]!.rid).toBe(rid);
     expect(send).toHaveBeenCalledWith(expect.objectContaining({
       kind: "description",
-      media: expect.objectContaining({ layers: [expect.objectContaining({ rid: "q" })] }),
+      media: expect.objectContaining({ layers: [expect.objectContaining({ rid: rid ?? "" })] }),
     }));
   });
 
