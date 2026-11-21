@@ -171,26 +171,18 @@ pub fn route(
             binding: binding.clone(),
         });
     }
-    let downstream = if let Some(from) = from {
-        let (hop, _) = hop(state, frame.publication_id, frame.flow_id, false)
+    let (downstream, input) = if let Some(from) = from {
+        let (hop, flow) = hop(state, frame.publication_id, frame.flow_id, false)
             .ok_or("unassigned_input_route")?;
         if hop.peer_id != from {
             return Err("unassigned_input_route");
         }
-        Some(hop)
+        (Some(hop), flow.input_flow_id)
     } else {
         if local != frame.controller_session_id || frame.route_id != frame.flow_id {
             return Err("unassigned_input_route");
         }
-        None
-    };
-    let input = if downstream.is_some() {
-        hop(state, frame.publication_id, frame.flow_id, false)
-            .unwrap()
-            .1
-            .input_flow_id
-    } else {
-        Some(frame.flow_id)
+        (None, Some(frame.flow_id))
     };
     let upstream = input
         .map(|id| {

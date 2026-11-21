@@ -104,7 +104,8 @@ impl ForwardingBudget {
                 true
             }
         });
-        let admitted = self.reconcile(limit, requested);
+        self.reconcile(limit, requested);
+        let admitted = &self.admitted;
         for plan in &mut snapshot.watch_bytes {
             if plan.upstream.is_some() {
                 plan.downstream
@@ -182,14 +183,14 @@ impl ForwardingBudget {
         commands
     }
 
-    pub fn reconcile(
+    fn reconcile(
         &mut self,
         limit: Option<u8>,
         requested: BTreeSet<(ForwardingKind, Uuid)>,
-    ) -> BTreeSet<(ForwardingKind, Uuid)> {
+    ) {
         let Some(limit) = limit else {
             self.admitted = requested;
-            return self.admitted.clone();
+            return;
         };
         let mut next = BTreeSet::new();
         let mut counts = BTreeMap::new();
@@ -204,7 +205,6 @@ impl ForwardingBudget {
             }
         }
         self.admitted = next;
-        self.admitted.clone()
     }
 }
 
@@ -334,25 +334,18 @@ mod tests {
         let mut budget = ForwardingBudget::default();
         let mut rooms = vec![(Screen, x), (Screen, x), (Voice, y), (File, y)];
         let initial = rooms.iter().copied().collect();
-        assert_eq!(
-            budget.reconcile(Some(1), initial),
-            [(Screen, x), (Voice, y), (File, y)].into()
-        );
+        budget.reconcile(Some(1), initial);
+        assert_eq!(budget.admitted, [(Screen, x), (Voice, y), (File, y)].into());
         rooms.push((Screen, y));
         rooms.remove(0);
-        assert!(!budget
-            .reconcile(Some(1), rooms.iter().copied().collect())
-            .contains(&(Screen, y)));
+        budget.reconcile(Some(1), rooms.iter().copied().collect());
+        assert!(!budget.admitted.contains(&(Screen, y)));
         rooms.remove(0);
-        assert!(budget
-            .reconcile(Some(1), rooms.iter().copied().collect())
-            .contains(&(Screen, y)));
-        assert!(budget
-            .reconcile(Some(0), rooms.iter().copied().collect())
-            .is_empty());
-        assert_eq!(
-            budget.reconcile(None, rooms.iter().copied().collect()),
-            rooms.into_iter().collect()
-        );
+        budget.reconcile(Some(1), rooms.iter().copied().collect());
+        assert!(budget.admitted.contains(&(Screen, y)));
+        budget.reconcile(Some(0), rooms.iter().copied().collect());
+        assert!(budget.admitted.is_empty());
+        budget.reconcile(None, rooms.iter().copied().collect());
+        assert_eq!(budget.admitted, rooms.into_iter().collect());
     }
 }

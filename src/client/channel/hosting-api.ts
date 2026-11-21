@@ -21,7 +21,7 @@ export class NativeRoomHosting {
   }
 
   async snapshot(roomId: string): Promise<Blob> {
-    return (await this.request(`${this.roomsURL}/${encodeURIComponent(roomId)}/backup`)).blob();
+    return (await hostingRequest(`${this.roomsURL}/${encodeURIComponent(roomId)}/backup`, this.authorization)).blob();
   }
 
   async restore(archive: Blob, roomId?: string): Promise<RoomSummary> {
@@ -62,10 +62,6 @@ export class NativeRoomHosting {
       }
     }
     throw new RoomCreationInterrupted(undefined, false);
-  }
-
-  private async request(url: string, archive?: Blob): Promise<Response> {
-    return hostingRequest(url, this.authorization, archive);
   }
 }
 
