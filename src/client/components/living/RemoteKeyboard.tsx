@@ -33,7 +33,8 @@ const PAGES = REMOTE_KEYBOARD_PAGES;
 
 // The local input owns IME composition. Committed text and physical keys use
 // their existing input operations, without clipboard access or another channel.
-export function RemoteKeyboard({ input, close, mouseControl, touch, platform, onSurfaceChange, releaseKey, onReleaseKeyChange, allowText = true }: {
+export function RemoteKeyboard({ input, close, mouseControl, touch, platform, onSurfaceChange, releaseKey, onReleaseKeyChange, allowText = true, stickMode }: {
+  stickMode?: { value: "keyboard" | "gamepad"; onChange(value: "keyboard" | "gamepad"): void };
   input: (event: RemoteInputEvent) => void; close: () => void;
   mouseControl?: ReactNode; touch: boolean;
   platform: RemoteInputPlatform;
@@ -213,6 +214,14 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
     </>}
     </div>
     <RemoteShortcutSelect value={releaseKey} onChange={onReleaseKeyChange} mac={navigator.platform.startsWith("Mac")} />
+    {stickMode && <label>
+      {t("remote.stickMode")}
+      <select className="lr-select" name="remote-stick-mode" value={stickMode.value}
+        onChange={event => stickMode.onChange(event.target.value === "gamepad" ? "gamepad" : "keyboard")}>
+        <option value="keyboard">{t("remote.keyboardMouseMode")}</option>
+        <option value="gamepad">{t("remote.gamepadMode")}</option>
+      </select>
+    </label>}
     {!panelWindow.detached && mouseControl}
     {!vis && touch && <p>{t("remote.touchHelp")}</p>}
   </section></SurfaceDocument.Provider>;

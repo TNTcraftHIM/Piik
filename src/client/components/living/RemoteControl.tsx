@@ -43,6 +43,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const rightStick = useCallback((x: number, y: number) => gamepad.current?.setRightStick(x, y), []);
   const stickMouse = useRef<StickMouse | null>(null);
   const moveStickMouse = useCallback((x: number, y: number) => stickMouse.current?.set(x, y), []);
+  const [stickMode, setStickMode] = useState<"keyboard" | "gamepad">("keyboard");
   const [gamepadConnected, setGamepadConnected] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [keyboardDocument, setKeyboardDocument] = useState<Document | null>(null);
@@ -366,10 +367,11 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
         }}
         onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }}>
         {active && touchPointer && <RemoteMouse key={state.grant} pointer={touchPointer} positionRef={cursor}
-          pointAt={point} touchMode={touchMode} onLeftStick={gamepadAvailable && !gamepadConnected ? leftStick : undefined}
+          pointAt={point} touchMode={touchMode} mapping={gamepadAvailable && !gamepadConnected ? stickMode : "keyboard"} onLeftStick={gamepadAvailable && !gamepadConnected ? leftStick : undefined}
           onRightStick={gamepadAvailable && !gamepadConnected ? rightStick : undefined} onStickMouse={moveStickMouse} />}
       </div>}
       {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
+        stickMode={touchControls && gamepadAvailable && !gamepadConnected ? { value: stickMode, onChange: setStickMode } : undefined}
         allowText={remoteTextAvailable(state)}
         releaseKey={releaseKey} onReleaseKeyChange={key => { setReleaseKey(key); saveRoomPreferences({ remoteReleaseKey: key }); }}
         onSurfaceChange={keyboardSurfaceChanged}

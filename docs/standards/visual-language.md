@@ -375,8 +375,10 @@ without remote input. The compact trackpad retains its two-finger scrolling
 at normal scale.
 A separate button minimizes it and restores the selected touch mode; the
 compact trackpad cursor remains an optional local preference in playback settings.
-Only the mini mouse tucks away after resting at a picture edge, using the player
-controls' idle delay. The wheel shares middle-click, scrolling and held middle-drag
+Idle touch controls leave a small handle flush with the picture edge. The
+handle retains the full touch target. An open stick uses a translucent base
+and a distinct thumb so the picture remains visible during play.
+The wheel shares middle-click, scrolling and held middle-drag
 in one target. Expanded buttons, scrolling and pointer movement share
 the existing input grant and pointer geometry; the keyboard keeps its separate
 docked surface.

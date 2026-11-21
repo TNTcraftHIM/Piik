@@ -1,24 +1,39 @@
-import { useCallback, useEffect, useRef, type PointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import { useCopy } from "../../ui/copy";
+import { PLAYER_CONTROLS_IDLE_MS } from "../../ui/control-timing";
 import { Glyph } from "../../ui/icons";
 
-export function RemoteDirectionPad({ right = false, keyboard, open, toggleOpen, toggleMapping, onMove }: {
-  right?: boolean; keyboard: boolean; open: boolean; toggleOpen(): void; toggleMapping?: () => void; onMove(x: number, y: number): void;
+export function RemoteDirectionPad({ right = false, keyboard, open, toggleOpen, onMove }: {
+  right?: boolean; keyboard: boolean; open: boolean; toggleOpen(): void; onMove(x: number, y: number): void;
 }) {
   const { t } = useCopy();
 
+  const group = useRef<HTMLDivElement>(null);
   const pad = useRef<HTMLDivElement>(null);
-  const contact = useRef<number | null>(null);
-  const label = t(right ? (keyboard ? "remote.mouseStick" : "remote.rightStick") : (keyboard ? "remote.directionPad" : "remote.leftStick"));
   const thumb = useRef<HTMLElement>(null);
+  const contact = useRef<number | null>(null);
+  const [docked, setDocked] = useState(false);
+  const idle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const park = useCallback(() => {
+    clearTimeout(idle.current);
+    idle.current = setTimeout(() => {
+      if (contact.current === null && !group.current?.querySelector(":focus-visible")) setDocked(true);
+    }, PLAYER_CONTROLS_IDLE_MS);
+  }, []);
+  useEffect(() => {
+    if (!docked) park();
+    return () => clearTimeout(idle.current);
+  }, [park, open, docked]);
+  const label = t(right ? (keyboard ? "remote.mouseStick" : "remote.rightStick") : (keyboard ? "remote.directionPad" : "remote.leftStick"));
   const release = useCallback(() => {
+    if (contact.current === null) return;
     contact.current = null;
     onMove(0, 0);
     pad.current?.style.removeProperty("--stick-x");
     pad.current?.style.removeProperty("--stick-y");
   }, [onMove]);
   useEffect(() => {
-    if (!open) return;
+    if (!open || docked) return;
     const doc = pad.current!.ownerDocument;
     const visibility = () => { if (doc.hidden) release(); };
     doc.defaultView?.addEventListener("blur", release);
@@ -28,7 +43,7 @@ export function RemoteDirectionPad({ right = false, keyboard, open, toggleOpen, 
       doc.removeEventListener("visibilitychange", visibility);
       release();
     };
-  }, [release, open]);
+  }, [release, open, docked]);
   function move(e: PointerEvent<HTMLDivElement>) {
     if (contact.current !== e.pointerId) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -44,11 +59,14 @@ export function RemoteDirectionPad({ right = false, keyboard, open, toggleOpen, 
   function end(e: PointerEvent<HTMLDivElement>) {
     if (contact.current !== e.pointerId) return;
     release();
+    park();
   }
-  return <div className="lr-remote-direction" data-side={right ? "right" : "left"}>
-    <button type="button" className="lr-btn is-compact" aria-label={label} aria-expanded={open}
-      onClick={toggleOpen}><Glyph name="gamepad" size={20} /><span aria-hidden="true">{right ? "R" : "L"}</span></button>
-    {open && <div ref={pad} className="lr-remote-stick" role="group" aria-label={label}
+  return <div ref={group} onFocus={() => clearTimeout(idle.current)} onBlur={park}
+    onPointerDownCapture={() => clearTimeout(idle.current)} onPointerUpCapture={park} onPointerCancelCapture={park}
+    data-docked={docked ? (right ? "right" : "left") : undefined} className="lr-remote-direction" data-side={right ? "right" : "left"}>
+    <button type="button" className={docked ? "lr-btn is-compact lr-remote-stick-wake" : "lr-btn is-compact"} aria-label={label} aria-expanded={open && !docked}
+      onClick={() => docked ? setDocked(false) : toggleOpen()}><Glyph name="gamepad" size={20} /><span aria-hidden="true">{right ? "R" : "L"}</span></button>
+    {open && !docked && <div ref={pad} className="lr-remote-stick" role="group" aria-label={label}
       onPointerDown={e => {
         if (contact.current !== null || e.button !== 0) return;
         e.preventDefault();
@@ -58,7 +76,5 @@ export function RemoteDirectionPad({ right = false, keyboard, open, toggleOpen, 
       }} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
       {(!right && keyboard ? ["W", "A", "S", "D"] : ["↑", "←", "↓", "→"]).map(value => <span key={value}>{value}</span>)}<i ref={thumb} />
     </div>}
-    {open && toggleMapping && <button type="button" className="lr-chip" aria-label={t(keyboard ? "remote.switchToGamepad" : "remote.switchToKeyboardMouse")}
-      onClick={toggleMapping}>{t(keyboard ? "remote.keyboardMouseMode" : "remote.gamepadMode")} ⇄</button>}
   </div>;
 }

@@ -252,11 +252,14 @@ follow the shared [motion grammar](./visual-language.md#motion-grammar).
 
 On touch devices, the two on-screen sticks are available while the current
 picture is playing and its authorized remote-control channel is ready. The
-left and right sticks start collapsed and expand independently. One mapping
-applies to both sticks. Gamepad mode sends left and right stick axes when
-available. Keyboard and mouse mode sends WASD and mouse movement and remains
-available with a physical gamepad active. Collapsing a stick releases its
-input. Focus loss or a control disconnect neutralizes both sticks.
+left and right sticks start collapsed and expand independently. Idle sticks
+and the mini mouse tuck to the picture edge on the playback controls' timing.
+A held control stays visible. Tapping its edge handle wakes it for use.
+Remote keyboard owns the mapping for both sticks. Keyboard and mouse mode
+sends WASD and relative mouse movement. When a virtual gamepad is available,
+the viewer can select its left and right axes. A connected physical gamepad
+leaves the touch sticks available for keyboard and mouse input. Collapsing a
+stick releases its input. Focus loss or a control disconnect neutralizes both sticks.
 
 A picture click does not pause playback; the playback button and focused-video
 keyboard shortcut own that action. Desktop double-click toggles the available
