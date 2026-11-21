@@ -512,7 +512,8 @@ pub async fn serve(
         .layer(middleware::from_fn_with_state(app.clone(), access))
         .with_state(app.clone());
     let console = console::Console::new(None);
-    let mut terminal = terminal::Terminal::start(terminal_enabled, terminal_notice.as_deref());
+    let mut terminal =
+        terminal::Terminal::start(terminal_enabled, address.port(), terminal_notice.as_deref());
     if terminal.is_none() {
         console.startup(BUILD_VERSION, BUILD_REVISION, address.port());
         if let Some(notice) = &terminal_notice {
@@ -544,10 +545,7 @@ pub async fn serve(
                 _ = closing.changed() => break,
                 _ = tick.tick() => app.desktop.tick(),
                 state = async { refresh.tick().await; launcher_view(&app).await }, if terminal.is_some() => {
-                    match state {
-                        Ok(state) => terminal.as_mut().unwrap().show(&state, false),
-                        Err(error) => { eprintln!("Terminal status unavailable: {error}"); }
-                    }
+                    terminal.as_mut().unwrap().show(state, false);
                 }
                 action = async { match terminal.as_mut() {
                     Some(view) => view.next().await,
@@ -564,28 +562,31 @@ pub async fn serve(
                     }
                     Some(action) => {
                         if action != terminal::Command::Refresh && opening.is_some() { continue; }
-                        let state = tokio::select! {
-                            _ = &mut stop => break,
-                            _ = closing.changed() => break,
-                            next = terminal.as_mut().unwrap().next() => {
-                                if matches!(next, None | Some(terminal::Command::Quit)) {
-                                    app.closing.send_replace(true);
-                                    break;
+                        let url = if action == terminal::Command::Launcher {
+                            Some(format!("http://127.0.0.1:{}/client", app.port))
+                        } else {
+                            let state = tokio::select! {
+                                _ = &mut stop => break,
+                                _ = closing.changed() => break,
+                                next = terminal.as_mut().unwrap().next() => {
+                                    if matches!(next, None | Some(terminal::Command::Quit)) {
+                                        app.closing.send_replace(true);
+                                        break;
+                                    }
+                                    continue;
                                 }
-                                continue;
+                                state = launcher_view(&app) => state,
+                            };
+                            match state {
+                                Ok(state) if action == terminal::Command::Site => {
+                                    state["target"].as_str().map(str::to_owned)
+                                }
+                                state => {
+                                    terminal.as_mut().unwrap().show(state, true);
+                                    continue;
+                                }
                             }
-                            state = launcher_view(&app) => state,
                         };
-                        let state = match state {
-                            Ok(state) => state,
-                            Err(error) => { eprintln!("Terminal status unavailable: {error}"); continue; }
-                        };
-                        if action == terminal::Command::Refresh {
-                            terminal.as_mut().unwrap().show(&state, true);
-                            continue;
-                        }
-                        let url = if action == terminal::Command::Launcher { Some(format!("http://127.0.0.1:{}/client", app.port)) }
-                            else { state["target"].as_str().map(str::to_owned) };
                         if let Some(url) = url {
                             match terminal::open_browser(url) {
                                 Ok(request) => opening = Some(request),
@@ -611,9 +612,16 @@ pub async fn serve(
                     None => std::future::pending().await,
                 }} => {
                     opening = None;
-                    if !matches!(result, Ok(Ok(()))) {
-                        if let Some(view) = &terminal { view.message("Could not open Browser. Use O/S to retry or the address above. / 无法打开浏览器，可按 O/S 重试或使用上方地址。"); }
-                        else { eprintln!("Could not open Browser; the App is still running. / 无法打开浏览器，App 仍在运行。"); }
+                    let error = match result {
+                        Ok(Ok(())) => continue,
+                        Ok(Err(error)) => error.to_string(),
+                        Err(error) => error.to_string(),
+                    };
+                    let message = format!("Could not open Browser / 无法打开浏览器: {error}");
+                    if let Some(view) = &terminal {
+                        view.message(&message);
+                    } else {
+                        eprintln!("{message}");
                     }
                 }
             }

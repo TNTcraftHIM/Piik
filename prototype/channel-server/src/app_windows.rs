@@ -532,7 +532,7 @@ fn message_box(owner: isize, text: &str, flags: u32) -> i32 {
 }
 
 pub fn report_error(detail: &str) {
-    if !console::attached() {
+    if !console::shared() {
         message_box(0, detail, 0x10);
     }
 }

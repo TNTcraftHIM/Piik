@@ -93,11 +93,12 @@ impl Drop for Input {
 pub(super) struct Terminal {
     _input: Input,
     commands: mpsc::Receiver<Command>,
+    port: u16,
     notice: Option<String>,
     last: String,
 }
 impl Terminal {
-    pub fn start(enabled: bool, notice: Option<&str>) -> Option<Self> {
+    pub fn start(enabled: bool, port: u16, notice: Option<&str>) -> Option<Self> {
         if !enabled
             || !io::stdin().is_terminal()
             || !io::stderr().is_terminal()
@@ -140,9 +141,6 @@ impl Terminal {
                             }
                             _ => {}
                         },
-                        Ok(Event::Resize(_, _)) => {
-                            let _ = send.try_send(Command::Refresh);
-                        }
                         Ok(_) => {}
                         Err(error) => {
                             eprintln!("Terminal input unavailable: {error}");
@@ -158,18 +156,31 @@ impl Terminal {
                 thread: Some(thread),
             },
             commands,
-            notice: notice.map(clean),
+            port,
+            notice: notice.map(str::to_owned),
             last: String::new(),
         })
     }
     pub async fn next(&mut self) -> Option<Command> {
         self.commands.recv().await
     }
-    pub fn show(&mut self, state: &Value, force: bool) {
+    pub fn show(&mut self, state: anyhow::Result<Value>, force: bool) {
         let width = terminal::size()
             .map_or(64, |(width, _)| usize::from(width))
             .clamp(1, 100);
-        let frame = render(state, self.notice.as_deref(), width);
+        let (state, error) = match state {
+            Ok(state) => (state, None),
+            Err(error) => (
+                serde_json::json!({
+                    "version": super::BUILD_VERSION,
+                    "revision": super::BUILD_REVISION,
+                    "controlPort": self.port,
+                    "debug": piik_channel_native::diagnostics::enabled()
+                }),
+                Some(format!("{error:#}")),
+            ),
+        };
+        let frame = render(&state, self.notice.as_deref(), error.as_deref(), width);
         if force || frame != self.last {
             // Append only changed views. Existing errors remain observable in scrollback;
             // no cursor rewrites, alternate screen, log parser or duplicate history store.
@@ -201,7 +212,7 @@ fn display_address(value: &str) -> Option<String> {
     url.set_fragment(None);
     Some(url.to_string())
 }
-fn render(state: &Value, notice: Option<&str>, width: usize) -> String {
+fn render(state: &Value, notice: Option<&str>, error: Option<&str>, width: usize) -> String {
     let version = clean(state["version"].as_str().unwrap_or("development"));
     let revision = clean(state["revision"].as_str().unwrap_or("development"));
     let short = if revision.len() == 40 && revision.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -215,7 +226,9 @@ fn render(state: &Value, notice: Option<&str>, width: usize) -> String {
         "─".repeat(width),
     ];
     lines.push("App connection ready / App 连接服务已就绪".into());
-    let status = if state["starting"].as_bool() == Some(true) {
+    let status = if error.is_some() {
+        "Launcher status unavailable / 暂时无法读取启动页状态"
+    } else if state["starting"].as_bool() == Some(true) {
         "Site starting / 站点正在启动"
     } else if state["reason"].is_string() {
         "Site unavailable / 站点暂不可用"
@@ -228,7 +241,7 @@ fn render(state: &Value, notice: Option<&str>, width: usize) -> String {
     if let Some(notice) = notice.filter(|v| !v.is_empty()) {
         lines.push(format!("Notice / 提示: {}", clean(notice)));
     }
-    if let Some(reason) = state["reason"].as_str() {
+    if let Some(reason) = error.or_else(|| state["reason"].as_str()) {
         lines.push(format!("Reason / 原因: {}", clean(reason)));
     }
     if let Some(port) = state["controlPort"].as_u64() {
@@ -260,7 +273,8 @@ fn render(state: &Value, notice: Option<&str>, width: usize) -> String {
     lines.push(if state["debug"].as_bool() == Some(true) {
         "D + Enter  Export App report / 导出 App 报告".into()
     } else {
-        "D + Enter  App report · enable Debug in launcher first / App 报告，请先在启动页启用调试".into()
+        "D + Enter  App report · enable Debug in launcher first / App 报告，请先在启动页启用调试"
+            .into()
     });
     lines.push("Q + Enter  Quit normally / 正常退出   ·   Ctrl+C".into());
     lines.join("\n")
@@ -275,7 +289,7 @@ mod tests {
         let state = json!({"version":"v3.0.0-beta.test","revision":"a".repeat(40),"controlPort":39721,
             "target":"http://127.0.0.1:8787/?piik-client-port=39721#owner=secret&piik-client=1",
             "ownedSites":["http://127.0.0.1:8787/","https://192.0.2.1:8787/"]});
-        let view = render(&state, Some("System WebView unavailable"), 32);
+        let view = render(&state, Some("System WebView unavailable"), None, 32);
         assert!(view.contains("Site ready"));
         assert!(view.contains("192.0.2.1"));
         assert!(view.contains("[aaaaaaaa]"));
@@ -284,11 +298,12 @@ mod tests {
         assert!(!view.contains("piik-client"));
         assert!(!view.contains("owner="));
         assert!(view.contains(&"─".repeat(32)));
-        let starting = render(&json!({"starting":true}), None, 20);
+        let starting = render(&json!({"starting":true}), None, None, 20);
         assert!(starting.contains("Site starting"));
         assert!(!starting.contains("S + Enter"));
         assert!(render(
             &json!({"reason":"tunnel-timeout","detail":"private raw error"}),
+            None,
             None,
             20
         )
@@ -296,9 +311,22 @@ mod tests {
         assert!(!render(
             &json!({"reason":"tunnel-timeout","detail":"private raw error"}),
             None,
+            None,
             20
         )
         .contains("private raw error"));
+    }
+    #[test]
+    fn launcher_read_failure_preserves_build_address_and_actions() {
+        let state = json!({"version":"3.0.0", "revision":"development", "controlPort":39721});
+        let failed = render(&state, None, Some("Settings temporarily unavailable"), 20);
+        assert!(failed.contains("Piik  3.0.0"));
+        assert!(failed.contains("Launcher status unavailable"));
+        assert!(failed.contains("Settings temporarily unavailable"));
+        assert!(failed.contains("http://127.0.0.1:39721/client"));
+        assert!(failed.contains("O + Enter"));
+        assert!(failed.contains("Q + Enter"));
+        assert!(!failed.contains("S + Enter"));
     }
     #[test]
     fn input_is_explicit_and_does_not_treat_arbitrary_text_as_a_command() {
@@ -311,7 +339,8 @@ mod tests {
     }
     #[test]
     fn diagnostics_are_an_explicit_export_without_a_second_enabled_state() {
-        assert!(render(&json!({"debug":true}), None, 44).contains("Export App report"));
-        assert!(render(&json!({"debug":false}), None, 44).contains("enable Debug in launcher first"));
+        assert!(render(&json!({"debug":true}), None, None, 44).contains("Export App report"));
+        assert!(render(&json!({"debug":false}), None, None, 44)
+            .contains("enable Debug in launcher first"));
     }
 }

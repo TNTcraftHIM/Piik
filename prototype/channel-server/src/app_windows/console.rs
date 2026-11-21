@@ -62,9 +62,9 @@ fn acquire(create_if_missing: bool) -> io::Result<()> {
     }
 }
 
-pub(super) fn attached() -> bool {
+pub(super) fn shared() -> bool {
     let mut id = 0;
-    // SAFETY: The buffer is valid for the one element requested. A larger
-    // returned count still proves attachment; no process list is consumed.
-    unsafe { GetConsoleProcessList(&mut id, 1) != 0 }
+    // SAFETY: The buffer holds one PID. A larger count means another process
+    // uses the same console, so it can remain open when the App exits.
+    unsafe { GetConsoleProcessList(&mut id, 1) > 1 }
 }
