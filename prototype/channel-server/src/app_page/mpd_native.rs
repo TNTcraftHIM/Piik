@@ -11,23 +11,7 @@ impl OriginReader {
         let snapshot = reader
             .source_operation(async move {
                 let url = url::Url::parse(&source.context.url)?;
-                let mut response = source.response(&url, 0, None).await?;
-                ensure!(response.status().is_success(), "watch_media_unavailable");
-                ensure!(
-                    response
-                        .content_length()
-                        .is_none_or(|n| n <= MAX_MANIFEST as u64),
-                    "watch_manifest_limit"
-                );
-                let final_url = response.url().clone();
-                let mut bytes = Vec::new();
-                while let Some(chunk) = response.chunk().await.map_err(request_failure)? {
-                    ensure!(
-                        bytes.len() + chunk.len() <= MAX_MANIFEST,
-                        "watch_manifest_limit"
-                    );
-                    bytes.extend_from_slice(&chunk);
-                }
+                let (final_url, bytes) = source.read_manifest(&url).await?;
                 let xml = String::from_utf8(bytes).map_err(|_| anyhow!("watch_mpd_invalid"))?;
                 let cancelled = source.mpd_cancelled();
                 let root = source.root;

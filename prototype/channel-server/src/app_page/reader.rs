@@ -423,21 +423,7 @@ impl OriginReader {
             }
         }
     }
-    async fn playlist(&self, id: Uuid, url: &url::Url, reload: Arc<Mutex<()>>) -> Result<Snapshot> {
-        // Serialize only this manifest; other resources never wait on origin I/O.
-        let _loading = reload.lock().await;
-        let was_live = if let Some(Resource::Playlist {
-            snapshot: Some(snapshot),
-            ..
-        }) = self.resources.lock().await.get(&id)
-        {
-            if !snapshot.live {
-                return Ok(snapshot.clone());
-            }
-            true
-        } else {
-            false
-        };
+    async fn read_manifest(&self, url: &url::Url) -> Result<(url::Url, Vec<u8>)> {
         let mut response = self.response(url, 0, None).await?;
         ensure!(response.status().is_success(), "watch_media_unavailable");
         ensure!(
@@ -455,6 +441,24 @@ impl OriginReader {
             );
             bytes.extend_from_slice(&chunk);
         }
+        Ok((resolved_url, bytes))
+    }
+    async fn playlist(&self, id: Uuid, url: &url::Url, reload: Arc<Mutex<()>>) -> Result<Snapshot> {
+        // Serialize only this manifest; other resources never wait on origin I/O.
+        let _loading = reload.lock().await;
+        let was_live = if let Some(Resource::Playlist {
+            snapshot: Some(snapshot),
+            ..
+        }) = self.resources.lock().await.get(&id)
+        {
+            if !snapshot.live {
+                return Ok(snapshot.clone());
+            }
+            true
+        } else {
+            false
+        };
+        let (resolved_url, bytes) = self.read_manifest(url).await?;
         let mut resources = self.resources.lock().await;
         maintain(&mut resources, Instant::now());
         // Validate/admit into a bounded transaction; failed rewrites leave the old graph intact.
