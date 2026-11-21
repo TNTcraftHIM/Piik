@@ -22,7 +22,7 @@ This example uses **SakuraFrp (樱花映射)**. If you run frps or use another p
 ### Desktop App
 
 - **3.0 beta.** In the launcher choose **Public invite → Existing address** and enter your public HTTPS address. In the SakuraFrp TCP tunnel settings, set the local IP and port to the **Local forwarding target** shown in Piik, then enter Piik from the launcher. The host uses the page the App opens.
-- **2.x maintenance build.** Open PowerShell in the extracted App directory. Run `.\piik-app.exe --help` and check for `public-origin` before using the command below. Replace the example HTTPS address with the public address from the tunnel log and replace the example port with the local port in the TCP tunnel settings. With the published v2.7.0, use the Server option below for a fixed address.
+- **2.8 and later 2.x releases.** Open PowerShell in the extracted App directory and run the command below. Replace the example HTTPS address with the public address from the tunnel log and replace the example port with the local port in the TCP tunnel settings. With v2.7.0, use the Server option below for a fixed address.
 
 ```powershell
 .\piik-app.exe --link --public-origin https://piik.example.nyat.app:21080 --port 8787

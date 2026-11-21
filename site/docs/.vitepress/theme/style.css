@@ -69,7 +69,7 @@ html[data-reduced-motion] .identity * { animation: none !important; }
   .help-search kbd { display: none; }
 }
 .help-sections { display: grid; grid-template-columns: 1.1fr 1fr; gap: clamp(28px, 4vw, 48px) clamp(24px, 6vw, 80px); margin-top: 32px; }
-.help-actions, .help-hosting { grid-column: 1 / -1; }
+.help-actions { grid-column: 1 / -1; }
 .help-sections h2 { margin-bottom: 12px; font-size: clamp(22px, 2.4vw, 28px); line-height: 1.25; letter-spacing: -.025em; font-weight: 700; }
 .help-actions ul { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .help-sections li { position: relative; color: var(--muted); }
@@ -78,20 +78,19 @@ html[data-reduced-motion] .identity * { animation: none !important; }
 .help-actions li a { display: block; margin-bottom: 4px; font-size: 19px; color: var(--ink); }
 .help-sections li a:only-of-type::before { content: ""; position: absolute; inset: 0; }
 .help-sections li:has(a:hover) { background: var(--control-hover); }
-.help-sections li:has(a:focus-visible), .help-search:focus-visible { outline: 3px solid var(--action); outline-offset: 3px; }
+.help-sections li:has(a:focus-visible), .help-sections a:focus-visible, .help-search:focus-visible { outline: 3px solid var(--action); outline-offset: 3px; }
+.help-sections li a:focus-visible { outline: none; }
 .help-actions li::after { content: "→"; position: absolute; inset-inline-end: 14px; top: 18px; pointer-events: none; color: var(--action-text); }
 .help-issues li, .help-resources li { padding: 11px 4px; border-bottom: 1px solid var(--line); line-height: 1.5; }
-.help-hosting { padding-block-start: 24px; border-top: 1px solid var(--line); }
-.help-home .VPPage > div > p:last-child { margin-top: 24px; color: var(--muted); }
 .help-home .header-anchor { display: none; }
 .vp-doc h1 { font-size: clamp(32px, 4vw, 46px); line-height: 1.13; }
 .vp-doc h1 + p { color: var(--muted); font-size: 1.1em; }
 .vp-doc details { background: var(--wall); }
 .vp-doc details summary { color: var(--action-text); }
 @media (max-width: 700px) {
-  .help-hero { border-radius: 18px; }
-  .help-hero::after { inset: 6px 8px auto auto; width: 25%; height: 66px; }
-  .help-hero h1 { max-width: 78%; }
+  .help-hero { display: grid; border-radius: 18px; }
+  .help-hero::after { position: static; height: 100px; margin-top: 16px; }
+  .help-hero h1 { max-width: none; }
   .help-hero p, .help-search { max-width: none; width: 100%; }
   .help-sections, .help-actions ul { grid-template-columns: 1fr; }
   .help-sections { gap: 28px; margin-top: 24px; }
@@ -103,6 +102,8 @@ html[data-reduced-motion] .identity * { animation: none !important; }
   .help-actions li a { margin: 0; }
 }
 
-.help-sections > section > p { margin-top: 16px; }
-.help-sections > section > p a { color: var(--action-text); text-decoration: underline; text-underline-offset: 3px; }
+.help-issues-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; margin-bottom: 12px; }
+.help-issues-heading h2 { margin-bottom: 0; }
+.help-issues > p { margin-top: 12px; color: var(--muted); line-height: 1.5; }
+.help-issues-heading a, .help-issues > p a { color: var(--action-text); text-decoration: underline; text-underline-offset: 3px; }
 .help-actions li > a + br { display: none; }

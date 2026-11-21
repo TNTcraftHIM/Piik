@@ -52,9 +52,9 @@ on your own server.
 
 **Got an invitation?** Open the full link in a browser on your computer or phone. If the picture does not start automatically, select **Play**.
 
-1. **Choose how to share.** On a computer, open [Piik online](https://demo.piik.tv) to share a screen, window or browser tab. A phone browser with camera access can share its camera. To share with Piik App, [download the App](https://piik.tv/#download), then extract and open it on desktop or install and open it on mobile. To invite friends on another network, choose **Public invite**, then **Open Piik**.
+1. **Choose how to share.** On a computer, open [Piik online](https://demo.piik.tv) to share a screen, window or browser tab. A phone browser with camera access can share its camera. To share with Piik App, [download the App](https://piik.tv/#download), then extract and open it on desktop or install and open it on Android. To invite friends on another network, choose **Public invite**, then **Open Piik**.
 2. Select **Start sharing** and choose what your friend will see. If you want to share sound, enable audio when the source picker offers it.
-3. Once you see the preview, select **Copy invite link** and send the full link to your friend. Keep the sharing tab open. If you use the App, keep it running too.
+3. Once you see the preview, select **Copy** under **Admission** and send the full link to your friend. Keep the sharing tab open. If you use the App, keep it running too.
 
 <p align="center"><img src="./docs/assets/quickstart.svg" width="640" alt="Choose a screen, send an invitation, watch together."></p>
 

@@ -11,6 +11,8 @@ description: 了解如何加入房间、分享屏幕，以及解决 Piik 的常�
 
 # Piik 文档中心
 
+[English](./README.md) · 简体中文
+
 试试搜索「进不去」「没声音」或「远程控制」。
 
 <HelpSearch />
@@ -34,7 +36,13 @@ description: 了解如何加入房间、分享屏幕，以及解决 Piik 的常�
 
 <section class="help-issues">
 
+<header class="help-issues-heading">
+
 ## 遇到问题
+
+[全部疑难解答 →](./troubleshooting.zh-CN.md)
+
+</header>
 
 - [进房后没画面](./no-media-route.zh-CN.md)
 - [进不去朋友的房间](./troubleshooting.zh-CN.md#进不去朋友的房间)
@@ -42,7 +50,8 @@ description: 了解如何加入房间、分享屏幕，以及解决 Piik 的常�
 - [有画面但听不到游戏声音](./sound-help.zh-CN.md#有画面但听不到游戏声音)
 - [朋友听不到我说话](./sound-help.zh-CN.md#朋友听不到我说话)
 
-[疑难解答](./troubleshooting.zh-CN.md) · [反馈问题](./troubleshooting.zh-CN.md#反馈问题)
+
+仍未解决时，请[反馈问题](./troubleshooting.zh-CN.md#反馈问题)。
 
 </section>
 
@@ -57,14 +66,17 @@ description: 了解如何加入房间、分享屏幕，以及解决 Piik 的常�
 
 </section>
 
-<section class="help-hosting">
+<section class="help-actions">
 
 ## 自建和管理站点
 
-[部署 Piik Server](../operations/self-hosting.zh-CN.md) · [服务管理](../operations/service-management.zh-CN.md) · [用 frp 给 Piik 设置固定公网邀请](./frp.zh-CN.md) · [进阶网络排查](./network.zh-CN.md) · [Piik App](../../cmd/piik-app/README.zh-CN.md)
+- [部署 Piik Server](../operations/self-hosting.zh-CN.md)<br>
+  在本机试用，或部署到局域网和公网。
+- [服务管理](../operations/service-management.zh-CN.md)<br>
+  设置后台运行，更新和备份站点。
+- [用 frp 给 Piik 设置固定公网邀请](./frp.zh-CN.md)<br>
+  通过已有的 frp 节点转发站点。
 
 </section>
 
 </div>
-
-[English](./README.md) · [参与 Piik 翻译](./translating.zh-CN.md) · [Piik 官网](https://piik.tv/?lang=zh-CN)
