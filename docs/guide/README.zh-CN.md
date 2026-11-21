@@ -11,7 +11,7 @@ description: 了解如何加入房间、分享屏幕，以及解决 Piik 的常�
 
 # Piik 文档中心
 
-试试搜索「进不去」「没声音」或「摇杆」。
+试试搜索「进不去」「没声音」或「远程控制」。
 
 <HelpSearch />
 
@@ -29,8 +29,6 @@ description: 了解如何加入房间、分享屏幕，以及解决 Piik 的常�
   打开在线版，把邀请链接发给朋友。
 - [用 Piik App 分享](./getting-started.zh-CN.md#用-piik-app-分享)<br>
   安装 App，选择本地房间或公网邀请。
-- [用手机玩电脑游戏（屏幕摇杆）](./remote-control.zh-CN.md#用手机玩电脑游戏屏幕摇杆)<br>
-  请求控制，用屏幕上的摇杆操作朋友的游戏。
 
 </section>
 

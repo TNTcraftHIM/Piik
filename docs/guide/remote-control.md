@@ -88,21 +88,6 @@ If the gamepad does not respond, check the Host's driver and App support, then
 turn **Remote control** off and on. Keyboard/mouse co-play and ordinary remote control
 remain available without the gamepad driver.
 
-<a id="use-the-on-screen-joystick"></a>
-
-## Play on your phone with the on-screen joystick
-
-On a touchscreen, tap **Request control** in the playback bar. If the host approves requests individually, wait for them to select **Allow**. Once you have control, **L** and **R** appear on the playing picture. Touchscreen laptops work too.
-
-Tap **L** or **R** to open or close one stick. Drag the lettered handle to put that stick within easy reach. Your browser remembers the position. Press the pad to steer and lift to center it. When idle, the handles tuck against the picture edges and each open pad stays in place.
-
-In **Remote keyboard → Local controls**, turn off **Virtual joysticks** to remove both pads and handles and use ordinary touch across the picture. To keep the sticks available with less on screen, turn on **Show on touch**. A thin ring briefly marks a pad when you open it. Press there to show the thumb.
-
-Open **Remote keyboard → Local controls → Stick mode** to set both sticks. In **Keys + mouse**, the left stick holds W, A, S or D and the right stick moves the mouse. When the Host supports gamepad input and the Viewer has no physical gamepad connected, choose **Gamepad** to send left and right stick input. Closing a stick, leaving the page or disconnecting releases the affected inputs. After reconnecting, select **Request control** again.
-
-![The Viewer has opened both touch sticks over the shared picture.](../assets/guide/touch-joystick.en.png#gh-light-mode-only)
-![The Viewer has opened both touch sticks over the shared picture.](../assets/guide/touch-joystick.en.dark.png#gh-dark-mode-only)
-
 ## End control
 
 Either person can choose **End control**. The Host can stop all remote input with
@@ -119,6 +104,8 @@ choice needs **Allow Viewers** before it applies again. Passwords are not saved.
 ## Mouse, touch and permissions
 
 For desktop tasks on a phone, tap a visible target or use the trackpad to position the cursor precisely. Both touch modes send positions within the shared picture. For continuous mouse look, use **Game mouse** in a supported desktop browser.
+
+After you get control on a touchscreen, tap **L** or **R** to open or close a stick, or drag its handle to move it. Press the pad to steer and lift to center it. In **Remote keyboard → Local controls**, change **Stick mode**, turn on **Show on touch**, or turn off **Virtual joysticks**.
 
 On a phone, touch the picture directly to click and hold to drag, without a
 cursor. Two-finger tap is right-click; two-finger swipe scrolls. Pinch to zoom in

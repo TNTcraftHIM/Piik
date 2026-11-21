@@ -11,7 +11,7 @@ description: Join a room, share your screen, and fix common problems with Piik.
 
 # Piik Documentation
 
-Try searching for “can’t join”, “no sound”, or “joystick”.
+Try searching for “can’t join”, “no sound”, or “remote control”.
 
 <HelpSearch />
 
@@ -29,8 +29,6 @@ Try searching for “can’t join”, “no sound”, or “joystick”.
   Open the online site and send friends an invitation link.
 - [Share with Piik App](./getting-started.md#share-with-piik-app)<br>
   Install Piik App and choose a local or public invitation.
-- [Play on your phone with the on-screen joystick](./remote-control.md#play-on-your-phone-with-the-on-screen-joystick)<br>
-  Request control and move with the on-screen joystick.
 
 </section>
 
