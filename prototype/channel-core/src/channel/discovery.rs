@@ -280,17 +280,12 @@ impl Channel {
                     .is_some_and(|edge| self.transports.rejected(&edge))
             });
         }
+        let bound_projections = self.remote.values()
+            .filter(|room| room.binding.is_some())
+            .filter_map(|room| room.projection.as_ref());
         self.transports.reconcile_with_standby(
-            self.remote
-                .values()
-                .filter(|room| room.binding.is_some())
-                .filter_map(|room| room.projection.as_ref())
-                .flat_map(|projection| projection.flows.iter().cloned()),
-            self.remote
-                .values()
-                .filter(|room| room.binding.is_some())
-                .filter_map(|room| room.projection.as_ref())
-                .flat_map(|projection| projection.base_links.iter().cloned()),
+            bound_projections.clone().flat_map(|projection| projection.flows.iter().cloned()),
+            bound_projections.flat_map(|projection| projection.base_links.iter().cloned()),
             &plan.standby,
             &plan.preparing,
             &plan.candidates,
