@@ -278,8 +278,11 @@ with the shared changes but does not advertise this desktop input capability.
 Switching between the full workspace and simple sharing retains actual Browser
 picture and Opus tracks, publication and transport identities, microphone
 acquisition and drafts. The simple view keeps joined voice visible and permits
-leaving it. Browser and Native first-share checks verify explicit room creation,
-picker cancellation and retry in the same room, then normal capture and stop.
+leaving it. Browser and Native first-share checks cover cancellation and retry
+in the same room. On the `c5034bb0` Windows App and bundled Web UI, choosing
+simple sharing on an empty site made no capture request. An invited Browser
+decoded the synthetic picture through the sharer's switch back to the full
+workspace and removed the video when sharing stopped.
 
 In an App-hosted room, an independent Browser viewer kept receiving the original
 share through a cancelled or rejected source change. Successful replacement

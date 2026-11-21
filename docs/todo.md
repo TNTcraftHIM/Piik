@@ -193,9 +193,9 @@ the feedback period; they do not delay that delivery.
   recovery on a persistent hosting target. The
   [deployment assessment](./deployment.md#managed-one-click-hosting) distinguishes
   a full Server from a Vercel-hosted frontend that still needs an external Server.
-- [ ] **Accept the unified 3.0 sharing experience.** Owner review and matched-package
-  acceptance remain for the optional screen-centred view and its explicit first-share
-  flow. The existing room runtime, full-workspace default and activity lifetimes
+- [ ] **Accept the unified 3.0 sharing experience.** Review the optional
+  screen-centred view with the owner and repeat the first share on the release
+  candidate. The existing room runtime, full-workspace default and activity lifetimes
   remain shared. End the separate 2.x maintenance line only at the accepted 3.0
   cutover; fix confirmed defects during the transition. A short room-code locator
   remains a separate product decision.
