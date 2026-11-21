@@ -32,7 +32,7 @@ const source = ts.createSourceFile("HostPage.tsx", readFileSync(
   new URL("../src/client/pages/HostPage.tsx", import.meta.url), "utf8",
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const owners = new Set(["changeQuality", "commitQuality", "rememberQuality", "loadAppQualityPreference", "handleSignalMessage",
-  "switchSource", "watchCaptureEnd", "switchNativeSource", "switchToNativeSource", "createBrowserAudio", "changeCommentary", "retireNativeSenderPeers", "finishSourceSwitch", "replaceBrowserStream", "recoverBrowserFanout", "disposeNativeShare",
+  "switchSource", "watchCaptureEnd", "switchNativeSource", "switchToNativeSource", "startBrowserAudio", "createBrowserAudio", "changeCommentary", "retireNativeSenderPeers", "finishSourceSwitch", "replaceBrowserStream", "recoverBrowserFanout", "disposeNativeShare",
   "acquireNativeClient", "requestSharing", "nativeCaptureCodec", "startNativeShare", "startBrowserNativeIngress",
   "createNativePreview", "failNativePreview", "reconnectNativePreview", "reportHostChildFailure", "hostChildIsAssigned", "prepareHostChild",
   "connectNativeClient", "handleNativeClientClosed", "releaseUnusedNativeClient", "closeCaptureSourcePicker",

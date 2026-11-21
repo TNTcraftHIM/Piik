@@ -61,8 +61,6 @@ body:has(.cp-guide-stage) { transition: none; }
 .cp-guide-stage:has([data-guide-capture]) { width: fit-content; max-width: 100%; padding: 0; }
 .cp-guide-stage[data-guide-scene^="share-source"] .lr-tv-screen { min-height: 500px; }
 .cp-guide-stage[data-guide-scene^="share-source"] .lr-source-picker-panel { padding: 14px; }
-.cp-guide-stage[data-guide-scene="touch-joystick"] { width: min(520px, 100%); }
-.cp-guide-stage[data-guide-scene="touch-joystick"] .lr-tv-screen { width: 100%; min-height: 0; }
 
 .cp-guide-invite { width: min(550px, 100%); padding: 14px; }
 .cp-guide-invite .lr-invite-field { flex-basis: 100%; }

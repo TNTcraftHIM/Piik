@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
-import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
 import { useCopy } from "../../ui/copy";
 import { PLAYER_CONTROLS_IDLE_MS } from "../../ui/control-timing";
 import { Glyph } from "../../ui/icons";
@@ -8,8 +7,9 @@ type Position = { x: number; y: number };
 const DRAG_SLOP_PX = 4;
 const KEYBOARD_STEP_PX = 10;
 
-export function RemoteDirectionPad({ right = false, touchOnly = false, keyboard, open, toggleOpen, onMove }: {
+export function RemoteDirectionPad({ right = false, touchOnly = false, keyboard, open, toggleOpen, onMove, readPosition, onPositionChange }: {
   right?: boolean; touchOnly?: boolean; keyboard: boolean; open: boolean; toggleOpen(): void; onMove(x: number, y: number): void;
+  readPosition?(): Position | undefined; onPositionChange?(position: Position): void;
 }) {
   const { t } = useCopy();
 
@@ -18,7 +18,7 @@ export function RemoteDirectionPad({ right = false, touchOnly = false, keyboard,
   const thumb = useRef<HTMLElement>(null);
   const contact = useRef<number | null>(null);
   const side = right ? "right" : "left";
-  const [position, setPosition] = useState(() => readRoomPreferences().stickPositions[side]);
+  const [position, setPosition] = useState(() => readPosition?.());
   const drag = useRef<{ id: number; x: number; y: number; origin: Position; last?: Position } | null>(null);
   const skipPointerClick = useRef(false);
   const [docked, setDocked] = useState(false);
@@ -79,9 +79,6 @@ export function RemoteDirectionPad({ right = false, touchOnly = false, keyboard,
     return { x: axis(rect.left - bounds.left, dx, bounds.width - rect.width, origin?.x),
       y: axis(rect.top - bounds.top, dy, bounds.height - rect.height, origin?.y) };
   }
-  function remember(value: Position) {
-    saveRoomPreferences({ stickPositions: { ...readRoomPreferences().stickPositions, [side]: value } });
-  }
   function finishDrag(e: PointerEvent<HTMLButtonElement>) {
     const current = drag.current;
     if (!current || e.pointerId !== current.id) return;
@@ -90,7 +87,7 @@ export function RemoteDirectionPad({ right = false, touchOnly = false, keyboard,
     style.removeProperty("--stick-grab-x");
     style.removeProperty("--stick-grab-top");
     skipPointerClick.current = Boolean(current.last) || e.type !== "pointerup";
-    if (current.last) { setDocked(false); remember(current.last); }
+    if (current.last) { setDocked(false); onPositionChange?.(current.last); }
     park();
   }
   return <div className="lr-remote-stick-area"><div ref={group} onFocus={() => clearTimeout(idle.current)} onBlur={park}
@@ -124,7 +121,7 @@ export function RemoteDirectionPad({ right = false, touchOnly = false, keyboard,
         if (!dx && !dy) return;
         e.preventDefault();
         const next = shift(dx * KEYBOARD_STEP_PX, dy * KEYBOARD_STEP_PX);
-        setDocked(false); setPosition(next); remember(next);
+        setDocked(false); setPosition(next); onPositionChange?.(next);
       }}
       onClick={e => {
         if (e.detail > 0 && skipPointerClick.current) return;

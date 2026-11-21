@@ -167,6 +167,10 @@ interface PendingPeerRoute {
   qualityResult: CandidateQualityProbeResult;
 }
 
+function readStickPositions() {
+  return readRoomPreferences().stickPositions;
+}
+
 export function ViewerPage({
   roomId,
   viewerGrant,
@@ -2338,6 +2342,9 @@ export function ViewerPage({
               overlaySettings={interactionSession && <RoomChatOverlaySettings session={interactionSession} />}
               remoteActions={<RemoteControl channel={inputRoute.current} videoRef={videoRef}
                   pictureFit={pictureFit} pictureRotation={pictureRotation} touchMode={remoteTouchMode}
+                  readStickPositions={readStickPositions} onStickPositionChange={(side, position) => {
+                    saveRoomPreferences({ stickPositions: { ...readStickPositions(), [side]: position } });
+                  }}
                   available={presentation.overlay === "none" && presentation.hasCurrentFrame} />}
               settings={{ pictureFit, pictureRotation, setPictureRotation: rotation => {
                 setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation });

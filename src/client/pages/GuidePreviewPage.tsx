@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { POSTER, SOURCES, previewSource } from "./ControlsPreview";
-import { RemoteControlsPreview } from "./RemoteControlsPreview";
+import { SOURCES, previewSource } from "./ControlsPreview";
 import { GuideJoinControls } from "./GuideJoinControls";
 import { GuideViewerRouteFailure, GuideShareFailure, GuideRoomVoice } from "./GuideRoomScenes";
 import { CaptureSourcePicker } from "../components/living/CaptureSourcePicker";
@@ -63,7 +62,6 @@ function GuideScene({ scene }: { scene: string | null }) {
     case "share-source-confirm": return <Sources />;
     case "sharing-settings": return <Settings />;
     case "room-voice": return <GuideRoomVoice />;
-    case "touch-joystick": return <RemoteControlsPreview joystick guide guidePoster={POSTER} />;
     case "share-failure": return <GuideShareFailure />;
     case "viewer-route-failure": return <GuideViewerRouteFailure />;
     case "join-code":
