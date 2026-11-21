@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-09
+Last reviewed: 2026-11-21
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -17,8 +17,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   to identify the failing transition before changing capture or service lifetime.
 - [ ] **Release mirror platform integration.** Verify a supported way to create
   the platform's Release tag or trigger its immediate synchronization during
-  publication. Do not assume disabling Pull synchronization makes the repository
-  writable. [Mirror operations](./operations/github.md#atomgit-download-mirror) owns setup.
+  publication. The v2.8.0 mirror is waiting for its tag. Resume from the
+  [original build](https://github.com/TNTcraftHIM/Piik/actions/runs/44881655913)
+  once the tag arrives. [Mirror operations](./operations/github.md#atomgit-download-mirror) owns setup.
 - [ ] **Windows sound only works with exclusion (#534).** Compare the affected
   application's playback endpoint with Piik's default-endpoint capture. The
   [audio scope control](./research/native-client-media.md#windows-audio-exclusion)
@@ -95,8 +96,6 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Held By Owner
 
-- [ ] **2.x maintenance release approval.** The owner reviews the tested candidate
-  and the complete change set since `v2.7.0` before publication.
 - [ ] **iOS native App.** Paused in favor of Browser use. Preserve the isolated
   implementation on `feat/ios-client`; native development and publication stay
   outside the current phase.

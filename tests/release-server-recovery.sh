@@ -4,6 +4,24 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 release_script="$repo_root/deploy/release-server.sh"
 
+# Run the updater's argument parsing before it accesses the deployment filesystem.
+for mode in nginx caddy; do
+  (
+    export PIIK_PUBLIC_ORIGIN=https://release.example
+    if [ "$mode" = caddy ]; then
+      set -- --demo-caddy /descriptor
+      expected_origin=http://127.0.0.1:8787
+    else
+      set -- /descriptor
+      expected_origin=$PIIK_PUBLIC_ORIGIN
+    fi
+    source <(sed '/^upload_root=/,$d' "$release_script")
+    test "$1" = /descriptor
+    test "$proxy_service" = "$mode"
+    test "$old_asset_origin" = "$expected_origin"
+  )
+done
+
 extract_function() {
   awk -v name="$1" '
     $0 == name "() {" { capture = 1 }
