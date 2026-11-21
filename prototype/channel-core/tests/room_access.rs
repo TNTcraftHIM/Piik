@@ -481,6 +481,106 @@ fn deletion_withdraws_directory_authority_across_restart_without_recreating_the_
 }
 
 #[test]
+fn channel_owner_removal_retires_an_offline_rooms_invite_and_creator_restore() {
+    let mut network = RoomNetwork::new();
+    let owner = Uuid::new_v4();
+    let creator = Uuid::new_v4();
+    let reader = Uuid::new_v4();
+    admit(
+        &mut network,
+        owner,
+        json!({"type":"join","name":"Owner","ownerKey":"owner"}),
+    );
+    let (_, creator_credential, _) = admit(
+        &mut network,
+        creator,
+        json!({"type":"join","name":"Creator"}),
+    );
+    let (_, reader_credential, _) =
+        admit(&mut network, reader, json!({"type":"join","name":"Reader"}));
+    let id = room(&mut network, creator, "private", true);
+    let key = invite(&mut network, creator, &id);
+    let entry = json!({"type":"enter_room","roomId":id,"inviteKey":key});
+    command(&mut network, reader, entry.clone());
+    assert!(network
+        .state(reader)
+        .channel
+        .rooms
+        .iter()
+        .any(|room| room.id == id && room.authorized));
+    let summary = piik_channel_core::host::RoomSummary::from_policy(&network.policy(&id));
+
+    let disconnected = network.authority.disconnect(creator, 200);
+    network.deliver(disconnected);
+    let removal = command(
+        &mut network,
+        owner,
+        json!({"type":"delete_room","roomId":id,"deleteData":true}),
+    );
+    assert!(removal.events.iter().any(|(_, event)| matches!(
+        event,
+        Event::RoomReply {
+            result: RoomResult::Deleted {
+                data_removed: false
+            },
+            ..
+        }
+    )));
+    assert!(network
+        .state(reader)
+        .channel
+        .rooms
+        .iter()
+        .all(|room| room.id != id));
+
+    let saved = serde_json::to_vec(&network.authority.export_backup()).unwrap();
+    let checkpoint: piik_channel_core::backup::DomainMetadata =
+        serde_json::from_slice(&saved).unwrap();
+    let mut reopened = RoomNetwork::new();
+    reopened.authority = checkpoint.into_authority(vec![]).unwrap();
+    let returning_reader = Uuid::new_v4();
+    let (_, _, state) = admit(
+        &mut reopened,
+        returning_reader,
+        json!({
+            "type":"join","name":"Reader","credential":reader_credential
+        }),
+    );
+    assert!(state.channel.rooms.iter().all(|room| room.id != id));
+    let returning_creator = Uuid::new_v4();
+    admit(
+        &mut reopened,
+        returning_creator,
+        json!({
+            "type":"join","name":"Creator","credential":creator_credential
+        }),
+    );
+    for request in [
+        json!({"type":"host_register","room":summary}),
+        json!({"type":"admit_room","room":summary,"requestId":"restore"}),
+    ] {
+        let denied = command(&mut reopened, returning_creator, request);
+        assert!(denied.events.iter().any(|(_, event)| matches!(event,
+            Event::Error { code, .. } if code == "room_not_in_domain"
+        )));
+        assert!(!denied
+            .events
+            .iter()
+            .any(|(_, event)| matches!(event, Event::HostInput { .. })));
+    }
+    let denied = command(&mut reopened, returning_reader, entry);
+    assert!(denied.events.iter().any(|(_, event)| matches!(event,
+        Event::Error { code, .. } if code == "room_unavailable"
+    )));
+    assert!(reopened
+        .state(returning_reader)
+        .channel
+        .rooms
+        .iter()
+        .all(|room| room.id != id));
+}
+
+#[test]
 fn offline_removal_and_correlated_online_deletion_keep_room_scopes_separate() {
     use piik_channel_core::wire::Request;
     let mut network = RoomNetwork::new();

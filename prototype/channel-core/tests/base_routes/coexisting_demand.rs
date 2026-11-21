@@ -1,6 +1,75 @@
 use super::*;
 
 #[test]
+fn one_screen_reduces_two_decoded_outputs_while_another_stays_selected() {
+    let mut net = RoomNetwork::new();
+    let [a, b, c, x, y] = [(); 5].map(|_| Uuid::new_v4());
+    let [as_, bs, cs, xs, _] = [a, b, c, x, y].map(|peer| join(&mut net, peer, None).0);
+    let room = net.create(a, RoomAccess::Public, false);
+    for peer in [b, c] {
+        join_base(&mut net, peer, &room);
+        command(
+            &mut net,
+            peer,
+            json!({"type":"relay_capacity","roomId":room,"capacity":1}),
+        );
+    }
+    let sibling = publish(&mut net, x, &room, "screen");
+    subscribe_screen(&mut net, y, sibling);
+    let stable = screen_input(&net, y, xs, sibling).unwrap();
+    command(
+        &mut net,
+        y,
+        json!({"type":"flow_state","pairId":stable.0,"flowId":stable.1.id,"state":"decoded"}),
+    );
+    let picture = publish(&mut net, a, &room, "screen");
+    let limit = |net: &mut RoomNetwork, limit| {
+        command(
+            net,
+            a,
+            json!({"type":"set_screen_direct_limit","publicationId":picture,"limit":limit}),
+        )
+    };
+    limit(&mut net, 2);
+    for peer in [b, c] {
+        subscribe_screen(&mut net, peer, picture);
+        let (pair, flow) = screen_input(&net, peer, as_, picture).unwrap();
+        command(
+            &mut net,
+            peer,
+            json!({"type":"flow_state","pairId":pair,"flowId":flow.id,"state":"decoded"}),
+        );
+    }
+    let count = |net: &RoomNetwork| {
+        [b, c]
+            .into_iter()
+            .filter(|peer| screen_input(net, *peer, as_, picture).is_some_and(|(_, f)| f.selected))
+            .count()
+    };
+    assert_eq!(count(&net), 2);
+    limit(&mut net, 1);
+    assert_eq!(count(&net), 2);
+    assert_eq!(screen_input(&net, y, xs, sibling), Some(stable));
+    let (peer, (pair, flow)) = [(b, cs), (c, bs)]
+        .into_iter()
+        .find_map(|(peer, sender)| {
+            screen_input(&net, peer, sender, picture).map(|binding| (peer, binding))
+        })
+        .expect("alternate flow");
+    assert!(!flow.selected);
+    command(
+        &mut net,
+        peer,
+        json!({"type":"flow_state","pairId":pair,"flowId":flow.id,"state":"switch_ready"}),
+    );
+    let sender = if peer == b { cs } else { bs };
+    assert!(screen_input(&net, peer, sender, picture)
+        .is_some_and(|(id, selected)| id == pair && selected.id == flow.id && selected.selected));
+    assert_eq!(count(&net), 1);
+    assert_eq!(screen_input(&net, y, xs, sibling), Some(stable));
+}
+
+#[test]
 fn file_receivers_in_one_or_two_rooms_share_the_discovery_slot() {
     for separate_rooms in [false, true] {
         let mut network = RoomNetwork::new();
