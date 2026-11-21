@@ -52,8 +52,8 @@ export class WatchBytes {
   }
   private start(runtime: Runtime, id: string, pending: Pending): void {
     const plan = this.plans.find(value => value.roomId === pending.key.roomId && value.activityId === pending.key.activityId);
-    if (!plan?.receiving) return;
     if (plan && !sameSource(plan.source, pending.source)) { this.finish(id, new Error("watch_source_changed")); return; }
+    if (!plan?.receiving) return;
     if (plan.source.sessionId !== this.sessionId && plan.upstream === null) return;
     pending.started = true;
     this.effects(runtime, runtime.delivery.read(JSON.stringify(pending.key), id, BigInt(pending.offset), pending.length));

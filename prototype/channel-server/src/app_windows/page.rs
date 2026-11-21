@@ -664,7 +664,7 @@ impl Pages {
                     page.views.borrow()[&page.selected_view()]
                         .media
                         .borrow_mut()
-                        .reset();
+                        .clear_selection();
                 }
                 page.selected = Some(candidate_id);
                 page.candidates();

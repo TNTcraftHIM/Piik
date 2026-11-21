@@ -70,7 +70,7 @@ test("queued range rejects a replaced byte source and abort releases a waiting r
     cancel.abort(); await rejected;
     const stale = bytes.read(roomId, activityId, source, source.resourceId, 0, 1024, new AbortController().signal);
     const replaced = expect(stale).rejects.toThrow("watch_source_changed");
-    bytes.update(sessionId, [{ ...plan, source: { ...source, resourceId: crypto.randomUUID() } }], [{ peerId: peer, rooms: [roomId] }]);
+    bytes.update(sessionId, [{ ...plan, receiving: false, source: { ...source, resourceId: crypto.randomUUID() } }], [{ peerId: peer, rooms: [roomId] }]);
     await replaced;
   } finally { bytes.reset(); }
 });

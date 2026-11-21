@@ -78,6 +78,12 @@ impl Media {
         self.retired.send_replace(true);
         *self = Self::default();
     }
+    pub fn clear_selection(&mut self) {
+        self.retired.send_replace(true);
+        self.retired = watch::channel(false).0;
+        self.observation = None;
+        self.choices.clear();
+    }
     pub fn frame(&mut self, id: Uuid, ancestors: Vec<Uuid>, urls: Vec<String>) -> bool {
         if self.frames.len() >= 64 && !self.frames.contains_key(&id) {
             return false;
@@ -320,6 +326,34 @@ fn response_format(mime: &str) -> Option<Format> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selection_preserves_preloaded_candidates_in_the_same_view() {
+        let mut media = Media::default();
+        let first = Uuid::new_v4();
+        let second = Uuid::new_v4();
+        let first_url = "https://media.test/first.mpd";
+        let second_url = "https://media.test/second.mpd";
+        for (frame, url) in [(first, first_url), (second, second_url)] {
+            media.observe_response(
+                url.into(),
+                (Format::Dash, None, "application/dash+xml".into(), None),
+            );
+            media.frame(frame, vec![], vec![url.into()]);
+        }
+        let before = media.sources(first, "blob:first");
+        let old_id = Uuid::parse_str(before["mpdCandidates"][0]["id"].as_str().unwrap()).unwrap();
+        let old_reader = media.retired.subscribe();
+
+        media.clear_selection();
+
+        assert!(*old_reader.borrow());
+        assert!(!*media.retired.borrow());
+        assert!(media.choice(old_id, false).is_none());
+        let after = media.sources(second, "blob:second");
+        let new_id = Uuid::parse_str(after["mpdCandidates"][0]["id"].as_str().unwrap()).unwrap();
+        assert_eq!(media.choice(new_id, false).unwrap().url, second_url);
+    }
 
     #[test]
     fn mpd_choices_are_observed_opaque_candidates_not_direct_urls() {

@@ -1719,11 +1719,15 @@ async fn connection(
                                 pending.lease = Some(SourceLease::External(lease));
                                 capture.external_event(publication_id, true, false, None)
                             }
-                            result => {
-                                let retired = result.as_ref().err().is_some_and(|error| error.to_string() == "room_unavailable");
+                            // The producer ended after reporting readiness. Its terminal
+                            // result owns the error and retirement of this generation.
+                            Ok(_) => continue,
+                            Err(error) => {
+                                let error = error.to_string();
+                                let retired = error == "room_unavailable";
                                 capture.pending = None;
                                 if retired { external_page.remove(publication_id); }
-                                let event = capture.external_event(publication_id, false, retired, Some(result.as_ref().err().map(|error| error.to_string()).as_deref().unwrap_or("external_input_failed")));
+                                let event = capture.external_event(publication_id, false, retired, Some(&error));
                                 match external_page.resources.get(&generation) {
                                     Some(resource) => external_format_event(event, resource.control.unsupported_video_format()),
                                     None => event,
