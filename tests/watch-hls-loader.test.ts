@@ -186,3 +186,28 @@ test("HLS keeps small byte ranges from a file larger than the fragment budget", 
   expect(read.mock.calls.map(([, offset, length]) => [offset, length])).toEqual([[310, 243]]);
   expect(cb.onError).not.toHaveBeenCalled();
 });
+
+test("switching movies drops the old playlist even when its reader replies after the replacement", async () => {
+  const playlist = (name: string): WatchByteResult => {
+    const bytes = new TextEncoder().encode(`#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2,\n${name}.ts\n#EXT-X-ENDLIST\n`);
+    return { bytes, totalSize: bytes.length, eof: true, mimeType: "application/vnd.apple.mpegurl" };
+  };
+  let finishOld!: (value: WatchByteResult) => void;
+  const oldLifetime = new AbortController();
+  const OldLoader = createWatchHlsLoader(() => new Promise(resolve => { finishOld = resolve; }), oldLifetime.signal);
+  const old = callbacks(), current = callbacks();
+  const request = { ...context(), responseType: "text" } as LoaderContext;
+  new OldLoader(Hls.DefaultConfig).load(request, config(), old);
+  await vi.waitFor(() => expect(finishOld).toBeTypeOf("function"));
+  oldLifetime.abort();
+  const NewLoader = createWatchHlsLoader(async () => playlist("replacement"), new AbortController().signal);
+  new NewLoader(Hls.DefaultConfig).load(request, config(), current);
+  await vi.waitFor(() => expect(current.onSuccess).toHaveBeenCalledOnce());
+  finishOld(playlist("retired"));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(current.onSuccess.mock.calls[0][0].data).toContain("replacement.ts");
+  expect(old.onAbort).toHaveBeenCalledOnce();
+  expect(old.onProgress).not.toHaveBeenCalled();
+  expect(old.onSuccess).not.toHaveBeenCalled();
+  expect(old.onError).not.toHaveBeenCalled();
+});
