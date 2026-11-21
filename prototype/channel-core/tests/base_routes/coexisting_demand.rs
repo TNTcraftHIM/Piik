@@ -1,6 +1,85 @@
 use super::*;
 
 #[test]
+fn peer_watch_requests_the_provider_pair_and_waits_for_its_room_grant() {
+    let mut net = RoomNetwork::new();
+    let [page, provider, viewer] = [(); 3].map(|_| Uuid::new_v4());
+    let (page_session, credential) = join(&mut net, page, None);
+    let (provider_session, _) = join(&mut net, provider, Some(&credential));
+    join(&mut net, viewer, None);
+    let room = net.create(page, RoomAccess::Public, false);
+    join_base(&mut net, provider, &room);
+    let existing = pair(&net, provider, page_session, &room).id;
+    for socket in [page, provider] {
+        command(
+            &mut net,
+            socket,
+            json!({"type":"link_state","pairId":existing,"state":"connected"}),
+        );
+        command(
+            &mut net,
+            socket,
+            json!({"type":"base_state","roomId":room,"pairId":existing,"ready":true}),
+        );
+    }
+    let activity = Uuid::new_v4();
+    command(
+        &mut net,
+        page,
+        json!({
+            "type":"start_watch","roomId":room,"id":activity,
+            "source":{"kind":"media","url":"https://example.com/movie.mp4"},
+            "playback":{"timeline":"media","position":0,"paused":false,"rate":1,"anchorTime":0},
+            "byteSource":{"sessionId":provider_session,"resourceId":Uuid::new_v4(),"format":"file"}
+        }),
+    );
+    let watch = |net: &mut RoomNetwork, mode| {
+        command(
+            net,
+            viewer,
+            json!({"type":"join_watch","roomId":room,"id":activity,"mode":mode}),
+        )
+    };
+    watch(&mut net, "direct");
+    assert!(net.state(viewer).pairs.is_empty());
+    watch(&mut net, "peer");
+    let provider_pair = net
+        .state(viewer)
+        .pairs
+        .iter()
+        .find(|p| p.peer_id == provider_session)
+        .expect("peer-mode demand should request the provider itself")
+        .id;
+    assert_eq!(net.state(viewer).watch_bytes[0].upstream, None);
+    for socket in [provider, viewer] {
+        command(
+            &mut net,
+            socket,
+            json!({"type":"link_state","pairId":provider_pair,"state":"connected"}),
+        );
+    }
+    assert_eq!(
+        pair(&net, viewer, provider_session, &room).id,
+        provider_pair
+    );
+    for socket in [provider, viewer] {
+        assert_eq!(net.state(viewer).watch_bytes[0].upstream, None);
+        command(
+            &mut net,
+            socket,
+            json!({"type":"base_state","roomId":room,"pairId":provider_pair,"ready":true}),
+        );
+    }
+    assert_eq!(
+        net.state(viewer).watch_bytes[0].upstream,
+        Some(provider_session)
+    );
+    watch(&mut net, "direct");
+    assert!(net.state(viewer).watch_bytes.is_empty());
+    assert_eq!(pair(&net, provider, page_session, &room).id, existing);
+}
+
+#[test]
 fn one_screen_reduces_two_decoded_outputs_while_another_stays_selected() {
     let mut net = RoomNetwork::new();
     let [a, b, c, x, y] = [(); 5].map(|_| Uuid::new_v4());

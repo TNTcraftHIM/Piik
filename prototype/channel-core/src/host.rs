@@ -229,7 +229,12 @@ impl RoomProjection {
                 .iter()
                 .filter(|plan| plan.receiving)
                 .filter_map(|plan| plan.source_id);
-            for source in media.chain(files) {
+            let watch_sources = view
+                .watch_bytes
+                .iter()
+                .filter(|plan| plan.receiving)
+                .map(|plan| plan.source.session_id);
+            for source in media.chain(files).chain(watch_sources) {
                 if source != receiver {
                     pairs.insert((source.min(receiver), source.max(receiver)));
                 }

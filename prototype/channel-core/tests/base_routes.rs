@@ -4240,14 +4240,14 @@ fn confirmed_business_pairs_follow_room_scope_sockets_and_flow_leases() {
 }
 
 #[test]
-fn file_and_voice_share_one_optional_connection_until_last_interest_ends() {
+fn refused_file_branch_recovers_on_the_shared_pair_without_retiring_voice() {
     let mut network = RoomNetwork::new();
     let source = Uuid::new_v4();
     let relay = Uuid::new_v4();
     let viewer = Uuid::new_v4();
     let (a, _) = join(&mut network, source, None);
     let (b, _) = join(&mut network, relay, None);
-    join(&mut network, viewer, None);
+    let (c, _) = join(&mut network, viewer, None);
     let room = network.create(source, RoomAccess::Public, false);
     command(
         &mut network,
@@ -4294,15 +4294,224 @@ fn file_and_voice_share_one_optional_connection_until_last_interest_ends() {
     voice(&mut network, source, &room, true);
     voice(&mut network, viewer, &room, true);
     let mic = publish(&mut network, source, &room, "voice");
+    let voice_flow = |network: &RoomNetwork| {
+        pair(network, viewer, b, &room)
+            .incoming
+            .iter()
+            .find(|flow| flow.publication_id == mic)
+            .unwrap()
+            .id
+    };
+    let active_voice = voice_flow(&network);
+    assert_eq!(network.state(viewer).files[0].upstream, Some(b));
+    command(
+        &mut network,
+        relay,
+        json!({"type":"file_branch_refused","roomId":room,"messageSeq":seq,"attachmentId":attachment.id,"sourceId":a,"downstreamId":c}),
+    );
+    let waiting = &network.state(viewer).files[0];
+    assert!(waiting.receiving);
+    assert_eq!(waiting.source_id, Some(a));
+    assert_eq!(waiting.upstream, None);
+    assert_eq!(voice_flow(&network), active_voice);
+    assert_eq!(pair(&network, viewer, b, &room).id, incumbent);
+    command(
+        &mut network,
+        relay,
+        json!({"type":"forwarding_available","roomId":room,"kind":"file"}),
+    );
+    assert_eq!(network.state(viewer).files[0].upstream, Some(b));
+    assert_eq!(voice_flow(&network), active_voice);
     receive(&mut network, false);
     assert_eq!(shortcut(&network), Some(trial));
     assert_eq!(pair(&network, viewer, b, &room).id, incumbent);
+    assert_eq!(voice_flow(&network), active_voice);
     command(
         &mut network,
         source,
         json!({"type":"unpublish","publicationId":mic}),
     );
     assert!(shortcut(&network).is_none());
+}
+
+#[test]
+fn hosted_file_shortcut_does_not_interrupt_voice() {
+    check_hosted_file_shortcut(true);
+}
+
+#[test]
+fn hosted_file_shortcut_failure_preserves_voice_and_allows_recovery_on_the_old_pair() {
+    check_hosted_file_shortcut(false);
+}
+
+fn check_hosted_file_shortcut(warmed: bool) {
+    use piik_channel_core::{
+        host::{RoomSummary, ServiceEndpoint},
+        wire::HostingMode,
+        RoomState,
+    };
+
+    let mut network = RoomNetwork::new();
+    network.authority.set_hosting_mode(HostingMode::Hosted);
+    let [writer, relay, source, viewer] = std::array::from_fn(|_| Uuid::new_v4());
+    let (writer_session, _) = join(&mut network, writer, None);
+    let (b, _) = join(&mut network, relay, None);
+    let (a, _) = join(&mut network, source, None);
+    let (c, _) = join(&mut network, viewer, None);
+    network
+        .authority
+        .set_room_writer(ServiceEndpoint {
+            session_id: writer_session,
+            connection_id: writer,
+        })
+        .unwrap();
+    let owner = network
+        .state(relay)
+        .sessions
+        .iter()
+        .find(|s| s.id == b)
+        .unwrap()
+        .user_id;
+    let mut policy = RoomState::new(
+        "hosted-file".into(),
+        "Hosted file".into(),
+        Default::default(),
+        owner,
+        RoomAccess::Public,
+        false,
+        None,
+    )
+    .unwrap();
+    let creation = network
+        .authority
+        .prepare_hosted_creation(b, relay, RoomSummary::from_policy(&policy))
+        .unwrap();
+    network
+        .authority
+        .reserve_hosted_creation(&creation)
+        .unwrap();
+    policy.id = creation.summary().id.clone();
+    let room = network.restore_room(writer, policy);
+    join_base(&mut network, relay, &room);
+    for child in [source, viewer] {
+        join_base(&mut network, child, &room);
+        let edge = pair(&network, child, b, &room);
+        for socket in [child, relay] {
+            command(
+                &mut network,
+                socket,
+                json!({"type":"link_state","pairId":edge.id,"state":"connected"}),
+            );
+            command(
+                &mut network,
+                socket,
+                json!({"type":"base_state","roomId":room,"pairId":edge.id,"ready":true}),
+            );
+        }
+    }
+    voice(&mut network, source, &room, true);
+    voice(&mut network, viewer, &room, true);
+    let mic = publish(&mut network, source, &room, "voice");
+    command(
+        &mut network,
+        source,
+        json!({"type":"relay_capacity","roomId":room,"capacity":0}),
+    );
+    let voice_flow = |network: &RoomNetwork| {
+        network
+            .state(viewer)
+            .pairs
+            .iter()
+            .flat_map(|p| &p.incoming)
+            .find(|flow| flow.publication_id == mic && flow.selected)
+            .map(|flow| flow.id)
+    };
+    let active_voice = voice_flow(&network).unwrap();
+    for (socket, peer) in [(relay, a), (viewer, b)] {
+        let edge = pair(&network, socket, peer, &room);
+        let flow = edge
+            .incoming
+            .iter()
+            .find(|flow| flow.publication_id == mic)
+            .unwrap();
+        command(
+            &mut network,
+            socket,
+            json!({"type":"flow_state","pairId":edge.id,"flowId":flow.id,"state":"forwardable"}),
+        );
+    }
+    let (seq, attachment) = offer_file(&mut network, source, &room, "shortcut.bin");
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"file_receive","roomId":room,"messageSeq":seq,"attachmentId":attachment.id,"enabled":true}),
+    );
+    let shortcut = network
+        .state(viewer)
+        .pairs
+        .iter()
+        .find(|edge| edge.peer_id == a)
+        .unwrap()
+        .id;
+    for socket in [source, viewer] {
+        command(
+            &mut network,
+            socket,
+            json!({"type":"link_state","pairId":shortcut,"state":"connected"}),
+        );
+    }
+    assert_eq!(network.state(viewer).files[0].upstream, Some(b));
+    assert_eq!(voice_flow(&network), Some(active_voice));
+    command(
+        &mut network,
+        relay,
+        json!({"type":"file_branch_refused","roomId":room,"messageSeq":seq,"attachmentId":attachment.id,"sourceId":a,"downstreamId":c}),
+    );
+    assert_eq!(voice_flow(&network), Some(active_voice));
+    assert_eq!(network.state(viewer).files[0].upstream, None);
+    for socket in [source, viewer] {
+        command(
+            &mut network,
+            socket,
+            json!({"type":"base_state","roomId":room,"pairId":shortcut,"ready":true}),
+        );
+        assert_eq!(voice_flow(&network), Some(active_voice));
+        assert_eq!(network.state(viewer).files[0].upstream, None);
+    }
+    let next = pair(&network, viewer, a, &room);
+    let shadow = next
+        .incoming
+        .iter()
+        .find(|flow| flow.publication_id == mic && !flow.selected)
+        .unwrap()
+        .id;
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"flow_state","pairId":shortcut,"flowId":shadow,"state":if warmed { "forwardable" } else { "failed" }}),
+    );
+    if !warmed {
+        assert_eq!(voice_flow(&network), Some(active_voice));
+        assert_eq!(network.state(viewer).files[0].upstream, None);
+        command(
+            &mut network,
+            relay,
+            json!({"type":"forwarding_available","roomId":room,"kind":"file"}),
+        );
+        assert_eq!(voice_flow(&network), Some(active_voice));
+        assert_eq!(network.state(viewer).files[0].upstream, Some(b));
+        return;
+    }
+    assert_eq!(voice_flow(&network), Some(shadow));
+    assert_eq!(network.state(viewer).files[0].upstream, Some(a));
+    assert_eq!(pair(&network, viewer, a, &room).id, shortcut);
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"set_profile","name":"Still receiving","avatar":null}),
+    );
+    assert_eq!(voice_flow(&network), Some(shadow));
+    assert_eq!(network.state(viewer).files[0].upstream, Some(a));
 }
 
 #[test]

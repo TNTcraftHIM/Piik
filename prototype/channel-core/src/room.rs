@@ -497,7 +497,9 @@ impl RoomRuntime {
     }
     fn required_base_sessions(&self) -> BTreeSet<Uuid> {
         let mut required = self.files.demand();
-        required.extend(self.watch_byte_demand());
+        for (source, receiver) in self.watch_byte_pairs() {
+            required.extend([source, receiver]);
+        }
         required.extend(self.voice().map(|voice| voice.session_id));
         required
     }
@@ -860,27 +862,20 @@ impl RoomRuntime {
         }
         Ok(())
     }
-    fn watch_receivers(&self, id: Uuid) -> BTreeSet<Uuid> {
-        self.activity
-            .iter()
-            .filter_map(|(session, activity)| {
-                (activity.watch_subscriptions.get(&id) == Some(&crate::wire::WatchMode::Peer))
-                    .then_some(*session)
-            })
-            .collect()
+    fn watch_receivers(&self, id: Uuid) -> impl Iterator<Item = Uuid> + '_ {
+        self.activity.iter().filter_map(move |(session, activity)| {
+            (activity.watch_subscriptions.get(&id) == Some(&crate::wire::WatchMode::Peer))
+                .then_some(*session)
+        })
     }
-    fn watch_byte_demand(&self) -> BTreeSet<Uuid> {
-        let mut demand = BTreeSet::new();
-        for (id, activity) in &self.watch_activities {
-            if let Some(source) = &activity.byte_source {
-                let receivers = self.watch_receivers(*id);
-                if !receivers.is_empty() {
-                    demand.insert(source.session_id);
-                    demand.extend(receivers);
-                }
-            }
-        }
-        demand
+    fn watch_byte_pairs(&self) -> impl Iterator<Item = (Uuid, Uuid)> + '_ {
+        self.watch_activities
+            .iter()
+            .filter_map(|(&id, activity)| Some((id, activity.byte_source.as_ref()?.session_id)))
+            .flat_map(|(id, source)| {
+                self.watch_receivers(id)
+                    .map(move |receiver| (source, receiver))
+            })
     }
     fn watch_byte_plans(&self, session: Uuid) -> Vec<crate::watch_delivery::WatchBytePlan> {
         let Some(base) = &self.base else {
@@ -890,7 +885,7 @@ impl RoomRuntime {
             .iter()
             .filter_map(|(id, activity)| {
                 let source = activity.byte_source.as_ref()?;
-                let receivers = self.watch_receivers(*id);
+                let receivers: BTreeSet<_> = self.watch_receivers(*id).collect();
                 if receivers.is_empty() {
                     return None;
                 }
@@ -1399,16 +1394,11 @@ impl RoomRuntime {
             let willing =
                 |id: &Uuid| self.activity.get(id).and_then(|a| a.relay_capacity) != Some(0);
             let preferred = demand.iter().find(|id| eligible(id) && willing(id));
-            let direct_source = self
-                .base
-                .as_ref()
-                .and_then(|base| self.files.blocked_direct_source(base, confirmed_pairs))
-                .filter(eligible);
-            if let Some(source) = direct_source {
-                self.base.as_mut().unwrap().reseat(source);
-            } else if self.base.as_ref().is_none_or(|base| {
+            if self.base.as_ref().is_none_or(|base| {
                 !eligible(&base.root())
-                    || (!willing(&base.root()) && preferred.is_some())
+                    || (!willing(&base.root())
+                        && preferred.is_some()
+                        && !demand.contains(&base.root()))
                     || (!demand.contains(&base.root()) && base.links().next().is_none())
             }) {
                 self.base = preferred
@@ -1586,6 +1576,12 @@ impl RoomRuntime {
             }
             needs_repair |= publication.needs_repair(&subscribers, &connected);
         }
+        if self.hosted_writer.is_some() {
+            if let Some(base) = &mut self.base {
+                let shortcuts = self.files.blocked_direct_pairs(base, confirmed_pairs);
+                base.prepare_file_shortcut(&shortcuts, &connected, &limits, now);
+            }
+        }
         self.prepare_base(&requested);
         if self.base.as_ref().is_some_and(BaseTree::candidate_ready)
             && self.publications.values().all(Publication::base_ready)
@@ -1663,6 +1659,7 @@ impl RoomRuntime {
         });
         self.files
             .requested_pairs()
+            .chain(self.watch_byte_pairs())
             .chain(voice)
             .map(|(a, b)| (a.min(b), a.max(b)))
             .filter(|pair| confirmed_pairs.contains(pair))
@@ -1890,7 +1887,7 @@ mod tests {
         room.set_watch_byte_source(owner, id(1), id(10), Some(source), &endpoints)
             .unwrap();
         room.reconcile(&endpoints, 0);
-        assert!(room.watch_byte_demand().is_empty());
+        assert!(room.required_base_sessions().is_empty());
         assert!(room.base_links().next().is_none());
         room.join_watch(
             endpoints[&id(3)].member,
@@ -1900,7 +1897,10 @@ mod tests {
         )
         .unwrap();
         room.reconcile(&endpoints, 1);
-        assert_eq!(room.watch_byte_demand(), BTreeSet::from([id(3), id(4)]));
+        assert_eq!(
+            room.required_base_sessions(),
+            BTreeSet::from([id(3), id(4)])
+        );
         for link in room.base_links().collect::<Vec<_>>() {
             room.base_state(link.parent, link.child, true).unwrap();
             room.base_state(link.child, link.parent, true).unwrap();
@@ -1943,11 +1943,14 @@ mod tests {
         endpoints.get_mut(&id(4)).unwrap().connected = false;
         room.reconcile(&endpoints, 4);
         assert!(room.watch_activities[&id(10)].byte_source.is_some());
-        assert_eq!(room.watch_byte_demand(), BTreeSet::from([id(3), id(4)]));
+        assert_eq!(
+            room.required_base_sessions(),
+            BTreeSet::from([id(3), id(4)])
+        );
         endpoints.remove(&id(4));
         room.reconcile(&endpoints, 5);
         assert!(room.watch_activities[&id(10)].byte_source.is_none());
-        assert!(room.watch_byte_demand().is_empty());
+        assert!(room.required_base_sessions().is_empty());
         assert!(room.watch_activities.contains_key(&id(10)));
     }
 

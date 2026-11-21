@@ -881,6 +881,7 @@ struct BaseOperation {
 enum BaseCandidate {
     Reparent { parent: Uuid },
     Insert { parent: Uuid, branch: Uuid },
+    FileShortcut { source: Uuid },
 }
 impl BaseOperation {
     fn edges(&self) -> Vec<(Uuid, Uuid)> {
@@ -889,6 +890,7 @@ impl BaseOperation {
             Some(BaseCandidate::Insert { parent, branch }) => {
                 vec![(parent, self.child), (self.child, branch)]
             }
+            Some(BaseCandidate::FileShortcut { source }) => vec![(source, self.child)],
             None => vec![],
         }
     }
@@ -943,11 +945,6 @@ impl BaseTree {
             acknowledged: BTreeSet::new(),
             operation: None,
         }
-    }
-    pub fn reseat(&mut self, root: Uuid) {
-        self.plan = Plan::new(root);
-        self.operation = None;
-        // Reconciliation prunes acknowledgements for pairs whose room lease ends.
     }
     pub fn root(&self) -> Uuid {
         self.plan.source
@@ -1045,32 +1042,38 @@ impl BaseTree {
             .is_some_and(|operation| operation.deadline <= now)
         {
             let operation = self.operation.take().unwrap();
-            if let Some(parent) = operation.replaces {
+            if let Some(BaseCandidate::FileShortcut { source }) = operation.candidate {
+                self.plan.reject_parent(operation.child, source);
+            } else if let Some(parent) = operation.replaces {
                 self.plan.failed(parent, operation.child);
             } else {
                 self.plan.reject_parent(operation.child, self.root());
             }
             self.prune_proofs();
         }
-        if self.operation.as_ref().is_some_and(|operation| {
-            self.plan.parents.get(&operation.child).copied() != operation.replaces
-                || (operation.replaces.is_none()
-                    && (!connected.contains(&operation.child)
-                        || !demand.contains(&operation.child)))
-                || operation.replaces.is_some_and(|parent| {
-                    self.plan.wan_outputs(parent, None, &BTreeMap::new())
-                        <= limits.get(parent, self.root())
-                })
-        }) {
-            self.operation = None;
-            self.prune_proofs();
-        }
-        if self.operation.as_ref().is_some_and(|operation| {
-            operation.candidate.is_some_and(|candidate| {
-                !self.valid_candidate(operation.child, candidate, connected, limits)
-            })
-        }) {
-            self.abort();
+        if let Some(operation) = &self.operation {
+            match operation.candidate {
+                // File demand revalidates its candidate after base reconciliation.
+                Some(BaseCandidate::FileShortcut { .. }) => {}
+                _ if self.plan.parents.get(&operation.child).copied() != operation.replaces
+                    || (operation.replaces.is_none()
+                        && (!connected.contains(&operation.child)
+                            || !demand.contains(&operation.child)))
+                    || operation.replaces.is_some_and(|parent| {
+                        self.plan.wan_outputs(parent, None, &BTreeMap::new())
+                            <= limits.get(parent, self.root())
+                    }) =>
+                {
+                    self.operation = None;
+                    self.prune_proofs();
+                }
+                Some(candidate)
+                    if !self.valid_candidate(operation.child, candidate, connected, limits) =>
+                {
+                    self.abort();
+                }
+                _ => {}
+            }
         }
         if self.operation.is_none() {
             let excess = self
@@ -1198,6 +1201,61 @@ impl BaseTree {
                     && self.plan.wan_outputs(child, None, &BTreeMap::new())
                         < limits.get(child, self.root())
             }
+            BaseCandidate::FileShortcut { source } => {
+                connected.contains(&source)
+                    && self.plan.rooted_ready(source)
+                    && self.plan.rooted_ready(child)
+                    && !failed(source)
+                    && self
+                        .file_shortcut_plan(source, child)
+                        .capacity_children(&BTreeMap::new(), limits, &BTreeSet::new())
+                        .is_empty()
+            }
+        }
+    }
+    pub fn prepare_file_shortcut(
+        &mut self,
+        requested: &[(Uuid, Uuid)],
+        connected: &BTreeSet<Uuid>,
+        limits: &RelayLimits,
+        now: u64,
+    ) {
+        let retired = if let Some(operation) = &self.operation {
+            let Some(BaseCandidate::FileShortcut { source }) = operation.candidate else {
+                return;
+            };
+            let pair = (source, operation.child);
+            if requested.contains(&pair)
+                && self.valid_candidate(
+                    operation.child,
+                    BaseCandidate::FileShortcut { source },
+                    connected,
+                    limits,
+                )
+            {
+                return;
+            }
+            self.operation = None;
+            self.prune_proofs();
+            Some(pair)
+        } else {
+            None
+        };
+        if let Some((source, child)) = requested.iter().copied().find(|&(source, child)| {
+            Some((source, child)) != retired
+                && self.valid_candidate(
+                    child,
+                    BaseCandidate::FileShortcut { source },
+                    connected,
+                    limits,
+                )
+        }) {
+            self.operation = Some(BaseOperation {
+                child,
+                candidate: Some(BaseCandidate::FileShortcut { source }),
+                replaces: None,
+                deadline: now.saturating_add(BASE_PREPARE_MS),
+            });
         }
     }
     fn prune_proofs(&mut self) {
@@ -1275,6 +1333,10 @@ impl BaseTree {
         }
         let mut candidate = self.clone();
         candidate.operation = None;
+        if let Some(BaseCandidate::FileShortcut { source }) = operation.candidate {
+            candidate.plan = self.file_shortcut_plan(source, operation.child);
+            return Some(candidate);
+        }
         for (parent, child) in edges {
             candidate.plan.parents.insert(child, parent);
             candidate
@@ -1282,6 +1344,22 @@ impl BaseTree {
                 .mark_ready(child, parent, Readiness::Forwardable);
         }
         Some(candidate)
+    }
+    fn file_shortcut_plan(&self, source: Uuid, receiver: Uuid) -> Plan {
+        let mut plan = self.plan.clone();
+        // Room ACKs prove both directions of the retained edges.
+        let mut child = source;
+        let mut parent = plan.parents.remove(&child);
+        while let Some(previous) = parent {
+            parent = plan.parents.insert(previous, child);
+            plan.ready.insert(previous, Readiness::Forwardable);
+            child = previous;
+        }
+        plan.ready.remove(&source);
+        plan.source = source;
+        plan.parents.insert(receiver, source);
+        plan.mark_ready(receiver, source, Readiness::Forwardable);
+        plan
     }
     pub fn commit(&mut self) {
         if let Some(candidate) = self.candidate_tree() {
@@ -1295,7 +1373,14 @@ impl BaseTree {
             for (parent, _) in operation.edges() {
                 self.plan.reject_parent(operation.child, parent);
             }
-            operation.candidate = None;
+            if matches!(
+                operation.candidate,
+                Some(BaseCandidate::FileShortcut { .. })
+            ) {
+                self.operation = None;
+            } else {
+                operation.candidate = None;
+            }
             self.prune_proofs();
         }
     }
