@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { VideoFit, VideoRotation } from "../media/video-geometry";
-import { BackButton, Btn, Chip, FieldCap, NameTag, Pill, SwitchItem } from "../components/living/primitives";
+import { BackButton, Btn, Chip, FieldCap, NameTag, Pill, SegmentedChoice, SwitchItem } from "../components/living/primitives";
 import { Lcd, RoomChip, RoomCodePlaceholder, RoomAdmissionBadge } from "../components/living/RoomChip";
 import { CaptureSourcePicker, type NativeSourceList } from "../components/living/CaptureSourcePicker";
 import { LedStrip } from "../components/living/Header";
@@ -84,6 +84,7 @@ export function ControlsPreview() {
   const [launchPassword, setLaunchPassword] = useState("");
   const [launchLan, setLaunchLan] = useState("192.0.2.10");
   const [policy, setPolicy] = useState<"open" | "private">("open");
+  const [architecture, setArchitecture] = useState<"amd64" | "arm64">("amd64");
   const [roomPassword, setRoomPassword] = useState(false);
   const [inviteAvailable, setInviteAvailable] = useState(true);
   const [includeCredential, setIncludeCredential] = useState(true);
@@ -255,11 +256,8 @@ export function ControlsPreview() {
           comic="hint-policy-private" label={t("host.invite.credentialRequired")} /> : null}
         <p>{en ? "The website's architecture picker uses the same sliding style with native radio buttons. Arrow keys change the choice."
           : "官网的架构选择也复用滑动样式，使用原生单选项；聚焦后可用方向键切换。"}</p>
-        <fieldset className="lr-toggle">
-          <legend className="visually-hidden">{en ? "Download architecture" : "下载架构"}</legend>
-          <label><input type="radio" name="preview-architecture" value="amd64" defaultChecked /><span>x64</span></label>
-          <label><input type="radio" name="preview-architecture" value="arm64" /><span>ARM64</span></label>
-        </fieldset>
+        <SegmentedChoice label={en ? "Download architecture" : "下载架构"} value={architecture} onChange={setArchitecture}
+          options={[{ value: "amd64", label: "x64" }, { value: "arm64", label: "ARM64" }]} />
       </section>
       <section id="input-preview" className="cp-card">
         <header><span className="cp-number">03</span><h2>{en ? "Names, codes and small details" : "名字、房间号，还有小细节。"}</h2></header>

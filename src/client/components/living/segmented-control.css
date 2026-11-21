@@ -1,5 +1,6 @@
 /* One track for language, settings and source tabs, including native radio
    groups. Callers own semantics, selection and content-specific proportions. */
+.lr-choice-field { display: grid; gap: 6px; min-width: 0; }
 .lr-toggle, .lr-lang {
   --lr-segments: 2;
   --lr-selected-index: 0;

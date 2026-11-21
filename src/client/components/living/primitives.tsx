@@ -36,21 +36,24 @@ export function Cap({ k }: { k: CopyKey }) {
 }
 
 export function SegmentedChoice<T extends string>({ label, describedBy, options, value, onChange }: {
-  label: CopyKey;
+  label: string;
   describedBy?: string;
-  options: readonly { value: T; label: CopyKey; icon: GlyphName }[];
+  options: readonly { value: T; label: string; icon?: GlyphName }[];
   value: T;
   onChange: (value: T) => void;
 }) {
   const name = useId();
-  const { t } = useCopy();
-  return <div className="lr-toggle" role="radiogroup" aria-label={t(label)} aria-describedby={describedBy}
-    style={{ "--lr-segments": options.length, "--lr-selected-index": options.findIndex(option => option.value === value) } as CSSProperties}>
-    {options.map(option => <label key={option.value}>
-      <input type="radio" name={name} value={option.value} aria-label={t(option.label)}
-        checked={value === option.value} onChange={() => onChange(option.value)} />
-      <span><Glyph name={option.icon} size={17} /><Cap k={option.label} /></span>
-    </label>)}
+  const { vis } = useCopy();
+  return <div className="lr-choice-field">
+    <span id={name + "-label"} className={vis ? "visually-hidden" : "lr-field-cap"}>{label}</span>
+    <div className="lr-toggle" role="radiogroup" aria-labelledby={name + "-label"} aria-describedby={describedBy}
+      style={{ "--lr-segments": options.length, "--lr-selected-index": options.findIndex(option => option.value === value) } as CSSProperties}>
+      {options.map(option => <label key={option.value}>
+        <input type="radio" name={name} value={option.value} aria-label={option.label}
+          checked={value === option.value} onChange={() => onChange(option.value)} />
+        <span>{option.icon && <Glyph name={option.icon} size={17} />}{(!vis || !option.icon) && option.label}</span>
+      </label>)}
+    </div>
   </div>;
 }
 

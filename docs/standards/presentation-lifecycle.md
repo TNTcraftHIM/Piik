@@ -252,12 +252,11 @@ follow the shared [motion grammar](./visual-language.md#motion-grammar).
 
 On touch devices, the two on-screen sticks are available while the current
 picture is playing and its authorized remote-control channel is ready. The
-left and right sticks start collapsed and expand independently. Idle sticks
-and the mini mouse tuck to the picture edge on the playback controls' timing.
-The stick thumb, direction marks and toggle share a centerline. In Show on
-touch mode, each opened side retains its hit area between touches and shows
-the thumb while held. Closing that side restores ordinary picture input there.
-In standard mode, tapping a parked handle brings its control back.
+left and right sticks start closed. Each L/R button toggles its pad in one
+tap, including from the picture edge. On the playback controls' idle timer
+only the buttons tuck away. Each open pad keeps its position and input area.
+In Show on touch mode, the pad briefly shows its outline when opened and
+shows the thumb while pressed. Closing that side restores ordinary picture input there.
 Remote keyboard owns the mapping for both sticks. Keyboard and mouse mode
 sends WASD and relative mouse movement. When a virtual gamepad is available,
 the viewer can select its left and right axes. A connected physical gamepad

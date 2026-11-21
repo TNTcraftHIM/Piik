@@ -75,21 +75,22 @@
 }
 .lr-remote-keyboard-settings > summary { min-height: var(--control-compact-size); color: var(--ink); font-size: 13px; font-weight: 650; }
 .lr-remote-settings-fields { display: grid; padding-inline: 8px; }
-.lr-remote-settings-fields > :is(.lr-remote-shortcut, .lr-remote-stick-setting, .lr-switch-item) {
+.lr-remote-settings-fields > :is(.lr-remote-shortcut, .lr-switch-item) {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
   gap: 6px 14px; min-width: 0; min-height: var(--control-compact-size); margin: 0; padding: 6px 0;
 }
 .lr-remote-settings-fields > * + * { border-top: 1px solid var(--line); }
-.lr-remote-settings-fields :is(.lr-remote-shortcut label, .lr-remote-setting-label, .lr-switch-item > label) {
+.lr-remote-settings-fields > .lr-choice-field { padding-block: 8px; }
+.lr-remote-settings-fields :is(.lr-remote-shortcut label, .lr-switch-item > label) {
   display: inline-flex; align-items: center; gap: 6px; margin: 0;
   color: var(--ink); font-size: 13px; font-weight: 600; white-space: normal;
 }
-.lr-remote-settings-fields :is(.lr-remote-shortcut label, .lr-remote-setting-label) svg { flex: none; color: var(--muted); }
+.lr-remote-settings-fields .lr-remote-shortcut label svg { flex: none; color: var(--muted); }
 .lr-remote-settings-fields > .lr-switch-item > :is(svg, label) { grid-area: 1 / 1; }
 .lr-remote-settings-fields > .lr-switch-item > .lr-switch { grid-area: 1 / 2; justify-self: end; }
 .lr-remote-settings-fields > .lr-remote-game-mouse { margin: 0; justify-content: end; padding-block: 6px; }
 @container remote-keyboard-settings (max-width: 32ch) {
-  .lr-remote-settings-fields > :is(.lr-remote-shortcut, .lr-remote-stick-setting) { grid-template-columns: 1fr; justify-items: start; }
+  .lr-remote-settings-fields > .lr-remote-shortcut { grid-template-columns: 1fr; justify-items: start; }
 }
 .lr-remote-keyboard .lr-remote-key-pages { --selection-item-size: calc(var(--control-compact-size) - 12px); display: grid; grid-template-columns: repeat(var(--lr-segments), minmax(0, 1fr)); margin-bottom: 12px; }
 .lr-remote-keyboard .lr-remote-key-pages button { min-width: 0; padding: 4px 8px; }
@@ -196,9 +197,14 @@
 :is([data-reduced-motion], [data-comic-reduced-motion]) .lr-remote-mouse-widget,
 :is([data-reduced-motion], [data-comic-reduced-motion]) .lr-remote-mouse-widget > *,
 :is([data-reduced-motion], [data-comic-reduced-motion]) .lr-remote-mouse > .lr-remote-mouse-minimize { transition: none; }
-.lr-remote-direction { position: absolute; inset-inline-start: 8px; bottom: 8px; display: grid; justify-items: center; align-items: end; row-gap: 6px; pointer-events: none; }
-.lr-remote-direction[data-side="right"] { inset-inline-start: auto; inset-inline-end: 8px; }
-.lr-remote-direction > .lr-remote-stick { grid-row: 1; }
+.lr-remote-direction {
+  --stick-size: clamp(72px, 24vmin, 92px);
+  position: absolute; inset-inline-start: 0; bottom: 8px;
+  display: grid; grid-template-areas: "pad" "handle"; inline-size: calc(var(--stick-size) + 16px);
+  justify-items: center; align-items: center; row-gap: 6px; pointer-events: none;
+}
+.lr-remote-direction[data-side="right"] { inset-inline-start: auto; inset-inline-end: 0; }
+.lr-remote-direction > .lr-remote-stick { grid-area: pad; }
 .lr-remote-direction:not([data-docked]) > button {
   --control-hover-transform: none;
   --control-press-transform: none;
@@ -207,11 +213,11 @@
   justify-content: center;
 }
 .lr-remote-direction:not([data-docked]) > button > span { width: 1ch; text-align: center; font-family: var(--mono); }
-.lr-remote-direction > button { grid-row: 2; min-width: 44px; min-height: 44px; }
+.lr-remote-direction > button { grid-area: handle; min-width: var(--control-compact-size); min-height: var(--control-compact-size); }
 .lr-remote-direction > button, .lr-remote-stick { pointer-events: auto; touch-action: none; }
 .lr-remote-stick {
   position: relative;
-  width: clamp(72px, 24vmin, 92px);
+  width: var(--stick-size);
   aspect-ratio: 1;
   border-radius: 50%;
   background: rgb(var(--piik-dark-paper-rgb) / .64);
@@ -238,23 +244,27 @@
 }
 .lr-remote-stick[data-contact] i { border-color: currentColor; }
 
-.lr-remote-direction[data-docked="left"] { inset-inline-start: 0; }
-.lr-remote-direction[data-docked="right"] { inset-inline-end: 0; }
-.lr-remote-direction[data-docked]:not([data-touch-only]) { display: block; }
-.lr-remote-direction[data-touch-only][data-side="left"] > button { justify-self: start; }
-.lr-remote-direction[data-touch-only][data-side="right"] > button { justify-self: end; }
+.lr-remote-direction[data-docked="left"] > button { justify-self: start; }
+.lr-remote-direction[data-docked="right"] > button { justify-self: end; }
 /* Keep both edge pulls clear of the playback bar, including on narrow screens. */
-.lr-tv-screen:has(> .lr-playback) > .lr-remote-input-surface .lr-remote-direction[data-touch-only] {
+.lr-tv-screen:has(> .lr-playback) > .lr-remote-input-surface .lr-remote-direction {
+  --handle-width: calc(var(--control-compact-size) + 16px);
+  --stick-size: min(clamp(72px, 24vmin, 92px), calc(50cqw - var(--handle-width) - 8px));
   bottom: calc(var(--control-compact-size) + 24px);
-  column-gap: 4px;
+  inline-size: auto; column-gap: 4px;
+  grid-template: "handle pad" var(--stick-size) / var(--handle-width) var(--stick-size);
 }
-.lr-tv-screen:has(> .lr-playback) > .lr-remote-input-surface .lr-remote-direction[data-touch-only] > * { grid-row: 1; }
-.lr-tv-screen:has(> .lr-playback) > .lr-remote-input-surface .lr-remote-direction[data-touch-only][data-side="left"] > .lr-remote-stick,
-.lr-tv-screen:has(> .lr-playback) > .lr-remote-input-surface .lr-remote-direction[data-touch-only][data-side="right"] > button { grid-column: 2; }
+.lr-tv-screen:has(> .lr-playback) > .lr-remote-input-surface .lr-remote-direction[data-side="right"] {
+  grid-template-areas: "pad handle";
+  grid-template-columns: var(--stick-size) var(--handle-width);
+}
 .lr-remote-direction[data-touch-only] .lr-remote-stick {
   background: transparent;
   border-color: transparent;
   box-shadow: none;
+}
+.lr-remote-direction[data-touch-only]:not([data-docked]) .lr-remote-stick {
+  border-color: color-mix(in srgb, currentColor 52%, transparent);
 }
 .lr-remote-direction[data-touch-only] .lr-remote-stick > span { display: none; }
 .lr-remote-direction[data-touch-only] .lr-remote-stick > i {
@@ -265,7 +275,7 @@
   box-shadow: 0 0 0 1px var(--piik-dark-wall);
 }
 .lr-remote-direction[data-touch-only] .lr-remote-stick[data-contact] > i { visibility: visible; }
-.lr-remote-direction[data-touch-only] .lr-remote-stick-wake[aria-expanded="true"]::before {
+.lr-remote-stick-wake[aria-expanded="true"]::before {
   box-shadow: inset 0 0 0 1px var(--piik-dark-ink);
 }
 .lr-remote-direction > .lr-remote-stick-wake {

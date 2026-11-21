@@ -65,13 +65,10 @@ export function RemoteTouchSettings({ mode, onChange }: NonNullable<PlaybackSett
   const id = useId();
   const hint = mode === "direct" ? "remote.touchMode.directHint" : "remote.touchMode.trackpadHint";
   return <section aria-label={t("remote.touchMode")}>
-    <div className="lr-viewer-settings-heading">
-      <h3><Glyph name="mouse" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("remote.touchMode")}</span></h3>
-    </div>
-    <SegmentedChoice label="remote.touchMode" describedBy={vis ? undefined : `${id}-hint`}
+    <SegmentedChoice label={t("remote.touchMode")} describedBy={vis ? undefined : `${id}-hint`}
       value={mode} onChange={onChange} options={[
-        { value: "direct", label: "remote.touchMode.direct", icon: "tv" },
-        { value: "trackpad", label: "remote.touchMode.trackpad", icon: "mouse" },
+        { value: "direct", label: t("remote.touchMode.direct"), icon: "tv" },
+        { value: "trackpad", label: t("remote.touchMode.trackpad"), icon: "mouse" },
       ]} />
     {!vis && <p id={`${id}-hint`}>{t(hint)}</p>}
   </section>;

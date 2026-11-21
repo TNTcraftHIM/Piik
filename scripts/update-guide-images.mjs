@@ -26,7 +26,7 @@ const sceneControls = {
   'share-source-confirm': ['.lr-source-picker-panel', '.lr-source-option'],
   'sharing-settings': ['.lr-sharing-panel'],
   'room-voice': ['.lr-interaction-panel:has([id$="-voice-tab"][aria-selected=true])', '.lr-scene button[popovertarget]', '.lr-interaction-panel [role="tab"][id$="-voice-tab"]'],
-  'touch-joystick': ['.lr-tv:has([data-side=left] > button[aria-expanded=true]):has([data-side=right] > button[aria-expanded=true])', '.lr-remote-direction[data-side=left] > button:first-child', '.lr-remote-direction[data-side=right] > button:first-child'],
+  'touch-joystick': ['.lr-tv:has([data-docked=left] > .lr-remote-stick):has([data-docked=right] > .lr-remote-stick)', '.lr-remote-direction[data-side=left] > button', '.lr-remote-direction[data-side=right] > button'],
   'share-failure': ['dialog.lr-share-help[open]', 'button.lr-status-indicator'],
   'viewer-route-failure': ['.lr-tv-screen'],
 };

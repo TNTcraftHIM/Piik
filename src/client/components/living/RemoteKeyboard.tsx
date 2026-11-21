@@ -217,13 +217,10 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       </summary>
       <div className="lr-remote-settings-fields">
         <RemoteShortcutSelect value={releaseKey} onChange={onReleaseKeyChange} mac={navigator.platform.startsWith("Mac")} />
-        {stickMode && <div className="lr-remote-stick-setting">
-          <span className="lr-remote-setting-label"><Glyph name="gamepad" size={16} />{vis ? null : t("remote.stickMode")}</span>
-          <SegmentedChoice label="remote.stickMode" value={stickMode.value} onChange={stickMode.onChange} options={[
-            { value: "keyboard", label: "remote.keyboardMouseMode", icon: "keyboard" },
-            { value: "gamepad", label: "remote.gamepadMode", icon: "gamepad" },
-          ]} />
-        </div>}
+        {stickMode && <SegmentedChoice label={t("remote.stickMode")} value={stickMode.value} onChange={stickMode.onChange} options={[
+          { value: "keyboard", label: t("remote.keyboardMouseMode"), icon: "keyboard" },
+          { value: "gamepad", label: t("remote.gamepadMode"), icon: "gamepad" },
+        ]} />}
         {stickVisibility && <SwitchItem label={t("remote.stickShowOnTouch")} icon="gamepad"
           checked={stickVisibility.checked} onChange={stickVisibility.onChange} />}
         {!panelWindow.detached && mouseControl}

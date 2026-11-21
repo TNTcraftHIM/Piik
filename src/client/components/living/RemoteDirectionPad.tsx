@@ -13,19 +13,17 @@ export function RemoteDirectionPad({ right = false, touchOnly = false, keyboard,
   const thumb = useRef<HTMLElement>(null);
   const contact = useRef<number | null>(null);
   const [docked, setDocked] = useState(false);
-  const parked = docked && !touchOnly;
   const idle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const park = useCallback(() => {
     clearTimeout(idle.current);
-    if (touchOnly) return;
     idle.current = setTimeout(() => {
       if (contact.current === null && !group.current?.querySelector(":focus-visible")) setDocked(true);
     }, PLAYER_CONTROLS_IDLE_MS);
-  }, [touchOnly]);
+  }, []);
   useEffect(() => {
-    if (!parked) park();
+    park();
     return () => clearTimeout(idle.current);
-  }, [park, open, parked]);
+  }, [park]);
   const label = t(right ? (keyboard ? "remote.mouseStick" : "remote.rightStick") : (keyboard ? "remote.directionPad" : "remote.leftStick"));
   const release = useCallback(() => {
     if (contact.current === null) return;
@@ -37,7 +35,7 @@ export function RemoteDirectionPad({ right = false, touchOnly = false, keyboard,
     pad.current?.style.removeProperty("--stick-y");
   }, [onMove]);
   useEffect(() => {
-    if (!open || parked) return;
+    if (!open) return;
     const doc = pad.current!.ownerDocument;
     const visibility = () => { if (doc.hidden) release(); };
     doc.defaultView?.addEventListener("blur", release);
@@ -47,7 +45,7 @@ export function RemoteDirectionPad({ right = false, touchOnly = false, keyboard,
       doc.removeEventListener("visibilitychange", visibility);
       release();
     };
-  }, [release, open, parked, touchOnly]);
+  }, [release, open]);
   function move(e: PointerEvent<HTMLDivElement>) {
     if (contact.current !== e.pointerId) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -67,13 +65,13 @@ export function RemoteDirectionPad({ right = false, touchOnly = false, keyboard,
   }
   return <div ref={group} onFocus={() => clearTimeout(idle.current)} onBlur={park}
     onPointerDownCapture={() => clearTimeout(idle.current)} onPointerUpCapture={park} onPointerCancelCapture={park}
-    data-docked={parked || touchOnly ? (right ? "right" : "left") : undefined} data-touch-only={touchOnly || undefined}
+    data-docked={docked ? (right ? "right" : "left") : undefined} data-touch-only={touchOnly || undefined}
     className="lr-remote-direction" data-side={right ? "right" : "left"}>
-    <button type="button" className={parked || touchOnly ? "lr-remote-stick-wake" : "lr-btn is-compact"} aria-label={label} aria-expanded={open && !parked}
-      onClick={() => parked ? setDocked(false) : toggleOpen()}><Glyph name="gamepad" size={20} /><span aria-hidden="true">{right ? "R" : "L"}</span></button>
-    {open && !parked && <div ref={pad} className="lr-remote-stick" role="group" aria-label={label}
+    <button type="button" className={docked ? "lr-remote-stick-wake" : `lr-btn is-compact${open ? " is-on" : ""}`} aria-label={label} aria-expanded={open}
+      onClick={() => { setDocked(false); toggleOpen(); park(); }}><Glyph name="gamepad" size={20} /><span aria-hidden="true">{right ? "R" : "L"}</span></button>
+    {open && <div ref={pad} className="lr-remote-stick" role="group" aria-label={label}
       onPointerDown={e => {
-        if (contact.current !== null || e.button !== 0 || (touchOnly && e.pointerType !== "touch")) return;
+        if (contact.current !== null || e.button !== 0) return;
         e.preventDefault();
         contact.current = e.pointerId;
         e.currentTarget.setAttribute("data-contact", "");

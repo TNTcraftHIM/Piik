@@ -112,8 +112,8 @@ export function RemoteControlsPreview({ joystick = false, guide = false, guidePo
   return <>{!joystick && <PermissionRequestPreview />}<section id={joystick ? "joystick-preview" : "remote-control-preview"} className="cp-section">
     {!guide && <header className="cp-section-head"><div>
       <h2>{joystick ? (en ? "Touch joysticks" : "触屏双摇杆") : t("remote.inputTools")}</h2>
-      {joystick ? <p>{en ? "Open L and R to try both sticks. Open Remote keyboard and use Stick mode to switch between keys and mouse or gamepad. Input stays on this page."
-        : "点 L、R 可分别展开摇杆。在远程键盘的「摇杆模式」中切换键鼠或手柄。输入仅显示在本页。"}</p>
+      {joystick ? <p>{en ? "Tap L or R to open a pad. Its button tucks away when idle. Drag either pad to try it, or tap its button again to close it. Change the mapping under Remote keyboard → Local controls."
+        : "点 L 或 R 打开杆盘。按钮贴边后仍可拖动杆盘，再点按钮就关闭。在「远程键盘 → 本机控制」中可切换键鼠或手柄。"}</p>
         : <p>{en ? "Expand the mini mouse and drag its lower half to move the pointer. Hold and move L or R to drag, or hold a button with one finger and move the lower half with another. Pinch or pan the picture with two fingers to adjust the local view. Tap the wheel to middle-click, swipe to scroll, or hold to drag. Try direct touch or the compact trackpad below. Input stays in the local log."
         : "展开迷你鼠标，拖动下半部移动光标。按住 L 或 R 后移动即可拖拽，也可用一指按住按钮、另一指拖动下半部。在画面上双指缩放或平移可调整本地视图。滚轮可轻点中击、滑动滚动、长按后拖动。下方可切换直接触摸或光标触控板，输入仅记录在本地。"}</p>
         }
