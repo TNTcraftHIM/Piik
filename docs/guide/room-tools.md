@@ -3,7 +3,7 @@
 English · [简体中文](./room-tools.zh-CN.md) · [Documentation](./README.md)
 
 Chat and voice work before, during and after picture sharing.
-Remote control requires an active App window or screen share.
+To let a friend control your computer, share a window or screen from the desktop App. Friends can join from their phone or computer.
 
 - **[Chat and reactions](#chat-and-reactions):** join the room and open **Interact → Chat**.
 - **[Room voice](#room-voice):** the Host opens room voice; each speaker enables their own microphone.

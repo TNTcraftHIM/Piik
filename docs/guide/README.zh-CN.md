@@ -27,6 +27,8 @@ description: 了解如何加入房间、分享屏幕，以及解决 Piik 的常�
   用邀请链接或四位房间号加入。
 - [用浏览器分享屏幕](./getting-started.zh-CN.md#用浏览器分享屏幕)<br>
   打开在线版，把邀请链接发给朋友。
+- [用 Piik App 分享](./getting-started.zh-CN.md#用-piik-app-分享)<br>
+  安装 App，选择本地房间或公网邀请。
 - [用手机玩电脑游戏（屏幕摇杆）](./remote-control.zh-CN.md#用手机玩电脑游戏屏幕摇杆)<br>
   请求控制，用屏幕上的摇杆操作朋友的游戏。
 

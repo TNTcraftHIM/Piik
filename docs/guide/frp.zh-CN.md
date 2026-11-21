@@ -37,7 +37,7 @@
 | 2.x Server | `PORT=8787` | `PUBLIC_BASE_URL=https://piik.example.nyat.app:21080` |
 | 3.0 Server | `PIIK_CHANNEL_PORT=8787` | `PIIK_CHANNEL_INVITATION_ORIGIN=https://piik.example.nyat.app:21080` |
 
-公网地址填到端口为止。房间路径和私房邀请码由 Piik 在复制邀请时生成。
+填写公网 HTTPS 地址和分配的端口，例如 `https://piik.example.nyat.app:21080`。不用填房间路径；复制链接时，Piik 会自动加上房间路径和邀请凭证。
 
 ## 从外网验证
 

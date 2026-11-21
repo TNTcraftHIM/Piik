@@ -79,7 +79,11 @@ export function RemoteDirectionPad({ right = false, touchOnly = false, keyboard,
         e.currentTarget.setAttribute("data-contact", "");
         e.currentTarget.setPointerCapture(e.pointerId);
         move(e);
-      }} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
+      }} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
+      onClick={event => {
+        // Keep mobile tap targeting on the pad when the mouse button is nearby.
+        event.preventDefault();
+      }}>
       {(!right && keyboard ? ["W", "A", "S", "D"] : ["↑", "←", "↓", "→"]).map(value => <span key={value}>{value}</span>)}<i ref={thumb} />
     </div>}
   </div>;

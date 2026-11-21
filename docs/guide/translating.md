@@ -1,13 +1,6 @@
 # Help translate Piik
 
-The 2.x interface keeps Chinese, English and Visual only, and offers partial
-Traditional Chinese, Japanese and Korean message catalogs. Missing messages,
-text titles and playful copy use English. Visual-only presentation, saved
-preferences and the Chinese/English/visual App console keep their existing roles.
-New copy is required in Chinese and English; remove obsolete keys from every
-catalog when removing a message.
-
-[中文](./translating.zh-CN.md) · [Contributing](../../CONTRIBUTING.md)
+English · [简体中文](./translating.zh-CN.md)
 
 Suggest wording, correct a translation or add a language through GitHub issues
 and pull requests.
@@ -16,6 +9,8 @@ For a wording suggestion, [open an issue](https://github.com/TNTcraftHIM/Piik/is
 with the language, page/control, current text, proposed text and reason. Include
 a screenshot or steps to reach it; remove private invitations, passwords and
 personal content. You can send a suggestion without setting up development tools.
+
+The 2.x interface includes English, Simplified Chinese and a visual-only mode. Traditional Chinese, Japanese and Korean have partial translations. Missing translations appear in English.
 
 ## Make your first correction
 

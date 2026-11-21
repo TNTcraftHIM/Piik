@@ -71,7 +71,7 @@ export without stopping the container; the ZIP remains in the mounted log direct
 Check `/healthz` from the host and public proxy, then verify configured STUN/SFU
 UDP and room/media behavior using [operational verification](#operational-verification).
 There is no shell-based healthcheck in the image. Retain the previous image,
-environment and volume backup before replacement. From the deployment directory:
+environment and volume backup before replacement. Record the previous image tag or digest for rollback, then set `PIIK_IMAGE` in `.env` to the 2.x release you intend to install. From the deployment directory:
 
 ```sh
 docker compose pull
@@ -91,17 +91,8 @@ The bare-metal `release-server.sh` wrapper does not manage containers.
 
 ## Operational Verification
 
-- `/healthz` returns `{"status":"ok"}` locally and through the public origin.
-- Piik and the HTTPS proxy are active with expected restart counts and bounded
-  logs/resources; Piik owns the configured STUN/SFU UDP listeners.
-- The official Trickle ICE sample obtains an ordinary UDP `srflx` candidate from
-  the configured STUN service and no relay candidate.
-- A direct room presents media on two networks when Peer ICE succeeds.
-- When SFU is enabled, a constrained route creates one managed Host publication
-  and only admitted subscriptions over embedded SFU UDP; Peer descendants remain ordinary P2P.
-- Blocking all UDP reaches a clear bounded failure.
-- Restarting Piik in stable mode retains room authority while Browser
-  sessions and media reconnect from fresh process state.
-
-Representative network, mobile, audio, 20-Viewer, and long-running evidence is
-tracked in [verification status](../verification-status.md), not in this runbook.
+1. Open `/healthz` on the server and through the public HTTPS address. Both should return `{"status":"ok"}`.
+2. Start sharing and send the invitation to a friend on another network. Ask them to send a chat message, watch the picture and listen to a sound you chose to share.
+3. To check STUN, enter your configured STUN address in the [Trickle ICE sample](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/) as the only server, then select **Gather candidates**. Look for a UDP candidate of type `srflx`.
+4. If you enabled SFU, test from a network where direct connections fail but UDP can reach your server. Before sharing, turn off **Privacy mode**. Confirm the viewer receives the picture and that the connection details show server forwarding.
+5. After a planned restart with SQLite enabled, reopen an existing room. Check the invitation still works, then start a share and confirm the viewer receives it again.

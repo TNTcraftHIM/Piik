@@ -18,7 +18,7 @@ Web pages and chat use a separate connection from picture and sound:
 
 ## Campus networks and strict NAT
 
-**Try opening the same invitation on a phone hotspot.** If you can watch there, keep using the hotspot or ask the person who manages your usual network for help.
+**For a public invitation, try opening the same link on a phone hotspot.** If you can watch there, keep using the hotspot or ask the person who manages your usual network for help.
 
 For regular use, choose an option that fits your group:
 
@@ -36,7 +36,7 @@ SFU forwarding requires a site with that feature enabled and a reachable UDP end
 ## Browser WebRTC restrictions
 
 1. Open the same invitation in another browser. If the picture appears, you can keep watching there.
-2. To keep using your original browser, try a fresh profile with default settings. If that works, check the privacy extensions in your original profile. If neither browser shows the picture, try a phone hotspot.
+2. To keep using your original browser, try a fresh profile with default settings. If that works, check the privacy extensions in your original profile. If neither browser shows the picture, try a public invitation on a phone hotspot. For a local invitation, keep both devices on the same LAN or virtual LAN.
 
 <details>
 <summary>Advanced · Chrome and Vivaldi privacy settings</summary>

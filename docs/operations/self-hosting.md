@@ -247,7 +247,7 @@ STUN would report. Restart Piik and check HTTPS health, room access and
 
 ### Forward a Piik App invitation
 
-Run `piik-app --link --public-origin https://share.example.com --port 8787` on the App computer. Use the public HTTPS reverse proxy described above and only the `piik-web` TCP proxy in frpc, targeting `127.0.0.1:8787`. Start frps and frpc yourself. The Host opens its loopback entry. Viewer invitations and QR codes use the fixed HTTPS domain. Room access settings still apply. App media uses WebRTC P2P. Use `--local` for LAN invitations.
+First run `piik-app --help` and check for `public-origin`. The published v2.7.0 App lacks this option. With that version, use the Server setup above for a fixed address. In a 2.x App that lists the option, run `piik-app --link --public-origin https://share.example.com --port 8787` on the App computer. Use the public HTTPS reverse proxy described above and only the `piik-web` TCP proxy in frpc, targeting `127.0.0.1:8787`. Start frps and frpc yourself. The Host opens its loopback entry. Viewer invitations and QR codes use the fixed HTTPS domain. Room access settings still apply. App media uses WebRTC P2P. Use `--local` for LAN invitations.
 
 ### Using a managed frp provider
 

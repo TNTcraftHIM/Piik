@@ -37,7 +37,7 @@ Apply the settings for your Server version to its existing configuration and res
 | 2.x Server | `PORT=8787` | `PUBLIC_BASE_URL=https://piik.example.nyat.app:21080` |
 | 3.0 Server | `PIIK_CHANNEL_PORT=8787` | `PIIK_CHANNEL_INVITATION_ORIGIN=https://piik.example.nyat.app:21080` |
 
-Enter the origin through the port. Piik adds the room path and any private invitation details when you copy the invitation.
+Enter the public HTTPS address with the assigned port, for example `https://piik.example.nyat.app:21080`. Leave off the room path. Piik adds it and the invitation credentials when you copy the link.
 
 ## Test from another network
 

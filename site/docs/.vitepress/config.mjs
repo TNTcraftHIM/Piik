@@ -81,7 +81,7 @@ export default defineConfig({
         },
         miniSearch: {
           options: {
-            tokenize: text => Array.from(new Intl.Segmenter('zh', { granularity: 'word' }).segment(text))
+            tokenize: text => Array.from(new Intl.Segmenter('zh', { granularity: 'word' }).segment(text.replace(/’/g, "'")))
               .filter(part => part.isWordLike).map(part => part.segment),
           },
         },

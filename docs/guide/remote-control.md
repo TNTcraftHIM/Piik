@@ -7,7 +7,7 @@ together. The Host shares an App window or screen; friends join in their browser
 
 ## Start remote control
 
-1. Share through Piik App using **Apps / Windows** or **Screens**.
+1. On the computer you want to control, share through the desktop Piik App using **Apps / Windows** or **Screens**. On Linux, select a screen through the system picker.
 2. Open **Remote control** below the picture and turn it on. It starts with
    **Ask each time**.
 3. In the browser, your friend opens the room invitation and hovers over or taps the picture to show the playback bar. They select the mouse icon, then **Request control**. On your sharing page, open **Remote control** and select **Allow** next to their request.

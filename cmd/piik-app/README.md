@@ -59,7 +59,7 @@ Repeat confirmation after App restarts.
 Choose **Public invite**, create a room in the opened browser, and send its invitation.
 The packaged Cloudflare Tunnel helper supplies a temporary `trycloudflare.com`
 HTTPS address. It expires when App closes; a later run gets a new address.
-For a permanent address, use a configured Piik site.
+For a fixed address, use an existing Piik site or follow the [frp guide for your App version](../../docs/guide/frp.md#desktop-app).
 
 Local and Public invite use P2P picture and sound, outside the web tunnel.
 They need a usable UDP media path and provide no server media forwarding (SFU)

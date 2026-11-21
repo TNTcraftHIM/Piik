@@ -669,7 +669,7 @@ against that same endpoint pair and relay policy.
 
 #### Stable Pion Interoperability
 
-The candidate uses Pion WebRTC v4.2.24 / ICE v4.4.8. The
+The measurements below used Pion WebRTC v4.2.24 and ICE v4.4.8. The
 [upstream changes](https://github.com/pion/ice/compare/v4.4.0...v4.4.8) include
 STUN retransmission, gathering-generation ownership, Chromium mDNS compatibility
 and pre-created mux lifetime corrections. This updates the shared Native/SFU

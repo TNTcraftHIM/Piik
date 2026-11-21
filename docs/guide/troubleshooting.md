@@ -8,7 +8,7 @@ English · [简体中文](./troubleshooting.zh-CN.md) · [Documentation](./READM
 
 ## Common problems
 
-- [I cannot join my friend’s room, or the invitation opens to a blank page](#i-cannot-join-my-friends-room)
+- [I can’t join my friend’s room, or the invitation opens to a blank page](#i-cant-join-my-friends-room)
 - [I joined the room but see “No media route available”](./no-media-route.md)
 - [I see the picture but cannot hear the game or my friend](./sound-help.md)
 - [The picture is blurry or keeps freezing](#the-picture-is-blurry-or-keeps-freezing)
@@ -25,7 +25,7 @@ English · [简体中文](./troubleshooting.zh-CN.md) · [Documentation](./READM
 
 <a id="the-invitation-opens-to-a-blank-page"></a>
 
-### I cannot join my friend’s room
+### I can’t join my friend’s room
 
 Ask the Host for the current invitation and open the full link in your browser.
 
@@ -161,7 +161,7 @@ compare before and after on your virtual LAN:
 
 ### Local HTTPS certificate warning
 
-Close the warning and confirm the address with the Host through your usual chat. Ask for a current **Public invite**. If a public address also shows a warning, tell the site administrator and wait for them to fix it.
+For a local invitation, confirm the address with the Host through your usual chat. Compare the certificate fingerprints using the steps below before continuing. If you prefer a public link, ask the Host for a current **Public invite**. If a public address also shows a warning, tell the site administrator and wait for them to fix it.
 
 <details>
 <summary>Advanced · Verify an expected local certificate with the Host</summary>
@@ -478,7 +478,7 @@ source or VP8 works. For network problems, add the network type.
 
 Enable diagnostics before reproducing once, then export before refreshing:
 
-- **Web:** use the page's diagnostics button. A sharing failure's error icon below
+- **Web:** select **Help → Debug**, confirm the reload and reproduce the problem. Then select **Help → Web report** to download it. A sharing failure's error icon below
   the TV also provides a copyable summary; it contains the Web version, message
   and code, without invitation links or source names.
 - **Desktop App capture or remote control:** also enable **Debug launch** on the Host App's mode selection page,

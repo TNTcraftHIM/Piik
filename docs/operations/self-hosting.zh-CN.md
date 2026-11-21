@@ -222,7 +222,7 @@ frpc 的本地与公网 UDP 端口必须都等于 `SFU_UDP_PORT`。
 
 ### 转发 Piik App 的公网邀请
 
-在 App 电脑上运行 `piik-app --link --public-origin https://share.example.com --port 8787`。公网主机使用上文的 HTTPS 反向代理，frpc 仅配置 `piik-web` TCP 代理并转发至 `127.0.0.1:8787`。自行启动 frps 和 frpc。主持人打开本机回环入口，观众邀请和二维码使用固定的 HTTPS 域名。房间访问设置继续生效，音视频使用 WebRTC P2P。仅在局域网分享时使用 `--local`。
+先运行 `piik-app --help`，查看是否有 `public-origin`。已发布的 v2.7.0 App 没有这个选项，需要固定地址时请用上文的 Server 方式。使用包含该选项的 2.x App 时，在电脑上运行 `piik-app --link --public-origin https://share.example.com --port 8787`。公网主机使用上文的 HTTPS 反向代理，frpc 仅配置 `piik-web` TCP 代理并转发至 `127.0.0.1:8787`。自行启动 frps 和 frpc。主持人打开本机回环入口，观众邀请和二维码使用固定的 HTTPS 域名。房间访问设置继续生效，音视频使用 WebRTC P2P。仅在局域网分享时使用 `--local`。
 
 ### 使用托管 frp 服务
 

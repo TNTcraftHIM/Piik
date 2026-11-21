@@ -35,6 +35,25 @@ export function Cap({ k }: { k: CopyKey }) {
   return vis ? null : <span className="lr-cap">{t(k)}</span>;
 }
 
+export function SegmentedChoice<T extends string>({ label, describedBy, options, value, onChange }: {
+  label: CopyKey;
+  describedBy?: string;
+  options: readonly { value: T; label: CopyKey; icon: GlyphName }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  const name = useId();
+  const { t } = useCopy();
+  return <div className="lr-toggle" role="radiogroup" aria-label={t(label)} aria-describedby={describedBy}
+    style={{ "--lr-segments": options.length, "--lr-selected-index": options.findIndex(option => option.value === value) } as CSSProperties}>
+    {options.map(option => <label key={option.value}>
+      <input type="radio" name={name} value={option.value} aria-label={t(option.label)}
+        checked={value === option.value} onChange={() => onChange(option.value)} />
+      <span><Glyph name={option.icon} size={17} /><Cap k={option.label} /></span>
+    </label>)}
+  </div>;
+}
+
 export function BackButton({ onClick }: { onClick: () => void }) {
   return <Btn icon="arrowLeft" title="common.back" cap="common.back" size="dense" quiet hint="hint-collapse" onClick={onClick} />;
 }

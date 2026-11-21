@@ -111,7 +111,7 @@ permissions and window chrome are verified in the actual platform, not imitated.
 | Perform an action or open a tool | `Btn`; use a stable caption and `aria-expanded` for disclosures |
 | Turn a setting on or off immediately | `SwitchItem`; compact toolbar actions such as mute use a pressed `Btn` |
 | Select independent options within a task | Native checkboxes or independent pressed `Chip`s, such as held modifier keys; a selection awaiting Apply must not look like a committed setting |
-| Choose a short, fixed mode | Shared `.lr-toggle` sliding selection; option chips/cards when individual choices need explanations, richer previews or wrapping |
+| Choose a short, fixed mode | `SegmentedChoice` for named radio options; option chips/cards when individual choices need explanations, richer previews or wrapping |
 | Switch related content pages | A named tablist with one selected tab and its associated panel; use the shared sliding treatment for short labels, including capture categories, and `navigateTabs` for Arrow/Home/End navigation |
 | Pick a device or an item from a variable list | Existing named selector/menu; use source thumbnails when appearance helps identify the item |
 | Adjust a numeric value | Range slider for quick adjustment, with a visible value; reuse `NumberControl` when exact entry or a wider accepted range is useful |

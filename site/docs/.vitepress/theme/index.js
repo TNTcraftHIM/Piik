@@ -1,7 +1,7 @@
 import DefaultTheme from 'vitepress/theme-without-fonts';
 import { useData, withBase } from 'vitepress';
 import { h, onBeforeUnmount, onMounted, provide, ref } from 'vue';
-import { useStorage } from '@vueuse/core';
+import { onKeyStroke, useStorage } from '@vueuse/core';
 import { THEME_STORAGE_KEY } from '../../../../src/client/ui/theme.ts';
 import { bindBrandMotion, brandMarkup } from '../../../assets/brand.js';
 import { initialLanguage, rememberLanguage } from '../../../assets/language.js';
@@ -26,6 +26,14 @@ export default {
   extends: DefaultTheme,
   setup() {
     const { isDark } = useData();
+    onKeyStroke('Escape', event => {
+      if (event.target instanceof Element && event.target.closest('.VPLocalSearchBox')) {
+        requestAnimationFrame(() => {
+          const search = document.querySelector('.help-search') ?? document.querySelector('.VPNavBarSearch .DocSearch-Button');
+          if (document.activeElement === document.body) search?.focus({ preventScroll: true });
+        });
+      }
+    });
     const preference = useStorage(THEME_STORAGE_KEY, 'auto', undefined, { flush: 'sync' });
     provide('toggle-appearance', () => {
       const selected = isDark.value ? 'light' : 'dark';

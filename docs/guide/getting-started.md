@@ -11,7 +11,7 @@ English · [简体中文](./getting-started.zh-CN.md) · [Documentation](./READM
 2. If Piik asks for a **Site passphrase** as soon as you open the link, ask your friend for the passphrase for that site. If the room shows **Enter room password**, select it, enter the password for that room and select **Join**. An invitation with **Skip passwords** takes you straight to the room.
 3. If you see a **Play** button on your friend’s picture, select it. Tap the picture or move your pointer over it for [playback controls](./sharing.md#playback-controls).
 
-If you received only a four-digit room code, ask your friend for their Piik site address. Open that address, enter the **Site passphrase** if prompted, then select **Join a room**. Enter the four digits and select the arrow to join.
+If you received only a four-digit room code, ask your friend for their Piik site address. Open that address, enter the **Site passphrase** if prompted, then select **Join a room**. Enter the four digits and select the arrow. If the room requires a password, ask your friend for it. For an invitation-only room, ask for the full invitation link.
 
 ![Four room-code boxes and the arrow that submits the code.](../assets/guide/join-code.en.png#gh-light-mode-only)
 ![Four room-code boxes and the arrow that submits the code.](../assets/guide/join-code.en.dark.png#gh-dark-mode-only)

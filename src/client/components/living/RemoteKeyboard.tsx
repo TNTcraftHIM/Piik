@@ -8,7 +8,7 @@ import { isCopyKey, useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { panelWindowAPI, SurfaceDocument, usePanelWindow } from "../../ui/panel-window";
 import { navigateTabs } from "../../ui/tab-navigation";
-import { Btn, Chip, SwitchItem } from "./primitives";
+import { Btn, Chip, SegmentedChoice, SwitchItem } from "./primitives";
 import { Tooltip } from "./Tooltip";
 import { RemoteShortcutSelect } from "./RemoteShortcutSelect";
 import "./floating-panel.css";
@@ -176,15 +176,11 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
         {modifiersKeys.slice(0, 3).map(modifier)}{key(["␣", "Space"])}{key(["↵", "Enter"])}
       </div>
       {navigation}
-      <Tooltip kind="hint-key-combination" className="lr-remote-combine-hint" text={vis ? undefined : t("remote.combinationHelp")}>
-      <label className="lr-remote-combine-keys"><input type="checkbox" checked={combineKeys}
-        aria-label={t("remote.combinationMode")}
-        onChange={event => {
-          presses.reset(); setModifiers([]); setCombineKeys(event.target.checked);
-          saveRoomPreferences({ combineKeys: event.target.checked });
+      <SwitchItem label={t("remote.combinationMode")} checked={combineKeys} icon="keyboard"
+        note={t("remote.combinationHelp")} hint="hint-key-combination" onChange={checked => {
+          presses.reset(); setModifiers([]); setCombineKeys(checked);
+          saveRoomPreferences({ combineKeys: checked });
         }} />
-        {vis ? <span aria-hidden="true"><kbd>⇧</kbd><span>+</span><kbd>…</kbd></span> : t("remote.combinationMode")}</label>
-      </Tooltip>
       {!vis && <p>{t(combineKeys ? "remote.combinationHelp" : "remote.keyboardHelp")}</p>}
     </> : <>
       <form className="lr-remote-text-entry" onSubmit={event => {
@@ -223,16 +219,10 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
         <RemoteShortcutSelect value={releaseKey} onChange={onReleaseKeyChange} mac={navigator.platform.startsWith("Mac")} />
         {stickMode && <div className="lr-remote-stick-setting">
           <span className="lr-remote-setting-label"><Glyph name="gamepad" size={16} />{vis ? null : t("remote.stickMode")}</span>
-          <div className="lr-toggle" role="radiogroup" aria-label={t("remote.stickMode")} data-remote-stick-mode>
-            {(["keyboard", "gamepad"] as const).map(value => {
-              const label = t(value === "keyboard" ? "remote.keyboardMouseMode" : "remote.gamepadMode");
-              return <label key={value}>
-                <input type="radio" name={id + "-stick-mode"} value={value} aria-label={label} checked={stickMode.value === value}
-                  onChange={() => stickMode.onChange(value)} />
-                <span>{vis ? <Glyph name={value === "keyboard" ? "keyboard" : "gamepad"} size={16} /> : label}</span>
-              </label>;
-            })}
-          </div>
+          <SegmentedChoice label="remote.stickMode" value={stickMode.value} onChange={stickMode.onChange} options={[
+            { value: "keyboard", label: "remote.keyboardMouseMode", icon: "keyboard" },
+            { value: "gamepad", label: "remote.gamepadMode", icon: "gamepad" },
+          ]} />
         </div>}
         {stickVisibility && <SwitchItem label={t("remote.stickShowOnTouch")} icon="gamepad"
           checked={stickVisibility.checked} onChange={stickVisibility.onChange} />}

@@ -4,7 +4,7 @@ import type { VideoFit, VideoRotation } from "../../media/video-geometry";
 import type { RoomPreferences } from "../../lib/room-preferences";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
-import { Btn, Cap, Chip, FieldCap, Pill, RowGroup, SwitchItem } from "./primitives";
+import { Btn, Cap, Chip, FieldCap, Pill, RowGroup, SegmentedChoice, SwitchItem } from "./primitives";
 import { NumberControl } from "./NumberControl";
 import { MAX_PLAYBACK_BUFFER_TARGET_MS } from "../../webrtc/receiver-buffer-target";
 import { RelayVolunteerSettings, type RelayCapacitySettings } from "./RelayVolunteerSettings";
@@ -68,13 +68,11 @@ export function RemoteTouchSettings({ mode, onChange }: NonNullable<PlaybackSett
     <div className="lr-viewer-settings-heading">
       <h3><Glyph name="mouse" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("remote.touchMode")}</span></h3>
     </div>
-    <div className="lr-toggle" role="radiogroup" aria-label={t("remote.touchMode")} aria-describedby={vis ? undefined : `${id}-hint`}>
-      {(["direct", "trackpad"] as const).map(value => <label key={value}>
-        <input type="radio" name={id} value={value} checked={mode === value}
-          aria-label={t(`remote.touchMode.${value}`)} onChange={() => onChange(value)} />
-        <span><Glyph name={value === "direct" ? "tv" : "mouse"} size={17} /><Cap k={`remote.touchMode.${value}`} /></span>
-      </label>)}
-    </div>
+    <SegmentedChoice label="remote.touchMode" describedBy={vis ? undefined : `${id}-hint`}
+      value={mode} onChange={onChange} options={[
+        { value: "direct", label: "remote.touchMode.direct", icon: "tv" },
+        { value: "trackpad", label: "remote.touchMode.trackpad", icon: "mouse" },
+      ]} />
     {!vis && <p id={`${id}-hint`}>{t(hint)}</p>}
   </section>;
 }
