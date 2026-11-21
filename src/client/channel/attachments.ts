@@ -6,6 +6,7 @@ import type { AttachmentHash, FileDelivery } from "../../../prototype/channel-br
 import { attachmentSchema, fileKeyString, type ChannelAttachment, type ChannelCommand, type ChannelFileKey, type ChannelFilePlan, type ChannelMessage, type ChannelRoom, type ChannelPair, type ImageRendition } from "./protocol";
 import { VisibleFileAvailability } from "./file-availability";
 import { inlineImageFile, prepareInlineImage } from "./image-preview";
+import { openTransferStorage, type TransferStorage } from "./transfer-storage";
 
 export const attachmentLimitsSchema = z.object({ maxFileBytes: z.number().positive(), maxAttachmentsPerMessage: z.number().positive(), maxRetainedBytes: z.number().positive(), maxRetainedFiles: z.number().positive(), maxInlineImageBytes: z.number().int().positive() });
 export type AttachmentLimits = z.infer<typeof attachmentLimitsSchema>;
@@ -21,7 +22,7 @@ type Effect =
   | { type: "failed"; key: ChannelFileKey; code: string };
 interface Runtime { module: Hosting; delivery: FileDelivery; lifetime: AbortController }
 interface Sink {
-  key: ChannelFileKey; attachment: ChannelAttachment; lifetime: AbortController;
+  attachment: ChannelAttachment; lifetime: AbortController;
   file: FileSystemFileHandle; directory: FileSystemDirectoryHandle; name: string;
   writer: FileSystemWritableFileStream; complete: boolean;
   tail: Promise<void>; promise: Promise<File>; resolve(file: File): void; reject(error: Error): void;
@@ -59,6 +60,8 @@ export class ChannelAttachments {
   private cacheRevision = 0;
   private cacheClears = new Map<string, CacheClear>();
   private sinks = new Map<string, PendingSink>();
+  private transferStorage?: Promise<TransferStorage>;
+  private sinkDisposals = new Set<Promise<void>>();
   private downloads = new Map<string, Download>();
   private listeners = new Set<() => void>();
   constructor(private command: (command: ChannelCommand) => Promise<void>,
@@ -151,7 +154,7 @@ export class ChannelAttachments {
       if (!authorized.has(entry.key.roomId)) {
         this.sinks.delete(id);
         if (this.runtime) void this.runtime.then(runtime => this.invoke(runtime, () => runtime.delivery.cancel(JSON.stringify(entry.key)))).catch(() => {});
-        void entry.ready.then(sink => this.disposeSink(sink, new Error("room_unavailable"))).catch(() => {});
+        void this.retireSink(entry.ready, new Error("room_unavailable"));
         changed = true;
         continue;
       }
@@ -255,8 +258,7 @@ export class ChannelAttachments {
       this.downloads.delete(id);
     }
     for (const entry of this.sinks.values()) {
-      if (matches(entry.key)) void entry.ready.then(sink =>
-        this.stopSink(sink.key, entry, sink, new Error("attachment_unavailable"))).catch(() => {});
+      if (matches(entry.key)) void this.stopSink(entry, new Error("attachment_unavailable"));
     }
     if (this.runtime) void this.runtime.then(runtime => this.invoke(runtime, () => this.project(runtime))).catch(() => {});
     void this.store?.removeMessages(roomId, removed).catch(() => {});
@@ -349,10 +351,10 @@ export class ChannelAttachments {
     const bindingId = this.rooms.find(room => room.id === key.roomId)?.delivery?.bindingId;
     const request = entry.receive = Symbol();
     const current = () => this.sinks.get(id) === entry && entry.receive === request && this.ownsRoomBinding(key.roomId, bindingId);
-    void entry.ready.then(async sink => {
+    void entry.ready.then(async () => {
       if (!current()) return;
       try { await this.command({ type: "file_receive", ...key, enabled: true }); }
-      catch (error) { if (current()) await this.stopSink(key, entry, sink, errorOf(error)); }
+      catch (error) { if (current()) await this.stopSink(entry, errorOf(error)); }
     }, () => {}); // Local storage errors are delivered to the sink's consumers.
   }
   private installSource(source: Source): void {
@@ -545,7 +547,7 @@ export class ChannelAttachments {
         if (!active.consumers.size && this.sinks.get(id) === active) {
           this.sinks.delete(id); this.changed(); this.invoke(runtime, () => runtime.delivery.cancel(JSON.stringify(key)));
           void this.command({ type: "file_receive", ...key, enabled: false }).catch(() => {});
-          void active.ready.then(sink => this.disposeSink(sink, aborted())).catch(() => {});
+          void this.retireSink(active.ready, aborted());
         }
       };
       signal.addEventListener("abort", cancel, { once: true });
@@ -554,9 +556,12 @@ export class ChannelAttachments {
     });
   }
   private async createSink(runtime: Runtime, key: ChannelFileKey, attachment: ChannelAttachment, consumers: Set<symbol>): Promise<Sink> {
-    if (!navigator.storage?.getDirectory) throw new Error("file_storage_unavailable");
-    const root = await navigator.storage.getDirectory();
-    const directory = await root.getDirectoryHandle("piik-channel-transfers", { create: true });
+    const storage = this.transferStorage ??= openTransferStorage();
+    const { directory } = await storage.catch(error => {
+      if (this.transferStorage === storage) this.transferStorage = undefined;
+      throw error;
+    });
+    runtime.lifetime.signal.throwIfAborted();
     const name = crypto.randomUUID(), file = await directory.getFileHandle(name, { create: true });
     let writer: FileSystemWritableFileStream;
     try { writer = await file.createWritable(); }
@@ -564,7 +569,7 @@ export class ChannelAttachments {
     let resolve!: (file: File) => void, reject!: (error: Error) => void;
     const promise = new Promise<File>((yes, no) => { resolve = yes; reject = no; });
     void promise.catch(() => {});
-    const sink: Sink = { key, attachment, lifetime: new AbortController(), directory, name, file, writer, complete: false, tail: Promise.resolve(), promise, resolve, reject };
+    const sink: Sink = { attachment, lifetime: new AbortController(), directory, name, file, writer, complete: false, tail: Promise.resolve(), promise, resolve, reject };
     if (!this.current(runtime) || !consumers.size || this.sinks.get(fileKeyString(key))?.consumers !== consumers) {
       await this.disposeSink(sink, aborted()); throw aborted();
     }
@@ -607,9 +612,9 @@ export class ChannelAttachments {
       } else {
         const entry = this.sinks.get(fileKeyString(key));
         if (!entry) continue;
-        const sinkFailed = (error: unknown) => { if (this.sinks.get(fileKeyString(key)) === entry) void entry.ready.then(sink => this.stopSink(key, entry, sink, errorOf(error))).catch(() => {}); };
+        const sinkFailed = (error: unknown) => { if (this.sinks.get(fileKeyString(key)) === entry) void this.stopSink(entry, errorOf(error)); };
         void entry.ready.then(sink => {
-          if (effect.type === "failed") { if (!sink.complete) return this.stopSink(key, entry, sink, new Error(effect.code)); return; }
+          if (effect.type === "failed") { if (!sink.complete) return this.stopSink(entry, new Error(effect.code)); return; }
           sink.tail = sink.tail.then(async () => {
             if (this.sinks.get(fileKeyString(key)) !== entry) return;
             sink.lifetime.signal.throwIfAborted();
@@ -653,12 +658,20 @@ export class ChannelAttachments {
       }
     }
   }
-  private async stopSink(key: ChannelFileKey, entry: PendingSink, sink: Sink, error: Error): Promise<void> {
+  private async stopSink(entry: PendingSink, error: Error): Promise<void> {
+    const { key } = entry;
     if (this.sinks.get(fileKeyString(key)) !== entry) return;
     this.sinks.delete(fileKeyString(key)); this.changed();
     if (this.runtime) void this.runtime.then(runtime => this.invoke(runtime, () => runtime.delivery.cancel(JSON.stringify(key)))).catch(() => {});
     void this.command({ type: "file_receive", ...key, enabled: false }).catch(() => {});
-    await this.disposeSink(sink, error);
+    await this.retireSink(entry.ready, error);
+  }
+  private retireSink(ready: Promise<Sink>, error: Error): Promise<void> {
+    const disposals = this.sinkDisposals;
+    const disposal = ready.then(sink => this.disposeSink(sink, error)).catch(() => {});
+    disposals.add(disposal);
+    void disposal.then(() => disposals.delete(disposal));
+    return disposal;
   }
   private async disposeSink(sink: Sink, error: Error): Promise<void> {
     sink.lifetime.abort(); sink.reject(error);
@@ -675,7 +688,14 @@ export class ChannelAttachments {
     this.savedReceipts.clear(); this.sources.clear(); this.sinks.clear(); this.downloads.clear(); this.runtime = null; this.plans = []; this.rooms = []; this.roomPeers = []; this.sessionId = null; this.scope = null; this.store = null;
     // Abort handlers run synchronously and must not send cancellation for the retired session.
     for (const download of downloads) download.controller.abort();
-    for (const entry of sinks) void entry.ready.then(sink => this.disposeSink(sink, aborted())).catch(() => {});
+    for (const entry of sinks) void this.retireSink(entry.ready, aborted());
+    const storage = this.transferStorage, disposals = this.sinkDisposals;
+    this.transferStorage = undefined;
+    this.sinkDisposals = new Set();
+    if (storage) void storage.then(async lease => {
+      await Promise.all(disposals);
+      await lease.close();
+    }).catch(() => {});
     this.lifetime = new AbortController(); this.changed();
   }
 }

@@ -9,6 +9,18 @@ import type { ChannelAttachment, ChannelCommand, ChannelMessage, ChannelRoom } f
 
 afterEach(() => vi.restoreAllMocks());
 
+function stubTransferStorage(directory: object, removeSession = async (_name: string) => {}) {
+  const sessions = {
+    async *values() {},
+    getDirectoryHandle: async () => directory,
+    removeEntry: removeSession,
+  };
+  vi.stubGlobal("navigator", {
+    storage: { getDirectory: async () => ({ getDirectoryHandle: async () => sessions }) },
+    locks: { request: async (_name: string, run: () => Promise<void>) => run() },
+  });
+}
+
 const attachment: ChannelAttachment = { id: "image", name: "image.gif", size: 6, mediaType: "image/gif", sha256: "a".repeat(64) };
 const key = { roomId: "room", messageSeq: 1, attachmentId: attachment.id };
 const inlineImage = { data: btoa("GIF89a"), mediaType: "image/gif" as const, original: true, width: 1, height: 1 };
@@ -496,12 +508,13 @@ test.each(["before", "after"])("a new room writer completes a pending download w
   const receive = vi.fn(async () => {}).mockImplementationOnce(() => oldReceive);
   const files = setup(async command => { if (command.type === "file_receive" && command.enabled) await receive(); });
   const file = new File(["GIF89a"], attachment.name);
+  const removeEntry = vi.fn(async () => {});
   const open = vi.fn(async () => ({ getFile: async () => file, createWritable: async () => ({
     write: async () => {}, close: async () => {}, abort: async () => {},
   }) }));
-  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
-    getFileHandle: open, removeEntry: async () => {},
-  }) }) } });
+  stubTransferStorage({
+    getFileHandle: open, removeEntry,
+  });
   const start = vi.fn(() => "[]"), cancel = vi.fn(() => "[]");
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({
     ...await hosting.loadRoomHosting(),
@@ -511,7 +524,9 @@ test.each(["before", "after"])("a new room writer completes a pending download w
       written() { return JSON.stringify([{ type: "complete", key }]); }
     },
   } as never);
-  vi.spyOn(FileStore.prototype, "retain").mockResolvedValue({ file, evicted: [] });
+  const retain = vi.spyOn(FileStore.prototype, "retain");
+  if (timing === "after") retain.mockRejectedValue(new DOMException("Cache full", "QuotaExceededError"));
+  else retain.mockResolvedValue({ file, evicted: [] });
   const room = (bindingId: string) => ({ id: key.roomId, authorized: true, available: true, delivery: { bindingId } }) as ChannelRoom;
   const scope = { domainId: "domain", userId: "self" };
   const controller = new AbortController();
@@ -532,6 +547,12 @@ test.each(["before", "after"])("a new room writer completes a pending download w
     expect(open).toHaveBeenCalledOnce();
     expect(start).toHaveBeenCalledOnce();
     expect(cancel).not.toHaveBeenCalled();
+    if (timing === "after") {
+      expect(removeEntry).not.toHaveBeenCalled();
+      await expect((await files.content(key, attachment, controller.signal)).text()).resolves.toBe("GIF89a");
+      files.reset();
+      await vi.waitFor(() => expect(removeEntry).toHaveBeenCalledOnce());
+    }
   } finally { controller.abort(); rejectOldReceive(new Error("retired_writer")); files.reset(); vi.unstubAllGlobals(); }
 });
 
@@ -550,10 +571,10 @@ test("cancel while waiting for a source permits retry before the old receive com
       cancel = cancel; free() {}
     },
   } as never);
-  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+  stubTransferStorage({
     getFileHandle: async () => ({ createWritable: async () => ({ abort: async () => {} }) }),
     removeEntry,
-  }) }) } });
+  });
   const room = { id: key.roomId, authorized: true, available: true } as ChannelRoom;
   const scope = { domainId: "domain", userId: "self" };
   const plan = { roomId: key.roomId, messageSeq: key.messageSeq, attachment, authorId: "author",
@@ -588,6 +609,7 @@ test.each(["cancel", "revoke", "identity switch"])("shared file progress survive
   let finishWrite!: () => void;
   const written = vi.fn((_key: string, _offset: bigint, size: number) => JSON.stringify(size === file.size ? [{ type: "complete", key }] : []));
   const cancel = vi.fn(() => "[]"), remove = vi.fn(async () => {});
+  const removeSession = vi.fn(async (_name: string) => {});
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ initializeRuntime: async () => {},
     FileDelivery: class {
       start() { return "[]"; } update() { return "[]"; } next_deadline() { return undefined; }
@@ -602,11 +624,11 @@ test.each(["cancel", "revoke", "identity switch"])("shared file progress survive
       }
     },
   } as never);
-  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+  stubTransferStorage({
     getFileHandle: async () => ({ getFile: async () => file, createWritable: async () => ({
       write: () => new Promise<void>(resolve => { finishWrite = resolve; }), close: async () => {}, abort: async () => {},
     }) }), removeEntry: remove,
-  }) }) } });
+  }, removeSession);
   const first = new AbortController();
   const scope = { domainId: "domain", userId: "self" };
   const room = { id: key.roomId, authorized: true, available: true } as ChannelRoom;
@@ -682,8 +704,10 @@ test.each(["cancel", "revoke", "identity switch"])("shared file progress survive
     await expect(b).rejects.toMatchObject({ name: "AbortError" });
     await vi.waitFor(() => expect(files.progress(key)).toEqual({ received: 0, total: attachment.size, state: "waiting" }));
     expect(remove).not.toHaveBeenCalled();
+    expect(removeSession).not.toHaveBeenCalled();
     oldWrite();
     await vi.waitFor(() => expect(remove).toHaveBeenCalledOnce());
+    if (retirement === "identity switch") await vi.waitFor(() => expect(removeSession).toHaveBeenCalledOnce());
     expect(files.progress(key)).toEqual({ received: 0, total: attachment.size, state: "waiting" });
     expect(written).toHaveBeenCalledTimes(3);
     expect(cancel).toHaveBeenCalledTimes(retiredCancels);
@@ -715,9 +739,7 @@ test.each(["cancel", "revoke"])("a retired download cannot retain its OPFS file 
       control() { return JSON.stringify([{ type: "complete", key }]); }
     },
   } as never);
-  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({
-    getDirectoryHandle: async () => ({ getFileHandle, removeEntry }),
-  }) } });
+  stubTransferStorage({ getFileHandle, removeEntry });
   const scope = { domainId: "domain", userId: "self" };
   const room = { id: key.roomId, authorized: true, available: true } as ChannelRoom;
   const pending = files.download(key, attachment);

@@ -1,4 +1,5 @@
 import { FileStore } from "../../../src/client/channel/file-store";
+import { checkTransferStorage } from "./transfer-storage";
 import { BrowserRoomHost, conversation_broadcast, createRoomPolicy, createSessionSigner, initializeRuntime, decode_control, encode_control, verify_reply, type SentResult } from "../src/room-host";
 import type { SignedConversationPacket } from "../../../src/client/channel/protocol";
 import { IDENTITY_IMAGE_URL_BYTES, identityIconSchema } from "../../../src/client/channel/protocol";
@@ -863,6 +864,7 @@ window.runBrowserRoomCheck = async () => {
       });
     }
     await checkImageHistoryBudget();
+    await checkTransferStorage();
     await new Promise<void>((resolve, reject) => {
       const upgrade = indexedDB.open(database, 8);
       upgrade.onsuccess = () => { upgrade.result.close(); resolve(); }; upgrade.onerror = () => reject(upgrade.error);
