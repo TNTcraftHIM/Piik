@@ -41,7 +41,7 @@ windows depend on the browser's Document Picture-in-Picture support.
 
 ## Build
 
-Use JDK 17, Gradle 8.11.1, Android platform/build-tools 35, platform-tools and
+Use JDK 17, Gradle 8.14.8, Android platform/build-tools 35, platform-tools and
 NDK 30.0.16248370. Set `ANDROID_HOME` and `ANDROID_NDK_HOME` to those local tools.
 Set `GRADLE_HOME` to the installed Gradle distribution. Install the pinned
 `gomobile` and `gobind` tools, then run the repository build entry from its root:
