@@ -1,3 +1,4 @@
+import { stubTransferStorage } from "./fixtures/transfer-storage";
 import { afterEach, expect, test, vi } from "vitest";
 import { ChannelAttachments } from "../src/client/channel/attachments";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
@@ -8,18 +9,6 @@ import * as downloads from "../src/client/lib/download";
 import type { ChannelAttachment, ChannelCommand, ChannelMessage, ChannelRoom } from "../src/client/channel/protocol";
 
 afterEach(() => vi.restoreAllMocks());
-
-function stubTransferStorage(directory: object, removeSession = async (_name: string) => {}) {
-  const sessions = {
-    async *values() {},
-    getDirectoryHandle: async () => directory,
-    removeEntry: removeSession,
-  };
-  vi.stubGlobal("navigator", {
-    storage: { getDirectory: async () => ({ getDirectoryHandle: async () => sessions }) },
-    locks: { request: async (_name: string, run: () => Promise<void>) => run() },
-  });
-}
 
 const attachment: ChannelAttachment = { id: "image", name: "image.gif", size: 6, mediaType: "image/gif", sha256: "a".repeat(64) };
 const key = { roomId: "room", messageSeq: 1, attachmentId: attachment.id };

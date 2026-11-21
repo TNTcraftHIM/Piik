@@ -1,3 +1,4 @@
+import { stubTransferStorage } from "./fixtures/transfer-storage";
 import { en } from "../src/client/locales/en";
 import { zh } from "../src/client/locales/zh";
 import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
@@ -7258,9 +7259,9 @@ test("rejected file admission cancels its shared-core consumer and releases the 
     initializeRuntime: async () => {},
     FileDelivery: class { start() { return "[]"; } update() { return "[]"; } next_deadline() { return undefined; } cancel = cancel; free() {} },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
-  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+  stubTransferStorage({
     getFileHandle: async () => ({ createWritable: async () => ({ abort }) }), removeEntry,
-  }) }) } });
+  });
   const files = new ChannelAttachments(async command => { if (command.type === "file_receive" && command.enabled) throw new Error("forbidden"); }, async () => {});
   const key = { roomId: "room", messageSeq: 1, attachmentId: crypto.randomUUID() };
   files.update("session", { domainId: "domain", userId: "user" }, [],
@@ -7288,12 +7289,12 @@ test.each(["initial", "resume"])("a stale %s file admission cannot retire a repl
   const attachment = { id: key.attachmentId, name: "owned.bin", size: bytes.length, mediaType: "application/octet-stream" as const, sha256: hash.finish() };
   const plan = { ...key, attachment, authorId: crypto.randomUUID(), sourceId: source, upstream: source, downstream: [], receiving: true };
   const write = vi.fn(async (_value: unknown) => {}), aborts: ReturnType<typeof vi.fn>[] = [];
-  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+  stubTransferStorage({
     getFileHandle: async () => {
       const abort = vi.fn(async () => {}); aborts.push(abort);
       return { createWritable: async () => ({ write, close: async () => {}, abort }), getFile: async () => new File([bytes], "owned.bin") };
     }, removeEntry: async () => {},
-  }) }) } });
+  });
   let enabled = 0, disabled = 0, rejectOld!: (error: Error) => void, acceptNew!: () => void;
   const pulls: string[] = [];
   const files = new ChannelAttachments(async command => {
@@ -7358,9 +7359,9 @@ test.each([true, false])("a verified download survives optional retention (store
       control() { return JSON.stringify([{ type: "complete", key }]); }
     },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
-  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+  stubTransferStorage({
     getFileHandle: async () => ({ createWritable: async () => ({ close, abort: async () => {} }), getFile: async () => temporary }), removeEntry,
-  }) }) } });
+  });
   const command = vi.fn(async () => {});
   const files = new ChannelAttachments(command, async () => {});
   vi.spyOn(files, "limits").mockResolvedValue({ maxFileBytes: 100, maxInlineImageBytes: 65536, maxAttachmentsPerMessage: 8, maxRetainedBytes: 20, maxRetainedFiles: 2 });
@@ -9473,14 +9474,14 @@ test.each(["tail", "first"])("late bulk %s fragments from a cancelled file canno
   const attachment = { id: key.attachmentId, name: "owned.bin", size: bytes.length, mediaType: "application/octet-stream" as const, sha256: hash.finish() };
   const plan = { ...key, attachment, authorId: crypto.randomUUID(), sourceId: source, upstream: source, downstream: [], receiving: true };
   const aborts: ReturnType<typeof vi.fn>[] = [];
-  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+  stubTransferStorage({
     getFileHandle: async () => {
       const written = new Uint8Array(bytes.length), abort = vi.fn(async () => {}); aborts.push(abort);
       return { createWritable: async () => ({
         write: async ({ position, data }: { position: number; data: Uint8Array }) => { written.set(data, position); }, close: async () => {}, abort,
       }), getFile: async () => new File([written], "owned.bin") };
     }, removeEntry: async () => {},
-  }) }) } });
+  });
   const pulls: string[] = [], commands: ChannelCommand[] = [];
   const files = new ChannelAttachments(async command => { commands.push(command); }, async (_peer, kind, data, allowed) => {
     if (allowed() && kind === "control" && JSON.parse(data as string).type === "pull") pulls.push(data as string);
@@ -9539,9 +9540,9 @@ test("a delayed source busy error cannot fail a cancelled file's successful retr
     expect(reads.map((effect: { type: string }) => effect.type)).toEqual(["read"]);
   }
   const written = new Uint8Array(bytes.length);
-  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+  stubTransferStorage({
     getFileHandle: async () => ({ createWritable: async () => ({ write: async ({ position, data }: { position: number; data: Uint8Array }) => written.set(data, position), close: async () => {}, abort: async () => {} }), getFile: async () => new File([written], "retry.bin") }), removeEntry: async () => {},
-  }) }) } });
+  });
   const pulls: string[] = [], files = new ChannelAttachments(async () => {}, async (_peer, kind, data, allowed) => {
     if (allowed() && kind === "control" && JSON.parse(data as string).type === "pull") pulls.push(data as string);
   });
