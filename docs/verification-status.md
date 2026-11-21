@@ -104,6 +104,13 @@ the received and forwarded byte digests matched across that path. Leaving
 cancelled an in-flight source read, while disabling forwarding retained the
 original webpage's playback. These are controlled local sources and development
 artifacts, not independent Internet or whole-website compatibility evidence.
+The packaged Windows `c40d335c` control also forwarded a cookie-protected local
+MP4 to an independent Browser without source access. Received bytes matched
+the source, and audio, video, seeking and a fresh sharing cycle succeeded.
+After the source returned HTTP 403, both players showed a read error. Restoring
+source authorization and retrying in the Viewer resumed audio and video on the
+same activity and resource. App control remained connected; closing the source
+window retired the publication.
 A matching Windows development package with two Apps and an independent Browser
 retains the same Reader and Viewer video element across a short Native signaling
 interruption. An uncached seek after reconnection completes new range reads and

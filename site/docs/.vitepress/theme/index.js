@@ -1,12 +1,14 @@
 import DefaultTheme from 'vitepress/theme-without-fonts';
 import { useData, withBase } from 'vitepress';
 import { h, onBeforeUnmount, onMounted, provide, ref } from 'vue';
-import { useStorage } from '@vueuse/core';
+import { onKeyStroke, useStorage } from '@vueuse/core';
 import { THEME_STORAGE_KEY } from '../../../../src/client/ui/theme.ts';
 import { bindBrandMotion, brandMarkup } from '../../../assets/brand.js';
 import { initialLanguage, rememberLanguage } from '../../../assets/language.js';
 import '../../../assets/brand.css';
+import HelpSearch from './HelpSearch.vue';
 import './style.css';
+import './article.css';
 
 const DocumentationBrand = {
   setup() {
@@ -24,6 +26,14 @@ export default {
   extends: DefaultTheme,
   setup() {
     const { isDark } = useData();
+    onKeyStroke('Escape', event => {
+      if (event.target instanceof Element && event.target.closest('.VPLocalSearchBox')) {
+        requestAnimationFrame(() => {
+          const search = document.querySelector('.help-search') ?? document.querySelector('.VPNavBarSearch .DocSearch-Button');
+          if (document.activeElement === document.body) search?.focus({ preventScroll: true });
+        });
+      }
+    });
     const preference = useStorage(THEME_STORAGE_KEY, 'auto', undefined, { flush: 'sync' });
     provide('toggle-appearance', () => {
       const selected = isDark.value ? 'light' : 'dark';
@@ -37,13 +47,18 @@ export default {
     const { lang } = useData();
     return h(DefaultTheme.Layout, null, {
       'nav-bar-title-before': () => h(DocumentationBrand),
-      'doc-bottom': () => h('p', { class: 'docs-license' }, [
+      'doc-before': () => h('a', {
+        class: 'article-home',
+        href: withBase(lang.value === 'zh-CN' ? '/zh/' : '/'),
+      }, [h('span', { 'aria-hidden': 'true' }, '←'), lang.value === 'zh-CN' ? 'Piik 文档中心' : 'Piik Documentation']),
+      'doc-after': () => h('p', { class: 'docs-license' }, [
         h('a', { href: withBase('/third-party-licenses.txt') },
           lang.value === 'zh-CN' ? '第三方软件许可' : 'Third-party licenses'),
       ]),
     });
   },
-  enhanceApp({ router }) {
+  enhanceApp({ app, router }) {
+    app.component('HelpSearch', HelpSearch);
     if (import.meta.env.SSR) return;
     const base = import.meta.env.BASE_URL;
     if (location.pathname === base && initialLanguage() === 'zh-CN') {

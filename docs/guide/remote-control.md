@@ -121,8 +121,6 @@ choice needs **Allow Viewers** before it applies again. Passwords are not saved.
 Direct touch has no cursor. **Playback settings → Default touch mode → Trackpad**
 selects cursor-based touch control instead.
 
-### Virtual joysticks
-
 Tap the **L** or **R** tab at the edge of the picture to open that stick. Drag
 the tab to move it. In **Keys + mouse**, the left stick holds WASD and the
 right stick moves the mouse. Lift your finger to release that stick's input.

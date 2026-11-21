@@ -1,53 +1,86 @@
+---
+layout: page
+pageClass: help-home
+sidebar: false
+search: false
+title: Piik 3.0 test documentation
+description: Join a room, share your screen, and fix common problems with Piik.
+---
+
+<header class="help-hero">
+
 # Piik 3.0 test documentation
 
-English · [简体中文](./README.zh-CN.md) · [Website](https://piik.tv/?lang=en)
+English · [简体中文](./README.zh-CN.md)
+
+Try searching for “can’t join”, “no sound”, or “remote control”.
+
+<HelpSearch />
 
 Start with the 3.0 test App you received or a friend's 3.0 link.
 Public online rooms and published downloads still use 2.x; their
 [stable documentation](https://piik.tv/docs/?lang=en)
 remains available separately.
 
-## Start using Piik
+</header>
 
-<div class="guide-task-index">
+<div class="help-sections">
 
-- **[Watch a friend](./getting-started.md#join-a-friends-room)**<br>
+<section class="help-actions">
+
+## Start here
+
+- [Watch a friend](./getting-started.md#join-a-friends-room)<br>
   Open the 3.0 invitation, choose a room and select the picture to watch.
-- **[Create a room with App](./getting-started.md#share-with-piik-app)**<br>
+- [Create a room with App](./getting-started.md#share-with-piik-app)<br>
   Launch the 3.0 test App and select **Open Piik**. Create a room and use its invitation button to send friends a link.
-- **[Use Piik without installing](./getting-started.md#use-a-30-link-without-installing)**<br>
+- [Use Piik without installing](./getting-started.md#use-a-30-link-without-installing)<br>
   Use a friend's 3.0 link to watch, chat, join voice or share from your browser.
-- **[Use my group's Piik site](./getting-started.md#share-from-an-existing-site)**<br>
-  Open its 3.0 site to join a room or create one if the channel allows it.
+
+</section>
+
+<section class="help-issues">
+
+<header class="help-issues-heading">
+
+## Fix a problem
+
+[All troubleshooting →](./troubleshooting.md#common-problems)
+
+</header>
+
+- [No picture after joining a room](./troubleshooting.md#when-video-will-not-connect)
+- [I can’t join my friend’s room](./troubleshooting.md#opening-app-and-joining-a-room)
+- [The picture blurs, stutters or stops](./troubleshooting.md#picture-blurs-stutters-or-stops)
+- [Picture but no source sound](./troubleshooting.md#picture-but-no-source-sound)
+- [Cannot hear someone speaking](./troubleshooting.md#cannot-hear-someone-speaking)
+
+If the problem persists, [report it](./troubleshooting.md#reporting-a-problem).
+
+</section>
+
+<section class="help-resources">
+
+## In the room
+
+- [Sharing and playback](./sharing.md)
+- [Chat, voice and remote control](./room-tools.md)
+- [Room voice](./room-tools.md#room-voice)
+- [Play together](./remote-control.md#play-together)
+
+</section>
+
+<section class="help-actions">
+
+## Run your own site
+
+- [Run a 3.0 test site](https://github.com/TNTcraftHIM/Piik/blob/feat/channel-prototype/prototype/channel-server/README.md#run)<br>
+  Set up a site for your test group.
+- [Deploy published 2.x](https://piik.tv/docs/self-hosting.html?lang=en)<br>
+  Try it locally or deploy to a LAN or the internet.
+- [Use frp for a fixed Piik invitation address](./frp.md)<br>
+  Forward your site through an existing frp server.
+
+</section>
 
 </div>
-
-## Use the room tools
-
-- [Sharing and playback](./sharing.md): picture quality, cameras, source sound and viewing controls.
-- [Chat, voice and remote control](./room-tools.md): reactions, conversations and letting a friend take control.
-- [Remote control and playing together](./remote-control.md): permissions, shared keyboard/mouse and gamepads.
-- [App reference](../../cmd/piik-app/README.md): local/public modes, site approval and diagnostics.
-
-## Get help
-
-- **Cannot join, share or hear a friend:** [find the checks for your problem](./troubleshooting.md#common-problems).
-
-Still stuck? [Report a problem](https://github.com/TNTcraftHIM/Piik/issues/new/choose)
-with your version, system, browser and reproduction steps. Follow the
-[reporting steps](./troubleshooting.md#reporting-a-problem) to collect diagnostics.
-
-## Networking
-
-- [Set up a fixed invitation with frp](./frp.md) for Piik App or Server, with a SakuraFrp walkthrough.
-- [Check direct and relayed connections](./network.md) when the room opens but the picture does not play.
-
-## Run a site for your group
-
-For a 3.0 test site, use the current [Server runtime instructions](../../prototype/channel-server/README.md#run).
-For a 2.x deployment, follow the [stable self-hosting guide](https://piik.tv/docs/self-hosting.html?lang=en).
-
-## Help improve Piik
-
-[Translate Piik](./translating.md), [contribute](../../CONTRIBUTING.md), or explore the
-[developer and maintainer documentation](../README.md).

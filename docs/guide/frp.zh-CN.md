@@ -22,7 +22,7 @@
 ### 桌面 App
 
 - 使用 **3.0 内测版**时，在启动页选 **公网邀请 → 使用已有地址**，填入上一步的 HTTPS 地址。将隧道的本地目标与页面显示的 **本机转发目标** 对齐，点 **进入 Piik**。房主从 App 打开的页面进入。
-- 使用 **2.x 维护版**时，在解压后的 App 目录打开 PowerShell。先用 `.\piik-app.exe --help` 确认帮助中有 `public-origin`，再运行下面的命令。正式版 v2.7.0 如需使用固定地址，可采用下方的 Server 方式。
+- 使用 **2.8 或之后的 2.x 版本**时，在解压后的 App 目录打开 PowerShell，运行下面的命令。把示例 HTTPS 地址替换为隧道日志里的公网地址，把 `8787` 换成 TCP 隧道设置里的本地端口。v2.7.0 如需使用固定地址，可采用下方的 Server 方式。
 
 ```powershell
 .\piik-app.exe --link --public-origin https://piik.example.nyat.app:21080 --port 8787

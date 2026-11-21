@@ -1,51 +1,85 @@
+---
+layout: page
+pageClass: help-home
+sidebar: false
+search: false
+title: Piik 3.0 内测文档
+description: 了解如何加入房间、分享屏幕，以及解决 Piik 的常见问题。
+---
+
+<header class="help-hero">
+
 # Piik 3.0 内测文档
 
-[English](./README.md) · 简体中文 · [官网](https://piik.tv/?lang=zh-CN)
+[English](./README.md) · 简体中文
+
+试试搜索「进不去」「没声音」或「远程控制」。
+
+<HelpSearch />
 
 从收到的 3.0 内测 App 或朋友的 3.0 链接开始。
 公开在线版与正式下载仍使用 2.x，对应的
 [正式版文档](https://piik.tv/docs/zh/)可单独查阅。
 
+</header>
+
+<div class="help-sections">
+
+<section class="help-actions">
+
 ## 开始使用
 
-<div class="guide-task-index">
-
-- **[看朋友的分享](./getting-started.zh-CN.md#加入朋友的房间)**<br>
+- [看朋友的分享](./getting-started.zh-CN.md#加入朋友的房间)<br>
   打开 3.0 邀请，选择房间，再选择要看的画面。
-- **[用 App 创建房间](./getting-started.zh-CN.md#用-piik-app-分享)**<br>
+- [用 App 创建房间](./getting-started.zh-CN.md#用-piik-app-分享)<br>
   启动 3.0 内测 App，点击 **进入 Piik**。建好房间后，通过房间里的邀请按钮给朋友发链接。
-- **[免安装使用](./getting-started.zh-CN.md#免安装使用-30-链接)**<br>
+- [免安装使用](./getting-started.zh-CN.md#免安装使用-30-链接)<br>
   通过朋友的 3.0 链接观看、聊天、加入语音，或用浏览器分享。
-- **[使用已有站点](./getting-started.zh-CN.md#使用已有站点分享)**<br>
-  打开群组的站点网址，选择要加入的房间。站点允许成员建房时，你也可以创建自己的房间。
 
-</div>
+</section>
 
-## 使用房间工具
+<section class="help-issues">
 
-- [分享与播放](./sharing.zh-CN.md)：画质、摄像头、来源声音与观看控制。
-- [聊天、语音与远程控制](./room-tools.zh-CN.md)：表情互动、聊天，或让朋友接手操作。
-- [远程控制与多人同乐](./remote-control.zh-CN.md)：授权、共用键鼠与手柄设置。
-- [App 使用参考](../../cmd/piik-app/README.zh-CN.md)：本地／公网模式、站点授权与诊断。
+<header class="help-issues-heading">
 
 ## 遇到问题
 
-- **进不了房间、无法分享或听不到朋友：** 先看[对应的排查步骤](./troubleshooting.zh-CN.md#常见问题)。
+[全部疑难解答 →](./troubleshooting.zh-CN.md#常见问题)
 
-仍然没解决？可以[反馈问题](https://github.com/TNTcraftHIM/Piik/issues/new/choose)，
-附上版本、系统、浏览器和复现步骤。需要收集报告时，按[反馈说明](./troubleshooting.zh-CN.md#反馈问题)导出。
+</header>
 
-## 网络连接
+- [进房后没画面](./troubleshooting.zh-CN.md#画面连接不上)
+- [进不去朋友的房间](./troubleshooting.zh-CN.md#打开-app-与加入房间)
+- [画面模糊、卡顿或中断](./troubleshooting.zh-CN.md#画面模糊卡顿或中断)
+- [有画面但没有来源声音](./troubleshooting.zh-CN.md#有画面但没有来源声音)
+- [听不到说话声](./troubleshooting.zh-CN.md#听不到说话声)
 
-- [用 frp 设置固定公网邀请](./frp.zh-CN.md)。在 App 或 Server 上操作，附樱花映射 SakuraFrp 示例。
-- [直连与媒体转发](./network.zh-CN.md)。网页能打开但画面连不上时，从这里排查。
+仍未解决时，请[反馈问题](./troubleshooting.zh-CN.md#反馈问题)。
 
-## 为朋友搭建站点
+</section>
 
-搭建 3.0 测试站点时，请看当前 [Server 运行说明](../../prototype/channel-server/README.md#run)。
-部署正式版 2.x 时，请看[自部署指南](https://piik.tv/docs/zh/self-hosting.html)。
+<section class="help-resources">
 
-## 一起改进 Piik
+## 房间里可以做什么
 
-可以从[参与翻译](./translating.zh-CN.md)、[贡献指南](../../CONTRIBUTING.md)，
-或[开发与维护文档](../README.md)开始。
+- [分享与播放](./sharing.zh-CN.md)
+- [聊天、语音与远程控制](./room-tools.zh-CN.md)
+- [房间语音](./room-tools.zh-CN.md#房间语音)
+- [多人同乐](./remote-control.zh-CN.md#多人同乐)
+
+</section>
+
+<section class="help-actions">
+
+## 自建和管理站点
+
+- [运行 3.0 测试站点](https://github.com/TNTcraftHIM/Piik/blob/feat/channel-prototype/prototype/channel-server/README.md#run)<br>
+  为朋友搭建 3.0 内测站点。
+- [部署正式版 2.x](https://piik.tv/docs/zh/self-hosting.html)<br>
+  在本机试用，或部署到局域网和公网。
+- [用 frp 给 Piik 设置固定公网邀请](./frp.zh-CN.md)<br>
+  通过已有的 frp 节点转发站点。
+
+</section>
+
+</div>

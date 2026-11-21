@@ -75,19 +75,25 @@ export default defineConfig({
     search: {
       provider: 'local',
       options: {
+        translations: {
+          button: { buttonText: 'Search Piik Documentation', buttonAriaLabel: 'Search Piik Documentation' },
+          modal: { displayDetails: 'Show result excerpts', resetButtonTitle: 'Clear search terms', backButtonTitle: 'Close search' },
+        },
         miniSearch: {
           options: {
-            tokenize: text => Array.from(new Intl.Segmenter('zh', { granularity: 'word' }).segment(text))
+            tokenize: text => Array.from(new Intl.Segmenter('zh', { granularity: 'word' }).segment(text.replace(/’/g, "'")))
               .filter(part => part.isWordLike).map(part => part.segment),
           },
         },
         locales: {
           zh: { translations: {
-            button: { buttonText: '搜索', buttonAriaLabel: '搜索文档' },
+            button: { buttonText: '搜索 Piik 文档中心', buttonAriaLabel: '搜索 Piik 文档中心' },
             modal: {
-              displayDetails: '显示详细结果', resetButtonTitle: '清空搜索', backButtonTitle: '返回',
-              noResultsText: '没有找到相关内容',
-              footer: { selectText: '打开', navigateText: '切换', closeText: '关闭' },
+              displayDetails: '显示结果摘要', resetButtonTitle: '清除搜索词', backButtonTitle: '关闭搜索',
+              noResultsText: '没有找到相关帮助：',
+              footer: { selectText: '打开', navigateText: '选择结果', closeText: '关闭',
+                selectKeyAriaLabel: '回车键', navigateUpKeyAriaLabel: '向上方向键',
+                navigateDownKeyAriaLabel: '向下方向键', closeKeyAriaLabel: 'Esc 键' },
             },
           } },
         },

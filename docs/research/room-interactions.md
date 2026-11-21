@@ -483,6 +483,11 @@ without speaker output. OBS restart, old DELETE, Piik stop and page close checke
 publication withdrawal, permission revocation and UDP release. Constrained and
 restored demand exercised existing derived encoding on the same source/feed/
 clock, retiring the limited encoder on return.
+The packaged `c40d335c` check also stopped and restarted WHIP twice from the same
+OBS process and configuration. An independent Browser decoded 640 × 360 H264
+and the synthetic Opus tone after each restart. Its P010/NVENC control failed
+inside OBS before sending a High 10 stream; returning to NV12/x264 restored
+playback on the same permit. It does not verify Piik's High 10 rejection message.
 
 On Linux, the App accepted a local FFmpeg WHIP stream with H264 video and
 Opus audio. An independent Firefox process on the same Linux host decoded both

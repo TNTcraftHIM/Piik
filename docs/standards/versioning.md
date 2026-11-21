@@ -395,12 +395,9 @@ English first. Use `###` for language sections and `####` for categories when
 both are needed.
 
 Choose public highlights that help someone decide to update or try a changed
-feature. When a control is hard to locate, show a screenshot of the released
-interface. When timing or movement matters, link a short recording of the
-actual interaction and describe the result in text. Reuse public guide media
-where available, with a version-pinned public URL that also opens from the
-AtomGit description. Verify public links as a signed-out reader. Keep candidate
-previews, local paths and internal evidence in the private review checklist.
+feature. Use concise text and link to the relevant guide for instructions.
+Keep candidate previews, screenshots and internal evidence in the private
+review checklist unless the owner requests them in the public notes.
 
 The approved final description must read as one release when several unpublished
 commits are included. Preview the rendered aggregate with at most one bilingual
