@@ -39,7 +39,7 @@ test("Browser WASM saves room consent, keeps Read separate and derives fresh ser
     expect(replaced.projection.baseLinks.filter((link: { parent: string; child: string }) => link.parent === service || link.child === service).every((link: { ready: boolean }) => !link.ready)).toBe(true);
     serviceEndpoint = null;
     const unavailable = turn({ type: "sync" });
-    expect(unavailable.projection.views[owner].allowServiceRelay).toBe(true);
+    expect(unavailable.projection.allowServiceRelay).toBe(true);
     expect(unavailable.projection.views[service]).toBeUndefined();
     expect(turn(preference(false)).reply.result.type).toBe("done");
     expect(JSON.parse(host.policy()).allowServiceRelay).toBe(false);

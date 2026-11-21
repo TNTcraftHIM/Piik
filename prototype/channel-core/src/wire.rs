@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 37;
+pub const CHANNEL_PROTOCOL: u8 = 38;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -809,7 +809,7 @@ pub struct ServiceRelay {
     pub available: bool,
 }
 
-/// Active personal file operations; available copies and forwarding are not activity.
+/// Send and receive roles in current room file transfers, including forwarding.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileActivity {

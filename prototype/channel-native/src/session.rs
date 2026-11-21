@@ -799,15 +799,17 @@ impl Session {
             let connector = None;
             let prepare_udp = self.config.server_udp.is_none();
             let connecting = async {
-                let Ok(Ok((socket, _))) = time::timeout(
+                let handshake = time::timeout(
                     Duration::from_secs(5),
                     connect_async_tls_with_config(request, Some(limits), true, connector),
-                )
-                .await
-                else {
-                    return None;
+                );
+                tokio::pin!(handshake);
+                let (result, can_prepare_udp) = tokio::select! {
+                    biased;
+                    ready = async { prepare_udp && can_prepare_udp().await } => (handshake.await, ready),
+                    result = &mut handshake => (result, false),
                 };
-                let can_prepare_udp = prepare_udp && can_prepare_udp().await;
+                let (socket, _) = result.ok()?.ok()?;
                 Some((socket, can_prepare_udp))
             };
             tokio::pin!(connecting);

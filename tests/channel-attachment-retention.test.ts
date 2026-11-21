@@ -327,18 +327,33 @@ test.each(["resolve", "reject"])("cancelling runtime preparation permits an imme
   } finally { finish(); files.reset(); }
 });
 
-test("reopening a room discards a cached original the host no longer has in history", async () => {
+test.each(["attachment_unavailable", "disconnected"])("a reopened room reconciles its cached original and saved receipt after %s", async code => {
+  vi.stubGlobal("window", { piikRevealDownload: vi.fn() });
   const file = new File(["GIF89a"], attachment.name);
+  const receipt = { key, sha256: attachment.sha256, receipt: "saved-copy" };
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([{ key, attachment, file }]);
+  vi.spyOn(FileStore.prototype, "receipts").mockResolvedValue([receipt]);
   const remove = vi.spyOn(FileStore.prototype, "remove").mockResolvedValue();
+  let rejectOffer!: (error: Error) => void;
+  const offer = new Promise<void>((_, reject) => { rejectOffer = reject; });
   const files = new ChannelAttachments(async command => {
-    if (command.type === "file_offer" && command.available) throw new Error("attachment_unavailable");
+    if (command.type === "file_offer" && command.available) await offer;
   }, async () => {});
   try {
     files.update("new-endpoint", { domainId: "domain", userId: "reader" }, [],
       [{ id: key.roomId, authorized: true, available: true }] as ChannelRoom[], []);
-    await vi.waitFor(() => expect(remove).toHaveBeenCalledWith(key));
-  } finally { files.reset(); }
+    await vi.waitFor(() => expect(files.hasSavedCopy(key, attachment)).toBe(true));
+    rejectOffer(new Error(code));
+    if (code === "attachment_unavailable") {
+      await vi.waitFor(() => expect(remove).toHaveBeenCalledWith(key, { forgetReceipt: true }));
+      expect(files.hasSavedCopy(key, attachment)).toBe(false);
+    } else {
+      await vi.waitFor(() => expect(files.status(key).error).toBe("file_offer_failed"));
+      expect(remove).not.toHaveBeenCalled();
+      expect(files.hasSavedCopy(key, attachment)).toBe(true);
+      await expect(files.content(key, attachment, new AbortController().signal)).resolves.toBe(file);
+    }
+  } finally { files.reset(); vi.unstubAllGlobals(); }
 });
 
 test("a rejection from the old room writer cannot discard a source offered to its successor", async () => {

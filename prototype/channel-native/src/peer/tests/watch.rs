@@ -191,6 +191,40 @@ async fn watch_reader_transfers_ranges_and_cancels_on_authority_retirement() -> 
                 .map(|n| ((37 + n) % 251) as u8)
                 .collect::<Vec<_>>()
     );
+    // Eight free bulk slots leave the last frame of this nine-frame range out.
+    // Observe both bounded application queues before their physical writers drain them.
+    let mut senders = link.senders();
+    let (bulk_tx, mut chunks) = mpsc::channel(8);
+    let (control_tx, mut errors) = mpsc::channel(2);
+    senders.bulk = bulk_tx;
+    senders.control = control_tx;
+    watches.attach(peer, senders).await;
+    let request = Uuid::new_v4();
+    for effect in consumer.read(key.clone(), request, 0, WATCH_WINDOW_BYTES) {
+        if let WatchEffect::SendControl { control, .. } = effect {
+            receiver.control(peer, token, control).await;
+        }
+    }
+    let terminal = tokio::time::timeout(Duration::from_secs(3), errors.recv())
+        .await?
+        .context("range error missing")?;
+    ensure!(chunks.len() == 8);
+    while let Ok(frame) = chunks.try_recv() {
+        ensure!(consumer
+            .chunk(session, &frame.bytes)
+            .map_err(anyhow::Error::msg)?
+            .is_empty());
+    }
+    let Some(piik_channel_core::conversation::ControlFrame::Watch(error)) =
+        crate::data::control(&terminal.bytes)
+    else {
+        return Err(anyhow!("expected Watch error"));
+    };
+    let terminal_effects = consumer.control(session, error);
+    ensure!(terminal_effects.iter().filter(|effect| matches!(effect,
+        WatchEffect::Failed { request_id, code } if *request_id == request && code == "watch_path_unavailable")).count() == 1);
+    ensure!(errors.try_recv().is_err());
+    watches.attach(peer, link.senders()).await;
     // Retiring A must deliver its terminal error over the surviving room lease,
     // while B's real consumer keeps receiving through the same physical peer.
     let other_key = WatchKey {

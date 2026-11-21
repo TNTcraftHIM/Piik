@@ -187,9 +187,10 @@ export class ChannelAttachments {
     const cacheRooms = rooms.filter(room => room.authorized && (opening || !previous.some(old => old.id === room.id && old.authorized))).map(room => room.id);
     if (cacheRooms.length) {
       const revision = this.cacheRevision;
+      let receiptsLoaded: Promise<void> | undefined;
       if (typeof window !== "undefined" && typeof window.piikRevealDownload === "function") {
         const clearing = cacheRooms.flatMap(roomId => this.cacheClears.get(cacheRoom(scope, roomId))?.pending ?? []);
-        void Promise.allSettled(clearing).then(() => store.receipts(cacheRooms)).then(entries => {
+        receiptsLoaded = Promise.allSettled(clearing).then(() => store.receipts(cacheRooms)).then(entries => {
           if (this.store !== store) return;
           let changed = false;
           for (const entry of entries) {
@@ -202,7 +203,9 @@ export class ChannelAttachments {
           if (changed) this.changed();
         }).catch(() => {});
       }
-      void this.listCachedFiles(store, scope, cacheRooms).then(files => {
+      void this.listCachedFiles(store, scope, cacheRooms).then(async files => {
+        // A rejected offer can retire the saved receipt as soon as a source is installed.
+        if (receiptsLoaded) await receiptsLoaded;
         if (this.store !== store) return;
         for (const { key, attachment, file } of files) if ((this.cacheClears.get(cacheRoom(scope, key.roomId))?.revision ?? 0) <= revision
           && !this.messageRemoved(key) && this.rooms.some(room => room.id === key.roomId && room.authorized) && !this.sources.has(fileKeyString(key))) {
@@ -377,7 +380,8 @@ export class ChannelAttachments {
       if (!current()) return;
       if (source.retained && errorOf(error).message === "attachment_unavailable") {
         this.sources.delete(id);
-        void this.store?.remove(key).catch(() => {});
+        this.savedReceipts.delete(id);
+        void this.store?.remove(key, { forgetReceipt: true }).catch(() => {});
       } else source.status = { busy: false, error: "file_offer_failed" };
       this.changed();
     });

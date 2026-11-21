@@ -302,14 +302,23 @@ impl Watches {
                             let sent = links
                                 .get(&peer)
                                 .and_then(|l| {
-                                    l.message(key, frame, false)
+                                    l.message(key.clone(), frame, false)
                                         .map(|m| l.senders.bulk.try_send(m).is_ok())
                                 })
                                 .unwrap_or(false);
                             if !sent {
-                                effects.extend(
-                                    core.request_failed(request_id, "watch_path_unavailable"),
-                                );
+                                // Core has finished this read. Its remaining frames and
+                                // terminal error still belong to the downstream request.
+                                effects.retain(|effect| !matches!(effect,
+                                    WatchEffect::SendChunk { request_id: id, .. } if *id == request_id));
+                                effects.push_front(WatchEffect::SendControl {
+                                    peer,
+                                    control: WatchControl::Error {
+                                        key,
+                                        request_id,
+                                        code: "watch_path_unavailable".into(),
+                                    },
+                                });
                             }
                         }
                         WatchEffect::Received { .. } | WatchEffect::Failed { .. } => {}

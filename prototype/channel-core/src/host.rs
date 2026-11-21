@@ -177,6 +177,7 @@ pub struct RoomReply {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomProjection {
+    pub allow_service_relay: bool,
     pub watch_activities: Vec<crate::wire::WatchActivity>,
     pub last_message_seq: u64,
     pub next_route_deadline: Option<u64>,
@@ -210,33 +211,45 @@ impl RoomProjection {
             .map_or(writer, |link| link.parent)
     }
 
-    /// Physical connections are shared by the room's active media and file requests.
-    pub(crate) fn requested_pairs(&self) -> BTreeSet<(Uuid, Uuid)> {
+    /// Each physical pair has one demand entry. A waiting delivery can use a repair trial.
+    pub(crate) fn requested_pairs(&self) -> BTreeMap<(Uuid, Uuid), bool> {
         let publishers: BTreeMap<_, _> = self
             .publications
             .iter()
             .filter(|publication| !publication.paused)
-            .map(|publication| (publication.id, publication.session_id))
+            .map(|publication| (publication.id, publication))
             .collect();
-        let mut pairs = BTreeSet::new();
+        let selected: BTreeSet<_> = self
+            .flows
+            .iter()
+            .filter(|f| f.selected)
+            .map(|f| (f.publication_id, f.receiver))
+            .collect();
+        let mut pairs = BTreeMap::new();
         for (&receiver, view) in self.views.iter().filter(|(_, view)| view.authorized) {
-            let media = view
-                .subscriptions
-                .iter()
-                .filter_map(|id| publishers.get(id).copied());
+            let media = view.subscriptions.iter().filter_map(|id| {
+                let publication = publishers.get(id)?;
+                let waiting = match publication.kind {
+                    crate::wire::Kind::Screen => view.failed_subscriptions.contains(id),
+                    crate::wire::Kind::Voice => !selected.contains(&(*id, receiver)),
+                };
+                Some((publication.session_id, waiting))
+            });
             let files = view
                 .files
                 .iter()
                 .filter(|plan| plan.receiving)
-                .filter_map(|plan| plan.source_id);
+                .filter_map(|plan| Some((plan.source_id?, plan.upstream.is_none())));
             let watch_sources = view
                 .watch_bytes
                 .iter()
                 .filter(|plan| plan.receiving)
-                .map(|plan| plan.source.session_id);
-            for source in media.chain(files).chain(watch_sources) {
+                .map(|plan| (plan.source.session_id, plan.upstream.is_none()));
+            for (source, waiting) in media.chain(files).chain(watch_sources) {
                 if source != receiver {
-                    pairs.insert((source.min(receiver), source.max(receiver)));
+                    *pairs
+                        .entry((source.min(receiver), source.max(receiver)))
+                        .or_default() |= waiting;
                 }
             }
         }
@@ -251,8 +264,11 @@ impl RoomProjection {
                 let sending = view
                     .files
                     .iter()
-                    .any(|file| file.source_id == Some(*session));
-                let receiving = view.files.iter().any(|file| file.receiving);
+                    .any(|file| file.source_id == Some(*session) || !file.downstream.is_empty());
+                let receiving = view
+                    .files
+                    .iter()
+                    .any(|file| file.receiving || file.upstream.is_some());
                 (sending || receiving).then_some(crate::wire::FileActivity {
                     session_id: *session,
                     sending,

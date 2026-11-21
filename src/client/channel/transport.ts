@@ -173,9 +173,10 @@ export class ChannelTransport {
     this.pc.ontrack = ({ streams }) => {
       for (const stream of streams) {
         const flowId = this.remoteIds.get(stream.id);
-        if (!flowId) continue;
+        // Replayed SDP can introduce a receiver before a current flow claims its stream.
+        if (!flowId && !this.applyingRemote) continue;
         this.receiving.set(stream.id, stream);
-        if (!this.applyingRemote) options.receive(flowId, stream);
+        if (flowId && !this.applyingRemote) options.receive(flowId, stream);
       }
     };
   }

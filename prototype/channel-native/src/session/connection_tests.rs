@@ -219,6 +219,37 @@ async fn pending_udp_capability_keeps_stop_and_recovery_owned_by_session() {
 }
 
 #[tokio::test]
+async fn pending_udp_capability_joins_with_ordinary_transport() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut session = connection_session(format!("ws://{}", listener.local_addr().unwrap()));
+    let entered = tokio::sync::Notify::new();
+    let mut stopped = std::pin::pin!(std::future::pending());
+    let mut drive = std::pin::pin!(session.drive(&mut stopped, || {
+        entered.notify_one();
+        std::future::pending::<bool>()
+    }));
+    let server = async {
+        // The optional lookup must already run while the handshake is pending.
+        let (tcp, _) = listener.accept().await.unwrap();
+        entered.notified().await;
+        let mut socket = tokio_tungstenite::accept_async(tcp).await.unwrap();
+        let packet = socket.next().await.unwrap().unwrap();
+        piik_channel_core::wire::Request::parse(packet.to_text().unwrap()).unwrap()
+    };
+    let request = tokio::select! {
+        request = time::timeout(Duration::from_secs(2), server) => request.expect("ordinary Join blocked"),
+        result = &mut drive => panic!("session ended before Join: {result:?}"),
+    };
+    assert!(matches!(
+        request.command,
+        Command::Join {
+            can_prepare_udp: false,
+            ..
+        }
+    ));
+}
+
+#[tokio::test]
 async fn pending_udp_capability_releases_expired_session_before_late_join() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let mut session = connection_session(format!("ws://{}", listener.local_addr().unwrap()));
@@ -296,7 +327,7 @@ async fn pending_udp_capability_releases_expired_session_before_late_join() {
             result = &mut drive => panic!("session ended before retired endpoint read: {result:?}"),
             _ = time::sleep(Duration::from_secs(2)) => panic!("retired endpoint read waited for capability"),
         }
-        complete.send(false).unwrap();
+        complete.send(true).unwrap();
         let (socket, request) = tokio::select! {
             result = &mut server => result,
             result = &mut drive => panic!("session ended before Join: {result:?}"),
@@ -307,7 +338,7 @@ async fn pending_udp_capability_releases_expired_session_before_late_join() {
                 request.command,
                 Command::Join {
                     session_id: None,
-                    can_prepare_udp: false,
+                    can_prepare_udp: true,
                     ..
                 }
             ),

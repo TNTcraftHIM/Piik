@@ -103,6 +103,7 @@ export class WatchBytes {
   }
   private effects(runtime: Runtime, raw: string): void {
     if (!this.current(runtime)) return;
+    const failedResponses = new Set<string>();
     for (const effect of JSON.parse(raw) as Effect[]) {
       if (effect.type === "received") this.finish(effect.requestId, { ...effect.result, bytes: Uint8Array.from(effect.result.bytes) });
       else if (effect.type === "failed") {
@@ -114,16 +115,27 @@ export class WatchBytes {
         const terminal = effect.type === "send_control" && ["cancel", "error"].includes(effect.control.type);
         const requestId = effect.type === "send_control" ? effect.control.requestId : effect.requestId;
         const pending = effect.type === "send_control" && effect.control.type === "pull" ? this.pending.get(requestId) : undefined;
-        const current = () => this.current(runtime) && (!pending || this.pending.get(requestId) === pending);
+        const current = () => this.current(runtime) && !failedResponses.has(requestId) && (!pending || this.pending.get(requestId) === pending);
         const allowed = () => current() && this.plans.some(plan => plan.activityId === key.activityId && plan.roomId === key.roomId
           && sameSource(plan.source, source) && (plan.upstream === effect.peer || plan.downstream.includes(effect.peer)));
         const data = effect.type === "send_chunk" ? Uint8Array.from(effect.frame)
-          : new TextDecoder().decode(runtime.module.encode_control(JSON.stringify({ kind: "watch", body: effect.control })));
+          : this.controlFrame(runtime, effect.control);
         void this.send(effect.peer, effect.type === "send_chunk" ? "chunk" : "control", data, terminal ? () => this.current(runtime) : allowed)
           .then(() => { if (pending && current()) pending.sent(); })
-          .catch(() => { if (this.current(runtime) && !terminal) this.effects(runtime, runtime.delivery.request_failed(effect.type === "send_control" ? effect.control.requestId : effect.requestId, "watch_path_unavailable")); });
+          .catch(() => {
+            if (!current() || terminal) return;
+            if (effect.type === "send_chunk") {
+              failedResponses.add(requestId);
+              const error = this.controlFrame(runtime, { type: "error", key, requestId, code: "watch_path_unavailable" });
+              return this.send(effect.peer, "control", error, () => this.current(runtime)).catch(() => {});
+            }
+            this.effects(runtime, runtime.delivery.request_failed(requestId, "watch_path_unavailable"));
+          });
       }
     }
+  }
+  private controlFrame(runtime: Runtime, body: { type: string; key: Key; requestId: string; code?: string }): string {
+    return new TextDecoder().decode(runtime.module.encode_control(JSON.stringify({ kind: "watch", body })));
   }
   reset(): void {
     const runtime = this.runtime;

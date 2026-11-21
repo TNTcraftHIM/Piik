@@ -6,6 +6,52 @@ import type { WatchBytePlan } from "../src/client/channel/protocol";
 
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
+test("a Browser relay reports a partial bulk response once and forwards the next range", async () => {
+  const rust = await actualRuntime();
+  const [provider, relayId, viewer, activityId, resourceId] = Array.from({ length: 5 }, () => crypto.randomUUID());
+  const key = { roomId: "room", activityId, resourceId };
+  const source = { sessionId: provider, resourceId, format: "file" as const };
+  const plan = { roomId: key.roomId, activityId, source };
+  const providerCore = new rust.WatchDelivery(provider);
+  providerCore.update(JSON.stringify([{ ...plan, upstream: null, downstream: [relayId], receiving: false }]), JSON.stringify([[relayId, ["room"]]]));
+  let chunks = 0, errors = 0, available = 8;
+  const receiver = new WatchBytes(async (_peer, _kind, raw) => {
+    relay.data(viewer, "control", JSON.stringify(JSON.parse(raw as string).body));
+  });
+  const relay = new WatchBytes(async (peer, kind, data) => {
+    if (peer === provider) {
+      const [read] = JSON.parse(providerCore.control(relayId, JSON.stringify(JSON.parse(data as string).body)));
+      for (const chunk of JSON.parse(providerCore.read_result(read.requestId, JSON.stringify({
+        mimeType: "video/mp4", totalSize: read.length, bytes: Array(read.length).fill(7), eof: true,
+      })))) relay.data(provider, "chunk", Uint8Array.from(chunk.frame));
+    } else if (kind === "chunk") {
+      if (++chunks > available) throw new Error("file_transfer_busy");
+      receiver.data(relayId, kind, data);
+    } else {
+      const control = JSON.parse(data as string).body;
+      expect(control.type).toBe("error");
+      errors++;
+      receiver.data(relayId, kind, JSON.stringify(control));
+    }
+  });
+  try {
+    relay.update(relayId, [{ ...plan, upstream: provider, downstream: [viewer], receiving: false }], [
+      { peerId: viewer, rooms: ["room"] }, { peerId: provider, rooms: ["room"] },
+    ]);
+    receiver.update(viewer, [{ ...plan, upstream: relayId, downstream: [], receiving: true }], [{ peerId: relayId, rooms: ["room"] }]);
+    const read = (length: number) => receiver.read("room", activityId, source, resourceId, 0, length, new AbortController().signal);
+    for (const freeSlots of [8, 7]) {
+      available = freeSlots;
+      chunks = 0;
+      await expect(read(65536)).rejects.toThrow("watch_path_unavailable");
+      expect(chunks).toBe(9);
+    }
+    expect(errors).toBe(2);
+    chunks = 0;
+    expect((await read(2)).bytes).toEqual(Uint8Array.of(7, 7));
+  } finally { receiver.reset(); relay.reset(); providerCore.free(); }
+});
+
 async function actualRuntime() {
   const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
   await rust.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });

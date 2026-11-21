@@ -120,10 +120,12 @@ export class FileStore {
     return { file, evicted };
   }
 
-  remove(key: ChannelFileKey): Promise<void> {
-    return this.transaction("files", "readwrite", (transaction, done) => {
+  remove(key: ChannelFileKey, { forgetReceipt = false } = {}): Promise<void> {
+    return this.transaction(forgetReceipt ? ["files", "receipts"] : "files", "readwrite", (transaction, done) => {
       const store = transaction.objectStore("files");
-      const request = store.index("key").getKey(fileKeyString(key));
+      const id = fileKeyString(key);
+      if (forgetReceipt) transaction.objectStore("receipts").delete(id);
+      const request = store.index("key").getKey(id);
       request.onsuccess = () => { if (request.result !== undefined) store.delete(request.result); done(); };
     });
   }

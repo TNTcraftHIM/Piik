@@ -144,7 +144,12 @@ impl StateImageDecoder {
         }
         let mut value: Value = serde_json::from_str(text).map_err(|_| "invalid_channel_event")?;
         match value.get("type").and_then(Value::as_str) {
-            Some("welcome") => Images::default().transform(&mut value["state"], true)?,
+            Some("welcome") => {
+                if value["protocol"] != crate::wire::CHANNEL_PROTOCOL {
+                    return Err("incompatible_protocol");
+                }
+                Images::default().transform(&mut value["state"], true)?;
+            }
             Some("state") => {
                 self.0.transform(&mut value["state"], true)?;
                 if serde_json::to_vec(&value)
@@ -178,6 +183,24 @@ mod tests {
         let mut core = Authority::new("owner".into(), vec![]).unwrap();
         core.handle(Uuid::new_v4(), Request::parse(&json!({"type":"join","protocol":CHANNEL_PROTOCOL,"name":"Owner","ownerKey":"owner","signingKey":vec![1;32]}).to_string()).unwrap(), 0)
             .events.into_iter().find_map(|(_, event)| matches!(event, Event::Welcome { .. }).then_some(event)).unwrap()
+    }
+
+    #[test]
+    fn incompatible_welcome_is_rejected_before_reading_its_state() {
+        let full = serde_json::to_value(welcome()).unwrap();
+        let mut previous = full.clone();
+        previous["protocol"] = json!(CHANNEL_PROTOCOL - 1);
+        let mut missing = full;
+        missing.as_object_mut().unwrap().remove("protocol");
+        missing.as_object_mut().unwrap().remove("state");
+        for value in [previous, missing] {
+            assert_eq!(
+                StateImageDecoder::default()
+                    .decode(&value.to_string())
+                    .err(),
+                Some("incompatible_protocol")
+            );
+        }
     }
 
     #[test]
@@ -310,6 +333,7 @@ mod tests {
         decoder.decode(&encoder.encode(&greeting).unwrap()).unwrap();
         let mut invalid_welcome: Value = serde_json::from_str(&compact).unwrap();
         invalid_welcome["type"] = json!("welcome");
+        invalid_welcome["protocol"] = json!(CHANNEL_PROTOCOL);
         assert_eq!(
             decoder.decode(&invalid_welcome.to_string()).err(),
             Some("missing_identity_image")

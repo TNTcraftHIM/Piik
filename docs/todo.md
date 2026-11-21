@@ -212,7 +212,7 @@ the feedback period; they do not delay that delivery.
   a rejected trial. Distinguish sustained path limits and bound the cost of
   overlapping candidates before enabling automatic quality trials.
 - [ ] **Field-test same-room screen recovery.** On restricted networks,
-  compare [on-demand relay](./research/channel-network-design.md#idle-room-peers-for-screen-recovery)
+  compare [on-demand relay](./research/channel-network-design.md#idle-room-peers-for-delivery-recovery)
   under the [layered-forwarding validation plan](./research/channel-forwarding-plan.md#review-and-validation-plan)
   after model review. Measure first picture, recovery when a peer leaves, load
   on an existing call and the cost of finding a path through two idle peers.

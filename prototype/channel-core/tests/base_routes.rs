@@ -1863,7 +1863,12 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
     let active = network.state(viewer).files[0].clone();
     assert_eq!(active.source_id, Some(source_session));
     assert_eq!(active.upstream, Some(host_session));
+    let host_plan = &network.state(host).files[0];
+    assert_eq!(host_plan.upstream, Some(source_session));
+    assert_eq!(host_plan.downstream, [viewer_session]);
+    assert!(!host_plan.receiving);
     let active_people = [
+        (host_session, (true, true)),
         (source_session, (true, false)),
         (viewer_session, (false, true)),
     ]
@@ -1871,7 +1876,7 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
     assert_eq!(
         file_activity(&network, host, &room),
         active_people,
-        "the base host forwards bytes without becoming a file participant"
+        "the base host receives and sends the assigned file branch"
     );
     let (reply_seq, reply) = offer_file(&mut network, viewer, &room, "return.bin");
     command(
@@ -1882,6 +1887,7 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
     assert_eq!(
         file_activity(&network, host, &room),
         [
+            (host_session, (true, true)),
             (source_session, (true, true)),
             (viewer_session, (true, true))
         ]

@@ -156,7 +156,7 @@ impl RemoteRoom {
         Self::projected_sessions(binding, projection, service, actor)
     }
 
-    fn projected_sessions(
+    pub(crate) fn projected_sessions(
         binding: &Binding,
         projection: &RoomProjection,
         service: Option<ServiceEndpoint>,
@@ -177,9 +177,7 @@ impl RemoteRoom {
             )
             .filter(|id| projection.views.get(id).is_some_and(|view| view.authorized))
             .collect();
-        if let Some(service) =
-            service.filter(|_| projection.views.values().any(|v| v.allow_service_relay))
-        {
+        if let Some(service) = service.filter(|_| projection.allow_service_relay) {
             sessions.insert(service.session_id);
         }
         sessions

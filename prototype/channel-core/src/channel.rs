@@ -17,7 +17,7 @@ const MAX_ACTIVE_ROOMS: usize = 32;
 const MAX_ROOMS: usize = 64;
 
 mod discovery;
-use discovery::Repair;
+use discovery::Repairs;
 
 /// Domain admission, hosted-room directory and shared transport leases.
 /// Browsing selects a presentation; it never owns another room's activities.
@@ -35,7 +35,7 @@ pub struct Channel {
     pub(crate) pending_room_deletions: BTreeMap<String, Uuid>,
     pub(crate) remote: BTreeMap<String, RemoteRoom>,
     transports: TransportBook,
-    repairs: BTreeMap<(Uuid, crate::transport::DiscoveryEdge), Repair>,
+    repairs: Repairs,
     input_registrations: BTreeMap<Uuid, Vec<crate::input::InputRegistration>>,
     ice_servers: Vec<Value>,
     pub(crate) service_endpoint: Option<crate::host::ServiceEndpoint>,
@@ -1405,17 +1405,14 @@ impl Channel {
             }
         }
         for (recipient, view) in &projection.views {
-            if view.allow_service_relay && !view.can_manage
-                || view.file_availability.as_ref().is_some_and(|observation| {
-                    !view.authorized
-                        || !view.reading
-                        || !file_availability_limit
-                            .is_some_and(|limit| observation.available.len() <= limit)
-                })
-                || view
-                    .transit_endpoint
-                    .is_some_and(|endpoint| Some(endpoint) != self.service_endpoint)
-            {
+            if view.file_availability.as_ref().is_some_and(|observation| {
+                !view.authorized
+                    || !view.reading
+                    || !file_availability_limit
+                        .is_some_and(|limit| observation.available.len() <= limit)
+            }) || view.transit_endpoint.is_some_and(|endpoint| {
+                !projection.allow_service_relay || Some(endpoint) != self.service_endpoint
+            }) {
                 return Err("invalid_room_projection");
             }
             if !endpoints.contains_key(recipient)
@@ -1876,13 +1873,10 @@ impl Channel {
         })
     }
 
-    fn service_relay(
-        &self,
-        recipient: Option<&crate::room::RoomRecipient>,
-    ) -> crate::wire::ServiceRelay {
+    fn service_relay(&self, enabled: bool) -> crate::wire::ServiceRelay {
         crate::wire::ServiceRelay {
             available: self.service_endpoint.is_some(),
-            enabled: recipient.is_some_and(|view| view.allow_service_relay),
+            enabled,
         }
     }
 
@@ -1943,7 +1937,7 @@ impl Channel {
                 })
             })
             .transpose()?;
-        let relay = self.service_relay(projection.views.get(&session));
+        let relay = self.service_relay(view.room.can_manage && projection.allow_service_relay);
         Ok(RoomTopology {
             service_available: relay.available,
             service_enabled: relay.enabled,
@@ -2044,7 +2038,7 @@ impl Channel {
                                 .views
                                 .get(&session_id)
                                 .filter(|view| view.can_manage)
-                                .map(|view| self.service_relay(Some(view)));
+                                .map(|_| self.service_relay(projection.allow_service_relay));
                         }
                     }
                     rooms.push(snapshot.room);

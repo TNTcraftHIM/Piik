@@ -1,4 +1,4 @@
-import { CHANNEL_PROTOCOL, MAX_RELAY_CAPACITY, watchByteSourceSchema, type WatchByteSource, type RoomSummary } from "./protocol";
+import { CHANNEL_PROTOCOL, isIncompatibleProtocol, MAX_RELAY_CAPACITY, watchByteSourceSchema, type WatchByteSource, type RoomSummary } from "./protocol";
 import { unsupportedVideoFormatSchema, type UnsupportedVideoFormat, nativePageEventSchema, nativePageStateSchema, nativePageMediaChoiceSchema, nativePageIndexedCandidateSchema,
   nativePageMetadataReadSchema, nativePageMetadataResultSchema, nativePageIndexedSelectionSchema,
   nativePageResourceReadSchema, nativePageResourceResultSchema,
@@ -99,7 +99,9 @@ const stopShortcutSchema = remoteStopShortcutSchema.extend({ stopShortcutLabel: 
 export type ChannelStopShortcut = z.infer<typeof stopShortcutSchema>;
 export type ChannelRemoteControlState = z.infer<typeof inputControlStateSchema>;
 const inputStateSchema = z.object({ type: z.literal("input_state"), publicationId: z.uuid(), state: inputControlStateSchema }).strict();
-class AppCompatibilityError extends Error {}
+function isIncompatible(error: unknown): boolean {
+  return error instanceof Error && isIncompatibleProtocol(error.message);
+}
 type AppCommand = { type: string; publicationId?: string; roomId?: string; [key: string]: unknown };
 
 export class AppPage implements AppPagePort {
@@ -210,14 +212,14 @@ function identity(body: unknown, port: number): void {
   const value = identitySchema.extend({ service: z.enum(["piik-channel-app", "piik-client"]) }).parse(body);
   if (value.port !== port) throw new Error("invalid_app_response");
   if (value.service !== "piik-channel-app" || value.protocol !== APP_PROTOCOL || value.domainProtocol !== CHANNEL_PROTOCOL)
-    throw new AppCompatibilityError("App room protocol is incompatible");
+    throw new Error("incompatible_protocol");
 }
 
 export function discoverChannelAppHealth(options: AppDiscoveryOptions = {}): Promise<(AppHealth & { managementURL?: string }) | null> {
   return discoverLocalApp("health", (body, port) => {
     identity(body, port);
     return { ...healthSchema.parse(body), managementURL: `http://127.0.0.1:${port}/client` };
-  }, options, error => error instanceof AppCompatibilityError);
+  }, options, isIncompatible);
 }
 
 export const channelAppDiscovery: AppDiscovery = {
@@ -228,12 +230,12 @@ export const channelAppDiscovery: AppDiscovery = {
     const url = appManagementURL(result.connectURL);
     if (Number(url.port) !== port) throw new Error("invalid_app_response");
     return { url: url.href, windowNavigation: result.windowNavigation };
-  }, { signal }, error => error instanceof AppCompatibilityError),
+  }, { signal }, isIncompatible),
   connect: (options = {}) => discoverLocalApp("connect-discovery", (body, port) => {
     identity(body, port);
     return appApprovalURL(identitySchema.extend({ connectURL: z.string().url().max(256) }).parse(body).connectURL);
-  }, options, error => error instanceof AppCompatibilityError),
-  isIncompatible: error => error instanceof AppCompatibilityError,
+  }, options, isIncompatible),
+  isIncompatible,
 };
 
 /** Hosting survives this link; captures selected through it belong to this page. */

@@ -3,7 +3,7 @@ use super::Channel;
 use crate::host::RoomProjection;
 use crate::identity::{Endpoint, Identity};
 use crate::transport::{DiscoveryEdge, TransportBook};
-use crate::wire::Kind;
+use crate::remote::RemoteRoom;
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
@@ -46,10 +46,10 @@ impl Repair {
 }
 
 type Pair = (Uuid, Uuid);
-type Repairs = BTreeMap<(Uuid, DiscoveryEdge), Repair>;
+pub(super) type Repairs = BTreeMap<(String, DiscoveryEdge), Repair>;
 #[derive(Default)]
 struct DiscoveryPlan {
-    retained: BTreeSet<(Uuid, DiscoveryEdge)>,
+    retained: BTreeSet<(String, DiscoveryEdge)>,
     preparing: BTreeSet<Pair>,
     relevant_failures: BTreeSet<DiscoveryEdge>,
     standby: BTreeSet<Pair>,
@@ -79,24 +79,24 @@ impl Discovery<'_> {
     fn carry(
         &self,
         projection: &RoomProjection,
+        demand: &BTreeSet<Pair>,
+        scope: &BTreeSet<Uuid>,
         repairs: &Repairs,
         plan: &mut DiscoveryPlan,
     ) {
-        let carried = |id: &Uuid| {
-            projection.participant_session_ids.contains(id)
-                && projection.views.get(id).is_some_and(|v| v.authorized)
-        };
-
         for (key, repair) in repairs {
-            let (screen, edge) = key;
-            if projection.publications.iter().any(|p| p.id == *screen)
-                && carried(&edge.endpoints.0)
-                && carried(&edge.endpoints.1)
+            let (room, edge) = key;
+            if *room == projection.summary.id
+                && demand.contains(&edge.endpoints)
+                && scope.contains(&edge.endpoints.0)
+                && scope.contains(&edge.endpoints.1)
                 && self.current(edge)
             {
                 plan.retained.insert(key.clone());
                 let carried_edge = |e: &DiscoveryEdge| {
-                    carried(&e.endpoints.0) && carried(&e.endpoints.1) && self.current(e)
+                    scope.contains(&e.endpoints.0)
+                        && scope.contains(&e.endpoints.1)
+                        && self.current(e)
                 };
                 plan.preparing.extend(
                     repair
@@ -120,6 +120,7 @@ impl Discovery<'_> {
         &self,
         projection: &RoomProjection,
         scope: &BTreeSet<Uuid>,
+        requested: &BTreeMap<Pair, bool>,
         demand: &mut BTreeSet<Pair>,
         repairs: &mut Repairs,
         plan: &mut DiscoveryPlan,
@@ -137,80 +138,59 @@ impl Discovery<'_> {
             })
             .collect();
         // A terminal direct failure opens one room-local recovery trial.
-        for (&viewer, view) in &projection.views {
-            if !view.authorized {
+        for (&pair @ (source, viewer), &waiting) in requested {
+            let allowed = |id| id == viewer || id == source || readers.contains(&id);
+            plan.relevant_failures.extend(
+                self.transports
+                    .failures()
+                    .filter(|edge| {
+                        allowed(edge.endpoints.0) && allowed(edge.endpoints.1) && self.current(edge)
+                    })
+                    .cloned(),
+            );
+            if !scope.contains(&viewer) || !scope.contains(&source) || !waiting {
                 continue;
             }
-            for screen in &view.subscriptions {
-                let Some(publication) = projection
-                    .publications
-                    .iter()
-                    .find(|p| p.id == *screen && p.kind == Kind::Screen && !p.paused)
-                else {
-                    continue;
-                };
-                let source = publication.session_id;
-                let pair = (source.min(viewer), source.max(viewer));
-                let allowed = |id| id == viewer || id == source || readers.contains(&id);
-                plan.relevant_failures.extend(
-                    self.transports
-                        .failures()
-                        .filter(|edge| {
-                            allowed(edge.endpoints.0)
-                                && allowed(edge.endpoints.1)
-                                && self.current(edge)
-                        })
-                        .cloned(),
-                );
-                if !scope.contains(&viewer)
-                    || !scope.contains(&source)
-                    || !self
-                        .transports
-                        .rejected(&self.proposal(pair))
-                    || !view.failed_subscriptions.contains(screen)
-                {
-                    continue;
-                }
-                demand.remove(&pair);
-                let key = (*screen, self.proposal(pair));
-                plan.retained.insert(key.clone());
-                let repair = repairs.entry(key).or_default();
+            let direct = self.proposal(pair);
+            if !self.transports.rejected(&direct) {
+                continue;
+            }
+            demand.remove(&pair);
+            let key = (projection.summary.id.clone(), direct);
+            plan.retained.insert(key.clone());
+            let repair = repairs.entry(key).or_default();
+            repair.segments.clear();
+            repair.trial = None;
+            let eligible: BTreeSet<_> = scope.iter().copied().filter(|id| allowed(*id)).collect();
+            let links: BTreeSet<_> = self
+                .confirmed
+                .iter()
+                .copied()
+                .filter(|(a, b)| eligible.contains(a) && eligible.contains(b))
+                .collect();
+            let joined =
+                repair.retain_frontiers(source, viewer, &links, |pair| self.proposal(pair));
+            if let Some(edge) =
+                crate::connectivity::repair_candidate(&eligible, &links, &[pair].into(), |a, b| {
+                    let e = self.proposal((a, b));
+                    !links.contains(&(a, b))
+                        && !self.transports.rejected(&e)
+                        && (self.discovery == Some((a, b)) || !self.transports.has_pair((a, b)))
+                })
+            {
+                let trial = self.proposal(edge);
+                plan.candidates.insert(trial.clone());
+                repair.trial = Some(trial);
+            }
+            if joined || repair.trial.is_some() {
+                plan.preparing
+                    .extend(repair.segments.iter().map(|e| e.endpoints));
+            } else {
                 repair.segments.clear();
-                repair.trial = None;
-                let eligible: BTreeSet<_> =
-                    scope.iter().copied().filter(|id| allowed(*id)).collect();
-                let links: BTreeSet<_> = self
-                    .confirmed
-                    .iter()
-                    .copied()
-                    .filter(|(a, b)| eligible.contains(a) && eligible.contains(b))
-                    .collect();
-                let joined =
-                    repair.retain_frontiers(source, viewer, &links, |pair| self.proposal(pair));
-                if let Some(edge) = crate::connectivity::repair_candidate(
-                    &eligible,
-                    &links,
-                    &[pair].into(),
-                    |a, b| {
-                        let e = self.proposal((a, b));
-                        !links.contains(&(a, b))
-                            && !self.transports.rejected(&e)
-                            && (self.discovery == Some((a, b)) || !self.transports.has_pair((a, b)))
-                    },
-                ) {
-                    let trial = self.proposal(edge);
-                    plan.candidates.insert(trial.clone());
-                    repair.trial = Some(trial);
-                }
-                if joined || repair.trial.is_some() {
-                    plan.preparing
-                        .extend(repair.segments.iter().map(|e| e.endpoints));
-                } else {
-                    repair.segments.clear();
-                }
             }
         }
     }
+
     fn ordinary(
         &self,
         scope: &BTreeSet<Uuid>,
@@ -260,20 +240,23 @@ impl Channel {
             let Some(projection) = &room.projection else {
                 continue;
             };
-            let mut demand = projection.requested_pairs();
+            let requested = projection.requested_pairs();
+            let mut demand: BTreeSet<_> = requested.keys().copied().collect();
             let mut scope = room.planning_sessions(self.service_endpoint, None);
             scope.retain(|id| endpoints.get(id).is_some_and(|endpoint| endpoint.connected));
             // While the host acknowledges a failed pair, only carry existing uses
             // from that projection. Other invalidations wait for fresh room grants.
-            if scope.is_empty()
-                && room
-                    .binding
-                    .as_ref()
-                    .is_some_and(|binding| binding.awaiting_pair_failure())
+            if let Some(binding) = room
+                .binding
+                .as_ref()
+                .filter(|binding| scope.is_empty() && binding.awaiting_pair_failure())
             {
                 plan.preparing
                     .extend(discovery.confirmed.intersection(&demand).copied());
-                discovery.carry(projection, &self.repairs, &mut plan);
+                let retained_scope = RemoteRoom::projected_sessions(
+                    binding, projection, self.service_endpoint, None,
+                );
+                discovery.carry(projection, &demand, &retained_scope, &self.repairs, &mut plan);
             }
             let graph: BTreeSet<_> = discovery
                 .confirmed
@@ -286,6 +269,7 @@ impl Channel {
             discovery.repair(
                 projection,
                 &scope,
+                &requested,
                 &mut demand,
                 &mut self.repairs,
                 &mut plan,

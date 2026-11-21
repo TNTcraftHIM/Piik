@@ -993,3 +993,91 @@ fn hosted_writer_accepts_participant_rooted_room_projection() {
         writer_session
     );
 }
+
+#[test]
+fn hosted_transit_pair_survives_room_manager_session_expiry_until_revoked() {
+    use piik_channel_core::{
+        host::{RoomSummary, ServiceEndpoint},
+        wire::{HostingMode, Request},
+        RoomState, RECOVERY_MS,
+    };
+    let mut net = RoomNetwork::new();
+    net.authority.set_hosting_mode(HostingMode::Hosted);
+    let [writer, manager, source, viewer] = std::array::from_fn(|_| Uuid::new_v4());
+    let service = join(&mut net, writer, false);
+    let creator = join(&mut net, manager, true);
+    let sender = join(&mut net, source, false);
+    let receiver = join(&mut net, viewer, false);
+    let user = |id| {
+        net.state(manager)
+            .sessions
+            .iter()
+            .find(|session| session.id == id)
+            .unwrap()
+            .user_id
+    };
+    let mut policy = RoomState::new(
+        "private".into(),
+        "Private".into(),
+        Default::default(),
+        user(creator),
+        RoomAccess::Private,
+        false,
+        None,
+    )
+    .unwrap();
+    policy.grants.extend([user(sender), user(receiver)]);
+    net.authority
+        .set_room_writer(ServiceEndpoint {
+            session_id: service,
+            connection_id: writer,
+        })
+        .unwrap();
+    let effects = register_service(&mut net, Some(service)).unwrap();
+    accepted(net.deliver(effects));
+    let creation = net
+        .authority
+        .prepare_hosted_creation(creator, manager, RoomSummary::from_policy(&policy))
+        .unwrap();
+    net.authority.reserve_hosted_creation(&creation).unwrap();
+    policy.id = creation.summary().id.clone();
+    let room = net.restore_room(writer, policy);
+    set_preference(&mut net, manager, &room, true);
+    screen(&mut net, source, viewer, &room);
+    let direct = pair(&net, viewer, sender);
+    command(
+        &mut net,
+        viewer,
+        json!({"type":"link_state","pairId":direct.id,"state":"failed"}),
+    );
+    acknowledge_base(&mut net, &[source, writer, viewer], &room);
+    let input = pair(&net, source, service);
+    for socket in [writer, source] {
+        command(
+            &mut net,
+            socket,
+            json!({"type":"link_state","pairId":input.id,"state":"connected"}),
+        );
+    }
+
+    let effects = net.authority.disconnect(manager, 100);
+    accepted(net.deliver(effects));
+    let now = 100 + RECOVERY_MS;
+    let effects = net.authority.expire(now);
+    accepted(net.deliver(effects));
+    let request = Request::parse(
+        &json!({"type":"voice","roomId":room,"joined":true,"muted":true,"deafened":true})
+            .to_string(),
+    )
+    .unwrap();
+    let effects = net.authority.handle(source, request, now);
+    let edge = (sender.min(service), sender.max(service));
+    assert!(effects.events.iter().any(|(_, event)| matches!(event,
+        Event::HostInput { input, .. } if !input.endpoints.contains_key(&creator) && input.confirmed_pairs.contains(&edge)
+    )));
+    accepted(net.deliver(effects));
+
+    join(&mut net, manager, true);
+    set_preference(&mut net, manager, &room, false);
+    assert!(net.state(writer).pairs.is_empty());
+}

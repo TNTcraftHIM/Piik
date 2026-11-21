@@ -359,3 +359,283 @@ fn room_capacity_changes_apply_to_an_active_screen() {
             .all(|(input, old)| input.is_none() || *input == old));
     }
 }
+
+#[test]
+fn cold_voice_file_and_watch_byte_repair_use_the_only_room_reader() {
+    use std::collections::BTreeSet;
+
+    for kind in ["voice", "file", "watch"] {
+        let mut network = RoomNetwork::new();
+        let [source, helper, receiver] = [(); 3].map(|_| Uuid::new_v4());
+        let (source_id, _) = join(&mut network, source, None);
+        let (helper_id, _) = join(&mut network, helper, None);
+        let (receiver_id, _) = join(&mut network, receiver, None);
+        let room = network.create(source, RoomAccess::Public, false);
+        for peer in [source, helper, receiver] {
+            browse(&mut network, peer, &room, true);
+        }
+        let publication = if kind == "voice" {
+            voice(&mut network, source, &room, true);
+            voice(&mut network, receiver, &room, true);
+            Some(publish(&mut network, source, &room, "voice"))
+        } else if kind == "watch" {
+            let activity = Uuid::new_v4();
+            command(
+                &mut network,
+                source,
+                json!({"type":"start_watch","roomId":room,"id":activity,
+                "source":{"kind":"media","url":"https://example.com/movie.mp4"},
+                "playback":{"timeline":"media","position":0,"paused":false,"rate":1,"anchorTime":0},
+                "byteSource":{"sessionId":source_id,"resourceId":Uuid::new_v4(),"format":"file"}}),
+            );
+            command(
+                &mut network,
+                receiver,
+                json!({"type":"join_watch","roomId":room,"id":activity,"mode":"peer"}),
+            );
+            None
+        } else {
+            let (seq, attachment) = offer_file(&mut network, source, &room, "held.bin");
+            command(
+                &mut network,
+                receiver,
+                json!({"type":"file_receive","roomId":room,
+                "messageSeq":seq,"attachmentId":attachment.id,"enabled":true}),
+            );
+            None
+        };
+        let direct = pair(&network, source, receiver_id, &room);
+        assert!(network.state(helper).pairs.is_empty());
+        command(
+            &mut network,
+            source,
+            json!({"type":"link_state","pairId":direct.id,"state":"failed"}),
+        );
+
+        let mut confirmed = BTreeSet::new();
+        for _ in 0..2 {
+            let edge = network
+                .state(helper)
+                .pairs
+                .iter()
+                .find(|p| !confirmed.contains(&p.id))
+                .expect("failed direct demand should discover the reader")
+                .clone();
+            confirmed.insert(edge.id);
+            let peer = if edge.peer_id == source_id {
+                source
+            } else {
+                receiver
+            };
+            for socket in [helper, peer] {
+                command(
+                    &mut network,
+                    socket,
+                    json!({"type":"link_state","pairId":edge.id,"state":"connected"}),
+                );
+            }
+        }
+        for (socket, peer_id) in [(source, source_id), (receiver, receiver_id)] {
+            let edge = pair(&network, helper, peer_id, &room);
+            for endpoint in [helper, socket] {
+                if let Some(publication) = publication {
+                    assert!(screen_input(&network, receiver, helper_id, publication).is_none());
+                } else if kind == "watch" {
+                    assert!(network.state(receiver).watch_bytes[0].upstream.is_none());
+                } else {
+                    assert!(network.state(receiver).files[0].upstream.is_none());
+                }
+                command(
+                    &mut network,
+                    endpoint,
+                    json!({"type":"base_state","roomId":room,"pairId":edge.id,"ready":true}),
+                );
+            }
+        }
+        if let Some(publication) = publication {
+            let (first, transit) = screen_input(&network, helper, source_id, publication).unwrap();
+            let (last, delivery) =
+                screen_input(&network, receiver, helper_id, publication).unwrap();
+            assert_eq!(delivery.input_flow_id, Some(transit.id));
+            for (socket, pair, flow, state) in [
+                (helper, first, transit.id, "forwardable"),
+                (receiver, last, delivery.id, "decoded"),
+            ] {
+                command(
+                    &mut network,
+                    socket,
+                    json!({"type":"flow_state","pairId":pair,"flowId":flow,"state":state}),
+                );
+            }
+        } else if kind == "watch" {
+            let hop = &network.state(helper).watch_bytes[0];
+            assert_eq!(hop.upstream, Some(source_id));
+            assert_eq!(hop.downstream, [receiver_id]);
+            assert_eq!(
+                network.state(receiver).watch_bytes[0].upstream,
+                Some(helper_id)
+            );
+        } else {
+            let hop = &network.state(helper).files[0];
+            assert_eq!(hop.upstream, Some(source_id));
+            assert_eq!(hop.downstream, [receiver_id]);
+            assert_eq!(network.state(receiver).files[0].upstream, Some(helper_id));
+            deliver_repaired_file(
+                &network,
+                [
+                    (source, source_id),
+                    (helper, helper_id),
+                    (receiver, receiver_id),
+                ],
+            );
+        }
+        browse(&mut network, helper, &room, false);
+        assert!(network.state(helper).files.is_empty());
+        assert!(network
+            .state(helper)
+            .pairs
+            .iter()
+            .all(|p| p.incoming.is_empty() && p.outgoing.is_empty() && !p.rooms.contains(&room)));
+    }
+}
+
+fn deliver_repaired_file(network: &RoomNetwork, peers: [(Uuid, Uuid); 3]) {
+    use piik_channel_core::{
+        file_delivery::{FileDelivery, FileEffect},
+        file_room::FileKey,
+    };
+    use std::collections::{BTreeMap, VecDeque};
+
+    let [(source, source_id), _, (receiver, receiver_id)] = peers;
+    let plans = &network.state(receiver).files;
+    let plan = &plans[0];
+    let key = FileKey {
+        room_id: plan.room_id.clone(),
+        message_seq: plan.message_seq,
+        attachment_id: plan.attachment.id,
+    };
+    let bytes = network.state(source).files[0].attachment.name.as_bytes();
+    let mut nodes = BTreeMap::new();
+    for (socket, session) in peers {
+        let state = network.state(socket);
+        let mut node = FileDelivery::new(session);
+        let neighbors = state
+            .pairs
+            .iter()
+            .map(|p| (p.peer_id, p.rooms.clone()))
+            .collect();
+        assert!(node.update(state.files.clone(), neighbors, 0).is_empty());
+        nodes.insert(session, node);
+    }
+    let mut queue = VecDeque::new();
+    for effect in nodes.get_mut(&receiver_id).unwrap().start(key) {
+        queue.push_back((receiver_id, effect));
+    }
+    let mut received = Vec::new();
+    let mut completed = false;
+    while let Some((from, effect)) = queue.pop_front() {
+        let (owner, next) = match effect {
+            FileEffect::SendControl { peer, control } => (
+                peer,
+                nodes.get_mut(&peer).unwrap().control(from, control, 0),
+            ),
+            FileEffect::SendChunk { peer, frame, .. } => (
+                peer,
+                nodes.get_mut(&peer).unwrap().chunk(from, &frame).unwrap(),
+            ),
+            FileEffect::Read {
+                key,
+                offset,
+                length,
+                request_id,
+            } => {
+                assert_eq!(from, source_id);
+                let range = offset as usize..offset as usize + length;
+                (
+                    from,
+                    nodes.get_mut(&from).unwrap().read_result(
+                        &key,
+                        offset,
+                        request_id,
+                        bytes[range].to_vec(),
+                    ),
+                )
+            }
+            FileEffect::Write { key, offset, bytes } => {
+                assert_eq!(from, receiver_id);
+                assert_eq!(offset as usize, received.len());
+                received.extend_from_slice(&bytes);
+                (
+                    from,
+                    nodes
+                        .get_mut(&from)
+                        .unwrap()
+                        .written(&key, offset, bytes.len()),
+                )
+            }
+            FileEffect::Complete { .. } => {
+                assert_eq!(from, receiver_id);
+                completed = true;
+                continue;
+            }
+            FileEffect::Failed { code, .. } => panic!("file transfer failed: {code}"),
+        };
+        queue.extend(next.into_iter().map(|effect| (owner, effect)));
+    }
+    assert!(completed);
+    assert_eq!(received, bytes);
+}
+
+#[test]
+fn background_file_trial_survives_another_room_link_failure_until_host_ack() {
+    let mut net = RoomNetwork::new();
+    let [source, helper, receiver, other] = [(); 4].map(|_| Uuid::new_v4());
+    let [src, _, rx, _] = [source, helper, receiver, other].map(|p| join(&mut net, p, None).0);
+    let room = net.create(source, RoomAccess::Public, false);
+    browse(&mut net, helper, &room, true);
+    join_base(&mut net, other, &room);
+    command(
+        &mut net,
+        other,
+        json!({"type":"relay_capacity","roomId":room,"capacity":0}),
+    );
+    let (seq, file) = offer_file(&mut net, source, &room, "background.bin");
+    command(
+        &mut net,
+        receiver,
+        json!({"type":"file_receive","roomId":room,"messageSeq":seq,
+        "attachmentId":file.id,"enabled":true}),
+    );
+    let direct = pair(&net, source, rx, &room);
+    command(
+        &mut net,
+        source,
+        json!({"type":"link_state","pairId":direct.id,"state":"failed"}),
+    );
+    let trial = net.state(helper).pairs[0].id;
+    let unrelated = pair(&net, other, src, &room).id;
+    let failure = json!({"type":"link_state","pairId":unrelated,"state":"failed"});
+    let effects = net.authority.handle(
+        other,
+        piik_channel_core::wire::Request::parse(&failure.to_string()).unwrap(),
+        100,
+    );
+    assert!(effects
+        .events
+        .iter()
+        .any(|(_, e)| matches!(e, Event::HostInput{input,..} if !input.failed_pairs.is_empty())));
+    for (_, e) in effects
+        .events
+        .iter()
+        .filter(|(socket, _)| *socket == helper)
+    {
+        if let Event::State { state } = e {
+            assert!(
+                state.pairs.iter().any(|pair| pair.id == trial),
+                "lost pending background file trial before room ACK"
+            );
+        }
+    }
+    net.deliver(effects);
+    assert!(net.state(helper).pairs.iter().any(|pair| pair.id == trial));
+}

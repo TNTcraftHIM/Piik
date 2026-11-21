@@ -444,6 +444,73 @@ test("confirmed room events own personal feedback across text, attachments and t
   expect(play).toHaveBeenCalledTimes(9);
 });
 
+function stubFeedbackAudio() {
+  const document = new EventTarget();
+  vi.stubGlobal("document", document);
+  const contexts: { close: ReturnType<typeof vi.fn> }[] = [];
+  vi.stubGlobal("AudioContext", class {
+    state = "suspended";
+    destination = {};
+    resume = vi.fn(async () => { this.state = "running"; });
+    close = vi.fn(async () => { this.state = "closed"; });
+    constructor() { contexts.push(this); }
+    createGain() { return { gain: { value: 1 }, connect() {}, disconnect() {} }; }
+  });
+  return { document, contexts };
+}
+
+test.each(["new identity", "closed session retry"])("personal feedback reactivates after a %s", async transition => {
+  const { document, contexts } = stubFeedbackAudio();
+  const { session, socket } = await setup(1000, false, "");
+  try {
+    session.setFeedbackSound({ enabled: true, volume: .4 });
+    await Promise.resolve();
+    expect(contexts).toHaveLength(1);
+
+    if (transition === "new identity") {
+      socket.receive({ type: "error", code: "invalid_credential" });
+      session.joinAsNewIdentity();
+    } else {
+      socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL + 1 });
+      expect(session.getSnapshot().error).toBe("incompatible_protocol");
+      session.reconnect();
+    }
+    expect(session.getSnapshot().feedbackSound).toMatchObject({ enabled: true, volume: .4 });
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0].close).toHaveBeenCalledOnce();
+    document.dispatchEvent(new Event("pointerdown"));
+    await Promise.resolve();
+    expect(contexts).toHaveLength(2);
+  } finally { session.close(); }
+  expect(contexts[1].close).toHaveBeenCalledOnce();
+});
+
+test("a rejected initial join closes personal feedback until the session is retried", async () => {
+  const { document, contexts } = stubFeedbackAudio();
+  vi.stubGlobal("location", new URL("https://channel.test/__channel-preview"));
+  vi.stubGlobal("WebSocket", ChannelSocket);
+  const session = new ChannelSession();
+  try {
+    session.start();
+    const socket = ChannelSocket.current;
+    await socket.onopen?.();
+    session.setFeedbackSound({ enabled: true, volume: .4 });
+    await Promise.resolve();
+    expect(contexts).toHaveLength(1);
+
+    socket.receive({ type: "error", code: "channel_full" });
+    expect(session.getSnapshot()).toMatchObject({ connection: "closed", error: "channel_full" });
+    expect(contexts[0].close).toHaveBeenCalledOnce();
+    document.dispatchEvent(new Event("pointerdown"));
+    expect(contexts).toHaveLength(1);
+
+    session.reconnect();
+    document.dispatchEvent(new Event("pointerdown"));
+    await Promise.resolve();
+    expect(contexts).toHaveLength(2);
+  } finally { session.close(); }
+});
+
 test("the site overview does not select a room or load its history", async () => {
   const { session, socket, peer } = await setup(1000, false, "");
   try {
@@ -7658,10 +7725,10 @@ test.each(["offer", "answer"])("resync recovers a lost %s on the same transport 
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const sent: ChannelSignal[][] = [[], []];
-  const failed = [vi.fn(), vi.fn()];
+  const failed = [vi.fn(), vi.fn()], receive = [vi.fn(), vi.fn()];
   const transports = sent.map((signals, i) => new ChannelTransport({
     polite: Boolean(i), iceServers: [], send: payload => signals.push(signalSchema.parse(payload)),
-    receive: () => {}, connected: () => {}, base: () => {}, failed: failed[i],
+    receive: receive[i], connected: () => {}, base: () => {}, failed: failed[i],
   }));
   const [a, b] = transports, [pcA, pcB] = RoomPeerConnection.instances;
   const remoteA = vi.spyOn(pcA, "setRemoteDescription"), remoteB = vi.spyOn(pcB, "setRemoteDescription");
@@ -7671,6 +7738,14 @@ test.each(["offer", "answer"])("resync recovers a lost %s on the same transport 
     pcA.onnegotiationneeded?.();
     await vi.waitFor(() => expect(sent[0]).toHaveLength(1));
     const offer = structuredClone(sent[0].shift()!);
+    const track = remoteTrack("audio");
+    const received = remoteStream(offer.tracks![0].streamId, [track]);
+    // The reused transceiver emits its track only when the original SDP first arrives.
+    remoteB.mockImplementationOnce(async description => {
+      await RoomPeerConnection.prototype.setRemoteDescription.call(pcB, description);
+      pcB.receivers = [{ track } as RTCRtpReceiver];
+      pcB.ontrack?.({ streams: [received] });
+    });
     let withheldAnswer: ChannelSignal | undefined;
     if (lost === "answer") {
       b.setOutgoing(new Map([["reverse-flow", { kind: "voice", stream: stream("revoked-reverse") }]]));
@@ -7696,6 +7771,7 @@ test.each(["offer", "answer"])("resync recovers a lost %s on the same transport 
     const answer = sent[1].find(signal => signal.description?.type === "answer")!;
     expect(answer.exchangeId).toBe(offer.exchangeId);
     expect(answer.tracks).toEqual([]);
+    if (lost === "offer") expect(receive[1]).not.toHaveBeenCalled();
     if (withheldAnswer) expect(withheldAnswer.tracks).toEqual([{ flowId: "reverse-flow", streamId: expect.any(String) }]);
     a.signal(answer);
     await vi.waitFor(() => expect(sent[0].some(signal => signal.description?.type === "offer" && signal.exchangeId !== offer.exchangeId)).toBe(true));
@@ -7703,6 +7779,7 @@ test.each(["offer", "answer"])("resync recovers a lost %s on the same transport 
     expect(replacement.tracks).toEqual([{ flowId: "replacement-flow", streamId: offer.tracks![0].streamId }]);
     b.signal(replacement);
     await vi.waitFor(() => expect(sent[1].some(signal => signal.description?.type === "answer" && signal.exchangeId === replacement.exchangeId)).toBe(true));
+    expect(receive[1]).toHaveBeenLastCalledWith("replacement-flow", received);
     a.signal(sent[1].find(signal => signal.exchangeId === replacement.exchangeId)!);
     await vi.waitFor(() => expect(pcA.signalingState).toBe("stable"));
     a.signal(answer);
@@ -8720,6 +8797,7 @@ test("domain backup uses its actual service owner and validates kind before reti
 });
 
 test("domain restore closes the old connection, admits archived keys only after HTTP commit and verifies Welcome before saving identity", async () => {
+  const { document, contexts } = stubFeedbackAudio();
   const { session, socket } = await setup(3, false, "owner=old-key&room=old-room");
   const domainId = crypto.randomUUID(), ownerId = crypto.randomUUID();
   const metadata = { kind: "domain" as const, version: 3 as const, state: { id: domainId, ownerId, name: "Restored", icon: "couch", hostedRooms: {} }, ownerKey: "restored-owner" };
@@ -8731,10 +8809,15 @@ test("domain restore closes the old connection, admits archived keys only after 
   state.channel.id = domainId; state.channel.ownerId = ownerId; state.channel.rooms = [];
   state.users = [{ id: ownerId, name: "Restored owner", version: profileVersion }]; state.sessions[0].userId = ownerId;
   try {
+    session.setFeedbackSound({ enabled: true, volume: .4 });
+    await Promise.resolve();
+    expect(contexts).toHaveLength(1);
+    saved.mockClear();
     const archive = new Blob(["complete-domain-zip"]);
     const restoring = session.restoreDomainBackup(archive);
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     expect(socket.readyState).toBe(3); expect(session.getSnapshot().connection).toBe("closed");
+    expect(contexts[0].close).toHaveBeenCalledOnce();
     expect(new Headers(fetch.mock.calls[0][1].headers).get("Authorization")).toBe("Bearer credential");
     expect(fetch.mock.calls[0][1].method).toBe("PUT"); expect(saved).not.toHaveBeenCalled();
     expect(inspect).toHaveBeenCalledWith(archive);
@@ -8751,6 +8834,9 @@ test("domain restore closes the old connection, admits archived keys only after 
     expect(session.getSnapshot().self?.id).toBe(ownerId); expect(session.getSnapshot().state?.channel.id).toBe(domainId);
     expect(saved).toHaveBeenCalledWith("piik.channel.prototype.credential", "restored-personal-credential");
     expect(saved.mock.calls.some(call => call[1] === metadata.ownerKey)).toBe(false);
+    document.dispatchEvent(new Event("pointerdown"));
+    await Promise.resolve();
+    expect(contexts).toHaveLength(2);
   } finally { session.close(); }
 });
 
@@ -12459,6 +12545,62 @@ test("committing OBS B rejects user cancellation and a failed Native commit reta
     session.close();
   }
 });
+test.each(["dismiss", "cancel picker", "use browser", "retire OBS"] as const)(
+  "OBS becomes ready while the Browser screen picker is open: %s", async outcome => {
+    vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
+      service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
+      port: 8793, token: "owned-approved",
+    });
+    const { session, socket } = await setup();
+    const app = await startFixtureApp(session);
+    let choose!: (stream: MediaStream) => void, dismiss!: (error: Error) => void;
+    const picker = vi.fn(() => new Promise<MediaStream>((resolve, reject) => { choose = resolve; dismiss = reject; }));
+    vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: picker } });
+    vi.spyOn(session, "watch").mockResolvedValue();
+    try {
+      await app.onopen?.();
+      app.receive({ id: app.sent.at(-1)!.id, result: null });
+      await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+      const arming = session.startExternalScreen("first");
+      await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_external_input"));
+      const { publicationId, id } = app.sent.at(-1)!;
+      app.receive({ id, result: { endpoint: "http://127.0.0.1:8793/whip/fixture", token: "fixture" } });
+      await arming;
+      const selecting = session.startScreen("first").catch(error => error);
+      await vi.waitFor(() => expect(picker).toHaveBeenCalled());
+      const captureId = crypto.randomUUID(), sessionId = crypto.randomUUID();
+      app.receive({ type: "external_input_state", publicationId, state: "prepared", captureId, sessionId, codec: "h264" });
+      expect(app.sent.some(command => command.type === "commit_capture")).toBe(false);
+      if (outcome === "use browser") {
+        const stream = remoteStream("chosen", [remoteTrack("video")]);
+        choose(stream);
+        await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+        socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+        await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("stop_capture"));
+        app.receive({ type: "external_input_state", publicationId, state: "closed" });
+        app.receive({ id: app.sent.at(-1)!.id, result: null });
+        await selecting;
+        expect(session.getSnapshot().streams.get(publicationId as string)).toBe(stream);
+      } else {
+        if (outcome === "cancel picker") await session.cancelScreenSelection("first");
+        if (outcome === "retire OBS") app.receive({ type: "external_input_state", publicationId, state: "closed" });
+        dismiss(new DOMException("Cancelled", "NotAllowedError"));
+        await selecting;
+        if (outcome !== "retire OBS") {
+          await vi.waitFor(() => expect(app.sent.at(-1)).toMatchObject({ type: "commit_capture", captureId }));
+          app.receive({ type: "external_input_state", publicationId, state: "live", captureId, sessionId, codec: "h264" });
+          app.receive({ id: app.sent.at(-1)!.id, result: null });
+          await vi.waitFor(() => expect(session.sourceSelectionCommitting("first")).toBe(false));
+          expect(session.externalInput("first")).toMatchObject({ state: "live", captureId });
+          return;
+        }
+      }
+      expect(session.externalInput("first")).toBeUndefined();
+      expect(app.sent.some(command => command.type === "commit_capture")).toBe(false);
+    } finally { session.close(); }
+  },
+);
+
 test("waiting OBS permit survives cancellation of a different Native screen candidate", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
     service: "piik-channel-app",

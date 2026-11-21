@@ -54,6 +54,14 @@ WebRTC connection. The recipient saved a file matching the sender's SHA-256.
 Its decoded screen frames advanced during the download and after the file
 transfer ended. The screen kept its original connection and media flow.
 
+Separate protocol-38 Browser controls started file and voice delivery with no
+existing peer links and blocked direct negotiation between sender and receiver.
+A peer only browsing the same room relayed a 1,048,605-byte file whose SHA-256
+matched the source, and a simulated microphone whose received samples and
+energy increased. Leaving the helper's room released its media, file and
+physical connection leases. These loopback controls establish cold-path repair,
+not reachability or performance on independent networks.
+
 The Core capacity run exercised two active rooms of 20 people each, their
 Browser and App endpoints, and one Server endpoint. All 32 rooms had a
 maximum-size uploaded picture. The lobby received built-in icons and each

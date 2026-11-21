@@ -379,7 +379,7 @@ describe("App connection approval", () => {
     }));
     await expect(discovery.health()).resolves.toMatchObject({ port: NATIVE_CLIENT_PORT_START });
     domainProtocol = CHANNEL_PROTOCOL - 1;
-    await expect(discovery.health()).rejects.toThrow("App room protocol is incompatible");
+    await expect(discovery.health()).rejects.toThrow("incompatible_protocol");
   });
 
   it("uses fresh authorized health instead of offering approval again", async () => {

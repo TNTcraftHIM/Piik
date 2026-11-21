@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { APP_PROTOCOL, ChannelApp } from "../src/client/channel/app-link";
+import { APP_PROTOCOL, ChannelApp, channelAppDiscovery } from "../src/client/channel/app-link";
 import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
 import { NATIVE_PAGE_METADATA_PREFIX_BYTES, NATIVE_PAGE_READ_BYTES, nativePageStateSchema } from "../src/client/native/wire";
 import { waitForWatchMedia } from "../src/client/channel/watch-media";
@@ -441,6 +441,19 @@ test("hiding and refocusing a source page preserves its requests and lifetime", 
   } finally { app.close(); }
 });
 
+
+test.each(["incompatible_protocol", "admission failed: incompatible_protocol"])("Native hello rejection %s retires App control and preserves upgrade guidance", async error => {
+  vi.stubGlobal("WebSocket", Socket);
+  const closed = vi.fn();
+  const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
+    token: "test-token", port: 8793 }, "site", "user", "credential", "Me", closed, () => {});
+  Socket.current.onopen?.();
+  Socket.current.receive({ id: Socket.current.sent[0].id, error });
+  await expect(app.ready.catch(channelAppDiscovery.isIncompatible)).resolves.toBe(true);
+  expect(closed).toHaveBeenCalledOnce();
+  expect(app.connected).toBe(false);
+  expect(Socket.current.readyState).toBe(3);
+});
 
 test("socket close and its pending hello rejection retire the App link once", async () => {
   vi.stubGlobal("WebSocket", Socket);

@@ -1,5 +1,6 @@
 import type { CopyKey } from "../locales";
 import type { UnsupportedVideoFormat } from "../native/wire";
+import { isIncompatibleProtocol } from "./protocol";
 
 export interface ChannelErrorPresentation {
   message: string | null;
@@ -26,7 +27,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.error.webassemblyUnavailable");
   if (error === "room_runtime_unavailable")
     return display("channel.error.roomRuntimeUnavailable");
-  if (error === "incompatible_protocol" || error.endsWith(": incompatible_protocol"))
+  if (isIncompatibleProtocol(error))
     return display("channel.error.incompatibleProtocol");
   if (error === "channel_full")
     return display("channel.error.channelFull");

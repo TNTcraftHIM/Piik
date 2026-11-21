@@ -406,10 +406,11 @@ nor creates a separate frame queue. Unsupported receivers retain automatic behav
 the [fidelity assessment](./media-fidelity.md#playback-buffering) owns the measured
 smoothness/delay tradeoff and its limits.
 
-### Idle Room Peers for Screen Recovery
+### Idle Room Peers for Delivery Recovery
 
-A failed screen subscription can use an authorized peer browsing the same
-room, even when that peer is only reading chat. Connection settings explain
+After a direct connection fails, waiting screen, voice, file or forwarded webpage
+byte deliveries can use an authorized peer browsing the same room, even when
+that peer is only reading chat. Connection settings explain
 the upload cost. Assistance is on by default and can be switched off. Peers
 present only in the lobby or another room may assist discovery and connection
 setup through the site's existing signaling permissions.

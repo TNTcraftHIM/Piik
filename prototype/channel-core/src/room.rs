@@ -78,8 +78,6 @@ pub struct RoomSnapshot {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomRecipient {
-    #[serde(default)]
-    pub allow_service_relay: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transit_endpoint: Option<crate::host::ServiceEndpoint>,
     pub watch_subscriptions: Vec<crate::wire::WatchSubscription>,
@@ -214,8 +212,6 @@ impl RoomRuntime {
             vec![]
         };
         Some(RoomRecipient {
-            allow_service_relay: room.as_ref().is_some_and(|room| room.can_manage)
-                && self.policy.allow_service_relay,
             transit_endpoint,
             watch_subscriptions: self
                 .activity
@@ -280,6 +276,7 @@ impl RoomRuntime {
 
     fn project(&self, views: BTreeMap<Uuid, RoomRecipient>) -> crate::host::RoomProjection {
         crate::host::RoomProjection {
+            allow_service_relay: self.policy.allow_service_relay,
             watch_activities: self
                 .watch_activities
                 .iter()
@@ -2587,9 +2584,28 @@ mod tests {
             Some(d)
         );
         assert!(!room.base_links().any(|link| link.child == a));
+        room.browse(endpoints[&c].member, c, false).unwrap();
+        room.reconcile_with_pairs(&endpoints, 2, &pairs);
+        let room_view = room.projection(&endpoints).snapshot(a, true).unwrap().room;
+        assert!(!room_view.participant_session_ids.contains(&c));
+        assert_eq!(
+            room_view
+                .file_activity
+                .iter()
+                .map(|entry| (entry.session_id, entry.sending, entry.receiving))
+                .collect::<Vec<_>>(),
+            [(b, true, false), (c, false, true), (d, true, true)]
+        );
         room.files.remove(c, 1, file.id, false);
         room.reconcile_with_pairs(&endpoints, 3, &pairs);
         assert_eq!(room.base_links().count(), 0);
+        assert!(room
+            .projection(&endpoints)
+            .snapshot(a, true)
+            .unwrap()
+            .room
+            .file_activity
+            .is_empty());
     }
 
     #[test]

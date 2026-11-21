@@ -346,10 +346,7 @@ export class ChannelSession {
   }
 
   start = (): void => {
-    if (!this.closed) return;
-    this.closed = false;
-    this.feedbackAudio.configure(this.view.feedbackSound);
-    this.connect();
+    if (this.closed) this.connect();
   };
 
   setFeedbackSound = (patch: Partial<RoomPreferences["feedbackSound"]>): void => {
@@ -403,7 +400,10 @@ export class ChannelSession {
   }
 
   private connect(acceptWelcome?: (event: Extract<ChannelEvent, { type: "welcome" }>) => string | undefined, newIdentity = false): void {
-    if (this.closed) return;
+    if (this.closed) {
+      this.closed = false;
+      this.feedbackAudio.configure(this.view.feedbackSound);
+    }
     this.releaseDebug ??= registerDebugCollector("channel", () => {
       const { state, sessionId } = this.view;
       if (!state || !sessionId) return;
@@ -610,15 +610,10 @@ export class ChannelSession {
         if (event.type === "ack") request.resolve();
         else request.reject(new Error(event.code));
       } else if (event.type === "error" && !event.requestId) {
-        if (event.code === "incompatible_protocol" || event.code === "invalid_credential") {
-          this.close(); this.patch({ error: event.code }); return;
+        if (!this.view.sessionId || event.code === "incompatible_protocol" || event.code === "invalid_credential") {
+          this.close();
         }
-          this.patch({ error: event.code });
-        if (!this.view.sessionId) {
-          this.closed = true;
-          this.socket?.close();
-          this.patch({ connection: "closed" });
-        }
+        this.patch({ error: event.code });
       }
     }
   }
@@ -1763,7 +1758,6 @@ export class ChannelSession {
 
   private async connectBackupIdentity(domainId: string, userId: string, identity: { credential?: string; ownerKey?: string }, skipRoom?: string): Promise<void> {
     this.close(); this.credential = identity.credential; this.ownerKey = identity.ownerKey; this.roomId = "";
-    this.closed = false;
     let socket: WebSocket | null = null;
     try {
       await new Promise<void>((resolve, reject) => {
@@ -2248,7 +2242,8 @@ export class ChannelSession {
     if (selection) this.finishSourceSelection(roomId, selection);
     if (!share || !selection && (!share.microphoneChange || this.local.has(share.id))) return;
     if (!selection) share.requestedMicrophone = undefined;
-    await this.app?.cancelCapture(share.id);
+    // A ready OBS input may be waiting for this independent picker to close.
+    if (!selection || this.app?.externalInput(share.id)?.state !== "prepared") await this.app?.cancelCapture(share.id);
     this.patch({});
   };
 
@@ -2899,10 +2894,25 @@ export class ChannelSession {
       this.patch({});
     } finally { this.finishScreenSelection(roomId, share, selection); }
   });
-  private commitExternalScreen(app: ChannelApp, event: Extract<NativeExternalInputState, { state: "prepared" | "live" }>): Promise<void> {
+  private async commitExternalScreen(app: ChannelApp, event: Extract<NativeExternalInputState, { state: "prepared" | "live" }>): Promise<void> {
     const entry = [...this.screenShares].find(([, share]) => share.id === event.publicationId);
-    if (!entry) return Promise.resolve();
+    if (!entry) return;
     const [roomId, share] = entry;
+    const input = app.externalInput(share.id);
+    const prepared = () => this.app === app && this.screenShares.get(roomId) === share
+      && app.externalInput(share.id) === input && input?.state === "prepared" && input.captureId === event.captureId
+      && this.view.state?.channel.rooms.some(room => room.id === roomId && room.authorized && room.available);
+    const busy = () => this.sourceSelections.has(roomId) || this.view.pending.has(`screen:${roomId}`);
+    while (prepared() && busy()) {
+      await new Promise<void>(resolve => {
+        const unsubscribe = this.subscribe(() => {
+          if (prepared() && busy()) return;
+          unsubscribe();
+          resolve();
+        });
+      });
+    }
+    if (!prepared()) return;
     return this.action(`screen:${roomId}`, async () => {
       const selection = this.selectSource(roomId);
       selection.committing = true;
@@ -3499,13 +3509,11 @@ export class ChannelSession {
     old?.close();
     this.rejectRequests("disconnected");
     this.beginRecovery();
-    this.closed = false;
     this.connect();
   };
 
   joinAsNewIdentity = (): void => {
     this.close();
-    this.closed = false;
     this.connect(undefined, true);
   };
 
