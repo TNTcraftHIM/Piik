@@ -20,7 +20,7 @@
 - **房主预览正常，朋友都看不到。** 大家可以[加入同一个虚拟局域网](./network.zh-CN.md#可选虚拟局域网)。房主在组网工具里查看自己这台设备的 IPv4 地址，再打开 Piik App 的 **本地房间 → 局域网邀请地址**，在列表里选中同一个地址。开始分享后，把新生成的完整邀请链接发给朋友。
 - **有支持服务器转发的站点。** 请管理员确认站点已启用媒体转发（SFU）。房主在该站点关闭 **隐私模式** 后开播，发送该站点生成的新邀请。Piik 会在直连失败时尝试服务器转发。[用 App 在已有站点分享](./getting-started.zh-CN.md#通过已有站点使用-app)
 
-![观众端提示「没有可用的媒体线路」，截图中的旧版入口叫「问题排查」，新版叫「疑难解答」。](../assets/guide/viewer-route-failure.zh-CN.png#gh-light-mode-only)
-![观众端提示「没有可用的媒体线路」，截图中的旧版入口叫「问题排查」，新版叫「疑难解答」。](../assets/guide/viewer-route-failure.zh-CN.dark.png#gh-dark-mode-only)
+![观众端提示「没有可用的媒体线路」，点击「疑难解答」查看连接办法。](../assets/guide/viewer-route-failure.zh-CN.png#gh-light-mode-only)
+![观众端提示「没有可用的媒体线路」，点击「疑难解答」查看连接办法。](../assets/guide/viewer-route-failure.zh-CN.dark.png#gh-dark-mode-only)
 
 如果连房间网页都打不开，见[邀请打不开](./troubleshooting.zh-CN.md#进不去朋友的房间)。如果画面能动、只有声音听不到，见[声音排查](./sound-help.zh-CN.md)。

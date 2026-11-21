@@ -13,9 +13,11 @@ English · [简体中文](./getting-started.zh-CN.md) · [Documentation](./READM
 
 If you received only a four-digit room code, ask your friend for their Piik site address. Open that address, enter the **Site passphrase** if prompted, then select **Join a room**. Enter the four digits and select the arrow to join.
 
-![Four room-code boxes and the arrow that submits the code.](../assets/guide/join-code.en.png)
+![Four room-code boxes and the arrow that submits the code.](../assets/guide/join-code.en.png#gh-light-mode-only)
+![Four room-code boxes and the arrow that submits the code.](../assets/guide/join-code.en.dark.png#gh-dark-mode-only)
 
-![The Enter room password control opens a password field and a Join button.](../assets/guide/join-password.en.png)
+![The Enter room password control opens a password field and a Join button.](../assets/guide/join-password.en.png#gh-light-mode-only)
+![The Enter room password control opens a password field and a Join button.](../assets/guide/join-password.en.dark.png#gh-dark-mode-only)
 
 [Get help joining or watching](./troubleshooting.md#common-problems).
 
@@ -25,14 +27,16 @@ If you received only a four-digit room code, ask your friend for their Piik site
 
 1. Open [demo.piik.tv](https://demo.piik.tv) in your browser. You can share without an account or download.
 2. Select **Start sharing**. Choose **Browser** to share a screen, window, or tab, or **Camera** to share your camera. Pick what you want viewers to see and enable audio if the picker offers it.
-3. When your picture appears in the preview, select **Copy** beside the invitation link and send the invitation to your friends. You can also show the room’s **QR code** for them to scan.
+3. When your picture appears, select **Copy** under **Admission** and send the invitation to your friends. If a friend is nearby, open the **QR code** beside the link for them to scan.
 4. Keep the sharing tab open while friends watch. Select **Stop sharing** when you’re done.
 
 For iPhone or iPad, see [screen sharing in Safari](./sharing.md#iphone-and-ipad-screen-sharing). If you can’t start sharing, see [sharing troubleshooting](./troubleshooting.md#starting-a-share).
 
-![The invitation link has Copy and QR code buttons. The link shown is an example.](../assets/guide/invite-copy.en.png)
+![Copy appears above the sample invitation, its QR code button and the Skip passwords switch.](../assets/guide/invite-copy.en.png#gh-light-mode-only)
+![Copy appears above the sample invitation, its QR code button and the Skip passwords switch.](../assets/guide/invite-copy.en.dark.png#gh-dark-mode-only)
 
-![The invitation QR code opens in a small panel. Ask your friend to scan the code from your own room.](../assets/guide/invite-qr.en.png)
+![The invitation QR code opens in a small panel. Ask your friend to scan the code from your own room.](../assets/guide/invite-qr.en.png#gh-light-mode-only)
+![The invitation QR code opens in a small panel. Ask your friend to scan the code from your own room.](../assets/guide/invite-qr.en.dark.png#gh-dark-mode-only)
 
 ## Share with Piik App
 

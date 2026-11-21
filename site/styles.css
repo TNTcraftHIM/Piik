@@ -176,21 +176,13 @@ details p { max-width: 610px; padding: 0 24px 23px 0; color: var(--muted); font-
 .faq-heading { display: flex; align-items: center; gap: 14px; }
 .faq-intro h2 { margin: 0; font-size: clamp(30px, 3vw, 42px); line-height: 1.15; }
 .faq-tv { flex: none; width: 38px; height: 38px; color: var(--action-text); transform: rotate(-7deg); }
-.faq-support { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.faq-support a { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px 12px; padding: 13px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); text-decoration: none; }
-.faq-support strong { font-size: 16px; color: var(--action-text); }
-.faq-support small { grid-column: 1 / -1; color: var(--muted); font-size: 13px; line-height: 1.55; }
-.faq-link-arrow { color: var(--action-text); }
+.faq-support { display: flex; flex-wrap: wrap; gap: 12px; }
 .questions details { border-bottom: 1px solid var(--line); }
 .questions details:first-child { border-top: 1px solid var(--line); }
 .questions summary { min-height: 58px; padding-block: 17px; font-size: clamp(15px, 1.4vw, 18px); line-height: 1.5; }
-.questions summary:focus-visible { outline-offset: 2px; }
+.questions summary:is(:hover, :focus-visible) { color: var(--action-text); }
 .questions p { max-width: 68ch; padding: 0 24px 20px 0; font-size: 15px; line-height: 1.75; }
 .questions a { color: var(--action-text); }
-@media (hover: hover) {
-  .questions summary:hover, .faq-support a:hover strong { color: var(--action-text); text-decoration: underline; }
-  .faq-support a:hover { border-color: var(--action-text); }
-}
 .project-note { display: flex; align-items: flex-start; gap: 30px; padding: 32px 36px; background: var(--soft-orange); border: 1px solid color-mix(in srgb, var(--orange) 30%, var(--line)); border-radius: 18px; }
 .project-tv { width: 62px; height: 62px; flex: none; color: var(--action-text); }
 .project-content { flex: 1; min-width: 0; }
@@ -286,7 +278,6 @@ html[lang="zh-CN"] .eyebrow { letter-spacing: .13em; }
   .modes div + div { margin-top: 0; }
   .faq-intro { grid-template-columns: 1fr; gap: 16px; margin-bottom: 20px; }
   .faq-heading { justify-content: space-between; }
-  .faq-support a { padding: 10px 12px; gap: 3px 6px; }
   .faq-tv { width: 34px; height: 34px; }
   summary { font-size: 14px; padding-block: 20px; }
   details p { padding-right: 9px; }
@@ -300,7 +291,6 @@ html[lang="zh-CN"] .eyebrow { letter-spacing: .13em; }
   .footer-note { margin-top: 0; }
 }
 @media (max-width: 380px) {
-  .faq-support { grid-template-columns: 1fr; }
   .wrap { width: calc(100% - 32px); }
   h1, html[lang="zh-CN"] h1 { font-size: clamp(34px, 11.5vw, 43px); }
   .hero-actions .button { gap: 18px; padding-inline: 18px; }

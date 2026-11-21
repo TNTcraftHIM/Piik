@@ -1,9 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { AppHeader } from "../components/living/Header";
-import { Tooltip } from "../components/living/Tooltip";
-import { RoomCodeInput, RoomCodeError } from "../components/living/RoomCodeInput";
+import { JoinCodeForm } from "../components/living/JoinRoomForms";
 import { HintComic } from "../components/living/hints";
-import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
 import { roomRouteForExplicitEntry } from "../lib/session";
 
@@ -24,22 +22,16 @@ export function JoinPage() {
     window.location.assign(route);
   }
 
-  const goButton = (
-    <button
-      className="lr-join-go"
-      type="submit"
-      aria-label={t("join.submit")}
-      disabled={roomId.length !== 4}
-    >
-      <Glyph name="arrowRight" size={26} />
-    </button>
-  );
-
   return (
     <div className="lr-app">
       <AppHeader />
       <main className="lr-join">
-        <form className="lr-join-panel" onSubmit={join} noValidate>
+        <JoinCodeForm
+          value={roomId}
+          rejectedAttempt={rejectedAttempt}
+          onChange={(value) => { setRoomId(value); setRejectedAttempt(0); }}
+          onSubmit={join}
+        >
           <span
             className="lr-join-door"
             role="img"
@@ -53,14 +45,7 @@ export function JoinPage() {
               <p className="lr-join-site">{t("join.hint", { site: window.location.host })}</p>
             </div>
           )}
-          <RoomCodeInput value={roomId} rejectedAttempt={rejectedAttempt} autoFocus
-            onChange={value => { setRoomId(value); setRejectedAttempt(0); }} />
-          <RoomCodeError attempt={rejectedAttempt} />
-          <Tooltip kind="hint-join-go" text={vis ? undefined : t("join.submit")}>
-            {goButton}
-          </Tooltip>
-          {vis ? null : <span className="lr-cap">{t("join.submit")}</span>}
-        </form>
+        </JoinCodeForm>
       </main>
     </div>
   );

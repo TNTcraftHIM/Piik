@@ -197,11 +197,7 @@ node scripts/update-guide-images.mjs http://127.0.0.1:8787
 npm run build:website
 ```
 
-The script regenerates the audio and network diagrams from shared icons and
-palette, then captures `/__tooltip-preview` production components using sample data,
-both languages, light/dark themes and reduced motion. It closes its own session.
-Captures cover the mode selector, source picker, sharing settings, voice panel
-and sample sharing-failure dialog. Place each beside the task it explains. Markdown uses GitHub's
+The script opens the guide scenes at `/__guide-preview` and captures the production controls with sample room data. For a changed control, update its scene to show the action readers take, then rerun the command above. Each scene produces English and Simplified Chinese PNGs in light and dark themes. Markdown uses GitHub's
 `#gh-light-mode-only` / `#gh-dark-mode-only` image hints, which the documentation
 theme also follows when its appearance control changes. Do not invert or tint
 screenshots: capture the actual theme. SVG explanations inherit the page's

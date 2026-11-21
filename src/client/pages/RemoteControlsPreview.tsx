@@ -29,13 +29,14 @@ const participants = [
   { peerId: "preview-gamepad", name: "Player 3" },
 ];
 
-export function RemoteControlsPreview({ joystick = false }: { joystick?: boolean }) {
+export function RemoteControlsPreview({ joystick = false, guide = false, guidePoster }: { joystick?: boolean; guide?: boolean; guidePoster?: string }) {
   const { lang, t } = useCopy();
   const en = lang === "en";
   const [platform, setPlatform] = useState<RemoteInputPlatform>("windows");
   const [mode, setMode] = useState<RemoteControlMode>("off");
   const [simultaneous, setSimultaneous] = useState(false);
   const [requests, setRequests] = useState<(RemoteControlRequest & { name: string })[]>([]);
+  const [stickMode, setStickMode] = useState<"keyboard" | "gamepad">("keyboard");
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [lastInput, setLastInput] = useState("");
   const [axes, setAxes] = useState({ x: 0, y: 0 });
@@ -80,7 +81,7 @@ export function RemoteControlsPreview({ joystick = false }: { joystick?: boolean
       placePointer(position);
     }, view);
     setPointer(current);
-    const sample = testMedia(false, false);
+    const sample = testMedia(false, false, guidePoster);
     element.srcObject = sample.stream;
     void element.play().catch(() => {});
     const wheel = (event: WheelEvent) => {
@@ -101,21 +102,21 @@ export function RemoteControlsPreview({ joystick = false }: { joystick?: boolean
       element.srcObject = null;
       sample.stop();
     };
-  }, [input, placePointer]);
+  }, [input, placePointer, guidePoster]);
   const closeKeyboard = () => {
     setKeyboardOpen(false);
     document.getElementById("preview-remote-keyboard-toggle")?.focus();
   };
 
   return <>{!joystick && <PermissionRequestPreview />}<section id={joystick ? "joystick-preview" : "remote-control-preview"} className="cp-section">
-    <header className="cp-section-head"><div>
+    {!guide && <header className="cp-section-head"><div>
       <h2>{joystick ? (en ? "Touch joysticks" : "触屏双摇杆") : t("remote.inputTools")}</h2>
-      {joystick ? <p>{en ? "Open L and R to try both sticks. Tap the mode switch for WASD movement on the left and mouse movement on the right. Input stays on this page."
-        : "点 L、R 可分别展开摇杆。点「手柄 ⇄」切换到键鼠：左杆按 WASD，右杆移动鼠标。输入仅显示在本页。"}</p>
+      {joystick ? <p>{en ? "Open L and R to try both sticks. Open Remote keyboard and use Stick mode to switch between keys and mouse or gamepad. Input stays on this page."
+        : "点 L、R 可分别展开摇杆。在远程键盘的「摇杆模式」中切换键鼠或手柄。输入仅显示在本页。"}</p>
         : <p>{en ? "Expand the mini mouse and drag its lower half to move the pointer. Hold and move L or R to drag, or hold a button with one finger and move the lower half with another. Pinch or pan the picture with two fingers to adjust the local view. Tap the wheel to middle-click, swipe to scroll, or hold to drag. Try direct touch or the compact trackpad below. Input stays in the local log."
         : "展开迷你鼠标，拖动下半部移动光标。按住 L 或 R 后移动即可拖拽，也可用一指按住按钮、另一指拖动下半部。在画面上双指缩放或平移可调整本地视图。滚轮可轻点中击、滑动滚动、长按后拖动。下方可切换直接触摸或光标触控板，输入仅记录在本地。"}</p>
         }
-    </div></header>
+    </div></header>}
     <div className="cp-stage" style={{ maxWidth: 480 }}>
       <StageTv live label={en ? "Local mouse example" : "本地鼠标示例"}>
         <video ref={mouseVideo} muted playsInline style={{ objectFit: "cover" }}
@@ -132,35 +133,36 @@ export function RemoteControlsPreview({ joystick = false }: { joystick?: boolean
           onPointerCancel={event => pointer?.cancel(event.pointerId)}
           onLostPointerCapture={event => pointer?.cancel(event.pointerId)}
           onContextMenu={event => event.preventDefault()}>
-          {pointer && <RemoteMouse pointer={pointer} positionRef={mouseLayer} touchMode={touchMode}
+          {pointer && <RemoteMouse pointer={pointer} positionRef={mouseLayer} touchMode={touchMode} mapping={stickMode}
             onLeftStick={joystick ? leftStick : undefined} onRightStick={joystick ? rightStick : undefined} onStickMouse={joystick ? stickMouse : undefined}
             pointAt={(x, y) => mouseVideo.current && picturePoint(mouseVideo.current, x, y)} />}
         </div>
       </StageTv>
     </div>
-    {joystick ? <p className="cp-input-output">
+    {!guide && <>{joystick ? <p className="cp-input-output">
       <span>{en ? "Left stick axes" : "左摇杆轴值"}</span>
       <output aria-live="off">X {axes.x.toFixed(2)} · Y {axes.y.toFixed(2)}</output>
       <span>{t("remote.rightStick")}</span><output>X {rightAxes.x.toFixed(2)} · Y {rightAxes.y.toFixed(2)}</output>
       <span>{t("remote.mouseStick")}</span><output>X {mouseAxes.x.toFixed(2)} · Y {mouseAxes.y.toFixed(2)}</output>
-    </p> : <>
-    <div className="lr-viewer-settings is-single" style={{ maxWidth: 480 }}>
+    </p> : <div className="lr-viewer-settings is-single" style={{ maxWidth: 480 }}>
       <RemoteTouchSettings mode={touchMode} onChange={setTouchMode} />
-    </div>
+    </div>}
     <div className="cp-tools">
-      <label className="lr-input"><span>{en ? "Host platform" : "房主平台"}</span>
+      {!joystick && <label className="lr-input"><span>{en ? "Host platform" : "房主平台"}</span>
         <select value={platform} onChange={event => setPlatform(event.target.value as RemoteInputPlatform)}>
           <option value="windows">Windows</option><option value="darwin">macOS</option><option value="linux">Linux</option>
         </select>
-      </label>
+      </label>}
       <Btn id="preview-remote-keyboard-toggle" icon="keyboard" title="remote.keyboard" cap="remote.keyboard" hint="hint-remote-keyboard"
         expanded={keyboardOpen} controls="preview-remote-keyboard" onClick={() => setKeyboardOpen(value => !value)} />
     </div>
     <div id="preview-remote-keyboard" className="cp-keyboard" hidden={!keyboardOpen}>
       {keyboardOpen && <RemoteKeyboard key={platform} platform={platform} touch input={input} close={closeKeyboard}
+        stickMode={joystick ? { value: stickMode, onChange: setStickMode } : undefined}
         allowText={requests.filter(request => request.state !== "pending").length < 2}
         releaseKey={releaseKey} onReleaseKeyChange={setReleaseKey} />}
     </div>
+    {!joystick && <>
     <p className="cp-input-output"><span>{en ? "Latest input" : "最近一次输入"}</span>
       <output>{lastInput || (en ? "Touch the picture directly, or tap the mini mouse for pointer controls." : "直接触摸画面，或轻点迷你鼠标展开光标控制。")}</output>
     </p>
@@ -195,7 +197,7 @@ export function RemoteControlsPreview({ joystick = false }: { joystick?: boolean
           collaboration: Boolean(grant) };
       })} />
     </>}
-  </section></>;
+  </>}</section></>;
 }
 
 function PermissionRequestPreview() {

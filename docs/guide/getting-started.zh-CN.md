@@ -13,9 +13,11 @@
 
 如果朋友只发了四位房间号，先问对方要 Piik 站点地址。打开该地址，按提示输入 **站点口令**，再点击 **加入房间**，填入四位房间号并点击箭头。
 
-![四格房间号输入框及提交房间号的箭头。](../assets/guide/join-code.zh-CN.png)
+![四格房间号输入框及提交房间号的箭头。](../assets/guide/join-code.zh-CN.png#gh-light-mode-only)
+![四格房间号输入框及提交房间号的箭头。](../assets/guide/join-code.zh-CN.dark.png#gh-dark-mode-only)
 
-![展开「输入房间密码」后显示密码框和「加入」按钮。](../assets/guide/join-password.zh-CN.png)
+![展开「输入房间密码」后显示密码框和「加入」按钮。](../assets/guide/join-password.zh-CN.png#gh-light-mode-only)
+![展开「输入房间密码」后显示密码框和「加入」按钮。](../assets/guide/join-password.zh-CN.dark.png#gh-dark-mode-only)
 
 [加入或观看遇到问题](./troubleshooting.zh-CN.md#常见问题)。
 
@@ -25,14 +27,16 @@
 
 1. 用浏览器打开 [demo.piik.tv](https://demo.piik.tv)。无需注册或下载就能分享。
 2. 点击 **开始分享**。选择 **浏览器** 可以分享屏幕、窗口或标签页，选择 **摄像头** 可以分享镜头画面。选好要分享的画面，如果选择器提供音频选项，可按需开启。
-3. 预览出现画面后，点击邀请链接旁的 **复制**，把邀请链接发给朋友。也可以展开房间的 **二维码** 让朋友扫码。
+3. 预览出现画面后，在 **准入方式** 里点 **复制**，把邀请链接发给朋友。朋友在旁边时，可以点链接旁的 **二维码** 让对方扫码。
 4. 朋友观看时，保持分享标签页打开。结束时点击 **停止分享**。
 
 使用 iPhone 或 iPad 时，请查看 [Safari 屏幕分享说明](./sharing.zh-CN.md#iphone-与-ipad-屏幕分享)。如果无法开始分享，请查看[分享问题排查](./troubleshooting.zh-CN.md#开始分享)。
 
-![邀请链接旁的「复制」和「二维码」按钮，图中为示例链接。](../assets/guide/invite-copy.zh-CN.png)
+![上方是「复制」，下方显示示例邀请链接、二维码按钮和「免密邀请」开关。](../assets/guide/invite-copy.zh-CN.png#gh-light-mode-only)
+![上方是「复制」，下方显示示例邀请链接、二维码按钮和「免密邀请」开关。](../assets/guide/invite-copy.zh-CN.dark.png#gh-dark-mode-only)
 
-![「邀请二维码」会在小面板里打开。请朋友扫描你的房间里显示的二维码。](../assets/guide/invite-qr.zh-CN.png)
+![「邀请二维码」会在小面板里打开。请朋友扫描你的房间里显示的二维码。](../assets/guide/invite-qr.zh-CN.png#gh-light-mode-only)
+![「邀请二维码」会在小面板里打开。请朋友扫描你的房间里显示的二维码。](../assets/guide/invite-qr.zh-CN.dark.png#gh-dark-mode-only)
 
 ## 用 Piik App 分享
 

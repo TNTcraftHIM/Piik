@@ -21,7 +21,16 @@
 .VPDoc .vp-doc details > summary { padding: 14px 0; line-height: 1.5; }
 .VPDoc .vp-doc details[open] { padding-bottom: 16px; }
 .VPDoc .vp-doc details[open] > summary { border-bottom: 1px solid var(--line); }
-.VPDoc .vp-doc img { object-fit: contain; max-height: min(70vh, 560px); }
+.VPDoc .vp-doc img { max-width: 100%; height: auto; }
+.VPDoc .vp-doc p:has(> img) { margin-block: 24px; }
+.VPDoc .vp-doc p > img {
+  display: block;
+  width: auto;
+  margin-inline: auto;
+}
+.VPDoc .vp-doc img:is([src$="#gh-light-mode-only"], [src$="#gh-dark-mode-only"]) {
+  border-radius: 12px;
+}
 .VPDoc :is(a, summary):focus-visible { outline: 2px solid var(--action-text); outline-offset: 3px; }
 @media (max-width: 767px) {
   .VPDoc .article-home { margin-bottom: 6px; }

@@ -18,6 +18,8 @@ const markdownFiles = repositoryFiles.filter((file) => file.endsWith(".md"));
 const failures = [];
 const warnings = [];
 const anchorCache = new Map();
+const guideReferences = new Set();
+const guideDirectory = resolve(root, "docs/assets/guide");
 
 const contextBudgetRemediation =
   "Move directory-specific rules to nested or path-scoped context, move " +
@@ -103,6 +105,15 @@ checkTopLevelContextBudgets();
 if (warnings.length > 0) {
   process.stderr.write(`${warnings.map((warning) => `warning: ${warning}`).join("\n")}\n`);
 }
+const generated = new Set(execFileSync(process.execPath, [resolve(root, "scripts/update-guide-images.mjs"), "--list"],
+  { encoding: "utf8" }).trim().split(/\r?\n/u).filter(Boolean));
+for (const path of guideReferences) {
+  if (!generated.has(path)) failures.push(`Guide screenshot missing from generator: ${relative(root, path)}`);
+}
+for (const path of generated) {
+  if (!guideReferences.has(path)) failures.push(`Generated screenshot missing from guides: ${relative(root, path)}`);
+}
+
 if (failures.length > 0) {
   process.stderr.write(`${failures.join("\n")}\n`);
   process.exit(1);
@@ -203,6 +214,9 @@ function checkLink(file, sourcePath, raw) {
       ? resolve(root, `.${pathText}`)
       : resolve(dirname(sourcePath), pathText)
     : sourcePath;
+  if (file.startsWith("docs/guide/") && dirname(targetPath) === guideDirectory && extname(targetPath) === ".png") {
+    guideReferences.add(targetPath);
+  }
   const repoRelative = relative(root, targetPath);
   if (repoRelative === ".." || repoRelative.startsWith(`..${sep}`)) {
     failures.push(`${file}: link leaves repository: ${target}`);

@@ -94,13 +94,12 @@ remain available without the gamepad driver.
 
 On a touchscreen, tap **Request control** in the playback bar. If the host approves requests individually, wait for them to select **Allow**. Once you have control, **L** and **R** appear on the playing picture. Touchscreen laptops work too.
 
-**L** and **R** start collapsed. Tap either button to open or close that stick. When gamepad input is available, **Gamepad ⇄** sends native left and right stick input. In **Keys + mouse ⇄**, **L** holds **W**, **A**, **S**, or **D** and **R** moves the mouse. If a physical gamepad is active on your device, you can still use touch in **Keys + mouse** mode.
+Tap **L** or **R** to open that stick. Lift your finger to center it while continuing to hold the other. Each stick slips to the edge after two seconds of inactivity. Tap its visible edge once to bring it back as you left it.
 
-The mode switch applies to both sticks. With only **R** open, use the switch beside **R**. With both open, it appears beside **L**. Lift your finger to center a stick and release its input. Closing a stick, losing focus, or disconnecting also releases its input. After reconnecting, select **Request control** again.
+Open **Remote keyboard → Stick mode** to set both sticks. In **Keys + mouse**, the left stick holds W, A, S or D and the right stick moves the mouse. When the Host supports gamepad input and the Viewer has no physical gamepad connected, choose **Gamepad** to send left and right stick input. Closing a stick, leaving the page or disconnecting releases the affected inputs. After reconnecting, select **Request control** again.
 
-![The Viewer’s L and R sticks are both open, with the Gamepad mode switch next to L.](../assets/guide/touch-joystick.en.png)
-
-Tap the mode switch beside **L** to switch both sticks between gamepad and keyboard-and-mouse input.
+![The Viewer has opened both touch sticks over the shared picture.](../assets/guide/touch-joystick.en.png#gh-light-mode-only)
+![The Viewer has opened both touch sticks over the shared picture.](../assets/guide/touch-joystick.en.dark.png#gh-dark-mode-only)
 
 ## End control
 
