@@ -3,6 +3,24 @@ import type { GlyphName } from "../ui/icons";
 import type { ChannelMessage, ChannelPublication, ChannelRoom, ChannelSnapshot, ChannelUser, WatchActivity } from "./protocol";
 import type { WatchPlayer } from "./watch-playback";
 
+export function sameCalendarDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+export function messageDateFormats(lang: string, timeZone: string) {
+  const clock = { hour: "2-digit", minute: "2-digit" } as const;
+  const withDate = { ...clock, month: "short", day: "numeric" } as const;
+  const today = new Intl.DateTimeFormat(lang, { ...clock, timeZone });
+  const thisYear = new Intl.DateTimeFormat(lang, { ...withDate, timeZone });
+  const otherYear = new Intl.DateTimeFormat(lang, { ...withDate, year: "numeric", timeZone });
+  return {
+    divider: new Intl.DateTimeFormat(lang, { dateStyle: "long", timeZone }).format,
+    tooltip: new Intl.DateTimeFormat(lang, { dateStyle: "long", timeStyle: "long", timeZone }).format,
+    clock: (date: Date, reference: Date) =>
+      (sameCalendarDay(date, reference) ? today : date.getFullYear() === reference.getFullYear() ? thisYear : otherYear).format(date),
+  };
+}
+
 export function roomHasUnread(room: Pick<ChannelRoom, "authorized" | "lastMessageSeq">, readThrough?: number): boolean {
   return room.authorized && readThrough !== undefined && room.lastMessageSeq > readThrough;
 }

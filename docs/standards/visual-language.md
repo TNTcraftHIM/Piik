@@ -301,9 +301,10 @@ counts remain visible when those actions are hidden.
 Keep consecutive messages within an author group close, with a larger break
 between groups. In 3.0 history, show a localized date including the year before
 each day's first loaded message, including the first group. Local calendar-day
-boundaries break author groups; short message times expose the full date and
-time as details. Embedded actions follow the content with compact targets rather
-than reserving a column beside multiline text. Showing them keeps the message
+boundaries break author groups. Today's messages show the time. Older messages
+also show the date, with the year for a different calendar year. All timestamps
+expose their full date and time as details. Embedded actions follow the content
+with compact targets. Showing them keeps the message
 layout stable; their reaction picker retains the shared floating surface.
 [W3C focus guidance](https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html)
 requires visible keyboard focus; it does not require the same outline for a pointer click.

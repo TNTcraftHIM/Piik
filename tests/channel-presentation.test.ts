@@ -4,15 +4,24 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ChannelRoomListItem } from "../src/client/channel/components/ChannelRoomListItem";
 import { ChannelPeople } from "../src/client/channel/components/ChannelPeople";
 import type { ChannelController } from "../src/client/channel/types";
-import { firstUnreadMessageId, roomActivityPeople, roomPeople, roomSessionViewing, screenTitle, watchAudience } from "../src/client/channel/presentation";
+import { firstUnreadMessageId, messageDateFormats, roomActivityPeople, roomPeople, roomSessionViewing, screenTitle, watchAudience } from "../src/client/channel/presentation";
 import { snapshotSchema, watchActivitySchema } from "../src/client/channel/protocol";
 import { say, t, type CopyKey } from "../src/client/ui/copy";
-
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 import type { WatchMedia } from "../src/client/channel/watch-media";
 
 const english = (key: CopyKey) => t("en", key);
 const chinese = (key: CopyKey) => t("zh", key);
+
+it("adds the date to a message timestamp across local midnight", () => {
+  const message = new Date(2026, 10, 20, 23, 59);
+  const formats = messageDateFormats("en-US", new Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const sameDay = formats.clock(message, new Date(2026, 10, 20, 23, 59));
+  const nextDay = formats.clock(message, new Date(2026, 10, 21));
+  expect(sameDay).not.toContain("Nov");
+  expect(nextDay).toContain("Nov 20");
+  expect(formats.clock(message, new Date(2027, 0, 1))).toContain("2026");
+});
 
 it("projects joined watch people independently of transport and deduplicates their endpoints", () => {
   const sessions = [["owner-page", "owner"], ["owner-app", "owner"], ["viewer-web", "viewer"], ["viewer-app", "viewer"], ["direct-web", "direct"], ["relay-endpoint", "relay"]];

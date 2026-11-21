@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { Glyph } from "../../ui/icons";
@@ -7,7 +7,7 @@ import { useCopy } from "../../ui/copy";
 import { MAX_MESSAGE_CODE_POINTS, type ChannelMessage, type ChannelUser, type ChannelUserSummary } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
 import { ChannelSettingsError } from "./ChannelSettingsDialog";
-import { firstUnreadMessageId, messageAuthorName } from "../presentation";
+import { firstUnreadMessageId, messageAuthorName, messageDateFormats, sameCalendarDay } from "../presentation";
 import { ChannelAttachment } from "./ChannelAttachment";
 import { ChannelMessageContent } from "./ChannelMessageContent";
 import { type AttachmentLimits, type DraftFile, type ChannelAttachments, fileSize } from "../attachments";
@@ -49,6 +49,43 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
 }) {
   const { lang, t } = useCopy();
   const surfaceDocument = useSurfaceDocument();
+  const [{ today, timeZone }, setCalendar] = useState(() => ({
+    today: new Date(), timeZone: new Intl.DateTimeFormat().resolvedOptions().timeZone,
+  }));
+  const formats = useMemo(() => messageDateFormats(lang, timeZone), [lang, timeZone]);
+  const messageDates = useMemo(() => {
+    let previous: Date | undefined;
+    return messages.map(message => {
+      const date = new Date(message.time);
+      const newDay = !previous || !sameCalendarDay(date, previous);
+      previous = date;
+      return { newDay, divider: newDay ? formats.divider(date) : undefined,
+        clock: formats.clock(date, today), tooltip: formats.tooltip(date), iso: date.toISOString() };
+    });
+  }, [messages, formats, today]);
+  useEffect(() => {
+    const view = surfaceDocument?.defaultView;
+    if (hidden || !surfaceDocument || !view) return;
+    let timer: number | undefined;
+    const refresh = () => {
+      view.clearTimeout(timer);
+      if (surfaceDocument.visibilityState === "hidden") return;
+      const now = new Date();
+      const timeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+      setCalendar(previous => previous.timeZone === timeZone && sameCalendarDay(previous.today, now)
+        ? previous : { today: now, timeZone });
+      const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      timer = view.setTimeout(refresh, midnight.getTime() - now.getTime());
+    };
+    refresh();
+    surfaceDocument.addEventListener("visibilitychange", refresh);
+    view.addEventListener("focus", refresh);
+    return () => {
+      view.clearTimeout(timer);
+      surfaceDocument.removeEventListener("visibilitychange", refresh);
+      view.removeEventListener("focus", refresh);
+    };
+  }, [surfaceDocument, hidden]);
   const [deleteFailure, setDeleteFailure] = useState<{ scope: string; code: string } | null>(null);
   const conversationScope = JSON.stringify([domainId, selfUserId, roomId]);
   const displayUsers = [...new Map([...profiles.values(), ...users].map(user => [user.id, user])).values()];
@@ -410,9 +447,8 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
         </div>}
         {messages.map((message, index) => {
           const previous = messages[index - 1];
-          const date = new Date(message.time), previousDate = previous && new Date(previous.time);
-          const newDay = !previousDate || (date.getFullYear() !== previousDate.getFullYear()
-            || date.getMonth() !== previousDate.getMonth() || date.getDate() !== previousDate.getDate());
+          const dates = messageDates[index];
+          const { newDay } = dates;
           const elapsed = previous ? message.time - previous.time : 0;
           const newMessages = message.id === unreadMessage;
           const grouped = !!previous && !newDay && !newMessages && !message.reply && previous.userId === message.userId && elapsed >= 0 && elapsed < 120_000;
@@ -435,7 +471,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
               ? () => selectMention(displayUsers.find(user => user.id === message.userId)!, {
                 start: input.current?.selectionStart ?? draft.text.length, end: input.current?.selectionEnd ?? draft.text.length, query: "",
               }) : undefined}
-            dateLabel={newDay ? date.toLocaleDateString(lang, { dateStyle: "long" }) : undefined}
+            dates={dates}
             attachments={attachments} available={available} interaction={interaction} effectsEnabled={!hidden && !loadingHistory} />;
         })}
       </div>
@@ -513,8 +549,8 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
   </section>;
 }
 
-const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, avatar, dateLabel, attachments, available, interaction, authorMessageId, effectsEnabled, users, selfUserId, unread, onReply, onMessage, onMention, onDelete, deleting }: {
-  roomId: string; message: ChannelMessage; grouped: boolean; name: string; avatar?: string; dateLabel?: string;
+const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, avatar, dates, attachments, available, interaction, authorMessageId, effectsEnabled, users, selfUserId, unread, onReply, onMessage, onMention, onDelete, deleting }: {
+  roomId: string; message: ChannelMessage; grouped: boolean; name: string; avatar?: string; dates: { divider?: string; clock: string; tooltip: string; iso: string };
   attachments: ChannelAttachments; available: boolean; interaction: RoomInteractionSession | null;
   authorMessageId: string; effectsEnabled: boolean;
   users: ChannelUserSummary[]; unread: boolean; onReply(): void; onMessage?(seq: number): void;
@@ -523,21 +559,19 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
   onDelete?: () => void;
   deleting?: boolean;
 }) {
-  const { lang, t } = useCopy();
+  const { t } = useCopy();
   const mentioned = message.mentions?.some(mention => mention.userId === selfUserId)
     || (message.reply?.notify && message.reply.userId === selfUserId);
-  const date = new Date(message.time);
-  const timestamp = date.toLocaleString(lang, { dateStyle: "long", timeStyle: "long" });
   const row = useRef<HTMLElement>(null);
   const effectAnchor = useCallback(() => row.current?.closest(".c3-message-content")
     ?.querySelector(`[data-message-id="${CSS.escape(authorMessageId)}"] > .lr-person`) ?? null, [authorMessageId]);
   return <>
-    {dateLabel && <div className="c3-message-date"><time dateTime={new Date(message.time).toISOString()}>{dateLabel}</time></div>}
+    {dates.divider && <div className="c3-message-date"><time dateTime={dates.iso}>{dates.divider}</time></div>}
     {unread && <div className="c3-message-date c3-unread-divider">{t("conversation.newMessages")}</div>}
     <article ref={row} tabIndex={0} className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}${mentioned ? " is-mentioned" : ""}`} data-message-id={message.id} data-message-seq={message.seq}>
     {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} avatar={avatar} />}
     <div className="c3-message-body"><div className={grouped ? "visually-hidden" : "c3-message-meta"}><strong>{name}</strong>
-      <time dateTime={date.toISOString()} title={timestamp} aria-label={timestamp}>{date.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" })}</time>
+      <time dateTime={dates.iso} title={dates.tooltip} aria-label={dates.tooltip}>{dates.clock}</time>
     </div><div className="c3-message-content-body">
     {message.reply && <button type="button" className="c3-message-reference" disabled={!onMessage} onClick={() => onMessage?.(message.reply!.seq)}>
       <Glyph name="reply" size={14} /><strong>{message.reply.archivedAuthorName ?? users.find(user => user.id === message.reply!.userId)?.name ?? t("conversation.user")}</strong>
