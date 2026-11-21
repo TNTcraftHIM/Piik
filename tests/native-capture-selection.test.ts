@@ -33,6 +33,18 @@ describe("native capture source selection", () => {
   const game = target("My Game", "1");
   afterEach(() => setCopy({ lang: "en", vis: true }));
 
+  it("waits for display selection before offering the previous system audio exclusion", () => {
+    setCopy({ lang: "en", vis: false });
+    const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources: { kind: "ready", sources: [game, { kind: "display", sourceId: "2", title: "Screen" }],
+        processAudio: false, systemAudio: true, processAudioExclusion: false },
+      initialTab: "display", initialAudio: true, initialExcludeAudio: game, audioLocked: true,
+      onBrowser() {}, onNative() {}, onPreview: async () => null, onRefresh() {}, onCancel() {},
+    }));
+    expect(html).toMatch(/data-native-source="display:2"[^>]*aria-pressed="false"/);
+    expect(html).not.toContain(t("en", "host.sourcePicker.excludeNone"));
+    expect(html).not.toContain(t("en", "host.sourcePicker.excludeMissing"));
+  });
   it("shows one system chooser for picker-only Apps instead of duplicate desktop tabs", () => {
     setCopy({ lang: "en", vis: false });
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
@@ -220,7 +232,9 @@ describe("native capture source selection", () => {
     expect(html).toContain('data-source-tab="browser"');
     expect(html).not.toMatch(/data-source-tab="browser"[^>]*disabled=""/);
     expect(html).not.toMatch(/data-source-tab="camera"[^>]*disabled=""/);
-    expect(html).toMatch(/data-native-source="window:1:10:123456"[^>]*disabled=""/);
+    expect(html).toMatch(/data-native-source="window:1:10:123456"[^>]*aria-pressed="false"/);
+    expect(html).toMatch(/role="switch"[^>]*aria-checked="false"[^>]*disabled=""/);
+    expect(html).toMatch(/aria-label="Start sharing"[^>]*disabled=""/);
     expect(html).not.toContain('data-native-source="display:2"');
     expect(html.match(/role="tab"/g)).toHaveLength(4);
     expect([...html.matchAll(/data-source-tab="([^"]+)"/g)].map((match) => match[1]))

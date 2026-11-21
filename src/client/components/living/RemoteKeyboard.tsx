@@ -8,7 +8,7 @@ import { isCopyKey, useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { panelWindowAPI, SurfaceDocument, usePanelWindow } from "../../ui/panel-window";
 import { navigateTabs } from "../../ui/tab-navigation";
-import { Btn, Chip } from "./primitives";
+import { Btn, Chip, SegmentedChoice, SwitchItem } from "./primitives";
 import { Tooltip } from "./Tooltip";
 import { RemoteShortcutSelect } from "./RemoteShortcutSelect";
 import "./floating-panel.css";
@@ -33,7 +33,10 @@ const PAGES = REMOTE_KEYBOARD_PAGES;
 
 // The local input owns IME composition. Committed text and physical keys use
 // their existing input operations, without clipboard access or another channel.
-export function RemoteKeyboard({ input, close, mouseControl, touch, platform, onSurfaceChange, releaseKey, onReleaseKeyChange, allowText = true }: {
+export function RemoteKeyboard({ input, close, mouseControl, touch, platform, onSurfaceChange, releaseKey, onReleaseKeyChange, allowText = true, virtualSticks, stickMode, stickVisibility }: {
+  virtualSticks?: { checked: boolean; onChange(checked: boolean): void };
+  stickVisibility?: { checked: boolean; onChange(checked: boolean): void };
+  stickMode?: { value: "keyboard" | "gamepad"; onChange(value: "keyboard" | "gamepad"): void };
   input: (event: RemoteInputEvent) => void; close: () => void;
   mouseControl?: ReactNode; touch: boolean;
   platform: RemoteInputPlatform;
@@ -174,15 +177,11 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
         {modifiersKeys.slice(0, 3).map(modifier)}{key(["␣", "Space"])}{key(["↵", "Enter"])}
       </div>
       {navigation}
-      <Tooltip kind="hint-key-combination" className="lr-remote-combine-hint" text={vis ? undefined : t("remote.combinationHelp")}>
-      <label className="lr-remote-combine-keys"><input type="checkbox" checked={combineKeys}
-        aria-label={t("remote.combinationMode")}
-        onChange={event => {
-          presses.reset(); setModifiers([]); setCombineKeys(event.target.checked);
-          saveRoomPreferences({ combineKeys: event.target.checked });
+      <SwitchItem label={t("remote.combinationMode")} checked={combineKeys} icon="keyboard"
+        note={t("remote.combinationHelp")} hint="hint-key-combination" onChange={checked => {
+          presses.reset(); setModifiers([]); setCombineKeys(checked);
+          saveRoomPreferences({ combineKeys: checked });
         }} />
-        {vis ? <span aria-hidden="true"><kbd>⇧</kbd><span>+</span><kbd>…</kbd></span> : t("remote.combinationMode")}</label>
-      </Tooltip>
       {!vis && <p>{t(combineKeys ? "remote.combinationHelp" : "remote.keyboardHelp")}</p>}
     </> : <>
       <form className="lr-remote-text-entry" onSubmit={event => {
@@ -212,8 +211,24 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       </div>
     </>}
     </div>
-    <RemoteShortcutSelect value={releaseKey} onChange={onReleaseKeyChange} mac={navigator.platform.startsWith("Mac")} />
-    {!panelWindow.detached && mouseControl}
+    <details className="lr-settings-disclosure lr-remote-keyboard-settings">
+      <summary aria-label={t("remote.localSettings")}>
+        <span><Glyph name="sliders" size={17} />{vis ? null : t("remote.localSettings")}</span>
+        <Glyph name="chevron" size={16} className="lr-sharing-chevron" />
+      </summary>
+      <div className="lr-remote-settings-fields">
+        <RemoteShortcutSelect value={releaseKey} onChange={onReleaseKeyChange} mac={navigator.platform.startsWith("Mac")} />
+        {virtualSticks && <SwitchItem label={t("remote.virtualSticks")} icon="gamepad"
+          checked={virtualSticks.checked} onChange={virtualSticks.onChange} />}
+        {virtualSticks?.checked && stickMode && <SegmentedChoice label={t("remote.stickMode")} value={stickMode.value} onChange={stickMode.onChange} options={[
+          { value: "keyboard", label: t("remote.keyboardMouseMode"), icon: "keyboard" },
+          { value: "gamepad", label: t("remote.gamepadMode"), icon: "gamepad" },
+        ]} />}
+        {virtualSticks?.checked && stickVisibility && <SwitchItem label={t("remote.stickShowOnTouch")} icon="eye"
+          checked={stickVisibility.checked} onChange={stickVisibility.onChange} />}
+        {!panelWindow.detached && mouseControl}
+      </div>
+    </details>
     {!vis && touch && <p>{t("remote.touchHelp")}</p>}
   </section></SurfaceDocument.Provider>;
   return <span ref={panelWindow.slot} style={{ display: "contents" }}>

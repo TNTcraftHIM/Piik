@@ -177,16 +177,16 @@ film.addEventListener('toggle', () => {
   filmLink.focus({preventScroll:true});
 });
 
-// Native disclosures remain usable without scripts; section links also reveal them.
-function revealGuide(hash) {
+// Open a linked disclosure even when its answer was previously collapsed.
+function revealSection(hash) {
   const target = document.getElementById(hash.slice(1));
-  if (target?.matches('details.guide')) target.open = true;
+  if (target instanceof HTMLDetailsElement) target.open = true;
 }
 document.querySelectorAll('a[href^="#"]').forEach((link) => {
-  link.addEventListener('click', () => revealGuide(link.hash));
+  link.addEventListener('click', () => revealSection(link.hash));
 });
-window.addEventListener('hashchange', () => revealGuide(location.hash));
-revealGuide(location.hash);
+window.addEventListener('hashchange', () => revealSection(location.hash));
+revealSection(location.hash);
 
 const illustrations = document.querySelectorAll('.step-art');
 document.querySelectorAll('.step-art').forEach((control) => {

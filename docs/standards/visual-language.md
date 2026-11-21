@@ -111,7 +111,7 @@ permissions and window chrome are verified in the actual platform, not imitated.
 | Perform an action or open a tool | `Btn`; use a stable caption and `aria-expanded` for disclosures |
 | Turn a setting on or off immediately | `SwitchItem`; compact toolbar actions such as mute use a pressed `Btn` |
 | Select independent options within a task | Native checkboxes or independent pressed `Chip`s, such as held modifier keys; a selection awaiting Apply must not look like a committed setting |
-| Choose a short, fixed mode | Shared `.lr-toggle` sliding selection; option chips/cards when individual choices need explanations, richer previews or wrapping |
+| Choose a short, fixed mode | `SegmentedChoice` for named radio options; option chips/cards when individual choices need explanations, richer previews or wrapping |
 | Switch related content pages | A named tablist with one selected tab and its associated panel; use the shared sliding treatment for short labels, including capture categories, and `navigateTabs` for Arrow/Home/End navigation |
 | Pick a device or an item from a variable list | Existing named selector/menu; use source thumbnails when appearance helps identify the item |
 | Adjust a numeric value | Range slider for quick adjustment, with a visible value; reuse `NumberControl` when exact entry or a wider accepted range is useful |
@@ -375,8 +375,10 @@ without remote input. The compact trackpad retains its two-finger scrolling
 at normal scale.
 A separate button minimizes it and restores the selected touch mode; the
 compact trackpad cursor remains an optional local preference in playback settings.
-Only the mini mouse tucks away after resting at a picture edge, using the player
-controls' idle delay. The wheel shares middle-click, scrolling and held middle-drag
+Idle touch controls leave a small handle flush with the picture edge. The
+handle retains the full touch target. An open stick uses a translucent base
+and a distinct thumb so the picture remains visible during play.
+The wheel shares middle-click, scrolling and held middle-drag
 in one target. Expanded buttons, scrolling and pointer movement share
 the existing input grant and pointer geometry; the keyboard keeps its separate
 docked surface.

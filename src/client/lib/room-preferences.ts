@@ -7,6 +7,8 @@ const STORAGE_KEY = "piik:room-preferences:v1";
 export const CHAT_OVERLAY_LIMITS = { scale: [.8, 1.3], opacity: [.4, 1], speed: [.5, 1.5] } as const;
 export const CHAT_OVERLAY_DEFAULTS = { scale: 1, opacity: 1, speed: 1, colorBySender: false };
 export const REMOTE_KEYBOARD_PAGES = ["letters", "symbols", "functions", "text"] as const;
+const unitCoordinate = z.number().min(0).max(1);
+const stickPosition = z.object({ x: unitCoordinate, y: unitCoordinate });
 
 const roomPreferencesSchema = z.object({
   pictureFit: z.enum(["contain", "cover", "fill"]).default("contain"),
@@ -28,6 +30,9 @@ const roomPreferencesSchema = z.object({
   combineKeys: z.boolean().default(false),
   remoteReleaseKey: remoteShortcutKeySchema.default(10),
   remoteStopKey: remoteShortcutKeySchema.default(10),
+  virtualSticksEnabled: z.boolean().default(true),
+  stickPositions: z.object({ left: stickPosition.optional(), right: stickPosition.optional() }).default({}),
+  touchOnlySticks: z.boolean().default(false),
   remoteTouchMode: z.enum(["direct", "trackpad"]).default("direct"),
   remoteControlMode: remoteControlModeSchema.exclude(["off"]).default("ask"),
 });

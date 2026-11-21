@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -173,7 +174,9 @@ func TestStartupAndSiteRevocationCommitOneOriginAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer r.Close()
-	client := &http.Client{Timeout: 5 * time.Second}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	t.Cleanup(transport.CloseIdleConnections)
+	client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
 	origin := strings.TrimSuffix(r.URL(), "/client")
 	post := func(path, body string) int {
 		t.Helper()
@@ -184,6 +187,9 @@ func TestStartupAndSiteRevocationCommitOneOriginAuthority(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 			return 0
+		}
+		if _, err := io.Copy(io.Discard, response.Body); err != nil {
+			t.Error(err)
 		}
 		response.Body.Close()
 		return response.StatusCode
@@ -196,6 +202,9 @@ func TestStartupAndSiteRevocationCommitOneOriginAuthority(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 			return 0
+		}
+		if _, err := io.Copy(io.Discard, response.Body); err != nil {
+			t.Error(err)
 		}
 		response.Body.Close()
 		return response.StatusCode
@@ -261,6 +270,7 @@ func TestStartupAndSiteRevocationCommitOneOriginAuthority(t *testing.T) {
 		post("startup-site", `{"site":"https://android-fixture.trycloudflare.com"}`) != 200 {
 		t.Fatal("owned startup preference was not saved")
 	}
+	transport.CloseIdleConnections()
 	if err := r.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -280,6 +290,9 @@ func TestStartupAndSiteRevocationCommitOneOriginAuthority(t *testing.T) {
 		}
 		var state struct{ Target, StartupSite, StartupMode string }
 		json.NewDecoder(response.Body).Decode(&state)
+		if _, err := io.Copy(io.Discard, response.Body); err != nil {
+			t.Error(err)
+		}
 		response.Body.Close()
 		if state.Target != "" {
 			if state.Target == target || state.StartupSite != "https://android-fixture.trycloudflare.com" || state.StartupMode != "link" {
@@ -667,5 +680,46 @@ func TestCloseJoinsUnreadyPublicLinkStartup(t *testing.T) {
 	case <-platform.terminated:
 		t.Fatal("explicit close reported an unexpected dependency exit")
 	default:
+	}
+}
+
+func TestCloseRetiresAcceptedHTTPConnectionsAfterDrainTimeout(t *testing.T) {
+	dir := t.TempDir()
+	r, err := Start(&testPlatform{}, "", `{"platform":"android","provider":"fixture","encoders":[]}`, dir, t.TempDir(), "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	controls, err := net.Dial("tcp", strings.TrimPrefix(r.control.Endpoint().URL, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer controls.Close()
+	launcherURL, _ := url.Parse(r.launcher.URL())
+	launch, err := net.Dial("tcp", launcherURL.Host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer launch.Close()
+	// A valid incomplete HTTP header is a normal accepted StateNew connection.
+	// Waiting on its read later distinguishes shutdown retirement from listener-only closure.
+	for _, connection := range []net.Conn{controls, launch} {
+		if _, err := connection.Write([]byte("GET / HTTP/1.1\r\n")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = r.Close()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Close must retain the failed drain result: %v", err)
+	}
+	for index, connection := range []net.Conn{controls, launch} {
+		if err := connection.SetReadDeadline(time.Now().Add(100 * time.Millisecond)); err != nil {
+			t.Fatal(err)
+		}
+		_, readErr := io.Copy(io.Discard, connection)
+		var timeout net.Error
+		if errors.As(readErr, &timeout) && timeout.Timeout() {
+			t.Errorf("connection[%d] remains open after runtime Close", index)
+		}
 	}
 }

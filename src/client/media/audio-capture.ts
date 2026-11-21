@@ -23,7 +23,7 @@ export function displayMediaOptions(
 ): DisplayMediaStreamOptions {
   // Chromium web display capture otherwise defaults to speech processing.
   return {
-    video,
+    video: { displaySurface: "browser", ...video },
     // Avoid recapturing this page's room voice where the Browser supports it.
     audio: { ...audioInputConstraints(false), restrictOwnAudio: true } as BrowserAudioConstraints,
     systemAudio: "include",

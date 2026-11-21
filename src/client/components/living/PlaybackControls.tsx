@@ -4,6 +4,7 @@ import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio"
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { debugError } from "../../lib/debug";
+import { useGuideLink } from "../../lib/use-project-link";
 import { Btn } from "./primitives";
 import { PlaybackPictureControls, PlaybackSettings, type PlaybackSettingsProps } from "./PlaybackSettings";
 import { Tooltip } from "./Tooltip";
@@ -168,7 +169,9 @@ export function PlaybackControlsView({
   settings?: PlaybackSettingsProps;
   sharingAudio?: boolean; audioControlAvailable?: boolean;
 }) {
-  const { t, vis } = useCopy();
+  const { t, vis, lang } = useCopy();
+  const showSoundHelp = canPlay && !hasAudio && !sharingAudio;
+  const soundGuide = useGuideLink(lang, "sound-help", showSoundHelp, { en: "i-can-see-the-picture-but-cannot-hear-the-game", zh: "有画面但听不到游戏声音" });
   const controlsId = useId();
   const localControlsRef = useRef<HTMLDivElement>(null);
   const barRef = controlsRef ?? localControlsRef;
@@ -233,6 +236,7 @@ export function PlaybackControlsView({
           {overlayAction}
           {settings && <span className="lr-playback-picture-actions"><PlaybackPictureControls settings={settings} /></span>}
           <PlaybackMore anchor={barRef} settings={settings} overlaySettings={overlaySettings}
+            soundHelp={showSoundHelp ? soundGuide : undefined}
             onReconnect={onReconnect} reconnectAvailable={reconnectAvailable} />
         </span>
       </div>
@@ -257,15 +261,16 @@ export function PlaybackControlsView({
 }
 
 // Only detailed preferences belong here; direct playback actions stay outside.
-function PlaybackMore({ anchor, settings, overlaySettings, onReconnect, reconnectAvailable }: {
+function PlaybackMore({ anchor, settings, overlaySettings, onReconnect, reconnectAvailable, soundHelp }: {
   anchor: RefObject<HTMLDivElement | null>; settings?: PlaybackSettingsProps; overlaySettings?: ReactNode;
   onReconnect?: () => void; reconnectAvailable?: boolean;
+  soundHelp?: string;
 }) {
   const { t } = useCopy();
   const id = useId();
   const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const detailed = Boolean(settings?.preview || settings?.buffering || settings?.remoteTouch || overlaySettings || settings?.route || settings?.relayVolunteer || onReconnect);
+  const detailed = Boolean(settings?.preview || settings?.buffering || settings?.remoteTouch || overlaySettings || settings?.route || settings?.relayVolunteer || onReconnect || soundHelp);
   const available = detailed || Boolean(settings);
   useAnchoredPopover(anchor, panel, { align: "center", minVisibleHeight: 160, enabled: available });
   const reconnect = onReconnect ? <Btn icon="refresh" title="viewer.reconnect" size="dense" hint="hint-reconnect" draw="playback-reconnect"
@@ -279,6 +284,7 @@ function PlaybackMore({ anchor, settings, overlaySettings, onReconnect, reconnec
     <div id={id} ref={panel} className="lr-floating-surface lr-playback-menu lr-playback-settings" popover="auto" aria-label={t("playback.more")}
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
       <PlaybackSettings {...settings} picture={settings} overlaySettings={overlaySettings} reconnect={reconnect} />
+      {soundHelp && <a className="lr-btn is-quiet" href={soundHelp} target="_blank" rel="noopener noreferrer">{t("playback.soundHelp")}</a>}
     </div>
   </span>;
 }

@@ -1,32 +1,45 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#171a20" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#f4f3ef" media="(prefers-color-scheme: light)" />
-    <link rel="icon" href="/favicon.ico" />
-    <link rel="icon" type="image/png" sizes="96x96" href="/favicon.png" />
-    <link rel="icon" type="image/svg+xml" sizes="any" href="/favicon.svg" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Piik</title>
     <script>
-      var systemTheme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-      var theme;
-      try { theme = localStorage.getItem("piik:ui-theme"); } catch (e) {}
-      var launch = new URLSearchParams(location.hash.slice(1));
-      var launchTheme = launch.get("piik-theme");
-      var explicitTheme = (new URLSearchParams(location.search).get("piik-preferences") || "").split(",").includes("theme");
-      if (launch.get("piik-client") === "1" &&
-          (launchTheme === "light" || launchTheme === "dark" || launchTheme === "system") &&
-          (explicitTheme || (theme !== "light" && theme !== "dark"))) {
-        theme = launchTheme === "system" ? systemTheme : launchTheme;
+      const systemTheme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      let theme;
+      try { theme = localStorage.getItem("piik:ui-theme"); } catch {}
+      const launch = new URLSearchParams(location.hash.slice(1));
+      const launchTheme = launch.get("piik-theme");
+      const explicit = new URLSearchParams(location.search).get("piik-preferences")?.split(",").includes("theme");
+      const themes = ["light", "dark"];
+      if (launch.get("piik-client") === "1" && (explicit || !themes.includes(theme))) {
+        if (themes.includes(launchTheme)) theme = launchTheme;
+        if (launchTheme === "system") theme = systemTheme;
       }
-      document.documentElement.dataset.theme =
-        theme === "light" || theme === "dark" ? theme : systemTheme;
+      document.documentElement.dataset.theme = themes.includes(theme) ? theme : systemTheme;
     </script>
+    <style>
+      html[data-theme=light] { color-scheme:light; background:#f4f3ef; }
+      html[data-theme=dark] { color-scheme:dark; background:#171a20; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main id="boot" style="text-align:center">
+        <p id="boot-status" role="status">Piik · Loading…</p>
+        <button id="boot-refresh" onclick="location.reload()">↻ Refresh</button>
+      </main>
+    </div>
+    <script>
+      function bootFailed() {
+        const status = document.getElementById("boot-status");
+        if (status) status.textContent = "Page could not load";
+      }
+      addEventListener("piik:boot-failed", bootFailed);
+      addEventListener("error", event => {
+        if (event.target.type === "module") bootFailed();
+      }, true);
+    </script>
     <script type="module" src="/src/client/main.tsx"></script>
   </body>
 </html>

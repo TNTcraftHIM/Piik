@@ -159,8 +159,20 @@ it("maps standard gamepads into one negotiated grant and resets on focus loss, u
     // Polling also notices a device removed without a Browser event.
     pads = []; tick(119);
     expect(channel.sent.at(-1)).toEqual({ type: "gamepad-stop", grant });
+    controller.setLeftStick(0.25, -0.5); tick(136);
+    expect(channel.sent.at(-1)).toMatchObject({ type: "gamepad", gamepad: { leftX: 8192, leftY: -16384, buttons: 0 } });
+    controller.setLeftStick(0, 0);
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-reset", grant });
+    controller.setLeftStick(-0.75, 0.5);
+    pads = [pad]; tick(153);
+    controller.setLeftStick(0, 0);
+    expect(channel.sent.at(-1)).toEqual(report);
+    pads = []; tick(170);
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-stop", grant });
+    controller.setLeftStick(0.5, 0); tick(187);
     page.hidden = true; page.dispatchEvent(new Event("visibilitychange"));
     expect(frames.size).toBe(0);
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-reset", grant });
     channel.receive({ platform: "windows", mode: "ask", state: "suspended", intent, grant, coPlay: true, capabilities: ["coPlay", "gamepad"] });
   } finally {
     controller.dispose();
@@ -217,6 +229,50 @@ it("reuses the authenticated identity across media routes and syncs after delaye
   expect(sequence(newPacket)).toBeGreaterThan(sequence(oldPacket));
   nextSession.dispose();
   route.dispose();
+});
+
+it("opens a fresh control endpoint after local backpressure retires an intent on a healthy route", async () => {
+  const registered: InputIdentity[] = [];
+  const route = new InputRoute(() => {});
+  const upstream = new Channel();
+  route.enable(identity => { registered.push(identity); return true; });
+  route.setUpstream(upstream as unknown as RTCDataChannel);
+  upstream.receive({ ready: true });
+  const original = route.current!;
+  const interrupted = vi.fn();
+  const session = new RemoteInputSession(original, () => {}, interrupted);
+  try {
+    if (!(original instanceof EventTarget)) throw new Error("Expected the route's input event target");
+    original.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ platform: "windows", mode: "room", state: "ready" }) }));
+    session.request();
+    const intent = session.state?.intent;
+    expect(intent).toBeDefined();
+    original.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({
+      platform: "windows", mode: "room", state: "active", intent, grant: "a".repeat(64),
+    }) }));
+    expect(session.state?.state).toBe("active");
+    // Reproduce a stalled endpoint queue while leaving the underlying media channel open.
+    const text = "x".repeat(1900);
+    for (let index = 0; index < 6; index++) session.input({ type: "text", text });
+    expect(original.readyState).toBe("closed");
+    expect(interrupted).toHaveBeenCalledOnce();
+    expect(upstream.readyState).toBe("open");
+    const retiredEpoch = upstream.sent.find(packet => packet.closed === true)?.epoch;
+    expect(retiredEpoch).toBeDefined();
+    expect(route.current).toBeNull();
+    expect(upstream.sent.at(-1)).toEqual({ ready: true });
+    upstream.receive({ ready: true });
+    expect(route.current).not.toBe(original);
+    expect(route.current?.readyState).toBe("open");
+    expect(registered).toHaveLength(1);
+    const restored = new RemoteInputSession(route.current!, () => {});
+    try {
+      await vi.waitFor(() => expect(upstream.sent.some(packet => packet.data && packet.epoch !== retiredEpoch)).toBe(true));
+      expect(restored.state).toBeNull();
+      expect(upstream.sent.some(packet => packet.data && packet.epoch === retiredEpoch)).toBe(false);
+    } finally { restored.dispose(); }
+  } finally { session.dispose(); route.dispose(); }
+  expect(interrupted).toHaveBeenCalledOnce();
 });
 
 it.each([false, true])("retires the current input epoch after late old-branch packets (closed=%s)", async closed => {

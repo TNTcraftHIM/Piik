@@ -55,3 +55,17 @@
 .cp-permission-host > p { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .cp-permission-caption { color: var(--muted); font-size: 12px; }
 @media (max-width: 620px) { .cp-permission-flow { grid-template-columns: 1fr; } }
+
+body:has(.cp-guide-stage) { transition: none; }
+.cp-guide-stage { min-height: 0; margin: 24px auto; width: min(820px, 100%); padding: 18px; }
+.cp-guide-stage:has([data-guide-capture]) { width: fit-content; max-width: 100%; padding: 0; }
+.cp-guide-stage[data-guide-scene^="share-source"] .lr-tv-screen { min-height: 500px; }
+.cp-guide-stage[data-guide-scene^="share-source"] .lr-source-picker-panel { padding: 14px; }
+.cp-guide-stage[data-guide-scene="touch-joystick"] { width: min(520px, 100%); }
+.cp-guide-stage[data-guide-scene="touch-joystick"] .lr-tv-screen { width: 100%; min-height: 0; }
+
+.cp-guide-invite { width: min(550px, 100%); padding: 14px; }
+.cp-guide-invite .lr-invite-field { flex-basis: 100%; }
+.cp-guide-invite .lr-invite-field > .lr-row-group { flex-basis: 100%; }
+.cp-guide-invite .lr-invite-url { min-width: 230px; }
+body:has(.lr-invite-qr:popover-open) .cp-guide-stage[data-guide-scene="invite-qr"] { visibility: hidden; }

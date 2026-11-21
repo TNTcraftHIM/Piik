@@ -2,7 +2,7 @@
 
 [English](./service-management.md) · 简体中文 · [文档导航](../guide/README.zh-CN.md)
 
-首次安装请从[部署指南](./self-hosting.zh-CN.md)开始。本页介绍 Linux 常驻服务与容器维护。
+在 Linux 上使用 systemd 可让 Piik Server 在后台常驻。如果已通过 Docker Compose 部署，请到容器一节查看更新与备份。首次安装请先阅读[部署指南](./self-hosting.zh-CN.md)。
 
 ## systemd
 
@@ -19,6 +19,8 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now piik
 sudo systemctl status piik
 ```
+
+状态输出应显示 `Active: active (running)`。使用默认地址和端口时，在服务器上访问 `http://127.0.0.1:8787/healthz`，应看到 `{"status":"ok"}`。
 
 HTTPS 代理与 Piik 在同一主机时，让 HTTP 继续绑定回环地址。
 STUN 和可选的 SFU 使用各自的公网 UDP 监听器。已有 nginx 时，可修改
@@ -59,7 +61,7 @@ ZIP 保存在挂载的日志目录中。
 
 从主机与公网代理检查 `/healthz`，再按[运行验证](#运行验证)检查已配置的 STUN/SFU UDP，
 以及房间和媒体行为。镜像内没有基于 shell 的健康检查。
-替换前保留旧镜像、环境配置与数据卷备份。在部署目录执行：
+替换前保留旧镜像、环境配置与数据卷备份。记下旧镜像的标签或摘要以便回滚，然后在 `.env` 中将 `PIIK_IMAGE` 设为要安装的 2.x 版本。在部署目录执行：
 
 ```sh
 docker compose pull
@@ -78,15 +80,8 @@ docker compose logs --tail=50 piik
 
 ## 运行验证
 
-- 本地和公网来源的 `/healthz` 都返回 `{"status":"ok"}`。
-- Piik 与 HTTPS 代理处于运行状态，重启次数符合预期，日志和资源使用有界；
-  Piik 占有配置中的 STUN/SFU UDP 监听器。
-- 官方 Trickle ICE 示例能从配置的 STUN 服务取得普通 UDP `srflx` 候选，不出现 relay 候选。
-- Peer ICE 成功时，两个网络上的设备能在直连房间中显示媒体。
-- 启用 SFU 时，受限路由通过内嵌 SFU UDP 创建一个受管理的房主发布，且只接纳已授权订阅；
-  Peer 后代节点继续使用普通 P2P。
-- 阻断全部 UDP 后，在有限时间内进入明确的失败状态。
-- 使用持久化模式时，重启 Piik 保留房间权威状态；浏览器会话和媒体从新进程状态重新连接。
-
-代表性网络、移动端、音频、20 位观众和长时间运行的证据由
-[验证状态](../verification-status.md)跟踪，不记录在本操作手册中。
+1. 在服务器本机和公网 HTTPS 地址分别打开 `/healthz`，两处都应返回 `{"status":"ok"}`。
+2. 开始分享，将邀请发给另一网络上的朋友。请对方发一条聊天消息、看画面，并听一段你开启分享的声音。
+3. 检查 STUN 时，在 [Trickle ICE 示例](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/)中只保留你配置的 STUN 地址，再点 **Gather candidates**。结果中应出现类型为 `srflx` 的 UDP 候选。
+4. 启用了 SFU 时，用无法直连但能通过 UDP 访问服务器的网络测试。房主在开播前关闭 **隐私模式**。确认观众能看到画面，并在连接详情里检查是否经过服务器转发。
+5. 使用 SQLite 时，在一次计划内的重启后重新打开原房间。检查原邀请仍能使用，再发起分享，确认观众能重新看到画面。

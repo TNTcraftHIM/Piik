@@ -80,12 +80,21 @@ export class InputRoute {
       if (!this.register(identity)) return;
       this.identity = identity;
     }
-    this.endpoint = new EncryptedInput(this.identity, this.counter, p => send(this.up, p));
+    const endpoint = new EncryptedInput(this.identity, this.counter, p => send(this.up, p));
+    this.endpoint = endpoint;
+    endpoint.addEventListener("close", () => {
+      if (this.endpoint !== endpoint) return;
+      this.endpoint = null;
+      this.ready = false;
+      this.opened();
+      this.changed();
+    }, { once: true });
     this.changed();
   }
   private retireEndpoint(): void {
-    this.endpoint?.close();
+    const endpoint = this.endpoint;
     this.endpoint = null;
+    endpoint?.close();
     this.changed();
   }
   private loseChild(channel: RTCDataChannel, detach = false): void {

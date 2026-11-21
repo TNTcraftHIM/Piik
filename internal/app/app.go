@@ -59,6 +59,7 @@ type Options struct {
 	Debug          bool
 	LogDir         string
 	CaptureProcess string
+	PublicOrigin   string
 	TunnelProcess  string
 	Ready          func(string)
 	localReady     func(string, string)
@@ -456,6 +457,9 @@ func applyMode(config appconfig.Config, options Options) (appconfig.Config, erro
 }
 
 func validateMode(options Options) error {
+	if options.PublicOrigin != "" && !options.Link {
+		return errors.New("--public-origin requires --link")
+	}
 	if options.Link && (options.SiteSet || options.Local) {
 		return errors.New("--link is a self-contained Local mode")
 	}
@@ -524,7 +528,7 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 	slog.Debug("piik-client", "event", "mode", "mode", view.mode)
 	options.console.show(view)
 	bindAddress := net.IPv4zero
-	if !options.Link {
+	if !options.Link || options.PublicOrigin != "" {
 		bindAddress = net.IPv4(127, 0, 0, 1)
 	}
 	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: bindAddress, Port: options.Port})
@@ -561,8 +565,8 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 		view.certificate = tlsconfig.Fingerprint(configuration)
 	}
 	var tunnel *publictunnel.Process
-	publicOrigin := ""
-	if options.Link {
+	publicOrigin := options.PublicOrigin
+	if options.Link && publicOrigin == "" {
 		tunnel, err = publictunnel.Start(
 			ctx,
 			tunnelExecutable(options.TunnelProcess),
@@ -638,10 +642,7 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 		config.LocalAccessPassword,
 		control.Endpoint().Port,
 	)
-	view.state, view.entry, view.invite = "ready", launchURL, publicOrigin
-	if view.invite == "" {
-		view.invite = serverconfig.Origin(localConfig.PublicBaseURL)
-	}
+	view.state, view.entry, view.invite = "ready", launchURL, serverconfig.Origin(localConfig.PublicBaseURL)
 	options.console.show(view)
 	if !options.DisableBrowser {
 		options.console.openBrowser(launchURL)

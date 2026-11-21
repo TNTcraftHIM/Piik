@@ -295,14 +295,14 @@ static gboolean has_factory(const char *name) {
   return TRUE;
 }
 
-static gboolean video_stack_available(void) {
+static XdpOutputType video_stack_sources(void) {
   const char *required[] = {"pipewiresrc", "queue", "tee", "videoconvert",
                             "videoscale", "videorate", "h264parse",
                             "appsink"};
   for (guint index = 0; index < G_N_ELEMENTS(required); ++index) {
-    if (!has_factory(required[index])) return FALSE;
+    if (!has_factory(required[index])) return 0;
   }
-  return piik_portal_available();
+  return piik_portal_capture_sources();
 }
 
 static gboolean audio_stack_available(void) {
@@ -319,7 +319,7 @@ static int write_probe(void) {
   struct utsname system = {0};
   uname(&system);
   char *build = json_string(system.release[0] == '\0' ? "linux" : system.release);
-  gboolean video = video_stack_available();
+  XdpOutputType sources = video_stack_sources();
   gboolean audio = audio_stack_available();
   GString *json = g_string_new(NULL);
   g_string_append_printf(
@@ -327,9 +327,9 @@ static int write_probe(void) {
       "{\"protocol\":%d,\"platform\":\"linux\",\"platformBuild\":%s,"
       "\"videoCapture\":%s,\"softwareVP8\":false,\"processAudio\":false,\"systemAudio\":%s,\"microphone\":%s,"
       "\"remoteInput\":%s,\"adapters\":[",
-      kCaptureProtocol, build, video ? "true" : "false",
+      kCaptureProtocol, build, sources ? "true" : "false",
       audio ? "true" : "false", audio ? "true" : "false",
-      video && piik_portal_input_available() ? "true" : "false");
+      piik_portal_input_available(sources) ? "true" : "false");
   g_free(build);
   if (encoders->len > 0) {
     g_string_append(json,
@@ -357,7 +357,7 @@ static int write_probe(void) {
 
 static int write_sources(void) {
   GPtrArray *encoders = hardware_encoders();
-  gboolean available = video_stack_available() && encoders->len > 0;
+  gboolean available = video_stack_sources() != 0 && encoders->len > 0;
   g_ptr_array_unref(encoders);
   const char *json = available
                          ? "[{\"kind\":\"picker\",\"sourceId\":\"1\","
@@ -1200,7 +1200,7 @@ static int capture_video(int count, char **values) {
   GPtrArray *encoders = hardware_encoders();
   gboolean input_available = encoded
       ? has_factory("appsrc") && has_factory("h264parse") && has_factory("decodebin")
-      : video_stack_available();
+      : video_stack_sources() != 0;
   if (!input_available || encoder_index >= encoders->len) {
     g_ptr_array_unref(encoders);
     return 2;

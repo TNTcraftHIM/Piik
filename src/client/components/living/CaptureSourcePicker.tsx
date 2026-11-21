@@ -7,7 +7,7 @@ import { Glyph, type GlyphName } from "../../ui/icons";
 import { navigateTabs } from "../../ui/tab-navigation";
 import { Tooltip } from "./Tooltip";
 import { HintComic } from "./hints";
-import { Pill } from "./primitives";
+import { Btn, Pill } from "./primitives";
 import { CameraSources, useCameraSources } from "./CameraSources";
 import { CaptureSourceCard } from "./CaptureSourceCard";
 import { AudioExclusionSelect } from "./AudioExclusionSelect";
@@ -63,6 +63,7 @@ export function CaptureSourcePicker({
   initialExcludeAudio,
   audioLocked = false,
   selectionDisabled = false,
+  changingSource = false,
 }: {
   nativeSources: NativeSourceList;
   onBrowser: () => void;
@@ -85,12 +86,14 @@ export function CaptureSourcePicker({
   initialExcludeAudio?: NativeCaptureTarget;
   audioLocked?: boolean;
   selectionDisabled?: boolean;
+  changingSource?: boolean;
 }) {
   const { vis, t } = useCopy();
   const pickerId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<SourceTab | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [shareAudio, setShareAudio] = useState(initialAudio);
   const [showCaptureBorder, setShowCaptureBorder] = useState(initialShowCaptureBorder);
   const [excludeAudio, setExcludeAudio] = useState(initialExcludeAudio);
@@ -135,25 +138,31 @@ export function CaptureSourcePicker({
           (target) => target.kind === activeTab || target.kind === "picker",
         )
       : [];
+  const selectedTarget = activeTab === "window" || activeTab === "display"
+    ? sources.find(target => nativeCaptureTargetKey(target) === selectedKey) : undefined;
+  useEffect(() => {
+    if (nativeSources.kind !== "loading" && !selectedTarget) setSelectedKey(null);
+  }, [nativeSources.kind, selectedTarget]);
   const supportsAudio = (target: NativeCaptureTarget): boolean =>
     nativeSources.kind === "ready" &&
     (target.kind === "window"
       ? nativeSources.processAudio
       : nativeSources.systemAudio);
-  const anyNativeAudio = sources.some(supportsAudio);
+  const audioTarget = selectedTarget ?? sources.find(target => target.kind === "picker");
+  const canShareAudio = !!audioTarget && supportsAudio(audioTarget);
   // Source enumeration already owns process identity; do not create a second app scanner.
   const applications = nativeSources.kind === "ready" ? audioApplications(nativeSources.sources) : [];
   const exclusionKey = excludeAudio ? audioApplicationKey(excludeAudio) : "";
   const canExcludeAudio = activeTab === "display" && nativeSources.kind === "ready" && nativeSources.processAudioExclusion;
   const missingExclusion = !!excludeAudio && !applications.some(target => audioApplicationKey(target) === exclusionKey);
-  const exclusionUnavailable = activeTab === "display" && shareAudio && !!excludeAudio && (!canExcludeAudio || missingExclusion);
+  const exclusionUnavailable = selectedTarget?.kind === "display" && canShareAudio && shareAudio && !!excludeAudio && (!canExcludeAudio || missingExclusion);
   const refreshing = activeTab === "camera" ? cameraSources.busy : nativeSources.kind === "loading";
   const refreshLabel = t(refreshing ? "host.sourcePicker.loading" : "host.sourcePicker.refresh");
-  const audioAction = t(!anyNativeAudio ? "host.noAudio" : audioLocked
+  const audioAction = t(!audioTarget ? "host.sourcePicker.audioHint" : !canShareAudio ? "host.sourcePicker.audioUnavailable" : audioLocked
     ? "host.sourcePicker.audioLocked"
     : shareAudio ? "host.sourcePicker.audioOff" : "host.sourcePicker.audioOn");
   const audioLabel = t(
-    activeTab === "window" && sources.some((target) => target.kind === "window")
+    activeTab === "window"
       ? "host.sourcePicker.windowAudio"
       : "host.sourcePicker.systemAudio",
   );
@@ -162,7 +171,7 @@ export function CaptureSourcePicker({
       type="button"
       className="lr-btn is-dense lr-source-picker-refresh"
       aria-label={refreshLabel}
-      disabled={refreshing}
+      disabled={refreshing || selectionDisabled}
       onClick={activeTab === "camera" ? cameraSources.refresh : onRefresh}
     >
       <Glyph name="refresh" size={18} className={refreshing ? "lr-spin" : undefined} />
@@ -184,12 +193,21 @@ export function CaptureSourcePicker({
       type="button"
       className="lr-switch"
       role="switch"
-      aria-checked={shareAudio && anyNativeAudio}
+      aria-checked={shareAudio && canShareAudio}
       aria-label={audioLabel}
-      disabled={audioLocked || !anyNativeAudio}
+      aria-description={!canShareAudio ? audioAction : undefined}
+      disabled={selectionDisabled || audioLocked || !canShareAudio}
       onClick={() => setShareAudio((current) => !current)}
     />
   );
+
+  const confirmLabel = changingSource ? "host.switchSource" : "host.start";
+  function submitNative(target: NativeCaptureTarget) {
+    if (selectionDisabled || exclusionUnavailable || (audioLocked && shareAudio && !supportsAudio(target))) return;
+    const audio = shareAudio && supportsAudio(target);
+    onNative(target, audio, supportsCaptureBorder && showCaptureBorder,
+      audio && target.kind === "display" ? excludeAudio : undefined);
+  }
 
   return (
     <div
@@ -250,7 +268,10 @@ export function CaptureSourcePicker({
                 aria-label={t(`host.sourcePicker.tab.${value}`)}
                 tabIndex={activeTab === value ? 0 : -1}
                 disabled={!tabAvailable(value)}
-                onClick={() => setTab(value)}
+                onClick={() => {
+                  if (value !== activeTab) setSelectedKey(null);
+                  setTab(value);
+                }}
               >
                 <Glyph
                   name={SOURCE_ICONS[value]}
@@ -299,6 +320,7 @@ export function CaptureSourcePicker({
                       aria-checked={showCaptureBorder}
                       aria-label={t("host.sourcePicker.showCaptureBorder")}
                       aria-description={t("host.sourcePicker.showCaptureBorderHint")}
+                      disabled={selectionDisabled}
                       onClick={() => setShowCaptureBorder((current) => !current)}
                     />
                   </Tooltip>
@@ -311,17 +333,17 @@ export function CaptureSourcePicker({
                   </span>
                   {vis ? null : <span>{audioLabel}</span>}
                   <Tooltip
-                    kind={!anyNativeAudio ? "no-audio" : audioLocked
+                    kind={!audioTarget ? "hint-share-audio" : !canShareAudio ? "no-audio" : audioLocked
                       ? (shareAudio ? "hint-share-audio-fixed" : "hint-silent-share-fixed")
                       : shareAudio ? "hint-stop-audio" : "hint-share-audio"}
-                    text={vis ? undefined : `${audioAction}\n${t("host.sourcePicker.audioHint")}`}
+                    text={vis ? undefined : !canShareAudio ? audioAction : `${audioAction}\n${t("host.sourcePicker.audioHint")}`}
                     place="below"
                   >
                     {audioSwitch}
                   </Tooltip>
                 </div>
               ) : null}
-              {canExcludeAudio && shareAudio && anyNativeAudio ? (
+              {activeTab === "display" && shareAudio && canShareAudio && (canExcludeAudio || excludeAudio) ? (
                 <details className="lr-source-exclusion" onToggle={event => {
                   if (event.currentTarget.open) event.currentTarget.scrollIntoView({ block: "nearest" });
                 }}>
@@ -330,7 +352,7 @@ export function CaptureSourcePicker({
                     {!vis && <span>{t("host.sourcePicker.excludeAudio")}{excludeAudio ? `: ${excludeAudio.title}` : ""}</span>}
                     <Glyph name="chevron" size={14} />
                   </summary>
-                  <AudioExclusionSelect sources={applications} value={excludeAudio}
+                  <AudioExclusionSelect sources={canExcludeAudio ? applications : []} value={excludeAudio}
                     showLabel={false} disabled={selectionDisabled} onChange={setExcludeAudio} />
                 </details>
               ) : null}
@@ -372,14 +394,10 @@ export function CaptureSourcePicker({
                   <CaptureSourceOption
                     key={nativeCaptureTargetKey(target)}
                     target={target}
-                    disabled={
-                      selectionDisabled || exclusionUnavailable || (audioLocked && shareAudio && !supportsAudio(target))
-                    }
+                    disabled={selectionDisabled || (target.kind === "picker" && audioLocked && shareAudio && !supportsAudio(target))}
+                    selected={target.kind === "picker" ? undefined : target === selectedTarget}
                     onPreview={onPreview}
-                    onSelect={() =>
-                      onNative(target, shareAudio && supportsAudio(target),
-                        supportsCaptureBorder && showCaptureBorder, target.kind === "display" ? excludeAudio : undefined)
-                    }
+                    onSelect={() => target.kind === "picker" ? submitNative(target) : setSelectedKey(nativeCaptureTargetKey(target))}
                   />
                 ))
               : null}
@@ -403,6 +421,13 @@ export function CaptureSourcePicker({
             </span>
           ) : null}
         </div>
+        {(activeTab === "window" || activeTab === "display") && sources.some(target => target.kind !== "picker") && (
+          <footer className="lr-source-picker-footer">
+            <Btn icon="cast" tone="primary" title={confirmLabel} cap={confirmLabel}
+              disabled={!selectedTarget || selectionDisabled || exclusionUnavailable || (audioLocked && shareAudio && !canShareAudio)}
+              onClick={() => { if (selectedTarget) submitNative(selectedTarget); }} />
+          </footer>
+        )}
       </div>
     </div>
   );
@@ -411,11 +436,13 @@ export function CaptureSourcePicker({
 function CaptureSourceOption({
   target,
   disabled,
+  selected,
   onPreview,
   onSelect,
 }: {
   target: NativeCaptureTarget;
   disabled: boolean;
+  selected?: boolean;
   onPreview: (
     target: NativeCaptureTarget,
     signal?: AbortSignal,
@@ -458,19 +485,11 @@ function CaptureSourceOption({
 
   const title =
     target.kind === "picker" ? t("host.sourcePicker.system") : target.title;
-  const action =
-    target.kind === "picker"
-      ? t("host.sourcePicker.systemAction")
-      : t(
-          target.kind === "display"
-            ? "host.sourcePicker.display"
-            : "host.sourcePicker.window",
-          { title },
-        );
+  const action = target.kind === "picker" ? t("host.sourcePicker.systemAction") : title;
 
   return <CaptureSourceCard title={title} action={action}
     icon={target.kind === "picker" ? "share" : target.kind}
     hint={target.kind === "picker" ? "hint-source-picker" : target.kind === "display" ? "hint-capture-display" : "hint-capture-window"}
     preview={target.kind === "picker" ? undefined : preview} nativeKey={nativeCaptureTargetKey(target)} buttonRef={buttonRef}
-    disabled={disabled} onPreview={requestPreview} onSelect={onSelect} />;
+    disabled={disabled} pressed={selected} onPreview={requestPreview} onSelect={onSelect} />;
 }

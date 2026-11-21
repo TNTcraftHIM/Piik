@@ -29,7 +29,8 @@ export class RemoteInputSession {
   private nextPointerAt = 0;
   private wheelFraction = 0;
 
-  constructor(private readonly channel: InputTransport, private readonly changed: (state: RemoteInputState | null) => void) {
+  constructor(private readonly channel: InputTransport, private readonly changed: (state: RemoteInputState | null) => void,
+    private readonly interrupted?: () => void) {
     channel.addEventListener("message", this.message);
     channel.addEventListener("close", this.closed);
     this.send({ type: "sync" });
@@ -81,18 +82,26 @@ export class RemoteInputSession {
     }
     // Source availability is authoritative for every request. Pause/off may
     // reach us before the Host receives our new intent; it still ends it.
+    const requested = this.intent !== null;
     if (state.state === "unavailable") this.intent = null;
     if (this.intent !== null && state.intent !== this.intent) return;
     if (this.intent === null && (state.state === "active" || state.state === "suspended" || state.state === "pending")) {
       this.send({ type: "release", intent: state.intent });
       return;
     }
-    if (state.state !== "pending" && state.state !== "active" && state.state !== "suspended") this.intent = null;
+    if (state.state !== "pending" && state.state !== "active" && state.state !== "suspended") {
+      this.intent = null;
+      if (requested && !state.reason && state.state !== "failed") this.interrupted?.();
+    }
     if (state.state === "failed") debugEvent("remote-input", "host-failed", { previousState: this.state?.state, mode: state.mode });
     this.set(state);
   };
 
-  private readonly closed = (): void => { this.intent = null; this.set(null); };
+  private readonly closed = (): void => {
+    if (this.intent !== null) this.interrupted?.();
+    this.intent = null;
+    this.set(null);
+  };
 
   private send(event: object): boolean {
     if (this.disposed || this.channel.readyState !== "open") return false;
@@ -103,7 +112,6 @@ export class RemoteInputSession {
       return true;
     } catch (error) {
       debugError("remote-input", "send-failed", error, { state: this.state?.state, readyState: this.channel.readyState, bufferedAmount: this.channel.bufferedAmount });
-      this.intent = null;
       this.set(this.state && { ...this.state, state: "failed", grant: undefined });
       this.channel.close();
       return false;

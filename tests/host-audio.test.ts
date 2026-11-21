@@ -69,6 +69,26 @@ test("failed optional mixing preserves source sharing and retires its partial gr
   expect(nextSound.stop).toHaveBeenCalledOnce(); expect(video.stop).not.toHaveBeenCalled();
 });
 
+test("cancelling AudioContext resume retires the optional graph without stopping picture tracks", async () => {
+  const { contexts } = mixerSetup();
+  let resolveResume!: () => void;
+  const resume = new Promise<void>(resolve => { resolveResume = resolve; });
+  contexts.length = 0;
+  const context = new Context();
+  context.resume.mockReturnValue(resume);
+  vi.stubGlobal("AudioContext", class { constructor() { return context; } });
+  const video = new Track("video");
+  const audio = new HostAudio(media(video));
+  const controller = new AbortController();
+  const starting = audio.start(controller.signal);
+  controller.abort(new DOMException("Capture cancelled", "AbortError"));
+  await expect(starting).rejects.toMatchObject({ name: "AbortError" });
+  resolveResume();
+  expect(video.stop).not.toHaveBeenCalled();
+  expect(context.close).toHaveBeenCalledOnce();
+  audio.dispose();
+});
+
 test("commentary and source replacement retain one published output and retire their own inputs", async () => {
   const { getUserMedia, contexts } = mixerSetup();
   const microphone = new Track("audio"), nextMic = new Track("audio"), video = new Track("video"), sound = new Track("audio");

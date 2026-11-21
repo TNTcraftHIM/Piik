@@ -9,7 +9,6 @@ import {
 import {
   DEFAULT_QUALITY_SETTINGS,
   DEFAULT_ROUTE_POLICY,
-  MAX_VIEWER_PASSWORD_LENGTH,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   viewerPasswordSchema,
   type IceConfig,
@@ -52,6 +51,7 @@ import { RemoteControl } from "../components/living/RemoteControl";
 import { InputRoute } from "../remote-control/input-route";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 import { LoadingStatus } from "../components/living/WaitingStatus";
+import { JoinPasswordForm } from "../components/living/JoinRoomForms";
 import {
   Btn,
   FieldCap,
@@ -2190,37 +2190,15 @@ export function ViewerPage({
                   />
                   {viewerPasswordExpanded ? (
                     <div id="viewer-password-retry">
-                      <form
-                      style={{ display: "grid", justifyItems: "center", gap: 14 }}
-                      onSubmit={submitViewerPassword}
-                    >
-                  <span className="lr-input is-password">
-                    <Glyph name="key" size={17} />
-                    <input
-                      type="password"
-                      value={viewerPasswordDraft}
-                      maxLength={MAX_VIEWER_PASSWORD_LENGTH}
-                      autoComplete="current-password"
-                      autoFocus
-                      aria-label={t("join.password")}
-                      onChange={(event) => {
-                        setViewerPasswordDraft(event.target.value);
-                        setViewerPasswordError(null);
-                      }}
-                    />
-                  </span>
-                  {viewerPasswordError && (
-                    <Pill icon="alert" tone="bad" label={t(viewerPasswordError, { max: String(MAX_VIEWER_PASSWORD_LENGTH) })} alert comic="access-denied" />
-                  )}
-                  <Btn
-                    icon="arrowRight"
-                    tone="primary"
-                    cap="join.submit"
-                    title="join.submit"
-                    type="submit"
-                    hint="hint-password"
-                  />
-                      </form>
+                      <JoinPasswordForm
+                        value={viewerPasswordDraft}
+                        error={viewerPasswordError}
+                        onChange={(value) => {
+                          setViewerPasswordDraft(value);
+                          setViewerPasswordError(null);
+                        }}
+                        onSubmit={submitViewerPassword}
+                      />
                     </div>
                   ) : null}
                 </>
@@ -2418,6 +2396,7 @@ export function ViewerPage({
                 comic={viewerStatus.activity.comic}
                 tone={viewerStatus.activity.tone}
                 message={stageMessage}
+                viewerStage={presentation.stage}
                 progress={connectionProgress}
               />
             )}
@@ -2444,6 +2423,7 @@ export function ViewerPage({
                   comic={viewerStatus.activity.comic}
                   tone={viewerStatus.activity.tone}
                   message={stageMessage}
+                  viewerStage={presentation.stage}
                   progress={connectionProgress}
                   waiting={viewerStatus.overlay?.waiting}
                 />

@@ -669,7 +669,7 @@ against that same endpoint pair and relay policy.
 
 #### Stable Pion Interoperability
 
-The candidate uses Pion WebRTC v4.2.24 / ICE v4.4.8. The
+The measurements below used Pion WebRTC v4.2.24 and ICE v4.4.8. The
 [upstream changes](https://github.com/pion/ice/compare/v4.4.0...v4.4.8) include
 STUN retransmission, gathering-generation ownership, Chromium mDNS compatibility
 and pre-created mux lifetime corrections. This updates the shared Native/SFU
@@ -1147,6 +1147,29 @@ to 1240 restored the complete script in about 8 ms. This reproduces
 compression or an endpoint MTU below 1500 is insufficient. The field report
 still needs its actual resource transfer and route evidence to distinguish this
 case from tunnel interruption, filtering or Browser execution failure.
+
+In a controlled HTTP A/B with the smaller startup build, dropping path-MTU
+feedback still allowed the 887-byte HTML and a 512-byte script range (HTTP 206).
+The full entry script received zero bytes in five seconds. Allowing feedback
+restored the complete 62,073-byte gzip response. The HTTPS control also stalled
+on fresh connections before curl recorded TLS completion or any HTTP response.
+With feedback allowed, v2.7.0 served 755-byte HTML and a 62,014-byte gzip entry
+script over HTTPS. These controls show that a smaller entry still depends on the
+network path and that a failed load can begin before any resource request.
+
+Recovery belongs to the tunnel path. Restoring path-MTU feedback lets TCP
+adapt. Where the provider confirms the effective path MTU, align both virtual
+interfaces to that limit. The isolated Linux gateway control restored transfer
+with a TCP MSS clamp scoped to the tunnel flow. A separate Linux listener
+control recovered fresh TLS with the smaller MSS advertised in the SYN-ACK.
+A Windows server-side socket MTU limit constrains outbound packets only. The
+peer can still send a ClientHello in a segment too large for the tunnel, so
+that setting alone cannot cover both directions.
+
+Independent reports describe similar size-dependent stalls on virtual network
+paths. The cause of the Piik field report still needs confirmation from the
+affected path. [ZeroTier #935](https://github.com/zerotier/ZeroTierOne/issues/935),
+[ClawPatrol #790](https://github.com/denoland/clawpatrol/issues/790).
 
 ## Primary Sources
 

@@ -7,6 +7,14 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Sharing-sound switch is disabled.** Trace the reported grey switch
+  through source selection, Browser/App capability and approval state. The
+  reporter's platform and capture source are unknown; distinguish unsupported
+  capture from a stale capability result.
+- [ ] **Mobile sharing stops unexpectedly.** The recording shows
+  `app/control/disconnected` on returning to Chrome, followed by App ready.
+  Capture the existing opt-in control-close diagnostic during a reproduction
+  to identify the failing transition before changing capture or service lifetime.
 - [ ] **Release mirror platform integration.** Verify a supported way to create
   the platform's Release tag or trigger its immediate synchronization during
   publication. Do not assume disabling Pull synchronization makes the repository
@@ -35,9 +43,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   also removes its other audio. Browser own-document exclusion and Native
   process-tree exclusion are already implemented; acoustic echo and duplicate
   commentary retain their separate microphone owners.
-- [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
-  title appears and the page never loads. Static compression reduces transfer
-  size; capture the stalled document/script response to locate this failure.
+- [ ] **Virtual-LAN page loading.** Identify where the affected invitation stalls
+  by comparing document and script results on the affected path and a working
+  path. Controlled tests reproduce size-dependent HTTP stalls and fresh HTTPS
+  timeouts with path-MTU feedback blocked.
+  [Startup resource transfer](./research/nat-traversal.md#startup-resource-transfer).
 - [ ] **Native H264 scene-change latency.** Reduce large-AU send-queue delay
   while preserving bitrate restoration. The
   [end-to-end control](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)
@@ -66,6 +76,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
+- [ ] **2.x optional SFU provider.** Implement and verify the
+  [deployment-owned Cloudflare SFU adapter](./research/embedded-media.md#cloudflare-realtime-sfu).
+
 - [ ] **Stronger microphone noise suppression (#518).** Assess the
   [requested speech-processing option](https://github.com/TNTcraftHIM/Piik/issues/518)
   through the shared microphone input. Browser voice processing is already the
@@ -82,6 +95,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Held By Owner
 
+- [ ] **2.x maintenance release approval.** The owner reviews the tested candidate
+  and the complete change set since `v2.7.0` before publication.
 - [ ] **iOS native App.** Paused in favor of Browser use. Preserve the isolated
   implementation on `feat/ios-client`; native development and publication stay
   outside the current phase.

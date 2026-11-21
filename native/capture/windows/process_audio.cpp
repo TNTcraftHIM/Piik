@@ -9,6 +9,7 @@
 #include <wrl.h>
 #include <wrl/implements.h>
 
+#include "audio_chunks.h"
 #include "capture_target.h"
 #include "process_audio.h"
 
@@ -18,7 +19,6 @@
 #include <limits>
 #include <sstream>
 #include <string>
-#include <vector>
 
 using Microsoft::WRL::ComPtr;
 using Microsoft::WRL::FtmBase;
@@ -195,9 +195,7 @@ HRESULT CaptureAudioFrames(ComPtr<IAudioClient> client, HANDLE process, bool loo
     if (counts.enabled) counts.primed = SUCCEEDED(result);
   }
 
-  std::vector<BYTE> pending;
-  size_t consumed = 0;
-  UINT64 nextTimestamp = 0;
+  AudioChunks chunks;
   const HANDLE process_waits[] = {process, sampleReady, stop_event};
   const HANDLE system_waits[] = {sampleReady, stop_event};
   while (SUCCEEDED(result)) {
@@ -232,46 +230,24 @@ HRESULT CaptureAudioFrames(ComPtr<IAudioClient> client, HANDLE process, bool loo
       if (FAILED(result = processAlive())) break;
       BYTE* data = nullptr;
       DWORD flags = 0;
-      UINT64 devicePosition = 0;
       UINT64 qpcPosition = 0;
-      result = capture->GetBuffer(&data, &frames, &flags, &devicePosition, &qpcPosition);
+      result = capture->GetBuffer(&data, &frames, &flags, nullptr, &qpcPosition);
       if (FAILED(result)) break;
+      // GetBuffer returns AUDCLNT_S_BUFFER_EMPTY with zero frames and no buffer.
+      if (frames == 0) break;
       counts.Packet(frames, flags);
-      const size_t bytes = static_cast<size_t>(frames) * format.nBlockAlign;
-      if ((flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) != 0) {
-        capture->ReleaseBuffer(frames);
-        continue;
-      }
-      if ((flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) != 0) {
-        pending.clear();
-        consumed = 0;
-      }
-      if (pending.size() == consumed) {
-        pending.clear();
-        consumed = 0;
-        nextTimestamp = qpcPosition;
-      }
-      if ((flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0) {
-        pending.insert(pending.end(), bytes, 0);
-      } else {
-        pending.insert(pending.end(), data, data + bytes);
-      }
+      chunks.Append(data, frames, flags, qpcPosition);
       capture->ReleaseBuffer(frames);
-      while (pending.size() - consumed >= kAudioBytesPerChunk) {
+      while (const auto* chunk = chunks.Next()) {
         if (FAILED(result = processAlive())) break;
         counts.Assembled();
-        result = writer(nextTimestamp, pending.data() + consumed,
-                        kAudioBytesPerChunk);
+        result = writer(chunks.Timestamp(), chunk, kAudioBytesPerChunk);
         counts.Delivered(result);
         if (FAILED(result)) break;
-        consumed += kAudioBytesPerChunk;
-        nextTimestamp += kAudioChunkDuration100ns;
+        chunks.Consume();
       }
       if (FAILED(result)) break;
-      if (consumed > kAudioBytesPerChunk * 4) {
-        pending.erase(pending.begin(), pending.begin() + static_cast<ptrdiff_t>(consumed));
-        consumed = 0;
-      }
+      chunks.Compact();
     }
   }
   if (client) client->Stop();

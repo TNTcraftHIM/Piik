@@ -41,12 +41,38 @@ symptom-based checks to troubleshooting, and build/release procedures to maintai
 references. Remove repaired incident narratives instead of appending them to the
 reader's path; retain checks for current platform and network limitations.
 
+### Writing public help
+
+The homepage FAQ introduces Piik to a first-time visitor. Answer what people
+can do together, what each person needs, who can join and when hosting helps.
+The help center starts from a task or a symptom in the reader's own words.
+
+Give a task its own page when it has an independent outcome and entry point.
+Keep a platform difference beside the step it changes. Put configuration
+tables, diagnostic commands and protocol details in the relevant reference.
+Name the person taking the action and the control they will see. For a value
+such as an address, say where to find it and where to use it. Name links for
+the task or destination. The documentation home and the sidebar use the
+destination's page or section title. In the product, place the relevant help
+beside the symptom and link directly to its solution. Lead with
+the answer or the first action, then say what success looks like. If it fails,
+use an observable difference to choose the next check. Verify each language's
+links, search terms and headings against realistic questions on a phone and desktop.
+For a common error, use its on-screen wording and link each observable symptom
+to an action. Place an annotated image or a crop from the real interface beside
+a step when readers need to find a control or recognize a result.
+[Diátaxis how-to guides](https://diataxis.fr/how-to-guides/) ·
+[Microsoft procedure style](https://learn.microsoft.com/en-us/style-guide/procedures-instructions/writing-step-by-step-instructions) ·
+[W3C link purpose](https://www.w3.org/WAI/WCAG22/Understanding/link-purpose-in-context.html)
+
 The public documentation website renders selected repository Markdown without
 owning another copy. Its [reader index](../guide/README.md) serves usage and support;
 the repository map remains the developer/maintainer entry. The
 [website runbook](../operations/website.md#documentation-build) owns generation and
-publication. General symptoms and report collection belong to the troubleshooting
-guide; browser/network connection procedures belong to the network guide.
+publication. The troubleshooting guide indexes symptoms and collects reports.
+Sound and microphone checks belong to the [sound guide](../guide/sound-help.md);
+the [no-media-route guide](../guide/no-media-route.md) covers a room with no
+working picture path. The network guide owns virtual LAN setup and network configuration.
 Introductions and the general guide link to those procedures rather than duplicate them.
 
 ## Updating A Rule

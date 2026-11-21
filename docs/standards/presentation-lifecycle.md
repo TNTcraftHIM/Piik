@@ -175,8 +175,10 @@ with English fallback. System-language matching distinguishes Chinese scripts,
 including `zh-TW`, `zh-HK` and `zh-Hant` for Traditional Chinese. The website
 retains its separate bilingual presentation. Additional UI languages use the
 existing dropdown alongside pure-visual mode. Chinese and English remain direct
-controls; the third control opens that menu and reflects the current extra
-language or visual mode without changing their independent stored preferences.
+controls; the third control retains the last extra language or visual choice
+for the current page. Selecting an inactive choice switches to it; selecting it
+again or using its adjacent arrow opens the menu. Language and visual mode keep
+their independent stored preferences.
 Pure-visual mode remains an explicit choice. An explicit later choice is
 persisted and takes precedence over that default, including App launch handoff.
 Explicit launcher choices apply only to the presentation domains the user chose.
@@ -247,6 +249,21 @@ also never reveals the toolbar through mouse movement.
 One presentation hook owns visibility for the current player, using one idle
 timer; it never changes playback or route state. Controls
 follow the shared [motion grammar](./visual-language.md#motion-grammar).
+
+On touch devices, the two on-screen sticks are available while the current
+picture is playing and its authorized remote-control channel is ready. The
+viewer can turn both sticks on or off in Remote keyboard's Local controls.
+The sticks start closed. Tap L/R to toggle that pad or drag its handle to place it
+within the picture. Each side remembers its relative position on this browser.
+Only the handles tuck against their respective edges when idle. Each open pad
+keeps its position and input area.
+In Show on touch mode, the pad briefly shows its outline when opened and
+shows the thumb while pressed. Closing that side restores ordinary picture input there.
+Remote keyboard owns the mapping for both sticks. Keyboard and mouse mode
+sends WASD and relative mouse movement. When a virtual gamepad is available,
+the viewer can select its left and right axes. A connected physical gamepad
+leaves the touch sticks available for keyboard and mouse input. Collapsing a
+stick releases its input. Focus loss or a control disconnect neutralizes both sticks.
 
 A picture click does not pause playback; the playback button and focused-video
 keyboard shortcut own that action. Desktop double-click toggles the available

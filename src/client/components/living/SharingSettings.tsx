@@ -26,7 +26,7 @@ export function SharingSettings({ id, open, busy, presets, picture, pictureSumma
       <section id={`${id}-picture`} className="lr-sharing-section" role="tabpanel" tabIndex={0}
         aria-labelledby={`${id}-picture-tab`} hidden={tab !== "picture"}>
         {presets}
-        {picture ? <details className="lr-sharing-picture-details">
+        {picture ? <details className="lr-settings-disclosure lr-sharing-picture-details">
           <summary aria-label={t("host.settings.pictureDetails")}>
             <span><Glyph name="sliders" size={17} /><Cap k="host.settings.pictureDetails" /></span>
             {pictureSummary}
@@ -39,7 +39,7 @@ export function SharingSettings({ id, open, busy, presets, picture, pictureSumma
         aria-labelledby={`${id}-sound-tab`} hidden={tab !== "sound"}>
         <div className="lr-sharing-audio-controls">{audio}</div>
       </section>
-      {connection || sendingCapacity ? <details className="lr-sharing-connection">
+      {connection || sendingCapacity ? <details className="lr-settings-disclosure lr-sharing-connection">
         <summary aria-label={t("host.settings.connection")}>
           <span><Glyph name="branch" size={17} /><Cap k="host.settings.connection" /></span>
           <Glyph name="chevron" size={17} className="lr-sharing-chevron" />

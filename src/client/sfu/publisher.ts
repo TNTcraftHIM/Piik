@@ -467,25 +467,19 @@ export class SfuPublisher {
   private media(profile: QualityProfile): SfuMedia {
     const settings = senderCaptureTrack(this.video!).getSettings();
     const ceiling = profile.resolution;
+    const targets = this.encodings(profile);
     return {
       codec: this.codec,
-      layers: this.encodings(profile).map((encoding) => ({
-        rid: encoding.rid!,
-        width: Math.max(
-          1,
-          Math.floor(
-            (settings.width ?? ceiling.width) / encoding.scaleResolutionDownBy!,
-          ),
-        ),
-        height: Math.max(
-          1,
-          Math.floor(
-            (settings.height ?? ceiling.height) /
-              encoding.scaleResolutionDownBy!,
-          ),
-        ),
-        bitrate: encoding.maxBitrate!,
-      })),
+      layers: this.videoSender!.getParameters().encodings.map(({ rid }, index) => {
+        const target = targets[index]!;
+        const scale = target.scaleResolutionDownBy!;
+        return {
+          rid: rid ?? "",
+          width: Math.max(1, Math.floor((settings.width ?? ceiling.width) / scale)),
+          height: Math.max(1, Math.floor((settings.height ?? ceiling.height) / scale)),
+          bitrate: target.maxBitrate!,
+        };
+      }),
       audio: this.audio !== null,
       audioBitrate: screenAudioBitrate(profile.maxAudioBitrate),
     };
@@ -501,9 +495,13 @@ export class SfuPublisher {
     if (configureVideo) {
       const parameters = sender.getParameters();
       const encodings = this.encodings(profile);
-      parameters.encodings.forEach((encoding, index) =>
-        Object.assign(encoding, encodings[index]),
-      );
+      parameters.encodings.forEach((encoding, index) => {
+        const next = encodings[index];
+        encoding.active = next.active;
+        encoding.scaleResolutionDownBy = next.scaleResolutionDownBy;
+        encoding.maxBitrate = next.maxBitrate;
+        encoding.maxFramerate = next.maxFramerate;
+      });
       await peer.waitForOperation(() => sender.setParameters(parameters));
       if (this.peer !== peer) return false;
       const readback = await peer.waitForOperation(() => configureVideoSender(

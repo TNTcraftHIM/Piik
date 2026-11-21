@@ -41,6 +41,15 @@ interface ConnectionPlan {
   statsGate?: Promise<RTCStatsReport>;
 }
 
+function receivedTrack(id: string, kind = "video"): MediaStreamTrack {
+  return Object.assign(new EventTarget(), { id, kind, readyState: "live", stop: vi.fn() }) as unknown as MediaStreamTrack;
+}
+
+function endTrack(track: MediaStreamTrack): void {
+  Object.defineProperty(track, "readyState", { value: "ended", configurable: true });
+  track.dispatchEvent(new Event("ended"));
+}
+
 class FakeMediaStream {
   private readonly tracks: MediaStreamTrack[] = [];
 
@@ -397,8 +406,8 @@ describe("ViewerPeer connection generations", () => {
     );
     await peer.acceptSignal("host", offer("separate-tracks"));
     const connection = FakePeerConnection.instances[0]!;
-    const video = { id: "remote-video", kind: "video" } as MediaStreamTrack;
-    const audio = { id: "remote-audio", kind: "audio" } as MediaStreamTrack;
+    const video = receivedTrack("remote-video");
+    const audio = receivedTrack("remote-audio", "audio");
     connection.emitTrack(video, [{} as MediaStream]);
     connection.emitTrack(audio, [{} as MediaStream]);
 
@@ -407,6 +416,74 @@ describe("ViewerPeer connection generations", () => {
     expect(streams[1]!.getVideoTracks()).toEqual([video]);
     expect(streams[1]!.getAudioTracks()).toEqual([audio]);
     peer.dispose();
+  });
+
+  it("reports video ending before its first frame while retaining source audio", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const failed = vi.fn(() => true), decoded = vi.fn(() => true), streams: MediaStream[] = [];
+    const peer = new ViewerPeer({ iceServers: [] }, {
+      sendSignal: () => true, sendRestartRequest: () => true, onUpdate: () => {},
+      onStream: stream => streams.push(stream), onRecoveryExhausted: failed, onFirstDecodedFrame: decoded,
+    }, { recoveryOwner: "route" });
+    try {
+      await peer.acceptSignal("host", offer("ended-before-frame"));
+      const connection = FakePeerConnection.instances[0]!;
+      connection.connectionState = "connected";
+      connection.dispatchEvent(new Event("connectionstatechange"));
+      const audio = receivedTrack("source-audio", "audio"), video = receivedTrack("source-video");
+      connection.emitTrack(audio);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(failed).not.toHaveBeenCalled();
+      connection.emitTrack(video);
+      connection.emitTrack(video);
+      endTrack(video);
+      video.dispatchEvent(new Event("ended"));
+      expect(failed).toHaveBeenCalledExactlyOnceWith("host", "ended-before-frame");
+      expect(connection.connectionState).toBe("connected");
+      expect(audio.readyState).toBe("live");
+      expect(audio.stop).not.toHaveBeenCalled();
+      expect(streams.at(-1)!.getAudioTracks()).toEqual([audio]);
+      connection.getStats.mockResolvedValue(decodedReport(1));
+      await vi.advanceTimersByTimeAsync(100);
+      expect(decoded).not.toHaveBeenCalled();
+    } finally { peer.dispose(); vi.useRealTimers(); }
+  });
+
+  it.each(["replace", "dispose"])("ignores an old video ending after connection %s", async retirement => {
+    const failed = vi.fn(() => true);
+    const peer = new ViewerPeer({ iceServers: [] }, {
+      sendSignal: () => true, sendRestartRequest: () => true, onUpdate: () => {}, onStream: () => {},
+      onRecoveryExhausted: failed,
+    }, { recoveryOwner: "route" });
+    try {
+      await peer.acceptSignal("host", offer("retired-video"));
+      const video = receivedTrack("old-video");
+      FakePeerConnection.instances[0]!.emitTrack(video);
+      if (retirement === "replace") await peer.acceptSignal("host", offer("current-video"));
+      else peer.dispose();
+      endTrack(video);
+      expect(failed).not.toHaveBeenCalled();
+    } finally { peer.dispose(); }
+  });
+
+  it("keeps a live replacement video when an older video or optional audio ends", async () => {
+    const failed = vi.fn(() => true);
+    const peer = new ViewerPeer({ iceServers: [] }, {
+      sendSignal: () => true, sendRestartRequest: () => true, onUpdate: () => {}, onStream: () => {},
+      onRecoveryExhausted: failed,
+    }, { recoveryOwner: "route" });
+    try {
+      await peer.acceptSignal("host", offer("same-connection"));
+      const connection = FakePeerConnection.instances[0]!;
+      const previous = receivedTrack("old-video"), replacement = receivedTrack("new-video"), audio = receivedTrack("audio", "audio");
+      for (const track of [previous, replacement, audio]) connection.emitTrack(track);
+      endTrack(previous);
+      endTrack(audio);
+      expect(failed).not.toHaveBeenCalled();
+      expect(replacement.stop).not.toHaveBeenCalled();
+      endTrack(replacement);
+      expect(failed).toHaveBeenCalledExactlyOnceWith("host", "same-connection");
+    } finally { peer.dispose(); }
   });
 
   it("proves a fresh exact connection from its first cumulative decoded frame", async () => {
@@ -1174,7 +1251,7 @@ describe("ViewerPeer connection generations", () => {
 it("keeps personal buffer target across late audio and replacement without writing retired receivers", async () => {
   const status = vi.fn();
   const peer = new ViewerPeer({ iceServers: [] }, { sendSignal: () => true, sendRestartRequest: () => true, onStream: () => {}, onUpdate: () => {}, onPlaybackBufferStatus: status }, { playbackBufferTargetMs: 300 });
-  const receiver = (kind: string) => ({ track: { id: crypto.randomUUID(), kind, readyState: "live" }, jitterBufferTarget: null }) as unknown as RTCRtpReceiver & { jitterBufferTarget: number | null };
+  const receiver = (kind: string) => ({ track: receivedTrack(crypto.randomUUID(), kind), jitterBufferTarget: null }) as unknown as RTCRtpReceiver & { jitterBufferTarget: number | null };
   try {
     await peer.acceptSignal("parent", offer("buffer-one"));
     const first = FakePeerConnection.instances.at(-1)!;

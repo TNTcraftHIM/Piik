@@ -318,3 +318,20 @@ it.each([
     expect(events).toEqual([{ type: "move", x, y }]);
   } finally { vi.useRealTimers(); }
 });
+
+it("holds diagonal WASD alongside a mouse tap and releases only changed directions", () => {
+  const events: RemoteInputEvent[] = [];
+  const pad = new RemoteTouchpad(() => null, event => events.push(event), () => {}, () => {}, { scale: 1, transform: () => {} });
+  pad.direction(0, -1);
+  pad.direction(1, -1);
+  pad.button(0, true); pad.button(0, false);
+  pad.direction(1, 0);
+  pad.direction(0.05, 0.05);
+  pad.direction(-1, 0);
+  pad.reset();
+  expect(events.filter(event => event.type === "key")).toEqual([
+    { type: "key", code: "KeyW", down: true }, { type: "key", code: "KeyD", down: true },
+    { type: "key", code: "KeyW", down: false }, { type: "key", code: "KeyD", down: false },
+    { type: "key", code: "KeyA", down: true }, { type: "key", code: "KeyA", down: false },
+  ]);
+});

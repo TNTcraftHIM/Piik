@@ -47,6 +47,8 @@ const homepage = (await readFile(new URL("index.html", source), "utf8"))
   .replace(/<span class="film-length">.*?<\/span>/, `<span class="film-length">${Math.round(filmMeta.duration)}s</span>`)
   .replace(/<p id="welcome-line">.*?<\/p>/, `<p id="welcome-line">${welcomePools.map(pool => pool[0] ?? "").join("")}</p>`)
   // Reuse the product's icon and copy owners without a React runtime on the homepage.
+  .replace(/<template data-faq-glyph="(book|help)"><\/template>/g, (_, name) =>
+    renderToStaticMarkup(createElement(Glyph, { name, size: 24 })))
   .replace(/<template id="theme-(light|dark)"><\/template>/g, (_, target) =>
     `<template id="theme-${target}">` +
     renderToStaticMarkup(createElement(Glyph, { name: target === "light" ? "sun" : "moon", size: 16, draw: "theme-toggle" })) +

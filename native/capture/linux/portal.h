@@ -16,8 +16,8 @@ typedef struct {
   gboolean keys[256], buttons[5];
 } PiikPortalCapture;
 
-gboolean piik_portal_available(void);
-gboolean piik_portal_input_available(void);
+XdpOutputType piik_portal_capture_sources(void);
+gboolean piik_portal_input_available(XdpOutputType sources);
 gboolean piik_portal_capture_open(const char *restore_token, gboolean remote_input,
                                       PiikPortalCapture *capture,
                                       GError **error);

@@ -327,7 +327,7 @@ export class ViewerPeer implements ViewerMediaPeer {
     );
     this.connection = connection;
     this.remoteInput.attach(connection);
-    this.connectionLifetime = new AbortController();
+    const lifetime = this.connectionLifetime = new AbortController();
     this.localIceCandidates = localIceCandidates;
     this.snapshot = {
       peerId: parentPeerId,
@@ -361,6 +361,12 @@ export class ViewerPeer implements ViewerMediaPeer {
       // already-presented video stream.
       if (!this.remoteStream.getTrackById(event.track.id)) {
         this.remoteStream.addTrack(event.track);
+        if (event.track.kind === "video") event.track.addEventListener("ended", () => {
+          if (!this.isCurrentConnection(connection, connectionId) ||
+              this.remoteStream.getVideoTracks().some(track => track.readyState === "live")) return;
+          this.stopDecodedFrameProof();
+          this.reportRecoveryExhausted();
+        }, { once: true, signal: lifetime.signal });
       }
       this.applyPlaybackBuffer();
       this.events.onStream(this.remoteStream);

@@ -16,13 +16,13 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/coder/websocket v1.8.15
 	github.com/go-logr/logr v1.4.4
-	github.com/klauspost/compress v1.20.4
+	github.com/klauspost/compress v1.20.5
 	github.com/livekit/livekit-server v1.13.11-0.20261016133420-cde3991916cf
 	github.com/livekit/mediatransportutil v0.0.0-20261014192331-dd8e31a0adc0
 	github.com/livekit/protocol v1.52.2-0.20261012065025-9bb708cdb819
 	github.com/livekit/server-sdk-go/v2 v2.14.0
 	github.com/netbirdio/go-nat v0.0.0-20260821095157-6b2c8c5c74e8
-	github.com/pion/ice/v4 v4.4.8
+	github.com/pion/ice/v4 v4.4.9
 	github.com/pion/interceptor v0.1.51
 	github.com/pion/logging v0.2.4
 	github.com/pion/rtcp v1.2.20
@@ -98,7 +98,7 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/petermattis/goid v0.0.0-20260918085751-abfca077860b // indirect
 	github.com/pion/datachannel v1.6.3 // indirect
-	github.com/pion/dtls/v3 v3.1.15 // indirect
+	github.com/pion/dtls/v3 v3.1.16 // indirect
 	github.com/pion/mdns/v2 v2.2.2 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/sctp v1.12.0 // indirect

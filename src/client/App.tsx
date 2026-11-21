@@ -35,6 +35,10 @@ import { consoleLanguage } from "./locales";
 import { initTheme } from "./ui/theme";
 import { debugError, installBrowserDebug, withBrowserDebug } from "./lib/debug";
 
+const GuidePreviewPage = import.meta.env.DEV
+  ? lazy(() => import("./pages/GuidePreviewPage").then(module => ({ default: module.GuidePreviewPage })))
+  : null;
+
 const TooltipPreviewPage = import.meta.env.DEV
   ? lazy(() => import("./pages/TooltipPreviewPage").then((module) => ({ default: module.TooltipPreviewPage })))
   : null;
@@ -159,6 +163,9 @@ function AppRoute() {
   }, []);
   if (PlaybackPreviewPage && window.location.pathname === "/__playback-preview") {
     return <PlaybackPreviewPage />;
+  }
+  if (GuidePreviewPage && window.location.pathname === "/__guide-preview") {
+    return <GuidePreviewPage />;
   }
   if (StatusPreviewPage && window.location.pathname === "/__status-preview") {
     return <StatusPreviewPage />;

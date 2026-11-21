@@ -50,21 +50,13 @@ on your own server.
 
 ## Get started
 
-**To watch:** open the invitation your friend sends you. Select **Play** if the
-picture does not start automatically.
+**Got an invitation?** Open the full link in a browser on your computer or phone. If the picture does not start automatically, select **Play**.
 
-**To share:** download **Piik App** to get started. To share without installing,
-you can also create a room in the online version.
-
-| Start here | What you need to do |
-| --- | --- |
-| [Use Piik online](https://demo.piik.tv) | Share from a desktop browser, or choose Camera on a phone with browser camera support. |
-| [Download Piik App](https://piik.tv/#download) | Extract the desktop package or install the mobile app, open Piik, choose **Public invite**, then **Open Piik**. |
+1. **Choose how to share.** On a computer, open [Piik online](https://demo.piik.tv) to share a screen, window or browser tab. A phone browser with camera access can share its camera. To share with Piik App, [download the App](https://piik.tv/#download), then extract and open it on desktop or install and open it on mobile. To invite friends on another network, choose **Public invite**, then **Open Piik**.
+2. Select **Start sharing** and choose what your friend will see. If you want to share sound, enable audio when the source picker offers it.
+3. Once you see the preview, select **Copy invite link** and send the full link to your friend. Keep the sharing tab open. If you use the App, keep it running too.
 
 <p align="center"><img src="./docs/assets/quickstart.svg" width="640" alt="Choose a screen, send an invitation, watch together."></p>
-
-1. Select **Start sharing**, then choose the picture and audio to share.
-2. Select **Copy invite link** and send it to your friends. Keep the sharing tab open.
 
 Open **Interact → Voice** to talk together, with or without picture sharing.
 The Host opens voice; everyone joins to listen and chooses when to turn on their microphone.

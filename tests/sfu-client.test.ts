@@ -248,6 +248,36 @@ function feedVideoStats(
 }
 
 describe("embedded SFU browser transport", () => {
+  it.each([undefined, "q"])("declares the sender's single encoding RID (%s)", async (rid) => {
+    const video = new FakeTrack("video");
+    video.getSettings.mockReturnValue({ width: 320, height: 180, frameRate: 30 });
+    const clone = new FakeTrack("video");
+    clone.getSettings.mockReturnValue(video.getSettings());
+    video.clone.mockReturnValue(clone);
+    const addTransceiver = FakePc.prototype.addTransceiver;
+    vi.spyOn(FakePc.prototype, "addTransceiver").mockImplementation(function (this: FakePc, ...args) {
+      const transceiver = addTransceiver.apply(this, args);
+      if (args[0] !== "audio" && transceiver.sender.parameters.encodings.length === 1) {
+        if (rid === undefined) delete transceiver.sender.parameters.encodings[0]!.rid;
+        else transceiver.sender.parameters.encodings[0]!.rid = rid;
+      }
+      return transceiver;
+    });
+    const send = vi.fn(() => true);
+    const host = new SfuPublisher({ send });
+    cleanups.push(() => host.disconnect());
+    await host.connect(config);
+
+    await expect(host.activate(stream(video), QUALITY_PROFILES["720p30"], "h264")).resolves.toBe(true);
+    const sender = FakePc.instances[0]!.transceivers[0]!.sender;
+    expect(sender.parameters.encodings).toHaveLength(1);
+    expect(sender.parameters.encodings[0]!.rid).toBe(rid);
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "description",
+      media: expect.objectContaining({ layers: [expect.objectContaining({ rid: rid ?? "" })] }),
+    }));
+  });
+
   it("rejects publication without a real Browser source", async () => {
     const send = vi.fn(() => true);
     const host = new SfuPublisher({ send, onDisconnected: vi.fn() });

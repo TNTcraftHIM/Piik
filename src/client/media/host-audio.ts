@@ -32,7 +32,9 @@ export class HostAudio {
   }
   // Install one audio track before publishing, even when the selected picture
   // has no sound. Input changes never replace the transport's output track.
-  async start(): Promise<MediaStream> {
+  async start(signal?: AbortSignal): Promise<MediaStream> {
+    signal?.throwIfAborted();
+    let abort: (() => void) | undefined;
     try {
       const context = this.context = new AudioContext();
       this.destination = context.createMediaStreamDestination();
@@ -41,11 +43,20 @@ export class HostAudio {
       this.gain.gain.value = this.volume;
       this.gain.connect(this.destination);
       this.connectSource();
-      await context.resume();
+      const resumed = context.resume();
+      if (signal) await Promise.race([resumed, new Promise<never>((_, reject) => {
+        abort = () => reject(signal.reason);
+        signal.addEventListener("abort", abort, { once: true });
+        if (signal.aborted) abort();
+      })]);
+      else await resumed;
     } catch {
       // Commentary is optional. A failed graph must not retire a valid picture
       // or source sound; this share continues with its original audio track.
       this.closeGraph();
+      signal?.throwIfAborted();
+    } finally {
+      if (abort) signal?.removeEventListener("abort", abort);
     }
     if (this.closed) throw new Error("Shared audio has stopped");
     return this.output();

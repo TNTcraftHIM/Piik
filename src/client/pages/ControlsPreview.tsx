@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { VideoFit, VideoRotation } from "../media/video-geometry";
-import { BackButton, Btn, Chip, FieldCap, NameTag, Pill, SwitchItem } from "../components/living/primitives";
+import { BackButton, Btn, Chip, FieldCap, NameTag, Pill, SegmentedChoice, SwitchItem } from "../components/living/primitives";
 import { Lcd, RoomChip, RoomCodePlaceholder, RoomAdmissionBadge } from "../components/living/RoomChip";
 import { CaptureSourcePicker, type NativeSourceList } from "../components/living/CaptureSourcePicker";
 import { LedStrip } from "../components/living/Header";
@@ -11,7 +11,7 @@ import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import { REACTION_IDS, type ReactionId } from "../../shared/room-interactions";
 import { PlaybackControls } from "../components/living/PlaybackControls";
-import { InviteQrCode } from "../components/living/InviteQrCode";
+import { RoomInviteField } from "../components/living/RoomInviteControls";
 import { BrandMark } from "../components/living/BrandMark";
 import { SharingSettings } from "../components/living/SharingSettings";
 import { ShareMicrophoneSettings } from "../components/living/ShareMicrophoneSettings";
@@ -37,8 +37,8 @@ import { useRoomVoicePreview } from "./RoomVoicePreview";
 import { usePreviewInteractions } from "./use-preview-interactions";
 import "./controls-preview.css";
 
-const POSTER = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect width="640" height="360" fill="#e8eee6"/><rect x="100" y="60" width="440" height="240" rx="20" fill="#fffdf6"/><path d="M100 100h440" stroke="#c9d7cf" stroke-width="2"/><circle cx="128" cy="81" r="6" fill="#ed9e65"/><circle cx="320" cy="190" r="46" fill="#65b099"/><path d="m310 191 9 9 16-22" fill="none" stroke="#fffdf6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>')}`;
-const SOURCES = { kind: "ready", processAudio: true, systemAudio: true, processAudioExclusion: true, captureBorderControl: true, sources: [
+export const POSTER = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect width="640" height="360" fill="#e8eee6"/><rect x="100" y="60" width="440" height="240" rx="20" fill="#fffdf6"/><path d="M100 100h440" stroke="#c9d7cf" stroke-width="2"/><circle cx="128" cy="81" r="6" fill="#ed9e65"/><circle cx="320" cy="190" r="46" fill="#65b099"/><path d="m310 191 9 9 16-22" fill="none" stroke="#fffdf6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>')}`;
+export const SOURCES = { kind: "ready", processAudio: true, systemAudio: true, processAudioExclusion: true, captureBorderControl: true, sources: [
   { kind: "window", sourceId: "101", pid: 1, creationTime: "1", title: "Sketchbook" },
   { kind: "window", sourceId: "102", pid: 2, creationTime: "2", title: "A short film" },
   { kind: "window", sourceId: "104", pid: 3, creationTime: "3", title: "Voice call" },
@@ -49,7 +49,7 @@ const CAMERA_PREVIEWS = [
   { id: "usb", label: "USB Camera", preview: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><rect width="320" height="180" fill="#e2c5a8"/><path d="M0 25h320M0 157h320" stroke="#cda987" stroke-width="2"/><rect x="53" y="27" width="163" height="124" rx="5" fill="#fffaf0" transform="rotate(-8 135 89)"/><path d="m97 112 30-35 23 25 18-12 18 19" fill="none" stroke="#689b8a" stroke-width="5" stroke-linejoin="round"/><circle cx="166" cy="57" r="11" fill="#ebbd63"/><path d="m245 64 8 77" stroke="#477b73" stroke-width="7" stroke-linecap="round"/><circle cx="266" cy="35" r="19" fill="#f9f5df"/><circle cx="266" cy="35" r="12" fill="#8c6651"/></svg>')}` },
 ];
 const previewCameras: typeof loadCameraPreviews = async (_signal, publish) => publish(CAMERA_PREVIEWS);
-const previewSource = async (source: NativeCaptureTarget) => source.sourceId === "101" ? CAMERA_PREVIEWS[1].preview
+export const previewSource = async (source: NativeCaptureTarget) => source.sourceId === "101" ? CAMERA_PREVIEWS[1].preview
   : source.sourceId === "102" ? CAMERA_PREVIEWS[0].preview : POSTER;
 const previewApplications = async () => SOURCES.sources;
 
@@ -84,6 +84,7 @@ export function ControlsPreview() {
   const [launchPassword, setLaunchPassword] = useState("");
   const [launchLan, setLaunchLan] = useState("192.0.2.10");
   const [policy, setPolicy] = useState<"open" | "private">("open");
+  const [architecture, setArchitecture] = useState<"amd64" | "arm64">("amd64");
   const [roomPassword, setRoomPassword] = useState(false);
   const [inviteAvailable, setInviteAvailable] = useState(true);
   const [includeCredential, setIncludeCredential] = useState(true);
@@ -96,6 +97,9 @@ export function ControlsPreview() {
   const [sourceOpen, setSourceOpen] = useState(displayPreview);
   const [sourceRevision, setSourceRevision] = useState(0);
   const [systemSourcePicker, setSystemSourcePicker] = useState(false);
+  const [processAudioAvailable, setProcessAudioAvailable] = useState(true);
+  const [systemAudioAvailable, setSystemAudioAvailable] = useState(true);
+  const sourceCapabilities = { ...SOURCES, processAudio: processAudioAvailable, systemAudio: systemAudioAvailable };
   const [browserCaptureSupported, setBrowserCaptureSupported] = useState(true);
   const [nativePermissionPreview, setNativePermissionPreview] = useState(false);
   const sourceTargets: NativeCaptureTarget[] = systemSourcePicker
@@ -245,26 +249,15 @@ export function ControlsPreview() {
           <RoomAdmissionBadge policy="private" passwordEnabled />
           <RoomAdmissionBadge policy="private" passwordEnabled={false} />
         </div>
-        {inviteAvailable && <div className="lr-invite-field">
-          <InviteQrCode url={!includeCredential && policy === "private" && !roomPassword ? null : roomLink} />
-          <Tooltip kind="hint-invite-link" text={roomLink} className="lr-invite-hint">
-            <input className="lr-invite-url" readOnly dir="ltr" value={roomLink}
-              aria-label={t(includeCredential ? "host.invite" : "host.invite.address")} />
-          </Tooltip>
-          <span className="lr-row-group"><Glyph name="key" size={17} />
-            <SwitchItem checked={includeCredential} onChange={setIncludeCredential}
-              label={t("host.invite.includeCredential")} note={t("host.invite.credentialHint")} hint="hint-invite-link" />
-          </span>
-        </div>}
+        {inviteAvailable && <RoomInviteField roomLink={roomLink} roomMutating={false}
+          roomLinkBlocked={!includeCredential && policy === "private" && !roomPassword}
+          includeInviteCredential={includeCredential} onCredentialChange={setIncludeCredential} />}
         {inviteAvailable && !includeCredential && policy === "private" && !roomPassword ? <Pill icon="lock" tone="warn"
           comic="hint-policy-private" label={t("host.invite.credentialRequired")} /> : null}
         <p>{en ? "The website's architecture picker uses the same sliding style with native radio buttons. Arrow keys change the choice."
           : "官网的架构选择也复用滑动样式，使用原生单选项；聚焦后可用方向键切换。"}</p>
-        <fieldset className="lr-toggle">
-          <legend className="visually-hidden">{en ? "Download architecture" : "下载架构"}</legend>
-          <label><input type="radio" name="preview-architecture" value="amd64" defaultChecked /><span>x64</span></label>
-          <label><input type="radio" name="preview-architecture" value="arm64" /><span>ARM64</span></label>
-        </fieldset>
+        <SegmentedChoice label={en ? "Download architecture" : "下载架构"} value={architecture} onChange={setArchitecture}
+          options={[{ value: "amd64", label: "x64" }, { value: "arm64", label: "ARM64" }]} />
       </section>
       <section id="input-preview" className="cp-card">
         <header><span className="cp-number">03</span><h2>{en ? "Names, codes and small details" : "名字、房间号，还有小细节。"}</h2></header>
@@ -332,6 +325,10 @@ export function ControlsPreview() {
       <div className="cp-tools">{(["ready", "loading", "refreshing", "unavailable", "incompatible", "unsupported", "failed", "empty"] as const).map((value, index) => <Chip key={value}
         title={value} selected={sourceState === value} onClick={() => { setSourceState(value); setSourceOpen(true); }}>
         {en ? ["Available", "Loading", "Refreshing", "App unavailable", "Update needed", "Capture unavailable", "Read failed", "Empty list"][index] : ["正常", "读取中", "刷新中", "App 未连接", "需要更新", "无法采集", "读取失败", "空列表"][index]}</Chip>)}
+        <SwitchItem checked={processAudioAvailable} onChange={setProcessAudioAvailable}
+          label={en ? "Window sound capability" : "窗口声音能力"} />
+        <SwitchItem checked={systemAudioAvailable} onChange={setSystemAudioAvailable}
+          label={en ? "System sound capability" : "系统声音能力"} />
         <SwitchItem checked={captureBorderAvailable} onChange={setCaptureBorderAvailable}
           label={en ? "Windows border control" : "Windows 边框控制"} />
         <SwitchItem checked={systemSourcePicker} onChange={value => { setSystemSourcePicker(value); setSourceOpen(true); setSourceRevision(value => value + 1); }}
@@ -347,10 +344,10 @@ export function ControlsPreview() {
       </div>
       <div className="cp-stage"><StageTv hasEntry label={t("host.sourcePicker.title")}>
         <img className="cp-poster" src={POSTER} alt="" />
-        {sourceOpen ? <CaptureSourcePicker key={sourceRevision} nativeSources={sourceState === "empty" ? { ...SOURCES, sources: [], captureBorderControl: captureBorderAvailable }
+        {sourceOpen ? <CaptureSourcePicker key={sourceRevision} nativeSources={sourceState === "empty" ? { ...sourceCapabilities, sources: [], captureBorderControl: captureBorderAvailable }
           : sourceState === "ready" ? systemSourcePicker
-            ? { ...SOURCES, sources: sourceTargets, processAudio: false, processAudioExclusion: false, captureBorderControl: false }
-            : { ...SOURCES, captureBorderControl: captureBorderAvailable }
+            ? { ...sourceCapabilities, sources: sourceTargets, processAudio: false, processAudioExclusion: false, captureBorderControl: false }
+            : { ...sourceCapabilities, captureBorderControl: captureBorderAvailable }
           : sourceState === "refreshing" ? { kind: "loading", appDetected: true, sources: sourceTargets } : { kind: sourceState }}
           initialShowCaptureBorder={showCaptureBorder}
           browserSupported={browserCaptureSupported}
@@ -401,6 +398,7 @@ export function ControlsPreview() {
           lan={{ selected: launchLan, onChange: setLaunchLan, addresses: [
             { address: "192.0.2.10", name: "Wi-Fi" },
             { address: "192.0.2.20", name: "vEthernet (Example Virtual Network Adapter with a Long Name)" },
+            { address: "192.0.2.30", name: "vEthernet (Virtual LAN)" },
           ] }}
           localAccessPassword={launchPassword} onLocalAccessPasswordChange={setLaunchPassword}
           onSubmit={event => event.preventDefault()}>

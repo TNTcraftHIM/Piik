@@ -343,6 +343,10 @@ func (s *Server) stopServing(ctx context.Context) error {
 		s.stopSFUDNS = nil
 	}
 	err := s.httpServer.Shutdown(ctx)
+	if err != nil {
+		// A failed drain leaves accepted HTTP connections open after listener closure.
+		err = errors.Join(err, s.httpServer.Close())
+	}
 	for _, listener := range s.listeners {
 		_ = listener.Close()
 	}

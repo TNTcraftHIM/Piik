@@ -31,7 +31,7 @@ import { LiveAudioExclusion } from "../components/living/AudioExclusionSelect";
 import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import { PlaybackControls } from "../components/living/PlaybackControls";
-import { InviteQrCode } from "../components/living/InviteQrCode";
+import { CopyRoomInvite, RoomInviteField } from "../components/living/RoomInviteControls";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 import { useHostPreviewPlayback } from "../components/living/use-host-preview-playback";
 import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preferences";
@@ -648,6 +648,7 @@ export function HostPage({
     VP8_ONLY_VIDEO_CODEC,
   );
   const codecProbeAbortRef = useRef<AbortController | null>(null);
+  const browserAudioStartAbortRef = useRef<AbortController | null>(null);
   const sharingPausedRef = useRef(false);
   const sharingPauseOperationRef = useRef<object | null>(null);
   const retiringStreamRef = useRef<MediaStream | null>(null);
@@ -763,6 +764,8 @@ export function HostPage({
   useEffect(
     () => () => {
       activeGenerationRef.current = null;
+      browserAudioStartAbortRef.current?.abort();
+      browserAudioStartAbortRef.current = null;
       generationRef.current += 1;
       roomMutationRef.current = null;
       sourceSwitchRef.current = null;
@@ -935,6 +938,8 @@ export function HostPage({
     commitQuality(qualitySettingsRef.current);
     codecProbeAbortRef.current?.abort();
     codecProbeAbortRef.current = null;
+    browserAudioStartAbortRef.current?.abort();
+    browserAudioStartAbortRef.current = null;
     videoCodecRef.current = VP8_ONLY_VIDEO_CODEC;
     setResolvedVideoCodec(null);
     setHostSfuQualityWarning(null);
@@ -3031,7 +3036,12 @@ export function HostPage({
         hostAudioRef.current = createBrowserAudio(captured, selection.source ?? "browser", generation, shareGeneration);
         const audio = hostAudioRef.current;
         try {
-          captured = await audio.start();
+          const audioStart = new AbortController();
+          browserAudioStartAbortRef.current = audioStart;
+          try { captured = await audio.start(audioStart.signal); }
+          finally {
+            if (browserAudioStartAbortRef.current === audioStart) browserAudioStartAbortRef.current = null;
+          }
           if (!isCurrentShare(generation, shareGeneration)) {
             audio.sourceStream.getTracks().forEach(track => track.stop()); audio.dispose(); return;
           }
@@ -3366,6 +3376,14 @@ export function HostPage({
     try {
       // Like initial capture, changing source must begin in this button gesture.
       captured = await captureBrowserSource(qualitySettingsRef.current, source, deviceId);
+      if (!isCurrentGeneration(generation) || sourceSwitchRef.current !== token) {
+        captured.getTracks().forEach(track => track.stop());
+        return;
+      }
+      if (!captured.getVideoTracks().some(track => track.readyState === "live")) {
+        captured.getTracks().forEach(track => track.stop());
+        throw new DOMException("Browser capture ended before source replacement", "NotReadableError");
+      }
     } catch (error) {
       if (
         isCurrentGeneration(generation) &&
@@ -3383,21 +3401,18 @@ export function HostPage({
       return;
     }
 
-    if (
-      !isCurrentGeneration(generation) ||
-      sourceSwitchRef.current !== token
-    ) {
-      captured.getTracks().forEach((track) => track.stop());
-      return;
-    }
-
     try {
       if (source === "camera") setCameraDevice(deviceId);
       if (wasNative) {
         const shareGeneration = shareGenerationRef.current!;
         const audio = createBrowserAudio(captured, source, generation, shareGeneration);
         try {
-          captured = await audio.start();
+          const audioStart = new AbortController();
+          browserAudioStartAbortRef.current = audioStart;
+          try { captured = await audio.start(audioStart.signal); }
+          finally {
+            if (browserAudioStartAbortRef.current === audioStart) browserAudioStartAbortRef.current = null;
+          }
           await nativeRetirement;
           if (!isCurrentShare(generation, shareGeneration) || sourceSwitchRef.current !== token) {
             captured.getTracks().forEach(track => track.stop());
@@ -4050,6 +4065,7 @@ export function HostPage({
                 initialCamera={cameraDevice}
                 activeCameraVideo={hostAudioRef.current?.sourceKind === "camera" ? videoRef.current : null}
                 onNative={startNativeShareFromPicker}
+                changingSource={phase === "live"}
                 onPreview={loadNativeSourcePreview}
                 onRefresh={openCaptureSourcePicker}
                 onCancel={closeCaptureSourcePicker}
@@ -4248,7 +4264,8 @@ export function HostPage({
           />
           <div className="lr-stage-notices" role="status" aria-live="polite">
             {details?.hasSourceAudio === false && stream ? (
-              <Pill icon="speakerOff" label={t("host.noAudio")} comic="no-audio" tone="off" />
+              <Pill icon="speakerOff" label={t("host.noAudio")} comic="no-audio" tone="off"
+                detail={!nativeActive && hostAudioRef.current?.sourceKind === "browser" ? t("host.noBrowserAudioDetail") : undefined} />
             ) : null}
             {hostSfuWarningText ? (
               <Pill icon="alert" label={hostSfuWarningText} comic="warning" />
@@ -4316,15 +4333,15 @@ export function HostPage({
                     voiceProcessing={nativeActive ? undefined : commentaryInput.voiceProcessing}
                     onVoiceProcessing={voiceProcessing => { void changeCommentary(true, { ...commentaryInput, voiceProcessing }); }} /> : null}
               {phase === "live" && nativeActive && nativeSourceSelectionRef.current?.target.kind === "display" &&
-                nativeConnection.current?.health.nativeMedia.microphone && nativeConnection.current.health.nativeMedia.processAudioExclusion ? (
+                nativeConnection.current?.supportsMixedAudio && nativeConnection.current.health.nativeMedia.systemAudio ? (
                 <div className="lr-door-group lr-source-audio-settings">
                   <SwitchItem checked={nativeSourceSelectionRef.current.audio}
                     label={t("host.sourcePicker.systemAudio")} hint={nativeSourceSelectionRef.current.audio ? "hint-stop-audio" : "hint-share-audio"}
                     disabled={switchingSource || changingQuality || sharingPaused}
                     onChange={audio => changeNativeSourceAudio(audio, nativeSourceSelectionRef.current?.excludeAudio)} />
-                  <LiveAudioExclusion load={loadAudioApplications} value={nativeSourceSelectionRef.current.excludeAudio}
+                  {nativeConnection.current.health.nativeMedia.processAudioExclusion && <LiveAudioExclusion load={loadAudioApplications} value={nativeSourceSelectionRef.current.excludeAudio}
                     disabled={!nativeSourceSelectionRef.current.audio || switchingSource || changingQuality || sharingPaused}
-                    onChange={target => changeNativeSourceAudio(true, target)} />
+                    onChange={target => changeNativeSourceAudio(true, target)} />}
                 </div>
               ) : null}
               <AudioBitrateControl value={screenAudioBitrate(advancedQuality.maxAudioBitrate)}
@@ -4556,17 +4573,8 @@ export function HostPage({
           {room ? (
             <Row label={t("host.policy")}>
               <RowGroup actions>
-                <Btn
-                  icon={copied ? "check" : "link"}
-                  cap="common.copy"
-                  title={copied ? "common.copied" : roomLinkBlocked ? "host.invite.credentialRequired"
-                    : includeInviteCredential ? "host.invite.copy" : "host.invite.copyAddress"}
-                  hint={roomLinkBlocked ? "hint-policy-private" : "hint-copy-invite"}
-                  hintTone={copied ? "live" : roomLinkBlocked ? "warn" : undefined}
-                  hintMotion={copied ? "still" : undefined}
-                  disabled={!roomLink || roomMutating || roomLinkBlocked}
-                  onClick={() => void copyRoomLink()}
-                />
+                <CopyRoomInvite {...{ roomLink, roomLinkBlocked, roomMutating, includeInviteCredential, copied }}
+                  onCopy={() => void copyRoomLink()} />
                 <Btn
                   icon="refresh"
                   cap="host.invite.rotateShort"
@@ -4585,34 +4593,12 @@ export function HostPage({
                   onClick={() => void changeViewerGrant("revoke")}
                 />
               </RowGroup>
-              <div className="lr-invite-field">
-                <InviteQrCode url={roomLinkBlocked ? null : roomLink} disabled={roomMutating} />
-                {roomLink ? (
-                  <Tooltip kind="hint-invite-link" text={roomLink} className="lr-invite-hint">
-                    <input
-                      className="lr-invite-url"
-                      type="text"
-                      dir="ltr"
-                      value={roomLink}
-                      readOnly
-                      spellCheck={false}
-                      aria-label={t(includeInviteCredential ? "host.invite" : "host.invite.address")}
-                      onFocus={(event) => event.currentTarget.select()}
-                    />
-                  </Tooltip>
-                ) : null}
-                <span className="lr-row-group">
-                  <Glyph name="key" size={17} />
-                  <SwitchItem checked={includeInviteCredential} disabled={roomMutating}
-                    label={t("host.invite.includeCredential")} hint="hint-invite-link"
-                    note={t("host.invite.credentialHint")}
-                    onChange={checked => {
-                      copyRoomLinkRequestRef.current = null;
-                      setCopiedRoomLink(null);
-                      setIncludeInviteCredential(checked);
-                    }} />
-                </span>
-              </div>
+              <RoomInviteField {...{ roomLink, roomLinkBlocked, roomMutating, includeInviteCredential }}
+                onCredentialChange={checked => {
+                  copyRoomLinkRequestRef.current = null;
+                  setCopiedRoomLink(null);
+                  setIncludeInviteCredential(checked);
+                }} />
               {roomLinkBlocked ? <Pill icon="lock" tone="warn" comic="hint-policy-private"
                 label={t("host.invite.credentialRequired")} /> : null}
               <span className="lr-divider" aria-hidden="true" />

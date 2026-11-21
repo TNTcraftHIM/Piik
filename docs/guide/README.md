@@ -1,52 +1,72 @@
-# Piik documentation
+---
+layout: page
+pageClass: help-home
+sidebar: false
+search: false
+title: Piik Documentation
+description: Join a room, share your screen, and fix common problems with Piik.
+---
 
-English · [简体中文](./README.zh-CN.md) · [Website](https://piik.tv/?lang=en)
+<header class="help-hero">
 
-Choose a guide to start sharing, use room tools or solve a problem.
+# Piik Documentation
 
-## Start using Piik
+Try searching for “can’t join”, “no sound”, or “joystick”.
 
-<div class="guide-task-index">
+<HelpSearch />
 
-- **[Watch a friend](./getting-started.md#join-a-friends-room)**<br>
-  Open an invitation in a computer or phone browser. No installation needed.
-- **[Share my screen](./getting-started.md#share-with-piik-app)**<br>
-  Download and run Piik App, choose a picture and send an invitation.
-- **[Use Piik without installing](./getting-started.md#use-piik-online)**<br>
-  Share a screen or camera from the online site.
-- **[Use my group's Piik site](./getting-started.md#share-from-an-existing-site)**<br>
-  Share in your browser, or connect App for more features.
+</header>
+
+<div class="help-sections">
+
+<section class="help-actions">
+
+## Start here
+
+- [Join a friend's room](./getting-started.md#join-a-friends-room)<br>
+  Use an invitation link or a four-digit room code.
+- [Share your screen in a browser](./getting-started.md#share-your-screen-in-a-browser)<br>
+  Open the online site and send friends an invitation link.
+- [Share with Piik App](./getting-started.md#share-with-piik-app)<br>
+  Install Piik App and choose a local or public invitation.
+- [Play on your phone with the on-screen joystick](./remote-control.md#play-on-your-phone-with-the-on-screen-joystick)<br>
+  Request control and move with the on-screen joystick.
+
+</section>
+
+<section class="help-issues">
+
+## Fix a problem
+
+- [No picture after joining a room](./no-media-route.md)
+- [I can’t join my friend’s room](./troubleshooting.md#i-cant-join-my-friends-room)
+- [The picture is blurry or keeps freezing](./troubleshooting.md#the-picture-is-blurry-or-keeps-freezing)
+- [I can see the picture but cannot hear the game](./sound-help.md#i-can-see-the-picture-but-cannot-hear-the-game)
+- [My friends cannot hear me](./sound-help.md#my-friends-cannot-hear-me)
+
+[Troubleshooting](./troubleshooting.md) · [Reporting a problem](./troubleshooting.md#reporting-a-problem)
+
+</section>
+
+<section class="help-resources">
+
+## In the room
+
+- [Sharing and playback](./sharing.md)
+- [iPhone and iPad screen sharing](./sharing.md#iphone-and-ipad-screen-sharing)
+- [Room voice](./room-tools.md#room-voice)
+- [Play together](./remote-control.md#play-together)
+
+</section>
+
+<section class="help-hosting">
+
+## Run your own site
+
+[Deploy Piik Server](../operations/self-hosting.md) · [Service Management](../operations/service-management.md) · [Use frp for a fixed Piik invitation address](./frp.md) · [Advanced network checks](./network.md) · [Piik App](../../cmd/piik-app/README.md)
+
+</section>
 
 </div>
 
-## Use the room tools
-
-- [Sharing and playback](./sharing.md): picture quality, cameras, source sound and viewing controls.
-- [Chat, voice and remote control](./room-tools.md): reactions, conversations and letting a friend take control.
-- [Remote control and playing together](./remote-control.md): permissions, shared keyboard/mouse and gamepads.
-- [App reference](../../cmd/piik-app/README.md): saved modes, site access, command-line options and diagnostics.
-
-## Get help
-
-- **Cannot join, share or hear a friend:** [find the checks for your problem](./troubleshooting.md#common-problems).
-- **The page opens, but picture or voice still will not connect:** after the basic checks, use [network checks](./network.md) to compare browsers, networks or a virtual LAN.
-
-Still stuck? [Report a problem](https://github.com/TNTcraftHIM/Piik/issues/new/choose)
-with your version, system, browser and reproduction steps. Follow the
-[reporting steps](./troubleshooting.md#reporting-a-problem) to collect diagnostics.
-
-## Run a site for your group
-
-<p><a href="../operations/self-hosting.md#docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="Deploy Piik Server with Docker Compose"></a></p>
-
-For a permanent group site, deploy Piik Server on a reachable address with HTTPS
-and the required network ports.
-
-- [Deploy Piik Server](../operations/self-hosting.md) with Docker Compose or the server package.
-- [Keep it running and update](../operations/service-management.md).
-- [Look up configuration settings](../standards/configuration.md).
-
-## Help improve Piik
-
-[Translate Piik](./translating.md), [contribute](../../CONTRIBUTING.md), or explore the
-[developer and maintainer documentation](../README.md).
+[简体中文](./README.zh-CN.md) · [Help translate Piik](./translating.md) · [Piik website](https://piik.tv/?lang=en)

@@ -2,7 +2,7 @@ import { appendFile, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'vitepress';
-import { pages } from './pages.mjs';
+import { documentBody, pages } from './pages.mjs';
 import { writeWebLicenseNotices } from '../../scripts/package-licenses.mjs';
 
 export async function buildDocumentation() {
@@ -12,7 +12,8 @@ export async function buildDocumentation() {
   for (const page of pages) {
     const target = resolve(source, page.path);
     await mkdir(dirname(target), { recursive: true });
-    await writeFile(target, await readFile(resolve(root, page.source), 'utf8'));
+    const markdown = await readFile(resolve(root, page.source), 'utf8');
+    await writeFile(target, documentBody(markdown, page.source));
   }
   await cp(resolve(root, 'docs/assets'), resolve(source, 'assets'), { recursive: true });
   await build(resolve(root, 'site/docs'));

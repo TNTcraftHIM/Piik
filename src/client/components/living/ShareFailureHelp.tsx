@@ -1,5 +1,5 @@
-import { useId, useRef, useState } from "react";
-import { useProjectLink } from "../../lib/use-project-link";
+import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useGuideLink, type GuideAnchors } from "../../lib/use-project-link";
 import type { StatusDescriptor } from "../../ui/media-status";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
@@ -8,6 +8,17 @@ import { HintComic, isHintKind } from "./hints";
 import { BrowserDiagnosticsButton } from "./Header";
 import { StatusIndicator } from "./StatusIndicator";
 import "./share-failure-help.css";
+
+const CHECK_SECTIONS: Partial<Record<CopyKey, GuideAnchors>> = {
+  "shareHelp.appConnection": { en: "app-windows-or-screens-are-missing", zh: "app-找不到窗口或屏幕" },
+  "shareHelp.permission": { en: "no-screen-picker", zh: "没有屏幕选择弹窗" },
+  "shareHelp.source": { en: "sharing-does-not-start-after-source-selection", zh: "选源后无法开始分享" },
+};
+
+export function shareFailureGuideSection(code: string, checks: readonly CopyKey[]): GuideAnchors | undefined {
+  if (code === "site/http-403") return { en: "room-creation-returns-403", zh: "创建房间返回-403" };
+  return checks.map(check => CHECK_SECTIONS[check]).find(section => section !== undefined);
+}
 
 /** The current status owns this disclosure; closing/replacing it retains no error history. */
 export function ShareFailureHelp({ status, label, code, checks }: {
@@ -19,9 +30,28 @@ export function ShareFailureHelp({ status, label, code, checks }: {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
   const copyRequest = useRef<object | null>(null);
+  useLayoutEffect(() => {
+    const element = dialog.current;
+    const view = element?.ownerDocument.defaultView;
+    if (!open || !element || !view) return;
+    const viewport = view.visualViewport;
+    const place = () => {
+      const height = viewport?.height ?? view.innerHeight, top = viewport?.offsetTop ?? 0;
+      element.style.setProperty("--dialog-available-height", `${height}px`);
+      element.style.insetBlock = `${top}px ${Math.max(0, view.innerHeight - top - height)}px`;
+    };
+    place();
+    view.addEventListener("resize", place);
+    viewport?.addEventListener("resize", place);
+    viewport?.addEventListener("scroll", place);
+    return () => {
+      view.removeEventListener("resize", place);
+      viewport?.removeEventListener("resize", place);
+      viewport?.removeEventListener("scroll", place);
+    };
+  }, [open]);
   const hint = (status.tooltip ?? status.comic)!;
-  const guide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}troubleshooting.html`,
-    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/troubleshooting${lang === "zh" ? ".zh-CN" : ""}.md`, open);
+  const guide = useGuideLink(lang, "troubleshooting", open, shareFailureGuideSection(code, checks));
   return <>
     <StatusIndicator status={status} label={label} onActivate={() => {
       copyRequest.current = null;
@@ -52,13 +82,16 @@ export function ShareFailureHelp({ status, label, code, checks }: {
         <nav aria-label={t("shareHelp.title")}>
           <a className="lr-btn" href={guide} target="_blank" rel="noopener noreferrer" aria-label={t("shareHelp.guide")}>{!vis && t("shareHelp.guide")}<Glyph name="arrowRight" size={16} /></a>
           <BrowserDiagnosticsButton />
-          <button type="button" className="lr-btn" aria-label={t(copied === "done" ? "shareHelp.copied" : "shareHelp.copy")} onClick={() => {
+          <button type="button" className="lr-btn" aria-label={t(copied === "done" ? "shareHelp.copied" : "shareHelp.copy")} onClick={async () => {
             // Deliberately excludes URLs, invitation credentials and raw exceptions.
             const version = import.meta.env.VITE_PIIK_VERSION ?? "development";
             const request = copyRequest.current = {};
-            void Promise.resolve().then(() => navigator.clipboard.writeText(`Piik Web ${version}\n${label}\n${code}`)).then(
-              () => { if (copyRequest.current === request) setCopied("done"); },
-              () => { if (copyRequest.current === request) setCopied("failed"); });
+            try {
+              await navigator.clipboard.writeText(`Piik Web ${version}\n${label}\n${code}`);
+              if (copyRequest.current === request) setCopied("done");
+            } catch {
+              if (copyRequest.current === request) setCopied("failed");
+            }
           }}><Glyph name={copied === "done" ? "check" : "copy"} size={16} />{!vis && t(copied === "done" ? "shareHelp.copied" : "shareHelp.copy")}</button>
         </nav>
         <span role="status">{copied === "failed" ? t("shareHelp.copyFailed") : ""}</span>

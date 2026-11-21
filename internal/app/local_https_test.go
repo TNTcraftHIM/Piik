@@ -202,3 +202,55 @@ func TestLocalPortCollisionReleasesTheOtherEntry(t *testing.T) {
 		})
 	}
 }
+
+func TestFixedPublicInviteWithoutTunnelProcess(t *testing.T) {
+	reservation, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := reservation.Addr().(*net.TCPAddr).Port
+	reservation.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	control, err := loopback.Start(ctx, loopback.Options{})
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	defer control.Close()
+	ready, done := make(chan string, 1), make(chan error, 1)
+	const origin = "https://share.example.test"
+	go func() {
+		done <- runLocal(ctx, Options{Link: true, PublicOrigin: origin, Port: port, TunnelProcess: "missing-test-helper", DisableBrowser: true, console: newConsole(cancel, true), localReady: func(_ string, invite string) { ready <- invite }}, appconfig.Config{}, control)
+	}()
+	defer cancel()
+	select {
+	case err := <-done:
+		t.Fatalf("startup: %v", err)
+	case invite := <-ready:
+		if invite != origin {
+			t.Fatal(invite)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("startup timeout")
+	}
+	base := fmt.Sprintf("http://127.0.0.1:%d", port)
+	req, err := http.NewRequest(http.MethodPost, base+"/api/rooms", strings.NewReader(`{"codeEntryPolicy":"private"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", origin)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var room protocol.CreateRoomResponse
+	if err = json.NewDecoder(resp.Body).Decode(&room); err != nil || resp.StatusCode != http.StatusCreated || !strings.HasPrefix(room.InviteURL, origin+"/r/") {
+		t.Fatalf("fixed invitation: status=%d err=%v", resp.StatusCode, err)
+	}
+	cancel()
+	if err = <-done; err != nil {
+		t.Fatal(err)
+	}
+}

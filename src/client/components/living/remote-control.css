@@ -46,6 +46,20 @@
 .lr-remote-request-actions .lr-btn { width: 100%; }
 .lr-remote-note kbd { white-space: nowrap; font: 12px var(--mono); }
 .lr-remote-shortcut { margin-block: 12px; text-align: start; }
+.lr-shortcut-chord,
+.lr-shortcut-modifiers { display: inline-flex; align-items: center; gap: 6px; }
+.lr-shortcut-modifiers { color: var(--muted); font-size: 12px; }
+.lr-shortcut-modifiers kbd {
+  min-width: 3ch; padding: 4px 6px; text-align: center;
+  border: 1px solid var(--line); border-radius: 5px;
+  background: var(--wall); color: var(--ink); font: 600 12px/1.1 var(--mono);
+}
+.lr-shortcut-function { position: relative; display: inline-grid; }
+.lr-shortcut-function select {
+  width: auto; min-height: var(--control-compact-size); padding: 0 27px 0 10px;
+  appearance: none; font: 600 13px var(--mono);
+}
+.lr-shortcut-function > svg { position: absolute; inset-inline-end: 9px; top: 50%; translate: 0 -50%; pointer-events: none; color: var(--muted); }
 .lr-remote-game-mouse { display: flex; justify-content: center; margin-top: 8px; }
 :is(.lr-remote-keyboard, .lr-remote-password) { grid-area: 3 / 1; z-index: 4; padding: 10px 12px 12px; background: var(--paper); color: var(--ink); border-top: 1px solid var(--control-edge); }
 :is(.lr-remote-keyboard, .lr-remote-password) .lr-input { padding: 0 10px; }
@@ -55,6 +69,29 @@
 .lr-remote-keyboard { min-height: 0; max-height: 65dvh; overflow-y: auto; overscroll-behavior: contain; outline: none; }
 .lr-remote-keyboard > .lr-remote-panel-header { position: sticky; top: -10px; z-index: 1; background: var(--paper); }
 .lr-remote-keyboard > * { max-width: 640px; margin-inline: auto; }
+.lr-remote-keyboard-settings {
+  container: remote-keyboard-settings / inline-size;
+  margin-top: 12px; padding-top: 6px; border-top: 1px solid var(--line); text-align: start;
+}
+.lr-remote-keyboard-settings > summary { min-height: var(--control-compact-size); color: var(--ink); font-size: 13px; font-weight: 650; }
+.lr-remote-settings-fields { display: grid; padding-inline: 8px; }
+.lr-remote-settings-fields > :is(.lr-remote-shortcut, .lr-switch-item) {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+  gap: 6px 14px; min-width: 0; min-height: var(--control-compact-size); margin: 0; padding: 6px 0;
+}
+.lr-remote-settings-fields > * + * { border-top: 1px solid var(--line); }
+.lr-remote-settings-fields > .lr-choice-field { padding-block: 8px; }
+.lr-remote-settings-fields :is(.lr-remote-shortcut label, .lr-switch-item > label) {
+  display: inline-flex; align-items: center; gap: 6px; margin: 0;
+  color: var(--ink); font-size: 13px; font-weight: 600; white-space: normal;
+}
+.lr-remote-settings-fields .lr-remote-shortcut label svg { flex: none; color: var(--muted); }
+.lr-remote-settings-fields > .lr-switch-item > :is(svg, label) { grid-area: 1 / 1; }
+.lr-remote-settings-fields > .lr-switch-item > .lr-switch { grid-area: 1 / 2; justify-self: end; }
+.lr-remote-settings-fields > .lr-remote-game-mouse { margin: 0; justify-content: end; padding-block: 6px; }
+@container remote-keyboard-settings (max-width: 32ch) {
+  .lr-remote-settings-fields > .lr-remote-shortcut { grid-template-columns: 1fr; justify-items: start; }
+}
 .lr-remote-keyboard .lr-remote-key-pages { --selection-item-size: calc(var(--control-compact-size) - 12px); display: grid; grid-template-columns: repeat(var(--lr-segments), minmax(0, 1fr)); margin-bottom: 12px; }
 .lr-remote-keyboard .lr-remote-key-pages button { min-width: 0; padding: 4px 8px; }
 .lr-remote-key-row { display: flex; justify-content: center; gap: 4px; margin-bottom: 6px; }
@@ -112,26 +149,23 @@
   .lr-remote-feedback > span:not(.visually-hidden) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 
-.lr-comic-tip-wrap.lr-remote-combine-hint { display: flex; justify-content: center; }
-.lr-remote-combine-keys { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 10px; font-size: 12px; cursor: pointer; }
-.lr-remote-combine-keys input { width: 16px; height: 16px; margin: 0; accent-color: var(--action); }
-.lr-remote-combine-keys > span { display: inline-flex; align-items: center; gap: 6px; }
-.lr-remote-combine-keys kbd {
-  display: grid; place-items: center; min-width: 24px; height: 24px;
-  border: 1px solid var(--line); border-radius: 5px; font: 600 14px var(--mono);
-}
-.lr-remote-mouse { --mouse-offset-x: 24px; --mouse-offset-y: 28px; --mouse-shell-width: 96px; --mouse-shell-height: 100px; position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.lr-remote-keyboard [role="tabpanel"] > .lr-switch-item { display: flex; justify-content: center; margin-top: 10px; }
+.lr-remote-mouse { --mouse-x: 50%; --mouse-y: 0%; --mouse-offset-x: 24px; --mouse-offset-y: 28px; --mouse-shell-width: 96px; --mouse-shell-height: 100px; position: absolute; inset: 0; z-index: 1; pointer-events: none; }
 .lr-remote-touch-cursor { position: absolute; left: var(--remote-x, 50%); top: var(--remote-y, 50%); z-index: 2; width: 22px; height: 28px; pointer-events: none; filter: drop-shadow(0 1px 2px var(--surface-shade)); }
 .lr-remote-touch-cursor path { fill: var(--piik-dark-ink); stroke: var(--piik-dark-wall); stroke-width: 1.5; stroke-linejoin: round; }
-.lr-remote-mouse-widget { --mouse-width: 44px; --mouse-height: 44px; position: absolute; left: clamp(6px, calc(var(--mouse-x, 78%) - var(--mouse-width) / 2), max(6px, calc(100% - var(--mouse-width) - 6px))); top: clamp(6px, calc(var(--mouse-y, 65%) - var(--mouse-height) / 2), max(6px, calc(100% - var(--mouse-height) - 6px))); width: min(var(--mouse-width), calc(100% - 12px)); height: min(var(--mouse-height), calc(100% - 12px)); transition: transform 180ms ease-out; pointer-events: none; }
+.lr-remote-mouse-widget { --mouse-width: 44px; --mouse-height: 44px; position: absolute; left: clamp(6px, calc(var(--mouse-x) - var(--mouse-width) / 2), max(6px, calc(100% - var(--mouse-width) - 6px))); top: clamp(6px, calc(var(--mouse-y) - var(--mouse-height) / 2), max(6px, calc(100% - var(--mouse-height) - 6px))); width: min(var(--mouse-width), calc(100% - 12px)); height: min(var(--mouse-height), calc(100% - 12px)); transition: transform 180ms ease-out; pointer-events: none; }
 .lr-remote-mouse-widget.is-expanded { --mouse-width: calc(var(--mouse-shell-width) + 44px); --mouse-height: var(--mouse-shell-height); left: calc(var(--remote-x, 50%) + var(--mouse-offset-x)); top: calc(var(--remote-y, 50%) + var(--mouse-offset-y)); }
-.lr-remote-mouse-widget:not(.is-expanded)[data-docked="left"] { transform: translateX(calc(-50% - 6px)); }
-.lr-remote-mouse-widget:not(.is-expanded)[data-docked="right"] { transform: translateX(calc(50% + 6px)); }
-.lr-remote-mouse-widget:not(.is-expanded)[data-docked="top"] { transform: translateY(calc(-50% - 6px)); }
-.lr-remote-mouse-widget:not(.is-expanded)[data-docked="bottom"] { transform: translateY(calc(50% + 6px)); }
+.lr-remote-mouse-widget:not(.is-expanded)[data-docked="left"] { left: 0; }
+.lr-remote-mouse-widget:not(.is-expanded)[data-docked="right"] { left: auto; right: 0; }
+.lr-remote-mouse-widget:not(.is-expanded)[data-docked="top"] { top: 0; }
+.lr-remote-mouse-widget:not(.is-expanded)[data-docked="bottom"] { top: auto; bottom: 0; left: calc(50% + 42px); }
+.lr-remote-mouse-widget:not(.is-expanded):is([data-docked="left"], [data-docked="right"]) {
+  top: clamp(0px, calc(var(--mouse-y) - 22px), max(0px, calc(100% - 96px)));
+}
 .lr-remote-mouse-mini { position: absolute; inset: 0; display: block; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 10px; background: transparent; cursor: grab; pointer-events: auto; touch-action: none; transition: opacity 140ms ease; }
 .lr-remote-mouse-mini::before { content: ""; position: absolute; inset: 4px 8px; border: 1px solid var(--control-edge); border-radius: 10px 10px 9px 9px / 9px 9px 13px 13px; background: linear-gradient(var(--line), var(--line)) 50% 0 / 1px 13px no-repeat, var(--surface-glaze) var(--paper); box-shadow: inset 0 1px 0 var(--surface-rim), 0 1px 3px var(--surface-shade); }
 .lr-remote-mouse-mini::after { content: ""; position: absolute; top: 10px; left: calc(50% - 2px); width: 4px; height: 9px; border: 1px solid var(--control-edge); border-radius: 3px; background: var(--wall-2); }
+.lr-remote-mouse-widget[data-docked] .lr-remote-mouse-mini::after { display: none; }
 .lr-remote-mouse-mini:hover::before { border-color: var(--action); }
 .lr-remote-mouse-mini:active { cursor: grabbing; }
 .lr-remote-mouse-mini:active::before { border-color: var(--action); box-shadow: inset 0 0 0 1px var(--action); }
@@ -163,3 +197,171 @@
 :is([data-reduced-motion], [data-comic-reduced-motion]) .lr-remote-mouse-widget,
 :is([data-reduced-motion], [data-comic-reduced-motion]) .lr-remote-mouse-widget > *,
 :is([data-reduced-motion], [data-comic-reduced-motion]) .lr-remote-mouse > .lr-remote-mouse-minimize { transition: none; }
+.lr-remote-stick-area {
+  --stick-clearance: 8px;
+  position: absolute; inset: 0; container-type: size; pointer-events: none;
+}
+.lr-remote-direction {
+  --stick-size: clamp(72px, 24vmin, 92px);
+  --stick-group-width: calc(var(--stick-size) + 16px);
+  --stick-group-height: calc(var(--stick-size) + 6px + var(--control-compact-size));
+  --stick-travel-x: max(0px, calc(100cqw - var(--stick-group-width)));
+  --stick-travel-y: max(0px, calc(100cqh - var(--stick-group-height)));
+  --stick-park-top: max(0px, calc(var(--stick-travel-y) - var(--stick-clearance)));
+  --stick-top: var(--stick-park-top);
+  --stick-home-x: 0;
+  --stick-px: var(--stick-home-x);
+  position: absolute; left: calc(var(--stick-px) * var(--stick-travel-x)); top: var(--stick-top);
+  display: grid; grid-template: "pad" var(--stick-size) "handle" var(--control-compact-size) / 1fr;
+  inline-size: var(--stick-group-width);
+  justify-items: center; align-items: center; row-gap: 6px; pointer-events: none;
+}
+.lr-remote-direction[data-side="right"] { --stick-home-x: 1; }
+.lr-remote-direction[data-positioned] { --stick-top: calc(var(--stick-py) * var(--stick-travel-y)); }
+.lr-remote-direction > .lr-remote-stick { grid-area: pad; }
+.lr-remote-direction:not([data-docked]) > button {
+  --control-hover-transform: none;
+  --control-press-transform: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.lr-remote-direction:not([data-docked]) > button > span { width: 1ch; text-align: center; font-family: var(--mono); }
+.lr-remote-direction > button {
+  --stick-handle-lift: min(0px, calc(var(--stick-park-top) - var(--stick-grab-top, var(--stick-top))));
+  grid-area: handle; min-width: var(--control-compact-size); min-height: var(--control-compact-size);
+  translate: 0 var(--stick-handle-lift); cursor: grab; user-select: none;
+}
+.lr-remote-direction > button:active { cursor: grabbing; }
+.lr-remote-direction > button, .lr-remote-stick { pointer-events: auto; touch-action: none; }
+.lr-remote-stick {
+  position: relative;
+  width: var(--stick-size);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgb(var(--piik-dark-paper-rgb) / .64);
+  color: var(--piik-dark-ink);
+  border: 1px solid color-mix(in srgb, currentColor 52%, transparent);
+  box-shadow: 0 0 0 1px rgb(var(--piik-dark-surface-shade-rgb) / .4);
+  user-select: none;
+}
+.lr-remote-stick span { position: absolute; font: 600 12px/1 var(--mono); text-shadow: 0 1px 2px var(--piik-dark-wall); }
+.lr-remote-stick span:is(:nth-child(1), :nth-child(3)) { left: 50%; translate: -50% 0; }
+.lr-remote-stick span:is(:nth-child(2), :nth-child(4)) { top: 50%; translate: 0 -50%; }
+.lr-remote-stick span:nth-child(1) { top: 6px; }
+.lr-remote-stick span:nth-child(2) { left: 6px; }
+.lr-remote-stick span:nth-child(3) { bottom: 6px; }
+.lr-remote-stick span:nth-child(4) { right: 6px; }
+.lr-remote-stick i {
+  position: absolute;
+  inset: 32%;
+  border-radius: 50%;
+  background: rgb(var(--piik-dark-paper-rgb) / .8);
+  border: 1px solid color-mix(in srgb, currentColor 75%, transparent);
+  box-shadow: 0 1px 2px var(--piik-dark-wall);
+  transform: translate(var(--stick-x, 0), var(--stick-y, 0));
+}
+.lr-remote-stick[data-contact] i { border-color: currentColor; }
+
+.lr-remote-direction[data-docked="left"] > button { justify-self: start; }
+.lr-remote-direction[data-docked="right"] > button { justify-self: end; }
+.lr-remote-direction[data-docked] > button {
+  /* Only the handle parks. Keep the captured tab under the finger until release. */
+  translate: calc((var(--stick-home-x) - var(--stick-grab-x, var(--stick-px))) * var(--stick-travel-x))
+    var(--stick-handle-lift);
+}
+/* Keep both edge pulls clear of the playback bar, including on narrow screens. */
+.lr-tv-screen:has(> .lr-playback) > .lr-remote-input-surface .lr-remote-stick-area {
+  --stick-clearance: calc(var(--control-compact-size) + 24px);
+}
+.lr-tv-screen:has(> .lr-playback) > .lr-remote-input-surface .lr-remote-direction {
+  --handle-width: calc(var(--control-compact-size) + 16px);
+  --stick-size: min(clamp(72px, 24vmin, 92px), calc(50cqw - var(--handle-width) - 8px));
+  --stick-group-width: calc(var(--handle-width) + 4px + var(--stick-size));
+  --stick-group-height: var(--stick-size);
+  column-gap: 4px; row-gap: 0;
+  grid-template: "handle pad" var(--stick-size) / var(--handle-width) var(--stick-size);
+}
+.lr-tv-screen:has(> .lr-playback) > .lr-remote-input-surface .lr-remote-direction[data-side="right"] {
+  grid-template-areas: "pad handle";
+  grid-template-columns: var(--stick-size) var(--handle-width);
+}
+.lr-remote-direction[data-touch-only] .lr-remote-stick {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.lr-remote-direction[data-touch-only]:is(:not([data-docked]), :has(> button:active)) .lr-remote-stick {
+  border-color: color-mix(in srgb, currentColor 52%, transparent);
+}
+.lr-remote-direction[data-touch-only] .lr-remote-stick > span { display: none; }
+.lr-remote-direction[data-touch-only] .lr-remote-stick > i {
+  visibility: hidden;
+  inset: 38%;
+  background: color-mix(in srgb, var(--piik-dark-wall) 75%, transparent);
+  border-color: var(--piik-dark-ink);
+  box-shadow: 0 0 0 1px var(--piik-dark-wall);
+}
+.lr-remote-direction[data-touch-only] .lr-remote-stick[data-contact] > i { visibility: visible; }
+.lr-remote-stick-wake[aria-expanded="true"]::before {
+  box-shadow: inset 0 0 0 1px var(--piik-dark-ink);
+}
+.lr-remote-direction > .lr-remote-stick-wake {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+  cursor: grab;
+}
+.lr-remote-direction > .lr-remote-stick-wake > svg { display: none; }
+/* Picture-edge pulls use the dark television bezel palette in both themes. */
+.lr-remote-stick-wake > span {
+  position: absolute;
+  inset-inline-start: 1px;
+  z-index: 1;
+  width: 13px;
+  color: var(--piik-dark-ink);
+  text-align: center;
+  font: 700 10px/1 var(--mono);
+  pointer-events: none;
+}
+.lr-remote-direction[data-side="right"] .lr-remote-stick-wake > span { inset-inline-start: auto; inset-inline-end: 1px; }
+.lr-remote-stick-wake::before,
+.lr-remote-mouse-widget[data-docked] .lr-remote-mouse-mini::before {
+  content: "";
+  position: absolute;
+  inset: var(--remote-dock-inset, 10px 29px 10px 0);
+  border: 0;
+  border-radius: var(--remote-dock-radius, 0 10px 10px 0);
+  background: color-mix(in srgb, var(--piik-dark-wall) 90%, var(--piik-dark-ink));
+  box-shadow: inset 0 0 0 1px #ffffff48, 0 1px 3px #0006;
+  pointer-events: none;
+}
+:is(.lr-remote-direction, .lr-remote-mouse-widget)[data-docked="right"] { --remote-dock-inset: 10px 0 10px 29px; --remote-dock-radius: 10px 0 0 10px; }
+.lr-remote-mouse-widget[data-docked="top"] { --remote-dock-inset: 0 10px 29px; --remote-dock-radius: 0 0 10px 10px; }
+.lr-remote-mouse-widget[data-docked="bottom"] { --remote-dock-inset: 29px 10px 0; --remote-dock-radius: 10px 10px 0 0; }
+.lr-remote-mouse-widget[data-docked] .lr-remote-mouse-mini::after {
+  display: block;
+  inset: var(--remote-mouse-symbol, 50% auto auto 7px);
+  width: 7px;
+  height: 10px;
+  translate: -50% -50%;
+  border: 1px solid var(--piik-dark-ink);
+  border-radius: 4px;
+  background: linear-gradient(var(--piik-dark-ink), var(--piik-dark-ink)) center top / 1px 3px no-repeat;
+  pointer-events: none;
+}
+.lr-remote-mouse-widget[data-docked="right"] { --remote-mouse-symbol: 50% auto auto calc(100% - 7px); }
+.lr-remote-mouse-widget[data-docked="top"] { --remote-mouse-symbol: 7px auto auto 50%; }
+.lr-remote-mouse-widget[data-docked="bottom"] { --remote-mouse-symbol: calc(100% - 7px) auto auto 50%; }
+:is(.lr-remote-stick-wake, [data-docked] .lr-remote-mouse-mini):is(:hover, :focus-visible)::before {
+  background: var(--piik-dark-wall);
+  box-shadow: inset 0 0 0 1px var(--piik-dark-ink), 0 1px 3px #0006;
+}
+:is(.lr-remote-stick-wake, [data-docked] .lr-remote-mouse-mini):focus-visible { outline: none; }

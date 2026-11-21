@@ -14,10 +14,17 @@ export function RemoteShortcutSelect({ value, onChange, host = false, mac = fals
     <Tooltip kind="hint-remote-stop" text={vis ? undefined : t(host ? "remote.hostStopKeyHelp" : "remote.releaseKeyHelp")}>
       <label htmlFor={id}><Glyph name="keyboard" size={16} />{vis ? null : label}</label>
     </Tooltip>
-    <div className="lr-capture-device-controls">
-      <select id={id} aria-label={label} value={value} disabled={disabled} onChange={event => onChange(Number(event.target.value))}>
-        {REMOTE_SHORTCUT_KEYS.map(key => <option key={key} value={key}>Ctrl + {mac ? "Option" : "Alt"} + F{key}</option>)}
-      </select>
+    <div className="lr-shortcut-chord">
+      <span id={id + "-modifiers"} className="lr-shortcut-modifiers">
+        <kbd>Ctrl</kbd><span>+</span><kbd>{mac ? "Option" : "Alt"}</kbd><span>+</span>
+      </span>
+      <span className="lr-shortcut-function">
+        <select id={id} aria-label={label} aria-describedby={id + "-modifiers"} value={value} disabled={disabled}
+          onChange={event => onChange(Number(event.target.value))}>
+          {REMOTE_SHORTCUT_KEYS.map(key => <option key={key} value={key}>F{key}</option>)}
+        </select>
+        <Glyph name="chevron" size={14} />
+      </span>
     </div>
   </div>;
 }

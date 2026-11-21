@@ -2,8 +2,7 @@
 
 [English](./self-hosting.md) · 简体中文 · [文档导航](../guide/README.zh-CN.md)
 
-Piik Server 将网页、房间管理和可选的媒体转发打包在**一个服务端程序**中。
-解压后即可运行，房间数据保存在 SQLite 中。
+用 Piik Server 可以在自己管理的地址上提供 Piik 站点。你可以先在服务器本机试用，也可以开放给局域网，或使用公网 HTTPS 域名。服务端自带网页，房间数据保存在 SQLite 中。
 
 默认的 P2P 配置由服务器负责房间管理、信令和 STUN，画面与声音在参与者之间传输。
 启用 SFU 后，服务器还会承担媒体转发的带宽和处理开销。配置较低的服务器可以先用默认设置，
@@ -44,7 +43,7 @@ curl -fsSLo compose.yaml https://raw.githubusercontent.com/TNTcraftHIM/Piik/main
 curl -fsSLo .env https://raw.githubusercontent.com/TNTcraftHIM/Piik/main/deploy/container/.env.example
 ```
 
-将 `.env` 中的 `share.example.com` 换成自己的域名，然后启动：
+在 `.env` 中，将 `PUBLIC_BASE_URL` 设为参与者打开的 HTTPS 网址。在 `STUN_URLS` 中，将 `share.example.com` 换成直接解析到服务器的域名，以便接收 UDP 流量。先运行第一条命令检查配置，通过后再启动 Piik。
 
 ```sh
 docker compose run --rm piik --check-config
@@ -221,10 +220,14 @@ frpc 的本地与公网 UDP 端口必须都等于 `SFU_UDP_PORT`。
 [改变 STUN 所观察到的源地址映射](../research/nat-traversal.md#external-forwarding-and-participant-relays)。
 重启 Piik，从另一网络验证 HTTPS 健康检查、房间访问及**服务器转发**。
 
+### 转发 Piik App 的公网邀请
+
+先运行 `piik-app --help`，查看是否有 `public-origin`。已发布的 v2.7.0 App 没有这个选项，需要固定地址时请用上文的 Server 方式。使用包含该选项的 2.x App 时，在电脑上运行 `piik-app --link --public-origin https://share.example.com --port 8787`。公网主机使用上文的 HTTPS 反向代理，frpc 仅配置 `piik-web` TCP 代理并转发至 `127.0.0.1:8787`。自行启动 frps 和 frpc。主持人打开本机回环入口，观众邀请和二维码使用固定的 HTTPS 域名。房间访问设置继续生效，音视频使用 WebRTC P2P。仅在局域网分享时使用 `--local`。
+
 ### 使用托管 frp 服务
 
-SakuraFrp 等服务会提供公网服务器和自己的客户端或启动器；按服务商教程配置，
-不必套用上面的自建 frps 令牌配置。先确认所选节点同时支持带 WebSocket 的 HTTPS 网页访问和普通 UDP 隧道。
+先按[固定公网邀请教程](../guide/frp.zh-CN.md)配置网页入口，里面有樱花映射的面板步骤。
+2.x Server 如需通过服务商中转媒体，另选支持普通 UDP 隧道的节点，并采用下表的媒体设置。
 
 | 端点 | 本地目标 | Piik 设置 |
 | --- | --- | --- |

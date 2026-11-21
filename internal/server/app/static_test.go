@@ -15,6 +15,50 @@ import (
 
 const staticNotFoundBody = `{"error":"Not found"}`
 
+func TestViteBundleRevalidation(t *testing.T) {
+	for _, name := range []string{"assets/index-A_B-c012.js", "assets/index-X_1-2345.css"} {
+		handler := staticHandler(fstest.MapFS{name: {Data: bytes.Repeat([]byte("x"), 4096)}}, staticNotFound)
+		tag := `W/"` + strings.TrimPrefix(name, "assets/") + `"`
+		for _, test := range []struct {
+			name, encoding, ifNoneMatch, byteRange, ifRange string
+			status                                          int
+			contentEncoding, contentRange                   string
+			bodyLength                                      int
+		}{
+			{"gzip", "gzip", "", "", "", 200, "gzip", "", -1},
+			{"identity", "identity", "", "", "", 200, "", "", 4096},
+			{"gzip revalidation", "gzip", tag, "", "", 304, "", "", 0},
+			{"identity revalidation", "identity", tag, "", "", 304, "", "", 0},
+			{"range", "gzip", "", "bytes=0-9", "", 206, "", "bytes 0-9/4096", 10},
+			{"weak If-Range", "identity", "", "bytes=0-9", tag, 200, "", "", 4096},
+		} {
+			t.Run(name+"/"+test.name, func(t *testing.T) {
+				request := httptest.NewRequest("GET", "/"+name, nil)
+				request.Header.Set("Accept-Encoding", test.encoding)
+				request.Header.Set("If-None-Match", test.ifNoneMatch)
+				request.Header.Set("Range", test.byteRange)
+				request.Header.Set("If-Range", test.ifRange)
+				response := httptest.NewRecorder()
+				handler.ServeHTTP(response, request)
+				if response.Code != test.status || (test.bodyLength >= 0 && response.Body.Len() != test.bodyLength) {
+					t.Fatalf("status %d, body length %d", response.Code, response.Body.Len())
+				}
+				for header, want := range map[string]string{
+					"Cache-Control":    "private, max-age=31536000, immutable",
+					"ETag":             tag,
+					"Vary":             "Accept-Encoding",
+					"Content-Encoding": test.contentEncoding,
+					"Content-Range":    test.contentRange,
+				} {
+					if got := response.Header().Get(header); got != want {
+						t.Errorf("%s = %q, want %q", header, got, want)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestStaticCompressionKeepsNegotiationAndServeContentSemantics(t *testing.T) {
 	body := strings.Repeat("const application = 'owned fixture';\n", 100)
 	assets := fstest.MapFS{}
@@ -113,6 +157,7 @@ func staticFixture() fs.FS {
 		"index.html":               filled(100),
 		"assets/app.js":            filled(20),
 		"assets/app.css":           filled(15),
+		"app-AbCd1234.js":          filled(20),
 		"third-party-licenses.txt": filled(21),
 		"favicon.svg":              filled(41),
 		"fonts/inter.woff2":        filled(300),
@@ -149,6 +194,8 @@ func TestStaticHandlerMatchesSirv(t *testing.T) {
 		{method: "GET", path: "/room/1234", status: 200, contentType: html, contentLength: "100", bodyLength: 100},
 		{method: "GET", path: "/assets/app.js", status: 200, contentType: "text/javascript", contentLength: "20", bodyLength: 20},
 		{method: "GET", path: "/assets/app.css", status: 200, contentType: "text/css", contentLength: "15", bodyLength: 15},
+		{method: "GET", path: "/app-AbCd1234.js", status: 200, contentType: "text/javascript", contentLength: "20", bodyLength: 20},
+		{method: "GET", path: "/assets/missing-AbCd1234.js", status: 404, contentType: "application/json; charset=utf-8", bodyLength: len(staticNotFoundBody)},
 		{method: "GET", path: "/third-party-licenses.txt", status: 200, contentType: "text/plain", contentLength: "21", bodyLength: 21},
 		{method: "GET", path: "/favicon.svg", status: 200, contentType: "image/svg+xml", contentLength: "41", bodyLength: 41},
 		{method: "GET", path: "/fonts/inter.woff2", status: 200, contentType: "font/woff2", contentLength: "300", bodyLength: 300},

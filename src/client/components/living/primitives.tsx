@@ -35,6 +35,28 @@ export function Cap({ k }: { k: CopyKey }) {
   return vis ? null : <span className="lr-cap">{t(k)}</span>;
 }
 
+export function SegmentedChoice<T extends string>({ label, describedBy, options, value, onChange }: {
+  label: string;
+  describedBy?: string;
+  options: readonly { value: T; label: string; icon?: GlyphName }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  const name = useId();
+  const { vis } = useCopy();
+  return <div className="lr-choice-field">
+    <span id={name + "-label"} className={vis ? "visually-hidden" : "lr-field-cap"}>{label}</span>
+    <div className="lr-toggle" role="radiogroup" aria-labelledby={name + "-label"} aria-describedby={describedBy}
+      style={{ "--lr-segments": options.length, "--lr-selected-index": options.findIndex(option => option.value === value) } as CSSProperties}>
+      {options.map(option => <label key={option.value}>
+        <input type="radio" name={name} value={option.value} aria-label={option.label}
+          checked={value === option.value} onChange={() => onChange(option.value)} />
+        <span>{option.icon && <Glyph name={option.icon} size={17} />}{(!vis || !option.icon) && option.label}</span>
+      </label>)}
+    </div>
+  </div>;
+}
+
 export function BackButton({ onClick }: { onClick: () => void }) {
   return <Btn icon="arrowLeft" title="common.back" cap="common.back" size="dense" quiet hint="hint-collapse" onClick={onClick} />;
 }
@@ -233,6 +255,7 @@ export function Pill({
   icon,
   tone,
   label,
+  detail,
   alert,
   comic,
   motion = "still",
@@ -241,6 +264,7 @@ export function Pill({
   icon: GlyphName;
   tone?: ComicTone;
   label: string;
+  detail?: string;
   alert?: boolean;
   comic: ComicKind | HintKind;
   motion?: ComicMotion;
@@ -252,6 +276,7 @@ export function Pill({
     <button
       type="button"
       className="lr-pill"
+      aria-description={detail}
     >
       <Glyph name={icon} size={16} />
       {vis ? <span className="visually-hidden">{label}</span> : <span>{label}</span>}
@@ -260,7 +285,7 @@ export function Pill({
   return (
     <span className={`lr-notice is-${resolvedTone === "live" ? "good" : resolvedTone}${onDismiss ? " is-dismissible" : ""}`} role={alert ? "alert" : "status"}>
       <Tooltip toggleOnClick kind={comic} tone={resolvedTone} motion={motion}
-        text={vis ? undefined : label}>{body}</Tooltip>
+        text={vis ? undefined : detail ?? label}>{body}</Tooltip>
       {onDismiss && <span className="lr-notice-dismiss"><Btn icon="x" size="dense" quiet
         title="notice.dismiss" hint="hint-close" onClick={onDismiss} /></span>}
     </span>

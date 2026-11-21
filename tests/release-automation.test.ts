@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { pullRequestNotes, releaseNotes } from "../scripts/release-notes.mjs";
+import { pullRequestNotes, releaseNotes, releaseNotesSection } from "../scripts/release-notes.mjs";
+import { releaseCommits } from "../scripts/release-version.mjs";
 import { splitReleaseHeadline } from "../scripts/release-headline.mjs";
 
 const planner = fileURLToPath(new URL("../scripts/release-version.mjs", import.meta.url));
@@ -130,19 +131,22 @@ describe("release automation", () => {
       expect(releaseNotes(root, "v1.1.0", next, "fixture/Piik")).toBe(notes);
       // A checkout may have advanced; generation still uses the requested SHA.
       expect(releaseNotes(root, "v1.0.0", launch, "fixture/Piik")).toBe(first);
-      for (const section of ["", "## Release notes", "## Release notes\n<!-- Fill in -->\n### Changes",
-        "## Release notes\n- One\n## Release notes\n- Two", `## Release notes\n${opening}`]) {
-        git("checkout", "--quiet", "--detach", next);
-        const invalid = commit(`chore: maintenance\n\n${section}`);
-        expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Piik")).toThrow("one nonempty");
-      }
-      for (const damaged of ["????????????", "Updated \uFFFD capture"]) {
-        git("checkout", "--quiet", "--detach", next);
-        const invalid = commit(`fix: capture\n\n## Release notes\n${damaged}`);
-        expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Piik")).toThrow("damaged Release notes");
-      }
+      const invalid = commit("chore: maintenance");
+      expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Piik")).toThrow(`Commit ${invalid} needs one nonempty`);
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 15_000); // Real Git subprocesses share the runner with the rest of the suite.
+
+  it("rejects empty, duplicate, heading-only and damaged notes", () => {
+    const headline = "**Play together!**\n\n**一起玩！**";
+    for (const section of ["", "## Release notes", "## Release notes\n<!-- Fill in -->\n### Changes",
+      "## Release notes\n- One\n## Release notes\n- Two", `## Release notes\n${headline}`]) {
+      expect(() => releaseNotesSection(`chore: maintenance\n\n${section}`, "Fixture")).toThrow("one nonempty");
+    }
+    for (const damaged of ["????????????", "Updated \uFFFD capture"]) {
+      expect(() => releaseNotesSection(`fix: capture\n\n## Release notes\n${damaged}`, "Fixture"))
+        .toThrow("damaged Release notes");
+    }
+  });
 
   it("plans from immutable tags and all unreleased main changes without editing version files", () => {
     const root = mkdtempSync(join(tmpdir(), "piik-release-plan-"));
@@ -217,18 +221,20 @@ describe("release automation", () => {
       git("add", ".");
       git("commit", "-m", "feat: launch");
       git("tag", "v1.0.0");
-      for (const path of ["src/client/styles.css", "src/shared/protocol.ts", "internal/server/app/app.go",
+      const inputs = ["src/client/styles.css", "src/shared/protocol.ts", "internal/server/app/app.go",
         "cmd/piik-app/piik.ico", "native/capture/windows/build.ps1", "public/guide.md",
         "licenses/NOTICE.md", "LICENSE", "package-lock.json", "go.mod",
         "scripts/check-go.mjs", "scripts/app-package-targets.mjs", ".github/workflows/repository-hygiene.yml",
-        "new-product-input.json"]) {
-        git("checkout", "--quiet", "--detach", "v1.0.0");
+        "new-product-input.json"];
+      for (const path of inputs) {
         mkdirSync(dirname(join(root, path)), { recursive: true });
         writeFileSync(join(root, path), "Changed product input");
         git("add", "--", path);
-        git("commit", "-m", "fix: update product input");
-        expect(plan(), path).toMatchObject({ version: "v1.0.1", publish: true });
+        git("commit", "-m", `fix: update ${path}`);
       }
+      expect(releaseCommits(root, "HEAD", "v1.0.0").map(({ message }) => message.trim()))
+        .toEqual(inputs.map(path => `fix: update ${path}`));
+      expect(plan()).toMatchObject({ version: "v1.0.1", publish: true });
       git("checkout", "--quiet", "--detach", "v1.0.0");
       mkdirSync(join(root, "site"), { recursive: true });
       git("mv", "public/asset.svg", "site/asset.svg");

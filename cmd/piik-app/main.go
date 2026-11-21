@@ -36,6 +36,7 @@ func run(args []string) int {
 	flags.BoolVar(&options.Debug, "debug", false, "save opt-in App diagnostics to rotated files")
 	flags.StringVar(&options.LogDir, "log-dir", "", "diagnostic directory (overrides PIIK_LOG_DIR)")
 	flags.StringVar(&options.CaptureProcess, "capture-process", "", "path to the platform native capture process")
+	flags.StringVar(&options.PublicOrigin, "public-origin", "", "fixed HTTPS origin for an externally forwarded --link")
 	flags.StringVar(&options.TunnelProcess, "tunnel-process", "", "path to the packaged public tunnel process")
 	flags.StringVar(&options.ConfigPath, "config", "", "path to the App configuration file")
 	flags.StringVar(&options.LANAddress, "lan-address", "", "LAN IPv4 address used in Local invitations")
