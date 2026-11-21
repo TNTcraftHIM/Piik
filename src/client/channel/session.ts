@@ -3394,7 +3394,6 @@ export class ChannelSession {
     const id = this.voiceParticipation.get(roomId)?.publicationId;
     this.voiceParticipation.delete(roomId);
     if (id) this.retireCapture(id);
-    this.releaseUnusedMicrophone();
     this.refreshActivity();
     return this.syncVoiceParticipation(roomId);
   };
@@ -3522,8 +3521,6 @@ export class ChannelSession {
     this.closeInteractions();
     this.readings.clear();
     this.readingRooms.clear();
-    const request = this.microphoneRequest;
-    this.microphoneRequest = null;
     this.captureLifetime.abort();
     this.captureLifetime = new AbortController();
     for (const [roomId, selection] of this.sourceSelections) this.finishSourceSelection(roomId, selection);
@@ -3542,11 +3539,7 @@ export class ChannelSession {
     this.localNativeEndpoints.clear();
     this.voiceParticipation.clear();
     for (const id of this.watching.keys()) this.retireWatch(id);
-    this.microphone?.close();
-    this.microphone = null;
-    request?.input?.close();
-    void request?.context?.close().catch(() => {});
-    if (request) request.context = null;
+    this.releaseUnusedMicrophone();
     this.signals = [];
   }
 
