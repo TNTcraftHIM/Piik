@@ -175,6 +175,33 @@ enum EventTarget {
     },
 }
 impl EventTarget {
+    fn emit(&self, event: Event, overflow: &AtomicBool) {
+        match self {
+            EventTarget::Peer(events) => {
+                if events.try_send(event).is_err() {
+                    overflow.store(true, Ordering::Release);
+                }
+            }
+            EventTarget::Local { tracks, ended } => match event {
+                Event::Track(_, track) => {
+                    if tracks.try_send(track).is_err() {
+                        ended.send_replace(Some(Err("local_input_track_unavailable".into())));
+                    }
+                }
+                Event::State(_, PeerState::Failed) => {
+                    ended.send_replace(Some(Err("local_input_failed".into())));
+                }
+                Event::State(_, PeerState::Closed) => {
+                    let unfinished = ended.borrow().is_none();
+                    if unfinished {
+                        ended.send_replace(Some(Ok(())));
+                    }
+                }
+                _ => {}
+            },
+        }
+    }
+
     fn local(&self) -> bool {
         matches!(self, Self::Local { .. })
     }
@@ -738,9 +765,7 @@ impl Runtime {
                         local: address,
                     });
                 }
-                if let EventTarget::Peer(events) = &events {
-                    let _ = events.try_send(Event::Candidate(pair, candidate, None));
-                }
+                events.emit(Event::Candidate(pair, candidate, None), &overflow);
             }
         }
         let (bandwidth, rx) = watch::channel(Estimate::Startup(300_000.0));
@@ -1726,30 +1751,7 @@ impl Engine {
         }
     }
     fn emit(&self, event: Event) {
-        match &self.events {
-            EventTarget::Peer(events) => {
-                if events.try_send(event).is_err() {
-                    self.overflow.store(true, Ordering::Release);
-                }
-            }
-            EventTarget::Local { tracks, ended } => match event {
-                Event::Track(_, track) => {
-                    if tracks.try_send(track).is_err() {
-                        ended.send_replace(Some(Err("local_input_track_unavailable".into())));
-                    }
-                }
-                Event::State(_, PeerState::Failed) => {
-                    ended.send_replace(Some(Err("local_input_failed".into())));
-                }
-                Event::State(_, PeerState::Closed) => {
-                    let unfinished = ended.borrow().is_none();
-                    if unfinished {
-                        ended.send_replace(Some(Ok(())));
-                    }
-                }
-                _ => {}
-            },
-        }
+        self.events.emit(event, &self.overflow);
     }
     fn drain(&mut self) {
         self.drain_turn();

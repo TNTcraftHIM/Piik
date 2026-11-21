@@ -13,8 +13,13 @@ test("picture retry is immediately available for waiting remote screens",()=>{
   expect(renderToStaticMarkup(createElement(ChannelStage,{...props,sources:[{...source,stream}]}))).not.toContain('aria-label="Retry picture"');
   for(const difference of[{owned:true},{localSource:true}])expect(renderToStaticMarkup(createElement(ChannelStage,{...props,sources:[{...source,...difference}]}))).not.toContain('aria-label="Retry picture"');
   const disabled=renderToStaticMarkup(createElement(ChannelStage,{...props,canSubscribe:false}));
-  expect(disabled).toMatch(/aria-label="Retry picture"[^>]*disabled/);
-  expect(disabled).toMatch(/<button[^>]*aria-label="Picture help"(?![^>]*disabled)/);
+  const buttons = disabled.match(/<button\b[^>]*>/g) ?? [];
+  const retry = buttons.find(tag => tag.includes('aria-label="Retry picture"'));
+  const help = buttons.find(tag => tag.includes('aria-label="Picture help"'));
+  const disabledAttribute = /\s(?:disabled(?=[\s=>])|aria-disabled="true")/;
+  expect(retry).toMatch(disabledAttribute);
+  expect(help).toBeDefined();
+  expect(help).not.toMatch(disabledAttribute);
   for (const state of [{ deliveryFailed: false }, { paused: true }, { owned: true }, { localSource: true }, { stream }, { hidden: true }]) {
     const markup = renderToStaticMarkup(createElement(ChannelStage, { ...props, sources: [{ ...source, ...state }] }));
     expect(markup).not.toContain('aria-label="Picture help"');

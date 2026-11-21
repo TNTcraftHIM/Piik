@@ -76,9 +76,11 @@ test("a shared YouTube seek can buffer beyond ten seconds without blocking a new
   expect(sdk.seeks.at(-1)).toBe(60);
   await vi.advanceTimersByTimeAsync(11000);
   expect(player.error).toBeNull();
+  expect(player.mediaState).toMatchObject({ position: 0, readyState: 2 });
   sdk.position = 60;
   sdk.playVideo();
   await vi.advanceTimersByTimeAsync(1000);
+  expect(player.mediaState).toMatchObject({ position: 60, paused: false, readyState: 3 });
   expect(player.error).toBeNull();
   player.close();
 });

@@ -509,6 +509,51 @@ fn complete_bundle_extraction_rejects_traversal() {
     .is_err());
 }
 
+#[cfg(windows)]
+#[tokio::test]
+async fn local_archive_write_error_does_not_retry_the_mirror() {
+    let fixture = fixture(
+        [Duration::from_millis(1), Duration::from_millis(12)],
+        [false; 2],
+    )
+    .await;
+    let Config::Enabled(options) = &fixture.config.update else {
+        unreachable!()
+    };
+    let installation = package::Installation::inspect(options, &fixture.config).unwrap();
+    let operation = Uuid::new_v4();
+    let prefix = format!(".piik-update-{operation}-");
+    let lock = std::cell::OnceCell::new();
+    let result = download::prepare(
+        options,
+        &installation,
+        operation,
+        &Selection {
+            version: "v3.0.1".into(),
+            revision: SOURCE.into(),
+        },
+        |_, _, _| {
+            lock.get_or_init(|| {
+                let workspace = fs::read_dir(installation.root.parent().unwrap())
+                    .unwrap()
+                    .map(|entry| entry.unwrap())
+                    .find(|entry| entry.file_name().to_string_lossy().starts_with(&prefix))
+                    .unwrap();
+                let file = fs::File::options()
+                    .read(true)
+                    .write(true)
+                    .open(workspace.path().join("package.zip"))
+                    .unwrap();
+                file.try_lock().unwrap();
+                file
+            });
+        },
+    )
+    .await;
+    assert!(result.err().unwrap().is::<std::io::Error>());
+    assert_eq!(fixture.providers[0].requests.load(Ordering::SeqCst), 1);
+    assert_eq!(fixture.providers[1].requests.load(Ordering::SeqCst), 1);
+}
 #[tokio::test]
 #[cfg(windows)]
 async fn unmanaged_directories_and_data_inside_the_bundle_stay_manual() {

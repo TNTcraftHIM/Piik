@@ -6,10 +6,12 @@ afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 it.each(["deadline", "cancel"] as const)("releases the probe clone and both PCs when setup never completes (%s)", async reason => {
   vi.useFakeTimers();
-  const close = vi.fn(), stop = vi.fn();
+  const connections: { close: ReturnType<typeof vi.fn> }[] = [];
+  const stop = vi.fn();
   vi.stubGlobal("RTCRtpSender", { getCapabilities: () => ({ codecs: [{ mimeType: "video/H264", sdpFmtpLine: "packetization-mode=1" }] }) });
   vi.stubGlobal("RTCPeerConnection", class {
-    close = close;
+    close = vi.fn();
+    constructor() { connections.push(this); }
     addTransceiver() { return { setCodecPreferences() {}, sender: {} }; }
     createOffer() { return new Promise<RTCSessionDescriptionInit>(() => {}); }
   });
@@ -20,7 +22,8 @@ it.each(["deadline", "cancel"] as const)("releases the probe clone and both PCs 
   if (reason === "cancel") abort.abort();
   else await vi.advanceTimersByTimeAsync(4000);
   await outcome;
-  expect(close).toHaveBeenCalledTimes(2);
+  expect(connections).toHaveLength(2);
+  for (const pc of connections) expect(pc.close).toHaveBeenCalledOnce();
   expect(stop).toHaveBeenCalledOnce();
   expect(track.readyState).toBe("live");
   expect(vi.getTimerCount()).toBe(0);

@@ -273,7 +273,7 @@ function collect(node: ts.Node): void {
 collect(source);
 if (!connect || !effects.length) throw new Error("Missing App connection operation or cleanup");
 const executable = ts.transpileModule(`${rememberBuild}\n${connect}\nconst cleanups = [${effects.map(effect => effect.includes("else if (!connected") ? `(automatic ? (${effect})() : undefined)` : `(${effect})()`).join(",")}];
-  ({ connect, cleanup: () => { cleanups.reverse().forEach(fn => fn?.()); pending.current?.controller.abort(); pending.current?.popup?.close(); } });`, {
+  ({ connect, cleanup: () => cleanups.reverse().forEach(fn => fn?.()) });`, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText;
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));

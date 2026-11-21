@@ -145,7 +145,7 @@ describe("App release update notice", () => {
       expect(String(input)).toBe(DEFAULT_RELEASE_API_URL);
       expect(init?.credentials).toBe("omit");
       expect(JSON.stringify(init)).not.toContain(currentRevision);
-      expect(JSON.stringify(init)).not.toContain("Authorization");
+      expect(new Headers(init?.headers).has("Authorization")).toBe(false);
       return new Response(JSON.stringify(release), { status: 200 });
     });
     await expect(checkReleaseUpdate({ version: "v1.1.0", revision: currentRevision }, { fetchImpl }))

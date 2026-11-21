@@ -17,7 +17,9 @@ describe("reader documentation publication", () => {
   });
 
   it("publishes both help homepages with three starting tasks and header-owned language navigation", () => {
-    for (const page of pages.filter(page => page.path === "index.md" || page.path === "zh/index.md")) {
+    const homepages = pages.filter(page => page.path === "index.md" || page.path === "zh/index.md");
+    expect(homepages.map(page => page.path).sort()).toEqual(["index.md", "zh/index.md"]);
+    for (const page of homepages) {
       const source = readFileSync(new URL("../" + page.source, import.meta.url), "utf8");
       const body = documentBody(source, page.source);
       expect(body).toContain("# " + page.text + "\n\n");

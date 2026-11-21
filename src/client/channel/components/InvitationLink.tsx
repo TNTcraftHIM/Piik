@@ -14,6 +14,6 @@ export function InvitationLink({ url, label, copyLabel, disabled = false }: { ur
       disabled={disabled} onClick={clipboard.copy} />
     <input className="c3-input" readOnly value={url} aria-label={label} onFocus={event => event.currentTarget.select()} />
     {clipboard.status === "failed" && <p role="status">{t("channel.invitationLink.copyFailed")}</p>}
-    <ChannelInviteQrCode url={url} disabled={disabled} label={t("channel.invitationLink.qrCode")} presentation="inline" />
+    <ChannelInviteQrCode url={url} disabled={disabled} label={t("channel.invitationLink.qrCode")} />
   </div>;
 }

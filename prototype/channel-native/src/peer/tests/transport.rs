@@ -1465,3 +1465,27 @@ async fn rebinding_writer_preserves_messages_queued_for_current_channel() -> Res
     runtime.close().await;
     result
 }
+
+#[tokio::test]
+async fn initial_candidate_overflow_retires_only_its_pair() -> Result<()> {
+    use crate::peer::tests::support::{vp8, Fixture};
+    let mut f = Fixture::new(vp8()).await?;
+    let mut plan = f.plans[0].clone();
+    plan.id = Uuid::new_v4();
+    plan.peer_id = Uuid::new_v4();
+    let (events, mut received) = mpsc::channel(1);
+    f.driver.events = events;
+    f.driver.events.try_send(Event::Negotiate(plan.id)).unwrap();
+    f.driver.create_pair(&plan, None).await?;
+    let missed = plan.id;
+    received.try_recv()?;
+    plan.id = Uuid::new_v4();
+    plan.peer_id = Uuid::new_v4();
+    f.driver.create_pair(&plan, None).await?;
+    assert!(matches!(received.try_recv()?, Event::Candidate(id, _, None) if id == plan.id));
+    f.driver.deadlines().await;
+    assert!(!f.driver.pairs.contains_key(&missed));
+    assert!(f.driver.pairs.contains_key(&plan.id));
+    f.close().await;
+    Ok(())
+}

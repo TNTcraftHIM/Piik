@@ -1,4 +1,4 @@
-﻿import { readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { expect, test } from "vitest";
 
 test("Browser WASM saves room consent, keeps Read separate and derives fresh service socket proof", async () => {
@@ -28,15 +28,29 @@ test("Browser WASM saves room consent, keeps Read separate and derives fresh ser
     expect(JSON.parse(host.policy()).allowServiceRelay).toBe(true);
     expect(JSON.parse(host.summary())).not.toHaveProperty("allowServiceRelay");
     turn({ type: "command", context: { ...context, sessionId: viewer }, command: { type: "voice", roomId: policy.id, joined: true, muted: true, deafened: true } });
-    const repairing = turn({ type: "sync" }, [{ first: owner, second: viewer, revision: revision + 1 }]);
+    const failedPairs = [{ first: owner, second: viewer, revision: revision + 1 }];
+    const repairing = turn({ type: "sync" }, failedPairs);
     expect(repairing.projection.views[service]).toMatchObject({ authorized: false, transitEndpoint: serviceEndpoint, canManage: false, reading: false, subscriptions: [], watchSubscriptions: [] });
     expect(repairing.projection.views[service]).not.toHaveProperty("transit");
     expect(JSON.parse(host.policy()).grants).toEqual([viewerUser]);
-    for (const link of repairing.projection.baseLinks) for (const [sessionId, peer] of [[link.parent, link.child], [link.child, link.parent]]) turn({ type: "base_state", context: { ...context, sessionId }, peer, ready: true });
+    type Link = { parent: string; child: string; ready: boolean };
+    const servicePeers = (links: Link[], ready: boolean) => links
+      .filter(link => link.ready === ready && (link.parent === service || link.child === service))
+      .map(link => link.parent === service ? link.child : link.parent).sort();
+    const expectedPeers = [owner, viewer].sort();
+    let acknowledged = repairing;
+    for (const [parent, child] of [[owner, service], [service, viewer]]) {
+      expect(acknowledged.projection.baseLinks).toContainEqual(expect.objectContaining({ parent, child, ready: false }));
+      for (const [sessionId, peer] of [[parent, child], [child, parent]]) {
+        acknowledged = turn({ type: "base_state", context: { ...context, sessionId }, peer, ready: true }, failedPairs);
+      }
+    }
+    expect(servicePeers(acknowledged.projection.baseLinks, true)).toEqual(expectedPeers);
     serviceEndpoint = { sessionId: service, connectionId: crypto.randomUUID() };
-    const replaced = turn({ type: "sync" });
+    const replaced = turn({ type: "sync" }, failedPairs);
     expect(replaced.projection.views[service]?.transitEndpoint).toEqual(serviceEndpoint);
-    expect(replaced.projection.baseLinks.filter((link: { parent: string; child: string }) => link.parent === service || link.child === service).every((link: { ready: boolean }) => !link.ready)).toBe(true);
+    expect(servicePeers(replaced.projection.baseLinks, false)).toEqual([owner]);
+    expect(servicePeers(replaced.projection.baseLinks, true)).toEqual([]);
     serviceEndpoint = null;
     const unavailable = turn({ type: "sync" });
     expect(unavailable.projection.allowServiceRelay).toBe(true);

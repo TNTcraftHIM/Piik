@@ -4835,7 +4835,7 @@ test("authoritative sender pause retains tracks, layer choices and independent r
   } finally { transport.close(); }
 });
 
-test("a reused sender waits for negotiated encodings before audio limits and pause are applied", async () => {
+test("screen audio waits for negotiated encodings and updates bitrate and pause when its sender is reused", async () => {
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -4859,6 +4859,16 @@ test("a reused sender waits for negotiated encodings before audio limits and pau
     expect(set).not.toHaveBeenCalled();
     transport.signal({ exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "renegotiated" }, tracks: [] });
     await vi.waitFor(() => expect(sender.getParameters().encodings[0]).toMatchObject({ maxBitrate: 192_000, active: false }));
+    transport.setOutgoing(new Map());
+    expect(sender.track).toBeNull();
+    const replacement = remoteTrack("audio");
+    transport.setOutgoing(new Map([["next-screen", { kind: "screen", stream: remoteStream("next", [replacement]), audioBitrate: 96_000 }]]));
+    await vi.waitFor(() => {
+      expect(sender.track).toBe(replacement);
+      expect(sender.getParameters().encodings[0]).toMatchObject({ maxBitrate: 96_000, active: true });
+    });
+    expect(pc.getSenders()).toHaveLength(1);
+    expect(pc.getSenders()[0]).toBe(sender);
     expect(warning).not.toHaveBeenCalled();
     expect(pc.senders).toEqual([sender]);
   } finally { transport.close(); }
@@ -10667,67 +10677,82 @@ test('MPD whole-track selection stays private until explicit confirmation and us
   } finally { session.close(); }
 });
 
+async function openMpdPage(session: ChannelSession, app: ChannelSocket, candidate: ReturnType<typeof mpdSelectionFixture>['candidate']) {
+  const url = 'https://video.test/' + candidate.id;
+  const preparing = session.prepareWatchPage('first', url);
+  await vi.waitFor(() => expect(app.sent.at(-1)).toMatchObject({ type: 'page_prepare', url }));
+  const open = app.sent.at(-1)!;
+  app.receive({ id: open.id, result: { pageId: open.pageId } });
+  await preparing;
+  app.receive({ type: 'page_candidates', pageId: open.pageId, url, candidates: [{ id: candidate.id, title: 'Film', url: null, duration: 60 }] });
+  const selected = session.selectWatchPage('first', candidate.id);
+  const state = { position: 0, paused: true, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] };
+  for (const type of ['page_select', 'page_read', 'page_media_sources']) {
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe(type));
+    app.receive({ id: app.sent.at(-1)!.id, result: type === 'page_media_sources'
+      ? { choices: [], indexedCandidates: [], mpdCandidates: [candidate], byteSource: null } : state });
+  }
+  await selected;
+  return open.pageId;
+}
+
 test('MPD preparation failure preserves the selected page and incumbent; cancelling retires a late candidate', async () => {
   localProviderVideo();
   const { candidate, catalog, selected } = mpdSelectionFixture();
-  const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], mpdCandidates: [candidate], byteSource: null }));
-  vi.spyOn(page, 'inspectMpd').mockResolvedValue(catalog);
-  const prepare = vi.spyOn(page, 'prepareMpdMedia').mockRejectedValueOnce(new Error('watch_source_unavailable'));
+  const { session, socket } = await setup(1000, false);
+  const connecting = session.activateApp({ service: 'piik-channel-app', protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: 'approved', pagePlayer: true });
+  const app = ChannelSocket.current;
+  await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
   const incumbent = new WatchPlayer('first', true, new HTMLVideoMedia('https://fixture.test/old.mp4', 'file'), () => {});
   const close = vi.spyOn(incumbent, 'close');
   (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set('old', incumbent);
   try {
-    await session.selectWatchPage('first', candidateId);
-    await session.inspectWatchMpdSource('first', candidate.id, new AbortController().signal);
-    await expect(session.selectWatchMpdSource('first', selected)).rejects.toThrow('watch_source_unavailable');
-    expect(session.watchPage('first')).toBeDefined(); expect(close).not.toHaveBeenCalled(); expect(dispose).not.toHaveBeenCalled();
-    let release!: (source: WatchByteSource) => void;
-    prepare.mockImplementationOnce((_selected, signal) => new Promise((resolve, reject) => {
-      release = resolve;
-      signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true });
-    }));
-    const confirming = session.selectWatchMpdSource('first', selected);
-    const rejected = expect(confirming).rejects.toThrow();
-    await session.cancelScreenSelection('first');
-    await rejected;
-    const nextDispose = vi.fn();
-    const nextPage = new appLink.AppPage(crypto.randomUUID(), 'https://other.test/player', vi.fn(async () => null), nextDispose, () => {});
-    vi.spyOn(session as unknown as { connectApp(): Promise<appLink.ChannelApp> }, 'connectApp').mockResolvedValue({ preparePage: async () => nextPage } as unknown as appLink.ChannelApp);
-    await session.prepareWatchPage('first', nextPage.url);
-    release({ sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'dash' });
-    await Promise.resolve();
-    expect(session.watchPage('first')?.url).toBe(nextPage.url); expect(nextDispose).not.toHaveBeenCalled(); expect(dispose).toHaveBeenCalledOnce();
-    expect(close).not.toHaveBeenCalled(); expect(commit).not.toHaveBeenCalled();
-    expect(socket.sent.some(command => command.type === 'start_watch')).toBe(false);
+    const pageId = await openMpdPage(session, app, candidate);
+    const inspecting = session.inspectWatchMpdSource('first', candidate.id, new AbortController().signal);
+    await vi.waitFor(() => expect(app.sent.at(-1)?.action).toBe('inspect_mpd'));
+    app.receive({ id: app.sent.at(-1)!.id, result: catalog }); await inspecting;
+    const failed = expect(session.selectWatchMpdSource('first', selected)).rejects.toThrow('watch_source_unavailable');
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe('page_media_prepare_mpd'));
+    const first = app.sent.at(-1)!;
+    app.receive({ id: first.id, error: 'watch_source_unavailable' }); await failed;
+    expect(session.watchPage('first')).toBeDefined(); expect(close).not.toHaveBeenCalled();
+    const cancelled = expect(session.selectWatchMpdSource('first', selected)).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.waitFor(() => expect(app.sent.at(-1)).toMatchObject({ type: 'page_media_prepare_mpd', id: expect.not.stringMatching(String(first.id)) }));
+    const old = app.sent.at(-1)!;
+    await session.cancelScreenSelection('first'); await cancelled;
+    const next = mpdSelectionFixture();
+    await openMpdPage(session, app, next.candidate);
+    app.receive({ id: old.id, result: { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'dash' } });
+    expect(session.watchPage('first')?.watchSources?.mpd).toEqual([{ candidate: next.candidate }]);
+    expect(app.sent.filter(c => c.type === 'page_close').map(c => c.pageId)).toEqual([pageId]);
+    expect(close).not.toHaveBeenCalled();
+    expect(socket.sent.some(c => c.type === 'start_watch')).toBe(false);
   } finally { session.close(); }
 });
 
 test('a late MPD inspection cannot replace a newer page selection catalog', async () => {
   const { candidate, catalog } = mpdSelectionFixture();
-  const { session, page, candidateId } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], mpdCandidates: [candidate], byteSource: null }));
-  let late!: (value: typeof catalog) => void;
-  const inspect = vi.spyOn(page, 'inspectMpd').mockImplementationOnce((_id, signal) => new Promise((resolve, reject) => {
-    late = resolve;
-    signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true });
-  }));
+  const { session, socket } = await setup(1000, false);
+  const connecting = session.activateApp({ service: 'piik-channel-app', protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: 'approved', pagePlayer: true });
+  const app = ChannelSocket.current;
+  await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
   try {
-    await session.selectWatchPage('first', candidateId);
-    const selecting = session.inspectWatchMpdSource('first', candidate.id, new AbortController().signal);
-    const rejected = expect(selecting).rejects.toThrow();
-    await vi.waitFor(() => expect(inspect).toHaveBeenCalledOnce());
-    await session.cancelScreenSelection('first'); await rejected;
-    const next = mpdSelectionFixture(), nextCandidateId = crypto.randomUUID();
-    const nextPage = new appLink.AppPage(crypto.randomUUID(), 'https://other.test/player', vi.fn(async command => command.type === 'page_media_sources'
-      ? { choices: [], indexedCandidates: [], mpdCandidates: [next.candidate], byteSource: null }
-      : { position: 0, paused: true, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] }), vi.fn(), () => {});
-    vi.spyOn(nextPage, 'inspectMpd').mockResolvedValue(next.catalog);
-    vi.spyOn(session as unknown as { connectApp(): Promise<appLink.ChannelApp> }, 'connectApp').mockResolvedValue({ preparePage: async () => nextPage } as unknown as appLink.ChannelApp);
-    await session.prepareWatchPage('first', nextPage.url);
-    nextPage.receive({ type: 'page_candidates', pageId: nextPage.id, url: nextPage.url, candidates: [{ id: nextCandidateId, title: 'New film', url: null, duration: 60 }] });
-    await session.selectWatchPage('first', nextCandidateId);
-    await session.inspectWatchMpdSource('first', next.candidate.id, new AbortController().signal);
-    late(catalog); await Promise.resolve();
-    expect(session.watchPage('first')?.watchSources?.mpd[0]?.catalog?.sourceId).toBe(next.catalog.sourceId);
+    const pageId = await openMpdPage(session, app, candidate);
+    const cancelled = expect(session.inspectWatchMpdSource('first', candidate.id, new AbortController().signal)).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.waitFor(() => expect(app.sent.at(-1)?.action).toBe('inspect_mpd'));
+    const old = app.sent.at(-1)!;
+    await session.cancelScreenSelection('first'); await cancelled;
+    const next = mpdSelectionFixture();
+    await openMpdPage(session, app, next.candidate);
+    const inspecting = session.inspectWatchMpdSource('first', next.candidate.id, new AbortController().signal);
+    await vi.waitFor(() => expect(app.sent.at(-1)).toMatchObject({ action: 'inspect_mpd', choiceId: next.candidate.id }));
+    app.receive({ id: app.sent.at(-1)!.id, result: next.catalog }); await inspecting;
+    app.receive({ id: old.id, result: catalog });
+    expect(session.watchPage('first')?.watchSources?.mpd).toEqual([{ candidate: next.candidate, catalog: next.catalog }]);
+    expect(app.sent.filter(c => c.type === 'page_close').map(c => c.pageId)).toEqual([pageId]);
+    expect(socket.sent.some(c => c.type === 'start_watch')).toBe(false);
   } finally { session.close(); }
 });
 

@@ -5,11 +5,14 @@ afterEach(() => vi.unstubAllGlobals());
 
 test("byte-identical and over-budget encodings stay out of history", async () => {
   const file = new File(["abc"], "small.webp", { type: "image/webp" });
+  let rendition: Blob = file;
   vi.stubGlobal("Image", class { naturalWidth = 1; naturalHeight = 1; async decode() {} });
   vi.stubGlobal("document", { createElement: () => ({ getContext: () => ({ drawImage() {} }),
-    toBlob: (callback: BlobCallback) => callback(file) }) });
+    toBlob: (callback: BlobCallback) => callback(rendition) }) });
   expect(await prepareInlineImage(file, file.type, 1024)).toBeUndefined();
-  expect(await prepareInlineImage(file, file.type, 2)).toBeUndefined();
+  rendition = new Blob(["xyz"], { type: "image/png" });
+  expect(await prepareInlineImage(file, file.type, rendition.size)).toMatchObject({ data: btoa("xyz"), mediaType: "image/png" });
+  expect(await prepareInlineImage(file, file.type, rendition.size - 1)).toBeUndefined();
 });
 
 test("unsupported input and cancelled work cannot begin image decoding", async () => {

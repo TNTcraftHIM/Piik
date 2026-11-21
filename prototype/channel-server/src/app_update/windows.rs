@@ -101,9 +101,11 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
 }
 
 fn write_new(path: &Path, value: &impl Serialize) -> Result<()> {
-    let mut file = File::options().write(true).create_new(true).open(path)?;
+    let mut file =
+        tempfile::NamedTempFile::new_in(path.parent().context("Update record directory")?)?;
     serde_json::to_writer(&mut file, value)?;
-    file.sync_all()?;
+    file.as_file().sync_all()?;
+    file.persist_noclobber(path)?;
     Ok(())
 }
 
@@ -469,6 +471,17 @@ mod tests {
         (directory, plan, workspace)
     }
 
+    #[test]
+    fn incomplete_record_can_be_retried_without_clobbering() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(RECORD);
+        let invalid = std::collections::BTreeMap::from([((1, 2), 3)]);
+        assert!(write_new(&path, &invalid).is_err());
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 0);
+        write_new(&path, &1).unwrap();
+        assert!(write_new(&path, &2).is_err());
+        assert_eq!(read_json::<u8>(&path).unwrap(), 1);
+    }
     #[test]
     fn retire_previous_after_interrupted_cleanup() {
         let (dir, plan, _) = fixture();

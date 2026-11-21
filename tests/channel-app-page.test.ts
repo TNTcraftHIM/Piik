@@ -319,13 +319,13 @@ test("App 13 keeps indexed resource candidates separate from direct media choice
     socket.reply({ choices: [], indexedCandidates: [oldCandidate], mpdCandidates: [], byteSource: null });
     await expect(missingHost).rejects.toThrow();
     const privateHost = page.mediaSources();
-    socket.reply({ choices: [], indexedCandidates: [{ ...candidate, hostname: "media.test?private=grant" }], byteSource: null });
+    socket.reply({ choices: [], indexedCandidates: [{ ...candidate, hostname: "media.test?private=grant" }], mpdCandidates: [], byteSource: null });
     await expect(privateHost).rejects.toThrow();
     const obsolete = page.mediaSources();
     socket.reply({ choices: [direct], byteSource: null });
     await expect(obsolete).rejects.toThrow();
     const leaked = page.mediaSources();
-    socket.reply({ choices: [direct], indexedCandidates: [{ ...candidate, url: "https://media.test/private-track" }], byteSource: null });
+    socket.reply({ choices: [direct], indexedCandidates: [{ ...candidate, url: "https://media.test/private-track" }], mpdCandidates: [], byteSource: null });
     await expect(leaked).rejects.toThrow();
   } finally { app.close(); }
 });

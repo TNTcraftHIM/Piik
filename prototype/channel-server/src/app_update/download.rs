@@ -182,7 +182,7 @@ pub(super) async fn prepare(
         }
     };
     let (response, bytes) = response;
-    if finish(
+    if let Err(error) = finish(
         response,
         bytes,
         &mut file,
@@ -191,8 +191,10 @@ pub(super) async fn prepare(
         &progress,
     )
     .await
-    .is_err()
     {
+        if error.is::<std::io::Error>() {
+            return Err(error);
+        }
         let other = 1 - winner;
         let (response, bytes) = prefix(&client, &urls[other], package.size).await?;
         finish(

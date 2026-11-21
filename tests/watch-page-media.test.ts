@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { AppPage } from "../src/client/channel/app-link";
 import { observeWatchSources, PageSuppliedMedia, preparePortableWatchMedia } from "../src/client/channel/watch-page-media";
-import * as indexedSource from "../src/client/channel/watch-indexed-source";
+import { readFileSync } from "node:fs";
 import { HTMLVideoMedia } from "../src/client/channel/watch-media";
 class Video extends EventTarget {
   currentTime = 12; duration = 30; paused = true; playbackRate = 1; readyState = 4; ended = false; error = null; src = "";
@@ -25,7 +25,8 @@ test('main media owns state and events while its page owns only resource lifetim
 });
 
 test.each(['unsubscribe', 'caller', 'page'] as const)('page-source %s retirement cancels metadata and suppresses its late publication', async retirement => {
-  const candidate = { id: crypto.randomUUID(), name: 'Owned track', hostname: 'source.test', totalSize: 16, mimeType: 'video/mp4' };
+  const bytes = readFileSync(new URL('./fixtures/indexed-av1.mp4', import.meta.url));
+  const candidate = { id: crypto.randomUUID(), name: 'Owned track', hostname: 'source.test', totalSize: bytes.length, mimeType: 'video/mp4' };
   const dispose = vi.fn(), publish = vi.fn(), lifetime = new AbortController();
   let complete!: (value: unknown) => void, reading!: AbortSignal;
   const request = vi.fn(async (command: { type: string; action?: unknown }, signal: AbortSignal): Promise<unknown> => {
@@ -35,19 +36,15 @@ test.each(['unsubscribe', 'caller', 'page'] as const)('page-source %s retirement
   });
   const page = new AppPage(crypto.randomUUID(), 'https://source.test/player', request, dispose, vi.fn());
   const observeResources = vi.spyOn(page, 'listenMediaSources'), observePage = vi.spyOn(page, 'listen');
-  vi.spyOn(indexedSource, 'inspectIndexedTrack').mockImplementation(async (candidate, read, signal) => {
-    await read(candidate.id, 0, 16, signal);
-    throw new Error('unexpected_late_metadata');
-  });
   const observer = observeWatchSources(page, lifetime.signal, publish);
-  const retired = expect(observer.ready).rejects.toThrow();
+  const retired = expect(observer.ready).rejects.toMatchObject({ name: 'AbortError' });
   try {
     await vi.waitFor(() => expect(complete).toBeDefined());
     if (retirement === 'page') page.close();
     else if (retirement === 'caller') lifetime.abort();
     else observer.unsubscribe();
     expect(reading.aborted).toBe(true);
-    complete({ totalSize: 16, mimeType: 'video/mp4', bytesBase64: btoa('0123456789abcdef') });
+    complete({ totalSize: bytes.length, mimeType: 'video/mp4', bytesBase64: bytes.toString('base64') });
     await retired;
     expect(publish).not.toHaveBeenCalled();
     expect(dispose).toHaveBeenCalledTimes(retirement === 'page' ? 1 : 0);

@@ -76,8 +76,9 @@ test("a pending platform play never prevents a later Creator seek and playback i
     player.blocked = true;
     await player.play();
     expect(player.blocked).toBe(true);
-    await player.patch({ position: 0, paused: true });
     expect(video.currentTime).toBe(0);
+    await player.patch({ position: 3, paused: true });
+    expect(video.currentTime).toBe(3);
     rejectPlay(new DOMException("play interrupted by pause", "AbortError"));
     await vi.advanceTimersByTimeAsync(0);
     expect(player.error).toBeNull();
