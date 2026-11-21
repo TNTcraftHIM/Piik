@@ -1110,17 +1110,17 @@ async function countedRoomReactions(roomId) {
   const messageCount = index => evaluate(index,
     `${hook}.snapshot().messagesByRoom[${JSON.stringify(roomId)}]?.find(message => message.id === ${JSON.stringify(message.id)})?.reactions?.counts.tomato ?? 0`);
   await browser(1, "hover", messageSelector);
-  await browser(1, "click", `${messageSelector} .c3-add-reaction`);
   for (let count = 1; count <= 2; count++) {
     await until("the shared room reaction cooldown permits another confirmed click", () => evaluate(1,
       `${hook}.snapshot().interactionsByRoom.get(${JSON.stringify(roomId)})?.getSnapshot().coolingDown === false`), Boolean);
+    await browser(1, "click", `${messageSelector} .c3-add-reaction`);
     await browser(1, "click", '.c3-message-reaction-menu:popover-open button[aria-label="Toss tomato"]');
     await until("both readers receive the confirmed message count", () => Promise.all([0, 1].map(messageCount)),
       values => values.every(value => value === count));
+    assert.equal(await evaluate(1, "!!document.querySelector('.c3-message-reaction-menu:popover-open')"), false);
   }
   assert.equal(await evaluate(1, `document.querySelector(${JSON.stringify(messageSelector)})?.querySelectorAll('.c3-message-reaction[aria-pressed]').length`), 0,
     "counted reactions are actions, not selected toggles");
-  await browser(1, "press", "Escape");
   const publication = await capturedScreen(0, roomId);
   try {
     await browser(1, "click", `.c3-monitor-offer[data-source-id=${JSON.stringify(publication)}] button[aria-label="Watch"]`);
@@ -1132,7 +1132,6 @@ async function countedRoomReactions(roomId) {
     const sourceCount = index => evaluate(index, `${hook}.snapshot().publicationReactions.get(${JSON.stringify(publication)})?.counts.poop ?? 0`);
     await until("owner and Viewer receive the same confirmed publication count", () => Promise.all([0, 1].map(sourceCount)),
       values => values.every(value => value === 1));
-    await browser(1, "press", "Escape");
     await browser(1, "reload");
     await until("the ordinary member reconnects with the current room", () => view(1), value => value.connection === "connected"
       && value.state.channel.rooms.some(value => value.id === roomId && value.authorized && value.available));
@@ -1276,18 +1275,21 @@ async function roomsAndFiles() {
     const { history_page_size } = await import('/prototype/channel-browser/pkg/piik_channel_browser.js');
     return history_page_size();
   })()`);
-  // Prepare retained history independently of the normal sends above/below.
-  // One transaction copies the confirmed row's storage shape without rendering
-  // a thousand intermediate conversations just to reach the reading boundary.
+  // Prepare real history records in one transaction without rendering each send.
   await evaluate(0, `(async () => {
+    const { prepare_confirmation, message_retry_key } = await import('/prototype/channel-browser/pkg/piik_channel_browser.js');
     const host = ${hook}.session.hostedRooms.get(${JSON.stringify(room.id)}).host;
     const tx = host.db.transaction('messages', 'readwrite');
     const messages = tx.objectStore('messages');
     const first = messages.get([${JSON.stringify(room.id)}, 1]);
     first.onsuccess = () => {
-      for (let seq = 2; seq <= ${historyWindow}; seq++) messages.add({ ...first.result,
-        seq, id: crypto.randomUUID(), nonce: 'history-fixture-' + seq, text: 'history-' + seq,
-        attachments: [], reactions: { revision: 0, counts: {} } });
+      const { roomId, userId, time } = first.result;
+      for (let seq = 2; seq <= ${historyWindow}; seq++) {
+        const nonce = 'history-fixture-' + seq;
+        const draft = { userId, time, nonce, text: 'history-' + seq, attachments: [] };
+        const { message } = JSON.parse(prepare_confirmation(JSON.stringify(draft), JSON.stringify({ type: 'new', lastSeq: seq - 1 })));
+        messages.add({ ...message, roomId, nonce, retryKey: message_retry_key(userId, nonce) });
+      }
     };
     await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); });
     return true;
@@ -1335,9 +1337,18 @@ async function roomsAndFiles() {
     `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]?.at(-1)?.text`), text => text === "Latest response");
   console.log("Room history retains old messages, advances a bounded reading window and returns to latest without live interruptions");
 
+  const readPosition = () => evaluate(0, `${hook}.snapshot().readByRoom[${JSON.stringify(room.id)}]`);
+  const readBeforeSettings = await until("visible latest message is read", readPosition, seq => seq === latestSeq + 1);
   await roomSettings(0, room.id);
+  await action(1, `sendMessage(${JSON.stringify(room.id)}, 'Message while room settings are open')`);
+  await until("new message reaches the log behind the modal", () => evaluate(0,
+    "document.querySelector('.c3-message-log [data-message-seq]:last-child')?.dataset.messageSeq"),
+    seq => Number(seq) === readBeforeSettings + 1);
+  await evaluate(0, "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))");
+  assert.equal(await readPosition(), readBeforeSettings, "room settings keep the new message unread");
   await browser(0, "find", "label", "Hide from users without access", "check");
   await browser(0, "click", ".c3-room-form button[type=submit]");
+  await until("returning to visible chat reads the new message", readPosition, seq => seq === readBeforeSettings + 1);
   await until("unadmitted user loses hidden directory entry", () => view(2), value => !value.state.channel.rooms.some(value => value.id === room.id));
   await roomInvitation(0, room.id);
   const invitationState = await until("room invitation controls finish loading", () => evaluate(0, `(() => {

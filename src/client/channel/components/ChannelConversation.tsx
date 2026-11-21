@@ -47,22 +47,11 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
   interaction: RoomInteractionSession | null;
   onBack?: () => void;
 }) {
-  const { lang, t } = useCopy();
+  const { t } = useCopy();
   const surfaceDocument = useSurfaceDocument();
   const [{ today, timeZone }, setCalendar] = useState(() => ({
     today: new Date(), timeZone: new Intl.DateTimeFormat().resolvedOptions().timeZone,
   }));
-  const formats = useMemo(() => messageDateFormats(lang, timeZone), [lang, timeZone]);
-  const messageDates = useMemo(() => {
-    let previous: Date | undefined;
-    return messages.map(message => {
-      const date = new Date(message.time);
-      const newDay = !previous || !sameCalendarDay(date, previous);
-      previous = date;
-      return { newDay, divider: newDay ? formats.divider(date) : undefined,
-        clock: formats.clock(date, today), tooltip: formats.tooltip(date), iso: date.toISOString() };
-    });
-  }, [messages, formats, today]);
   useEffect(() => {
     const view = surfaceDocument?.defaultView;
     if (hidden || !surfaceDocument || !view) return;
@@ -88,7 +77,6 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
   }, [surfaceDocument, hidden]);
   const [deleteFailure, setDeleteFailure] = useState<{ scope: string; code: string } | null>(null);
   const conversationScope = JSON.stringify([domainId, selfUserId, roomId]);
-  const displayUsers = [...new Map([...profiles.values(), ...users].map(user => [user.id, user])).values()];
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const input = useRef<HTMLTextAreaElement>(null);
   const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
@@ -154,7 +142,6 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
       }
     }
   }, [messages, conversationScope, hidden, loadingHistory, history?.atLatest]);
-  let authorMessageId = "";
   const draft = drafts[conversationScope] ?? emptyDraft;
   const quote = draft.reply;
   const projectedTarget = quote && messages.find(message => message.seq === quote.seq);
@@ -214,25 +201,27 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
   const fileError = draftErrors[conversationScope] ?? "";
   const setFileError = (error: string) => setDraftErrors(previous => ({ ...previous, [conversationScope]: error }));
   const working = sending;
-  function updateDraft(update: (previous: Draft) => Draft) {
+  const updateDraft = useCallback((update: (previous: Draft) => Draft) => {
     setDrafts(previous => ({ ...previous, [conversationScope]: update(previous[conversationScope] ?? emptyDraft) }));
-  }
-  function selectMention(user: Pick<ChannelUser, "id" | "name">, range = query) {
-    if (!range) return;
-    const prefix = range.start > 0 && !/\s/.test(draft.text[range.start - 1]) ? " " : "";
+  }, [conversationScope]);
+  const selectMention = useCallback((user: Pick<ChannelUser, "id" | "name">, replacement?: { start: number; end: number }) => {
+    const field = input.current;
+    if (!field) return;
+    const range = replacement ?? { start: field.selectionStart, end: field.selectionEnd };
+    const prefix = range.start > 0 && !/\s/.test(field.value[range.start - 1]) ? " " : "";
     const inserted = `${prefix}@${user.name} `;
-    const next = draft.text.slice(0, range.start) + inserted + draft.text.slice(range.end);
+    const next = field.value.slice(0, range.start) + inserted + field.value.slice(range.end);
     updateDraft(previous => ({ ...previous, text: next,
       mentions: [...editMentions(previous.text, next, previous.mentions, range), { userId: user.id, start: range.start + prefix.length, end: range.start + inserted.length - 1 }].sort((a, b) => a.start - b.start) }));
     const caret = range.start + inserted.length;
     setSelection(null);
-    input.current?.focus();
+    field.focus();
     surfaceDocument?.defaultView?.requestAnimationFrame(() => input.current?.setSelectionRange(caret, caret));
-  }
+  }, [surfaceDocument, updateDraft]);
   function readVisible() {
     const node = log.current, doc = node?.ownerDocument;
     if (!hidden && !unreadLookup.current && !unreadLookupBusy && !jump?.id && roomId && available && !loadingHistory && history?.atLatest && node?.getClientRects().length
-      && doc?.visibilityState === "visible" && doc.hasFocus() && doc.defaultView?.getComputedStyle(node).visibility === "visible"
+      && doc?.visibilityState === "visible" && doc.hasFocus() && !doc.querySelector("dialog:modal") && doc.defaultView?.getComputedStyle(node).visibility === "visible"
       && (!doc.fullscreenElement || doc.fullscreenElement.contains(node)) && node.scrollHeight - node.scrollTop - node.clientHeight < 4) {
       const seq = messages.at(-1)?.seq;
       if (seq !== undefined) onRead?.(roomId, seq);
@@ -243,12 +232,14 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
     const frame = view?.requestAnimationFrame(readVisible);
     doc?.addEventListener("fullscreenchange", readVisible);
     doc?.addEventListener("visibilitychange", readVisible);
-    view?.addEventListener("focus", readVisible);
+    doc?.addEventListener("close", readVisible, true);
+    view?.addEventListener("focus", readVisible, true);
     return () => {
       if (frame !== undefined) view?.cancelAnimationFrame(frame);
       doc?.removeEventListener("fullscreenchange", readVisible);
       doc?.removeEventListener("visibilitychange", readVisible);
-      view?.removeEventListener("focus", readVisible);
+      doc?.removeEventListener("close", readVisible, true);
+      view?.removeEventListener("focus", readVisible, true);
     };
   }, [conversationScope, messages, hidden, available, loadingHistory, history?.atLatest, lastMessageSeq, unreadLookupBusy, jump?.id, surfaceDocument, onRead]);
   useLayoutEffect(() => {
@@ -263,7 +254,14 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
     }
   }, [jump, conversationScope, hidden, loadingHistory, messages]);
   useLayoutEffect(() => { setSelection(null); setJump(null); jumpRequest.current = null; setJumpFailed(false); composing.current = false; }, [conversationScope]);
-  async function showMessage(seq: number) {
+  const cancelUnreadLookup = useCallback(() => {
+    unreadLookup.current?.abort();
+    unreadLookup.current = null;
+    setUnreadLookupBusy(false);
+    setUnreadLookupError(null);
+    setJump(previous => previous?.id ? null : previous);
+  }, []);
+  const showMessage = useCallback(async (seq: number) => {
     cancelUnreadLookup();
     setJumpFailed(false); readingAnchor.current = null; reading.current.following = false;
     const request = { scope: conversationScope, seq };
@@ -271,7 +269,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
     if (messages.some(message => message.seq === seq)) return;
     try { if (!onMessage) throw new Error("unavailable"); await onMessage(roomId, seq); }
     catch { if (jumpRequest.current === request) { setJump(null); setJumpFailed(true); } }
-  }
+  }, [cancelUnreadLookup, conversationScope, messages, onMessage, roomId]);
   async function jumpToUnread() {
     const target = messages.find(message => message.id === unreadMessage);
     if (target) { await showMessage(target.seq); return; }
@@ -292,13 +290,6 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
       if (!controller.signal.aborted) setUnreadLookupError(error instanceof Error ? error.message : "operation_failed");
     }
     finally { if (unreadLookup.current === controller) { unreadLookup.current = null; setUnreadLookupBusy(false); } }
-  }
-  function cancelUnreadLookup() {
-    unreadLookup.current?.abort();
-    unreadLookup.current = null;
-    setUnreadLookupBusy(false);
-    setUnreadLookupError(null);
-    setJump(previous => previous?.id ? null : previous);
   }
   useLayoutEffect(() => {
     cancelUnreadLookup();
@@ -403,6 +394,18 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
     setFileError("");
     setDraftFiles(previous => ({ ...previous, [conversationScope]: (previous[conversationScope] ?? []).filter(value => value.id !== entry.id) }));
   }
+  const canMention = available && mentionLimit !== null && draft.mentions.length < mentionLimit;
+  const replyToMessage = useCallback((reply: NonNullable<Draft["reply"]>) => {
+    cancelUnreadLookup();
+    updateDraft(value => ({ ...value, reply }));
+    input.current?.focus();
+  }, [cancelUnreadLookup, updateDraft]);
+  const deleteMessage = useCallback((message: ChannelMessage) => {
+    setDeleteFailure(null);
+    void onDeleteMessage?.(roomId, message.seq, message.id).catch(error => {
+      setDeleteFailure({ scope: conversationScope, code: error instanceof Error ? error.message : "operation_failed" });
+    });
+  }, [conversationScope, onDeleteMessage, roomId]);
   return <section id="c3-chat" className="c3-conversation" hidden={hidden} aria-label={t("conversation.roomChat")}
     onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
     onDrop={event => {
@@ -445,35 +448,11 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
         {roomId && loadingHistory && !messages.length && <div className="c3-conversation-loading" role="status">
           <Glyph name="loader" className="lr-spin" size={18} /><span>{t("conversation.loading")}</span>
         </div>}
-        {messages.map((message, index) => {
-          const previous = messages[index - 1];
-          const dates = messageDates[index];
-          const { newDay } = dates;
-          const elapsed = previous ? message.time - previous.time : 0;
-          const newMessages = message.id === unreadMessage;
-          const grouped = !!previous && !newDay && !newMessages && !message.reply && previous.userId === message.userId && elapsed >= 0 && elapsed < 120_000;
-          if (!grouped) authorMessageId = message.id;
-          const author = profiles.get(message.userId), summary = users.find(user => user.id === message.userId);
-          const name = messageAuthorName(message, displayUsers, t("conversation.user"));
-          return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name} authorMessageId={authorMessageId}
-            avatar={(!summary || summary.version === author?.version ? author?.avatar : null) ?? undefined}
-            users={displayUsers} selfUserId={selfUserId} unread={newMessages} onMessage={loadingHistory ? undefined : seq => { void showMessage(seq); }}
-            onReply={() => { cancelUnreadLookup(); updateDraft(value => ({ ...value, reply: { seq: message.seq, messageId: message.id, notify: true, name, text: message.text || t("conversation.attachment") } })); input.current?.focus(); }}
-            onDelete={onDeleteMessage && (canModerate || message.userId === selfUserId)
-              ? () => {
-                setDeleteFailure(null);
-                void onDeleteMessage(roomId, message.seq, message.id).catch(error => {
-                  setDeleteFailure({ scope: conversationScope, code: error instanceof Error ? error.message : "operation_failed" });
-                });
-              } : undefined}
-            deleting={pending?.has(`delete-message:${roomId}:${message.id}`)}
-            onMention={available && mentionLimit !== null && draft.mentions.length < mentionLimit && displayUsers.some(user => user.id === message.userId)
-              ? () => selectMention(displayUsers.find(user => user.id === message.userId)!, {
-                start: input.current?.selectionStart ?? draft.text.length, end: input.current?.selectionEnd ?? draft.text.length, query: "",
-              }) : undefined}
-            dates={dates}
-            attachments={attachments} available={available} interaction={interaction} effectsEnabled={!hidden && !loadingHistory} />;
-        })}
+        <MessageHistory roomId={roomId} messages={messages} users={users} profiles={profiles} selfUserId={selfUserId}
+          today={today} timeZone={timeZone} unreadMessage={unreadMessage} attachments={attachments} available={available}
+          interaction={interaction} effectsEnabled={!hidden && !loadingHistory} canMention={canMention}
+          canModerate={canModerate} pending={pending} onReply={replyToMessage} onMention={selectMention}
+          onMessage={loadingHistory ? undefined : showMessage} onDelete={onDeleteMessage ? deleteMessage : undefined} />
       </div>
     </div>
     <ChannelSettingsError error={deleteFailure?.scope === conversationScope ? deleteFailure.code : null} />
@@ -505,7 +484,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
           updateDraft(value => ({ ...value, reply: undefined })); input.current?.focus({ preventScroll: true });
         }} />
       </div>}
-      {query && <ChannelMentionSuggestions id={mentionId} anchor={input} users={candidates} activeIndex={activeMention} onActiveIndex={setMentionIndex} onSelect={selectMention}
+      {query && <ChannelMentionSuggestions id={mentionId} anchor={input} users={candidates} activeIndex={activeMention} onActiveIndex={setMentionIndex} onSelect={user => selectMention(user, query)}
         loading={mentionLoading} error={mentionFailed} hasMore={moreMentions} onMore={() => {
           if (mentionFailed && !mentionPage.ids.length) setMentionRetry(value => value + 1);
           else void loadMentions(mentionPage.next ?? undefined);
@@ -535,7 +514,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
             } else if (candidates.length) setMentionIndex((activeMention + (event.key === "ArrowDown" ? 1 : -1) + candidates.length) % candidates.length);
             return;
           }
-          if (query && candidates[activeMention] && event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey) { event.preventDefault(); selectMention(candidates[activeMention]); return; }
+          if (query && candidates[activeMention] && event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey) { event.preventDefault(); selectMention(candidates[activeMention], query); return; }
           if (event.key !== "Enter") return;
           const touchKeyboard = event.currentTarget.ownerDocument.defaultView?.matchMedia("(hover: none) and (pointer: coarse)").matches;
           if (event.ctrlKey || event.metaKey || (!event.shiftKey && !touchKeyboard)) {
@@ -549,7 +528,57 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
   </section>;
 }
 
-const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, avatar, dates, attachments, available, interaction, authorMessageId, effectsEnabled, users, selfUserId, unread, onReply, onMessage, onMention, onDelete, deleting }: {
+const MessageHistory = memo(function MessageHistory({ roomId, messages, users, profiles, selfUserId,
+  today, timeZone, unreadMessage, attachments, available, interaction, effectsEnabled, canMention,
+  canModerate, pending, onReply, onMention, onMessage, onDelete }: {
+  roomId: string; messages: ChannelMessage[]; users: ChannelUserSummary[]; profiles: ReadonlyMap<string, ChannelUser>;
+  selfUserId?: string | null; today: Date; timeZone: string; unreadMessage?: string;
+  attachments: ChannelAttachments; available: boolean; interaction: RoomInteractionSession | null;
+  effectsEnabled: boolean; canMention: boolean; canModerate?: boolean; pending?: ReadonlySet<string>;
+  onReply(reply: NonNullable<Draft["reply"]>): void;
+  onMention(user: Pick<ChannelUser, "id" | "name">): void;
+  onMessage?(seq: number): void;
+  onDelete?(message: ChannelMessage): void;
+}) {
+  const { lang, t } = useCopy();
+  const formats = useMemo(() => messageDateFormats(lang, timeZone), [lang, timeZone]);
+  const messageDates = useMemo(() => {
+    let previous: Date | undefined;
+    return messages.map(message => {
+      const date = new Date(message.time);
+      const newDay = !previous || !sameCalendarDay(date, previous);
+      previous = date;
+      return { newDay, divider: newDay ? formats.divider(date) : undefined,
+        clock: formats.clock(date, today), tooltip: formats.tooltip(date), iso: date.toISOString() };
+    });
+  }, [messages, formats, today]);
+  const displayUsers = useMemo(() =>
+    [...new Map([...profiles.values(), ...users].map(user => [user.id, user])).values()], [profiles, users]);
+  let authorMessageId = "";
+  return messages.map((message, index) => {
+    const previous = messages[index - 1];
+    const dates = messageDates[index];
+    const { newDay } = dates;
+    const elapsed = previous ? message.time - previous.time : 0;
+    const newMessages = message.id === unreadMessage;
+    const grouped = !!previous && !newDay && !newMessages && !message.reply && previous.userId === message.userId && elapsed >= 0 && elapsed < 120_000;
+    if (!grouped) authorMessageId = message.id;
+    const author = profiles.get(message.userId), summary = users.find(user => user.id === message.userId);
+    const name = messageAuthorName(message, displayUsers, t("conversation.user"));
+    const mentionUser = canMention ? displayUsers.find(user => user.id === message.userId) : undefined;
+    return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name} authorMessageId={authorMessageId}
+      avatar={(!summary || summary.version === author?.version ? author?.avatar : null) ?? undefined}
+      users={displayUsers} selfUserId={selfUserId} unread={newMessages} onMessage={onMessage}
+      onReply={() => onReply({ seq: message.seq, messageId: message.id, notify: true, name, text: message.text || t("conversation.attachment") })}
+      onDelete={onDelete && (canModerate || message.userId === selfUserId) ? () => onDelete(message) : undefined}
+      deleting={pending?.has(`delete-message:${roomId}:${message.id}`)}
+      onMention={mentionUser ? () => onMention(mentionUser) : undefined}
+      dates={dates}
+      attachments={attachments} available={available} interaction={interaction} effectsEnabled={effectsEnabled} />;
+  });
+});
+
+function MessageRow({ roomId, message, grouped, name, avatar, dates, attachments, available, interaction, authorMessageId, effectsEnabled, users, selfUserId, unread, onReply, onMessage, onMention, onDelete, deleting }: {
   roomId: string; message: ChannelMessage; grouped: boolean; name: string; avatar?: string; dates: { divider?: string; clock: string; tooltip: string; iso: string };
   attachments: ChannelAttachments; available: boolean; interaction: RoomInteractionSession | null;
   authorMessageId: string; effectsEnabled: boolean;
@@ -593,4 +622,4 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
     </div></div>
     </article>
   </>;
-});
+}
