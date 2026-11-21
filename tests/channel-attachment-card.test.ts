@@ -41,6 +41,12 @@ describe("attachment original availability", () => {
     expect(markup).not.toContain(t("zh", "channel.attachment.noOriginalSource"));
   });
 
+  it("keeps a failed native save visible when the last holder leaves", () => {
+    const markup = renderCard(false, false, "download_failed");
+    expect(markup).toContain(t("zh", "channel.attachment.saveFailed"));
+    expect(markup).toContain(t("zh", "channel.attachment.noOriginalSource"));
+  });
+
   it("reports an expired saved file after the user opens its folder", () => {
     const markup = renderCard(false, false, "saved_copy_missing");
     expect(markup).toContain(`${t("zh", "channel.attachment.savedCopyMissing")} ${t("zh", "channel.attachment.noOriginalSource")}`);
