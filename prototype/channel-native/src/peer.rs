@@ -814,9 +814,6 @@ struct Driver {
     watches: Watches,
     inputs: input::Inputs,
 }
-pub(crate) async fn can_prepare_udp() -> bool {
-    preparation::local_ipv4().await.is_some()
-}
 impl NativePeers {
     pub fn new(
         session_id: Uuid,

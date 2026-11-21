@@ -21,7 +21,7 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
   actions?: ReactNode;
 }) {
   const { t } = useCopy();
-  const state = useSyncExternalStore(session?.subscribe ?? noSubscription, session?.getSnapshot ?? noSnapshot, noSnapshot);
+  const state = useSyncExternalStore(session?.subscribe ?? noSubscription, session?.getReactionSnapshot ?? noSnapshot, noSnapshot);
   const label = "messageSeq" in target ? t("channel.contentReactions.reactToThisMessage") : t("channel.contentReactions.reactToThisScreen");
   const trigger = useRef<HTMLButtonElement>(null), menu = useRef<HTMLDivElement>(null), id = useId();
   const [open, setOpen] = useState(false);
@@ -32,7 +32,7 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
     if (menu.current?.matches(":popover-open")) menu.current.hidePopover();
   }, [session, targetId]);
   useAnchoredPopover(trigger, menu, { side: "above", align: "center", enabled: open });
-  const canSend = !!state?.ready && !disabled && !state.pending && !state.coolingDown;
+  const canSend = !!state?.canSend && !disabled;
   const send = (reaction: typeof REACTION_IDS[number]) => { if (canSend) session?.send({ kind: "reaction", reaction }, target); };
   const counts = REACTION_IDS.filter(reaction => (reactions?.counts[reaction] ?? 0) > 0).map(reaction => {
     const count = reactions!.counts[reaction]!;

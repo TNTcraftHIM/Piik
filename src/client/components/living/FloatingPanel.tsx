@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { usePanelWindow, panelWindowAPI, SurfaceDocument, PANEL_SIZE } from "../../ui/panel-window";
-import { Tooltip } from "./Tooltip";
+import { Btn } from "./primitives";
 import "./floating-panel.css";
 
 const COMPACT_SIZE = { width: 304, height: undefined };
@@ -126,7 +126,7 @@ export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpe
 
   function startGesture(event: PointerEvent<HTMLElement>, kind: PanelGesture) {
     if (!event.isPrimary || event.button !== 0 || !panelRef.current) return;
-    if (kind === "move" && (event.target as Element).closest("button")) return;
+    if (kind === "move" && (event.target as Element).closest("button, .lr-comic-tip-wrap")) return;
     panelRef.current.getAnimations().forEach(animation => animation.finish());
     gesture.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY,
       rect: panelRef.current.getBoundingClientRect(), kind };
@@ -256,15 +256,13 @@ export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpe
           <b>{title}</b></span>
         <span id={`${id}-move-hint`} className="visually-hidden">{t("floating.moveHint")}</span>
         {detachable && !directWindow && !detached && panelWindowAPI(typeof window === "undefined" ? null : window) &&
-          <Tooltip kind="hint-window-detach" place="below" text={t("floating.detach")}>
-            <button type="button" className="lr-btn is-dense is-quiet lr-popover-close" disabled={panelWindow.opening}
-              aria-label={t("floating.detach")} onClick={() => { void panelWindow.open(); }}>
-              <Glyph name="pip" size={18} />
-            </button>
-          </Tooltip>}
-        {!detached && <button type="button" className="lr-btn is-dense is-quiet lr-popover-close" aria-label={t("common.close")} onClick={() => {
-          panelRef.current?.hidePopover(); focusTrigger();
-        }}><Glyph name="x" size={16} /></button>}
+          <Btn icon="pip" size="dense" quiet className="lr-popover-close" title="floating.detach"
+            disabled={panelWindow.opening} busy={panelWindow.opening} hint="hint-window-detach" hintPlace="below"
+            onClick={() => { void panelWindow.open(); }} />}
+        {!detached && <Btn icon="x" size="dense" quiet className="lr-popover-close" title="common.close" onClick={() => {
+          panelRef.current?.hidePopover();
+          focusTrigger();
+        }} />}
       </header>
       <div className="lr-floating-body lr-floating-scroll">
         {panelWindow.failed && <p className="lr-floating-error" role="status">{directWindow

@@ -108,27 +108,39 @@ fn write_new(path: &Path, value: &impl Serialize) -> Result<()> {
 }
 
 fn matching_workspace(workspace: &Path, plan: &Plan) -> Result<()> {
+    ensure!(plan.schema == 1, "Invalid update workspace schema");
+    matching_workspace_path(workspace, plan.operation, &plan.root, &plan.data_root)?;
+    ensure_directory(&fs::symlink_metadata(workspace)?)
+}
+
+fn ensure_directory(metadata: &fs::Metadata) -> Result<()> {
     ensure!(
-        plan.schema == 1
-            && workspace.is_absolute()
-            && plan.root.is_absolute()
-            && plan.data_root.is_absolute(),
-        "Invalid update workspace"
-    );
-    ensure!(
-        package::entry_kind(&fs::symlink_metadata(workspace)?)? == package::EntryKind::Directory,
+        package::entry_kind(metadata)? == package::EntryKind::Directory,
         "Update workspace must be a real directory"
+    );
+    Ok(())
+}
+
+fn matching_workspace_path(
+    workspace: &Path,
+    operation: uuid::Uuid,
+    root: &Path,
+    data_root: &Path,
+) -> Result<()> {
+    ensure!(
+        workspace.is_absolute() && root.is_absolute() && data_root.is_absolute(),
+        "Invalid update workspace"
     );
     ensure!(
         workspace
             .file_name()
             .and_then(|name| name.to_str())
-            .is_some_and(|name| name.starts_with(&format!(".piik-update-{}-", plan.operation)))
+            .is_some_and(|name| name.starts_with(&format!(".piik-update-{operation}-")))
             && workspace
                 .parent()
-                .zip(plan.root.parent())
+                .zip(root.parent())
                 .is_some_and(|(a, b)| package::same_path(a, b))
-            && package::outside(workspace, &plan.data_root),
+            && package::outside(workspace, data_root),
         "Update workspace does not belong to this installation"
     );
     Ok(())
@@ -140,10 +152,24 @@ fn retire_previous(installation: &Installation) -> Result<()> {
         return Ok(());
     }
     let record: Record = read_json(&record_path)?;
+    matching_workspace_path(
+        &record.workspace,
+        record.operation,
+        &installation.root,
+        &installation.data_root,
+    )?;
+    match fs::symlink_metadata(&record.workspace) {
+        Ok(metadata) => ensure_directory(&metadata)?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::remove_file(record_path)?;
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+    }
     let plan: Plan = read_json(&record.workspace.join("plan.json"))?;
-    matching_workspace(&record.workspace, &plan)?;
     ensure!(
-        record.operation == plan.operation
+        plan.schema == 1
+            && record.operation == plan.operation
             && package::same_path(&plan.root, &installation.root)
             && package::same_path(&plan.data_root, &installation.data_root),
         "Previous update record does not match this App"
@@ -443,6 +469,49 @@ mod tests {
         (directory, plan, workspace)
     }
 
+    #[test]
+    fn retire_previous_after_interrupted_cleanup() {
+        let (dir, plan, _) = fixture();
+        let installation = Installation {
+            root: plan.root.clone(),
+            data_root: plan.data_root.clone(),
+            working_directory: dir.path().into(),
+        };
+        let marker = plan.data_root.join(RECORD);
+        let workspace = dir
+            .path()
+            .join(format!(".piik-update-{}-test", plan.operation));
+        let record = Record {
+            operation: plan.operation,
+            workspace: workspace.clone(),
+        };
+        fs::create_dir(&workspace).unwrap();
+        write_new(&marker, &record).unwrap();
+        fs::remove_dir(&workspace).unwrap();
+        retire_previous(&installation).unwrap();
+        assert!(!marker.exists());
+
+        write_new(
+            &marker,
+            &Record {
+                operation: uuid::Uuid::new_v4(),
+                workspace: workspace.clone(),
+            },
+        )
+        .unwrap();
+        assert!(retire_previous(&installation).is_err());
+        assert!(marker.exists());
+        fs::remove_file(&marker).unwrap();
+
+        fs::create_dir(&workspace).unwrap();
+        write_new(&marker, &record).unwrap();
+        assert!(retire_previous(&installation).is_err());
+        assert!(marker.exists());
+        write_new(&workspace.join("plan.json"), &plan).unwrap();
+        retire_previous(&installation).unwrap();
+        assert!(!workspace.exists());
+        assert!(!marker.exists());
+    }
     #[test]
     fn replacement_failure_restores_old_files_before_a_new_process_exists() {
         use std::os::windows::fs::OpenOptionsExt;

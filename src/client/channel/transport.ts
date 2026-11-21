@@ -242,7 +242,7 @@ export class ChannelTransport {
     if (!this.channel && !this.options.polite) {
       this.installChannel(this.pc.createDataChannel("piik-room", { ordered: true }));
     }
-    if (!this.bulk && !this.options.polite) this.installChannel(this.pc.createDataChannel("piik-file", { ordered: true }));
+    this.ensureBulkChannel();
     this.reportBaseReady();
     this.syncDeadline();
     if (changed) this.retryOffer();
@@ -251,6 +251,10 @@ export class ChannelTransport {
   isBaseReady(): boolean {
     return !this.closed && !this.baseFailed && this.rooms.size > 0
       && this.channel?.readyState === "open" && this.pc.connectionState === "connected";
+  }
+
+  private ensureBulkChannel(): void {
+    if (!this.bulk && !this.options.polite) this.installChannel(this.pc.createDataChannel("piik-file", { ordered: true }));
   }
 
   private installChannel(channel: RTCDataChannel): void {
@@ -289,6 +293,7 @@ export class ChannelTransport {
   async sendData(kind: "control" | "chunk", data: string | Uint8Array, allowed?: () => boolean): Promise<void> {
     const lifetime = this.dataLifetime.signal;
     if (!this.rooms.size || lifetime.aborted) throw new Error("peer_data_unavailable");
+    if (kind === "chunk") this.ensureBulkChannel();
     let channel = kind === "control" ? this.channel : this.bulk;
     if (!channel) {
       await new Promise<void>((resolve, reject) => {
@@ -301,6 +306,7 @@ export class ChannelTransport {
       });
       channel = kind === "control" ? this.channel : this.bulk;
     }
+    if (lifetime.aborted) throw new Error("peer_data_unavailable");
     if (!channel || !this.rooms.size) throw new Error("data_channel_unavailable");
     const writer = this.writers.get(channel);
     if (!writer) throw new Error("data_channel_unavailable");

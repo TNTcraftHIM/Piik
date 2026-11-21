@@ -168,7 +168,7 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", initialInte
             <ChannelAction icon="x" quiet label={t("room.copy.remove")} disabled={busy || backupBusy} onClick={() => setCopy(null)} /></>}
         </section>
         <RoomForm value={draft} onChange={fields => setDraft(previous => ({ ...previous, ...fields }))} roomHost={roomHost} inviteOnly={inviteOnly}
-          disabled={!connected || busy || backupBusy || inspecting} busy={creating}
+          disabled={!connected || busy || inspecting || (copy !== null && backupBusy)} busy={creating}
           createLabel={copy ? t("room.copy.create") : undefined}
           onCancel={onClose} onSave={() => { const settings = roomSettings(draft, inviteOnly); setCreating(true); return run(async () => {
             try {
@@ -255,7 +255,7 @@ function RoomSettings({ channel, room, onClose }: {
   const removing = channel.pending.has(`delete:${room.id}`);
   const purging = channel.pending.has(`clear-history:${room.id}`);
   const clearingCache = channel.pending.has(`clear-local-cache:${room.id}`);
-  const working = busy || backupBusy || removing;
+  const working = busy || removing;
   const members = room.members?.filter(userId => userId !== room.creatorId) ?? [];
   const [membersError, setMembersError] = useState(false);
   useEffect(() => {

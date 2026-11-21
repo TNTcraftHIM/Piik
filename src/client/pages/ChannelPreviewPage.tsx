@@ -85,10 +85,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     onSelect(id); setSourceView(null); setMobilePane("room", id);
   }, [onSelect, setMobilePane]);
   useEffect(() => {
-    const navigate = () => {
-      const room = new URLSearchParams(location.hash.slice(1)).get("room");
-      if (room) selectRoom(room);
-    };
+    const navigate = () => selectRoom(selectedRoom());
     window.addEventListener("hashchange", navigate);
     return () => window.removeEventListener("hashchange", navigate);
   }, [selectRoom]);

@@ -5099,6 +5099,31 @@ test("a confirmed send's automatic latest read preserves an unrelated operation 
   } finally { session.close(); }
 });
 
+test.each(["none", "before", "after"])("a confirmed send follows an in-flight older page unless navigation supersedes it (%s)", async navigation => {
+  const { session, peer } = await setup(1);
+  try {
+    await peer.history([message(3)], true);
+    await peer.history([message(2)], true, true);
+    const loading = session.loadHistory("first"), older = await peer.next();
+    const sending = session.sendMessage("first", "Hello 4"), request = await peer.next();
+    if (navigation === "before") await session.loadMessage("first", 2);
+    peer.reply(request, { type: "confirmed", message: message(4), inserted: true });
+    await sending;
+    if (navigation === "after") await session.loadMessage("first", 2);
+    peer.page(older, [message(1)]);
+    await loading;
+    if (navigation !== "none") {
+      expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(false);
+      expect(session.getSnapshot().pending.has("history:first")).toBe(false);
+      return;
+    }
+    const latest = await peer.next();
+    expect(latest).not.toHaveProperty("before");
+    peer.page(latest, [message(4)], true);
+    await vi.waitFor(() => expect(session.getSnapshot().messagesByRoom.first).toEqual([message(4)]));
+  } finally { session.close(); }
+});
+
 test("a confirmed send returns a historical reader to latest without failing the send when history fails", async () => {
   const { session, peer } = await setup(1);
   try {
@@ -9117,6 +9142,7 @@ test("room restore releases staging when its session reconnects during append", 
   });
   try {
     const restore = session.restoreRoomBackup(new Blob(), "first");
+    await expect(session.updateRoom("first", { name: "Locked" })).rejects.toThrow("operation_pending");
     await vi.waitFor(() => expect(stage.append).toHaveBeenCalledOnce());
     socket.close(); session.reconnect();
     const next = ChannelSocket.current; await next.onopen?.();
@@ -9412,6 +9438,14 @@ test("a late Native ownership description cannot export a replaced room binding"
   try {
     const exporting = session.exportRoomBackup("first"), failed = expect(exporting).rejects.toThrow("room_host_conflict");
     await vi.waitFor(() => expect(answer).toBeTypeOf("function"));
+    expect(session.getSnapshot().pending.has("room:first")).toBe(true);
+    expect(session.getSnapshot().pending.has("room:second")).toBe(false);
+    await expect(session.exportRoomBackup("second")).rejects.toThrow("operation_pending");
+    await expect(session.updateRoom("first", { name: "Locked" })).rejects.toThrow("operation_pending");
+    const editing = session.updateRoom("second", { name: "Updated" });
+    expect(socket.sent.at(-1)).toMatchObject({ type: "update_room", roomId: "second" });
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await editing;
     const state = structuredClone(session.getSnapshot().state!); state.channel.rooms[0].delivery!.bindingId = "another-binding";
     socket.receive({ type: "state", state }); answer(new Response(JSON.stringify({ sessionId: crypto.randomUUID(), roomIds: ["first"] })));
     await failed; expect(fetch).toHaveBeenCalledOnce();

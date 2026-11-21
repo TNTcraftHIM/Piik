@@ -7,7 +7,7 @@ import { Glyph, type GlyphName } from "../../ui/icons";
 import { navigateTabs } from "../../ui/tab-navigation";
 import { Tooltip } from "./Tooltip";
 import { HintComic } from "./hints";
-import { Pill } from "./primitives";
+import { Btn, Pill } from "./primitives";
 import { CameraSources, useCameraSources } from "./CameraSources";
 import { CaptureSourceCard } from "./CaptureSourceCard";
 import { WrappingSegmentedControl } from "./WrappingSegmentedControl";
@@ -166,28 +166,6 @@ export function CaptureSourcePicker({
       ? "host.sourcePicker.windowAudio"
       : "host.sourcePicker.systemAudio",
   );
-  const refreshButton = (
-    <button
-      type="button"
-      className="lr-btn is-dense lr-source-picker-refresh"
-      aria-label={refreshLabel}
-      disabled={refreshing}
-      onClick={activeTab === "camera" ? cameraSources.refresh : onRefresh}
-    >
-      <Glyph name="refresh" size={18} className={refreshing ? "lr-spin" : undefined} />
-    </button>
-  );
-  const closeButton = (
-    <button
-      type="button"
-      className="lr-btn is-dense is-quiet lr-source-picker-close"
-      aria-label={t("common.cancel")}
-      onClick={onCancel}
-      autoFocus
-    >
-      <Glyph name="x" size={18} />
-    </button>
-  );
   const audioSwitch = (
     <button
       type="button"
@@ -226,15 +204,13 @@ export function CaptureSourcePicker({
             <span className="lr-source-picker-copy">
               <strong>{t("host.sourcePicker.title")}</strong>
             </span>
-          {activeTab === "camera" || nativeSources.kind !== "browser" ? <Tooltip kind="hint-refresh-sources" text={refreshLabel}
-            tone={refreshing ? "busy" : undefined}
-            motion={refreshing ? "progress" : undefined}
-            place="below" align="end">
-            {refreshButton}
-          </Tooltip> : null}
-          <Tooltip kind="hint-close" text={t("common.cancel")} place="below" align="end">
-            {closeButton}
-          </Tooltip>
+          {activeTab === "camera" || nativeSources.kind !== "browser" ? <Btn
+            icon="refresh" size="dense" className="lr-source-picker-refresh" title={{ text: refreshLabel }}
+            disabled={refreshing} busy={refreshing} onClick={activeTab === "camera" ? cameraSources.refresh : onRefresh}
+            hint="hint-refresh-sources" hintTone={refreshing ? "busy" : undefined}
+            hintMotion={refreshing ? "progress" : undefined} hintPlace="below" hintAlign="end" /> : null}
+          <Btn icon="x" size="dense" quiet className="lr-source-picker-close" title="common.cancel"
+            onClick={onCancel} autoFocus hint="hint-close" hintPlace="below" hintAlign="end" />
         </header>
 
         {tabs.length > 0 && <WrappingSegmentedControl

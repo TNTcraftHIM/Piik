@@ -1,6 +1,6 @@
 // Living-room control primitives. Every glyph control keeps its copy in
 // tooltip/aria; optional captions come from the same catalog.
-import { useId, type AriaAttributes, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { useId, type AriaAttributes, type ComponentProps, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { Tooltip } from "./Tooltip";
 import { participantColor } from "./participant-color";
 import type { ComicKind } from "./Comic";
@@ -43,6 +43,8 @@ export function BackButton({ onClick, disabled }: { onClick: () => void; disable
 
 export function Btn({
   id,
+  className,
+  autoFocus,
   icon,
   cap,
   tone,
@@ -64,10 +66,14 @@ export function Btn({
   hintVars,
   hintTone,
   hintMotion,
+  hintPlace,
+  hintAlign,
   draw,
   iconOverlay,
 }: {
   id?: string;
+  className?: string;
+  autoFocus?: boolean;
   icon: GlyphName;
   cap?: ControlCopy;
   tone?: "primary" | "danger" | "on";
@@ -92,6 +98,8 @@ export function Btn({
   hintVars?: Record<string, string>;
   hintTone?: ComicTone;
   hintMotion?: ComicMotion;
+  hintPlace?: ComponentProps<typeof Tooltip>["place"];
+  hintAlign?: ComponentProps<typeof Tooltip>["align"];
   /** Draw-in spot id for state-beat toggle icons (see Glyph). */
   draw?: string;
   /** Noninteractive artwork that moves with the icon, such as its input meter. */
@@ -105,8 +113,9 @@ export function Btn({
   const button = (
     <button
       id={id}
+      autoFocus={autoFocus}
       type={type}
-      className={`lr-btn${size ? ` is-${size}` : ""}${quiet ? " is-quiet" : ""}${activeTone ? ` is-${activeTone}` : ""}`}
+      className={`lr-btn${size ? ` is-${size}` : ""}${quiet ? " is-quiet" : ""}${activeTone ? ` is-${activeTone}` : ""}${className ? ` ${className}` : ""}`}
       aria-label={label}
       disabled={disabled && !softDisabled}
       aria-disabled={softDisabled || undefined}
@@ -140,7 +149,7 @@ export function Btn({
     </button>
   );
   return hint ? (
-    <Tooltip kind={hint} disabled={expanded} tone={hintTone} motion={hintMotion} text={hintText ? t(hintText, hintVars) : label}>{button}</Tooltip>
+    <Tooltip kind={hint} disabled={expanded} tone={hintTone} motion={hintMotion} place={hintPlace} align={hintAlign} text={hintText ? t(hintText, hintVars) : label}>{button}</Tooltip>
   ) : textTooltip ? <Tooltip text={label} disabled={expanded}>{button}</Tooltip> : (
     button
   );

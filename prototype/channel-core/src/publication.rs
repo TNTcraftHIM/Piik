@@ -596,7 +596,7 @@ impl Publication {
             .into_iter()
             .map(|(parent, child)| (child, parent))
             .collect();
-        let mut next = self.branch(&parents, &BTreeSet::new());
+        let next = self.branch(&parents, &BTreeSet::new());
         if let Some(RouteOperation {
             kind: OperationKind::Base { legs },
             ..
@@ -611,9 +611,6 @@ impl Publication {
             {
                 return;
             }
-        }
-        for leg in next.values_mut() {
-            leg.viewing = false;
         }
         self.operation = (!next.is_empty()).then_some(RouteOperation {
             deadline,

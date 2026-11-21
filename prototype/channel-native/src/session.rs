@@ -703,7 +703,7 @@ pub async fn run_host(
         snapshot_job: None,
     };
     let mut stop = std::pin::pin!(stop);
-    let result = session.drive(&mut stop, crate::peer::can_prepare_udp).await;
+    let result = session.drive(&mut stop).await;
     session.fail_pending_requests("hosting_stopped");
     let closed = session.release().await;
     let error = result
@@ -768,10 +768,9 @@ impl Session {
         closed
     }
 
-    async fn drive<F: Future<Output = bool>>(
+    async fn drive(
         &mut self,
         stop: &mut (impl Future<Output = ()> + Unpin),
-        can_prepare_udp: impl Fn() -> F,
     ) -> Result<()> {
         loop {
             self.hosting_unready();
@@ -797,21 +796,10 @@ impl Session {
             };
             #[cfg(not(target_os = "android"))]
             let connector = None;
-            let prepare_udp = self.config.server_udp.is_none();
-            let connecting = async {
-                let handshake = time::timeout(
-                    Duration::from_secs(5),
-                    connect_async_tls_with_config(request, Some(limits), true, connector),
-                );
-                tokio::pin!(handshake);
-                let (result, can_prepare_udp) = tokio::select! {
-                    biased;
-                    ready = async { prepare_udp && can_prepare_udp().await } => (handshake.await, ready),
-                    result = &mut handshake => (result, false),
-                };
-                let (socket, _) = result.ok()?.ok()?;
-                Some((socket, can_prepare_udp))
-            };
+            let connecting = time::timeout(
+                Duration::from_secs(5),
+                connect_async_tls_with_config(request, Some(limits), true, connector),
+            );
             tokio::pin!(connecting);
             let connection = loop {
                 tokio::select! {
@@ -824,10 +812,10 @@ impl Session {
                     result = &mut connecting => break result,
                 }
             };
-            if let Some((mut socket, can_prepare_udp)) = connection {
+            if let Ok(Ok((mut socket, _))) = connection {
                 let join = Command::Join {
                     protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
-                    can_prepare_udp,
+                    can_prepare_udp: self.config.server_udp.is_none(),
                     can_receive_video_layers: true,
                     name: self.config.name.clone(),
                     credential: self.config.credential.clone(),

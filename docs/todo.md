@@ -42,6 +42,10 @@ the feedback period; they do not delay that delivery.
   establish that their Native endpoints participated in the media route.
 - [ ] **beta.33 Browser window selection stalls.** Reproduce manual selection
   of another Chrome window on the reporting machine, including window audio.
+- [ ] **Intermittent App source-list failure.** Capture the failing platform,
+  `targets` request timing and returned error without recording window titles.
+  Distinguish Web response timeout from platform enumeration failure; cancelling
+  the picker must not let its late result change a replacement selection.
 - [ ] **beta.33 authenticated webpage sharing.** Reproduce the reported VIP
   video failure after the sharer has started and the viewer receives no picture.
   Use the user's authorized source. Distinguish page playback,

@@ -513,3 +513,24 @@ test("hidden, disabled and reconnecting overlays discard flights without replayi
   expect(session.getSnapshot()).toMatchObject({ overlayEnabled: false, overlayMessages: [], messages: [] });
   expect(vi.getTimerCount()).toBe(0);
 });
+
+test("reaction subscribers retain their snapshot across overlay edits and observe live sends", () => {
+  const { session } = setup();
+  session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
+  const ready = session.getReactionSnapshot();
+  const observed: (typeof ready)[] = [];
+  const unsubscribe = session.subscribe(() => observed.push(session.getReactionSnapshot()));
+  for (const opacity of [.4, .5, .6, .7, .8, .9, 1, .9, .8, .7]) {
+    session.setOverlayAppearance({ opacity });
+    expect(session.getSnapshot().overlayAppearance.opacity).toBe(opacity);
+  }
+  expect(observed).toHaveLength(10);
+  expect(observed.every(snapshot => snapshot === ready)).toBe(true);
+  expect(ready.canSend).toBe(true);
+  expect(session.send({ kind: "reaction", reaction: "wave" })).toBe(true);
+  expect(observed.at(-1)?.canSend).toBe(false);
+  session.receive({ ...message("incoming"), payload: { kind: "reaction", reaction: "wave" } });
+  expect(observed.at(-1)?.reactions.at(-1)?.id).toBe("incoming");
+  unsubscribe();
+  session.close();
+});

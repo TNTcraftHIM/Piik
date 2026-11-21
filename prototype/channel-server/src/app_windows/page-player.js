@@ -56,8 +56,9 @@
   let timer;
   let reported = new Set();
   const report = () => {
-    clearTimeout(timer);
+    if (timer !== undefined) return;
     timer = setTimeout(() => {
+      timer = undefined;
       const removed = [...reported].filter(id => !elements.has(id));
       reported = new Set(elements.keys());
       send({ kind: 'candidates', removed, candidates: [...elements].map(([media, { video }]) => {
@@ -85,7 +86,11 @@
   };
   new MutationObserver(discover).observe(document, { childList: true, subtree: true });
   addEventListener('DOMContentLoaded', discover, { once: true });
-  addEventListener('pagehide', () => send({ kind: 'removed', removed: frame }));
+  addEventListener('pagehide', () => {
+    clearTimeout(timer);
+    timer = undefined;
+    send({ kind: 'removed', removed: frame });
+  });
   addEventListener('message', async event => {
     const command = event.data;
     if (command?.bridge !== 'piik-page-command') return;

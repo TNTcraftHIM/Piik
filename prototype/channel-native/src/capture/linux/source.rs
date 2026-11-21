@@ -554,21 +554,32 @@ async fn authorize(
             return Ok(());
         }
     };
-    if request.reply.is_closed() || control.is_stopped() {
-        candidate.close().await?;
-        return Ok(());
-    }
-    let committed = frames.present_now(raw).and_then(|raw| {
-        request.source.bind_endpoint(
-            candidate.input.as_ref().unwrap().endpoint(),
-            &request.request,
-        )?;
-        Ok(raw)
-    });
+    let committed = if request.reply.is_closed() || control.is_stopped() {
+        Err(anyhow!("input_authorization_cancelled"))
+    } else {
+        frames.present_now(raw).and_then(|raw| {
+            request.source.bind_endpoint(
+                candidate.input.as_ref().unwrap().endpoint(),
+                &request.request,
+            )?;
+            Ok(raw)
+        })
+    };
     let raw = match committed {
         Ok(raw) => raw,
         Err(error) => {
-            candidate.close().await?;
+            let cleanup = candidate.close().await;
+            let error = match cleanup {
+                Ok(()) => error,
+                Err(cleanup) => {
+                    let error =
+                        error.context(format!("Candidate Linux capture cleanup: {cleanup:#}"));
+                    if let Err(Err(error)) = request.reply.send(Err(error)) {
+                        eprintln!("{error:#}");
+                    }
+                    return Ok(());
+                }
+            };
             let _ = request.reply.send(Err(error));
             return Ok(());
         }

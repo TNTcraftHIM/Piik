@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { webcrypto } from "node:crypto";
 import { runInNewContext } from "node:vm";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 test("the actual page bridge reports late media after more than 128 startup resources", () => {
   const sent: { kind: string; urls?: string[] }[] = [];
@@ -46,7 +46,7 @@ test("long resource URLs fit Native UTF-8 IPC with the full nested-frame envelop
   expect(messages.flatMap(message => message.urls)).toEqual(urls);
 });
 
-function candidateBridge() {
+function candidateBridge(clock?: Pick<typeof globalThis, "setTimeout" | "clearTimeout">) {
   const bodies: string[] = [];
   const listeners = new Map<string, ((event: unknown) => void)[]>();
   let discover!: () => void, flush!: () => void;
@@ -58,10 +58,10 @@ function candidateBridge() {
     location: { hostname: "owned.test" }, document: { title: "Owned", querySelectorAll: (tag: string) => tag === "video" ? videos : iframes },
     addEventListener(type: string, listener: (event: unknown) => void) { listeners.set(type, [...listeners.get(type) ?? [], listener]); },
     PerformanceObserver: class { observe() {} }, MutationObserver: class { constructor(callback: () => void) { discover = callback; } observe() {} },
-    setTimeout(callback: () => void) { flush = callback; return 1; }, clearTimeout() {},
+    setTimeout(callback: () => void) { flush = callback; return 1; }, clearTimeout() {}, ...clock,
   });
-  return { bodies, iframes,
-    setVideos(next: typeof videos) { for (const old of videos) if (!next.includes(old)) old.isConnected = false; videos = next; discover(); flush(); },
+  return { bodies, iframes, discover, hide() { listeners.get("pagehide")?.forEach(listener => listener({})); },
+    setVideos(next: typeof videos) { for (const old of videos) if (!next.includes(old)) old.isConnected = false; videos = next; discover(); if (!clock) flush(); },
     message(event: unknown) { return Promise.all((listeners.get("message") ?? []).map(listener => listener(event))); },
   };
 }
@@ -127,4 +127,27 @@ test("moving an existing player within its document retains its candidate while 
   popup.setVideos([]);
   expect(JSON.parse(popup.bodies.at(-1)!)).toMatchObject({ frame: child.frame, removed: [child.candidates[0].media] });
   expect(JSON.parse(main.bodies.at(-1)!)).toMatchObject({ frame: first.frame, candidates: [{ media: first.candidates[0].media }], removed: [] });
+});
+
+test("continuous mutations deliver candidate addition and retirement before pagehide cancels pending work", () => {
+  vi.useFakeTimers();
+  try {
+    const bridge = candidateBridge({ setTimeout, clearTimeout });
+    const churn = () => {
+      for (let i = 0; i < 4; i++) {
+        vi.advanceTimersByTime(30);
+        bridge.discover();
+      }
+    };
+    bridge.setVideos([ownedVideo(1)]);
+    churn();
+    const selected = JSON.parse(bridge.bodies.at(-1)!).candidates[0].media;
+    bridge.setVideos([]);
+    churn();
+    expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ removed: [selected] });
+    bridge.setVideos([ownedVideo(2)]);
+    bridge.hide();
+    vi.runAllTimers();
+    expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ kind: "removed" });
+  } finally { vi.useRealTimers(); }
 });

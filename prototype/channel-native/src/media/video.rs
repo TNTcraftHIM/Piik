@@ -333,6 +333,11 @@ struct State {
     closed: bool,
 }
 impl State {
+    fn clear_current(&mut self) {
+        self.current = None;
+        self.queue.clear();
+        self.waiting_keyframe = true;
+    }
     fn selected(&self) -> Option<&Video> {
         self.pending
             .as_ref()
@@ -718,24 +723,28 @@ impl Input {
         if pending {
             state.pending = None;
         }
+        let current = state.current.as_ref().is_some_and(|v| v.same(video));
+        if current {
+            state.clear_current();
+        }
         let close = state.active
-            && (state.current.as_ref().is_some_and(|v| v.same(video))
+            && ((current && state.pending.is_none())
                 || (pending && (required || state.current.is_none())));
         if close {
             state.close();
         }
-        let incumbent = if pending && state.active && !close {
-            state.current.clone()
+        let selected = if (pending || current) && state.active && !close {
+            state.selected().cloned()
         } else {
             None
         };
         drop(state);
-        if pending || close {
+        if pending || current {
             self.changed.notify_one();
             self.available.notify_waiters();
         }
-        if let Some(incumbent) = incumbent {
-            incumbent.request_keyframe();
+        if let Some(selected) = selected {
+            selected.request_keyframe();
         }
         close
     }
@@ -759,9 +768,7 @@ impl Input {
             state.pending = None;
         }
         if current {
-            state.current = None;
-            state.queue.clear();
-            state.waiting_keyframe = true;
+            state.clear_current();
         }
         let selected = state.active.then(|| state.selected().cloned()).flatten();
         drop(state);
@@ -1295,6 +1302,25 @@ mod tests {
         );
         assert!(!input.failed(&high));
         assert_eq!(input.recv().await.unwrap().bytes, [3]);
+
+        let switching = low.subscribe();
+        let sibling = high.subscribe();
+        low.write(frame(4));
+        switching.recv().await.unwrap();
+        low.write(frame(5));
+        switching.select(&high, false)?;
+        let high_requests = high.requests();
+        assert!(!switching.failed(&low), "pending high feed remains usable");
+        assert!(high_requests.has_changed()?);
+        assert!(switching.state.lock().unwrap().queue.is_empty());
+        assert!(!sibling.failed(&low));
+        high.write(frame(6));
+        assert_eq!(switching.recv().await.unwrap().bytes, [6]);
+        assert_eq!(sibling.recv().await.unwrap().bytes, [6]);
+        assert!(!switching.failed(&low));
+        assert!(switching.failed(&high));
+        assert!(switching.state.lock().unwrap().closed);
+        sibling.close();
 
         let required = Video::new(time.clone(), changed);
         input.select(&required, true)?;

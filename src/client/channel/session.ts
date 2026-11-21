@@ -55,6 +55,7 @@ interface RoomReading {
   socket: WebSocket | null;
   ready: Promise<void>;
   history?: Promise<void>;
+  followLatest?: symbol;
   interaction?: RoomInteractionSession;
 }
 
@@ -1379,6 +1380,8 @@ export class ChannelSession {
     signal?.throwIfAborted();
     if (files.length && !this.view.state?.channel.rooms.find(room => room.id === roomId)?.capabilities.attachments) throw new Error("attachments_unavailable");
     const sessionId = this.view.sessionId;
+    const reading = this.readings.get(roomId), followIntent = Symbol();
+    if (reading) reading.followLatest = followIntent;
     const draft = { text, ...structuredClone(options) }, content = JSON.stringify(draft);
     const previous = this.outgoingMessages.get(roomId);
     const retry = previous && previous.content === content && previous.files.length === files.length
@@ -1397,7 +1400,16 @@ export class ChannelSession {
       if (event.type === "confirmed") this.attachments.confirmed(roomId, event.message, prepared);
     }, roomId, { signal });
     if (this.outgoingMessages.get(roomId) === attempt) this.outgoingMessages.delete(roomId);
-    if (this.view.historyByRoom[roomId]?.atLatest === false) void this.requestHistory(roomId, undefined, false, { clearError: false }).catch(() => {});
+    if (reading && reading.followLatest === followIntent) {
+      const follow = () => {
+        if (this.readings.get(roomId) !== reading || !this.wantedReadings().has(roomId) || reading.followLatest !== followIntent) return;
+        delete reading.followLatest;
+        if (this.view.historyByRoom[roomId]?.atLatest === false)
+          void this.requestHistory(roomId, undefined, false, { clearError: false }).catch(() => {});
+      };
+      if (reading.history && this.view.pending.has(`history:${roomId}`)) void reading.history.then(follow, follow);
+      else follow();
+    }
   });
   deleteMessage = (roomId: string, messageSeq: number, messageId: string): Promise<void> =>
     this.action(`delete-message:${roomId}:${messageId}`, () => this.request({ type: "delete_message", roomId, messageSeq, messageId }), false);
@@ -1411,6 +1423,8 @@ export class ChannelSession {
   loadHistory = (roomId: string): Promise<void> => this.requestHistory(roomId, this.view.historyByRoom[roomId]?.before);
   loadLatestHistory = (roomId: string): Promise<void> => this.requestHistory(roomId);
   loadMessage = async (roomId: string, seq: number): Promise<void> => {
+    const reading = this.readings.get(roomId);
+    if (reading) delete reading.followLatest;
     await this.ensureMessage(roomId, seq);
   };
 
@@ -1473,7 +1487,8 @@ export class ChannelSession {
     if (readByRoom !== this.view.readByRoom) this.patch({ readByRoom });
   };
   private requestHistory(roomId: string, before?: number, replace = false, options: { clearError?: boolean; signal?: AbortSignal; bindingId?: string } = {}): Promise<void> {
-    const reading = this.reading?.roomId === roomId ? this.reading : null;
+    const reading = this.readings.get(roomId);
+    if (reading) delete reading.followLatest;
     const pending = this.view.pending.has(`history:${roomId}`);
     const loading = this.action(`history:${roomId}`, () => this.request(
       { type: "history", roomId, ...(before !== undefined ? { before } : {}) }, undefined, roomId, { signal: options.signal, replaceHistory: replace, bindingId: options.bindingId }), !options.signal, options);
@@ -1681,10 +1696,14 @@ export class ChannelSession {
     check(); return archive;
   }
 
-  exportRoomBackup = (roomId: string, includeFiles = true): Promise<Blob> => this.action("room-backup", () => this.exportRoomArchive(roomId, includeFiles), false);
+  private roomArchiveAction<T>(roomId: string | undefined, work: () => Promise<T>): Promise<T> {
+    return this.action("room-backup", () => this.action(roomId ? `room:${roomId}` : "create-room", work, false), false);
+  }
+
+  exportRoomBackup = (roomId: string, includeFiles = true): Promise<Blob> => this.roomArchiveAction(roomId, () => this.exportRoomArchive(roomId, includeFiles));
 
   exportRoomCopy = (roomId: string, includeRoomInfo: boolean, includeFiles = true): Promise<Blob> =>
-    this.action("room-backup", () => this.exportRoomArchive(roomId, includeFiles, { includeRoomInfo }), false);
+    this.roomArchiveAction(roomId, () => this.exportRoomArchive(roomId, includeFiles, { includeRoomInfo }));
 
   private async exportRoomArchive(roomId: string, includeFiles: boolean, copy?: { includeRoomInfo: boolean }): Promise<Blob> {
     const owner = await this.backupOwner(roomId), retained = includeFiles ? await this.attachments.retained(roomId) : []; owner.current();
@@ -1825,7 +1844,7 @@ export class ChannelSession {
     return { settings: metadata.roomInfo ?? {}, retainedFileCount: metadata.retainedFiles.length };
   };
 
-  importRoomCopy = (archive: Blob, settings: RoomSettings): Promise<{ roomId: string; cached: boolean }> => this.action("room-backup", async () => {
+  importRoomCopy = (archive: Blob, settings: RoomSettings): Promise<{ roomId: string; cached: boolean }> => this.roomArchiveAction(undefined, async () => {
     const current = this.sessionContext(), state = this.view.state!, self = this.view.self!;
     if (state.channel.hostingMode === "hosted") return this.importHostedRoomCopy(archive, settings, current);
     const runtime = await loadRoomHosting();
@@ -1859,7 +1878,7 @@ export class ChannelSession {
       importer?.free();
       await stage?.close().catch(() => {});
     }
-  }, false);
+  });
 
   private async importHostedRoomCopy(archive: Blob, settings: RoomSettings, current: () => void): Promise<{ roomId: string; cached: boolean }> {
     const credential = this.credential, sessionId = this.view.sessionId;
@@ -1884,7 +1903,7 @@ export class ChannelSession {
   }
 
   restoreRoomBackup = (archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }> =>
-    this.action("room-backup", () => this.restoreRoomArchive(archive, roomId), false);
+    this.roomArchiveAction(roomId, () => this.restoreRoomArchive(archive, roomId));
 
   private async restoreRoomArchive(archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }> {
     const initial = this.sessionContext(), owner = roomId ? await this.backupOwner(roomId) : undefined;

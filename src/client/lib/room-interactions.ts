@@ -80,6 +80,15 @@ export class RoomInteractionSession {
     this.update({ reactionIds: REACTION_IDS.filter(id => reactionIds.includes(id)) });
   }
   getSnapshot = () => this.state;
+  private reactionSnapshot?: Pick<InteractionState, "reactions" | "reactionIds"> & { canSend: boolean };
+  getReactionSnapshot = () => {
+    const { reactions, reactionIds, ready, pending, coolingDown } = this.state;
+    const canSend = ready && !pending && !coolingDown;
+    const cached = this.reactionSnapshot;
+    if (cached && cached.reactions === reactions && cached.reactionIds === reactionIds && cached.canSend === canSend) return cached;
+    this.reactionSnapshot = { reactions, reactionIds, canSend };
+    return this.reactionSnapshot;
+  };
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
