@@ -49,6 +49,48 @@ pub(super) fn media_type(
     }
 }
 
+pub(super) fn h264_output(settings: Settings) -> Result<IMFMediaType> {
+    unsafe {
+        let output = media_type(&MFVideoFormat_H264, settings)?;
+        output.SetUINT32(&MF_MT_AVG_BITRATE, settings.bitrate)?;
+        output.SetUINT32(
+            &MF_MT_MPEG2_PROFILE,
+            eAVEncH264VProfile_ConstrainedBase.0 as u32,
+        )?;
+        Ok(output)
+    }
+}
+
+pub(super) fn renegotiate_h264_output(
+    transform: &IMFTransform,
+    settings: Settings,
+) -> Result<MFT_OUTPUT_STREAM_INFO> {
+    let required = h264_output(settings)?;
+    unsafe {
+        let mut index = 0;
+        loop {
+            let offered = transform.GetOutputAvailableType(0, index)?;
+            index += 1;
+            if offered.GetGUID(&MF_MT_SUBTYPE)? != MFVideoFormat_H264 {
+                continue;
+            }
+            required.CopyAllItems(&offered)?;
+            match transform.SetOutputType(0, &offered, 0) {
+                Err(e) if e.code() == MF_E_INVALIDMEDIATYPE => continue,
+                result => result?,
+            }
+            let actual = transform.GetOutputCurrentType(0)?;
+            anyhow::ensure!(
+                required
+                    .Compare(&actual, MF_ATTRIBUTES_MATCH_OUR_ITEMS)?
+                    .as_bool(),
+                "H264 output type differs from configured format"
+            );
+            return Ok(transform.GetOutputStreamInfo(0)?);
+        }
+    }
+}
+
 pub(super) fn normalize_level_1b(bytes: &mut [u8]) {
     // Some MFTs use level_idc 9 for Baseline Level 1b. RFC 6184 requires
     // constraint_set3_flag and level_idc 11; MF decoding otherwise yields no frames.

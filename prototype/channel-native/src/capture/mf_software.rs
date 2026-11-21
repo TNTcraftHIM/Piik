@@ -110,12 +110,7 @@ impl Encoder {
                 api.SetValue(&key, &VARIANT::from(value))?;
             }
             api.SetValue(&CODECAPI_AVLowLatencyMode, &VARIANT::from(true))?;
-            let output = media_type(&MFVideoFormat_H264, settings)?;
-            output.SetUINT32(&MF_MT_AVG_BITRATE, settings.bitrate)?;
-            output.SetUINT32(
-                &MF_MT_MPEG2_PROFILE,
-                eAVEncH264VProfile_ConstrainedBase.0 as u32,
-            )?;
+            let output = super::mf_common::h264_output(settings)?;
             transform.SetOutputType(0, &output, 0)?;
             let input = media_type(&MFVideoFormat_NV12, settings)?;
             input.SetUINT32(&MF_MT_DEFAULT_STRIDE, settings.width)?;
@@ -163,10 +158,6 @@ impl Encoder {
             "H264 NV12 input bounds"
         );
         unsafe {
-            if force {
-                self.api
-                    .SetValue(&CODECAPI_AVEncVideoForceKeyFrame, &VARIANT::from(1u32))?;
-            }
             let buffer = MFCreateMemoryBuffer((width * rows).try_into()?)?;
             let mut pixels = ptr::null_mut();
             buffer.Lock(&mut pixels, None, None)?;
@@ -183,52 +174,93 @@ impl Encoder {
             sample.AddBuffer(&buffer)?;
             sample.SetSampleTime(pts)?;
             sample.SetSampleDuration(duration.into())?;
-            self.transform
-                .ProcessInput(0, &sample, 0)
-                .context("software H264 ProcessInput")?;
-            // No B frames/lookahead: require same-input output, keeping the existing
-            // synchronous worker's clock and resize contract. No hidden pending queue.
-            let unit = self
-                .output()?
-                .ok_or_else(|| anyhow!("software H264 delayed its output"))?;
+            let mut submitted_after_change = false;
+            let unit = loop {
+                if force {
+                    self.api
+                        .SetValue(&CODECAPI_AVEncVideoForceKeyFrame, &VARIANT::from(1u32))?;
+                }
+                self.transform
+                    .ProcessInput(0, &sample, 0)
+                    .context("software H264 ProcessInput")?;
+                let (unit, changed) = self.output()?;
+                if let Some(unit) = unit {
+                    break unit;
+                }
+                // A synchronous MFT may discard its pending input when SetOutputType succeeds.
+                ensure!(
+                    changed && !submitted_after_change,
+                    "software H264 delayed its output"
+                );
+                submitted_after_change = true;
+            };
             ensure!(unit.pts == pts, "software H264 changed output order");
             ensure!(
                 !force || unit.keyframe,
                 "software H264 independent frame request was not honored"
             );
             ensure!(
-                self.output()?.is_none(),
+                self.output()?.0.is_none(),
                 "software H264 returned extra output"
             );
             Ok(unit)
         }
     }
 
-    fn output(&self) -> Result<Option<AccessUnit>> {
+    fn output(&mut self) -> Result<(Option<AccessUnit>, bool)> {
         unsafe {
-            let sample = MFCreateSample()?;
-            sample.AddBuffer(&MFCreateAlignedMemoryBuffer(
-                self.info.cbSize,
-                self.info.cbAlignment.saturating_sub(1),
-            )?)?;
-            let mut data = MFT_OUTPUT_DATA_BUFFER {
-                pSample: ManuallyDrop::new(Some(sample)),
-                pEvents: ManuallyDrop::new(None),
-                ..Default::default()
+            let mut changed = false;
+            let sample = loop {
+                let sample = if self.info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES.0 as u32 == 0
+                {
+                    let sample = MFCreateSample()?;
+                    sample.AddBuffer(&MFCreateAlignedMemoryBuffer(
+                        self.info.cbSize,
+                        self.info.cbAlignment.saturating_sub(1),
+                    )?)?;
+                    Some(sample)
+                } else {
+                    None
+                };
+                let mut data = MFT_OUTPUT_DATA_BUFFER {
+                    pSample: ManuallyDrop::new(sample),
+                    pEvents: ManuallyDrop::new(None),
+                    ..Default::default()
+                };
+                let mut status = 0;
+                let result =
+                    self.transform
+                        .ProcessOutput(0, slice::from_mut(&mut data), &mut status);
+                let sample = ManuallyDrop::take(&mut data.pSample);
+                drop(ManuallyDrop::take(&mut data.pEvents));
+                if result
+                    .as_ref()
+                    .is_err_and(|e| e.code() == MF_E_TRANSFORM_STREAM_CHANGE)
+                    && status & MFT_PROCESS_OUTPUT_STATUS_NEW_STREAMS.0 as u32 == 0
+                {
+                    drop(sample);
+                    ensure!(
+                        !changed,
+                        "software H264 repeated output format change without progress"
+                    );
+                    self.info =
+                        super::mf_common::renegotiate_h264_output(&self.transform, self.settings)?;
+                    ensure!(
+                        self.info.cbSize as usize <= MAX_AU,
+                        "software H264 output allocation exceeds bound"
+                    );
+                    changed = true;
+                    continue;
+                }
+                if result
+                    .as_ref()
+                    .is_err_and(|error| error.code() == MF_E_TRANSFORM_NEED_MORE_INPUT)
+                {
+                    return Ok((None, changed));
+                }
+                result.context("software H264 ProcessOutput")?;
+                break sample;
             };
-            let mut status = 0;
-            let result = self
-                .transform
-                .ProcessOutput(0, slice::from_mut(&mut data), &mut status);
-            let sample = ManuallyDrop::take(&mut data.pSample);
-            drop(ManuallyDrop::take(&mut data.pEvents));
-            if result
-                .as_ref()
-                .is_err_and(|error| error.code() == MF_E_TRANSFORM_NEED_MORE_INPUT)
-            {
-                return Ok(None);
-            }
-            result.context("software H264 ProcessOutput")?;
             let sample = sample.ok_or_else(|| anyhow!("software H264 omitted output sample"))?;
             let pts = sample.GetSampleTime()?;
             let keyframe = sample.GetUINT32(&MFSampleExtension_CleanPoint).unwrap_or(0) != 0;
@@ -247,11 +279,14 @@ impl Encoder {
                 "software H264 did not emit Annex B"
             );
             normalize_level_1b(&mut bytes);
-            Ok(Some(AccessUnit {
-                bytes,
-                pts,
-                keyframe,
-            }))
+            Ok((
+                Some(AccessUnit {
+                    bytes,
+                    pts,
+                    keyframe,
+                }),
+                changed,
+            ))
         }
     }
 }

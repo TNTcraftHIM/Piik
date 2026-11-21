@@ -65,12 +65,7 @@ impl Drop for Encoder {
 }
 fn set_format(transform: &IMFTransform, settings: Settings) -> Result<MFT_OUTPUT_STREAM_INFO> {
     unsafe {
-        let output = media_type(&MFVideoFormat_H264, settings)?;
-        output.SetUINT32(&MF_MT_AVG_BITRATE, settings.bitrate)?;
-        output.SetUINT32(
-            &MF_MT_MPEG2_PROFILE,
-            eAVEncH264VProfile_ConstrainedBase.0 as u32,
-        )?;
+        let output = super::mf_common::h264_output(settings)?;
         transform.SetOutputType(0, &output, 0)?;
         transform.SetInputType(0, &media_type(&MFVideoFormat_NV12, settings)?, 0)?;
         Ok(transform.GetOutputStreamInfo(0)?)
@@ -244,7 +239,11 @@ impl Encoder {
             Ok(())
         }
     }
-    fn output(&self) -> Result<(Vec<u8>, i64, bool)> {
+    fn output(
+        &mut self,
+        settings: Settings,
+        input_fps: u32,
+    ) -> Result<Option<(Vec<u8>, i64, bool)>> {
         unsafe {
             let mut buffer = MFT_OUTPUT_DATA_BUFFER {
                 dwStreamID: 0,
@@ -254,7 +253,10 @@ impl Encoder {
             };
             if self.info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES.0 as u32 == 0 {
                 let sample = MFCreateSample()?;
-                sample.AddBuffer(&MFCreateMemoryBuffer(self.info.cbSize)?)?;
+                sample.AddBuffer(&MFCreateAlignedMemoryBuffer(
+                    self.info.cbSize,
+                    self.info.cbAlignment.saturating_sub(1),
+                )?)?;
                 buffer.pSample = ManuallyDrop::new(Some(sample));
             }
             let mut status = 0;
@@ -263,6 +265,16 @@ impl Encoder {
                     .ProcessOutput(0, std::slice::from_mut(&mut buffer), &mut status);
             let sample = ManuallyDrop::take(&mut buffer.pSample);
             drop(ManuallyDrop::take(&mut buffer.pEvents));
+            if result
+                .as_ref()
+                .is_err_and(|e| e.code() == MF_E_TRANSFORM_STREAM_CHANGE)
+                && status & MFT_PROCESS_OUTPUT_STATUS_NEW_STREAMS.0 as u32 == 0
+            {
+                drop(sample);
+                self.info = super::mf_common::renegotiate_h264_output(&self.transform, settings)?;
+                self.bitrate(settings.bitrate, settings.fps, input_fps)?;
+                return Ok(None);
+            }
             result
                 .map_err(super::mf_common::encode_failure)
                 .context("hardware H264 ProcessOutput")?;
@@ -280,7 +292,7 @@ impl Encoder {
                 "hardware encoder did not emit Annex B"
             );
             normalize_level_1b(&mut bytes);
-            Ok((bytes, pts, keyframe))
+            Ok(Some((bytes, pts, keyframe)))
         }
     }
     pub fn run(
@@ -412,7 +424,11 @@ impl Encoder {
                                 need_input += 1;
                             }
                         } else if kind == METransformHaveOutput.0 as u32 {
-                            let (bytes, pts, keyframe) = encoder.output()?;
+                            let Some((bytes, pts, keyframe)) =
+                                encoder.output(current, rate_control_fps)?
+                            else {
+                                continue;
+                            };
                             let qp = encoder.qp.parse(&bytes);
                             policy.report_encoded(qp, started.elapsed().as_micros() as u64);
                             dropper.fill(bytes.len(), !keyframe);

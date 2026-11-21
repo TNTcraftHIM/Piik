@@ -60,6 +60,10 @@ the feedback period; they do not delay that delivery.
   normal use and contention. Identify the limiting stage before changing quality
   policy. Explicit hardware-encoder failure recovery does not establish smooth
   playback or lower resource use while hardware encoding still succeeds.
+- [ ] **Windows H.264 format changes.** Verify hardware output renegotiation on
+  the Intel setup reported in [#452](https://github.com/TNTcraftHIM/Piik/issues/452).
+  Retain the hardware and software encoder's frame, bitrate and retirement
+  contracts; injected notifications are separate from driver-generated changes.
 - [ ] **Current webpage-source and playback package acceptance.** Verify
   source selection, player association, provider hide/restore and independent
   viewer playback on the reported accessible websites in matching Windows
