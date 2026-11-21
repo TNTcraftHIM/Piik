@@ -396,6 +396,20 @@ per-track video statistics or presentation callbacks, so the duration of its
 visible interruption is unknown. An independent room voice connection kept
 the same receiver and SSRC, with increasing received samples and audio energy.
 
+### File forwarding during a room call
+
+In a four-browser loopback run, both file recipients could reach the sender
+through the same relay. The room allowed three downstreams and the relay
+offered one file slot. The first recipient had received 393,216 bytes when
+the second requested the file. The relay refused the second file branch.
+During the next 725 ms that recipient received zero file bytes while its
+existing voice stream delivered 38 RTP packets and 36,480 audio samples.
+
+Raising the relay's file limit to two resumed the pending download. The
+recipient verified all 12,582,929 bytes against the sender's SHA-256. The
+room used the routing implementation from `5493e339` and a synthetic
+microphone. This run measures admission and recovery on a shared relay.
+
 ### First frame on a cold and reused connection
 
 In two ordinary Linux kernel NAT trials on `1e00d9e0` (Core32), the source was

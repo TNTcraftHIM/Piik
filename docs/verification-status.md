@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-19
+Last updated: 2026-11-21
 
 This page summarizes the current 3.0 evidence and limits that affect product
 claims. [Status](./status.md#isolated-30-prototype) owns delivery readiness;
@@ -15,7 +15,11 @@ room and decoded a synthetic screen from an independent browser on loopback.
 Closing the main window retired the observed WebView processes and listeners.
 On Alpine x64, the packaged Server accepted signed chat after the room creator
 left, retained the invited reader's grant and history on restart, and hid the
-room from a stranger. These runs used disposable data. Physical display capture,
+room from a stranger. In a separate Alpine x64 loopback run with the public Demo
+creation and hosting policy, review Server `c5034bb0` hid a guest-created room
+from the site overview and room list. An invited visitor entered through the
+generated link and sent a message to the creator. Another fresh visitor still saw only
+the public rooms. These runs used disposable data. Physical display capture,
 microphone capture and public-network conditions require their own checks.
 
 On Windows, the hosted invite-only policy hid a visitor-created room from a

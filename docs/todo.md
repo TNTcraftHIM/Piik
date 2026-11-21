@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-20
+Last reviewed: 2026-11-21
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -25,9 +25,13 @@ the feedback period; they do not delay that delivery.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
-  coverage, connection attempts, idle cost and disruption. Exercise concurrent kinds on one uplink
-  and recovery from a refused file branch before tuning fanout and retry/standby budgets.
-- [ ] **Matched-package room acceptance.** Verify invite-only discovery on the public Demo. The [hosting design](./research/server-hosting-plan.md)
+  coverage, connection attempts, idle cost and disruption. Repeat the
+  [file and voice recovery control](./research/network-lab.md#file-forwarding-during-a-room-call)
+  on a shared physical uplink before tuning fanout and retry/standby budgets.
+- [ ] **Matched-package room acceptance.** Verify invite-only discovery and
+  invitation entry on the deployed public Demo. The
+  [local package check](./verification-status.md#current-evidence) exercised the same
+  hosting and creation policy. The [hosting design](./research/server-hosting-plan.md)
   owns the lightweight, hosted and moderation contracts.
 - [ ] **Physical camera orientation.** Check portrait capture on a phone through
   Native and pooled Browser paths. Compare the orientation of the source and

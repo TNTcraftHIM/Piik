@@ -502,6 +502,23 @@ and libnice 0.1.22-r0 was run twice against App review build `19948350` using
 the same Piik authorization. Both starts reached `Connecting`, then `Failed`
 and `Closed`. Piik reported an input error and Firefox received no inbound RTP.
 
+In libnice 0.1.22, automatic ICE gathering enumerates local addresses with
+`include_loopback=FALSE`. On Linux this excludes interfaces marked
+`IFF_LOOPBACK`. In libdatachannel 0.24.3 the nice backend invokes this
+gatherer without adding a local address. Candidate selection on the OBS sender
+therefore excludes its loopback interface during automatic gathering.
+[libnice gathering](https://github.com/libnice/libnice/blob/0.1.22/agent/agent.c#L3681-L3698)
+· [interface filter](https://github.com/libnice/libnice/blob/0.1.22/agent/interfaces.c#L506-L515)
+· [libdatachannel nice backend](https://github.com/paullouisageneau/libdatachannel/blob/v0.24.3/src/impl/icetransport.cpp#L756)
+
+Arch Linux provides a stock libjuice path for a playback check. On November 21,
+inspection of the x86-64 Extra package binaries showed that the WHIP module
+in OBS Studio 33.0.1-1 requires `libdatachannel.so.0.24`, and libdatachannel
+0.24.5-3 requires `libjuice.so.1.7.3`. Viewer playback and restart with
+these binaries remain unverified.
+[Arch OBS Studio](https://archlinux.org/packages/extra/x86_64/obs-studio/)
+· [Arch libdatachannel](https://archlinux.org/packages/extra/x86_64/libdatachannel/)
+
 To check another Linux package, open OBS input in Piik and keep the sharing
 page open. In OBS on the same computer, select WHIP, copy the endpoint and
 bearer from that page, and stream a moving scene with audible sound using
