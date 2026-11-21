@@ -38,6 +38,18 @@ function observeCard(element: Element, onVisibility: (visible: boolean) => void)
   };
 }
 
+function TransferProgress({ label, bytes }: { label: string; bytes?: { received: number; total: number | null } | null }) {
+  const total = bytes?.total || undefined;
+  return <div className="c3-attachment-progress">
+    <div>
+      <small role="status">{label}</small>
+      {total && bytes ? <small>{Math.floor(bytes.received / total * 100)}%</small> : null}
+    </div>
+    <progress aria-label={label} max={total} value={total ? bytes?.received : undefined} />
+    {bytes && <small>{fileSize(bytes.received)}{bytes.total !== null && ` / ${fileSize(bytes.total)}`}</small>}
+  </div>;
+}
+
 export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImage }: {
   roomId: string; messageSeq: number; file: Attachment; client: ChannelAttachments; inlineImage?: ImageRendition;
 }) {
@@ -118,13 +130,15 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
     : (!originalShown ? originalStatus : undefined) ?? previewMessage ?? imageDescription;
   const saving = download.outcome === "started", savedBytes = download.saveProgress;
   const savePending = isNativeSavePending(download.outcome);
+  const saved = savedCopy || download.outcome === "saved";
   const canReveal = savedCopy && typeof (downloadSurface.current?.ownerDocument ?? surfaceDocument)?.defaultView?.piikRevealDownload === "function";
   const originalNotice = !imageOpen && !download.busy && !previewBusy && !savePending ? originalStatus : undefined;
-  const cardStatus = originalNotice && (download.error === "saved_copy_missing" || download.error === "download_failed")
+  const cardStatus = originalNotice && (download.error === "saved_copy_missing"
+    || download.error === "reveal_saved_copy_failed" || download.error === "download_failed")
     ? `${downloadMessage} ${originalNotice}`
     : originalNotice ?? downloadMessage ?? (!imageOpen ? previewMessage : undefined);
   return <div className="c3-attachment" ref={downloadSurface}>
-    <div className="c3-attachment-file"><Glyph name="save" size={21} />
+    <div className="c3-attachment-file"><Glyph name={saved ? "check" : "fileDown"} size={21} />
       <div><Tooltip overflow={{ text: file.name, selector: "strong" }}><strong>{file.name}</strong></Tooltip><small>{fileSize(file.size)}</small></div>
       <ChannelAction icon={download.busy ? "x" : canReveal ? "folder" : "arrowDown"}
         label={download.busy ? t("channel.attachment.cancelDownload") : savePending ? t(saving ? "channel.attachment.saving" : "channel.attachment.downloadRequested")
@@ -143,22 +157,12 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
           void client.download(key, file, inlineImage, surface ?? undefined).catch(() => {});
         }} />
     </div>
-    {(download.busy || previewBusy) && <div className="c3-attachment-progress">
-      <small role="status">{progressLabel}</small>
-      <progress aria-label={progressLabel} max={progress?.total || undefined}
-        value={progress && progress.total > 0 && progress.received > 0 ? progress.received : undefined} />
-      {progressBytes && <small>{progressBytes}</small>}
-    </div>}
-    {saving && <div className="c3-attachment-progress">
-      <small role="status">{t("channel.attachment.saving")}</small>
-      <progress aria-label={t("channel.attachment.saving")} max={savedBytes?.total || undefined}
-        value={savedBytes && savedBytes.total !== null && savedBytes.total > 0 ? savedBytes.received : undefined} />
-      {savedBytes && <small>{fileSize(savedBytes.received)}{savedBytes.total !== null && ` / ${fileSize(savedBytes.total)}`}
-        {savedBytes.total !== null && savedBytes.total > 0 && ` · ${Math.floor(savedBytes.received / savedBytes.total * 100)}%`}</small>}
-    </div>}
-    {!download.busy && (download.outcome === "requested" || download.outcome === "dispatched" || download.outcome === "saved") && <small role="status">{t(download.outcome === "saved"
-      ? "channel.attachment.saved"
-      : download.outcome === "requested" ? "channel.attachment.downloadRequested" : "channel.attachment.downloadSent")}</small>}
+    {(download.busy || (previewBusy && !imageOpen)) && <TransferProgress label={progressLabel}
+      bytes={progress && (progress.received > 0 || progress.state === "receiving" || progress.state === "finishing") ? progress : null} />}
+    {saving && <TransferProgress label={t("channel.attachment.saving")} bytes={savedBytes} />}
+    {!download.busy && !savePending && saved && <small className="c3-attachment-saved" role="status">{t("channel.attachment.saved")}</small>}
+    {!download.busy && (download.outcome === "requested" || download.outcome === "dispatched") && <small role="status">{t(download.outcome === "requested"
+      ? "channel.attachment.downloadRequested" : "channel.attachment.downloadSent")}</small>}
     {download.outcome === "cancelled" && <small role="status">{t("channel.attachment.downloadCancelled")}</small>}
     {isImage && !preview && <ChannelAction icon={previewBusy ? "x" : "eye"} quiet
       disabled={unavailable && !previewBusy}

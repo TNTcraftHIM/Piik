@@ -252,6 +252,7 @@ export const ja = {
   "channel.attachment.originalLoadFailed": "元の画像を読み込めませんでした。",
   "channel.attachment.cancelDownload": "ダウンロードをキャンセル",
   "channel.attachment.savedCopyMissing": "保存したファイルが見つかりません。",
+  "channel.attachment.revealSavedFailed": "保存したファイルをエクスプローラーに表示できませんでした。",
   "channel.attachment.revealSaved": "フォルダーに表示",
   "channel.attachment.downloadOriginal": "元のファイルをダウンロード",
   "channel.attachment.download": "ダウンロード",

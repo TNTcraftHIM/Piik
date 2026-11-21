@@ -107,6 +107,8 @@
 .c3-composer textarea { flex: 1; min-width: 0; width: 100%; border: 0; border-radius: 0; background: transparent; color: var(--ink); font: inherit; font-size: 16px; line-height: 1.5; padding: calc((var(--control-compact-size, 44px) - 1lh) / 2) 4px; min-height: var(--control-compact-size, 44px); max-height: min(160px, 30dvh); overflow-y: auto; resize: none; field-sizing: content; }
 .c3-composer textarea:focus { outline: 0; }
 
-.c3-attachment-progress { min-width: 0; }
-.c3-attachment-progress > progress { display: block; width: 100%; height: 8px; accent-color: var(--ink); }
-.c3-attachment-progress > small { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.c3-attachment-progress { display: grid; gap: 5px; min-width: 0; }
+.c3-attachment-progress > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.c3-attachment-progress small { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.c3-attachment-progress [role="status"], .c3-attachment .c3-attachment-saved { color: var(--ink); font-weight: 650; }
+.c3-attachment-progress > progress { display: block; width: 100%; height: 12px; accent-color: var(--busy); }

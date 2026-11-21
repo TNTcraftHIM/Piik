@@ -78,14 +78,12 @@ impl Confirmation {
         }
         let result = if !allowed {
             "cancelled"
-        } else if main
-            .receipts
-            .resolve(&self.origin, self.receipt)
-            .is_some_and(|path| select_file(&path))
-        {
-            "revealed"
         } else {
-            "unavailable"
+            match main.receipts.resolve(&self.origin, self.receipt) {
+                Some(path) if select_file(&path) => "revealed",
+                Some(_) => "failed",
+                None => "unavailable",
+            }
         };
         self.report(main, result);
     }

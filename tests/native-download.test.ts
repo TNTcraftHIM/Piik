@@ -118,6 +118,13 @@ test("confirmed attachment receipts restore only for the current identity and or
   read.mockResolvedValue([entry]);
   files.update("session3", scope, [], rooms, []);
   await vi.waitFor(() => expect(files.hasSavedCopy(key, file)).toBe(true));
+  reveal.mockResolvedValueOnce("failed").mockResolvedValueOnce("revealed");
+  await files.revealSavedCopy(key, file, { ownerDocument: f.document } as Element);
+  expect(files.status(key).error).toBe("reveal_saved_copy_failed");
+  expect(forget).not.toHaveBeenCalled();
+  expect(files.hasSavedCopy(key, file)).toBe(true);
+  await files.revealSavedCopy(key, file, { ownerDocument: f.document } as Element);
+  expect(files.status(key).error).toBeNull();
   await files.revealSavedCopy(key, file, { ownerDocument: f.document } as Element);
   expect(reveal).toHaveBeenCalledWith(receipt);
   expect(forget).toHaveBeenCalledWith(entry);

@@ -332,6 +332,7 @@ export const en: Record<CopyKey, string> = {
   "channel.attachment.originalLoadFailed": "Couldn't load the original image.",
   "channel.attachment.cancelDownload": "Cancel download",
   "channel.attachment.savedCopyMissing": "The saved file could not be found.",
+  "channel.attachment.revealSavedFailed": "Could not show the saved file in File Explorer.",
   "channel.attachment.revealSaved": "Reveal in folder",
   "channel.attachment.downloadOriginal": "Download original",
   "channel.attachment.download": "Download",

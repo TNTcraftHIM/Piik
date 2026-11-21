@@ -3,7 +3,7 @@ export interface DownloadProgress { received: number; total: number | null }
 declare global {
   interface Window {
     piikNativeDownloads?: boolean;
-    piikRevealDownload?: (receipt: string) => Promise<"revealed" | "cancelled" | "unavailable">;
+    piikRevealDownload?: (receipt: string) => Promise<"revealed" | "cancelled" | "unavailable" | "failed">;
   }
 }
 interface DownloadOptions {

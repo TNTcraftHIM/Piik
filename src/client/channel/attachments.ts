@@ -89,17 +89,22 @@ export class ChannelAttachments {
     const id = fileKeyString(key), entry = this.savedReceipts.get(id), store = this.store;
     const view = surface.ownerDocument.defaultView;
     if (!entry || !store || !this.hasSavedCopy(key, attachment) || !view?.piikRevealDownload) return;
-    if (await view.piikRevealDownload(entry.receipt) !== "unavailable") return;
+    const result = await view.piikRevealDownload(entry.receipt);
+    if (result === "cancelled") return;
     if (this.store !== store || this.savedReceipts.get(id) !== entry) return;
-    this.savedReceipts.delete(id);
+    if (result === "unavailable") this.savedReceipts.delete(id);
     const previous = this.downloads.get(id);
     if (!previous?.status.busy && previous?.status.outcome !== "started") {
-      const status = { busy: false, error: "saved_copy_missing" };
-      if (previous) previous.status = status;
-      else this.downloads.set(id, { key, controller: new AbortController(), promise: Promise.resolve(), status });
+      if (result === "revealed") {
+        if (previous?.status.error === "reveal_saved_copy_failed") previous.status = { ...previous.status, error: null };
+      } else {
+        const status = { busy: false, error: result === "failed" ? "reveal_saved_copy_failed" : "saved_copy_missing" };
+        if (previous) previous.status = status;
+        else this.downloads.set(id, { key, controller: new AbortController(), promise: Promise.resolve(), status });
+      }
     }
     this.changed();
-    await store.forgetReceipt(entry);
+    if (result === "unavailable") await store.forgetReceipt(entry);
   }
   progress = (key: ChannelFileKey): AttachmentProgress | null => this.sinks.get(fileKeyString(key))?.progress ?? null;
   private changed() { for (const listener of this.listeners) listener(); }

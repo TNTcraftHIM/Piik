@@ -17,6 +17,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.attachment.sourceUnavailable");
   if (error === "file_transfer_interrupted") return display("channel.attachment.transferInterrupted");
   if (error === "saved_copy_missing") return display("channel.attachment.savedCopyMissing");
+  if (error === "reveal_saved_copy_failed") return display("channel.attachment.revealSavedFailed");
   if (error === "download_failed") return display("channel.attachment.saveFailed");
   if (error === "file_offer_failed") return display("channel.attachment.fileOfferFailed");
   if (error === "preview_only")

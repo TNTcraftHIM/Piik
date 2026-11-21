@@ -361,10 +361,18 @@ fn receipt_survives_restart_and_checks_origin_file_and_store() {
     assert_eq!(book.resolve(origin, token), Some(path.clone()));
     assert_eq!(book.resolve(origin, Uuid::new_v4()), None);
     assert_eq!(book.resolve("https://other.test", token), None);
+    let moved = folder.path().join("moved.txt");
+    std::fs::rename(&path, &moved).unwrap();
+    assert_eq!(book.resolve(origin, token), None);
+    std::fs::rename(&moved, &path).unwrap();
+    assert_eq!(
+        ReceiptBook::new(directory.clone()).resolve(origin, token),
+        Some(path.clone())
+    );
     std::fs::write(&path, b"changed fixture").unwrap();
     assert_eq!(book.resolve(origin, token), None);
     let updated = book.remember(origin, &path).unwrap();
-    std::fs::rename(&path, folder.path().join("moved.txt")).unwrap();
+    std::fs::remove_file(&path).unwrap();
     assert_eq!(book.resolve(origin, updated), None);
     std::fs::write(directory.join("download-receipts.sqlite"), b"corrupt").unwrap();
     assert_eq!(book.resolve(origin, updated), None);

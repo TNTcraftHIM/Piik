@@ -330,6 +330,7 @@ export const zh = {
   "channel.attachment.originalLoadFailed": "暂时无法加载原图。",
   "channel.attachment.cancelDownload": "取消下载",
   "channel.attachment.savedCopyMissing": "找不到本机保存的文件。",
+  "channel.attachment.revealSavedFailed": "无法在文件资源管理器中显示已保存的文件。",
   "channel.attachment.revealSaved": "在文件夹中显示",
   "channel.attachment.downloadOriginal": "下载原图",
   "channel.attachment.download": "下载",
