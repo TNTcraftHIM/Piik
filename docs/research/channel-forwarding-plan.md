@@ -4,13 +4,14 @@ The agreed 3.0 topology is **Channel → Room → Activity / 频道 → 房间 �
 A channel maintains one reusable connection graph, a room exposes its authorized
 subgraph, and each publication selects directed delivery paths. The algorithm
 below is the implementation baseline. The [version boundary](#version-boundary)
-records what the current prototype does. [Channel and room authority](./server-hosting-plan.md)
+records implementation coverage. [Channel and room authority](./server-hosting-plan.md)
 
 ## Route planning procedure
 
-A change in demand, a connection or available capacity wakes the existing
-room planner. It works on the affected source and receivers using current
-permissions, payload capabilities, endpoint grants and confirmed pairs.
+A change in demand, a connection or available capacity wakes the channel's
+connection scheduler and affected room planners. The channel admits physical
+attempts; each room selects delivery paths on confirmed pairs using current
+permissions, payload capabilities and endpoint grants.
 
 | Situation | Method and result |
 | --- | --- |
@@ -70,14 +71,34 @@ assignment also requires capacity at the sending endpoint.
 
 The signaling authority supplies eligible candidates on demand. With n endpoints
 a full mesh has n(n−1)/2 pairs and n−1 neighbors per endpoint. Keeping at
-most d established neighbors per endpoint bounds the total by floor(nd/2).
-This physical resource budget is independent of the user's per-kind forwarding
-limit. A small channel can become fully connected through actual demand.
+most d pending or established pairs per endpoint bounds the total by floor(nd/2).
+The channel ranks connection demand; `TransportBook` owns physical admission
+and retirement. Its physical resource budget is independent of the user's
+per-kind forwarding limit. A small channel can become fully connected through actual demand.
 Room entry and playback can proceed as soon as their own requirements are met. Idle
 connections still use device resources. The pool can build redundancy where
 a single departing relay would separate peers, and retire unused edges under
 pressure. Give active demand priority, then common-room interest, then
 channel-wide standby.
+
+A pending or established pair occupies one connection slot at each endpoint,
+regardless of how many rooms or activities use it. Coalesce requests before
+admission. Reclaim unused lower-priority standby only when both endpoints can
+admit the replacement; otherwise retain the demand for a later capacity change.
+Capacity waiting is not a failed ICE attempt. Automatic admission does not evict
+healthy business paths to make room for new demand. During replacement, count
+each distinct pending or established pair once across the current and candidate
+paths. Release the old activity's use after delivery on the new path is confirmed.
+These slots bound assigned peer connections, not the sockets used inside a
+Native preparation attempt; the transport adapter owns those existing limits.
+[Connection resource accounting](https://github.com/libp2p/go-libp2p/blob/master/p2p/host/resource-manager/README.md#the-transient-scope)
+
+The channel owns physical admission, attempt deadlines and connection failure
+generations. A room retains authorized delivery intent while no complete path
+is confirmed. Once a complete authorized path is confirmed, the room creates a
+payload candidate and starts its delivery-preparation deadline. Existing
+delivery continues during an optional replacement. Room preparation does not
+observe a second physical-admission state.
 
 An activity reuses an existing delivery or searches its room's eligible
 edges, including channel edges it can use under the room grant. Looking
@@ -103,8 +124,19 @@ within its resource allowance and closes a pair when its last use ends.
 | Version | When peer connections are prepared and used |
 | --- | --- |
 | [v2.7.0](https://github.com/TNTcraftHIM/Piik/blob/e25bd009501793681c2fc52080846cd092bb917e/docs/standards/routing-transport.md#topology) | The room already supports multi-hop delivery from one screen host. Each viewer has at most one active upstream. Voice can establish the room graph before the host shares a screen. Voice and picture use the same route controller. Voice can use a companion transport on a selected edge. The route policy can use an embedded SFU. |
-| [Current 3.0 prototype](./channel-network-design.md#one-base-tree-per-participating-room) | Screen, voice, file and forwarded webpage bytes can trigger an ICE attempt inside the room's authorized graph. After a terminal direct failure, waiting deliveries share recovery for the same room, endpoint pair and connection generations. Each activity keeps its own delivery path and forwarding limit. |
-| 3.0 design target | One channel pool learns connections made for rooms or activities and can fill gaps between groups. Rooms use authorized subgraphs. Each flow selects a delivery path and can request additional pairs. Freshly verified edges immediately become available for reuse. |
+| [Current 3.0 implementation](./channel-network-design.md#one-base-tree-per-participating-room) | Screen, voice, file and forwarded webpage bytes request physical pairs from one channel pool. Rooms use authorized subgraphs; confirmed pairs are reusable by other eligible activities. Failed direct paths can use same-room readers, and forwarding budgets apply independently per kind across rooms. |
+
+The remaining pool scheduling is tracked in [TODO](../todo.md#active-work):
+first standby neighbors for lobby and idle-room interest, channel-wide gap
+repair, and a total physical degree budget. Existing code bounds optional
+discovery and idle retention; it does not yet apply a total degree limit to
+active and standby pairs together. These are implementation gaps within the
+same graph model. Current room candidates can start their deadlines before
+physical connection; demand must instead survive connection preparation under
+the channel owner. Current voice, file and forwarded-byte planning also shares
+one room base tree. Those activities must be able to select independent source
+paths on the authorized graph, using the existing flow and transfer fields.
+The connection pool remains shared throughout this internal transition.
 
 ### Payloads
 
@@ -492,10 +524,11 @@ and measures the gain against that baseline on independent rooms.
 
 ```mermaid
 flowchart TD
-  C["Channel authority and directory"] --> R["RoomRuntime · room grants and demand"]
-  R --> P["Publication · selected directed paths and pending handoff"]
-  R -->|"room interest"| T["TransportBook · channel graph, pair attempts and uses"]
-  P -->|"flow lease or missing pair"| T
+  C["Channel · authority and connection demand"] -->|"authorized state"| R["RoomRuntime · room grants and delivery intent"]
+  R -->|"confirmed path"| P["Activity · selected delivery and pending handoff"]
+  R -->|"room interest and unmet intent"| C
+  C -->|"ranked pair requests"| T["TransportBook · channel graph, pair attempts and uses"]
+  P -->|"flow lease"| T
   T --> E["Browser media / Native Driver · physical transport"]
   A["Page / Native runtime · downstream counts by kind"] --> E
   E --> S["WebRTC / RTC SDK · ICE and congestion control"]
@@ -519,7 +552,28 @@ The relevant existing owners are [RoomRuntime](../../prototype/channel-core/src/
 [Browser media](../../src/client/channel/media.ts), and
 [Native Driver](../../prototype/channel-native/src/peer.rs).
 
+Room planning borrows the channel's authorized adjacency view. Reuse the existing
+path search to extend an activity's selected parent map for unmet receivers,
+preserving valid branches. `Publication` owns media selection and delivery proof;
+`FileRoom` owns holder selection and transfer paths; watch activities own their
+byte-source paths. Retire the base tree's business projection as those consumers
+move to the shared graph query. No persistent route state or second public graph
+representation is needed.
+
+Complete cold-start demand before removing the base tree's connection requests.
+Media subscriptions already identify sources and receivers without flows.
+File and forwarded-byte plans must likewise retain receiving intent and source
+identity when their upstream is absent. The channel can then admit the first
+pair on an empty graph, discover missing links and wake the room when the
+confirmed graph changes. `HostInput.confirmed_pairs` supplies that boundary;
+physical queuing and ICE progress remain with the channel. Retain a confirmed
+pair for its outstanding demand until an activity takes over or that demand ends.
+
 ## Review And Validation Plan
+
+First migrate intent projection and channel cold start, then independent
+activity selection and preparation deadlines, then remove unused base-tree
+planning. Pool standby and degree calibration use that same connection owner.
 
 1. Compare neighbor selection policies for the one channel connection pool.
    Record edges confirmed on entry, effects of room interest, idle overhead
@@ -534,11 +588,14 @@ The relevant existing owners are [RoomRuntime](../../prototype/channel-core/src/
    peer. Measure actual upload, receiver presentation and existing call quality.
 5. Validate route improvement, withdrawal and protocol negotiation in matching
    Browser/App/Server builds. Apply the selected vocabulary and personal control
-   through their existing owners. Replace the private-beta count contract in one
-   matched protocol revision under the [versioning rules](../standards/versioning.md).
+   through their existing owners and contracts under the
+   [versioning rules](../standards/versioning.md).
 
 | Scenario | Required observation |
 | --- | --- |
+| First screen, voice, file or forwarded-byte request on an empty graph | Intent reaches channel admission without a base tree or existing flow. Confirmed pairs wake the room and allow delivery preparation. |
+| Both endpoints are online but physical capacity is occupied | Preserve the request without reporting ICE or media failure. A capacity change can start it; cancellation removes its unused demand. |
+| A's voice uses A–B–C while C sends a file directly to A | Each activity selects its own path. Withdrawing B's file contribution preserves voice; ending one use does not close another activity's pair. |
 | An indirect room path works while a direct pair is preparing | The receiver keeps playing on the authorized path. Confirming the pair makes it reusable. Receiving the payload on it allows the activity to switch. |
 | B–A–C before and after B–C is verified | Removing relay A initially separates B and C. The triangle preserves B–C reachability. Another authorized activity can reuse the surviving pair without a new handshake, while a lost source needs a new publication. |
 | An endpoint with forwarding Off joins a channel and a room | Directory, presence and permitted rendezvous work, including helping peers exchange candidates. Standby uses zero personal slots and the endpoint accepts zero third-party business outputs. |

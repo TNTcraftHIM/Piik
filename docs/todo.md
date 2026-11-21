@@ -16,12 +16,35 @@ the feedback period; they do not delay that delivery.
 
 ### Active work
 
-- [ ] **3.0 architecture convergence.** Trace product responsibilities through
-  the [module, contract and lifecycle owners](./standards/engineering.md#module-map)
-  into current functions and resource lifetimes. Use source-linked diagrams to
-  identify competing writers, unnecessary coupling and replaceable private
-  experiments. Converge each affected boundary before migrating its consumers;
-  continue independent confirmed fixes and scoped experiments in parallel.
+- [ ] **Complete the channel connection pool.** Implement the accepted
+  [forwarding architecture](./research/channel-forwarding-plan.md#one-channel-connection-graph)
+  within the existing Channel and TransportBook owners: merge activity demand,
+  common-room interest and channel standby in that priority order; allow a first
+  useful neighbor on an empty graph; repair gaps between channel components;
+  and admit physical pairs within a bounded endpoint degree. Reuse confirmed
+  pairs and the existing roomless probe. Keep physical admission, attempt
+  deadlines and failure generations with Channel/TransportBook. Preserve
+  requests while capacity or connectivity is missing; room payload preparation
+  starts on a complete confirmed path. Project file and forwarded-byte intent
+  without requiring a base tree, and wake rooms when the confirmed graph changes.
+  Verify no business payload on lobby-only edges, zero business slots for
+  standby, and preservation of active leases. Ending interest or permission
+  releases that use; retire the pair only when no admitted use remains.
+- [ ] **Use independent activity paths on the room graph.** Reuse the existing
+  path search for voice publications, file holders and forwarded webpage bytes.
+  Keep selected parents with each activity and retire their dependence on the
+  shared base tree. Verify A's voice over A–B–C alongside C's file directly over
+  C–A, independent per-kind budgets, and retirement of only the ended activity's
+  leases. Reuse the current flow, file-plan and byte-plan contracts. Complete
+  intent projection and pool cold start before retiring base-tree connection
+  requests; count shared old/new physical pairs once during handoff.
+- [ ] **Freeze the first public 3.0 contract.** Confirm the
+  [module and ownership baseline](./standards/engineering.md#architecture-baseline),
+  the remaining pool implementation and the
+  [public compatibility boundary](./standards/versioning.md#public-compatibility-promise)
+  against the first release's actual readers, writers and stored samples.
+  Keep optional API/Bot capabilities within existing actions and authority.
+  Existing module boundaries remain the implementation baseline.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
@@ -186,12 +209,6 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **Public 3.0 interface baseline.** Design same-major evolution around
-  stable existing actions and concrete optional capabilities, keeping permission
-  independent of advertised support. Apply the
-  [versioning contract](./standards/versioning.md#public-compatibility-promise)
-  to future API/plugin boundaries; introduce storage conversion only for a real
-  representation change, without retaining obsolete private-beta interfaces.
 - [ ] **App update distribution.** Configure the production signing identity and
   decide the beta-feed policy before distributing updater-capable packages;
   retain manual download. The

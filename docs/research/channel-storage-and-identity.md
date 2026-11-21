@@ -487,7 +487,9 @@ same data restores that room's identity and history while its directory entry
 remains admitted, without resuming captures or calls. Recreating a same-named
 room without its data creates a new room.
 
-The current directory can retain an unavailable room's summary and creator binding. The target public lobby withdraws its entry while the host is offline. The binding remains available for management, and a known link can show the room's offline status.
+The channel retains a bounded recovery registration while withdrawing an offline
+room from public discovery. The creator can manage that registration, and a
+known link can show the room's offline status.
 It does not automatically become a substitute room host or recover data it never
 stored. Continuing a room on another device requires an explicit transfer of
 hosting and state. Automatic election and offline concurrent writing are outside
@@ -541,8 +543,8 @@ Cancellation requests cooperative exit, and the worker retains its database
 handles and temporary files until it finishes. SQLite write-lock contention
 remains separate from moving the copy off the session's message loop.
 
-Going offline does not delete an owner's saved room. The site retains its
-directory entry, and the owner can resume hosting with the same data. Participants'
+Going offline does not delete an owner's saved room. The channel retains its
+recovery registration, and the owner can resume hosting with the same data. Participants'
 reading windows and files are local copies, not additional authoritative histories.
 Site backup does not collect other owners' rooms, and exporting a room does not
 give its owner the site's credential database.

@@ -62,9 +62,33 @@ sibling `web/` tree without Node.
 | `prototype/channel-android`, `mobile/android` | JNI runtime and Android permission/service ownership; reuse Native capture and shared App composition |
 | `mobile/cloudflared` | Overlay against its separately pinned upstream Go module; no Piik business core |
 
-The [channel/network model](../research/channel-network-design.md) and
-[room-data model](../research/channel-storage-and-identity.md) own the 3.0 design.
+The [forwarding model](../research/channel-forwarding-plan.md) and
+[hosting model](../research/server-hosting-plan.md) own the 3.0 architecture.
+The [network implementation](../research/channel-network-design.md) and
+[room-data model](../research/channel-storage-and-identity.md) locate their runtime
+and persistence contracts.
 Directory names locate responsibilities; they do not require another layer.
+
+### Architecture baseline
+
+The accepted module boundaries above apply to Browser, Native and Server.
+Each channel has one identity and directory authority; each available room has
+one writer that commits history before confirmation. Each activity owns its
+source and selected delivery paths, while the channel connection pool owns
+physical endpoint pairs. A shared room tree is a planning strategy, not another
+connection owner or a constraint on every activity's final path.
+Platform adapters execute those plans and own their local resources. Views,
+dialogs and layouts derive from these facts without owning the underlying
+activities.
+
+Business requests use the same authority and actions whether they come from a
+person, an API adapter or a separate Bot process. A failed request or resource
+retires within that owner; a failed mandatory root service ends its containing
+runtime after its dependants stop. Add an extension at the existing operation
+boundary when a concrete feature requires it. The [versioning contract](./versioning.md)
+owns compatibility; internal refactoring and visual changes alone do not require
+new wire or storage identities. Remaining alignment belongs in [TODO](../todo.md).
+[Supervision and dependency order](https://www.erlang.org/doc/system/sup_princ.html)
 
 The website and public Demo are optional entry points, not runtime dependencies
 of App or self-hosted rooms. Ship the shared Web assets with the binaries.

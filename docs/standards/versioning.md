@@ -50,10 +50,15 @@ retain aliases, parallel readers/writers, fallback protocols or data migrations
 solely to support an obsolete private build. Previous test artifacts are evidence,
 not interfaces the current implementation must continue to serve.
 
-Design the current contracts for clear ownership, coherent semantics and useful
-extension points. Protocol identifiers reject mismatched builds; they do not
-require compatibility bridges. Update the matched App, Web, Server, previews and
-guides together. Change storage identity only when its representation changes,
+The current owning contracts form the implementation baseline. Changes to
+scheduling, resource cleanup, code organization and presentation alone do not
+require new wire or storage identities. Review the actual message and data
+contracts, including nested payloads. Extend an existing operation or advertise a concrete
+optional capability before introducing an incompatible representation.
+Protocol identifiers reject mismatched private builds; they do not require
+compatibility bridges. An incompatible change needs a concrete requirement that
+the existing contract cannot express. Update matched App, Web, Server, previews
+and guides together. Change storage identity only when its representation changes,
 and explain a required data reset instead of maintaining a private legacy format.
 The public promises below apply to published releases, including the separate 2.x
 maintenance line.

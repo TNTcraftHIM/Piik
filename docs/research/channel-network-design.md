@@ -1,7 +1,7 @@
 # Piik 3.0 Sites, Rooms And Networking
 
-This document records the current 3.0 prototype design and its routing evidence.
-The [forwarding plan](./channel-forwarding-plan.md) owns the accepted next topology and
+This document describes the 3.0 runtime and its routing evidence.
+The [forwarding model](./channel-forwarding-plan.md) owns the architecture and
 the [hosting plan](./server-hosting-plan.md) owns channel modes and directory authority. The [prototype README](../../prototype/channel-server/README.md)
 describes running behavior; [TODO](../todo.md) owns implementation and decisions.
 The [2.x routing contract](../standards/routing-transport.md) remains unchanged.
@@ -164,24 +164,29 @@ owns retained identity and bounded profile reads; historical users do not consum
 live connection capacity. The [runtime reference](../../prototype/channel-server/README.md)
 owns current resource values and explicit capacity checks.
 
-## Next Forwarding Model
+## Forwarding Architecture
 
-The target vocabulary is **Channel → Room → Activity / 频道 → 房间 → 业务**.
+The architecture is **Channel → Room → Activity / 频道 → 房间 → 业务**.
 One channel graph holds peer connections. Each room uses its authorized subgraph,
 and each source uses paths within that subgraph for its actual recipients.
 The [forwarding plan](./channel-forwarding-plan.md) defines grants, budgets and validation.
 
 ## Routing Foundation
 
-The following base-tree design and its evidence describe the current prototype.
+The following sections describe the current planners within that architecture.
+The base tree supplies business paths and connection requests; only the channel
+pool records confirmed physical edges. Pending scheduling work is listed in
+[TODO](../todo.md#active-work).
 
 ### Choice And Cost
 
-Use base paths for room-wide voice and files, then converge selected pictures
-towards their sources. A single tree reuses connectivity but may add picture hops;
-a separate plan for every transfer would duplicate ordinary file/voice planning.
-The selected model adds only the viewing/transit demand and overlap resources
-needed for source-specific pictures, under one admission and transition owner.
+The current planner uses base paths for room voice and files, then converges
+selected pictures towards their sources. That shared-tree strategy reuses paths
+but can prevent two activities from selecting different useful edges in a cyclic
+connection graph. The accepted model selects each activity's paths independently
+while sharing the graph query, connection ownership and admission rules. The
+[implementation work](../todo.md#active-work) removes this restriction within
+the existing flow and file-plan interfaces.
 
 This is a topology/cost choice, not a performance measurement. Coordination does
 not require the root to forward every byte; only admitted paths incur forwarding
