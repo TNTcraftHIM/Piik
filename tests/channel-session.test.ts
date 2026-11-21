@@ -8185,9 +8185,12 @@ test("Browser applies the shared per-kind budget before dispatching assignments 
     const first = [forward(screen1), forward(screen2)];
     const competing = forward(screen2), voiceFlow = forward(voice);
     const own = { ...forward(screen1), inputFlowId: null };
+    const localVoice = { ...state.publications[2], id: crypto.randomUUID(), sessionId };
+    state.publications.push(localVoice);
+    const microphone = { ...forward(localVoice.id), inputFlowId: null };
     state.pairs = [
       { id: crypto.randomUUID(), peerId: firstPeer, rooms: ["first", "second"], incoming: [], outgoing: first, canReceiveVideoLayers: false },
-      { id: crypto.randomUUID(), peerId: otherPeer, rooms: ["second"], incoming: [], outgoing: [voiceFlow, own], canReceiveVideoLayers: false },
+      { id: crypto.randomUUID(), peerId: otherPeer, rooms: ["second"], incoming: [], outgoing: [voiceFlow, own, microphone], canReceiveVideoLayers: false },
     ];
     state.files = [{ roomId: "second", messageSeq: 1, authorId: crypto.randomUUID(), sourceId: sessionId, upstream: null,
       downstream: [otherPeer], receiving: false, attachment: { id: crypto.randomUUID(), name: "fixture", size: 1, mediaType: "application/octet-stream", sha256: "0".repeat(64) } }];
@@ -8196,7 +8199,7 @@ test("Browser applies the shared per-kind budget before dispatching assignments 
     session.setForwardingLimit(1);
     state.pairs[1].outgoing.push(competing);
     socket.receive({ type: "state", state });
-    expect(media.mock.lastCall![1].pairs.map(pair => pair.outgoing)).toEqual([first, [voiceFlow, own]]);
+    expect(media.mock.lastCall![1].pairs.map(pair => pair.outgoing)).toEqual([first, [voiceFlow, own, microphone]]);
     expect(files.mock.lastCall![2][0].downstream).toEqual([otherPeer]);
     expect(session.getSnapshot().state!.pairs[1].outgoing).toContainEqual(competing);
     const refused = () => socket.sent.filter(command => command.type === "flow_state" && command.flowId === competing.id);
@@ -8204,7 +8207,7 @@ test("Browser applies the shared per-kind budget before dispatching assignments 
     socket.receive({ type: "state", state });
     expect(refused()).toHaveLength(1);
     session.setForwardingLimit(0);
-    expect(media.mock.lastCall![1].pairs.map(pair => pair.outgoing)).toEqual([[], [own]]);
+    expect(media.mock.lastCall![1].pairs.map(pair => pair.outgoing)).toEqual([[], [own, microphone]]);
     expect(files.mock.lastCall![2][0].downstream).toEqual([]);
     expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_branch_refused", downstreamId: otherPeer }));
     session.setForwardingLimit(-1);
@@ -11163,7 +11166,7 @@ test.each(["cancel", "select", "stopped"])("opening an original webpage preserve
   } finally { session.close(); }
 });
 
-test.each(['select', 'cancel'] as const)('an unselected viewer webpage stays local through foreground and reconnect before %s', async outcome => {
+test.each(['select', 'select-ack-first', 'cancel'] as const)('an unselected viewer webpage stays local through foreground and reconnect before %s', async outcome => {
   const { session, socket } = await setup(1000, false);
   const id = 'web-viewer', candidateId = crypto.randomUUID(), url = 'https://video.test/film';
   const page = new appLink.AppPage(crypto.randomUUID(), url, async () => ({
@@ -11187,13 +11190,23 @@ test.each(['select', 'cancel'] as const)('an unselected viewer webpage stays loc
     await resumed.onopen?.();
     resumed.receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'credential', sessionId: 'endpoint', state });
     expect(resumed.sent.filter(command => command.type === 'join_watch')).toEqual([]);
-    if (outcome === 'select') {
+    if (outcome !== 'cancel') {
       const selected = session.selectWatchPage('first', candidateId, id);
       await vi.waitFor(() => expect(resumed.sent.filter(command => command.type === 'join_watch')).toHaveLength(1));
       const join = resumed.sent.findLast(command => command.type === 'join_watch')!;
       expect(join).toMatchObject({ id, mode: 'direct' });
+      if (outcome === "select-ack-first") {
+        resumed.receive({ type: "state", state: { ...state, watchSubscriptions: [{ id, mode: "peer" }] } });
+      }
+      const confirmed = { ...state, watchSubscriptions: [{ id, mode: "direct" as const }, { id: "cancelled-watch", mode: "direct" as const }] };
+      if (outcome === "select") resumed.receive({ type: "state", state: confirmed });
       resumed.receive({ type: 'room_reply', roomId: 'first', requestId: join.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
       await selected;
+      if (outcome === "select-ack-first") {
+        expect(session.getSnapshot().state!.watchSubscriptions).toEqual([]);
+        resumed.receive({ type: "state", state: confirmed });
+      }
+      expect(session.getSnapshot().state!.watchSubscriptions).toEqual([{ id, mode: "direct" }]);
     } else {
       const leave = session.leaveWatch(id);
       const release = resumed.sent.findLast(command => command.type === 'join_watch' && command.mode === null);

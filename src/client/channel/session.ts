@@ -189,7 +189,7 @@ export class ChannelSession {
   private readonly readMarkers = new RoomReadMarkers();
   private socket: WebSocket | null = null;
   private forwardingBudget: ReturnType<ChannelConversation["forwardingBudget"]>;
-  private forwardingState: ChannelSnapshot | undefined;
+  private roomSnapshot: ChannelSnapshot | undefined;
   private retry: ReturnType<typeof setTimeout> | null = null;
   private recoveryDeadline: ReturnType<typeof setTimeout> | null = null;
   private closed = true;
@@ -688,6 +688,8 @@ export class ChannelSession {
       } else if (this.view.state?.watchActivities.some(value => value.id === id)
         || !this.view.pending.has(`screen:${player.roomId}`) && !this.view.pending.has(`watch-video:${id}`)) this.retireWatchPlayer(id);
     }
+    // Keep the room's facts for reprojection and forwarding independently of displayed pictures.
+    this.roomSnapshot = withoutRoomPictures(state);
     const visible = this.projectActivity(state);
     const sameChannel = this.historyChannel === state.channel.id;
     if (!sameChannel) { this.closeInteractions(); this.readings.clear(); }
@@ -737,9 +739,7 @@ export class ChannelSession {
         this.readingRooms.add(room.id);
       }
     }
-    // Media routes and files can continue through recovery without retaining room pictures.
-    this.forwardingState = withoutRoomPictures(state);
-    this.applyForwarding(sessionId, this.forwardingState, userId);
+    this.applyForwarding(sessionId, this.roomSnapshot, userId);
     this.input.update();
     this.browseRooms();
     this.releaseUnusedMicrophone();
@@ -2011,7 +2011,7 @@ export class ChannelSession {
 
   updateRoom = (roomId: string, settings: Partial<RoomSettings>, reportError = true): Promise<void> => this.action(`room:${roomId}`, () => this.request({ type: "update_room", roomId, ...settings }), reportError);
   setForwardingLimit = (forwardingLimit: number): void => {
-    const { self, sessionId, connection } = this.view, state = this.forwardingState;
+    const { self, sessionId, connection } = this.view, state = this.roomSnapshot;
     if (!self || !sessionId || !state || !Number.isInteger(forwardingLimit) || forwardingLimit < -1 || forwardingLimit > MAX_RELAY_CAPACITY) return;
     const key = JSON.stringify([state.channel.id, self.id]);
     saveRoomPreferences({ forwardingLimitByIdentity: { ...readRoomPreferences().forwardingLimitByIdentity, [key]: forwardingLimit } });
@@ -2689,7 +2689,9 @@ export class ChannelSession {
         this.retireWatchPlayer(id);
         this.watchPlayers.set(id, player);
         player.update(activity.playback);
-        this.patch({});
+        const state = this.view.state;
+        this.patch(state && this.roomSnapshot
+          ? { state: { ...state, ...this.projectWatches(this.roomSnapshot) } } : {});
         this.browseRooms();
       } catch (error) {
         if (this.pendingWatchPlayers.get(id) === player) this.cancelWatchPage(id);
@@ -3513,7 +3515,7 @@ export class ChannelSession {
   private releaseMedia(): void {
     this.forwardingBudget?.free();
     this.forwardingBudget = undefined;
-    this.forwardingState = undefined;
+    this.roomSnapshot = undefined;
     this.closeInteractions();
     this.readings.clear();
     this.readingRooms.clear();
@@ -3582,11 +3584,18 @@ export class ChannelSession {
       voice: state.voice.filter(member => member.sessionId !== sessionId || this.voiceParticipation.has(member.roomId)).map(member =>
         member.sessionId === sessionId && this.voiceParticipation.has(member.roomId)
           ? { ...member, muted: this.voiceParticipation.get(member.roomId)!.muted, deafened: this.voiceParticipation.get(member.roomId)!.deafened } : member),
-      watchActivities: state.watchActivities.filter(activity => activity.sessionId !== sessionId || this.watchPlayers.has(activity.id))
-        .map(activity => ({ ...activity, viewerSessionIds: activity.viewerSessionIds.filter(id => id !== sessionId || this.watchPlayers.has(activity.id)) })),
-      watchSubscriptions: state.watchSubscriptions.filter(value => this.watchPlayers.has(value.id)),
+      ...this.projectWatches(state),
       subscriptions,
       failedSubscriptions: state.failedSubscriptions.filter(id => subscriptions.includes(id)),
+    };
+  }
+
+  private projectWatches(state: ChannelSnapshot) {
+    const sessionId = this.view.sessionId;
+    return {
+      watchActivities: state.watchActivities.filter(activity => activity.sessionId !== sessionId || this.watchPlayers.has(activity.id))
+        .map(activity => ({ ...activity, viewerSessionIds: activity.viewerSessionIds.filter(id => id !== sessionId || this.watchPlayers.has(activity.id)) })),
+      watchSubscriptions: state.watchSubscriptions.filter(value => this.watchPlayers.get(value.id)?.mode === value.mode),
     };
   }
 
