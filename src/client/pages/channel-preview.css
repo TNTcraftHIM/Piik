@@ -10,16 +10,17 @@
 .c3-sidebar-browse { height: 100%; min-width: 0; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .c3-site-bar { grid-column: 1 / -1; grid-row: 1; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; padding-inline: 16px; background: var(--wall); }
 .c3-site-identity { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: min(400px, 50%); }
-.c3-site-home { display: flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 44px; border: 0; background: none; color: var(--ink); padding: 0; }
+.c3-site-home { display: flex; align-items: center; flex: none; width: 36px; height: var(--control-compact-size); border: 0; background: none; color: var(--ink); padding: 0; }
 .c3-site-name { min-width: 0; flex: 0 1 auto; }
 .c3-site-name > .lr-comic-tip-wrap { display: block; min-width: 0; }
-.c3-site-name strong { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 16px; }
-.c3-site-name .lr-btn { align-items: center; width: 100%; min-width: 0; display: grid; grid-template-columns: 22px minmax(0, 1fr) 12px; justify-content: start; padding-inline: 3px; gap: 6px; color: var(--ink); }
-.c3-site-name .lr-btn .lr-cap { grid-column: 2; grid-row: 1; font-size: 16px; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: start; }
-.c3-site-name .lr-btn > svg { align-self: center; grid-column: 3; grid-row: 1; width: 12px; height: 12px; }
-.c3-site-name .lr-btn > .c3-identity-mark { align-self: center; grid-column: 1; grid-row: 1; }
-.c3-site-name-readonly { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.c3-site-name-readonly > .c3-identity-mark { align-self: center; }
+.c3-site-name :is(.lr-btn, .c3-site-name-readonly) { align-items: center; gap: 6px; min-width: 0; }
+.c3-site-name :is(.lr-btn .lr-cap, strong) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 650; }
+.c3-site-name .lr-btn { display: grid; width: 100%; grid-template-columns: 22px minmax(0, 1fr) 12px; justify-content: start; padding-inline: 0; color: var(--ink); }
+.c3-site-name .lr-btn .lr-cap { grid-column: 2; grid-row: 1; margin: 0; min-width: 0; text-align: start; }
+.c3-site-name .lr-btn > svg { grid-column: 3; grid-row: 1; width: 12px; height: 12px; }
+.c3-site-name .lr-btn > .c3-identity-mark { grid-column: 1; grid-row: 1; }
+/* Keep the icon and name at the same inset as the settings button's border. */
+.c3-site-name-readonly { display: flex; padding-inline: var(--control-border-width); }
 .c3-room-navigation { padding-inline: 12px; }
 .c3-site-overview { min-height: 0; overflow-y: auto; padding: 24px; }
 .c3-site-overview h2 { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; font-size: 24px; }
