@@ -36,6 +36,7 @@ export function RemoteControlsPreview({ joystick = false, guide = false, guidePo
   const [mode, setMode] = useState<RemoteControlMode>("off");
   const [simultaneous, setSimultaneous] = useState(false);
   const [requests, setRequests] = useState<(RemoteControlRequest & { name: string })[]>([]);
+  const [touchOnlySticks, setTouchOnlySticks] = useState(false);
   const [stickMode, setStickMode] = useState<"keyboard" | "gamepad">("keyboard");
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [lastInput, setLastInput] = useState("");
@@ -133,7 +134,7 @@ export function RemoteControlsPreview({ joystick = false, guide = false, guidePo
           onPointerCancel={event => pointer?.cancel(event.pointerId)}
           onLostPointerCapture={event => pointer?.cancel(event.pointerId)}
           onContextMenu={event => event.preventDefault()}>
-          {pointer && <RemoteMouse pointer={pointer} positionRef={mouseLayer} touchMode={touchMode} mapping={stickMode}
+          {pointer && <RemoteMouse pointer={pointer} positionRef={mouseLayer} touchMode={touchMode} mapping={stickMode} touchOnlySticks={touchOnlySticks}
             onLeftStick={joystick ? leftStick : undefined} onRightStick={joystick ? rightStick : undefined} onStickMouse={joystick ? stickMouse : undefined}
             pointAt={(x, y) => mouseVideo.current && picturePoint(mouseVideo.current, x, y)} />}
         </div>
@@ -158,6 +159,7 @@ export function RemoteControlsPreview({ joystick = false, guide = false, guidePo
     </div>
     <div id="preview-remote-keyboard" className="cp-keyboard" hidden={!keyboardOpen}>
       {keyboardOpen && <RemoteKeyboard key={platform} platform={platform} touch input={input} close={closeKeyboard}
+        stickVisibility={joystick ? { checked: touchOnlySticks, onChange: setTouchOnlySticks } : undefined}
         stickMode={joystick ? { value: stickMode, onChange: setStickMode } : undefined}
         allowText={requests.filter(request => request.state !== "pending").length < 2}
         releaseKey={releaseKey} onReleaseKeyChange={setReleaseKey} />}

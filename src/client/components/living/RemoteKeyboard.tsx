@@ -8,7 +8,7 @@ import { isCopyKey, useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { panelWindowAPI, SurfaceDocument, usePanelWindow } from "../../ui/panel-window";
 import { navigateTabs } from "../../ui/tab-navigation";
-import { Btn, Chip } from "./primitives";
+import { Btn, Chip, SwitchItem } from "./primitives";
 import { Tooltip } from "./Tooltip";
 import { RemoteShortcutSelect } from "./RemoteShortcutSelect";
 import "./floating-panel.css";
@@ -33,7 +33,8 @@ const PAGES = REMOTE_KEYBOARD_PAGES;
 
 // The local input owns IME composition. Committed text and physical keys use
 // their existing input operations, without clipboard access or another channel.
-export function RemoteKeyboard({ input, close, mouseControl, touch, platform, onSurfaceChange, releaseKey, onReleaseKeyChange, allowText = true, stickMode }: {
+export function RemoteKeyboard({ input, close, mouseControl, touch, platform, onSurfaceChange, releaseKey, onReleaseKeyChange, allowText = true, stickMode, stickVisibility }: {
+  stickVisibility?: { checked: boolean; onChange(checked: boolean): void };
   stickMode?: { value: "keyboard" | "gamepad"; onChange(value: "keyboard" | "gamepad"): void };
   input: (event: RemoteInputEvent) => void; close: () => void;
   mouseControl?: ReactNode; touch: boolean;
@@ -213,16 +214,31 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       </div>
     </>}
     </div>
-    <RemoteShortcutSelect value={releaseKey} onChange={onReleaseKeyChange} mac={navigator.platform.startsWith("Mac")} />
-    {stickMode && <label>
-      {t("remote.stickMode")}
-      <select className="lr-select" name="remote-stick-mode" value={stickMode.value}
-        onChange={event => stickMode.onChange(event.target.value === "gamepad" ? "gamepad" : "keyboard")}>
-        <option value="keyboard">{t("remote.keyboardMouseMode")}</option>
-        <option value="gamepad">{t("remote.gamepadMode")}</option>
-      </select>
-    </label>}
-    {!panelWindow.detached && mouseControl}
+    <details className="lr-settings-disclosure lr-remote-keyboard-settings">
+      <summary aria-label={t("remote.localSettings")}>
+        <span><Glyph name="sliders" size={17} />{vis ? null : t("remote.localSettings")}</span>
+        <Glyph name="chevron" size={16} className="lr-sharing-chevron" />
+      </summary>
+      <div className="lr-remote-settings-fields">
+        <RemoteShortcutSelect value={releaseKey} onChange={onReleaseKeyChange} mac={navigator.platform.startsWith("Mac")} />
+        {stickMode && <div className="lr-remote-stick-setting">
+          <span className="lr-remote-setting-label"><Glyph name="gamepad" size={16} />{vis ? null : t("remote.stickMode")}</span>
+          <div className="lr-toggle" role="radiogroup" aria-label={t("remote.stickMode")} data-remote-stick-mode>
+            {(["keyboard", "gamepad"] as const).map(value => {
+              const label = t(value === "keyboard" ? "remote.keyboardMouseMode" : "remote.gamepadMode");
+              return <label key={value}>
+                <input type="radio" name={id + "-stick-mode"} value={value} aria-label={label} checked={stickMode.value === value}
+                  onChange={() => stickMode.onChange(value)} />
+                <span>{vis ? <Glyph name={value === "keyboard" ? "keyboard" : "gamepad"} size={16} /> : label}</span>
+              </label>;
+            })}
+          </div>
+        </div>}
+        {stickVisibility && <SwitchItem label={t("remote.stickShowOnTouch")} icon="gamepad"
+          checked={stickVisibility.checked} onChange={stickVisibility.onChange} />}
+        {!panelWindow.detached && mouseControl}
+      </div>
+    </details>
     {!vis && touch && <p>{t("remote.touchHelp")}</p>}
   </section></SurfaceDocument.Provider>;
   return <span ref={panelWindow.slot} style={{ display: "contents" }}>

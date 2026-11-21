@@ -43,6 +43,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const rightStick = useCallback((x: number, y: number) => gamepad.current?.setRightStick(x, y), []);
   const stickMouse = useRef<StickMouse | null>(null);
   const moveStickMouse = useCallback((x: number, y: number) => stickMouse.current?.set(x, y), []);
+  const [touchOnlySticks, setTouchOnlySticks] = useState(() => readRoomPreferences().touchOnlySticks);
   const [stickMode, setStickMode] = useState<"keyboard" | "gamepad">("keyboard");
   const [gamepadConnected, setGamepadConnected] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
@@ -367,10 +368,13 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
         }}
         onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }}>
         {active && touchPointer && <RemoteMouse key={state.grant} pointer={touchPointer} positionRef={cursor}
-          pointAt={point} touchMode={touchMode} mapping={gamepadAvailable && !gamepadConnected ? stickMode : "keyboard"} onLeftStick={gamepadAvailable && !gamepadConnected ? leftStick : undefined}
+          pointAt={point} touchMode={touchMode} touchOnlySticks={touchOnlySticks} mapping={gamepadAvailable && !gamepadConnected ? stickMode : "keyboard"} onLeftStick={gamepadAvailable && !gamepadConnected ? leftStick : undefined}
           onRightStick={gamepadAvailable && !gamepadConnected ? rightStick : undefined} onStickMouse={moveStickMouse} />}
       </div>}
       {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
+        stickVisibility={touchControls ? { checked: touchOnlySticks, onChange: checked => {
+          setTouchOnlySticks(checked); saveRoomPreferences({ touchOnlySticks: checked });
+        } } : undefined}
         stickMode={touchControls && gamepadAvailable && !gamepadConnected ? { value: stickMode, onChange: setStickMode } : undefined}
         allowText={remoteTextAvailable(state)}
         releaseKey={releaseKey} onReleaseKeyChange={key => { setReleaseKey(key); saveRoomPreferences({ remoteReleaseKey: key }); }}

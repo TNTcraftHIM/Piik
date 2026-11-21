@@ -66,6 +66,8 @@ export const zh = {
   "remote.typeText": "输入到对方",
   "remote.textHelp": "回车可换行；点击按钮后输入到对方当前选中的位置。",
   "remote.textTooLong": "内容较长，请分段输入（每次最多 2 KB）。",
+  "remote.localSettings": "本机控制",
+  "remote.stickShowOnTouch": "仅触摸时显示",
   "remote.stickMode": "摇杆模式",
   "remote.gamepadMode": "手柄",
   "remote.keyboardMouseMode": "键鼠",

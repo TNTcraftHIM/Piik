@@ -66,6 +66,8 @@ export const en: Record<CopyKey, string> = {
   "remote.typeText": "Type remotely",
   "remote.textHelp": "Enter adds a new line. The button types at the remote cursor.",
   "remote.textTooLong": "Split this into smaller sections (up to 2 KB each).",
+  "remote.localSettings": "Local controls",
+  "remote.stickShowOnTouch": "Show on touch",
   "remote.stickMode": "Stick mode",
   "remote.gamepadMode": "Gamepad",
   "remote.keyboardMouseMode": "Keys + mouse",

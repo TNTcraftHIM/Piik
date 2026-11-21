@@ -1877,10 +1877,10 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-sharing-panel input[type="range"]:is(:hover, :focus-visible):not(:disabled)::-webkit-slider-thumb { transform: scale(1.1); }
 .lr-sharing-panel input[type="range"]:is(:hover, :focus-visible):not(:disabled)::-moz-range-thumb { transform: scale(1.1); }
 .lr-sharing-connection { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--wall-2); }
-:is(.lr-sharing-picture-details, .lr-sharing-connection) > summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 8px; border-radius: 12px; color: var(--muted); cursor: pointer; list-style: none; font-size: 12px; transition: color 140ms ease, background-color 140ms ease; }
-:is(.lr-sharing-picture-details, .lr-sharing-connection) > summary::-webkit-details-marker { display: none; }
-:is(.lr-sharing-picture-details, .lr-sharing-connection) > summary:is(:hover, :focus-visible) { color: var(--ink); background: var(--control-hover); }
-:is(.lr-sharing-picture-details, .lr-sharing-connection) > summary > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
+.lr-settings-disclosure > summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 8px; border-radius: 12px; color: var(--muted); cursor: pointer; list-style: none; font-size: 12px; transition: color 140ms ease, background-color 140ms ease; }
+.lr-settings-disclosure > summary::-webkit-details-marker { display: none; }
+.lr-settings-disclosure > summary:is(:hover, :focus-visible) { color: var(--ink); background: var(--control-hover); }
+.lr-settings-disclosure > summary > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
 .lr-sharing-chevron { grid-column: -2; transition: transform 180ms ease; }
 details[open] > summary > .lr-sharing-chevron { transform: rotate(180deg); }
 .lr-sharing-picture-summary { display: flex; justify-content: end; flex-wrap: wrap; gap: 4px 12px; font: 11px/1.5 var(--mono); font-variant-numeric: tabular-nums; }

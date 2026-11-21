@@ -27,7 +27,8 @@ type MouseMode = "mini" | "expanded" | "left" | "right" | "top" | "bottom";
 type MouseContact = { x: number; y: number; moved: boolean; kind: "widget" | "pointer"; button?: 0 | 2 };
 type MouseWheel = { id: number; x: number; y: number; phase: "pending" | "scroll" | "middle"; timer: ReturnType<typeof setTimeout> | null };
 
-export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, mapping = "keyboard", onLeftStick, onRightStick, onStickMouse }: {
+export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, mapping = "keyboard", touchOnlySticks, onLeftStick, onRightStick, onStickMouse }: {
+  touchOnlySticks?: boolean;
   mapping?: "keyboard" | "gamepad";
   onLeftStick?: (x: number, y: number) => void;
   onRightStick?: (x: number, y: number) => void;
@@ -221,9 +222,9 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, mapping 
         if (mode === "mini") park();
       }
     }}>
-    <RemoteDirectionPad keyboard={useKeys} open={leftOpen} toggleOpen={() => setLeftOpen(!leftOpen)}
+    <RemoteDirectionPad touchOnly={touchOnlySticks} keyboard={useKeys} open={leftOpen} toggleOpen={() => setLeftOpen(!leftOpen)}
       onMove={useKeys ? direction : onLeftStick} />
-    {rightStick && <RemoteDirectionPad right keyboard={useKeys} open={rightOpen} toggleOpen={() => setRightOpen(!rightOpen)}
+    {rightStick && <RemoteDirectionPad right touchOnly={touchOnlySticks} keyboard={useKeys} open={rightOpen} toggleOpen={() => setRightOpen(!rightOpen)}
       onMove={rightStick} />}
     {(expanded || touchMode === "trackpad") && <svg className="lr-remote-touch-cursor" viewBox="0 0 24 28" aria-hidden="true">
       <path d="M2 2v21l6-6 5 9 4-2-5-9h9Z" />

@@ -17,11 +17,12 @@ it("keeps independent room-tool choices across reads without storing private run
   const values = storage();
   expect(readRoomPreferences().previewAutoPause).toBe(true);
   expect(readRoomPreferences().remoteTouchMode).toBe("direct");
+  expect(readRoomPreferences().touchOnlySticks).toBe(false);
   saveRoomPreferences({ pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, routePreference: "p2p", keyboardPage: "text", combineKeys: true });
-  saveRoomPreferences({ remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8, remoteTouchMode: "trackpad",
+  saveRoomPreferences({ remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8, remoteTouchMode: "trackpad", touchOnlySticks: true,
     voiceListeningVolume: 1.5, voiceInput: { deviceId: "", volume: 2, voiceProcessing: true } });
   expect(readRoomPreferences()).toMatchObject({ pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, routePreference: "p2p", keyboardPage: "text",
-    combineKeys: true, remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8, remoteTouchMode: "trackpad",
+    combineKeys: true, remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8, remoteTouchMode: "trackpad", touchOnlySticks: true,
     voiceListeningVolume: 1.5, voiceInput: { deviceId: "", volume: 2, voiceProcessing: true } });
 
   // Storage accepts only the preference contract, even if a caller supplies a

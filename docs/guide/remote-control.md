@@ -96,7 +96,9 @@ On a touchscreen, tap **Request control** in the playback bar. If the host appro
 
 Tap **L** or **R** to open that stick. Lift your finger to center it while continuing to hold the other. Each stick slips to the edge after two seconds of inactivity. Tap its visible edge once to bring it back as you left it.
 
-Open **Remote keyboard → Stick mode** to set both sticks. In **Keys + mouse**, the left stick holds W, A, S or D and the right stick moves the mouse. When the Host supports gamepad input and the Viewer has no physical gamepad connected, choose **Gamepad** to send left and right stick input. Closing a stick, leaving the page or disconnecting releases the affected inputs. After reconnecting, select **Request control** again.
+To keep idle sticks transparent, turn on **Remote keyboard → Local controls → Show on touch**, then tap **L** or **R** to enable that side. Only the small stick thumb appears under your finger. Lift to hide it. Tap the same edge control again to close that stick and use ordinary touch input there.
+
+Open **Remote keyboard → Local controls → Stick mode** to set both sticks. In **Keys + mouse**, the left stick holds W, A, S or D and the right stick moves the mouse. When the Host supports gamepad input and the Viewer has no physical gamepad connected, choose **Gamepad** to send left and right stick input. Closing a stick, leaving the page or disconnecting releases the affected inputs. After reconnecting, select **Request control** again.
 
 ![The Viewer has opened both touch sticks over the shared picture.](../assets/guide/touch-joystick.en.png#gh-light-mode-only)
 ![The Viewer has opened both touch sticks over the shared picture.](../assets/guide/touch-joystick.en.dark.png#gh-dark-mode-only)
