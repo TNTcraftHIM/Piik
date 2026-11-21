@@ -22,8 +22,6 @@ export class RemoteInputSession {
   state: RemoteInputState | null = null;
   private intent: string | null = null;
   private disposed = false;
-  private capabilitiesRequested = false;
-  private inputFeedbackRequested = false;
   private pointer: PointerInput | null = null;
   private pointerTimer: ReturnType<typeof setTimeout> | null = null;
   private nextPointerAt = 0;
@@ -70,16 +68,6 @@ export class RemoteInputSession {
     const parsed = remoteInputStateSchema.safeParse(decoded);
     if (!parsed.success) return;
     const state = parsed.data;
-    // Wait for a real Host response: the first sync may precede installation
-    // of our route key. Legacy Apps ignore this optional negotiation command.
-    if (!this.capabilitiesRequested) {
-      this.capabilitiesRequested = true;
-      if (!state.capabilities && !this.send({ type: "capabilities" })) return;
-    }
-    if (!this.inputFeedbackRequested && state.capabilities?.includes("inputFeedback")) {
-      this.inputFeedbackRequested = true;
-      if (!this.send({ type: "capabilities", inputFeedback: true })) return;
-    }
     // Source availability is authoritative for every request. Pause/off may
     // reach us before the Host receives our new intent; it still ends it.
     const requested = this.intent !== null;

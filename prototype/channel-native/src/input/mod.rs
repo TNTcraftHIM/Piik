@@ -629,7 +629,7 @@ impl Source {
         };
         let response = match &command {
             Command::Request { intent, .. } => Some((controller, Some(*intent))),
-            Command::Sync | Command::Capabilities { .. } => Some((controller, None)),
+            Command::Sync => Some((controller, None)),
             _ => None,
         };
         executor.with_source(video, response, |e, source| {
@@ -1027,7 +1027,7 @@ impl Executor {
         command: Command,
     ) -> Result<()> {
         match command {
-            Command::Sync | Command::Capabilities { .. } => {}
+            Command::Sync => {}
             Command::Release { intent } => {
                 if c.intent == Some(intent) {
                     self.release(source, c);
@@ -1198,7 +1198,7 @@ impl Executor {
         let ids: Vec<_> = source.controllers.keys().copied().collect();
         for id in ids {
             let mut c = source.controllers.remove(&id).unwrap();
-            let mut capabilities = vec!["inputFeedback"];
+            let mut capabilities = Vec::new();
             if count <= 1 && source.endpoint.has_text() {
                 capabilities.push("text");
             }
@@ -1298,10 +1298,6 @@ impl Executor {
 #[serde(tag = "type", rename_all = "lowercase")]
 enum Command {
     Sync,
-    Capabilities {
-        #[serde(rename = "inputFeedback")]
-        _feedback: Option<bool>,
-    },
     Request {
         intent: Uuid,
         password: Option<String>,

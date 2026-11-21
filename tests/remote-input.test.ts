@@ -22,21 +22,16 @@ class Channel extends EventTarget {
   receive(value: object) { this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(value) })); }
 }
 
-it("opts into input feedback only when advertised and retains the same grant after a rejected input", () => {
+it("receives capabilities on sync and retains the same grant after a rejected input", () => {
   const channel = new Channel();
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
-  const ready = { platform: "windows", mode: "room", state: "ready" };
+  const ready = { platform: "windows", mode: "room", state: "ready", capabilities: ["text"], coPlay: true, inputFailed: false };
   channel.receive(ready);
-  expect(channel.sent).toEqual([{ type: "sync" }, { type: "capabilities" }]);
-  channel.receive({ ...ready, capabilities: ["coPlay", "text"] });
-  expect(channel.sent).toHaveLength(2);
-  channel.receive({ ...ready, capabilities: ["coPlay", "text", "inputFeedback"] });
-  expect(channel.sent.at(-1)).toEqual({ type: "capabilities", inputFeedback: true });
-  channel.receive({ ...ready, capabilities: ["coPlay", "text", "inputFeedback"] });
-  expect(channel.sent).toHaveLength(3);
+  expect(session.state).toEqual(ready);
+  expect(channel.sent).toEqual([{ type: "sync" }]);
   session.request();
   const intent = channel.sent.at(-1)?.intent, grant = "f".repeat(64);
-  const active = { ...ready, state: "active", intent, grant, capabilities: ["inputFeedback"] };
+  const active = { ...ready, state: "active", intent, grant };
   channel.receive(active);
   session.input({ type: "key", code: "KeyW", down: true });
   const beforeFeedback = channel.sent.length;
@@ -46,7 +41,7 @@ it("opts into input feedback only when advertised and retains the same grant aft
   session.input({ type: "key", code: "KeyD", down: true });
   expect(channel.sent.at(-1)).toEqual({ type: "key", code: "KeyD", down: true, grant });
   channel.receive(active);
-  expect(session.state?.inputFailed).toBeUndefined();
+  expect(session.state?.inputFailed).toBe(false);
   expect(session.state?.grant).toBe(grant);
   expect(channel.readyState).toBe("open");
   session.release();
@@ -99,8 +94,6 @@ it("keeps keyboard control when optional gamepad support fails for the grant", (
 it("maps standard gamepads into one negotiated grant and resets on focus loss, unplug and retirement", () => {
   const channel = new Channel();
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
-  channel.receive({ platform: "windows", mode: "ask", state: "ready" });
-  expect(channel.sent.at(-1)).toEqual({ type: "capabilities" });
   channel.receive({ platform: "windows", mode: "ask", state: "ready", coPlay: true, capabilities: ["coPlay", "gamepad"] });
   session.request();
   const intent = channel.sent.at(-1)?.intent;
