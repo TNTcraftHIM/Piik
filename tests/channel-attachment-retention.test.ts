@@ -340,6 +340,31 @@ test("reopening a room discards a cached original the host no longer has in hist
   } finally { files.reset(); }
 });
 
+test("a rejection from the old room writer cannot discard a source offered to its successor", async () => {
+  const file = new File(["GIF89a"], attachment.name);
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([{ key, attachment, file }]);
+  const remove = vi.spyOn(FileStore.prototype, "remove").mockResolvedValue();
+  let rejectOldOffer!: (error: Error) => void;
+  const oldOffer = new Promise<void>((_, reject) => { rejectOldOffer = reject; });
+  let offers = 0;
+  const files = new ChannelAttachments(async command => {
+    if (command.type === "file_offer" && command.available && ++offers === 1) await oldOffer;
+  }, async () => {});
+  const room = { id: key.roomId, authorized: true, available: true, delivery: { bindingId: "old-writer" } } as ChannelRoom;
+  const scope = { domainId: "domain", userId: "reader" };
+  try {
+    files.update("endpoint", scope, [], [room], []);
+    await vi.waitFor(() => expect(offers).toBe(1));
+    files.update("endpoint", scope, [], [{ ...room, delivery: { ...room.delivery!, bindingId: "new-writer" } }], []);
+    rejectOldOffer(new Error("attachment_unavailable"));
+    await new Promise(resolve => setImmediate(resolve));
+    expect(remove).not.toHaveBeenCalled();
+    expect(offers).toBe(2);
+    expect(files.originalAvailability(key, attachment, false)).toBe(true);
+    await expect(files.content(key, attachment, new AbortController().signal)).resolves.toBe(file);
+  } finally { files.reset(); }
+});
+
 test("a file offer failure keeps its warning until a personal download supplies progress or a result", async () => {
   const files = setup(async command => { if (command.type === "file_offer") throw new Error("disconnected"); });
   vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new Error("optional_cache_unavailable"));
@@ -357,6 +382,45 @@ test("a file offer failure keeps its warning until a personal download supplies 
     await files.download(key, attachment);
     report.outcome?.("failed");
     expect(files.status(key)).toMatchObject({ outcome: "failed", error: "download_failed" });
+  } finally { files.reset(); }
+});
+
+test("a platform save follows its participant across room views and ignores results after an identity switch", async () => {
+  const files = setup();
+  const saveReceipt = vi.spyOn(FileStore.prototype, "saveReceipt").mockImplementation(async (_entry, allowed) => allowed?.() ?? true);
+  const reports: NonNullable<Parameters<typeof downloads.downloadBlob>[2]>[] = [];
+  vi.spyOn(downloads, "downloadBlob").mockImplementation((_file, _name, options) => {
+    reports.push(options!); options?.outcome?.("requested");
+  });
+  const scope = { domainId: "domain", userId: "self" };
+  const room = { id: key.roomId, authorized: true, available: true, reading: true } as ChannelRoom;
+  const other = { ...room, id: "other", reading: false };
+  try {
+    files.update("endpoint", scope, [], [room, other], []);
+    await files.download(key, attachment, inlineImage);
+    files.update("endpoint", scope, [], [{ ...room, reading: false }, { ...other, reading: true }], []);
+    reports[0].progress?.({ received: 3, total: 6 });
+    expect(files.status(key)).toMatchObject({ outcome: "started", saveProgress: { received: 3, total: 6 } });
+    expect(files.status({ ...key, roomId: other.id }).outcome).toBeUndefined();
+    await files.download(key, attachment, inlineImage);
+    expect(reports).toHaveLength(1);
+
+    files.update("successor", { ...scope, userId: "successor" }, [], [room, other], []);
+    await files.download(key, attachment, inlineImage);
+    expect(reports).toHaveLength(2);
+    expect(reports[0].signal?.aborted).toBe(true);
+    reports[0].progress?.({ received: 6, total: 6 });
+    reports[0].rememberSaved?.("old");
+    reports[0].outcome?.("saved");
+    reports[0].outcome?.("failed");
+    expect(files.status(key)).toMatchObject({ outcome: "requested", error: null });
+    expect(files.hasSavedCopy(key, attachment)).toBe(false);
+
+    reports[1].rememberSaved?.("new");
+    reports[1].outcome?.("saved");
+    await vi.waitFor(() => expect(files.hasSavedCopy(key, attachment)).toBe(true));
+    expect(files.status(key)).toMatchObject({ outcome: "saved", error: null });
+    await expect(saveReceipt.mock.results[0]?.value).resolves.toBe(false);
   } finally { files.reset(); }
 });
 
@@ -426,6 +490,51 @@ test.each(["en", "zh", "zh-Hant", "ja", "ko"] as const)("archive budget guidance
 });
 
 
+test.each(["before", "after"])("a new room writer completes a pending download when the old request fails %s the last range", async timing => {
+  let rejectOldReceive!: (error: Error) => void;
+  const oldReceive = new Promise<void>((_, reject) => { rejectOldReceive = reject; });
+  const receive = vi.fn(async () => {}).mockImplementationOnce(() => oldReceive);
+  const files = setup(async command => { if (command.type === "file_receive" && command.enabled) await receive(); });
+  const file = new File(["GIF89a"], attachment.name);
+  const open = vi.fn(async () => ({ getFile: async () => file, createWritable: async () => ({
+    write: async () => {}, close: async () => {}, abort: async () => {},
+  }) }));
+  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+    getFileHandle: open, removeEntry: async () => {},
+  }) }) } });
+  const start = vi.fn(() => "[]"), cancel = vi.fn(() => "[]");
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({
+    ...await hosting.loadRoomHosting(),
+    FileDelivery: class {
+      start = start; cancel = cancel; update() { return "[]"; } next_deadline() {} free() {}
+      control() { return JSON.stringify([{ type: "write", key, offset: 0, bytes: [...new TextEncoder().encode("GIF89a")] }]); }
+      written() { return JSON.stringify([{ type: "complete", key }]); }
+    },
+  } as never);
+  vi.spyOn(FileStore.prototype, "retain").mockResolvedValue({ file, evicted: [] });
+  const room = (bindingId: string) => ({ id: key.roomId, authorized: true, available: true, delivery: { bindingId } }) as ChannelRoom;
+  const scope = { domainId: "domain", userId: "self" };
+  const controller = new AbortController();
+  try {
+    files.update("endpoint", scope, [], [room("previous")], []);
+    const result = vi.fn();
+    void files.content(key, attachment, controller.signal).then(result, result);
+    await vi.waitFor(() => expect(receive).toHaveBeenCalledTimes(1));
+    files.update("endpoint", scope, [], [room("current")], []);
+    await vi.waitFor(() => expect(receive).toHaveBeenCalledTimes(2));
+    if (timing === "before") rejectOldReceive(new Error("retired_writer"));
+    files.update("endpoint", scope, [{ roomId: key.roomId, messageSeq: key.messageSeq, attachment, authorId: "author",
+      sourceId: "source", upstream: "source", downstream: [], receiving: true }], [room("current")], []);
+    files.data("source", "control", "verified-range");
+    await vi.waitFor(() => expect(result).toHaveBeenCalledExactlyOnceWith(file));
+    if (timing === "after") rejectOldReceive(new Error("retired_writer"));
+    await oldReceive.catch(() => {});
+    expect(open).toHaveBeenCalledOnce();
+    expect(start).toHaveBeenCalledOnce();
+    expect(cancel).not.toHaveBeenCalled();
+  } finally { controller.abort(); rejectOldReceive(new Error("retired_writer")); files.reset(); vi.unstubAllGlobals(); }
+});
+
 test("cancel while waiting for a source permits retry before the old receive command settles", async () => {
   let rejectOldReceive!: (reason: Error) => void;
   const oldReceive = new Promise<void>((_, reject) => { rejectOldReceive = reject; });
@@ -472,7 +581,7 @@ test("cancel while waiting for a source permits retry before the old receive com
   } finally { files.reset(); vi.unstubAllGlobals(); }
 });
 
-test.each(["cancel", "revoke"])("shared file progress survives leaving the view and a retired writer cannot affect a retry after %s", async retirement => {
+test.each(["cancel", "revoke", "identity switch"])("shared file progress survives leaving the view and a retired writer cannot affect a retry after %s", async retirement => {
   const command = vi.fn(async (_command: ChannelCommand) => {}), files = setup(command);
   const file = new File(["GIF89a"], attachment.name);
   const save = vi.spyOn(downloads, "downloadBlob").mockImplementation((_file, _name, options) => options?.outcome?.("dispatched"));
@@ -553,12 +662,17 @@ test.each(["cancel", "revoke"])("shared file progress survives leaving the view 
     const unsubscribe = files.subscribe(() => cancellationSnapshots.push(files.status(key).busy));
     try {
       if (retirement === "cancel") files.cancelDownload(key);
-      else files.update("endpoint", scope, [], [{ ...room, authorized: false, available: false }], []);
+      else if (retirement === "revoke") files.update("endpoint", scope, [], [{ ...room, authorized: false, available: false }], []);
+      else files.update("new-endpoint", { ...scope, userId: "successor" }, [alternate], [room], []);
     } finally { unsubscribe(); }
+    const retiredCancels = retirement === "identity switch" ? 0 : 1;
+    if (retirement === "identity switch") {
+      expect(command).not.toHaveBeenCalledWith({ type: "file_receive", ...key, enabled: false });
+    }
     expect(cancellationSnapshots).toContain(false);
     expect(cancellationSnapshots).not.toContain(true);
     expect(files.progress(key)).toBeNull();
-    await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledTimes(retiredCancels));
     if (retirement === "revoke") {
       await expect(files.content(key, attachment, new AbortController().signal, inlineImage)).rejects.toThrow("room_unavailable");
       files.update("new-endpoint", scope, [alternate], [room], []);
@@ -572,7 +686,7 @@ test.each(["cancel", "revoke"])("shared file progress survives leaving the view 
     await vi.waitFor(() => expect(remove).toHaveBeenCalledOnce());
     expect(files.progress(key)).toEqual({ received: 0, total: attachment.size, state: "waiting" });
     expect(written).toHaveBeenCalledTimes(3);
-    expect(cancel).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledTimes(retiredCancels);
     expect(save).not.toHaveBeenCalled();
     files.data("source", "control", "retry-write");
     await vi.waitFor(() => expect(finishWrite).not.toBe(oldWrite));

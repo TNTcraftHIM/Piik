@@ -27,13 +27,13 @@ interface Sink {
   tail: Promise<void>; promise: Promise<File>; resolve(file: File): void; reject(error: Error): void;
 }
 export interface AttachmentProgress { received: number; total: number; state: "waiting" | "connecting" | "waiting-source" | "receiving" | "finishing" }
-interface PendingSink { key: ChannelFileKey; ready: Promise<Sink>; consumers: Set<symbol>; progress: AttachmentProgress }
+interface PendingSink { key: ChannelFileKey; ready: Promise<Sink>; consumers: Set<symbol>; progress: AttachmentProgress; receive?: symbol }
 export function isNativeSavePending(outcome?: DownloadOutcome): boolean {
   return outcome === "requested" || outcome === "started";
 }
 
 interface Download { key: ChannelFileKey; controller: AbortController; promise: Promise<void>; status: { busy: boolean; error: string | null; outcome?: DownloadOutcome; saveProgress?: DownloadProgress } }
-interface Source { key: ChannelFileKey; attachment: ChannelAttachment; file: File; status: typeof idle; retained: boolean; adoptedCacheCopy?: boolean }
+interface Source { key: ChannelFileKey; attachment: ChannelAttachment; file: File; status: typeof idle; retained: boolean; adoptedCacheCopy?: boolean; offer?: Promise<void> }
 interface CacheClear { revision: number; pending?: Promise<void> }
 const idle: Download["status"] = { busy: false, error: null };
 const cacheRoom = (scope: FileScope, roomId: string) => JSON.stringify([scope.domainId, scope.userId, roomId]);
@@ -203,7 +203,8 @@ export class ChannelAttachments {
       }).catch(() => {});
     }
     if (plans.length || this.runtime) void this.ensure().then(runtime => this.invoke(runtime, () => this.project(runtime))).catch(() => {});
-    for (const room of rooms) if (room.available && previous.some(old => old.id === room.id && !old.available)) this.resume(room.id);
+    for (const room of rooms) if (room.authorized && room.available && previous.some(old => old.id === room.id
+      && (!old.available || old.delivery?.bindingId !== room.delivery?.bindingId))) this.resume(room.id);
   }
   private matchesPlan(source: Pick<Source, "key" | "attachment">): boolean {
     const plan = this.plans.find(plan => fileKeyString({ roomId: plan.roomId, messageSeq: plan.messageSeq, attachmentId: plan.attachment.id }) === fileKeyString(source.key));
@@ -321,15 +322,33 @@ export class ChannelAttachments {
   }
   resume(roomId?: string): void {
     for (const source of this.sources.values()) if (!roomId || source.key.roomId === roomId) this.reofferKey(source.key);
+    const receiving = new Map<string, ChannelFileKey>();
     for (const plan of this.plans) {
-      if (roomId && plan.roomId !== roomId) continue;
+      if (!plan.receiving || (roomId && plan.roomId !== roomId)) continue;
       const key = { roomId: plan.roomId, messageSeq: plan.messageSeq, attachmentId: plan.attachment.id };
-      const entry = this.sinks.get(fileKeyString(key));
-      const enabled = Boolean(entry?.consumers.size);
-      if (enabled !== plan.receiving) void this.command({ type: "file_receive", ...key, enabled }).catch(error => {
-        if (entry && this.sinks.get(fileKeyString(key)) === entry) void entry.ready.then(sink => this.stopSink(key, entry, sink, errorOf(error))).catch(() => {});
-      });
+      receiving.set(fileKeyString(key), key);
     }
+    for (const [id, entry] of this.sinks) {
+      if (!entry.consumers.size || (roomId && entry.key.roomId !== roomId)) continue;
+      if (!receiving.delete(id) && entry.progress.state !== "finishing") this.requestReceive(entry);
+    }
+    for (const key of receiving.values()) {
+      void this.command({ type: "file_receive", ...key, enabled: false }).catch(() => {});
+    }
+  }
+  private ownsRoomBinding(roomId: string, bindingId: string | undefined): boolean {
+    return this.rooms.some(room => room.id === roomId && room.available && room.authorized && room.delivery?.bindingId === bindingId);
+  }
+  private requestReceive(entry: PendingSink): void {
+    const { key } = entry, id = fileKeyString(key);
+    const bindingId = this.rooms.find(room => room.id === key.roomId)?.delivery?.bindingId;
+    const request = entry.receive = Symbol();
+    const current = () => this.sinks.get(id) === entry && entry.receive === request && this.ownsRoomBinding(key.roomId, bindingId);
+    void entry.ready.then(async sink => {
+      if (!current()) return;
+      try { await this.command({ type: "file_receive", ...key, enabled: true }); }
+      catch (error) { if (current()) await this.stopSink(key, entry, sink, errorOf(error)); }
+    }, () => {}); // Local storage errors are delivered to the sink's consumers.
   }
   private installSource(source: Source): void {
     this.sources.set(fileKeyString(source.key), source);
@@ -338,20 +357,23 @@ export class ChannelAttachments {
   }
   private reofferKey(key: ChannelFileKey) {
     if (this.messageRemoved(key)) return;
-    const source = this.sources.get(fileKeyString(key));
+    const id = fileKeyString(key), source = this.sources.get(id);
     if (source && !this.matchesPlan(source)) { this.withdraw(source, true); return; }
-    if (source && this.rooms.some(room => room.id === key.roomId && room.available && room.authorized)) {
-      void this.command({ type: "file_offer", ...key, sha256: source.attachment.sha256, available: true }).then(() => {
-        if (this.sources.get(fileKeyString(key)) === source) { source.status = idle; this.changed(); }
-      }).catch(error => {
-        if (this.sources.get(fileKeyString(key)) !== source) return;
-        if (source.retained && errorOf(error).message === "attachment_unavailable") {
-          this.sources.delete(fileKeyString(key));
-          void this.store?.remove(key).catch(() => {});
-        } else source.status = { busy: false, error: "file_offer_failed" };
-        this.changed();
-      });
-    }
+    const room = this.rooms.find(room => room.id === key.roomId);
+    if (!source || !room?.available || !room.authorized) return;
+    const bindingId = room.delivery?.bindingId;
+    const offer = source.offer = this.command({ type: "file_offer", ...key, sha256: source.attachment.sha256, available: true });
+    const current = () => this.sources.get(id) === source && source.offer === offer && this.ownsRoomBinding(key.roomId, bindingId);
+    void offer.then(() => {
+      if (current()) { source.status = idle; this.changed(); }
+    }).catch(error => {
+      if (!current()) return;
+      if (source.retained && errorOf(error).message === "attachment_unavailable") {
+        this.sources.delete(id);
+        void this.store?.remove(key).catch(() => {});
+      } else source.status = { busy: false, error: "file_offer_failed" };
+      this.changed();
+    });
   }
 
   async describe(files: DraftFile[], signal?: AbortSignal): Promise<PreparedFile[]> {
@@ -496,13 +518,16 @@ export class ChannelAttachments {
     finally { signal.removeEventListener("abort", cancel); }
     signal.throwIfAborted();
     if (this.messageRemoved(key)) throw new Error("attachment_unavailable");
-    if (!this.current(runtime) || !this.rooms.some(room => room.id === key.roomId && room.authorized)) throw new Error("room_unavailable");
+    const room = this.rooms.find(room => room.id === key.roomId);
+    if (!this.current(runtime) || !room?.authorized) throw new Error("room_unavailable");
     let entry = this.sinks.get(id);
     if (!entry) {
+      if (!room.available) throw new Error("room_unavailable");
       const consumers = new Set<symbol>();
       entry = { key, consumers, ready: this.createSink(runtime, key, attachment, consumers),
         progress: { received: 0, total: attachment.size, state: "waiting" } };
       this.sinks.set(id, entry);
+      this.requestReceive(entry);
       const creating = entry;
       void entry.ready.catch(() => { if (this.sinks.get(id) === creating) { this.sinks.delete(id); this.changed(); } });
     }
@@ -540,7 +565,6 @@ export class ChannelAttachments {
     }
     try {
       this.invoke(runtime, () => runtime.delivery.start(JSON.stringify(key)));
-      await this.command({ type: "file_receive", ...key, enabled: true });
       return sink;
     } catch (error) {
       if (this.sinks.get(fileKeyString(key))?.consumers === consumers) this.invoke(runtime, () => runtime.delivery.cancel(JSON.stringify(key)));
@@ -641,10 +665,12 @@ export class ChannelAttachments {
     clearTimeout(this.expiry); this.expiry = undefined;
     this.lifetime.abort();
     if (this.runtime) void this.runtime.then(runtime => runtime.delivery.free()).catch(() => {});
-    for (const download of this.downloads.values()) download.controller.abort();
-    for (const entry of this.sinks.values()) void entry.ready.then(sink => this.disposeSink(sink, aborted())).catch(() => {});
+    const downloads = [...this.downloads.values()], sinks = [...this.sinks.values()];
     this.availability.disconnect();
     this.savedReceipts.clear(); this.sources.clear(); this.sinks.clear(); this.downloads.clear(); this.runtime = null; this.plans = []; this.rooms = []; this.roomPeers = []; this.sessionId = null; this.scope = null; this.store = null;
+    // Abort handlers run synchronously and must not send cancellation for the retired session.
+    for (const download of downloads) download.controller.abort();
+    for (const entry of sinks) void entry.ready.then(sink => this.disposeSink(sink, aborted())).catch(() => {});
     this.lifetime = new AbortController(); this.changed();
   }
 }
