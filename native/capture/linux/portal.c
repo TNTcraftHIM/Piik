@@ -63,43 +63,36 @@ static void session_created(GObject *source, GAsyncResult *result,
   xdp_session_start(request->session, NULL, NULL, session_started, request);
 }
 
-gboolean piik_portal_available(void) {
+static guint32 portal_capability(const char *interface, const char *property) {
   GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
-  if (bus == NULL) return FALSE;
+  if (bus == NULL) return 0;
   GVariant *reply = g_dbus_connection_call_sync(bus,
       "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
       "org.freedesktop.DBus.Properties", "Get",
-      g_variant_new("(ss)", "org.freedesktop.portal.ScreenCast", "AvailableSourceTypes"),
+      g_variant_new("(ss)", interface, property),
       G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, 1000, NULL, NULL);
   g_object_unref(bus);
-  if (reply == NULL) return FALSE;
+  if (reply == NULL) return 0;
   GVariant *value = NULL;
   g_variant_get(reply, "(v)", &value);
-  gboolean available = g_variant_is_of_type(value, G_VARIANT_TYPE_UINT32) &&
-      (g_variant_get_uint32(value) & (XDP_OUTPUT_MONITOR | XDP_OUTPUT_WINDOW)) != 0;
+  guint32 capability = g_variant_is_of_type(value, G_VARIANT_TYPE_UINT32)
+      ? g_variant_get_uint32(value) : 0;
   g_variant_unref(value);
   g_variant_unref(reply);
-  return available;
+  return capability;
 }
 
-gboolean piik_portal_input_available(void) {
-  if (xdp_portal_create_remote_desktop_session_full == NULL) return FALSE;
-  GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
-  if (bus == NULL) return FALSE;
-  GVariant *reply = g_dbus_connection_call_sync(bus,
-      "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
-      "org.freedesktop.DBus.Properties", "Get",
-      g_variant_new("(ss)", "org.freedesktop.portal.RemoteDesktop", "AvailableDeviceTypes"),
-      G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, 1000, NULL, NULL);
-  g_object_unref(bus);
-  if (reply == NULL) return FALSE;
-  GVariant *value = NULL;
-  g_variant_get(reply, "(v)", &value);
-  gboolean available = g_variant_is_of_type(value, G_VARIANT_TYPE_UINT32) &&
-      (g_variant_get_uint32(value) & 3) == 3;
-  g_variant_unref(value);
-  g_variant_unref(reply);
-  return available;
+XdpOutputType piik_portal_capture_sources(void) {
+  return portal_capability("org.freedesktop.portal.ScreenCast", "AvailableSourceTypes") &
+      (XDP_OUTPUT_MONITOR | XDP_OUTPUT_WINDOW);
+}
+
+gboolean piik_portal_input_available(XdpOutputType sources) {
+  if (!(sources & XDP_OUTPUT_MONITOR) ||
+      xdp_portal_create_remote_desktop_session_full == NULL) return FALSE;
+  const XdpDeviceType required = XDP_DEVICE_KEYBOARD | XDP_DEVICE_POINTER;
+  return (portal_capability("org.freedesktop.portal.RemoteDesktop", "AvailableDeviceTypes") &
+      required) == required;
 }
 
 gboolean piik_portal_capture_open(const char *restore_token, gboolean remote_input,
@@ -118,7 +111,7 @@ gboolean piik_portal_capture_open(const char *restore_token, gboolean remote_inp
   };
   const char *token = restore_token != NULL && restore_token[0] != '\0' ? restore_token : NULL;
   if (remote_input) {
-    if (!piik_portal_input_available()) {
+    if (!piik_portal_input_available(piik_portal_capture_sources())) {
       g_main_loop_unref(request.loop);
       g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "desktop remote input is unavailable");
       piik_portal_capture_close(capture);

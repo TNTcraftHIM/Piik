@@ -1,4 +1,4 @@
-// Exercise the RemoteDesktop persist rejection retry without a display or D-Bus session.
+// Exercise portal capabilities and the RemoteDesktop persist rejection retry without a display or D-Bus session.
 #include "portal.h"
 
 #include <gio/gio.h>
@@ -7,6 +7,7 @@
 static const char rejected[] =
     "GDBus.Error:org.freedesktop.portal.Error.InvalidArgument: "
     "Remote desktop sessions cannot persist";
+static guint32 source_types;
 static guint remote_calls;
 static XdpPersistMode remote_modes[2];
 static const char *remote_tokens[2];
@@ -33,8 +34,19 @@ GVariant *g_dbus_connection_call_sync(
   (void)connection; (void)bus_name; (void)object_path; (void)interface_name;
   (void)method_name; (void)reply_type; (void)flags; (void)timeout_msec;
   (void)cancellable; (void)error;
-  if (parameters != NULL) g_variant_unref(g_variant_ref_sink(parameters));
-  return g_variant_ref_sink(g_variant_new("(v)", g_variant_new_uint32(3)));
+  const char *interface, *property;
+  g_variant_get(parameters, "(&s&s)", &interface, &property);
+  guint32 types;
+  if (g_str_equal(interface, "org.freedesktop.portal.ScreenCast")) {
+    g_assert_cmpstr(property, ==, "AvailableSourceTypes");
+    types = source_types;
+  } else {
+    g_assert_cmpstr(interface, ==, "org.freedesktop.portal.RemoteDesktop");
+    g_assert_cmpstr(property, ==, "AvailableDeviceTypes");
+    types = XDP_DEVICE_KEYBOARD | XDP_DEVICE_POINTER;
+  }
+  g_variant_unref(g_variant_ref_sink(parameters));
+  return g_variant_ref_sink(g_variant_new("(v)", g_variant_new_uint32(types)));
 }
 
 void g_main_loop_run(GMainLoop *loop) { (void)loop; }
@@ -44,7 +56,8 @@ void xdp_portal_create_remote_desktop_session_full(
     XdpRemoteDesktopFlags flags, XdpCursorMode cursor_mode,
     XdpPersistMode persist_mode, const char *restore_token,
     GCancellable *cancellable, GAsyncReadyCallback callback, gpointer data) {
-  (void)devices; (void)outputs; (void)flags; (void)cursor_mode; (void)cancellable;
+  g_assert_cmpuint(outputs, ==, XDP_OUTPUT_MONITOR);
+  (void)devices; (void)flags; (void)cursor_mode; (void)cancellable;
   g_assert_cmpuint(remote_calls, <, G_N_ELEMENTS(remote_modes));
   remote_modes[remote_calls] = persist_mode;
   remote_tokens[remote_calls] = restore_token;
@@ -114,6 +127,17 @@ char *xdp_session_get_restore_token(XdpSession *session) {
 int main(void) {
   PiikPortalCapture capture = {0};
   GError *error = NULL;
+  source_types = XDP_OUTPUT_WINDOW;
+  XdpOutputType sources = piik_portal_capture_sources();
+  g_assert_cmpuint(sources, ==, XDP_OUTPUT_WINDOW);
+  g_assert_false(piik_portal_input_available(sources));
+  g_assert_false(piik_portal_capture_open(NULL, TRUE, &capture, &error));
+  g_assert_error(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED);
+  g_assert_cmpuint(remote_calls, ==, 0);
+  g_clear_error(&error);
+
+  source_types = XDP_OUTPUT_MONITOR | XDP_OUTPUT_WINDOW;
+  g_assert_true(piik_portal_input_available(piik_portal_capture_sources()));
   // KDE rejects the transient session; the open retries once with no token.
   g_assert_true(piik_portal_capture_open("token-1", TRUE, &capture, &error));
   g_assert_no_error(error);
