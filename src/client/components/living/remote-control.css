@@ -197,13 +197,27 @@
 :is([data-reduced-motion], [data-comic-reduced-motion]) .lr-remote-mouse-widget,
 :is([data-reduced-motion], [data-comic-reduced-motion]) .lr-remote-mouse-widget > *,
 :is([data-reduced-motion], [data-comic-reduced-motion]) .lr-remote-mouse > .lr-remote-mouse-minimize { transition: none; }
+.lr-remote-stick-area {
+  --stick-clearance: 8px;
+  position: absolute; inset: 0; container-type: size; pointer-events: none;
+}
 .lr-remote-direction {
   --stick-size: clamp(72px, 24vmin, 92px);
-  position: absolute; inset-inline-start: 0; bottom: 8px;
-  display: grid; grid-template-areas: "pad" "handle"; inline-size: calc(var(--stick-size) + 16px);
+  --stick-group-width: calc(var(--stick-size) + 16px);
+  --stick-group-height: calc(var(--stick-size) + 6px + var(--control-compact-size));
+  --stick-travel-x: max(0px, calc(100cqw - var(--stick-group-width)));
+  --stick-travel-y: max(0px, calc(100cqh - var(--stick-group-height)));
+  --stick-park-top: max(0px, calc(var(--stick-travel-y) - var(--stick-clearance)));
+  --stick-top: var(--stick-park-top);
+  --stick-home-x: 0;
+  --stick-px: var(--stick-home-x);
+  position: absolute; left: calc(var(--stick-px) * var(--stick-travel-x)); top: var(--stick-top);
+  display: grid; grid-template: "pad" var(--stick-size) "handle" var(--control-compact-size) / 1fr;
+  inline-size: var(--stick-group-width);
   justify-items: center; align-items: center; row-gap: 6px; pointer-events: none;
 }
-.lr-remote-direction[data-side="right"] { inset-inline-start: auto; inset-inline-end: 0; }
+.lr-remote-direction[data-side="right"] { --stick-home-x: 1; }
+.lr-remote-direction[data-positioned] { --stick-top: calc(var(--stick-py) * var(--stick-travel-y)); }
 .lr-remote-direction > .lr-remote-stick { grid-area: pad; }
 .lr-remote-direction:not([data-docked]) > button {
   --control-hover-transform: none;
@@ -213,7 +227,12 @@
   justify-content: center;
 }
 .lr-remote-direction:not([data-docked]) > button > span { width: 1ch; text-align: center; font-family: var(--mono); }
-.lr-remote-direction > button { grid-area: handle; min-width: var(--control-compact-size); min-height: var(--control-compact-size); }
+.lr-remote-direction > button {
+  --stick-handle-lift: min(0px, calc(var(--stick-park-top) - var(--stick-grab-top, var(--stick-top))));
+  grid-area: handle; min-width: var(--control-compact-size); min-height: var(--control-compact-size);
+  translate: 0 var(--stick-handle-lift); cursor: grab; user-select: none;
+}
+.lr-remote-direction > button:active { cursor: grabbing; }
 .lr-remote-direction > button, .lr-remote-stick { pointer-events: auto; touch-action: none; }
 .lr-remote-stick {
   position: relative;
@@ -246,12 +265,21 @@
 
 .lr-remote-direction[data-docked="left"] > button { justify-self: start; }
 .lr-remote-direction[data-docked="right"] > button { justify-self: end; }
+.lr-remote-direction[data-docked] > button {
+  /* Only the handle parks. Keep the captured tab under the finger until release. */
+  translate: calc((var(--stick-home-x) - var(--stick-grab-x, var(--stick-px))) * var(--stick-travel-x))
+    var(--stick-handle-lift);
+}
 /* Keep both edge pulls clear of the playback bar, including on narrow screens. */
+.lr-tv-screen:has(> .lr-playback) > .lr-remote-input-surface .lr-remote-stick-area {
+  --stick-clearance: calc(var(--control-compact-size) + 24px);
+}
 .lr-tv-screen:has(> .lr-playback) > .lr-remote-input-surface .lr-remote-direction {
   --handle-width: calc(var(--control-compact-size) + 16px);
   --stick-size: min(clamp(72px, 24vmin, 92px), calc(50cqw - var(--handle-width) - 8px));
-  bottom: calc(var(--control-compact-size) + 24px);
-  inline-size: auto; column-gap: 4px;
+  --stick-group-width: calc(var(--handle-width) + 4px + var(--stick-size));
+  --stick-group-height: var(--stick-size);
+  column-gap: 4px; row-gap: 0;
   grid-template: "handle pad" var(--stick-size) / var(--handle-width) var(--stick-size);
 }
 .lr-tv-screen:has(> .lr-playback) > .lr-remote-input-surface .lr-remote-direction[data-side="right"] {
@@ -263,7 +291,7 @@
   border-color: transparent;
   box-shadow: none;
 }
-.lr-remote-direction[data-touch-only]:not([data-docked]) .lr-remote-stick {
+.lr-remote-direction[data-touch-only]:is(:not([data-docked]), :has(> button:active)) .lr-remote-stick {
   border-color: color-mix(in srgb, currentColor 52%, transparent);
 }
 .lr-remote-direction[data-touch-only] .lr-remote-stick > span { display: none; }
@@ -289,7 +317,7 @@
   background: transparent;
   box-shadow: none;
   color: var(--ink);
-  cursor: pointer;
+  cursor: grab;
 }
 .lr-remote-direction > .lr-remote-stick-wake > svg { display: none; }
 /* Picture-edge pulls use the dark television bezel palette in both themes. */

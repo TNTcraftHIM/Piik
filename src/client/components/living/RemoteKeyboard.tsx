@@ -33,7 +33,8 @@ const PAGES = REMOTE_KEYBOARD_PAGES;
 
 // The local input owns IME composition. Committed text and physical keys use
 // their existing input operations, without clipboard access or another channel.
-export function RemoteKeyboard({ input, close, mouseControl, touch, platform, onSurfaceChange, releaseKey, onReleaseKeyChange, allowText = true, stickMode, stickVisibility }: {
+export function RemoteKeyboard({ input, close, mouseControl, touch, platform, onSurfaceChange, releaseKey, onReleaseKeyChange, allowText = true, virtualSticks, stickMode, stickVisibility }: {
+  virtualSticks?: { checked: boolean; onChange(checked: boolean): void };
   stickVisibility?: { checked: boolean; onChange(checked: boolean): void };
   stickMode?: { value: "keyboard" | "gamepad"; onChange(value: "keyboard" | "gamepad"): void };
   input: (event: RemoteInputEvent) => void; close: () => void;
@@ -217,11 +218,13 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       </summary>
       <div className="lr-remote-settings-fields">
         <RemoteShortcutSelect value={releaseKey} onChange={onReleaseKeyChange} mac={navigator.platform.startsWith("Mac")} />
-        {stickMode && <SegmentedChoice label={t("remote.stickMode")} value={stickMode.value} onChange={stickMode.onChange} options={[
+        {virtualSticks && <SwitchItem label={t("remote.virtualSticks")} icon="gamepad"
+          checked={virtualSticks.checked} onChange={virtualSticks.onChange} />}
+        {virtualSticks?.checked && stickMode && <SegmentedChoice label={t("remote.stickMode")} value={stickMode.value} onChange={stickMode.onChange} options={[
           { value: "keyboard", label: t("remote.keyboardMouseMode"), icon: "keyboard" },
           { value: "gamepad", label: t("remote.gamepadMode"), icon: "gamepad" },
         ]} />}
-        {stickVisibility && <SwitchItem label={t("remote.stickShowOnTouch")} icon="gamepad"
+        {virtualSticks?.checked && stickVisibility && <SwitchItem label={t("remote.stickShowOnTouch")} icon="eye"
           checked={stickVisibility.checked} onChange={stickVisibility.onChange} />}
         {!panelWindow.detached && mouseControl}
       </div>

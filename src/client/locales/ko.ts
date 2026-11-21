@@ -21,6 +21,8 @@ export const ko: Partial<Record<CopyKey, string>> = {
   "remote.mouseExpand": "가상 마우스 펼치기",
   "remote.mouseCollapse": "마우스 최소화",
   "remote.mouseReposition": "드래그하여 위치를 바꾸고 가장자리에 놓아 숨기세요",
+  "remote.stickReposition": "손잡이를 끌거나 방향키로 스틱 위치를 옮기세요.",
+  "remote.virtualSticks": "가상 조이스틱",
   "remote.mouseMove": "드래그하여 포인터 이동",
   "remote.mouseScroll": "탭하면 가운데 클릭, 쓸어 넘기면 스크롤, 길게 누르면 드래그",
   "remote.touchMode": "기본 터치 모드",

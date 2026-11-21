@@ -43,6 +43,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const rightStick = useCallback((x: number, y: number) => gamepad.current?.setRightStick(x, y), []);
   const stickMouse = useRef<StickMouse | null>(null);
   const moveStickMouse = useCallback((x: number, y: number) => stickMouse.current?.set(x, y), []);
+  const [virtualSticksEnabled, setVirtualSticksEnabled] = useState(() => readRoomPreferences().virtualSticksEnabled);
   const [touchOnlySticks, setTouchOnlySticks] = useState(() => readRoomPreferences().touchOnlySticks);
   const [stickMode, setStickMode] = useState<"keyboard" | "gamepad">("keyboard");
   const [gamepadConnected, setGamepadConnected] = useState(false);
@@ -68,14 +69,14 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     mouseButtons.current.clear(); touchpad.current?.reset(); session.current?.input({ type: "reset" });
   }, []);
   useEffect(() => {
-    if (!active || !touchPointer) return;
+    if (!active || !touchPointer || !virtualSticksEnabled) return;
     const current = new StickMouse((dx, dy) => {
       const delta = rotatePictureDelta({ x: dx, y: dy }, pictureRotation, true);
       input({ type: "relative", dx: delta.x, dy: delta.y });
     });
     stickMouse.current = current;
     return () => { stickMouse.current = null; current.stop(); };
-  }, [active, touchPointer, channel, state?.grant, pictureRotation, input]);
+  }, [active, touchPointer, virtualSticksEnabled, channel, state?.grant, pictureRotation, input]);
   const closeKeyboard = () => {
     reset(); setKeyboardOpen(false); setKeyboardDocument(null); surface.current?.focus({ preventScroll: true });
   };
@@ -368,10 +369,14 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
         }}
         onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }}>
         {active && touchPointer && <RemoteMouse key={state.grant} pointer={touchPointer} positionRef={cursor}
-          pointAt={point} touchMode={touchMode} touchOnlySticks={touchOnlySticks} mapping={gamepadAvailable && !gamepadConnected ? stickMode : "keyboard"} onLeftStick={gamepadAvailable && !gamepadConnected ? leftStick : undefined}
+          pointAt={point} touchMode={touchMode} virtualSticksEnabled={virtualSticksEnabled}
+          touchOnlySticks={touchOnlySticks} mapping={gamepadAvailable && !gamepadConnected ? stickMode : "keyboard"} onLeftStick={gamepadAvailable && !gamepadConnected ? leftStick : undefined}
           onRightStick={gamepadAvailable && !gamepadConnected ? rightStick : undefined} onStickMouse={moveStickMouse} />}
       </div>}
       {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
+        virtualSticks={touchControls ? { checked: virtualSticksEnabled, onChange: checked => {
+          setVirtualSticksEnabled(checked); saveRoomPreferences({ virtualSticksEnabled: checked });
+        } } : undefined}
         stickVisibility={touchControls ? { checked: touchOnlySticks, onChange: checked => {
           setTouchOnlySticks(checked); saveRoomPreferences({ touchOnlySticks: checked });
         } } : undefined}

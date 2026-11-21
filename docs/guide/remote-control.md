@@ -94,9 +94,9 @@ remain available without the gamepad driver.
 
 On a touchscreen, tap **Request control** in the playback bar. If the host approves requests individually, wait for them to select **Allow**. Once you have control, **L** and **R** appear on the playing picture. Touchscreen laptops work too.
 
-Tap **L** or **R** to open that stick. Tap again to close it. Lift your finger to center the stick. When idle, the L and R buttons tuck against the picture edge. Each open pad stays in place and is ready for your next drag.
+Tap **L** or **R** to open or close one stick. Drag the lettered handle to put that stick within easy reach. Your browser remembers the position. Press the pad to steer and lift to center it. When idle, the handles tuck against the picture edges and each open pad stays in place.
 
-For a clearer view of the picture, turn on **Remote keyboard → Local controls → Show on touch**. Tap L or R and a thin ring briefly marks the pad. Press there to show the thumb and lift to hide it. Tap the same button again to restore ordinary touch input there.
+In **Remote keyboard → Local controls**, turn off **Virtual joysticks** to remove both pads and handles and use ordinary touch across the picture. To keep the sticks available with less on screen, turn on **Show on touch**. A thin ring briefly marks a pad when you open it. Press there to show the thumb.
 
 Open **Remote keyboard → Local controls → Stick mode** to set both sticks. In **Keys + mouse**, the left stick holds W, A, S or D and the right stick moves the mouse. When the Host supports gamepad input and the Viewer has no physical gamepad connected, choose **Gamepad** to send left and right stick input. Closing a stick, leaving the page or disconnecting releases the affected inputs. After reconnecting, select **Request control** again.
 

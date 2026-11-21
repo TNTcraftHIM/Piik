@@ -36,6 +36,7 @@ export function RemoteControlsPreview({ joystick = false, guide = false, guidePo
   const [mode, setMode] = useState<RemoteControlMode>("off");
   const [simultaneous, setSimultaneous] = useState(false);
   const [requests, setRequests] = useState<(RemoteControlRequest & { name: string })[]>([]);
+  const [virtualSticksEnabled, setVirtualSticksEnabled] = useState(true);
   const [touchOnlySticks, setTouchOnlySticks] = useState(false);
   const [stickMode, setStickMode] = useState<"keyboard" | "gamepad">("keyboard");
   const [keyboardOpen, setKeyboardOpen] = useState(false);
@@ -112,8 +113,8 @@ export function RemoteControlsPreview({ joystick = false, guide = false, guidePo
   return <>{!joystick && <PermissionRequestPreview />}<section id={joystick ? "joystick-preview" : "remote-control-preview"} className="cp-section">
     {!guide && <header className="cp-section-head"><div>
       <h2>{joystick ? (en ? "Touch joysticks" : "触屏双摇杆") : t("remote.inputTools")}</h2>
-      {joystick ? <p>{en ? "Tap L or R to open a pad. Its button tucks away when idle. Drag either pad to try it, or tap its button again to close it. Change the mapping under Remote keyboard → Local controls."
-        : "点 L 或 R 打开杆盘。按钮贴边后仍可拖动杆盘，再点按钮就关闭。在「远程键盘 → 本机控制」中可切换键鼠或手柄。"}</p>
+      {joystick ? <p>{en ? "Tap L or R to open a stick. Drag its handle to move it, or press the pad to steer. Find Virtual joysticks and Stick mode in Remote keyboard → Local controls."
+        : "点 L 或 R 展开摇杆。拖动字母拉手调整位置，按住杆盘控制方向。在「远程键盘 → 本机控制」里可以开关虚拟摇杆或更改映射。"}</p>
         : <p>{en ? "Expand the mini mouse and drag its lower half to move the pointer. Hold and move L or R to drag, or hold a button with one finger and move the lower half with another. Pinch or pan the picture with two fingers to adjust the local view. Tap the wheel to middle-click, swipe to scroll, or hold to drag. Try direct touch or the compact trackpad below. Input stays in the local log."
         : "展开迷你鼠标，拖动下半部移动光标。按住 L 或 R 后移动即可拖拽，也可用一指按住按钮、另一指拖动下半部。在画面上双指缩放或平移可调整本地视图。滚轮可轻点中击、滑动滚动、长按后拖动。下方可切换直接触摸或光标触控板，输入仅记录在本地。"}</p>
         }
@@ -134,7 +135,7 @@ export function RemoteControlsPreview({ joystick = false, guide = false, guidePo
           onPointerCancel={event => pointer?.cancel(event.pointerId)}
           onLostPointerCapture={event => pointer?.cancel(event.pointerId)}
           onContextMenu={event => event.preventDefault()}>
-          {pointer && <RemoteMouse pointer={pointer} positionRef={mouseLayer} touchMode={touchMode} mapping={stickMode} touchOnlySticks={touchOnlySticks}
+          {pointer && <RemoteMouse pointer={pointer} positionRef={mouseLayer} touchMode={touchMode} virtualSticksEnabled={virtualSticksEnabled} mapping={stickMode} touchOnlySticks={touchOnlySticks}
             onLeftStick={joystick ? leftStick : undefined} onRightStick={joystick ? rightStick : undefined} onStickMouse={joystick ? stickMouse : undefined}
             pointAt={(x, y) => mouseVideo.current && picturePoint(mouseVideo.current, x, y)} />}
         </div>
@@ -159,7 +160,8 @@ export function RemoteControlsPreview({ joystick = false, guide = false, guidePo
     </div>
     <div id="preview-remote-keyboard" className="cp-keyboard" hidden={!keyboardOpen}>
       {keyboardOpen && <RemoteKeyboard key={platform} platform={platform} touch input={input} close={closeKeyboard}
-        stickVisibility={joystick ? { checked: touchOnlySticks, onChange: setTouchOnlySticks } : undefined}
+        virtualSticks={{ checked: virtualSticksEnabled, onChange: setVirtualSticksEnabled }}
+        stickVisibility={{ checked: touchOnlySticks, onChange: setTouchOnlySticks }}
         stickMode={joystick ? { value: stickMode, onChange: setStickMode } : undefined}
         allowText={requests.filter(request => request.state !== "pending").length < 2}
         releaseKey={releaseKey} onReleaseKeyChange={setReleaseKey} />}

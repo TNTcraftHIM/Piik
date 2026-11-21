@@ -21,6 +21,8 @@ export const ja: Partial<Record<CopyKey, string>> = {
   "remote.mouseExpand": "仮想マウスを展開",
   "remote.mouseCollapse": "マウスを最小化",
   "remote.mouseReposition": "ドラッグで移動します。端に置くと収納します",
+  "remote.stickReposition": "ハンドルをドラッグするか、矢印キーでスティックを移動します。",
+  "remote.virtualSticks": "仮想スティック",
   "remote.mouseMove": "ドラッグしてポインターを移動",
   "remote.mouseScroll": "タップで中央クリック、スワイプでスクロール、長押しでドラッグ",
   "remote.touchMode": "既定のタッチ操作",

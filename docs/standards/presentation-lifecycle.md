@@ -252,9 +252,11 @@ follow the shared [motion grammar](./visual-language.md#motion-grammar).
 
 On touch devices, the two on-screen sticks are available while the current
 picture is playing and its authorized remote-control channel is ready. The
-left and right sticks start closed. Each L/R button toggles its pad in one
-tap, including from the picture edge. On the playback controls' idle timer
-only the buttons tuck away. Each open pad keeps its position and input area.
+viewer can turn both sticks on or off in Remote keyboard's Local controls.
+The sticks start closed. Tap L/R to toggle that pad or drag its handle to place it
+within the picture. Each side remembers its relative position on this browser.
+Only the handles tuck against their respective edges when idle. Each open pad
+keeps its position and input area.
 In Show on touch mode, the pad briefly shows its outline when opened and
 shows the thumb while pressed. Closing that side restores ordinary picture input there.
 Remote keyboard owns the mapping for both sticks. Keyboard and mouse mode

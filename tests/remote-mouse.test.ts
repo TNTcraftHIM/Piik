@@ -19,9 +19,10 @@ const executable = ts.transpileModule(`${component.getText(source)}\nRemoteMouse
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
 }).outputText;
 
-type Element = { props: Record<string, any> };
+type Element = { type: unknown; props: Record<string, any> };
 type Slot = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
 function mouse(left = 100, touchMode: "direct" | "trackpad" = "direct") {
+  let virtualSticksEnabled = true;
   const slots: Slot[] = [], effects: (() => void)[] = [];
   let index = 0, tree: Element;
   const listeners = new Map<string, () => void>();
@@ -64,9 +65,10 @@ function mouse(left = 100, touchMode: "direct" | "trackpad" = "direct") {
   const nodes = (element: Element): Element[] => [element, ...[element.props.children].flat(Infinity)
     .filter((child): child is Element => Boolean(child && typeof child === "object" && "props" in child)).flatMap(nodes)];
   const find = (name: string) => nodes(tree).find(node => node.props.className?.split(" ").includes(name))!;
+  const onStickMouse = vi.fn();
   const render = () => {
     index = 0;
-    tree = renderComponent({ pointer, positionRef, touchMode, pointAt: () => ({ x: .25, y: .3 }) });
+    tree = renderComponent({ pointer, positionRef, touchMode, virtualSticksEnabled, onStickMouse, pointAt: () => ({ x: .25, y: .3 }) });
     find("lr-remote-mouse-widget").props.ref.current = widget;
     find("lr-remote-mouse-mini").props.ref.current = mini;
     effects.splice(0).forEach(callback => callback());
@@ -75,6 +77,8 @@ function mouse(left = 100, touchMode: "direct" | "trackpad" = "direct") {
   const event = (x = 0, y = 0) => ({ pointerId: 1, button: 0, clientX: x, clientY: y,
     currentTarget: { setPointerCapture: vi.fn() }, preventDefault() {}, stopPropagation() {} });
   return { pointer, widget, owner, listeners, find, render, event,
+    sticks: () => nodes(tree).filter(node => node.type === RemoteDirectionPad),
+    setVirtualSticksEnabled: (enabled: boolean) => { virtualSticksEnabled = enabled; render(); },
     setTouchMode: (next: typeof touchMode) => { touchMode = next; render(); },
     expanded: () => !find("lr-remote-mouse-shell").props.inert,
     docked: () => find("lr-remote-mouse-widget").props["data-docked"],
@@ -96,6 +100,18 @@ it("retains the compact trackpad option while the full mouse is minimized", () =
     view.setTouchMode("direct");
     expect(view.find("lr-remote-touch-cursor")).toBeUndefined();
     expect(view.pointer.setMode).toHaveBeenLastCalledWith("direct");
+  } finally { view.dispose(); }
+});
+
+it("removes both virtual sticks without changing the compact trackpad", () => {
+  const view = mouse(100, "trackpad");
+  try {
+    expect(view.sticks()).toHaveLength(2);
+    view.setVirtualSticksEnabled(false);
+    expect(view.sticks()).toHaveLength(0);
+    expect(view.find("lr-remote-touch-cursor")).toBeDefined();
+    view.setVirtualSticksEnabled(true);
+    expect(view.sticks()).toHaveLength(2);
   } finally { view.dispose(); }
 });
 

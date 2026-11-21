@@ -21,6 +21,8 @@ export const zhHant: Partial<Record<CopyKey, string>> = {
   "remote.mouseExpand": "展開虛擬滑鼠",
   "remote.mouseCollapse": "縮為迷你滑鼠",
   "remote.mouseReposition": "拖曳調整位置，貼邊停留可自動收納",
+  "remote.stickReposition": "拖曳把手或使用方向鍵調整搖桿位置。",
+  "remote.virtualSticks": "虛擬搖桿",
   "remote.mouseMove": "拖曳移動游標",
   "remote.mouseScroll": "輕點可按下中鍵，滑動可捲動，長按後可拖曳",
   "remote.touchMode": "預設觸控方式",
