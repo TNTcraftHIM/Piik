@@ -661,11 +661,20 @@ without remote input. The compact trackpad retains its two-finger scrolling
 at normal scale.
 A separate button minimizes it and restores the selected touch mode; the
 compact trackpad cursor remains an optional local preference in playback settings.
-Only the mini mouse tucks away after resting at a picture edge, using the player
+The mini mouse tucks away after resting at a picture edge, using the player
 controls' idle delay. The wheel shares middle-click, scrolling and held middle-drag
 in one target. Expanded buttons, scrolling and pointer movement share
 the existing input grant and pointer geometry; the keyboard keeps its separate
 docked surface.
+
+Virtual joysticks sit inside the picture with separate left and right handles.
+When the player controls' idle delay expires, each handle parks at its picture
+edge as a dark bezel pull with a 44 px touch target. The joystick stays at its
+chosen position. Drag the handle or use its arrow keys to move it. Keep the
+handles clear of the playback bar. In touch-only mode, the base stays transparent,
+the ring marks the touch area while the handle is active, and the thumb appears
+during contact. The remote keyboard groups the joystick controls under Local
+controls and shows mode and visibility settings when joysticks are enabled.
 
 Visual source choices (windows, screens and cameras) share named thumbnail cards,
 including their focus, hover and refresh treatment. Thumbnails fit the whole frame

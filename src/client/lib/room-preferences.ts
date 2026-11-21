@@ -9,6 +9,8 @@ export const CHAT_OVERLAY_DEFAULTS = { scale: 1, opacity: 1, speed: 1, colorBySe
 export const REMOTE_KEYBOARD_PAGES = ["letters", "symbols", "functions", "text"] as const;
 const interfaceLayoutSchema = z.enum(["workspace", "quick"]);
 export type InterfaceLayout = z.infer<typeof interfaceLayoutSchema>;
+const unitCoordinate = z.number().min(0).max(1);
+const stickPosition = z.object({ x: unitCoordinate, y: unitCoordinate });
 
 const roomPreferencesSchema = z.object({
   feedbackSound: z.object({ enabled: z.boolean(), volume: z.number().min(0).max(1),
@@ -36,6 +38,9 @@ const roomPreferencesSchema = z.object({
   combineKeys: z.boolean().default(false),
   remoteReleaseKey: remoteShortcutKeySchema.default(10),
   remoteStopKey: remoteShortcutKeySchema.default(10),
+  virtualSticksEnabled: z.boolean().default(true),
+  stickPositions: z.object({ left: stickPosition.optional(), right: stickPosition.optional() }).default({}),
+  touchOnlySticks: z.boolean().default(false),
   remoteTouchMode: z.enum(["direct", "trackpad"]).default("direct"),
   remoteControlMode: remoteControlModeSchema.exclude(["off"]).default("ask"),
 });

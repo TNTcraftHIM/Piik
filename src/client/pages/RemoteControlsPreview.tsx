@@ -13,6 +13,7 @@ import { STATUS_CATALOG } from "../ui/media-status";
 import { Btn } from "../components/living/primitives";
 import type { RemoteControlRequest } from "../native/wire";
 import type { RemoteInputEvent } from "../remote-control/input-session";
+import { gamepadReport } from "../remote-control/gamepad";
 import { picturePoint, pictureRect, rotatePicturePoint, videoRotation } from "../media/video-geometry";
 import { RemoteTouchpad } from "../remote-control/touchpad";
 import { RemoteViewport } from "../remote-control/viewport";
@@ -35,8 +36,20 @@ export function RemoteControlsPreview() {
   const [mode, setMode] = useState<RemoteControlMode>("off");
   const [simultaneous, setSimultaneous] = useState(false);
   const [requests, setRequests] = useState<(RemoteControlRequest & { name: string })[]>([]);
+  const [virtualSticksEnabled, setVirtualSticksEnabled] = useState(true);
+  const [touchOnlySticks, setTouchOnlySticks] = useState(false);
+  const [stickMode, setStickMode] = useState<"keyboard" | "gamepad">("keyboard");
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [lastInput, setLastInput] = useState("");
+  const leftStick = useCallback((x: number, y: number) => {
+    const report = gamepadReport({ buttons: [], axes: [x, y] });
+    setLastInput(JSON.stringify(report));
+  }, []);
+  const rightStick = useCallback((x: number, y: number) => {
+    const report = gamepadReport({ buttons: [], axes: [0, 0, x, y] });
+    setLastInput(JSON.stringify(report));
+  }, []);
+  const stickMouse = useCallback((x: number, y: number) => setLastInput(JSON.stringify({ type: "relative", dx: x, dy: y })), []);
   const mouseVideo = useRef<HTMLVideoElement>(null);
   const mouseLayer = useRef<HTMLDivElement>(null);
   const mouseSurface = useRef<HTMLDivElement>(null);
@@ -130,6 +143,8 @@ export function RemoteControlsPreview() {
           onLostPointerCapture={event => pointer?.cancel(event.pointerId)}
           onContextMenu={event => event.preventDefault()}>
           {pointer && <RemoteMouse pointer={pointer} positionRef={mouseLayer} touchMode={touchMode}
+            virtualSticksEnabled={virtualSticksEnabled} touchOnlySticks={touchOnlySticks} mapping={stickMode}
+            onLeftStick={leftStick} onRightStick={rightStick} onStickMouse={stickMouse}
             pointAt={(x, y) => mouseVideo.current && picturePoint(mouseVideo.current, x, y)} />}
         </div>
       </StageTv>
@@ -148,6 +163,9 @@ export function RemoteControlsPreview() {
     </div>
     <div id="preview-remote-keyboard" className="cp-keyboard" hidden={!keyboardOpen}>
       {keyboardOpen && <RemoteKeyboard key={platform} platform={platform} touch input={input} close={closeKeyboard}
+        virtualSticks={{ checked: virtualSticksEnabled, onChange: setVirtualSticksEnabled }}
+        stickVisibility={{ checked: touchOnlySticks, onChange: setTouchOnlySticks }}
+        stickMode={{ value: stickMode, onChange: setStickMode }}
         allowText={requests.filter(request => request.state !== "pending").length < 2}
         releaseKey={releaseKey} onReleaseKeyChange={setReleaseKey} />}
     </div>

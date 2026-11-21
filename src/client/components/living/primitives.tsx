@@ -202,6 +202,33 @@ export function Chip({
   );
 }
 
+export function SegmentedChoice<T extends string>({
+  label,
+  describedBy,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  describedBy?: string;
+  options: readonly { value: T; label: string; icon?: GlyphName }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  const name = useId();
+  const style = {
+    "--lr-segments": options.length,
+    "--lr-selected-index": options.findIndex(option => option.value === value),
+  } as CSSProperties;
+  return <div className="lr-toggle" role="radiogroup" aria-label={label} aria-describedby={describedBy} style={style}>
+    {options.map(option => <label key={option.value}>
+      <input type="radio" name={name} value={option.value} checked={value === option.value}
+        onChange={() => onChange(option.value)} />
+      <span>{option.icon && <Glyph name={option.icon} size={17} />}<Cap k={{ text: option.label }} /></span>
+    </label>)}
+  </div>;
+}
+
 export function Row({
   sub,
   label,

@@ -59,6 +59,25 @@ it("keeps layout undecided until an explicit choice, independently of other pref
   }
 });
 
+it("adds stick defaults to existing preferences and persists only normalized positions", () => {
+  const values = storage();
+  const previous = { interfaceLayout: "quick", pictureFit: "cover", remoteTouchMode: "trackpad" };
+  values.set("piik:room-preferences:v1", JSON.stringify(previous));
+  expect(readRoomPreferences()).toMatchObject({
+    ...previous, virtualSticksEnabled: true, stickPositions: {}, touchOnlySticks: false,
+  });
+
+  const sticks = {
+    virtualSticksEnabled: false,
+    stickPositions: { left: { x: 0, y: .25 }, right: { x: 1, y: .75 } },
+    touchOnlySticks: true,
+  };
+  expect(saveRoomPreferences(sticks)).toBe(true);
+  expect(saveRoomPreferences({ stickPositions: { left: { x: 1.1, y: 0 } } })).toBe(false);
+  expect(saveRoomPreferences({ stickPositions: { right: { x: 1, y: -.1 } } })).toBe(false);
+  expect(readRoomPreferences()).toMatchObject({ ...previous, ...sticks });
+});
+
 it("rejects malformed saved data and invalid patches while retaining useful defaults", () => {
   const values = storage();
   const defaults = readRoomPreferences();

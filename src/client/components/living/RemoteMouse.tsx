@@ -27,13 +27,25 @@ type MouseMode = "mini" | "expanded" | "left" | "right" | "top" | "bottom";
 type MouseContact = { x: number; y: number; moved: boolean; kind: "widget" | "pointer"; button?: 0 | 2 };
 type MouseWheel = { id: number; x: number; y: number; phase: "pending" | "scroll" | "middle"; timer: ReturnType<typeof setTimeout> | null };
 
-export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, onLeftStick }: {
+export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, mapping = "keyboard", virtualSticksEnabled, touchOnlySticks, onLeftStick, onRightStick, onStickMouse }: {
+  virtualSticksEnabled: boolean;
+  touchOnlySticks?: boolean;
+  mapping?: "keyboard" | "gamepad";
   onLeftStick?: (x: number, y: number) => void;
+  onRightStick?: (x: number, y: number) => void;
+  onStickMouse?: (x: number, y: number) => void;
   pointer: RemoteTouchpad; positionRef: RefObject<HTMLDivElement | null>;
   pointAt: (clientX: number, clientY: number) => PicturePoint | null;
   touchMode: RoomPreferences["remoteTouchMode"];
 }) {
   const { t } = useCopy();
+
+  const [leftOpen, setLeftOpen] = useState(false);
+  const [rightOpen, setRightOpen] = useState(false);
+
+  const useKeys = mapping === "keyboard" || !onLeftStick;
+  const direction = useCallback((x: number, y: number) => pointer.direction(x, y), [pointer]);
+  const rightStick = useKeys ? onStickMouse : onRightStick;
   const owner = useSurfaceDocument();
   const id = useId();
   const [mode, setMode] = useState<MouseMode>("mini");
@@ -66,11 +78,11 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, onLeftSt
     clearIdle();
     const layer = positionRef.current, element = widget.current;
     if (!layer || !element || contacts.current.size || mini.current?.matches(":focus-visible")) return;
-    const side = element.offsetLeft <= 14 ? "left"
-      : element.offsetLeft + element.offsetWidth >= layer.clientWidth - 14 ? "right"
-      : element.offsetTop <= 14 ? "top"
-      : element.offsetTop + element.offsetHeight >= layer.clientHeight - 14 ? "bottom" : null;
-    if (side) idle.current = setTimeout(() => {
+    const sides = [["left", element.offsetLeft], ["right", layer.clientWidth - element.offsetLeft - element.offsetWidth],
+      ["top", element.offsetTop], ["bottom", layer.clientHeight - element.offsetTop - element.offsetHeight]] as const;
+    const [side] = sides.reduce((nearest, edge) => edge[1] < nearest[1] ? edge : nearest);
+    idle.current = setTimeout(() => {
+      if (contacts.current.size || mini.current?.matches(":focus-visible")) return;
       idle.current = null;
       element.style.setProperty(side === "left" || side === "right" ? "--mouse-x" : "--mouse-y",
         side === "left" || side === "top" ? "0%" : "100%");
@@ -139,7 +151,7 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, onLeftSt
       if (current.button !== undefined && !heldButtons().includes(current.button)) pointer.button(current.button, false);
       if (current.kind === "widget") {
         widget.current?.removeAttribute("data-dragging");
-        suppressClick.current = current.moved || cancelled;
+        suppressClick.current ||= current.moved || cancelled;
         if (current.moved && !cancelled) park();
       }
     }
@@ -189,7 +201,7 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, onLeftSt
       }
     }}
     onPointerUp={event => { event.stopPropagation(); finish(event.pointerId); }}
-    onPointerCancel={event => { event.stopPropagation(); release(); }}
+    onPointerCancel={event => { event.stopPropagation(); finish(event.pointerId, true); }}
     onLostPointerCapture={event => { event.stopPropagation(); finish(event.pointerId, true); }}
     onMouseDown={event => event.stopPropagation()} onMouseUp={event => event.stopPropagation()}
     onMouseMove={event => event.stopPropagation()}
@@ -206,25 +218,32 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, onLeftSt
     onFocus={event => event.stopPropagation()}
     onBlur={event => {
       event.stopPropagation();
-      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) release();
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+        release();
+        if (mode === "mini") park();
+      }
     }}>
-    <RemoteDirectionPad pointer={pointer} onLeftStick={onLeftStick} />
+    {virtualSticksEnabled && <RemoteDirectionPad touchOnly={touchOnlySticks} keyboard={useKeys} open={leftOpen} toggleOpen={() => setLeftOpen(!leftOpen)}
+      onMove={useKeys ? direction : onLeftStick} />}
+    {virtualSticksEnabled && rightStick && <RemoteDirectionPad right touchOnly={touchOnlySticks} keyboard={useKeys} open={rightOpen} toggleOpen={() => setRightOpen(!rightOpen)}
+      onMove={rightStick} />}
     {(expanded || touchMode === "trackpad") && <svg className="lr-remote-touch-cursor" viewBox="0 0 24 28" aria-hidden="true">
       <path d="M2 2v21l6-6 5 9 4-2-5-9h9Z" />
     </svg>}
     <div ref={widget} className={`lr-remote-mouse-widget${expanded ? " is-expanded" : ""}`}
       data-docked={mode !== "mini" && !expanded ? mode : undefined}>
-      <button ref={mini} type="button" className="lr-remote-mouse-mini" aria-expanded={expanded}
+      <button ref={mini} onFocus={clearIdle} type="button" className="lr-remote-mouse-mini" aria-expanded={expanded}
         aria-controls={id} aria-label={t("remote.mouseExpand")} aria-description={t("remote.mouseReposition")}
         inert={expanded} aria-hidden={expanded}
         onPointerDown={event => {
           if (contacts.current.size || !capture(event)) return;
-          clearIdle(); suppressClick.current = false; setMode("mini");
+          clearIdle(); suppressClick.current = mode !== "mini"; setMode("mini");
           contacts.current.set(event.pointerId, { x: event.clientX, y: event.clientY, moved: false, kind: "widget" });
           widget.current?.setAttribute("data-dragging", "");
         }}
         onClick={event => {
           if (suppressClick.current && event.detail > 0) { suppressClick.current = false; return; }
+          if (mode !== "mini") { setMode("mini"); return; }
           expand();
         }}
         onKeyDown={event => {

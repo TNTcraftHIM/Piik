@@ -7,6 +7,7 @@ import { RemoteInputSession, type RemoteInputState, type RemoteInputEvent } from
 import { RemoteTouchpad } from "../../remote-control/touchpad";
 import { RemoteViewport } from "../../remote-control/viewport";
 import { RemoteGamepad } from "../../remote-control/gamepad";
+import { StickMouse } from "../../remote-control/stick-mouse";
 import { matchesRemoteShortcut, remoteTextAvailable, remoteGamepadAvailable } from "../../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../../lib/room-preferences";
 import { RemoteKeyboard } from "./RemoteKeyboard";
@@ -35,6 +36,12 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const [password, setPassword] = useState("");
   const gamepad = useRef<RemoteGamepad | null>(null);
   const leftStick = useCallback((x: number, y: number) => gamepad.current?.setLeftStick(x, y), []);
+  const rightStick = useCallback((x: number, y: number) => gamepad.current?.setRightStick(x, y), []);
+  const stickMouse = useRef<StickMouse | null>(null);
+  const moveStickMouse = useCallback((x: number, y: number) => stickMouse.current?.set(x, y), []);
+  const [virtualSticksEnabled, setVirtualSticksEnabled] = useState(() => readRoomPreferences().virtualSticksEnabled);
+  const [touchOnlySticks, setTouchOnlySticks] = useState(() => readRoomPreferences().touchOnlySticks);
+  const [stickMode, setStickMode] = useState<"keyboard" | "gamepad">("keyboard");
   const [gamepadConnected, setGamepadConnected] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [keyboardDocument, setKeyboardDocument] = useState<Document | null>(null);
@@ -53,7 +60,20 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const controlled = (state?.state === "active" || state?.state === "suspended") && canControl && channel?.readyState === "open";
   const gamepadAvailable = state !== null && remoteGamepadAvailable(state);
   const input = useCallback((event: RemoteInputEvent) => session.current?.input(event), []);
-  const reset = useCallback(() => { mouseButtons.current.clear(); touchpad.current?.reset(); session.current?.input({ type: "reset" }); }, []);
+  const reset = useCallback(() => {
+    gamepad.current?.clearVirtualSticks();
+    stickMouse.current?.stop();
+    mouseButtons.current.clear(); touchpad.current?.reset(); session.current?.input({ type: "reset" });
+  }, []);
+  useEffect(() => {
+    if (!active || !touchPointer || !virtualSticksEnabled) return;
+    const current = new StickMouse((dx, dy) => {
+      const delta = rotatePictureDelta({ x: dx, y: dy }, pictureRotation, true);
+      input({ type: "relative", dx: delta.x, dy: delta.y });
+    });
+    stickMouse.current = current;
+    return () => { stickMouse.current = null; current.stop(); };
+  }, [active, touchPointer, virtualSticksEnabled, channel, state?.grant, pictureRotation, input]);
   const closeKeyboard = () => {
     reset(); setKeyboardOpen(false); setKeyboardDocument(null); surface.current?.focus({ preventScroll: true });
   };
@@ -89,8 +109,8 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   }, [active]);
   useEffect(() => {
     setGamepadConnected(false);
-    if (!active || !gamepadAvailable || keyboardOpen) return;
-    const current = new RemoteGamepad(input, setGamepadConnected);
+    if (!active || !gamepadAvailable) return;
+    const current = new RemoteGamepad(input, setGamepadConnected, window, document, !keyboardOpen);
     gamepad.current = current;
     return () => { gamepad.current = null; current.dispose(); };
   }, [active, gamepadAvailable, keyboardOpen, state?.grant, channel, input]);
@@ -124,7 +144,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
       view,
     );
     touchpad.current = current;
-    setTouchPointer(matchMedia("(pointer: coarse)").matches ? current : null);
+    setTouchPointer(navigator.maxTouchPoints > 0 ? current : null);
     // Layout changes and decoded aspect-ratio changes share the input geometry.
     const refresh = () => { view.refresh(); current.refresh(); };
     const observer = new ResizeObserver(refresh);
@@ -229,7 +249,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
       release(); setPasswordOpen(true);
     } else session.current?.request();
   };
-  const touchControls = touch || matchMedia("(pointer: coarse)").matches;
+  const touchControls = touch || navigator.maxTouchPoints > 0;
   const statusIcon = state.reason === "busy" ? "users" : state.reason === "password" || state.reason === "gamepad" || state.state === "failed" || state.inputFailed ? "alert"
     : state.state === "suspended" ? "pause" : gamepadConnected && controlled ? "gamepad" : "clock";
   const feedback: CopyKey | undefined = state.reason ? `remote.reason.${state.reason}`
@@ -297,7 +317,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
             event.preventDefault(); event.stopPropagation();
             touchpad.current?.move(event.pointerId, event.clientX, event.clientY); return;
           }
-          setTouchPointer(null);
+
           if (document.pointerLockElement === surface.current) {
             const delta = rotatePictureDelta({ x: event.movementX, y: event.movementY }, pictureRotation, true);
             input({ type: "relative", dx: delta.x, dy: delta.y });
@@ -346,9 +366,18 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           if (!event.nativeEvent.isComposing) input({ type: "key", code: event.code, down: true });
         }}
         onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }}>
-        {active && touchPointer && <RemoteMouse key={state.grant} pointer={touchPointer} positionRef={cursor} pointAt={point} touchMode={touchMode} onLeftStick={gamepadAvailable && !keyboardOpen && !gamepadConnected ? leftStick : undefined} />}
+        {active && touchPointer && <RemoteMouse key={state.grant} pointer={touchPointer} positionRef={cursor} pointAt={point} touchMode={touchMode} virtualSticksEnabled={virtualSticksEnabled}
+          touchOnlySticks={touchOnlySticks} mapping={gamepadAvailable && !gamepadConnected ? stickMode : "keyboard"} onLeftStick={gamepadAvailable && !gamepadConnected ? leftStick : undefined}
+          onRightStick={gamepadAvailable && !gamepadConnected ? rightStick : undefined} onStickMouse={moveStickMouse} />}
       </div>}
       {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
+        virtualSticks={touchControls ? { checked: virtualSticksEnabled, onChange: checked => {
+          setVirtualSticksEnabled(checked); saveRoomPreferences({ virtualSticksEnabled: checked });
+        } } : undefined}
+        stickVisibility={touchControls ? { checked: touchOnlySticks, onChange: checked => {
+          setTouchOnlySticks(checked); saveRoomPreferences({ touchOnlySticks: checked });
+        } } : undefined}
+        stickMode={touchControls && gamepadAvailable && !gamepadConnected ? { value: stickMode, onChange: setStickMode } : undefined}
         allowText={remoteTextAvailable(state)}
         releaseKey={releaseKey} onReleaseKeyChange={key => { setReleaseKey(key); saveRoomPreferences({ remoteReleaseKey: key }); }}
         onSurfaceChange={keyboardSurfaceChanged}
