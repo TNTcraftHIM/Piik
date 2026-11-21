@@ -497,6 +497,26 @@ frames and received audio. The tested OBS WHIP output also ignored the profile's
 network bind address. Stock Linux package compatibility remains open.
 [OBS 32.1.2 WHIP output](https://github.com/obsproject/obs-studio/blob/32.1.2/plugins/obs-webrtc/whip-output.cpp#L279)
 
+On November 21 the packaged Alpine OBS 32.1.2-r4 with libdatachannel 0.24.3-r0
+and libnice 0.1.22-r0 was run twice against App review build `19948350` using
+the same Piik authorization. Both starts reached `Connecting`, then `Failed`
+and `Closed`. Piik reported an input error and Firefox received no inbound RTP.
+
+To check another Linux package, open OBS input in Piik and keep the sharing
+page open. In OBS on the same computer, select WHIP, copy the endpoint and
+bearer from that page, and stream a moving scene with audible sound using
+H264 and Opus. Have a second room participant watch and listen. Stop streaming
+in OBS, confirm the picture ends, then restart with the same settings and
+confirm the viewer can watch and hear the new stream. Record the OBS package
+and version, whether its log reaches `Connected`, and the viewer result for
+each start. Keep the endpoint and bearer out of the report.
+
+If the OBS log repeatedly goes from `Connecting` to `Failed` and Piik
+receives no media, a picture-only alternative is to cancel OBS input, open
+the scene's Windowed Projector in OBS, and select that window in Piik's normal
+screen-sharing picker when the desktop offers it. Check sound separately if
+the room needs it. [OBS projector guide](https://obsproject.com/kb/power-of-projectors)
+
 ## Attended Remote-Control Prototype
 
 Reviewed 2026-10-19. Remote control is included in the accepted release scope.
