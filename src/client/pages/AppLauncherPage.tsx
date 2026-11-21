@@ -6,6 +6,7 @@ import { HintComic } from "../components/living/hints";
 import { LoadingStatus } from "../components/living/WaitingStatus";
 import { AppReleaseNotice, AppUpdateStatus } from "../components/living/AppReleaseNotice";
 import { useAppUpdate } from "../lib/use-app-update";
+import { useProjectLink } from "../lib/use-project-link";
 import { AppHeader } from "../components/living/Header";
 import { LocalConnectionDetails, SiteStartControls } from "../components/living/LauncherForm";
 import { LauncherWorkspace } from "../components/living/LauncherWorkspace";
@@ -315,13 +316,20 @@ export function AppLauncherPage() {
     onResetWebsitePermissions: serverState?.websitePermissionReset ? (site: string) => manageSite(site, "website-permissions") : undefined,
   };
 
+  const invitationTimedOut = error?.kind === "launch" && error.reason === "tunnel-timeout";
+  const publicAddressGuide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}frp.html`,
+    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/frp${lang === "zh" ? ".zh-CN" : ""}.md`, invitationTimedOut);
   const errorKey = `client.launch.failure.${error?.reason}`;
   const home = !requestedSite && !bookmarksOnly;
   const homeReady = home && !loading && error?.kind !== "load";
   const roomError = error?.kind === "launch" ? <>
-    <Pill icon="alert" tone="bad" label={t("client.launch.error")} alert comic="signal-failed" />
+    <Pill icon="alert" tone="bad" label={t(invitationTimedOut ? "client.launch.invitationTimeout" : "client.launch.error")} alert comic="signal-failed" />
     {isCopyKey(errorKey) && <p className="lr-client-launch-status">{t(errorKey)}</p>}
-    <p className="lr-client-launch-status">{t("client.launch.retryHint")}</p>
+    {invitationTimedOut
+      ? <a className="lr-btn is-dense" href={publicAddressGuide} target="_blank" rel="noopener noreferrer">
+        {t("client.launch.publicAddressGuide")}<Glyph name="arrowRight" size={16} />
+      </a>
+      : <p className="lr-client-launch-status">{t("client.launch.retryHint")}</p>}
     {error.detail && <details className="lr-client-launch-technical">
       <summary>{t("client.launch.errorDetails")}</summary>
       <p className="lr-client-launch-detail">{error.detail}</p>
