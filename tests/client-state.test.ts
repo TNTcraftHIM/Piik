@@ -363,7 +363,7 @@ describe("WebRTC stats parsing", () => {
         sdpFmtpLine:
           "profile-level-id=42E01F; packetization-mode=1; " +
           "level-asymmetry-allowed=1; sprop-parameter-sets=do-not-expose; " +
-          "x-google-start-bitrate=99999",
+          "toString=1; constructor=1; x-google-start-bitrate=99999",
       }),
       entry("codec-z", "codec", {
         transportId: "transport-z",
@@ -1375,6 +1375,14 @@ describe("WebRTC stats parsing", () => {
       ),
       report(9_000, {}, { ssrc: 303, trackIdentifier: "replacement-audio" }),
     ];
+    const voiceHistory = createStatsAccumulator();
+    const voice = { kind: "audio", trackIdentifier: "shared-audio", audioTrackIdentifier: "shared-audio" } as const;
+    collectConnectionMetricsFromReport(reports[0]!, "receive", voiceHistory, voice);
+    const voiceMetrics = collectConnectionMetricsFromReport(reports[1]!, "receive", voiceHistory, voice);
+    expect(voiceMetrics.audioJitterBufferDelayMs).toBeCloseTo(22.5);
+    expect(voiceMetrics.videoJitterBufferDelayMs).toBeNull();
+    expect(voiceMetrics.audioVideoPlayoutDeltaMs).toBeNull();
+
     const connection = {
       getStats: async () => reports.shift()!,
     } as unknown as RTCPeerConnection;

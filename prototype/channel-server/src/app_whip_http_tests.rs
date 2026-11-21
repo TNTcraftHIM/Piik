@@ -334,12 +334,21 @@ async fn post_and_delete_keep_existing_authenticated_page_requests_and_expose_on
     let endpoint = format!("/whip/{}", permit.id);
     let generation = Uuid::new_v4();
     let session = format!("{endpoint}/{generation}");
-    let bearer = format!("Bearer {}", permit.token);
+    let bearer = format!("bearer  {}", permit.token);
     let headers = [
         ("origin", ORIGIN),
         ("authorization", bearer.as_str()),
-        ("content-type", "application/sdp"),
+        ("content-type", "Application/SDP"),
     ];
+    let unsupported = call(
+        &router,
+        "POST",
+        &endpoint,
+        &[("authorization", &bearer), ("content-type", "text/plain")],
+        "fixture SDP",
+    )
+    .await;
+    assert_eq!(unsupported.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
     let request = call(&router, "POST", &endpoint, &headers, "fixture SDP");
     let offer = async {
         let Request::Offer {

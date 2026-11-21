@@ -84,7 +84,7 @@ export function PawnSvg({ color, host, identity, voice, collaboration, avatar }:
           <rect x="7" y="16" width="34" height="34" rx="5" />
         </clipPath></defs>
         <rect x="7" y="16" width="34" height="34" rx="5" />
-        <image key={picture} className="lr-person-avatar" href={picture} x="7" y="16" width="34" height="34"
+        <image key={picture} className="lr-person-head lr-person-avatar" href={picture} x="7" y="16" width="34" height="34"
           preserveAspectRatio="xMidYMid slice" clipPath={`url(#${avatarClip})`} onError={() => setFailedAvatar(picture)} />
         {host && <HostMark x={18} y={0} width={12} />}
       </> : <PersonShape host={host} />}

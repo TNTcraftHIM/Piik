@@ -4,6 +4,7 @@ import { watchSeekPosition, type WatchMedia, type WatchMediaPatch, type WatchMed
 const mediaFailure = (error?: unknown): string => error instanceof Error && error.message ? error.message : "watch_media_failed";
 const HAVE_CURRENT_DATA = 2;
 const HAVE_FUTURE_DATA = 3;
+const unsupportedRate = Symbol("unsupported playback rate");
 
 export function watchPosition(playback: WatchPlayback, now: number): number {
   return playback.position + (playback.paused ? 0 : Math.max(0, now - playback.anchorTime) / 1000 * playback.rate);
@@ -15,7 +16,9 @@ export class WatchPlayer {
   get video(): HTMLVideoElement | null { return this.presentation.kind === "video" ? this.presentation.element : null; }
   mode: WatchMode | null = null;
   blocked = false;
-  error: string | null = null;
+  private failure: string | typeof unsupportedRate | null = null;
+  get error(): string | null { return this.failure === unsupportedRate ? "watch_media_unsupported" : this.failure; }
+  set error(value: string | null) { this.failure = value; }
   private localState: WatchMediaState | null = null;
   get mediaState(): Readonly<WatchMediaState> | null { return this.localState; }
   private offset: number | null = null;
@@ -200,10 +203,12 @@ export class WatchPlayer {
     if (this.error === "watch_live_position_unavailable") { this.error = null; this.changed(); }
     // Unknown buffering permits explicit host commands, not invented periodic drift correction.
     if ((force || state.readyState >= HAVE_FUTURE_DATA && buffered) && displaced) patch.position = target;
-    if (state.rate !== playback.rate) {
-      if (this.media.playbackRates && !this.media.playbackRates().includes(playback.rate)) throw new Error("watch_media_unsupported");
-      patch.rate = playback.rate;
+    if (state.rate !== playback.rate && this.media.playbackRates && !this.media.playbackRates().includes(playback.rate)) {
+      if (this.failure === null) { this.failure = unsupportedRate; this.changed(); }
+      return false;
     }
+    if (this.failure === unsupportedRate) { this.failure = null; this.changed(); }
+    if (state.rate !== playback.rate) patch.rate = playback.rate;
     if (playback.paused && !state.paused) patch.paused = true;
     else if (!playback.paused && state.paused && !this.blocked && !state.ended) patch.paused = false;
     if (Object.keys(patch).length) await this.apply(patch);

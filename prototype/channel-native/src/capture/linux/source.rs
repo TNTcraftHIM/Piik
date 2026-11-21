@@ -536,7 +536,7 @@ async fn authorize(
                 raw = active.next(frames) => match raw {
                     Ok(raw) => frames.publish_frame(raw),
                     Err(error) => {
-                        control.stop();
+                        frames.finish(Some(format!("{error:#}")));
                         // Do not drop preparation: it must close any created session.
                         if let Ok(Some((candidate, _))) = preparing.await { candidate.close().await?; }
                         return Err(error);

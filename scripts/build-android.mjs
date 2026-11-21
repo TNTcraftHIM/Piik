@@ -69,6 +69,7 @@ if (!existsSync(archive)) {
   writeFileSync(archive, Buffer.from(await response.arrayBuffer()));
 }
 if (sha256(archive) !== CLOUDFLARED_SOURCE_SHA256) {
+  rmSync(archive);
   throw new Error('Cloudflared source archive differs from its pin.');
 }
 run('tar', ['-xzf', archive, '-C', cache]);

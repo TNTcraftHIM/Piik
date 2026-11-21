@@ -219,7 +219,8 @@ describe("Webpage watch presentation", () => {
     [["watch_source_busy", "watch_read_busy"], "watch.forward.busy", false],
     [["watch_read_timeout"], "watch.forward.readTimeout", false],
     [["watch_source_already_active"], "watch.forward.active", false],
-    [["watch_peer_requires_secure_context", "watch_peer_unavailable"], "watch.forward.secure", false],
+    [["watch_peer_requires_secure_context"], "watch.forward.secure", false],
+    [["watch_peer_unavailable"], "watch.forward.failed", false],
     [["watch_path_unavailable"], "channel.error.roomCommunicationFailed", true],
   ] as const)("presents %j with actionable copy from %s", (errors, key, connectionHelp) => {
     for (const lang of Object.keys(locales) as Lang[]) {

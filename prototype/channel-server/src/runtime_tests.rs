@@ -900,9 +900,17 @@ async fn start_server(
     let (stop, stopped) = oneshot::channel();
     let folder = folder.to_owned();
     let udp = piik_channel_native::peer::server_udp::ServerUdp::bind(&[(address, None)]).unwrap();
-    let task = tokio::spawn(serve(listener, state, folder, Router::new(), udp, async {
-        let _ = stopped.await;
-    }));
+    let task = tokio::spawn(serve(
+        listener,
+        state,
+        folder,
+        Router::new(),
+        udp,
+        false,
+        async {
+            let _ = stopped.await;
+        },
+    ));
     (address, stop, task, hub)
 }
 
@@ -941,6 +949,7 @@ async fn wildcard_listeners_host_native_rooms_and_retire_on_stop() {
             folder.path().to_owned(),
             Router::new(),
             udp,
+            false,
             async {
                 let _ = stopped.await;
             },

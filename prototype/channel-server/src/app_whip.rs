@@ -131,10 +131,12 @@ impl Inputs {
     }
     fn authorized(&self, id: Uuid, headers: &HeaderMap) -> Option<Arc<Permit>> {
         let permit = self.0.lock().unwrap().get(&id)?.upgrade()?;
+        let authorization = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
+        let (scheme, token) = authorization.split_once(' ')?;
         (!permit.stopped()
-            && headers.get(header::AUTHORIZATION)?.to_str().ok()?
-                == format!("Bearer {}", permit.token))
-        .then_some(permit)
+            && scheme.eq_ignore_ascii_case("Bearer")
+            && token.trim_start_matches(' ') == permit.token)
+            .then_some(permit)
     }
 }
 
@@ -239,12 +241,12 @@ pub(super) async fn offer(
     let Some(permit) = app.external_inputs.authorized(id, &headers) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
-    if headers
+    if !headers
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.split(';').next())
         .map(str::trim)
-        != Some("application/sdp")
+        .is_some_and(|value| value.eq_ignore_ascii_case("application/sdp"))
     {
         return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
     }

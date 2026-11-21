@@ -57,7 +57,8 @@ it.each(["default", "shared", "shared-lib", "mismatched", "overlap"])("Android u
     const target = join(source.root, path); mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, bytes);
   };
   write("licenses/upstream.json", JSON.stringify({ "cloudflared@2026.10.3": { source: "https://example.invalid/upstream/" + commit } }));
-  write("build/android-cloudflared/" + commit + ".tar.gz", "fixture upstream");
+  const archive = "build/android-cloudflared/" + commit + ".tar.gz";
+  write(archive, scenario === "default" ? "corrupt cache" : "fixture upstream");
   write("gradle/lib/gradle-launcher-fixture.jar", "fixture");
   const webPath = scenario === "overlap" ? "mobile/android/app/src/main/assets/web" : "web";
   write(webPath + "/index.html", '<script src="/assets/index-fixture.js"></script>');
@@ -78,6 +79,13 @@ it.each(["default", "shared", "shared-lib", "mismatched", "overlap"])("Android u
   vi.stubGlobal("fetch", fetch);
   try {
     process.argv = [process.execPath, "build-android.mjs", ...(scenario === "default" ? [] : ["--web", source.web])];
+    if (scenario === "default") {
+      vi.resetModules();
+      await expect(import("../scripts/build-android.mjs")).rejects.toThrow("Cloudflared source archive differs from its pin");
+      expect(existsSync(join(source.root, archive))).toBe(false);
+      expect(fetch).not.toHaveBeenCalled();
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("fixture upstream")));
+    }
     vi.resetModules();
     const android = import("../scripts/build-android.mjs");
     if (scenario === "mismatched" || scenario === "overlap") {

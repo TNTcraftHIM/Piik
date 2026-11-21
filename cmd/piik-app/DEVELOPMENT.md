@@ -42,9 +42,8 @@ Platform support, permissions and installation remain in the
 
 ### Desktop Icons
 
-The Windows App embeds the shared Piik mark through the
-`cmd/piik-app/piik_windows_amd64.syso` resource; the platform
-suffix keeps that Windows resource out of Linux and macOS builds.
+The Windows x64 App build embeds the shared Piik ICO through the
+[channel-server build script](../../prototype/channel-server/build.rs).
 Linux packages include the standard `share/applications` desktop entry and
 hicolor icon. macOS packages include `Piik App.app` with an ICNS resource,
 the App executable and its helpers. For terminal use, the executable is
@@ -56,12 +55,6 @@ the package builder derives Linux and macOS icons from those entries. Keep the
 website exports in sync: `public/favicon.png` at 96 px, and `public/favicon.ico`
 with 16/32/48 px entries. Check actual small sizes on light and dark backgrounds.
 Render the SVG at each target size so its small-icon styling applies.
-Resource regeneration additionally needs Go from [`.go-version`](../../.go-version).
-Regenerate the Windows resource from the repository root:
-
-```sh
-go run github.com/akavel/rsrc@v0.10.2 -ico cmd/piik-app/piik.ico -arch amd64 -o cmd/piik-app/piik_windows_amd64.syso
-```
 
 ## Checks
 

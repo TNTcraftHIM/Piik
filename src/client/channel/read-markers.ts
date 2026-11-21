@@ -66,6 +66,9 @@ export class RoomReadMarkers {
         // Only a fresh authority projection may supersede another binding.
         // Same-binding storage can be ahead of this tab's last projection.
         if (rebound) position = Math.min(position, room.lastMessageSeq);
+        else if (this.observed.get(id) === binding && (!storedBinding || storedBinding === binding)) {
+          position = Math.max(position, this.positions[id] ?? 0);
+        }
         if (entering) this.observed.set(id, binding);
         if (entering || !storedBinding || storedBinding === binding) {
           if (advance?.roomId === id) position = Math.max(position, Math.min(advance.seq, room.lastMessageSeq));

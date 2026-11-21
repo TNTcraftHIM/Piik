@@ -33,7 +33,7 @@ vocabulary across the UI and guides.
 | --- | --- | --- |
 | User | 用户 | Every participant, including site operators, room owners and sharers. |
 | Site | 站点 | The shared entry containing a room directory and the users' site identities. |
-| Domain | 站点后台 | The site's identity, room directory and coordination runtime; named `Channel` in code, without a separate entry or invitation layer. |
+| Domain | 站点后台 | The site's identity, room directory and coordination runtime. See the [naming convention](../standards/naming.md#voice-and-terminology) for code and wire terminology. |
 | Site operator | 站点维护者 | The user managing site metadata, backups and room bindings. |
 | Room | 房间 | A conversation, history and media scope within a site. |
 | Room owner | 房主 | The user who manages the room. |

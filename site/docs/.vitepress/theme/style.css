@@ -59,6 +59,7 @@ html[data-reduced-motion] .identity * { animation: none !important; }
   content: ""; position: absolute; z-index: -1; inset: 8% 3% 5% 59%;
   background: url("../../../assets/living-room.svg") center / contain no-repeat;
 }
+html[data-reduced-motion] .help-hero::after { background-image: url("../../../assets/living-room.svg#still"); }
 @media (prefers-reduced-motion: reduce) {
   .help-hero::after { background-image: url("../../../assets/living-room.svg#still"); }
 }

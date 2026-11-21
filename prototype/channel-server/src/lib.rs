@@ -49,13 +49,8 @@ impl NativeService {
         directory: &Path,
         udp: Arc<ServerUdp>,
         bootstrap: bool,
+        transit_enabled: bool,
     ) -> anyhow::Result<Self> {
-        let transit_enabled = match std::env::var("PIIK_CHANNEL_SERVICE_TRANSIT") {
-            Ok(value) if value == "true" => true,
-            Ok(value) if value == "false" => false,
-            Err(std::env::VarError::NotPresent) => false,
-            _ => anyhow::bail!("PIIK_CHANNEL_SERVICE_TRANSIT must be true or false"),
-        };
         let address = listener_client_address(address);
         let directory = room_directory(directory, domain.identity());
         std::fs::create_dir_all(&directory)?;
@@ -144,6 +139,7 @@ pub async fn serve_server(
     directory: PathBuf,
     routes: axum::Router,
     udp: Arc<ServerUdp>,
+    transit_enabled: bool,
     stop: impl Future<Output = ()>,
 ) -> anyhow::Result<()> {
     std::fs::create_dir_all(directory.join("rooms"))?;
@@ -160,6 +156,7 @@ pub async fn serve_server(
         &directory,
         udp.clone(),
         domain.was_created(),
+        transit_enabled,
     )?;
     let (stop_domain, mut domain_stopped) = watch::channel(false);
     let mut service = tokio::spawn(domain.clone().serve(listener, routes, async move {
@@ -189,7 +186,7 @@ pub async fn serve_server(
                 let result = domain.restore(request.metadata, &request.credential);
                 // A failed durable replacement keeps the old authority and restarts
                 // its same saved rooms; neither branch recreates missing histories.
-                match NativeService::start(&domain, address, &directory, udp.clone(), false) {
+                match NativeService::start(&domain, address, &directory, udp.clone(), false, transit_enabled) {
                     Ok(next) => hosting = next,
                     Err(error) => {
                         let code = if result.is_ok() {

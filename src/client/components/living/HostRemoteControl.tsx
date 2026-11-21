@@ -42,7 +42,8 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
   const [draft, setDraft] = useState(() => mode === "off" ? readRoomPreferences().remoteControlMode : mode);
   const [preparing, setPreparing] = useState(false);
   const [password, setPassword] = useState("");
-  const [failedId, setFailedId] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{ id: string; error: unknown } | null>(null);
+  const failedId = failure?.id;
   const [pendingActions, setPendingActions] = useState<Map<string, symbol>>(() => new Map());
   const latestOperation = useRef<symbol | null>(null);
   const busy = pendingActions.size > 0;
@@ -70,9 +71,11 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
   const perform = async (id: string, operation: (identity: symbol) => Promise<void>) => {
     const identity = Symbol();
     latestOperation.current = identity;
-    setPendingActions(current => new Map(current).set(id, identity)); setFailedId(null);
+    setPendingActions(current => new Map(current).set(id, identity)); setFailure(null);
     try { await operation(identity); if (latestOperation.current === identity) setPassword(""); }
-    catch { if (latestOperation.current === identity) setFailedId(id === "enable" ? "policy" : id.replace(/^stop:/, "")); }
+    catch (error) {
+      if (latestOperation.current === identity) setFailure({ id: id === "enable" ? "policy" : id.replace(/^stop:/, ""), error });
+    }
     finally {
       setPendingActions(current => {
         if (current.get(id) !== identity) return current;
@@ -194,7 +197,8 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
           </div>}
         </form>}
         {failedId === "policy" && <p role="alert"><Glyph name="alert" size={14} />
-          <span>{t(platform === "darwin" && mode === "off" ? "remote.macPermission" : "remote.decisionFailed")}</span></p>}
+          <span>{t(platform === "darwin" && failure?.error instanceof Error && failure.error.message === "input_permission_required"
+            ? "remote.macPermission" : "remote.decisionFailed")}</span></p>}
         <p className="lr-remote-note">{t(platform === "linux" && mode === "off" ? "remote.linuxEnable" : "remote.policyLifetime")}</p>
         {onShortcut && shortcut && <>
           <RemoteShortcutSelect host mac={platform === "darwin"} value={shortcut.key} disabled={busy || disabled}

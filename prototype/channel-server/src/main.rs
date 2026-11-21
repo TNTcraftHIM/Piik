@@ -31,6 +31,12 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
         RoomCreationPolicy::Ordinary,
     )?;
     let hosting_mode = first_start_setting("PIIK_CHANNEL_HOSTING_MODE", HostingMode::Lightweight)?;
+    let transit_enabled = match std::env::var("PIIK_CHANNEL_SERVICE_TRANSIT") {
+        Ok(value) if value == "true" => true,
+        Ok(value) if value == "false" => false,
+        Err(std::env::VarError::NotPresent) => false,
+        _ => anyhow::bail!("PIIK_CHANNEL_SERVICE_TRANSIT must be true or false"),
+    };
     let stop = piik_channel_native::shutdown_signal()?;
     let port = std::env::var("PIIK_CHANNEL_PORT")
         .unwrap_or_else(|_| "8791".into())
@@ -125,6 +131,15 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
     println!("Piik Server: http://{bound}");
     println!("Web interface: {origin}/__channel-preview");
     release::startup_notice();
-    serve_server(listener, state, directory, routes, udp, stop).await?;
+    serve_server(
+        listener,
+        state,
+        directory,
+        routes,
+        udp,
+        transit_enabled,
+        stop,
+    )
+    .await?;
     Ok(std::process::ExitCode::SUCCESS)
 }

@@ -804,7 +804,7 @@ export function collectConnectionMetricsFromReport(
     sampleWindowMs !== null,
   );
   const videoJitterBufferDelayMs =
-    direction === "receive" && sampleWindowMs !== null
+    kind === "video" && direction === "receive" && sampleWindowMs !== null
       ? intervalAverageMs(
           videoJitterBufferDelay,
           previous.previousVideoJitterBufferDelay,
@@ -955,6 +955,7 @@ export function collectConnectionMetricsFromReport(
     "estimatedPlayoutTimestamp",
   );
   const audioVideoPlayoutDeltaMs =
+    kind === "video" &&
     direction === "receive" &&
     videoEstimatedPlayoutTimestamp !== null &&
     audioEstimatedPlayoutTimestamp !== null

@@ -84,7 +84,12 @@ function syncFilmPreferences() {
   const preference = currentThemePreference() ?? 'system';
   target.searchParams.set('theme', preference);
   filmLink.href = target.href;
-  if (film.open) filmFrame.contentWindow?.postMessage({type:'piik-film-preferences',lang:root.lang,theme:preference}, location.origin);
+  if (film.open) filmFrame.contentWindow?.postMessage({
+    type: 'piik-film-preferences',
+    lang: root.lang,
+    theme: preference,
+    reducedMotion: reducedMotion(),
+  }, location.origin);
 }
 const copy = {
   en: {
@@ -154,14 +159,19 @@ const requestedTheme = preferences.get('theme');
 initTheme(requestedTheme === 'system' ? null : ['light', 'dark'].includes(requestedTheme) ? requestedTheme : undefined);
 setLanguage(initialLanguage());
 document.querySelector('.preferences').hidden = false;
+filmFrame.addEventListener('load', syncFilmPreferences);
+window.addEventListener('message', event => {
+  if (!film.open || event.source !== filmFrame.contentWindow || event.origin !== location.origin ||
+      event.data?.type !== 'piik-film-language' || !['en', 'zh-CN'].includes(event.data.lang)) return;
+  setLanguage(event.data.lang);
+  rememberLanguage(root.lang);
+});
 filmLink.setAttribute('aria-controls', 'film-preview');
 filmLink.setAttribute('aria-expanded', 'false');
 filmLink.addEventListener('click', (event) => {
   if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
   event.preventDefault();
-  const target = new URL(event.currentTarget.href);
-  target.searchParams.set('embedded', '1');
-  if (!film.open) filmFrame.src = target.href;
+  if (!film.open) filmFrame.src = event.currentTarget.href;
   film.hidden = false;
   film.open = true;
   filmLink.setAttribute('aria-expanded', 'true');
@@ -212,6 +222,7 @@ function syncMotionPreference() {
     button.disabled = still;
   });
   roomIllustration.src = './assets/living-room.svg' + (still ? '#still' : '');
+  syncFilmPreferences();
 }
 motionControl.addEventListener('change', () => {
   preferStill = motionControl.checked;

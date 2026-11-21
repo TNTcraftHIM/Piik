@@ -1315,7 +1315,7 @@ impl BaseTree {
             {
                 self.plan.failed_pair(first, second);
             }
-            self.abort();
+            self.abort_candidate(Some((first, second)));
             return;
         }
         self.plan.failed_pair(first, second);
@@ -1382,9 +1382,16 @@ impl BaseTree {
         }
     }
     pub fn abort(&mut self) {
+        self.abort_candidate(None);
+    }
+
+    fn abort_candidate(&mut self, failed_pair: Option<(Uuid, Uuid)>) {
         if let Some(operation) = &mut self.operation {
-            for (parent, _) in operation.edges() {
-                self.plan.reject_parent(operation.child, parent);
+            for (a, b) in operation.edges() {
+                if failed_pair.is_none_or(|pair| pair == (a, b) || pair == (b, a)) {
+                    let peer = if operation.child == a { b } else { a };
+                    self.plan.reject_parent(operation.child, peer);
+                }
             }
             if matches!(
                 operation.candidate,
@@ -1775,6 +1782,30 @@ mod tests {
         assert!(!base
             .candidate_tree()
             .is_some_and(|candidate| candidate.plan.parents.get(&id(4)) == Some(&id(3))));
+    }
+
+    #[test]
+    fn failed_insert_leg_allows_another_branch_under_the_same_parent() {
+        let online = set(&[1, 2, 3, 4]);
+        let mut base = BaseTree::new(id(1));
+        let limits = RelayLimits {
+            default: 0,
+            overrides: [(id(1), 2), (id(4), 1)].into(),
+            ..Default::default()
+        };
+        for branch in [id(2), id(3)] {
+            base.plan.parents.insert(branch, id(1));
+            base.state(id(1), branch, true);
+            base.state(branch, id(1), true);
+        }
+        base.reconcile(&online, &online, &online, &limits, 10);
+        assert_eq!(base.candidate_links(), [(id(1), id(4)), (id(4), id(2))]);
+        assert!(base.state(id(2), id(4), false));
+        assert_eq!(base.plan.failed_parents[&id(4)], set(&[2]));
+        base.reconcile(&online, &online, &online, &limits, 11);
+        assert_eq!(base.candidate_links(), [(id(1), id(4)), (id(4), id(3))]);
+        assert_eq!(base.deadline(), Some(20_010));
+        assert!(base.ready(id(2)) && base.ready(id(3)));
     }
 
     #[test]

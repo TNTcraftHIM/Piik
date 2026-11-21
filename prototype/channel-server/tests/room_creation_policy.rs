@@ -143,7 +143,7 @@ async fn server_seeds_demo_policy_and_restores_later_admin_choice() {
     process.kill().await.unwrap();
 
     let invalid_data = temp.path().join("invalid");
-    for key in [POLICY_ENV, MODE_ENV] {
+    for key in [POLICY_ENV, MODE_ENV, "PIIK_CHANNEL_SERVICE_TRANSIT"] {
         let output = timeout(
             DEADLINE,
             server(&invalid_data, &frontend).env(key, "public").output(),
@@ -161,7 +161,7 @@ async fn server_seeds_demo_policy_and_restores_later_admin_choice() {
         .lines()
         .filter_map(|line| line.strip_prefix("Environment="))
         .map(|setting| setting.split_once('=').unwrap());
-    let demo_data = temp.path().join("demo");
+    let demo_data = invalid_data;
     let mut command = server(&demo_data, &frontend);
     command.envs(demo_settings.clone());
     let (mut process, origin) = launch(command).await;
@@ -186,7 +186,23 @@ async fn server_seeds_demo_policy_and_restores_later_admin_choice() {
     room["hidden"] = json!(true);
     let created = request(&mut guest, json!({"type": "create_room", "room": room})).await;
     assert_eq!(created["type"], "room_created", "{created}");
-    let (mut owner, _) = join(&origin, true).await;
+    let (mut owner, welcome) = join(&origin, true).await;
+    let seeded = |event: &Value| {
+        event["state"]["channel"]["rooms"]
+            .as_array()
+            .is_some_and(|rooms| {
+                ["Living room", "Studio", "Quiet corner"]
+                    .iter()
+                    .all(|name| {
+                        rooms
+                            .iter()
+                            .any(|room| room["name"] == *name && room["available"] == true)
+                    })
+            })
+    };
+    if !seeded(&welcome) {
+        next_event(&mut owner, seeded).await;
+    }
     let changed = request(
         &mut owner,
         json!({

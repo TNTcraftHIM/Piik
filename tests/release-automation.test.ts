@@ -204,6 +204,7 @@ describe("release automation", () => {
         "scripts/build-website.mjs", "scripts/check-docs.mjs", "scripts/check-container.mjs", "scripts/markdown-slug.mjs", "scripts/release-notes.mjs",
         "scripts/publish-container.mjs",
         "scripts/browser-gate-harness.ts", "scripts/browser-local-pool-probe.ts",
+        "scripts/network-lab.ts", "scripts/media-gate-geometry.ts",
         "scripts/network-lab/network.ts", "scripts/network-lab/udp.ts", "scripts/network-lab/packets.ts",
         "tests/room.test.ts", ".agents/skills/ponytail/SKILL.md", ".github/workflows/website.yml",
         ".github/workflows/atomgit-mirror.yml", ".github/workflows/gitee-mirror.yml", "mobile/README.md", "scripts/release-mirror-source.mjs"]) {

@@ -560,3 +560,68 @@ fn request_ownership_survives_retry_coalescing_and_late_adapter_results() {
     assert!(chunks.iter().any(|effect| matches!(effect, FileEffect::SendChunk { peer, request_id, .. } if *peer == id(2) && *request_id == b)));
     assert!(chunks.iter().any(|effect| matches!(effect, FileEffect::SendChunk { peer, request_id, .. } if *peer == id(3) && *request_id == sibling)));
 }
+
+#[test]
+fn busy_upstream_range_preserves_a_siblings_download() {
+    let mut network = Network::new();
+    network.fanout();
+    network.hold_write = Some(id(4));
+    network.start(4);
+    network.run();
+    // Advance the first receiver past the relay's cached first range.
+    for index in 0..2 {
+        let (node, key, offset, length) = network.pending_writes.pop().unwrap();
+        assert_eq!(offset, (index * FILE_RANGE_BYTES) as u64);
+        if index == 1 {
+            network.hold_read = Some(id(1));
+            network.hold_write = None;
+        }
+        let effects = network
+            .nodes
+            .get_mut(&node)
+            .unwrap()
+            .written(&key, offset, length);
+        network.push(node, effects);
+        network.run();
+    }
+    assert_eq!(network.pending_reads.len(), 1);
+    network.start(3);
+    let (from, FileEffect::SendControl { peer, control }) = network.queue.pop_front().unwrap()
+    else {
+        panic!("expected receiver pull");
+    };
+    let effects = network
+        .nodes
+        .get_mut(&peer)
+        .unwrap()
+        .control(from, control, 0);
+    let [FileEffect::SendControl {
+        peer: source,
+        control:
+            FileControl::Pull {
+                key,
+                request_id,
+                offset: 0,
+            },
+    }] = effects.as_slice()
+    else {
+        panic!("expected a distinct upstream pull for the first range");
+    };
+    let busy = FileControl::Error {
+        key: key.clone(),
+        request_id: *request_id,
+        code: "file_transfer_busy".into(),
+    };
+    let effects = network
+        .nodes
+        .get_mut(&peer)
+        .unwrap()
+        .control(*source, busy, 0);
+    network.push(peer, effects);
+    let (from, key, offset, request, length) = network.pending_reads.pop().unwrap();
+    network.read(from, key, offset, request, length);
+    network.run();
+    assert_eq!(network.failed, vec![(id(3), "file_transfer_busy".into())]);
+    assert_eq!(network.complete, vec![id(4)]);
+    assert_eq!(network.sinks[&id(4)], network.bytes);
+}

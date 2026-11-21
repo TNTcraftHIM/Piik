@@ -320,15 +320,22 @@ impl EncodingExecution {
 pub fn software_video_codecs() -> anyhow::Result<Vec<VideoCodec>> {
     #[cfg(all(feature = "capture", target_os = "windows"))]
     {
-        let mut codecs = vec![VideoCodec::Vp8];
-        if mf_software::available()? {
-            codecs.insert(0, VideoCodec::H264);
-        }
-        return Ok(codecs);
+        return Ok(windows_software_codecs(mf_software::available()));
     }
     #[cfg(not(all(feature = "capture", target_os = "windows")))]
     Ok(Vec::new())
 }
+
+#[cfg(all(feature = "capture", target_os = "windows"))]
+fn windows_software_codecs(h264: anyhow::Result<bool>) -> Vec<VideoCodec> {
+    match h264 {
+        Ok(true) => return vec![VideoCodec::H264, VideoCodec::Vp8],
+        Ok(false) => {}
+        Err(error) => log::warn!(target: "piik.capture", "Software H264 probe failed: {error}"),
+    }
+    vec![VideoCodec::Vp8]
+}
+
 impl VideoCodecMode {
     #[cfg(feature = "capture")]
     pub(crate) fn initial(self) -> VideoCodec {
@@ -472,6 +479,16 @@ impl Settings {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(all(feature = "capture", target_os = "windows"))]
+    #[test]
+    fn software_h264_probe_failure_preserves_vp8() {
+        use super::{windows_software_codecs, VideoCodec};
+        assert_eq!(
+            windows_software_codecs(Err(anyhow::anyhow!("MFT enumeration failed"))),
+            vec![VideoCodec::Vp8]
+        );
+    }
+
     #[test]
     fn audio_positions_keep_queue_loss_and_discontinuity_separate_from_capture_time() {
         let mut position = super::AudioPosition::default();

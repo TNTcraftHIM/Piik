@@ -68,7 +68,12 @@ export class PiikPromo extends HTMLElement {
     this.$('.pk-cover').onclick = event => { if (event.target === event.currentTarget) void this.play(); };
     this.$('.pk-pp').onclick = () => this.playing ? this.pause() : void this.play();
     this.$('.pk-snd').onclick = () => { this.muted = !this.muted; };
-    this.$('.pk-lang').onclick = () => this.setAttribute('lang', this.lang2() === 'zh' ? 'en' : 'zh');
+    this.$('.pk-lang').onclick = () => {
+      const lang = this.lang2() === 'zh' ? 'en' : 'zh-CN';
+      if (this.dispatchEvent(new CustomEvent('languagechange', { detail: lang, cancelable: true }))) {
+        this.setAttribute('lang', lang === 'zh-CN' ? 'zh' : 'en');
+      }
+    };
     this.$('.pk-track').oninput = event => this.seek(Number(event.target.value));
     this.$('.pk-fs').onclick = async () => {
       try {
@@ -109,7 +114,7 @@ export class PiikPromo extends HTMLElement {
     this.addEventListener('pointerleave', event => {
       if (event.pointerType !== 'touch') this.hideControls();
     }, options);
-    this._motion.addEventListener('change', () => { if (this._motion.matches) this.pause(); }, options);
+    this._motion.addEventListener('change', () => this.syncEndingMotion(), options);
     this._ro = new ResizeObserver(() => this.fit());
     this._ro.observe(this);
     // A player loads on entry and pauses on exit; resuming always belongs to the visitor.
@@ -150,6 +155,16 @@ export class PiikPromo extends HTMLElement {
   get duration() { return this.film?.duration || 0; }
   get currentTime() { return this.playing ? Math.min(this.duration, this.audio.currentTime) : this.t; }
   set currentTime(value) { this.seek(value); }
+  get reducedMotion() { return this._motion.matches || this._reducedMotion === true; }
+  set reducedMotion(value) {
+    this._reducedMotion = value;
+    this.syncEndingMotion();
+  }
+  syncEndingMotion() {
+    this.film?.stage.toggleAttribute('data-ending-idle',
+      this.hasAttribute('data-ended') && !this.playing && this.isConnected &&
+      this._inView && !document.hidden && !this.reducedMotion);
+  }
   get muted() { return this.audio.muted; }
   set muted(value) { this.audio.muted = !!value; this.sync(); }
   showControls() {
@@ -177,7 +192,7 @@ export class PiikPromo extends HTMLElement {
     const heldEnd = this.meta?.holdEnd && this.duration && this.t >= this.duration;
     this.toggleAttribute('data-ended', !!heldEnd);
     this.$('.pk-cover').hidden = this.playing || !!this._loading || heldEnd;
-    this.film?.stage.toggleAttribute('data-ending-idle', !!heldEnd && !this.playing && this.isConnected && this._inView && !document.hidden);
+    this.syncEndingMotion();
     this.$('.pk-track').disabled = !this.film;
     this.$('.pk-track').max = String(this.duration);
     this.$('.pk-track').value = String(this.currentTime);
@@ -263,7 +278,7 @@ export class PiikPromo extends HTMLElement {
     void loading.then(film => {
       if (!film || !current() || request !== this._request) return;
       if (resume) void this.play();
-      else if (position === null && this.hasAttribute('autoplay') && !this._motion.matches) { this.muted = true; void this.play(); }
+      else if (position === null && this.hasAttribute('autoplay') && !this.reducedMotion) { this.muted = true; void this.play(); }
     });
     return loading;
   }

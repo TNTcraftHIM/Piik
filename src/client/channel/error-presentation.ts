@@ -109,7 +109,8 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("watch.forward.readTimeout");
   if (error === "watch_source_already_active")
     return display("watch.forward.active");
-  if (error === "watch_peer_requires_secure_context" || error === "watch_peer_unavailable")
+  if (error === "watch_peer_unavailable") return display("watch.forward.failed");
+  if (error === "watch_peer_requires_secure_context")
     return display("watch.forward.secure");
   if (error === "watch_update_failed")
     return display("watch.updateFailed");

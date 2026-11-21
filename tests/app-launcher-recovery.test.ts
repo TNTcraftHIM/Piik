@@ -14,7 +14,7 @@ import { z } from "zod";
 import { SiteStartControls, type LocalCertificate } from "../src/client/components/living/LauncherForm";
 import { SiteManagement } from "../src/client/components/living/SiteManagement";
 import { Btn } from "../src/client/components/living/primitives";
-import { publicSiteOrigin, siteEntryOrigin, siteEntryURL } from "../src/client/lib/site-address";
+import { publicSiteOrigin, siteEntryURL } from "../src/client/lib/site-address";
 import { clientLaunchURL, readPreferredAppMode, savePreferredAppMode, type AppMode } from "../src/client/lib/app-launch";
 import { appUpdateSchema } from "../src/client/lib/use-app-update";
 import { currentLang, t } from "../src/client/ui/copy";
@@ -439,15 +439,14 @@ describe("App launcher state recovery", () => {
   });
 
   it("selects only an HTTP(S) origin for explicit approval, including pasted full URLs", () => {
-    expect(siteEntryOrigin(" PIIK.example:443 ")).toBe("https://piik.example");
-    expect(siteEntryOrigin("https://piik.example/r/1234?lang=en#v=private-invitation")).toBe("https://piik.example");
-    expect(siteEntryOrigin("https://example.com/my room?q=hello world")).toBe("https://example.com");
-    expect(siteEntryOrigin("http://127.0.0.1:8787/")).toBe("http://127.0.0.1:8787");
-    expect(siteEntryURL(" https://piik.example/r/1234?lang=en#v=private-invitation ")?.href)
+    expect(siteEntryURL(" PIIK.example:443 ")?.origin).toBe("https://piik.example");
+    expect(siteEntryURL("https://piik.example/r/1234?lang=en#v=private-invitation")?.origin).toBe("https://piik.example");
+    expect(siteEntryURL("https://example.com/my room?q=hello world")?.origin).toBe("https://example.com");
+    expect(siteEntryURL("http://127.0.0.1:8787/")?.origin).toBe("http://127.0.0.1:8787");
+    expect(siteEntryURL(" HTTPS://piik.example/r/1234?lang=en#v=private-invitation ")?.href)
       .toBe("https://piik.example/r/1234?lang=en#v=private-invitation");
     expect(siteEntryURL(" PIIK.example:443 ")?.href).toBe("https://piik.example/");
-    for (const invalid of ["", "https://user:password@piik.example", "javascript:alert(1)", "file:///local", "https://", "not a site"]) {
-      expect(siteEntryOrigin(invalid)).toBeNull();
+    for (const invalid of ["", "https://user:password@piik.example", "javascript:alert(1)", "mailto:person@example.com", "file:///local", "https://", "not a site"]) {
       expect(siteEntryURL(invalid)).toBeNull();
     }
   });

@@ -104,6 +104,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const live = player.mediaState?.live;
   const media = player.video && !live ? htmlMedia : { position: player.mediaState?.position ?? 0, duration: player.mediaState?.duration ?? 0,
     rate: player.mediaState?.rate ?? 1, volume: htmlMedia.volume, muted: htmlMedia.muted };
+  const silent = media.muted || media.volume === 0;
   const seekStart = live?.seekable[0]?.[0] ?? 0, seekEnd = live?.seekable.at(-1)?.[1] ?? media.duration;
   const [seekPreview, setSeekPreview] = useState<number | null>(null);
   const draggingSeek = useRef(false);
@@ -231,8 +232,8 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       {!embedded && localControls && <span className="lr-viewer-action-separator" aria-hidden="true" />}
       {localControls && <div className="c3-watch-local">
         {player.video && audioAvailable ? <>
-          <Btn icon={media.muted || !media.volume ? "speakerOff" : "speaker"} quiet size="dense" title={media.muted ? "playback.unmute" : "playback.mute"}
-            onClick={() => { const video = player.video; if (!video) return; const silent = video.muted || !video.volume; if (silent && !video.volume) video.volume = 1; video.muted = !silent; }} />
+          <Btn icon={silent ? "speakerOff" : "speaker"} quiet size="dense" title={silent ? "playback.unmute" : "playback.mute"}
+            onClick={() => { const video = player.video; if (!video) return; if (video.volume === 0) video.volume = 1; video.muted = !silent; }} />
         <input className="c3-mini-volume" type="range" min={0} max={100} step={1} value={media.muted ? 0 : Math.round(media.volume * 100)}
           aria-label={t("playback.volumeBasic")} aria-valuetext={`${media.muted ? 0 : Math.round(media.volume * 100)}%`}
           onChange={event => { if (player.video) { player.video.volume = Number(event.target.value) / 100; player.video.muted = false; } }} />

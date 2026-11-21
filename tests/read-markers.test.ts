@@ -56,3 +56,25 @@ test.each([100, { seq: 100, binding: "old" }])("offline restore preserves unread
   expect(tab.project("site", "reader", projected(21, "new")).room).toBe(20);
   expect(new RoomReadMarkers().project("site", "reader", projected(24, "reconnected")).room).toBe(20);
 });
+
+test.each(["storage refresh", "new room"])("a failed write preserves local progress on %s", trigger => {
+  const room = { id: "room", authorized: true, available: true, lastMessageSeq: 12,
+    delivery: { bindingId: "bound", hostSessionId: "host", nextHops: {} } };
+  let diskSeq = 1;
+  vi.stubGlobal("localStorage", {
+    getItem: () => JSON.stringify({ room: { seq: diskSeq, binding: "bound" } }),
+    setItem: () => { throw new DOMException("Full", "QuotaExceededError"); },
+  });
+  const tab = new RoomReadMarkers();
+  expect(tab.project("site", "reader", [room]).room).toBe(1);
+  expect(tab.advance([room], "room", 7).room).toBe(7);
+  const result = trigger === "storage refresh" ? tab.refresh([room])
+    : tab.project("site", "reader", [room, { ...room, id: "second" }]);
+  expect(result.room).toBe(7);
+  diskSeq = 9;
+  expect(tab.refresh([room]).room).toBe(9);
+  const restored = { ...room, lastMessageSeq: 3, delivery: { ...room.delivery, bindingId: "restored" } };
+  expect(tab.project("site", "reader", [restored]).room).toBe(3);
+  diskSeq = 2;
+  expect(tab.project("site", "other-reader", [room]).room).toBe(2);
+});

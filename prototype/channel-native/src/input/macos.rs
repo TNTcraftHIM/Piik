@@ -35,7 +35,7 @@ impl Sink for System {
     fn authorize(&mut self) -> Result<()> {
         ensure!(
             CGPreflightPostEventAccess() || CGRequestPostEventAccess(),
-            "remote input requires macOS Accessibility permission"
+            "input_permission_required"
         );
         Ok(())
     }
@@ -381,10 +381,7 @@ pub(super) struct Shortcut {
 }
 impl Shortcut {
     pub fn new(key: u8) -> Result<Self> {
-        ensure!(
-            CGPreflightPostEventAccess(),
-            "remote input requires macOS Accessibility permission"
-        );
+        ensure!(CGPreflightPostEventAccess(), "input_permission_required");
         Ok(Self { key, held: false })
     }
     pub fn pressed(&mut self) -> bool {

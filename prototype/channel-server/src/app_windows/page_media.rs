@@ -116,6 +116,7 @@ impl Media {
             .retain(|frame, state| *frame != id && !state.ancestors.contains(&id));
     }
     fn observe_response(&mut self, url: String, fact: ResponseFact) -> bool {
+        self.redirects.retain(|(old, _)| old != &url);
         self.observed.retain(|(old, _)| old != &url);
         if self.observed.len() >= 128 {
             // HLS roots remain useful after their disposable segments have been read.
@@ -124,7 +125,7 @@ impl Media {
                 .iter()
                 .position(|(_, fact)| fact.0 != Format::Hls)
             else {
-                return false;
+                return self.match_frames();
             };
             self.observed.remove(index);
         }
@@ -132,6 +133,7 @@ impl Media {
         self.match_frames()
     }
     fn observe_redirect(&mut self, url: String, target: String) -> bool {
+        self.observed.retain(|(old, _)| old != &url);
         self.redirects.retain(|(old, _)| old != &url);
         if self.redirects.len() >= 128 {
             let Some(index) = self
@@ -139,7 +141,7 @@ impl Media {
                 .iter()
                 .position(|(url, _)| !self.is_playlist(url))
             else {
-                return false;
+                return self.match_frames();
             };
             self.redirects.remove(index);
         }
@@ -153,7 +155,9 @@ impl Media {
     fn match_frames(&mut self) -> bool {
         let mut frames = std::mem::take(&mut self.frames);
         for frame in frames.values_mut() {
-            frame.resources.retain(|url| self.response(url).is_some());
+            frame.resources.retain(|url| {
+                self.response(url).is_some() || self.redirects.iter().any(|(alias, _)| alias == url)
+            });
             let mut unmatched = VecDeque::new();
             for url in frame.pending.drain(..) {
                 if self.response(&url).is_none() {
@@ -392,7 +396,11 @@ mod tests {
             referer: Some("https://page.test/".parse().unwrap()),
             user_agent: Some("Owned browser".parse().unwrap()),
         });
+        let direct = (Format::File, Some(500), "video/mp4".to_owned(), None);
+        media.observe_response(alias.into(), direct.clone());
+        media.frame(frame, vec![], vec![alias.into()]);
         media.observe_redirect(alias.into(), final_url.into());
+        assert!(media.response(alias).is_none());
         media.observe_response(
             final_url.into(),
             (
@@ -402,7 +410,7 @@ mod tests {
                 Some(request.clone()),
             ),
         );
-        media.frame(frame, vec![], vec![alias.into()]);
+
         let value = media.sources(frame, alias);
         let id = Uuid::parse_str(value["choices"][0]["id"].as_str().unwrap()).unwrap();
         let choice = media.choice(id, false).unwrap();
@@ -415,6 +423,15 @@ mod tests {
         assert_eq!(value["indexedCandidates"][0]["hostname"], "cdn.test");
         assert!(!value.to_string().contains("grant=private"));
         assert!(!value.to_string().contains("Owned browser"));
+        assert_eq!(choice.size, Some(1000));
+        media.observe_response(alias.into(), direct);
+        let restored = media.sources(frame, alias);
+        let id = Uuid::parse_str(restored["choices"][0]["id"].as_str().unwrap()).unwrap();
+        let choice = media.choice(id, false).unwrap();
+        assert_eq!(choice.size, Some(500));
+        assert_eq!(choice.source_url(), alias);
+        assert!(choice.request.is_none());
+        assert!(!media.redirects.iter().any(|(old, _)| old == alias));
     }
 
     #[test]

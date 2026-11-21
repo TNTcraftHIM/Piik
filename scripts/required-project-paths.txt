@@ -53,7 +53,6 @@ scripts/assemble-app.mjs
 scripts/app-icons.mjs
 scripts/package-app-candidate.mjs
 cmd/piik-app/piik.ico
-cmd/piik-app/piik_windows_amd64.syso
 deploy/release-server.sh
 docs/adr/0001-p2p-first-media-topology.md
 docs/adr/0010-cross-platform-client-runtime.md

@@ -22,6 +22,7 @@ both lines.
 | Published 2.x routes, capacity, P2P/SFU transitions and route operations | [Routing and transport](./routing-transport.md) |
 | Published 2.x capture, encoders, media adaptation and audio | [Media quality](./media-quality.md) |
 | Published 2.x workflow, playback and Browser/App lifecycle | [Presentation and lifecycle](./presentation-lifecycle.md) |
+| 3.0 App and Server UI language selection and launcher handoff | [Presentation and lifecycle · Visual Language](./presentation-lifecycle.md#visual-language) |
 | Evidence behind each status, indicator, overlay and notice | [Media status](./media-status.md) |
 | Action ownership, grouping, layout, controls, cast, colour and motion | [Interface design and visual language](./visual-language.md#action-ownership-and-grouping) |
 | Website, README and introduction-film composition | [Public introduction](./public-introduction.md) |

@@ -441,6 +441,33 @@ test("media parse errors survive readiness and late error events, while retireme
   player.close();
 });
 
+test("a supported viewer rate restores alignment while a player failure survives the next anchor", async () => {
+  vi.useFakeTimers();
+  const state = { position: 0, paused: true, rate: 1, duration: 20, readyState: 4, ended: false, buffered: [] };
+  const read = vi.fn(async () => state), patch = vi.fn();
+  let emit!: (event: WatchMediaEvent) => void;
+  const player = new WatchPlayer("room", false, { read, patch, playbackRates: () => [1],
+    ready: vi.fn(), listen: listener => { emit = listener; return () => {}; }, close: vi.fn() }, vi.fn());
+  const anchor = async (rate: number, position = 0) => {
+    player.update({ timeline: "media", position, paused: true, rate, anchorTime: 0 });
+    await player.serialize(async () => {});
+  };
+  try {
+    player.calibrate(0, 0, 0);
+    await anchor(1.5);
+    expect(player.error).toBe("watch_media_unsupported");
+    await anchor(1, 4);
+    expect(player.error).toBeNull();
+    expect(patch).toHaveBeenCalledWith({ position: 4 });
+    await anchor(1.5);
+    read.mockRejectedValueOnce(new Error("watch_media_unsupported"));
+    emit("error");
+    await vi.advanceTimersByTimeAsync(0);
+    await anchor(1);
+    expect(player.error).toBe("watch_media_unsupported");
+  } finally { player.close(); }
+});
+
 test("a paused aligned viewer observes three idle ticks without writes or UI notifications", async () => {
   vi.useFakeTimers();
   const state = { position: 12, rate: 1, paused: true, duration: 60, ended: false, readyState: 4, buffered: [] };

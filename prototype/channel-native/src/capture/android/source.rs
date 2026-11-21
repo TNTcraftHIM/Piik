@@ -58,12 +58,12 @@ impl Capture {
             .spawn(move || {
                 let result = run(&projection, &worker, &rate);
                 worker.stop(result.as_ref().err().map(|e| format!("{e:#}")));
-                projection.stop();
-                let disposed = projection.with(|env, object| {
-                    env.call_method(object, jni_str!("dispose"), jni_sig!(() -> void), &[])?;
-                    Ok(())
-                });
-                result.and(disposed)
+                result.and(dispose(&projection))
+            })
+            .inspect_err(|_| {
+                if let Err(error) = dispose(&platform) {
+                    eprintln!("Android capture startup cleanup: {error:#}");
+                }
             })?;
         Ok(Self {
             frames,
@@ -118,6 +118,13 @@ impl Drop for Capture {
             eprintln!("Android capture cleanup: {e:#}");
         }
     }
+}
+
+fn dispose(platform: &Platform) -> Result<()> {
+    platform.with(|env, object| {
+        env.call_method(object, jni_str!("dispose"), jni_sig!(() -> void), &[])?;
+        Ok(())
+    })
 }
 
 fn run(platform: &Platform, frames: &Frames, fps: &AtomicU32) -> Result<()> {

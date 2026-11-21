@@ -331,7 +331,7 @@ impl FileDelivery {
                             .values()
                             .any(|range| range.supplier == Supplier::Peer(peer, request_id))
                 }) {
-                    self.fail(&key, &code)
+                    self.request_failed(&key, request_id, &code)
                 } else {
                     Vec::new()
                 }
@@ -477,15 +477,33 @@ impl FileDelivery {
         request_id: Uuid,
         code: &str,
     ) -> Vec<FileEffect> {
-        if self.files.get(key).is_some_and(|file| {
-            file.ranges.values().any(|range| {
-                matches!(range.supplier, Supplier::Local(id) | Supplier::Peer(_, id) if id == request_id)
-            })
-        }) {
-            self.fail(key, code)
-        } else {
-            Vec::new()
+        let Some(file) = self.files.get_mut(key) else {
+            return Vec::new();
+        };
+        let Some(offset) = file.ranges.iter().find_map(|(offset, range)| {
+            matches!(range.supplier, Supplier::Local(id) | Supplier::Peer(_, id) if id == request_id)
+                .then_some(*offset)
+        }) else { return Vec::new() };
+        if code != "file_transfer_busy" {
+            return self.fail(key, code);
         }
+        let range = file.ranges.remove(&offset).unwrap();
+        let mut effects = Vec::new();
+        for (peer, request) in range.consumers {
+            if let Some((peer, request_id)) = peer.zip(request) {
+                effects.push(FileEffect::SendControl {
+                    peer,
+                    control: FileControl::Error {
+                        key: key.clone(),
+                        request_id,
+                        code: code.into(),
+                    },
+                });
+            } else {
+                effects.extend(self.fail_local(key, code));
+            }
+        }
+        effects
     }
 
     pub fn peer_failed(

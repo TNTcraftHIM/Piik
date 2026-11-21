@@ -10,11 +10,6 @@ export function siteEntryURL(value: string): URL | null {
   } catch { return null; }
 }
 
-/** Saved addresses and App approval retain only the origin. */
-export function siteEntryOrigin(value: string): string | null {
-  return siteEntryURL(value)?.origin ?? null;
-}
-
 /** A configured public entry is a complete HTTPS site, not an invitation or subpath. */
 export function publicSiteOrigin(value: string): string | null {
   const url = siteEntryURL(value);

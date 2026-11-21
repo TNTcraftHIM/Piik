@@ -76,8 +76,7 @@ export function deriveVideoCodecEvidence(
       continue;
     }
     const key = segment.slice(0, separator).trim().toLowerCase();
-    const validator = rule.validators[key];
-    if (!validator) {
+    if (!Object.hasOwn(rule.validators, key)) {
       continue;
     }
     if (seenKeys.has(key)) {
@@ -86,7 +85,7 @@ export function deriveVideoCodecEvidence(
     }
     seenKeys.add(key);
     const value = segment.slice(separator + 1).trim().toLowerCase();
-    if (validator.test(value)) {
+    if (rule.validators[key]!.test(value)) {
       values.set(key, value);
     }
   }
