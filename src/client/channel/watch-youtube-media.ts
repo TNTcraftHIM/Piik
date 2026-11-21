@@ -116,11 +116,15 @@ export class YouTubeMedia implements WatchMedia {
     if (!this.mounted && this.element.isConnected) {
       this.mounted = this.mount();
       void this.mounted.catch(error => {
-        if (this.lifetime.signal.aborted) return;
-        this.failure = error instanceof Error ? error : new Error("watch_media_failed");
-        this.emit("error");
+        this.fail(error instanceof Error ? error : new Error("watch_media_failed"));
       });
     }
+  }
+
+  private fail(error: Error): void {
+    if (this.lifetime.signal.aborted || this.failure) return;
+    this.failure = error;
+    this.emit("error");
   }
 
   private async mount(): Promise<void> {
@@ -159,7 +163,9 @@ export class YouTubeMedia implements WatchMedia {
         onError: ({ data }) => {
           const code = data === 101 || data === 150 || data === 100 ? "watch_media_unavailable"
             : data === 2 ? "invalid_watch_url" : data === 5 ? "watch_media_unsupported" : "watch_media_failed";
-          this.failure = new Error(code); finish(this.failure); this.emit("error");
+          const error = new Error(code);
+          finish(error);
+          this.fail(error);
         },
       } });
     });

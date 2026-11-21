@@ -101,7 +101,8 @@ export function observeCompositedVideoFrame(
 
 function decodedFrameCount(video: VideoWithFrameCallback): number | null {
   if (typeof video.getVideoPlaybackQuality === "function") {
-    const count = video.getVideoPlaybackQuality().totalVideoFrames;
+    const { totalVideoFrames, droppedVideoFrames } = video.getVideoPlaybackQuality();
+    const count = totalVideoFrames - droppedVideoFrames;
     return Number.isFinite(count) ? count : null;
   }
   return typeof video.webkitDecodedFrameCount === "number" &&

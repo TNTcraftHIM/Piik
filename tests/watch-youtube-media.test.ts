@@ -74,10 +74,19 @@ test('cancel before SDK completion never creates a late iframe',async()=>{
   expect(players).toHaveLength(0);
 });
 
-test('embed denial rejects preparation rather than replacing the old source',async()=>{
-  const {media,mount}=await setup();await mount();const prepared=media.ready(new AbortController().signal);
-  players[0].fire('onError',150);await expect(prepared).rejects.toThrow('watch_media_unavailable');
-  await expect(media.read()).rejects.toThrow('watch_media_unavailable');media.close();
+test.each([false, true])('embed denial rejects preparation and reports the failure once (API ready: %s)', async apiReady => {
+  const { media, mount } = await setup();
+  await mount();
+  const failed = vi.fn();
+  media.listen(event => { if (event === 'error') failed(); });
+  const prepared = media.ready(new AbortController().signal);
+  try {
+    if (apiReady) players[0].fire('onReady');
+    players[0].fire('onError', 150);
+    await expect(prepared).rejects.toThrow('watch_media_unavailable');
+    await expect(media.read()).rejects.toThrow('watch_media_unavailable');
+    expect(failed).toHaveBeenCalledOnce();
+  } finally { media.close(); }
 });
 
 test('confirmed commands report real state, unsupported rates fail, hiding pauses only this player',async()=>{

@@ -6,8 +6,9 @@ interface FakeVideo extends EventTarget {
   srcObject: MediaStream | null;
   readyState: number;
   currentTime: number;
-  decodedFrames: number;
-  getVideoPlaybackQuality?: () => { totalVideoFrames: number };
+  totalFrames: number;
+  droppedFrames: number;
+  getVideoPlaybackQuality?: () => { totalVideoFrames: number; droppedVideoFrames: number };
   requestVideoFrameCallback?: (callback: () => void) => number;
   cancelVideoFrameCallback?: (handle: number) => void;
 }
@@ -17,9 +18,11 @@ function fakeVideo(stream: MediaStream | null): FakeVideo {
   video.srcObject = stream;
   video.readyState = 0;
   video.currentTime = 0;
-  video.decodedFrames = 0;
+  video.totalFrames = 0;
+  video.droppedFrames = 0;
   video.getVideoPlaybackQuality = () => ({
-    totalVideoFrames: video.decodedFrames,
+    totalVideoFrames: video.totalFrames,
+    droppedVideoFrames: video.droppedFrames,
   });
   return video;
 }
@@ -30,7 +33,7 @@ describe("composited video frame proof", () => {
     video.requestVideoFrameCallback = callback => { callbacks.push(callback); return callbacks.length; };
     video.cancelVideoFrameCallback = vi.fn();
     const shown = vi.fn(), stop = observeCompositedVideoFrame(video as unknown as HTMLVideoElement, null, shown);
-    video.readyState = 1; video.decodedFrames = 24;
+    video.readyState = 1; video.totalFrames = 24;
     callbacks[0]!();
     expect(shown).not.toHaveBeenCalled();
     video.readyState = 4;
@@ -55,10 +58,23 @@ describe("composited video frame proof", () => {
     expect(shown).not.toHaveBeenCalled(); stop();
   });
 
-  it("accepts a preloaded paused URL picture in the decoded-counter fallback", () => {
-    const video = fakeVideo(null); video.readyState = 2; video.decodedFrames = 1;
+  it("accepts a preloaded paused URL picture in the frame-counter fallback", () => {
+    const video = fakeVideo(null); video.readyState = 2; video.totalFrames = 1;
     const frame = vi.fn(), cancel = observeCompositedVideoFrame(video as unknown as HTMLVideoElement, null, frame);
     expect(frame).toHaveBeenCalledOnce(); cancel();
+  });
+  it("waits when every frame of a preloaded URL video was dropped", () => {
+    const video = fakeVideo(null);
+    video.readyState = 4;
+    video.totalFrames = 2;
+    video.droppedFrames = 2;
+    const shown = vi.fn();
+    const cancel = observeCompositedVideoFrame(video as unknown as HTMLVideoElement, null, shown);
+    expect(shown).not.toHaveBeenCalled();
+    video.totalFrames++;
+    video.dispatchEvent(new Event("timeupdate"));
+    expect(shown).toHaveBeenCalledOnce();
+    cancel();
   });
   it("observes a URL player's first composed frame and cancellation retires the observation", () => {
     const video = fakeVideo(null);
@@ -124,7 +140,7 @@ describe("composited video frame proof", () => {
     cancel();
   });
 
-  it("uses decoded progress plus readiness in the event fallback", () => {
+  it("uses displayed frame progress plus readiness in the event fallback", () => {
     const stream = {} as MediaStream;
     const video = fakeVideo(stream);
     const onFrame = vi.fn();
@@ -138,17 +154,17 @@ describe("composited video frame proof", () => {
     video.dispatchEvent(new Event("playing"));
     expect(onFrame).not.toHaveBeenCalled();
 
-    video.decodedFrames = 1;
+    video.totalFrames = 1;
     video.dispatchEvent(new Event("timeupdate"));
     expect(onFrame).toHaveBeenCalledOnce();
 
-    video.decodedFrames = 2;
+    video.totalFrames = 2;
     video.dispatchEvent(new Event("timeupdate"));
     expect(onFrame).toHaveBeenCalledOnce();
     cancel();
   });
 
-  it("does not substitute media time for an available decoded-frame count", () => {
+  it("does not substitute media time for an available frame count", () => {
     const stream = {} as MediaStream;
     const video = fakeVideo(stream);
     const onFrame = vi.fn();
@@ -165,7 +181,7 @@ describe("composited video frame proof", () => {
     cancel();
   });
 
-  it("uses media time only when decoded-frame count is unavailable", () => {
+  it("uses media time only when frame counts are unavailable", () => {
     const stream = {} as MediaStream;
     const video = fakeVideo(stream);
     delete video.getVideoPlaybackQuality;
