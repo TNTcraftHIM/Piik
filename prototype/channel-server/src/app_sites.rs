@@ -176,9 +176,18 @@ impl Sites {
         )?;
         Ok(())
     }
-    pub fn approve(&mut self, site: &str, allowed: bool) -> Result<Uuid> {
+    pub fn approve(
+        &mut self,
+        site: &str,
+        allowed: bool,
+        current_invitation: bool,
+    ) -> Result<Uuid> {
         let clear_startup = !allowed
-            && matches!(self.startup()?, StartupIntent::External(origin) if origin == site);
+            && match self.startup()? {
+                StartupIntent::External(origin) => origin == site,
+                StartupIntent::Owned(_) => current_invitation,
+                StartupIntent::None => false,
+            };
         let transaction = self.0.transaction()?;
         let previous: Option<String> = transaction
             .query_row(
@@ -226,7 +235,7 @@ mod tests {
             assert!(sites.save_bookmark(&bookmark)?);
             assert!(sites.approved()?.is_empty());
             assert!(matches!(sites.startup()?, StartupIntent::None));
-            let namespace = sites.approve(site, true)?;
+            let namespace = sites.approve(site, true, false)?;
             sites.set_startup(&StartupIntent::External(site.into()))?;
             namespace
         };
@@ -255,7 +264,7 @@ mod tests {
         let directory = std::env::temp_dir().join(format!("piik-site-consent-{}", Uuid::new_v4()));
         let mut sites = Sites::open(&directory)?;
         let site = "https://channel.example";
-        let namespace = sites.approve(site, true)?;
+        let namespace = sites.approve(site, true, false)?;
         sites
             .0
             .execute("UPDATE app_site SET allowed=1 WHERE origin=?1", [site])?;
@@ -263,13 +272,13 @@ mod tests {
         assert!(sites
             .set_startup(&StartupIntent::External(site.into()))
             .is_err());
-        assert_eq!(sites.approve(site, true)?, namespace);
+        assert_eq!(sites.approve(site, true, false)?, namespace);
         assert_eq!(sites.approved()?.get(site), Some(&namespace));
         sites.set_startup(&StartupIntent::External(site.into()))?;
-        sites.approve(site, false)?;
+        sites.approve(site, false, false)?;
         assert!(sites.approved()?.is_empty());
         assert!(matches!(sites.startup()?, StartupIntent::None));
-        assert_eq!(sites.approve(site, true)?, namespace);
+        assert_eq!(sites.approve(site, true, false)?, namespace);
         drop(sites);
         std::fs::remove_dir_all(directory)?;
         Ok(())
@@ -285,7 +294,7 @@ mod tests {
         let site = "https://channel.example";
         let (namespace, identity) = {
             let mut sites = Sites::open(&directory)?;
-            let namespace = sites.approve(site, true)?;
+            let namespace = sites.approve(site, true, false)?;
             sites.set_startup(&StartupIntent::External(site.into()))?;
             let saved: String = sites.0.query_row(
                 "SELECT value FROM app_setting WHERE key='startup'",

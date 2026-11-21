@@ -1025,24 +1025,13 @@ async fn approve(State(app): State<Arc<App>>, Json(change): Json<Approval>) -> A
             Json(launcher_state(&registry, app.port).map_err(operation_failure)?),
         ));
     }
-    if !change.allowed
-        && registry
-            .local
-            .as_ref()
-            .is_some_and(|local| local.invitation == site)
-        && matches!(
-            registry.sites.startup().map_err(operation_failure)?,
-            sites::StartupIntent::Owned(_)
-        )
-    {
-        registry
-            .sites
-            .set_startup(&sites::StartupIntent::None)
-            .map_err(operation_failure)?;
-    }
+    let current_invitation = registry
+        .local
+        .as_ref()
+        .is_some_and(|local| local.invitation == site);
     let id = registry
         .sites
-        .approve(&site, change.allowed)
+        .approve(&site, change.allowed, current_invitation)
         .map_err(operation_failure)?;
     if change.allowed {
         registry
@@ -3329,7 +3318,7 @@ mod lifecycle_tests {
         let user = Uuid::new_v4();
         let session = Uuid::new_v4();
         let mut sites = sites::Sites::open(dir.path()).unwrap();
-        let permission = Arc::new(Permission::new(sites.approve(&site, true).unwrap()));
+        let permission = Arc::new(Permission::new(sites.approve(&site, true, false).unwrap()));
         let (commands, mut inputs) = mpsc::channel(8);
         let (stop, mut stopped) = watch::channel(false);
         let (registered, mut registrations) = mpsc::unbounded_channel();
@@ -3560,7 +3549,7 @@ mod lifecycle_tests {
         let local = format!("http://{address}");
         let remote = "https://friend.example";
         let mut sites = sites::Sites::open(directory.path()).unwrap();
-        let permission = Arc::new(Permission::new(sites.approve(remote, true).unwrap()));
+        let permission = Arc::new(Permission::new(sites.approve(remote, true, false).unwrap()));
         sites
             .set_startup(&sites::StartupIntent::External(remote.into()))
             .unwrap();
@@ -3993,8 +3982,10 @@ mod lifecycle_tests {
         let app = |invitation: &str| {
             let mut sites = sites::Sites::open(directory.path()).unwrap();
             let permission = Arc::new(Permission::new(Uuid::new_v4()));
+            let mut approvals = BTreeMap::new();
             for site in [old, fresh, external] {
-                sites.approve(site, true).unwrap();
+                let id = sites.approve(site, true, false).unwrap();
+                approvals.insert(site.into(), Arc::new(Permission::new(id)));
             }
             Arc::new(App {
                 config: Config {
@@ -4013,10 +4004,7 @@ mod lifecycle_tests {
                 token: "test".into(),
                 registry: Mutex::new(Registry {
                     sites,
-                    approvals: [old, fresh, external]
-                        .into_iter()
-                        .map(|site| (site.into(), permission.clone()))
-                        .collect(),
+                    approvals,
                     hosts: BTreeMap::new(),
                     local: Some(LocalSite {
                         origin: "http://127.0.0.1:8787".into(),
@@ -4081,16 +4069,45 @@ mod lifecycle_tests {
         )
         .await
         .unwrap();
-        let cleared = approve(
-            State(restarted),
+        let db = rusqlite::Connection::open(directory.path().join("app.sqlite")).unwrap();
+        db.execute_batch(
+            "CREATE TRIGGER reject_revoke BEFORE UPDATE OF allowed ON app_site
+             WHEN NEW.allowed = 0 BEGIN SELECT RAISE(ABORT, 'revoke failed'); END;",
+        )
+        .unwrap();
+        let revoke = || {
             Json(Approval {
                 site: fresh.into(),
                 allowed: false,
-            }),
-        )
-        .await
-        .unwrap()
-        .0;
+            })
+        };
+        let error = approve(State(restarted.clone()), revoke())
+            .await
+            .unwrap_err();
+        assert_eq!(error.0, StatusCode::INTERNAL_SERVER_ERROR);
+        let permission = restarted
+            .registry
+            .lock()
+            .await
+            .permission(fresh)
+            .unwrap()
+            .clone();
+        assert!(!*permission.revoked.borrow());
+        let disk = sites::Sites::open(directory.path()).unwrap();
+        assert!(disk.approved().unwrap().contains_key(fresh));
+        assert!(matches!(
+            disk.startup().unwrap(),
+            sites::StartupIntent::Owned(_)
+        ));
+
+        db.execute_batch("DROP TRIGGER reject_revoke").unwrap();
+        let cleared = approve(State(restarted), revoke()).await.unwrap().0;
+        assert!(*permission.revoked.borrow());
+        assert!(!disk.approved().unwrap().contains_key(fresh));
+        assert!(matches!(
+            disk.startup().unwrap(),
+            sites::StartupIntent::None
+        ));
         assert_eq!(cleared["startupSite"], "");
         assert!(cleared["startupMode"].is_null());
     }
@@ -4166,7 +4183,7 @@ mod lifecycle_tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let mut sites = sites::Sites::open(directory.path()).unwrap();
-        let permission = Arc::new(Permission::new(sites.approve(&site, true).unwrap()));
+        let permission = Arc::new(Permission::new(sites.approve(&site, true, false).unwrap()));
         let first_key = (site.clone(), Uuid::from_u128(1), Uuid::from_u128(1));
         let second_key = (site.clone(), Uuid::from_u128(2), Uuid::from_u128(2));
         let (release, wait_release) = oneshot::channel();
