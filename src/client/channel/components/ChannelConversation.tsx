@@ -168,13 +168,19 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
   const [mentionLoading, setMentionLoading] = useState(false), [mentionFailed, setMentionFailed] = useState(false);
   const mentionRequest = useRef<AbortController | null>(null);
   const [mentionRetry, setMentionRetry] = useState(0);
-  const localCandidates = query ? matchingMentionUsers(users, query.query) : [];
-  const matchingIds = [...new Set([...localCandidates.map(user => user.id), ...(mentionPage.query === queryText ? mentionPage.ids : [])])];
-  const candidates = matchingMentionUsers(matchingIds.flatMap(id => {
-    const summary = users.find(user => user.id === id), profile = profiles.get(id);
-    return summary ? [{ ...summary, avatar: summary.version === profile?.version ? profile.avatar : null }]
-      : profile ? [profile] : [];
-  }), query?.query ?? "");
+  const candidates = useMemo(() => {
+    if (queryText === null) return [];
+    const localCandidates = matchingMentionUsers(users, queryText);
+    const matchingIds = new Set(localCandidates.map(user => user.id));
+    if (mentionPage.query === queryText) {
+      for (const id of mentionPage.ids) matchingIds.add(id);
+    }
+    return matchingMentionUsers([...matchingIds].flatMap(id => {
+      const summary = users.find(user => user.id === id), profile = profiles.get(id);
+      return summary ? [{ ...summary, avatar: summary.version === profile?.version ? profile.avatar : null }]
+        : profile ? [profile] : [];
+    }), queryText);
+  }, [users, profiles, queryText, mentionPage]);
   const moreMentions = mentionPage.query === queryText && mentionPage.next !== null;
   async function loadMentions(after?: string) {
     if (queryText === null) return;
