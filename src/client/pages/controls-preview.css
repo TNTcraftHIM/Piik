@@ -56,6 +56,7 @@
 .cp-permission-caption { color: var(--muted); font-size: 12px; }
 @media (max-width: 620px) { .cp-permission-flow { grid-template-columns: 1fr; } }
 
+body:has(.cp-guide-stage) { transition: none; }
 .cp-guide-stage { min-height: 0; margin: 24px auto; width: min(820px, 100%); padding: 18px; }
 .cp-guide-stage:has([data-guide-capture]) { width: fit-content; max-width: 100%; padding: 0; }
 .cp-guide-stage[data-guide-scene^="share-source"] .lr-tv-screen { min-height: 500px; }

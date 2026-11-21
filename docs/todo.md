@@ -95,6 +95,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Held By Owner
 
+- [ ] **2.x maintenance release review.** After owner review of the touch sticks
+  and remote keyboard, run end-to-end acceptance of the candidate against the
+  complete change set since `v2.7.0`.
 - [ ] **iOS native App.** Paused in favor of Browser use. Preserve the isolated
   implementation on `feat/ios-client`; native development and publication stay
   outside the current phase.
