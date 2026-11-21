@@ -2280,14 +2280,16 @@ test("a silent source request times out and a late reply cannot replace its refr
     expect(session.getSnapshot().appConnected).toBe(true);
     expect(app.sent.at(-1)?.id).toBe(first.id);
     const refresh = session.nativeSources();
+    const audioApplications = session.nativeSources();
     await vi.advanceTimersByTimeAsync(0);
+    expect(app.sent.filter(command => command.type === "targets")).toHaveLength(2);
     const second = app.sent.at(-1)!;
     expect(second.type).toBe("targets");
     expect(second.id).not.toBe(first.id);
     const catalog = { sources: [{ kind: "display", sourceId: "1", title: "Fixture display" }], codecs: ["h264"],
       softwareEncodingCodecs: [], videoAdaptation: false, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false };
     app.receive({ id: second.id, result: catalog });
-    await expect(refresh).resolves.toEqual(catalog);
+    await expect(Promise.all([refresh, audioApplications])).resolves.toEqual([catalog, catalog]);
     app.receive({ id: first.id, result: null });
     expect(session.getSnapshot().appConnected).toBe(true);
   } finally { session.close(); }

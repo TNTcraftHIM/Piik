@@ -643,7 +643,7 @@ impl Connection {
         if let Operation::PagePatch { patch, .. } = &operation {
             patch.validate()?;
         }
-        let (reply, result) = oneshot::channel();
+        let (reply, mut result) = oneshot::channel();
         if !dispatch(Command::Request {
             owner: self.owner,
             operation,
@@ -652,11 +652,15 @@ impl Connection {
         }) {
             bail!("page_player_unavailable");
         }
-        tokio::time::timeout(Duration::from_secs(5), result)
-            .await
-            .map_err(|_| anyhow!("page_player_timeout"))?
-            .map_err(|_| anyhow!("page_player_closed"))?
-            .map_err(anyhow::Error::msg)
+        let response = match tokio::time::timeout(Duration::from_secs(5), &mut result).await {
+            Ok(reply) => reply.map_err(|_| anyhow!("page_player_closed"))?,
+            Err(_) => {
+                // A UI reply can win the send while the timer wins the poll.
+                result.close();
+                result.try_recv().map_err(|_| anyhow!("page_player_timeout"))?
+            }
+        };
+        response.map_err(anyhow::Error::msg)
     }
 }
 impl Drop for Connection {

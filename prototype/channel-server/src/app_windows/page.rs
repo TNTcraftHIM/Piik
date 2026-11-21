@@ -593,16 +593,16 @@ impl Pages {
             }
             return;
         };
-        if reply.is_closed() {
+        if reply.is_closed() && !matches!(operation, Operation::PageClose { .. }) {
             return;
         }
         if let Operation::PagePrepare { page_id, url } = operation {
-            let result = self.prepare(owner, page_id, url, outgoing, target, events);
-            let _ = reply.send(
-                result
-                    .map(|()| json!({"pageId":page_id}))
-                    .map_err(|error| error.to_string()),
-            );
+            match self.prepare(owner, page_id, url, outgoing, target, events) {
+                Ok(page) => self.publish(page, reply),
+                Err(error) => {
+                    let _ = reply.send(Err(error.to_string()));
+                }
+            }
             return;
         }
         let id = match &operation {
@@ -703,6 +703,11 @@ impl Pages {
             _ => unreachable!(),
         }
     }
+    fn publish(&mut self, page: Page, reply: Reply) {
+        if reply.send(Ok(json!({"pageId":page.id}))).is_ok() {
+            self.pages.insert(page.root, page);
+        }
+    }
     fn prepare(
         &mut self,
         owner: Uuid,
@@ -711,7 +716,7 @@ impl Pages {
         outgoing: page::Events,
         target: &EventLoopWindowTarget<ServiceEvent>,
         events: EventLoopProxy<ServiceEvent>,
-    ) -> Result<()> {
+    ) -> Result<Page> {
         if !page::valid_url(&url) {
             bail!("invalid_watch_url");
         }
@@ -736,21 +741,17 @@ impl Pages {
         media::observe(&view.view, view.media.clone(), id, outgoing.clone())?;
         view.view.load_url(&url)?;
         views.borrow_mut().insert(key, view);
-        self.pages.insert(
-            key,
-            Page {
-                root: key,
-                views,
-                owner,
-                origin: outgoing.origin.clone(),
-                id,
-                events: outgoing,
-                candidates: BTreeMap::new(),
-                selected: None,
-                pending: BTreeMap::new(),
-            },
-        );
-        Ok(())
+        Ok(Page {
+            root: key,
+            views,
+            owner,
+            origin: outgoing.origin.clone(),
+            id,
+            events: outgoing,
+            candidates: BTreeMap::new(),
+            selected: None,
+            pending: BTreeMap::new(),
+        })
     }
     pub fn message(&mut self, view_key: Uuid, body: &str) {
         let Ok(message) = serde_json::from_str::<Message>(body) else {
@@ -1087,6 +1088,141 @@ fn website_permissions(view: &WebView) -> Result<()> {
         )?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+#[tokio::test]
+#[ignore = "opens a WebView2 window on an interactive Windows desktop"]
+async fn cancelled_prepare_and_queued_close_release_native_windows() {
+    use std::{
+        collections::HashSet,
+        sync::Arc,
+        time::{Duration, Instant},
+    };
+    use tao::{
+        event::{Event, WindowEvent},
+        event_loop::{ControlFlow, EventLoopBuilder},
+        platform::{run_return::EventLoopExtRunReturn, windows::EventLoopBuilderExtWindows},
+    };
+    use tokio::sync::mpsc;
+    use webview2_com::{
+        BrowserProcessExitedEventHandler,
+        Microsoft::Web::WebView2::Win32::ICoreWebView2Environment5,
+    };
+
+    let profile = tempfile::Builder::new()
+        .prefix("piik-page-lifetime-")
+        .tempdir()
+        .unwrap();
+    let mut target = EventLoopBuilder::<ServiceEvent>::with_user_event()
+        .with_any_thread(true)
+        .build();
+    let mut pages = Pages::new(profile.path().to_owned());
+    // Only the packaged App binary links the Windows icon resource.
+    super::APP_ICON.with(|icon| {
+        *icon.borrow_mut() = Some(tao::window::Icon::from_rgba(vec![0; 4], 1, 1).unwrap());
+    });
+    let (dispatch, mut commands) = mpsc::unbounded_channel();
+    let (outgoing, mut events) = mpsc::channel(8);
+    let connection = page::Connection::new(
+        Some(Arc::new(move |cmd| dispatch.send(cmd).is_ok())),
+        outgoing,
+    );
+    let page_id = Uuid::new_v4();
+    let prepare = Operation::PagePrepare {
+        page_id,
+        url: "http://127.0.0.1:1/".into(),
+    };
+
+    let mut pending = Box::pin(connection.request(prepare.clone()));
+    assert!(futures_util::poll!(&mut pending).is_pending());
+    let Command::Request {
+        owner,
+        operation: Operation::PagePrepare { url, .. },
+        events: outgoing,
+        reply,
+    } = commands.try_recv().unwrap()
+    else {
+        panic!("expected prepare")
+    };
+    let window = pages
+        .prepare(
+            owner,
+            page_id,
+            url,
+            outgoing,
+            &target,
+            target.create_proxy(),
+        )
+        .unwrap();
+    let mut windows = HashSet::from([window.views.borrow()[&window.root].window.id()]);
+    assert_eq!(
+        pending.await.unwrap_err().to_string(),
+        "page_player_timeout"
+    );
+    pages.publish(window, reply);
+    assert!(pages.pages.is_empty());
+    assert_eq!(events.try_recv().unwrap()["type"], "page_closed");
+
+    let mut retry = Box::pin(connection.request(prepare));
+    assert!(futures_util::poll!(&mut retry).is_pending());
+    pages.operation(commands.try_recv().unwrap(), &target, target.create_proxy());
+    assert_eq!(retry.await.unwrap()["pageId"], json!(page_id));
+    assert_eq!(pages.pages.len(), 1);
+    let reopened = pages.pages.values().next().unwrap();
+    windows.insert(reopened.views.borrow()[&reopened.root].window.id());
+    let environment = reopened.views.borrow()[&reopened.root]
+        .view
+        .environment()
+        .cast::<ICoreWebView2Environment5>()
+        .unwrap();
+    let browser_exited = Rc::new(std::cell::Cell::new(false));
+    let exited = browser_exited.clone();
+    unsafe {
+        environment
+            .add_BrowserProcessExited(
+                &BrowserProcessExitedEventHandler::create(Box::new(move |_, _| {
+                    exited.set(true);
+                    Ok(())
+                })),
+                &mut 0,
+            )
+            .unwrap();
+    }
+
+    let mut close = Box::pin(connection.request(Operation::PageClose { page_id }));
+    assert!(futures_util::poll!(&mut close).is_pending());
+    assert_eq!(close.await.unwrap_err().to_string(), "page_player_timeout");
+    pages.operation(commands.try_recv().unwrap(), &target, target.create_proxy());
+    assert!(pages.pages.is_empty());
+    assert_eq!(events.try_recv().unwrap()["type"], "page_closed");
+    drop(pages);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    target.run_return(|event, _, flow| {
+        if let Event::WindowEvent {
+            event: WindowEvent::Destroyed,
+            window_id,
+            ..
+        } = event
+        {
+            windows.remove(&window_id);
+        }
+        *flow = if (windows.is_empty() && browser_exited.get()) || Instant::now() >= deadline {
+            ControlFlow::Exit
+        } else {
+            ControlFlow::WaitUntil(deadline)
+        };
+    });
+    assert!(
+        windows.is_empty(),
+        "Tao did not destroy both native windows"
+    );
+    assert!(
+        browser_exited.get(),
+        "WebView2 still owns the temporary profile"
+    );
+    drop(environment);
+    profile.close().unwrap();
 }
 
 #[cfg(test)]

@@ -252,6 +252,7 @@ export class ChannelApp {
   private processAudioExclusion = false;
   private captureCodecs: NativeCaptureSources["codecs"] = [];
   private previewTail: Promise<unknown> = Promise.resolve();
+  private pendingSources?: Promise<NativeCaptureSources>;
   private readonly roomHosting: NativeRoomHosting;
   private pages = new Map<string, AppPage>();
   readonly pagePlayer: boolean;
@@ -460,7 +461,12 @@ export class ChannelApp {
   async snapshotRoom(roomId: string): Promise<Blob> { await this.ready; return this.roomHosting.snapshot(roomId); }
   async restoreRoom(archive: Blob): Promise<RoomSummary> { await this.ready; return this.roomHosting.restore(archive); }
 
-  async sources(): Promise<NativeCaptureSources> {
+  sources(): Promise<NativeCaptureSources> {
+    // The App serves one outstanding targets request per control socket.
+    return this.pendingSources ??= this.readSources().finally(() => { this.pendingSources = undefined; });
+  }
+
+  private async readSources(): Promise<NativeCaptureSources> {
     await this.ready;
     // Bound this Web read; the system's capture permission prompt belongs to the App.
     const reading = new AbortController();

@@ -72,6 +72,8 @@ async fn native_and_external_cancellation_keep_the_other_preparation_owner() -> 
     let mut sites = sites::Sites::open(directory.path())?;
     let permission = Arc::new(Permission::new(sites.approve(&site, true)?));
     let app = Arc::new(App {
+        capture_targets: Default::default(),
+        capture_microphones: Default::default(),
         config: Config {
             data_root: directory.path().into(),
             assets: directory.path().into(),
