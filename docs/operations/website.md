@@ -78,9 +78,13 @@ and WebSocket signaling passes through to the room service. Media remains P2P.
 
 For updates, follow the [application release boundary](../deployment.md#release-boundary)
 and its artifact verification, health checks and recovery rules. Routine application
-rollback restores the previous executable while keeping current room data. This
-Caddy installation needs a scoped updater; the nginx-specific maintainer wrapper
-does not manage it.
+rollback restores the previous executable while keeping current room data. On the Demo host, set `RELEASE_DESCRIPTOR` to the uploaded descriptor's absolute path and run from the release checkout:
+
+```sh
+sudo env PIIK_PUBLIC_ORIGIN=https://demo.piik.tv bash deploy/release-server.sh --demo-caddy "$RELEASE_DESCRIPTOR"
+```
+
+The updater checks Caddy and verifies removal of the previous bundle directly at the origin.
 
 ## Maintenance
 

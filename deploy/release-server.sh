@@ -2,8 +2,16 @@
 set -Eeuo pipefail
 umask 022
 
+proxy_service=nginx
+old_asset_origin="${PIIK_PUBLIC_ORIGIN:-}"
+if [ "${1:-}" = '--demo-caddy' ]; then
+  proxy_service=caddy
+  old_asset_origin=http://127.0.0.1:8787
+  shift
+fi
+
 if [ "$#" -ne 1 ]; then
-  printf 'usage: PIIK_PUBLIC_ORIGIN=https://share.example.com %s /opt/piik/uploads/<release>.release.json\n' "$0" >&2
+  printf 'usage: PIIK_PUBLIC_ORIGIN=https://share.example.com %s [--demo-caddy] /opt/piik/uploads/<release>.release.json\n' "$0" >&2
   exit 2
 fi
 
@@ -161,7 +169,7 @@ test -f "$artifact"
 test -f "$manifest"
 test "$(sha256sum "$artifact" | awk '{print $1}')" = "$artifact_sha"
 test "$(sha256sum "$manifest" | awk '{print $1}')" = "$manifest_sha"
-for service in piik nginx; do
+for service in piik "$proxy_service"; do
   test "$(systemctl show "${service}.service" -p ActiveState --value)" = 'active'
   test "$(systemctl show "${service}.service" -p NRestarts --value)" = '0'
 done
@@ -245,7 +253,7 @@ test "$(stat -c '%U:%G %a' "$release")" = 'root:root 755'
 
 # Compare rules without traffic counters; no operator-specific table name.
 firewall_before="$(nft --stateless list ruleset | sha256sum | awk '{print $1}')"
-nginx_restarts="$(systemctl show nginx.service -p NRestarts --value)"
+proxy_restarts="$(systemctl show "${proxy_service}.service" -p NRestarts --value)"
 cutover_since="$(date '+%Y-%m-%d %H:%M:%S')"
 cutover_start="$(date +%s%3N)"
 cutover_started=1
@@ -260,7 +268,7 @@ health_ready="$(date +%s%3N)"
 
 test "$(systemctl show piik.service -p ActiveState --value)" = 'active'
 test "$(systemctl show piik.service -p NRestarts --value)" = '0'
-test "$(systemctl show nginx.service -p NRestarts --value)" = "$nginx_restarts"
+test "$(systemctl show "${proxy_service}.service" -p NRestarts --value)" = "$proxy_restarts"
 test "$(nft --stateless list ruleset | sha256sum | awk '{print $1}')" = "$firewall_before"
 test "$(readlink -f -- "$current")" = "$release"
 pid="$(systemctl show piik.service -p MainPID --value)"
@@ -272,7 +280,7 @@ curl -fsS --max-time 5 http://127.0.0.1:8787/ | grep -Fq "$main_asset"
 curl -fsS --max-time 8 "$public_origin/" | grep -Fq "$main_asset"
 test "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "$public_origin/$main_asset")" = '200'
 if [ "$old_asset" != "$main_asset" ]; then
-  test "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "$public_origin/$old_asset")" = '404'
+  test "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "$old_asset_origin/$old_asset")" = '404'
 fi
 test -z "$(journalctl -u piik.service --since "$cutover_since" -p warning --no-pager --output=cat)"
 

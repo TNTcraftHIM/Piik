@@ -8,7 +8,7 @@ deployment record. [Status](./status.md) owns only the compact current product
 and operational snapshot; it is not a per-release ledger.
 
 The tracked `release-server.sh` updates an existing Go deployment with embedded
-media, bare-metal nginx, nftables, and application port 8787. It requires an
+media, bare-metal nginx (or the [managed Caddy Demo](./operations/website.md)), nftables, and application port 8787. It requires an
 existing running Go release. Another proxy, firewall owner, application port,
 first installation, or initial embedded-media cutover needs its own scoped
 bootstrap/updater; do not call this wrapper generic.
@@ -195,7 +195,7 @@ sudo env PIIK_PUBLIC_ORIGIN=https://share.example.com \
 The wrapper:
 
 1. takes a deployment lock and validates the descriptor, revision, archive,
-   manifest, current Go process, Piik/nginx service state, and public origin;
+   manifest, current Go process, Piik and proxy service state, and public origin;
 2. rejects unexpected archive paths, links, file types, or duplicate inodes;
 3. extracts to a new release directory and verifies every file hash and size;
 4. validates production configuration by running the packaged binary's
@@ -248,7 +248,7 @@ Verify only the surfaces relevant to the release:
 
 - local and public `/healthz` return `{"status":"ok"}`;
 - the public HTML references the new immutable main asset;
-- Piik and nginx have expected active/restart state;
+- Piik and the selected proxy have expected active/restart state;
 - Piik owns each configured STUN/SFU UDP listener and public reachability
   matches the configuration;
 - the current symlink and served revision match the descriptor;

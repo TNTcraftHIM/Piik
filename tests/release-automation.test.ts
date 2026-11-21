@@ -176,7 +176,7 @@ describe("release automation", () => {
       for (const path of ["site/film/art.js", "site/docs/package.json", "site/docs/package-lock.json",
         "site/docs/.vitepress/config.mjs", "docs/guide/troubleshooting.md", "docs/deployment.md", "README.zh-CN.md",
         "scripts/build-website.mjs", "scripts/check-docs.mjs", "scripts/check-container.mjs", "scripts/markdown-slug.mjs", "scripts/release-notes.mjs",
-        "scripts/publish-container.mjs",
+        "scripts/publish-container.mjs", "deploy/release-server.sh",
         "scripts/app-gate-endpoint.ts", "scripts/client-gate-endpoint.ts",
         "scripts/network-lab.ts", "scripts/network-lab/endpoint.ts", "scripts/network-lab/stun/main.go",
         "tests/room.test.ts", ".agents/skills/ponytail/SKILL.md", ".github/workflows/website.yml",

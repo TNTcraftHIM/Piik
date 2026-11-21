@@ -30,6 +30,7 @@ const nonProductPaths = [
   "scripts/*-gate.*", "scripts/*-probe.*", "scripts/browser-*", "scripts/encoded-*",
   "scripts/*-gate-endpoint.ts", "scripts/embedded-sfu-page.ts", "scripts/peer-assisted-benchmark.ts",
   "scripts/network-lab.ts", "scripts/network-lab/**",
+  "deploy/release-server.sh",
   "cmd/piik-peer-gate/**",
 ].map((path) => `:(top,glob,exclude)${path}`);
 
