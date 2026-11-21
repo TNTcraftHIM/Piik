@@ -330,7 +330,7 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
                     {source.deliveryFailed && !source.hidden && <PictureDeliveryHelp />}
                   </div>}</div>}
             <footer>
-              <div className="c3-monitor-source-row lr-media-overlay" data-tooltip-controls data-playback-controls>
+              <div className="c3-monitor-source-row" data-tooltip-controls>
                 <div className="c3-monitor-source-info">
                   <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
                   <div className="c3-monitor-source">
@@ -437,7 +437,7 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
             ? <small>{source.originalPageUnavailable}</small> : source.originalPageAvailable && <small>{t("watch.connectApp")}</small>))}
         {source.receiving && <WatchPeerAction receiving={source.receiving} />}</>
         : <><BrandLoader /><span>{t("watch.waiting")}</span></>}</div>}
-    <footer><div className="c3-monitor-source-row lr-media-overlay" data-tooltip-controls data-playback-controls>
+    <footer><div className="c3-monitor-source-row" data-tooltip-controls>
       <div className="c3-monitor-source-info">
         <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
         <div className="c3-monitor-source"><Tooltip overflow={{ text: source.title, selector: "strong" }}><strong>{source.title}</strong></Tooltip>

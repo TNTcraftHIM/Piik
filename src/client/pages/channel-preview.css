@@ -298,11 +298,6 @@
 }
 .c3-shell[data-layout="quick"]:has(.c3-monitor-grid.is-grid) .c3-main-body { width: 100%; }
 .c3-shell[data-layout="quick"] .c3-monitor-grid.is-grid .c3-monitor-tile { --tv-frame-inset: 3px; --tv-frame-chin: 7px; --tv-frame-radius: var(--c3-surface-radius); --tv-screen-radius: calc(var(--c3-surface-radius) - var(--tv-frame-inset) - var(--tv-frame-border)); }
-.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-grid:not(.is-grid) .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source-row { position: static; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; opacity: 1; pointer-events: auto; transform: none; }
-.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-grid:not(.is-grid) .c3-monitor-tile:not(.is-thumbnail):has(> .c3-video[data-controls-hidden="true"]) > footer:not(:hover):not(:focus-within):not(:has([aria-expanded="true"])) .c3-monitor-source-row { opacity: 1; pointer-events: auto; transform: none; }
-.c3-shell[data-layout="quick"] .c3-monitor-grid:not(.is-grid) .c3-monitor-source { flex: 1 1 140px; }
-.c3-shell[data-layout="quick"] .c3-monitor-grid:not(.is-grid) .c3-monitor-social { flex: 0 1 auto; }
-.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-grid:not(.is-grid) .c3-monitor-tile-actions { width: auto; flex: 0 1 auto; }
 .c3-shell[data-layout="quick"] > .c3-room-presence { order: 2; display: flex; flex-direction: column; justify-content: center; width: 100%; padding: 8px 12px; gap: 8px; }
 .c3-shell[data-layout="quick"] .c3-room-presence > .c3-room-tool-entry { order: 0; }
 .c3-shell[data-layout="quick"] .c3-room-heading { order: 3; width: min(100%, 990px); margin-inline: auto; padding: 12px 0; }
