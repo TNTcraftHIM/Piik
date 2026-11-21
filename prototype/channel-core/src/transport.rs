@@ -55,6 +55,13 @@ pub(crate) struct DiscoveryEdge {
     pub sockets: (Uuid, Uuid),
 }
 
+impl DiscoveryEdge {
+    pub(crate) fn current(endpoints: (Uuid, Uuid), identity: &crate::identity::Identity) -> Option<Self> {
+        let socket = |id| identity.sessions.get(&id).and_then(|session| session.connection);
+        Some(Self { endpoints, sockets: (socket(endpoints.0)?, socket(endpoints.1)?) })
+    }
+}
+
 /// Current physical attempts shared by flow, room and standby interests.
 #[derive(Clone, Default)]
 pub struct TransportBook {

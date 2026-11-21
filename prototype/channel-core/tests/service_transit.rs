@@ -165,15 +165,20 @@ fn bridge(
     source: Uuid,
     relay: Uuid,
     room: &str,
+    expect_direct_attempt: bool,
 ) -> Uuid {
     set_preference(net, host, room, true);
     let picture = screen(net, host, viewer, room);
-    let direct = pair(net, viewer, source);
-    command(
-        net,
-        viewer,
-        json!({"type":"link_state","pairId":direct.id,"state":"failed"}),
-    );
+    if expect_direct_attempt {
+        let direct = pair(net, viewer, source);
+        command(
+            net,
+            viewer,
+            json!({"type":"link_state","pairId":direct.id,"state":"failed"}),
+        );
+    } else {
+        assert!(net.state(viewer).pairs.iter().all(|pair| pair.peer_id != source));
+    }
     acknowledge_base(net, &[host, service, viewer], room);
     let input = pair(net, service, source);
     let incoming = input
@@ -238,7 +243,7 @@ fn exact_service_lease_carries_assigned_media_and_bytes_without_room_read() {
         None,
         "permission alone must not be projected as a live forwarding lease"
     );
-    let picture = bridge(&mut net, host, viewer, service, source, relay, &room);
+    let picture = bridge(&mut net, host, viewer, service, source, relay, &room, true);
     let room_view = net
         .state(host)
         .channel
@@ -512,11 +517,11 @@ fn transit_retirement_keeps_other_room_leases_and_rejects_old_service_outputs() 
     assert_eq!(unavailable.transit_session, None);
     let effects = register_service(&mut net, Some(relay)).unwrap();
     accepted(net.deliver(effects));
-    let first = bridge(&mut net, host, viewer, service, source, relay, &room);
+    let first = bridge(&mut net, host, viewer, service, source, relay, &room, true);
     let shared_upstream = pair(&net, service, source).id;
     let shared_downstream = pair(&net, service, destination).id;
     let second_room = private_room(&mut net, host, viewer);
-    let second = bridge(&mut net, host, viewer, service, source, relay, &second_room);
+    let second = bridge(&mut net, host, viewer, service, source, relay, &second_room, false);
     assert_eq!(pair(&net, service, source).id, shared_upstream);
     assert_eq!(pair(&net, service, destination).id, shared_downstream);
     let old_input = pair(&net, service, source)
@@ -692,7 +697,7 @@ fn public_read_alone_does_not_keep_withdrawn_service_work() {
     let room = net.create(host, RoomAccess::Public, false);
     let effects = register_service(&mut net, Some(relay)).unwrap();
     accepted(net.deliver(effects));
-    let picture = bridge(&mut net, host, viewer, service, source, relay, &room);
+    let picture = bridge(&mut net, host, viewer, service, source, relay, &room, true);
     let retired_pairs: Vec<_> = net
         .state(service)
         .pairs
@@ -827,7 +832,7 @@ fn service_socket_reconnect_cannot_revive_a_lease_even_when_host_missed_disconne
 
     let effects = register_service(&mut net, Some(relay)).unwrap();
     accepted(net.deliver(effects));
-    bridge(&mut net, host, viewer, service, source, relay, &room);
+    bridge(&mut net, host, viewer, service, source, relay, &room, true);
     let original_policy = serde_json::to_value(net.policy(&room)).unwrap();
     let old_pair_ids: Vec<_> = net
         .state(service)

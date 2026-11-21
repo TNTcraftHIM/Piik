@@ -43,6 +43,7 @@ pub struct Channel {
 
 pub(crate) struct HostAcceptance {
     pub projection_applied: bool,
+    pub repair_input: Option<(Uuid, Event)>,
     pub replies: Vec<RoomReply>,
     pub deleted_by: Option<Uuid>,
 }
@@ -1286,6 +1287,7 @@ impl Channel {
             return Ok(HostAcceptance {
                 deleted_by: Some(member.user_id),
                 projection_applied: false,
+                repair_input: None,
                 replies: vec![reply.clone()],
             });
         }
@@ -1765,11 +1767,6 @@ impl Channel {
         let room = self.remote.get_mut(id).unwrap();
         room.binding.as_mut().unwrap().projection_floor = output.revision;
         room.binding.as_mut().unwrap().applied_revision = output.revision;
-        room.binding
-            .as_mut()
-            .unwrap()
-            .failed_pairs
-            .retain(|_, revision| *revision > output.revision);
         room.summary = projection.summary.clone();
         let mut next = projection.clone();
         if let Some(previous) = &room.projection {
@@ -1794,8 +1791,23 @@ impl Channel {
                 .then_some(*id)
             }));
         room.projection = Some(next);
+        // A room can project a lease after another activity exhausted this edge.
+        let mut invalidated = false;
+        for edge in self.transports.failures() {
+            let (first, second) = edge.endpoints;
+            if crate::transport::DiscoveryEdge::current(edge.endpoints, &self.identity).as_ref() == Some(edge)
+                && !self.transports.has_pair(edge.endpoints)
+                && !room.binding.as_ref().unwrap().failed_pairs.contains_key(&edge.endpoints)
+            {
+                invalidated |= room.failed_pair(first, second);
+            }
+        }
         self.reconcile();
-        Ok(self.finish_host_output(id, output, true))
+        let mut accepted = self.finish_host_output(id, output, true);
+        if invalidated {
+            accepted.repair_input = Some(self.host_input(id, HostAction::Sync)?);
+        }
+        Ok(accepted)
     }
 
     fn finish_host_output(
@@ -1860,6 +1872,7 @@ impl Channel {
         HostAcceptance {
             deleted_by: None,
             projection_applied,
+            repair_input: None,
             replies,
         }
     }

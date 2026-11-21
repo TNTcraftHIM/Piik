@@ -752,6 +752,9 @@ impl Authority {
             }
             self.broadcast(None, effects);
         }
+        if let Some((session, event)) = accepted.repair_input {
+            self.deliver(session, event, effects);
+        }
         if accepted.projection_applied {
             self.broadcast(None, effects);
         }

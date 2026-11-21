@@ -639,3 +639,87 @@ fn background_file_trial_survives_another_room_link_failure_until_host_ack() {
     net.deliver(effects);
     assert!(net.state(helper).pairs.iter().any(|pair| pair.id == trial));
 }
+
+#[test]
+fn new_room_flow_consumes_an_existing_physical_failure() {
+    let mut net = RoomNetwork::new();
+    let [source, receiver] = [(); 2].map(|_| Uuid::new_v4());
+    let (source_id, _) = join(&mut net, source, None);
+    let (receiver_id, credential) = join(&mut net, receiver, None);
+    let room = net.create(source, RoomAccess::Public, false);
+    let other = net.create(source, RoomAccess::Public, false);
+    let screen = publish(&mut net, source, &room, "screen");
+    let sibling = publish(&mut net, source, &other, "screen");
+    let healthy = Uuid::new_v4();
+    join(&mut net, healthy, None);
+    subscribe_screen(&mut net, healthy, sibling);
+    let shared = screen_input(&net, healthy, source_id, sibling).unwrap().0;
+    for endpoint in [healthy, source] {
+        command(
+            &mut net,
+            endpoint,
+            json!({"type":"link_state","pairId":shared,"state":"connected"}),
+        );
+    }
+    subscribe_screen(&mut net, receiver, screen);
+    let direct = screen_input(&net, receiver, source_id, screen).unwrap().0;
+    // The second room has planned its first lease but the domain hasn't received it.
+    let request = json!({"type":"subscribe","publicationId":sibling,"enabled":true});
+    let effects = net.authority.handle(
+        receiver,
+        piik_channel_core::wire::Request::parse(&request.to_string()).unwrap(),
+        100,
+    );
+    let input = effects
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::HostInput { room_id, input } if room_id == other => Some(input),
+            _ => None,
+        })
+        .unwrap();
+    let delayed = net.host_turn(&other, input);
+    command(
+        &mut net,
+        receiver,
+        json!({"type":"link_state","pairId":direct,"state":"failed"}),
+    );
+    assert!(net.state(receiver).pairs.is_empty());
+    let update = json!({"type":"host_output","roomId":other,"output":delayed});
+    let repair = net.authority.handle(
+        source,
+        piik_channel_core::wire::Request::parse(&update.to_string()).unwrap(),
+        100,
+    );
+    let edge = (source_id.min(receiver_id), source_id.max(receiver_id));
+    assert!(repair.events.iter().any(|(_, event)| matches!(event,
+        Event::HostInput { room_id, input } if room_id == &other && input.failed_pairs.iter()
+            .any(|failure| (failure.first, failure.second) == edge))));
+    net.deliver(repair);
+    assert!(net
+        .state(receiver)
+        .pairs
+        .iter()
+        .all(|p| p.peer_id != source_id));
+    assert_eq!(
+        screen_input(&net, healthy, source_id, sibling).unwrap().0,
+        shared
+    );
+
+    let resumed = Uuid::new_v4();
+    net.command_at(
+        resumed,
+        json!({"type":"join","sessionId":receiver_id,
+        "credential":credential,"name":"Returning receiver"}),
+        101,
+    );
+    let fresh_room = net.create(source, RoomAccess::Public, false);
+    let fresh_screen = publish(&mut net, source, &fresh_room, "screen");
+    subscribe_screen(&mut net, resumed, fresh_screen);
+    assert_ne!(
+        screen_input(&net, resumed, source_id, fresh_screen)
+            .unwrap()
+            .0,
+        direct
+    );
+}

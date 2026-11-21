@@ -63,18 +63,10 @@ struct Discovery<'a> {
 }
 impl Discovery<'_> {
     fn proposal(&self, endpoints: Pair) -> DiscoveryEdge {
-        let (a, b) = endpoints;
-        DiscoveryEdge {
-            endpoints,
-            sockets: (
-                self.identity.sessions[&a].connection.unwrap(),
-                self.identity.sessions[&b].connection.unwrap(),
-            ),
-        }
+        DiscoveryEdge::current(endpoints, self.identity).unwrap()
     }
     fn current(&self, edge: &DiscoveryEdge) -> bool {
-        let socket = |id| self.identity.sessions.get(&id).and_then(|s| s.connection);
-        socket(edge.endpoints.0).zip(socket(edge.endpoints.1)) == Some(edge.sockets)
+        DiscoveryEdge::current(edge.endpoints, self.identity).as_ref() == Some(edge)
     }
     fn carry(
         &self,
@@ -280,6 +272,14 @@ impl Channel {
         plan.relevant_failures
             .extend(plan.candidates.iter().cloned());
         self.transports.retain_failures(&plan.relevant_failures);
+        // A covering projection acknowledges delivery. Keep that receipt for
+        // this binding only while the physical failure still applies.
+        for binding in self.remote.values_mut().filter_map(|room| room.binding.as_mut()) {
+            binding.failed_pairs.retain(|&pair, revision| {
+                *revision > binding.applied_revision || DiscoveryEdge::current(pair, &self.identity)
+                    .is_some_and(|edge| self.transports.rejected(&edge))
+            });
+        }
         self.transports.reconcile_with_standby(
             self.remote
                 .values()

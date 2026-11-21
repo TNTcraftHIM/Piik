@@ -257,6 +257,7 @@ impl RemoteRoom {
                 failed_pairs: binding
                     .failed_pairs
                     .iter()
+                    .filter(|(_, revision)| **revision > binding.applied_revision)
                     .map(|((first, second), revision)| PairFailure {
                         first: *first,
                         second: *second,
