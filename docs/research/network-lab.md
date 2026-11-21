@@ -345,6 +345,14 @@ from three to four. Median cold planning time across five batches of 5,000
 runs rose from 38.2 to 48.4 µs. These comparisons concern planning on known
 links. [Delivery tree model](./channel-forwarding-plan.md#selecting-delivery-trees)
 
+Trying interior endpoints before leaves when coverage is incomplete reached the
+optimum on 1,012 of the same 1,024 graphs. With a second publication already
+using 1→4, this order also covered all four viewers in the regression
+`confirmed_chain_reuses_a_publishers_edge_to_the_only_leaf`. In 672 paired
+20-endpoint fixtures, it added coverage in 19 and tied the baseline in 653.
+Both planners preserved the edges serving the first four subscriptions as
+demand grew to 19. These fixtures use confirmed edges and fixed forwarding limits.
+
 Stopping at the proven maximum when the first candidate serves all waiting
 endpoints directly preserved every parent assignment in 6,144 comparisons
 with `579e337c` (1,024 graphs, three source limits and two starting trees).

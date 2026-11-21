@@ -4749,6 +4749,25 @@ mod tests {
             && flow.sender == id(5)
             && flow.input_flow_id.is_none()));
         assert_eq!(room.unpublish(id(3), id(10)), Err("not_publication_owner"));
+        for (now, watching) in [(6, false), (7, true)] {
+            room.subscribe(endpoints[&id(4)].member, id(4), id(10), watching, None)
+                .unwrap();
+            room.reconcile(&endpoints, now);
+            assert_eq!(
+                room.flows().any(|flow| flow.publication_id == id(10)),
+                watching
+            );
+            assert_eq!(
+                voice,
+                room.flows()
+                    .filter(|flow| flow.publication_id == id(11))
+                    .map(|flow| flow.id)
+                    .collect()
+            );
+        }
+        room.unpublish(id(5), id(10)).unwrap();
+        room.reconcile(&endpoints, 8);
+        assert_eq!(voice, room.flows().map(|flow| flow.id).collect());
     }
 
     #[test]

@@ -425,9 +425,12 @@ short path per waiting receiver. If every waiting endpoint is now a direct
 child of the source, this candidate attains full coverage with the minimum
 of one new edge and one hop per waiting endpoint. It can be selected
 immediately. Otherwise eligible shared relays generate alternatives by
-attaching their branch first and then serving the remaining receivers.
+attaching their branch first and then serving the remaining receivers. If some
+receivers still lack a path, one more candidate visits interior endpoints in
+order of increasing degree and leaves endpoints with at most one neighbor until
+last. A leaf with a single possible upstream can then use the end of a chain.
 With $m$ waiting receivers and $k$ eligible shared relays, one planning pass
-makes at most $m+k(m+1)$ path-extension calls. Each extension checks current
+makes at most $2m+k(m+1)$ path-extension calls. Each extension checks current
 capacity and eligibility. The linear cost of one adjacency-list search
 therefore applies to only part of a planning pass.
 Small graphs admit exact comparisons by enumerating feasible trees. If every

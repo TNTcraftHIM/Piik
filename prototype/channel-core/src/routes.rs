@@ -294,8 +294,8 @@ impl Plan {
         if waiting.is_empty() {
             return;
         }
-        let fill = |plan: &mut Plan| {
-            for &viewer in &waiting {
+        let fill = |plan: &mut Plan, order: &[Uuid]| {
+            for &viewer in order {
                 plan.append_path(viewer, screen, helpers, limits);
             }
         };
@@ -319,7 +319,7 @@ impl Plan {
             )
         };
         let mut best = self.clone();
-        fill(&mut best);
+        fill(&mut best, &waiting);
         // Direct inputs attain full coverage with one new edge and one hop per viewer.
         if waiting
             .iter()
@@ -374,10 +374,23 @@ impl Plan {
             for viewer in viewers {
                 candidate.parents.entry(viewer).or_insert(*relay);
             }
-            fill(&mut candidate);
+            fill(&mut candidate, &waiting);
             let score = rank(&candidate);
             if score > best_score {
                 best_score = score;
+                best = candidate;
+            }
+        }
+        // A leaf can end a capacity-limited path. Try narrower interior vertices first.
+        if best_score.0 < waiting.len() {
+            let mut order = waiting.clone();
+            order.sort_by_key(|viewer| {
+                let degree = screen.neighbors[viewer].len();
+                (degree <= 1, degree)
+            });
+            let mut candidate = self.clone();
+            fill(&mut candidate, &order);
+            if rank(&candidate) > best_score {
                 best = candidate;
             }
         }
@@ -1489,6 +1502,26 @@ mod tests {
         assert_eq!(plan.parents.get(&viewer), Some(&relay));
         assert_eq!(plan.parents.values().filter(|&&parent| parent == source).count(), 2);
         assert_eq!(plan.parents.values().filter(|&&parent| parent == relay).count(), 1);
+    }
+
+    #[test]
+    fn confirmed_chain_reuses_a_publishers_edge_to_the_only_leaf() {
+        let neighbors = [(id(0), set(&[1, 2, 3])), (id(1), set(&[0, 2, 3, 4])),
+            (id(2), set(&[0, 1, 3])), (id(3), set(&[0, 1, 2])), (id(4), set(&[1]))].into();
+        let limits = RelayLimits {
+            default: 1,
+            shared: [(id(1), set(&[4]))].into(),
+            ..Default::default()
+        };
+        let mut plan = Plan::new(id(0));
+        let demand = ScreenDemand {
+            order: &[id(1), id(2), id(3), id(4)],
+            neighbors: &neighbors,
+            relays: &set(&[1, 2, 3]),
+        };
+        plan.extend_confirmed(&demand, &BTreeMap::new(), &limits);
+        assert_eq!(plan.parents.len(), 4);
+        assert_eq!(plan.parents[&id(4)], id(1));
     }
 
     #[test]
