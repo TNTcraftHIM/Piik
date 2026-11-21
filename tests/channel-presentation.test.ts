@@ -148,6 +148,15 @@ it("shows each person's room activity across endpoints and keeps chat presence i
     ownedScreens: new Set(), readByRoom: { room: 0 }, watchPlayers: new Map() } as unknown as ChannelController;
   const render = () => renderToStaticMarkup(createElement(ChannelRoomListItem, { channel, room, selected: true, settingsOpen: false, onSelect() {}, onManage() {} }));
   const renderPeople = () => renderToStaticMarkup(createElement(ChannelPeople, { channel, roomId: "room", active: true, onBack() {} }));
+  for (const html of [render(), renderPeople()]) {
+    const rows = html.split('data-user-id="');
+    const owner = rows.find(row => row.startsWith('self"'));
+    const member = rows.find(row => row.startsWith('route"'));
+    expect(owner).toContain('<small>' + say("channel.user.roomOwner") + '</small>');
+    expect(owner?.match(/role="img"/g)).toHaveLength(4);
+    expect(member).not.toContain(say("channel.user.roomOwner"));
+    expect(member).toContain(say("channel.roomParticipants.receivingFiles"));
+  }
   const navigationDescriptions = () => {
     const html = render();
     const ids = html.match(/<button[^>]*aria-label="Room"[^>]*aria-describedby="([^"]+)"/)?.[1];

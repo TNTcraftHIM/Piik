@@ -14,7 +14,7 @@ export function ChannelRoomParticipants({ channel, room, people }: { channel: Ch
   return <div className="c3-room-participants" role="group" aria-label={t("channel.roomParticipants.activity")}>
     <small className="c3-room-participants-label">{t("channel.roomParticipants.activity")}</small>
     {people.map(user => <ChannelUser key={user.id} id={user.id} name={user.name} avatar={user.avatar ?? undefined}
-      self={user.id === channel.self?.id} owner={false} online={state.sessions.some(session => session.userId === user.id && session.online)}
+      self={user.id === channel.self?.id} owner={user.id === room.creatorId} online={state.sessions.some(session => session.userId === user.id && session.online)}
       roomActivity={user} voicePlayback={audible.has(user.id) ? channel : undefined} />)}
   </div>;
 }
