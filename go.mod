@@ -29,9 +29,9 @@ require (
 	github.com/pion/rtp v1.10.6
 	github.com/pion/sdp/v3 v3.0.20
 	github.com/pion/stun/v4 v4.0.1
-	github.com/pion/transport/v5 v5.1.4
+	github.com/pion/transport/v5 v5.1.5
 	github.com/pion/turn/v5 v5.1.3
-	github.com/pion/webrtc/v4 v4.2.26
+	github.com/pion/webrtc/v4 v4.2.27
 	github.com/stretchr/testify v1.12.1
 	github.com/thesyncim/gopus v0.2.2
 	github.com/wlynxg/anet v0.0.5
@@ -97,11 +97,11 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/petermattis/goid v0.0.0-20260918085751-abfca077860b // indirect
-	github.com/pion/datachannel v1.6.3 // indirect
+	github.com/pion/datachannel v1.6.4 // indirect
 	github.com/pion/dtls/v3 v3.1.16 // indirect
 	github.com/pion/mdns/v2 v2.2.2 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
-	github.com/pion/sctp v1.12.0 // indirect
+	github.com/pion/sctp v1.12.1 // indirect
 	github.com/pion/srtp/v3 v3.1.3 // indirect
 	github.com/pion/transport/v4 v4.1.1 // indirect
 	github.com/prometheus/client_golang v1.24.1 // indirect
@@ -139,4 +139,4 @@ require (
 replace github.com/livekit/livekit-server => github.com/TNTcraftHIM/livekit v1.13.11-0.20261018043008-c7f56b389713
 
 // Equivalent H.264 profiles pending upstream #3668; see internal/thirdparty/README.md.
-replace github.com/pion/webrtc/v4 => github.com/TNTcraftHIM/pion-webrtc/v4 v4.0.0-20261029063205-6ed9e55c5935
+replace github.com/pion/webrtc/v4 => github.com/TNTcraftHIM/pion-webrtc/v4 v4.0.0-20261121123358-02e42c553795

@@ -17,9 +17,13 @@ own behavior; research and Git/PRs own evidence and completed history.
   to identify the failing transition before changing capture or service lifetime.
 - [ ] **Release mirror platform integration.** Verify a supported way to create
   the platform's Release tag or trigger its immediate synchronization during
-  publication. The v2.8.0 mirror is waiting for its tag. Resume from the
+  publication. Complete the v2.8.0 attachment uploads from the
   [original build](https://github.com/TNTcraftHIM/Piik/actions/runs/44881655913)
-  once the tag arrives. [Mirror operations](./operations/github.md#atomgit-download-mirror) owns setup.
+  after the manual tag synchronization. [Mirror operations](./operations/github.md#atomgit-download-mirror) owns setup.
+- [ ] **Windows H.264 output negotiation (#452).** Verify the format-change
+  handling on the reporter's Intel device, including startup and bitrate changes.
+  The App diagnostic identifies `MF_E_TRANSFORM_STREAM_CHANGE`; preserve the
+  configured output and SPS requirements when accepting an updated media type.
 - [ ] **Windows sound only works with exclusion (#534).** Compare the affected
   application's playback endpoint with Piik's default-endpoint capture. The
   [audio scope control](./research/native-client-media.md#windows-audio-exclusion)

@@ -379,7 +379,8 @@ double Percentile95(std::vector<double> values) {
 
 RunEvidence RunEncoder(const Adapter& adapter, const DeviceContext& device,
                        SelectedTransform& selected) {
-  ConfigureCodec(selected.codec.Get());
+  VideoProfile profile = kDefaultVideoProfile;
+  ConfigureCodec(selected.codec.Get(), profile);
   ComPtr<IMFMediaType> output_type = CreateOutputType();
   Check(selected.transform->SetOutputType(0, output_type.Get(), 0),
         "mft-set-output-type");
@@ -445,8 +446,8 @@ RunEvidence RunEncoder(const Adapter& adapter, const DeviceContext& device,
             ++pending_input;
           }
         } else if (type == METransformHaveOutput) {
-          ComPtr<IMFSample> sample = PullOutput(selected.transform.Get(),
-                                                output_info);
+          ComPtr<IMFSample> sample = PullOutput(selected, output_info, profile);
+          if (!sample) continue;
           LONGLONG sample_time = -1;
           Check(sample->GetSampleTime(&sample_time), "output-sample-time");
           if (sample_time < 0 || sample_time % kFrameDuration100ns != 0) {
@@ -504,9 +505,11 @@ RunEvidence RunEncoder(const Adapter& adapter, const DeviceContext& device,
         if (frame == kRateProbeFrames) {
           SetU32(selected.codec.Get(), CODECAPI_AVEncCommonMeanBitRate,
                  kRateProbeBitRate, "codec-runtime-bitrate-low");
+          profile.bit_rate = kRateProbeBitRate;
         } else if (frame == kRateProbeFrames * 2) {
           SetU32(selected.codec.Get(), CODECAPI_AVEncCommonMeanBitRate,
                  kBitRate, "codec-runtime-bitrate-high");
+          profile.bit_rate = kBitRate;
         }
         if (IsRecoveryFrame(frame)) {
           ForceKeyFrame(selected.codec.Get());

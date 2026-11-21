@@ -108,8 +108,8 @@ separate local send-side estimator corrections retain their own removal gate.
 
 Until [upstream #3668](https://github.com/pion/webrtc/pull/3668) is available,
 the root module replaces Pion with the immutable
-[6ed9e55c revision](https://github.com/TNTcraftHIM/pion-webrtc/commit/6ed9e55c5935edf3b55d0528fdfb5cc85110a013),
-based on official v4.2.26. It matches equivalent H.264 subprofiles according to
+[02e42c55 revision](https://github.com/TNTcraftHIM/pion-webrtc/commit/02e42c553795d76a36de4db4b0df5ca5daab347b),
+based on official v4.2.27. It matches equivalent H.264 subprofiles according to
 [RFC 6184 Table 5](https://www.rfc-editor.org/rfc/rfc6184.html#section-8.1).
 Without this repair, an offer containing Constrained Baseline `42c01f` and VP8
 can select VP8 even though the receiver prefers and supports that H.264 profile.

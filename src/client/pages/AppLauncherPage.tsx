@@ -14,6 +14,7 @@ import { Glyph } from "../ui/icons";
 import { currentThemePreference, subscribeTheme } from "../ui/theme";
 import { clientLaunchURL, type ClientLaunchPresentation } from "../lib/session";
 import type { AppReleaseIdentity } from "../lib/release-update";
+import { useGuideLink } from "../lib/use-project-link";
 import { useReleaseUpdate } from "../lib/use-release-update";
 
 const launcherStateSchema = z.object({
@@ -277,6 +278,8 @@ export function AppLauncherPage() {
     }
   }
 
+  const invitationTimedOut = error?.kind === "launch" && error.reason === "tunnel-timeout";
+  const publicAddressGuide = useGuideLink(lang, "frp", invitationTimedOut);
   const errorKey = `client.launch.failure.${error?.reason}`;
   return (
     <div className="lr-app">
@@ -353,9 +356,13 @@ export function AppLauncherPage() {
         ) : (
           <LauncherForm
             roomError={error?.kind === "launch" ? <>
-              <Pill icon="alert" tone="bad" label={t("client.launch.error")} alert comic="signal-failed" />
+              <Pill icon="alert" tone="bad" label={t(invitationTimedOut ? "client.launch.invitationTimeout" : "client.launch.error")} alert comic="signal-failed" />
               {isCopyKey(errorKey) && <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t(errorKey)}</p>}
-              <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t("client.launch.retryHint")}</p>
+              {invitationTimedOut
+                ? <a className="lr-btn is-dense" href={publicAddressGuide} target="_blank" rel="noopener noreferrer">
+                  {t("client.launch.publicAddressGuide")}<Glyph name="arrowRight" size={16} />
+                </a>
+                : <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t("client.launch.retryHint")}</p>}
               {error.detail && <details className="lr-client-launch-technical">
                 <summary>{t("client.launch.errorDetails")}</summary>
                 <p className="lr-client-launch-detail">{error.detail}</p>

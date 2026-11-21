@@ -90,7 +90,7 @@ func TestPunchAdoptsProvedTupleIntoMediaAndFeedback(t *testing.T) {
 			right, rightPrediction := preparePunch(t, engines[1], nil, "connection", strings.Repeat("42", 32))
 			if scenario.driftSide != 0 {
 				// Real unrelated mappings consume the sequential allocator after survey.
-				// Each allocation receives a STUN response before preparation begins.
+				// A destination outside the survey guarantees a new mapping even if a local port is reused.
 				for range 4 {
 					connection, err := engines[scenario.driftSide-1].listenPacket("udp", engines[scenario.driftSide-1].bindAddress)
 					if err != nil {
@@ -98,7 +98,7 @@ func TestPunchAdoptsProvedTupleIntoMediaAndFeedback(t *testing.T) {
 					}
 					t.Cleanup(func() { _ = connection.Close() })
 					if _, err := querySTUNBinding(t.Context(), connection,
-						&net.UDPAddr{IP: net.ParseIP(punchSTUNIP), Port: 3478}, stun.MustBuild(stun.TransactionID, stun.BindingRequest)); err != nil {
+						&net.UDPAddr{IP: net.ParseIP(punchSTUNIP), Port: 3481}, stun.MustBuild(stun.TransactionID, stun.BindingRequest)); err != nil {
 						t.Fatal(err)
 					}
 				}
