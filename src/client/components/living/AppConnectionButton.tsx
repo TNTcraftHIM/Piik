@@ -284,7 +284,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       <span className="lr-cap">App</span>
     </button>
   </Tooltip>
-    {ready && management && <a className="lr-btn is-compact is-quiet" href={bookmarksURL(management.url)}
+    {ready && management && window.piikNativeWindow !== "integrated" && <a className="lr-btn is-compact is-quiet" href={bookmarksURL(management.url)}
       target="_blank" rel="noopener noreferrer" aria-label={t("client.launcher.manageSites")}>
       <Glyph name="star" size={16} /><span className="lr-cap">{t("client.launcher.manageSites")}</span>
     </a>}

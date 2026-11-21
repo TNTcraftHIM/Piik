@@ -186,9 +186,9 @@ frame. This presentation choice does not remove meaningful content cards or
 create separate page implementations. Keep one visible application identity.
 Shared modal materials must remain consistent across the content and any
 separately trusted window controls, whose commands stay with the native host.
-Native caption controls only minimize, maximize/restore and close the window.
-Site navigation and management remain in the shared application interface;
-opening management preserves the current page until an explicit site switch.
+The main Windows caption provides Saved sites alongside minimize,
+maximize/restore and close. Its Saved sites action opens the shared site
+management interface and preserves the current page until an explicit switch.
 Saved-site rows navigate, Add opens creation, and Manage edits an existing site
 or its App access. Language, theme and help share the same More options menu in
 the launcher and room workspace, identified by the ellipsis rather than a settings icon.

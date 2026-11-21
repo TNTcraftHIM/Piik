@@ -1,7 +1,8 @@
 {
-  "width": 138,
+  "width": 176,
   "height": 58,
   "icons": {
+    "bookmarks": ["m12 3 2.8 5.7 6.3.9-4.5 4.4 1.1 6.3-5.7-3-5.7 3 1.1-6.3L3.1 9.6l6.3-.9Z"],
     "minimize": ["M5 12h14"],
     "maximize": ["M5 5h14v14H5z"],
     "restore": ["M8 8H4v12h12v-4", "M8 8V4h12v12h-4", "M8 8h8v8"],
@@ -12,6 +13,7 @@
   },
   "labels": {
     "en": {
+      "bookmarks": "Saved sites",
       "revealQuestion": "Show the downloaded file in File Explorer?",
       "reveal": "Show file",
       "minimize": "Minimize",
@@ -26,6 +28,7 @@
       "permissionClose": "Cancel"
     },
     "zh": {
+      "bookmarks": "收藏的站点",
       "revealQuestion": "在文件资源管理器中显示下载的文件？",
       "reveal": "显示文件",
       "minimize": "最小化",
@@ -40,6 +43,7 @@
       "permissionClose": "取消"
     },
     "zh-Hant": {
+      "bookmarks": "收藏的站點",
       "revealQuestion": "在檔案總管中顯示下載的檔案？",
       "reveal": "顯示檔案",
       "minimize": "最小化",
@@ -54,6 +58,7 @@
       "permissionClose": "取消"
     },
     "ja": {
+      "bookmarks": "保存したサイト",
       "revealQuestion": "ダウンロードしたファイルをエクスプローラーに表示しますか？",
       "reveal": "ファイルを表示",
       "minimize": "最小化",
@@ -68,6 +73,7 @@
       "permissionClose": "キャンセル"
     },
     "ko": {
+      "bookmarks": "저장된 사이트",
       "revealQuestion": "다운로드한 파일을 파일 탐색기에 표시할까요?",
       "reveal": "파일 표시",
       "minimize": "최소화",

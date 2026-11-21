@@ -71,6 +71,7 @@ impl Caption {
             .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
             .with_ipc_handler(move |request| {
                 let event = match request.body().as_str() {
+                    "bookmarks" if !standalone => ServiceEvent::OpenBookmarks(id),
                     "ready" => ServiceEvent::CaptionReady(id),
                     "minimize" => ServiceEvent::Caption(id, WindowAction::Minimize),
                     "maximize" => ServiceEvent::Caption(id, WindowAction::Maximize),

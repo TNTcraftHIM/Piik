@@ -28,7 +28,9 @@ const controls = __PIIK_WINDOW_CONTROLS__;
 let language = 'en';
 let maximized = false;
 if (window.piikCaptionStandalone) document.body.dataset.standalone = '';
-for (const action of ['minimize', 'maximize', 'close']) {
+const actions = ['minimize', 'maximize', 'close'];
+if (!window.piikCaptionStandalone) actions.unshift('bookmarks');
+for (const action of actions) {
   const button = document.createElement('button');
   button.dataset.action = action;
   button.onclick = () => window.ipc.postMessage(action);
