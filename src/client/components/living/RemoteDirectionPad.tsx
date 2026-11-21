@@ -64,7 +64,7 @@ export function RemoteDirectionPad({ right = false, keyboard, open, toggleOpen, 
   return <div ref={group} onFocus={() => clearTimeout(idle.current)} onBlur={park}
     onPointerDownCapture={() => clearTimeout(idle.current)} onPointerUpCapture={park} onPointerCancelCapture={park}
     data-docked={docked ? (right ? "right" : "left") : undefined} className="lr-remote-direction" data-side={right ? "right" : "left"}>
-    <button type="button" className={docked ? "lr-btn is-compact lr-remote-stick-wake" : "lr-btn is-compact"} aria-label={label} aria-expanded={open && !docked}
+    <button type="button" className={docked ? "lr-remote-stick-wake" : "lr-btn is-compact"} aria-label={label} aria-expanded={open && !docked}
       onClick={() => docked ? setDocked(false) : toggleOpen()}><Glyph name="gamepad" size={20} /><span aria-hidden="true">{right ? "R" : "L"}</span></button>
     {open && !docked && <div ref={pad} className="lr-remote-stick" role="group" aria-label={label}
       onPointerDown={e => {
