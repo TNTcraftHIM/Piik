@@ -25,7 +25,7 @@ const sceneControls = {
   'share-source': ['.lr-source-picker-panel'],
   'share-source-confirm': ['.lr-source-picker-panel', '.lr-source-option'],
   'sharing-settings': ['.lr-sharing-panel'],
-  'room-voice': ['.lr-interaction-panel', '.lr-scene button[popovertarget]', '.lr-interaction-panel [role="tab"][id$="-voice-tab"]'],
+  'room-voice': ['.lr-interaction-panel:has([id$="-voice-tab"][aria-selected=true])', '.lr-scene button[popovertarget]', '.lr-interaction-panel [role="tab"][id$="-voice-tab"]'],
   'touch-joystick': ['.lr-tv:has([data-side=left] > button[aria-expanded=true]):has([data-side=right] > button[aria-expanded=true])', '.lr-remote-direction[data-side=left] > button:first-child', '.lr-remote-direction[data-side=right] > button:first-child'],
   'share-failure': ['dialog.lr-share-help[open]', 'button.lr-status-indicator'],
   'viewer-route-failure': ['.lr-tv-screen'],
@@ -48,20 +48,45 @@ function batch(commands) {
 }
 
 function capture(url, selector, directory, filename, actions = []) {
+  const guide = url.pathname === '/__guide-preview' && selector !== root && filename.split('.')[0] !== 'invite-copy';
+  const captureSelector = guide ? '#guide-image-bounds' : selector;
   const prepare = `(async () => {
     const target = document.querySelector(${JSON.stringify(selector)});
+    if (!target.matches('dialog') && target.contains(document.activeElement) && !target.matches('.lr-tv')) document.activeElement.blur();
+    target.scrollIntoView({ block: 'center', inline: 'center' });
     await document.fonts.ready;
     await Promise.all(Array.from(target.querySelectorAll('img'), image => image.decode()));
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (${guide}) {
+      const rect = target.getBoundingClientRect();
+      const margin = 12;
+      const left = Math.max(0, rect.left + scrollX - margin);
+      const top = Math.max(0, rect.top + scrollY - margin);
+      const bounds = document.createElement('div');
+      bounds.id = 'guide-image-bounds';
+      bounds.setAttribute('aria-hidden', 'true');
+      Object.assign(bounds.style, {
+        position: 'absolute', pointerEvents: 'none',
+        left: left + 'px',
+        top: top + 'px',
+        width: (rect.width + 2 * margin) + 'px',
+        height: (rect.height + 2 * margin) + 'px',
+      });
+      document.body.append(bounds);
+    }
   })()`;
   return [
     ['open', url.href],
     ['wait', actions.length ? root : selector],
-    ...actions.map(action => ['click', action]),
+    ...actions.flatMap(action => [
+      ['wait', action],
+      ['eval', '-b', Buffer.from('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))').toString('base64')],
+      ['click', action],
+    ]),
     ['wait', selector],
     ['mouse', 'move', '1', '1'],
     ['eval', '-b', Buffer.from(prepare).toString('base64')],
-    ['screenshot', selector, join(directory, filename + '.png')],
+    ['screenshot', captureSelector, join(directory, filename + '.png')],
   ];
 }
 
@@ -77,7 +102,9 @@ try {
       for (const [scene, [selector, ...actions]] of Object.entries(sceneControls)) {
         const url = new URL(preview);
         url.search = new URLSearchParams({ scene, lang, theme });
+        if (scene === 'room-voice') commands.push(['set', 'viewport', '1280', '440']);
         commands.push(...capture(url, selector, output, scene + '.' + suffix, actions));
+        if (scene === 'room-voice') commands.push(['set', 'viewport', '1280', '900']);
       }
     }
     if (readmePreview) {

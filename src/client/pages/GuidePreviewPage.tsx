@@ -30,7 +30,7 @@ function Launcher({ lan }: { lan: boolean }) {
 function Invite() {
   const { t } = useCopy();
   const [includeInviteCredential, setIncludeInviteCredential] = useState(true);
-  const roomLink = "https://piik.example/r/9527" + (includeInviteCredential ? "#v=preview" : "");
+  const roomLink = "https://piik.example/r/9527" + (includeInviteCredential ? "#v=demo" : "");
   const state = { roomLink, includeInviteCredential, roomLinkBlocked: false, roomMutating: false };
   return <div className="cp-guide-invite">
     <Row label={t("host.policy")}>

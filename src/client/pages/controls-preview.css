@@ -63,4 +63,8 @@
 .cp-guide-stage[data-guide-scene="touch-joystick"] { width: min(520px, 100%); }
 .cp-guide-stage[data-guide-scene="touch-joystick"] .lr-tv-screen { width: 100%; min-height: 0; }
 
-.cp-guide-invite { width: min(650px, 100%); padding: 14px; }
+.cp-guide-invite { width: min(550px, 100%); padding: 14px; }
+.cp-guide-invite .lr-invite-field { flex-basis: 100%; }
+.cp-guide-invite .lr-invite-field > .lr-row-group { flex-basis: 100%; }
+.cp-guide-invite .lr-invite-url { min-width: 230px; }
+body:has(.lr-invite-qr:popover-open) .cp-guide-stage[data-guide-scene="invite-qr"] { visibility: hidden; }

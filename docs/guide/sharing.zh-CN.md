@@ -87,8 +87,8 @@
 2. 先选画质预设；需要指定分辨率、帧率、码率、画面偏好或视频编码时，再展开 **画面细调**。
 3. 切到 **声音**，选择来源声音和输出质量。
 
-![分享设置的画面页签：上方是画质预设，下方可展开画面细调。](../assets/guide/sharing-settings.zh-CN.png#gh-light-mode-only)
-![分享设置的画面页签：上方是画质预设，下方可展开画面细调。](../assets/guide/sharing-settings.zh-CN.dark.png#gh-dark-mode-only)
+![画面页签列出「轻量」「高清」和「高帧率」三种预设，当前选中「高清」。](../assets/guide/sharing-settings.zh-CN.png#gh-light-mode-only)
+![画面页签列出「轻量」「高清」和「高帧率」三种预设，当前选中「高清」。](../assets/guide/sharing-settings.zh-CN.dark.png#gh-dark-mode-only)
 
 | 设置 | 怎么理解 |
 | --- | --- |

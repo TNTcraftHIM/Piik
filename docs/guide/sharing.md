@@ -93,8 +93,8 @@ raise the room limit or their personal limit to make another path available.
    resolution, frame rate, bitrate, picture preference or codec.
 3. Open **Sound** to choose the source audio and its output quality.
 
-![Sharing settings on the Picture tab, with presets above the collapsed fine-tuning controls.](../assets/guide/sharing-settings.en.png#gh-light-mode-only)
-![Sharing settings on the Picture tab, with presets above the collapsed fine-tuning controls.](../assets/guide/sharing-settings.en.dark.png#gh-dark-mode-only)
+![The Picture tab shows the Light, HD and High FPS presets, with HD selected.](../assets/guide/sharing-settings.en.png#gh-light-mode-only)
+![The Picture tab shows the Light, HD and High FPS presets, with HD selected.](../assets/guide/sharing-settings.en.dark.png#gh-dark-mode-only)
 
 | Setting | What to expect |
 | --- | --- |
