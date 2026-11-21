@@ -984,6 +984,8 @@ export class ChannelSession {
     const changes = this.view.historyChangesByRoom[roomId];
     const projected = page.filter(message => !messageRemoved(changes, message.seq))
       .map(message => mergeMessage(current.find(previous => previous.id === message.id), redactReply(message, changes)));
+    // A jump requests the page ending at its target. A failed jump keeps the reader's current window.
+    if (jumping && refreshThrough === undefined && result.before !== null && projected.at(-1)?.seq !== result.before - 1) return;
     const merged = mergeMessages([...existing, ...projected].filter(message => !messageRemoved(changes, message.seq)
       && (result.oldestSeq === null || message.seq >= result.oldestSeq)).map(message => redactReply(message, changes)));
     const messages = readingWindow(merged, state.channel.historyWindow, latest);

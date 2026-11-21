@@ -9755,6 +9755,25 @@ test("same-binding recovery confirms the historical window and removes messages 
   } finally { session.close(); }
 });
 
+test.each(["history_cleared", "message_deleted"] as const)("reply navigation keeps the current window when %s removes its target", async type => {
+  const { session, peer } = await setup(3);
+  try {
+    await peer.history([message(3), message(4)], true);
+    const loading = session.loadMessage("first", 2);
+    const request = await peer.next();
+    peer.reply({ ...request, requestId: "moderation" }, type === "history_cleared"
+      ? { type, throughSeq: 4 } : { type, messageSeq: 2 });
+    peer.live(message(5));
+    const current = session.getSnapshot();
+    peer.page(request, [message(1), message(2)]);
+    await expect(loading).rejects.toThrow("message_unavailable");
+    expect(session.getSnapshot().messagesByRoom.first).toEqual(current.messagesByRoom.first);
+    expect(session.getSnapshot().messagesByRoom.first.at(-1)?.seq).toBe(5);
+    expect(session.getSnapshot().historyByRoom.first).toEqual(current.historyByRoom.first);
+    expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(true);
+  } finally { session.close(); }
+});
+
 test("reply navigation loads its own bounded history window and can return to latest", async () => {
   const { session, peer } = await setup(3);
   try {
