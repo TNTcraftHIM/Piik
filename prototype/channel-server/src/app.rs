@@ -217,6 +217,13 @@ impl CaptureCatalogKind {
     }
 }
 
+fn control_reply(id: String, result: Result<Value>) -> Value {
+    match result {
+        Ok(value) => json!({"id":id,"result":value}),
+        Err(error) => json!({"id":id,"error":error.to_string()}),
+    }
+}
+
 async fn catalog_reply(pending: &mut Option<(String, CaptureTargets)>) -> Value {
     let Some((_, read)) = pending.as_mut() else { return std::future::pending().await; };
     let result = match read.wait_for(Option::is_some).await {
@@ -1531,6 +1538,7 @@ async fn connection(
             let mut input_states = FuturesUnordered::new();
             let mut audio_states = FuturesUnordered::new();
             let mut operations = FuturesUnordered::new();
+            let mut opening: Option<BoxFuture<'static, Value>> = None;
             let mut targets = None;
             let mut microphones = None;
             let mut previews = FuturesUnordered::new();
@@ -1605,7 +1613,7 @@ async fn connection(
                             external_page.permits.insert(publication_id, permit);
                             Ok(descriptor)
                         });
-                        let response = match result { Ok(value) => json!({"id":id,"result":value}), Err(error) => json!({"id":id,"error":error.to_string()}) };
+                        let response = control_reply(id, result);
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         continue;
                     }
@@ -1789,6 +1797,11 @@ async fn connection(
                             response = catalog_reply(&mut microphones) => response,
                         }
                     }, if targets.is_some() || microphones.is_some() => {
+                        timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
+                        continue;
+                    }
+                    response = async { opening.as_mut().expect("room open pending").await }, if opening.is_some() => {
+                        opening = None;
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         continue;
                     }
@@ -2163,7 +2176,14 @@ async fn connection(
                                 }
                             }
                             Operation::Open { policy } => match &host {
-                                Some(commands) => open(commands, &policy).await,
+                                Some(commands) if opening.is_none() => {
+                                    let commands = commands.clone();
+                                    opening = Some(async move {
+                                        control_reply(request.id, open(&commands, &policy).await)
+                                    }.boxed());
+                                    continue;
+                                }
+                                Some(_) => Err(anyhow!("request_pending")),
                                 None => Err(anyhow!("hello_required")),
                             },
                             Operation::LocalEndpoint => match &host {
@@ -2177,10 +2197,7 @@ async fn connection(
                                             let session_id = response.await.map_err(|_| anyhow!("hosting_unavailable"))?;
                                             Ok::<_, anyhow::Error>(json!({"sessionId": session_id}))
                                         }.await;
-                                        match endpoint {
-                                            Ok(value) => json!({"id":request.id,"result":value}),
-                                            Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                                        }
+                                        control_reply(request.id, endpoint)
                                     }.boxed());
                                     continue;
                                 }
@@ -2673,10 +2690,7 @@ async fn connection(
                                 }
                             }
                         };
-                        match result {
-                            Ok(result) => json!({"id":request.id,"result":result}),
-                            Err(error) => json!({"id":request.id,"error":error.to_string()}),
-                        }
+                        control_reply(request.id, result)
                     }
                     _ => json!({"id":id,"error":"invalid_request"}),
                 };
@@ -3173,10 +3187,30 @@ mod lifecycle_tests {
                 }
                 assert!(target_reads.try_recv().is_err());
                 assert!(mic_reads.try_recv().is_err());
+                let policy = RoomState::new(
+                    "test-room".into(), "Test room".into(), Default::default(), key.2,
+                    piik_channel_core::wire::RoomAccess::Public, false, None,
+                ).unwrap();
+                socket.send(WsMessage::Text(json!({
+                    "id":"open","type":"open","policy":serde_json::to_string(&policy).unwrap()
+                }).to_string().into())).await.unwrap();
+                let HostCommand::Open(opening) = timeout(IO_TIMEOUT, receiver.recv())
+                    .await.unwrap().unwrap() else { panic!("room opening expected") };
+                socket.send(WsMessage::Text(json!({
+                    "id":"second-open","type":"open","policy":serde_json::to_string(&policy).unwrap()
+                }).to_string().into())).await.unwrap();
+                let second = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
+                assert_eq!(serde_json::from_str::<Value>(second.to_text().unwrap()).unwrap(),
+                    json!({"id":"second-open","error":"request_pending"}));
+                assert!(receiver.try_recv().is_err());
                 release_microphones.add_permits(1);
                 let microphones = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
                 assert_eq!(serde_json::from_str::<Value>(microphones.to_text().unwrap()).unwrap(),
                     json!({"id":"microphones","result":[{"id":"mic","label":"Fixture microphone"}]}));
+                assert!(opening.result.send(Err("fixture_open_failed".into())).is_ok());
+                let opened = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
+                assert_eq!(serde_json::from_str::<Value>(opened.to_text().unwrap()).unwrap(),
+                    json!({"id":"open","error":"fixture_open_failed"}));
                 release_targets.add_permits(1);
                 let refreshed = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
                 assert_eq!(serde_json::from_str::<Value>(refreshed.to_text().unwrap()).unwrap(),
