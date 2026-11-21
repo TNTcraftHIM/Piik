@@ -121,9 +121,19 @@ choice needs **Allow Viewers** before it applies again. Passwords are not saved.
 Direct touch has no cursor. **Playback settings → Default touch mode → Trackpad**
 selects cursor-based touch control instead.
 
-### Virtual mouse and keyboard
+### Virtual joysticks
 
-Tap the gamepad button at the lower left of the picture to open the movement pad. With gamepad access in co-play it controls the analog left stick. Tap WASD for keyboard games. With keyboard-only access or a connected physical controller, the pad uses WASD. Lift your finger to release.
+Tap the **L** or **R** tab at the edge of the picture to open that stick. Drag
+the tab to move it. In **Keys + mouse**, the left stick holds WASD and the
+right stick moves the mouse. Lift your finger to release that stick's input.
+
+In **Remote keyboard → Local controls**, use **Stick mode → Gamepad** for two
+analog sticks when the shared App supports gamepads and you have no physical
+controller connected. Turn on **Show only while touching** to see the thumb only
+while touching the pad. Turn off **Virtual joysticks** to remove both sticks and
+their handles.
+
+### Virtual mouse and keyboard
 
 Drag the mini mouse to reposition it; tap to expand its left and right buttons
 and combined scroll wheel / middle button. The cursor stays above and to the

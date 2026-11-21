@@ -8,7 +8,7 @@ import { isCopyKey, useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { panelWindowAPI, SurfaceDocument, usePanelWindow } from "../../ui/panel-window";
 import { navigateTabs } from "../../ui/tab-navigation";
-import { Btn, Chip, SegmentedChoice, SwitchItem } from "./primitives";
+import { Btn, Chip, FieldCap, SegmentedChoice, SwitchItem } from "./primitives";
 import { Tooltip } from "./Tooltip";
 import { RemoteShortcutSelect } from "./RemoteShortcutSelect";
 import "./floating-panel.css";
@@ -224,10 +224,13 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
         <RemoteShortcutSelect value={releaseKey} onChange={onReleaseKeyChange} mac={navigator.platform.startsWith("Mac")} />
         {virtualSticks && <SwitchItem label={t("remote.virtualSticks")}
           checked={virtualSticks.checked} onChange={virtualSticks.onChange} />}
-        {virtualSticks?.checked && stickMode && <SegmentedChoice label={t("remote.stickMode")} value={stickMode.value} onChange={stickMode.onChange} options={[
-          { value: "keyboard", label: t("remote.keyboardMouseMode"), icon: "keyboard" },
-          { value: "gamepad", label: t("remote.gamepadMode"), icon: "gamepad" },
-        ]} />}
+        {virtualSticks?.checked && stickMode && <div className="lr-remote-stick-mode">
+          <FieldCap k="remote.stickMode" />
+          <SegmentedChoice label={t("remote.stickMode")} value={stickMode.value} onChange={stickMode.onChange} options={[
+            { value: "keyboard", label: t("remote.keyboardMouseMode"), icon: "keyboard" },
+            { value: "gamepad", label: t("remote.gamepadMode"), icon: "gamepad" },
+          ]} />
+        </div>}
         {virtualSticks?.checked && stickVisibility && <SwitchItem label={t("remote.stickShowOnTouch")}
           checked={stickVisibility.checked} onChange={stickVisibility.onChange} />}
         {!panelWindow.detached && mouseControl}

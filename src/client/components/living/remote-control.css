@@ -67,7 +67,7 @@
   gap: 6px 14px; min-width: 0; min-height: var(--control-compact-size); margin: 0; padding: 6px 0;
 }
 .lr-remote-settings-fields > * + * { border-top: 1px solid var(--line); }
-.lr-remote-settings-fields > .lr-choice-field { padding-block: 8px; }
+.lr-remote-stick-mode { display: grid; gap: 6px; min-width: 0; padding-block: 8px; }
 .lr-remote-settings-fields :is(.lr-remote-shortcut label, .lr-switch-item > label) {
   display: inline-flex; align-items: center; gap: 6px; margin: 0;
   color: var(--ink); font-size: 13px; font-weight: 600; white-space: normal;
@@ -259,20 +259,20 @@
     var(--stick-handle-lift);
 }
 /* Keep both edge pulls clear of the playback bar, including on narrow screens. */
-:is(.lr-tv-screen:has(> .lr-playback), .c3-mini-player:has(> .c3-mini-controls)) > .lr-remote-input-surface .lr-remote-stick-area {
-  --stick-clearance: calc(var(--control-compact-size) + 24px);
-}
-:is(.lr-tv-screen:has(> .lr-playback), .c3-mini-player:has(> .c3-mini-controls)) > .lr-remote-input-surface .lr-remote-direction {
-  --handle-width: calc(var(--control-compact-size) + 16px);
-  --stick-size: min(clamp(72px, 24vmin, 92px), max(44px, calc(50cqw - var(--handle-width) - 8px)));
-  --stick-group-width: calc(var(--handle-width) + 4px + var(--stick-size));
-  --stick-group-height: var(--stick-size);
-  column-gap: 4px; row-gap: 0;
-  grid-template: "handle pad" var(--stick-size) / var(--handle-width) var(--stick-size);
-}
-:is(.lr-tv-screen:has(> .lr-playback), .c3-mini-player:has(> .c3-mini-controls)) > .lr-remote-input-surface .lr-remote-direction[data-side="right"] {
-  grid-template-areas: "pad handle";
-  grid-template-columns: var(--stick-size) var(--handle-width);
+:has(> .lr-media-overlay.lr-media-controls) > .lr-remote-input-surface {
+  .lr-remote-stick-area { --stick-clearance: calc(var(--control-compact-size) + 24px); }
+  .lr-remote-direction {
+    --handle-width: calc(var(--control-compact-size) + 16px);
+    --stick-size: min(clamp(72px, 24vmin, 92px), max(44px, calc(50cqw - var(--handle-width) - 8px)));
+    --stick-group-width: calc(var(--handle-width) + 4px + var(--stick-size));
+    --stick-group-height: var(--stick-size);
+    column-gap: 4px; row-gap: 0;
+    grid-template: "handle pad" var(--stick-size) / var(--handle-width) var(--stick-size);
+  }
+  .lr-remote-direction[data-side="right"] {
+    grid-template-areas: "pad handle";
+    grid-template-columns: var(--stick-size) var(--handle-width);
+  }
 }
 .lr-remote-direction[data-touch-only] .lr-remote-stick {
   background: transparent;
