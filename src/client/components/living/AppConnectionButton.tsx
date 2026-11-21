@@ -26,6 +26,7 @@ interface AppConnectionProps {
   /** The owning Site must be admitted before App control can start. */
   available?: boolean;
   targetURL?: string;
+  wakeURL?: string | null;
 }
 
 interface ConnectionAttempt {
@@ -36,11 +37,11 @@ interface ConnectionAttempt {
   cancel?: () => void;
 }
 
-export function AppConnectionButton({ onConnected, discovery = channelAppDiscovery, connected, available = true, targetURL }: AppConnectionProps) {
+export function AppConnectionButton({ onConnected, discovery = channelAppDiscovery, connected, available = true, targetURL, wakeURL: launchTarget }: AppConnectionProps) {
   const { lang, t } = useCopy();
   const theme = useSyncExternalStore(subscribeTheme, currentTheme, currentTheme);
   const [state, setState] = useState<"idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible">("idle");
-  const wakeURL = androidAppIntent("piik://app");
+  const wakeURL = launchTarget === undefined ? androidAppIntent("piik://app") : launchTarget;
   const [helpOpen, setHelpOpen] = useState(false);
   const downloadURL = useProjectLink("/#download", "https://github.com/TNTcraftHIM/Piik/releases/latest", helpOpen);
   const helpId = useId();

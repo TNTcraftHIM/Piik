@@ -17,7 +17,7 @@ export function AudioVolumeControl({ volume, onVolume, disabled, label, hint, hi
   return <>
     <label htmlFor={id}>
       <span>{t(label)}</span>
-      <output htmlFor={id}>{percent}%</output>
+      <span className="lr-volume-value" aria-hidden="true">{percent}%</span>
     </label>
     {hint ? <Tooltip kind={hint} text={t(hintText ?? label)}>{slider}</Tooltip> : slider}
   </>;

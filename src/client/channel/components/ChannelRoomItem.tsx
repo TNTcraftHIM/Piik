@@ -1,7 +1,7 @@
 import { useId } from "react";
 import { Tooltip } from "../../components/living/Tooltip";
 import { Btn } from "../../components/living/primitives";
-import { useCopy } from "../../ui/copy";
+import { joinItems, useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import type { ChannelRoom } from "../protocol";
 import { participantViewingLabel, viewingAppearance, type ParticipantViewing } from "../presentation";
@@ -15,10 +15,16 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
   sourceCount?: number; settingsOpen?: boolean; unread?: boolean; onSelect(): void; onManage(): void;
   participantDisclosure?: { open: boolean; count: number; controls: string; onToggle(): void };
 }) {
-  const { t } = useCopy();
+  const { t, lang } = useCopy();
   const unreadId = useId(), offlineId = useId(), activityId = useId();
   const settingsLabel = t("room.item.settings", { name: room.name });
-  const activityLabel = sharing ? t("channel.roomParticipants.sharing") : viewing && participantViewingLabel(viewing, t);
+  const activity = sharing ? t("channel.roomParticipants.sharing") : viewing ? participantViewingLabel(viewing, t)
+    : sourceCount > 0 ? `${t("screen.sharedScreens")} ${sourceCount}` : "";
+  const activityLabel = joinItems(lang, [
+    room.access === "private" ? t("room.settings.private") : "",
+    voice ? t("channel.joinVoice.voiceJoined") : "",
+    activity,
+  ].filter(Boolean));
   return <div className="c3-room-item" data-selected={selected || undefined} data-unread={unread || undefined} data-settings-open={settingsOpen || undefined} data-offline={!room.available || undefined}>
     {participantDisclosure && <span className="c3-room-voice-toggle lr-embedded-actions">
       <Btn icon="chevron" size="dense" quiet textTooltip

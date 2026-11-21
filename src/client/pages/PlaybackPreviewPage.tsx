@@ -86,7 +86,7 @@ export function PlaybackPreviewPage() {
     setRole(next);
   }
   return <div className="lr-app">
-    <AppHeader homeHref={`/__playback-preview?role=${role}`} />
+    <AppHeader appControl={null} diagnosticControl={null} homeHref={`/__playback-preview?role=${role}`} />
     <header className="lr-room" style={{ flex: "none", paddingBottom: 0, paddingTop: 20 }}>
       <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
       <h1 style={{ margin: 0 }}>{english ? "Playback controls" : "播放控件预览"}</h1>

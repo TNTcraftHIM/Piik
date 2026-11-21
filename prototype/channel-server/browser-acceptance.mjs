@@ -1614,7 +1614,13 @@ try {
   await writeFile(join(output, "failure.json"), JSON.stringify({ error: String(error), evidence }, null, 2));
   throw error;
 } finally {
-  await Promise.allSettled(active.map(index => browser(index, "close")));
+  const closed = await Promise.allSettled(active.map(index => browser(index, "close")));
+  closed.forEach((result, position) => {
+    if (result.status === "rejected") {
+      console.error("Failed to close browser session", sessions[active[position]], result.reason);
+      process.exitCode = 1;
+    }
+  });
   await Promise.allSettled([...active.map(index => `${index}.js`), "picture.png", "notes.txt"].map(name => unlink(join(temporary, name))));
   if (roomsOnly) await rm(join(temporary, "downloads"), { recursive: true, force: true });
   await rmdir(temporary);

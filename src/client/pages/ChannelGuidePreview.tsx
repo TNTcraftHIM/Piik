@@ -226,6 +226,7 @@ export function useChannelGuideSample({ multiRoom = false, showSampleAttachment 
     sourceSelectionCommitting: () => false,
     browserCapturePreparation: () => undefined,
     pagePlayer: false, externalScreenInputAvailable: false, watchPage: () => undefined, watchEmbed: () => undefined,
+    startWatch: async () => received(),
     prepareWatchEmbed: async () => { throw new Error("watch_media_unsupported"); },
     confirmWatchEmbed: async () => { throw new Error("watch_source_unavailable"); },
     externalInput: () => undefined, startExternalScreen: async () => received(),

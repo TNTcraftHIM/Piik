@@ -1937,7 +1937,7 @@ details[open] > summary > .lr-sharing-chevron { transform: rotate(180deg); }
 .lr-audio-settings > .lr-comic-tip-wrap { display: flex; width: 100%; }
 .lr-audio-settings input { width: 100%; min-width: 32px; height: 36px; padding: 0; accent-color: var(--action); cursor: pointer; }
 .lr-audio-settings input:disabled { cursor: default; }
-.lr-audio-settings output { min-width: 4ch; font-variant-numeric: tabular-nums; text-align: right; }
+.lr-audio-settings output, .lr-volume-value { min-width: 4ch; font-variant-numeric: tabular-nums; text-align: right; }
 .lr-audio-settings .lr-switch-item .lr-cap { white-space: normal; }
 .lr-capture-device { display: grid; gap: 6px; min-width: 0; padding: 4px 10px 10px; }
 .lr-capture-device label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 0; color: var(--muted); }

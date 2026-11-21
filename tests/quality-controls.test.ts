@@ -27,10 +27,11 @@ function editor() {
   const container = { contains: (node: unknown) => node === inside };
   const onChange = vi.fn();
   const setInvalid = vi.fn();
+  const effects: Array<() => void> = [];
   const render = runInNewContext(executable, {
-    exports: {}, require: () => jsxRuntime, useRef: () => ({ current: input }), Number,
+    exports: {}, require: () => jsxRuntime, useRef: () => ({ current: null }), Number,
     useState: () => [false, setInvalid], useId: () => "validation", useCopy: () => ({ t: vi.fn() }), Glyph: () => null,
-    useEffect: (effect: () => void) => effect(),
+    useEffect: (effect: () => void) => effects.push(effect),
   });
   let choose!: (next: number) => void;
   let key!: (event: unknown) => void;
@@ -42,6 +43,10 @@ function editor() {
       return number;
     },
   });
+  const field = result.props.children[0].props.children[0];
+  expect(field.type).toBe("input");
+  field.props.ref.current = input;
+  for (const effect of effects) effect();
   const blur = (relatedTarget: unknown = null) => result.props.onBlur({ currentTarget: container, relatedTarget });
   const press = (value: string) => key({ key: value, nativeEvent: { isComposing: false }, currentTarget: { blur: () => blur() },
     preventDefault() {}, stopPropagation() {} });

@@ -76,7 +76,7 @@ function TooltipCatalogue() {
   usePreviewReducedMotion(reducedMotion);
   return (
     <div className="lr-app" data-comic-reduced-motion={reducedMotion || undefined}>
-      <AppHeader led={<LedStrip state="live" label={t("state.signal.connected")} comic="signal-connected" />} />
+      <AppHeader appControl={null} diagnosticControl={null} led={<LedStrip state="live" label={t("state.signal.connected")} comic="signal-connected" />} />
       <main className="lr-room lr-tooltip-preview">
         <header className="lr-tooltip-preview-head">
           <h1>{en ? "Piik · UI catalogue" : "Piik · UI 控件大全"}</h1>

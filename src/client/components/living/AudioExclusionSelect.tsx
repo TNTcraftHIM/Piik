@@ -3,6 +3,7 @@ import type { NativeCaptureTarget } from "../../native/wire";
 import { audioApplicationKey, audioApplications } from "../../native/capture-selection";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
+import { Btn } from "./primitives";
 import { Tooltip } from "./Tooltip";
 
 export function AudioExclusionSelect({ sources, value, onChange, disabled, busy, failed, onRefresh, showLabel = true }: {
@@ -30,10 +31,8 @@ export function AudioExclusionSelect({ sources, value, onChange, disabled, busy,
         {missing && <option value={key} disabled>{value.title} ({t("host.sourcePicker.excludeMissing")})</option>}
         {applications.map(target => <option key={audioApplicationKey(target)} value={audioApplicationKey(target)}>{target.title}</option>)}
       </select>
-      {onRefresh && <button type="button" className="lr-btn lr-device-refresh" disabled={disabled || busy}
-        aria-label={t("host.sourcePicker.refreshApplications")} onClick={onRefresh}>
-        <Glyph name="refresh" size={16} className={busy ? "lr-spin" : undefined} />
-      </button>}
+      {onRefresh && <Btn icon="refresh" className="lr-device-refresh" title="host.sourcePicker.refreshApplications"
+        disabled={disabled || busy} busy={busy} onClick={onRefresh} />}
     </div>
     <small id={`${id}-hint`} role={failed ? "status" : undefined}>
       {t(failed ? "host.sourcePicker.excludeListFailed" : value ? "host.sourcePicker.excludeAudioLifetime" : "host.sourcePicker.excludeAudioChoose")}

@@ -28,7 +28,7 @@ export function ChannelEntryPreview() {
     joinAsNewIdentity: () => setAction("new-identity"),
   };
   return <div className="lr-app sp-page">
-    <AppHeader homeHref="/__status-preview" />
+    <AppHeader appControl={null} diagnosticControl={null} homeHref="/__status-preview" />
     <div className="sp-main">
       <h1>{zh ? "站点连接" : "Site connection"}</h1>
       <label className="sp-failure-choice">{zh ? "状态示例" : "Sample state"}

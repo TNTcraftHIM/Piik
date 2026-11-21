@@ -414,9 +414,10 @@ retain platform details and tested-source records.
 
 Earlier macOS SDK/package checks cover capture, encoding, sound and input compilation,
 synthetic encode/decode, LaunchServices startup and startup-error cleanup.
-The current audio-continuity change has source review but no new macOS build
-or device check; the local cross-build lacks the required Apple C toolchain.
-The [current VideoToolbox control](https://github.com/TNTcraftHIM/Piik/actions/runs/42697708222)
+The [macOS check on `4f798cef`](https://github.com/TNTcraftHIM/Piik/actions/runs/44926014635)
+builds Server and App with capture, compiles Native tests, and passes the
+synthetic VideoToolbox H.264 roundtrip. It does not exercise system permissions.
+The [earlier VideoToolbox control](https://github.com/TNTcraftHIM/Piik/actions/runs/42697708222)
 also verifies QP feedback, independent geometry changes, a continuing sibling
 and source-time preservation in the shared quality implementation.
 System Quit, Dock/Finder return, permissions, physical capture, sound and input

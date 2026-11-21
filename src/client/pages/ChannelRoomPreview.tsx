@@ -406,7 +406,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   } satisfies Partial<ChannelController> as unknown as ChannelController;
   return <div className="c3-room-preview">
     <ChannelRoomPage channel={channel} layout={layout} offerLayout={offerLayout} onLayoutChange={changeLayout} selected={selected} onSelect={setSelected}
-      appControl={<><AppConnectionButton discovery={previewAppDiscovery} connected={false} />
+      appControl={<><AppConnectionButton discovery={previewAppDiscovery} connected={false} wakeURL={null} />
         <span ref={optionsTrigger} className="c3-room-preview-trigger"><Btn icon="sliders" title={{ text: zh ? "预览选项" : "Preview options" }}
           quiet size="compact" hint="hint-advanced" expanded={optionsOpen} controls={optionsId} popoverTarget={optionsId} /></span></>} />
     <div ref={optionsPanel} id={optionsId} popover="auto" role="dialog" aria-label={zh ? "预览选项" : "Preview options"}

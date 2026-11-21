@@ -1,6 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Btn } from "../../components/living/primitives";
-import { Tooltip } from "../../components/living/Tooltip";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useCopy } from "../../ui/copy";
 import { channelErrorPresentation } from "../error-presentation";
@@ -21,9 +20,7 @@ export function ChannelRoomInvitation({ channel, room, onManageAccess }: {
   const label = t("invite.room.title", { name: room.name });
   useAnchoredPopover(trigger, panel, { maxHeight: 560 });
   return <span className="c3-room-invitation-entry" ref={trigger}>
-    <Tooltip kind="hint-copy-invite" text={label} disabled={open}>
-      <Btn icon="link" title={{ text: label }} quiet size="dense" expanded={open} controls={id} popoverTarget={id} />
-    </Tooltip>
+    <Btn icon="link" title={{ text: label }} textTooltip quiet size="dense" expanded={open} controls={id} popoverTarget={id} />
     <div id={id} ref={panel} popover="auto" role="dialog" aria-label={label}
       className="lr-anchored-card c3-room-invitation" onToggle={event => {
         if (event.target === event.currentTarget) setOpen(event.newState === "open");

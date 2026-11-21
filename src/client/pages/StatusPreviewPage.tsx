@@ -82,7 +82,7 @@ function StatusCatalog() {
 
   return (
     <div className="lr-app sp-page" data-comic-reduced-motion={reducedMotion || undefined}>
-      <AppHeader homeHref="/__status-preview" />
+      <AppHeader appControl={null} diagnosticControl={null} homeHref="/__status-preview" />
       <main className="sp-main">
         <section className="sp-catalog" id="sharing-troubleshooting">
           <header><h2>分享失败排查</h2><p>出错时，电视下沿的状态灯会主动展开图示提示。点按状态灯查看排查方法。</p></header>

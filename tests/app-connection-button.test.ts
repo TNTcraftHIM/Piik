@@ -37,6 +37,16 @@ describe("shared App connection entry", () => {
     expect(html).not.toContain(`aria-label="${t("en", "common.retry")}"`);
   });
 
+  it("omits the Android wake action when its embedding surface disables it", () => {
+    vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (Linux; Android 16) Mobile" });
+    const render = (wakeURL?: string | null) => {
+      vi.mocked(useState).mockReturnValueOnce(["unavailable", vi.fn()]);
+      return renderToStaticMarkup(createElement(AppConnectionButton, { wakeURL }));
+    };
+    expect(render()).toContain("intent://app#Intent;scheme=piik;");
+    expect(render(null)).not.toContain("intent://app");
+  });
+
   it("uses one native link to open update management without another discovery click", () => {
     setCopy({ lang: "en" });
     const html = renderToStaticMarkup(createElement(AppReleaseNotice, {
