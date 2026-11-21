@@ -682,7 +682,6 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 else if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == id) {
                     child.caption.ready(&theme, language);
                     child.caption.layout(&child.window, &child.content, &controls);
-                    child.caption.title(&child.window.title());
                 } else { pages.caption_ready(id, &theme, language, &controls); }
             }
             Event::UserEvent(ServiceEvent::PopupTitle(id, title)) => {

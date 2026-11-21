@@ -358,7 +358,6 @@ impl Pages {
                 .find(|view| view.window.id() == id)
             {
                 view.caption.ready(theme, language);
-                view.caption.title(&view.window.title());
                 if view.mounted.is_none() {
                     view.caption.layout(&view.window, &view.view, controls);
                 }
