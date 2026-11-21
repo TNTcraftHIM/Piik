@@ -1,6 +1,9 @@
 use piik_channel_core::{
     attachment::sha256_hex,
-    file_delivery::{FileControl, FileDelivery, FileEffect, FILE_FRAME_BYTES, FILE_RANGE_BYTES},
+    file_delivery::{
+        FileControl, FileDelivery, FileEffect, FILE_FRAME_BYTES, FILE_MAX_PENDING_RANGES,
+        FILE_RANGE_BYTES,
+    },
     file_room::{FileKey, FilePlan},
     AttachmentDescriptor,
 };
@@ -141,6 +144,137 @@ fn pending_pull_capacity_is_bounded_and_room_lease_retirement_clears_it() {
     assert_eq!(source.next_deadline(), None);
     assert!(source.expire(5000).is_empty());
 }
+
+#[test]
+fn downloads_waiting_for_a_route_leave_capacity_for_readable_files() {
+    let mut receiver = FileDelivery::new(id(2));
+    let waiting = plan(1, None, &[], true, b"file");
+    let mut plans = vec![plan(1, Some(1), &[], true, b"file")];
+    let waiting_keys: Vec<_> = (0..=FILE_MAX_PENDING_RANGES)
+        .map(|index| {
+            let mut key = key();
+            key.message_seq = 100 + index as u64;
+            plans.push(FilePlan {
+                message_seq: key.message_seq,
+                ..waiting.clone()
+            });
+            key
+        })
+        .collect();
+    assert!(receiver.update(plans.clone(), room_peers(), 0).is_empty());
+    let waiting_effects: Vec<_> = waiting_keys
+        .iter()
+        .flat_map(|key| receiver.start(key.clone()))
+        .collect();
+    let effects = receiver.start(key());
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [FileEffect::SendControl { peer, control: FileControl::Pull { key: requested, offset: 0, .. } }]
+                if *peer == id(1) && *requested == key()
+        ),
+        "{effects:?}"
+    );
+    assert!(waiting_effects.is_empty(), "{waiting_effects:?}");
+
+    assert!(receiver.cancel(&waiting_keys[0]).is_empty());
+    plans[1].upstream = Some(id(1));
+    plans.last_mut().unwrap().upstream = Some(id(1));
+    let effects = receiver.update(plans, room_peers(), 1);
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [FileEffect::SendControl { peer, control: FileControl::Pull { key, offset: 0, .. } }]
+                if *peer == id(1) && Some(key) == waiting_keys.last()
+        ),
+        "{effects:?}"
+    );
+}
+
+#[test]
+fn lost_routes_release_download_ranges_before_new_plans_start() {
+    for disconnect in [false, true] {
+        let mut receiver = FileDelivery::new(id(2));
+        let routed = plan(1, Some(1), &[], true, b"file");
+        let mut plans: Vec<_> = (0..FILE_MAX_PENDING_RANGES)
+            .map(|index| FilePlan {
+                message_seq: 100 + index as u64,
+                ..routed.clone()
+            })
+            .collect();
+        let readable = plan(3, Some(3), &[], true, b"file");
+        if disconnect {
+            plans.push(readable.clone());
+        }
+        assert!(receiver.update(plans.clone(), room_peers(), 0).is_empty());
+        for plan in &plans[..FILE_MAX_PENDING_RANGES] {
+            let mut key = key();
+            key.message_seq = plan.message_seq;
+            assert!(matches!(
+                receiver.start(key).as_slice(),
+                [FileEffect::SendControl {
+                    control: FileControl::Pull { .. },
+                    ..
+                }]
+            ));
+        }
+        let mut effects = if disconnect {
+            assert!(receiver.peer_unavailable(id(1)).is_empty());
+            receiver.start(key())
+        } else {
+            plans.push(readable);
+            assert!(receiver.start(key()).is_empty());
+            Vec::new()
+        };
+        for plan in &mut plans[..FILE_MAX_PENDING_RANGES] {
+            plan.upstream = None;
+        }
+        effects.extend(receiver.update(plans.clone(), room_peers(), 1));
+        let (pulls, cancels): (Vec<_>, Vec<_>) = effects.iter().partition(|effect| {
+            matches!(
+                effect,
+                FileEffect::SendControl {
+                    control: FileControl::Pull { .. },
+                    ..
+                }
+            )
+        });
+        assert!(
+            matches!(
+                pulls.as_slice(),
+                [FileEffect::SendControl { peer, control: FileControl::Pull { key: requested, offset: 0, .. } }]
+                    if *peer == id(3) && *requested == key()
+            ),
+            "{effects:?}"
+        );
+        assert_eq!(
+            cancels.len(),
+            if disconnect {
+                0
+            } else {
+                FILE_MAX_PENDING_RANGES
+            }
+        );
+        assert!(cancels.iter().all(|effect| matches!(
+            effect,
+            FileEffect::SendControl { peer, control: FileControl::Cancel { .. } } if *peer == id(1)
+        )));
+
+        let mut resumed = key();
+        resumed.message_seq = plans[0].message_seq;
+        plans[0].upstream = Some(id(4));
+        let effects = receiver.update(plans, room_peers(), 2);
+        assert!(
+            matches!(
+                effects.as_slice(),
+                [FileEffect::SendControl { peer, control: FileControl::Pull { key, offset: 0, .. } }]
+                    if *peer == id(4) && *key == resumed
+            ),
+            "{effects:?}"
+        );
+    }
+}
+
 fn content() -> Vec<u8> {
     (0..FILE_RANGE_BYTES * 2 + 17)
         .map(|i| (i % 251) as u8)

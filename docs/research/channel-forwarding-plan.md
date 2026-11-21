@@ -124,19 +124,15 @@ within its resource allowance and closes a pair when its last use ends.
 | Version | When peer connections are prepared and used |
 | --- | --- |
 | [v2.7.0](https://github.com/TNTcraftHIM/Piik/blob/e25bd009501793681c2fc52080846cd092bb917e/docs/standards/routing-transport.md#topology) | The room already supports multi-hop delivery from one screen host. Each viewer has at most one active upstream. Voice can establish the room graph before the host shares a screen. Voice and picture use the same route controller. Voice can use a companion transport on a selected edge. The route policy can use an embedded SFU. |
-| [Current 3.0 implementation](./channel-network-design.md#one-base-tree-per-participating-room) | Screen, voice, file and forwarded webpage bytes request physical pairs from one channel pool. Rooms use authorized subgraphs; confirmed pairs are reusable by other eligible activities. Failed direct paths can use same-room readers, and forwarding budgets apply independently per kind across rooms. |
+| [Current 3.0 implementation](./channel-network-design.md#room-bootstrap-and-activity-paths) | Screen, voice, file and forwarded webpage bytes request physical pairs from one channel pool. Rooms use authorized subgraphs; confirmed pairs are reusable by other eligible activities. Failed direct paths can use same-room readers, and forwarding budgets apply independently per kind across rooms. |
 
 The remaining pool scheduling is tracked in [TODO](../todo.md#active-work):
 first standby neighbors for lobby and idle-room interest, channel-wide gap
 repair, and a total physical degree budget. Existing code bounds optional
 discovery and idle retention; it does not yet apply a total degree limit to
 active and standby pairs together. These are implementation gaps within the
-same graph model. Current room candidates can start their deadlines before
-physical connection; demand must instead survive connection preparation under
-the channel owner. Current voice, file and forwarded-byte planning also shares
-one room base tree. Those activities must be able to select independent source
-paths on the authorized graph, using the existing flow and transfer fields.
-The connection pool remains shared throughout this internal transition.
+same graph model. A new direct request can currently displace an idle neighbor.
+Admission and retention under a total degree budget remain open.
 
 ### Payloads
 
@@ -247,8 +243,7 @@ A at the same time. Each publication keeps its own subscribers, relay grants,
 receiver proof and stop event. A second publication from the same person
 can reuse the same pairs or a common branch. Its recipients and lifetime
 determine how much overlaps. Room voice follows the same rule per speaker.
-A room base tree can supply reusable paths in either direction without
-building a fresh physical connection for each talker.
+Speakers can use the same confirmed pair in either direction.
 
 The encoding pool reuses a compatible encoded representation. The network
 connection pool reuses a current transport between two endpoints. A flow
@@ -526,8 +521,8 @@ and measures the gain against that baseline on independent rooms.
 flowchart TD
   C["Channel · authority and connection demand"] -->|"authorized state"| R["RoomRuntime · room grants and delivery intent"]
   R -->|"confirmed path"| P["Activity · selected delivery and pending handoff"]
-  R -->|"room interest and unmet intent"| C
-  C -->|"ranked pair requests"| T["TransportBook · channel graph, pair attempts and uses"]
+  R -->|"authorized unmet intent"| C
+  C -->|"cold start and repair requests"| T["TransportBook · channel graph, pair attempts and uses"]
   P -->|"flow lease"| T
   T --> E["Browser media / Native Driver · physical transport"]
   A["Page / Native runtime · downstream counts by kind"] --> E
@@ -538,9 +533,8 @@ flowchart TD
   E -->|"receiver delivery proof"| P
 ```
 
-Keep route ownership in the existing Core. Extend the endpoint resource owner
-with the per-kind contribution counts. Reuse room, publication, pair and flow
-identities. Advertised capacity is a hint until the endpoint grants a current
+Core owns route selection. Each sending runtime accounts for downstream peers
+by kind across rooms using the existing room, publication, pair and flow identities. Advertised capacity is a hint until the endpoint grants a current
 reservation. Failed preparation, cancellation and retirement release that
 reservation. A late result belongs to its original attempt. The last
 assignment of one kind to a peer releases its slot for that kind. The
@@ -556,24 +550,14 @@ Room planning borrows the channel's authorized adjacency view. Reuse the existin
 path search to extend an activity's selected parent map for unmet receivers,
 preserving valid branches. `Publication` owns media selection and delivery proof;
 `FileRoom` owns holder selection and transfer paths; watch activities own their
-byte-source paths. Retire the base tree's business projection as those consumers
-move to the shared graph query. No persistent route state or second public graph
-representation is needed.
-
-Complete cold-start demand before removing the base tree's connection requests.
-Media subscriptions already identify sources and receivers without flows.
-File and forwarded-byte plans must likewise retain receiving intent and source
-identity when their upstream is absent. The channel can then admit the first
-pair on an empty graph, discover missing links and wake the room when the
-confirmed graph changes. `HostInput.confirmed_pairs` supplies that boundary;
-physical queuing and ICE progress remain with the channel. Retain a confirmed
-pair for its outstanding demand until an activity takes over or that demand ends.
+byte-source paths. The room projects receiving intent even before it can select
+an upstream. Channel discovery admits pairs and wakes the room through
+`HostInput.confirmed_pairs`. Required `RoomRecipient.screenHelpers` identifies
+the upstream receiver in assisted screen demand on channel wire 39.
 
 ## Review And Validation Plan
 
-First migrate intent projection and channel cold start, then independent
-activity selection and preparation deadlines, then remove unused base-tree
-planning. Pool standby and degree calibration use that same connection owner.
+Measure proactive standby and total degree admission with the same connection owner.
 
 1. Compare neighbor selection policies for the one channel connection pool.
    Record edges confirmed on entry, effects of room interest, idle overhead

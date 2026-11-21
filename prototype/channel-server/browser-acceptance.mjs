@@ -1432,9 +1432,23 @@ try {
     const publication = await publishScreen(0, roomId);
     await action(1, `watch(${JSON.stringify(publication)})`);
     await playing(1, publication);
+    const screenConnections = await Promise.all(active.map(async index => {
+      const direction = index === 0 ? "outgoing" : "incoming";
+      const observed = await sample(index);
+      const pair = (await view(index)).state.pairs.find(pair => pair[direction].some(flow => flow.publicationId === publication));
+      const flowAt = observed.protocol.findIndex(event => event.pairs?.some(state => state.id === pair?.id && state[direction].includes(publication)));
+      const connectedAt = observed.protocol.findIndex(event => event.type === "link_state" && event.pair === pair?.id && event.state === "connected");
+      const probeAt = observed.protocol.findIndex(event => event.pairs?.some(state => state.id === pair?.id
+        && state.rooms.length === 0 && state.incoming.length === 0 && state.outgoing.length === 0));
+      assert(probeAt >= 0 && probeAt < connectedAt && connectedAt < flowAt, `Browser ${index} must connect a roomless pair before adding its screen flow`);
+      return { index, pair: pair.id, probe: observed.protocol[probeAt], connected: observed.protocol[connectedAt], flow: observed.protocol[flowAt] };
+    }));
     await browser(1, "find", "role", "button", "click", "--name", "Return to Living room", "--exact");
     await playbackSettings(1, publication, true);
     await playbackSettings(0, publication, false);
+    await action(0, `stopScreen(${JSON.stringify(publication)})`);
+    await until("stopping screen retires the remote player", () => picture(1, publication), value => !value.received);
+    await writeFile(join(output, "playback-result.json"), JSON.stringify({ publication, screenConnections, stopped: true }, null, 2));
     console.log("Playback settings keyboard acceptance passed");
   } else if (appOnly) {
     await appRoom({ initial, serverRoom: roomId, browser, action, view, evaluate, until, sample,

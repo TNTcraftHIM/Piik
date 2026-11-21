@@ -1,7 +1,7 @@
 import Hls, { LoaderContextType } from "hls.js";
 import { afterEach, expect, test, vi } from "vitest";
 import { ChannelSession } from "../src/client/channel/session";
-import { HTMLVideoMedia, createPeerWatchMedia } from "../src/client/channel/watch-media";
+import { HTMLVideoMedia, createResourceWatchMedia } from "../src/client/channel/watch-media";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 
@@ -32,7 +32,8 @@ test.each([
 ])("a known peer $code stays actionable after the media element reports unsupported source", async value => {
   const attached = nextHlsAttachment();
   const video = element(); vi.stubGlobal("document", { createElement: () => video });
-  const media = createPeerWatchMedia({ resourceId: crypto.randomUUID(), format: "hls" }, async () => { throw Error("unused_read"); });
+  const media = createResourceWatchMedia({ resourceId: crypto.randomUUID(), format: "hls" },
+    async () => { throw Error("unused_read"); }, { hlsDeadlineOwner: "reader" });
   const player = new WatchPlayer("owned", false, media, () => {});
   try {
     const hls = await attached;
@@ -70,7 +71,8 @@ test.each([false, true])("initial HLS readiness uses the current failure with an
   const attached = nextHlsAttachment();
   const video = element();
   vi.stubGlobal("document", { createElement: () => video });
-  const media = createPeerWatchMedia({ resourceId: crypto.randomUUID(), format: "hls" }, async () => { throw Error("unused_read"); });
+  const media = createResourceWatchMedia({ resourceId: crypto.randomUUID(), format: "hls" },
+    async () => { throw Error("unused_read"); }, { hlsDeadlineOwner: "reader" });
   const player = new WatchPlayer("owned", false, media, () => {});
   const controller = new AbortController();
   const read = media.read.bind(media);

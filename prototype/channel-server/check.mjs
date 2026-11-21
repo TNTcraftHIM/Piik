@@ -164,12 +164,25 @@ test("authenticated users, signed conversation and selective source ownership", 
   "screen source limit restored to room default");
   assert.equal((await other.request({ type: "unpublish", publicationId })).type, "error");
   assert.equal((await other.request({ type: "subscribe", publicationId, enabled: true })).type, "ack");
+  const assigned = await other.wait(event => event.type === "state" && event.state.subscriptions.includes(publicationId)
+    && event.state.pairs.some(pair => pair.peerId === friend.welcome.sessionId), "assigned source pair");
+  const pairId = assigned.state.pairs.find(pair => pair.peerId === friend.welcome.sessionId).id;
+  const connected = { type: "link_state", pairId, state: "connected" };
+  assert.equal((await other.request(connected)).type, "ack");
+  // A profile broadcast gives the viewer a fresh snapshot after its one-sided report.
+  assert.equal((await other.request({ type: "set_profile", name: "Viewer link check" })).type, "ack");
+  const oneSided = await other.wait(event => event.type === "state"
+    && event.state.users.some(user => user.name === "Viewer link check"), "single-ended link snapshot");
+  assert(oneSided.state.pairs.every(pair => !pair.incoming.some(flow => flow.publicationId === publicationId)));
+  assert.equal((await friend.request(connected)).type, "ack");
   const routed = await other.wait(event => event.type === "state" && event.state.pairs.some(pair => pair.incoming.some(flow => flow.publicationId === publicationId)), "admitted subscription");
   assert.equal(routed.state.users.find(user => user.id === friendUser).version, profile.version);
   assert(routed.state.pairs.every(pair => pair.peerId !== other.welcome.sessionId));
   assert.equal((await owner.request({ type: "signal", pairId: randomUUID(), payload: { resync: true } })).type, "ack",
     "an unknown or retired pair cannot restore its transport lease");
   const sourcePair = routed.state.pairs.find(pair => pair.incoming.some(flow => flow.publicationId === publicationId));
+  assert.equal(sourcePair.id, pairId);
+  assert(sourcePair.incoming.some(flow => flow.publicationId === publicationId && flow.selected));
   // A description needs its exchangeId, even on the caller's admitted pair.
   const malformed = await other.request({ type: "signal", pairId: sourcePair.id, payload: { description: { type: "offer", sdp: "invalid" } } });
   assert.equal(malformed.type, "error");

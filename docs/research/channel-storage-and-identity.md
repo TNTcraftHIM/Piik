@@ -58,7 +58,7 @@ The owner accepted durable room history and attachment metadata, participant-hel
 file copies and whole-file hash verification. Images and ordinary files share
 one attachment model. Content becomes unavailable when its copies disappear;
 its history record remains. The first delivery model is demand-driven sharing on
-the existing room tree, with complete verified copies reusable as sources. It
+the authorized room graph, with complete verified copies reusable as sources. It
 does not add a swarm, per-piece hashes, a second route planner or a storage service.
 Detailed cache limits and transfer encoding remain implementation decisions.
 These responsibilities add local data to existing runtimes, not a separately
@@ -281,9 +281,8 @@ No per-piece verification metadata is required for this model.
 
 ### Shared Delivery On Existing Room Paths
 
-Use demand-driven distribution over the room base tree. Project an admitted
-source's flow to the interested recipients, reusing the existing unique paths.
-The [network model](./channel-network-design.md#one-base-tree-per-participating-room)
+For each active file, select paths from its authorized holder to the interested
+recipients over confirmed connections. The [network model](./channel-network-design.md#room-bootstrap-and-activity-paths)
 owns route admission and repair; file work adds range demand and progress, not
 another topology planner or mandatory direct ICE connections.
 
@@ -293,8 +292,7 @@ another topology planner or mandatory direct ICE connections.
    room connectivity and capacity. Keep a working flow. Source changes are
    explicit and admitted; an intermediate peer cannot silently substitute its
    copy or expected digest. If the current source has no ready path to any remote
-   recipient, select an admitted complete copy that does over the committed base
-   tree. With no ready alternative, retain the source while ordinary route repair
+   recipient, select an admitted complete copy that does over confirmed room edges. With no ready alternative, retain the source while ordinary route repair
    continues; holder signaling alone does not establish file reachability.
 3. Aggregate concurrent requests for the same attachment, range and authorized
    distribution. A shared upstream path carries one response, copied only at
@@ -313,7 +311,7 @@ For S-R with R-D1, R-D2 and R-D3, aligned concurrent downloads can share one cop
 of each range over S-R; R forwards to the three branches. Independent downloads
 from S would send three copies over S-R. This is a topology example, not a measured
 speedup. When S itself has several required outgoing branches, its upload follows
-that fan-out; a base tree does not guarantee one total upload for every shape.
+that fan-out; the sender uploads one copy per required branch.
 If all usable paths pass through S, changing file sources alone cannot remove
 that transit work. Any new edge belongs to the existing room router's admission
 and optimization, not file-specific probing.
@@ -368,7 +366,7 @@ opened immediately. Older writers leave availability unknown until download.
 
 [Jami's file transfers](https://jami.net/swarm-file-transfers/) demonstrate the
 separation between a file announcement, on-demand download and retained peer
-copies. Piik's proposed tree path supplies the carrier; it does not adopt Jami's
+copies. The selected distribution path supplies the carrier; it does not adopt Jami's
 discovery or replicated-history architecture.
 
 ### Torrent Comparison And Scope
@@ -382,7 +380,7 @@ network. Exchanging incomplete copies would also benefit from verified piece
 identities; a whole-file hash only identifies corruption after assembly.
 
 This initial model borrows cooperative distribution, while using Piik's
-existing tree and complete-copy cache index. Concurrent request aggregation has
+authorized graph and complete-copy cache index. Concurrent request aggregation has
 a separate published precedent in [CCNx section 2.4.2](https://www.rfc-editor.org/rfc/rfc8569.html#section-2.4.2);
 this is an experimental protocol reference, not a proposed Piik dependency.
 
@@ -390,7 +388,7 @@ Publish attachment metadata to the room, but request large file bodies only for
 interested consumers and necessary relays. Proactively filling every participant's
 cache would spend bandwidth and storage even when nobody wants the file. Keep
 whole-room push and a torrent-style multi-source piece scheduler out of the initial
-recommendation; discuss them only if shared-tree delivery leaves a concrete gap.
+recommendation; discuss them only if shared range delivery leaves a concrete gap.
 
 ### Retained Files And Images
 

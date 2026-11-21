@@ -6,12 +6,21 @@ use super::{
 };
 use crate::media::RtpCodec;
 use anyhow::{ensure, Result};
+use bytes::Bytes;
 use rtc_rtp::{
     packetizer::{new_packetizer, Packetizer as RtpPacketizer},
     sequence::new_random_sequencer,
     Packet,
 };
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
+
+struct SharedFrame(Arc<EncodedFrame>);
+
+impl AsRef<[u8]> for SharedFrame {
+    fn as_ref(&self) -> &[u8] {
+        &self.0.bytes
+    }
+}
 
 /// A stable sender's RTP timeline and its original capture-time correlation.
 pub(crate) struct Packetizer {
@@ -75,7 +84,11 @@ impl Packetizer {
             / 1_000_000_000) as u64
     }
 
-    pub fn packetize_source(&mut self, video: &Video, frame: &EncodedFrame) -> Result<Vec<Packet>> {
+    pub fn packetize_source(
+        &mut self,
+        video: &Video,
+        frame: &Arc<EncodedFrame>,
+    ) -> Result<Vec<Packet>> {
         if self
             .source
             .as_ref()
@@ -88,19 +101,21 @@ impl Packetizer {
             };
             self.source = Some(video.clone());
         }
-        self.packetize(frame.bytes.clone(), frame.presentation_time, frame.vp8)
+        // H264 can retain NAL slices in packets and in its parameter-set cache.
+        let bytes = Bytes::from_owner(SharedFrame(Arc::clone(frame)));
+        self.packetize(bytes, frame.presentation_time, frame.vp8)
     }
 
     pub fn packetize(
         &mut self,
-        bytes: Vec<u8>,
+        bytes: impl Into<Bytes>,
         presentation_time: Instant,
         metadata: Option<Vp8FrameMetadata>,
     ) -> Result<Vec<Packet>> {
         // Only the hop RTP timeline is translated on a source switch. Retain
         // the offset for this feed, preserving its subsequent frame intervals.
         let ticks = self.source_ticks(presentation_time) + self.offset;
-        self.packetize_ticks(bytes, presentation_time, metadata, ticks)
+        self.packetize_ticks(&bytes.into(), presentation_time, metadata, ticks)
     }
 
     /// Audio sample positions own RTP spacing; capture time still owns the SR.
@@ -110,12 +125,12 @@ impl Packetizer {
         presentation_time: Instant,
         sample_position: u64,
     ) -> Result<Vec<Packet>> {
-        self.packetize_ticks(bytes, presentation_time, None, sample_position)
+        self.packetize_ticks(&bytes.into(), presentation_time, None, sample_position)
     }
 
     fn packetize_ticks(
         &mut self,
-        bytes: Vec<u8>,
+        bytes: &Bytes,
         presentation_time: Instant,
         metadata: Option<Vp8FrameMetadata>,
         ticks: u64,
@@ -127,7 +142,7 @@ impl Packetizer {
         self.inner
             .skip_samples(ticks.wrapping_sub(self.previous_ticks) as u32);
         self.previous_ticks = ticks;
-        let mut packets = self.inner.packetize(Instant::now(), &bytes.into(), 0)?;
+        let mut packets = self.inner.packetize(Instant::now(), bytes, 0)?;
         if let Some(vp8) = &mut self.vp8 {
             vp8.rewrite(&mut packets, metadata, keyframe)?;
         }
@@ -154,6 +169,49 @@ mod tests {
     use super::*;
     use rtc_shared::time::SystemInstant;
     use std::time::Duration;
+
+    #[test]
+    fn h264_packets_and_cached_parameter_sets_share_the_encoded_frame() -> Result<()> {
+        let epoch = Instant::now();
+        let time = SourceTime::local(epoch, SystemInstant::now(epoch));
+        let video = Video::new(time.clone(), Default::default());
+        let mut packetizer = Packetizer::new(
+            &RtpCodec::h264([0x42, 0xc0, 0x1e]),
+            96,
+            42,
+            time,
+            Default::default(),
+        )?;
+        let frame = Arc::new(EncodedFrame {
+            // An IDR followed by SPS/PPS cached until the next picture.
+            bytes: vec![
+                0, 0, 1, 0x65, 42, 0x80, 0, 0, 1, 0x67, 0x42, 0, 0, 1, 0x68, 0xce,
+            ],
+            presentation_time: epoch,
+            keyframe: true,
+            vp8: None,
+        });
+        let source_frame = Arc::downgrade(&frame);
+        let packets = packetizer.packetize_source(&video, &frame)?;
+        assert_eq!(packets.len(), 1);
+        assert_eq!(packets[0].payload.as_ptr(), frame.bytes[3..].as_ptr());
+        drop(frame);
+        assert_eq!(&packets[0].payload[..], &[0x65, 42, 0x80]);
+        drop(packets);
+        assert!(source_frame.upgrade().is_some());
+
+        let next = packetizer.packetize(
+            vec![0x65, 24, 0x80],
+            epoch + Duration::from_millis(16),
+            None,
+        )?;
+        assert_eq!(
+            &next[0].payload[..],
+            &[0x78, 0, 2, 0x67, 0x42, 0, 2, 0x68, 0xce]
+        );
+        assert!(source_frame.upgrade().is_none());
+        Ok(())
+    }
 
     #[test]
     fn h264_metadata_preserves_sender_and_source_clock() -> Result<()> {

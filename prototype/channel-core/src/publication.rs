@@ -1,6 +1,5 @@
 use crate::{
-    identity::Endpoint,
-    routes::{BaseTree, Plan, Readiness, RelayLimits, ScreenDemand},
+    routes::{Plan, Readiness, RelayLimits},
     transport::Flow,
     wire::{FlowState, Kind, PublicationInfo},
 };
@@ -21,8 +20,8 @@ pub(crate) struct Publication {
     leases: BTreeMap<Uuid, Flow>,
     operation: Option<RouteOperation>,
     pub(crate) watch_order: Vec<Uuid>,
-    reader_relays: BTreeSet<Uuid>,
     direct_attempted: BTreeSet<Uuid>,
+    transit_helpers: BTreeSet<Uuid>,
     // A route retry does not erase the watching page's last delivery result.
     failed_receivers: BTreeSet<Uuid>,
 }
@@ -45,9 +44,6 @@ enum OperationKind {
     },
     Reduce {
         root: Uuid,
-        legs: BTreeMap<Uuid, Shadow>,
-    },
-    Base {
         legs: BTreeMap<Uuid, Shadow>,
     },
 }
@@ -100,15 +96,35 @@ impl Publication {
             leases: BTreeMap::new(),
             operation: None,
             watch_order: Vec::new(),
-            reader_relays: BTreeSet::new(),
             direct_attempted: BTreeSet::new(),
+            transit_helpers: BTreeSet::new(),
             failed_receivers: BTreeSet::new(),
         }
     }
 
-    pub fn retain_sessions(&mut self, endpoints: &BTreeMap<Uuid, Endpoint>) {
+    pub fn retain_sessions(&mut self, authorized: &BTreeSet<Uuid>) {
+        self.transit_helpers.retain(|id| authorized.contains(id));
         self.direct_attempted
-            .retain(|child| endpoints.contains_key(child));
+            .retain(|child| authorized.contains(child));
+    }
+
+    pub fn reset_routes(&mut self) {
+        self.plan = Plan::new(self.info.session_id);
+        self.operation = None;
+        self.leases.clear();
+        self.direct_attempted.clear();
+        self.failed_receivers.clear();
+        self.transit_helpers.clear();
+    }
+
+    pub fn retire_transport(&mut self, session: Uuid) {
+        if self
+            .flows()
+            .any(|flow| !flow.selected && (flow.sender == session || flow.receiver == session))
+        {
+            self.operation = None;
+        }
+        self.plan.detach(session);
     }
 
     pub fn set_paused(&mut self, paused: bool) {
@@ -153,10 +169,7 @@ impl Publication {
             self.leases.retain(|child, _| !preparing.contains(child));
         } else {
             self.info.session_id = session;
-            self.reader_relays.clear();
-            self.plan = Plan::new(session);
-            self.leases.clear();
-            self.direct_attempted.clear();
+            self.reset_routes();
         }
     }
 
@@ -196,11 +209,8 @@ impl Publication {
     pub fn reconcile(
         &mut self,
         requested: &BTreeSet<Uuid>,
-        available: &BTreeSet<Uuid>,
         connected: &BTreeSet<Uuid>,
-        base: Option<&BaseTree>,
-        service: Option<Uuid>,
-        readers: &BTreeMap<Uuid, (usize, bool)>,
+        relays: &BTreeSet<Uuid>,
         helpers: &BTreeMap<Uuid, Uuid>,
         limits: &RelayLimits,
         neighbors: &BTreeMap<Uuid, BTreeSet<Uuid>>,
@@ -210,169 +220,90 @@ impl Publication {
         self.expire(now);
         self.failed_receivers
             .retain(|receiver| requested.contains(receiver));
-        // A ready base path can already carry the picture through an idle
-        // host before recovery recruits a reader. Opt-out also ends that flow.
-        for (&reader, &(capacity, idle)) in readers {
-            if idle
-                && capacity == 0
-                && reader != self.plan.source
-                && !requested.contains(&reader)
-                && !helpers.values().any(|helper| *helper == reader)
-                && self.plan.parents.contains_key(&reader)
-            {
-                self.plan.detach(reader);
-            }
+        let confirmed = |parent, child| {
+            neighbors
+                .get(&parent)
+                .is_some_and(|peers| peers.contains(&child))
+        };
+        self.transit_helpers
+            .retain(|helper| self.plan.parents.values().any(|parent| parent == helper));
+        self.transit_helpers.extend(helpers.values().copied());
+        let relays: BTreeSet<_> = relays.union(&self.transit_helpers).copied().collect();
+        let relays = &relays;
+        let unavailable: Vec<_> = self
+            .plan
+            .parents
+            .iter()
+            .filter_map(|(&child, &parent)| {
+                ((!confirmed(parent, child) && self.plan.readiness(child).is_none())
+                    || (parent != self.plan.source
+                        && !relays.contains(&parent)
+                        && helpers.get(&child) != Some(&parent)))
+                .then_some(child)
+            })
+            .collect();
+        for child in unavailable {
+            self.plan.detach(child);
         }
-        self.reader_relays.retain(|reader| {
-            if helpers.values().any(|helper| helper == reader) {
-                return false;
-            }
-            let capacity = readers.get(reader).map_or(0, |(capacity, _)| *capacity);
-            let children: Vec<_> = self
-                .plan
-                .parents
-                .iter()
-                .filter_map(|(child, parent)| (parent == reader).then_some(*child))
-                .collect();
-            if readers.get(reader).is_some_and(|(_, idle)| !idle) && !requested.contains(reader) {
-                return !children.is_empty();
-            }
-            for child in children.iter().skip(capacity) {
-                self.plan.detach(*child);
-            }
-            if capacity == 0 || children.is_empty() {
-                if !requested.contains(reader) {
-                    self.plan.detach(*reader);
-                }
-                return false;
-            }
-            true
-        });
-        let paths = if let Some(base) = base.filter(|_| self.info.kind == Kind::Voice) {
-            let paths = base.project(self.plan.source, requested);
-            self.plan.parents = paths
-                .iter()
-                .map(|(parent, child)| (*child, *parent))
-                .collect();
-            paths
-        } else {
-            let relays: BTreeSet<_> = readers
-                .keys()
-                .copied()
-                .chain(service)
-                .chain(base.map(BaseTree::root))
-                .collect();
-            let screen = (self.info.kind == Kind::Screen).then_some(ScreenDemand {
-                order: &self.watch_order,
-                neighbors,
-                relays: &relays,
-            });
-            self.plan.reconcile_demand(
+        let origin_paths = BTreeSet::new();
+        if self
+            .plan
+            .capacity_children(helpers, limits, &origin_paths)
+            .is_empty()
+        {
+            self.plan.parents = self.plan.activity_parents(
                 requested,
-                available,
-                connected,
-                base,
-                helpers,
+                neighbors,
+                relays,
                 limits,
-                screen.as_ref(),
+                helpers,
+                &self.watch_order,
             );
-            if self.info.kind == Kind::Screen {
-                self.reader_relays.extend(
-                    self.plan
-                        .parents
-                        .values()
-                        .filter(|reader| {
-                            readers.contains_key(reader)
-                                && **reader != self.plan.source
-                                && base.is_none_or(|base| base.root() != **reader)
-                                && !helpers.values().any(|helper| helper == *reader)
-                        })
-                        .copied(),
-                );
-            }
-            // An unproved input has no picture to preserve. A proved branch
-            // instead keeps every incumbent lease until the shared switch.
-            for (viewer, helper) in helpers {
-                if let Some(parents) = self
-                    .plan
-                    .through_relay(*viewer, *helper, connected, helpers, limits)
-                {
-                    if self
+        }
+        for (viewer, helper) in helpers {
+            if let Some(parents) = self
+                .plan
+                .through_relay(*viewer, *helper, connected, helpers, limits)
+            {
+                if parents.iter().all(|(&c, &p)| confirmed(p, c))
+                    && self
                         .branch(&parents, requested)
                         .keys()
-                        .all(|receiver| self.plan.readiness(*receiver).is_none())
-                    {
-                        self.plan.parents = parents;
-                        self.plan
-                            .reconcile(requested, available, connected, base, helpers, limits);
-                    }
+                        .all(|c| self.plan.readiness(*c).is_none())
+                {
+                    self.plan.parents = parents;
                 }
             }
-            if self.info.kind == Kind::Screen && self.plan.needs_repair(requested, connected) {
-                if let Some(service) = service {
-                    let parents = requested
-                        .iter()
-                        .filter(|viewer| !self.plan.parents.contains_key(viewer))
-                        .find_map(|viewer| {
-                            self.plan
-                                .through_relay(*viewer, service, connected, helpers, limits)
-                        });
-                    if let Some(parents) = parents {
-                        // The service is a required ancestor, not a viewer. Its
-                        // pending input keeps the same lease and frontier deadline.
-                        self.plan.parents = parents;
-                    }
+        }
+        let mut needed = BTreeSet::new();
+        for receiver in requested {
+            let mut child = *receiver;
+            while let Some(&parent) = self.plan.parents.get(&child) {
+                if !needed.insert(child) {
+                    break;
                 }
+                child = parent;
             }
-            if self.info.kind == Kind::Screen && !self.info.paused {
-                for viewer in requested {
-                    if self.plan.parents.contains_key(viewer)
-                        || !self.failed_receivers.contains(viewer)
-                    {
-                        continue;
-                    }
-                    for (&reader, &(capacity, idle)) in readers {
-                        if !idle
-                            || capacity == 0
-                            || reader == self.plan.source
-                            || requested.contains(&reader)
-                            || helpers.values().any(|helper| *helper == reader)
-                        {
-                            continue;
-                        }
-                        if let Some(parents) = self
-                            .plan
-                            .through_relay(*viewer, reader, connected, helpers, limits)
-                        {
-                            if parents.values().filter(|parent| **parent == reader).count()
-                                <= capacity
-                            {
-                                self.plan.parents = parents;
-                                self.reader_relays.insert(reader);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            self.plan
-                .parents
-                .iter()
-                .map(|(child, parent)| (*parent, *child))
-                .collect()
-        };
-        self.reconcile_leases(&paths);
-        if self.info.kind != Kind::Screen || self.info.paused {
+        }
+        self.plan.parents.retain(|child, _| needed.contains(child));
+        self.reconcile_leases();
+        if self.info.paused {
             return;
         }
-        let origin_paths = base
-            .map(|base| base.project(self.plan.source, requested))
-            .unwrap_or_default();
         if matches!(
             self.operation.as_ref().map(|operation| &operation.kind),
             Some(OperationKind::Reduce { .. })
         ) {
-            self.prepare_reduction(requested, connected, helpers, limits, &origin_paths, now);
+            self.prepare_reduction(
+                requested,
+                connected,
+                helpers,
+                limits,
+                &origin_paths,
+                neighbors,
+                relays,
+                now,
+            );
             return;
         }
         if !self
@@ -381,13 +312,22 @@ impl Publication {
             .is_empty()
         {
             self.operation = None;
-            self.prepare_reduction(requested, connected, helpers, limits, &origin_paths, now);
+            self.prepare_reduction(
+                requested,
+                connected,
+                helpers,
+                limits,
+                &origin_paths,
+                neighbors,
+                relays,
+                now,
+            );
             return;
         }
         if let Some(operation) = &self.operation {
             let current = match &operation.kind {
                 OperationKind::Prepare { flow } => self.preparing_flows().any(|id| id == *flow),
-                OperationKind::Reduce { .. } | OperationKind::Base { .. } => unreachable!(),
+                OperationKind::Reduce { .. } => unreachable!(),
                 OperationKind::Switch { root, helper, legs } => {
                     self.current_switch(legs)
                         && match helper {
@@ -406,8 +346,9 @@ impl Publication {
                         }
                         && connected.contains(&self.plan.source)
                         && legs.iter().all(|(receiver, leg)| {
-                            connected.contains(receiver)
-                                && requested.contains(receiver) == leg.viewing
+                            confirmed(leg.flow.sender, *receiver)
+                                && (self.info.kind == Kind::Screen && requested.contains(receiver))
+                                    == leg.viewing
                         })
                 }
             };
@@ -418,7 +359,7 @@ impl Publication {
                 self.operation = None;
             }
         }
-        if !connected.contains(&self.plan.source) {
+        if self.info.kind != Kind::Screen || !connected.contains(&self.plan.source) {
             return;
         }
         let assisted = helpers.iter().find_map(|(viewer, helper)| {
@@ -426,8 +367,11 @@ impl Publication {
                 .plan
                 .through_relay(*viewer, *helper, connected, helpers, limits)?;
             let legs = self.branch(&parents, requested);
-            (!legs.is_empty() && legs.keys().all(|receiver| connected.contains(receiver)))
-                .then_some((*viewer, Some(*helper), legs))
+            (!legs.is_empty()
+                && legs
+                    .iter()
+                    .all(|(&receiver, leg)| confirmed(leg.flow.sender, receiver)))
+            .then_some((*viewer, Some(*helper), legs))
         });
         if let Some((root, helper, legs)) = assisted {
             self.operation = Some(RouteOperation {
@@ -452,7 +396,8 @@ impl Publication {
             .shortcut_candidates(helpers, limits)
             .into_iter()
             .find(|root| {
-                !self.direct_attempted.contains(root)
+                confirmed(self.plan.source, *root)
+                    && !self.direct_attempted.contains(root)
                     && self.plan.subtree(*root).iter().all(|receiver| {
                         connected.contains(receiver)
                             && (!requested.contains(receiver)
@@ -492,7 +437,7 @@ impl Publication {
                     Shadow {
                         flow,
                         replaces,
-                        viewing: requested.contains(&receiver),
+                        viewing: self.info.kind == Kind::Screen && requested.contains(&receiver),
                         proof: None,
                         presented_at: None,
                     },
@@ -508,6 +453,8 @@ impl Publication {
         helpers: &BTreeMap<Uuid, Uuid>,
         limits: &RelayLimits,
         origin_paths: &BTreeSet<(Uuid, Uuid)>,
+        neighbors: &BTreeMap<Uuid, BTreeSet<Uuid>>,
+        relays: &BTreeSet<Uuid>,
         now: u64,
     ) {
         let pending = self
@@ -522,22 +469,35 @@ impl Publication {
             self.operation = None;
             return;
         };
-        let retained = pending.filter(|(root, _)| excess.contains(root));
-        let (root, parent) = if let Some((root, _)) = retained {
-            (
-                root,
-                self.plan.candidate_parent(root, connected, helpers, limits),
-            )
-        } else {
-            excess
+        let candidate = |root| {
+            let mut eligible: BTreeSet<_> = neighbors
+                .get(&root)
                 .into_iter()
-                .find_map(|root| {
-                    self.plan
-                        .candidate_parent(root, connected, helpers, limits)
-                        .map(|parent| (root, Some(parent)))
+                .flatten()
+                .filter(|peer| **peer == self.plan.source || relays.contains(peer))
+                .copied()
+                .collect();
+            eligible.extend([self.plan.source, root]);
+            self.plan
+                .candidate_parent(root, &eligible, helpers, limits)
+                .filter(|parent| {
+                    neighbors
+                        .get(&root)
+                        .is_some_and(|peers| peers.contains(parent))
                 })
-                .unwrap_or((first, None))
         };
+        let retained = pending.filter(|(root, _)| excess.contains(root));
+        let retained_root = retained.map(|(root, _)| root);
+        let feasible = retained_root
+            .and_then(|root| candidate(root).map(|parent| (root, parent)))
+            .or_else(|| {
+                excess
+                    .into_iter()
+                    .find_map(|root| candidate(root).map(|parent| (root, parent)))
+            });
+        let (root, parent) = feasible
+            .map(|(root, parent)| (root, Some(parent)))
+            .unwrap_or((retained_root.unwrap_or(first), None));
         let deadline = retained.map_or(now.saturating_add(SCREEN_PREPARE_MS), |(_, deadline)| {
             deadline
         });
@@ -560,7 +520,9 @@ impl Publication {
                 && self.current_switch(legs)
                 && legs.get(&root).is_some_and(|leg| leg.flow.sender == parent)
                 && legs.iter().all(|(receiver, leg)| {
-                    connected.contains(receiver) && requested.contains(receiver) == leg.viewing
+                    connected.contains(receiver)
+                        && (self.info.kind == Kind::Screen && requested.contains(receiver))
+                            == leg.viewing
                 })
             {
                 return;
@@ -577,76 +539,6 @@ impl Publication {
         });
     }
 
-    pub fn prepare_base(
-        &mut self,
-        candidate: &BaseTree,
-        requested: &BTreeSet<Uuid>,
-        deadline: u64,
-    ) {
-        if self.info.kind != Kind::Voice {
-            return;
-        }
-        let retained = requested
-            .iter()
-            .filter(|receiver| self.leases.contains_key(receiver))
-            .copied()
-            .collect();
-        let parents = candidate
-            .project(self.plan.source, &retained)
-            .into_iter()
-            .map(|(parent, child)| (child, parent))
-            .collect();
-        let next = self.branch(&parents, &BTreeSet::new());
-        if let Some(RouteOperation {
-            kind: OperationKind::Base { legs },
-            ..
-        }) = &self.operation
-        {
-            if self.current_switch(legs)
-                && next.len() == legs.len()
-                && next.iter().all(|(receiver, leg)| {
-                    legs.get(receiver)
-                        .is_some_and(|old| old.flow.sender == leg.flow.sender)
-                })
-            {
-                return;
-            }
-        }
-        self.operation = (!next.is_empty()).then_some(RouteOperation {
-            deadline,
-            kind: OperationKind::Base { legs: next },
-        });
-    }
-    pub fn base_ready(&self) -> bool {
-        match self.operation.as_ref().map(|operation| &operation.kind) {
-            Some(OperationKind::Base { legs }) => {
-                self.current_switch(legs) && legs.values().all(|leg| leg.proof.is_some())
-            }
-            _ => true,
-        }
-    }
-    pub fn base_flow(&self, flow: Uuid) -> bool {
-        matches!(self.operation.as_ref().map(|operation| &operation.kind), Some(OperationKind::Base { legs }) if legs.values().any(|leg| leg.flow.id == flow))
-    }
-    pub fn abort_base(&mut self) {
-        if matches!(
-            self.operation.as_ref().map(|operation| &operation.kind),
-            Some(OperationKind::Base { .. })
-        ) {
-            self.operation = None;
-        }
-    }
-    pub fn commit_base(&mut self) {
-        if matches!(
-            self.operation.as_ref().map(|operation| &operation.kind),
-            Some(OperationKind::Base { .. })
-        ) {
-            let OperationKind::Base { legs } = self.operation.take().unwrap().kind else {
-                unreachable!()
-            };
-            self.adopt(legs);
-        }
-    }
     fn adopt(&mut self, legs: BTreeMap<Uuid, Shadow>) {
         self.plan.adopt_branch(
             legs.iter()
@@ -659,12 +551,8 @@ impl Publication {
         }
     }
 
-    fn reconcile_leases(&mut self, paths: &BTreeSet<(Uuid, Uuid)>) {
-        let parents = paths
-            .iter()
-            .map(|(parent, child)| (*child, *parent))
-            .collect();
-        let next = self.planned_flows(&parents);
+    fn reconcile_leases(&mut self) {
+        let next = self.planned_flows(&self.plan.parents);
         for (receiver, flow) in &next {
             if self.leases.get(receiver).map(|old| old.id) != Some(flow.id) {
                 self.plan.forget_ready(*receiver);
@@ -732,7 +620,6 @@ impl Publication {
             return false;
         }
         match self.operation.take().unwrap().kind {
-            OperationKind::Base { .. } => true,
             OperationKind::Reduce { root, .. } => {
                 self.fail_delivery(root);
                 if let Some(parent) = self.plan.parents.get(&root).copied() {
@@ -774,9 +661,9 @@ impl Publication {
             })
             .chain(self.operation.iter().flat_map(|op| {
                 match &op.kind {
-                    OperationKind::Switch { legs, .. }
-                    | OperationKind::Reduce { legs, .. }
-                    | OperationKind::Base { legs } => Some(legs.values()),
+                    OperationKind::Switch { legs, .. } | OperationKind::Reduce { legs, .. } => {
+                        Some(legs.values())
+                    }
                     OperationKind::Prepare { .. } => None,
                 }
                 .into_iter()
@@ -802,12 +689,12 @@ impl Publication {
             self.fail_delivery(receiver);
         }
         if self.operation.as_ref().is_some_and(|op| match &op.kind {
-            OperationKind::Switch { legs, .. }
-            | OperationKind::Reduce { legs, .. }
-            | OperationKind::Base { legs } => legs.values().any(|leg| {
-                (leg.flow.sender == first && leg.flow.receiver == second)
-                    || (leg.flow.sender == second && leg.flow.receiver == first)
-            }),
+            OperationKind::Switch { legs, .. } | OperationKind::Reduce { legs, .. } => {
+                legs.values().any(|leg| {
+                    (leg.flow.sender == first && leg.flow.receiver == second)
+                        || (leg.flow.sender == second && leg.flow.receiver == first)
+                })
+            }
             OperationKind::Prepare { .. } => false,
         }) {
             match self.operation.take().unwrap() {
@@ -853,21 +740,6 @@ impl Publication {
             return false;
         }
         let expired = self.expire(now);
-        if let Some(operation) = &mut self.operation {
-            if let OperationKind::Base { legs } = &mut operation.kind {
-                if let Some(leg) = legs
-                    .get_mut(&receiver)
-                    .filter(|leg| leg.flow.id == id && leg.flow.sender == sender)
-                {
-                    if state == FlowState::Failed {
-                        self.operation = None;
-                    } else {
-                        leg.proof = Some(Readiness::Forwardable);
-                    }
-                    return true;
-                }
-            }
-        }
         if let Some(RouteOperation {
             kind: OperationKind::Reduce { root, legs },
             ..
@@ -964,12 +836,11 @@ impl Publication {
                     && self.failed_receivers.remove(&receiver);
                 changed || recovered
             }
-            FlowState::Failed if self.info.kind == Kind::Screen => {
+            FlowState::Failed => {
                 self.fail_delivery(receiver);
                 self.plan.failed(sender, receiver);
                 true
             }
-            FlowState::Failed => self.plan.mark_unready(receiver, sender),
             FlowState::SwitchReady => false,
         }
     }

@@ -55,6 +55,118 @@ pub struct Outcome {
     pub leave: bool,
 }
 
+fn screen_helper_pair(viewer: Uuid, helper: Uuid, endpoints: &BTreeMap<Uuid, crate::Endpoint>) -> bool {
+    viewer != helper && endpoints.get(&viewer).zip(endpoints.get(&helper)).is_some_and(|(v, h)| {
+        h.member == v.member
+    })
+}
+
+fn byte_transit(view: &crate::room::RoomRecipient) -> bool {
+    view.files
+        .iter()
+        .any(|file| file.upstream.is_some() && !file.downstream.is_empty())
+        || view
+            .watch_bytes
+            .iter()
+            .any(|plan| plan.upstream.is_some() && !plan.downstream.is_empty())
+}
+
+struct ByteBranch<'a> {
+    source: Option<Uuid>,
+    upstream: Option<Uuid>,
+    downstream: &'a [Uuid],
+    receiving: bool,
+}
+
+fn valid_byte_tree(
+    branches: &BTreeMap<Uuid, ByteBranch<'_>>,
+    admitted: impl Fn(Uuid, Uuid) -> bool,
+) -> bool {
+    let source = branches.values().next().and_then(|branch| branch.source);
+    // Every assigned parent is reachable from the source through reciprocal child grants.
+    let mut stack: Vec<_> = source.into_iter().collect();
+    let mut reached = BTreeSet::new();
+    while let Some(parent) = stack.pop() {
+        let Some(branch) = branches.get(&parent) else {
+            continue;
+        };
+        if !reached.insert(parent) {
+            return false;
+        }
+        for &child in branch.downstream {
+            if !branches
+                .get(&child)
+                .is_some_and(|b| b.upstream == Some(parent))
+                || !admitted(parent, child)
+            {
+                return false;
+            }
+            stack.push(child);
+        }
+    }
+    branches.iter().all(|(&session, branch)| {
+        branch.source == source
+            && if Some(session) == source {
+                branch.upstream.is_none()
+            } else if branch.upstream.is_some() {
+                reached.contains(&session) && (branch.receiving || !branch.downstream.is_empty())
+            } else {
+                branch.receiving && branch.downstream.is_empty()
+            }
+    })
+}
+
+#[test]
+fn byte_routes_require_matching_grants_to_a_confirmed_source_path() {
+    let [source, relay, viewer, waiting] = [1, 2, 3, 4].map(Uuid::from_u128);
+    let first = [relay];
+    let next = [viewer];
+    let branch = |upstream, downstream, receiving| ByteBranch {
+        source: Some(source),
+        upstream,
+        downstream,
+        receiving,
+    };
+    let mut tree = BTreeMap::from([
+        (source, branch(None, &first[..], false)),
+        (relay, branch(Some(source), &next[..], false)),
+        (viewer, branch(Some(relay), &[][..], true)),
+        (waiting, branch(None, &[][..], true)),
+    ]);
+    let confirmed = |parent, child| [(source, relay), (relay, viewer)].contains(&(parent, child));
+    assert!(valid_byte_tree(&tree, confirmed));
+    assert!(!valid_byte_tree(&tree, |p, c| (p, c) == (source, relay)));
+    tree.get_mut(&relay).unwrap().downstream = &[];
+    assert!(!valid_byte_tree(&tree, confirmed));
+    tree.get_mut(&source).unwrap().downstream = &[];
+    tree.get_mut(&relay).unwrap().upstream = Some(viewer);
+    tree.get_mut(&relay).unwrap().downstream = &next;
+    tree.get_mut(&viewer).unwrap().downstream = &first;
+    assert!(!valid_byte_tree(&tree, confirmed));
+}
+
+impl crate::host::RoomProjection {
+    pub(crate) fn byte_pairs(&self) -> impl Iterator<Item = (Uuid, Uuid)> + '_ {
+        self.views.iter().flat_map(|(&session, view)| {
+            view.files
+                .iter()
+                .filter_map(|file| file.upstream)
+                .chain(view.watch_bytes.iter().filter_map(|plan| plan.upstream))
+                .map(move |parent| (parent.min(session), parent.max(session)))
+        })
+    }
+
+    fn room_data_grants(&self) -> impl Iterator<Item = ((Uuid, Uuid), String)> + '_ {
+        self.base_links
+            .iter()
+            .map(|link| (link.parent.min(link.child), link.parent.max(link.child)))
+            .chain(self.byte_pairs())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .map(|pair| (pair, self.summary.id.clone()))
+    }
+}
+
 impl Channel {
     fn can_prepare_udp(&self, first: Uuid, second: Uuid) -> bool {
         crate::udp::stun_servers(&self.ice_servers).is_some()
@@ -336,6 +448,7 @@ impl Channel {
                 .get(&service.session_id)
                 .is_some_and(|session| session.connection == Some(service.connection_id))
         });
+        let transports = &self.transports;
         for room in self.remote.values_mut() {
             if let Some(projection) = &mut room.projection {
                 projection
@@ -353,7 +466,8 @@ impl Channel {
                                 .any(|link| link.parent == *session || link.child == *session)
                                 || projection.flows.iter().any(|flow| {
                                     flow.sender == *session || flow.receiver == *session
-                                }))
+                                })
+                                || byte_transit(view))
                     });
                     let ordinary = !was_transit
                         || room
@@ -412,6 +526,10 @@ impl Channel {
                     .participant_session_ids
                     .retain(|session| readable_sessions.contains(session));
                 for (session, view) in &mut projection.views {
+                    let current_byte_peer = |peer: &Uuid| {
+                        routable_sessions.contains(peer)
+                            && transports.has_pair(((*session).min(*peer), (*session).max(*peer)))
+                    };
                     view.watch_bytes.retain_mut(|plan| {
                         if !routable_sessions.contains(session)
                             || !projection.watch_activities.iter().any(|activity| {
@@ -423,12 +541,12 @@ impl Channel {
                         }
                         if plan
                             .upstream
-                            .is_some_and(|peer| !routable_sessions.contains(&peer))
+                            .is_some_and(|peer| !current_byte_peer(&peer))
                         {
                             plan.upstream = None;
                         }
                         plan.downstream
-                            .retain(|peer| routable_sessions.contains(peer));
+                            .retain(current_byte_peer);
                         true
                     });
                     if !routable_sessions.contains(session) {
@@ -445,12 +563,12 @@ impl Channel {
                         }
                         if file
                             .upstream
-                            .is_some_and(|peer| !routable_sessions.contains(&peer))
+                            .is_some_and(|peer| !current_byte_peer(&peer))
                         {
                             file.upstream = None;
                         }
                         file.downstream
-                            .retain(|peer| routable_sessions.contains(peer));
+                            .retain(current_byte_peer);
                     }
                     if !view.authorized {
                         view.files
@@ -467,6 +585,11 @@ impl Channel {
                     });
                     view.subscriptions
                         .retain(|id| projection.publications.iter().any(|p| p.id == *id));
+                    view.screen_helpers.retain(|id, &mut helper| {
+                        view.authorized && view.subscriptions.contains(id)
+                            && readable_sessions.contains(&helper)
+                            && screen_helper_pair(*session, helper, &endpoints)
+                    });
                     view.failed_subscriptions
                         .retain(|id| view.subscriptions.contains(id));
                 }
@@ -1406,6 +1529,9 @@ impl Channel {
                 }
             }
         }
+        let confirmed: BTreeSet<_> = self.transports.confirmed_pairs(&self.identity).collect();
+        let mut watch_trees: BTreeMap<_, BTreeMap<_, _>> = BTreeMap::new();
+        let mut file_trees = BTreeMap::new();
         for (recipient, view) in &projection.views {
             if view.file_availability.as_ref().is_some_and(|observation| {
                 !view.authorized
@@ -1426,7 +1552,8 @@ impl Channel {
                             .any(|link| link.parent == *recipient || link.child == *recipient)
                             || projection.flows.iter().any(|flow| {
                                 flow.sender == *recipient || flow.receiver == *recipient
-                            })))
+                            })
+                            || byte_transit(view)))
                 || view.can_manage
                     && (!view.authorized
                         || endpoints[recipient].member.user_id != projection.summary.creator_id)
@@ -1448,6 +1575,18 @@ impl Channel {
                     .iter()
                     .any(|subscription| !watch_ids.contains(&subscription.id))
                 || view.subscriptions.len() > MAX_PUBLICATIONS
+                || view.screen_helpers.len() > MAX_PUBLICATIONS
+                || view.screen_helpers.iter().any(|(id, &helper)| {
+                    !view.authorized || !view.subscriptions.contains(id)
+                        || !screen_helper_pair(*recipient, helper, &endpoints)
+                        || !(endpoints[&helper].connected || room.projection.as_ref()
+                            .and_then(|p| p.views.get(recipient))
+                            .is_some_and(|v| v.screen_helpers.get(id) == Some(&helper)))
+                        || !projection.views.get(&helper).is_some_and(|v| v.authorized)
+                        || !projection.publications.iter().any(|p| {
+                            p.id == *id && p.kind == Kind::Screen && p.session_id != *recipient
+                        })
+                })
                 || view.failed_subscriptions.len() > MAX_PUBLICATIONS
                 || view.failed_subscriptions.iter().any(|id| {
                     !view.subscriptions.contains(id)
@@ -1466,25 +1605,28 @@ impl Channel {
             {
                 return Err("invalid_room_projection");
             }
-            let mut planned = BTreeSet::new();
+            if byte_transit(view)
+                && !(view.reading
+                    || binding.session == *recipient
+                    || view.transit_endpoint.is_some()
+                    || projection.participant_session_ids.contains(recipient)
+                    || view
+                        .files
+                        .iter()
+                        .any(|f| f.receiving || f.source_id == Some(*recipient))
+                    || view
+                        .watch_bytes
+                        .iter()
+                        .any(|p| p.receiving || p.source.session_id == *recipient))
+            {
+                return Err("invalid_room_projection");
+            }
             for plan in &view.watch_bytes {
-                let neighbor = |peer: Uuid| {
-                    peer != *recipient
-                        && projection
-                            .base_links
-                            .iter()
-                            .filter(|link| link.selected && link.ready)
-                            .any(|link| {
-                                (link.parent == *recipient && link.child == peer)
-                                    || (link.child == *recipient && link.parent == peer)
-                            })
-                };
-                if !planned.insert(plan.activity_id)
-                    || !view.authorized
-                        && (plan.receiving
-                            || plan.source.session_id == *recipient
-                            || plan.upstream.is_none()
-                            || plan.downstream.is_empty())
+                if !view.authorized
+                    && (plan.receiving
+                        || plan.source.session_id == *recipient
+                        || plan.upstream.is_none()
+                        || plan.downstream.is_empty())
                     || plan.room_id != id
                     || !projection.watch_activities.iter().any(|a| {
                         a.id == plan.activity_id && a.byte_source.as_ref() == Some(&plan.source)
@@ -1493,30 +1635,28 @@ impl Channel {
                         != view.watch_subscriptions.iter().any(|s| {
                             s.id == plan.activity_id && s.mode == crate::wire::WatchMode::Peer
                         })
-                    || (plan.source.session_id == *recipient && plan.upstream.is_some())
-                    || plan
-                        .upstream
-                        .is_some_and(|peer| !neighbor(peer) || plan.downstream.contains(&peer))
                     || plan.downstream.len() > MAX_TREE_EDGES
-                    || plan.downstream.iter().collect::<BTreeSet<_>>().len()
-                        != plan.downstream.len()
-                    || plan.downstream.iter().any(|peer| !neighbor(*peer))
+                {
+                    return Err("invalid_room_projection");
+                }
+                if watch_trees
+                    .entry(plan.activity_id)
+                    .or_default()
+                    .insert(
+                        *recipient,
+                        ByteBranch {
+                            source: Some(plan.source.session_id),
+                            upstream: plan.upstream,
+                            downstream: &plan.downstream,
+                            receiving: plan.receiving,
+                        },
+                    )
+                    .is_some()
                 {
                     return Err("invalid_room_projection");
                 }
             }
             for file in &view.files {
-                let neighbor = |peer: Uuid| {
-                    peer != *recipient
-                        && projection
-                            .base_links
-                            .iter()
-                            .filter(|link| link.selected)
-                            .any(|link| {
-                                (link.parent == *recipient && link.child == peer)
-                                    || (link.child == *recipient && link.parent == peer)
-                            })
-                };
                 if file.room_id != id
                     || !view.authorized
                         && (file.receiving
@@ -1526,19 +1666,79 @@ impl Channel {
                     || file.message_seq == 0
                     || file.attachment.validate().is_err()
                     || file.downstream.len() > MAX_TREE_EDGES
-                    || file.downstream.iter().collect::<BTreeSet<_>>().len()
-                        != file.downstream.len()
                     || file.source_id.is_some_and(|source| {
                         !projection
                             .views
                             .get(&source)
                             .is_some_and(|view| view.authorized)
                     })
-                    || file.upstream.is_some_and(|peer| !neighbor(peer))
-                    || file.downstream.iter().any(|peer| !neighbor(*peer))
                 {
                     return Err("invalid_room_projection");
                 }
+                let key = (file.message_seq, file.attachment.id);
+                let descriptor = (file.author_id, &file.attachment);
+                let (identity, tree) = file_trees
+                    .entry(key)
+                    .or_insert_with(|| (descriptor, BTreeMap::new()));
+                if *identity != descriptor
+                    || tree
+                        .insert(
+                            *recipient,
+                            ByteBranch {
+                                source: file.source_id,
+                                upstream: file.upstream,
+                                downstream: &file.downstream,
+                                receiving: file.receiving,
+                            },
+                        )
+                        .is_some()
+                {
+                    return Err("invalid_room_projection");
+                }
+            }
+        }
+        // Signaling can reconnect while the same admitted transport continues delivering.
+        let current_pair = |parent: Uuid, child: Uuid| {
+            let pair = (parent.min(child), parent.max(child));
+            (confirmed.contains(&pair), self.transports.has_pair(pair))
+        };
+        let previous_view =
+            |child: Uuid| room.projection.as_ref().and_then(|p| p.views.get(&child));
+        for ((seq, _), ((author, attachment), tree)) in &file_trees {
+            if !valid_byte_tree(tree, |parent, child| {
+                let (confirmed, admitted) = current_pair(parent, child);
+                confirmed
+                    || admitted
+                        && previous_view(child).is_some_and(|v| {
+                            v.files.iter().any(|old| {
+                                old.message_seq == *seq
+                                    && old.author_id == *author
+                                    && &old.attachment == *attachment
+                                    && old.source_id == tree[&child].source
+                                    && old.upstream == Some(parent)
+                            })
+                        })
+            }) {
+                return Err("invalid_room_projection");
+            }
+        }
+        for (activity, tree) in &watch_trees {
+            if !valid_byte_tree(tree, |parent, child| {
+                let (confirmed, admitted) = current_pair(parent, child);
+                confirmed
+                    || admitted
+                        && previous_view(child).is_some_and(|v| {
+                            v.watch_bytes.iter().any(|old| {
+                                old.activity_id == *activity
+                                    && old.upstream == Some(parent)
+                                    && projection.watch_activities.iter().any(|a| {
+                                        a.id == *activity
+                                            && a.byte_source.as_ref() == Some(&old.source)
+                                    })
+                            })
+                        })
+            }) {
+                return Err("invalid_room_projection");
             }
         }
         let mut publications = BTreeMap::new();
@@ -1615,7 +1815,9 @@ impl Channel {
             .collect();
         let mut inputs = BTreeSet::new();
         for flow in &projection.flows {
-            if !flow_ids.insert(flow.id)
+            let (confirmed, admitted) = current_pair(flow.sender, flow.receiver);
+            if !(confirmed || (admitted && previous.contains_key(&flow.id)))
+                || !flow_ids.insert(flow.id)
                 || !inputs.insert((flow.publication_id, flow.receiver, flow.selected))
                 || flow.sender == flow.receiver
                 || !endpoints.contains_key(&flow.sender)
@@ -1765,8 +1967,10 @@ impl Channel {
             }
         }
         let room = self.remote.get_mut(id).unwrap();
-        room.binding.as_mut().unwrap().projection_floor = output.revision;
-        room.binding.as_mut().unwrap().applied_revision = output.revision;
+        let previous_scope = room.planning_sessions(self.service_endpoint, None);
+        let binding = room.binding.as_mut().unwrap();
+        binding.projection_floor = output.revision;
+        binding.applied_revision = output.revision;
         room.summary = projection.summary.clone();
         let mut next = projection.clone();
         if let Some(previous) = &room.projection {
@@ -1804,7 +2008,15 @@ impl Channel {
         }
         self.reconcile();
         let mut accepted = self.finish_host_output(id, output, true);
-        if invalidated {
+        // A room output can grant access to an already confirmed pair in another room.
+        // A suspended planning scope likewise becomes visible on its covering output.
+        let current_scope = self.remote[id].planning_sessions(self.service_endpoint, None);
+        let previous_pairs = confirmed.iter().copied()
+            .filter(|(a, b)| previous_scope.contains(a) && previous_scope.contains(b));
+        let current_pairs = self.transports.confirmed_pairs(&self.identity)
+            .filter(|(a, b)| current_scope.contains(a) && current_scope.contains(b));
+        let graph_changed = previous_pairs.ne(current_pairs);
+        if invalidated || graph_changed {
             accepted.repair_input = Some(self.host_input(id, HostAction::Sync)?);
         }
         Ok(accepted)

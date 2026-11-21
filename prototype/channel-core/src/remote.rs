@@ -72,7 +72,28 @@ impl RemoteRoom {
         projection
             .base_links
             .retain(|link| !affected(link.parent, link.child));
-        if old == (projection.flows.len(), projection.base_links.len()) {
+        let mut lost_byte_edge = false;
+        for (endpoint, peer) in [(first, second), (second, first)] {
+            let Some(view) = projection.views.get_mut(&endpoint) else {
+                continue;
+            };
+            let files = view
+                .files
+                .iter_mut()
+                .map(|plan| (&mut plan.upstream, &mut plan.downstream));
+            let watches = view
+                .watch_bytes
+                .iter_mut()
+                .map(|plan| (&mut plan.upstream, &mut plan.downstream));
+            for (upstream, downstream) in files.chain(watches) {
+                if *upstream == Some(peer) {
+                    *upstream = None;
+                    lost_byte_edge = true;
+                }
+                downstream.retain(|child| *child != peer);
+            }
+        }
+        if !lost_byte_edge && old == (projection.flows.len(), projection.base_links.len()) {
             return false;
         }
         // Keep the invalidation until this binding acknowledges a covering input,
@@ -168,6 +189,13 @@ impl RemoteRoom {
             .copied()
             .chain([binding.session])
             .chain(actor)
+            .chain(
+                projection
+                    .views
+                    .values()
+                    .filter(|view| view.authorized)
+                    .flat_map(|view| view.screen_helpers.values().copied()),
+            )
             .chain(
                 projection
                     .views

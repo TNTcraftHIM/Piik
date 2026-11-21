@@ -781,6 +781,70 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
     assert!(state.publications.iter().any(|p|p.id==publication),"acknowledged capture vanished because an unrelated ordinary room command advanced revision");
 }
 
+// Bootstrap rooms keep the chosen physical carriers alive while another writer's
+// projection is checked for flow identity, ownership and input lineage.
+fn review_confirm_tree(
+    core: &mut piik_channel_core::Authority,
+    room: &str,
+    endpoints: &[(Uuid, Uuid)],
+    edges: &[(usize, usize)],
+) {
+    use piik_channel_core::wire::{Event, LinkState, Request};
+    let socket = endpoints[0].0;
+    let mut host = RoomHost::new(
+        RoomState::new(
+            room.into(),
+            room.into(),
+            Default::default(),
+            core.identity().1,
+            RoomAccess::Public,
+            false,
+            None,
+        )
+        .unwrap(),
+    );
+    host.dispatch(review_register(core, socket, &host)).unwrap();
+    let mut projection = host.finish(None).unwrap();
+    projection.projection.base_links = edges
+        .iter()
+        .map(|&(a, b)| {
+            serde_json::from_value(serde_json::json!({
+        "roomId":room,"parent":endpoints[a].1,"child":endpoints[b].1,"selected":true,"ready":false
+    })).unwrap()
+        })
+        .collect();
+    let result = review_host_turn(core, socket, room, projection);
+    let snapshots: BTreeMap<_, _> = result
+        .events
+        .into_iter()
+        .filter_map(|(socket, event)| match event {
+            Event::State { state } => Some((socket, state)),
+            _ => None,
+        })
+        .collect();
+    for &(a, b) in edges {
+        let pair = snapshots[&endpoints[a].0]
+            .pairs
+            .iter()
+            .find(|p| p.peer_id == endpoints[b].1)
+            .unwrap()
+            .id;
+        for socket in [endpoints[a].0, endpoints[b].0] {
+            core.handle(
+                socket,
+                Request {
+                    request_id: None,
+                    command: Command::LinkState {
+                        pair_id: pair,
+                        state: LinkState::Connected,
+                    },
+                },
+                1,
+            );
+        }
+    }
+}
+
 #[test]
 fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
     use piik_channel_core::{
@@ -840,6 +904,8 @@ fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
             .find(|s| s.id == source_session)
             .unwrap()
             .user_id;
+        review_confirm_tree(&mut core, "identity-carriers", &[(source,source_session),(viewer,viewer_session)], &[(0,1)]);
+        let mut checked_conflict = false;
         let mut original_flow = None;
         let mut original_pairs: Option<serde_json::Value> = None;
         for room in ["first-review", "second-review"] {
@@ -914,6 +980,7 @@ fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
                 host.dispatch(input).unwrap();
                 let mut output = host.finish(None).unwrap();
                 if room == "second-review" && !output.projection.flows.is_empty() {
+                    checked_conflict = true;
                     let flows = &mut output.projection.flows;
                     match conflict {
                         "cross_room_id" => flows[0].id = original_flow.unwrap(),
@@ -1097,6 +1164,7 @@ fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
                 }
             }
         }
+        assert!(checked_conflict, "missing assigned flow for {conflict}");
     }
 }
 
@@ -1192,6 +1260,10 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
             .find(|session| session.id == source)
             .unwrap()
             .user_id;
+        let sessions = [source, relay, branch, viewer, transit];
+        let endpoints: Vec<_> = connections.into_iter().zip(sessions).collect();
+        review_confirm_tree(&mut core, "selected-carriers", &endpoints, &[(0,1),(1,2),(2,3),(0,4)]);
+        review_confirm_tree(&mut core, "trial-carriers", &endpoints, &[(0,2),(0,1),(1,3)]);
         let room_id = "lineage-review";
         let mut host = RoomHost::new(
             RoomState::new(
@@ -1442,4 +1514,187 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
             );
         }
     }
+}
+
+#[test]
+fn host_output_requires_current_pairs_for_new_media_and_scopes_screen_helpers() {
+    use piik_channel_core::wire::{Event, LinkState, Request};
+    use serde_json::json;
+    let mut core = piik_channel_core::Authority::new("owner".into(), vec![]).unwrap();
+    let [writer, reader] = [Uuid::new_v4(), Uuid::new_v4()];
+    let source = review_admit(&mut core, writer, "owner");
+    let signer = piik_channel_core::conversation::SessionSigner::from_seed([2; 32]).signing_key();
+    let join_reader = |core: &mut piik_channel_core::Authority,
+                       socket,
+                       credential: Option<String>,
+                       resume: Option<Uuid>| {
+        core.handle(
+            socket,
+            Request::parse(
+                &json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
+            "name":"Viewer","signingKey":signer,"credential":credential,"sessionId":resume})
+                .to_string(),
+            )
+            .unwrap(),
+            1,
+        )
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::Welcome {
+                session_id,
+                credential,
+                ..
+            } => Some((session_id, credential)),
+            _ => None,
+        })
+        .unwrap()
+    };
+    let (viewer, credential) = join_reader(&mut core, reader, None, None);
+    let helper_socket = Uuid::new_v4();
+    let (helper, _) = join_reader(&mut core, helper_socket, Some(credential.clone()), None);
+    let room = "media-grants";
+    let mut host = RoomHost::new(
+        RoomState::new(
+            room.into(),
+            "Media grants".into(),
+            Default::default(),
+            core.identity().1,
+            RoomAccess::Public,
+            false,
+            None,
+        )
+        .unwrap(),
+    );
+    let input = review_register(&mut core, writer, &host);
+    host.dispatch(input).unwrap();
+    let mut output = host.finish(None).unwrap();
+    let publication = Uuid::new_v4();
+    output.projection.publications = serde_json::from_value(json!([{
+        "id":publication,"roomId":room,"sessionId":source,"userId":core.identity().1,
+        "kind":"screen","paused":false,"audience":[],"source":{"kind":"screen"}
+    }]))
+    .unwrap();
+    output
+        .projection
+        .views
+        .get_mut(&viewer)
+        .unwrap()
+        .subscriptions
+        .push(publication);
+    output.projection.participant_session_ids = vec![source, viewer];
+    output.projection.base_links = serde_json::from_value(json!([{
+        "roomId":room,"parent":source,"child":helper,"selected":true,"ready":false
+    }]))
+    .unwrap();
+    output
+        .projection
+        .views
+        .get_mut(&viewer)
+        .unwrap()
+        .screen_helpers
+        .insert(publication, helper);
+    let effects = review_host_turn(&mut core, writer, room, output.clone());
+    assert!(
+        effects
+            .events
+            .iter()
+            .all(|(_, event)| !matches!(event, Event::Error { .. })),
+        "{}",
+        serde_json::to_string(&effects.events).unwrap()
+    );
+
+    let pair = effects
+        .events
+        .iter()
+        .find_map(|(socket, event)| match event {
+            Event::State { state } if *socket == writer => state
+                .pairs
+                .iter()
+                .find(|p| p.peer_id == helper)
+                .map(|p| p.id),
+            _ => None,
+        })
+        .unwrap();
+    let rejected = |effects: piik_channel_core::Effects| {
+        effects.events.iter()
+        .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "invalid_room_projection"))
+    };
+    let mut wrong_helper = output.clone();
+    wrong_helper
+        .projection
+        .views
+        .get_mut(&viewer)
+        .unwrap()
+        .screen_helpers
+        .insert(publication, source);
+    assert!(rejected(review_host_turn(
+        &mut core,
+        writer,
+        room,
+        wrong_helper
+    )));
+    let mut revoked = output.clone();
+    revoked.projection.base_links.clear();
+    revoked.projection.views.get_mut(&helper).unwrap().authorized = false;
+    assert!(rejected(review_host_turn(&mut core, writer, room, revoked)));
+
+    output.projection.flows = serde_json::from_value(json!([{
+        "id":Uuid::new_v4(),"publicationId":publication,"sender":source,"receiver":helper,
+        "inputFlowId":null,"selected":true,"proof":null,"presented":null,"presentation":false
+    }]))
+    .unwrap();
+    assert!(rejected(review_host_turn(
+        &mut core,
+        writer,
+        room,
+        output.clone()
+    )));
+    for socket in [writer, helper_socket] {
+        core.handle(
+            socket,
+            Request {
+                request_id: None,
+                command: Command::LinkState {
+                    pair_id: pair,
+                    state: LinkState::Connected,
+                },
+            },
+            1,
+        );
+        assert_eq!(
+            rejected(review_host_turn(&mut core, writer, room, output.clone())),
+            socket == writer
+        );
+    }
+    core.disconnect(helper_socket, 2);
+    assert!(!rejected(review_host_turn(
+        &mut core,
+        writer,
+        room,
+        output.clone()
+    )));
+    let mut changed = output.clone();
+    changed.projection.flows[0].id = Uuid::new_v4();
+    assert!(rejected(review_host_turn(&mut core, writer, room, changed)));
+    let mut new_choice = output.clone();
+    let mut new_share = new_choice.projection.publications[0].clone();
+    new_share.id = Uuid::new_v4();
+    let view = new_choice.projection.views.get_mut(&viewer).unwrap();
+    view.subscriptions.push(new_share.id);
+    view.screen_helpers.insert(new_share.id, helper);
+    new_choice.projection.publications.push(new_share);
+    assert!(rejected(review_host_turn(
+        &mut core, writer, room, new_choice
+    )));
+
+    let (resumed, _) = join_reader(&mut core, Uuid::new_v4(), Some(credential), Some(helper));
+    assert_eq!(resumed, helper);
+    let retained = review_host_turn(&mut core, writer, room, output.clone());
+    assert!(retained
+        .events
+        .iter()
+        .any(|(socket, event)| matches!(event, Event::State { state }
+        if *socket == writer && state.pairs.iter().any(|p| p.id == pair
+            && p.outgoing.iter().any(|f| f.id == output.projection.flows[0].id)))));
 }

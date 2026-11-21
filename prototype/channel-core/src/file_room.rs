@@ -1,5 +1,9 @@
-//! Live complete-copy offers and recipient demand on the room's existing base tree.
-use crate::{attachment::AttachmentDescriptor, routes::BaseTree};
+//! Live complete-copy offers and recipient demand on confirmed room paths.
+use crate::{
+    attachment::AttachmentDescriptor,
+    identity::Endpoint,
+    routes::{activity_parents, RelayLimits},
+};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
@@ -35,6 +39,7 @@ struct File {
     holders: BTreeSet<Uuid>,
     receivers: BTreeSet<Uuid>,
     source: Option<Uuid>,
+    parents: BTreeMap<Uuid, Uuid>,
     refused: BTreeSet<(Uuid, Uuid)>,
 }
 #[derive(Clone, Default)]
@@ -74,6 +79,7 @@ impl FileRoom {
             holders: BTreeSet::new(),
             receivers: BTreeSet::new(),
             source: None,
+            parents: BTreeMap::new(),
             refused: BTreeSet::new(),
         });
         if offer {
@@ -115,13 +121,13 @@ impl FileRoom {
                 .is_none_or(|source| !file.holders.contains(&source))
             {
                 file.source = file.holders.first().copied();
+                file.parents.clear();
             }
         }
         self.prune();
     }
     pub fn refuse_branch(
         &mut self,
-        base: &BaseTree,
         seq: u64,
         id: Uuid,
         source: Uuid,
@@ -132,15 +138,26 @@ impl FileRoom {
             .files
             .get_mut(&(seq, id))
             .ok_or("unassigned_file_branch")?;
-        if file.source != Some(source)
-            || !base
-                .project(source, &file.receivers)
-                .contains(&(sender, downstream))
-        {
+        if file.source != Some(source) || file.parents.get(&downstream) != Some(&sender) {
             return Err("unassigned_file_branch");
         }
         file.refused.insert((sender, downstream));
         Ok(())
+    }
+    pub fn reset_routes(&mut self) {
+        for file in self.files.values_mut() {
+            file.parents.clear();
+            file.refused.clear();
+        }
+    }
+    pub fn failed_pair(&mut self, first: Uuid, second: Uuid) {
+        for file in self.files.values_mut() {
+            for (child, parent) in [(first, second), (second, first)] {
+                if file.parents.get(&child) == Some(&parent) {
+                    file.parents.remove(&child);
+                }
+            }
+        }
     }
     pub fn forwarding_available(&mut self, sender: Uuid) {
         for file in self.files.values_mut() {
@@ -156,30 +173,15 @@ impl FileRoom {
             })
         })
     }
-    pub fn blocked_direct_pairs(
-        &self,
-        base: &BaseTree,
-        confirmed: &BTreeSet<(Uuid, Uuid)>,
-    ) -> Vec<(Uuid, Uuid)> {
-        self.files
-            .values()
-            .filter_map(|file| {
-                let source = file.source?;
-                (source != base.root() && !file.refused.is_empty()).then_some((file, source))
+    pub fn waiting(&self) -> bool {
+        self.files.values().any(|file| {
+            file.source.is_some_and(|source| {
+                file.receivers
+                    .iter()
+                    .any(|peer| *peer != source && !file.parents.contains_key(peer))
             })
-            .flat_map(|(file, source)| {
-                file.receivers.iter().filter_map(move |&receiver| {
-                    (confirmed.contains(&(source.min(receiver), source.max(receiver)))
-                        && !file.refused.contains(&(source, receiver))
-                        && !base
-                            .project(source, &BTreeSet::from([receiver]))
-                            .is_disjoint(&file.refused))
-                    .then_some((source, receiver))
-                })
-            })
-            .collect()
+        })
     }
-
     pub fn demand(&self) -> BTreeSet<Uuid> {
         self.files
             .values()
@@ -188,46 +190,80 @@ impl FileRoom {
             .copied()
             .collect()
     }
-    pub fn select_ready_sources(&mut self, base: &BaseTree) -> bool {
-        let mut changed = false;
+    pub fn route(
+        &mut self,
+        endpoints: &BTreeMap<Uuid, Endpoint>,
+        neighbors: &BTreeMap<Uuid, BTreeSet<Uuid>>,
+        relays: &BTreeSet<Uuid>,
+        limits: &RelayLimits,
+    ) {
         for file in self.files.values_mut() {
-            let reaches_receivers = |source| {
-                !base
-                    .project_avoiding(source, &file.receivers, &file.refused)
-                    .is_empty()
-            };
-            if file.source.is_some_and(reaches_receivers) {
-                continue;
+            let mut selected = None;
+            let empty = BTreeMap::new();
+            for source in file.source.into_iter().chain(
+                file.holders
+                    .iter()
+                    .copied()
+                    .filter(|id| Some(*id) != file.source),
+            ) {
+                let Some(endpoint) = endpoints.get(&source) else {
+                    continue;
+                };
+                let mut grants = limits.clone();
+                grants.source_direct_limit = Some(if endpoint.member.user_id == file.author_id {
+                    limits.default
+                } else {
+                    limits
+                        .overrides
+                        .get(&source)
+                        .copied()
+                        .unwrap_or(limits.default)
+                });
+                let parents = activity_parents(
+                    source,
+                    &file.receivers,
+                    if Some(source) == file.source {
+                        &file.parents
+                    } else {
+                        &empty
+                    },
+                    neighbors,
+                    relays,
+                    &grants,
+                    &file.refused,
+                );
+                let serving = !parents.is_empty();
+                if !serving && !endpoint.connected {
+                    continue;
+                }
+                if selected.is_none() || serving {
+                    selected = Some((source, parents));
+                }
+                if serving || file.receivers.is_empty() {
+                    break;
+                }
             }
-            if let Some(source) = file
-                .holders
-                .iter()
-                .copied()
-                .find(|id| reaches_receivers(*id))
-            {
-                changed |= file.source != Some(source);
+            if let Some((source, parents)) = selected {
                 file.source = Some(source);
+                file.parents = parents;
+            } else {
+                file.source = None;
+                file.parents.clear();
             }
         }
-        changed
     }
-    pub fn plans(&self, room_id: &str, session: Uuid, base: &BaseTree) -> Vec<FilePlan> {
+    pub fn plans(&self, room_id: &str, session: Uuid) -> Vec<FilePlan> {
         self.files
             .iter()
             .filter_map(|((seq, _), file)| {
                 if file.receivers.is_empty() {
                     return None;
                 }
-                let paths = file
-                    .source
-                    .map(|source| base.project_avoiding(source, &file.receivers, &file.refused))
-                    .unwrap_or_default();
-                let upstream = paths
+                let upstream = file.parents.get(&session).copied();
+                let downstream: Vec<_> = file
+                    .parents
                     .iter()
-                    .find_map(|(parent, child)| (*child == session).then_some(*parent));
-                let downstream: Vec<_> = paths
-                    .iter()
-                    .filter_map(|(parent, child)| (*parent == session).then_some(*child))
+                    .filter_map(|(child, parent)| (*parent == session).then_some(*child))
                     .collect();
                 let receiving = file.receivers.contains(&session);
                 if !receiving
@@ -254,66 +290,34 @@ impl FileRoom {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn file_shortcuts_keep_preparation_and_skip_failed_receivers() {
-        let id = Uuid::from_u128;
-        let (root, source, first, second) = (id(1), id(2), id(3), id(4));
-        let members = BTreeSet::from([root, source, first, second]);
-        let confirmed = BTreeSet::from([(source, first), (source, second)]);
-        let limits = crate::routes::RelayLimits {
-            default: 3,
-            ..Default::default()
-        };
-        let attachment = AttachmentDescriptor {
-            id: id(10),
-            name: "file.bin".into(),
-            size: 3,
-            media_type: "application/octet-stream".into(),
-            sha256: crate::attachment::sha256_hex(b"abc"),
-        };
-        for initial in [first, second] {
-            let mut base = BaseTree::new(root);
-            base.reconcile(&members, &members, &members, &limits, 0);
-            for (parent, child) in base.links().collect::<Vec<_>>() {
-                base.state(parent, child, true);
-                base.state(child, parent, true);
-            }
-            let mut files = FileRoom::default();
-            files
-                .install(source, 1, source, attachment.clone(), true)
-                .unwrap();
-            for receiver in [first, second] {
-                files
-                    .install(receiver, 1, source, attachment.clone(), false)
-                    .unwrap();
-            }
-            files.reconcile(&members);
-            files
-                .refuse_branch(&base, 1, attachment.id, source, root, initial)
-                .unwrap();
-            let shortcuts = files.blocked_direct_pairs(&base, &confirmed);
-            base.prepare_file_shortcut(&shortcuts, &members, &limits, 1);
-            assert_eq!(base.candidate_links(), vec![(source, initial)]);
-            let deadline = base.deadline();
-            base.state(source, initial, true);
-            let next = if initial == first { second } else { first };
-            files
-                .refuse_branch(&base, 1, attachment.id, source, root, next)
-                .unwrap();
-            if initial == first {
-                base.abort();
-            }
-            let shortcuts = files.blocked_direct_pairs(&base, &confirmed);
-            base.prepare_file_shortcut(&shortcuts, &members, &limits, 2);
-            assert_eq!(base.candidate_links(), vec![(source, second)]);
-            if initial == second {
-                assert_eq!(base.deadline(), deadline);
-                base.state(second, source, true);
-                assert!(base.candidate_ready());
-            }
-        }
-    }
+    use super::*;
 
+    fn route(files: &mut FileRoom, edges: &[(Uuid, Uuid)], limits: &RelayLimits) {
+        let mut neighbors = BTreeMap::<Uuid, BTreeSet<Uuid>>::new();
+        for &(a, b) in edges {
+            neighbors.entry(a).or_default().insert(b);
+            neighbors.entry(b).or_default().insert(a);
+        }
+        let endpoints = neighbors
+            .keys()
+            .map(|&id| {
+                (
+                    id,
+                    Endpoint {
+                        connected: true,
+                        signing_key: [0; 32],
+                        member: crate::identity::Member { user_id: id },
+                    },
+                )
+            })
+            .collect();
+        files.route(
+            &endpoints,
+            &neighbors,
+            &neighbors.keys().copied().collect(),
+            limits,
+        );
+    }
     #[test]
     fn ending_a_transfer_wakes_the_other_rooms_displaced_file_branch_once() {
         use super::*;
@@ -333,7 +337,6 @@ mod tests {
         };
         let room = |reader| {
             let mut files = FileRoom::default();
-            let mut base = BaseTree::new(holder);
             files
                 .install(holder, 1, author, attachment.clone(), true)
                 .unwrap();
@@ -342,14 +345,11 @@ mod tests {
                 .unwrap();
             let online = BTreeSet::from([holder, reader]);
             files.reconcile(&online);
-            base.reconcile(&online, &online, &online, &Default::default(), 0);
-            base.state(holder, reader, true);
-            base.state(reader, holder, true);
-            base.reconcile(&online, &online, &online, &Default::default(), 1);
-            (files, base)
+            route(&mut files, &[(holder, reader)], &Default::default());
+            files
         };
-        let (mut first, first_base) = room(id(2));
-        let (mut waiting, waiting_base) = room(id(3));
+        let mut first = room(id(2));
+        let mut waiting = room(id(3));
         let mut budget = ForwardingBudget::default();
         let mut raw = crate::channel::Channel::new("owner".into(), vec![]).snapshot(holder);
         raw.pairs.push(PairInfo {
@@ -361,10 +361,9 @@ mod tests {
             udp_preparation: None,
             can_receive_video_layers: false,
         });
-        raw.files = first.plans("first", holder, &first_base);
+        raw.files = first.plans("first", holder);
         assert!(budget.apply(Some(1), holder, &mut raw).is_empty());
-        raw.files
-            .extend(waiting.plans("waiting", holder, &waiting_base));
+        raw.files.extend(waiting.plans("waiting", holder));
         let reports = budget.apply(Some(1), holder, &mut raw);
         let [Command::FileBranchRefused {
             source_id,
@@ -375,18 +374,11 @@ mod tests {
             panic!("expected a targeted refusal")
         };
         waiting
-            .refuse_branch(
-                &waiting_base,
-                1,
-                attachment.id,
-                *source_id,
-                holder,
-                *downstream_id,
-            )
+            .refuse_branch(1, attachment.id, *source_id, holder, *downstream_id)
             .unwrap();
-        raw.files = first.plans("first", holder, &first_base);
-        raw.files
-            .extend(waiting.plans("waiting", holder, &waiting_base));
+        route(&mut waiting, &[(holder, id(3))], &Default::default());
+        raw.files = first.plans("first", holder);
+        raw.files.extend(waiting.plans("waiting", holder));
         assert!(raw
             .files
             .iter()
@@ -401,27 +393,23 @@ mod tests {
         use crate::file_delivery::{FileDelivery, FileEffect};
         let mut receiver = FileDelivery::new(id(3));
         let peers = vec![(holder, vec!["waiting".to_string()])];
-        receiver.update(
-            waiting.plans("waiting", id(3), &waiting_base),
-            peers.clone(),
-            0,
-        );
+        receiver.update(waiting.plans("waiting", id(3)), peers.clone(), 0);
         assert!(receiver.start(key.clone()).is_empty());
         first.remove(id(2), 1, attachment.id, false);
-        raw.files = first.plans("first", holder, &first_base);
-        raw.files
-            .extend(waiting.plans("waiting", holder, &waiting_base));
+        raw.files = first.plans("first", holder);
+        raw.files.extend(waiting.plans("waiting", holder));
         assert!(
             matches!(budget.apply(Some(1),holder,&mut raw).as_slice(),[Command::ForwardingAvailable{room_id,kind:Some(crate::forwarding::ForwardingKind::File)}] if room_id=="waiting")
         );
         assert!(budget.apply(Some(1), holder, &mut raw).is_empty());
         waiting.forwarding_available(holder);
-        raw.files = waiting.plans("waiting", holder, &waiting_base);
+        route(&mut waiting, &[(holder, id(3))], &Default::default());
+        raw.files = waiting.plans("waiting", holder);
         assert!(budget.apply(Some(1), holder, &mut raw).is_empty());
         assert_eq!(raw.files[0].downstream, vec![id(3)]);
         let mut sender = FileDelivery::new(holder);
         sender.update(raw.files, vec![(id(3), vec!["waiting".into()])], 1);
-        let resumed = receiver.update(waiting.plans("waiting", id(3), &waiting_base), peers, 1);
+        let resumed = receiver.update(waiting.plans("waiting", id(3)), peers, 1);
         let [FileEffect::SendControl { control, .. }] = resumed.as_slice() else {
             panic!("pending receiver should request without another start")
         };
@@ -441,12 +429,11 @@ mod tests {
             [FileEffect::Complete { .. }]
         ));
     }
-    use super::*;
     #[test]
-    fn shared_tree_demand_keeps_transit_and_source_changes_follow_live_copies() {
-        let ids: Vec<_> = (1..=5).map(Uuid::from_u128).collect();
-        let online: BTreeSet<_> = ids.iter().copied().collect();
-        let mut base = BaseTree::new(ids[0]);
+    fn refused_transit_moves_to_a_live_copy_with_a_file_grant() {
+        let [author, transit, copy, reader] = [1, 2, 3, 4].map(Uuid::from_u128);
+        let edges = [(author, transit), (transit, reader), (copy, reader)];
+        let members = [author, transit, copy, reader].into();
         let mut files = FileRoom::default();
         let attachment = AttachmentDescriptor {
             id: Uuid::new_v4(),
@@ -456,143 +443,41 @@ mod tests {
             sha256: crate::attachment::sha256_hex(b"abc"),
         };
         assert_eq!(
-            files.install(ids[3], 1, ids[0], attachment.clone(), false),
+            files.install(reader, 1, author, attachment.clone(), false),
             Err("attachment_unavailable")
         );
-        files
-            .install(ids[0], 1, ids[0], attachment.clone(), true)
-            .unwrap();
-        files
-            .install(ids[3], 1, ids[0], attachment.clone(), false)
-            .unwrap();
-        files
-            .install(ids[4], 1, ids[0], attachment.clone(), false)
-            .unwrap();
-        files.reconcile(&online);
-        // Use the real base owner to establish the existing bounded tree first.
-        base.reconcile(&online, &online, &online, &Default::default(), 0);
-        for _ in 0..3 {
-            let links: Vec<_> = base.links().collect();
-            for (parent, child) in links {
-                base.state(parent, child, true);
-                base.state(child, parent, true);
-            }
-            base.reconcile(&online, &online, &online, &Default::default(), 0);
+        for holder in [author, copy] {
+            files
+                .install(holder, 1, author, attachment.clone(), true)
+                .unwrap();
         }
-        let ready_base = base.clone();
-        base.reconcile(&files.demand(), &online, &online, &Default::default(), 0);
-        let relay = files.plans("room", ids[1], &base);
-        assert_eq!(relay[0].upstream, Some(ids[0]));
-        assert_eq!(relay[0].downstream.len(), 2);
-        assert!(!relay[0].receiving);
-        assert_eq!(files.plans("room", ids[3], &base)[0].upstream, Some(ids[1]));
-        files.remove(ids[3], 1, attachment.id, false);
-        base.reconcile(&files.demand(), &online, &online, &Default::default(), 0);
-        assert_eq!(
-            files.plans("room", ids[1], &base)[0].downstream,
-            vec![ids[4]]
-        );
         files
-            .install(ids[2], 1, ids[0], attachment.clone(), true)
+            .install(reader, 1, author, attachment.clone(), false)
             .unwrap();
-        files.reconcile(&online);
-        {
-            let base = ready_base;
-            let mut partial = files.clone();
-            partial
-                .install(ids[1], 1, ids[0], attachment.clone(), true)
-                .unwrap();
-            partial
-                .install(ids[2], 1, ids[0], attachment.clone(), false)
-                .unwrap();
-            assert_eq!(
-                partial.plans("room", ids[2], &base)[0].upstream,
-                Some(ids[0])
-            );
-            partial
-                .refuse_branch(&base, 1, attachment.id, ids[0], ids[0], ids[1])
-                .unwrap();
-            assert!(!partial.select_ready_sources(&base));
-            assert_eq!(
-                partial.plans("room", ids[2], &base)[0].upstream,
-                Some(ids[0])
-            );
-            assert_eq!(partial.plans("room", ids[4], &base)[0].upstream, None);
-            partial.remove(ids[2], 1, attachment.id, false);
-            assert!(partial.select_ready_sources(&base));
-            assert_eq!(
-                partial.plans("room", ids[4], &base)[0].upstream,
-                Some(ids[1])
-            );
+        files.reconcile(&members);
+        let mut limits = RelayLimits::default();
+        limits.overrides.extend([(author, 0), (copy, 0)]);
+        route(&mut files, &edges, &limits);
+        assert_eq!(files.plans("room", reader)[0].upstream, Some(transit));
+        files
+            .refuse_branch(1, attachment.id, author, transit, reader)
+            .unwrap();
+        route(&mut files, &edges, &limits);
+        let waiting = &files.plans("room", reader)[0];
+        assert!(waiting.receiving);
+        assert_eq!(waiting.source_id, Some(author));
+        assert_eq!(waiting.upstream, None);
+        limits.overrides.insert(copy, 1);
+        route(&mut files, &edges, &limits);
+        assert_eq!(files.plans("room", reader)[0].upstream, Some(copy));
+        files.forwarding_available(transit);
+        route(&mut files, &edges, &limits);
+        assert_eq!(files.plans("room", reader)[0].source_id, Some(copy));
+        for holder in [author, copy] {
+            files.remove(holder, 1, attachment.id, true);
         }
-        {
-            let mut repair = files.clone();
-            // A holder on the far side of the refused branch can serve the existing demand.
-            repair
-                .install(ids[1], 1, ids[0], attachment.clone(), true)
-                .unwrap();
-            let mut raw = crate::channel::Channel::new("owner".into(), vec![]).snapshot(ids[0]);
-            raw.files = repair.plans("room", ids[0], &base);
-            let mut budget = crate::forwarding::ForwardingBudget::default();
-            let reports = budget.apply(Some(0), ids[4], &mut raw.clone());
-            assert!(budget.apply(Some(0), ids[4], &mut raw).is_empty());
-            let [crate::wire::Command::FileBranchRefused {
-                source_id,
-                downstream_id,
-                ..
-            }] = reports.as_slice()
-            else {
-                panic!("expected one branch refusal")
-            };
-            repair
-                .refuse_branch(&base, 1, attachment.id, *source_id, ids[0], *downstream_id)
-                .unwrap();
-            assert!(repair.select_ready_sources(&base));
-            let next = repair.plans("room", ids[4], &base);
-            assert_ne!(next[0].source_id, Some(ids[0]));
-            assert!(next[0].receiving && next[0].upstream.is_some());
-            assert!(!repair.select_ready_sources(&base));
-            // While Off, the writer already moved the branch off the original holder.
-            raw.files = repair.plans("room", ids[0], &base);
-            assert!(raw.files.iter().all(|plan| plan.downstream.is_empty()));
-            raw.pairs.push(crate::wire::PairInfo {
-                id: Uuid::new_v4(),
-                peer_id: ids[1],
-                rooms: vec!["room".into()],
-                outgoing: vec![],
-                incoming: vec![],
-                udp_preparation: None,
-                can_receive_video_layers: false,
-            });
-            assert!(
-                matches!(budget.apply(Some(1),ids[4],&mut raw).as_slice(),[crate::wire::Command::ForwardingAvailable{room_id,kind:None}] if room_id=="room")
-            );
-            repair.forwarding_available(ids[0]);
-            // Keep current delivery until its source leaves; the original is eligible again.
-            assert!(!repair.select_ready_sources(&base));
-            repair.remove(ids[1], 1, attachment.id, true);
-            repair.remove(ids[2], 1, attachment.id, true);
-            repair.reconcile(&online);
-            raw.files = repair.plans("room", ids[0], &base);
-            assert!(budget.apply(Some(1), ids[4], &mut raw).is_empty());
-            assert_eq!(raw.files[0].downstream, vec![ids[1]]);
-        }
-        assert_eq!(
-            files.plans("room", ids[4], &base)[0].source_id,
-            Some(ids[0])
-        );
-        let remaining = online.iter().copied().filter(|id| *id != ids[0]).collect();
-        files.reconcile(&remaining);
-        assert_eq!(
-            files.plans("room", ids[4], &base)[0].source_id,
-            Some(ids[2])
-        );
-        files.remove(ids[2], 1, attachment.id, true);
-        files.reconcile(&remaining);
-        let waiting = files.plans("room", ids[4], &base);
-        assert_eq!(waiting[0].source_id, None);
-        assert_eq!(waiting[0].upstream, None);
-        files.remove(ids[4], 1, attachment.id, false);
-        assert!(files.demand().is_empty());
+        files.reconcile(&members);
+        route(&mut files, &edges, &limits);
+        assert_eq!(files.plans("room", reader)[0].source_id, None);
     }
 }

@@ -1,7 +1,7 @@
 ﻿import { afterEach, expect, test, vi } from "vitest";
 import type { Movie, Track } from "mp4box";
 import { canReadWatchMp4, isWatchMp4, WatchMp4Media } from "../src/client/channel/watch-mp4-media";
-import { HTMLVideoMedia, canReceivePeerWatch, createPeerWatchMedia } from "../src/client/channel/watch-media";
+import { HTMLVideoMedia, canReceivePeerWatch, createResourceWatchMedia } from "../src/client/channel/watch-media";
 import { limitWatchReads, type WatchByteReader, type WatchByteResult } from "../src/client/channel/watch-resource";
 
 const runtime = vi.hoisted(() => ({ parsers: [] as unknown[], malformed: false, oversized: false }));
@@ -164,7 +164,7 @@ test("back-buffer pruning survives input EOF and retires with the same playback 
 test("known codec capability rejection can retain the original SW/native URL path", async () => {
   const video = setup(), register = worker(); Source.isTypeSupported.mockReturnValue(false);
   const read = vi.fn<WatchByteReader>(async () => first);
-  const media = createPeerWatchMedia({ resourceId: id, format: "file" }, read);
+  const media = createResourceWatchMedia({ resourceId: id, format: "file" }, read, { hlsDeadlineOwner: "reader" });
   await media.read();
   expect(register).toHaveBeenCalledOnce(); expect(video.src).toContain("/__watch-media/");
   expect(URL.revokeObjectURL).toHaveBeenCalledOnce(); media.close();
@@ -172,17 +172,19 @@ test("known codec capability rejection can retain the original SW/native URL pat
 
 test("non-MP4 native-playable files keep SW; a malformed MP4 never retries another adapter", async () => {
   setup(); const register = worker();
-  const webm = createPeerWatchMedia({ resourceId: id, format: "file" }, async () => ({ ...first, mimeType: "video/webm" }));
+  const webm = createResourceWatchMedia({ resourceId: id, format: "file" },
+    async () => ({ ...first, mimeType: "video/webm" }), { hlsDeadlineOwner: "reader" });
   await webm.read(); expect(runtime.parsers).toHaveLength(0); expect(register).toHaveBeenCalledOnce(); webm.close();
   register.mockClear(); runtime.malformed = true;
-  const mp4 = createPeerWatchMedia({ resourceId: id, format: "file" }, async () => first);
+  const mp4 = createResourceWatchMedia({ resourceId: id, format: "file" }, async () => first, { hlsDeadlineOwner: "reader" });
   await expect(mp4.ready(new AbortController().signal)).rejects.toThrow("watch_mp4_parse_failed");
   expect(register).not.toHaveBeenCalled(); mp4.close();
 });
 
 test("Reader I/O errors stay source errors instead of falling through to SW", async () => {
   setup(); const register = worker(); const error = new Error("watch_source_retired");
-  const media: HTMLVideoMedia = createPeerWatchMedia({ resourceId: id, format: "file" }, async () => { throw error; });
+  const media: HTMLVideoMedia = createResourceWatchMedia({ resourceId: id, format: "file" },
+    async () => { throw error; }, { hlsDeadlineOwner: "reader" });
   expect(canReceivePeerWatch("file")).toBe(true);
   await expect(media.ready(new AbortController().signal)).rejects.toBe(error);
   expect(register).not.toHaveBeenCalled(); media.close();
@@ -190,7 +192,7 @@ test("Reader I/O errors stay source errors instead of falling through to SW", as
 
 test("a sample outside the MSE budget fails before segmentation or an alternate adapter", async () => {
   setup(); const register = worker(); runtime.oversized = true;
-  const media = createPeerWatchMedia({ resourceId: id, format: "file" }, async () => first);
+  const media = createResourceWatchMedia({ resourceId: id, format: "file" }, async () => first, { hlsDeadlineOwner: "reader" });
   await expect(media.ready(new AbortController().signal)).rejects.toThrow("watch_resource_limit");
   expect(Source.last.addSourceBuffer).not.toHaveBeenCalled(); expect(register).not.toHaveBeenCalled(); media.close();
 });
@@ -202,9 +204,9 @@ test.each([false, true])("MP4 module load failure never falls through to the URL
   const load = vi.fn(() => loading);
   vi.doMock("mp4box", load);
   try {
-    const { createPeerWatchMedia: createMedia } = await import("../src/client/channel/watch-media");
+    const { createResourceWatchMedia } = await import("../src/client/channel/watch-media");
     setup(); const register = worker(), lifetime = new AbortController();
-    const media = createMedia({ resourceId: id, format: "file" }, async () => first);
+    const media = createResourceWatchMedia({ resourceId: id, format: "file" }, async () => first, { hlsDeadlineOwner: "reader" });
     const failure = expect(media.ready(lifetime.signal)).rejects.toMatchObject(cancelled ? { name: "AbortError" } : { message: "watch_media_unsupported" });
     await vi.waitFor(() => expect(load).toHaveBeenCalledOnce());
     if (cancelled) lifetime.abort();

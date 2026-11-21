@@ -226,15 +226,27 @@ impl RoomProjection {
             .map(|f| (f.publication_id, f.receiver))
             .collect();
         let mut pairs = BTreeMap::new();
+        let mut request = |source: Uuid, receiver: Uuid, waiting: bool| {
+            if source != receiver {
+                *pairs
+                    .entry((source.min(receiver), source.max(receiver)))
+                    .or_default() |= waiting;
+            }
+        };
         for (&receiver, view) in self.views.iter().filter(|(_, view)| view.authorized) {
-            let media = view.subscriptions.iter().filter_map(|id| {
-                let publication = publishers.get(id)?;
-                let waiting = match publication.kind {
-                    crate::wire::Kind::Screen => view.failed_subscriptions.contains(id),
-                    crate::wire::Kind::Voice => !selected.contains(&(*id, receiver)),
+            for id in &view.subscriptions {
+                let Some(publication) = publishers.get(id) else {
+                    continue;
                 };
-                Some((publication.session_id, waiting))
-            });
+                let upstream_receiver = view.screen_helpers.get(id).copied().unwrap_or(receiver);
+                request(
+                    publication.session_id,
+                    upstream_receiver,
+                    !selected.contains(&(*id, upstream_receiver)),
+                );
+                // A paired display consumes its helper's local connection directly.
+                request(upstream_receiver, receiver, false);
+            }
             let files = view
                 .files
                 .iter()
@@ -245,12 +257,8 @@ impl RoomProjection {
                 .iter()
                 .filter(|plan| plan.receiving)
                 .map(|plan| (plan.source.session_id, plan.upstream.is_none()));
-            for (source, waiting) in media.chain(files).chain(watch_sources) {
-                if source != receiver {
-                    *pairs
-                        .entry((source.min(receiver), source.max(receiver)))
-                        .or_default() |= waiting;
-                }
+            for (source, waiting) in files.chain(watch_sources) {
+                request(source, receiver, waiting);
             }
         }
         pairs
@@ -706,13 +714,15 @@ mod tests {
             }
             input.revision += 1;
             host.dispatch(input.clone()).unwrap();
-            let links = host.finish(None).unwrap().projection.base_links;
-            assert_eq!(links.len(), 1);
-            assert_eq!((links[0].parent, links[0].child), (source, receiver));
-            host.room.base_state(source, receiver, true).unwrap();
-            host.room.base_state(receiver, source, true).unwrap();
+            let waiting = host.finish(None).unwrap().projection;
+            assert_eq!(waiting.requested_pairs().get(&(source, receiver)), Some(&true));
+            assert!(waiting.flows.is_empty());
+            if !voice {
+                assert_eq!(waiting.views[&receiver].files[0].upstream, None);
+            }
             input.revision += 1;
-            host.dispatch(input).unwrap();
+            input.confirmed_pairs.insert((source, receiver));
+            host.dispatch(input.clone()).unwrap();
             let projection = host.finish(None).unwrap().projection;
             if voice {
                 assert!(projection
@@ -722,19 +732,15 @@ mod tests {
             } else {
                 assert_eq!(projection.views[&receiver].files[0].upstream, Some(source));
                 // When the direct pair fails, the available reader can carry the same request.
-                host.room.failed_pair(source, receiver);
-                for now in [1, 2, 10_000, 10_001] {
-                    host.room.reconcile(&endpoints, now);
-                    let links: Vec<_> = host.room.base_links().collect();
-                    for link in links {
-                        if [link.parent, link.child].contains(&id(6)) {
-                            host.room.base_state(link.parent, link.child, true).unwrap();
-                            host.room.base_state(link.child, link.parent, true).unwrap();
-                        }
-                    }
-                }
-                host.room.reconcile(&endpoints, 10_002);
-                let projection = host.room.projection(&endpoints);
+                input.revision += 1;
+                input.failed_pairs.push(PairFailure {
+                    first: source,
+                    second: receiver,
+                    revision: input.revision,
+                });
+                input.confirmed_pairs = [(source, id(6)), (receiver, id(6))].into();
+                host.dispatch(input).unwrap();
+                let projection = host.finish(None).unwrap().projection;
                 assert_eq!(projection.views[&receiver].files[0].upstream, Some(id(6)));
                 assert_eq!(projection.views[&id(6)].files[0].upstream, Some(source));
             }
@@ -1477,8 +1483,19 @@ impl RoomHost {
         if self.pending.is_some() {
             return Err("room_operation_pending");
         }
-        self.room
-            .service_endpoint(input.service_endpoint, &input.endpoints, input.now);
+        if self
+            .authority
+            .as_ref()
+            .is_some_and(|authority| authority.binding_id != input.binding_id)
+        {
+            self.room.reset_routes();
+        }
+        self.room.service_endpoint(
+            input.service_endpoint,
+            &input.endpoints,
+            input.now,
+            &input.confirmed_pairs,
+        );
         let applied = self
             .authority
             .as_ref()

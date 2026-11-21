@@ -8,8 +8,11 @@ const resourceOrigin = "https://watch-media.invalid";
 const resourcePath = /^\/[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 export function watchHlsUrl(resourceId: string): string { return `${resourceOrigin}/${resourceId}`; }
 
+export type WatchHlsDeadlineOwner = "loader" | "reader";
+
 /** One player's HLS requests share the same four source-read slots as virtual HTTP. */
-export function createWatchHlsLoader(sourceRead: WatchByteReader, lifetime: AbortSignal): HlsConfig["loader"] {
+export function createWatchHlsLoader(sourceRead: WatchByteReader, lifetime: AbortSignal,
+  deadlineOwner: WatchHlsDeadlineOwner = "loader"): HlsConfig["loader"] {
   const read = limitWatchReads(sourceRead);
   const requests = new Set<Loader<LoaderContext>>();
   return class WatchHlsLoader implements Loader<LoaderContext> {
@@ -40,7 +43,8 @@ export function createWatchHlsLoader(sourceRead: WatchByteReader, lifetime: Abor
       const { maxTimeToFirstByteMs, maxLoadTimeMs } = config.loadPolicy;
       const arm = (duration: number) => {
         clearTimeout(this.timer);
-        if (Number.isFinite(duration)) this.timer = setTimeout(timeout, Math.max(0, duration));
+        // Room readers can wait for a route before sending the first Pull and own their response deadline.
+        if (deadlineOwner === "loader" && Number.isFinite(duration)) this.timer = setTimeout(timeout, Math.max(0, duration));
       };
       arm(Math.min(maxTimeToFirstByteMs, maxLoadTimeMs));
       void this.read(context, () => {

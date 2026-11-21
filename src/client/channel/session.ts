@@ -7,7 +7,7 @@ import { WatchBytes } from "./watch-bytes";
 import { directWatchFormat } from "../../shared/watch-format";
 import { z } from "zod";
 import { WatchPlayer } from "./watch-playback";
-import { HTMLVideoMedia, AppPageMedia, createPeerWatchMedia, waitForWatchMedia, type WatchMedia } from "./watch-media";
+import { HTMLVideoMedia, AppPageMedia, createResourceWatchMedia, waitForWatchMedia, type WatchMedia } from "./watch-media";
 import { watchSourceSchema, type WatchPlayback, type WatchSource, type WatchMode, type WatchByteSource, type WatchFormat } from "./protocol";
 import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
@@ -2778,8 +2778,9 @@ export class ChannelSession {
     if (mode === "peer") {
       const source = activity.byteSource;
       if (!source) throw new Error("watch_source_unavailable");
-      await this.joinWatchMedia(id, createPeerWatchMedia(source, (resourceId, offset, length, signal) =>
-        this.watchBytes.read(activity.roomId, id, source, resourceId, offset, length, signal), activity.playback.timeline), mode);
+      await this.joinWatchMedia(id, createResourceWatchMedia(source, (resourceId, offset, length, signal) =>
+        this.watchBytes.read(activity.roomId, id, source, resourceId, offset, length, signal),
+      { hlsDeadlineOwner: "reader", timeline: activity.playback.timeline }), mode);
       return;
     }
     const embed = youtubeSourceId(activity.source);

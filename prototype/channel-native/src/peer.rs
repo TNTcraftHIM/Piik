@@ -2523,8 +2523,12 @@ impl Driver {
                 .filter(|t| p.plan.incoming.iter().any(|flow| flow.id == t.flow_id))
                 .map(|t| (t.stream_id, t.flow_id))
                 .collect();
-            p.pc.accept(description.kind, description.sdp.unwrap_or_default())
-                .await?;
+            p.pc.accept_flows(
+                description.kind,
+                description.sdp.unwrap_or_default(),
+                p.remote.clone(),
+            )
+            .await?;
             for c in p.candidates.drain(..) {
                 let _ = p.pc.add_signaled_candidate(c).await;
             }
@@ -3093,7 +3097,7 @@ impl Driver {
             return Ok(());
         };
         let stream = track.stream.clone();
-        let Some(flow_id) = p.remote.get(&stream).copied() else {
+        let Some(flow_id) = track.flow_id.filter(|id| p.remote.get(&stream) == Some(id)) else {
             return Ok(());
         };
         let Some(binding) = p.plan.incoming.iter().find(|flow| flow.id == flow_id) else {

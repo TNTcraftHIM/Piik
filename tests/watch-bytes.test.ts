@@ -1,7 +1,11 @@
+import Hls, { LoaderContextType } from "hls.js";
 import { afterEach, expect, test, vi } from "vitest";
 import { WatchBytes } from "../src/client/channel/watch-bytes";
+import { createResourceWatchMedia } from "../src/client/channel/watch-media";
 import * as hosting from "../src/client/channel/hosting";
 import type { WatchBytePlan } from "../src/client/channel/protocol";
+
+vi.mock("../src/shared/media-resource", () => ({ mediaManifestBytes: () => 1_048_576 }));
 
 const roomId = "room", activityId = crypto.randomUUID(), sessionId = crypto.randomUUID(), peer = crypto.randomUUID();
 const source = { sessionId: peer, resourceId: crypto.randomUUID(), format: "file" as const };
@@ -24,14 +28,15 @@ class Delivery {
   request_failed() { return "[]"; }
   free = vi.fn();
 }
-afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 function setup() {
   const delivery = new Delivery();
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ initializeRuntime: async () => {},
     encode_control: (value: string) => new TextEncoder().encode(value),
     WatchDelivery: class { constructor() { return delivery; } } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
-  const bytes = new WatchBytes(vi.fn(async () => {})); bytes.update(sessionId, [plan], [{ peerId: peer, rooms: [roomId] }]);
-  return { bytes, delivery };
+  const send = vi.fn(async () => {});
+  const bytes = new WatchBytes(send); bytes.update(sessionId, [plan], [{ peerId: peer, rooms: [roomId] }]);
+  return { bytes, delivery, send };
 }
 test("range waits for Core effects without polling and clears its deadline after receipt", async () => {
   vi.useFakeTimers();
@@ -88,4 +93,64 @@ test("a local media fetch waits for its join's receiving plan before sending its
   await vi.waitFor(() => expect(delivery.reads).toHaveLength(1));
   cancel.abort(); await rejected;
   bytes.reset();
+});
+
+test.each(["response", "timeout", "cancel"] as const)("HLS waits beyond the old manifest deadline before %s", async outcome => {
+  vi.useFakeTimers();
+  const { bytes, delivery, send } = setup();
+  const hlsSource = { ...source, format: "hls" as const };
+  const routed = { ...plan, source: hlsSource };
+  const pairs = [{ peerId: peer, rooms: [roomId] }];
+  const callbacks = { onSuccess: vi.fn(), onError: vi.fn(), onTimeout: vi.fn(), onAbort: vi.fn() };
+  const video = Object.assign(new EventTarget(), { pause: vi.fn(), removeAttribute: vi.fn(), load: vi.fn(), remove: vi.fn() });
+  vi.stubGlobal("document", { createElement: () => video });
+  vi.spyOn(Hls, "isSupported").mockReturnValue(true);
+  const loadSource = vi.spyOn(Hls.prototype, "loadSource").mockImplementation(() => {});
+  const attached = new Promise<Hls>(resolve => {
+    vi.spyOn(Hls.prototype, "attachMedia").mockImplementation(function (this: Hls) { resolve(this); });
+  });
+  const media = createResourceWatchMedia(hlsSource, (id, offset, length, signal) =>
+    bytes.read(roomId, activityId, hlsSource, id, offset, length, signal), { hlsDeadlineOwner: "reader" });
+  try {
+    bytes.update(sessionId, [{ ...routed, upstream: null }], []);
+    const { config } = await attached;
+    const loadPolicy = config.manifestLoadPolicy.default;
+    const manifestURL = loadSource.mock.calls[0][0];
+    new config.loader(config).load({ type: LoaderContextType.MANIFEST, url: manifestURL, responseType: "text" },
+      { loadPolicy, timeout: loadPolicy.maxLoadTimeMs, maxRetry: 0, retryDelay: 0, maxRetryDelay: 0 }, callbacks);
+    await vi.advanceTimersByTimeAsync(loadPolicy.maxLoadTimeMs + 5000);
+    expect(send).not.toHaveBeenCalled();
+    expect(Object.values(callbacks).every(callback => callback.mock.calls.length === 0)).toBe(true);
+
+    if (outcome === "cancel") media.close();
+    bytes.update(sessionId, [routed], pairs);
+    await vi.advanceTimersByTimeAsync(0);
+    if (outcome === "cancel") {
+      expect(callbacks.onAbort).toHaveBeenCalledOnce();
+      expect(send).not.toHaveBeenCalled();
+    } else {
+      expect(send).toHaveBeenCalledOnce();
+      const requestId = delivery.reads[0];
+      if (outcome === "response") {
+        const manifest = "#EXTM3U\n#EXT-X-ENDLIST\n";
+        const payload = Array.from(new TextEncoder().encode(manifest));
+        bytes.data(peer, "control", JSON.stringify([{ type: "received", requestId, result: {
+          mimeType: "application/vnd.apple.mpegurl", totalSize: payload.length, bytes: payload, eof: true,
+        } }]));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(callbacks.onError).not.toHaveBeenCalled();
+        expect(callbacks.onSuccess).toHaveBeenCalledOnce();
+        expect(callbacks.onSuccess.mock.calls[0][0].data).toBe(manifest);
+      } else {
+        await vi.advanceTimersByTimeAsync(9999);
+        expect(callbacks.onError).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(callbacks.onError).toHaveBeenCalledOnce();
+        expect(callbacks.onError.mock.calls[0][0].text).toBe("watch_read_timeout");
+        expect(delivery.cancels).toContain(requestId);
+      }
+    }
+    expect(callbacks.onTimeout).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { media.close(); bytes.reset(); }
 });

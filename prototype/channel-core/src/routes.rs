@@ -60,7 +60,108 @@ pub(crate) struct ScreenDemand<'a> {
     pub relays: &'a BTreeSet<Uuid>,
 }
 
+/// Select one activity's child-to-parent paths on the room's authorized confirmed pairs.
+/// Byte owners pass their still-granted assignments for this source in `selected`.
+/// Refusals identify directed (sender, receiver) outputs of this activity.
+pub(crate) fn activity_parents(
+    source: Uuid,
+    receivers: &BTreeSet<Uuid>,
+    selected: &BTreeMap<Uuid, Uuid>,
+    neighbors: &BTreeMap<Uuid, BTreeSet<Uuid>>,
+    relays: &BTreeSet<Uuid>,
+    limits: &RelayLimits,
+    refused: &BTreeSet<(Uuid, Uuid)>,
+) -> BTreeMap<Uuid, Uuid> {
+    let mut plan = Plan::new(source);
+    for &(parent, child) in refused {
+        plan.reject_parent(child, parent);
+    }
+
+    let order: Vec<_> = receivers.iter().copied().collect();
+    let graph = ScreenDemand {
+        order: &order,
+        neighbors,
+        relays,
+    };
+    plan.select_activity_paths(selected, &graph, &BTreeMap::new(), limits, |_| true)
+}
+
 impl Plan {
+    pub(crate) fn activity_parents(
+        &self,
+        receivers: &BTreeSet<Uuid>,
+        neighbors: &BTreeMap<Uuid, BTreeSet<Uuid>>,
+        relays: &BTreeSet<Uuid>,
+        limits: &RelayLimits,
+        helpers: &BTreeMap<Uuid, Uuid>,
+        order: &[Uuid],
+    ) -> BTreeMap<Uuid, Uuid> {
+        let mut remaining = receivers.clone();
+        let mut requested: Vec<_> = order
+            .iter()
+            .copied()
+            .filter(|id| remaining.remove(id))
+            .collect();
+        requested.extend(remaining);
+        let graph = ScreenDemand {
+            order: &requested,
+            neighbors,
+            relays,
+        };
+        let mut plan = Plan::new(self.source);
+        plan.failed_parents.clone_from(&self.failed_parents);
+        plan.select_activity_paths(&self.parents, &graph, helpers, limits, |child| {
+            self.ready.contains_key(&child)
+        })
+    }
+
+    fn select_activity_paths(
+        mut self,
+        selected: &BTreeMap<Uuid, Uuid>,
+        graph: &ScreenDemand<'_>,
+        helpers: &BTreeMap<Uuid, Uuid>,
+        limits: &RelayLimits,
+        live_input: impl Fn(Uuid) -> bool,
+    ) -> BTreeMap<Uuid, Uuid> {
+        // Keep complete incumbent paths first. A receiver that left can still be transit.
+        for &receiver in graph.order {
+            let mut child = receiver;
+            let mut branch = Vec::new();
+            while child != self.source {
+                let Some(&parent) = selected.get(&child) else {
+                    break;
+                };
+                if branch.len() >= selected.len()
+                    || (parent != self.source && !graph.relays.contains(&parent))
+                    || helpers
+                        .get(&parent)
+                        .is_some_and(|helper| selected.get(&parent) == Some(helper))
+                    || !(graph
+                        .neighbors
+                        .get(&parent)
+                        .is_some_and(|peers| peers.contains(&child))
+                        || (live_input(receiver) && live_input(child)))
+                    || self
+                        .failed_parents
+                        .get(&child)
+                        .is_some_and(|failed| failed.contains(&parent))
+                    || !self.admitted_output(parent, child, helpers, limits)
+                {
+                    break;
+                }
+                branch.push((child, parent));
+                child = parent;
+            }
+            if child == self.source {
+                self.parents.extend(branch);
+            }
+        }
+        // A surviving assignment can serve its existing receiver through a signaling outage.
+        // The scratch plan carries no payload proofs, so BFS only extends confirmed prefixes.
+        self.extend_confirmed(graph, helpers, limits);
+        self.parents
+    }
+
     pub fn new(source: Uuid) -> Self {
         Self {
             source,
@@ -818,21 +919,6 @@ impl Plan {
         })
     }
 
-    pub fn mark_unready(&mut self, child: Uuid, parent: Uuid) -> bool {
-        if self.parents.get(&child) != Some(&parent) || self.ready.remove(&child).is_none() {
-            return false;
-        }
-        let descendants: Vec<_> = self
-            .parents
-            .iter()
-            .filter_map(|(next, upstream)| (*upstream == child).then_some(*next))
-            .collect();
-        for next in descendants {
-            self.detach(next);
-        }
-        true
-    }
-
     pub fn failed(&mut self, first: Uuid, second: Uuid) {
         let child = if self.parents.get(&first) == Some(&second) {
             Some(first)
@@ -894,7 +980,6 @@ struct BaseOperation {
 enum BaseCandidate {
     Reparent { parent: Uuid },
     Insert { parent: Uuid, branch: Uuid },
-    FileShortcut { source: Uuid },
 }
 impl BaseOperation {
     fn edges(&self) -> Vec<(Uuid, Uuid)> {
@@ -903,7 +988,6 @@ impl BaseOperation {
             Some(BaseCandidate::Insert { parent, branch }) => {
                 vec![(parent, self.child), (self.child, branch)]
             }
-            Some(BaseCandidate::FileShortcut { source }) => vec![(source, self.child)],
             None => vec![],
         }
     }
@@ -1055,9 +1139,7 @@ impl BaseTree {
             .is_some_and(|operation| operation.deadline <= now)
         {
             let operation = self.operation.take().unwrap();
-            if let Some(BaseCandidate::FileShortcut { source }) = operation.candidate {
-                self.plan.reject_parent(operation.child, source);
-            } else if let Some(parent) = operation.replaces {
+            if let Some(parent) = operation.replaces {
                 self.plan.failed(parent, operation.child);
             } else {
                 self.plan.reject_parent(operation.child, self.root());
@@ -1066,8 +1148,6 @@ impl BaseTree {
         }
         if let Some(operation) = &self.operation {
             match operation.candidate {
-                // File demand revalidates its candidate after base reconciliation.
-                Some(BaseCandidate::FileShortcut { .. }) => {}
                 _ if self.plan.parents.get(&operation.child).copied() != operation.replaces
                     || (operation.replaces.is_none()
                         && (!connected.contains(&operation.child)
@@ -1214,61 +1294,6 @@ impl BaseTree {
                     && self.plan.wan_outputs(child, None, &BTreeMap::new())
                         < limits.get(child, self.root())
             }
-            BaseCandidate::FileShortcut { source } => {
-                connected.contains(&source)
-                    && self.plan.rooted_ready(source)
-                    && self.plan.rooted_ready(child)
-                    && !failed(source)
-                    && self
-                        .file_shortcut_plan(source, child)
-                        .capacity_children(&BTreeMap::new(), limits, &BTreeSet::new())
-                        .is_empty()
-            }
-        }
-    }
-    pub fn prepare_file_shortcut(
-        &mut self,
-        requested: &[(Uuid, Uuid)],
-        connected: &BTreeSet<Uuid>,
-        limits: &RelayLimits,
-        now: u64,
-    ) {
-        let retired = if let Some(operation) = &self.operation {
-            let Some(BaseCandidate::FileShortcut { source }) = operation.candidate else {
-                return;
-            };
-            let pair = (source, operation.child);
-            if requested.contains(&pair)
-                && self.valid_candidate(
-                    operation.child,
-                    BaseCandidate::FileShortcut { source },
-                    connected,
-                    limits,
-                )
-            {
-                return;
-            }
-            self.operation = None;
-            self.prune_proofs();
-            Some(pair)
-        } else {
-            None
-        };
-        if let Some((source, child)) = requested.iter().copied().find(|&(source, child)| {
-            Some((source, child)) != retired
-                && self.valid_candidate(
-                    child,
-                    BaseCandidate::FileShortcut { source },
-                    connected,
-                    limits,
-                )
-        }) {
-            self.operation = Some(BaseOperation {
-                child,
-                candidate: Some(BaseCandidate::FileShortcut { source }),
-                replaces: None,
-                deadline: now.saturating_add(BASE_PREPARE_MS),
-            });
         }
     }
     fn prune_proofs(&mut self) {
@@ -1346,10 +1371,6 @@ impl BaseTree {
         }
         let mut candidate = self.clone();
         candidate.operation = None;
-        if let Some(BaseCandidate::FileShortcut { source }) = operation.candidate {
-            candidate.plan = self.file_shortcut_plan(source, operation.child);
-            return Some(candidate);
-        }
         for (parent, child) in edges {
             candidate.plan.parents.insert(child, parent);
             candidate
@@ -1357,22 +1378,6 @@ impl BaseTree {
                 .mark_ready(child, parent, Readiness::Forwardable);
         }
         Some(candidate)
-    }
-    fn file_shortcut_plan(&self, source: Uuid, receiver: Uuid) -> Plan {
-        let mut plan = self.plan.clone();
-        // Room ACKs prove both directions of the retained edges.
-        let mut child = source;
-        let mut parent = plan.parents.remove(&child);
-        while let Some(previous) = parent {
-            parent = plan.parents.insert(previous, child);
-            plan.ready.insert(previous, Readiness::Forwardable);
-            child = previous;
-        }
-        plan.ready.remove(&source);
-        plan.source = source;
-        plan.parents.insert(receiver, source);
-        plan.mark_ready(receiver, source, Readiness::Forwardable);
-        plan
     }
     pub fn commit(&mut self) {
         if let Some(candidate) = self.candidate_tree() {
@@ -1393,14 +1398,7 @@ impl BaseTree {
                     self.plan.reject_parent(operation.child, peer);
                 }
             }
-            if matches!(
-                operation.candidate,
-                Some(BaseCandidate::FileShortcut { .. })
-            ) {
-                self.operation = None;
-            } else {
-                operation.candidate = None;
-            }
+            operation.candidate = None;
             self.prune_proofs();
         }
     }
@@ -1408,14 +1406,6 @@ impl BaseTree {
     /// Walk the ready tree from the actual source, then retain only the unique
     /// paths to listeners. Shared directed edges carry one copy of that source.
     pub fn project(&self, source: Uuid, listeners: &BTreeSet<Uuid>) -> BTreeSet<(Uuid, Uuid)> {
-        self.project_avoiding(source, listeners, &BTreeSet::new())
-    }
-    pub fn project_avoiding(
-        &self,
-        source: Uuid,
-        listeners: &BTreeSet<Uuid>,
-        refused: &BTreeSet<(Uuid, Uuid)>,
-    ) -> BTreeSet<(Uuid, Uuid)> {
         let mut adjacency = BTreeMap::<Uuid, Vec<Uuid>>::new();
         for (parent, child) in self.plan.ready_edges() {
             adjacency.entry(parent).or_default().push(child);
@@ -1426,7 +1416,7 @@ impl BaseTree {
         let mut pending = vec![source];
         while let Some(node) = pending.pop() {
             for next in adjacency.get(&node).into_iter().flatten() {
-                if !refused.contains(&(node, *next)) && visited.insert(*next) {
+                if visited.insert(*next) {
                     parents.insert(*next, node);
                     pending.push(*next);
                 }
@@ -1447,6 +1437,172 @@ impl BaseTree {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn activity_parents_keep_live_inputs_without_extending_an_unconfirmed_prefix() {
+        let (source, relay, live, pending, new) = (id(1), id(2), id(3), id(4), id(5));
+        // The source-to-relay transport is absent from the fresh signaling snapshot.
+        let mut neighbors: BTreeMap<Uuid, BTreeSet<Uuid>> = [
+            (relay, [live, pending, new].into()),
+            (live, [relay].into()),
+            (pending, [relay].into()),
+            (new, [relay].into()),
+        ]
+        .into();
+        let mut plan = Plan::new(source);
+        let granted: BTreeMap<_, _> = [(relay, source), (live, relay)].into();
+        plan.parents = granted.clone();
+        plan.parents.insert(pending, relay);
+        plan.mark_ready(relay, source, Readiness::Forwardable);
+        plan.mark_ready(live, relay, Readiness::Decoded);
+        let receivers = [live, pending, new].into();
+        let relays = [relay].into();
+        let limits = RelayLimits {
+            default: 3,
+            ..Default::default()
+        };
+        let media = |graph: &_| {
+            plan.activity_parents(&receivers, graph, &relays, &limits, &BTreeMap::new(), &[])
+        };
+        let bytes = |graph: &_, grants: &_, relays: &_| {
+            activity_parents(
+                source,
+                &receivers,
+                grants,
+                graph,
+                relays,
+                &limits,
+                &BTreeSet::new(),
+            )
+        };
+        assert_eq!(media(&neighbors), granted);
+        assert_eq!(bytes(&neighbors, &granted, &relays), granted);
+        assert!(bytes(&neighbors, &BTreeMap::new(), &relays).is_empty());
+        assert!(bytes(&neighbors, &granted, &BTreeSet::new()).is_empty());
+
+        neighbors.insert(source, [relay].into());
+        neighbors.get_mut(&relay).unwrap().insert(source);
+        let restored = [
+            (relay, source),
+            (live, relay),
+            (pending, relay),
+            (new, relay),
+        ]
+        .into();
+        assert_eq!(media(&neighbors), restored);
+        assert_eq!(bytes(&neighbors, &granted, &relays), restored);
+    }
+
+    #[test]
+    fn activity_parents_honor_publication_order_proof_failures_and_display_outputs() {
+        let (s, a, b) = (id(1), id(2), id(3));
+        let neighbors = [(s, [a, b].into()), (a, [s].into()), (b, [s].into())].into();
+        let mut plan = Plan::new(s);
+        let query = |plan: &Plan, helpers: &_| {
+            plan.activity_parents(
+                &[a, b].into(),
+                &neighbors,
+                &BTreeSet::new(),
+                &RelayLimits {
+                    source_direct_limit: Some(1),
+                    ..Default::default()
+                },
+                helpers,
+                &[b, a],
+            )
+        };
+        assert_eq!(query(&plan, &BTreeMap::new()), [(b, s)].into());
+        let display = [(a, s)].into();
+        assert_eq!(query(&plan, &display), [(a, s), (b, s)].into());
+        plan.reject_parent(b, s);
+        assert_eq!(query(&plan, &display), [(a, s)].into());
+    }
+
+    #[test]
+    fn activity_parents_keep_voice_chain_while_file_uses_new_direct_pair() {
+        let (a, b, c) = (id(1), id(2), id(3));
+        let mut neighbors: BTreeMap<_, BTreeSet<_>> =
+            [(a, [b].into()), (b, [a, c].into()), (c, [b].into())].into();
+        let limits = RelayLimits::default();
+        let select_voice = |neighbors: &_, selected: &_| {
+            activity_parents(
+                a,
+                &[c].into(),
+                selected,
+                neighbors,
+                &[b].into(),
+                &limits,
+                &BTreeSet::new(),
+            )
+        };
+        let voice = select_voice(&neighbors, &BTreeMap::new());
+        assert_eq!(voice, [(b, a), (c, b)].into());
+
+        neighbors.get_mut(&a).unwrap().insert(c);
+        neighbors.get_mut(&c).unwrap().insert(a);
+        let file = activity_parents(
+            c,
+            &[a].into(),
+            &BTreeMap::new(),
+            &neighbors,
+            &[b].into(),
+            &limits,
+            &[(b, a)].into(),
+        );
+        assert_eq!(file, [(a, c)].into());
+        assert_eq!(select_voice(&neighbors, &voice), voice);
+    }
+
+    #[test]
+    fn activity_parents_respect_withdrawn_or_unavailable_outputs_and_preserve_other_receivers() {
+        let (source, relay, a, b) = (id(1), id(2), id(3), id(4));
+        let neighbors = [
+            (source, [relay, a].into()),
+            (relay, [source, a, b].into()),
+            (a, [source, relay].into()),
+            (b, [relay].into()),
+        ]
+        .into();
+        let limits = RelayLimits::default();
+        let selected = [(relay, source), (a, relay), (b, relay)].into();
+        let choose = |selected: &_, relays: &_, limits: &_, refused: &_| {
+            activity_parents(
+                source,
+                &[a, b].into(),
+                selected,
+                &neighbors,
+                relays,
+                limits,
+                refused,
+            )
+        };
+        assert_eq!(
+            choose(&selected, &[relay].into(), &limits, &[(relay, a)].into()),
+            [(a, source), (relay, source), (b, relay)].into()
+        );
+        assert_eq!(
+            choose(&selected, &BTreeSet::new(), &limits, &BTreeSet::new()),
+            [(a, source)].into()
+        );
+        let at_limit = RelayLimits {
+            shared: [(relay, [a, id(5)].into())].into(),
+            ..limits
+        };
+        assert_eq!(
+            choose(&selected, &[relay].into(), &at_limit, &BTreeSet::new()),
+            [(a, relay), (relay, source)].into()
+        );
+        let cycle = [(b, relay), (relay, b)].into();
+        assert_eq!(
+            choose(
+                &cycle,
+                &[relay, b].into(),
+                &RelayLimits::default(),
+                &BTreeSet::new()
+            ),
+            [(a, source), (b, relay), (relay, source)].into()
+        );
+    }
     #[test]
     fn confirmed_viewer_reuses_only_an_exclusive_pending_source_slot() {
         let id = Uuid::from_u128;

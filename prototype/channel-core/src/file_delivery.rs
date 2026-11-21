@@ -101,6 +101,12 @@ struct File {
     ranges: BTreeMap<u64, Range>,
 }
 
+impl File {
+    fn has_supplier(&self, session: Uuid) -> bool {
+        self.plan.source_id == Some(session) || self.plan.upstream.is_some()
+    }
+}
+
 pub struct FileDelivery {
     session: Uuid,
     files: BTreeMap<FileKey, File>,
@@ -159,6 +165,7 @@ impl FileDelivery {
                 self.cached = None;
             }
         }
+        let keys: Vec<_> = next.keys().cloned().collect();
         for (key, plan) in next {
             let file = self.files.entry(key.clone()).or_insert_with(|| File {
                 plan: plan.clone(),
@@ -169,11 +176,10 @@ impl FileDelivery {
                     != (plan.source_id == Some(self.session));
             let stopped_receiving = file.plan.receiving && !plan.receiving;
             file.plan = plan;
+            let receives_range = file.plan.receiving && file.has_supplier(self.session);
             for (offset, range) in &mut file.ranges {
                 range.consumers.retain(|peer, _| {
-                    peer.map_or(file.plan.receiving, |peer| {
-                        file.plan.downstream.contains(&peer)
-                    })
+                    peer.map_or(receives_range, |peer| file.plan.downstream.contains(&peer))
                 });
                 if changed || range.consumers.is_empty() {
                     if let Supplier::Peer(peer, request_id) = range.supplier {
@@ -194,6 +200,9 @@ impl FileDelivery {
             if stopped_receiving && self.receivers.contains_key(&key) {
                 effects.extend(self.fail_local(&key, "attachment_unavailable"));
             }
+        }
+        // Retire obsolete ranges across the snapshot before claiming slots for new reads.
+        for key in keys {
             effects.extend(self.pump(&key));
         }
         let admitted: Vec<_> = self
@@ -461,10 +470,15 @@ impl FileDelivery {
             let file = self.files.get_mut(&key).unwrap();
             if file.plan.upstream == Some(peer) {
                 file.plan.upstream = None;
-                for range in file.ranges.values_mut() {
+                let has_supplier = file.has_supplier(self.session);
+                file.ranges.retain(|_, range| {
+                    if !has_supplier {
+                        range.consumers.remove(&None);
+                    }
                     range.supplier = Supplier::Waiting;
                     range.bytes.clear();
-                }
+                    !range.consumers.is_empty()
+                });
             }
         }
         effects
@@ -628,7 +642,7 @@ impl FileDelivery {
                             code: "attachment_hash_mismatch".into(),
                         }
                     });
-                } else if file.plan.source_id.is_some() {
+                } else if file.has_supplier(self.session) {
                     effects.extend(self.request(key, receiver.offset, None));
                 }
             }

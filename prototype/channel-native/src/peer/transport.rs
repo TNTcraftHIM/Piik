@@ -355,6 +355,7 @@ pub(crate) enum ChannelEvent {
 #[derive(Clone)]
 pub(crate) struct Track {
     transport: Transport,
+    pub flow_id: Option<Uuid>,
     pub mid: Mid,
     pub stream: String,
     pub id: String,
@@ -420,7 +421,7 @@ pub(crate) struct Engine {
     pending: Option<SdpPendingOffer>,
     local: Option<(String, String)>,
     remote: bool,
-    remote_media: HashMap<Mid, (String, String)>,
+    remote_media: HashMap<Mid, (String, String, Option<Uuid>)>,
     negotiated: bool,
     linear_enabled: bool,
     bandwidth: watch::Sender<Estimate>,
@@ -1002,6 +1003,14 @@ impl Transport {
         .await
     }
     pub async fn accept(&self, kind: String, sdp: String) -> Result<()> {
+        self.accept_flows(kind, sdp, HashMap::new()).await
+    }
+    pub async fn accept_flows(
+        &self,
+        kind: String,
+        sdp: String,
+        flows: HashMap<String, Uuid>,
+    ) -> Result<()> {
         self.call(move |e| {
             let parsed = SdpOffer::from_sdp_string(&sdp)?;
             if e.events.local() {
@@ -1016,10 +1025,15 @@ impl Transport {
                 .filter(|line| line.direction().is_sending())
                 .filter_map(|line| {
                     if e.events.local() {
-                        return Some((line.mid(), ("local-input".into(), line.mid().to_string())));
+                        return Some((
+                            line.mid(),
+                            ("local-input".into(), line.mid().to_string(), None),
+                        ));
                     }
-                    line.msid()
-                        .map(|msid| (line.mid(), (msid.stream_id, msid.track_id)))
+                    line.msid().map(|msid| {
+                        let flow = flows.get(&msid.stream_id).copied();
+                        (line.mid(), (msid.stream_id, msid.track_id, flow))
+                    })
                 })
                 .collect::<HashMap<_, _>>();
             if kind == "offer" {
@@ -1047,9 +1061,9 @@ impl Transport {
                 .tracks
                 .iter()
                 .filter(|(mid, t)| {
-                    remote_media
-                        .get(mid)
-                        .is_none_or(|(stream, id)| *stream != t.track.stream || *id != t.track.id)
+                    remote_media.get(mid).is_none_or(|(stream, id, flow)| {
+                        *stream != t.track.stream || *id != t.track.id || *flow != t.track.flow_id
+                    })
                 })
                 .map(|(mid, _)| *mid)
                 .collect::<Vec<_>>();
@@ -1059,8 +1073,11 @@ impl Transport {
                 }
                 e.sender_reports.retain(|_, (m, _, _)| *m != mid);
             }
-            e.clocks
-                .retain(|stream, _| remote_media.values().any(|(current, _)| current == stream));
+            e.clocks.retain(|stream, _| {
+                remote_media
+                    .values()
+                    .any(|(current, _, _)| current == stream)
+            });
             e.remote_media = remote_media;
             e.prune_stats();
             e.remote = true;
@@ -2018,7 +2035,7 @@ impl Engine {
                 if info.sender_packet_count == 0 && !self.sender_reports.contains_key(&ssrc) {
                     return;
                 }
-                let Some((stream, _)) = self.remote_media.get(&feedback.mid) else {
+                let Some((stream, _, _)) = self.remote_media.get(&feedback.mid) else {
                     return;
                 };
                 let stream = stream.clone();
@@ -2060,7 +2077,7 @@ impl Engine {
                 let Some(media) = self.rtc.media(mid) else {
                     return;
                 };
-                let Some((stream, track_id)) = self.remote_media.get(&mid).cloned() else {
+                let Some((stream, track_id, flow_id)) = self.remote_media.get(&mid).cloned() else {
                     return;
                 };
                 let kind = media.kind();
@@ -2090,6 +2107,7 @@ impl Engine {
                     self.clocks.entry(stream.clone()).or_default();
                     let track = Track {
                         transport: self.handle.clone(),
+                        flow_id,
                         mid,
                         stream,
                         id: track_id,

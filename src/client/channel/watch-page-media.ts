@@ -2,7 +2,7 @@ import type { AppPage } from "./app-link";
 import type { NativePageMediaChoice, NativePageIndexedCandidate, NativePageMpdCandidate, NativePageMpdCatalog } from "../native/wire";
 import { inspectIndexedTrack, type IndexedTrackInspection } from "./watch-indexed-source";
 import { limitWatchReads } from "./watch-resource";
-import { HTMLVideoMedia, createPeerWatchMedia, type WatchMedia, type WatchMediaEvent, type WatchMediaPatch, type WatchMediaState } from "./watch-media";
+import { HTMLVideoMedia, createResourceWatchMedia, type WatchMedia, type WatchMediaEvent, type WatchMediaPatch, type WatchMediaState } from "./watch-media";
 import type { WatchByteSource, WatchFormat } from "./protocol";
 
 export interface WatchIndexedChoice { candidate: NativePageIndexedCandidate; inspection?: IndexedTrackInspection; error?: string }
@@ -100,8 +100,8 @@ export async function preparePortableWatchMedia(page: AppPage, url: string, sign
 export async function preparePageSuppliedWatchMedia(page: AppPage, byteSource: WatchByteSource,
   signal: AbortSignal): Promise<PageSuppliedMedia> {
   signal.throwIfAborted();
-  const media = createPeerWatchMedia(byteSource, (resourceId, offset, length, signal) =>
-    page.readMediaResource(byteSource.resourceId, resourceId, offset, length, signal));
+  const media = createResourceWatchMedia(byteSource, (resourceId, offset, length, signal) =>
+    page.readMediaResource(byteSource.resourceId, resourceId, offset, length, signal), { hlsDeadlineOwner: "loader" });
   try { await prepareMainPlayback(page, media, signal); }
   catch (error) { await page.stopMedia().catch(() => {}); throw error; }
   return new PageSuppliedMedia(page, media, byteSource);

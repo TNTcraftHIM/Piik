@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn peer_watch_requests_the_provider_pair_and_waits_for_its_room_grant() {
+fn peer_watch_establishes_the_grant_after_both_provider_pair_reports() {
     let mut net = RoomNetwork::new();
     let [page, provider, viewer] = [(); 3].map(|_| Uuid::new_v4());
     let (page_session, credential) = join(&mut net, page, None);
@@ -51,25 +51,21 @@ fn peer_watch_requests_the_provider_pair_and_waits_for_its_room_grant() {
         .expect("peer-mode demand should request the provider itself")
         .id;
     assert_eq!(net.state(viewer).watch_bytes[0].upstream, None);
-    for socket in [provider, viewer] {
-        command(
-            &mut net,
-            socket,
-            json!({"type":"link_state","pairId":provider_pair,"state":"connected"}),
-        );
-    }
+    command(
+        &mut net,
+        provider,
+        json!({"type":"link_state","pairId":provider_pair,"state":"connected"}),
+    );
+    assert_eq!(net.state(viewer).watch_bytes[0].upstream, None);
+    command(
+        &mut net,
+        viewer,
+        json!({"type":"link_state","pairId":provider_pair,"state":"connected"}),
+    );
     assert_eq!(
         pair(&net, viewer, provider_session, &room).id,
         provider_pair
     );
-    for socket in [provider, viewer] {
-        assert_eq!(net.state(viewer).watch_bytes[0].upstream, None);
-        command(
-            &mut net,
-            socket,
-            json!({"type":"base_state","roomId":room,"pairId":provider_pair,"ready":true}),
-        );
-    }
     assert_eq!(
         net.state(viewer).watch_bytes[0].upstream,
         Some(provider_session)
@@ -95,6 +91,8 @@ fn one_screen_reduces_two_decoded_outputs_while_another_stays_selected() {
     }
     let sibling = publish(&mut net, x, &room, "screen");
     subscribe_screen(&mut net, y, sibling);
+    let edge = physical_pair(&net, y, xs).unwrap();
+    connect(&mut net, [x, y], edge);
     let stable = screen_input(&net, y, xs, sibling).unwrap();
     command(
         &mut net,
@@ -112,6 +110,8 @@ fn one_screen_reduces_two_decoded_outputs_while_another_stays_selected() {
     limit(&mut net, 2);
     for peer in [b, c] {
         subscribe_screen(&mut net, peer, picture);
+        let edge = physical_pair(&net, peer, as_).unwrap();
+        connect(&mut net, [a, peer], edge);
         let (pair, flow) = screen_input(&net, peer, as_, picture).unwrap();
         command(
             &mut net,
@@ -129,6 +129,10 @@ fn one_screen_reduces_two_decoded_outputs_while_another_stays_selected() {
     limit(&mut net, 1);
     assert_eq!(count(&net), 2);
     assert_eq!(screen_input(&net, y, xs, sibling), Some(stable));
+    let warm = publish(&mut net, b, &room, "screen");
+    subscribe_screen(&mut net, c, warm);
+    let alternate = physical_pair(&net, b, cs).expect("physical pair for the sibling subscription");
+    connect(&mut net, [b, c], alternate);
     let (peer, (pair, flow)) = [(b, cs), (c, bs)]
         .into_iter()
         .find_map(|(peer, sender)| {
@@ -247,7 +251,8 @@ fn cancelling_file_or_screen_preserves_the_other_on_the_same_pair() {
         let room = network.create(source, RoomAccess::Public, false);
         let screen = publish(&mut network, source, &room, "screen");
         subscribe_screen(&mut network, viewer, screen);
-        let (shared, flow) = screen_input(&network, viewer, upstream, screen).unwrap();
+        let shared = physical_pair(&network, viewer, upstream).unwrap();
+        assert!(screen_input(&network, viewer, upstream, screen).is_none());
         let (seq, attachment) = offer_file(&mut network, source, &room, "shared.bin");
         let receive = |n: &mut RoomNetwork, enabled| {
             command(
@@ -269,6 +274,8 @@ fn cancelling_file_or_screen_preserves_the_other_on_the_same_pair() {
                 json!({"type":"base_state","roomId":room,"pairId":shared,"ready":true}),
             );
         }
+        let (edge, flow) = screen_input(&network, viewer, upstream, screen).unwrap();
+        assert_eq!(edge, shared);
         command(
             &mut network,
             viewer,
@@ -317,6 +324,8 @@ fn room_capacity_changes_apply_to_an_active_screen() {
     let inputs =
         |network: &RoomNetwork| viewers.map(|viewer| screen_input(network, viewer, source, screen));
     let decode = |network: &mut RoomNetwork, viewer| {
+        let edge = physical_pair(network, viewer, source).unwrap();
+        connect(network, [host, viewer], edge);
         let (pair, flow) = screen_input(network, viewer, source, screen).unwrap();
         command(
             network,
@@ -427,7 +436,15 @@ fn cold_voice_file_and_watch_byte_repair_use_the_only_room_reader() {
             } else {
                 receiver
             };
+
             for socket in [helper, peer] {
+                if let Some(publication) = publication {
+                    assert!(screen_input(&network, receiver, helper_id, publication).is_none());
+                } else if kind == "watch" {
+                    assert!(network.state(receiver).watch_bytes[0].upstream.is_none());
+                } else {
+                    assert!(network.state(receiver).files[0].upstream.is_none());
+                }
                 command(
                     &mut network,
                     socket,
@@ -438,13 +455,6 @@ fn cold_voice_file_and_watch_byte_repair_use_the_only_room_reader() {
         for (socket, peer_id) in [(source, source_id), (receiver, receiver_id)] {
             let edge = pair(&network, helper, peer_id, &room);
             for endpoint in [helper, socket] {
-                if let Some(publication) = publication {
-                    assert!(screen_input(&network, receiver, helper_id, publication).is_none());
-                } else if kind == "watch" {
-                    assert!(network.state(receiver).watch_bytes[0].upstream.is_none());
-                } else {
-                    assert!(network.state(receiver).files[0].upstream.is_none());
-                }
                 command(
                     &mut network,
                     endpoint,
@@ -653,7 +663,7 @@ fn new_room_flow_consumes_an_existing_physical_failure() {
     let healthy = Uuid::new_v4();
     join(&mut net, healthy, None);
     subscribe_screen(&mut net, healthy, sibling);
-    let shared = screen_input(&net, healthy, source_id, sibling).unwrap().0;
+    let shared = physical_pair(&net, healthy, source_id).unwrap();
     for endpoint in [healthy, source] {
         command(
             &mut net,
@@ -662,7 +672,7 @@ fn new_room_flow_consumes_an_existing_physical_failure() {
         );
     }
     subscribe_screen(&mut net, receiver, screen);
-    let direct = screen_input(&net, receiver, source_id, screen).unwrap().0;
+    let direct = physical_pair(&net, receiver, source_id).unwrap();
     // The second room has planned its first lease but the domain hasn't received it.
     let request = json!({"type":"subscribe","publicationId":sibling,"enabled":true});
     let effects = net.authority.handle(
@@ -716,10 +726,13 @@ fn new_room_flow_consumes_an_existing_physical_failure() {
     let fresh_room = net.create(source, RoomAccess::Public, false);
     let fresh_screen = publish(&mut net, source, &fresh_room, "screen");
     subscribe_screen(&mut net, resumed, fresh_screen);
-    assert_ne!(
+    let fresh = physical_pair(&net, resumed, source_id).unwrap();
+    assert_ne!(fresh, direct);
+    connect(&mut net, [source, resumed], fresh);
+    assert_eq!(
         screen_input(&net, resumed, source_id, fresh_screen)
             .unwrap()
             .0,
-        direct
+        fresh
     );
 }

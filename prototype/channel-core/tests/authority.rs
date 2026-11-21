@@ -365,10 +365,13 @@ fn replacement_fences_old_commands_and_close_without_retiring_healthy_sources() 
     let old = Uuid::new_v4();
     let current = Uuid::new_v4();
     let watcher = Uuid::new_v4();
-    core.command_at(
+    let (owner_session, _, _) = welcome(
+        core.command_at(
+            owner,
+            json!({"type":"join","ownerKey":"owner","name":"Owner"}),
+            0,
+        ),
         owner,
-        json!({"type":"join","ownerKey":"owner","name":"Owner"}),
-        0,
     );
     let (session, credential, _) = welcome(
         core.command_at(old, json!({"type":"join","name":"Source"}), 0),
@@ -390,17 +393,25 @@ fn replacement_fences_old_commands_and_close_without_retiring_healthy_sources() 
         .state(watcher)
         .pairs
         .iter()
-        .find(|pair| {
-            pair.incoming
-                .iter()
-                .any(|flow| flow.publication_id == own_source)
-        })
+        .find(|pair| pair.peer_id == owner_session)
         .unwrap()
         .id;
+    for connection in [owner, watcher] {
+        let effects = core.command_at(
+            connection,
+            json!({"type":"link_state","pairId":pair,"state":"connected"}),
+            100,
+        );
+        assert!(!effects
+            .events
+            .iter()
+            .any(|(_, event)| matches!(event, Event::Error { .. })));
+    }
     let flow = core
         .state(watcher)
         .pairs
         .iter()
+        .filter(|candidate| candidate.id == pair)
         .flat_map(|pair| &pair.incoming)
         .find(|flow| flow.publication_id == own_source)
         .unwrap()

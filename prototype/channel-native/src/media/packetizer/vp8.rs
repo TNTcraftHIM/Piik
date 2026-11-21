@@ -144,12 +144,12 @@ mod tests {
                 layer_sync: true,
                 key_idx: Some(7),
             };
-            let frame = EncodedFrame {
+            let frame = Arc::new(EncodedFrame {
                 bytes: [vec![u8::from(tid != 0)], vec![0x55; 3000]].concat(),
                 presentation_time: now + Duration::from_millis(u64::from(index) * 50),
                 keyframe: tid == 0,
                 vp8: Some(metadata),
-            };
+            });
             let expected = Vp8FrameMetadata {
                 picture_id: Some(Vp8PictureId {
                     value: sent,

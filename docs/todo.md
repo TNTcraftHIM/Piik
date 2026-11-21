@@ -19,25 +19,16 @@ the feedback period; they do not delay that delivery.
 - [ ] **Complete the channel connection pool.** Implement the accepted
   [forwarding architecture](./research/channel-forwarding-plan.md#one-channel-connection-graph)
   within the existing Channel and TransportBook owners: merge activity demand,
-  common-room interest and channel standby in that priority order; allow a first
-  useful neighbor on an empty graph; repair gaps between channel components;
-  and admit physical pairs within a bounded endpoint degree. Reuse confirmed
-  pairs and the existing roomless probe. Keep physical admission, attempt
-  deadlines and failure generations with Channel/TransportBook. Preserve
-  requests while capacity or connectivity is missing; room payload preparation
-  starts on a complete confirmed path. Project file and forwarded-byte intent
-  without requiring a base tree, and wake rooms when the confirmed graph changes.
+  common-room interest and channel standby in that priority order. Establish
+  useful standby neighbors before business demand, repair gaps between channel
+  components, and admit pending and established pairs within a calibrated
+  endpoint degree. Reclaim useful idle neighbors under actual resource pressure,
+  rather than whenever an endpoint gains active work. Retire remaining room-tree
+  connection bootstrap after the pool supplies those interests.
   Verify no business payload on lobby-only edges, zero business slots for
-  standby, and preservation of active leases. Ending interest or permission
-  releases that use; retire the pair only when no admitted use remains.
-- [ ] **Use independent activity paths on the room graph.** Reuse the existing
-  path search for voice publications, file holders and forwarded webpage bytes.
-  Keep selected parents with each activity and retire their dependence on the
-  shared base tree. Verify A's voice over A–B–C alongside C's file directly over
-  C–A, independent per-kind budgets, and retirement of only the ended activity's
-  leases. Reuse the current flow, file-plan and byte-plan contracts. Complete
-  intent projection and pool cold start before retiring base-tree connection
-  requests; count shared old/new physical pairs once during handoff.
+  standby, and preservation of active leases. Capacity waiting must not start
+  a physical or payload timeout. Count shared old/new physical pairs once during
+  handoff and retire a pair only when no admitted use remains.
 - [ ] **Freeze the first public 3.0 contract.** Confirm the
   [module and ownership baseline](./standards/engineering.md#architecture-baseline),
   the remaining pool implementation and the

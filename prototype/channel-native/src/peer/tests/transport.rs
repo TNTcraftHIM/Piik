@@ -170,6 +170,11 @@ async fn source_ended_before_ready_fails_only_its_current_flow() -> Result<()> {
         (
             Track {
                 transport: pc.clone(),
+                flow_id: Some(if stream == "voice" {
+                    flows[1].id
+                } else {
+                    flows[0].id
+                }),
                 mid: "0".into(),
                 stream: stream.into(),
                 id: format!("{stream}-track"),

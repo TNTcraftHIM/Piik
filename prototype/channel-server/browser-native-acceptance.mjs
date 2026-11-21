@@ -590,6 +590,10 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     return until(`Browser ${index} voice keeps advancing`, () => sample(index), value => energy(value) > before);
   };
   try {
+    // Keep this Native forwarding scenario on its own carrier before either Browser can form a direct route.
+    for (const [index, peer] of [[1, 2], [2, 1]]) {
+      await evaluate(index, `window.__channelProbe.blockPeer(${JSON.stringify(initial[peer].sessionId)})`);
+    }
     start();
     await until("Native room becomes available", async () => {
       if (native.exitCode !== null) throw new Error(`Native host exited: ${log}`);
@@ -630,14 +634,12 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     const voices = (await view(1)).state.publications.filter(publication => publication.roomId === room);
     const voiceIds = voices.map(publication => publication.id);
     const sourceVoice = voices.find(publication => publication.sessionId === initial[1].sessionId).id;
-    for (const index of [1, 2]) assert((await view(index)).state.pairs.filter(pair =>
-      pair.incoming.some(flow => voiceIds.includes(flow.publicationId))).every(pair => pair.peerId === pairs[0].peerId));
+    assert((await view(2)).state.pairs.some(pair => pair.id === pairs[1].id &&
+      pair.incoming.some(flow => flow.publicationId === sourceVoice)), "the resumed source voice still traverses the Native carrier");
 
     await evaluate(1, "window.__channelProbe.captureAudio(true)");
     const nativePicture = await capturedScreen(1, room);
     await evaluate(1, "window.__channelProbe.captureAudio(false)");
-    // Keep this exercise on the actual Native carrier, including later watches.
-    await evaluate(2, `window.__channelProbe.blockPeer(${JSON.stringify((await view(1)).sessionId)})`);
     await action(2, `watch(${JSON.stringify(nativePicture)})`);
     await playing(2, nativePicture);
     await audioProgressing(2, nativePicture);

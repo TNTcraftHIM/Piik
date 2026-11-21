@@ -3,6 +3,90 @@ use super::*;
 use support::{vp8, Fixture};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reused_browser_stream_binds_fresh_audio_and_video_readers_to_the_new_flow() -> Result<()> {
+    let mut f = Fixture::new(vp8()).await?;
+    let result = async {
+        let pair = f.parents[0].pair;
+        let stream = f.parents[0].stream.clone();
+        let initial = f.plans[0].incoming[0].id;
+        let kinds = [MediaKind::Audio, MediaKind::Video];
+        f.until(|f| {
+            kinds
+                .iter()
+                .all(|kind| f.driver.pairs[&pair].latest.contains_key(&(initial, *kind)))
+        })
+        .await?;
+        let readers = f.driver.pairs[&pair].latest.clone();
+        for flow in [initial, Uuid::new_v4()] {
+            f.plans[0].incoming[0].id = flow;
+            f.plans.last_mut().unwrap().outgoing[0].input_flow_id = Some(flow);
+            f.driver
+                .update(f.plans.clone(), vec![f.publication.clone()], vec![])
+                .await;
+            let remote = f.remote[&pair].clone();
+            // An unrelated m-line forces a fresh offer with the original A/V MIDs and MSID.
+            remote
+                .add_output(
+                    Uuid::new_v4(),
+                    vp8(),
+                    MediaKind::Video,
+                    Uuid::new_v4().to_string(),
+                    vec![String::new()],
+                )
+                .await?;
+            ensure!(remote.offer().await?);
+            let (kind, sdp) = remote.local_description().await?;
+            f.driver
+                .signal(
+                    pair,
+                    Signal {
+                        description: Some(Description {
+                            kind,
+                            sdp: Some(sdp),
+                        }),
+                        tracks: Some(vec![WireTrack {
+                            flow_id: flow,
+                            stream_id: stream.clone(),
+                        }]),
+                        exchange_id: Some(Uuid::new_v4()),
+                        candidate: None,
+                        udp: None,
+                        resync: None,
+                    },
+                )
+                .await?;
+            f.until(|f| {
+                kinds
+                    .iter()
+                    .all(|kind| f.driver.pairs[&pair].latest.contains_key(&(flow, *kind)))
+                    && f.driver
+                        .sources
+                        .values()
+                        .any(|source| f.driver.incoming_source_flow(source) == Some((pair, flow)))
+            })
+            .await?;
+            for kind in kinds {
+                ensure!(
+                    (f.driver.pairs[&pair].latest[&(flow, kind)] == readers[&(initial, kind)])
+                        == (flow == initial)
+                );
+            }
+            tokio::time::timeout(Duration::from_secs(3), async {
+                while !remote.stable().await {
+                    f.step().await?;
+                }
+                Ok::<_, anyhow::Error>(())
+            })
+            .await??;
+        }
+        Ok(())
+    }
+    .await;
+    f.close().await;
+    result
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn declared_source_withdrawal_remaps_the_same_flow_without_failing_its_pair() -> Result<()> {
     let mut f = Fixture::new(vp8()).await?;
     let result = async {

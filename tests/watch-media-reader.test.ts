@@ -1,6 +1,6 @@
 import Hls from "hls.js";
 import { afterEach, expect, test, vi } from "vitest";
-import { AppPageMedia, canReceivePeerWatch, createPeerWatchMedia, HTMLVideoMedia, type WatchMediaEvent, type WatchMediaState } from "../src/client/channel/watch-media";
+import { AppPageMedia, canReceivePeerWatch, createResourceWatchMedia, HTMLVideoMedia, type WatchMediaEvent, type WatchMediaState } from "../src/client/channel/watch-media";
 import { watchHlsFailure } from "../src/client/channel/watch-hls";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 import { t } from "../src/client/ui/copy";
@@ -82,7 +82,7 @@ test("a browser registration refusal reaches readiness as a page capability fail
   vi.stubGlobal("navigator", { serviceWorker: Object.assign(new EventTarget(), { register: async () => {
     throw new DOMException("An SSL certificate error occurred when fetching the script.", "SecurityError");
   } }) });
-  const media = createPeerWatchMedia({ resourceId: "11111111-1111-4111-8111-111111111111", format: "file" }, vi.fn());
+  const media = createResourceWatchMedia({ resourceId: "11111111-1111-4111-8111-111111111111", format: "file" }, vi.fn(), { hlsDeadlineOwner: "reader" });
   const waiting = media.ready(new AbortController().signal);
   await expect(waiting).rejects.toThrow("watch_peer_unavailable"); media.close();
 });
@@ -114,7 +114,7 @@ test("HLS can receive through the Reader when Service Workers are unavailable", 
   vi.spyOn(Hls, "isSupported").mockReturnValue(false);
   expect(canReceivePeerWatch("hls", Hls.isSupported())).toBe(false);
   const v = video(); vi.stubGlobal("document", { createElement: () => v });
-  const media = createPeerWatchMedia({ resourceId: "11111111-1111-4111-8111-111111111111", format: "hls" }, vi.fn());
+  const media = createResourceWatchMedia({ resourceId: "11111111-1111-4111-8111-111111111111", format: "hls" }, vi.fn(), { hlsDeadlineOwner: "reader" });
   await expect(media.ready(new AbortController().signal)).rejects.toThrow("watch_peer_requires_secure_context"); media.close();
 });
 

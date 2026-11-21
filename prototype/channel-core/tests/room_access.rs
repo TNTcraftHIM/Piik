@@ -21,8 +21,8 @@ fn zero_leaf_join_order_insertion_passes_the_domain_projection_and_preserves_exi
         owner,
         json!({"type":"join","name":"Owner","ownerKey":"owner"}),
     );
-    admit(&mut network, a, json!({"type":"join","name":"A"}));
-    admit(&mut network, b, json!({"type":"join","name":"B"}));
+    let a_session = admit(&mut network, a, json!({"type":"join","name":"A"})).0;
+    let b_session = admit(&mut network, b, json!({"type":"join","name":"B"})).0;
     let room = room(&mut network, owner, "public", false);
     let apply = |network: &mut RoomNetwork, connection, value| {
         let effects = command(network, connection, value);
@@ -80,6 +80,14 @@ fn zero_leaf_join_order_insertion_passes_the_domain_projection_and_preserves_exi
         );
     }
     ack(&mut network);
+    let owner_a = network
+        .state(owner)
+        .pairs
+        .iter()
+        .find(|pair| pair.peer_id == a_session)
+        .unwrap()
+        .id;
+    connect_pair(&mut network, [owner, a], owner_a);
     let first_voice = Uuid::new_v4();
     apply(
         &mut network,
@@ -97,6 +105,7 @@ fn zero_leaf_join_order_insertion_passes_the_domain_projection_and_preserves_exi
                 .map(move |flow| (pair.id, flow.id))
         })
         .collect();
+    assert_eq!(old.len(), 1);
     for (pair, flow) in &old {
         apply(
             &mut network,
@@ -120,54 +129,44 @@ fn zero_leaf_join_order_insertion_passes_the_domain_projection_and_preserves_exi
         b,
         json!({"type":"publish","publication":{"id":second_voice,"roomId":room,"kind":"voice"}}),
     );
-    ack(&mut network);
-    assert!(old
-        .iter()
-        .all(|(_, old)| network.state(owner).pairs.iter().any(|pair| pair
-            .incoming
-            .iter()
-            .any(|flow| flow.id == *old && flow.selected))));
-    let shadows: Vec<_> = [owner, a, b]
-        .into_iter()
-        .flat_map(|connection| {
-            network
-                .state(connection)
-                .pairs
-                .iter()
-                .flat_map(move |pair| {
-                    pair.incoming
-                        .iter()
-                        .filter(|flow| !flow.selected)
-                        .map(move |flow| (connection, pair.id, flow.id))
-                })
-        })
-        .collect();
-    assert!(!shadows.is_empty());
-    for (connection, pair, flow) in shadows {
-        apply(
-            &mut network,
-            connection,
-            json!({"type":"flow_state","pairId":pair,"flowId":flow,"state":"forwardable"}),
-        );
+    let mut confirmed = None;
+    for _ in 0..2 {
+        let (connection, edge) = [owner, a]
+            .into_iter()
+            .find_map(|connection| {
+                let edge = network
+                    .state(connection)
+                    .pairs
+                    .iter()
+                    .find(|pair| pair.peer_id == b_session)?
+                    .id;
+                (Some(edge) != confirmed).then_some((connection, edge))
+            })
+            .expect("both direct legs for the new speaker");
+        connect_pair(&mut network, [connection, b], edge);
+        confirmed = Some(edge);
     }
-    assert_eq!(
-        network
-            .state(owner)
-            .pairs
-            .iter()
-            .filter(|pair| pair.rooms.contains(&room))
-            .count(),
-        1
-    );
-    assert_eq!(
-        network
-            .state(b)
-            .pairs
-            .iter()
-            .filter(|pair| pair.rooms.contains(&room))
-            .count(),
-        2
-    );
+    ack(&mut network);
+    assert!(old.iter().all(
+        |(edge, flow)| network.state(owner).pairs.iter().any(|pair| {
+            pair.id == *edge
+                && pair
+                    .incoming
+                    .iter()
+                    .any(|binding| binding.id == *flow && binding.selected)
+        })
+    ));
+    assert!(network.state(a).pairs.iter().any(|pair| pair
+        .incoming
+        .iter()
+        .any(|flow| flow.publication_id == second_voice && flow.selected)));
+    assert!(network
+        .state(a)
+        .pairs
+        .iter()
+        .flat_map(|pair| &pair.outgoing)
+        .all(|flow| flow.publication_id == first_voice));
+
     assert!(network.state(b).pairs.iter().any(|pair| pair
         .outgoing
         .iter()
@@ -186,8 +185,8 @@ fn capacity_transition_keeps_candidate_hops_out_of_the_directory_and_other_room_
         json!({"type":"join","name":"Owner","ownerKey":"owner"}),
     )
     .0;
-    admit(&mut network, first, json!({"type":"join","name":"First"}));
-    admit(&mut network, second, json!({"type":"join","name":"Second"}));
+    let first_session = admit(&mut network, first, json!({"type":"join","name":"First"})).0;
+    let second_session = admit(&mut network, second, json!({"type":"join","name":"Second"})).0;
     let a = room(&mut network, owner, "public", false);
     let b = room(&mut network, owner, "public", false);
     for id in [&a, &b] {
@@ -222,6 +221,16 @@ fn capacity_transition_keeps_candidate_hops_out_of_the_directory_and_other_room_
             }
         }
     }
+    for (connection, session) in [(first, first_session), (second, second_session)] {
+        let edge = network
+            .state(owner)
+            .pairs
+            .iter()
+            .find(|pair| pair.peer_id == session)
+            .unwrap()
+            .id;
+        connect_pair(&mut network, [owner, connection], edge);
+    }
     let publication = Uuid::new_v4();
     for connection in [owner, first, second] {
         command(
@@ -250,6 +259,19 @@ fn capacity_transition_keeps_candidate_hops_out_of_the_directory_and_other_room_
             );
         }
     }
+    let voice = |network: &RoomNetwork| {
+        [owner, second].map(|connection| {
+            network
+                .state(connection)
+                .pairs
+                .iter()
+                .flat_map(|pair| &pair.incoming)
+                .find(|flow| flow.publication_id == publication && flow.selected)
+                .unwrap()
+                .id
+        })
+    };
+    let incumbent_voice = voice(&network);
     let hops = |network: &RoomNetwork, id: &str| {
         network
             .state(owner)
@@ -283,51 +305,29 @@ fn capacity_transition_keeps_candidate_hops_out_of_the_directory_and_other_room_
         owner,
         json!({"type":"update_room","roomId":a,"name":"Limited","icon":"couch","access":"public","hidden":false,"relayCapacity":1}),
     );
-    for connection in [owner, first, second] {
-        let pairs: Vec<_> = network
-            .state(connection)
-            .pairs
-            .iter()
-            .filter(|pair| pair.rooms.contains(&a))
-            .map(|pair| pair.id)
-            .collect();
-        for pair in pairs {
-            command(
-                &mut network,
-                connection,
-                json!({"type":"base_state","roomId":a,"pairId":pair,"ready":true}),
-            );
-        }
-    }
-    assert_eq!(
-        hops(&network, &a),
-        old_a,
-        "candidate ACKs cannot publish a new file next hop before voice proof"
+    let candidate = network
+        .state(first)
+        .pairs
+        .iter()
+        .find(|pair| pair.peer_id == second_session)
+        .unwrap()
+        .id;
+    assert_eq!(hops(&network, &a), old_a);
+    connect_pair(&mut network, [first, second], candidate);
+    assert_eq!(hops(&network, &a), old_a);
+    command(
+        &mut network,
+        first,
+        json!({"type":"base_state","roomId":a,"pairId":candidate,"ready":true}),
     );
-    let shadows: Vec<_> = [owner, first, second]
-        .into_iter()
-        .flat_map(|connection| {
-            network
-                .state(connection)
-                .pairs
-                .iter()
-                .flat_map(move |pair| {
-                    pair.incoming
-                        .iter()
-                        .filter(|flow| !flow.selected)
-                        .map(move |flow| (connection, pair.id, flow.id))
-                })
-        })
-        .collect();
-    assert!(!shadows.is_empty());
-    for (connection, pair, flow) in shadows {
-        command(
-            &mut network,
-            connection,
-            json!({"type":"flow_state","pairId":pair,"flowId":flow,"state":"forwardable"}),
-        );
-    }
+    assert_eq!(hops(&network, &a), old_a);
+    command(
+        &mut network,
+        second,
+        json!({"type":"base_state","roomId":a,"pairId":candidate,"ready":true}),
+    );
     assert_ne!(hops(&network, &a), old_a);
+    assert_eq!(voice(&network), incumbent_voice);
     assert_eq!(hops(&network, &b), old_b);
     assert_eq!(
         network
@@ -725,7 +725,9 @@ fn public_discovery_ends_with_host_presence_while_known_sessions_keep_scoped_sta
     let late = Uuid::new_v4();
     let (_, _, state) = admit(&mut network, late, json!({"type":"join","name":"Later"}));
     assert!(state.channel.rooms.is_empty());
-    let expired = network.authority.expire(200 + piik_channel_core::RECOVERY_MS);
+    let expired = network
+        .authority
+        .expire(200 + piik_channel_core::RECOVERY_MS);
     network.deliver(expired);
     assert!(network.state(reader).channel.rooms[0].delivery.is_none());
 }
@@ -886,6 +888,20 @@ fn abandoned_reservations_and_stopped_guest_rooms_release_active_slots() {
 fn command(core: &mut RoomNetwork, connection: Uuid, value: Value) -> Effects {
     core.command(connection, value)
 }
+fn connect_pair(core: &mut RoomNetwork, endpoints: [Uuid; 2], pair_id: Uuid) {
+    for connection in endpoints {
+        let effects = command(
+            core,
+            connection,
+            json!({"type":"link_state","pairId":pair_id,"state":"connected"}),
+        );
+        assert!(!effects
+            .events
+            .iter()
+            .any(|(_, event)| matches!(event, Event::Error { .. })));
+    }
+}
+
 fn admit(core: &mut RoomNetwork, connection: Uuid, value: Value) -> (Uuid, String, Snapshot) {
     command(core, connection, value)
         .events
@@ -1289,6 +1305,9 @@ fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
             );
         }
     }
+    let shared_pair = core.state(b).pairs[0].id;
+    assert!(core.state(b).pairs[0].incoming.is_empty());
+    connect_pair(&mut core, [a, b], shared_pair);
     for room in [&living, &studio] {
         let pair = core
             .state(b)
@@ -1488,8 +1507,12 @@ fn private_room_entry_and_revoke_preserve_site_identity_and_other_activity() {
         guest,
     );
     assert_eq!(shared.pairs.len(), 1);
-    assert_eq!(shared.pairs[0].incoming.len(), 2);
+    assert!(shared.pairs[0].incoming.is_empty());
     let pair = shared.pairs[0].id;
+    connect_pair(&mut core, [creator, guest], pair);
+    let shared = core.state(guest);
+    assert_eq!(shared.pairs[0].id, pair);
+    assert_eq!(shared.pairs[0].incoming.len(), 2);
     rejected(command(
         &mut core,
         outsider,

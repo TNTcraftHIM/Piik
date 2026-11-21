@@ -10829,7 +10829,7 @@ function indexedInspection(kind: "video" | "audio"): indexedSource.IndexedTrackI
 function localProviderVideo() {
   const video = new WatchTestVideo();
   vi.stubGlobal('document', { createElement: () => video });
-  vi.spyOn(watchMedia, 'createPeerWatchMedia').mockImplementation(() => new HTMLVideoMedia('https://fixture.test/local.mp4', 'file'));
+  vi.spyOn(watchMedia, 'createResourceWatchMedia').mockImplementation(() => new HTMLVideoMedia('https://fixture.test/local.mp4', 'file'));
   return video;
 }
 
@@ -13009,7 +13009,7 @@ test.each([{ volume: 0.35, muted: true }, { volume: 0.35, muted: false }, { volu
       videos.push(video);
       return video;
     } });
-    vi.spyOn(watchMedia, "createPeerWatchMedia").mockImplementation(() => new HTMLVideoMedia("https://media.test/peer.mp4"));
+    vi.spyOn(watchMedia, "createResourceWatchMedia").mockImplementation(() => new HTMLVideoMedia("https://media.test/peer.mp4"));
     const activity = { id: "audio-watch", roomId: "first", viewerSessionIds: [], sessionId: "other", userId: "other",
       source: { kind: "media" as const, url: "https://media.test/direct.mp4" },
       byteSource: { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "dash" as const },

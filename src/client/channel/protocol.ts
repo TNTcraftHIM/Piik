@@ -14,7 +14,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
 export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 38;
+export const CHANNEL_PROTOCOL = 39;
 export function isIncompatibleProtocol(code: string): boolean {
   return code === "incompatible_protocol" || code.endsWith(": incompatible_protocol");
 }

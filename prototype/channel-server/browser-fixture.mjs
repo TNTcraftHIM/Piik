@@ -112,6 +112,13 @@ function captureProbe(name) {
         result:recordType ?? event.result?.type ?? event.output?.reply?.result?.type,
         historyCount: recordType === 'history_end' ? conversation.record.count : undefined,
         code:event.code ?? event.result?.code ?? event.output?.reply?.result?.code,
+        pairs: event.state?.pairs?.map(({ id, rooms, incoming, outgoing }) => ({ id, rooms,
+          incoming: incoming.map(flow => flow.publicationId), outgoing: outgoing.map(flow => flow.publicationId) })),
+        negotiation: event.type === 'signal' && (event.payload.description || event.payload.resync) ? {
+          description: event.payload.description?.type, exchangeId: event.payload.exchangeId, resync: event.payload.resync,
+          flows: event.payload.tracks?.map(track => track.flowId),
+          withheld: blockedPeers.has(direction === 'received' ? event.fromSessionId : pairPeers.get(event.pairId)),
+        } : undefined,
         pair:event.pairId, ready:event.ready, state: typeof event.state === 'string' ? event.state : event.input?.action?.state });
       if (protocol.length > 256) protocol.shift();
       return event;
@@ -533,6 +540,10 @@ function captureProbe(name) {
             roomOpen: stalled && channelOwners.get(stalled.pc)?.some(channel => channel.label === 'piik-room' && channel.readyState === 'open'),
             active: stalled?.sender.getParameters().encodings.map(encoding => encoding.active) },
           connections: peers.map(pc => pc.connectionState),
+          transceivers: peers.map(pc => pc.getTransceivers().map(transceiver => ({ mid: transceiver.mid,
+            direction: transceiver.direction, currentDirection: transceiver.currentDirection,
+            sender: transceiver.sender.track && trackState(transceiver.sender.track),
+            receiver: trackState(transceiver.receiver.track) }))),
           channels: channels.map(channel => ({ label: channel.label, state: channel.readyState })),
           videos: [...document.querySelectorAll('video')].map(video => ({ ...videoState(video), time: video.currentTime,
             frames: video.getVideoPlaybackQuality().totalVideoFrames, width: video.videoWidth, paused: video.paused })),

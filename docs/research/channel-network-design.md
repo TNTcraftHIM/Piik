@@ -13,11 +13,11 @@ hosted channel the Server keeps the room available after its creator leaves.
 Participants return through the channel URL or a saved bookmark.
 
 Conversation uses the existing domain WebSocket to reach its current room host.
-Use one room routing owner for media and files: a base tree carries voice,
-file bytes and file-pull control. Pictures start on usable existing paths, then converge locally towards
-source-rooted delivery through bounded background transitions. All authorized,
+Room voice, file transfers, forwarded webpage bytes and screen publications select independent
+source-rooted paths on confirmed room connections. Pictures can improve through bounded
+background transitions. All authorized,
 capable room peers can be relay candidates; only viewers and necessary transit
-nodes receive the picture. Both stages use the same route state and transports.
+nodes receive the picture. Each publication retains its route state through a transition.
 The [room-data model](./channel-storage-and-identity.md) owns durable room records,
 attachment copies and shared file delivery on those paths.
 
@@ -50,7 +50,7 @@ lifetimes. Moving a room requires explicit transfer of operation and saved state
 | Owner | Its authoritative state and work |
 | --- | --- |
 | Domain runtime | Owns channel identity, users and directory bindings. Publishes permitted room summaries and carries room commands to the current host. |
-| Room host runtime | Detailed room metadata, room admission and grants, confirmed conversation, file descriptions/available holders, base-tree planning and screen-route scheduling. |
+| Room host runtime | Detailed room metadata, room admission and grants, confirmed conversation, file descriptions/available holders, connection bootstrap and per-activity route selection. |
 | Participant runtime | Local captures, playback, file copies and the actual peer transports/forwarding work it has admitted. |
 
 The domain directory projects room details; it is not a second writer of room
@@ -174,46 +174,27 @@ The [forwarding plan](./channel-forwarding-plan.md) defines grants, budgets and 
 ## Routing Foundation
 
 The following sections describe the current planners within that architecture.
-The base tree supplies business paths and connection requests; only the channel
-pool records confirmed physical edges. Pending scheduling work is listed in
-[TODO](../todo.md#active-work).
+The room projects source and receiver demand before a path exists. The channel
+admits the first pair on an empty graph and returns confirmed edges to the room.
+BaseTree can request bootstrap connections. TransportBook owns physical attempts
+and confirmation. Each activity selects parents for its own receivers.
 
 ### Choice And Cost
 
-The current planner uses base paths for room voice and files, then converges
-selected pictures towards their sources. That shared-tree strategy reuses paths
-but can prevent two activities from selecting different useful edges in a cyclic
-connection graph. The accepted model selects each activity's paths independently
-while sharing the graph query, connection ownership and admission rules. The
-[implementation work](../todo.md#active-work) removes this restriction within
-the existing flow and file-plan interfaces.
+Activities can share a physical edge while using different parents on a cyclic
+graph. Upload follows the selected branches and their payloads.
 
-This is a topology/cost choice, not a performance measurement. Coordination does
-not require the root to forward every byte; only admitted paths incur forwarding
-work, while a star places that work on its root.
+### Room Bootstrap And Activity Paths
 
-### One Base Tree Per Participating Room
-
-The room host maintains one committed, bounded tree among admitted room
-participants. Its root identifies the coordination owner; data may travel in
-both directions. A connected tree already provides a unique path between any
-two members. Voice, sharing, watching and active file delivery establish the base
-paths they need; reading or writing conversation does not establish peer paths.
-Voice, file transfers and forwarded video bytes keep required base-link repair
-active. When a viewer requests video bytes, discovery uses the endpoint supplying
-those bytes and the viewer. Playing the original URL needs no media connection
-between them. A screen publication handles its own stalled delivery and may replace
-an unproved path to a waiting viewer with a complete path on confirmed links.
-The base tree also considers better edges after relevant connectivity or capacity
-changes, using the same bounded admission and transition rules as screen plans.
-Replacing a base edge preserves its admitted flows until their replacement paths
-are ready; an open candidate DataChannel alone does not retire active media work.
-
+Screen helper intent identifies the upstream receiver for assisted viewing. Voice
+subscriptions, attachment requests and byte-provider requests likewise identify
+endpoints before delivery starts. Channel discovery reconciles requests with
+current room grants and endpoint generations.
 | Traffic | Route and lifecycle |
 | --- | --- |
 | Room commands and conversation | The domain WebSocket carries commands to the current room host and signed replies to authorized recipients. The room host authorizes and confirms the operation. |
-| Voice | Project each joined source to its listeners over the base tree's unique paths; send each source at most once over a required directed edge. |
-| File bytes and pull control | Use the existing base paths; the [room-data model](./channel-storage-and-identity.md#shared-delivery-on-existing-room-paths) develops shared range delivery and cached-source selection without another topology planner. |
+| Voice | Each speaker selects parents for authorized listeners on confirmed edges. |
+| File and forwarded webpage bytes | Each distribution selects its own parents from the holder or byte provider. [Room-data model](./channel-storage-and-identity.md#shared-delivery-on-existing-room-paths) |
 | Screen picture and source audio | One distribution plan per publication: start on usable existing paths, then improve affected branches while preserving selected viewers and necessary relays. |
 
 Files use ordered, fully reliable DataChannels; voice uses WebRTC media tracks.
@@ -345,7 +326,7 @@ usable media URL or source-issued media grant permits each viewer to fetch from
 the origin; observing a successful request in the sharer's account is not proof
 of that capability. Account sessions remain with their original player context.
 The sharer may explicitly enable forwarding of readable media bytes to Browser
-viewers. This consumes upload capacity and uses the existing room base paths and
+viewers. This consumes upload capacity and uses the activity's authorized paths and
 reliable DataChannels. Only the byte provider and its receivers add peer demand;
 origin playback continues to need only signaling. The activity retains its
 Browser control owner while the selected Native provider owns resource reads.
@@ -372,8 +353,7 @@ owns its dependency, generation and resource-budget contract.
 
 Viewers are a publication's destinations, not the complete set of eligible relays.
 Start with usable established paths and project source-to-viewer demand onto them.
-On the base tree this is the union of the unique paths to those viewers; retain
-every required intermediate node. Prune only branches with no downstream demand.
+Retain the intermediate nodes needed by selected receivers and prune branches whose downstream demand has ended.
 Stopping local playback removes local viewing demand, not an admitted forwarding
 duty. A relay receives the needed stream without presenting it locally; Browser
 relaying can still require decode/re-encode work.
@@ -395,8 +375,7 @@ demand; the controller selects distribution.
 Every authorized, capable participant with capacity may relay without receiving
 every publication. [LiveKit's publication/subscription model](https://docs.livekit.io/transport/media/subscribe/)
 illustrates metadata without bytes. On A-B-C-D, a picture watched only by B needs
-only A-B; a viewer at D also needs non-viewing C. A file between tree members uses
-their existing unique path. A shorter screen candidate must prove reachability,
+only A-B; a viewer at D also needs non-viewing C. A file distribution chooses its own path to interested recipients. A shorter screen candidate must prove reachability,
 source supply and actual capacity; a control link alone is insufficient.
 Different publications can share a physical pair. Stopping one removes only its
 work, preserving unrelated calls, transfers and base leases.
@@ -486,15 +465,11 @@ the Server's configured UDP entry must also be reachable.
 
 ### Start On Existing Paths, Then Converge
 
-Base edges are bidirectional: reversing media direction neither changes room
-ownership nor creates a PeerConnection, and renaming a root cannot shorten a
-path. Reverse flow may use every neighbor of an internal base node.
+A confirmed pair can carry either admitted direction. Each activity selects its own sending branches.
 Managers set the room's default fanout from one to twenty, initially two.
 Endpoints may set a positive override, including hosts and sources. Zero declines forwarding
 for others but retains the room default for originating media and required hosting
-branches. Necessary reverse-base neighbors and a helper's local display edge are
-distinct from new forwarding branches. This is room-local topology policy, not a
-total upload/device-capacity promise or a domain budget divided among rooms.
+branches. A helper's local display edge has its own role. Endpoint forwarding contributions apply across rooms.
 
 Room settings control the default fanout. Sharing settings can override it for
 the current screen's source. Raising the limit makes capacity available to waiting
@@ -502,25 +477,12 @@ viewers while preserving healthy branches. Each webpage or linked App sets
 its contribution to other people's traffic in the channel's forwarding settings.
 [Publication and contribution limits](./channel-forwarding-plan.md#contribution-budget)
 
-Reducing a limit stops new excess branches and moves affected children through
-one bounded transition at that tree's existing owner. Choose a feasible necessary
-move across overloaded parents before binding a new operation to a child; an
-unmovable first child must not block another legal migration. Once started, that
-operation retains its target and original deadline. Keep the old branch until
-the candidate base transport and affected voice flows are proved; picture changes
-retain their existing forwarding, decoded and presentation proof. File
-next hops use only the committed base, while candidate connections
-hold ordinary transport leases. An explicit reduction is necessary capacity work:
-if its bounded alternatives cannot succeed, retire the excess old branch and use
-ordinary route failure/recovery. Optional optimization still preserves a healthy
-path. Neither case periodically rebalances unrelated branches. When a receive-only
-leaf occupies an upstream slot, that same bounded base operation may insert a
-willing relay into the branch or rotate its immediate child into that slot.
-Both new legs and affected voice paths must be proved before replacing the old
-branch; a participant without a feasible candidate does not block another one.
+Each screen capacity change uses one bounded transition at its publication owner. Screen replacement retains forwarding,
+decoded and presentation proof. Other activities select their own admitted
+parents when demand, capacity or confirmed connectivity changes.
 
 1. A new viewer first attaches to a usable existing publication branch or an
-   admitted source-to-viewer path on the base tree, installing only its missing
+   admitted source-to-viewer path on confirmed room edges, installing only its missing
    suffix on ready room paths. Prove picture readiness; an open control
    DataChannel is not a decoded frame.
 2. While that path plays, the same availability/direct-convergence/quality owner
@@ -530,15 +492,11 @@ branch; a participant without a feasible candidate does not block another one.
    media proof and the applicable non-regression evidence before committing.
    Replace one affected branch, then release only its old media work. The player
    renders one committed input; source sound switches with its picture.
-4. Keep the base connections needed by voice, files or other
+4. Keep the shared connections needed by voice, files or other
    publications. They remain available to attempt media recovery, but do not
    continuously carry a second copy of an already-converged picture.
 
-Both stages belong to one publication plan. Base connections are not hot-standby
-video: recovery still prepares media. If a base path cannot admit the picture,
-retain its control traffic and seek another path through the same planner;
-base-path playback is not a prerequisite. A viewer stays connecting until its
-selected path proves ready.
+Both stages belong to one publication. A viewer stays connecting until its selected path proves delivery.
 
 Reconcile on relevant demand, connectivity or capacity changes. A new viewer adds
 a branch; stopping viewing removes only demand that no downstream still needs;
@@ -547,9 +505,7 @@ Each admitted session gets one direct attempt per publication. Viewing toggles
 and unrelated membership updates must not reset spent candidate opportunities.
 Once useful attempts finish, keep the working route rather than probing
 periodically for a mathematical global optimum.
-Repairing a base edge reconciles only flows using that edge. An independent,
-healthy screen branch stays in place while room authority remains valid; a
-change in the base plan does not reset every publication to its startup path.
+A physical failure wakes the affected plans. Healthy independent branches keep their flows while room authority remains valid.
 
 Availability work takes priority over optional optimization. Without overlap
 capacity, leave healthy playback in place and defer or finish the optional
@@ -585,7 +541,7 @@ old paths.
 ### One Owner For Actual Connections
 
 A participant's transport runtime owns its PeerConnections, negotiation, ICE
-recovery and final close. Base-tree and screen plans request admitted flows;
+recovery and final close. Activity plans request admitted flows;
 they cannot independently close or mutate a connection another flow still uses.
 The transport publishes remote track changes after applying the complete remote
 description. Temporary remove/add events inside that operation are not a failed
@@ -638,7 +594,7 @@ Keep paths short and validate simultaneous voice/video/file work on actual endpo
 
 ### Reachability And Repair
 
-A user needs an admitted path into the room tree, not a direct connection to
+A user needs an authorized path for the activity, not a direct connection to
 every other user. Joining or repairing a tree uses mature ICE/STUN handling and
 the existing bounded retry principles. Reuse reachable participants as relays;
 do not add an all-pairs probe, full mesh or periodic topology rebalance.
@@ -653,7 +609,7 @@ lease reports that failure when signaling resumes instead of recreating the pair
 Base reconciliation retains proved edges and re-evaluates unproved reservations
 against the ready tree, preferring shallower ready parents. Equally deep choices
 retain the current eligible parent. Unchanged edges keep their physical leases
-and endpoint acknowledgements. A complete ready base path
+and endpoint acknowledgements. A complete path on confirmed edges
 can replace an unproved screen fallback; proved media branches remain installed.
 Confirmed physical-pair failure informs both directions in every affected plan,
 including candidates first tried by another activity. A publication's media
@@ -734,7 +690,7 @@ and requests best-effort deactivation through the library's existing lifecycle.
 
 Prepare a replacement, prove it usable, commit, then release old work. A base
 edge requires both endpoints to confirm an installed open control DataChannel
-before bidirectional voice, not merely a connected PeerConnection. DataChannel
+before the bootstrap link is ready. Voice uses its own media flows. DataChannel
 failure repairs base paths while preserving the pair's healthy media leases.
 Channel negotiation can arrive before the local room projection. The physical
 pair may retain its bounded incoming channel slots while inactive; a valid room
@@ -806,7 +762,7 @@ Browser preference; the App holds only the current process registration.
 | A Browser hosting runtime closes or expires, or its owner stops hosting | The room becomes unavailable; saved data remains. No automatic takeover or replacement. |
 | A manager removes a room | Retire its activities/bindings under the [room removal scope](./channel-storage-and-identity.md#room-creation-and-removal); other rooms keep leases. |
 | The same owner restarts saved room data | Restore identity/history, establish new live sessions; captures and calls require explicit activation. |
-| A sharer stops/leaves, or a relay leaves | Retire the stopped publication or repair the departed relay's paths; keep unrelated flows and the base tree. |
+| A sharer stops/leaves, or a relay leaves | Retire the stopped publication or repair the departed relay's paths; keep unrelated flows and their transport leases. |
 | A file's original sender leaves | Use another admitted online holder; otherwise wait for a source to return. |
 | Room access is removed | Stop affected activities/new delivery; downloaded bytes cannot be recalled. |
 | Domain authority is lost | Apply bounded recovery, not indefinite use of stale permissions. |
@@ -1096,5 +1052,4 @@ work; the [Native reference](../../prototype/channel-native/README.md) and
 - [Jami file transfer](https://jami.net/swarm-file-transfers/) informs separating
   a file announcement from on-demand bytes and available copies.
 
-These references support individual boundaries. The room-operated base tree and selective screen plans provide the
-prototype baseline for comparing the next model against measured runtime costs.
+These references support the transport and routing boundaries described above.

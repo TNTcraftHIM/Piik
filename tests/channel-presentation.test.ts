@@ -162,13 +162,14 @@ it("shows each person's room activity across endpoints and keeps chat presence i
     const ids = html.match(/<button[^>]*aria-label="Room"[^>]*aria-describedby="([^"]+)"/)?.[1];
     return (ids?.split(/\s+/) ?? []).map(id => html.match(new RegExp('id="' + id + '"[^>]*>([^<]+)<'))?.[1]);
   };
-  expect(navigationDescriptions()).toEqual([]);
+  const voiceJoined = say("channel.joinVoice.voiceJoined");
+  expect(navigationDescriptions()).toEqual([`${voiceJoined}、${say("screen.sharedScreens")} 1`]);
   state.subscriptions.push("screen");
   picture.audience.push({ sessionId: "self-helper", state: "active" });
   room.lastMessageSeq = 1;
   for (const [status, label] of [["preparing", "screen.connectingPicture"], ["active", "screen.pictureReceived"], ["failed", "screen.pictureFailed"]] as const) {
     picture.audience[0].state = status;
-    expect(navigationDescriptions()).toEqual([say("room.item.unread"), say(label)]);
+    expect(navigationDescriptions()).toEqual([say("room.item.unread"), `${voiceJoined}、${say(label)}`]);
   }
   room.lastMessageSeq = 0;
   picture.audience.pop();

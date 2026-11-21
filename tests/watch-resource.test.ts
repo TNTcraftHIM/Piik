@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { describe, expect, test, vi } from "vitest";
-import { HTMLVideoMedia, createPeerWatchMedia, waitForWatchMedia, type WatchMediaEvent } from "../src/client/channel/watch-media";
+import { HTMLVideoMedia, createResourceWatchMedia, waitForWatchMedia, type WatchMediaEvent } from "../src/client/channel/watch-media";
 import { openWatchResource } from "../src/client/channel/watch-resource";
 
 const rootId = "11111111-1111-4111-8111-111111111111";
@@ -259,7 +259,7 @@ test("closing while service-worker registration is pending leaves no reader leas
   vi.stubGlobal("document", { createElement: () => video }); vi.stubGlobal("isSecureContext", true);
   vi.stubGlobal("navigator", { serviceWorker });
   try {
-    const media = createPeerWatchMedia({ resourceId: rootId, format: "file" }, read);
+    const media = createResourceWatchMedia({ resourceId: rootId, format: "file" }, read, { hlsDeadlineOwner: "reader" });
     media.close(); registered(); await Promise.resolve(); await Promise.resolve();
     expect(read).not.toHaveBeenCalled();
     expect(listener.mock.calls.some(([type]) => type === "message")).toBe(false);
@@ -279,7 +279,7 @@ test("peer readiness abort retires its pending setup reader after a long route w
     readerSignal = signal;
     return new Promise<never>((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
   });
-  const media = createPeerWatchMedia({ resourceId: rootId, format: "file" }, reader);
+  const media = createResourceWatchMedia({ resourceId: rootId, format: "file" }, reader, { hlsDeadlineOwner: "reader" });
   const closeEvent = vi.fn(); video.addEventListener("closed", closeEvent);
   const cancel = new AbortController();
   try {

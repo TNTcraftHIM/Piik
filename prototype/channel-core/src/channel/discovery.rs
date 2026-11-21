@@ -190,9 +190,6 @@ impl Discovery<'_> {
         demand: &BTreeSet<Pair>,
         plan: &mut DiscoveryPlan,
     ) {
-        if demand.is_empty() || graph.is_empty() {
-            return;
-        }
         let available = |a: Uuid, b: Uuid| {
             let pair = (a.min(b), a.max(b));
             Some(pair) == self.discovery || !self.transports.has_pair(pair)
@@ -285,11 +282,57 @@ impl Channel {
             .filter_map(|room| room.projection.as_ref());
         self.transports.reconcile_with_standby(
             bound_projections.clone().flat_map(|projection| projection.flows.iter().cloned()),
-            bound_projections.flat_map(|projection| projection.base_links.iter().cloned()),
+            bound_projections.flat_map(RoomProjection::room_data_grants),
             &plan.standby,
             &plan.preparing,
             &plan.candidates,
             self.now,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::identity::Admission;
+
+    #[test]
+    fn first_room_demand_proposes_only_the_authorized_pair() {
+        let mut identity = Identity::new(String::new());
+        let [source, receiver, outsider] = ["Source", "Receiver", "Outsider"].map(|name| {
+            identity
+                .admit(
+                    Admission {
+                        name,
+                        signing_key: [0; 32],
+                        can_prepare_udp: false,
+                        can_receive_video_layers: false,
+                        credential: None,
+                        owner_key: None,
+                        resume: None,
+                    },
+                    Uuid::new_v4(),
+                    0,
+                )
+                .unwrap()
+                .session_id
+        });
+        let direct = (source.min(receiver), source.max(receiver));
+        let outside = (source.min(outsider), source.max(outsider));
+        let discovery = Discovery {
+            identity: &identity,
+            transports: &TransportBook::default(),
+            confirmed: BTreeSet::new(),
+            discovery: None,
+        };
+        let mut plan = DiscoveryPlan::default();
+        discovery.ordinary(
+            &[source, receiver].into(),
+            &discovery.confirmed,
+            &[direct, outside].into(),
+            &mut plan,
+        );
+        assert_eq!(plan.candidates.len(), 1);
+        assert!(plan.candidates.contains(&discovery.proposal(direct)));
     }
 }

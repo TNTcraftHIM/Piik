@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
+const DISCOVERY_TIMEOUT_MS: u64 = 20_000;
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Flow {
@@ -101,7 +103,10 @@ impl TransportBook {
     ) {
         self.reconcile_with_standby(
             flows,
-            base,
+            base.into_iter().map(|link| {
+                let pair = (link.parent.min(link.child), link.parent.max(link.child));
+                (pair, link.room_id)
+            }),
             &BTreeSet::new(),
             &BTreeSet::new(),
             &BTreeSet::new(),
@@ -112,7 +117,7 @@ impl TransportBook {
     pub(crate) fn reconcile_with_standby(
         &mut self,
         flows: impl IntoIterator<Item = Flow>,
-        base: impl IntoIterator<Item = BaseLink>,
+        room_grants: impl IntoIterator<Item = ((Uuid, Uuid), String)>,
         standby: &BTreeSet<(Uuid, Uuid)>,
         preparing: &BTreeSet<(Uuid, Uuid)>,
         candidates: &BTreeSet<DiscoveryEdge>,
@@ -141,13 +146,8 @@ impl TransportBook {
                 },
             );
         }
-        for link in base {
-            let key = if link.parent < link.child {
-                (link.parent, link.child)
-            } else {
-                (link.child, link.parent)
-            };
-            needed.entry(key).or_default().rooms.insert(link.room_id);
+        for (pair, room) in room_grants {
+            needed.entry(pair).or_default().rooms.insert(room);
         }
         for &pair in preparing {
             if self.pairs.contains_key(&pair) {
@@ -176,7 +176,7 @@ impl TransportBook {
             self.discovery_deadline = self
                 .discovery
                 .as_ref()
-                .map(|_| now.saturating_add(crate::publication::SCREEN_PREPARE_MS));
+                .map(|_| now.saturating_add(DISCOVERY_TIMEOUT_MS));
         }
         if let Some(edge) = &self.discovery {
             if needed.contains_key(&edge.endpoints) || standby.contains(&edge.endpoints) {

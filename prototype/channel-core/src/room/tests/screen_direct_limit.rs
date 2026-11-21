@@ -81,7 +81,8 @@ fn source_direct_limit_replans_live_outputs() {
             .filter(|flow| flow.publication_id == screen && flow.sender == source && flow.selected)
             .count()
     };
-    room.reconcile(&endpoints, 0);
+    let pairs = confirmed_pairs(&[(1, 3), (2, 3), (3, 4)]);
+    room.reconcile_with_pairs(&endpoints, 0, &pairs);
     assert_eq!(direct(&room), 1);
     let incumbent = room
         .flows()
@@ -99,10 +100,14 @@ fn source_direct_limit_replans_live_outputs() {
     let transition = crate::publication::SCREEN_PREPARE_MS;
     for (now, limit, expected) in [(1, Some(3), 3), (2, Some(2), 2), (3 + transition, None, 1)] {
         room.set_screen_direct_limit(source, screen, limit).unwrap();
-        room.reconcile(&endpoints, now);
+        room.reconcile_with_pairs(&endpoints, now, &pairs);
         if now >= 2 {
             room.expire_media(now + crate::publication::SCREEN_PREPARE_MS);
-            room.reconcile(&endpoints, now + crate::publication::SCREEN_PREPARE_MS);
+            room.reconcile_with_pairs(
+                &endpoints,
+                now + crate::publication::SCREEN_PREPARE_MS,
+                &pairs,
+            );
         }
         assert_eq!(direct(&room), expected);
         if now == 1 {

@@ -439,24 +439,34 @@ fn watch_byte_source_and_mode_cross_the_real_room_projection() {
     ready(net.command_at(viewer,json!({"type":"join_watch","roomId":room,"id":activity,"mode":"direct","requestId":"join"}),200),200);
     assert!(net.state(viewer).watch_bytes.is_empty() && net.state(viewer).pairs.is_empty());
     ready(net.command_at(viewer,json!({"type":"join_watch","roomId":room,"id":activity,"mode":"peer","requestId":"join"}),300),300);
-    for connection in [owner, provider, viewer] {
-        for pair in net.state(connection).pairs.clone() {
-            let effects = net.command(
-                connection,
-                json!({"type":"base_state","roomId":room,"pairId":pair.id,"ready":true}),
-            );
-            assert!(
-                !effects
-                    .events
-                    .iter()
-                    .any(|(_, event)| matches!(event, Event::Error { .. })),
-                "projection must validate established watch paths"
-            );
-        }
+    let pair = net
+        .state(viewer)
+        .pairs
+        .iter()
+        .find(|pair| pair.peer_id == provider_session)
+        .expect("the peer viewer requests a transport to the provider")
+        .id;
+    assert!(net.state(viewer).watch_bytes[0].upstream.is_none());
+    for connection in [provider, viewer] {
+        let effects = net.command_at(
+            connection,
+            json!({"type":"link_state","pairId":pair,"state":"connected"}),
+            300,
+        );
+        assert!(
+            !effects
+                .events
+                .iter()
+                .any(|(_, event)| matches!(event, Event::Error { .. })),
+            "projection must validate the connected watch path"
+        );
     }
     assert_eq!(net.state(viewer).watch_bytes.len(), 1);
     assert!(net.state(viewer).watch_bytes[0].receiving);
-    assert!(net.state(viewer).watch_bytes[0].upstream.is_some());
+    assert_eq!(
+        net.state(viewer).watch_bytes[0].upstream,
+        Some(provider_session)
+    );
     // A signaling interruption keeps the admitted source and existing range lease.
     let before = net.state(viewer).clone();
     let viewer_session = before.watch_activities[0].viewer_session_ids[0];

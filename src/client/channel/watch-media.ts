@@ -1,7 +1,7 @@
 import type Hls from "hls.js";
 import type { WatchByteSource, WatchTimeline, WatchFormat } from "./protocol";
 import { canReadWatchResources, limitWatchReads, openWatchResource, type WatchByteReader, type WatchResourceLease } from "./watch-resource";
-import { createWatchHlsLoader, watchHlsUrl } from "./watch-hls-loader";
+import { createWatchHlsLoader, watchHlsUrl, type WatchHlsDeadlineOwner } from "./watch-hls-loader";
 import { canReadWatchMp4, isWatchMp4, WatchMp4Media } from "./watch-mp4-media";
 import { watchElementFailure } from "./watch-media-failure";
 import { WatchDashMedia, canReadWatchDash } from "./watch-dash-media";
@@ -82,6 +82,12 @@ export function waitForWatchMedia(media: Pick<WatchMedia, "read" | "listen">, si
   });
 }
 
+interface WatchResourceSource {
+  resourceId: string;
+  read: WatchByteReader;
+  hlsDeadlineOwner: WatchHlsDeadlineOwner;
+}
+
 export class HTMLVideoMedia implements WatchMedia {
   readonly video = document.createElement("video");
   readonly presentation = { kind: "video" as const, element: this.video };
@@ -95,7 +101,7 @@ export class HTMLVideoMedia implements WatchMedia {
   private mp4?: WatchMp4Media;
   private dash?: WatchDashMedia;
   private failure: Error | null = null;
-  constructor(url: string | ((signal: AbortSignal) => Promise<WatchResourceLease>) | { resourceId: string; read: WatchByteReader }, format?: WatchFormat, private timeline?: WatchTimeline) {
+  constructor(url: string | ((signal: AbortSignal) => Promise<WatchResourceLease>) | WatchResourceSource, format?: WatchFormat, private timeline?: WatchTimeline) {
     this.video.playsInline = true;
     this.video.preload = "auto";
     this.setup = this.load(url, format).catch(error => {
@@ -105,10 +111,10 @@ export class HTMLVideoMedia implements WatchMedia {
     });
     void this.setup.catch(() => {});
   }
-  private async load(source: string | ((signal: AbortSignal) => Promise<WatchResourceLease>) | { resourceId: string; read: WatchByteReader }, format?: WatchFormat): Promise<void> {
+  private async load(source: string | ((signal: AbortSignal) => Promise<WatchResourceLease>) | WatchResourceSource, format?: WatchFormat): Promise<void> {
     let url: string;
     let hlsModule: typeof import("./watch-hls") | undefined;
-    let peerRead: WatchByteReader | undefined;
+    let hlsResource: WatchResourceSource | undefined;
     if (typeof source === "object") {
       const peer = source;
       if (format === "dash") {
@@ -122,7 +128,7 @@ export class HTMLVideoMedia implements WatchMedia {
         hlsModule = await import("./watch-hls");
         this.lifetime.signal.throwIfAborted();
       }
-      if (hlsModule?.Hls.isSupported()) { peerRead = peer.read; source = watchHlsUrl(peer.resourceId); }
+      if (hlsModule?.Hls.isSupported()) { hlsResource = peer; source = watchHlsUrl(peer.resourceId); }
       else {
         const read = limitWatchReads(peer.read);
         if (format === "file" && canReadWatchMp4()) {
@@ -159,13 +165,13 @@ export class HTMLVideoMedia implements WatchMedia {
     if (hlsModule?.Hls.isSupported()) {
       const { Hls, watchHlsFailure } = hlsModule;
       const hls = this.hls = new Hls({ backBufferLength: 30, liveDurationInfinity: true, lowLatencyMode: false,
-        ...(peerRead && { loader: createWatchHlsLoader(peerRead, this.lifetime.signal) }) });
+        ...(hlsResource && { loader: createWatchHlsLoader(hlsResource.read, this.lifetime.signal, hlsResource.hlsDeadlineOwner) }) });
       this.hlsTimeline = new WatchHlsTimeline(hls, this.timeline);
       for (const event of [Hls.Events.AUDIO_TRACKS_UPDATED, Hls.Events.AUDIO_TRACK_SWITCHING, Hls.Events.AUDIO_TRACK_SWITCHED])
         hls.on(event, () => this.video.dispatchEvent(new Event("audiotracks")));
       hls.on(Hls.Events.ERROR, (_event, error) => {
         if (!error.fatal || this.lifetime.signal.aborted) return;
-        const failure = watchHlsFailure(error, !!peerRead);
+        const failure = watchHlsFailure(error, !!hlsResource);
         this.failure = new Error(failure === "watch_media_failed" ? watchElementFailure(this.video.error) ?? failure : failure); this.video.dispatchEvent(new Event("error"));
       });
       hls.loadSource(url); hls.attachMedia(this.video);
@@ -255,8 +261,9 @@ export function canReceivePeerWatch(format?: WatchFormat, hlsSupported = false):
   return format === "hls" && hlsSupported || format === "file" && canReadWatchMp4() || canReadWatchResources();
 }
 
-export function createPeerWatchMedia(source: { resourceId: string; format: WatchFormat }, read: WatchByteReader, timeline?: WatchTimeline): HTMLVideoMedia {
-  return new HTMLVideoMedia({ resourceId: source.resourceId, read }, source.format, timeline);
+export function createResourceWatchMedia(source: { resourceId: string; format: WatchFormat }, read: WatchByteReader,
+  { hlsDeadlineOwner, timeline }: { hlsDeadlineOwner: WatchHlsDeadlineOwner; timeline?: WatchTimeline }): HTMLVideoMedia {
+  return new HTMLVideoMedia({ resourceId: source.resourceId, read, hlsDeadlineOwner }, source.format, timeline);
 }
 
 async function detectWatchFormat(url: string, signal: AbortSignal): Promise<WatchFormat | "unknown"> {

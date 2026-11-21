@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-11-19
+Last updated: 2026-11-21
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -27,12 +27,13 @@ from public discovery. New image messages retain a thumbnail. Room writers
 support authenticated message deletion and clearing history.
 [Hosting and moderation](./research/server-hosting-plan.md)
 
-The room planner preserves existing delivery and repairs waiting screen, voice,
-file and forwarded webpage-byte paths. A media subscription or file request can trigger a shared
-connection attempt to join eligible components or bypass an intermediate.
-Both endpoints confirm the transport before another flow can use it. The Browser and Native App apply
-individual forwarding limits per kind across rooms. Field costs and automatic
-fanout calibration remain under [evaluation](./research/channel-forwarding-plan.md#review-and-validation-plan).
+The channel can prepare a physical connection from room-authorized delivery
+intent before any media flow exists. Each screen, voice source, file holder and
+forwarded webpage source selects its own paths on confirmed connections. Existing
+delivery survives unrelated activity changes; a replacement needs payload proof.
+Browser and Native enforce forwarding limits per kind across rooms. Proactive
+standby and total physical connection admission remain under
+[evaluation](./research/channel-forwarding-plan.md#review-and-validation-plan).
 
 App hosting follows its Native endpoint and process lifetime. Personal voice,
 shares, watches and capture consent remain page-owned; connecting an App does not
