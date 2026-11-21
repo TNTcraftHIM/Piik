@@ -282,6 +282,19 @@ The first viewer kept the same SSRC and advanced from 63 to 959 presented
 frames over about 49 seconds. The second advanced from 221 to 532 over about
 16 seconds. Both reported 20 fps at the final sample.
 
+### UDP Failure With Signaling Intact
+
+On `d8e86667` (Channel 38), two Chromium 152 processes used separate Alpine
+network namespaces and the packaged Server/Web. The normal control reached ICE
+`connected` in roughly 0.2 seconds and the viewer decoded a picture. A fresh
+connection then exchanged ordinary TCP signaling while each endpoint's input
+filter silently dropped UDP; the kernel counters recorded 359 and 358 packets.
+The source's browser reported `connectionState: failed` at 15.176 seconds and
+Piik sent `link_state` 3 ms later, before the 20-second preparation deadline.
+Both browsers entered another ICE check around 20.9 seconds. This single control
+establishes prompt propagation of the observed browser failure; it does not
+identify the next attempt's timer or determine a general connection deadline.
+
 ### Slow Direct Signaling And Early Relay Preparation
 
 Four loopback Chromium clients compared on-demand recovery at `3c7059b0`
