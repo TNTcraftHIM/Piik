@@ -354,6 +354,10 @@ impl CopyHistoryImport {
         })
     }
 
+    fn copied_author(&mut self, source: Uuid) -> Uuid {
+        *self.authors.entry(source).or_insert_with(Uuid::new_v4)
+    }
+
     pub fn accept(&mut self, mut row: HistoryRow) -> Result<HistoryRow, &'static str> {
         self.history.accept(&row)?;
         let HistoryRow::Message(live) = &mut row else {
@@ -365,29 +369,20 @@ impl CopyHistoryImport {
         };
         let message = &mut live.message.message;
         for mention in &mut message.mentions {
-            mention.user_id = *self
-                .authors
-                .entry(mention.user_id)
-                .or_insert_with(Uuid::new_v4);
+            mention.user_id = self.copied_author(mention.user_id);
         }
         if let Some(reply) = &mut message.reply {
             reply.archived_author_name = reply
                 .archived_author_name
                 .take()
                 .or_else(|| self.names.get(&reply.user_id).cloned());
-            reply.user_id = *self
-                .authors
-                .entry(reply.user_id)
-                .or_insert_with(Uuid::new_v4);
+            reply.user_id = self.copied_author(reply.user_id);
         }
         message.archived_author_name = message
             .archived_author_name
             .take()
             .or_else(|| self.names.get(&message.user_id).cloned());
-        message.user_id = *self
-            .authors
-            .entry(message.user_id)
-            .or_insert_with(Uuid::new_v4);
+        message.user_id = self.copied_author(message.user_id);
         message.id = Uuid::new_v4();
         live.nonce = Uuid::new_v4().to_string();
         Ok(row)

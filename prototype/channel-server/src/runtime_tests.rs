@@ -2934,7 +2934,12 @@ async fn hosted_room_copy_installs_history_under_fresh_authority() {
         "room":{"id":"living","name":"Imported conversation","icon":"couch",
                 "creatorId":source_author,"access":"private","hidden":true,"hasPassword":false}
     });
-    let history = format!("{message}\n");
+    let reply = json!({
+        "nonce":"second", "id":Uuid::new_v4(), "seq":2, "userId":Uuid::new_v4(),
+        "text":"Reply", "time":2, "attachments":[], "reactions":{"revision":0,"counts":{}},
+        "reply":{"seq":1,"userId":source_author,"text":"Copied history","notify":false}
+    });
+    let history = format!("{message}\n{reply}\n");
     let valid = pack(&history, &settings);
     let malformed = pack("invalid history", &settings);
     let interrupted = &valid[..valid.len() - 32];
@@ -3070,9 +3075,13 @@ async fn hosted_room_copy_installs_history_under_fresh_authority() {
     assert!(matches!(history.as_slice(), [
         ConversationRecord::HistoryMessage { message },
         ConversationRecord::MessageReactions { snapshot },
-        ConversationRecord::HistoryEnd { count: 1, .. },
+        ConversationRecord::HistoryMessage { message: response },
+        ConversationRecord::MessageReactions { .. },
+        ConversationRecord::HistoryEnd { count: 2, .. },
     ] if message.id != message_id && message.user_id != source_author && message.user_id != room.creator_id
         && message.archived_author_name.as_deref() == Some("Source author")
+        && response.reply.as_ref().is_some_and(|reply| reply.user_id == message.user_id
+            && reply.archived_author_name.as_deref() == Some("Source author"))
         && message.text == "Copied history"
         && message.inline_images.get(&image_id).is_some_and(|image| image.data == thumbnail)
         && snapshot.message_id == message.id && snapshot.reactions.counts.get("wave") == Some(&1)));
