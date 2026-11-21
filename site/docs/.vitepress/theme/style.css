@@ -53,6 +53,9 @@ html[data-reduced-motion] .identity * { animation: none !important; }
   content: ""; position: absolute; z-index: -1; inset: 8% 3% 5% 59%;
   background: url("../../../assets/living-room.svg") center / contain no-repeat;
 }
+@media (prefers-reduced-motion: reduce) {
+  .help-hero::after { background-image: url("../../../assets/living-room.svg#still"); }
+}
 .help-hero h1 { max-width: 60%; font-size: clamp(34px, 4.6vw, 62px); line-height: 1.08; font-weight: 740; letter-spacing: -.045em; text-wrap: balance; }
 .help-hero p { max-width: 55%; margin: 10px 0 20px; color: var(--muted); line-height: 1.6; }
 .help-search {
