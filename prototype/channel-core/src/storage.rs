@@ -111,7 +111,8 @@ impl Storage {
         connection.execute_batch("PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON;")?;
         if version == 0 {
             connection.execute_batch(
-            "CREATE TABLE checkpoint (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
+            "BEGIN IMMEDIATE;
+             CREATE TABLE checkpoint (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
              CREATE TABLE message (
                room_id TEXT NOT NULL, seq INTEGER NOT NULL, id TEXT NOT NULL UNIQUE,
                user_id TEXT NOT NULL, nonce TEXT NOT NULL, text TEXT NOT NULL,
@@ -123,7 +124,8 @@ impl Storage {
                room_id TEXT NOT NULL, seq INTEGER NOT NULL, retry_key TEXT NOT NULL,
                PRIMARY KEY(room_id,seq), UNIQUE(room_id,retry_key)
              );
-             PRAGMA user_version=9;",
+             PRAGMA user_version=9;
+             COMMIT;",
         )?;
         }
         Ok(Self { connection })
@@ -992,6 +994,31 @@ mod tests {
             assert_eq!(confirmed(&mut store, "other", &draft).0.seq, 1);
         }
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn failed_schema_creation_rolls_back_and_can_retry() {
+        let path = std::env::temp_dir().join(format!("piik-init-{}.sqlite", Uuid::new_v4()));
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute("CREATE TABLE deleted_message(seq INTEGER)", [])
+            .unwrap();
+        assert!(Storage::open(&path).is_err());
+        let partial_tables: u32 = connection
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        connection
+            .execute("DROP TABLE deleted_message", [])
+            .unwrap();
+        drop(connection);
+        let initialized = Storage::open(&path).is_ok();
+        std::fs::remove_file(path).unwrap();
+        assert_eq!(partial_tables, 0);
+        assert!(initialized);
     }
 
     #[test]
