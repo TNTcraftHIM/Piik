@@ -45,14 +45,22 @@ const roomPreferencesSchema = z.object({
   remoteControlMode: remoteControlModeSchema.exclude(["off"]).default("ask"),
 });
 export type RoomPreferences = z.infer<typeof roomPreferencesSchema>;
+let cached: { stored: string; preferences: RoomPreferences } | undefined;
 
 // Personal choices belong to this Browser origin, never to a room grant or
 // held input. Other preference owners (quality, language, theme) stay separate.
 export function readRoomPreferences(): RoomPreferences {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (cached && cached.stored === stored) return structuredClone(cached.preferences);
+    cached = undefined;
     const result = roomPreferencesSchema.safeParse(stored ? JSON.parse(stored) : {});
-    if (result.success) return result.data;
+    if (result.success) {
+      if (stored && typeof structuredClone === "function") {
+        cached = { stored, preferences: structuredClone(result.data) };
+      }
+      return result.data;
+    }
   } catch {
     // Room tools remain usable when optional Browser storage is unavailable.
   }

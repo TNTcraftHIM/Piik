@@ -46,6 +46,23 @@ it("keeps independent room-tool choices across reads without storing private run
   expect(readRoomPreferences().overlayAppearance).toEqual({ scale: 1.2, opacity: .7, speed: 1, colorBySender: false });
 });
 
+it("isolates nested preferences across reads and observes external edits after a failed write", () => {
+  const values = storage();
+  const key = "piik:room-preferences:v1";
+  const clip = { name: "short.wav", data: "AAAA" };
+  values.set(key, JSON.stringify({ feedbackSound: { enabled: true, volume: .5, clips: { message: clip } } }));
+  readRoomPreferences().feedbackSound.clips!.message!.name = "first edit";
+  readRoomPreferences().feedbackSound.clips!.message!.name = "second edit";
+  expect(readRoomPreferences().feedbackSound.clips?.message).toEqual(clip);
+  vi.spyOn(window.localStorage, "setItem").mockImplementation(() => { throw new Error("quota full"); });
+  expect(saveRoomPreferences({ pictureFit: "cover" })).toBe(false);
+  expect(readRoomPreferences().pictureFit).toBe("contain");
+  values.set(key, JSON.stringify({ pictureFit: "fill" }));
+  expect(readRoomPreferences().pictureFit).toBe("fill");
+  values.delete(key);
+  expect(readRoomPreferences().pictureFit).toBe("contain");
+});
+
 it("keeps layout undecided until an explicit choice, independently of other preferences", () => {
   const values = storage();
   expect(saveRoomPreferences({ feedbackSound: { enabled: true, volume: .5 } })).toBe(true);
