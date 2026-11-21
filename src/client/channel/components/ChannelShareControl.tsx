@@ -1,5 +1,5 @@
 import { WatchEmbedPreview } from "./WatchEmbedPreview";
-import { canUseYouTubePlayer, youtubeVideoId } from "../watch-youtube-source";
+import { canMoveYouTubePlayer, youtubeVideoId } from "../watch-youtube-source";
 import { directWatchFormat } from "../../../shared/watch-format";
 import { WatchIndexedTrackPicker, WatchMpdSourcePicker } from "./WatchIndexedTrackPicker";
 import { indexedMediaSelection } from "../watch-indexed-source";
@@ -377,7 +377,7 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   const { error, run } = useSettingsAction();
   const page = channel.watchPage(roomId, activityId);
   const embed = !activityId ? channel.watchEmbed(roomId) : undefined;
-  const youtube = canUseYouTubePlayer() && !!youtubeVideoId(url.trim());
+  const youtube = canMoveYouTubePlayer() && !!youtubeVideoId(url.trim());
   const mediaURL = URL.canParse(url.trim()) ? new URL(url.trim()) : null;
   const validURL = mediaURL !== null && watchSourceSchema.safeParse({ kind: "media", url: mediaURL.href }).success;
   const directFile = validURL && directWatchFormat(mediaURL) !== undefined;

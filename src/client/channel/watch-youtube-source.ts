@@ -1,3 +1,6 @@
+import type { WatchSource } from "./protocol";
+import type { WatchPlayer } from "./watch-playback";
+
 /** Only a single, explicitly selected video is a portable website source. */
 export function youtubeVideoId(raw: string): string | null {
   try {
@@ -7,7 +10,7 @@ export function youtubeVideoId(raw: string): string | null {
     if (url.hostname === "youtu.be") id = url.pathname.slice(1);
     else if (["youtube.com", "www.youtube.com", "m.youtube.com"].includes(url.hostname)) {
       if (url.pathname === "/watch" && url.searchParams.getAll("v").length === 1) id = url.searchParams.get("v");
-      else if (url.pathname.startsWith("/embed/")) id = url.pathname.slice(7);
+      else id = /^\/(?:embed|shorts)\/([^/]+)\/?$/.exec(url.pathname)?.[1] ?? null;
     }
     return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
   } catch { return null; }
@@ -38,7 +41,7 @@ export function originalWatchURL(source: { kind: string; url: string }): string 
 }
 
 /** Prepared players must retain their browsing context when moving into the stage. */
-export function canUseYouTubePlayer(): boolean {
+export function canMoveYouTubePlayer(): boolean {
   return typeof document !== "undefined" && "moveBefore" in document.documentElement;
 }
 
@@ -48,6 +51,8 @@ export function youtubeSourceId(source: { kind: string; url: string }): string |
   return id && source.url === youtubeEmbedURL(id) ? id : null;
 }
 
-export function canWatchInBrowser(source: { kind: string; url: string; mediaUrl?: string }): boolean {
-  return source.kind === "media" || !!source.mediaUrl || youtubeSourceId(source) !== null;
+export function canWatchInBrowser(source: WatchSource, current?: Pick<WatchPlayer, "presentation" | "mode">): boolean {
+  if (!youtubeSourceId(source)) return source.kind === "media" || !!source.mediaUrl;
+  const replacingPage = current?.presentation.kind === "external" && current.mode === "direct";
+  return !replacingPage || canMoveYouTubePlayer();
 }

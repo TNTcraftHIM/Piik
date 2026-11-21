@@ -441,8 +441,8 @@ using libjuice. The ICE backend is selected when libdatachannel is built.
 ## Watching video together
 
 Choose **Start sharing → Browser → Watch together**. A direct video address plays
-inside Piik. A supported YouTube video link opens its official player: play the
-preview, then confirm sharing. Browser viewers can watch without an App or
+inside Piik. For a YouTube video or Short, play the preview in the official
+player, then confirm sharing. Browser viewers can watch without an App or
 extension. If preparing an embedded player is unavailable, the explicit App
 webpage entry remains available. A hidden embedded player pauses locally;
 **Start local playback** returns it to the shared position.

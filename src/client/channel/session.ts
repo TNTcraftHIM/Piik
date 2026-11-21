@@ -1,7 +1,7 @@
 import { RoomCreationInterrupted } from "./room-creation";
 import { YouTubeMedia } from "./watch-youtube-media";
 import { PageSuppliedMedia, preparePageSuppliedWatchMedia, preparePortableWatchMedia, observeWatchSources, type WatchMediaSources } from "./watch-page-media";
-import { canUseYouTubePlayer, youtubeVideoId, youtubeStartSeconds, youtubeSourceId, originalWatchURL } from "./watch-youtube-source";
+import { canMoveYouTubePlayer, canWatchInBrowser, youtubeVideoId, youtubeStartSeconds, youtubeSourceId, originalWatchURL } from "./watch-youtube-source";
 import { indexedMediaSelection } from "./watch-indexed-source";
 import { WatchBytes } from "./watch-bytes";
 import { directWatchFormat } from "../../shared/watch-format";
@@ -2429,7 +2429,7 @@ export class ChannelSession {
   }
   watchEmbed = (roomId: string): WatchMedia | undefined => this.sourceSelections.get(roomId)?.embed;
   prepareWatchEmbed = (roomId: string, rawURL: string, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
-    if (!canUseYouTubePlayer()) throw new Error("watch_media_unsupported");
+    if (!canMoveYouTubePlayer()) throw new Error("watch_media_unsupported");
     const id = youtubeVideoId(rawURL);
     if (!id) throw new Error("invalid_watch_url");
     const selection = this.selectSource(roomId);
@@ -2767,6 +2767,7 @@ export class ChannelSession {
       return;
     }
     const embed = youtubeSourceId(activity.source);
+    if (embed && !canWatchInBrowser(activity.source, current)) throw new Error("watch_media_unsupported");
     const url = activity.source.kind === "media" ? activity.source.url : activity.source.mediaUrl;
     if (!url && !embed) throw new Error("watch_page_required");
     const format = activity.source.kind === "media" ? directWatchFormat(new URL(activity.source.url)) : undefined;

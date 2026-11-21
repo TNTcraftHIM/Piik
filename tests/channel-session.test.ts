@@ -11049,12 +11049,12 @@ test('cancelling indexed preparation closes its page and prevents late preparati
   } finally { session.close(); }
 });
 
-test("a committed embed resumes during the stage handoff", async () => {
+test.each([true, false])("App to browser embed handoff with moveBefore support %s", async supportsMove => {
   const { session, socket } = await setup(1000, false);
   const id = "embed-handoff", url = "https://www.youtube.com/embed/M7lc1UVf-VE";
   const { YouTubeMedia } = await import("../src/client/channel/watch-youtube-media");
   vi.stubGlobal("window", { YT: { Player: class {} } });
-  vi.stubGlobal("document", { createElement: () => ({ remove() {} }) });
+  vi.stubGlobal("document", { documentElement: supportsMove ? { moveBefore() {} } : {}, createElement: () => ({ remove() {} }) });
   const sample = { position: 0, paused: true, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [] };
   vi.spyOn(YouTubeMedia.prototype, "ready").mockResolvedValue();
   vi.spyOn(YouTubeMedia.prototype, "read").mockImplementation(async () => ({ ...sample }));
@@ -11068,15 +11068,35 @@ test("a committed embed resumes during the stage handoff", async () => {
   const state = { ...session.getSnapshot().state!, watchActivities: [activity], watchSubscriptions: [{ id, mode: "direct" }] };
   try {
     socket.receive({ type: "state", state });
+    if (!supportsMove) {
+      const joining = session.joinWatch(id);
+      const request = socket.sent.findLast(c => c.type === "join_watch")!;
+      socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+      await joining;
+      expect(session.getSnapshot().watchPlayers.get(id)?.presentation.kind).toBe("embed");
+      expect(session.watchEmbedPreparation(id)).toBeUndefined();
+    }
     await session.prepareWatchPage("first", url, id);
     const candidate = crypto.randomUUID();
     page.receive({ type: "page_candidates", pageId: page.id, url, candidates: [{ id: candidate, title: "Video", url: null, duration: 60 }] });
+    const sentBeforeSelection = socket.sent.length;
     const selecting = session.selectWatchPage("first", candidate, id);
-    await vi.waitFor(() => expect(socket.sent.some(c => c.type === "join_watch")).toBe(true));
-    const join = socket.sent.findLast(c => c.type === "join_watch")!;
+    const join = await vi.waitFor(() => {
+      const request = socket.sent.slice(sentBeforeSelection).find(c => c.type === "join_watch");
+      expect(request).toBeDefined();
+      return request!;
+    });
     socket.receive({ type: "room_reply", roomId: "first", requestId: join.requestId, result: { type: "watch_ready", serverTime: 1000 } });
     await selecting;
+    const previous = session.getSnapshot().watchPlayers.get(id)!;
     const switching = session.joinWatch(id);
+    if (!supportsMove) {
+      expect(session.watchEmbedPreparation(id)).toBeUndefined();
+      await expect(switching).rejects.toThrow("watch_media_unsupported");
+      expect(session.getSnapshot().watchPlayers.get(id)).toBe(previous);
+      expect(previous.signal.aborted).toBe(false);
+      return;
+    }
     await vi.waitFor(() => expect(session.getSnapshot().watchPlayers.get(id)?.presentation.kind).toBe("embed"));
     const player = session.getSnapshot().watchPlayers.get(id)!;
     expect(session.watchEmbedPreparation(id)).toBe(player.media);

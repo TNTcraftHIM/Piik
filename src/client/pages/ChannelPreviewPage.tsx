@@ -280,33 +280,38 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     return () => { current = false; };
   }, [inspectHls]);
   const watchTitle = (url: string) => { const source = new URL(url); return source.host + source.pathname; };
-  const watchSources: WatchStageSource[] = stageWatches.map(activity => ({
-    kind: "watch", id: activity.id, userId: activity.userId, name: nameOfUser(activity.userId), title: watchTitle(activity.source.url),
-    website: activity.source.kind === "website", originalPageAvailable: activity.playback.timeline === "media" && (!channel.appConnected || channel.pagePlayer), onFocusWindow: () => run(channel.focusWatch(activity.id)),
-    originalPageUnavailable: activity.source.kind === "website" && activity.playback.timeline === "media" && channel.appConnected && !channel.pagePlayer
-      ? t("watch.pageUnsupported") : undefined,
-    browserSource: canWatchInBrowser(activity.source),
-    onAppWatch: !ownsWatch(activity.id) && activity.playback.timeline !== "program" && activity.source.kind === "website" && channel.appConnected && channel.pagePlayer && channel.watchPlayers.get(activity.id)?.presentation.kind !== "external" ? () => {
-      showSource(activity.roomId, activity.id);
-      setAppWatchId(activity.id);
-    } : undefined,
-    roomName: nameOfRoom(activity.roomId), avatar: userProfile(state, channel.profiles, activity.userId)?.avatar ?? undefined,
-    owned: ownsWatch(activity.id), subscribed: state?.watchSubscriptions.some(value => value.id === activity.id) ?? false,
-    audience: state ? watchAudience(state, activity, channel.profiles) : [],
-    receiving: !ownsWatch(activity.id) ? { peerAvailable: !!activity.byteSource, peerSupported: canReceivePeerWatch(activity.byteSource?.format, hlsSupported),
-      failed: !!channel.watchPlayers.get(activity.id)?.error,
-      mode: channel.watchPlayers.get(activity.id)?.mode ?? state?.watchSubscriptions.find(value => value.id === activity.id)?.mode ?? "direct",
-      browserSource: canWatchInBrowser(activity.source), pending: busy("watch-video", activity.id), disabled: !connected,
-      onPeer: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id, "peer")); },
-      onDirect: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id, "direct")); } } : undefined,
-    shareControls: ownsWatch(activity.id) && <ChannelShareControl channel={channel} roomId={activity.roomId} onWatch={() => setWatchRoomId(activity.roomId)} compact disabled={!connected || !rooms.find(room => room.id === activity.roomId)?.available} />,
-    hidden: activity.roomId !== roomId || activeWatches.includes(activity) && !visibleScreens.includes(activity),
-    paused: activity.playback.paused, player: channel.watchPlayers.get(activity.id),
-    pending: busy("watch", activity.id) || busy("watch-video", activity.id) || busy("stop", activity.id), available: connected && !!rooms.find(room => room.id === activity.roomId)?.available,
-    onRoom: () => selectRoom(activity.roomId), onJoin: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id)); },
-    onLeave: () => run(channel.leaveWatch(activity.id)), onStop: () => run(channel.stopWatch(activity.id)),
-    onResume: () => run(channel.resumeWatch(activity.id)), onPlayback: patch => run(channel.setWatchPlayback(activity.id, patch)),
-  }));
+  const watchSources: WatchStageSource[] = stageWatches.map(activity => {
+    const player = channel.watchPlayers.get(activity.id);
+    const browserSource = canWatchInBrowser(activity.source, player);
+    const owned = ownsWatch(activity.id);
+    const subscription = state?.watchSubscriptions.find(value => value.id === activity.id);
+    const available = connected && !!rooms.find(room => room.id === activity.roomId)?.available;
+    return {
+      kind: "watch", id: activity.id, userId: activity.userId, name: nameOfUser(activity.userId), title: watchTitle(activity.source.url),
+      website: activity.source.kind === "website", originalPageAvailable: activity.playback.timeline === "media" && (!channel.appConnected || channel.pagePlayer), onFocusWindow: () => run(channel.focusWatch(activity.id)),
+      originalPageUnavailable: activity.source.kind === "website" && activity.playback.timeline === "media" && channel.appConnected && !channel.pagePlayer
+        ? t("watch.pageUnsupported") : undefined,
+      browserSource,
+      onAppWatch: !owned && activity.playback.timeline !== "program" && activity.source.kind === "website" && channel.appConnected && channel.pagePlayer && player?.presentation.kind !== "external" ? () => {
+        showSource(activity.roomId, activity.id);
+        setAppWatchId(activity.id);
+      } : undefined,
+      roomName: nameOfRoom(activity.roomId), avatar: userProfile(state, channel.profiles, activity.userId)?.avatar ?? undefined,
+      owned, subscribed: !!subscription, audience: state ? watchAudience(state, activity, channel.profiles) : [],
+      receiving: !owned ? { peerAvailable: !!activity.byteSource, peerSupported: canReceivePeerWatch(activity.byteSource?.format, hlsSupported),
+        failed: !!player?.error, mode: player?.mode ?? subscription?.mode ?? "direct",
+        browserSource, pending: busy("watch-video", activity.id), disabled: !connected,
+        onPeer: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id, "peer")); },
+        onDirect: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id, "direct")); } } : undefined,
+      shareControls: owned && <ChannelShareControl channel={channel} roomId={activity.roomId} onWatch={() => setWatchRoomId(activity.roomId)} compact disabled={!available} />,
+      hidden: activity.roomId !== roomId || activeWatches.includes(activity) && !visibleScreens.includes(activity),
+      paused: activity.playback.paused, player, available,
+      pending: busy("watch", activity.id) || busy("watch-video", activity.id) || busy("stop", activity.id),
+      onRoom: () => selectRoom(activity.roomId), onJoin: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id)); },
+      onLeave: () => run(channel.leaveWatch(activity.id)), onStop: () => run(channel.stopWatch(activity.id)),
+      onResume: () => run(channel.resumeWatch(activity.id)), onPlayback: patch => run(channel.setWatchPlayback(activity.id, patch)),
+    };
+  });
   const connectionLabel = connected ? t("channel.previewPage.connected") : connection === "connecting"
     ? t("channel.previewPage.connecting") : connection === "reconnecting" ? t("channel.previewPage.reconnecting") : t("channel.previewPage.disconnected");
 

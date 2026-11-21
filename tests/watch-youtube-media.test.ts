@@ -46,6 +46,15 @@ test('only explicit fixed embed sources advertise Browser support',()=>{
   expect(youtubeSourceId({kind:'website',url:'https://www.youtube.com/embed/M7lc1UVf-VE'})).toBe('M7lc1UVf-VE');
 });
 
+test('a Shorts link selects one video without publishing the original webpage', () => {
+  const id = 'oozRsI-EUic';
+  const short = `https://www.youtube.com/shorts/${id}`;
+  expect(youtubeVideoId(`${short}?si=tracking`)).toBe(id);
+  expect(youtubeVideoId(`https://m.youtube.com/shorts/${id}/`)).toBe(id);
+  expect(youtubeVideoId(`${short}/other`)).toBeNull();
+  expect(youtubeSourceId({ kind: 'website', url: short })).toBeNull();
+});
+
 test('cold SDK preparation stays pending through API ready until the visible candidate plays',async()=>{
   const {media,mount,head,window}=await setup(true);let ready=false;
   const prepared=media.ready(new AbortController().signal).then(()=>{ready=true;});
