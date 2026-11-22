@@ -431,6 +431,44 @@ async fn local_http_owns_signed_download_and_cancel_without_retiring_the_app() {
 }
 
 #[tokio::test]
+#[cfg(windows)]
+async fn failed_optional_download_keeps_app_running_and_can_be_dismissed() {
+    let fixture = fixture([Duration::ZERO; 2], [true; 2]).await;
+    let (closing, observer) = watch::channel(false);
+    let owner = Owner::new(&fixture.config, closing.clone());
+    let download = || Request::Download {
+        version: "v3.0.1".into(),
+        revision: SOURCE.into(),
+    };
+    let id = match tokio::join!(owner.request(download()), owner.request(download())) {
+        (Ok(view), Err("update-busy")) | (Err("update-busy"), Ok(view)) => {
+            view.operation_id.unwrap()
+        }
+        _ => panic!("Only one download may own the package"),
+    };
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while owner.view().state == "downloading" {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(owner.view().error, Some("download-failed"));
+    assert!(!observer.has_changed().unwrap());
+    assert_eq!(fs::read_dir(fixture._directory.path()).unwrap().count(), 2);
+    assert_eq!(
+        owner
+            .request(Request::Cancel { operation_id: id })
+            .await
+            .unwrap()
+            .state,
+        "idle"
+    );
+    closing.send_replace(true);
+    owner.shutdown().await;
+}
+
+#[tokio::test]
 async fn corrupted_winner_uses_only_one_fallback_and_never_accepts_bad_signatures() {
     let fixture = fixture(
         [Duration::from_millis(1), Duration::from_millis(12)],

@@ -136,7 +136,12 @@ test("a local iframe scrub offers explicit resynchronization without periodic se
     player.calibrate(5000,0,0);player.update({ timeline: "media" as const,position:10,paused:true,rate:1,anchorTime:5000});await player.ready();
     state.position=60;now=1000;await vi.advanceTimersByTimeAsync(1000);
     expect(player.blocked).toBe(true);expect(state.position).toBe(60);
-    await player.resume();expect(state.position).toBe(10);
+    await player.resume();
+    expect(state.position).toBe(10);
+    expect(player.blocked).toBe(false);
+    player.update({ timeline: "media", position: 10, paused: false, rate: 1, anchorTime: 6000 });
+    await player.serialize(async () => {});
+    expect(state.paused).toBe(false);
   }finally{player.close();}
 });
 

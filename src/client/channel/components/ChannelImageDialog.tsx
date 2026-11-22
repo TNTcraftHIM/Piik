@@ -2,12 +2,13 @@ import { DRAG_ACTIVATION_DISTANCE_PX } from "../../ui/control-timing";
 import { ChannelSettingsDialog } from "./ChannelSettingsDialog";
 import { ChannelAction } from "./ChannelAction";
 import { useCopy } from "../../ui/copy";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./channel-image-dialog.css";
 
 /** The caller keeps the image URL alive; this surface only owns its presentation. */
-export function ChannelImageDialog({ src, name, description, original, onClose }: {
+export function ChannelImageDialog({ src, name, description, progress, original, onClose }: {
   src: string; name: string; description?: string;
+  progress?: ReactNode;
   original?: { busy: boolean; disabled?: boolean; onLoad(): void; onCancel(): void };
   onClose(): void;
 }) {
@@ -48,6 +49,7 @@ export function ChannelImageDialog({ src, name, description, original, onClose }
         disabled={original.disabled && !original.busy}
         label={original.busy ? t("channel.imageDialog.cancelOriginalImage") : t("channel.imageDialog.viewOriginal")}
         onClick={original.busy ? original.onCancel : original.onLoad} />}
+      {progress}
     </div>
   </ChannelSettingsDialog>;
 }

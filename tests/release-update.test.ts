@@ -239,6 +239,20 @@ describe("App release update notice", () => {
       .resolves.toMatchObject({ version: "v1.10.0" });
   });
 
+  it("cancels a superseded check without starting its mirror", async () => {
+    const controller = new AbortController();
+    const fetchImpl = vi.fn<typeof fetch>((_, init) => new Promise((_resolve, reject) => {
+      init!.signal!.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+    }));
+    const result = checkReleaseUpdate({ version: "v1.0.0", revision: currentRevision }, {
+      fetchImpl, signal: controller.signal,
+    });
+    controller.abort();
+    expect(fetchImpl.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    await expect(result).resolves.toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("finishes mirror pagination and rejects an incomplete list", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async (input) => {
       if (String(input) === DEFAULT_RELEASE_API_URL) throw new Error("offline");

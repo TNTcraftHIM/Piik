@@ -8,6 +8,9 @@ html[data-piik-native-window] .lr-app > main > [data-app-shell] { flex: 1 0 auto
 html[data-piik-native-window] .lr-app > .lr-top { min-height: var(--native-caption-height); padding: 7px 16px; }
 html[data-piik-native-window] .lr-top-app-identity { display: inline-flex; }
 html[data-piik-native-window] [data-app-shell] .lr-launcher-brand { display: none; }
+@media (max-width: 600px) {
+  html[data-piik-native-window] .lr-launcher-shell { grid-template-rows: auto auto auto 1fr; }
+}
 html[data-piik-native-window="integrated"] :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading) {
   min-height: var(--native-caption-height);
   padding: 7px calc(var(--native-caption-width) + 16px) 7px 16px;
@@ -27,7 +30,7 @@ html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) .c3-site-bar::
 }
 html[data-piik-native-window="integrated"] .c3-site-bar > .c3-global-tools { order: 2; }
 html[data-piik-native-window="integrated"] .c3-site-bar { height: var(--native-caption-height); }
-html[data-piik-native-window="integrated"] .lr-header-controls .lr-btn.is-quiet:not([popover] .lr-btn) {
+html[data-piik-native-window] .lr-header-controls .lr-btn.is-quiet:not([popover] .lr-btn) {
   --muted: var(--ink);
 }
 /* The native header stays outside the page's scrollport. */
@@ -38,6 +41,16 @@ html[data-piik-native-window] .lr-app > .lr-top { flex: none; width: 100%; margi
 html[data-piik-native-window="integrated"] :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading)
   :is(button, a, input, select, textarea, [role=button], [popover], .lr-comic-tip-wrap) { app-region: no-drag; }
 html[data-piik-native-window] :is(.c3-site-identity, .c3-global-tools) { min-width: 0; }
-html[data-piik-native-window] .c3-site-identity { flex: 1; }
+html[data-piik-native-window="system"] .c3-site-identity { flex: 1; }
+html[data-piik-native-window="integrated"] .c3-site-identity { flex: 0 1 auto; max-width: none; }
+@container channel-shell (max-width: 700px) {
+  html[data-piik-native-window="integrated"] .c3-site-bar :is(.lr-app-connect, #c3-rooms-trigger) {
+    width: var(--control-compact-size);
+    padding: 0;
+  }
+  html[data-piik-native-window="integrated"] .c3-site-bar :is(.lr-app-connect, #c3-rooms-trigger) > .lr-cap {
+    display: none;
+  }
+}
 html[data-piik-native-window="integrated"]:has(:fullscreen)
   :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading) { padding-right: 16px; app-region: no-drag; }

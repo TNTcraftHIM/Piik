@@ -125,9 +125,8 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
     : progress.state === "waiting" ? "channel.attachment.waitingData" : progress.state === "connecting" ? "channel.attachment.connecting" : progress.state === "finishing"
     ? "channel.attachment.finishing" : "channel.attachment.receiving")
     : t(previewBusy ? "channel.attachment.loadingOriginalImage" : "channel.attachment.waitingData");
-  const progressBytes = progress ? `${fileSize(progress.received)} / ${fileSize(progress.total)}${progress.total > 0 ? ` · ${Math.floor(progress.received / progress.total * 100)}%` : ""}` : null;
-  const imageStatus = previewBusy ? progress ? `${progressLabel} · ${progressBytes}` : t("channel.attachment.loadingOriginalImage")
-    : (!originalShown ? originalStatus : undefined) ?? previewMessage ?? imageDescription;
+  const progressBytes = progress && (progress.received > 0 || progress.state === "receiving" || progress.state === "finishing") ? progress : null;
+  const imageStatus = (!originalShown ? originalStatus : undefined) ?? previewMessage ?? imageDescription;
   const saving = download.outcome === "started", savedBytes = download.saveProgress;
   const savePending = isNativeSavePending(download.outcome);
   const saved = savedCopy || download.outcome === "saved";
@@ -157,8 +156,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
           void client.download(key, file, inlineImage, surface ?? undefined).catch(() => {});
         }} />
     </div>
-    {(download.busy || (previewBusy && !imageOpen)) && <TransferProgress label={progressLabel}
-      bytes={progress && (progress.received > 0 || progress.state === "receiving" || progress.state === "finishing") ? progress : null} />}
+    {(download.busy || (previewBusy && !imageOpen)) && <TransferProgress label={progressLabel} bytes={progressBytes} />}
     {saving && <TransferProgress label={t("channel.attachment.saving")} bytes={savedBytes} />}
     {!download.busy && !savePending && saved && <small className="c3-attachment-saved" role="status">{t("channel.attachment.saved")}</small>}
     {!download.busy && (download.outcome === "requested" || download.outcome === "dispatched") && <small role="status">{t(download.outcome === "requested"
@@ -176,7 +174,8 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
       URL.revokeObjectURL(current.url); current.url = null;
       setPreview(null); setPreviewError("image_decode_failed"); setImageOpen(false);
     }} /></button>}
-    {imageOpen && preview && <ChannelImageDialog src={preview} name={file.name} description={imageStatus}
+    {imageOpen && preview && <ChannelImageDialog src={preview} name={file.name} description={previewBusy ? undefined : imageStatus}
+      progress={previewBusy ? <TransferProgress label={progressLabel} bytes={progressBytes} /> : undefined}
       original={!originalShown ? { busy: previewBusy, disabled: unavailable, onLoad: () => { void showImage(); }, onCancel: cancelPreview } : undefined}
       onClose={() => { if (previewBusy) cancelPreview(); setImageOpen(false); }} />}
     {cardStatus && <small role="status">{cardStatus}</small>}

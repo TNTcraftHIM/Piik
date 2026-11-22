@@ -4,6 +4,24 @@ import type { WatchMedia, WatchMediaPatch, WatchMediaState } from "../src/client
 
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
+test("a new join clock aligns a running anchor again when the player's buffering is unknown", async () => {
+  vi.useFakeTimers();
+  let now = 1000;
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  const state: WatchMediaState = { position: 10, duration: 60, rate: 1, paused: false, readyState: 3, ended: false, buffered: null };
+  const patch = vi.fn(async (value: WatchMediaPatch) => { Object.assign(state, value); });
+  const player = new WatchPlayer("room", false, { read: async () => ({ ...state }), patch, ready: vi.fn(), listen: () => () => {}, close: vi.fn() }, vi.fn());
+  try {
+    player.calibrate(5000, now, now);
+    player.update({ timeline: "media", position: 10, paused: false, rate: 1, anchorTime: 5000 });
+    await player.ready();
+    now += 10000;
+    player.calibrate(15000, now, now);
+    await player.serialize(async () => {});
+    expect(patch).toHaveBeenCalledExactlyOnceWith({ position: 20 });
+  } finally { player.close(); }
+});
+
 test("one held alignment consumes the latest forced clock and coalesces intermediate paused seeks", async () => {
   vi.useFakeTimers();
   vi.spyOn(performance, "now").mockReturnValue(1000);

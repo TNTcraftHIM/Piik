@@ -100,6 +100,27 @@ test("a dispatched YouTube seek does not invent a seeked event before the platfo
   media.close();
 });
 
+test("a paused shared seek observed on a later tick still follows the sharer's next play", async () => {
+  vi.useFakeTimers();
+  const { media, sdk } = await setup();
+  sdk.pauseVideo();
+  const player = new WatchPlayer("room", false, media, () => {});
+  try {
+    await player.ready();
+    player.calibrate(1000, performance.now());
+    player.update({ timeline: "media", position: 30, paused: true, rate: 1, anchorTime: 1000 });
+    await player.serialize(async () => {});
+    expect(sdk.seeks).toEqual([30]);
+    sdk.position = 30;
+    sdk.pauseVideo();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.blocked).toBe(false);
+    player.update({ timeline: "media", position: 30, paused: false, rate: 1, anchorTime: 2000 });
+    await player.serialize(async () => {});
+    expect(sdk.state).toBe(1);
+  } finally { player.close(); }
+});
+
 test("accepted play and rate commands do not invent state or block a newer pause", async () => {
   vi.useFakeTimers();
   const { media, sdk } = await setup();

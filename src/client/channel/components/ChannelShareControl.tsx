@@ -209,7 +209,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         </span> : <Btn icon={sharing || watching ? "switchSource" : "cast"} title={{ text: sourceTitle }} cap={compact ? undefined : { text: label }} size="compact" tone={sharing || watching ? undefined : "primary"} quiet={compact}
         hint={sharing || watching ? "hint-switch-source" : "hint-share-start"}
         disabled={disabled || busy || qualityPending || microphonePending} busy={busy || qualityPending} expanded={open}
-        controls={id} popoverTarget={id} />}
+        hasPopup="dialog" controls={id} popoverTarget={id} />}
       {cancellable && <Btn icon="x" title={preparation ? "host.capture.cancelPreparation" : "common.cancel"}
         cap={preparation ? "host.capture.cancelPreparation" : "common.cancel"} size="compact" quiet
         onClick={() => { void channel.cancelScreenSelection(roomId).catch(() => {}).finally(() => {

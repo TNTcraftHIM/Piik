@@ -107,6 +107,7 @@ export class WatchPlayer {
   inheritClock(player: WatchPlayer): void { this.offset = player.offset; }
   calibrate(serverTime: number, start: number, end = performance.now()): void {
     this.offset = serverTime - (start + end) / 2;
+    this.alignedPlayback = null;
     void this.align(true);
   }
   async sample(): Promise<WatchPlayback> {
@@ -182,10 +183,6 @@ export class WatchPlayer {
       return true;
     }
     if (this.retired || state.readyState < 1 || !this.playback || this.offset === null) return false;
-    if (this.media.seekEvents === false && previous && (state.readyState >= HAVE_FUTURE_DATA && previous.readyState >= HAVE_FUTURE_DATA || state.paused && previous.paused)
-      && Math.abs(state.position - (previous.position + (previous.paused ? 0 : (now - previousAt) / 1000 * previous.rate))) > (this.media.seekTolerance ?? 0.35)) {
-      this.blocked = true; this.changed();
-    }
     const playback = this.playback;
     if (playback.timeline !== (state.live ? "program" : "media")) throw new Error("watch_timeline_changed");
     const position = watchPosition(playback, performance.now() + this.offset);
@@ -195,6 +192,11 @@ export class WatchPlayer {
     force = explicit || force && this.alignedPlayback !== playback;
     const buffered = state.buffered?.some(([start, end]) => start <= target && target < end);
     const displaced = Math.abs(state.position - target) > (this.media.seekTolerance ?? (force ? 0.12 : 0.35));
+    // An iframe can report a shared seek one observation after dispatch.
+    if (!force && displaced && this.media.seekEvents === false && previous && (state.readyState >= HAVE_FUTURE_DATA && previous.readyState >= HAVE_FUTURE_DATA || state.paused && previous.paused)
+      && Math.abs(state.position - (previous.position + (previous.paused ? 0 : (now - previousAt) / 1000 * previous.rate))) > (this.media.seekTolerance ?? 0.35)) {
+      this.blocked = true; this.changed();
+    }
     if (state.live && displaced && !buffered && !state.live.seekable.some(([start, end]) => start <= target && target <= end)) {
       await this.apply({ paused: true });
       this.error = "watch_live_position_unavailable"; this.changed();
@@ -211,9 +213,13 @@ export class WatchPlayer {
     if (state.rate !== playback.rate) patch.rate = playback.rate;
     if (playback.paused && !state.paused) patch.paused = true;
     else if (!playback.paused && state.paused && !this.blocked && !state.ended) patch.paused = false;
-    if (Object.keys(patch).length) await this.apply(patch);
-    if (this.error && this.error !== "watch_update_failed") return false;
+    // Rejoining while this patch is pending invalidates its clock alignment.
     this.alignedPlayback = playback;
+    if (Object.keys(patch).length) await this.apply(patch);
+    if (this.error && this.error !== "watch_update_failed") {
+      this.alignedPlayback = null;
+      return false;
+    }
     return true;
   }
   /** Called within the player's serialized turn; explicit failures reject. */
@@ -241,6 +247,7 @@ export class WatchPlayer {
   async resume(): Promise<void> {
     if (!await this.align(true, true)) return;
     if (this.owner || !this.playback?.paused) await this.play();
+    else if (this.blocked) { this.blocked = false; this.changed(); }
   }
   serialize(operation: () => Promise<void>): Promise<void> {
     const result = this.operations.then(() => { if (!this.retired) return operation(); });

@@ -10,12 +10,12 @@ export function useReleaseUpdate(identity?: AppReleaseIdentity, release?: Releas
   const [check, setCheck] = useState(0);
   useEffect(() => {
     if (!version || !revision) return;
-    let current = true;
-    void checkReleaseUpdate({ version, revision }, { packageTarget,
+    const controller = new AbortController();
+    void checkReleaseUpdate({ version, revision }, { packageTarget, signal: controller.signal,
       release: releaseVersion && releaseRevision ? { version: releaseVersion, revision: releaseRevision } : undefined }).then(notice => {
-      if (current) setResult({ key, notice });
+      if (!controller.signal.aborted) setResult({ key, notice });
     }).catch(() => undefined);
-    return () => { current = false; };
+    return () => controller.abort();
   }, [version, revision, packageTarget, releaseVersion, releaseRevision, key, check]);
   return { update: result?.key === key ? result.notice : null,
     refresh: () => setCheck(value => value + 1) };

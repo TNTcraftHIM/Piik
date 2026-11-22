@@ -13,6 +13,7 @@
 .c3-image-view:focus-visible { outline: 2px solid var(--action); outline-offset: -2px; }
 .c3-image-detail { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 8px 16px; min-width: 0; padding: 8px 16px 12px; border-top: 1px solid rgb(255 255 255 / .18); }
 .c3-image-detail p { margin: 0; color: inherit; }
+.c3-image-detail > .c3-attachment-progress { flex: 1 1 100%; }
 .c3-avatar-preview { flex: none; display: grid; place-items: center; border: 0; padding: 0; background: transparent; color: inherit; border-radius: var(--c3-inset-radius); cursor: zoom-in; }
 .c3-avatar-preview > svg { display: block; width: 26px; height: 34px; }
 .c3-avatar-preview:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }

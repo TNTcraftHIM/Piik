@@ -124,6 +124,7 @@ export async function checkReleaseUpdate(
     apiURL?: string;
     mirrorAPIURL?: string;
     fetchImpl?: typeof fetch;
+    signal?: AbortSignal;
     timeoutMs?: number;
     packageTarget?: string;
     release?: ReleaseIdentity;
@@ -138,8 +139,10 @@ export async function checkReleaseUpdate(
       ? `${MIRROR_RELEASE_API_URL}/tags/${encodeURIComponent(options.release.version)}` : MIRROR_RELEASE_API_URL), mirror: true },
   ];
   for (const source of sources) {
+    if (options.signal?.aborted) return null;
     if (!source.url) continue;
     const controller = new AbortController();
+    const signal = options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
     const timer = globalThis.setTimeout(() => controller.abort(), options.timeoutMs ?? 3_000);
     try {
       const endpoint = new URL(source.url);
@@ -153,7 +156,7 @@ export async function checkReleaseUpdate(
           endpoint.searchParams.set("direction", "desc");
         }
         const response = await fetchImpl(endpoint.toString(), {
-          cache: "no-store", credentials: "omit", redirect: "error", signal: controller.signal,
+          cache: "no-store", credentials: "omit", redirect: "error", signal,
           headers: source.mirror ? { Accept: "application/json" } :
             { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
         });
