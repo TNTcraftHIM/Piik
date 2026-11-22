@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, type CSSProperties } from "react";
 import { Btn } from "../../components/living/primitives";
 import { PawnSvg } from "../../components/living/Pawn";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
@@ -48,10 +48,11 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, busy, onSa
         if (nameDraft === undefined && pictureDraft === undefined) { close(); return; }
         void run(() => onSave({ name: nameDraft?.trim(), avatar: pictureDraft }), close);
       }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>
-        <div className="c3-profile-picture"><PawnSvg color={color} avatar={picture ?? undefined} />
-          {open && <ChannelIdentityImageInput value={picture} onChange={setPicture} disabled={disabled || busy}
-            busy={preparing} onBusyChange={setPreparing} />}
-        </div>
+        {open && <div className="c3-profile-picture" style={{ "--profile-color": color } as CSSProperties}>
+          <ChannelIdentityImageInput value={picture} onChange={setPicture} disabled={disabled || busy}
+            busy={preparing} onBusyChange={setPreparing}
+            fallbackPreview={<span className="c3-profile-pawn"><PawnSvg color={color} /></span>} />
+        </div>}
         <label htmlFor={`${id}-name`}>{t("channel.profileEditor.nickname")}</label>
         <span className="lr-input"><input ref={input} id={`${id}-name`} maxLength={MAX_USER_NAME_UNITS} autoComplete="nickname"
           value={draft} onChange={event => setDraft(event.target.value)} disabled={disabled || busy} /></span>

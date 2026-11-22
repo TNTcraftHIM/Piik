@@ -166,17 +166,42 @@ test("gaining access to another room reads only its cached attachments and downl
   } finally { files.reset(); vi.unstubAllGlobals(); }
 });
 
-test("a confirmed attachment uses its committed readable copy after the selected disk file disappears", async () => {
-  const files = setup();
-  const selected = new File(["GIF89a"], attachment.name), retained = new File(["GIF89a"], attachment.name);
-  const retain = vi.spyOn(FileStore.prototype, "retain").mockResolvedValue({ file: retained, evicted: [] });
+test("a pending peer read follows the committed copy when the original disappears", async () => {
+  const command = vi.fn(async (_command: ChannelCommand) => {}), files = setup(command);
+  const original = new File(["GIF89a"], attachment.name), copy = new File(["GIF89a"], attachment.name);
+  let rejectRead!: (reason: Error) => void, commit!: () => void;
+  const slice = new Blob();
+  const readOriginal = vi.spyOn(slice, "arrayBuffer").mockImplementation(() => new Promise((_, reject) => { rejectRead = reject; }));
+  vi.spyOn(original, "slice").mockReturnValue(slice);
+  vi.spyOn(FileStore.prototype, "retain").mockImplementation(() => new Promise(resolve => {
+    commit = () => resolve({ file: copy, evicted: [] });
+  }));
+  const readResult = vi.fn(() => "[]"), failed = vi.fn(() => JSON.stringify([{ type: "failed", key, code: "file_source_unavailable" }]));
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({
+    ...await hosting.loadRoomHosting(), FileDelivery: class {
+      update() { return "[]"; } next_deadline() {} free() {}
+      control(_peer: string, requestId: string) { return JSON.stringify([{ type: "read", key, offset: 2, length: 3, requestId }]); }
+      read_result = readResult; request_failed = failed;
+    },
+  } as never);
   try {
-    files.confirmed(key.roomId, message, [{ id: attachment.id, attachment, file: selected }]);
-    await vi.waitFor(() => expect(retain).toHaveBeenCalledOnce());
-    await new Promise(resolve => setImmediate(resolve));
-    vi.spyOn(selected, "arrayBuffer").mockRejectedValue(new DOMException("The source file was moved", "NotReadableError"));
-    const readable = await files.content(key, attachment, new AbortController().signal);
-    expect(new TextDecoder().decode(await readable.arrayBuffer())).toBe("GIF89a");
+    files.confirmed(key.roomId, message, [{ id: attachment.id, attachment, file: original }]);
+    files.data("peer", "control", "pending");
+    await vi.waitFor(() => expect(readOriginal).toHaveBeenCalledOnce());
+    commit();
+    await vi.waitFor(async () => expect(await files.content(key, attachment, new AbortController().signal)).toBe(copy));
+    const moved = new DOMException("The selected disk file moved", "NotReadableError");
+    rejectRead(moved);
+    await vi.waitFor(() => expect(readResult).toHaveBeenCalledExactlyOnceWith(JSON.stringify(key), 2n, "pending", new TextEncoder().encode("F89")));
+    expect(failed).not.toHaveBeenCalled();
+    expect(files.originalAvailability(key, attachment, false)).toBe(true);
+
+    vi.spyOn(copy, "slice").mockReturnValue(slice);
+    files.data("peer", "control", "gone");
+    await vi.waitFor(() => expect(readOriginal).toHaveBeenCalledTimes(2));
+    rejectRead(moved);
+    await vi.waitFor(() => expect(failed).toHaveBeenCalledExactlyOnceWith(JSON.stringify(key), "gone", "file_source_unavailable"));
+    expect(command).toHaveBeenCalledWith({ type: "file_offer", ...key, sha256: attachment.sha256, available: false });
   } finally { files.reset(); }
 });
 

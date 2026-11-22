@@ -5,7 +5,7 @@ use super::{
     clock::SourceTime,
     video::Video,
     vp8::{Vp8Frame, Vp8FrameMetadata},
-    H264Sps,
+    H264Sps, MAX_AU, MAX_AU_PACKETS, MAX_PACKET_DESCRIPTOR,
 };
 use crate::EncodedFrame;
 use anyhow::{ensure, Result};
@@ -16,11 +16,8 @@ use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
 use tokio::sync::Notify;
 
 // Bound assembled AU bytes independently from the packet reordering window.
-const MAX_AU: usize = 4 * 1024 * 1024;
-const PACKET_WINDOW: u64 = 4096;
+const PACKET_WINDOW: u64 = MAX_AU_PACKETS as u64;
 const MEDIA_WINDOW: u64 = 90_000;
-// VP8 descriptors use at most six bytes per packet; H264 overhead is smaller.
-const MAX_PACKET_DESCRIPTOR: usize = 6;
 
 struct Fragment {
     time: u64,

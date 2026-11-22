@@ -99,6 +99,10 @@ pub struct EncodedFrame {
 }
 
 pub(crate) const RTP_PACKETS: usize = 256;
+pub(crate) const MAX_AU: usize = 4 * 1024 * 1024;
+pub(crate) const MAX_AU_PACKETS: usize = 4096;
+// VP8 carries up to six descriptor bytes per packet. H264 overhead is smaller.
+pub(crate) const MAX_PACKET_DESCRIPTOR: usize = 6;
 // One directed flow owns each kind; a publication can have several hop flows.
 pub(crate) type TrackKey = (Uuid, MediaKind);
 #[derive(Clone, Debug)]

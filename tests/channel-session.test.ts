@@ -1995,6 +1995,33 @@ test("voice rooms share one microphone gain graph and release it after the last 
   expect(contexts[0].close).toHaveBeenCalledOnce();
 });
 
+test.each(["failed", "cancelled"])("initial microphone worklet preparation %s closes its context once", async outcome => {
+  const { session, socket } = await setup();
+  const contexts = microphoneMixer([]), raw = remoteTrack("audio");
+  let failModule!: (error: Error) => void;
+  const addModule = vi.fn(() => new Promise<void>((_, reject) => { failModule = reject; }));
+  Object.assign(AudioContext.prototype, { sampleRate: 48000, audioWorklet: { addModule } });
+  vi.stubGlobal("AudioWorkletNode", class {});
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: async () => remoteStream("source", [raw]) } });
+  try {
+    await session.configureVoiceInput({ voiceProcessing: true, strongerSuppression: true });
+    const joining = session.joinVoice("first").catch(error => error);
+    await vi.waitFor(() => expect(addModule).toHaveBeenCalledOnce());
+    if (outcome === "failed") {
+      failModule(new Error("module failed"));
+      await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "voice", joined: false }));
+      socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+      expect(await joining).toMatchObject({ message: "voice_noise_processing_failed" });
+    } else {
+      session.close();
+      expect(await joining).toMatchObject({ name: "AbortError" });
+      failModule(new Error("late module failure"));
+    }
+    expect(raw.stop).toHaveBeenCalledOnce();
+    expect(contexts[0].close).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
 test("closing during microphone permission releases the pending context and late capture", async () => {
   const { session } = await setup();
   const contexts = microphoneMixer([]), raw = remoteTrack("audio");
@@ -3574,7 +3601,10 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("microphones"));
     app.receive({ id: app.sent.at(-1)!.id, result: [{ id: "native-device", label: "Native microphone" }] });
     await expect(devices).resolves.toEqual([{ id: "native-device", label: "Native microphone" }]);
+    const activateMicrophone = vi.spyOn(nativeActivation, "activateNativePicker").mockImplementation(() => {});
     const enablingMicrophone = session.setSourceMicrophone(publicationId, { enabled: true, deviceId: "native-device" });
+    expect(activateMicrophone).toHaveBeenCalledWith(activationURL);
+    expect(session.nativeCaptureRequest("first")).toEqual({ publicationId, activationURL });
     expect(app.sent.at(-1)).toMatchObject({ type: "capture_microphone", publicationId, roomId: "first", captureId,
       settings: { enabled: true, deviceId: "native-device", volume: 1 } });
     expect(session.sourceMicrophone(publicationId)).toMatchObject({ enabled: false, requested: { enabled: true } });
@@ -3584,13 +3614,31 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     expect(session.getSnapshot()).not.toBe(revision);
     expect(session.sourceMicrophone(publicationId)?.enabled).toBe(true);
     app.receive({ id: app.sent.at(-1)!.id, result: enabledMicrophone }); await enablingMicrophone;
+    expect(session.nativeCaptureRequest("first")).toBeUndefined();
+    activateMicrophone.mockClear();
+    const gaining = session.setSourceMicrophone(publicationId, { volume: .9 });
+    expect(activateMicrophone).not.toHaveBeenCalled();
+    expect(session.nativeCaptureRequest("first")).toBeUndefined();
+    enabledMicrophone.volume = .9;
+    app.receive({ id: app.sent.at(-1)!.id, result: enabledMicrophone }); await gaining;
     const failedDevice = session.setSourceMicrophone(publicationId, { deviceId: "missing" });
+    expect(activateMicrophone).toHaveBeenCalledWith(activationURL);
+    expect(session.nativeCaptureRequest("first")).toEqual({ publicationId, activationURL });
     app.receive({ id: app.sent.at(-1)!.id, error: "microphone_unavailable" });
     await expect(failedDevice).rejects.toThrow("microphone_unavailable");
     expect(session.sourceMicrophone(publicationId)).toMatchObject({ ...enabledMicrophone, requested: enabledMicrophone });
     const replacingBeforeOff = session.setSourceMicrophone(publicationId, { deviceId: "pending-before-off" });
     const heldMicrophone = app.sent.at(-1)!;
+    const otherScreen = { ...published.publications[0]!, id: crypto.randomUUID(), sessionId: "other", userId: "other" };
+    socket.receive({ type: "state", state: { ...published, publications: [...published.publications, otherScreen] } });
+    expect(session.getSnapshot().state?.publications).toHaveLength(2);
+    await expect(session.setSourceMicrophone(otherScreen.id, { enabled: false })).rejects.toThrow("microphone_unavailable");
+    expect(app.sent.at(-1)).toBe(heldMicrophone);
+    expect(session.nativeCaptureRequest("first")).toEqual({ publicationId, activationURL });
+    activateMicrophone.mockClear();
     const immediateOff = session.setSourceMicrophone(publicationId, { enabled: false });
+    expect(activateMicrophone).not.toHaveBeenCalled();
+    expect(session.nativeCaptureRequest("first")).toBeUndefined();
     const immediateOffRequest = app.sent.at(-1)!;
     expect(immediateOffRequest).toMatchObject({ type: "capture_microphone", publicationId, settings: { enabled: false } });
     expect(immediateOffRequest.id).not.toBe(heldMicrophone.id);
@@ -5256,6 +5304,33 @@ test("a fresh binding retires a pending browse before its late acknowledgement",
     expect(peer.sent).toHaveLength(1);
     expect(session.getSnapshot().messagesByRoom.first).toEqual([]);
     expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
+test("older-page handoff keeps the requested contiguous history", async () => {
+  const { session, peer } = await setup(3);
+  try {
+    await peer.history([message(7), message(8), message(9)], true);
+    const loading = session.loadHistory("first");
+    const request = await peer.next();
+    for (const seq of [10, 11, 12]) peer.live(message(seq));
+    peer.page(request, [message(6)], true, 1);
+    await loading;
+    expect(session.getSnapshot().messagesByRoom.first.map(row => row.seq)).toEqual([6, 7, 8]);
+  } finally { session.close(); }
+});
+test("returning to latest retains newly confirmed arrivals", async () => {
+  const { session, peer } = await setup(2);
+  try {
+    await peer.history([message(3), message(4)], true);
+    await peer.history([message(1), message(2)], false, true);
+    const loading = session.loadLatestHistory("first");
+    const request = await peer.next();
+    peer.live(message(5));
+    expect(session.getSnapshot().messagesByRoom.first.map(row => row.seq)).toEqual([1, 2]);
+    peer.page(request, [message(3), message(4)], true, 1);
+    await loading;
+    expect(session.getSnapshot().messagesByRoom.first.map(row => row.seq)).toEqual([4, 5]);
   } finally { session.close(); }
 });
 
@@ -9398,6 +9473,28 @@ test("domain backup uses its actual service owner and validates kind before reti
   } finally { session.close(); }
 });
 
+test.each(["success", "rejected", "partial"] as const)("page teardown fences late domain restore %s", async outcome => {
+  const { session, socket } = await setup(3, false, "");
+  const domainId = crypto.randomUUID(), ownerId = crypto.randomUUID();
+  const metadata = { kind: "domain" as const, version: 3 as const, state: { id: domainId, ownerId, name: "Restored", icon: "couch", hostedRooms: {} }, ownerKey: "archived-key" };
+  vi.spyOn(backupArchive, "readBackup").mockResolvedValue(metadata);
+  let answer!: (response: Response) => void;
+  const fetch = vi.fn(() => new Promise<Response>(resolve => { answer = resolve; }));
+  vi.stubGlobal("fetch", fetch);
+  try {
+    const completion = session.restoreDomainBackup(new Blob()).catch(error => error);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    expect(socket.readyState).toBe(3);
+    session.close();
+    answer(outcome === "success" ? new Response(JSON.stringify({ domainId })) :
+      new Response(JSON.stringify({ error: outcome === "partial" ? "domain_restored_connection_failed" : "restore_rejected" }), { status: 409 }));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(session.getSnapshot().connection).toBe("closed");
+    expect(ChannelSocket.current).toBe(socket);
+    expect(await completion).toBeInstanceOf(Error);
+  } finally { session.close(); }
+});
+
 test("domain restore closes the old connection, admits archived keys only after HTTP commit and verifies Welcome before saving identity", async () => {
   const { document, contexts } = stubFeedbackAudio();
   const { session, socket } = await setup(3, false, "owner=old-key&room=old-room");
@@ -10040,6 +10137,39 @@ test("a refused backup room ID keeps existing storage and never allocates a repl
     await failure;
     expect(stage.replace).not.toHaveBeenCalled();
     expect(socket.sent.some(request => request.type === "create_room")).toBe(false);
+  } finally { session.close(); }
+});
+
+test.each(["close during handshake", "close during admission", "rejected handshake"])("room restore respects the active page after %s", async phase => {
+  const { session, socket, metadata } = await setupRoomBackup();
+  metadata.policy = { ...metadata.policy, id: "imported", creatorId: "archived-user" };
+  Object.assign(metadata, { ownCredential: { userId: "archived-user", credential: "archived-credential" } });
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", avatar: null, version: profileVersion } }))));
+  const state = structuredClone(session.getSnapshot().state!);
+  state.channel.ownerId = null; state.channel.rooms = [];
+  state.users = [{ id: "archived-user", name: "Archived", version: profileVersion }];
+  state.sessions = [{ id: "new-endpoint", userId: "archived-user", online: true, signingKey: testSigningKey }];
+  try {
+    const completion = session.restoreRoomBackup(new Blob()).catch(error => error);
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const admission = ChannelSocket.current;
+    if (phase === "close during admission") {
+      await admission.onopen?.();
+      admission.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "accepted-credential", sessionId: "new-endpoint", state });
+      await vi.waitFor(() => expect(admission.sent.some(command => command.type === "admit_room")).toBe(true));
+    }
+    if (phase === "rejected handshake") {
+      admission.receive({ type: "error", code: "channel_full" });
+      expect(await completion).toBeInstanceOf(Error);
+      expect(ChannelSocket.current).not.toBe(admission);
+      await ChannelSocket.current.onopen?.();
+      expect(ChannelSocket.current.sent.find(command => command.type === "join")).toMatchObject({ credential: "credential" });
+    } else {
+      session.close();
+      expect(await completion).toBeInstanceOf(Error);
+      expect(ChannelSocket.current).toBe(admission);
+      expect(session.getSnapshot().connection).toBe("closed");
+    }
   } finally { session.close(); }
 });
 

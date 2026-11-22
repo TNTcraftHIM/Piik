@@ -119,7 +119,7 @@ async fn mpd_catalog_replacement_rejects_stale_choices_without_retiring_active_r
         while let Some(command) = commands.recv().await {
             match command {
                 HostCommand::RegisterWatchReader { result, .. } => {
-                    let reply = if registered.fetch_add(1, Ordering::SeqCst) == 0 {
+                    let reply = if registered.fetch_add(1, Ordering::SeqCst) != 1 {
                         Ok(piik_channel_native::session::WatchReaderRegistration {
                             session_id: session,
                             retired: provider_retired.clone(),
@@ -204,6 +204,62 @@ async fn mpd_catalog_replacement_rejects_stale_choices_without_retiring_active_r
         *paths.lock().unwrap(),
         vec!["/a/manifest.mpd", "/b/manifest.mpd", "/b/manifest.mpd"]
     );
+    // The failed selection included audio. Retrying with video alone retires its omitted child.
+    use piik_channel_native::watch::Reader;
+    let candidate_reader = connection.media.lock().unwrap()[&candidate_page]
+        .mpd
+        .as_ref()
+        .unwrap()
+        .reader
+        .clone();
+    let manifest = String::from_utf8(
+        candidate_reader
+            .read(candidate_source, 0, 65536)
+            .await?
+            .bytes,
+    )?;
+    let failed_children: Vec<Uuid> = manifest
+        .split("<BaseURL>")
+        .skip(1)
+        .map(|part| Uuid::parse_str(part.split("</BaseURL>").next().unwrap()).unwrap())
+        .collect();
+    assert_eq!(failed_children.len(), 2);
+    connection
+        .prepare_mpd_media(
+            candidate_page,
+            candidate_source,
+            candidate_video,
+            None,
+            host.clone(),
+        )?
+        .await?;
+    let manifest = String::from_utf8(
+        candidate_reader
+            .read(candidate_source, 0, 65536)
+            .await?
+            .bytes,
+    )?;
+    assert_eq!(manifest.matches("<BaseURL>").count(), 1);
+    for child in failed_children
+        .iter()
+        .filter(|id| !manifest.contains(&id.to_string()))
+    {
+        assert_eq!(
+            connection
+                .read_resource(
+                    candidate_page,
+                    candidate_source,
+                    *child,
+                    Uuid::new_v4(),
+                    0,
+                    1
+                )?
+                .await
+                .unwrap_err()
+                .to_string(),
+            "watch_resource_unavailable"
+        );
+    }
     assert_eq!(connection.media_reads.available_permits(), MAX_MEDIA_READS);
     assert!(connection.resource_reads.lock().unwrap().is_empty());
     connection.stop_media(candidate_page);

@@ -283,13 +283,20 @@ export class ChannelApp {
 
   captureRequest(roomId: string): NativeCaptureRequest | undefined {
     if (!this.activationURL) return;
+    let microphone: NativeCaptureRequest | undefined;
     for (const { command } of this.requests.values()) {
-      if (command.roomId === roomId && command.publicationId &&
-          ((command.type === "prepare_capture" && this.prepared.has(command.publicationId)) ||
-           (command.type === "capture_microphone" && this.captures.has(command.publicationId)))) {
-        return { publicationId: command.publicationId, activationURL: this.activationURL };
+      const { publicationId } = command;
+      if (command.roomId !== roomId || !publicationId) continue;
+      if (command.type === "prepare_capture" && this.prepared.has(publicationId)) {
+        return { publicationId, activationURL: this.activationURL };
+      }
+      if (command.type === "capture_microphone" && this.captures.get(publicationId)?.id === command.captureId) {
+        // An off command can supersede a device change before its reply arrives.
+        microphone = this.needsMicrophonePicker(publicationId, command.settings as NativeSourceMicrophone)
+          ? { publicationId, activationURL: this.activationURL } : undefined;
       }
     }
+    return microphone;
   }
 
   constructor(verifiedHealth: unknown, channelId: string, userId: string, credential: string, name: string,
@@ -593,6 +600,11 @@ export class ChannelApp {
     return this.captures.has(publicationId) ? this.audioStates.get(publicationId)?.microphone : undefined;
   }
 
+  private needsMicrophonePicker(publicationId: string, next: NativeSourceMicrophone): boolean {
+    const current = this.sourceMicrophone(publicationId);
+    return next.enabled && (!current?.enabled || current.deviceId !== next.deviceId);
+  }
+
   hasSourceAudio(publicationId: string): boolean {
     return this.captures.has(publicationId) && !!this.audioStates.get(publicationId)?.sourceAudio;
   }
@@ -606,7 +618,7 @@ export class ChannelApp {
     const captureId = this.captures.get(publicationId)?.id;
     if (!captureId) throw new Error("capture_unavailable");
     const pending = this.request({ type: "capture_microphone", publicationId, captureId, roomId, settings });
-    if (settings.enabled && !this.sourceMicrophone(publicationId)?.enabled) activateNativePicker(this.activationURL);
+    if (this.needsMicrophonePicker(publicationId, settings)) activateNativePicker(this.activationURL);
     const applied = microphoneSchema.parse(await pending);
     if (this.captures.get(publicationId)?.id !== captureId) throw new DOMException("Capture cancelled", "AbortError");
     this.audioStates.set(publicationId, { sourceAudio: this.audioStates.get(publicationId)?.sourceAudio ?? false, microphone: applied });

@@ -171,7 +171,7 @@ pub async fn run() -> Result<serde_json::Value> {
         keyframe: true,
         vp8: None,
     };
-    q.write(frame(2 * 1024 * 1024, Instant::now()));
+    q.write(frame(media::MAX_AU, Instant::now()));
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             let queued = tx
@@ -321,7 +321,7 @@ pub async fn run() -> Result<serde_json::Value> {
     left.close().await;
     right.close().await;
     Ok(
-        serde_json::json!({"passed":true,"unreadyAttempts":128,"unreadyAdmitted":0,"singleAuRepresentationBytes":2*1024*1024,"oneQueuedAuPerRid":true,"onePendingAuRetained":true,"healthyRidAdvancesWhileOtherPending":true,"blockedOutputCloseJoined":true,"queuedPacketsBeforeRetire":queued_before,"retiredPrimaryStreams":retired_ssrcs.len(),"rtxNegotiatedBeforeRetire":rtx_enabled,"retiredQueueAndRtxOwnerAbsentBeforeSdpAnswer":true,"otherOutputAdvancesWhileStopOfferWithheld":true,"laterInactiveSdpCompletes":true,"otherOutputAdvancesAfterStop":true,"pacerAlgorithm":"unmodified str0m GCC/pacer/RTX","capacityRecoveryClaim":false,"decoderPlaybackClaim":false}),
+        serde_json::json!({"passed":true,"unreadyAttempts":128,"unreadyAdmitted":0,"singleAuRepresentationBytes":media::MAX_AU,"oneQueuedAuPerRid":true,"onePendingAuRetained":true,"healthyRidAdvancesWhileOtherPending":true,"blockedOutputCloseJoined":true,"queuedPacketsBeforeRetire":queued_before,"retiredPrimaryStreams":retired_ssrcs.len(),"rtxNegotiatedBeforeRetire":rtx_enabled,"retiredQueueAndRtxOwnerAbsentBeforeSdpAnswer":true,"otherOutputAdvancesWhileStopOfferWithheld":true,"laterInactiveSdpCompletes":true,"otherOutputAdvancesAfterStop":true,"pacerAlgorithm":"unmodified str0m GCC/pacer/RTX","capacityRecoveryClaim":false,"decoderPlaybackClaim":false}),
     )
 }
 

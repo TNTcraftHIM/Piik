@@ -2,7 +2,10 @@
 use super::metrics::StreamCounters;
 use super::{server_udp::ServerUdp, Event};
 use crate::diagnostics::{rtc_pair, RtcPairEvent};
-use crate::media::{MediaKind, RtpCodec, RtpCodecParameters, SourceClockReport};
+use crate::media::{
+    MediaKind, RtpCodec, RtpCodecParameters, SourceClockReport, MAX_AU, MAX_AU_PACKETS,
+    MAX_PACKET_DESCRIPTOR,
+};
 use crate::peer::{IceServer, PeerState};
 use anyhow::{anyhow, ensure, Context, Result};
 use futures_util::FutureExt;
@@ -1507,9 +1510,10 @@ impl Transport {
             let stream = direct
                 .stream_tx_by_mid(mid, (!rid.is_empty()).then(|| Rid::from(rid.as_str())))
                 .context("missing RTP writer")?;
-            let size: usize = packets.iter().map(|p| p.payload.len() + 64).sum();
+            let payload_bytes: usize = packets.iter().map(|p| p.payload.len()).sum();
             ensure!(
-                packets.len() <= 4096 && size <= 4 * 1024 * 1024,
+                packets.len() <= MAX_AU_PACKETS
+                    && payload_bytes <= MAX_AU + packets.len() * MAX_PACKET_DESCRIPTOR,
                 "access unit exceeds output limit"
             );
             // The representation limit above is not a paced backlog budget.

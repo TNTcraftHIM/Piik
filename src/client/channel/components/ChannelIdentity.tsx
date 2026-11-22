@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Chip } from "../../components/living/primitives";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
@@ -41,9 +41,9 @@ export function ChannelIconChoices({ value, onChange, disabled = false }: {
 }
 
 /** A file changes only the owning form's draft; that form owns Save and Cancel. */
-export function ChannelIdentityImageInput({ value, onChange, disabled = false, busy, onBusyChange, presets = false }: {
+export function ChannelIdentityImageInput({ value, onChange, disabled = false, busy, onBusyChange, presets = false, fallbackPreview }: {
   value: string | null; onChange(image: string | null): void; disabled?: boolean;
-  busy: boolean; onBusyChange(busy: boolean): void; presets?: boolean;
+  busy: boolean; onBusyChange(busy: boolean): void; presets?: boolean; fallbackPreview?: ReactNode;
 }) {
   const { t } = useCopy();
   const chooser = useRef<HTMLInputElement>(null);
@@ -70,18 +70,20 @@ export function ChannelIdentityImageInput({ value, onChange, disabled = false, b
   return <>
     {presets && <ChannelIconChoices value={value ?? "couch"} onChange={select} disabled={disabled} />}
     <div className="c3-identity-upload">
-      {image && image !== failedImage && <img className="c3-identity-image-preview" src={image} alt=""
-        onError={() => setFailedImage(image)} />}
-      <ChannelAction icon="arrowUp" quiet busy={busy} disabled={disabled}
-        label={busy ? t("channel.identity.openingImage")
-          : image ? t("channel.identity.changeImage") : t("channel.identity.chooseImage")}
-        onClick={() => chooser.current?.click()} />
-      <input ref={chooser} hidden type="file" accept="image/*" onChange={event => {
-        const file = event.currentTarget.files?.[0];
-        event.currentTarget.value = "";
-        if (file) void chooseImage(file);
-      }} />
-      {image && <ChannelAction icon="x" quiet disabled={disabled} label={t("channel.identity.remove")} onClick={() => select(presets ? "couch" : null)} />}
+      {image && image !== failedImage ? <img className="c3-identity-image-preview" src={image} alt=""
+        onError={() => setFailedImage(image)} /> : fallbackPreview}
+      <div className="c3-identity-upload-actions">
+        <ChannelAction icon="arrowUp" quiet busy={busy} disabled={disabled}
+          label={busy ? t("channel.identity.openingImage")
+            : image ? t("channel.identity.changeImage") : t("channel.identity.chooseImage")}
+          onClick={() => chooser.current?.click()} />
+        <input ref={chooser} hidden type="file" accept="image/*" onChange={event => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          if (file) void chooseImage(file);
+        }} />
+        {image && <ChannelAction icon="x" quiet disabled={disabled} label={t("channel.identity.remove")} onClick={() => select(presets ? "couch" : null)} />}
+      </div>
     </div>
     {(failed || (value && value === failedImage)) && <p className="c3-identity-error" role="alert">{t("channel.identity.imageOpenFailed")}</p>}
   </>;

@@ -15,7 +15,7 @@ import { usePlaybackControlsVisibility } from "../../components/living/use-playb
 import { useHostPreviewPlayback } from "../../components/living/use-host-preview-playback";
 import { usePictureInPicture } from "../../components/living/use-picture-in-picture";
 import { toggleVideoFullscreen, videoFullscreenState } from "../../components/living/video-fullscreen";
-import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio";
+import { ViewerAudio, type ViewerAudioSnapshot, type VoicePlaybackContext } from "../../media/viewer-audio";
 import { observeDebugPlayback } from "../../lib/debug-webrtc";
 import { observeCompositedVideoFrame } from "../../media/video-frame-proof";
 import { playbackFailure } from "../../media/viewer-playback";
@@ -610,8 +610,8 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
   </div>;
 }
 
-export function ChannelAudio({ stream, muted, volume, createContext, label }: {
-  stream: MediaStream; muted: boolean; volume: number; createContext(): AudioContext; label: string;
+export function ChannelAudio({ stream, muted, volume, voiceContext, label }: {
+  stream: MediaStream; muted: boolean; volume: number; voiceContext: VoicePlaybackContext; label: string;
 }) {
   const ref = useRef<HTMLAudioElement>(null);
   const output = useRef<ViewerAudio | null>(null);
@@ -623,13 +623,13 @@ export function ChannelAudio({ stream, muted, volume, createContext, label }: {
     if (!element) return;
     element.srcObject = stream;
     // Room and person levels each range from 0 to 2, as in the shared voice sink.
-    const playback = output.current = new ViewerAudio(element, () => {}, createContext, 4);
+    const playback = output.current = new ViewerAudio(element, () => {}, voiceContext, 4);
     playback.bind(stream);
     let current = true;
     setBlocked(false);
     void element.play().catch(error => { if (current && error?.name !== "AbortError") setBlocked(true); });
     return () => { current = false; playback.dispose(); output.current = null; element.pause(); element.srcObject = null; };
-  }, [stream, track, createContext]);
+  }, [stream, track, voiceContext]);
   useEffect(() => { output.current?.setLevel(volume); output.current?.setMuted(muted); }, [stream, track, volume, muted]);
   return <><audio ref={ref} aria-label={label} onPlay={() => setBlocked(false)} />
     {blocked && <ChannelAction icon="speaker" label={t("screen.playNamed", { label })}

@@ -50,6 +50,7 @@ struct Retention {
     grace: Duration,
     until: Option<Instant>,
 }
+type FileValidator = std::sync::OnceLock<Option<(url::Url, reqwest::header::HeaderValue)>>;
 #[derive(Clone)]
 enum Resource {
     Memory {
@@ -60,6 +61,7 @@ enum Resource {
         url: url::Url,
         size: Option<u64>,
         retention: Retention,
+        validator: Arc<FileValidator>,
     },
     Playlist {
         url: url::Url,
@@ -67,9 +69,18 @@ enum Resource {
         reload: Arc<Mutex<()>>,
     },
 }
+impl Resource {
+    fn file(url: url::Url, size: Option<u64>) -> Self {
+        Self::File {
+            url,
+            size,
+            retention: Retention::default(),
+            validator: Default::default(),
+        }
+    }
+}
 pub struct OriginReader {
     pub root: Uuid,
-    file_validator: std::sync::OnceLock<Option<(url::Url, reqwest::header::HeaderValue)>>,
     context: MediaContext,
     stopped: watch::Receiver<bool>,
     client: reqwest::Client,
@@ -125,11 +136,7 @@ impl OriginReader {
         let root = Uuid::new_v4();
         let url = url::Url::parse(&context.url)?;
         let resource = match context.format {
-            Format::File => Resource::File {
-                url,
-                size: context.size,
-                retention: Retention::default(),
-            },
+            Format::File => Resource::file(url, context.size),
             Format::Hls | Format::Dash => Resource::Playlist {
                 url,
                 snapshot: None,
@@ -159,7 +166,6 @@ impl OriginReader {
             .transpose()?;
         let reader = Arc::new(Self {
             root,
-            file_validator: Default::default(),
             context,
             stopped,
             // reqwest removes sensitive headers across origins; source URLs may contain grants.
@@ -284,6 +290,7 @@ impl OriginReader {
                 url,
                 size,
                 retention,
+                validator,
             } => {
                 if let Some(size) = size {
                     if offset >= size {
@@ -383,11 +390,12 @@ impl OriginReader {
                     available == length as u64 || offset + available == total,
                     "watch_media_truncated"
                 );
-                if id == self.root && self.context.format == Format::File {
+                // Live HLS owns segment identity for its advertised window and grace period.
+                if retention.grace.is_zero() {
                     let strong_tag = response.headers().get(reqwest::header::ETAG).filter(|v| {
                         matches!(v.as_bytes(), [b'"', opaque @ .., b'"'] if opaque.iter().all(|b| matches!(b, 0x21 | 0x23..=0x7e | 0x80..=0xff)))
                     });
-                    let validator = self.file_validator.get_or_init(|| {
+                    let validator = validator.get_or_init(|| {
                         strong_tag.map(|tag| {
                             let mut owner = response.url().clone();
                             owner.set_fragment(None);
@@ -686,11 +694,7 @@ fn rewrite(
                         reload: Arc::new(Mutex::new(())),
                     }
                 } else {
-                    Resource::File {
-                        url,
-                        size: None,
-                        retention: Retention::default(),
-                    }
+                    Resource::file(url, None)
                 },
             );
             id
@@ -808,6 +812,11 @@ mod tests {
                     "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=100000\nvod.m3u8\n",
                 ))
                 .unwrap();
+        }
+        if path == "/replace.m3u8" {
+            return Response::builder().body(Body::from(
+                "#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\nreplace\n#EXT-X-ENDLIST\n"
+            )).unwrap();
         }
         if path == "/vod.m3u8" {
             return Response::builder().body(Body::from("#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT-X-KEY:METHOD=AES-128,URI=\"key.bin\"\n#EXT-X-MAP:URI=\"init.mp4\"\n#EXTINF:6,\nsegment.ts\n#EXT-X-ENDLIST\n")).unwrap();
@@ -1296,6 +1305,22 @@ mod tests {
         );
         server.abort();
     }
+
+    #[tokio::test]
+    async fn static_playlist_child_rejects_replacement_between_ranges() {
+        let (base, server) = fixture().await;
+        let (ctx, _page, _) = context(format!("{base}/replace.m3u8"), Format::Hls, None);
+        let (_stop, stopped) = watch::channel(false);
+        let reader = OriginReader::prepare(ctx, stopped).await.unwrap();
+        let manifest = reader.read(reader.root, 0, 65536).await.unwrap();
+        let child = segment_ids(&manifest.bytes)[0];
+        assert_eq!(reader.read(child, 0, 2).await.unwrap().bytes, [1, 1]);
+        assert_eq!(
+            reader.read(child, 2, 2).await.unwrap_err().to_string(),
+            "watch_media_unavailable"
+        );
+        server.abort();
+    }
     #[tokio::test]
     async fn selected_file_scopes_validator_to_final_url_and_first_accepted_read() {
         let (base, server) = fixture().await;
@@ -1337,22 +1362,14 @@ mod tests {
             let id = Uuid::new_v4();
             reader.resources.lock().await.insert(
                 id,
-                Resource::File {
-                    url: url::Url::parse(&format!("{base}/{path}")).unwrap(),
-                    size: None,
-                    retention: Retention::default(),
-                },
+                Resource::file(url::Url::parse(&format!("{base}/{path}")).unwrap(), None),
             );
             assert!(reader.read(id, 10, 64).await.is_err(), "{path}");
         }
         let id = Uuid::new_v4();
         reader.resources.lock().await.insert(
             id,
-            Resource::File {
-                url: url::Url::parse(&format!("{base}/slow")).unwrap(),
-                size: None,
-                retention: Retention::default(),
-            },
+            Resource::file(url::Url::parse(&format!("{base}/slow")).unwrap(), None),
         );
         let work = reader.read(id, 0, 64);
         let cancel = async {
@@ -1494,11 +1511,7 @@ mod tests {
             let child = Uuid::new_v4();
             reader.resources.lock().await.insert(
                 child,
-                Resource::File {
-                    url: url::Url::parse(&format!("{foreign_url}/file")).unwrap(),
-                    size: Some(128),
-                    retention: Retention::default(),
-                },
+                Resource::file(url::Url::parse(&format!("{foreign_url}/file")).unwrap(), Some(128)),
             );
             assert_eq!(
                 reader.read(child, 0, 16).await.unwrap().bytes,

@@ -115,7 +115,12 @@ impl Packetizer {
         // Only the hop RTP timeline is translated on a source switch. Retain
         // the offset for this feed, preserving its subsequent frame intervals.
         let ticks = self.source_ticks(presentation_time) + self.offset;
-        self.packetize_ticks(&bytes.into(), presentation_time, metadata, ticks)
+        let bytes = bytes.into();
+        ensure!(
+            bytes.len() <= super::MAX_AU,
+            "encoded video frame exceeds source limit"
+        );
+        self.packetize_ticks(&bytes, presentation_time, metadata, ticks)
     }
 
     /// Audio sample positions own RTP spacing; capture time still owns the SR.
@@ -262,6 +267,13 @@ mod tests {
         assert_eq!(next[0].payload[0] & 0x1f, 24); // Cached SPS/PPS precede the slice.
         assert!(packetizer
             .packetize(vec![], epoch + Duration::from_millis(60), None)
+            .is_err());
+        assert!(packetizer
+            .packetize(
+                vec![0; crate::media::MAX_AU + 1],
+                epoch + Duration::from_millis(60),
+                None
+            )
             .is_err());
         Ok(())
     }

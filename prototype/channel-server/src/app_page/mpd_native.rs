@@ -67,32 +67,20 @@ impl OriginReader {
             })
             .await
             .map_err(|_| anyhow!("watch_mpd_engine_unavailable"))??;
-            let current = self.resources.lock().await;
             ensure!(!(self.mpd_cancelled())(), "watch_source_retired");
-            let mut next = current.clone();
+            let mut next = BTreeMap::new();
             let mut ids = BTreeMap::new();
             for recipe in tracks.iter().flat_map(ResolvedTrack::resources) {
                 if ids.contains_key(&recipe.url) {
                     continue;
                 }
                 let url = url::Url::parse(&recipe.url).map_err(|_| anyhow!("watch_mpd_invalid"))?;
-                let existing = next.iter().find_map(|(id, r)| match r {
-                    Resource::File { url: known, .. } if *known == url => Some(*id),
-                    _ => None,
-                });
-                let id = existing.unwrap_or_else(Uuid::new_v4);
-                next.insert(
-                    id,
-                    Resource::File {
-                        url,
-                        size: None,
-                        retention: Retention::default(),
-                    },
-                );
-                ensure!(next.len() <= MAX_RESOURCES, "watch_resource_limit");
+                let id = Uuid::new_v4();
+                next.insert(id, Resource::file(url, None));
+                // The selected manifest also occupies one resource slot.
+                ensure!(next.len() < MAX_RESOURCES, "watch_resource_limit");
                 ids.insert(recipe.url.clone(), id);
             }
-            drop(current);
             let manifest = tokio::task::spawn_blocking(move || {
                 snapshot.serialize_selected(&selected, &ids)
             })

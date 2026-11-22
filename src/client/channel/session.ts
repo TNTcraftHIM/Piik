@@ -59,6 +59,16 @@ interface RoomReading {
   interaction?: RoomInteractionSession;
 }
 
+interface PendingHistory {
+  before?: number;
+  replace: boolean;
+  refreshThrough?: number;
+  entries: Map<number, { message?: ChannelMessage; snapshot?: MessageReactionSnapshot }>;
+  // Rows adjoining the requested page, bounded in its direction of travel.
+  window: ChannelMessage[];
+  clipped?: boolean;
+}
+
 type RoomBackupMetadata = Extract<BackupMetadata, { kind: "room" }>;
 type RoomHistorySource =
   | { kind: "copy"; stage: BrowserRoomStage }
@@ -195,6 +205,7 @@ export class ChannelSession {
   private retry: ReturnType<typeof setTimeout> | null = null;
   private recoveryDeadline: ReturnType<typeof setTimeout> | null = null;
   private closed = true;
+  private identityGeneration = 0;
   private releaseDebug?: () => void;
   private feedbackAudio = new FeedbackAudio();
   private feedbackImports = new Map<FeedbackCue, symbol>();
@@ -206,7 +217,7 @@ export class ChannelSession {
   private requests = new Map<string, {
     roomId?: string; bindingId?: string;
     seekAfter?: number;
-    history?: { before?: number; replace: boolean; refreshThrough?: number; entries: Map<number, { message?: ChannelMessage; snapshot?: MessageReactionSnapshot }> };
+    history?: PendingHistory;
     resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void;
   }>();
   private hostedRooms = new Map<string, { host: HostedRoom; bindingId?: string }>();
@@ -436,7 +447,7 @@ export class ChannelSession {
         this.write({ type: "join", protocol: CHANNEL_PROTOCOL, signingKey, name: stored(nameKey) ?? "Guest", credential, ownerKey, sessionId: this.view.sessionId ?? undefined });
       } catch (error) {
         if (this.socket === socket && !this.closed) {
-          this.close();
+          this.closeConnection();
           this.patch({ error: error instanceof Error ? error.message : "room_runtime_unavailable" });
         }
       }
@@ -448,7 +459,7 @@ export class ChannelSession {
         if (wireBytes > CHANNEL_EVENT_BYTES) throw new Error("Channel event exceeds frame limit");
         const raw = JSON.parse(text);
         if (raw.type === "welcome" && raw.protocol !== CHANNEL_PROTOCOL) {
-          this.close(); this.patch({ error: "incompatible_protocol" }); return;
+          this.closeConnection(); this.patch({ error: "incompatible_protocol" }); return;
         }
         const event = decoder.decode(raw, wireBytes);
         const skipRoom = event.type === "welcome" ? acceptWelcome?.(event) : undefined;
@@ -604,7 +615,7 @@ export class ChannelSession {
         else request.reject(new Error(event.code));
       } else if (event.type === "error" && !event.requestId) {
         if (!this.view.sessionId || event.code === "incompatible_protocol" || event.code === "invalid_credential") {
-          this.close();
+          this.closeConnection();
         }
         this.patch({ error: event.code });
       }
@@ -823,7 +834,8 @@ export class ChannelSession {
         }),
         ...(replyBinding ? { bindingId: replyBinding } : {}),
         ...(command.type === "history_seek" ? { seekAfter: command.after } : {}),
-        ...(command.type === "history" ? { history: { before: command.before, replace: replaceHistory, refreshThrough, entries: new Map() } } : {}) });
+        ...(command.type === "history" ? { history: { before: command.before, replace: replaceHistory, refreshThrough, entries: new Map(),
+          window: command.before !== undefined && !replaceHistory ? this.view.messagesByRoom[command.roomId] ?? [] : [] } } : {}) });
       signal?.addEventListener("abort", abort, { once: true });
       if (conversation) void this.conversation.send(command, requestId, expectedBinding).catch(error => {
         if (!this.requests.delete(requestId)) return;
@@ -939,7 +951,11 @@ export class ChannelSession {
     const changes = { clearedThrough, deleted };
     const removedSeqs = new Set(messageSeqs);
     const removed = (seq: number) => seq <= throughSeq || removedSeqs.has(seq);
-    const messages = (this.view.messagesByRoom[roomId] ?? []).filter(message => !removed(message.seq)).map(message => redactReply(message, changes));
+    const remaining = (rows: ChannelMessage[]) => rows.filter(message => !removed(message.seq)).map(message => redactReply(message, changes));
+    for (const request of this.requests.values()) {
+      if (request.roomId === roomId && request.history) request.history.window = remaining(request.history.window);
+    }
+    const messages = remaining(this.view.messagesByRoom[roomId] ?? []);
     const history = this.view.historyByRoom[roomId];
     this.patch({
       historyChangesByRoom: { ...this.view.historyChangesByRoom, [roomId]: changes },
@@ -956,9 +972,15 @@ export class ChannelSession {
   private applyReactionSnapshot(roomId: string, bindingId: string, snapshot: MessageReactionSnapshot): void {
     const state = this.view.state;
     if (!state?.channel.rooms.some(room => room.id === roomId && room.authorized && room.delivery?.bindingId === bindingId)) return;
+    const project = (messages: ChannelMessage[]) => {
+      const index = messages.findIndex(message => message.id === snapshot.messageId && message.seq === snapshot.messageSeq);
+      if (index < 0 || (messages[index].reactions?.revision ?? -1) >= snapshot.revision) return messages;
+      return messages.with(index, { ...messages[index], reactions: { revision: snapshot.revision, counts: snapshot.counts } });
+    };
     for (const [requestId, request] of this.requests) {
-      if (request.roomId !== roomId || request.bindingId !== bindingId || !request.history
-        || (request.history.before !== undefined && snapshot.messageSeq >= request.history.before)) continue;
+      if (request.roomId !== roomId || request.bindingId !== bindingId || !request.history) continue;
+      request.history.window = project(request.history.window);
+      if (request.history.before !== undefined && snapshot.messageSeq >= request.history.before) continue;
       const entries = request.history.entries, entry = entries.get(snapshot.messageSeq);
       if ((!entry && entries.size >= 100) || (entry?.message && entry.message.id !== snapshot.messageId)) {
         this.receive({ type: "error", requestId, code: "incomplete_history" });
@@ -967,11 +989,8 @@ export class ChannelSession {
       if (!entry?.snapshot || entry.snapshot.revision < snapshot.revision) entries.set(snapshot.messageSeq, { ...entry, snapshot });
     }
     const messages = this.view.messagesByRoom[roomId];
-    if (!messages?.some(message => message.id === snapshot.messageId && message.seq === snapshot.messageSeq
-      && (!message.reactions || message.reactions.revision < snapshot.revision))) return;
-    this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: messages.map(message =>
-      message.id === snapshot.messageId && message.seq === snapshot.messageSeq
-        ? { ...message, reactions: { revision: snapshot.revision, counts: snapshot.counts } } : message) } });
+    const projected = messages && project(messages);
+    if (projected && projected !== messages) this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: projected } });
   }
 
   private applyPublicationReactionSnapshot(roomId: string, snapshot: import("./protocol").PublicationReactionSnapshot): void {
@@ -982,7 +1001,8 @@ export class ChannelSession {
   }
 
   private applyHistory(roomId: string, page: ChannelMessage[], result: Extract<ConversationReply["record"], { type: "history_end" }>,
-    { replace: jumping, refreshThrough }: { replace: boolean; refreshThrough?: number }): void {
+    request: PendingHistory): void {
+    const { replace: jumping, refreshThrough } = request;
     const state = this.view.state;
     if (!state?.channel.rooms.some(room => room.id === roomId && room.authorized)) return;
     const current = this.view.messagesByRoom[roomId] ?? [];
@@ -995,7 +1015,7 @@ export class ChannelSession {
       const missing = current.filter(message => message.seq >= lower && message.seq <= refreshThrough && !present.has(message.seq));
       if (missing.length) this.applyHistoryRemovals(roomId, 0, missing.map(message => message.seq));
     }
-    const existing = jumping ? [] : latest ? current.filter(message => message.seq > Math.max(last, refreshThrough ?? 0)) : current;
+    const existing = latest ? request.window.filter(message => message.seq > last) : request.window;
     const changes = this.view.historyChangesByRoom[roomId];
     const projected = page.filter(message => !messageRemoved(changes, message.seq))
       .map(message => mergeMessage(current.find(previous => previous.id === message.id), redactReply(message, changes)));
@@ -1004,10 +1024,11 @@ export class ChannelSession {
     const merged = mergeMessages([...existing, ...projected].filter(message => !messageRemoved(changes, message.seq)
       && (result.oldestSeq === null || message.seq >= result.oldestSeq)).map(message => redactReply(message, changes)));
     const messages = readingWindow(merged, state.channel.historyWindow, latest);
-    const atLatest = latest || (!jumping && (this.view.historyByRoom[roomId]?.atLatest ?? true) && messages.length === merged.length);
+    const atLatest = latest || (!jumping && (this.view.historyByRoom[roomId]?.atLatest ?? true)
+      && messages.at(-1)?.id === current.at(-1)?.id);
     const oldestSeq = result.oldestSeq;
     const canReadEarlier = !changes?.clearedThrough || (result.before ?? messages[0]?.seq ?? 0) > changes.clearedThrough + 1;
-    const hasMore = canReadEarlier && (result.hasMore
+    const hasMore = canReadEarlier && (result.hasMore || (latest && request.clipped === true)
       || oldestSeq !== null && messages.length > 0 && messages[0].seq > oldestSeq);
     this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: messages },
       historyByRoom: { ...this.view.historyByRoom, [roomId]: { hasMore, before: messages[0]?.seq, atLatest } } });
@@ -1028,18 +1049,23 @@ export class ChannelSession {
       type: "room-interaction", id: message.id, requestId: message.id, occurredAt: message.time, messageSeq: message.seq,
       sender: { peerId: sender.id, displayName: sender.name, role: "viewer" }, payload: { kind: "chat", text },
     });
-    // A bounded historical window stays put until its reader requests latest.
-    if (this.view.historyByRoom[roomId]?.atLatest === false) return;
-    const messages = this.view.messagesByRoom[roomId] ?? [];
+    const history = this.view.historyByRoom[roomId];
     let projected: ChannelMessage = { ...message, reactions: { revision: 0, counts: {} } };
     for (const request of this.requests.values()) {
-      const snapshot = request.roomId === roomId ? request.history?.entries.get(message.seq)?.snapshot : undefined;
+      const page = request.history;
+      if (request.roomId !== roomId || !page) continue;
+      const snapshot = page.entries.get(message.seq)?.snapshot;
       if (snapshot?.messageId === message.id) projected = mergeMessage(projected,
         { ...message, reactions: { revision: snapshot.revision, counts: snapshot.counts } });
+      if (page.replace || (page.before !== undefined && history?.atLatest === false)) continue;
+      const merged = mergeMessages([...page.window, projected]);
+      page.window = readingWindow(merged, state.channel.historyWindow, page.before === undefined);
+      if (page.window.length < merged.length) page.clipped = true;
     }
+    if (history?.atLatest === false) return;
+    const messages = this.view.messagesByRoom[roomId] ?? [];
     const merged = mergeMessages([...messages, projected]);
     const retained = readingWindow(merged, state.channel.historyWindow, true);
-    const history = this.view.historyByRoom[roomId];
     this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: retained },
       ...(history && retained.length < merged.length ? { historyByRoom: { ...this.view.historyByRoom,
         [roomId]: { ...history, before: retained[0]?.seq, hasMore: true } } } : {}) });
@@ -1809,7 +1835,7 @@ export class ChannelSession {
     });
   }
 
-  private async admitBackupIdentity(metadata: RoomBackupMetadata): Promise<(() => Promise<void>) | undefined> {
+  private async admitBackupIdentity(metadata: RoomBackupMetadata): Promise<(() => void) | undefined> {
     if (metadata.policy.creatorId === this.view.self?.id) return;
     const check = this.sessionContext(), archived = metadata.ownCredential;
     if (!archived || archived.userId !== metadata.policy.creatorId) throw new Error("backup_identity_required");
@@ -1819,40 +1845,50 @@ export class ChannelSession {
     if (identity.domainId !== metadata.domainId || identity.user.id !== archived.userId) throw new Error("backup_identity_required");
     const previous = { credential: this.credential, ownerKey: this.ownerKey, roomId: this.roomId,
       hash: location.hash };
-    const rollback = async () => {
+    const rollback = () => {
       this.close(); this.credential = previous.credential;
       if (previous.credential) stored(credentialKey, previous.credential);
       this.ownerKey = previous.ownerKey; this.roomId = previous.roomId;
       if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search + previous.hash);
       this.start();
     };
-    try { await this.connectBackupIdentity(metadata.domainId, archived.userId, { credential: archived.credential }, metadata.policy.id); }
-    catch (error) { await rollback(); throw error; }
+    const generation = await this.connectBackupIdentity(metadata.domainId, archived.userId, { credential: archived.credential }, metadata.policy.id, rollback);
+    if (generation !== this.identityGeneration) throw new Error("disconnected");
     if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search);
-    return rollback;
+    return () => { if (generation === this.identityGeneration) rollback(); };
   }
 
-  private async connectBackupIdentity(domainId: string, userId: string, identity: { credential?: string; ownerKey?: string }, skipRoom?: string): Promise<void> {
+  private async connectBackupIdentity(domainId: string, userId: string, identity: { credential?: string; ownerKey?: string },
+    skipRoom?: string, onFailure = this.close): Promise<number> {
     this.close(); this.credential = identity.credential; this.ownerKey = identity.ownerKey; this.roomId = "";
-    let socket: WebSocket | null = null;
+    const generation = this.identityGeneration;
+    const lifetime = this.captureLifetime.signal;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let abort: (() => void) | undefined;
     try {
       await new Promise<void>((resolve, reject) => {
         let waiting = true;
-        const timer = setTimeout(() => { waiting = false; reject(new Error("request_timeout")); }, 10000);
+        abort = () => { waiting = false; reject(new Error("disconnected")); };
+        lifetime.addEventListener("abort", abort, { once: true });
+        timer = setTimeout(() => { waiting = false; reject(new Error("request_timeout")); }, 10000);
         this.connect(event => {
           if (!waiting) throw new Error("backup_identity_required");
           const actual = event.state.sessions.find(value => value.id === event.sessionId)?.userId;
           if (event.state.channel.id !== domainId || actual !== userId
             || (identity.ownerKey !== undefined && event.state.channel.ownerId !== userId)) {
-            clearTimeout(timer); reject(new Error("backup_identity_required")); throw new Error("backup_identity_required");
+            reject(new Error("backup_identity_required")); throw new Error("backup_identity_required");
           }
-          waiting = false; clearTimeout(timer); resolve(); return skipRoom;
+          waiting = false; resolve(); return skipRoom;
         });
-        socket = this.socket;
       });
+      lifetime.throwIfAborted();
+      return generation;
     } catch (error) {
-      if (this.socket === socket) this.close();
+      if (generation === this.identityGeneration) onFailure();
       throw error;
+    } finally {
+      clearTimeout(timer);
+      if (abort) lifetime.removeEventListener("abort", abort);
     }
   }
 
@@ -1873,10 +1909,12 @@ export class ChannelSession {
     owner.current();
     if (metadata.kind !== "domain") throw new Error("expected_domain_backup");
     this.close();
+    const generation = this.identityGeneration;
+    const canResume = () => generation === this.identityGeneration && this.closed && !this.socket;
     let committed = false;
     try {
       const domainId = await owner.native.restore(archive); committed = true;
-      if (!this.closed || this.socket) throw new Error("disconnected");
+      if (!canResume()) throw new Error("disconnected");
       if (domainId !== metadata.state.id) throw new Error("backup_identity_required");
       await this.connectBackupIdentity(domainId, metadata.state.ownerId, { ownerKey: metadata.ownerKey });
       if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search);
@@ -1885,12 +1923,12 @@ export class ChannelSession {
     } catch (error) {
       const restored = error instanceof Error && error.message === "domain_restored_connection_failed";
       if (committed || restored) {
-        if (!committed && this.closed && !this.socket) {
+        if (!committed && canResume()) {
           await this.connectBackupIdentity(metadata.state.id, metadata.state.ownerId, { ownerKey: metadata.ownerKey }).catch(() => {});
         }
         throw new Error("domain_restored_connection_failed");
       }
-      this.start();
+      if (canResume()) this.start();
       throw error;
     }
   }, false);
@@ -2004,7 +2042,7 @@ export class ChannelSession {
     const target = metadata.policy.id;
     if (!owner && this.view.state!.channel.rooms.some(room => room.id === target && room.available)) throw new Error("room_host_conflict");
     if (owner && metadata.policy.creatorId !== this.view.self!.id) throw new Error("backup_identity_required");
-    let rollback: (() => Promise<void>) | undefined, committed = false;
+    let rollback: (() => void) | undefined, committed = false;
     try {
       if (source.kind === "restore") rollback = await this.admitBackupIdentity(metadata);
       const check = this.sessionContext();
@@ -2066,7 +2104,7 @@ export class ChannelSession {
     } catch (error) {
       if (committed) throw new Error("room_restored_connection_failed");
       if (roomRestoreRecovery(error)) throw error;
-      await rollback?.();
+      rollback?.();
       if (error instanceof Error && error.message === "room_not_in_domain") throw new Error("backup_room_not_admitted");
       throw error;
     }
@@ -3435,9 +3473,9 @@ export class ChannelSession {
           if (this.microphone === captured) this.microphone = null;
         });
         request.input = captured;
+        request.context = null;
         captured.onProcessingError = () => { captured.close(); this.microphone = null; for (const [id, capture] of [...this.local]) if (capture.microphone === captured) this.voiceCaptureEnded(id, capture.stream); this.patch({ error: "voice_noise_processing_failed" }); };
         await captured.configure(stream, Boolean(this.view.voiceInput.voiceProcessing && this.view.voiceInput.strongerSuppression));
-        request.context = null;
         const started = await resumed;
         requestSignal.throwIfAborted();
         if (!started || !captured.stream.active) throw new Error("microphone_unavailable");
@@ -3777,6 +3815,11 @@ export class ChannelSession {
   }
 
   close = (): void => {
+    this.identityGeneration++;
+    this.closeConnection();
+  };
+
+  private closeConnection(): void {
     this.releaseDebug?.(); this.releaseDebug = undefined;
     this.feedbackImports.clear();
     this.closed = true;
@@ -3796,5 +3839,5 @@ export class ChannelSession {
     this.conversation.close();
     this.profileLoads.clear(); this.missingProfiles.clear();
     this.patch({ connection: "closed", state: null, sessionId: null, self: null, profiles: new Map() });
-  };
+  }
 }

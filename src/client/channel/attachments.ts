@@ -620,15 +620,25 @@ export class ChannelAttachments {
               effect.type === "send_control" ? effect.control.requestId : effect.requestId, errorOf(error).message));
           });
       } else if (effect.type === "read") {
-        const source = this.sources.get(fileKeyString(key));
-        const failed = (error: unknown) => {
+        const id = fileKeyString(key), source = this.sources.get(id);
+        const failed = () => {
           if (!this.current(runtime)) return;
-          const effects = JSON.parse(runtime.delivery.request_failed(JSON.stringify(key), effect.requestId, errorOf(error).message)) as Effect[];
+          const effects = JSON.parse(runtime.delivery.request_failed(JSON.stringify(key), effect.requestId, "file_source_unavailable")) as Effect[];
           if (effects.length && source) this.withdraw(source);
           this.effects(runtime, effects);
         };
-        if (!source) { failed(new Error("file_unavailable")); continue; }
-        void source.file.slice(effect.offset, effect.offset + effect.length).arrayBuffer().then(bytes => this.invoke(runtime, () => runtime.delivery.read_result(JSON.stringify(key), BigInt(effect.offset), effect.requestId, new Uint8Array(bytes)))).catch(failed);
+        if (!source) { failed(); continue; }
+        const original = source.file;
+        const read = (file: File) => file.slice(effect.offset, effect.offset + effect.length).arrayBuffer();
+        const deliver = (bytes: ArrayBuffer) => this.invoke(runtime, () =>
+          runtime.delivery.read_result(JSON.stringify(key), BigInt(effect.offset), effect.requestId, new Uint8Array(bytes)));
+        void read(original).then(deliver, () => {
+          // Retention can adopt a readable copy while the selected file's read is pending.
+          if (this.current(runtime) && this.sources.get(id) === source && source.file !== original) {
+            return read(source.file).then(deliver, failed);
+          }
+          failed();
+        });
       } else {
         const entry = this.sinks.get(fileKeyString(key));
         if (!entry) continue;

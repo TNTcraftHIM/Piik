@@ -43,6 +43,7 @@ import { ChannelRoomTool, type RoomToolSurface } from "../channel/components/Cha
 import { ChannelConnections } from "../channel/components/ChannelConnections";
 import { roomHasUnread, roomPeople, screenAudience, screenTitle, userProfile, watchAudience } from "../channel/presentation";
 import { useVoicePlayback } from "../channel/use-voice-playback";
+import { VoicePlaybackContext } from "../media/viewer-audio";
 import { resolveVoiceDockControls } from "../channel/voice-dock-controls";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
@@ -237,14 +238,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const nameOfRoom = (id: string) => rooms.find(value => value.id === id)?.name ?? id;
   const nameOfUser = (id: string) => state?.users.find(value => value.id === id)?.name ?? t("channel.previewPage.user");
   const voiceStreams = useVoicePlayback(state, sessionId, streams);
-  const voiceAudioContext = useRef<AudioContext | null>(null);
-  const createVoiceAudioContext = useCallback(() => voiceAudioContext.current ??= new AudioContext(), []);
-  const closeVoiceAudioContext = useCallback(() => {
-    void voiceAudioContext.current?.close().catch(() => {});
-    voiceAudioContext.current = null;
-  }, []);
-  useEffect(() => { if (!voiceStreams.length) closeVoiceAudioContext(); }, [voiceStreams.length, closeVoiceAudioContext]);
-  useEffect(() => closeVoiceAudioContext, [closeVoiceAudioContext]);
+  const [voiceContext] = useState(() => new VoicePlaybackContext());
   const failure = channelErrorPresentation(channel.error, t);
   useEffect(() => {
     if (!state) return;
@@ -524,7 +518,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         </div>
         </div>
         {voiceStreams.map(publication => <ChannelAudio key={publication.sessionId} stream={streams.get(publication.id)!}
-          volume={channel.listeningVolume * (channel.voicePlaybackByUser.get(publication.userId)?.volume ?? 1)} createContext={createVoiceAudioContext}
+          volume={channel.listeningVolume * (channel.voicePlaybackByUser.get(publication.userId)?.volume ?? 1)} voiceContext={voiceContext}
           muted={(myVoice.find(value => value.roomId === publication.roomId)?.deafened ?? true) || (channel.voicePlaybackByUser.get(publication.userId)?.muted ?? false)}
           label={`${nameOfUser(publication.userId)} — ${nameOfRoom(publication.roomId)}`} />)}
       </section>

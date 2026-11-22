@@ -119,11 +119,11 @@ impl Media {
         self.redirects.retain(|(old, _)| old != &url);
         self.observed.retain(|(old, _)| old != &url);
         if self.observed.len() >= 128 {
-            // HLS roots remain useful after their disposable segments have been read.
+            // Preserve discovered manifests as later segment responses arrive.
             let Some(index) = self
                 .observed
                 .iter()
-                .position(|(_, fact)| fact.0 != Format::Hls)
+                .position(|(_, fact)| fact.0 == Format::File)
             else {
                 return self.match_frames();
             };
@@ -585,45 +585,42 @@ mod tests {
     }
 
     #[test]
-    fn discovered_hls_root_survives_later_segments_and_static_batches() {
-        let mut media = Media::default();
-        let frame = Uuid::new_v4();
-        let root = "https://page.test/root.m3u8";
-        let target = "https://cdn.test/root.m3u8";
-        media.frame(frame, vec![], vec![root.into()]);
-        media.observe_response(
-            target.into(),
-            (
-                Format::Hls,
-                None,
-                "application/vnd.apple.mpegurl".into(),
-                None,
-            ),
-        );
-        // The redirect can be the final fact needed to join a frame with its response.
-        media.observe_redirect(root.into(), target.into());
-        let initial = media.sources(frame, "blob:owned")["choices"][0]["id"].clone();
-        assert!(initial.is_string());
-        for i in 0..140 {
-            let segment = format!("https://cdn.test/{i}.ts");
-            media.observe_response(
-                segment.clone(),
-                (Format::File, Some(1000), "video/mp2t".into(), None),
-            );
-            media.frame(
-                frame,
-                vec![],
-                vec![segment, format!("https://page.test/{i}.js")],
-            );
+    fn discovered_manifest_survives_later_segments_and_static_batches() {
+        for (format, mime, choices) in [
+            (Format::Hls, "application/vnd.apple.mpegurl", "choices"),
+            (Format::Dash, "application/dash+xml", "mpdCandidates"),
+        ] {
+            let mut media = Media::default();
+            let frame = Uuid::new_v4();
+            let root = "https://page.test/manifest";
+            let target = "https://cdn.test/manifest";
+            media.frame(frame, vec![], vec![root.into()]);
+            media.observe_response(target.into(), (format, None, mime.into(), None));
+            // The redirect can be the final fact needed to join a frame with its response.
+            media.observe_redirect(root.into(), target.into());
+            let initial = media.sources(frame, "blob:owned")[choices][0]["id"].clone();
+            assert!(initial.is_string());
+            for i in 0..140 {
+                let segment = format!("https://cdn.test/{i}.ts");
+                media.observe_response(
+                    segment.clone(),
+                    (Format::File, Some(1000), "video/mp2t".into(), None),
+                );
+                media.frame(
+                    frame,
+                    vec![],
+                    vec![segment, format!("https://page.test/{i}.js")],
+                );
+            }
+            let value = media.sources(frame, "blob:owned");
+            assert_eq!(value[choices][0]["id"], initial);
+            assert_eq!(media.observed.len(), 128);
+            assert!(media.frames[&frame].resources.len() <= 128);
+            assert!(media.frames[&frame].pending.len() <= 128);
+            assert!(media.frames[&frame]
+                .resources
+                .contains(&"https://cdn.test/139.ts".into()));
         }
-        let value = media.sources(frame, "blob:owned");
-        assert_eq!(value["choices"][0]["id"], initial);
-        assert_eq!(media.observed.len(), 128);
-        assert!(media.frames[&frame].resources.len() <= 128);
-        assert!(media.frames[&frame].pending.len() <= 128);
-        assert!(media.frames[&frame]
-            .resources
-            .contains(&"https://cdn.test/139.ts".into()));
     }
 
     #[test]
