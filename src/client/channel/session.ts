@@ -386,13 +386,13 @@ export class ChannelSession {
   private playFeedback(roomId: string, event: RoomInteraction): void {
     const self = this.view.self?.id;
     if (this.closed || !self || !this.view.feedbackSound.enabled) return;
+    const popout = this.conversationPopout;
+    const foreground = !document.hidden || (popout?.roomId === roomId && !popout.document.hidden && popout.document.hasFocus());
     if (event.payload.kind === "chat") {
-      const popout = this.conversationPopout;
-      const visibleInPopout = popout?.roomId === roomId && !popout.document.hidden && popout.document.hasFocus();
-      if (document.hidden && !visibleInPopout && event.sender.peerId !== self) this.feedbackAudio.play("message");
+      if (!foreground && event.sender.peerId !== self) this.feedbackAudio.play("message");
       return;
     }
-    if (document.hidden || !isThrow(event.payload.reaction)) return;
+    if (!foreground || !isThrow(event.payload.reaction)) return;
     const target = event.contentTarget;
     const recipient = target ? "messageSeq" in target
       ? this.view.messagesByRoom[roomId]?.find(message => message.seq === target.messageSeq && message.id === target.messageId)?.userId

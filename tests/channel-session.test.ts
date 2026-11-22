@@ -461,13 +461,17 @@ test("confirmed room events own personal feedback across text, attachments and t
     document.hidden = true;
     reaction("hidden-throw", "friend-user-1234", { type: "person", userId: "self-user-1234" });
     expect(play).toHaveBeenCalledTimes(9);
+    session.setConversationPopout("first", popout);
+    reaction("popout-throw", "friend-user-1234", { type: "person", userId: "self-user-1234" });
+    expect(play).toHaveBeenCalledTimes(10);
+    expect(play).toHaveBeenLastCalledWith("throw");
     session.setFeedbackSound({ enabled: false });
     peer.live(fresh(93));
-    expect(play).toHaveBeenCalledTimes(9);
+    expect(play).toHaveBeenCalledTimes(10);
   } finally { session.close(); }
   expect(close).toHaveBeenCalledOnce();
   peer.live(fresh(94));
-  expect(play).toHaveBeenCalledTimes(9);
+  expect(play).toHaveBeenCalledTimes(10);
 });
 
 function stubFeedbackAudio() {

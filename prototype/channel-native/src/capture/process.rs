@@ -605,6 +605,14 @@ mod tests {
             error_reported: false,
         }
     }
+    impl Encoding {
+        pub(crate) fn with_test_frame(frame: EncodedFrame) -> Self {
+            let mut encoding = proxy();
+            encoding.shared.state.lock().unwrap().frame = Some(frame);
+            encoding.thread = Some(thread::spawn(|| Ok(())));
+            encoding
+        }
+    }
     #[test]
     fn child_completion_keeps_device_loss_before_codec_failure_before_broken_pipe() {
         use super::super::mf_common::HardwareEncoderFailed;

@@ -41,12 +41,12 @@ const RANDOM_PACKET_INTERVAL: Duration = Duration::from_millis(2);
 static RANDOM_PREPARATIONS: Semaphore = Semaphore::const_new(2);
 
 pub(super) async fn local_ipv4() -> Option<Ipv4Addr> {
-    let router = tokio::task::spawn_blocking(netwatch::interfaces::HomeRouter::new)
+    // Preparation binds the OS-selected source address. Portmapper looks up the gateway.
+    let address = tokio::task::spawn_blocking(netdev::net::ip::get_local_ipaddr)
         .await
-        .ok()
-        .flatten()?;
-    match router.my_ip {
-        Some(std::net::IpAddr::V4(ip)) => Some(ip),
+        .ok()??;
+    match address {
+        std::net::IpAddr::V4(ip) => Some(ip),
         _ => None,
     }
 }

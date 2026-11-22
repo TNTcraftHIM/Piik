@@ -82,12 +82,13 @@ async fn initial(
 }
 
 async fn prepare(
-    capture: &Capture,
+    candidate: Result<Encoding>,
+    frames: &Video,
     control: &VideoControl,
     codec: VideoCodec,
     mut request: VideoSettingsRequest,
 ) -> (VideoSettingsRequest, Result<Prepared>) {
-    let mut encoding = match capture.encode(request.settings, codec) {
+    let mut encoding = match candidate {
         Ok(encoding) => encoding,
         Err(error) => return (request, Err(error)),
     };
@@ -97,7 +98,7 @@ async fn prepare(
         _ = request.result.closed() => Err(Aborted.into()),
         frame = encoding.recv() => frame.unwrap_or_else(|| Err(anyhow!("capture encoding ended before its first frame"))),
     }.and_then(|frame| {
-        first_codec(codec, &frame)?;
+        frames.set_codec(first_codec(codec, &frame)?)?;
         Ok(frame)
     });
     match result {
@@ -207,7 +208,8 @@ pub(super) async fn run(
                     if request.settings == settings {
                         let _ = request.result.send(Ok(()));
                     } else {
-                        preparing = Some(Box::pin(prepare(&capture, &control.video, codec, request)));
+                        let candidate = capture.encode(request.settings, codec);
+                        preparing = Some(Box::pin(prepare(candidate, &frames, &control.video, codec, request)));
                     }
                 },
                 prepared = async { preparing.as_mut().unwrap().await }, if preparing.is_some() => {
@@ -331,4 +333,64 @@ pub(super) async fn run(
         }
     }
     error
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+    use crate::capture::{DegradationPreference, FrameTiming, Frames};
+
+    #[tokio::test]
+    async fn replacement_first_au_preserves_the_live_profile() -> Result<()> {
+        let now = Instant::now();
+        let video = Video::new(
+            SourceTime::local(now, SystemInstant::now(now)),
+            Arc::new(Notify::new()),
+        );
+        let original = [0x42, 0xe0, 0x1f];
+        video.set_codec(RtpCodec::h264(original))?;
+        let reader = video.subscribe();
+        let frame = |profile: [u8; 3], ms| crate::EncodedFrame {
+            bytes: [
+                vec![0, 0, 1, 0x67],
+                profile.to_vec(),
+                vec![0, 0, 1, 0x65, 1],
+            ]
+            .concat(),
+            presentation_time: now + Duration::from_millis(ms),
+            keyframe: true,
+            vp8: None,
+        };
+        let control = Frames::new(FrameTiming::Source)?.control();
+        let settings = Settings {
+            width: 640,
+            height: 360,
+            fps: 30,
+            bitrate: 500_000,
+            degradation_preference: DegradationPreference::Balanced,
+        };
+        for (profile, compatible) in [([0x4d, 0, 0x1f], false), ([0x42, 0xe0, 0x32], true)] {
+            let candidate = Encoding::with_test_frame(frame(profile, 1));
+            let candidate_control = candidate.control();
+            let (result, _receiver) = oneshot::channel();
+            let (_, prepared) = prepare(
+                Ok(candidate),
+                &video,
+                &control,
+                VideoCodec::H264,
+                VideoSettingsRequest { settings, result },
+            )
+            .await;
+            assert_eq!(prepared.is_ok(), compatible, "candidate {profile:x?}");
+            if let Ok(prepared) = prepared {
+                stop(prepared.encoding).await?;
+            } else {
+                assert!(candidate_control.is_stopped());
+                assert!(!control.is_stopped());
+                video.write(frame(original, 2));
+                assert_eq!(reader.recv().await.unwrap().bytes, frame(original, 2).bytes);
+            }
+        }
+        Ok(())
+    }
 }

@@ -32,6 +32,7 @@ rtc-crypto = { version = "=0.21.1", default-features = false, features = ["crypt
 sansio = "1"
 portmapper = { version = "=0.20.0", git = "https://github.com/TNTcraftHIM/net-tools", rev = "0a61bb64facc469d015f5ba537dda57c94cdcb17", default-features = false }
 netwatch = { version = "=0.20.0", git = "https://github.com/TNTcraftHIM/net-tools", rev = "0a61bb64facc469d015f5ba537dda57c94cdcb17" }
+netdev = { version = "=0.46.3", default-features = false, features = ["gateway"] }
 socket2 = "0.6"
 noq-udp = "=1.4.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "signal", "time", "process", "io-util", "io-std"] }
