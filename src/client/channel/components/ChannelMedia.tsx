@@ -77,12 +77,13 @@ function WatchPlaybackSettings({ receiving, originalPage, playback, children, au
 }
 
 /** The session owns loading and playback; presentation only mounts its existing element. */
-export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled, website, originalPageAvailable, originalPageUnavailable, onAppWatch, onFocusWindow, receiving, automaticPlayback = true, nativeStage = false }: {
+export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled, website, originalPageAvailable, originalPageUnavailable, onAppWatch, onFocusWindow, receiving, retryPending, automaticPlayback = true, nativeStage = false }: {
   player: WatchPlayer; owned: boolean; paused: boolean; label: string; presentation: "full" | "thumbnail" | "background";
   theaterMode: boolean; onToggleTheater(): void; disabled: boolean;
   onPlayback(patch: Partial<Pick<WatchPlayback, "paused" | "position" | "rate">>): void; onResume(): void;
   website: boolean; originalPageAvailable: boolean; originalPageUnavailable?: string; onAppWatch?: () => void; onFocusWindow(): void;
   receiving?: WatchReceiving;
+  retryPending?: boolean;
   automaticPlayback?: boolean;
   nativeStage?: boolean;
 }) {
@@ -198,7 +199,10 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       {!owned && receiving?.mode === "direct" && receiving.browserSource && surface.kind !== "external" &&
         <Btn icon="refresh" title="common.retry" cap="common.retry" size="compact" disabled={disabled || receiving.disabled || receiving.pending}
           busy={receiving.pending} onClick={receiving.onDirect} />}
-      {owned && player.media.page && <Btn icon="window" title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />}
+      {owned && player.media.retainedByteSource && <Btn icon="refresh" title="common.retry" cap="common.retry" size="compact"
+        disabled={disabled || retryPending} busy={retryPending} onClick={onResume} />}
+      {owned && player.media.page && <Btn icon="window" title={player.media.retainedByteSource ? "watch.openedPage" : "watch.focusWindow"}
+        cap={player.media.retainedByteSource ? "watch.openedPage" : "watch.focusWindow"} onClick={onFocusWindow} />}
       {!owned && website && surface.kind !== "external" && (openOriginal
         ? <Btn icon="window" title="watch.openPage" cap="watch.openPage" disabled={disabled || receiving?.pending} onClick={openOriginal} />
         : !(receiving?.peerAvailable && receiving.peerSupported) && (originalPageUnavailable
@@ -249,11 +253,12 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
               {audioOptions.map(track => <option key={track.id} value={track.id}>{audioOptions.some(other => other.id !== track.id && other.label === track.label)
                 ? `${track.label} — ${track.name}` : track.label}</option>)}
             </select></label>}
-          {owned && player.media.page && <Btn icon="window" quiet title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />}
+          {owned && player.media.page && <Btn icon="window" quiet title={player.video ? "watch.openedPage" : "watch.focusWindow"}
+            cap={player.video ? "watch.openedPage" : "watch.focusWindow"} onClick={onFocusWindow} />}
           {windowControls && <div className="c3-watch-settings-window">{windowControls}</div>}
         </WatchPlaybackSettings>
         {owned && player.video && player.media.page && !player.error && <Btn icon="window" quiet size="dense"
-          title="watch.focusWindow" onClick={onFocusWindow} />}
+          title="watch.openedPage" onClick={onFocusWindow} />}
         {windowControls}
       </div>}
     </div>}

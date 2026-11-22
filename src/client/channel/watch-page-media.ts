@@ -3,7 +3,7 @@ import type { NativePageMediaChoice, NativePageIndexedCandidate, NativePageMpdCa
 import { inspectIndexedTrack, type IndexedTrackInspection } from "./watch-indexed-source";
 import { limitWatchReads } from "./watch-resource";
 import { HTMLVideoMedia, createResourceWatchMedia, type WatchMedia, type WatchMediaEvent, type WatchMediaPatch, type WatchMediaState } from "./watch-media";
-import type { WatchByteSource, WatchFormat } from "./protocol";
+import type { WatchByteSource, WatchFormat, WatchTimeline } from "./protocol";
 
 export interface WatchIndexedChoice { candidate: NativePageIndexedCandidate; inspection?: IndexedTrackInspection; error?: string }
 export interface WatchMpdChoice { candidate: NativePageMpdCandidate; catalog?: NativePageMpdCatalog; error?: string }
@@ -97,11 +97,15 @@ export async function preparePortableWatchMedia(page: AppPage, url: string, sign
   return media;
 }
 
+function pagePlayback(page: AppPage, byteSource: WatchByteSource, timeline?: WatchTimeline): HTMLVideoMedia {
+  return createResourceWatchMedia(byteSource, (resourceId, offset, length, signal) =>
+    page.readMediaResource(byteSource.resourceId, resourceId, offset, length, signal), { hlsDeadlineOwner: "loader", timeline });
+}
+
 export async function preparePageSuppliedWatchMedia(page: AppPage, byteSource: WatchByteSource,
   signal: AbortSignal): Promise<PageSuppliedMedia> {
   signal.throwIfAborted();
-  const media = createResourceWatchMedia(byteSource, (resourceId, offset, length, signal) =>
-    page.readMediaResource(byteSource.resourceId, resourceId, offset, length, signal), { hlsDeadlineOwner: "loader" });
+  const media = pagePlayback(page, byteSource);
   try { await prepareMainPlayback(page, media, signal); }
   catch (error) { await page.stopMedia().catch(() => {}); throw error; }
   return new PageSuppliedMedia(page, media, byteSource);
@@ -112,12 +116,19 @@ export class PageSuppliedMedia implements WatchMedia {
   readonly presentation;
   private closed = false;
   private readonly unlisten: () => void;
-  constructor(readonly page: AppPage, private readonly media: HTMLVideoMedia, readonly retainedByteSource: WatchByteSource) {
+  constructor(readonly page: AppPage, private readonly media: HTMLVideoMedia, readonly retainedByteSource: WatchByteSource, private ownsPage = true) {
     this.presentation = media.presentation;
     // Original play/pause/seek events are deliberately not room playback events.
     this.unlisten = page.listen(event => { if (event === "closed") this.close(); });
   }
   audioAvailable(): boolean | undefined { return this.media.audioAvailable(); }
+  retryCandidate(timeline: WatchTimeline): PageSuppliedMedia {
+    return new PageSuppliedMedia(this.page, pagePlayback(this.page, this.retainedByteSource, timeline), this.retainedByteSource, false);
+  }
+  transferPageTo(next: PageSuppliedMedia): void {
+    this.ownsPage = false;
+    next.ownsPage = true;
+  }
   read(): Promise<WatchMediaState> { return this.media.read(); }
   patch(value: WatchMediaPatch): Promise<void> { return this.media.patch(value); }
   ready(signal: AbortSignal): Promise<void> { return this.media.ready(signal); }
@@ -129,6 +140,6 @@ export class PageSuppliedMedia implements WatchMedia {
     this.closed = true;
     this.unlisten();
     this.media.close();
-    this.page.close();
+    if (this.ownsPage) this.page.close();
   }
 }

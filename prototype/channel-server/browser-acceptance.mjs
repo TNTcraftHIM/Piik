@@ -1569,7 +1569,13 @@ try {
   await browser(4, "click", `.c3-room-link[aria-label=${JSON.stringify(initial[0].state.channel.rooms[1].name)}]`);
   await progressing(4, primaryPublication);
   assert((await view(4)).state.subscriptions.includes(primaryPublication));
-  await action(4, `browse(${JSON.stringify(roomId)})`);
+  const retainedScreen = `article[data-publication-id="${primaryPublication}"]`;
+  await until("browsing another room hides the retained screen", () => evaluate(4,
+    `document.querySelector(${JSON.stringify(retainedScreen)})?.hidden`), value => value === true);
+  const sharedRoomLink = '.c3-room-link[aria-label="Shared viewing"]';
+  await browser(4, "focus", sharedRoomLink);
+  await browser(4, "press", "Enter");
+  await browser(4, "wait", `${retainedScreen}:not([hidden])`);
   const beforeReconnect = (await view(4)).sessionId;
   await evaluate(4, "window.__channelProbe.sockets.filter(socket => socket.readyState === WebSocket.OPEN && new URL(socket.url).pathname === '/prototype/channel').forEach(socket => socket.close())");
   await action(4, "reconnect()");

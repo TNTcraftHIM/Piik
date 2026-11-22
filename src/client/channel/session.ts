@@ -516,21 +516,7 @@ export class ChannelSession {
       if (resumed) {
         this.media.resync();
         this.attachments.resume();
-        for (const publication of event.state.publications) {
-          if (publication.sessionId === event.sessionId && !this.local.has(publication.id)) this.write({ type: "unpublish", publicationId: publication.id });
-          const share = this.screenShares.get(publication.roomId);
-          if (publication.kind === "screen" && this.local.has(publication.id) && share?.id === publication.id
-            && share.paused !== undefined && share.paused !== publication.paused)
-            this.write({ type: "set_paused", publicationId: publication.id, paused: share.paused });
-        }
-        for (const member of event.state.voice) {
-          if (member.sessionId === event.sessionId && !this.voiceParticipation.has(member.roomId)) this.write({ type: "voice", roomId: member.roomId, joined: false, muted: true, deafened: false });
-          else if (member.sessionId === event.sessionId) {
-            const intent = this.voiceParticipation.get(member.roomId)!;
-            if (member.muted !== intent.muted || member.deafened !== intent.deafened)
-              this.write({ type: "voice", roomId: member.roomId, joined: true, muted: intent.muted, deafened: intent.deafened });
-          }
-        }
+        this.reconcileLocalMedia(event.state);
         for (const id of event.state.subscriptions) {
           if (event.state.publications.some(publication => publication.id === id && publication.kind === "screen") && !this.watching.has(id)) {
             this.write({ type: "subscribe", publicationId: id, enabled: false });
@@ -722,17 +708,9 @@ export class ChannelSession {
       this.hostCleanup = Promise.all([this.hostCleanup, hosted.host.close()]).then(() => {});
     }
     if (this.view.connection === "connected") for (const room of state.channel.rooms) {
-      if (room.available && previousRooms?.some(previous => previous.id === room.id && !previous.available)
+      if (!restoring && room.available && previousRooms?.some(previous => previous.id === room.id && !previous.available)
         && this.voiceParticipation.get(room.id)?.publicationId === null && !this.view.pending.has(`voice:${room.id}`)) {
-        for (const publication of state.publications) {
-          if (publication.sessionId === sessionId && publication.roomId === room.id && publication.kind === "voice" && !this.local.has(publication.id)) {
-            this.write({ type: "unpublish", publicationId: publication.id });
-          }
-        }
-        const member = state.voice.find(member => member.sessionId === sessionId && member.roomId === room.id);
-        const intent = this.voiceParticipation.get(room.id)!;
-        if (member && (member.muted !== intent.muted || member.deafened !== intent.deafened))
-          this.write({ type: "voice", roomId: room.id, joined: true, muted: intent.muted, deafened: intent.deafened });
+        this.reconcileLocalMedia(state, room.id);
       }
       if (room.id !== this.roomId && room.reading && room.authorized && room.available
         && previousRooms?.some(previous => previous.id === room.id && !previous.available)) {
@@ -743,6 +721,26 @@ export class ChannelSession {
     this.input.update();
     this.browseRooms();
     this.releaseUnusedMicrophone();
+  }
+
+  private reconcileLocalMedia(state: ChannelSnapshot, voiceRoomId?: string): void {
+    for (const publication of state.publications) {
+      if (publication.sessionId !== this.view.sessionId) continue;
+      if (voiceRoomId !== undefined && (publication.roomId !== voiceRoomId || publication.kind !== "voice")) continue;
+      if (!this.local.has(publication.id)) {
+        this.write({ type: "unpublish", publicationId: publication.id });
+      } else if (publication.kind === "screen") {
+        const share = this.screenShares.get(publication.roomId);
+        if (share?.id === publication.id && share.paused !== undefined && share.paused !== publication.paused)
+          this.write({ type: "set_paused", publicationId: publication.id, paused: share.paused });
+      }
+    }
+    for (const member of state.voice) {
+      if (member.sessionId !== this.view.sessionId || (voiceRoomId !== undefined && member.roomId !== voiceRoomId)) continue;
+      const intent = this.voiceParticipation.get(member.roomId);
+      if (!intent || member.muted !== intent.muted || member.deafened !== intent.deafened)
+        this.write({ type: "voice", roomId: member.roomId, joined: !!intent, muted: intent?.muted ?? true, deafened: intent?.deafened ?? false });
+    }
   }
 
   private applyForwarding(sessionId: string, state: ChannelSnapshot, userId: string | undefined): void {
@@ -2785,10 +2783,7 @@ export class ChannelSession {
       player.mode = "direct";
       delete selection.watchCandidate;
       if (media instanceof PageSuppliedMedia) void media.page.hide().catch(() => {});
-      player.activate(async playback => {
-        if (this.watchPlayers.get(id) === player && this.view.connection === "connected")
-          await this.request({ type: "update_watch", roomId, id, playback }, undefined, roomId);
-      });
+      this.activateWatchOwner(id, player);
       this.patch({});
       const screen = this.screenShares.get(roomId);
       if (screen && (this.local.has(screen.id) || this.app?.screens.has(screen.id))) await this.stopScreen(screen.id);
@@ -2924,10 +2919,42 @@ export class ChannelSession {
       await player.editPlayback(patch);
     });
   };
+  private activateWatchOwner(id: string, player: WatchPlayer): void {
+    player.activate(async playback => {
+      if (this.watchPlayers.get(id) === player && this.view.connection === "connected")
+        await this.request({ type: "update_watch", roomId: player.roomId, id, playback }, undefined, player.roomId);
+    });
+  }
   resumeWatch = async (id: string): Promise<void> => {
     const player = this.watchPlayers.get(id);
     if (!player) return;
-    await player.resume();
+    const media = player.media;
+    if (!player.owner || !player.error || !(media instanceof PageSuppliedMedia)) return player.resume();
+    await this.action(`watch-video:${id}`, async () => {
+      const source = this.view.state?.watchActivities.find(value => value.id === id);
+      if (!source) throw new Error("watch_unavailable");
+      const replacement = media.retryCandidate(source.playback.timeline);
+      const next = this.makeWatchPlayer(id, player.roomId, true, replacement);
+      try {
+        await next.ready(player.signal);
+        const activity = this.view.state?.watchActivities.find(value => value.id === id);
+        if (!activity) throw new Error("watch_unavailable");
+        next.inheritClock(player);
+        next.inheritListening(player);
+        await next.restorePlayback(activity.playback);
+        player.signal.throwIfAborted();
+        if (this.watchPlayers.get(id) !== player) throw new DOMException("Cancelled", "AbortError");
+        media.transferPageTo(replacement);
+        next.mode = player.mode;
+        this.watchPlayers.set(id, next);
+        player.close();
+        this.activateWatchOwner(id, next);
+      } catch (error) {
+        next.close();
+        if (this.watchPlayers.get(id) === player && error instanceof Error) player.error = error.message;
+        throw error;
+      }
+    }, false);
   };
   cameraPreviews = (signal: AbortSignal, publish: (sources: CameraPreview[]) => void): Promise<void> =>
     loadCameraPreviews(signal, publish, [...this.local.values()].find(capture => capture.camera

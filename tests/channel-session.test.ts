@@ -2148,6 +2148,8 @@ test("ending a Browser microphone retires its publication while room listening r
     await unmuting;
     expect(session.getSnapshot().state?.voice[0].muted).toBe(false);
 
+    state.channel.rooms[0].available = false;
+    socket.receive({ type: "state", state });
     socket.close();
     Object.defineProperty(nextTrack, "readyState", { value: "ended" });
     nextTrack.dispatchEvent(new Event("ended"));
@@ -2155,10 +2157,12 @@ test("ending a Browser microphone retires its publication while room listening r
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
+    state.channel.rooms[0].available = true;
     resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
-    expect(resumed.sent).toContainEqual({ type: "unpublish", publicationId: nextPublication.id });
-    expect(resumed.sent).toContainEqual({ type: "voice", roomId: "first", joined: true, muted: true, deafened: true });
-    expect(resumed.sent.some(command => command.type === "voice" && command.joined === false)).toBe(false);
+    expect(resumed.sent.filter(command => command.type === "unpublish" || command.type === "voice")).toEqual([
+      { type: "unpublish", publicationId: nextPublication.id },
+      { type: "voice", roomId: "first", joined: true, muted: true, deafened: true },
+    ]);
   } finally { session.close(); }
 });
 

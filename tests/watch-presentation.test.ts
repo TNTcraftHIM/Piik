@@ -421,9 +421,9 @@ it("keeps return-to-source reachable for a healthy main player only while it ret
       owned, paused: true, label: "Prepared source", presentation: "full", disabled: false, website: true, originalPageAvailable: true,
       theaterMode: false, onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
     }));
-    expect(render(true, {})).toContain('aria-label="Return to playback window"');
-    expect(render(true)).not.toContain('aria-label="Return to playback window"');
-    expect(render(false, {})).not.toContain('aria-label="Return to playback window"');
+    expect(render(true, {})).toContain('aria-label="Return to opened webpage"');
+    expect(render(true)).not.toContain('aria-label="Return to opened webpage"');
+    expect(render(false, {})).not.toContain('aria-label="Return to opened webpage"');
   } finally { vi.unstubAllGlobals(); }
 });
 

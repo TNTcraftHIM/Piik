@@ -105,6 +105,14 @@ export class WatchPlayer {
     }
   }
   inheritClock(player: WatchPlayer): void { this.offset = player.offset; }
+  async restorePlayback(playback: WatchPlayback): Promise<void> {
+    if (this.offset === null) throw new Error("watch_clock_unavailable");
+    const state = await this.media.read();
+    if (playback.timeline !== (state.live ? "program" : "media")) throw new Error("watch_timeline_changed");
+    const position = watchPosition(playback, performance.now() + this.offset);
+    const target = state.live ? watchSeekPosition(position, state.live.seekable) : Math.min(position, state.duration ?? Infinity);
+    await this.media.patch({ position: target, rate: playback.rate, paused: playback.paused });
+  }
   calibrate(serverTime: number, start: number, end = performance.now()): void {
     this.offset = serverTime - (start + end) / 2;
     this.alignedPlayback = null;

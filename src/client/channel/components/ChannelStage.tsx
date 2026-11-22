@@ -419,7 +419,7 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
     }}>
     {source.player ? <ChannelWatchVideo player={source.player} owned={source.owned} paused={source.paused} label={source.title}
       website={source.website} originalPageAvailable={source.originalPageAvailable} originalPageUnavailable={source.originalPageUnavailable} onAppWatch={source.onAppWatch} onFocusWindow={source.onFocusWindow}
-      receiving={source.receiving} automaticPlayback={automaticPlayback} nativeStage={focused || !focusable && !thumbnail}
+      receiving={source.receiving} retryPending={source.pending} automaticPlayback={automaticPlayback} nativeStage={focused || !focusable && !thumbnail}
       disabled={source.available === false} presentation={source.hidden ? "background" : thumbnail ? "thumbnail" : "full"}
       theaterMode={theaterMode} onToggleTheater={onToggleTheater}
       onPlayback={patch => { if (embedded && patch.paused === false) onFocus(source.id); source.onPlayback(patch); }}

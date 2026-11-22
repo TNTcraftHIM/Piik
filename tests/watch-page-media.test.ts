@@ -24,6 +24,23 @@ test('main media owns state and events while its page owns only resource lifetim
   media.close();expect(dispose).toHaveBeenCalledOnce();
 });
 
+test('a failed local retry keeps the provider open and only its committed successor closes it', () => {
+  vi.stubGlobal('document', { createElement: () => new Video() });
+  const closePage = vi.fn();
+  const page = new AppPage(crypto.randomUUID(), 'https://source.test/video', vi.fn(), closePage, vi.fn());
+  const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'file' as const };
+  const first = new PageSuppliedMedia(page, new HTMLVideoMedia('https://source.test/file.mp4', 'file'), source);
+  first.retryCandidate('media').close();
+  expect(closePage).not.toHaveBeenCalled();
+  const replacement = first.retryCandidate('media');
+  first.transferPageTo(replacement);
+  first.close();
+  expect(closePage).not.toHaveBeenCalled();
+  expect(replacement.retainedByteSource).toBe(source);
+  replacement.close();
+  expect(closePage).toHaveBeenCalledOnce();
+});
+
 test.each(['unsubscribe', 'caller', 'page'] as const)('page-source %s retirement cancels metadata and suppresses its late publication', async retirement => {
   const bytes = readFileSync(new URL('./fixtures/indexed-av1.mp4', import.meta.url));
   const candidate = { id: crypto.randomUUID(), name: 'Owned track', hostname: 'source.test', totalSize: bytes.length, mimeType: 'video/mp4' };

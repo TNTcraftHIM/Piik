@@ -193,8 +193,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const ownsWatch = (id: string) => watches.some(activity => activity.id === id && activity.sessionId === sessionId);
   const activeWatches = watches.filter(activity => ownsWatch(activity.id) || state?.watchSubscriptions.some(value => value.id === activity.id));
   const activeSources = [...activeScreens, ...activeWatches];
-  const visibleScreens = activeSources.filter(source => source.roomId === roomId && sourceView?.roomId === roomId);
-  const otherScreens = activeSources.filter(source => !visibleScreens.includes(source));
+  const visibleScreens = activeSources.filter(source => source.roomId === roomId);
+  const otherScreens = activeSources.filter(source => source.roomId !== roomId);
   const focusedScreen = sourceView?.roomId === roomId ? sourceView.focusedId : null;
   const theaterMode = useTheaterMode();
   const theaterVisible = theaterMode[0] && visibleScreens.some(source => source.id === focusedScreen);
@@ -301,7 +301,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         onPeer: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id, "peer")); },
         onDirect: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id, "direct")); } } : undefined,
       shareControls: owned && <ChannelShareControl channel={channel} roomId={activity.roomId} onWatch={() => setWatchRoomId(activity.roomId)} compact disabled={!available} />,
-      hidden: activity.roomId !== roomId || activeWatches.includes(activity) && !visibleScreens.includes(activity),
+      hidden: activity.roomId !== roomId,
       paused: activity.playback.paused, player, available,
       pending: busy("watch", activity.id) || busy("watch-video", activity.id) || busy("stop", activity.id),
       onRoom: () => selectRoom(activity.roomId), onJoin: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id)); },
