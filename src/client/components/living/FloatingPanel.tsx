@@ -1,5 +1,5 @@
 import { DRAG_ACTIVATION_DISTANCE_PX } from "../../ui/control-timing";
-import { useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode, type RefObject } from "react";
+import { useImperativeHandle, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
@@ -13,8 +13,13 @@ type PanelGesture = "move" | "nw" | "se";
 type PanelChange = { x: number; y: number } | { rect: DOMRect; corner: "nw" | "se"; dx: number; dy: number };
 
 /** Native visibility owns the shell; content owns its session, draft and reading position. */
-export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpen = false, detachable = false, directWindow = false, detachedAction = directWindow ? "return" : "focus", className = "", children, onOpenChange }: {
+export interface PanelWindowControl { open(): Promise<boolean>; close(): void }
+export function FloatingPanel({ onDetachedTrigger, onNativeReady, closeOnReturn = false, windowControl, id, trigger, title, compact = false, anchorOnOpen = false, detachable = false, directWindow = false, detachedAction = directWindow ? "return" : "focus", className = "", children, onOpenChange }: {
   id: string; trigger: string | RefObject<HTMLElement | null>; title: string; compact?: boolean; className?: string;
+  onDetachedTrigger?: () => void;
+  onNativeReady?: (owner: Document) => void;
+  closeOnReturn?: boolean;
+  windowControl?: RefObject<PanelWindowControl | null>;
   anchorOnOpen?: boolean;
   detachable?: boolean;
   directWindow?: boolean;
@@ -24,12 +29,18 @@ export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpe
   const { t } = useCopy();
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
+  const returnedClosed = useRef(false);
+  const opening = useRef<Promise<boolean> | null>(null);
   const panelWindow = usePanelWindow(detachable || directWindow, owner => {
-    if (directWindow && owner === document) {
+    if ((directWindow || closeOnReturn) && owner === document) {
       returnToPage(owner);
     }
-  });
+  }, onNativeReady);
   const { container, slot, surfaceDocument, detached } = panelWindow;
+  useImperativeHandle(windowControl, () => ({
+    open: () => openWindow(PANEL_SIZE),
+    close: panelWindow.close,
+  }));
   const defaultSize = compact ? COMPACT_SIZE : directWindow ? { width: PANEL_SIZE.width, height: PANEL_SIZE.width } : PANEL_SIZE;
   const position = useRef({ x: 1, y: 1 });
   const preferredSize = useRef(defaultSize);
@@ -43,10 +54,25 @@ export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpe
   };
 
   function returnToPage(owner: Document) {
+    returnedClosed.current = true;
     panelRef.current?.hidePopover();
     setOpen(false);
     onOpenChange?.(false, owner);
     focusTrigger();
+  }
+
+  function openWindow(size: typeof PANEL_SIZE = { width: PANEL_SIZE.width, height: PANEL_SIZE.width }) {
+    if (detached) return Promise.resolve(true);
+    if (opening.current) return opening.current;
+    if (panelWindow.opening) return Promise.resolve(false);
+    opening.current = panelWindow.open(size).then(() => {
+      const panel = panelRef.current;
+      if (panel && panel.ownerDocument !== document) return true;
+      // A refused request keeps the in-page panel usable.
+      panel?.showPopover();
+      return false;
+    }).finally(() => { opening.current = null; });
+    return opening.current;
   }
 
   useLayoutEffect(() => {
@@ -55,9 +81,10 @@ export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpe
     const toggleWindow = (event: MouseEvent) => {
       if (detached) {
         event.preventDefault();
-        if (detachedAction === "return") {
+        if (onDetachedTrigger) onDetachedTrigger();
+        else if (detachedAction === "return") {
+          if (!directWindow && !closeOnReturn) returnToPage(document);
           panelWindow.close();
-          if (!directWindow) returnToPage(document);
         } else surfaceDocument?.defaultView?.focus();
         return;
       }
@@ -68,15 +95,11 @@ export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpe
       }
       if (!panelWindowAPI(window)) return;
       event.preventDefault();
-      if (panelWindow.opening) return;
-      void panelWindow.open({ width: PANEL_SIZE.width, height: PANEL_SIZE.width }).then(() => {
-        // A refused request retains this same panel as the usable in-page fallback.
-        if (panelRef.current?.ownerDocument === document) panelRef.current.showPopover();
-      });
+      void openWindow();
     };
     invoker.addEventListener("click", toggleWindow);
     return () => invoker.removeEventListener("click", toggleWindow);
-  }, [directWindow, detachedAction, trigger, detached, surfaceDocument, panelWindow.opening, panelWindow.open, panelWindow.close]);
+  }, [directWindow, closeOnReturn, onDetachedTrigger, detachedAction, trigger, detached, surfaceDocument, panelWindow.opening, panelWindow.open, panelWindow.close]);
 
   useLayoutEffect(() => {
     const panel = panelRef.current;
@@ -93,7 +116,7 @@ export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpe
       return true;
     };
     // Adoption removes native popovers from the old document's top layer.
-    if (surfaceDocument && (!directWindow || surfaceDocument !== document) && !hideOutsideFullscreen()) panel.showPopover();
+    if (surfaceDocument && (surfaceDocument !== document || !returnedClosed.current) && !hideOutsideFullscreen()) panel.showPopover();
     owner.addEventListener("fullscreenchange", hideOutsideFullscreen);
     return () => owner.removeEventListener("fullscreenchange", hideOutsideFullscreen);
   }, [surfaceDocument]);
@@ -231,6 +254,8 @@ export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpe
         const owner = event.currentTarget.ownerDocument;
         // The adopted panel remains open; an old-document close is not a user action.
         const open = event.currentTarget.matches(":popover-open") || owner !== document;
+        if (!open && returnedClosed.current) return;
+        returnedClosed.current = false;
         setOpen(open);
         onOpenChange?.(open, owner);
         if (open) {

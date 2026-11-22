@@ -88,11 +88,11 @@ pub type WebsitePermissionReset =
 
 pub struct WindowNavigation {
     latest: std::sync::Mutex<u64>,
-    dispatch: Box<dyn Fn(String) -> bool + Send + Sync>,
+    dispatch: Box<dyn Fn(String, bool) -> bool + Send + Sync>,
 }
 
 impl WindowNavigation {
-    pub fn new(dispatch: impl Fn(String) -> bool + Send + Sync + 'static) -> Self {
+    pub fn new(dispatch: impl Fn(String, bool) -> bool + Send + Sync + 'static) -> Self {
         Self { latest: std::sync::Mutex::new(0), dispatch: Box::new(dispatch) }
     }
 }
@@ -989,11 +989,14 @@ async fn open_window(State(app): State<Arc<App>>, Json(request): Json<OpenWindow
         *latest
     };
     verify_launcher_site(&app, &origin).await?;
+    let local = app.registry.lock().await.local.as_ref().is_some_and(|site| {
+        site.origin == origin || (site.invitation == origin && matches!(site.request.mode, hosted::Mode::Local))
+    });
     let latest = navigation.latest.lock().unwrap();
     if *latest != intent {
         return Err((StatusCode::CONFLICT, Json(json!({"detail":"Site selection changed"}))));
     }
-    if !(navigation.dispatch)(request.url) {
+    if !(navigation.dispatch)(request.url, local) {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({"detail":"Window unavailable"})),
@@ -3765,7 +3768,7 @@ mod lifecycle_tests {
                 window_navigation: Some(WindowNavigation::new({
                     let navigations = navigations.clone();
                     let available = available.clone();
-                    move |url| {
+                    move |url, _| {
                         if !available.load(Ordering::Relaxed) {
                             return false;
                         }

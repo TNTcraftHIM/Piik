@@ -16,7 +16,7 @@ import { activateNativePicker } from "../native/activation";
 import { NativeRoomHosting } from "./hosting-api";
 import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
-import { debugEvent } from "../lib/debug";
+import { debugEvent, debugOperation } from "../lib/debug";
 import { nativeVoiceShortcutEventSchema, nativeVoiceShortcutsReportSchema, type NativeVoiceShortcutsReport } from "../native/wire";
 import type { VoiceShortcutAction, VoiceShortcuts } from "./voice-shortcut-binding";
 
@@ -512,12 +512,24 @@ export class ChannelApp {
     // Bound this Web read; the system's capture permission prompt belongs to the App.
     const reading = new AbortController();
     const timer = setTimeout(() => reading.abort(new Error("app_request_timeout")), SOURCE_LIST_TIMEOUT_MS);
-    const result = await this.request({ type: "targets" }, undefined, reading.signal).finally(() => clearTimeout(timer));
-    const sources = captureSourcesSchema.parse(result);
-    this.activationURL = sources.activationURL;
-    this.processAudioExclusion = sources.processAudioExclusion;
-    this.captureCodecs = sources.codecs;
-    return sources;
+    const complete = debugOperation("native", "capture-targets");
+    try {
+      const result = await this.request({ type: "targets" }, undefined, reading.signal);
+      const sources = captureSourcesSchema.parse(result);
+      this.activationURL = sources.activationURL;
+      this.processAudioExclusion = sources.processAudioExclusion;
+      this.captureCodecs = sources.codecs;
+      complete("ready");
+      return sources;
+    } catch (error) {
+      // OS errors and schema exceptions can contain local source descriptions.
+      const code = error instanceof z.ZodError ? "invalid_response" : error instanceof Error ? error.message : "";
+      const known = ["invalid_response", "app_request_timeout", "app_disconnected", "request_cancelled", "capture_targets_failed", "permission_denied"];
+      complete(known.includes(code) ? code : "native_error");
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   preview(target: NativeCaptureTarget, signal?: AbortSignal): Promise<string | null> {

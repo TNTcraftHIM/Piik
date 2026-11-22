@@ -116,6 +116,21 @@ test.each(["currentSrc", "src", "source"])("rebuilding the sole player of the sa
   expect(JSON.parse(bridge.bodies.at(-1)!).removed).toEqual([media]);
 });
 
+test("a page rebuilding several players transfers commands only for each unique source", async () => {
+  const bridge = candidateBridge();
+  bridge.setVideos([ownedVideo(0), ownedVideo(1), ownedVideo(1)]);
+  const { frame, candidates: [selected, duplicate, otherDuplicate] } = JSON.parse(bridge.bodies.at(-1)!);
+  const next = ownedVideo(0), other = ownedVideo(1);
+  bridge.setVideos([other, next]);
+  const { candidates, removed } = JSON.parse(bridge.bodies.at(-1)!);
+  expect(removed).toEqual([duplicate.media, otherDuplicate.media]);
+  expect(candidates[1].media).toBe(selected.media);
+  await bridge.message({ data: { bridge: "piik-page-command", frame, media: selected.media, kind: "patch",
+    request: webcrypto.randomUUID(), patch: { position: 12 } } });
+  expect(next.currentTime).toBe(12);
+  expect(other.currentTime).toBe(0);
+});
+
 test.each(["object", "long URL"])("the selected %s keeps a bounded resource token only while its full identity matches", kind => {
   const bridge = candidateBridge();
   const prefix = `https://media.test/?token=${"a".repeat(4096)}`;

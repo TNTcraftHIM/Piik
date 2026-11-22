@@ -9,7 +9,9 @@ import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
 import type { ChannelController } from "../types";
 import { profileAvatar, roomVoicePeople } from "../presentation";
 import { ChannelVoiceSettings } from "./ChannelVoiceSettings";
-import { useCallback } from "react";
+import { useCallback, useContext, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { VoiceOverlay } from "./voice-overlay";
 import { useVoiceLevels } from "../../room-voice/use-voice-levels";
 import { resolveVoiceDockControls } from "../voice-dock-controls";
 import { useVoiceShortcuts } from "../use-voice-shortcuts";
@@ -26,7 +28,9 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
     channel.connection === "connected" ? channel.backgroundVoiceShortcuts : undefined);
   const roomId = activity?.roomId ?? "";
   const readLevels = useCallback(() => channel.voiceActivity(roomId), [channel.voiceActivity, roomId]);
-  const levels = useVoiceLevels(readLevels, !!activity);
+  const overlay = useContext(VoiceOverlay);
+  const levels = useVoiceLevels(readLevels, !!activity, overlay?.target?.ownerDocument);
+  useEffect(() => { if (!activity && overlay?.target) overlay.close(); }, [activity, overlay]);
   if (!activity || !state) return null;
   const nameOfRoom = (id: string) => state.channel.rooms.find(room => room.id === id)?.name ?? id;
   const roomName = nameOfRoom(roomId);
@@ -36,6 +40,7 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
   const appearances = roomVoicePeople(state, roomId, levels);
   const participants = state.users.filter(user => appearances.has(user.id));
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
+  const speaking = participants.filter(user => (appearances.get(user.id)?.level ?? 0) > .01);
   return <section className="c3-voice-dock" aria-label={t("channel.voiceDock.voiceControls")}>
     <Glyph name="headphones" size={22} />
     <div className="c3-voice-destination">
@@ -66,6 +71,26 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
       })}
       {participants.length > 4 && <small>+{participants.length - 4}</small>}
     </div>
+    {overlay?.target && createPortal(<div className="c3-speaking-overlay">
+      <div className="c3-speaking-overlay-header">
+        <strong title={roomName}>{roomName}</strong>
+        <span role="img" aria-label={t(muted ? "voice.microphoneInactive" : "voice.microphoneActive")}>
+          <Glyph name={muted ? "microphoneOff" : "microphone"} size={16} />
+        </span>
+        <span role="img" aria-label={t(deafened ? "voice.listeningPaused" : "voice.listeningActive")}>
+          <Glyph name={deafened ? "headphonesOff" : "headphones"} size={16} />
+        </span>
+        {speaking.length > 4 && <small>+{speaking.length - 4}</small>}
+        {overlay.mode === "editing" && <Btn icon="check" size="compact" quiet title="channel.voiceDock.pinOverlay" onClick={overlay.edit} />}
+      </div>
+      <div className="c3-speaking-overlay-people">
+        {speaking.slice(0, 4).map(user => <div key={user.id}>
+          <PawnSvg color={participantColor(user.id)} identity={user.id}
+            avatar={profileAvatar(user, channel.profiles.get(user.id)) ?? undefined} voice={appearances.get(user.id)} />
+          <span title={user.name}>{user.name}</span>
+        </div>)}
+      </div>
+    </div>, overlay.target)}
     <div className="c3-voice-controls">
       <AudioVolumeMenu volume={channel.voiceInput.volume} onVolume={channel.setInputVolume} label="host.microphone.volume">
         <VoiceMicrophoneButton active={!muted} level={levels.get(channel.sessionId ?? "")} disabled={microphoneDisabled} quiet
@@ -75,6 +100,12 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
         <VoiceListeningButton deafened={deafened} quiet
           keyShortcuts={voiceShortcutAria(shortcuts.bindings.listening)} onClick={() => toggle("listening")} />
       </AudioVolumeMenu>
+      {overlay && <>
+        <Btn icon={overlay.mode === "editing" ? "check" : "pip"} size="compact" quiet textTooltip
+          title={overlay.mode === "panel" ? "channel.voiceDock.openOverlay" : overlay.mode === "editing" ? "channel.voiceDock.pinOverlay" : "channel.voiceDock.adjustOverlay"}
+          onClick={overlay.mode === "panel" ? overlay.show : overlay.edit} />
+        {overlay.target && <Btn icon="x" size="compact" quiet textTooltip title="common.close" onClick={overlay.close} />}
+      </>}
       <Btn icon="door" title="voice.leave" hint="hint-voice-leave" draw="voice-membership" size="compact" quiet
         onClick={() => run(channel.leaveVoice(roomId))} />
     </div>

@@ -26,9 +26,10 @@ export function personVoiceLabel(voice: PawnVoice, { t, lang }: Copy) {
   return joinSentences(lang, parts);
 }
 
-function ActivityBadge({ icon, label, viewing }: { icon: GlyphName; label: string; viewing?: ParticipantViewing }) {
+function ActivityBadge({ icon, label, viewing, status }: { icon: GlyphName; label: string; viewing?: ParticipantViewing; status?: GlyphName }) {
   return <Tooltip text={label}><span role="img" aria-label={label} data-viewing={viewing}>
     <Glyph name={icon} size={14} />
+    {status && <Glyph name={status} size={10} />}
   </span></Tooltip>;
 }
 
@@ -37,11 +38,14 @@ export function ChannelActivityIndicators({ voice, sharing, viewing, sendingFile
   const { t } = copy;
   const file = sendingFiles && receivingFiles ? fileBadges.both : sendingFiles ? fileBadges.sending : receivingFiles ? fileBadges.receiving : undefined;
   if (!voice && !sharing && !viewing && !file) return null;
+  const viewingStatus = viewing === "preparing" || viewing === "failed" ? viewingAppearance[viewing].icon : undefined;
+  const viewingLabel = viewing && participantViewingLabel(viewing, t);
   return <span className="c3-participant-activity">
     {voice && <ActivityBadge icon={voice.deafened ? "headphonesOff" : voice.microphone ? "microphone" : "microphoneOff"}
       label={personVoiceLabel(voice, copy)} />}
     {sharing && <ActivityBadge icon="cast" label={t("channel.roomParticipants.sharing")} />}
-    {viewing && <ActivityBadge icon={viewingAppearance[viewing].icon} label={participantViewingLabel(viewing, t)} viewing={viewing} />}
+    {viewing && viewingLabel && <ActivityBadge icon={viewingStatus ? "eye" : viewingAppearance[viewing].icon} status={viewingStatus}
+      label={viewingStatus ? joinSentences(copy.lang, [t("viewer.title.watching"), viewingLabel]) : viewingLabel} viewing={viewing} />}
     {file && <ActivityBadge icon={file.icon} label={t(file.label)} />}
   </span>;
 }

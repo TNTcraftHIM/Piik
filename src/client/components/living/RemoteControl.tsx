@@ -385,7 +385,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
         allowText={remoteTextAvailable(state)}
         releaseKey={releaseKey} onReleaseKeyChange={key => { setReleaseKey(key); saveRoomPreferences({ remoteReleaseKey: key }); }}
         onSurfaceChange={keyboardSurfaceChanged}
-        mouseControl={!touchControls && "requestPointerLock" in HTMLElement.prototype && <span className="lr-remote-game-mouse"><Btn icon="gamepad" size="compact"
+        mouseControl={"requestPointerLock" in HTMLElement.prototype && matchMedia("(any-pointer: fine)").matches && <span className="lr-remote-game-mouse"><Btn icon="gamepad" size="compact"
           title={lockFailed ? "remote.lockFailed" : locked ? "remote.releaseMouse" : "remote.gameMouse"}
           cap={locked ? "remote.releaseMouse" : "remote.gameMouse"} pressed={locked}
           hint={locked ? "hint-remote-mouse-release" : "hint-remote-mouse-lock"}

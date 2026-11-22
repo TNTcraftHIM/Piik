@@ -95,13 +95,16 @@
     for (const [source, child] of children) if (!child.element.isConnected) { children.delete(source); send({ kind: 'removed', removed: child.frame }); }
     const videos = document.querySelectorAll('video');
     const removed = [...elements].filter(([, entry]) => !entry.video.isConnected);
-    if (removed.length === 1 && videos.length <= 64) {
-      const [, entry] = removed[0];
-      // Only an unambiguous replacement of the observed source can inherit the selection.
-      const matches = entry.identity ? [...videos].filter(video => identity(video) === entry.identity) : [];
-      if (matches.length === 1 && !byVideo.has(matches[0])) {
-        byVideo.delete(entry.video);
-        byVideo.set(matches[0], entry);
+    if (removed.length && videos.length <= 64) {
+      const sources = Array.from(videos, video => ({ video, source: identity(video) }));
+      for (const [, entry] of removed) {
+        // A page can rebuild several players together. Only one-to-one source matches inherit commands.
+        if (!entry.identity || removed.some(([, other]) => other !== entry && other.identity === entry.identity)) continue;
+        const matches = sources.filter(({ source }) => source === entry.identity);
+        if (matches.length === 1 && !byVideo.has(matches[0].video)) {
+          byVideo.delete(entry.video);
+          byVideo.set(matches[0].video, entry);
+        }
       }
     }
     for (const [id, entry] of removed) { entry.lifetime.abort(); elements.delete(id); }

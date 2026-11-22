@@ -212,17 +212,21 @@ export function roomVoicePeople(state: ChannelSnapshot, roomId: string, levels: 
   return people;
 }
 
-/** The room supplies presence; multiple live endpoints still draw one person. */
-export function roomPresentUserIds(state: ChannelSnapshot, roomId: string) {
+/** Room membership persists through signaling recovery when media participation does. */
+export function roomPresentUserIds(state: ChannelSnapshot, roomId: string, activity = roomActivities(state, roomId)) {
   const sessions = new Set(state.channel.rooms.find(room => room.id === roomId)?.participantSessionIds);
-  return new Set(state.sessions.filter(value => value.online && sessions.has(value.id)).map(value => value.userId));
+  return new Set(state.sessions.filter(session => {
+    if (!sessions.has(session.id)) return false;
+    const person = activity.get(session.userId);
+    return session.online || !!(person?.voice || person?.sharing || person?.viewing);
+  }).map(session => session.userId));
 }
 
 export function roomPeople(state: ChannelSnapshot, roomId: string, profiles: ReadonlyMap<string, ChannelUser> = new Map(), local?: LocalWatchPresentation) {
   const room = state.channel.rooms.find(value => value.id === roomId);
   if (!room) return [];
-  const users = roomPresentUserIds(state, roomId);
   const activity = roomActivities(state, roomId, local);
+  const users = roomPresentUserIds(state, roomId, activity);
   return state.users.filter(user => users.has(user.id)).map(user => ({
     userId: user.id, name: user.name, avatar: profileAvatar(user, profiles.get(user.id)) ?? undefined, owner: user.id === (room.creatorId ?? state.channel.ownerId),
     ...(activity.get(user.id) ?? idleActivity()),

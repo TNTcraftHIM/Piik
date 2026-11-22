@@ -35,6 +35,34 @@ impl Message {
     }
 }
 
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(super) enum Mode {
+    Pinned,
+    Editing,
+    Panel,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Overlay {
+    pub token: uuid::Uuid,
+    pub voice_overlay: Mode,
+}
+
+pub(super) fn overlay_script(token: uuid::Uuid) -> String {
+    format!(r#"(() => {{
+      if (location.href !== 'about:blank' || window !== top) return;
+
+      Object.defineProperty(window, 'piikSetVoiceOverlay', {{value(mode) {{
+        if (window.opener?.documentPictureInPicture?.window !== window ||
+            !document.querySelector('.c3-room-tool') || !['pinned','editing','panel'].includes(mode)) return false;
+        window.opener.ipc.postMessage(JSON.stringify({{token:'{token}',voice_overlay:mode}}));
+        return true;
+      }} }});
+    }})()"#)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

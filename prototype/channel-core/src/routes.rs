@@ -349,12 +349,12 @@ impl Plan {
                 continue;
             }
             for &child in screen.neighbors.get(&parent).into_iter().flatten() {
-                if !self.admitted_output(parent, child, helpers, limits)
-                    || self.parents.contains_key(&child)
+                if self.parents.contains_key(&child)
                     || self
                         .failed_parents
                         .get(&child)
                         .is_some_and(|failed| failed.contains(&parent))
+                    || !self.admitted_output(parent, child, helpers, limits)
                     || !visited.insert(child)
                 {
                     continue;

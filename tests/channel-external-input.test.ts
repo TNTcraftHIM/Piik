@@ -103,10 +103,12 @@ test.each(["zh", "en"] as const)("OBS actual format reaches one %s alert and cle
     const permit = app.externalInput(publicationId)!;
     const unsupportedVideoFormat = { codec: "h264", profileIdc: 110, constraintFlags: 0, levelIdc: 52 };
     setCopy({ lang });
-    for (let attempt = 0; attempt < 3; attempt++) {
-      socket.receive({ type: "external_input_state", publicationId, state: "error", error: "external_video_format_unsupported", unsupportedVideoFormat });
+    const capacity = app.relayCapacity();
+    for (const format of [unsupportedVideoFormat, { ...unsupportedVideoFormat, bitDepth: 10 }, unsupportedVideoFormat]) {
+      socket.receive({ type: "external_input_state", publicationId, state: "error", error: "external_video_format_unsupported", unsupportedVideoFormat: format });
       const input = app.externalInput(publicationId)!;
-      expect(input).toMatchObject({ endpoint: permit.endpoint, token: permit.token, unsupportedVideoFormat });
+      expect(input).toMatchObject({ endpoint: permit.endpoint, token: permit.token });
+      expect(input.unsupportedVideoFormat).toEqual(unsupportedVideoFormat);
       const html = renderToStaticMarkup(createElement(ChannelExternalInput, { input, busy: false, onStop() {}, onClose() {} }));
       expect(html).toContain("High 10"); expect(html).toContain("6e0034"); expect(html).toContain("5.2");
       expect(html).toContain("NV12");
@@ -114,6 +116,9 @@ test.each(["zh", "en"] as const)("OBS actual format reaches one %s alert and cle
       expect(html).not.toContain("external_video_format_unsupported");
       expect(app.connected).toBe(true); expect(app.hasCapture(independent)).toBe(true);
     }
+    const result = { sessionId: crypto.randomUUID(), relayOverride: 2 };
+    socket.reply(result);
+    await expect(capacity).resolves.toEqual(result);
     prepared(socket, publicationId);
     expect(app.externalInput(publicationId)?.unsupportedVideoFormat).toBeUndefined();
     expect(app.externalInput(publicationId)?.error).toBeUndefined();

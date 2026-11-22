@@ -296,6 +296,10 @@ and Document PiP surfaces, source replacement, SDP track replacement during Nati
 handover, and signaling recovery with
 progressing media on retained connections. Native App and Server package checks
 verify bundled Web/WASM identity, notices, startup and orderly shutdown.
+Windows voice-overlay checks cover the App's own hosted-room entry, selected
+voice-room identity, click-through, window resizing and closure without leaving
+voice. Speaking indicators used synthetic input, including while the main window
+was minimized. Independently bookmarked sites do not receive this capability.
 Windows Server checks also cover IPv4/IPv6 wildcard listeners with working
 internal room hosting, and same-origin WebSockets on IPv6 loopback.
 The 216f5ee4 Windows package passed standard room backup and restore. A separate

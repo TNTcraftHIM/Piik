@@ -47,8 +47,8 @@ the feedback period; they do not delay that delivery.
   establish that their Native endpoints participated in the media route.
 - [ ] **beta.33 Browser window selection stalls.** Reproduce manual selection
   of another Chrome window on the reporting machine, including window audio.
-- [ ] **Intermittent App source-list failure.** Capture the failing platform,
-  `targets` request timing and returned error without recording window titles.
+- [ ] **Intermittent App source-list failure.** Obtain the failing platform and
+  opt-in source-request diagnostic with its elapsed time and outcome.
   Distinguish Web response timeout from platform enumeration failure; cancelling
   the picker must not let its late result change a replacement selection.
 - [ ] **beta.33 authenticated webpage sharing.** Reproduce the reported VIP
@@ -147,7 +147,9 @@ the feedback period; they do not delay that delivery.
 - [ ] **Mouse input stops when Host Chrome is minimized (#502).** The
   [supplied v2.5.2 reports](https://github.com/TNTcraftHIM/Piik/issues/502)
   retain the grant and receive authorized mouse events, but Windows `SendInput`
-  rejects a button event and subsequent release attempts. Capture whether local
+  rejects a button event and subsequent release attempts. The reporter still
+  sees remote control stop after returning to the desktop in v2.8.0; obtain a
+  matching diagnostic and distinguish mouse from keyboard input. Capture whether local
   physical input also stops during the refusal to identify its OS trigger.
   Keep the existing grant/release semantics and locate the OS rejection trigger
   before adding desktop recovery. Any recovery must restore the calling thread's

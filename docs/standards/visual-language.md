@@ -263,6 +263,10 @@ to move the same conversation, presence and voice content outside the workspace.
 Its action opens the compact external window directly when supported, with the
 existing in-page panel as the named alternative. Its selected trigger returns the
 same content to the page on a second activation, as does closing the window.
+The compact Windows App voice overlay uses the same external window and
+represents the selected voice activity. In pinned mode it passes pointer input
+through to applications beneath it. Its controls in Piik own adjustment and
+dismissal, and closing the window preserves voice participation.
 
 Keep the focus filmstrip compact and left aligned, with bounded thumbnail widths.
 Grid cards keep equal visual weight and column widths, centering an incomplete

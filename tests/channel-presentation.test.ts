@@ -115,7 +115,7 @@ it("shows each person's room activity across endpoints and keeps chat presence i
     channel: { id: "site", name: "Site", icon: "couch", ownerId: "self", roomCreationPolicy: "ordinary", hostingMode: "lightweight", historyWindow: 1000, userCount: 3, managedRoomIds: [], rooms: [{
       id: "room", name: "Room", icon: "couch", creatorId: "self", access: "public", hidden: false,
       hasPassword: false, authorized: true, canManage: true, available: true, reading: true,
-      participantSessionIds: ["self-page", "chat-page"], lastMessageSeq: 0,
+      participantSessionIds: ["self-page", "self-helper", "chat-page"], lastMessageSeq: 0,
       fileActivity: [{ sessionId: "self-helper", sending: true, receiving: false }, { sessionId: "route-peer", sending: false, receiving: true }],
       capabilities: { attachments: true },
     }] }, users: ["self", "chat", "route"].map(id => ({ id, name: id, version: "a".repeat(64) })),
@@ -188,7 +188,11 @@ it("shows each person's room activity across endpoints and keeps chat presence i
   expect(activities().map(user => user.id)).toEqual(["self"]);
   expect(render()).not.toContain('data-user-id="route"');
   expect(renderPeople()).toContain('data-user-id="route"');
-  expect(roomPeople(state, room.id).map(user => user.userId)).toEqual(["chat"]);
+  expect(roomPeople(state, room.id).map(user => user.userId)).toEqual(["self", "chat"]);
+  // A disconnected chat reader has no live media to keep them in the room.
+  state.sessions.find(session => session.id === "chat-page")!.online = false;
+  expect(roomPeople(state, room.id).map(user => user.userId)).toEqual(["self"]);
+  state.sessions.find(session => session.id === "chat-page")!.online = true;
 
   state.voice[0].deafened = false;
   state.voice.push({ roomId: room.id, sessionId: "route-peer", muted: false, deafened: false });
@@ -199,4 +203,7 @@ it("shows each person's room activity across endpoints and keeps chat presence i
   for (const surface of [render, renderPeople]) expect(surface()).toContain(`aria-label="${listenLabel}"`);
   streams.clear();
   for (const surface of [render, renderPeople]) expect(surface()).not.toContain(`aria-label="${listenLabel}"`);
+  state.publications = [];
+  state.voice = [];
+  expect(roomPeople(state, room.id).map(user => user.userId)).toEqual(["chat"]);
 });

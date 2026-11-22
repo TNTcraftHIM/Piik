@@ -60,6 +60,9 @@ address discovery is not planned.
 
 The current UI offers configurable microphone and listening shortcuts for the
 voice dock's selected room, with opt-in Windows background registration.
+On a site hosted by the Windows App, its room tool can show a compact voice
+overlay. The overlay follows the selected voice room and keeps the same voice
+session when it is adjusted or closed.
 Local failure guidance uses current operation facts and links to the matching
 3.0 guide. A failed site connection offers a user-requested same-origin check.
 App workspace navigation verifies the target site before leaving the

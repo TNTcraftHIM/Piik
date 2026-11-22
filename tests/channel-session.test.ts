@@ -2363,6 +2363,8 @@ test("Native capability catalog retains known choices without echoing future des
 });
 
 test("a silent source request times out and a late reply cannot replace its refresh", async () => {
+  const completed = vi.fn();
+  const operation = vi.spyOn(browserDiagnostics, "debugOperation").mockReturnValue(completed);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
     domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session } = await setup();
@@ -2394,6 +2396,16 @@ test("a silent source request times out and a late reply cannot replace its refr
     await expect(Promise.all([refresh, audioApplications])).resolves.toEqual([catalog, catalog]);
     app.receive({ id: first.id, result: null });
     expect(session.getSnapshot().appConnected).toBe(true);
+    const denied = session.nativeSources();
+    await vi.advanceTimersByTimeAsync(0);
+    app.receive({ id: app.sent.at(-1)!.id, error: "OS message with fixture window title" });
+    await expect(denied).rejects.toThrow("OS message");
+    const malformed = session.nativeSources();
+    await vi.advanceTimersByTimeAsync(0);
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await expect(malformed).rejects.toThrow();
+    expect(operation.mock.calls).toEqual(Array(4).fill(["native", "capture-targets"]));
+    expect(completed.mock.calls).toEqual([["app_request_timeout"], ["ready"], ["native_error"], ["invalid_response"]]);
   } finally { session.close(); }
 });
 

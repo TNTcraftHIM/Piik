@@ -16,7 +16,7 @@ export function panelWindowAPI(view: Window | null) {
 }
 
 /** One portal target survives adoption; the containing room owns its retirement. */
-export function usePanelWindow(enabled: boolean, onDocument?: (owner: Document) => void) {
+export function usePanelWindow(enabled: boolean, onDocument?: (owner: Document) => void, onNativeReady?: (owner: Document) => void) {
   const [container] = useState(() => {
     if (!enabled || typeof document === "undefined") return null;
     const node = document.createElement("div");
@@ -25,6 +25,8 @@ export function usePanelWindow(enabled: boolean, onDocument?: (owner: Document) 
   });
   const slot = useRef<HTMLSpanElement>(null);
   const lifetime = useRef<AbortController | null>(null);
+  const callbacks = useRef({ onDocument, onNativeReady });
+  useLayoutEffect(() => { callbacks.current = { onDocument, onNativeReady }; }, [onDocument, onNativeReady]);
   const [surfaceDocument, setSurfaceDocument] = useState<Document | null>(null);
   const [opening, setOpening] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -40,15 +42,15 @@ export function usePanelWindow(enabled: boolean, onDocument?: (owner: Document) 
     setOpening(true); setFailed(false);
     try {
       await openPanelWindow(container, controller.signal, owner => {
-        setSurfaceDocument(owner); onDocument?.(owner);
-      }, size);
+        setSurfaceDocument(owner); callbacks.current.onDocument?.(owner);
+      }, size, owner => callbacks.current.onNativeReady?.(owner));
     } catch { if (!controller.signal.aborted) setFailed(true); }
     finally { if (!controller.signal.aborted) setOpening(false); }
   }
   function close() {
     lifetime.current?.abort();
     setSurfaceDocument(null);
-    if (surfaceDocument) onDocument?.(container?.ownerDocument ?? document);
+    if (surfaceDocument) callbacks.current.onDocument?.(container?.ownerDocument ?? document);
     setOpening(false); setFailed(false);
   }
   return { container, slot, surfaceDocument, opening, failed, open, close,
@@ -56,7 +58,8 @@ export function usePanelWindow(enabled: boolean, onDocument?: (owner: Document) 
 }
 
 /** Adopt one stable portal, then return it on close. No second React root/session. */
-export async function openPanelWindow(container: HTMLElement, signal: AbortSignal, onDocument: (document: Document) => void, size?: PanelSize) {
+export async function openPanelWindow(container: HTMLElement, signal: AbortSignal, onDocument: (document: Document) => void, size?: PanelSize,
+  onNativeReady?: (owner: Document) => void) {
   const home = container.ownerDocument;
   const parent = container.parentElement;
   const api = panelWindowAPI(home.defaultView);
@@ -73,6 +76,7 @@ export async function openPanelWindow(container: HTMLElement, signal: AbortSigna
     pip.postMessage({ type: "piik-native-window-presentation", message: { kind: "panel", width: Math.round(width), height: Math.round(height) } }, "*");
     declared = true;
     pip.postMessage({ type: "piik-native-window-presentation", message: windowAppearance(home.documentElement) }, "*");
+    onNativeReady?.(pip.document);
   }
   function nativeReady(event: MessageEvent) {
     if (event.data !== "piik-native-window-ready") return;

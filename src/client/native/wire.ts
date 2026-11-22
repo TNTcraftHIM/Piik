@@ -15,7 +15,7 @@ export const nativeVoiceShortcutEventSchema = z.strictObject({
 export const unsupportedVideoFormatSchema = z.object({
   codec: z.literal("h264"), profileIdc: z.number().int().min(0).max(255),
   constraintFlags: z.number().int().min(0).max(255), levelIdc: z.number().int().min(0).max(255),
-}).strict();
+});
 export type UnsupportedVideoFormat = z.infer<typeof unsupportedVideoFormatSchema>;
 
 export const nativePageStateSchema = z.object({

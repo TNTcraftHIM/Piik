@@ -262,7 +262,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
           {owned && <Btn icon={ownerPaused ? "play" : "pause"} quiet size="dense"
             title={ownerPaused ? "watch.play" : "watch.pause"} disabled={disabled} onClick={() => onPlayback({ paused: !ownerPaused })} />}
           {!thumbnail && <div className="c3-watch-position" data-seeking={seekPreview !== null || undefined}>
-            {live && <span className="c3-watch-status">{t(live.active ? "watch.live" : "watch.liveEnded")}</span>}
+            {live && (!live.active || !seekAvailable) && <span className="c3-watch-status">{t(live.active ? "watch.live" : "watch.liveEnded")}</span>}
             {(!live || seekAvailable) && <span className="c3-watch-time" title={timeLabel}>{timeLabel}</span>}
           </div>}
           {owned && livePosition !== null && <Btn icon="arrowRight" quiet size="dense" title="watch.goLive" textTooltip
@@ -275,7 +275,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
           {localVolume && !thumbnail && <span className="c3-watch-inline-volume">
             <AudioVolumeControl {...localVolume} compact />
           </span>}
-          <WatchPlaybackSettings originalPage={surface.kind === "external"} receiving={receivingSettings} audio={thumbnail ? localVolume : undefined} audioAvailable={audioAvailable}
+          <WatchPlaybackSettings originalPage={surface.kind === "external"} receiving={receivingSettings} audio={localVolume} audioAvailable={audioAvailable}
             playback={owned && !embedded ? { rate: media.rate, rates: player.media.playbackRates?.() ?? [0.5, 0.75, 1, 1.25, 1.5, 2], disabled,
               onRate: rate => onPlayback({ rate }) } : undefined}>
             {settingsOriginal && <Btn icon="window" quiet title="watch.openPage" cap="watch.openPage" size="compact"

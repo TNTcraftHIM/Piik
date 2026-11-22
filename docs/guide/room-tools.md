@@ -197,8 +197,15 @@ controls and drafts to the page.
 In simple sharing, **Interact** first opens the inline panel while the couch
 stays visible. Its picture-in-picture action can then move the room tool to a small window.
 
-Opening or closing this window does not join or leave voice. A windowed or
-borderless game lets you keep it visible; exclusive fullscreen may cover it.
+On a site hosted by your own Windows Piik App, join voice in the App and choose
+**Open voice overlay** in the voice controls. The compact overlay stays on top,
+shows who is speaking and lets clicks reach the app beneath it.
+Choose **Adjust voice overlay** in Piik to drag or resize the overlay, then choose
+**Pin voice overlay** or press Esc. To dismiss it while pinned, choose **Close**
+in Piik’s voice controls. While adjusting, you can also close it from its title bar.
+
+Your voice call continues when you close either window. A windowed or borderless
+game lets you keep the window visible. Exclusive fullscreen may cover it.
 
 ## Let a friend control your shared screen
 

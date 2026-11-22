@@ -158,7 +158,9 @@ enum ServiceEvent {
         entry: String,
         launcher: url::Url,
     },
-    Navigate(String),
+    Navigate(String, bool),
+    OverlayAvailable(String, u64),
+    VoiceOverlay(popup::Overlay, String, u64),
     ContentLoading(String),
     Mount(watch_mount::Request, String, u64),
     Finished,
@@ -303,8 +305,15 @@ struct WorkspaceOrigins {
     launcher: Option<url::Origin>,
     site: Option<url::Origin>,
     opening: Option<url::Origin>,
+    local_room: Option<url::Origin>,
 }
 impl WorkspaceOrigins {
+    fn overlay_document(&self, address: &str) -> bool {
+        url::Url::parse(address).is_ok_and(|url| {
+            let origin = Some(url.origin());
+            (origin == self.local_room || origin == self.launcher) && matches!(url.path(), "/" | "/index.html")
+        })
+    }
     fn handles(&self, address: &str, open_external: bool) -> bool {
         if address == "about:blank" {
             return true;
@@ -348,6 +357,9 @@ fn workspace_navigation(view: &WebView, origins: Rc<RefCell<WorkspaceOrigins>>) 
 }
 
 struct PopupWindow {
+    overlay_document: Option<u64>,
+    overlay_token: uuid::Uuid,
+    panel_geometry: std::cell::Cell<Option<(LogicalSize<f64>, bool)>>,
     caption: caption::Caption,
     content: WebView,
     window: Rc<Window>,
@@ -355,6 +367,7 @@ struct PopupWindow {
 impl PopupWindow {
     fn new(
         window: Rc<Window>,
+        overlay_document: Option<u64>,
         environment: webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Environment,
         events: EventLoopProxy<ServiceEvent>,
         pending: PendingPermissions,
@@ -365,8 +378,12 @@ impl PopupWindow {
         let presentation = events.clone();
         let title_events = events.clone();
         let load_events = events.clone();
-        let webview = WebViewBuilder::new()
-            .with_environment(environment)
+        let token = uuid::Uuid::new_v4();
+        let mut builder = WebViewBuilder::new();
+        if overlay_document.is_some() {
+            builder = builder.with_initialization_script_for_main_only(popup::overlay_script(token), true);
+        }
+        let webview = builder.with_environment(environment)
             .with_new_window_req_handler({
                 let origins = origins.clone();
                 move |url, _| {
@@ -409,7 +426,38 @@ impl PopupWindow {
                 })), &mut Default::default(),
             )?;
         }
-        Ok(Self { caption, content: webview, window })
+        Ok(Self {
+            overlay_document, overlay_token: token,
+            panel_geometry: Default::default(), caption, content: webview, window,
+        })
+    }
+
+    fn set_overlay_mode(&self, mode: popup::Mode, controls: &WindowControls) {
+        let pinned = matches!(mode, popup::Mode::Pinned);
+        if self.window.set_ignore_cursor_events(pinned).is_err() {
+            return;
+        }
+        self.window.set_focusable(!pinned);
+        if matches!(mode, popup::Mode::Panel) {
+            if let Some((size, maximized)) = self.panel_geometry.take() {
+                self.window.set_maximized(false);
+                self.window.set_inner_size(size);
+                self.window.set_maximized(maximized);
+            }
+        } else if self.panel_geometry.get().is_none() {
+            let maximized = self.window.is_maximized();
+            if maximized {
+                self.window.set_maximized(false);
+            }
+            let size = self.window.inner_size().to_logical::<f64>(self.window.scale_factor());
+            self.panel_geometry.set(Some((size, maximized)));
+            self.window.set_inner_size(caption::window_size(LogicalSize::new(304., 136.), controls));
+        }
+        self.window.set_always_on_top(true);
+        if matches!(mode, popup::Mode::Editing) {
+            self.window.set_focus();
+            let _ = self.content.focus();
+        }
     }
 
     fn follow_main_appearance(&self, launcher: Option<&url::Url>, theme: &Theme, language: Language) {
@@ -475,6 +523,7 @@ impl MainWindow {
         let ipc_document = document.clone();
         let origins = Rc::new(RefCell::new(WorkspaceOrigins::default()));
         let popup_origins = origins.clone();
+        let opener_generation = document.clone();
         let content = WebViewBuilder::new_with_web_context(context).with_url("about:blank")
             .with_initialization_script(CAPABILITY)
             .with_initialization_script(reveal::SCRIPT)
@@ -485,9 +534,15 @@ impl MainWindow {
                 if matches!(event, PageLoadEvent::Started) {
                     loading_document.set(loading_document.get().wrapping_add(1));
                     let _ = load_events.send_event(ServiceEvent::ContentLoading(url));
+                } else {
+                    let _ = load_events.send_event(ServiceEvent::OverlayAvailable(url, loading_document.get()));
                 }
             })
             .with_ipc_handler(move |request| {
+                if let Ok(message) = serde_json::from_str::<popup::Overlay>(request.body()) {
+                    let _ = content_events.send_event(ServiceEvent::VoiceOverlay(message, request.uri().to_string(), ipc_document.get()));
+                    return;
+                }
                 if let Ok(request_body) = serde_json::from_str::<watch_mount::Request>(request.body()) {
                     let _ = content_events.send_event(ServiceEvent::Mount(request_body, request.uri().to_string(), ipc_document.get()));
                     return;
@@ -506,7 +561,12 @@ impl MainWindow {
                 let create = || -> Result<NewWindowResponse> {
                     let window = Rc::new(popup::builder(window_builder()?, features.size, features.position, &popup_controls)
                         .with_decorations(false).with_undecorated_shadow(true).build(&popup_target)?);
-                    let popup = PopupWindow::new(window, features.opener.environment, popup_events.clone(),
+                    let mut opener = windows_core::PWSTR::null();
+                    unsafe { features.opener.webview.Source(&mut opener)?; }
+                    let address = webview2_com::take_pwstr(opener);
+                    let overlay_document = (url == "about:blank" && popup_origins.borrow().overlay_document(&address))
+                        .then(|| opener_generation.get());
+                    let popup = PopupWindow::new(window, overlay_document, features.opener.environment, popup_events.clone(),
                         popup_pending.clone(), popup_origins.clone(), &popup_controls)?;
                     let response = NewWindowResponse::Create { webview: popup.content.webview() };
                     popups.borrow_mut().push(popup);
@@ -642,8 +702,8 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
     });
     let navigation = events.create_proxy();
     config.window_navigation = window.as_ref().map(|_| {
-        app::WindowNavigation::new(move |url| {
-            navigation.send_event(ServiceEvent::Navigate(url)).is_ok()
+        app::WindowNavigation::new(move |url, local| {
+            navigation.send_event(ServiceEvent::Navigate(url, local)).is_ok()
         })
     });
     let page_events = events.create_proxy();
@@ -717,6 +777,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             }
             Event::UserEvent(ServiceEvent::ContentLoading(url)) => {
                 pages.release_mounts();
+                popups.borrow_mut().retain(|child| child.panel_geometry.get().is_none());
                 if let Some(main) = &window {
                     if prompt.as_ref().is_some_and(|dialog| dialog.stale(main)) { prompt.take(); }
                     let origin = url::Url::parse(&url).ok().map(|page| page.origin());
@@ -861,7 +922,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                         launcher.set_fragment(Some(&fragment.finish()));
                         let window = Rc::new(popup::builder(window_builder()?, None, None, &controls)
                             .with_decorations(false).with_undecorated_shadow(true).build(target)?);
-                        let popup = PopupWindow::new(window, main.content.environment(), page_events.clone(), pending.clone(), main.origins.clone(), &controls)?;
+                        let popup = PopupWindow::new(window, None, main.content.environment(), page_events.clone(), pending.clone(), main.origins.clone(), &controls)?;
                         popup.content.load_url(launcher.as_str())?;
                         bookmarks_window = Some(popup.window.id());
                         popups.borrow_mut().push(popup);
@@ -872,9 +933,11 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                     }
                 }
             }
-            Event::UserEvent(ServiceEvent::Navigate(url)) => {
+            Event::UserEvent(ServiceEvent::Navigate(url, local)) => {
                 if let Some(main) = &window {
-                    main.origins.borrow_mut().opening = url::Url::parse(&url).ok().map(|u| u.origin());
+                    let origin = url::Url::parse(&url).ok().map(|u| u.origin());
+                    main.origins.borrow_mut().local_room = local.then(|| origin.clone()).flatten();
+                    main.origins.borrow_mut().opening = origin;
                     match main.content.load_url(&url) {
                         Ok(()) => {
                             main.window.set_minimized(false);
@@ -887,9 +950,34 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                     }
                 }
             }
+            Event::UserEvent(ServiceEvent::OverlayAvailable(address, generation)) => {
+                if let Some(main) = &window {
+                    if generation == main.document.get() && main.origins.borrow().overlay_document(&address)
+                        && main.content.url().ok().is_some_and(|url| main.origins.borrow().overlay_document(&url))
+                    {
+                        let url = url::Url::parse(&address).expect("eligible room URL");
+                        let origin = serde_json::json!(url.origin().ascii_serialization());
+                        let path = serde_json::json!(url.path());
+                        let _ = main.content.evaluate_script(&format!(
+                            "if(location.origin==={origin}&&location.pathname==={path}){{window.piikVoiceOverlay=true;dispatchEvent(new Event('piik-overlay-available'))}}"
+                        ));
+                    }
+                }
+            }
+            Event::UserEvent(ServiceEvent::VoiceOverlay(message, source, generation)) => {
+                let Some(main) = &window else { return };
+                let children = popups.borrow();
+                let Some(child) = children.iter().find(|child| child.overlay_token == message.token) else { return };
+                let mode = message.voice_overlay;
+                if generation != main.document.get() || !main.origins.borrow().overlay_document(&source) { return; }
+                if child.overlay_document != Some(main.document.get()) || !main.content.url().ok().is_some_and(|url| main.origins.borrow().overlay_document(&url))
+                    || child.content.url().ok().as_deref() != Some("about:blank") { return; }
+                child.set_overlay_mode(mode, &controls);
+            }
             Event::UserEvent(ServiceEvent::PopupPresentation(id, message)) => {
                 if let Some(size) = message.panel_size() {
                     if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == id) {
+                        if child.panel_geometry.get().is_some() { return; }
                         child.window.set_always_on_top(true);
                         child.window.set_inner_size(caption::window_size(size, &controls));
                     }
@@ -912,7 +1000,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             Event::UserEvent(ServiceEvent::Ready { entry, launcher }) => {
                 if let Some(main) = &window {
                     let site = url::Url::parse(&entry).ok().map(|u| u.origin());
-                    *main.origins.borrow_mut() = WorkspaceOrigins { launcher: Some(launcher.origin()), site, opening: None };
+                    *main.origins.borrow_mut() = WorkspaceOrigins { launcher: Some(launcher.origin()), site, opening: None, local_room: None };
                 }
                 launcher_url = Some(launcher);
                 let opened = match &window {
