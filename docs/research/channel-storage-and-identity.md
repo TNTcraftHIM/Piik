@@ -421,7 +421,7 @@ A session-only source must not be presented as a retained copy.
 
 Conversation messages retain the original attachment descriptor and an optional
 thumbnail. The sender encodes a still frame for PNG, JPEG, WebP and GIF input.
-It fits the longer edge within 640 pixels and the shared 512 KiB message budget,
+It fits the longer edge within 1280 pixels and the shared 512 KiB message budget,
 trying smaller dimensions when necessary. Images that cannot produce a distinct
 thumbnail keep their ordinary attachment card.
 

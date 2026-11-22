@@ -561,9 +561,8 @@ Each message supports 2,000 Unicode characters and up to eight attachments.
 Text supports Markdown emphasis, lists, quotes, links, inline code and fenced code
 blocks with a copy action. Formatting preserves the saved message and confirmed
 mention identities; code remains literal and message HTML is not executed.
-Images share a 512 KiB thumbnail budget per message. History keeps a static
-thumbnail with a maximum long edge of 640 pixels. Original pictures and animations
-come from a local copy or an available file holder.
+Room history keeps a [bounded static thumbnail](../../docs/research/channel-storage-and-identity.md#retained-files-and-images).
+Original pictures and animations come from a local copy or an available file holder.
 Read pages and drafts stay in memory; refreshing retrieves history from the host.
 There is no separate offline history database or peer history replication.
 
@@ -639,7 +638,9 @@ uses the separate App connection.
 Saved data belongs to its domain or room runtime. Server defaults to
 `data/channel.sqlite` beside its executable. `PIIK_CHANNEL_DATA_DIR` chooses a
 different real directory; point it at an existing source-run directory to reuse
-that data. The domain checkpoint stores catalog summaries, identities and its
+that data. Only one running instance can use a channel data directory at a time.
+After it shuts down, another instance can reopen the same directory.
+The domain checkpoint stores catalog summaries, identities and its
 owner admission key. Room files under `rooms/<domainId>/<ownerId>/`
 store each room's policy, grants and confirmed history. Only a newly created
 standalone Server site bootstraps Living room, Studio and Quiet corner;

@@ -18,17 +18,8 @@ html[data-piik-native-window="integrated"] :is(.c3-site-bar, .lr-app > .lr-top, 
   top: 0;
   z-index: 12;
   background: var(--wall);
-}
-html[data-piik-native-window="integrated"] :is(.lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading) { app-region: drag; }
-/* Keep the site's drag region contiguous as its interactive controls change. */
-html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) .c3-site-bar::after {
-  content: "";
-  order: 1;
-  flex: 1 0 24px;
-  align-self: stretch;
   app-region: drag;
 }
-html[data-piik-native-window="integrated"] .c3-site-bar > .c3-global-tools { order: 2; }
 html[data-piik-native-window] .lr-header-controls .lr-btn.is-quiet:not([popover] .lr-btn) {
   --muted: var(--ink);
 }

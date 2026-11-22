@@ -8,7 +8,7 @@ import { VisibleFileAvailability } from "./file-availability";
 import { inlineImageFile, prepareInlineImage } from "./image-preview";
 import { openTransferStorage, type TransferStorage } from "./transfer-storage";
 
-export const attachmentLimitsSchema = z.object({ maxFileBytes: z.number().positive(), maxAttachmentsPerMessage: z.number().positive(), maxRetainedBytes: z.number().positive(), maxRetainedFiles: z.number().positive(), maxInlineImageBytes: z.number().int().positive() });
+export const attachmentLimitsSchema = z.object({ maxFileBytes: z.number().positive(), maxAttachmentsPerMessage: z.number().positive(), maxRetainedBytes: z.number().positive(), maxRetainedFiles: z.number().positive(), maxInlineImageBytes: z.number().int().positive(), maxInlineImageEdge: z.number().int().positive() });
 export type AttachmentLimits = z.infer<typeof attachmentLimitsSchema>;
 export interface DraftFile { id: string; file: File }
 export interface PreparedFile extends DraftFile { attachment: ChannelAttachment; inlineImage?: ImageRendition }
@@ -437,7 +437,7 @@ export class ChannelAttachments {
         let inlineImage: ImageRendition | undefined;
         if (mediaType.startsWith("image/")) {
           const budget = Math.floor((limits.maxInlineImageBytes - inlineBytes) / remainingImages--);
-          inlineImage = await prepareInlineImage(entry.file, mediaType, budget, preparation);
+          inlineImage = await prepareInlineImage(entry.file, mediaType, budget, limits.maxInlineImageEdge, preparation);
           preparation.throwIfAborted();
           if (inlineImage) inlineBytes += Math.floor(inlineImage.data.length / 4) * 3 - (inlineImage.data.endsWith("==") ? 2 : inlineImage.data.endsWith("=") ? 1 : 0);
         }

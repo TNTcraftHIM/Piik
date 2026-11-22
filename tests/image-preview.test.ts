@@ -9,17 +9,17 @@ test("byte-identical and over-budget encodings stay out of history", async () =>
   vi.stubGlobal("Image", class { naturalWidth = 1; naturalHeight = 1; async decode() {} });
   vi.stubGlobal("document", { createElement: () => ({ getContext: () => ({ drawImage() {} }),
     toBlob: (callback: BlobCallback) => callback(rendition) }) });
-  expect(await prepareInlineImage(file, file.type, 1024)).toBeUndefined();
+  expect(await prepareInlineImage(file, file.type, 1024, 1280)).toBeUndefined();
   rendition = new Blob(["xyz"], { type: "image/png" });
-  expect(await prepareInlineImage(file, file.type, rendition.size)).toMatchObject({ data: btoa("xyz"), mediaType: "image/png" });
-  expect(await prepareInlineImage(file, file.type, rendition.size - 1)).toBeUndefined();
+  expect(await prepareInlineImage(file, file.type, rendition.size, 1280)).toMatchObject({ data: btoa("xyz"), mediaType: "image/png" });
+  expect(await prepareInlineImage(file, file.type, rendition.size - 1, 1280)).toBeUndefined();
 });
 
 test("unsupported input and cancelled work cannot begin image decoding", async () => {
   const image = vi.fn(); vi.stubGlobal("Image", image);
-  expect(await prepareInlineImage(new File(["<svg/>"], "unsafe.svg"), "image/svg+xml", 65536)).toBeUndefined();
+  expect(await prepareInlineImage(new File(["<svg/>"], "unsafe.svg"), "image/svg+xml", 65536, 1280)).toBeUndefined();
   const request = new AbortController(); request.abort();
-  await expect(prepareInlineImage(new File(["bytes"], "image.png"), "image/png", 65536, request.signal)).rejects.toMatchObject({ name: "AbortError" });
+  await expect(prepareInlineImage(new File(["bytes"], "image.png"), "image/png", 65536, 1280, request.signal)).rejects.toMatchObject({ name: "AbortError" });
   expect(image).not.toHaveBeenCalled();
 });
 
@@ -35,7 +35,7 @@ test("cancelling a pending decode retires its URL and ignores a late result", as
   vi.stubGlobal("Image", class { decode() { return pendingDecode; } removeAttribute = removeAttribute; });
   vi.stubGlobal("document", { createElement });
 
-  const preview = prepareInlineImage(file, file.type, 1024, request.signal);
+  const preview = prepareInlineImage(file, file.type, 1024, 1280, request.signal);
   const cancelled = expect(preview).rejects.toMatchObject({ name: "AbortError" });
   request.abort();
   await cancelled;

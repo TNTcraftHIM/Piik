@@ -260,8 +260,6 @@ pub(super) async fn export_domain(State(domain): State<Domain>, headers: HeaderM
         let (_, hub) = owner(&domain, &headers)?;
         let checkpoint = hub
             .storage
-            .lock()
-            .unwrap()
             .load()
             .map_err(|error| backup::error(StatusCode::INTERNAL_SERVER_ERROR, error))?
             .expect("opened domain has a checkpoint");

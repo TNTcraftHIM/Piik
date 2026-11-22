@@ -241,7 +241,8 @@ impl MessageDraft {
                 || image.media_type == "application/octet-stream"
                 || crate::attachment::sniff_media_type(&bytes) != image.media_type
                 || (!allow_legacy_images
-                    && (image.original || image.width > 640 || image.height > 640))
+                    && (image.original
+                        || image.width.max(image.height) > ATTACHMENT_LIMITS.max_inline_image_edge))
             {
                 return Err("invalid_inline_images");
             }
@@ -619,8 +620,8 @@ mod inline_tests {
             data: Base64::encode_string(b"RIFFabcdWEBPpreview"),
             media_type: "image/webp".into(),
             original: false,
-            width: 640,
-            height: 320,
+            width: ATTACHMENT_LIMITS.max_inline_image_edge,
+            height: 640,
         };
         assert!(
             check(
@@ -650,7 +651,7 @@ mod inline_tests {
                 ..preview.clone()
             },
             ImageRendition {
-                width: 641,
+                width: ATTACHMENT_LIMITS.max_inline_image_edge + 1,
                 ..preview.clone()
             },
             ImageRendition {

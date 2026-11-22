@@ -12,7 +12,7 @@ function encoded(bytes: Uint8Array): string {
   return btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join(""));
 }
 
-export async function prepareInlineImage(file: File, mediaType: string, budget: number, signal?: AbortSignal): Promise<ImageRendition | undefined> {
+export async function prepareInlineImage(file: File, mediaType: string, budget: number, maxEdge: number, signal?: AbortSignal): Promise<ImageRendition | undefined> {
   signal?.throwIfAborted();
   if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(mediaType) || budget < 1) return undefined;
   const image = new Image();
@@ -24,7 +24,7 @@ export async function prepareInlineImage(file: File, mediaType: string, budget: 
     const canvas = preparedCanvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
     if (!context) return undefined;
-    for (const edge of [640, 320, 160]) {
+    for (const edge of [maxEdge, 640, 320, 160]) {
       const scale = Math.min(1, edge / Math.max(image.naturalWidth, image.naturalHeight));
       canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
       canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));

@@ -5710,7 +5710,7 @@ test("a confirmed file becomes a session source while its sender reads an older 
   const file = new File(["saved"], "note.txt"), id = crypto.randomUUID();
   const attachment = { id, name: file.name, size: file.size, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
   vi.spyOn(session.attachments, "describe").mockResolvedValue([{ id, file, attachment }]);
-  vi.spyOn(session.attachments, "limits").mockResolvedValue({ maxFileBytes: 100, maxInlineImageBytes: 65536, maxAttachmentsPerMessage: 8, maxRetainedBytes: 20, maxRetainedFiles: 2 });
+  vi.spyOn(session.attachments, "limits").mockResolvedValue({ maxFileBytes: 100, maxInlineImageBytes: 65536, maxInlineImageEdge: 1280, maxAttachmentsPerMessage: 8, maxRetainedBytes: 20, maxRetainedFiles: 2 });
   try {
     await peer.history([message(2)], true);
     await peer.history([message(1)], false, true);
@@ -5734,7 +5734,7 @@ test("retained files offer only authorized rooms and eviction withdraws cache so
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([{ key, attachment: descriptor, file: cached }, { key: { ...key, roomId: "unreadable" }, attachment: descriptor, file: cached }]);
   const retain = vi.spyOn(FileStore.prototype, "retain").mockResolvedValue({ file: selected, evicted: [key] });
   const { session, socket } = await setup();
-  vi.spyOn(session.attachments, "limits").mockResolvedValue({ maxFileBytes: 100, maxInlineImageBytes: 65536, maxAttachmentsPerMessage: 8, maxRetainedBytes: 20, maxRetainedFiles: 2 });
+  vi.spyOn(session.attachments, "limits").mockResolvedValue({ maxFileBytes: 100, maxInlineImageBytes: 65536, maxInlineImageEdge: 1280, maxAttachmentsPerMessage: 8, maxRetainedBytes: 20, maxRetainedFiles: 2 });
   try {
     await vi.waitFor(() => expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...key, available: true })));
     expect(socket.sent.some(command => command.type === "file_offer" && command.roomId === "unreadable")).toBe(false);
@@ -5780,7 +5780,7 @@ test("restored file bytes retain their digest and remain readable when optional 
   const list = vi.spyOn(FileStore.prototype, "list").mockResolvedValue([entry, { ...entry, key: { ...key, roomId: "second" } }]);
   const retain = vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new DOMException("Full", "QuotaExceededError"));
   const { session, socket } = await setup();
-  const limits = vi.spyOn(session.attachments, "limits").mockResolvedValue({ maxFileBytes: 100, maxInlineImageBytes: 65536, maxAttachmentsPerMessage: 8, maxRetainedBytes: 20, maxRetainedFiles: 2 });
+  const limits = vi.spyOn(session.attachments, "limits").mockResolvedValue({ maxFileBytes: 100, maxInlineImageBytes: 65536, maxInlineImageEdge: 1280, maxAttachmentsPerMessage: 8, maxRetainedBytes: 20, maxRetainedFiles: 2 });
   try {
     await expect(session.attachments.retained("first")).resolves.toEqual([entry]);
     const calls = list.mock.calls.length;
@@ -5799,7 +5799,7 @@ test("restored file bytes retain their digest and remain readable when optional 
     const state = structuredClone(session.getSnapshot().state!);
     state.sessions[0].userId = "new-user"; state.users = [{ ...state.users[0], id: "new-user" }];
     socket.receive({ type: "state", state });
-    ready({ maxFileBytes: 100, maxInlineImageBytes: 65536, maxAttachmentsPerMessage: 8, maxRetainedBytes: 20, maxRetainedFiles: 2 });
+    ready({ maxFileBytes: 100, maxInlineImageBytes: 65536, maxInlineImageEdge: 1280, maxAttachmentsPerMessage: 8, maxRetainedBytes: 20, maxRetainedFiles: 2 });
     await expect(restoring).resolves.toBe(false);
     expect(retain).toHaveBeenCalledTimes(before);
   } finally { session.close(); }
@@ -8122,7 +8122,7 @@ test.each([true, false])("a verified download survives optional retention (store
   });
   const command = vi.fn(async () => {});
   const files = new ChannelAttachments(command, async () => {});
-  vi.spyOn(files, "limits").mockResolvedValue({ maxFileBytes: 100, maxInlineImageBytes: 65536, maxAttachmentsPerMessage: 8, maxRetainedBytes: 20, maxRetainedFiles: 2 });
+  vi.spyOn(files, "limits").mockResolvedValue({ maxFileBytes: 100, maxInlineImageBytes: 65536, maxInlineImageEdge: 1280, maxAttachmentsPerMessage: 8, maxRetainedBytes: 20, maxRetainedFiles: 2 });
   files.update("session", { domainId: "domain", userId: "user" }, [], rooms, []);
   try {
     const receiving = files.content(key, attachment, new AbortController().signal);
@@ -9509,7 +9509,7 @@ async function setupRoomBackup() {
   vi.stubGlobal("indexedDB", {});
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
     initializeRuntime: async () => {},
-    attachment_limits: () => JSON.stringify({ maxFileBytes: 1024, maxInlineImageBytes: 65536, maxAttachmentsPerMessage: 8, maxRetainedBytes: 1024, maxRetainedFiles: 8 }),
+    attachment_limits: () => JSON.stringify({ maxFileBytes: 1024, maxInlineImageBytes: 65536, maxInlineImageEdge: 1280, maxAttachmentsPerMessage: 8, maxRetainedBytes: 1024, maxRetainedFiles: 8 }),
     BrowserRoomHost: { storedRoomIds: async () => ["first"], openExisting: open, open, stage: vi.fn(async () => stage) },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const context = await setup();

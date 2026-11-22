@@ -1,6 +1,6 @@
 import { FileStore } from "../../../src/client/channel/file-store";
 import { checkTransferStorage } from "./transfer-storage";
-import { BrowserRoomHost, conversation_broadcast, createRoomPolicy, createSessionSigner, initializeRuntime, decode_control, encode_control, verify_conversation, type SentResult } from "../src/room-host";
+import { BrowserRoomHost, attachment_limits, conversation_broadcast, createRoomPolicy, createSessionSigner, initializeRuntime, decode_control, encode_control, verify_conversation, type SentResult } from "../src/room-host";
 import type { SignedConversationPacket } from "../../../src/client/channel/protocol";
 import { IDENTITY_IMAGE_URL_BYTES, identityIconSchema } from "../../../src/client/channel/protocol";
 import { imageBytes, prepareInlineImage } from "../../../src/client/channel/image-preview";
@@ -331,7 +331,8 @@ window.runBrowserRoomCheck = async () => {
       const digest = await crypto.subtle.digest("SHA-256", await gif.arrayBuffer());
       const attachment = { ...image, id: crypto.randomUUID(), name: gif.name, size: gif.size,
         sha256: Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("") };
-      const thumbnail = await prepareInlineImage(gif, gif.type, 65536);
+      const { maxInlineImageBytes, maxInlineImageEdge } = JSON.parse(attachment_limits());
+      const thumbnail = await prepareInlineImage(gif, gif.type, maxInlineImageBytes, maxInlineImageEdge);
       check(thumbnail && !thumbnail.original && thumbnail.data !== gifData && thumbnail.width === 1,
         "a tiny GIF gets distinct message-owned thumbnail bytes from the real browser encoder");
       const chat = { type: "chat", text: "", nonce: "small-gif", attachments: [attachment] };

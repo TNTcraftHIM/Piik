@@ -79,7 +79,21 @@ fn domain_keys_belong_to_its_data_and_old_checkpoints_remain_untouched() {
         assert_eq!(owner.user, identity.1);
         old_checkpoint = serde_json::to_value(hub.authority.export_state()).unwrap();
     }
+    let in_flight = domain.hub.clone();
     drop(domain);
+    let contender = Domain::open_with_options(
+        &folder,
+        "saved-owner",
+        "http://localhost".into(),
+        None,
+        vec![],
+        RoomCreationPolicy::Ordinary,
+        Some(HostingMode::Lightweight),
+    );
+    assert!(
+        matches!(contender, Err(error) if error.to_string() == "This channel data directory is already in use")
+    );
+    drop(in_flight);
     for owner_seed in ["different-owner", ""] {
         let reopened = open(owner_seed).unwrap();
         assert_eq!(reopened.identity(), identity);
@@ -149,7 +163,7 @@ fn profile_storage_failure_preserves_the_shared_user_until_commit_and_reopen() {
         owner.drain();
         observer.drain();
         let initial_profile = read_profile(&mut hub, &mut owner, user);
-        let saved = hub.storage.lock().unwrap().load().unwrap().unwrap();
+        let saved = hub.storage.load().unwrap().unwrap();
         let failure = rusqlite::Connection::open(folder.path().join("channel.sqlite")).unwrap();
         failure.execute_batch("CREATE TRIGGER reject_profile BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'held'); END;").unwrap();
         owner.request(&mut hub, json!({"type":"set_profile", "name":"New profile", "avatar":avatar, "requestId":"profile"}));
@@ -161,7 +175,7 @@ fn profile_storage_failure_preserves_the_shared_user_until_commit_and_reopen() {
             .iter()
             .any(|event| event["type"] == "ack" || event["type"] == "state"));
         assert!(observer.drain().is_empty());
-        assert_eq!(hub.storage.lock().unwrap().load().unwrap().unwrap(), saved);
+        assert_eq!(hub.storage.load().unwrap().unwrap(), saved);
         assert_eq!(hub.authority.owner_name(), Some("Friend"));
         assert_eq!(read_profile(&mut hub, &mut observer, user), initial_profile);
         failure
@@ -216,11 +230,12 @@ fn profile_storage_failure_preserves_the_shared_user_until_commit_and_reopen() {
 fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
     let path = std::env::temp_dir().join(format!("piik-domain-metadata-{}.sqlite", Uuid::new_v4()));
     let mut hub = Hub {
+        _directory_owner: None,
         authority: Authority::new("owner".into(), vec![]).unwrap(),
         clients: BTreeMap::new(),
         invitation_origin: None,
         room_commands: None,
-        storage: Arc::new(Mutex::new(storage::Storage::open(&path).unwrap())),
+        storage: storage::Storage::open(&path).unwrap(),
     };
     let mut owner = Endpoint::join(&mut hub, "owner");
     let mut guest = Endpoint::join(&mut hub, "invite");
@@ -254,7 +269,7 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
         original
     );
     assert_eq!(
-        hub.storage.lock().unwrap().load().unwrap().unwrap()["state"],
+        hub.storage.load().unwrap().unwrap()["state"],
         original
     );
     database
@@ -297,13 +312,12 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
 #[test]
 fn retired_or_closing_connections_cannot_execute_queued_requests() {
     let mut hub = Hub {
+        _directory_owner: None,
         authority: Authority::new("owner".into(), vec![]).unwrap(),
         clients: BTreeMap::new(),
         invitation_origin: None,
         room_commands: None,
-        storage: Arc::new(Mutex::new(
-            storage::Storage::open(Path::new(":memory:")).unwrap(),
-        )),
+        storage: storage::Storage::open(Path::new(":memory:")).unwrap(),
     };
     let mut active = Endpoint::join(&mut hub, "owner");
     let mut retired = Endpoint::join(&mut hub, "invite");
@@ -405,9 +419,10 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
     let directory_store = storage::Storage::open(&directory_path).unwrap();
     let mut room_store = storage::Storage::open(&room_path).unwrap();
     let mut hub = Hub {
+        _directory_owner: None,
         authority: Authority::new("owner".into(), vec![]).unwrap(),
         clients: BTreeMap::new(),
-        storage: Arc::new(Mutex::new(directory_store)),
+        storage: directory_store,
         invitation_origin: None,
         room_commands: None,
     };
@@ -494,7 +509,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         "the real room store committed first"
     );
     assert_eq!(
-        hub.storage.lock().unwrap().load().unwrap().unwrap()["state"]["hostedRooms"]["hosted"]
+        hub.storage.load().unwrap().unwrap()["state"]["hostedRooms"]["hosted"]
             ["access"],
         "public",
         "the directory checkpoint really failed"
@@ -1311,8 +1326,6 @@ async fn invitation_origin_is_only_a_second_exact_http_entry() {
         .lock()
         .unwrap()
         .storage
-        .lock()
-        .unwrap()
         .load()
         .unwrap()
         .unwrap();

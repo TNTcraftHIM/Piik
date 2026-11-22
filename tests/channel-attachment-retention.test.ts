@@ -17,7 +17,7 @@ const message: ChannelMessage = { id: "message", seq: 1, userId: "self", time: 1
 
 function setup(command = async (_command: ChannelCommand) => {}) {
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ initializeRuntime: async () => {},
-    attachment_limits: () => JSON.stringify({ maxFileBytes: 1024, maxAttachmentsPerMessage: 8, maxRetainedBytes: 1024, maxRetainedFiles: 8, maxInlineImageBytes: 65536 }),
+    attachment_limits: () => JSON.stringify({ maxFileBytes: 1024, maxAttachmentsPerMessage: 8, maxRetainedBytes: 1024, maxRetainedFiles: 8, maxInlineImageBytes: 65536, maxInlineImageEdge: 1280 }),
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
   const files = new ChannelAttachments(command, async () => {});
@@ -896,7 +896,7 @@ test.each(["cancel", "revoke"])("a retired download cannot retain its OPFS file 
 test("small and animated images retain their original file and send a separate thumbnail", async () => {
   const files = setup();
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ initializeRuntime: async () => {},
-    attachment_limits: () => JSON.stringify({ maxFileBytes: 2048, maxAttachmentsPerMessage: 8, maxRetainedBytes: 4096, maxRetainedFiles: 8, maxInlineImageBytes: 1024 }),
+    attachment_limits: () => JSON.stringify({ maxFileBytes: 2048, maxAttachmentsPerMessage: 8, maxRetainedBytes: 4096, maxRetainedFiles: 8, maxInlineImageBytes: 1024, maxInlineImageEdge: 1280 }),
     attachment_media_type: (bytes: Uint8Array) => bytes[0] === 71 ? "image/gif" : "image/png",
     AttachmentHash: class { update() {} finish() { return "a".repeat(64); } },
   } as never);
@@ -912,7 +912,7 @@ test("small and animated images retain their original file and send a separate t
     for (const [i, image] of prepared.entries()) {
       expect(image.file).toBe(selected[i].file);
       expect(image.attachment.size).toBe(selected[i].file.size);
-      expect(image.inlineImage).toEqual({ original: false, mediaType: "image/webp", width: 640, height: 320, data: btoa(await thumbnail.text()) });
+      expect(image.inlineImage).toEqual({ original: false, mediaType: "image/webp", width: 1280, height: 640, data: btoa(await thumbnail.text()) });
     }
     decode.mockRejectedValue(new Error("invalid_image"));
     expect((await files.describe(selected)).every(entry => entry.inlineImage === undefined)).toBe(true);

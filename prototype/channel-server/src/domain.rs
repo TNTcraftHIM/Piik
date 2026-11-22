@@ -41,7 +41,9 @@ struct Client {
 struct Hub {
     authority: Authority,
     clients: BTreeMap<Uuid, Client>,
-    storage: Arc<Mutex<storage::Storage>>,
+    storage: storage::Storage,
+    // A background room operation can retain the Hub after the listener closes.
+    _directory_owner: Option<std::fs::File>,
     invitation_origin: Option<String>,
     room_commands: Option<mpsc::Sender<piik_channel_native::session::HostCommand>>,
 }
@@ -104,7 +106,7 @@ impl Hub {
         if metadata && !failed {
             let checkpoint =
                 serde_json::to_value(self.authority.export_backup()).expect("typed metadata");
-            if self.storage.lock().unwrap().save(&checkpoint).is_err() {
+            if self.storage.save(&checkpoint).is_err() {
                 if room_projection {
                     self.apply(effects);
                     self.send(
@@ -390,7 +392,7 @@ async fn delete_room(state: &Domain, connection: Uuid, request: Request, id: Str
         let effects = hub.authority.finish_hosted_deletion(&id);
         let checkpoint =
             serde_json::to_value(hub.authority.export_backup()).expect("typed metadata");
-        let saved = hub.storage.lock().unwrap().save(&checkpoint).is_ok();
+        let saved = hub.storage.save(&checkpoint).is_ok();
         if saved {
             hub.apply(effects);
             hub.send(
@@ -627,6 +629,19 @@ impl Domain {
             "PIIK_CHANNEL_DATA_DIR must be a real directory"
         );
         std::fs::create_dir_all(directory)?;
+        let directory_owner = std::fs::File::options()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(directory.join("channel.lock"))?;
+        piik_channel_native::hosted_room::try_lock_file(&directory_owner).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::WouldBlock {
+                anyhow::anyhow!("This channel data directory is already in use")
+            } else {
+                error.into()
+            }
+        })?;
         let mut storage = storage::Storage::open(&directory.join("channel.sqlite"))
             .map_err(anyhow::Error::from_boxed)?;
         let checkpoint = storage.load().map_err(anyhow::Error::from_boxed)?;
@@ -660,7 +675,8 @@ impl Domain {
             hub: Arc::new(Mutex::new(Hub {
                 authority,
                 clients: BTreeMap::new(),
-                storage: Arc::new(Mutex::new(storage)),
+                storage,
+                _directory_owner: Some(directory_owner),
                 invitation_origin,
                 room_commands: None,
             })),
@@ -735,8 +751,6 @@ impl Domain {
         let mut hub = self.hub.lock().unwrap();
         anyhow::ensure!(hub.authority.is_owner_credential(credential), "forbidden");
         hub.storage
-            .lock()
-            .unwrap()
             .save(&checkpoint)
             .map_err(anyhow::Error::from_boxed)?;
         hub.authority = authority;
@@ -885,6 +899,7 @@ mod tests {
         let connection = Uuid::new_v4();
         let (events, mut receiver) = mpsc::channel(64);
         let mut hub = Hub {
+            _directory_owner: None,
             authority,
             clients: [(
                 connection,
@@ -894,7 +909,7 @@ mod tests {
                 },
             )]
             .into(),
-            storage: Arc::new(Mutex::new(storage)),
+            storage,
             invitation_origin: None,
             room_commands: None,
         };
@@ -1004,7 +1019,7 @@ mod tests {
                 ..
             }
         )));
-        let saved = hub.storage.lock().unwrap().load().unwrap().unwrap();
+        let saved = hub.storage.load().unwrap().unwrap();
         assert!(saved["state"]["hostedRooms"]
             .as_object()
             .unwrap()
