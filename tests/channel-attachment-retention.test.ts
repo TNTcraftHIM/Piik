@@ -560,6 +560,36 @@ test.each(["before", "after"])("a new room writer completes a pending download w
   } finally { controller.abort(); rejectOldReceive(new Error("retired_writer")); files.reset(); vi.unstubAllGlobals(); }
 });
 
+test.each(["write", "peer"] as const)("a %s failure reports its cause and removes the partial download", async failure => {
+  const command = vi.fn(async (_command: ChannelCommand) => {}), files = setup(command);
+  const abort = vi.fn(async () => {}), removeEntry = vi.fn(async () => {});
+  const write = vi.fn(async () => { throw new DOMException("Local quota exhausted", "QuotaExceededError"); });
+  const getFileHandle = vi.fn(async (_name: string) => ({ createWritable: async () => ({ write, abort }) }));
+  stubTransferStorage({ getFileHandle, removeEntry });
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({
+    ...await hosting.loadRoomHosting(),
+    FileDelivery: class {
+      start() { return "[]"; } update() { return "[]"; } cancel() { return "[]"; } next_deadline() {} free() {}
+      control() { return JSON.stringify([failure === "write" ? { type: "write", key, offset: 0, bytes: [1] }
+        : { type: "failed", key, code: "file_transfer_interrupted" }]); }
+    },
+  } as never);
+  try {
+    const code = failure === "write" ? "file_storage_full" : "file_transfer_interrupted";
+    const rejected = expect(files.download(key, attachment)).rejects.toThrow(code);
+    await vi.waitFor(() => expect(command).toHaveBeenCalledWith({ type: "file_receive", ...key, enabled: true }));
+    files.data("source", "control", "result");
+    await rejected;
+    expect(files.status(key)).toMatchObject({ busy: false, error: code });
+    const message = failure === "write" ? "channel.attachment.storageFull" : "channel.attachment.transferInterrupted";
+    for (const fallback of ["channel.attachment.downloadFailed", "channel.attachment.previewFailed"] as const)
+      expect(channelErrorPresentation(code, key => key, fallback).message).toBe(message);
+    expect(abort).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(removeEntry).toHaveBeenCalledExactlyOnceWith(getFileHandle.mock.calls[0][0]));
+    expect(files.progress(key)).toBeNull();
+  } finally { files.reset(); vi.unstubAllGlobals(); }
+});
+
 test("cancel while waiting for a source permits retry before the old receive command settles", async () => {
   let rejectOldReceive!: (reason: Error) => void;
   const oldReceive = new Promise<void>((_, reject) => { rejectOldReceive = reject; });

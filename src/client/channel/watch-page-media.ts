@@ -9,8 +9,8 @@ export interface WatchIndexedChoice { candidate: NativePageIndexedCandidate; ins
 export interface WatchMpdChoice { candidate: NativePageMpdCandidate; catalog?: NativePageMpdCatalog; error?: string }
 export interface WatchMediaSources { choices: readonly NativePageMediaChoice[]; indexed: readonly WatchIndexedChoice[]; mpd: readonly WatchMpdChoice[]; error?: string }
 
-export function directForwardFileURL(choice: NativePageMediaChoice): string | undefined {
-  if (choice.format === "file" && watchSourceSchema.safeParse({ kind: "media", url: choice.displayURL }).success) return choice.displayURL;
+export function directForwardMediaURL(choice: NativePageMediaChoice): string | undefined {
+  if ((choice.format === "file" || choice.format === "hls") && watchSourceSchema.safeParse({ kind: "media", url: choice.displayURL }).success) return choice.displayURL;
 }
 
 /** One page observation owns its resource cache, reads and listener retirement. */

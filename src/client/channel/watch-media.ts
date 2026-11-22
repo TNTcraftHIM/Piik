@@ -270,7 +270,7 @@ async function detectWatchFormat(url: string, signal: AbortSignal): Promise<Watc
   const timeout = new AbortController();
   const timer = setTimeout(() => timeout.abort(), 5000);
   try {
-    const response = await fetch(url, { headers: { Range: "bytes=0-511" }, signal: AbortSignal.any([signal, timeout.signal]) });
+    const response = await fetch(url, { signal: AbortSignal.any([signal, timeout.signal]) });
     const reader = response.body?.getReader();
     try {
       if (!response.ok) return "unknown";

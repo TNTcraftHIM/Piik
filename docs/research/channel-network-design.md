@@ -300,11 +300,13 @@ volume and mute follow the viewer across the retry. While a viewer chooses a
 player on the original webpage, the current player retains its subscription.
 The candidate replaces it after media readiness and room confirmation.
 
-For an explicitly selected complete file, the App may retain its byte source
+For an explicitly selected complete file or HLS source, the App may retain its byte source
 and publish the matching media URL in the same activity. Each viewer tries
 that URL independently. A viewer that chooses the offered forwarding path
 adds byte demand; other viewers keep loading from the origin. Clearing the
-byte source retires those transfers without ending direct playback. The
+byte source retires those transfers without ending direct playback. A peer
+viewer remains joined with an unavailable-source result and can choose another
+receiving method or leave. The
 media element can load an ordinary cross-origin file even when a script cannot
 read its bytes. Manifest-based formats retain their own fetch and timeline rules.
 
@@ -699,7 +701,7 @@ mapping does not delay ICE or replace IPv6 and STUN candidates. Mapped addresses
 use the existing candidate signaling. Pair retirement joins the address watcher
 and requests best-effort deactivation through the library's existing lifecycle.
 
-Prepare a replacement, prove it usable, commit, then release old work. Channel wire 40 exposes room topology as sessionIds and pairs. Each activity
+Prepare a replacement, prove it usable, commit, then release old work. The Channel wire exposes room topology as sessionIds and pairs. Each activity
 selects its parents, so RoomDelivery needs no shared nextHops. RoomDataState
 reports whether the authorized room data lane is healthy. Voice retains its own media proof.
 Channel negotiation can arrive before the local room projection. The physical

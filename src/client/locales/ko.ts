@@ -154,7 +154,7 @@ export const ko = {
   "room.entry.back": "방 목록으로",
   "room.relay.defaultLimit": "방 기본 전달 한도",
   "conversation.attachmentLimit": "메시지당 파일을 최대 {max}개까지 첨부할 수 있어요.",
-  "conversation.attachmentSizeLimit": "파일 하나의 최대 크기는 {size}예요.",
+  "conversation.attachmentSizeLimit": "파일이 너무 커서 처리할 수 없어요.",
   "conversation.sendFailed": "보내지 못했어요. 작성한 내용은 여기에 보관돼요. 다시 시도해 주세요.",
   "conversation.roomChat": "방 채팅",
   "conversation.chat": "채팅",

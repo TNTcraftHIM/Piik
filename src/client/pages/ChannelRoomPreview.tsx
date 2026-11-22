@@ -29,19 +29,20 @@ const mpdTracks: WatchMpdChoice[] = [{ candidate: {"id":"10000000-0000-4000-8000
 const watchSamples = [
   ["off", "关闭", "Off"], ["owner", "分享者", "Sharer"], ["viewer", "观看者", "Viewer"],
   ["available", "尚未加入", "Available"], ["blocked", "等待手动播放", "Playback blocked"],
-  ["native-owner", "网页窗口", "Webpage window"], ["website-failed", "浏览器播放失败", "Browser playback failed"],
+  ["native-owner", "分享原网页", "Share original page"], ["native-viewer", "观看原网页", "Watch original page"],
+  ["website-failed", "浏览器播放失败", "Browser playback failed"],
   ["live-owner", "直播分享者", "Live sharer"], ["live-viewer", "直播观看者", "Live viewer"],
   ["live-ended", "直播已结束", "Live ended"], ["live-expired", "直播位置已过期", "Live position expired"],
 ] as const;
 function sampleWatch(mode: string): WatchActivity | null {
   if (mode === "off") return null;
   const live = mode.startsWith("live-"), owner = mode.includes("owner") || mode === "live-ended";
-  const website = mode === "native-owner" || mode === "website-failed";
+  const native = mode.startsWith("native-"), website = native || mode === "website-failed";
   return { id: "sample-watch", roomId: "friday", viewerSessionIds: [],
     userId: owner ? "sample-ada" : "sample-bo", sessionId: owner ? "sample-ada-session" : "sample-bo-session",
     source: website ? { kind: "website", url: "https://video.example/watch/evening?private=not-in-title" }
       : { kind: "media", url: live ? "https://media.example/live.m3u8?private=not-in-title" : "https://media.example/evening.mp4?private=not-in-title" },
-    playback: { timeline: live ? "program" : "media", position: live ? sampleProgramStart + (mode === "live-expired" ? -120 : mode === "live-ended" ? 120 : 100) : 0,
+    playback: { timeline: live ? "program" : "media", position: live ? sampleProgramStart + (mode === "live-expired" ? -120 : mode === "live-ended" ? 120 : 100) : native ? 42 : 0,
       paused: true, rate: 1, anchorTime: 0 } };
 }
 const previewAppDiscovery: AppDiscovery = {
@@ -155,15 +156,19 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   }, [needsSamples]);
   useEffect(() => {
     if (!watchActivity || watchMode === "available") { setWatchPlayers(new Map()); return; }
+    const recorded = watchMode === "owner" || watchMode === "viewer" || watchMode === "blocked";
+    const native = watchMode.startsWith("native-");
     const stream = streams.values().next().value;
     if (!stream) return;
-    // The real player and controls consume a synthetic picture; no media URL is fetched.
-    const media = new HTMLVideoMedia("data:video/webm;base64,");
+    // Use a finite local fixture so the on-demand preview exercises the real seek bar.
+    const media = new HTMLVideoMedia(recorded
+      ? new URL("../../../tests/fixtures/indexed-av1.mp4", import.meta.url).href
+      : "data:video/webm;base64,");
     media.video.muted = true;
-    media.video.removeAttribute("src"); media.video.srcObject = stream;
+    if (!recorded) { media.video.removeAttribute("src"); media.video.srcObject = stream; }
     let pageState = { position: 42, paused: true, rate: 1, duration: 240, readyState: 4, ended: false, buffered: [[0, 60]] as [number, number][] };
     const listeners = new Set<(event: WatchMediaEvent) => void>();
-    const page = new AppPageMedia({ read: async () => pageState, patch: async patch => {
+    const page = new AppPageMedia({ id: "sample-watch-page", selectedCandidateId: "sample-watch-video", read: async () => pageState, patch: async patch => {
       pageState = { ...pageState, ...patch }; for (const listener of listeners) listener("pause");
     }, listen: changed => { listeners.add(changed); return () => listeners.delete(changed); }, focus: async () => {}, close: () => {} });
     let liveMedia: WatchMedia | undefined;
@@ -186,13 +191,13 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
         patch: async patch => { await read(); state = { ...state, ...patch };
           for (const listener of listeners) listener(patch.position !== undefined ? "seeked" : "pause"); } };
     }
-    const player = new WatchPlayer(watchActivity.roomId, watchActivity.sessionId === "sample-ada-session", liveMedia ?? (watchMode.startsWith("native") ? page : media), () => setWatchPlayers(previous => new Map(previous)));
+    const player = new WatchPlayer(watchActivity.roomId, watchActivity.sessionId === "sample-ada-session", liveMedia ?? (native ? page : media), () => setWatchPlayers(previous => new Map(previous)));
     player.mode = receiveMode;
-    if (liveMedia) { player.calibrate(0, performance.now()); player.update(watchActivity.playback); }
+    if (liveMedia || native) { player.calibrate(0, performance.now()); player.update(watchActivity.playback); }
     void player.ready(new AbortController().signal).catch(() => {});
     player.blocked = watchMode === "blocked";
     if (watchMode === "website-failed") player.error = "watch_media_failed";
-    if (!watchMode.startsWith("native") && !player.blocked)
+    if (!recorded && !native && !player.blocked)
       void media.ready(new AbortController().signal).then(() => media.video.play()).catch(() => {});
     setWatchPlayers(new Map([[watchActivity.id, player]]));
     return () => player.close();

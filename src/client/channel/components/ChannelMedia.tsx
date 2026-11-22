@@ -1,9 +1,10 @@
 import { useWatchPageSlot } from "./use-watch-page-slot";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { Btn } from "../../components/living/primitives";
 import { BrandMark } from "../../components/living/BrandMark";
 import { PlaybackControlsReveal } from "../../components/living/PlaybackControlsReveal";
 import { PlaybackWindowControls } from "../../components/living/PlaybackWindowControls";
+import { AudioVolumeControl } from "../../components/living/AudioVolumeControl";
 import { PlaybackSettings, type PlaybackSettingsProps } from "../../components/living/PlaybackSettings";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../../lib/room-interactions";
@@ -51,15 +52,18 @@ export function WatchPeerAction({ receiving }: { receiving: WatchReceiving }) {
     : <small>{t("watch.forward.secure")}</small>;
 }
 
-function WatchPlaybackSettings({ receiving, originalPage, playback, children, audioAvailable = true }: { receiving?: WatchReceiving; originalPage: boolean; children?: ReactNode; audioAvailable?: boolean; playback?: {
-  rate: number; rates: readonly number[]; disabled: boolean; onRate(rate: number): void;
-} }) {
+function WatchPlaybackSettings({ receiving, originalPage, playback, children, audio, audioAvailable }: {
+  receiving?: WatchReceiving; originalPage: boolean; children?: ReactNode;
+  audio?: ComponentProps<typeof AudioVolumeControl>; audioAvailable: boolean;
+  playback?: { rate: number; rates: readonly number[]; disabled: boolean; onRate(rate: number): void };
+}) {
   const { t } = useCopy();
   const directSelected = receiving?.mode === "direct" && !originalPage;
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
   useAnchoredPopover(trigger, panel, { side: "above", align: "end" });
-  return <span ref={trigger}><Btn icon="sliders" quiet title="playback.more" popoverTarget={id} />
+  return <span ref={trigger} className="c3-watch-settings"><Btn icon="sliders" quiet title="playback.more" popoverTarget={id} />
     <div ref={panel} id={id} popover="auto" role="dialog" className="lr-floating-surface lr-playback-menu c3-watch-receiving" aria-label={t("playback.more")}>
+      {audio && <div className="c3-watch-volume lr-audio-settings"><AudioVolumeControl {...audio} /></div>}
       {playback ? <label className="c3-watch-rate"><span>{t("watch.rate")}</span>
         <select className="lr-select" aria-label={t("watch.rate")} value={playback.rate} disabled={playback.disabled}
           onChange={event => playback.onRate(Number(event.target.value))}>
@@ -109,6 +113,9 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     rate: player.mediaState?.rate ?? 1, volume: htmlMedia.volume, muted: htmlMedia.muted };
   const silent = media.muted || media.volume === 0;
   const seekStart = live?.seekable[0]?.[0] ?? 0, seekEnd = live?.seekable.at(-1)?.[1] ?? media.duration;
+  const seekAvailable = seekEnd > seekStart && (!live || live.seekable.length > 0);
+  const livePosition = live?.active ? live.syncPosition : null;
+  const thumbnail = presentation === "thumbnail";
   const [seekPreview, setSeekPreview] = useState<number | null>(null);
   const draggingSeek = useRef(false);
   const position = Math.max(seekStart, Math.min(seekPreview ?? media.position, seekEnd || 1));
@@ -121,17 +128,25 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const openOriginal = !owned && website && originalPageAvailable && surface.kind !== "external" ? onAppWatch : undefined;
   const settingsOriginal = !player.error && openOriginal;
   const localControls = !!player.video || !!receivingSettings || !!settingsOriginal || owned && !embedded;
-  const hasControls = owned && !embedded || localControls;
+  const hasControls = localControls || !embedded && !thumbnail && !!player.mediaState;
   const failure = channelErrorPresentation(player.error, t,
     receiving?.mode === "peer" ? "watch.forward.failed" : website && player.video ? "watch.browserFailed" : "watch.failed").message;
   const diagnosis = player.error ? diagnoseChannelFact({ area: "error", code: player.error }) : null;
   const showDiagnosis = presentation === "full" && !retryPending && !receiving?.pending ? diagnosis : null;
   const returnToSource = showDiagnosis && player.error === "watch_media_access_denied" && (owned && !!player.media.page || !!openOriginal);
   const picture = usePictureInPicture(videoRef);
-  const windowControls = player.video && <PlaybackWindowControls picture={picture} canPlay={player.video.readyState >= 2} quiet theaterMode={theaterMode} onToggleTheater={onToggleTheater}
-    fullscreen={fullscreen} fullscreenFailed={fullscreenFailed} toggleFullscreen={() => {
+  const windowControls = player.video && {
+    picture, canPlay: player.video.readyState >= 2, quiet: true, theaterMode, onToggleTheater, fullscreen, fullscreenFailed,
+    toggleFullscreen: () => {
       if (player.video) { setFullscreenFailed(false); void toggleVideoFullscreen(player.video).catch(() => setFullscreenFailed(true)); }
-    }} />;
+    },
+  };
+  const localVolume = player.video && audioAvailable ? {
+    volume: media.muted ? 0 : media.volume, label: "playback.volumeBasic" as const, max: 1,
+    onVolume: (volume: number) => {
+      if (player.video) { player.video.volume = volume; player.video.muted = false; }
+    },
+  } : undefined;
   const visibility = usePlaybackControlsVisibility(videoRef, controls, player.blocked || !!player.error);
   useLayoutEffect(() => {
     if (surface.kind === "external") return;
@@ -222,14 +237,10 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
         details={owned && player.media.page && player.error === "watch_media_access_denied" ? ["diagnosis.sourcePageOpen"] : undefined} />}
     </div></div>
       : player.blocked && <div className="c3-mini-message"><Btn icon="play" title="watch.resume" cap="watch.resume" onClick={onResume} /></div>}
-    {hasControls && <div ref={controls} id={controlsId} className="c3-mini-controls lr-media-toolbar lr-media-overlay lr-media-controls" role="group" aria-label={t("playback.controls")}>
-      {!embedded && <div className="c3-watch-shared" role="group" aria-label={t(owned ? "watch.sharedControls" : "watch.following")}>
-        {owned && <Btn icon={ownerPaused ? "play" : "pause"} quiet size="dense"
-          title={ownerPaused ? "watch.play" : "watch.pause"} disabled={disabled} onClick={() => onPlayback({ paused: !ownerPaused })} />}
-        {live && <span className="c3-watch-status">{t(live.active ? "watch.live" : "watch.liveEnded")}</span>}
-        <div className="c3-watch-timeline" data-seeking={seekPreview !== null || undefined}>
-        {owned ? <input type="range" min={seekStart} max={seekEnd || 1} step="0.1" value={position}
-          aria-label={t("watch.seek")} disabled={disabled || seekEnd <= seekStart}
+    {hasControls && <div ref={controls} id={controlsId} className="c3-mini-controls c3-watch-controls lr-media-toolbar lr-media-overlay lr-media-controls" role="group" aria-label={t("playback.controls")}>
+      {!embedded && !thumbnail && seekAvailable && <div className="c3-watch-timeline">
+        {owned ? <input type="range" min={seekStart} max={seekEnd} step="0.1" value={position}
+          aria-label={t("watch.seek")} disabled={disabled}
           aria-valuetext={timeLabel} onPointerDown={() => { draggingSeek.current = true; }}
           onInput={event => {
             const requested = Number(event.currentTarget.value);
@@ -238,41 +249,50 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
           }}
           onPointerUp={event => { draggingSeek.current = false; onPlayback({ position: Number(event.currentTarget.value) }); setSeekPreview(null); }}
           onPointerCancel={() => { draggingSeek.current = false; setSeekPreview(null); }} />
-          : <progress max={seekEnd - seekStart || 1} value={Math.max(0, media.position - seekStart)}
-            aria-label={t("watch.following")} title={t("watch.following")} />}
-          <output className="c3-watch-time" aria-label={owned ? undefined : t("watch.following")}>{timeLabel}</output>
-        </div>
-        {owned && live?.active && <Btn icon="arrowRight" quiet size="dense" title="watch.goLive" cap="watch.goLive" textTooltip
-          disabled={disabled || live.syncPosition === null} onClick={() => { if (live.syncPosition !== null) onPlayback({ position: live.syncPosition, paused: false }); }} />}
+          : <progress max={seekEnd - seekStart} value={position - seekStart} aria-label={t("watch.following")} />}
       </div>}
-      {!embedded && localControls && <span className="lr-viewer-action-separator" aria-hidden="true" />}
-      {localControls && <div className="c3-watch-local">
-        {player.video && audioAvailable ? <>
-          <Btn icon={silent ? "speakerOff" : "speaker"} quiet size="dense" title={silent ? "playback.unmute" : "playback.mute"}
-            onClick={() => { const video = player.video; if (!video) return; if (video.volume === 0) video.volume = 1; video.muted = !silent; }} />
-        <input className="c3-mini-volume" type="range" min={0} max={100} step={1} value={media.muted ? 0 : Math.round(media.volume * 100)}
-          aria-label={t("playback.volumeBasic")} aria-valuetext={`${media.muted ? 0 : Math.round(media.volume * 100)}%`}
-          onChange={event => { if (player.video) { player.video.volume = Number(event.target.value) / 100; player.video.muted = false; } }} />
-        </> : null}
-        <WatchPlaybackSettings originalPage={surface.kind === "external"} receiving={receivingSettings} audioAvailable={audioAvailable}
-          playback={owned && !embedded ? { rate: media.rate, rates: player.media.playbackRates?.() ?? [0.5, 0.75, 1, 1.25, 1.5, 2], disabled,
-            onRate: rate => onPlayback({ rate }) } : undefined}>
-          {settingsOriginal && <Btn icon="window" quiet title="watch.openPage" cap="watch.openPage" size="compact"
-            disabled={disabled || receiving?.disabled || receiving?.pending} onClick={settingsOriginal} />}
-          {audioTracks.length > 0 && <label className="c3-watch-audio"><span>{t("watch.audioTrack")}</span>
-            <select className="lr-select" aria-label={t("watch.audioTrack")} value={audioTracks.find(track => track.selected)?.id ?? ""} disabled={audioTracks.length === 1}
-              onChange={event => player.media.selectAudioTrack?.(Number(event.target.value))}>
-              {audioOptions.map(track => <option key={track.id} value={track.id}>{audioOptions.some(other => other.id !== track.id && other.label === track.label)
-                ? `${track.label} — ${track.name}` : track.label}</option>)}
-            </select></label>}
-          {owned && player.media.page && <Btn icon="window" quiet title={player.video ? "watch.openedPage" : "watch.focusWindow"}
-            cap={player.video ? "watch.openedPage" : "watch.focusWindow"} onClick={onFocusWindow} />}
-          {windowControls && <div className="c3-watch-settings-window">{windowControls}</div>}
-        </WatchPlaybackSettings>
-        {owned && player.video && player.media.page && !player.error && <Btn icon="window" quiet size="dense"
-          title="watch.openedPage" onClick={onFocusWindow} />}
-        {windowControls}
-      </div>}
+      <div className="c3-watch-actions">
+        {!embedded && <div className="c3-watch-shared" role="group" aria-label={t(owned ? "watch.sharedControls" : "watch.following")}>
+          {owned && <Btn icon={ownerPaused ? "play" : "pause"} quiet size="dense"
+            title={ownerPaused ? "watch.play" : "watch.pause"} disabled={disabled} onClick={() => onPlayback({ paused: !ownerPaused })} />}
+          {!thumbnail && <div className="c3-watch-position" data-seeking={seekPreview !== null || undefined}>
+            {live && <span className="c3-watch-status">{t(live.active ? "watch.live" : "watch.liveEnded")}</span>}
+            {(!live || seekAvailable) && <span className="c3-watch-time" title={timeLabel}>{timeLabel}</span>}
+          </div>}
+          {owned && livePosition !== null && <Btn icon="arrowRight" quiet size="dense" title="watch.goLive" textTooltip
+            disabled={disabled} onClick={() => onPlayback({ position: livePosition, paused: false })} />}
+        </div>}
+        {localControls && <div className="c3-watch-local">
+          {localVolume &&
+            <Btn icon={silent ? "speakerOff" : "speaker"} quiet size="dense" title={silent ? "playback.unmute" : "playback.mute"}
+              onClick={() => { const video = player.video; if (!video) return; if (video.volume === 0) video.volume = 1; video.muted = !silent; }} />}
+          {localVolume && !thumbnail && <span className="c3-watch-inline-volume">
+            <AudioVolumeControl {...localVolume} compact />
+          </span>}
+          <WatchPlaybackSettings originalPage={surface.kind === "external"} receiving={receivingSettings} audio={thumbnail ? localVolume : undefined} audioAvailable={audioAvailable}
+            playback={owned && !embedded ? { rate: media.rate, rates: player.media.playbackRates?.() ?? [0.5, 0.75, 1, 1.25, 1.5, 2], disabled,
+              onRate: rate => onPlayback({ rate }) } : undefined}>
+            {settingsOriginal && <Btn icon="window" quiet title="watch.openPage" cap="watch.openPage" size="compact"
+              disabled={disabled || receiving?.disabled || receiving?.pending} onClick={settingsOriginal} />}
+            {audioTracks.length > 0 && <label className="c3-watch-audio"><span>{t("watch.audioTrack")}</span>
+              <select className="lr-select" aria-label={t("watch.audioTrack")} value={audioTracks.find(track => track.selected)?.id ?? ""} disabled={audioTracks.length === 1}
+                onChange={event => player.media.selectAudioTrack?.(Number(event.target.value))}>
+                {audioOptions.map(track => <option key={track.id} value={track.id}>{audioOptions.some(other => other.id !== track.id && other.label === track.label)
+                  ? `${track.label} — ${track.name}` : track.label}</option>)}
+              </select></label>}
+            {owned && player.media.page && <Btn icon="window" quiet title={player.video ? "watch.openedPage" : "watch.focusWindow"}
+              cap={player.video ? "watch.openedPage" : "watch.focusWindow"} onClick={onFocusWindow} />}
+            {windowControls && <div className="c3-watch-settings-window">
+              <b>{t("playback.viewControls")}</b>
+              <PlaybackWindowControls {...windowControls} group={thumbnail ? "all" : "display"} />
+            </div>}
+          </WatchPlaybackSettings>
+          {!thumbnail && windowControls && <span className="c3-watch-wide-windows">
+            <PlaybackWindowControls {...windowControls} group="display" />
+          </span>}
+          {!thumbnail && windowControls && fullscreen.supported && <PlaybackWindowControls {...windowControls} group="fullscreen" />}
+        </div>}
+      </div>
     </div>}
     {hasControls && !embedded && <PlaybackControlsReveal controls={controls} controlsId={controlsId} hidden={visibility.hidden} />}
   </div>;

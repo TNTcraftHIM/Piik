@@ -36,7 +36,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
   attachments: ChannelAttachments; attachmentsAvailable?: boolean; history?: { hasMore: boolean; atLatest: boolean }; loadingHistory: boolean;
   onHistory: (roomId: string) => Promise<void>;
   onLatest: (roomId: string) => Promise<void>;
-  onSend: (roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal, options?: ChatOptions) => Promise<void>;
+  onSend: ChannelController["sendMessage"];
   onMessage?: (roomId: string, seq: number) => Promise<void>;
   findUnreadMessage?: (roomId: string, after: number, signal: AbortSignal) => Promise<ChannelMessage | null>;
   onDeleteMessage?: (roomId: string, seq: number, messageId: string) => Promise<void>;
@@ -47,7 +47,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
   interaction: RoomInteractionSession | null;
   onBack?: () => void;
 }) {
-  const { t } = useCopy();
+  const { lang, t } = useCopy();
   const surfaceDocument = useSurfaceDocument();
   const [{ today, timeZone }, setCalendar] = useState(() => ({
     today: new Date(), timeZone: new Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -109,6 +109,8 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
   const [limitsFailed, setLimitsFailed] = useState(false);
   const [limitsRetry, setLimitsRetry] = useState(0);
   const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
+  const [preparations, setPreparations] = useState<Record<string, { percent: number; cancel: () => void }>>({});
+  const percentFormat = useMemo(() => new Intl.NumberFormat(lang, { style: "percent" }), [lang]);
   const identityLifetime = useRef<AbortController | null>(null);
   const composing = useRef(false);
   const chooser = useRef<HTMLInputElement>(null);
@@ -206,7 +208,8 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
   const files = draftFiles[conversationScope] ?? [];
   const fileError = draftErrors[conversationScope] ?? "";
   const setFileError = (error: string) => setDraftErrors(previous => ({ ...previous, [conversationScope]: error }));
-  const working = sending;
+  const preparation = preparations[conversationScope];
+  const working = sending || !!preparation;
   const updateDraft = useCallback((update: (previous: Draft) => Draft) => {
     setDrafts(previous => ({ ...previous, [conversationScope]: update(previous[conversationScope] ?? emptyDraft) }));
   }, [conversationScope]);
@@ -366,7 +369,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
       return;
     }
     if (incoming.some(file => file.size > limits.maxFileBytes)) {
-      setFileError(t("conversation.attachmentSizeLimit", { size: fileSize(limits.maxFileBytes) }));
+      setFileError(t("conversation.attachmentSizeLimit"));
       return;
     }
     setFileError("");
@@ -379,20 +382,36 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
     reading.current.following = true;
     const request = identityLifetime.current!;
     setFileError("");
+    const controller = files.length ? new AbortController() : undefined;
+    const cancel = () => {
+      controller?.abort();
+      input.current?.focus({ preventScroll: true });
+    };
+    const progress = (percent: number | null) => setPreparations(previous => {
+      if (percent !== null) return { ...previous, [conversationScope]: { percent, cancel } };
+      if (previous[conversationScope]?.cancel !== cancel) return previous;
+      const next = { ...previous };
+      delete next[conversationScope];
+      return next;
+    });
+    if (controller) progress(0);
     try {
       const mentions = draft.mentions;
       const reply = draftReply && { seq: draftReply.seq, messageId: draftReply.messageId, notify: draftReply.notify };
-      await onSend(roomId, text, files, request.signal, { mentions, ...(reply ? { reply } : {}) });
+      await onSend(roomId, text, files, request.signal, { mentions, ...(reply ? { reply } : {}) },
+        controller && { signal: controller.signal, progress });
       setDrafts(previous => previous[conversationScope] === draft ? { ...previous, [conversationScope]: emptyDraft } : previous);
       setDraftFiles(previous => ({ ...previous, [conversationScope]: (previous[conversationScope] ?? []).filter(value => !files.some(file => file.id === value.id)) }));
     } catch (error) {
-      if (request.signal.aborted) return;
+      if (request.signal.aborted || (controller?.signal.aborted && error instanceof DOMException && error.name === "AbortError")) return;
       if (draftReply && error instanceof Error && error.message === "message_unavailable") {
         clearReply(draftReply.messageId);
         setFileError(t("conversation.replyTargetGone"));
       } else {
         setFileError(t("conversation.sendFailed"));
       }
+    } finally {
+      if (controller) progress(null);
     }
   }
   function removeFile(entry: DraftFile) {
@@ -475,6 +494,10 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
       <ChannelAction icon="x" iconOnly quiet label={t("conversation.removeFile")} disabled={working} hint="hint-close"
         onClick={() => { void removeFile(entry); }} />
     </div>)}</div>}
+    {preparation && <div className="c3-file-preparation">
+      <span>{t("conversation.preparingAttachments", { percent: percentFormat.format(preparation.percent / 100) })}</span>
+      <ChannelAction icon="x" quiet label={t("conversation.cancelAttachmentPreparation")} onClick={preparation.cancel} />
+    </div>}
     {fileError && <p className="c3-file-error" role="status">{fileError}</p>}
     {textTooLong && <p id={textErrorId} className="c3-file-error" role="status">{t("conversation.textTooLong", { max: String(MAX_MESSAGE_CODE_POINTS), count: String(textLength) })}</p>}
     {limitsFailed && <div className="c3-file-retry"><span>{t("conversation.filesUnavailable")}</span>

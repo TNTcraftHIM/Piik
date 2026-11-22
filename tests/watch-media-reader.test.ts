@@ -29,6 +29,21 @@ test("a native-only HLS creator requires an ended media playlist and keeps prove
   await expect(master.read()).rejects.toThrow("watch_source_inspection_unavailable"); master.close();
 });
 
+test("an opaque manifest accepts a normal GET and cancels its body after inspecting the prefix", async () => {
+  vi.spyOn(Hls, "isSupported").mockReturnValue(false);
+  const v = video(); vi.stubGlobal("document", { createElement: () => v });
+  const cancel = vi.fn(), stream = new ReadableStream({
+    start(controller) { controller.enqueue(new TextEncoder().encode("#EXTM3U\n".padEnd(1024))); }, cancel,
+  });
+  const fetcher = vi.fn(async (_url: string, init: RequestInit) => new Headers(init.headers).has("range")
+    ? new Response(null, { status: 416 }) : new Response(stream));
+  vi.stubGlobal("fetch", fetcher);
+  const viewer = new HTMLVideoMedia("https://media.test/opaque", undefined, "program");
+  await expect(viewer.read()).rejects.toThrow("watch_live_timeline_unsupported");
+  expect(cancel).toHaveBeenCalledOnce();
+  viewer.close();
+});
+
 test("failed format inspection remains unknown for a creator while explicit files and declared viewers remain usable", async () => {
   vi.spyOn(Hls, "isSupported").mockReturnValue(false);
   const v = Object.assign(video(), { currentTime: 0, duration: 120, paused: true, playbackRate: 1, readyState: 2 });

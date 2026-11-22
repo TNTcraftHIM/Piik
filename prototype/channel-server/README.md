@@ -710,11 +710,11 @@ Network repair retains written progress. Completed copies may supply later
 requests, and idle copies alone do not keep room connections alive. If all copies
 disappear, the message remains but its file is unavailable.
 
-The shared Rust limits owner supplies the composer with the prototype's 16 MiB
-file bound and eight attachments per message. The byte engine owns a bounded range
-window across rooms, separate from the media/control queues. The Browser writes
-temporary files through OPFS, then verifies the full size and digest before
-preview or download. Recognized PNG/JPEG/GIF/WebP images use the same file model.
+The composer allows up to eight attachments per message. File transfers stream
+through a bounded range window across rooms, separate from the media/control
+queues. The Browser writes temporary files through OPFS and verifies the full
+size and digest before preview or download. Recognized PNG/JPEG/GIF/WebP images
+use the same file model.
 A receiving Browser needs secure-context file storage; there is no in-memory
 whole-file fallback. Unconfirmed selections remain session-only sources. Confirmed
 sent files and verified downloads may remain available after reopening through the

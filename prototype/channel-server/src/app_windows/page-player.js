@@ -55,6 +55,8 @@
     buffered: Array.from({ length: video.buffered.length }, (_, index) => [video.buffered.start(index), video.buffered.end(index)]) });
   let timer;
   let reported = new Set();
+  // A freshly inserted video can have an explicit source before currentSrc is selected.
+  const resource = video => video.currentSrc || (!video.srcObject && video.getAttribute('src') ? video.src : '');
   const report = () => {
     if (timer !== undefined) return;
     timer = setTimeout(() => {
@@ -64,22 +66,33 @@
       send({ kind: 'candidates', removed, candidates: [...elements].map(([media, { video }]) => {
         let url = null;
         try { const source = new URL(video.currentSrc); if (['http:', 'https:'].includes(source.protocol) && !source.username && !source.password && source.href.length <= 4096) url = source.href; } catch {}
-        return { media, resource: video.currentSrc.slice(0, 4096), title: (video.getAttribute('aria-label') || video.title || document.title || location.hostname).slice(0, 256), url,
+        return { media, resource: resource(video).slice(0, 4096), title: (video.getAttribute('aria-label') || video.title || document.title || location.hostname).slice(0, 256), url,
           duration: Number.isFinite(video.duration) ? video.duration : null };
       }) });
     }, 80);
   };
   const discover = () => {
     for (const [source, child] of children) if (!child.element.isConnected) { children.delete(source); send({ kind: 'removed', removed: child.frame }); }
-    for (const [id, entry] of elements) if (!entry.video.isConnected) { entry.lifetime.abort(); elements.delete(id); }
-    for (const video of document.querySelectorAll('video')) {
+    const videos = document.querySelectorAll('video');
+    const removed = [...elements].filter(([, entry]) => !entry.video.isConnected);
+    if (removed.length === 1 && videos.length <= 64) {
+      const [media, { video: old }] = removed[0];
+      // A site can rebuild its player while keeping the exact same loaded resource.
+      const matches = old.currentSrc && !old.srcObject ? [...videos].filter(video => !video.srcObject && resource(video) === old.currentSrc) : [];
+      if (matches.length === 1 && !ids.has(matches[0])) {
+        ids.delete(old);
+        ids.set(matches[0], media);
+      }
+    }
+    for (const [id, entry] of removed) { entry.lifetime.abort(); elements.delete(id); }
+    for (const video of videos) {
       if (elements.size >= 64) break;
       if (ids.has(video) && elements.has(ids.get(video))) continue;
       const media = ids.get(video) || uuid(), lifetime = new AbortController();
       ids.set(video, media); elements.set(media, { video, lifetime });
       for (const event of ['emptied', 'loadstart']) video.addEventListener(event, report, { signal: lifetime.signal });
       for (const event of ['loadedmetadata', 'loadeddata', 'play', 'playing', 'pause', 'seeked', 'ratechange', 'ended', 'waiting', 'error']) {
-        video.addEventListener(event, () => { send({ kind: 'sample', media, resource: video.currentSrc.slice(0, 4096), event }); if (event === 'loadedmetadata' || event === 'loadeddata') report(); }, { signal: lifetime.signal });
+        video.addEventListener(event, () => { send({ kind: 'sample', media, resource: resource(video).slice(0, 4096), event }); if (event === 'loadedmetadata' || event === 'loadeddata') report(); }, { signal: lifetime.signal });
       }
     }
     report();

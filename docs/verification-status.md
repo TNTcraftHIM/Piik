@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-21
+Last updated: 2026-11-22
 
 This page summarizes the current 3.0 evidence and limits that affect product
 claims. [Status](./status.md#isolated-30-prototype) owns delivery readiness;
@@ -54,6 +54,12 @@ WebRTC connection. The recipient saved a file matching the sender's SHA-256.
 Its decoded screen frames advanced during the download and after the file
 transfer ended. The screen kept its original connection and media flow.
 
+After removal of the old single-file limit, two Browsers transferred a
+16,777,217-byte attachment through WebRTC and OPFS. The saved original matched
+byte for byte. A separate source/relay/receiver WASM control verified 256 MiB
+with bounded range buffers and an exact digest. These controls cover the
+streaming path; available device storage still determines writable capacity.
+
 Separate protocol-38 Browser controls started file and voice delivery with no
 existing peer links and blocked direct negotiation between sender and receiver.
 A peer only browsing the same room relayed a 1,048,605-byte file whose SHA-256
@@ -89,6 +95,11 @@ and activity retirement through Browser and Server room hosts. Watch-only
 participation adds no media or byte-flow demand. A separate control verifies real
 autoplay refusal and trusted-click recovery. This is source-level evidence;
 cross-network clock accuracy and matched packages remain open.
+Origin-first HLS passes a Windows App and two independent Browser viewers:
+each viewer read a suffixless source URL directly, followed the sharer's pause
+and seek to the same 14-second position, and created no peer byte demand.
+The source rejected Range probes and accepted ordinary GET. This is a controlled
+source, not general authenticated-website coverage.
 The Windows webpage connector passes normal App/Browser controls with an owned
 cross-origin iframe: a Browser without the sharer's cookies independently loads
 the selected MP4, follows pause/seek, and retires after the source window closes.

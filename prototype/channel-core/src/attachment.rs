@@ -33,7 +33,8 @@ pub struct AttachmentLimits {
 }
 pub const ATTACHMENT_LIMITS: AttachmentLimits = AttachmentLimits {
     max_inline_image_bytes: 512 * 1024,
-    max_file_bytes: 16 * 1024 * 1024,
+    // Browser file sizes and JSON offsets must remain exact JavaScript integers.
+    max_file_bytes: (1_u64 << 53) - 1,
     max_attachments_per_message: 8,
     max_retained_bytes: 256 * 1024 * 1024,
     max_retained_files: 256,

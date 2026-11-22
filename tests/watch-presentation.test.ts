@@ -121,9 +121,10 @@ describe("Webpage watch presentation", () => {
     const owner = render(true), viewer = render(false);
     expect(owner).toContain('aria-label="Playback progress for everyone"');
     expect(owner).toContain('aria-valuetext="0:12 / 2:00"');
-    expect(viewer).toContain('>0:12 / 2:00</output>');
-    expect(owner.indexOf('aria-label="Playback speed for everyone"')).toBeGreaterThan(owner.indexOf('popover="auto"'));
-    expect(viewer).toContain('<progress');
+    expect(viewer).toContain('>0:12 / 2:00<');
+    expect(owner).toMatch(/popover="auto"[\s\S]*<select[^>]*aria-label="Playback speed for everyone"/);
+    expect(viewer).toMatch(/<progress[^>]*max="120"[^>]*value="12"/);
+    expect(viewer).not.toContain('type="range"');
     expect(viewer).toContain("Playback follows the sharer. Volume only affects you.");
     expect(viewer).not.toContain('aria-label="Playback progress for everyone"');
     expect(viewer).not.toContain('aria-label="Playback speed for everyone"');
@@ -195,7 +196,7 @@ describe("Webpage watch presentation", () => {
     },
   );
 
-  it.each([true, false])("explains original-page access before sharing with a direct candidate=%s", direct => {
+  it.each([true, false])("offers original-page sharing with access guidance for a direct candidate=%s", direct => {
     setCopy({ lang: "en" });
     const channel = { appConnected: true, pagePlayer: true, pending: new Set(), watchEmbed: () => undefined,
       sourceSelectionCommitting: () => false, watchPage: () => ({ url: "https://video.test/player", candidates: [],
@@ -203,8 +204,10 @@ describe("Webpage watch presentation", () => {
     } as unknown as ChannelController;
     const html = renderToStaticMarkup(createElement(WatchSourceDialog, { channel, roomId: "room", onClose: vi.fn() }));
     expect(html).toContain(t("en", "watch.browserSource.originalHelp"));
-    expect(html.indexOf(t("en", "watch.browserSource.originalHelp"))).toBeLessThan(html.indexOf('aria-label="Share original webpage only"'));
-    expect(html.includes('aria-label="Play Owned video in Piik"')).toBe(direct);
+    const originalPage = html.match(/<button[^>]*aria-label="Share original webpage only"[^>]*>/)?.[0];
+    expect(originalPage).toBeDefined();
+    expect(originalPage).not.toContain("disabled");
+    expect(html.includes(`aria-label="${t("en", "watch.forward.direct")}"`)).toBe(direct);
     expect(html.includes(`aria-label="${t("en", "watch.forward.shareFile")}"`)).toBe(direct);
     expect(html.includes(t("en", "watch.forward.shareFileHelp"))).toBe(direct);
   });
@@ -352,10 +355,15 @@ describe("Webpage watch presentation", () => {
     expect(html).not.toContain("<video");
     expect(html).not.toContain('aria-label="Picture in picture"');
     expect(html).not.toContain('aria-label="Mute"');
-    expect(html.match(/class="c3-mini-controls\b/g) ?? []).toHaveLength(owned ? 1 : 0);
+    expect(html).toContain(`role="group" aria-label="${t("en", "playback.controls")}"`);
     expect(html.includes('aria-label="Playback for everyone"')).toBe(owned);
     expect(html.includes('aria-label="Playback progress for everyone"')).toBe(owned);
-    if (owned) expect(html).toContain('max="240"');
+    expect(html).toContain('>0:42 / 4:00<');
+    if (owned) expect(html).toMatch(/<input[^>]*type="range"[^>]*max="240"/);
+    else {
+      expect(html).toMatch(/<progress[^>]*max="240"[^>]*value="42"/);
+      expect(html).not.toContain('type="range"');
+    }
   });
 
   it("offers direct playback first and keeps the App and sharer paths visible when available", () => {

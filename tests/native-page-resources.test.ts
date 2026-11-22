@@ -69,7 +69,7 @@ function ownedVideo(index: number) {
   return { isConnected: true, currentSrc: `https://media.test/${index}.mp4?signature=${"a".repeat(3900)}`,
     title: `Video ${index}`, duration: 30, currentTime: 0, paused: true, playbackRate: 1, readyState: 4, ended: false,
     buffered: { length: 0 }, pause() { this.paused = true; }, async play() { this.paused = false; },
-    getAttribute() { return null; }, addEventListener() {} };
+    getAttribute(_name: string): string | null { return null; }, addEventListener() {} };
 }
 
 test("candidate batches fit Native IPC and explicitly remove the replaced element without losing later candidates", () => {
@@ -94,6 +94,22 @@ test("same element changes its resource without changing identity, and removing 
   expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ candidates: [{ media: id, resource: video.currentSrc }], removed: [] });
   bridge.setVideos([]);
   expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ candidates: [], removed: [id] });
+});
+
+test.each([false, true])("rebuilding the sole player of the same resource keeps its commands on the replacement (preloaded=%s)", async preloaded => {
+  const bridge = candidateBridge(), first = ownedVideo(0);
+  const next = { ...ownedVideo(0), currentSrc: preloaded ? first.currentSrc : "", src: first.currentSrc,
+    getAttribute: (name?: string) => name === "src" ? first.currentSrc : null };
+  bridge.setVideos([first]);
+  const { frame, candidates: [{ media }] } = JSON.parse(bridge.bodies.at(-1)!);
+  bridge.setVideos([next]);
+  expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ removed: [], candidates: [{ media, resource: first.currentSrc }] });
+  await bridge.message({ data: { bridge: "piik-page-command", frame, media, kind: "patch",
+    request: webcrypto.randomUUID(), patch: { position: 12 } } });
+  expect(next.currentTime).toBe(12);
+  expect(first.currentTime).toBe(0);
+  bridge.setVideos([ownedVideo(0), ownedVideo(0)]);
+  expect(JSON.parse(bridge.bodies.at(-1)!).removed).toEqual([media]);
 });
 
 test("same iframe WindowProxy navigating retires its previous document without retiring a sibling", () => {

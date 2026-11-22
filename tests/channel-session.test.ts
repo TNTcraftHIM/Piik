@@ -9517,7 +9517,7 @@ test("Core archive budget failures stay distinct from malformed retained invento
     attachment: { id: crypto.randomUUID(), name: "owned.bin", size, mediaType: "application/octet-stream", sha256: index.toString(16).padStart(64, "0") } }));
   const validate = (retainedFiles: ReturnType<typeof inventory>) => core.backup_metadata(JSON.stringify({ kind: "room_copy", version: 2, authors: {}, retainedFiles }));
   const count = inventory(Array(limits.maxRetainedFiles).fill(1));
-  const sizes = Array(limits.maxRetainedBytes / limits.maxFileBytes).fill(limits.maxFileBytes);
+  const sizes = [limits.maxRetainedBytes];
   const bytes = inventory(sizes);
   expect(JSON.parse(validate(count)).retainedFiles).toHaveLength(count.length);
   expect(JSON.parse(validate(bytes)).retainedFiles).toHaveLength(bytes.length);
@@ -10818,13 +10818,13 @@ test.each(['activity', 'subscription'] as const)('watch authority %s removal ret
   } finally { session.close(); }
 });
 
-test.each(['withdrawn', 'replaced', 'activity'] as const)('peer source %s retires setup while its first range waits for a route', async removal => {
+test.each(['withdrawn', 'replaced', 'activity', 'direct viewer'] as const)('watch source %s retires only the affected media and preserves room participation', async removal => {
   const { session, socket } = await setup(1000, false);
   const video = new WatchTestVideo(); video.readyState = 0;
   vi.stubGlobal('document', { createElement: () => video });
   vi.stubGlobal('MediaSource', { isTypeSupported: () => true });
   const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'file' as const };
-  const activity = { id: 'watch-pending-source', roomId: 'first', viewerSessionIds: [], sessionId: source.sessionId, userId: 'other',
+  const activity = { id: 'watch-pending-source', roomId: 'first', viewerSessionIds: ['endpoint'], sessionId: source.sessionId, userId: 'other',
     source: { kind: 'media' as const, url: 'https://media.test/owned.mp4' }, byteSource: source,
     playback: { timeline: 'media' as const, position: 0, paused: false, rate: 1, anchorTime: 1000 } };
   let readSignal!: AbortSignal;
@@ -10832,20 +10832,55 @@ test.each(['withdrawn', 'replaced', 'activity'] as const)('peer source %s retire
     .mockImplementation((...args) => { readSignal = args.at(-1) as AbortSignal;
       return new Promise<never>((_resolve, reject) => readSignal.addEventListener('abort', () => reject(readSignal.reason), { once: true })); });
   try {
-    const state = { ...session.getSnapshot().state!, watchActivities: [activity], watchSubscriptions: [{ id: activity.id, mode: 'peer' as const }] };
+    const mode = removal === 'direct viewer' ? 'direct' as const : 'peer' as const;
+    const state = { ...session.getSnapshot().state!, watchActivities: [activity], watchSubscriptions: [{ id: activity.id, mode }] };
     socket.receive({ type: 'state', state });
-    const joining = session.joinWatch(activity.id, 'peer');
+    const joining = session.joinWatch(activity.id, mode);
     const join = socket.sent.findLast(command => command.type === 'join_watch')!;
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: join.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
     await joining;
-    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1));
-    expect(readSignal.aborted).toBe(false);
+    const player = session.getSnapshot().watchPlayers.get(activity.id)!;
+    if (mode === 'peer') {
+      await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+      expect(readSignal.aborted).toBe(false);
+    }
     const next = removal === 'activity' ? [] : [{ ...activity,
-      byteSource: removal === 'withdrawn' ? undefined : { ...source, resourceId: crypto.randomUUID() } }];
-    socket.receive({ type: 'state', state: { ...state, watchActivities: next } });
-    expect(readSignal.aborted).toBe(true);
-    expect(session.getSnapshot().watchPlayers.has(activity.id)).toBe(false);
-    expect(video.src).toBe('');
+      byteSource: removal === 'replaced' ? { ...source, resourceId: crypto.randomUUID() } : undefined }];
+    socket.receive({ type: 'state', state: { ...state, watchActivities: next, watchSubscriptions: next.length ? state.watchSubscriptions : [] } });
+    if (mode === 'peer') {
+      expect(readSignal.aborted).toBe(true);
+      expect(video.src).toBe('');
+    }
+    if (removal === 'activity') {
+      expect(session.getSnapshot().watchPlayers.has(activity.id)).toBe(false);
+      return;
+    }
+    expect(session.getSnapshot().state!.watchSubscriptions).toEqual(state.watchSubscriptions);
+    expect(session.getSnapshot().state!.watchActivities[0].viewerSessionIds).toContain('endpoint');
+    if (mode === 'direct') {
+      expect(session.getSnapshot().watchPlayers.get(activity.id)).toBe(player);
+      expect(player.signal.aborted).toBe(false);
+      expect(read).not.toHaveBeenCalled();
+      return;
+    }
+    await new Promise(resolve => setTimeout(resolve, 0)); // The retired reader's ready() rejects after the snapshot.
+    expect(session.getSnapshot().watchPlayers.get(activity.id)?.error).toBe(removal === 'replaced' ? 'watch_source_changed' : 'watch_source_unavailable');
+    if (removal === 'withdrawn') {
+      const leaving = session.leaveWatch(activity.id);
+      const leave = socket.sent.findLast(command => command.type === 'join_watch')!;
+      expect(leave).toMatchObject({ roomId: 'first', id: activity.id, mode: null });
+      socket.receive({ type: 'room_reply', roomId: 'first', requestId: leave.requestId, result: { type: 'done' } });
+      await leaving;
+      expect(session.getSnapshot().state!.watchSubscriptions).toEqual([]);
+      expect(session.getSnapshot().state!.watchActivities[0].viewerSessionIds).not.toContain('endpoint');
+    } else {
+      const switching = session.joinWatch(activity.id, 'direct');
+      const direct = socket.sent.findLast(command => command.type === 'join_watch')!;
+      expect(direct).toMatchObject({ id: activity.id, mode: 'direct' });
+      socket.receive({ type: 'room_reply', roomId: 'first', requestId: direct.requestId, result: { type: 'watch_ready', serverTime: 1100 } });
+      await switching;
+      expect(session.getSnapshot().watchPlayers.get(activity.id)?.signal.aborted).toBe(false);
+    }
   } finally { session.close(); }
 });
 
@@ -11032,6 +11067,7 @@ function mpdSelectionFixture() {
 }
 
 test('MPD whole-track selection stays private until explicit confirmation and uses one atomic publication', async () => {
+  const diagnostic = vi.spyOn(browserDiagnostics, 'debugEvent');
   localProviderVideo();
   const { candidate, catalog, selected } = mpdSelectionFixture();
   const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], mpdCandidates: [candidate], byteSource: null }));
@@ -11064,7 +11100,19 @@ test('MPD whole-track selection stays private until explicit confirmation and us
     state.sessions.push(native);
     state.watchActivities = [{ id: String(start.id), roomId: 'first', sessionId: 'endpoint', userId: 'self',
       viewerSessionIds: [], source: { kind: 'website', url: page.url }, playback: { timeline: 'media', position: 0, rate: 1, paused: true, anchorTime: 1000 } }];
-    socket.receive({ type: 'state', state: structuredClone(state) });
+    const activity = state.watchActivities[0];
+    activity.byteSource = source;
+    const viewer = { ...native, id: crypto.randomUUID(), userId: 'remote-viewer' };
+    state.sessions.push(viewer);
+    const ownerPlayer = session.getSnapshot().watchPlayers.get(activity.id);
+    for (const audience of [[], [viewer.id], []]) {
+      activity.viewerSessionIds = audience;
+      socket.receive({ type: 'state', state: structuredClone(state) });
+      expect(session.getSnapshot().state?.watchActivities[0]?.viewerSessionIds).toEqual(audience);
+      expect(session.getSnapshot().watchPlayers.get(activity.id)).toBe(ownerPlayer);
+      expect(dispose).not.toHaveBeenCalled();
+      expect(socket.sent.some(command => command.type === 'stop_watch')).toBe(false);
+    }
     native.online = false;
     socket.receive({ type: 'state', state: structuredClone(state) });
     expect(session.getSnapshot().watchPlayers.has(String(start.id))).toBe(true);
@@ -11073,6 +11121,9 @@ test('MPD whole-track selection stays private until explicit confirmation and us
     expect(session.getSnapshot().watchPlayers.has(String(start.id))).toBe(false);
     const stop = socket.sent.findLast(command => command.type === 'stop_watch')!;
     expect(stop.id).toBe(start.id);
+    expect(diagnostic.mock.calls.filter(([, event]) => event === 'watch-owner-retired')).toEqual([
+      ['channel', 'watch-owner-retired', { activityId: start.id, reason: 'provider-session-ended' }],
+    ]);
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: stop.requestId, result: { type: 'done' } });
   } finally { session.close(); }
 });
@@ -11253,7 +11304,7 @@ test.each(['portable', 'forward'] as const)('a live %s selection keeps the prepa
     const start = socket.sent.findLast(command => command.type === 'start_watch')!;
     expect(start.playback).toMatchObject({ timeline: 'program', position: epoch + 6 });
     expect(start.byteSource).toEqual(mode === 'forward' ? source : undefined);
-    expect(start.source).toEqual({ kind: 'website', url: page.url, ...(mode === 'portable' && { mediaUrl: choice.displayURL }) });
+    expect(start.source).toEqual({ kind: 'website', url: page.url, mediaUrl: choice.displayURL });
     expect(prepare).toHaveBeenCalledTimes(mode === 'forward' ? 1 : 0);
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch')).toBe(true));

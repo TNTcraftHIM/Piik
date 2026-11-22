@@ -61,7 +61,8 @@ address discovery is not planned.
 The current UI offers configurable microphone and listening shortcuts for the
 voice dock's selected room, with opt-in Windows background registration.
 Local failure guidance uses current operation facts and links to the matching
-3.0 guide. App workspace navigation verifies the target site before leaving the
+3.0 guide. A failed site connection offers a user-requested same-origin check.
+App workspace navigation verifies the target site before leaving the
 current page; webpage-video sources retain their separate browsing scope.
 [Verification status](./verification-status.md) owns evidence and platform limits;
 [TODO](./todo.md) owns remaining implementation and acceptance work.

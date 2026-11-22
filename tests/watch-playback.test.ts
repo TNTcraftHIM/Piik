@@ -448,8 +448,8 @@ test("media parse errors survive readiness and late error events, while retireme
 
 test("a supported viewer rate restores alignment while a player failure survives the next anchor", async () => {
   vi.useFakeTimers();
-  const state = { position: 0, paused: true, rate: 1, duration: 20, readyState: 4, ended: false, buffered: [] };
-  const read = vi.fn(async () => state), patch = vi.fn();
+  const state = { position: 2, paused: false, rate: 1, duration: 20, readyState: 4, ended: false, buffered: [] };
+  const read = vi.fn(async () => ({ ...state })), patch = vi.fn(async value => { Object.assign(state, value); });
   let emit!: (event: WatchMediaEvent) => void;
   const player = new WatchPlayer("room", false, { read, patch, playbackRates: () => [1],
     ready: vi.fn(), listen: listener => { emit = listener; return () => {}; }, close: vi.fn() }, vi.fn());
@@ -459,8 +459,9 @@ test("a supported viewer rate restores alignment while a player failure survives
   };
   try {
     player.calibrate(0, 0, 0);
-    await anchor(1.5);
+    await anchor(1.5, 20);
     expect(player.error).toBe("watch_media_unsupported");
+    expect(patch).toHaveBeenCalledExactlyOnceWith({ position: 20, paused: true });
     await anchor(1, 4);
     expect(player.error).toBeNull();
     expect(patch).toHaveBeenCalledWith({ position: 4 });

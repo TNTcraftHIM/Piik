@@ -1,6 +1,6 @@
 import { RoomCreationInterrupted } from "./room-creation";
 import { YouTubeMedia } from "./watch-youtube-media";
-import { PageSuppliedMedia, preparePageSuppliedWatchMedia, preparePortableWatchMedia, observeWatchSources, directForwardFileURL, type WatchMediaSources } from "./watch-page-media";
+import { PageSuppliedMedia, preparePageSuppliedWatchMedia, preparePortableWatchMedia, observeWatchSources, directForwardMediaURL, type WatchMediaSources } from "./watch-page-media";
 import { canMoveYouTubePlayer, canWatchInBrowser, youtubeVideoId, youtubeStartSeconds, youtubeSourceId, originalWatchURL } from "./watch-youtube-source";
 import { indexedMediaSelection } from "./watch-indexed-source";
 import { WatchBytes } from "./watch-bytes";
@@ -17,7 +17,7 @@ import { RoomReadMarkers } from "./read-markers";
 import { historyProfileIds, mergeMessage, mergeMessages, readingWindow, redactReply } from "./message-history";
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
-import { messageRemoved, type ChannelActions, type ChannelView, type ChatOptions, type ScreenPresentation, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
+import { messageRemoved, type ChannelActions, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type ScreenPresentation, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
 import { validBackupSequence, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
 import type { BackupHistoryImport } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
@@ -656,21 +656,25 @@ export class ChannelSession {
     }
     for (const [id, player] of this.watchPlayers) {
       const activity = state.watchActivities.find(value => value.id === id);
-      if (!player.owner && !restoring && !state.watchSubscriptions.some(value => value.id === id) && this.view.state?.watchSubscriptions.some(value => value.id === id)) this.retireWatchPlayer(id);
+      if (!player.owner && (!restoring || player.signal.aborted) && !state.watchSubscriptions.some(value => value.id === id) && this.view.state?.watchSubscriptions.some(value => value.id === id)) this.retireWatchPlayer(id);
       else if (activity) {
         const retained = player.media.retainedByteSource;
         if (player.owner && retained && !state.sessions.some(session => session.id === retained.sessionId)) {
-          void this.stopWatch(id).catch(() => {});
+          void this.stopWatch(id, "provider-session-ended").catch(() => {});
           continue;
         }
         const previousSource = this.view.state?.watchActivities.find(value => value.id === id)?.byteSource;
         const nextSource = activity.byteSource;
         if (player.mode === "peer" && previousSource && (!nextSource
           || previousSource.sessionId !== nextSource.sessionId || previousSource.resourceId !== nextSource.resourceId
-          || previousSource.format !== nextSource.format)) this.retireWatchPlayer(id);
+          || previousSource.format !== nextSource.format)) {
+          // The room retains participation while this byte source and its reader retire.
+          player.error = nextSource ? "watch_source_changed" : "watch_source_unavailable";
+          player.close();
+        }
         else player.update(activity.playback);
       } else if (this.view.state?.watchActivities.some(value => value.id === id)
-        || !this.view.pending.has(`screen:${player.roomId}`) && !this.view.pending.has(`watch-video:${id}`)) this.retireWatchPlayer(id);
+        || !this.view.pending.has(`screen:${player.roomId}`) && !this.view.pending.has(`watch-video:${id}`)) this.retireWatchPlayer(id, "activity-removed");
     }
     // Keep the room's facts for reprojection and forwarding independently of displayed pictures.
     this.roomSnapshot = withoutRoomPictures(state);
@@ -1388,7 +1392,7 @@ export class ChannelSession {
     }
     return roomId;
   };
-  sendMessage = (roomId: string, text: string, files: DraftFile[] = [], signal?: AbortSignal, options: ChatOptions = {}): Promise<void> => this.action(`chat:${roomId}`, async () => {
+  sendMessage = (roomId: string, text: string, files: DraftFile[] = [], signal?: AbortSignal, options: ChatOptions = {}, preparation?: ChatAttachmentPreparation): Promise<void> => this.action(`chat:${roomId}`, async () => {
     signal?.throwIfAborted();
     if (files.length && !this.view.state?.channel.rooms.find(room => room.id === roomId)?.capabilities.attachments) throw new Error("attachments_unavailable");
     const sessionId = this.view.sessionId, bindingId = this.conversationBinding(roomId);
@@ -1400,15 +1404,17 @@ export class ChannelSession {
     const previous = this.outgoingMessages.get(roomId);
     const retry = previous?.bindingId === bindingId && previous.content === content && previous.files.length === files.length
       && files.every((entry, index) => entry.id === previous.files[index].id && entry.file === previous.files[index].file) ? previous : undefined;
-    const prepared = retry?.files ?? (files.length ? await this.attachments.describe(files, signal) : []);
+    const preparationSignal = preparation && signal ? AbortSignal.any([preparation.signal, signal]) : preparation?.signal ?? signal;
+    const prepared = retry?.files ?? (files.length ? await this.attachments.describe(files, preparationSignal, preparation?.progress) : []);
     if (this.closed || this.view.sessionId !== sessionId) throw new Error("disconnected");
-    signal?.throwIfAborted();
+    preparationSignal?.throwIfAborted();
     if (this.conversationBinding(roomId) !== bindingId) throw new Error("room_unavailable");
     // Retry the prepared command even if its selected disk file is no longer readable.
     const attempt = retry ?? { bindingId, content, files: prepared, command: {
       type: "chat" as const, roomId, ...draft, nonce: crypto.randomUUID(), attachments: prepared.map(file => file.attachment),
       inlineImages: Object.fromEntries(prepared.flatMap(file => file.inlineImage ? [[file.id, file.inlineImage]] : [])),
     } };
+    preparation?.progress(null);
     this.outgoingMessages.set(roomId, attempt);
     await this.request(attempt.command, event => {
       if (event.type === "confirmed") this.attachments.confirmed(roomId, event.message, prepared);
@@ -2447,8 +2453,9 @@ export class ChannelSession {
       this.finishScreenSelection(roomId, share, selection);
     }
   });
-  private retireWatchPlayer(id: string): void {
+  private retireWatchPlayer(id: string, reason?: string): void {
     const player = this.watchPlayers.get(id);
+    if (player?.owner && reason) debugEvent("channel", "watch-owner-retired", { activityId: id, reason });
     this.watchPlayers.delete(id);
     player?.close();
   }
@@ -2469,7 +2476,7 @@ export class ChannelSession {
     if (this.view.connection !== "connected") return;
     await Promise.all([...this.watchPlayers].map(async ([id, player]) => {
       // Once the candidate requests its mode, it owns the subscription until commit or cancellation.
-      if (player.mode === null || this.hasJoiningWatchCandidate(id)) return;
+      if (player.mode === null || player.signal.aborted || this.hasJoiningWatchCandidate(id)) return;
       try {
         await this.joinWatchAndSyncClock(id, player, player.mode);
         if (player.owner && this.watchPlayers.get(id) === player) await this.reconcileWatchBytes(id, player);
@@ -2480,7 +2487,7 @@ export class ChannelSession {
   };
   private makeWatchPlayer(id: string, roomId: string, owner: boolean, media: WatchMedia): WatchPlayer {
     const player = new WatchPlayer(roomId, owner, media, () => this.patch({}), () => {
-      if (this.watchPlayers.get(id) === player) void (owner ? this.stopWatch(id) : this.leaveWatch(id)).catch(() => {});
+      if (this.watchPlayers.get(id) === player) void (owner ? this.stopWatch(id, "media-closed") : this.leaveWatch(id)).catch(() => {});
       else if (this.pendingWatchPlayers.get(id) === player) this.cancelWatchPage(id);
     });
     return player;
@@ -2601,7 +2608,7 @@ export class ChannelSession {
     if (!selection || !page || !choice) throw new Error("watch_page_unavailable");
     selection.discovery?.unsubscribe();
     const source = await page.prepareMedia(choiceId, selection.controller.signal);
-    const mediaUrl = source.format === "file" ? directForwardFileURL(choice) : undefined;
+    const mediaUrl = source.format === choice.format ? directForwardMediaURL(choice) : undefined;
     await this.commitPageSuppliedWatch(roomId, page, selection, source, mediaUrl);
   }, reportError);
   selectWatchIndexedSource = (roomId: string, videoId: string, audioId?: string, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
@@ -2806,7 +2813,7 @@ export class ChannelSession {
       }
     } finally {
       if (!committed) {
-        if (this.watchPlayers.get(id) === player) this.retireWatchPlayer(id);
+        if (this.watchPlayers.get(id) === player) this.retireWatchPlayer(id, "start-cancelled");
         else player.close();
         // Once submitted, this selection owns rollback. A replacement socket
         // reconciles orphaned activities from Welcome.
@@ -2830,7 +2837,7 @@ export class ChannelSession {
     }
     const url = activity.source.kind === "media" ? activity.source.url : activity.source.mediaUrl;
     if (url) {
-      await this.joinWatchMedia(id, new HTMLVideoMedia(url, directWatchFormat(new URL(url)), activity.playback.timeline));
+      await this.joinWatchMedia(id, new HTMLVideoMedia(url, activity.source.kind === "media" ? directWatchFormat(new URL(url)) : undefined, activity.playback.timeline));
       return;
     }
     const embed = youtubeSourceId(activity.source);
@@ -2881,13 +2888,16 @@ export class ChannelSession {
     player.update(activity.playback);
     this.patch({});
     void player.ready().catch(error => {
-      if (this.watchPlayers.get(id) === player) {
+      if (!player.signal.aborted && this.watchPlayers.get(id) === player) {
         player.error = error instanceof Error ? error.message : "watch_media_failed";
         this.patch({});
       }
     });
     try { await this.joinWatchAndSyncClock(id, player, mode); this.browseRooms(); }
-    catch (error) { if (this.watchPlayers.get(id) === player) this.retireWatchPlayer(id); this.patch({}); throw error; }
+    catch (error) {
+      if (!player.signal.aborted && this.watchPlayers.get(id) === player) this.retireWatchPlayer(id);
+      this.patch({}); throw error;
+    }
   }
   leaveWatch = async (id: string): Promise<void> => {
     const candidate = this.retirePendingWatchPlayer(id);
@@ -2899,18 +2909,18 @@ export class ChannelSession {
     this.browseRooms();
     if (this.view.connection === "connected") await this.request({ type: "join_watch", roomId, id, mode: null }, undefined, roomId);
   };
-  stopWatch = async (id: string): Promise<void> => {
+  stopWatch = async (id: string, reason: "stop-requested" | "provider-session-ended" | "media-closed" | "screen-replacement" = "stop-requested"): Promise<void> => {
     const player = this.watchPlayers.get(id);
     if (!player?.owner) return;
     const candidate = this.sourceSelections.get(player.roomId)?.watchCandidate;
     if (candidate?.player === player && this.view.connection === "connected") candidate.stopping = true;
-    this.retireWatchPlayer(id);
+    this.retireWatchPlayer(id, reason);
     this.refreshActivity();
     this.browseRooms();
     if (this.view.connection === "connected") await this.request({ type: "stop_watch", roomId: player.roomId, id }, undefined, player.roomId);
   };
   private async stopRoomWatch(roomId: string): Promise<void> {
-    for (const [id, player] of this.watchPlayers) if (player.owner && player.roomId === roomId) await this.stopWatch(id);
+    for (const [id, player] of this.watchPlayers) if (player.owner && player.roomId === roomId) await this.stopWatch(id, "screen-replacement");
   }
 
   private async previewCommittedCapture(roomId: string, id: string, current: () => boolean, signal: AbortSignal): Promise<void> {
@@ -3643,7 +3653,7 @@ export class ChannelSession {
     this.sourceSelections.clear();
     this.screenShares.clear();
     for (const id of this.pendingWatchPlayers.keys()) this.retirePendingWatchPlayer(id);
-    for (const id of this.watchPlayers.keys()) this.retireWatchPlayer(id);
+    for (const id of this.watchPlayers.keys()) this.retireWatchPlayer(id, "session-released");
     this.app?.stopCaptures();
     this.input.reset();
     this.attachments.reset();

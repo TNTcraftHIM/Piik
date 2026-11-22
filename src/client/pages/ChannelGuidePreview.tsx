@@ -99,9 +99,11 @@ export function useChannelGuideSample({ multiRoom = false, showSampleAttachment 
   const [attachments] = useState(() => new GuideAttachments(async () => {}, async () => {}));
   const nextMessage = useRef(showSampleAttachment ? sampleAttachmentSeq + 1 : 3);
   useEffect(() => () => attachments.reset(), [attachments]);
-  const onSend: ChannelController["sendMessage"] = async (roomId, text, files = [], signal, options = {}) => {
-    const prepared = await attachments.describe(files, signal);
-    signal?.throwIfAborted();
+  const onSend: ChannelController["sendMessage"] = async (roomId, text, files = [], signal, options = {}, preparation) => {
+    const preparationSignal = preparation && signal ? AbortSignal.any([preparation.signal, signal]) : preparation?.signal ?? signal;
+    const prepared = files.length ? await attachments.describe(files, preparationSignal, preparation?.progress) : [];
+    preparationSignal?.throwIfAborted();
+    preparation?.progress(null);
     const seq = nextMessage.current++;
     const target = options.reply && [...(messagesByRoom[roomId] ?? []), ...sampleMessages].find(message => message.seq === options.reply?.seq && message.id === options.reply.messageId);
     if (options.reply && !target) throw new Error("message_unavailable");
@@ -262,6 +264,32 @@ export function ChannelGuidePreview() {
   const { channel, roomName, notice, received, onSend } = useChannelGuideSample({ showSampleAttachment: true });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
+  const [watchPage, setWatchPage] = useState<ReturnType<ChannelController["watchPage"]>>();
+  const watchChannel: ChannelController = {
+    ...channel, pagePlayer: true, watchPage: () => watchPage,
+    prepareWatchPage: async (_roomId, url) => setWatchPage({ url, candidates: [
+      { id: "10000000-0000-4000-8000-000000000001", title: zh ? "山径漫步完整版" : "Mountain trail walk — full film",
+        url: "https://media.example/films/mountain-trail.mp4", duration: 1480 },
+      { id: "10000000-0000-4000-8000-000000000002", title: zh ? "幕后花絮" : "Behind the scenes",
+        url: null, duration: 206 },
+    ] }),
+    selectWatchPage: async (_roomId, candidateId, _activityId, _reportError, mode) => {
+      const candidate = watchPage?.candidates.find(item => item.id === candidateId);
+      if (!watchPage || !candidate) throw new Error("watch_page_unavailable");
+      if (mode === "original-page" || (candidate.url && mode !== "choose-source")) { received(); return true; }
+      setWatchPage({ ...watchPage, watchSources: { choices: [
+        { id: "20000000-0000-4000-8000-000000000001", name: candidate.title, format: "file",
+          displayURL: candidate.url ?? "https://media.example/films/behind-the-scenes.mp4" },
+        { id: "20000000-0000-4000-8000-000000000002", name: zh ? "自适应高清播放列表" : "Adaptive HD playback",
+          format: "hls", displayURL: "https://media.example/films/adaptive-hd/master.m3u8" },
+      ], indexed: [], mpd: [] } });
+      return false;
+    },
+    selectWatchBrowserSource: async () => received(),
+    selectWatchForwardSource: async () => received(),
+    focusWatchPage: async () => received(),
+    cancelScreenSelection: async () => setWatchPage(undefined),
+  };
   const state = channel.state!;
   return <section id="channel-guide-preview" className="cp-card">
     <header><h2>{zh ? "3.0 房间与分享" : "3.0 rooms and sharing"}</h2></header>
@@ -285,7 +313,7 @@ export function ChannelGuidePreview() {
       </div>
     </div>
     {settingsOpen && <ChannelRoomSettingsDialog channel={channel} room={state.channel.rooms[0]} onClose={() => setSettingsOpen(false)} />}
-    {watchOpen && <WatchSourceDialog channel={channel} roomId="friday" onClose={() => setWatchOpen(false)} />}
+    {watchOpen && <WatchSourceDialog channel={watchChannel} roomId="friday" onClose={() => { setWatchPage(undefined); setWatchOpen(false); }} />}
     <p role="status">{notice}</p>
   </section>;
 }

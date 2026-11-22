@@ -222,13 +222,26 @@ focus to its trigger.
 
 Let the media stage use the available workspace. Grid gives watched pictures
 equal weight; focus gives one picture the main area and keeps the others in a
-thumbnail strip. All pictures share the same source-information overlay and
+thumbnail strip. All pictures share the same source-information bar below the picture and
 action order. Thumbnail density retains the title, reactions, watcher count/list
 and direct stop watching or stop sharing action. Its shared playback controls
 keep play/pause, sound and playback settings available; selecting the picture
-promotes it to the full controls without remounting its player. The
-[responsibility map](#action-ownership-and-grouping) still separates publishing,
-participation and local viewing. Information bars follow playback-control visibility.
+promotes it to the full controls without remounting its player.
+
+In full-size synchronized playback, give the timeline the width of the playback
+bar and keep the time readout beside the transport controls. The sharer can
+scrub with a pointer or keyboard. Followers see read-only progress. For live
+media, show the live state and use the available replay window for the timeline
+when one exists. Keep mute one tap away. Place a short listening-volume slider
+beside mute in the main picture and in playback settings for thumbnails.
+Keep fullscreen directly available in the main picture when supported. Show
+picture-in-picture and theater mode on the bar when the picture is wide, and
+in playback settings when it is narrow. Speed belongs in the sharer's playback
+settings. Embedded players retain their own transport controls.
+
+The [responsibility map](#action-ownership-and-grouping) still separates publishing,
+participation and local viewing. The source-information bar keeps publication,
+audience and leave actions available while playback controls hide when idle.
 Source selection and sharing settings remain directly available on the active share.
 Size control groups from their actual contents before allocating the remaining
 width to source names and counts. A viewport breakpoint must not force an action

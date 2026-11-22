@@ -1247,7 +1247,8 @@ async function roomsAndFiles() {
     "Browser rooms use their real peer endpoint for files");
   const png = join(temporary, "picture.png"), text = join(temporary, "notes.txt");
   await writeFile(png, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1XcAAAAASUVORK5CYII=", "base64"));
-  await writeFile(text, "A file shared through the actual composer.");
+  const original = Buffer.alloc(16 * 1024 * 1024 + 1, "A file shared through the actual composer.\n");
+  await writeFile(text, original);
   await browser(1, "upload", '.c3-composer input[type="file"]', png, text);
   await until("two draft files", () => evaluate(1, "document.querySelectorAll('.c3-draft-files > div').length"), count => count === 2);
   await browser(1, "click", ".c3-composer button[type=submit]");
@@ -1255,7 +1256,10 @@ async function roomsAndFiles() {
   await until("PNG preview decodes", () => evaluate(0, "[...document.querySelectorAll('.c3-attachment img')].some(image => image.complete && image.naturalWidth > 0)"), Boolean);
   await browser(0, "find", "role", "button", "click", "--name", "Download", "--exact");
   const downloaded = await until("receiver saves notes.txt", () => readFile(join(temporary, "downloads", "notes.txt")).catch(() => undefined), Boolean);
-  assert.deepEqual(downloaded, await readFile(text));
+  assert.deepEqual(downloaded, original);
+  await writeFile(join(output, "peer-room-file-result.json"), JSON.stringify({
+    bytes: downloaded.length, sha256: createHash("sha256").update(downloaded).digest("hex"),
+  }, null, 2));
   await until("completed transfer retires file activity", () => view(0),
     value => value.state.channel.rooms.find(entry => entry.id === room.id)?.fileActivity.length === 0);
   for (const index of [0, 1]) await assertNoError(index, "normal room entry, chat and file flow");

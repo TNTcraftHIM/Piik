@@ -4,6 +4,7 @@ import type { ChannelRoom } from "./protocol";
 
 const guideSections = {
   troubleshooting: ["troubleshooting", "", ""],
+  site: ["troubleshooting", "the-page-opens-but-the-site-will-not-connect", "网页能打开但站点连接不上"],
   app: ["troubleshooting", "opening-app-and-joining-a-room", "打开-app-与加入房间"],
   room: ["troubleshooting", "an-invitation-or-password-is-rejected", "邀请或密码被拒绝"],
   offline: ["troubleshooting", "chat-or-history-will-not-load", "聊天或历史记录加载不出来"],

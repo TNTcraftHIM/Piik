@@ -40,6 +40,10 @@ const idle: Download["status"] = { busy: false, error: null };
 const cacheRoom = (scope: FileScope, roomId: string) => JSON.stringify([scope.domainId, scope.userId, roomId]);
 const sameContent = (a: ChannelAttachment, b: ChannelAttachment) => a.size === b.size && a.sha256.toLowerCase() === b.sha256.toLowerCase();
 const errorOf = (error: unknown) => error instanceof Error ? error : new Error(String(error));
+function throwStorageError(error: unknown): never {
+  if (error instanceof DOMException && error.name === "QuotaExceededError") throw new Error("file_storage_full");
+  throw error;
+}
 const aborted = () => new DOMException("Cancelled", "AbortError");
 
 /** Participant-owned readable files and active sinks; Rust owns range and route decisions. */
@@ -387,13 +391,15 @@ export class ChannelAttachments {
     });
   }
 
-  async describe(files: DraftFile[], signal?: AbortSignal): Promise<PreparedFile[]> {
+  async describe(files: DraftFile[], signal?: AbortSignal, onProgress?: (percent: number) => void): Promise<PreparedFile[]> {
     const lifetime = this.lifetime;
     const module = await this.module(), limits = attachmentLimitsSchema.parse(JSON.parse(module.attachment_limits()));
     signal?.throwIfAborted(); lifetime.signal.throwIfAborted();
     if (files.length > limits.maxAttachmentsPerMessage || files.some(entry => entry.file.size > limits.maxFileBytes)) throw new Error("invalid_attachments");
     const prepared: PreparedFile[] = [];
     let inlineBytes = 0;
+    const totalBytes = files.reduce((total, entry) => total + entry.file.size, 0);
+    let hashedBytes = 0, reportedPercent = 0;
     const mediaTypes = await Promise.all(files.map(async entry => module.attachment_media_type(new Uint8Array(await entry.file.slice(0, 12).arrayBuffer()))));
     let remainingImages = mediaTypes.filter(type => type.startsWith("image/")).length;
     for (const [index, entry] of files.entries()) {
@@ -404,6 +410,15 @@ export class ChannelAttachments {
           lifetime.signal.throwIfAborted();
           const bytes = new Uint8Array(await entry.file.slice(offset, offset + 65536).arrayBuffer());
           signal?.throwIfAborted(); lifetime.signal.throwIfAborted(); hash.update(bytes);
+          if (onProgress) {
+            hashedBytes += bytes.byteLength;
+            // Leave room for image renditions and metadata after the original bytes are hashed.
+            const percent = Math.min(99, Math.floor(hashedBytes / totalBytes * 100));
+            if (percent !== reportedPercent) {
+              reportedPercent = percent;
+              onProgress(percent);
+            }
+          }
         }
         const finished = hash; hash = null;
         const sha256 = finished.finish();
@@ -563,13 +578,13 @@ export class ChannelAttachments {
     const storage = this.transferStorage ??= openTransferStorage();
     const { directory } = await storage.catch(error => {
       if (this.transferStorage === storage) this.transferStorage = undefined;
-      throw error;
+      return throwStorageError(error);
     });
     runtime.lifetime.signal.throwIfAborted();
-    const name = crypto.randomUUID(), file = await directory.getFileHandle(name, { create: true });
+    const name = crypto.randomUUID(), file = await directory.getFileHandle(name, { create: true }).catch(throwStorageError);
     let writer: FileSystemWritableFileStream;
     try { writer = await file.createWritable(); }
-    catch (error) { await directory.removeEntry(name).catch(() => {}); throw error; }
+    catch (error) { await directory.removeEntry(name).catch(() => {}); throwStorageError(error); }
     let resolve!: (file: File) => void, reject!: (error: Error) => void;
     const promise = new Promise<File>((yes, no) => { resolve = yes; reject = no; });
     void promise.catch(() => {});
@@ -625,7 +640,7 @@ export class ChannelAttachments {
             sink.lifetime.signal.throwIfAborted();
             if (effect.type === "write") {
               const bytes = new Uint8Array(effect.bytes);
-              await sink.writer.write({ type: "write", position: effect.offset, data: bytes });
+              await sink.writer.write({ type: "write", position: effect.offset, data: bytes }).catch(throwStorageError);
               sink.lifetime.signal.throwIfAborted();
               if (!this.current(runtime) || this.sinks.get(fileKeyString(key)) !== entry) return;
               // Progress counts completed sink writes, never requested or queued bytes.
@@ -637,7 +652,7 @@ export class ChannelAttachments {
             } else {
               // Complete is emitted only after shared Rust verifies the digest and written ranges.
               entry.progress = { ...entry.progress, state: "finishing" }; this.changed();
-              await sink.writer.close(); sink.lifetime.signal.throwIfAborted();
+              await sink.writer.close().catch(throwStorageError); sink.lifetime.signal.throwIfAborted();
               const file = await sink.file.getFile();
               sink.lifetime.signal.throwIfAborted();
               if (!this.current(runtime) || this.sinks.get(fileKeyString(key)) !== entry) return;

@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-21
+Last reviewed: 2026-11-22
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -16,6 +16,10 @@ the feedback period; they do not delay that delivery.
 
 ### Active work
 
+- [ ] **Original-webpage sharing ends when a viewer joins.** Verify the reported
+  exit with the updated Windows App. Correlate its recorded stop reason with the
+  activity, App control connection and selected page lifetime. Controlled viewer
+  admission and departure preserve the source; the field trigger remains open.
 - [ ] **Freeze the first public 3.0 contract.** Confirm the
   [module and ownership baseline](./standards/engineering.md#architecture-baseline),
   the connection pool and the
@@ -187,6 +191,11 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **Whole-page collaboration.** Choose the intended co-browsing flow before
+  extending synchronized playback. Evaluate a shared page with explicitly
+  granted page-scoped input and each site's own collaborative links. Reuse the
+  existing media and input owners; verify viewport coordinates, focused text
+  entry and native dialogs before offering page-only control.
 - [ ] **App update distribution.** Configure the production signing identity and
   decide the beta-feed policy before distributing updater-capable packages;
   retain manual download. The

@@ -153,7 +153,7 @@ export const zhHant = {
   "room.entry.back": "返回房間總覽",
   "room.relay.defaultLimit": "房間預設轉發上限",
   "conversation.attachmentLimit": "每則訊息最多附帶 {max} 個檔案。",
-  "conversation.attachmentSizeLimit": "單一檔案不能超過 {size}。",
+  "conversation.attachmentSizeLimit": "檔案過大，無法處理。",
   "conversation.sendFailed": "未能傳送，內容已保留，請重試。",
   "conversation.roomChat": "房間聊天",
   "conversation.chat": "聊天",

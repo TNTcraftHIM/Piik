@@ -986,6 +986,11 @@ fn update_candidates(
     true
 }
 
+fn allows_page_navigation(url: &str) -> bool {
+    // Login flows can open a blank child before assigning its HTTPS destination.
+    url == "about:blank" || page::valid_url(url)
+}
+
 fn page_view(
     builder: WebViewBuilder<'_>,
     key: Uuid,
@@ -1012,7 +1017,7 @@ fn page_view(
                 let _ = messages.send_event(ServiceEvent::PageMessage(key, request.into_body()));
             }
         })
-        .with_navigation_handler(|url| page::valid_url(&url))
+        .with_navigation_handler(|url| allows_page_navigation(&url))
         .with_on_page_load_handler(move |event, _| {
             if matches!(event, wry::PageLoadEvent::Started) {
                 let _ = navigating.send_event(ServiceEvent::PageNavigate(key));
@@ -1038,7 +1043,7 @@ fn page_view(
                 let mut uri = PWSTR::null();
                 args.Uri(&mut uri)?;
                 let uri = webview2_com::take_pwstr(uri);
-                if !page::valid_url(&uri) || pending.borrow().len() >= MAX_PENDING_POPUPS {
+                if !allows_page_navigation(&uri) || pending.borrow().len() >= MAX_PENDING_POPUPS {
                     return Ok(());
                 }
                 let environment = sender.cast::<ICoreWebView2_2>()?.Environment()?;
@@ -1093,6 +1098,14 @@ fn website_permissions(view: &WebView) -> Result<()> {
         )?;
     }
     Ok(())
+}
+
+#[test]
+fn login_popup_can_start_blank_and_navigate_to_https() {
+    assert!(allows_page_navigation("about:blank"));
+    assert!(allows_page_navigation("https://login.example/"));
+    assert!(!allows_page_navigation("about:settings"));
+    assert!(!page::valid_url("about:blank"));
 }
 
 #[cfg(test)]

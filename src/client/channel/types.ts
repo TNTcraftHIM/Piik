@@ -106,6 +106,12 @@ export function messageRemoved(changes: RoomHistoryChanges | undefined, seq: num
   return !!changes && (seq <= changes.clearedThrough || changes.deleted.has(seq));
 }
 
+export interface ChatAttachmentPreparation {
+  signal: AbortSignal;
+  /** Clear the cancellable preparation before submitting the message. */
+  progress(percent: number | null): void;
+}
+
 export interface ChannelActions {
   startWatch(roomId: string, url: string, reportError?: boolean): Promise<void>;
   prepareWatchEmbed(roomId: string, url: string, reportError?: boolean): Promise<void>;
@@ -157,7 +163,7 @@ export interface ChannelActions {
   roomTopology(roomId: string, publicationId?: string, signal?: AbortSignal): Promise<ChannelTopology>;
   connectionMetrics(roomId: string, publicationId?: string): Promise<ChannelMediaMetrics>;
   appConnectionMetrics(roomId: string, publicationId?: string, signal?: AbortSignal): Promise<NativeConnectionMetrics>;
-  sendMessage(roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal, options?: ChatOptions): Promise<void>;
+  sendMessage(roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal, options?: ChatOptions, preparation?: ChatAttachmentPreparation): Promise<void>;
   deleteMessage(roomId: string, messageSeq: number, messageId: string): Promise<void>;
   purgeRoomHistory(roomId: string): Promise<void>;
   clearLocalRoomCache(roomId: string): Promise<void>;

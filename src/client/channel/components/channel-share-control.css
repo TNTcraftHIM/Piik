@@ -10,6 +10,12 @@
 .c3-external-input-field input { min-width: 0; flex: 1; }
 .c3-external-input-field .lr-btn { flex: none; }
 .c3-external-input > .lr-btn { justify-self: start; }
+.c3-watch-source-dialog .c3-settings-content > .c3-external-input { display: flex; flex-direction: column; padding-block-start: 6px; }
+.c3-watch-source-dialog .c3-settings-content > .c3-external-input > * { flex-shrink: 0; }
+.c3-watch-source-dialog .c3-external-input > .lr-btn { align-self: start; }
+.c3-watch-source-list { gap: 12px; }
+.c3-watch-source-choice { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }
+.c3-watch-source-choice > .lr-btn { justify-self: start; }
 .lr-anchored-card.c3-quality-picker {
   width: min(640px, calc(100vw - 16px)); max-height: calc(100dvh - 16px);
   padding: 0; overflow: hidden;

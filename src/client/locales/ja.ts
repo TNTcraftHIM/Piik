@@ -153,7 +153,7 @@ export const ja = {
   "room.entry.back": "ルーム一覧に戻る",
   "room.relay.defaultLimit": "ルームの既定の転送上限",
   "conversation.attachmentLimit": "1 件のメッセージに追加できるファイルは {max} 個までです。",
-  "conversation.attachmentSizeLimit": "ファイルは 1 個あたり {size} までです。",
+  "conversation.attachmentSizeLimit": "このファイルは大きすぎるため処理できません。",
   "conversation.sendFailed": "送信できませんでした。下書きはここに保存されています。再試行してください。",
   "conversation.roomChat": "ルームチャット",
   "conversation.chat": "チャット",

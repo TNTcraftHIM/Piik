@@ -213,14 +213,15 @@ export class WatchPlayer {
     if (this.error === "watch_live_position_unavailable") { this.error = null; this.changed(); }
     // Unknown buffering permits explicit host commands, not invented periodic drift correction.
     if ((force || state.readyState >= HAVE_FUTURE_DATA && buffered) && displaced) patch.position = target;
+    if (playback.paused && !state.paused) patch.paused = true;
     if (state.rate !== playback.rate && this.media.playbackRates && !this.media.playbackRates().includes(playback.rate)) {
       if (this.failure === null) { this.failure = unsupportedRate; this.changed(); }
+      if ((force || playback.paused) && Object.keys(patch).length) await this.apply(patch);
       return false;
     }
     if (this.failure === unsupportedRate) { this.failure = null; this.changed(); }
     if (state.rate !== playback.rate) patch.rate = playback.rate;
-    if (playback.paused && !state.paused) patch.paused = true;
-    else if (!playback.paused && state.paused && !this.blocked && !state.ended) patch.paused = false;
+    if (!playback.paused && state.paused && !this.blocked && !state.ended) patch.paused = false;
     // Rejoining while this patch is pending invalidates its clock alignment.
     this.alignedPlayback = playback;
     if (Object.keys(patch).length) await this.apply(patch);

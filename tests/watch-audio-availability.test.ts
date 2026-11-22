@@ -23,10 +23,16 @@ test("only a known silent source hides local volume for either role; unknown pag
   };
   for (const owned of [false, true]) {
     const silent = render(false, owned);
-    expect(silent).toContain("No audio in this share"); expect(silent).not.toContain('class="c3-mini-volume"'); expect(silent).not.toContain('role="alert"');
+    const volumeSlider = /<input[^>]*type="range"[^>]*aria-label="Adjust volume, from 0% to 100%"/;
+    expect(silent).toContain("No audio in this share");
+    expect(silent).not.toMatch(volumeSlider);
+    expect(silent).not.toContain('aria-label="Mute"');
+    expect(silent).not.toContain('role="alert"');
     for (const availability of [undefined, true]) {
-      expect(render(availability, owned)).toContain('class="c3-mini-volume"');
-      expect(render(availability, owned)).not.toContain("No audio in this share");
+      const html = render(availability, owned);
+      expect(html).toMatch(volumeSlider);
+      expect(html).toContain('aria-label="Mute"');
+      expect(html).not.toContain("No audio in this share");
     }
     if (owned) expect(silent).toContain('aria-label="Playback speed for everyone"');
   }
