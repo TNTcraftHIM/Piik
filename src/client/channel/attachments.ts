@@ -15,7 +15,8 @@ export interface PreparedFile extends DraftFile { attachment: ChannelAttachment;
 type Hosting = Awaited<ReturnType<typeof loadRoomHosting>>;
 type Effect =
   | { type: "send_control"; peer: string; control: { type: string; key: ChannelFileKey; requestId: string } }
-  | { type: "send_chunk"; peer: string; key: ChannelFileKey; requestId: string; frame: number[] }
+  | { type: "send_chunk"; peer: string; key: ChannelFileKey; requestId: string; offset: number; frame: number[] }
+  | { type: "cancel_chunks"; peer: string; key: ChannelFileKey; requestId: string; offset: number }
   | { type: "read"; key: ChannelFileKey; requestId: string; offset: number; length: number }
   | { type: "write"; key: ChannelFileKey; offset: number; bytes: number[] }
   | { type: "complete"; key: ChannelFileKey }
@@ -69,8 +70,9 @@ export class ChannelAttachments {
   private downloads = new Map<string, Download>();
   private listeners = new Set<() => void>();
   constructor(private command: (command: ChannelCommand) => Promise<void>,
-    private sendData: (peer: string, kind: "control" | "chunk", data: string | Uint8Array, allowed: () => boolean) => Promise<void>,
-    private messageRemoved: (key: Pick<ChannelFileKey, "roomId" | "messageSeq">) => boolean = () => false) {}
+    private sendData: (peer: string, kind: "control" | "chunk", data: string | Uint8Array, allowed: () => boolean, request?: string) => Promise<void>,
+    private messageRemoved: (key: Pick<ChannelFileKey, "roomId" | "messageSeq">) => boolean = () => false,
+    private cancelChunks?: (peer: string, request: string) => void) {}
 
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   status = (key: ChannelFileKey) => {
@@ -612,7 +614,11 @@ export class ChannelAttachments {
   private effects(runtime: Runtime, effects: Effect[]): void {
     for (const effect of effects) {
       const key = "key" in effect ? effect.key : effect.control.key;
-      if (effect.type === "send_control" || effect.type === "send_chunk") {
+      const request = effect.type === "send_chunk" || effect.type === "cancel_chunks"
+        ? JSON.stringify([key.roomId, key.messageSeq, key.attachmentId, effect.offset, effect.requestId]) : undefined;
+      if (effect.type === "cancel_chunks") {
+        this.cancelChunks?.(effect.peer, request!);
+      } else if (effect.type === "send_control" || effect.type === "send_chunk") {
         const peer = effect.peer, isError = effect.type === "send_control" && effect.control.type === "error";
         const terminal = isError || (effect.type === "send_control" && effect.control.type === "cancel");
         const kind = effect.type === "send_control" ? "control" : "chunk";
@@ -622,7 +628,7 @@ export class ChannelAttachments {
           && this.roomPeers.some(([id, rooms]) => id === peer && rooms.includes(key.roomId))
           && (terminal || !this.messageRemoved(key) && this.plans.some(plan => plan.roomId === key.roomId && plan.messageSeq === key.messageSeq
             && plan.attachment.id === key.attachmentId && (plan.upstream === peer || plan.downstream.includes(peer))));
-        void this.sendData(peer, kind, data, allowed)
+        void this.sendData(peer, kind, data, allowed, request)
           .catch(error => {
             if (terminal) return;
             this.invoke(runtime, () => runtime.delivery.peer_failed(JSON.stringify(key), peer,

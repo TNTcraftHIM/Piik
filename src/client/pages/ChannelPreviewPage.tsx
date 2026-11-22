@@ -113,6 +113,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const closeRoomSettings = useCallback(() => setManagedRoomId(null), []);
   const previousLayout = useRef(layout);
   const previousDrawer = useRef<typeof mobilePane>("room");
+  const previousSharingView = useRef(sharingView);
   useEffect(() => {
     if (sidebarsInline || layout !== previousLayout.current) {
       previousDrawer.current = "room";
@@ -248,6 +249,13 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     if (!state) return;
     channel.browse(roomId);
   }, [state?.channel.id, roomId, room?.authorized, room?.available]);
+  useLayoutEffect(() => {
+    const changed = previousSharingView.current !== sharingView;
+    previousSharingView.current = sharingView;
+    if (!sidebarsInline || !changed) return;
+    const trigger = sharingView ? "c3-rooms-trigger" : "c3-rooms-collapse";
+    document.getElementById(trigger)?.focus({ preventScroll: true });
+  }, [sharingView, sidebarsInline]);
   useEffect(() => {
     const closedDrawer = previousDrawer.current;
     previousDrawer.current = sidebarsInline ? "room" : mobilePane;
@@ -370,7 +378,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               title={{ text: t("channel.previewPage.createRoom") }} cap={!rooms.length ? { text: t("channel.previewPage.createRoom") } : undefined}
               expanded={newRoom !== null} disabled={!connected} onClick={() => setNewRoom("")} />}
               {!sidebarsInline && mobilePane === "rooms" && <BackButton onClick={() => setMobilePane("room")} />}
-              {sidebarsInline && <Btn icon="sidebar" size="dense" quiet title={{ text: t("channel.previewPage.collapseRoomList") }}
+              {sidebarsInline && <Btn id="c3-rooms-collapse" icon="sidebar" size="dense" quiet title={{ text: t("channel.previewPage.collapseRoomList") }}
                 controls="c3-room-list" expanded={!sharingView} onClick={() => { if (!sharingView) toggleSharingView(); setMobilePane("room"); }} />}
             </div>
           </div>

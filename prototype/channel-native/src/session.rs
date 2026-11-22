@@ -442,20 +442,17 @@ enum PendingCapture {
         result: oneshot::Sender<Result<InputAuthority, String>>,
     },
     Commit(CommitCapture),
-    Transfer(TransferSource),
-    Pause(PauseCapture),
-    Edit(EditCapture),
-    Settings(PublishCaptureSettings),
+    RoomCommand {
+        scope: CaptureScope,
+        result: oneshot::Sender<Result<(), String>>,
+    },
 }
 impl PendingCapture {
     fn scope(&self) -> Option<&CaptureScope> {
         match self {
             Self::Prepare(_) | Self::External(_) | Self::Authorize { .. } => None,
             Self::Commit(r) => Some(&r.scope),
-            Self::Transfer(r) => Some(&r.scope),
-            Self::Edit(r) => Some(&r.scope),
-            Self::Pause(r) => Some(&r.scope),
-            Self::Settings(r) => Some(&r.scope),
+            Self::RoomCommand { scope, .. } => Some(scope),
         }
     }
     fn room_id(&self) -> &str {
@@ -480,10 +477,7 @@ impl PendingCapture {
             Self::External(request) => request.result.is_closed(),
             Self::Authorize { result, .. } => result.is_closed(),
             Self::Commit(r) => r.result.is_closed(),
-            Self::Transfer(r) => r.result.is_closed(),
-            Self::Edit(r) => r.result.is_closed(),
-            Self::Pause(r) => r.result.is_closed(),
-            Self::Settings(r) => r.result.is_closed(),
+            Self::RoomCommand { result, .. } => result.is_closed(),
         }
     }
     fn fail(self, code: String) {
@@ -500,17 +494,8 @@ impl PendingCapture {
             Self::Commit(r) => {
                 let _ = r.result.send(Err(code));
             }
-            Self::Transfer(r) => {
-                let _ = r.result.send(Err(code));
-            }
-            Self::Edit(r) => {
-                let _ = r.result.send(Err(code));
-            }
-            Self::Pause(r) => {
-                let _ = r.result.send(Err(code));
-            }
-            Self::Settings(r) => {
-                let _ = r.result.send(Err(code));
+            Self::RoomCommand { result, .. } => {
+                let _ = result.send(Err(code));
             }
         }
     }
@@ -1657,17 +1642,8 @@ impl Session {
                         (PendingCapture::Commit(request), RoomResult::Done) => {
                             self.finish_capture(request, socket).await?
                         }
-                        (PendingCapture::Transfer(request), RoomResult::Done) => {
-                            let _ = request.result.send(Ok(()));
-                        }
-                        (PendingCapture::Edit(request), RoomResult::Done) => {
-                            let _ = request.result.send(Ok(()));
-                        }
-                        (PendingCapture::Pause(request), RoomResult::Done) => {
-                            let _ = request.result.send(Ok(()));
-                        }
-                        (PendingCapture::Settings(request), RoomResult::Done) => {
-                            let _ = request.result.send(Ok(()));
+                        (PendingCapture::RoomCommand { result, .. }, RoomResult::Done) => {
+                            let _ = result.send(Ok(()));
                         }
                         (request, RoomResult::Error { code }) => request.fail(code),
                         (request, _) => request.fail("invalid_capture_reply".into()),
@@ -2012,10 +1988,8 @@ impl Session {
             publication_id: request.scope.publication_id,
             to_session_id: request.to_session_id,
         };
-        let id = Uuid::new_v4().to_string();
-        self.pending_captures
-            .insert(id.clone(), PendingCapture::Transfer(request));
-        write(socket, &command, Some(&id)).await
+        self.send_capture_command(request.scope, request.result, command, socket)
+            .await
     }
 
     async fn pause_capture(
@@ -2055,10 +2029,8 @@ impl Session {
             publication_id: request.scope.publication_id,
             paused: request.paused,
         };
-        let id = Uuid::new_v4().to_string();
-        self.pending_captures
-            .insert(id.clone(), PendingCapture::Pause(request));
-        write(socket, &command, Some(&id)).await
+        self.send_capture_command(request.scope, request.result, command, socket)
+            .await
     }
 
     async fn edit_capture(&mut self, request: EditCapture, socket: &mut Writer<'_>) -> Result<()> {
@@ -2101,10 +2073,8 @@ impl Session {
                 limit: *limit,
             },
         };
-        let id = Uuid::new_v4().to_string();
-        self.pending_captures
-            .insert(id.clone(), PendingCapture::Edit(request));
-        write(socket, &command, Some(&id)).await
+        self.send_capture_command(request.scope, request.result, command, socket)
+            .await
     }
 
     async fn publish_capture_settings(
@@ -2165,9 +2135,20 @@ impl Session {
                 video_settings: Some(request.settings),
             },
         };
+        self.send_capture_command(request.scope, request.result, command, socket)
+            .await
+    }
+
+    async fn send_capture_command(
+        &mut self,
+        scope: CaptureScope,
+        result: oneshot::Sender<Result<(), String>>,
+        command: Command,
+        socket: &mut Writer<'_>,
+    ) -> Result<()> {
         let id = Uuid::new_v4().to_string();
         self.pending_captures
-            .insert(id.clone(), PendingCapture::Settings(request));
+            .insert(id.clone(), PendingCapture::RoomCommand { scope, result });
         write(socket, &command, Some(&id)).await
     }
 

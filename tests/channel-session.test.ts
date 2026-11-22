@@ -7855,24 +7855,30 @@ test.each([true, false])("Watch bulk failure only writes Error with its room gra
     if (peer === viewer) return media.sendData("z", kind, data, allowed);
     const [read] = JSON.parse(upstream.control(relay, JSON.stringify(JSON.parse(data as string).body)));
     for (const effect of JSON.parse(upstream.read_result(read.requestId, JSON.stringify({
-      mimeType: "video/mp4", totalSize: 3, bytes: [1, 2, 3], eof: true,
+      mimeType: "video/mp4", totalSize: 131072, bytes: Array(65536).fill(read.offset ? 2 : 1), eof: read.offset === 65536,
     })))) {
       watch.data(provider, "chunk", Uint8Array.from(effect.frame));
     }
   });
   const watch = new WatchBytes(send);
   const [control, bulk] = pc.channels;
+  const healthyId = crypto.randomUUID();
   try {
     state.pairs[0].rooms = ["first", "second"];
     media.update("a", state);
     pc.connected(); control.open(); bulk.open();
     control.bufferedAmount = 65536;
+    bulk.bufferedAmount = 65536;
     bulk.send.mockImplementationOnce(() => { throw new Error("bulk unavailable"); });
     watch.update(relay, [plan], [{ peerId: provider, rooms: ["first"] }, { peerId: viewer, rooms: state.pairs[0].rooms }]);
-    watch.data(viewer, "control", JSON.stringify({ type: "pull", key, requestId, offset: 0, length: 3 }));
-    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(3));
-    expect(bulk.send).toHaveBeenCalledOnce();
-    const sentError = JSON.parse(send.mock.calls[2][2] as string).body;
+    watch.data(viewer, "control", JSON.stringify({ type: "pull", key, requestId, offset: 0, length: 65536 }));
+    watch.data(viewer, "control", JSON.stringify({ type: "pull", key, requestId: healthyId, offset: 65536, length: 65536 }));
+    await vi.waitFor(() => expect(send.mock.calls.filter(([, kind]) => kind === "chunk")).toHaveLength(18));
+    bulk.bufferedAmount = 0; bulk.dispatchEvent(new Event("bufferedamountlow"));
+    await vi.waitFor(() => expect(bulk.send.mock.calls.map(([frame]) => frame.at(-1))).toEqual([1, ...Array(9).fill(2)]));
+    const terminal = send.mock.calls.filter(([peer, kind]) => peer === viewer && kind === "control");
+    expect(terminal).toHaveLength(1);
+    const sentError = JSON.parse(terminal[0][2] as string).body;
     expect(sentError).toMatchObject({ type: "error", key, requestId, code: "watch_path_unavailable" });
     if (revoked) {
       state.pairs[0].rooms = ["second"];
@@ -7938,43 +7944,53 @@ test.each([true, false])("File Cancel requires the recipient's room grant (revok
   } finally { abort.abort(); files.reset(); media.reset(); session.close(); }
 });
 
-test("cancelled file retries share the bulk limit before the polite channel arrives", async () => {
+test("cancelled file responses release bulk slots before open and under backpressure", async () => {
   const { session, media, pc } = await setupRoomMedia(false, "zz");
   const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeRuntime: async () => {} } as never);
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
   const holder = crypto.randomUUID(), viewer = crypto.randomUUID();
-  const source = new rust.FileDelivery(holder), receiver = new rust.FileDelivery(viewer);
-  const bytes = new Uint8Array(65536);
-  const attachment = { id: crypto.randomUUID(), name: "test.bin", size: bytes.length, mediaType: "application/octet-stream", sha256: "0".repeat(64) };
+  const bytes = new Uint8Array(65536).fill(31);
+  const hash = new rust.AttachmentHash(); hash.update(bytes);
+  const attachment = { id: crypto.randomUUID(), name: "test.bin", size: bytes.length, mediaType: "application/octet-stream" as const, sha256: hash.finish() };
   const key = { roomId: "first", messageSeq: 1, attachmentId: attachment.id };
-  const plan = { ...key, attachment, authorId: holder, sourceId: holder };
-  const pending: Promise<void>[] = [], errors: string[] = [];
+  const plan = { ...key, attachment, authorId: holder, sourceId: holder, upstream: null, downstream: [viewer], receiving: false };
+  const send = vi.spyOn(media, "sendData");
+  const files = new ChannelAttachments(async () => {}, (_peer, kind, data, allowed, request) => media.sendData("z", kind, data, allowed, request),
+    undefined, (_peer, request) => media.cancelChunks("z", request));
+  const frame = (type: string, requestId: string) => files.data(viewer, "control", JSON.stringify({ type, key, offset: 0, requestId }));
   try {
     pc.connected();
     const control = new RoomDataChannel("piik-room", { ordered: true });
     pc.ondatachannel!({ channel: control }); control.open();
-    source.update(JSON.stringify([{ ...plan, upstream: null, downstream: [viewer], receiving: false }]), JSON.stringify([[viewer, ["first"]]]), 0n);
-    receiver.update(JSON.stringify([{ ...plan, upstream: holder, downstream: [], receiving: true }]), JSON.stringify([[holder, ["first"]]]), 0n);
+    files.update(holder, { domainId: "test", userId: holder }, [plan], [{ id: "first", authorized: true, available: true }] as never,
+      [{ peerId: viewer, rooms: ["first"] }]);
+    files.confirmed("first", { seq: 1, attachments: [attachment] } as never,
+      [{ id: attachment.id, file: new File([bytes], attachment.name), attachment }]);
+    const old = crypto.randomUUID(), fresh = crypto.randomUUID();
+    frame("pull", old);
+    await vi.waitFor(() => expect(send.mock.calls.length).toBeGreaterThan(1));
+    const count = send.mock.calls.length;
     const capacity = rust.data_queue_frames(true);
-    // Each retry has one live range. Its response is still waiting for bulk.
-    while (pending.length <= capacity) {
-      const [pull] = JSON.parse(receiver.start(JSON.stringify(key)));
-      const effects = JSON.parse(source.control(viewer, JSON.stringify(pull.control), 0n));
-      const chunks = effects[0].type === "read"
-        ? JSON.parse(source.read_result(JSON.stringify(key), 0n, effects[0].requestId, bytes)) : effects;
-      for (const chunk of chunks) {
-        expect(chunk.type).toBe("send_chunk");
-        pending.push(media.sendData("z", "chunk", Uint8Array.from(chunk.frame)).catch(error => { errors.push(error.message); }));
-      }
-      const [cancel] = JSON.parse(receiver.cancel(JSON.stringify(key)));
-      source.control(viewer, JSON.stringify(cancel.control), 0n);
-    }
-    await media.sendData("z", "control", "still-open");
-    expect(errors).toEqual(Array(pending.length - capacity).fill("data_channel_busy"));
+    for (let i = 1; i < Math.floor(capacity / count); ++i) frame("pull", old);
+    await vi.waitFor(() => expect(send.mock.calls.length).toBe(Math.floor(capacity / count) * count));
+    frame("cancel", old);
+    frame("pull", fresh);
+    frame("cancel", old);
+    await vi.waitFor(() => expect(send.mock.calls.length).toBe((Math.floor(capacity / count) + 1) * count));
     const bulk = new RoomDataChannel("piik-file", { ordered: true });
     pc.ondatachannel!({ channel: bulk }); bulk.open();
-    await Promise.all(pending);
-    expect(bulk.send).toHaveBeenCalledTimes(capacity);
-  } finally { source.free(); receiver.free(); media.reset(); session.close(); }
+    const header = (data: Uint8Array) => JSON.parse(new TextDecoder().decode(data.slice(2, 2 + new DataView(data.buffer, data.byteOffset).getUint16(0))));
+    expect(bulk.send.mock.calls.map(([data]) => header(data).requestId)).toEqual(Array(count).fill(fresh));
+    bulk.bufferedAmount = 65536;
+    frame("pull", old);
+    frame("pull", fresh);
+    frame("cancel", old);
+    await vi.waitFor(() => expect(send.mock.calls.length).toBe((Math.floor(capacity / count) + 3) * count));
+    bulk.bufferedAmount = 0; bulk.dispatchEvent(new Event("bufferedamountlow"));
+    expect(bulk.send.mock.calls.map(([data]) => header(data).requestId)).toEqual(Array(count * 2).fill(fresh));
+    expect(pc.close).not.toHaveBeenCalled();
+  } finally { files.reset(); media.reset(); session.close(); }
 });
 
 test("a connecting bulk channel has a bounded frame queue and releases admission after sending", async () => {

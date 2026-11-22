@@ -453,7 +453,7 @@ export const zhHant = {
   "channel.error.backupIdentityRequired": "無法使用備份中的帳號，請確認這是你在此站點的備份。",
   "channel.error.backupRoomMismatch": "請選擇此站點、此房間的備份。",
   "channel.error.backupRoomNotAdmitted": "此站點已不接受備份中的房間 ID。你可以建立新房間，或在建立時載入已有的房間副本。",
-  "channel.error.unsupportedStorageVersion": "這份內測資料的格式不相容。請依目前測試套件的說明重設受影響的資料後再試一次。",
+  "channel.error.unsupportedStorageVersion": "目前版本無法讀取既有資料。請用當初儲存這些資料的 Piik 版本重新開啟。",
   "diagnosis.guide": "查看指南",
   "diagnosis.details": "診斷詳情",
   "diagnosis.roomAdmitted": "已加入房間。",

@@ -124,7 +124,7 @@ Read the upgrade instructions supplied with your 3.0 test package, keep the
 existing data directory unless those instructions require otherwise, and refresh
 the Web page after updating App. For `unsupported_storage_version` or
 `unsupported_domain_checkpoint`, follow the
-[test-data reset steps](./troubleshooting.md#the-beta-app-reports-unsupportedstorageversion).
+[instructions for reopening your saved data](./troubleshooting.md#the-beta-app-reports-unsupportedstorageversion).
 Public 2.x downloads are not the 3.0 test update.
 
 ## Share from an existing site

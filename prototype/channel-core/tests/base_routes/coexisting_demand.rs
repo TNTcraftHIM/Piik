@@ -572,6 +572,7 @@ fn deliver_repaired_file(network: &RoomNetwork, peers: [(Uuid, Uuid); 3]) {
                 completed = true;
                 continue;
             }
+            FileEffect::CancelChunks { .. } => continue,
             FileEffect::Failed { code, .. } => panic!("file transfer failed: {code}"),
         };
         queue.extend(next.into_iter().map(|effect| (owner, effect)));

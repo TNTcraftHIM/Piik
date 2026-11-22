@@ -315,11 +315,13 @@ export class ChannelTransport {
     this.syncDeadline();
   }
 
-  async sendData(kind: "control" | "chunk", data: string | Uint8Array, allowed?: () => boolean): Promise<void> {
+  cancelChunks(request: string): void { this.writers.get("chunk")?.cancel(request); }
+
+  async sendData(kind: "control" | "chunk", data: string | Uint8Array, allowed?: () => boolean, request?: string): Promise<void> {
     const lifetime = this.dataLifetime.signal;
     if (!this.rooms.size || lifetime.aborted) throw new Error("peer_data_unavailable");
     if (kind === "chunk") this.ensureBulkChannel();
-    try { await this.writer(kind).send(data, allowed); }
+    try { await this.writer(kind).send(data, allowed, request); }
     catch (error) {
       if (lifetime.aborted || ["failed", "closed"].includes(this.pc.connectionState)) throw new Error("peer_data_unavailable");
       throw error;
@@ -1030,45 +1032,73 @@ export class ChannelTransport {
 
 /** One bounded writer per SCTP stream; producers own their application work. */
 class ChannelWriter {
-  private tail = Promise.resolve();
-  private lifetime = new AbortController();
-  private queuedFrames = 0;
+  private channel?: RTCDataChannel;
+  private closed = false;
+  private resume?: ReturnType<typeof setTimeout>;
+  private readonly pending = new Set<{
+    data: string | Uint8Array; size: number; allowed?: () => boolean; request?: string;
+    resolve: () => void; reject: (error: unknown) => void;
+  }>();
   private readonly maxQueuedFrames: number;
-  private installed!: (channel: RTCDataChannel | null) => void;
-  private channel = new Promise<RTCDataChannel | null>(resolve => { this.installed = resolve; });
 
   constructor(private kind: "control" | "chunk") {
-    // Session initializes the shared Core signer before joining or creating data lanes.
     this.maxQueuedFrames = data_queue_frames(kind === "chunk");
   }
   install(channel: RTCDataChannel): void {
+    this.channel = channel;
     channel.bufferedAmountLowThreshold = DATA_SEND_BUFFER_BYTES / 2;
-    this.installed(channel);
+    channel.addEventListener("open", this.drain);
+    channel.addEventListener("bufferedamountlow", this.drain);
+    channel.addEventListener("closing", this.close);
+    this.drain();
   }
-  send(data: string | Uint8Array, allowed?: () => boolean): Promise<void> {
+  send(data: string | Uint8Array, allowed?: () => boolean, request?: string): Promise<void> {
     const size = typeof data === "string" ? new TextEncoder().encode(data).length : data.byteLength;
     if (size > (this.kind === "control" ? MAX_CONTROL_FRAME_BYTES : MAX_FILE_FRAME_BYTES)) return Promise.reject(new Error(this.kind === "control" ? "control_frame_too_large" : "file_frame_too_large"));
-    if (this.queuedFrames >= this.maxQueuedFrames) return Promise.reject(new Error("data_channel_busy"));
-    this.queuedFrames += 1;
-    const work = this.tail.then(async () => {
-      const channel = await this.channel;
-      if (!channel || this.lifetime.signal.aborted) throw new Error("data_channel_unavailable");
-      while (channel.readyState !== "open" || channel.bufferedAmount + size > DATA_SEND_BUFFER_BYTES) {
-        if (["closing", "closed"].includes(channel.readyState)) throw new Error("data_channel_unavailable");
-        await new Promise<void>((resolve, reject) => {
-          const ready = () => { cleanup(); resolve(); };
-          const failed = () => { cleanup(); reject(new Error("data_channel_unavailable")); };
-          const cleanup = () => { for (const event of ["open", "bufferedamountlow"]) channel.removeEventListener(event, ready); for (const event of ["closing", "close", "error"]) channel.removeEventListener(event, failed); this.lifetime.signal.removeEventListener("abort", failed); };
-          for (const event of ["open", "bufferedamountlow"]) channel.addEventListener(event, ready, { once: true });
-          for (const event of ["closing", "close", "error"]) channel.addEventListener(event, failed, { once: true });
-          this.lifetime.signal.addEventListener("abort", failed, { once: true });
-        });
-      }
-      if (allowed && !allowed()) throw new Error("room_unavailable");
-      if (typeof data === "string") channel.send(data); else channel.send(data as Uint8Array<ArrayBuffer>);
-    }).finally(() => { this.queuedFrames -= 1; });
-    this.tail = work.catch(() => {});
-    return work;
+    if (this.closed) return Promise.reject(new Error("data_channel_unavailable"));
+    if (this.pending.size >= this.maxQueuedFrames) return Promise.reject(new Error("data_channel_busy"));
+    return new Promise((resolve, reject) => {
+      this.pending.add({ data, size, allowed, request, resolve, reject });
+      this.drain();
+    });
   }
-  close(): void { this.lifetime.abort(); this.installed(null); }
+  cancel(request: string): void {
+    for (const frame of this.pending) {
+      if (frame.request !== request) continue;
+      this.pending.delete(frame);
+      frame.resolve();
+    }
+    this.drain();
+  }
+  private drain = (): void => {
+    const channel = this.channel;
+    if (channel?.readyState !== "open" || this.resume !== undefined) return;
+    for (const frame of this.pending) {
+      if (channel.bufferedAmount + frame.size > DATA_SEND_BUFFER_BYTES) break;
+      this.pending.delete(frame);
+      try {
+        if (frame.allowed && !frame.allowed()) {
+          frame.reject(new Error("room_unavailable"));
+          continue;
+        }
+        if (typeof frame.data === "string") channel.send(frame.data);
+        else channel.send(frame.data as Uint8Array<ArrayBuffer>);
+        frame.resolve();
+      } catch (error) {
+        frame.reject(error);
+        // Application owners retire the failed response in their promise handlers.
+        this.resume = setTimeout(() => { this.resume = undefined; this.drain(); }, 0);
+        break;
+      }
+    }
+  };
+  close = (): void => {
+    this.closed = true;
+    clearTimeout(this.resume);
+    this.channel?.removeEventListener("open", this.drain);
+    this.channel?.removeEventListener("bufferedamountlow", this.drain);
+    this.channel?.removeEventListener("closing", this.close);
+    for (const frame of this.pending) frame.reject(new Error("data_channel_unavailable"));
+    this.pending.clear();
+  };
 }

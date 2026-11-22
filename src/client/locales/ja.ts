@@ -453,7 +453,7 @@ export const ja = {
   "channel.error.backupIdentityRequired": "このサイトでバックアップのアカウントを確認できませんでした。",
   "channel.error.backupRoomMismatch": "このサイトとルームのバックアップを選択してください。",
   "channel.error.backupRoomNotAdmitted": "このサイトではバックアップ内のルーム ID を復元できません。新しいルームを作成するか、ルームのコピーがあれば読み込んでください。",
-  "channel.error.unsupportedStorageVersion": "このテストデータの保存形式には互換性がありません。現在のテスト版の手順に沿って該当するデータをリセットし、もう一度お試しください。",
+  "channel.error.unsupportedStorageVersion": "このバージョンでは保存済みのデータを読み込めません。データを保存したときの Piik のバージョンで開いてください。",
   "diagnosis.guide": "ガイドを見る",
   "diagnosis.details": "診断の詳細",
   "diagnosis.roomAdmitted": "ルームに参加済みです。",

@@ -22,15 +22,31 @@ pub(crate) struct FileScope {
     lease: watch::Receiver<Lease>,
     key: FileKey,
     allow_unplanned: bool,
+    pub(crate) request: Option<(u64, Uuid)>,
+    pub(crate) retired: Option<watch::Receiver<()>>,
 }
 impl FileScope {
     pub fn allowed(&self) -> bool {
         let lease = self.lease.borrow();
-        lease.rooms.contains(&self.key.room_id)
+        self.retired
+            .as_ref()
+            .is_none_or(|epoch| matches!(epoch.has_changed(), Ok(false)))
+            && lease.rooms.contains(&self.key.room_id)
             && (self.allow_unplanned || lease.keys.contains(&self.key))
     }
     pub async fn changed(&mut self) -> bool {
-        self.lease.changed().await.is_ok()
+        if let Some(retired) = &mut self.retired {
+            tokio::select! {
+                _ = retired.changed() => false,
+                result = self.lease.changed() => result.is_ok(),
+            }
+        } else {
+            self.lease.changed().await.is_ok()
+        }
+    }
+
+    pub(crate) fn request(&self) -> Option<(&FileKey, u64, Uuid)> {
+        self.request.map(|(offset, id)| (&self.key, offset, id))
     }
 }
 
@@ -44,6 +60,8 @@ pub(crate) fn scope_fixture(key: FileKey) -> (FileScope, impl Clone) {
         lease: lease.subscribe(),
         key,
         allow_unplanned: false,
+        request: None,
+        retired: None,
     };
     (scope, lease)
 }
@@ -52,13 +70,22 @@ struct Link {
     lease: watch::Sender<Lease>,
 }
 impl Link {
-    fn message(&self, key: FileKey, bytes: Vec<u8>, cancel: bool, error: bool) -> Message {
+    fn message(
+        &self,
+        key: FileKey,
+        bytes: Vec<u8>,
+        cancel: bool,
+        error: bool,
+        request: Option<(u64, Uuid)>,
+    ) -> Message {
         Message {
             bytes,
             scope: crate::data::MessageScope::File(FileScope {
                 lease: self.lease.subscribe(),
                 key,
                 allow_unplanned: cancel || error,
+                request,
+                retired: None,
             }),
             report_failure: !error,
         }
@@ -243,7 +270,13 @@ impl Files {
                                 if link
                                     .senders
                                     .control
-                                    .try_send(link.message(file.clone(), bytes, cancel, error))
+                                    .try_send(link.message(
+                                        file.clone(),
+                                        bytes,
+                                        cancel,
+                                        error,
+                                        None,
+                                    ))
                                     .is_err()
                                     && !error
                                     && !cancel
@@ -259,10 +292,21 @@ impl Files {
                                 effects.extend(core.peer_unavailable(peer));
                             }
                         }
+                        FileEffect::CancelChunks {
+                            peer,
+                            key,
+                            offset,
+                            request_id,
+                        } => {
+                            if let Some(link) = links.get(&peer) {
+                                link.senders.bulk.cancel(&key, offset, request_id);
+                            }
+                        }
                         FileEffect::SendChunk {
                             peer,
                             key,
                             request_id,
+                            offset,
                             frame,
                         } => {
                             if let Some(link) = links.get(&peer).filter(|_| {
@@ -273,7 +317,13 @@ impl Files {
                                 if link
                                     .senders
                                     .bulk
-                                    .try_send(link.message(key.clone(), frame, false, false))
+                                    .try_send(link.message(
+                                        key.clone(),
+                                        frame,
+                                        false,
+                                        false,
+                                        Some((offset, request_id)),
+                                    ))
                                     .is_err()
                                 {
                                     effects.extend(core.peer_failed(

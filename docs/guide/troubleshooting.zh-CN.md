@@ -198,12 +198,17 @@ Piik 提示存储空间不足时，先在下载文件的设备上腾出空间，
 ### 内测 App 提示 `unsupported_storage_version`
 
 此错误或 `unsupported_domain_checkpoint` 表示当前版本不能读取已有存储格式。
-3.0 内测不迁移旧格式。退出对应 App 或 Server，重置该内测资料后重新开始：
+3.0 内测不迁移旧格式。请用保存这些数据的 Piik 内测版本重新打开。对于浏览器托管的房间，请在原浏览器配置文件中，
+用原站点地址打开对应版本。
+
+如需保留数据并试用新版，可使用独立的浏览器配置文件，或让桌面 App 或 Server 使用新的数据目录。
+目录设置见[数据参考](../../prototype/channel-server/README.md#saved-data-and-files)。
+
+如果决定丢弃旧内测数据，先关闭对应 App 或浏览器标签页，再按平台重置。
 
 - Windows：双击内测包附带的 **重置3.0内测数据.bat**，选择默认数据或该包的验收数据。
 - Android：在系统设置中清除 **Piik 3.0** 的应用数据。
 - 浏览器托管的房间：清除对应 Piik 站点的数据。
-- Server：使用新的数据目录，目录位置见[数据参考](../../prototype/channel-server/README.md#saved-data-and-files)。
 
 重置会删除所选范围内的本地身份、授权、房间和历史。格式未变化的更新继续使用原数据，连接失败也不需要重置数据。
 

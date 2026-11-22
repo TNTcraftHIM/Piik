@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { rememberRoom } from "./navigation";
 
 type RoomPane = "room" | "rooms" | "people" | "chat";
+type SidePane = Exclude<RoomPane, "room">;
 
 function closeLayer(element: HTMLElement) {
   if (element instanceof HTMLDialogElement) {
@@ -14,10 +15,16 @@ function paneFromHistory(): RoomPane {
   return pane === "rooms" || pane === "people" || pane === "chat" ? pane : "room";
 }
 
+function rememberPane(pane: SidePane) {
+  const entry = { ...history.state, piikRoomPane: pane };
+  if (paneFromHistory() === "room") history.pushState(entry, "");
+  else history.replaceState(entry, "");
+}
+
 /** User-opened panes share one history entry above the room. */
 export function useRoomPane() {
   const [pane, display] = useState(paneFromHistory);
-  const closing = useRef<{ roomId?: string } | null>(null);
+  const closing = useRef<{ roomId?: string; pane?: SidePane } | null>(null);
   const layers = useRef<HTMLElement[]>([]);
   const returning = useRef(false);
   const hasLayerEntry = useRef(false);
@@ -51,9 +58,10 @@ export function useRoomPane() {
       }
       hasLayerEntry.current = !!history.state?.piikRoomLayer;
       returning.current = false;
-      const roomId = closing.current?.roomId;
+      const destination = closing.current;
       closing.current = null;
-      if (roomId !== undefined) rememberRoom(roomId);
+      if (destination?.roomId !== undefined) rememberRoom(destination.roomId);
+      if (destination?.pane) rememberPane(destination.pane);
       display(paneFromHistory());
       syncLayer();
     };
@@ -75,9 +83,16 @@ export function useRoomPane() {
           history.go(-depth);
           return;
         }
-        const entry = { ...history.state, piikRoomPane: next };
-        if (previous === "room") history.pushState(entry, "");
-        else history.replaceState(entry, "");
+        if (history.state?.piikRoomLayer) {
+          // Finish retiring the overlay's entry before recording the new pane.
+          closing.current = { pane: next };
+          for (const layer of layers.current.toReversed()) {
+            if (layer.isConnected && layer.matches(":modal, :popover-open")) closeLayer(layer);
+          }
+          if (!returning.current) history.back();
+          return;
+        }
+        rememberPane(next);
       } catch {
         closing.current = null;
       }

@@ -454,7 +454,7 @@ export const ko = {
   "channel.error.backupIdentityRequired": "이 사이트에서 백업 계정을 확인하지 못했어요.",
   "channel.error.backupRoomMismatch": "이 사이트와 방에 해당하는 백업을 선택하세요.",
   "channel.error.backupRoomNotAdmitted": "이 사이트에서는 백업에 담긴 방 ID를 복원할 수 없어요. 새 방을 만들거나 저장해 둔 방 사본을 불러오세요.",
-  "channel.error.unsupportedStorageVersion": "이 테스트 데이터의 저장 형식은 호환되지 않아요. 현재 테스트 패키지 안내에 따라 해당 데이터를 초기화한 뒤 다시 시도해 주세요.",
+  "channel.error.unsupportedStorageVersion": "이 버전에서는 저장된 데이터를 읽을 수 없어요. 데이터를 저장할 때 사용한 Piik 버전으로 다시 열어 주세요.",
   "diagnosis.guide": "가이드 보기",
   "diagnosis.details": "진단 세부 정보",
   "diagnosis.roomAdmitted": "방에 참여했어요.",

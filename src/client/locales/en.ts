@@ -579,7 +579,7 @@ export const en: Record<CopyKey, string> = {
   "channel.error.backupRoomMismatch": "Choose a backup for this site and room.",
   "channel.error.restoreScratchLimit": "The server needs more temporary disk space to restore this room. Ask the site operator to free space, then try again.",
   "channel.error.backupRoomNotAdmitted": "This site no longer admits the room ID in this backup. Create a new room, or load a room copy if you have one.",
-  "channel.error.unsupportedStorageVersion": "This test data uses an incompatible storage format. Follow the current test package instructions to reset the affected data, then try again.",
+  "channel.error.unsupportedStorageVersion": "This version can’t read your saved data. To reopen it, use the Piik version that saved it.",
   "diagnosis.guide": "View guide",
   "diagnosis.details": "Diagnostic details",
   "diagnosis.roomAdmitted": "You have joined the room.",

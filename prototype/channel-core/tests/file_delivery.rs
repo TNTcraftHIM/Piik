@@ -490,6 +490,7 @@ impl Network {
                         self.push(from, effects);
                     }
                 }
+                FileEffect::CancelChunks { .. } => {}
                 FileEffect::Complete { .. } => self.complete.push(from),
                 FileEffect::Failed { code, .. } => self.failed.push((from, code)),
             }
@@ -701,7 +702,7 @@ fn request_ownership_survives_retry_coalescing_and_late_adapter_results() {
         .request_failed(&key(), first_read, "retired_read")
         .is_empty());
     // A delayed Cancel from the old request cannot remove its replacement.
-    assert!(source
+    assert!(matches!(source
         .control(
             id(2),
             FileControl::Cancel {
@@ -711,7 +712,7 @@ fn request_ownership_survives_retry_coalescing_and_late_adapter_results() {
             },
             0
         )
-        .is_empty());
+        .as_slice(), [FileEffect::CancelChunks { request_id, .. }] if *request_id == a));
     assert!(
         source.control(id(3), pull(sibling), 0).is_empty(),
         "shared range must not read a second copy"

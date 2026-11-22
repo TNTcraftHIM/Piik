@@ -194,7 +194,7 @@ async fn watch_reader_transfers_ranges_and_cancels_on_authority_retirement() -> 
     // Eight free bulk slots leave the last frame of this nine-frame range out.
     // Observe both bounded application queues before their physical writers drain them.
     let mut senders = link.senders();
-    let (bulk_tx, mut chunks) = mpsc::channel(8);
+    let (bulk_tx, mut chunks) = crate::data::bulk_queue(8);
     let (control_tx, mut errors) = mpsc::channel(2);
     senders.bulk = bulk_tx;
     senders.control = control_tx;
@@ -208,8 +208,10 @@ async fn watch_reader_transfers_ranges_and_cancels_on_authority_retirement() -> 
     let terminal = tokio::time::timeout(Duration::from_secs(3), errors.recv())
         .await?
         .context("range error missing")?;
-    ensure!(chunks.len() == 8);
-    while let Ok(frame) = chunks.try_recv() {
+    for _ in 0..8 {
+        let frame = tokio::time::timeout(Duration::from_secs(1), chunks.recv())
+            .await?
+            .context("missing admitted frame")?;
         ensure!(consumer
             .chunk(session, &frame.bytes)
             .map_err(anyhow::Error::msg)?

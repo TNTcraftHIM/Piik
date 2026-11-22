@@ -1190,7 +1190,7 @@ async fn waiting_capture_prepare_retires_before_late_room_confirmation() {
 }
 
 #[tokio::test]
-async fn capture_settings_and_edits_complete_only_on_the_correlated_room_reply() {
+async fn capture_command_completes_only_on_the_correlated_room_reply() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
     let (client, remote) = tokio::join!(tokio_tungstenite::connect_async(&url), async {
@@ -1219,104 +1219,79 @@ async fn capture_settings_and_edits_complete_only_on_the_correlated_room_reply()
 
         snapshot_job: None,
     };
-    for edit in [false, true] {
-        for result in [
-            RoomResult::Done,
-            RoomResult::Error {
-                code: "room_rejected".into(),
-            },
-        ] {
-            let (done, mut response) = oneshot::channel();
-            let id = Uuid::new_v4().to_string();
-            session.pending_captures.insert(
-                id.clone(),
-                if edit {
-                    PendingCapture::Edit(EditCapture {
-                        scope: CaptureScope {
-                            publication_id: Uuid::new_v4(),
-                            room_id: "room".into(),
-                            binding_id: Uuid::new_v4(),
-                        },
-                        capture_id: Uuid::new_v4(),
-                        edit: CaptureEdit::DirectLimit(Some(1)),
-                        result: done,
-                    })
-                } else {
-                    PendingCapture::Settings(PublishCaptureSettings {
-                        scope: CaptureScope {
-                            publication_id: Uuid::new_v4(),
-                            room_id: "room".into(),
-                            binding_id: Uuid::new_v4(),
-                        },
-                        capture_id: Uuid::new_v4(),
-                        settings: Settings {
-                            degradation_preference:
-                                piik_channel_core::wire::DegradationPreference::Balanced,
-                            width: 640,
-                            height: 360,
-                            fps: 30,
-                            bitrate: 1_000_000,
-                        }
-                        .into(),
-                        result: done,
-                    })
+    for result in [
+        RoomResult::Done,
+        RoomResult::Error {
+            code: "room_rejected".into(),
+        },
+    ] {
+        let (done, mut response) = oneshot::channel();
+        let id = Uuid::new_v4().to_string();
+        session.pending_captures.insert(
+            id.clone(),
+            PendingCapture::RoomCommand {
+                scope: CaptureScope {
+                    publication_id: Uuid::new_v4(),
+                    room_id: "room".into(),
+                    binding_id: Uuid::new_v4(),
                 },
-            );
-            session
-                .event(
-                    Event::Ack {
-                        request_id: id.clone(),
-                    },
-                    &mut socket,
-                )
-                .await
-                .unwrap();
-            session
-                .event(
-                    Event::RoomReply {
-                        room_id: "other".into(),
-                        request_id: Some(id.clone()),
-                        result: RoomResult::Done,
-                    },
-                    &mut socket,
-                )
-                .await
-                .unwrap();
-            assert!(matches!(
-                response.try_recv(),
-                Err(oneshot::error::TryRecvError::Empty)
-            ));
-            let expected = match &result {
-                RoomResult::Done => Ok(()),
-                RoomResult::Error { code } => Err(code.clone()),
-                _ => unreachable!(),
-            };
-            session
-                .event(
-                    Event::RoomReply {
-                        room_id: "room".into(),
-                        request_id: Some(id.clone()),
-                        result,
-                    },
-                    &mut socket,
-                )
-                .await
-                .unwrap();
-            assert_eq!(response.await.unwrap(), expected);
-            assert!(session.pending_captures.is_empty());
-            session
-                .event(
-                    Event::RoomReply {
-                        room_id: "room".into(),
-                        request_id: Some(id),
-                        result: RoomResult::Done,
-                    },
-                    &mut socket,
-                )
-                .await
-                .unwrap();
-            assert!(session.pending_captures.is_empty());
-        }
+                result: done,
+            },
+        );
+        session
+            .event(
+                Event::Ack {
+                    request_id: id.clone(),
+                },
+                &mut socket,
+            )
+            .await
+            .unwrap();
+        session
+            .event(
+                Event::RoomReply {
+                    room_id: "other".into(),
+                    request_id: Some(id.clone()),
+                    result: RoomResult::Done,
+                },
+                &mut socket,
+            )
+            .await
+            .unwrap();
+        assert!(matches!(
+            response.try_recv(),
+            Err(oneshot::error::TryRecvError::Empty)
+        ));
+        let expected = match &result {
+            RoomResult::Done => Ok(()),
+            RoomResult::Error { code } => Err(code.clone()),
+            _ => unreachable!(),
+        };
+        session
+            .event(
+                Event::RoomReply {
+                    room_id: "room".into(),
+                    request_id: Some(id.clone()),
+                    result,
+                },
+                &mut socket,
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.await.unwrap(), expected);
+        assert!(session.pending_captures.is_empty());
+        session
+            .event(
+                Event::RoomReply {
+                    room_id: "room".into(),
+                    request_id: Some(id),
+                    result: RoomResult::Done,
+                },
+                &mut socket,
+            )
+            .await
+            .unwrap();
+        assert!(session.pending_captures.is_empty());
     }
 }
 

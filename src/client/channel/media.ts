@@ -280,14 +280,18 @@ export class ChannelMedia {
     }
   }
 
-  sendData(peerId: string, kind: "control" | "chunk", data: string | Uint8Array, allowed?: () => boolean): Promise<void> {
+  sendData(peerId: string, kind: "control" | "chunk", data: string | Uint8Array, allowed?: () => boolean, request?: string): Promise<void> {
     const peer = [...this.peers.values()].find(peer => peer.plan.peerId === peerId && peer.plan.rooms.length);
     if (!peer) return Promise.reject(new Error("peer_data_unavailable"));
-    return peer.transport.sendData(kind, data, allowed).catch(error => {
+    return peer.transport.sendData(kind, data, allowed, request).catch(error => {
       // Retiring this exact pair already notified the delivery owner. A late
       // send rejection must not retire a replacement to the same participant.
       if (this.peers.get(peer.plan.id) === peer) throw error;
     });
+  }
+
+  cancelChunks(peerId: string, request: string): void {
+    for (const peer of this.peers.values()) if (peer.plan.peerId === peerId) peer.transport.cancelChunks(request);
   }
 
   sendInput(peerId: string, frame: string): boolean {

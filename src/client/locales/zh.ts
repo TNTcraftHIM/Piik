@@ -577,7 +577,7 @@ export const zh = {
   "channel.error.backupRoomMismatch": "请选择此站点、此房间的备份。",
   "channel.error.restoreScratchLimit": "服务器的临时空间不足。请让站点管理员腾出空间，再恢复房间。",
   "channel.error.backupRoomNotAdmitted": "此站点已不接受备份中的房间 ID。你可以新建房间，或在创建时载入已有的房间副本。",
-  "channel.error.unsupportedStorageVersion": "这份内测数据的格式不兼容。请按当前测试包的说明重置受影响的数据后重试。",
+  "channel.error.unsupportedStorageVersion": "当前版本无法读取已有数据。请用当初保存这些数据的 Piik 版本重新打开。",
   "diagnosis.guide": "查看指南",
   "diagnosis.details": "诊断详情",
   "diagnosis.roomAdmitted": "已加入房间。",

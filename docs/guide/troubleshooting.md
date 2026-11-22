@@ -243,12 +243,17 @@ storage to retry; that can remove retained files, identity or a Browser-hosted r
 
 This error, or `unsupported_domain_checkpoint`, means the running version cannot
 read the saved format. Internal 3.0 builds do not migrate obsolete formats.
-Exit the affected App or Server, then reset its test data:
+Reopen the data with the Piik build that saved it. For a Browser-hosted room,
+use that build at the original site address in the original browser profile.
+
+To try the new build while keeping the old data, use a separate browser profile,
+or start the desktop App or Server with a fresh data directory. The [saved-data reference](../../prototype/channel-server/README.md#saved-data-and-files) lists the directory settings.
+
+If you choose to discard the old test data, close the affected App or browser tabs first.
 
 - Windows: open **重置3.0内测数据.bat** from the test package and choose its default or review data.
 - Android: clear **Piik 3.0** application data in system settings.
 - Browser-hosted rooms: clear data for the affected Piik site.
-- Server: use a new data directory. See the [saved-data reference](../../prototype/channel-server/README.md#saved-data-and-files).
 
 A reset removes local identity, approvals, rooms and history in the selected scope.
 Keep using existing data when the format has not changed. Connection failures do not require a data reset.

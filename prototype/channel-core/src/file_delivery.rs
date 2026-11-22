@@ -50,7 +50,14 @@ pub enum FileEffect {
         peer: Uuid,
         key: FileKey,
         request_id: Uuid,
+        offset: u64,
         frame: Vec<u8>,
+    },
+    CancelChunks {
+        peer: Uuid,
+        key: FileKey,
+        offset: u64,
+        request_id: Uuid,
     },
     Read {
         key: FileKey,
@@ -349,7 +356,15 @@ impl FileDelivery {
                     self.pending.remove(&slot);
                 }
                 if granted {
-                    self.remove_consumer(&key, Some(peer), Some(offset), Some(request_id))
+                    let mut effects =
+                        self.remove_consumer(&key, Some(peer), Some(offset), Some(request_id));
+                    effects.push(FileEffect::CancelChunks {
+                        peer,
+                        key,
+                        offset,
+                        request_id,
+                    });
+                    effects
                 } else {
                     vec![]
                 }
@@ -797,6 +812,7 @@ impl FileDelivery {
                         peer,
                         key: key.clone(),
                         request_id,
+                        offset,
                         frame,
                     });
                     position += length;

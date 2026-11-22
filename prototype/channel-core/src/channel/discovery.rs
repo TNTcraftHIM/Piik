@@ -207,13 +207,16 @@ impl Discovery<'_> {
             if !scope.contains(&viewer) || !scope.contains(&source) {
                 continue;
             }
-            let eligible: BTreeSet<_> = scope.iter().copied().filter(|id| allowed(*id)).collect();
-            let links: BTreeSet<_> = self
-                .confirmed
-                .iter()
-                .copied()
-                .filter(|(a, b)| eligible.contains(a) && eligible.contains(b))
-                .collect();
+            let view = std::cell::LazyCell::new(|| {
+                let eligible: BTreeSet<_> = scope.iter().copied().filter(|id| allowed(*id)).collect();
+                let links: BTreeSet<_> = self
+                    .confirmed
+                    .iter()
+                    .copied()
+                    .filter(|(a, b)| eligible.contains(a) && eligible.contains(b))
+                    .collect();
+                (eligible, links)
+            });
             if waiting {
                 let mut proven = self.transports
                     .failures()
@@ -222,12 +225,13 @@ impl Discovery<'_> {
                     .map(|edge| (edge.endpoints, self.transports.retry_after(edge).unwrap_or(0)))
                     .peekable();
                 if proven.peek().is_some() {
-                    if let Some(key) = crate::connectivity::retry_candidate(&eligible, &links, pair, proven) {
+                    let (eligible, links) = &*view;
+                    if let Some(key) = crate::connectivity::retry_candidate(eligible, links, pair, proven) {
                         let edge = self.proposal(key);
                         plan.required_retries.insert(edge.clone());
                         plan.keep(edge.clone(), Interest::Activity);
                         let mut restore = Repair { trial: Some(edge.clone()), ..Repair::default() };
-                        let completes = restore.retain_frontiers(source, viewer, &links, |p| self.proposal(p));
+                        let completes = restore.retain_frontiers(source, viewer, links, |p| self.proposal(p));
                         for segment in &restore.segments {
                             plan.keep(segment.clone(), Interest::Activity);
                         }
@@ -253,12 +257,13 @@ impl Discovery<'_> {
             if !waiting {
                 continue;
             }
+            let (eligible, links) = &*view;
             demand.remove(&pair);
             let key = (projection.summary.id.clone(), direct);
             plan.retained.insert(key.clone());
             let repair = repairs.entry(key).or_default();
             repair.trial = None;
-            let trial = crate::connectivity::repair_candidate(&eligible, &links, &[pair].into(), |a, b| {
+            let trial = crate::connectivity::repair_candidate(eligible, links, &[pair].into(), |a, b| {
                     let e = self.proposal((a, b));
                     !links.contains(&(a, b))
                         && !self.transports.rejected(&e)
@@ -270,7 +275,7 @@ impl Discovery<'_> {
                         }
                         Some((edge.endpoints, self.transports.retry_after(edge)?))
                     });
-                    crate::connectivity::retry_candidate(&eligible, &links, pair, failures)
+                    crate::connectivity::retry_candidate(eligible, links, pair, failures)
                 });
             if let Some(edge) = trial {
                 let trial = self.proposal(edge);
@@ -280,7 +285,7 @@ impl Discovery<'_> {
                 plan.keep(trial.clone(), Interest::Activity);
                 repair.trial = Some(trial);
             }
-            let bridges = repair.retain_frontiers(source, viewer, &links, |pair| self.proposal(pair));
+            let bridges = repair.retain_frontiers(source, viewer, links, |pair| self.proposal(pair));
             let interest = if repair.joined { Interest::Delivery } else { Interest::Activity };
             for edge in &repair.segments {
                 plan.keep(edge.clone(), interest);

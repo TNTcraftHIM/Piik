@@ -115,8 +115,126 @@ impl Ready {
         current
     }
 }
-struct Writer {
-    input: mpsc::Sender<Message>,
+// Only the bulk lane needs selective removal. The active write carries its
+// cancellation signal through the runtime command queue to the SDK call.
+#[derive(Default)]
+pub(crate) struct BulkState {
+    closed: bool,
+    pending: std::collections::VecDeque<Message>,
+    active: Option<(piik_channel_core::file_room::FileKey, u64, Uuid)>,
+}
+#[derive(Clone)]
+pub(crate) struct BulkSender {
+    state: watch::Sender<BulkState>,
+    retire_active: watch::Sender<()>,
+    capacity: usize,
+}
+impl BulkSender {
+    pub fn try_send(&self, message: Message) -> Result<(), ()> {
+        let accepted = self.state.send_if_modified(|state| {
+            if state.closed || state.pending.len() == self.capacity {
+                return false;
+            }
+            state.pending.push_back(message);
+            true
+        });
+        if accepted {
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+    pub fn cancel(
+        &self,
+        key: &piik_channel_core::file_room::FileKey,
+        offset: u64,
+        request_id: Uuid,
+    ) {
+        self.state.send_if_modified(|state| {
+            state.pending.retain(|message| {
+                !matches!(&message.scope,
+                MessageScope::File(scope) if scope.request() == Some((key, offset, request_id)))
+            });
+            if state
+                .active
+                .as_ref()
+                .is_some_and(|(file, start, id)| (file, *start, *id) == (key, offset, request_id))
+            {
+                state.active = None;
+                self.retire_active.send_replace(());
+            }
+            false // Removing frames cannot make a waiting receiver readable.
+        });
+    }
+}
+pub(crate) enum Incoming {
+    Fifo(mpsc::Receiver<Message>),
+    Bulk(BulkSender, watch::Receiver<BulkState>),
+}
+fn fifo(capacity: usize) -> (mpsc::Sender<Message>, Incoming) {
+    let (sender, receiver) = mpsc::channel(capacity);
+    (sender, Incoming::Fifo(receiver))
+}
+pub(crate) fn bulk_queue(capacity: usize) -> (BulkSender, Incoming) {
+    let (state, changed) = watch::channel(BulkState::default());
+    let sender = BulkSender {
+        state,
+        capacity,
+        retire_active: watch::channel(()).0,
+    };
+    (sender.clone(), Incoming::Bulk(sender, changed))
+}
+impl Incoming {
+    pub(crate) async fn recv(&mut self) -> Option<Message> {
+        match self {
+            Self::Fifo(queue) => queue.recv().await,
+            Self::Bulk(queue, changed) => loop {
+                let mut next = None;
+                queue.state.send_if_modified(|state| {
+                    if state.active.take().is_some() {
+                        queue.retire_active.send_replace(());
+                    }
+                    next = state.pending.pop_front();
+                    if let Some(Message {
+                        scope: MessageScope::File(scope),
+                        ..
+                    }) = &mut next
+                    {
+                        scope.retired = Some(queue.retire_active.subscribe());
+                        state.active = scope
+                            .request()
+                            .map(|(key, offset, id)| (key.clone(), offset, id));
+                    }
+                    false
+                });
+                if next.is_some() {
+                    return next;
+                }
+                changed.changed().await.ok()?;
+            },
+        }
+    }
+    fn clear(&mut self) {
+        match self {
+            Self::Fifo(queue) => while queue.try_recv().is_ok() {},
+            Self::Bulk(queue, _) => queue.state.send_modify(|state| state.pending.clear()),
+        }
+    }
+}
+impl Drop for Incoming {
+    fn drop(&mut self) {
+        if let Self::Bulk(queue, _) = self {
+            queue.state.send_modify(|state| {
+                state.closed = true;
+                state.pending.clear();
+                state.active = None;
+                queue.retire_active.send_replace(());
+            });
+        }
+    }
+}
+struct Writer<S> {
+    input: S,
     binding: watch::Sender<Option<Binding>>,
     cancel: watch::Sender<bool>,
     task: JoinHandle<()>,
@@ -124,7 +242,7 @@ struct Writer {
 #[derive(Clone)]
 pub(crate) struct Senders {
     pub control: mpsc::Sender<Message>,
-    pub bulk: mpsc::Sender<Message>,
+    pub bulk: BulkSender,
     pub input: mpsc::Sender<Message>,
     control_binding: watch::Sender<Option<Binding>>,
     bulk_binding: watch::Sender<Option<Binding>>,
@@ -143,9 +261,9 @@ impl Senders {
     }
 }
 pub(crate) struct DataLink {
-    control: Writer,
-    bulk: Writer,
-    input: Writer,
+    control: Writer<mpsc::Sender<Message>>,
+    bulk: Writer<BulkSender>,
+    input: Writer<mpsc::Sender<Message>>,
 }
 impl DataLink {
     pub fn new(pair: Uuid, state: Arc<AtomicU8>, events: mpsc::Sender<crate::peer::Event>) -> Self {
@@ -154,11 +272,17 @@ impl DataLink {
                 pair,
                 Lane::Control,
                 state.clone(),
-                CONTROL_QUEUE,
+                fifo(CONTROL_QUEUE),
                 events.clone(),
             ),
-            bulk: writer(pair, Lane::Bulk, state.clone(), BULK_QUEUE, events.clone()),
-            input: writer(pair, Lane::Input, state, 8, events),
+            bulk: writer(
+                pair,
+                Lane::Bulk,
+                state.clone(),
+                bulk_queue(BULK_QUEUE),
+                events.clone(),
+            ),
+            input: writer(pair, Lane::Input, state, fifo(8), events),
         }
     }
     pub fn senders(&self) -> Senders {
@@ -203,9 +327,13 @@ impl DataLink {
         });
     }
     pub async fn close(self) {
-        for writer in [self.control, self.bulk, self.input] {
-            let _ = writer.cancel.send(true);
-            let _ = writer.task.await;
+        for (cancel, task) in [
+            (self.control.cancel, self.control.task),
+            (self.bulk.cancel, self.bulk.task),
+            (self.input.cancel, self.input.task),
+        ] {
+            let _ = cancel.send(true);
+            let _ = task.await;
         }
     }
 }
@@ -218,14 +346,13 @@ pub(crate) fn terminal(state: &AtomicU8) -> bool {
     let state = state.load(Ordering::Acquire);
     state == PeerState::Failed as u8 || state == PeerState::Closed as u8
 }
-fn writer(
+fn writer<S>(
     pair: Uuid,
     lane: Lane,
     state: Arc<AtomicU8>,
-    capacity: usize,
+    (input, mut queue): (S, Incoming),
     events: mpsc::Sender<crate::peer::Event>,
-) -> Writer {
-    let (input, mut queue) = mpsc::channel::<Message>(capacity);
+) -> Writer<S> {
     let (binding, mut channel) = watch::channel::<Option<Binding>>(None);
     let (cancel, mut cancelled) = watch::channel(false);
     let task = tokio::spawn(async move {
@@ -235,7 +362,7 @@ fn writer(
                 _ = channel.changed() => {
                     let binding = channel.borrow();
                     if binding.as_ref().is_some_and(|binding| binding.state == BindingState::Closed) {
-                        while queue.try_recv().is_ok() {}
+                        queue.clear();
                     }
                     continue;
                 }
@@ -265,7 +392,7 @@ fn writer(
                     _ = channel.changed() => {
                         let binding = channel.borrow();
                         if binding.as_ref().is_some_and(|binding| binding.state == BindingState::Closed) {
-                            while queue.try_recv().is_ok() {}
+                            queue.clear();
                             break None;
                         }
                     }
@@ -308,7 +435,7 @@ fn writer(
                                 break None;
                             }
                             if binding.state == BindingState::Closed {
-                                while queue.try_recv().is_ok() {}
+                                queue.clear();
                                 break None;
                             }
                         }
@@ -323,7 +450,7 @@ fn writer(
                     binding.token == dc.token && binding.state == BindingState::Open
                 });
                 if current {
-                    while queue.try_recv().is_ok() {}
+                    queue.clear();
                 }
                 current
             };
@@ -353,12 +480,54 @@ fn writer(
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn cancel_reclaims_only_matching_bulk_slots_and_retires_the_active_write() {
+        use piik_channel_core::file_room::FileKey;
+        let key = FileKey {
+            room_id: "room".into(),
+            message_seq: 1,
+            attachment_id: Uuid::new_v4(),
+        };
+        let old = Uuid::new_v4();
+        let fresh = Uuid::new_v4();
+        let (scope, _lease) = crate::file::scope_fixture(key.clone());
+        let message = |offset, id, byte| {
+            let mut scope = scope.clone();
+            scope.request = Some((offset, id));
+            Message {
+                bytes: vec![byte],
+                scope: MessageScope::File(scope),
+                report_failure: true,
+            }
+        };
+        let (bulk, mut queue) = bulk_queue(3);
+        bulk.try_send(message(0, old, 0)).unwrap();
+        let mut active = queue.recv().await.unwrap().scope;
+        let sdk_scope = active.clone();
+        bulk.try_send(message(0, old, 1)).unwrap();
+        bulk.try_send(message(1, old, 2)).unwrap();
+        bulk.try_send(message(0, old, 3)).unwrap();
+        assert!(bulk.try_send(message(0, fresh, 4)).is_err());
+        bulk.cancel(&key, 0, old);
+        assert!(!active.changed().await);
+        assert!(!sdk_scope.allowed());
+        bulk.try_send(message(0, fresh, 4)).unwrap();
+        bulk.cancel(&key, 0, old);
+        for byte in [2, 4] {
+            let frame = queue.recv().await.unwrap();
+            assert!(frame.scope.allowed());
+            assert_eq!(frame.bytes, [byte]);
+        }
+        drop(queue);
+        assert!(bulk.try_send(message(0, fresh, 5)).is_err());
+    }
+
     #[test]
     fn bulk_queue_holds_a_full_watch_window_from_an_aggregating_relay() {
         use piik_channel_core::{
             watch_delivery::{
                 WatchBytePlan, WatchControl, WatchDelivery, WatchEffect, WatchKey, WatchReadResult,
-                WATCH_WINDOW_BYTES, WATCH_MAX_PENDING, WATCH_MAX_RANGE_FRAMES,
+                WATCH_MAX_PENDING, WATCH_MAX_RANGE_FRAMES, WATCH_WINDOW_BYTES,
             },
             wire::{WatchByteSource, WatchFormat},
         };
