@@ -42,7 +42,7 @@ func (m *Manager) Diagnostics() DiagnosticSnapshot {
 	defer m.mu.Unlock()
 	result := DiagnosticSnapshot{
 		Counters:              m.diagnostics,
-		PendingKeyReleases:    len(m.pendingKeys),
+		PendingKeyReleases:    m.pendingKeyCount(),
 		PendingButtonReleases: len(m.pendingButtons),
 	}
 	for _, c := range m.connections {

@@ -6,12 +6,14 @@ import (
 	"context"
 	"errors"
 	"os"
+	"reflect"
 	"runtime"
 	"strings"
 	"syscall"
 	"testing"
 	"unsafe"
 
+	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"golang.org/x/sys/windows"
 )
 
@@ -62,7 +64,7 @@ func TestWindowsInputRecoversItsDesktopAndPendingRelease(t *testing.T) {
 	// Never switch the visible desktop. Only this test thread leaves it.
 	probe := winInput{Mouse: mouseInput{Flags: 1}}
 	restricted := &windowsSink{desktop: windows.UTF16PtrToString(name)}
-	if err := restricted.inject(probe); err == nil {
+	if _, err := restricted.sendOnDesktop(probe); err == nil {
 		t.Fatal("input escaped the backend's desktop")
 	}
 	if err := sink.inject(probe); err != nil {
@@ -179,5 +181,51 @@ func TestMouseButtonPackets(t *testing.T) {
 	}
 	if _, err := buttonInput(5, true); err == nil {
 		t.Fatal("unknown button accepted")
+	}
+}
+
+type scriptedWindowsSink struct{ *windowsSink }
+
+func (scriptedWindowsSink) Target(nativecapture.CaptureTarget, *nativecapture.Stream) (bounds, bool, error) {
+	return bounds{width: 100, height: 100}, true, nil
+}
+
+func TestWindowsPartialUnicodeRelease(t *testing.T) {
+	sink := scriptedWindowsSink{&windowsSink{}}
+	batch := textInputs("A😀Z")
+	var calls [][]winInput
+	// Accept A and the high surrogate press. Its KEYUP only succeeds after retirement.
+	counts := []uintptr{3, 0, 0, 0, 1}
+	sink.send = func(inputs ...winInput) (uintptr, error) {
+		calls = append(calls, inputs)
+		if len(calls) > len(counts) {
+			t.Fatal("unexpected extra input")
+		}
+		n := counts[len(calls)-1]
+		if n != uintptr(len(inputs)) {
+			return n, errors.New("short SendInput")
+		}
+		return n, nil
+	}
+	m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
+	s, peers := coPlaySession(t, m, true)
+	s.coPlay = false
+	c := peers[0]
+	sendTestInput(m, c, inputEvent{Type: "request"})
+	grant := c.grant
+	sendTestInput(m, c, inputEvent{Type: "text", Text: "A😀Z"})
+	if grant == "" || c.grant != grant || !c.inputFailed {
+		t.Fatal("partial text changed grant or hid input failure")
+	}
+	if got := m.Diagnostics().PendingKeyReleases; got != 1 {
+		t.Fatalf("pending releases after partial text = %d, want 1 (calls = %d)", got, len(calls))
+	}
+	sendTestInput(m, c, inputEvent{Type: "relative", DX: 1})
+	m.release()
+	m.retryReleases()
+	m.retryReleases()
+	up := batch[3:4]
+	if !reflect.DeepEqual(calls, [][]winInput{batch, up, up, up, up}) || m.Diagnostics().PendingKeyReleases != 0 {
+		t.Fatalf("release recovery did not deliver only the unmatched KEYUP: %v", calls)
 	}
 }

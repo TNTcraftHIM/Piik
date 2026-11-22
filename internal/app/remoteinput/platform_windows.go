@@ -34,9 +34,11 @@ type winInput struct {
 	Mouse mouseInput
 }
 type windowsSink struct {
-	desktop string
-	keys    map[uint16]bool
-	buttons map[int]bool
+	desktop   string
+	send      func(...winInput) (uintptr, error)
+	textKeyUp winInput
+	keys      map[uint16]bool
+	buttons   map[int]bool
 }
 
 func newPlatformSink(bool) (inputSink, error) {
@@ -53,7 +55,9 @@ func newPlatformSink(bool) (inputSink, error) {
 	if !ok {
 		return nil, errors.New("input backend desktop is unavailable")
 	}
-	return &windowsSink{desktop: name, keys: map[uint16]bool{}, buttons: map[int]bool{}}, nil
+	s := &windowsSink{desktop: name, keys: map[uint16]bool{}, buttons: map[int]bool{}}
+	s.send = s.sendOnDesktop
+	return s, nil
 }
 
 func (*windowsSink) Authorize() error { return nil }
@@ -147,8 +151,13 @@ func tokenIntegrity(token windows.Token) (uint32, bool) {
 }
 
 func (s *windowsSink) inject(inputs ...winInput) error {
+	_, err := s.send(inputs...)
+	return err
+}
+
+func (s *windowsSink) sendOnDesktop(inputs ...winInput) (uintptr, error) {
 	if len(inputs) == 0 {
-		return nil
+		return 0, nil
 	}
 	// Keep failure observations on the OS thread that attempted the operation.
 	runtime.LockOSThread()
@@ -164,18 +173,18 @@ func (s *windowsSink) inject(inputs ...winInput) error {
 		// thread that drifted away from this backend's original desktop.
 		active, _, _ := user32.NewProc("OpenInputDesktop").Call(0, 0, 0x10000000) // GENERIC_ALL: input injection needs more than object observation.
 		if active == 0 {
-			return original
+			return n, original
 		}
 		defer user32.NewProc("CloseDesktop").Call(active)
 		activeName, activeOK := desktopName(active)
 		thread, _, _ := user32.NewProc("GetThreadDesktop").Call(uintptr(windows.GetCurrentThreadId()))
 		threadName, threadOK := desktopName(thread)
 		if !activeOK || !threadOK || activeName != s.desktop || activeName == threadName {
-			return original
+			return n, original
 		}
 		setDesktop := user32.NewProc("SetThreadDesktop")
 		if ok, _, _ := setDesktop.Call(active); ok == 0 {
-			return original
+			return n, original
 		}
 		// Never replay the accepted prefix of a partially accepted operation.
 		remaining := inputs[n:]
@@ -189,9 +198,9 @@ func (s *windowsSink) inject(inputs ...winInput) error {
 		if ok, _, restoreErr := setDesktop.Call(thread); ok == 0 {
 			result = errors.Join(result, fmt.Errorf("restore input thread desktop: %w", restoreErr))
 		}
-		return result
+		return n + accepted, result
 	}
-	return nil
+	return n, nil
 }
 
 func keyInput(scan uint16, down bool) winInput {
@@ -296,15 +305,40 @@ func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 			delete(s.keys, key)
 		}
 	case "text":
-		return s.inject(textInputs(e.Text)...)
+		inputs := textInputs(e.Text)
+		n, err := s.send(inputs...)
+		if n%2 == 1 {
+			// Each UTF-16 unit has a press and release. An odd prefix ends on a press.
+			s.textKeyUp = inputs[n]
+			return errors.Join(err, s.releaseTextKey())
+		}
+		return err
 	default:
 		return errors.New("unsupported input")
 	}
 	return nil
 }
 
+func (s *windowsSink) pendingTextRelease() func() error {
+	if s.textKeyUp.Kind == 0 {
+		return nil
+	}
+	return s.releaseTextKey
+}
+
+func (s *windowsSink) releaseTextKey() error {
+	n, err := s.send(s.textKeyUp)
+	if n == 1 {
+		s.textKeyUp = winInput{}
+	}
+	return err
+}
+
 func (s *windowsSink) Reset() error {
 	var result error
+	if release := s.pendingTextRelease(); release != nil {
+		result = release()
+	}
 	for key := range s.keys {
 		if err := s.inject(keyInput(key, false)); err != nil {
 			result = errors.Join(result, err)
