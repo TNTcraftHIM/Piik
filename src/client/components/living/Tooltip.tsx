@@ -32,6 +32,7 @@ import { HintComic, isHintKind, type HintKind } from "./hints";
 import { isCopyKey, say } from "../../ui/copy";
 import { motionDuration, replaySvgAnimations } from "../../ui/animation";
 import { useSurfaceDocument } from "../../ui/panel-window";
+import { useLayerHistory } from "../../ui/layer-history";
 import { comicStyle, getComicPresentation, type ComicTone, type ComicMotion } from "./comic-presentation";
 
 export const LONG_PRESS_MS = 500;
@@ -334,6 +335,7 @@ export function Tooltip({
       tip?.hidePopover?.();
     }
   }, [panelMounted, caption, kind]);
+  useLayerHistory(tipRef, enabled && toggleOnClick && pressOpen);
   useLayoutEffect(() => {
     if (!ownerDocument || !panelMounted) return;
     const fullscreenChanged = () => {
@@ -633,6 +635,7 @@ export function Tooltip({
         "aria-controls": toggleOnClick ? tooltipId : trigger.props["aria-controls"],
       }) : children}
       <span ref={tipRef} id={tooltipId} popover="manual"
+        onToggle={event => { if (event.newState === "closed" && pressOpen) dismissPanel(); }}
         data-tone={resolvedTone}
         style={{ ...comicStyle(resolvedTone), left: position.left, top: position.top, "--tooltip-caret": `${position.caret}px` } as CSSProperties}
         className={`lr-comic-tip${kind ? " has-comic" : ""}${caption !== undefined ? " is-text" : ""}${placeClass}`}

@@ -368,7 +368,6 @@ export const zhHant = {
   "channel.voiceDock.voiceJoined": "已加入語音",
   "channel.voiceDock.selectRoom": "選擇要控制的語音房間",
   "channel.voiceDock.openRoom": "開啟「{name}」",
-  "channel.voiceDock.voiceParticipants": "目前語音使用者",
   "channel.invitationLink.copied": "已複製",
   "channel.invitationLink.copyInvitation": "複製邀請",
   "channel.invitationLink.copyFailed": "請手動複製上方連結。",

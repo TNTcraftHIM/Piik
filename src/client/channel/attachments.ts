@@ -34,7 +34,7 @@ export function isNativeSavePending(outcome?: DownloadOutcome): boolean {
 }
 
 interface Download { key: ChannelFileKey; controller: AbortController; promise: Promise<void>; status: { busy: boolean; error: string | null; outcome?: DownloadOutcome; saveProgress?: DownloadProgress } }
-interface Source { key: ChannelFileKey; attachment: ChannelAttachment; file: File; status: typeof idle; retained: boolean; adoptedCacheCopy?: boolean; offer?: Promise<void> }
+interface Source { key: ChannelFileKey; attachment: ChannelAttachment; file: File; status: typeof idle; storage: "original" | "retained" | "session-cache"; offer?: Promise<void> }
 interface CacheClear { revision: number; pending?: Promise<void> }
 const idle: Download["status"] = { busy: false, error: null };
 const cacheRoom = (scope: FileScope, roomId: string) => JSON.stringify([scope.domainId, scope.userId, roomId]);
@@ -213,7 +213,7 @@ export class ChannelAttachments {
         if (this.store !== store) return;
         for (const { key, attachment, file } of files) if ((this.cacheClears.get(cacheRoom(scope, key.roomId))?.revision ?? 0) <= revision
           && !this.messageRemoved(key) && this.rooms.some(room => room.id === key.roomId && room.authorized) && !this.sources.has(fileKeyString(key))) {
-          this.installSource({ key, attachment, file, status: idle, retained: true });
+          this.installSource({ key, attachment, file, status: idle, storage: "retained" });
         }
       }).catch(() => {});
     }
@@ -236,7 +236,7 @@ export class ChannelAttachments {
     if (previous?.pending) return previous.pending;
     const clear: CacheClear = { revision: ++this.cacheRevision };
     this.cacheClears.set(id, clear);
-    clear.pending = store.removeMessages(roomId, () => true).then(() => {
+    clear.pending = store.removeMessages(roomId, () => true).then(async () => {
       if (!this.scope || cacheRoom(this.scope, roomId) !== id) return;
       for (const [id, entry] of this.savedReceipts) {
         if (entry.key.roomId !== roomId) continue;
@@ -244,9 +244,16 @@ export class ChannelAttachments {
         if (this.downloads.get(id)?.status.outcome === "saved") this.downloads.delete(id);
       }
       for (const source of this.sources.values()) {
-        if (source.key.roomId === roomId && (source.retained || source.adoptedCacheCopy)) this.withdraw(source, false);
+        if (source.key.roomId === roomId && source.storage !== "original") this.withdraw(source, false);
+      }
+      const disposals = [];
+      for (const [id, entry] of this.sinks) {
+        if (entry.key.roomId !== roomId || entry.progress) continue;
+        this.sinks.delete(id);
+        disposals.push(this.retireSink(entry.ready, aborted()));
       }
       this.changed();
+      await Promise.all(disposals);
     }, error => {
       if (previous) this.cacheClears.set(id, previous);
       else this.cacheClears.delete(id);
@@ -271,7 +278,7 @@ export class ChannelAttachments {
     void this.store?.removeMessages(roomId, removed).catch(() => {});
     this.changed();
   }
-  private withdraw(source: Source, removeStored = source.retained): void {
+  private withdraw(source: Source, removeStored = source.storage === "retained"): void {
     const key = source.key;
     if (this.sources.get(fileKeyString(key)) !== source) return;
     this.sources.delete(fileKeyString(key));
@@ -295,7 +302,7 @@ export class ChannelAttachments {
       if (this.store !== store) return null;
       for (const key of retained.evicted) {
         const source = this.sources.get(fileKeyString(key));
-        if (source?.retained) this.withdraw(source, false);
+        if (source?.storage === "retained") this.withdraw(source, false);
       }
       return allowed() ? retained.file : null;
     } catch { return null; } // Optional retention cannot fail a confirmed send/download.
@@ -324,15 +331,15 @@ export class ChannelAttachments {
     for (const { key, attachment, file } of files) {
       if (!current()) return false;
       if (this.messageRemoved(key)) { saved = false; continue; }
-      const source: Source = { key, attachment, file, status: idle, retained: false };
+      const source: Source = { key, attachment, file, status: idle, storage: "original" };
       this.installSource(source);
       const retained = await this.retain(key, attachment, file);
       if (!current()) return false;
       if (this.sources.get(fileKeyString(key)) !== source) { saved = false; continue; }
-      if (retained) { source.file = retained; source.retained = true; }
+      if (retained) { source.file = retained; source.storage = "retained"; }
       else saved = false;
     }
-    return saved && files.every(({ key }) => this.sources.get(fileKeyString(key))?.retained === true);
+    return saved && files.every(({ key }) => this.sources.get(fileKeyString(key))?.storage === "retained");
   }
   resume(roomId?: string): void {
     for (const source of this.sources.values()) if (!roomId || source.key.roomId === roomId) this.reofferKey(source.key);
@@ -382,7 +389,7 @@ export class ChannelAttachments {
       if (current()) { source.status = idle; this.changed(); }
     }).catch(error => {
       if (!current()) return;
-      if (source.retained && errorOf(error).message === "attachment_unavailable") {
+      if (source.storage === "retained" && errorOf(error).message === "attachment_unavailable") {
         this.sources.delete(id);
         this.savedReceipts.delete(id);
         void this.store?.remove(key, { forgetReceipt: true }).catch(() => {});
@@ -443,13 +450,13 @@ export class ChannelAttachments {
       const selected = files.find(file => file.attachment.id === attachment.id && sameContent(file.attachment, attachment));
       if (!selected) continue;
       const key = { roomId, messageSeq: message.seq, attachmentId: attachment.id };
-      const source: Source = { key, attachment, file: selected.file, status: idle, retained: false };
+      const source: Source = { key, attachment, file: selected.file, status: idle, storage: "original" };
       this.installSource(source);
       void this.retain(key, attachment, selected.file).then(copy => {
         // The page keeps its live offer even if this saved copy is later evicted.
         if (copy && this.sources.get(fileKeyString(key)) === source) {
           source.file = copy;
-          source.adoptedCacheCopy = true;
+          source.storage = "session-cache";
         }
       });
     }
@@ -676,7 +683,7 @@ export class ChannelAttachments {
               if (!this.current(runtime) || this.sinks.get(fileKeyString(key)) !== entry || this.messageRemoved(key)) return;
               const readable = retained ?? file;
               entry.progress = null;
-              this.installSource({ key, attachment: sink.attachment, file: readable, status: idle, retained: Boolean(retained) });
+              this.installSource({ key, attachment: sink.attachment, file: readable, status: idle, storage: retained ? "retained" : "session-cache" });
               void this.command({ type: "file_receive", ...key, enabled: false }).catch(() => {}); sink.resolve(readable);
               if (retained) {
                 try {

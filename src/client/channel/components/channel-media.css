@@ -65,7 +65,7 @@
 .c3-watch-timeline progress::-moz-progress-bar { background: var(--action); }
 .c3-watch-position { display: flex; align-items: center; gap: 6px; min-width: 0; padding-inline: 2px; font-size: 12px; line-height: 1.2; }
 .c3-watch-status { flex: none; white-space: nowrap; font-weight: 650; }
-.c3-watch-time { min-width: 0; color: var(--muted); font-variant-numeric: tabular-nums; }
+.c3-watch-time { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
 .c3-watch-position[data-seeking] .c3-watch-time { color: var(--action); }
 .c3-mini-player[data-thumbnail] .c3-mini-controls > :is(.lr-chat-overlay-toggle, .lr-remote-controls),
 .c3-mini-player[data-thumbnail] .c3-mini-controls:not(.c3-watch-controls) .lr-playback-window { display: none; }
@@ -116,11 +116,15 @@
 @container (max-width: 280px) {
   .c3-mini-controls { --mini-controls-inset: 2px; width: calc(100% - 2 * var(--mini-controls-inset)); gap: 0; padding: 2px; }
   .c3-mini-controls .c3-mini-space { display: none; }
+  .c3-watch-actions > .lr-media-overlay { column-gap: 0; }
 }
 .c3-mini-player[data-thumbnail] .c3-mini-controls { width: fit-content; }
 .c3-mini-player[data-thumbnail] .c3-mini-controls .lr-btn:not(:where(.c3-mini-controls [popover] *)) { --button-size: var(--control-dense-size); }
 .c3-mini-controls.c3-watch-controls { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: 0; border-radius: var(--c3-inset-radius); }
-.c3-watch-controls:has(.c3-watch-timeline) { width: calc(100% - 2 * var(--mini-controls-inset)); padding: 3px clamp(5px, 1.5cqi, 10px) 5px; }
+.c3-watch-controls:has(.c3-watch-timeline) { width: calc(100% - 2 * var(--mini-controls-inset)); row-gap: 4px; padding: 0; background: none; border: 0; box-shadow: none; }
+.c3-watch-timeline { padding-inline: clamp(5px, 1.5cqi, 10px); }
+.c3-watch-timeline, .c3-watch-actions > .lr-media-overlay { border-radius: var(--c3-inset-radius); }
+.c3-watch-actions > .lr-media-overlay { padding-inline: clamp(2px, 1cqi, 4px); }
 .c3-watch-timeline + .c3-watch-actions { column-gap: clamp(3px, 0.8cqi, 8px); }
 .c3-watch-receiving .lr-btn:has(> .lr-cap) { width: fit-content; min-height: var(--control-compact-size); padding-inline: 8px; }
 @media (pointer: coarse) {

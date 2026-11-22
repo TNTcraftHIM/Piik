@@ -893,7 +893,7 @@ export class ChannelSession {
     }
     if (record.type === "live_message") {
       if (this.view.state?.channel.rooms.some(room => room.id === reply.roomId && room.delivery?.bindingId === reply.bindingId)) {
-        this.applyMessage(reply.roomId, record.message);
+        this.applyMessage(reply.roomId, record.message, true);
       }
       return;
     }
@@ -930,7 +930,7 @@ export class ChannelSession {
       this.applyHistory(reply.roomId, page.sort((a, b) => a.seq - b.seq), record, request.history);
     } else if (record.type === "confirmed" && !messageRemoved(this.view.historyChangesByRoom[reply.roomId], record.message.seq)) {
       request.result?.(record);
-      this.applyMessage(reply.roomId, record.message);
+      this.applyMessage(reply.roomId, record.message, record.inserted);
     }
     this.receive(record.type === "error" ? { type: "error", requestId: reply.requestId, code: record.code }
       : { type: "ack", requestId: reply.requestId });
@@ -1035,20 +1035,22 @@ export class ChannelSession {
     void this.loadProfiles(historyProfileIds(messages)).catch(() => {});
   }
 
-  private applyMessage(roomId: string, message: ChannelMessage): void {
+  private applyMessage(roomId: string, message: ChannelMessage, live: boolean): void {
     const state = this.view.state;
     if (!state?.channel.rooms.some(room => room.id === roomId && room.authorized)) return;
     const changes = this.view.historyChangesByRoom[roomId];
     if (messageRemoved(changes, message.seq)) return;
     message = redactReply(message, changes);
     void this.loadProfiles(historyProfileIds([message])).catch(() => {});
-    const sender = state.users.find(user => user.id === message.userId) ?? this.view.profiles.get(message.userId) ?? { id: message.userId, name: message.archivedAuthorName ?? "User" };
-    const points = Array.from(message.text.replace(/\s+/gu, " ").normalize("NFC").trim());
-    const text = points.length > MAX_CHAT_CODE_POINTS ? `${points.slice(0, MAX_CHAT_CODE_POINTS - 1).join("")}…` : points.join("");
-    this.view.interactionsByRoom.get(roomId)?.receiveConfirmedChat({
-      type: "room-interaction", id: message.id, requestId: message.id, occurredAt: message.time, messageSeq: message.seq,
-      sender: { peerId: sender.id, displayName: sender.name, role: "viewer" }, payload: { kind: "chat", text },
-    });
+    if (live) {
+      const sender = state.users.find(user => user.id === message.userId) ?? this.view.profiles.get(message.userId) ?? { id: message.userId, name: message.archivedAuthorName ?? "User" };
+      const points = Array.from(message.text.replace(/\s+/gu, " ").normalize("NFC").trim());
+      const text = points.length > MAX_CHAT_CODE_POINTS ? `${points.slice(0, MAX_CHAT_CODE_POINTS - 1).join("")}…` : points.join("");
+      this.view.interactionsByRoom.get(roomId)?.receiveConfirmedChat({
+        type: "room-interaction", id: message.id, requestId: message.id, occurredAt: message.time, messageSeq: message.seq,
+        sender: { peerId: sender.id, displayName: sender.name, role: "viewer" }, payload: { kind: "chat", text },
+      });
+    }
     const history = this.view.historyByRoom[roomId];
     let projected: ChannelMessage = { ...message, reactions: { revision: 0, counts: {} } };
     for (const request of this.requests.values()) {
@@ -2352,7 +2354,6 @@ export class ChannelSession {
       share = { id, profile: this.media.localProfile(id) ?? this.view.quality,
         codecMode: this.view.videoCodecMode, encodingExecution: this.view.encodingExecution,
         volume: { level: 1, muted: false }, microphone: { deviceId: "", volume: 1, voiceProcessing: true } };
-      this.screenShares.set(roomId, share);
     }
     if (share.audioChange || share.qualityChange || this.view.pending.has(`source-microphone:${share.id}`)) throw new Error("operation_pending");
     // An armed OBS permission keeps the publication ID, not a capture's settings.
@@ -2363,6 +2364,7 @@ export class ChannelSession {
       share.codec = undefined;
     }
     const selection = this.selectSource(roomId);
+    this.screenShares.set(roomId, share);
     const selected = share;
     return { share, selection, current: () => this.screenShares.get(roomId) === selected && this.sourceSelections.get(roomId) === selection };
   }

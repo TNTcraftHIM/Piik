@@ -75,7 +75,7 @@
 .lr-quick-reactions { position: fixed; inset: auto; width: 264px; max-width: calc(100vw - 16px); margin: 0; padding: 8px; border-radius: 18px; overflow: auto; overscroll-behavior: contain; }
 .lr-quick-reactions.is-expanded { width: 288px; }
 .lr-quick-reactions-heading { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-.lr-quick-reactions-heading > .lr-person-menu-target { flex: 1; min-width: 0; margin: 0; }
+.lr-quick-reactions-heading > .lr-person-menu-target { display: block; flex: 1; min-width: 0; margin: 0; }
 .lr-quick-reactions:not(.is-expanded) .lr-person-menu-target { order: -1; }
 .lr-quick-reactions-heading > .lr-comic-tip-wrap { flex: none; }
 .lr-quick-reactions .lr-person-menu-portrait { width: 24px; height: 30px; }

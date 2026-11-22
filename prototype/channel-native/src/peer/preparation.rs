@@ -1385,21 +1385,37 @@ mod tests {
             )
             .await
         });
-        // Observe the real source sockets through their finite priming traffic.
-        // The forced loopback intersection is a lifecycle control, not a probability trial.
+        // Ready ends priming. Use the observed UDP sources for a forced
+        // intersection even if some of the pool's datagrams were dropped.
         let mut sources = HashSet::new();
         let mut bytes = [0; 1024];
-        tokio::time::timeout(Duration::from_secs(3), async {
-            while sources.len() < RANDOM_PORTS {
-                let (_, peer) = easy_socket.recv_from(&mut bytes).await?;
-                let SocketAddr::V4(peer) = peer else {
-                    unreachable!()
-                };
-                sources.insert(peer);
+        let ready = loop {
+            tokio::select! {
+                event = hard_events.recv() => break event,
+                received = easy_socket.recv_from(&mut bytes) => {
+                    let (_, SocketAddr::V4(peer)) = received? else { unreachable!() };
+                    sources.insert(peer);
+                }
             }
-            Ok::<_, anyhow::Error>(())
-        })
-        .await??;
+        };
+        ensure!(
+            matches!(
+                ready,
+                Some(NativeEvent::Command(Command::Signal {
+                    payload: Signal {
+                        udp: Some(UdpSignal::Ready {}),
+                        ..
+                    },
+                    ..
+                }))
+            ),
+            "pool readiness missing"
+        );
+        ensure!(
+            (2..=RANDOM_PORTS).contains(&sources.len()),
+            "expected distinct pool sockets within the configured bound, saw {}",
+            sources.len()
+        );
         assert_eq!(RANDOM_PREPARATIONS.available_permits(), 0);
         let (_to_busy, mut busy_input) = mpsc::channel(4);
         let (busy_commands, _busy_events) = mpsc::channel(4);
@@ -1421,17 +1437,6 @@ mod tests {
         .await;
         assert!(busy.is_err(), "a third process-wide pool queued or started");
         drop(occupied);
-        let Some(NativeEvent::Command(Command::Signal {
-            payload:
-                Signal {
-                    udp: Some(UdpSignal::Ready {}),
-                    ..
-                },
-            ..
-        })) = hard_events.recv().await
-        else {
-            bail!("pool readiness missing");
-        };
         let (easy_commands, mut easy_events) = mpsc::channel(4);
         let (to_easy, mut easy_input) = mpsc::channel(4);
         to_easy.send(UdpSignal::Ready {}).await?;

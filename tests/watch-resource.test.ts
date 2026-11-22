@@ -139,6 +139,27 @@ describe("page-owned virtual media HTTP", () => {
       }
     } finally { lease.close(); lifetime.abort(); vi.useRealTimers(); vi.unstubAllGlobals(); }
   });
+  test("a range body rejects a changed resource size before delivering its bytes", async () => {
+    const controller = { scriptURL: "https://piik.test/watch-media-worker.js" };
+    const serviceWorker = Object.assign(new EventTarget(), { controller, register: async () => {} });
+    vi.stubGlobal("navigator", { serviceWorker });
+    vi.stubGlobal("location", { origin: "https://piik.test" });
+    vi.stubGlobal("isSecureContext", true);
+    const lifetime = new AbortController();
+    try {
+      let size = 100;
+      const lease = await openWatchResource(rootId, async (_id, _offset, length) => ({
+        mimeType: "video/mp4", totalSize: size, bytes: new Uint8Array(length), eof: false,
+      }), lifetime.signal);
+      const w = worker(false, size, Promise.resolve(), (data, ports) => {
+        serviceWorker.dispatchEvent(Object.assign(new Event("message"), { source: controller, data, ports }));
+      });
+      const response = await w.fetch("bytes=5-9", "GET", "owner-page", lease.url)!;
+      expect(response.headers.get("content-range")).toBe("bytes 5-9/100");
+      size = 200;
+      await expect(response.arrayBuffer()).rejects.toThrow();
+    } finally { lifetime.abort(); vi.unstubAllGlobals(); }
+  });
   test("cancelling during client lookup does not open a late page request", async () => {
     let found!: () => void;
     const clientReady = new Promise<void>(resolve => { found = resolve; });

@@ -79,3 +79,21 @@ test("wire linear metadata requires a candidate and generation",()=>{
   expect(signalSchema.safeParse({candidate:{...candidate(40000),usernameFragment:null}}).success).toBe(false);
   expect(signalSchema.safeParse({candidate:{...candidate(40000),candidate:""}}).success).toBe(false);
 });
+
+test("the first ICE connection closes the lifetime linear admission window", async () => {
+  vi.stubGlobal("RTCPeerConnection", Peer);
+  const transport = new ChannelTransport({ polite:true, iceServers:[], send:vi.fn(), receive:vi.fn(),
+    connected:vi.fn(), roomData:vi.fn(), failed:vi.fn() });
+  const peer = transport.pc as unknown as Peer;
+  try {
+    await peer.setRemoteDescription({type:"offer",sdp:nativeSdp()});
+    peer.iceConnectionState = "connected";
+    transport.pc.oniceconnectionstatechange?.call(transport.pc, new Event("iceconnectionstatechange"));
+    peer.iceConnectionState = "disconnected";
+    transport.pc.oniceconnectionstatechange?.call(transport.pc, new Event("iceconnectionstatechange"));
+    transport.signal({candidate: nativeCandidate(40001)});
+    transport.signal({candidate: {...nativeCandidate(42002), origin: undefined}});
+    await vi.waitFor(() => expect(peer.addIceCandidate.mock.calls.some(([c]) => c.candidate?.includes("42002"))).toBe(true));
+    expect(peer.addIceCandidate.mock.calls.map(([c]) => c.candidate)).toEqual([nativeCandidate(42002).candidate]);
+  } finally {transport.close();}
+});

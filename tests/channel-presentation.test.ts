@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChannelRoomListItem } from "../src/client/channel/components/ChannelRoomListItem";
 import { ChannelPeople } from "../src/client/channel/components/ChannelPeople";
+import { ChannelActivityIndicators } from "../src/client/channel/components/ChannelUser";
 import type { ChannelController } from "../src/client/channel/types";
 import { firstUnreadMessageId, messageDateFormats, roomActivityPeople, roomPeople, roomSessionViewing, screenTitle, watchAudience } from "../src/client/channel/presentation";
 import { snapshotSchema, watchActivitySchema } from "../src/client/channel/protocol";
@@ -74,6 +75,13 @@ it("projects joined watch people independently of transport and deduplicates the
     expect(localViewing()).toBe("failed");
   } finally { player.close(); }
 
+});
+
+it("labels a person's picture by its current delivery stage", () => {
+  for (const [viewing, label] of [["preparing", "screen.connectingPicture"], ["active", "screen.pictureReceived"], ["failed", "screen.pictureFailed"]] as const) {
+    const html = renderToStaticMarkup(createElement(ChannelActivityIndicators, { viewing }));
+    expect(html).toContain(`aria-label="${say(label)}" data-viewing="${viewing}"`);
+  }
 });
 
 it("starts unread messages at another person without consuming earlier unread history", () => {

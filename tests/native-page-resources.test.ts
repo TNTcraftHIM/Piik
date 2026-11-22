@@ -131,6 +131,28 @@ test("a page rebuilding several players transfers commands only for each unique 
   expect(other.currentTime).toBe(0);
 });
 
+test.each([0, 1, 2])("one candidate report resolves a detached player's %i same-source replacements", async count => {
+  vi.useFakeTimers();
+  try {
+    const bridge = candidateBridge({ setTimeout, clearTimeout }), first = ownedVideo(0);
+    bridge.setVideos([first]);
+    vi.advanceTimersByTime(80);
+    const { frame, candidates: [{ media, revision }] } = JSON.parse(bridge.bodies.at(-1)!);
+    bridge.setVideos([]);
+    vi.advanceTimersByTime(30);
+    const replacements = Array.from({ length: count }, () => ownedVideo(0));
+    for (let i = 1; i <= count; i++) bridge.setVideos(replacements.slice(0, i));
+    vi.advanceTimersByTime(50);
+    const report = JSON.parse(bridge.bodies.at(-1)!);
+    expect(report.candidates).toHaveLength(count);
+    expect(report.removed).toEqual(count === 1 ? [] : [media]);
+    await bridge.message({ data: { bridge: "piik-page-command", frame, media, revision, kind: "patch",
+      request: webcrypto.randomUUID(), patch: { position: 12 } } });
+    expect(replacements.map(video => video.currentTime)).toEqual(count === 1 ? [12] : replacements.map(() => 0));
+    expect(first.currentTime).toBe(0);
+  } finally { vi.useRealTimers(); }
+});
+
 test.each(["object", "long URL"])("the selected %s keeps a bounded resource token only while its full identity matches", kind => {
   const bridge = candidateBridge();
   const prefix = `https://media.test/?token=${"a".repeat(4096)}`;

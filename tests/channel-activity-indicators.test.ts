@@ -52,12 +52,13 @@ test("an offline person's row retains simultaneous activities and local playback
   const html = renderToStaticMarkup(createElement(ChannelUser, person));
   expect(html).toContain('class="c3-user is-offline"');
   expect(html.match(/role="img"/g)).toHaveLength(4);
-  for (const label of ["Joined voice; Microphone off", "Sharing", "Watching; Connecting picture", "Sending and receiving files"])
+  for (const label of ["Joined voice; Microphone off", "Sharing", "Connecting picture", "Sending and receiving files"])
     expect(html).toContain(`aria-label="${label}"`);
   expect(html).toContain('data-viewing="preparing"');
   expect(html).toContain(glyph("eye"));
   expect(html).toContain(renderToStaticMarkup(createElement(Glyph, { name: "loader", size: 10 })));
   expect(html).not.toContain("Picture received");
+  expect(html).not.toContain("Watching;");
   expect(html).toContain('aria-pressed="false"');
   expect(html).toContain('aria-valuetext="60%"');
   expect(renderToStaticMarkup(createElement(ChannelUser, { ...person, self: true }))).not.toContain('type="range"');

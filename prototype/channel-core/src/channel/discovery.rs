@@ -73,7 +73,6 @@ pub(super) type Repairs = BTreeMap<(String, DiscoveryEdge), Repair>;
 #[derive(Default)]
 struct DiscoveryPlan {
     retained: BTreeSet<(String, DiscoveryEdge)>,
-    preparing: BTreeSet<Pair>,
     relevant_failures: BTreeSet<DiscoveryEdge>,
     interests: BTreeMap<DiscoveryEdge, Interest>,
     completions: Vec<(DiscoveryEdge, BTreeSet<Pair>)>,
@@ -88,11 +87,8 @@ impl DiscoveryPlan {
     }
 
     fn retain_direct(&mut self, discovery: &Discovery<'_>, pair: Pair, waiting: bool) {
-        if waiting {
-            self.keep(discovery.proposal(pair), Interest::Delivery);
-        } else {
-            self.preparing.insert(pair);
-        }
+        let interest = if waiting { Interest::Delivery } else { Interest::Activity };
+        self.keep(discovery.proposal(pair), interest);
     }
 }
 struct Discovery<'a> {
@@ -152,11 +148,12 @@ impl Discovery<'_> {
                         .chain(repair.trial.iter())
                         .filter(|e| carried_edge(e) && self.confirmed.contains(&e.endpoints));
                 for edge in carried {
-                    if joined && repair.segments.contains(edge) {
-                        plan.keep(edge.clone(), Interest::Delivery);
+                    let interest = if joined && repair.segments.contains(edge) {
+                        Interest::Delivery
                     } else {
-                        plan.preparing.insert(edge.endpoints);
-                    }
+                        Interest::Activity
+                    };
+                    plan.keep(edge.clone(), interest);
                 }
                 if let Some(e) = repair.trial.as_ref().filter(|e| {
                     carried_edge(e)
@@ -231,9 +228,11 @@ impl Discovery<'_> {
                         plan.keep(edge.clone(), Interest::Activity);
                         let mut restore = Repair { trial: Some(edge.clone()), ..Repair::default() };
                         let completes = restore.retain_frontiers(source, viewer, &links, |p| self.proposal(p));
-                        let prefix: BTreeSet<_> = restore.segments.iter().map(|e| e.endpoints).collect();
-                        plan.preparing.extend(&prefix);
+                        for segment in &restore.segments {
+                            plan.keep(segment.clone(), Interest::Activity);
+                        }
                         if completes {
+                            let prefix = restore.segments.iter().map(|e| e.endpoints).collect();
                             plan.completions.push((edge, prefix));
                         }
                     }
@@ -282,16 +281,13 @@ impl Discovery<'_> {
                 repair.trial = Some(trial);
             }
             let bridges = repair.retain_frontiers(source, viewer, &links, |pair| self.proposal(pair));
-            if repair.joined {
-                for edge in &repair.segments {
-                    plan.keep(edge.clone(), Interest::Delivery);
-                }
-            } else {
-                let prefix: BTreeSet<_> = repair.segments.iter().map(|edge| edge.endpoints).collect();
-                plan.preparing.extend(&prefix);
-                if let Some(trial) = repair.trial.as_ref().filter(|_| bridges) {
-                    plan.completions.push((trial.clone(), prefix));
-                }
+            let interest = if repair.joined { Interest::Delivery } else { Interest::Activity };
+            for edge in &repair.segments {
+                plan.keep(edge.clone(), interest);
+            }
+            if let Some(trial) = repair.trial.as_ref().filter(|_| !repair.joined && bridges) {
+                let prefix = repair.segments.iter().map(|edge| edge.endpoints).collect();
+                plan.completions.push((trial.clone(), prefix));
             }
         }
     }
@@ -385,11 +381,6 @@ impl Channel {
             discovery.ordinary(&scope, &graph, &demand, &mut plan);
         }
         self.repairs.retain(|key, _| plan.retained.contains(key));
-        for pair in std::mem::take(&mut plan.preparing) {
-            if let Some(edge) = DiscoveryEdge::current(pair, &self.identity) {
-                plan.keep(edge, Interest::Activity);
-            }
-        }
         plan.relevant_failures.extend(plan.interests.keys().cloned());
         self.transports.retain_failures(&plan.relevant_failures);
         // A covering projection acknowledges delivery. Keep that receipt for

@@ -368,7 +368,6 @@ export const ja = {
   "channel.voiceDock.voiceJoined": "通話に参加中",
   "channel.voiceDock.selectRoom": "操作する通話ルームを選択",
   "channel.voiceDock.openRoom": "「{name}」を開く",
-  "channel.voiceDock.voiceParticipants": "通話の参加者",
   "channel.invitationLink.copied": "コピーしました",
   "channel.invitationLink.copyInvitation": "招待をコピー",
   "channel.invitationLink.copyFailed": "上のリンクを手動でコピーしてください。",

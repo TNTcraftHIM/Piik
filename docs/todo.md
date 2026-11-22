@@ -17,27 +17,21 @@ the feedback period; they do not delay that delivery.
 ### Active work
 
 - [ ] **Original-webpage sharing ends when a viewer joins.** Verify the reported
-  exit with the updated Windows App. Correlate its recorded stop reason with the
-  activity, App control connection and selected page lifetime. Controlled viewer
-  admission and departure preserve the source; the field trigger remains open.
+  exit with the updated Windows App. Correlate its stop reason with the activity,
+  App control connection and selected page lifetime.
 - [ ] **Freeze the first public 3.0 contract.** Confirm the
-  [module and ownership baseline](./standards/engineering.md#architecture-baseline),
-  the connection pool and the
-  [public compatibility boundary](./standards/versioning.md#public-compatibility-promise)
-  against the first release's actual readers, writers and stored samples.
-  Keep optional API/Bot capabilities within existing actions and authority.
-  Existing module boundaries remain the implementation baseline.
+  [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
+  and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise)
+  against actual readers, writers and stored samples. Keep API/Bot capabilities
+  within existing actions and authority.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
   coverage, connection attempts, idle cost and disruption. Repeat the
   [file and voice recovery control](./research/network-lab.md#file-forwarding-during-a-room-call)
   on a shared physical uplink before tuning fanout and retry/standby budgets.
-- [ ] **Matched-package room acceptance.** Verify invite-only discovery and
-  invitation entry on the deployed public Demo. The
-  [local package check](./verification-status.md#current-evidence) exercised the same
-  hosting and creation policy. The [hosting design](./research/server-hosting-plan.md)
-  owns the lightweight, hosted and moderation contracts.
+- [ ] **Public Demo room acceptance.** Verify invite-only discovery and entry
+  on the deployed public Demo. [Local package control](./verification-status.md#current-evidence)
 - [ ] **Physical camera orientation.** Check portrait capture on a phone through
   Native and pooled Browser paths. Compare the orientation of the source and
   the decoded viewer picture after a device rotation.
@@ -73,14 +67,11 @@ the feedback period; they do not delay that delivery.
   the Intel setup reported in [#452](https://github.com/TNTcraftHIM/Piik/issues/452).
   Retain the hardware and software encoder's frame, bitrate and retirement
   contracts; injected notifications are separate from driver-generated changes.
-- [ ] **Current webpage-source and playback package acceptance.** Verify
-  source selection, player association, provider hide/restore and independent
-  viewer playback on the reported accessible websites in matching Windows
-  App and Web packages. Local replacement and pending-read shutdown controls
-  are in the [verification record](./verification-status.md#current-evidence).
-  Check audio choice when the source exposes several AAC candidates. The matched
-  member-video control passed with one selected AAC source; the earlier attempt
-  with several choices did not record the submitted selection.
+- [ ] **Current webpage-source and playback package acceptance.** Verify source
+  selection, player association, provider hide/restore and independent viewer
+  playback on the reported accessible websites in matching Windows App and Web
+  packages. Check explicit audio selection when a source exposes multiple AAC
+  candidates. [Controlled playback evidence](./verification-status.md#current-evidence)
 - [ ] **2.x periodic brief picture stalls.** With a particular Host or Viewer,
   normally clear playback pauses for less than half a second every few seconds
   or tens of seconds, skips several frames and sometimes briefly blurs. A roughly
@@ -212,31 +203,20 @@ the feedback period; they do not delay that delivery.
   a full Server from a Vercel-hosted frontend that still needs an external Server.
 - [ ] **Accept the unified 3.0 sharing experience.** Review the optional
   screen-centred view with the owner and repeat the first share on the release
-  candidate. The existing room runtime, full-workspace default and activity lifetimes
-  remain shared. End the separate 2.x maintenance line only at the accepted 3.0
-  cutover; fix confirmed defects during the transition. A short room-code locator
-  remains a separate product decision.
-- [ ] **3.0 playable-route improvement.** Resolve replacing a still-working
-  but persistently limited upstream against the accepted multi-source model.
-  Define evidence and resource cost before extending the current switch owner;
-  2.x route-policy labels do not directly describe these 3.0 paths.
-  The [controlled switch](./research/network-lab.md#playable-route-improvement)
-  demonstrates benefit and independent-lease retention. Define the production
-  trigger, bounded candidate attempts and strict-benefit proof before enabling
-  automatic alternative-parent trials. Online sessions do not prove reusable
-  physical connections; keep that fact with the transport owner.
-  The controls also show delayed natural recovery and an incumbent freeze during
-  a rejected trial. Distinguish sustained path limits and bound the cost of
-  overlapping candidates before enabling automatic quality trials.
+  candidate. End separate 2.x maintenance at the accepted 3.0 cutover. Decide
+  separately whether to offer a short room-code locator.
+- [ ] **3.0 playable-route improvement.** Define when a sustained limit warrants
+  replacing a playable upstream. Set bounded candidate attempts, a resource budget
+  for overlap and strict-benefit proof through the current switch owner. Account
+  for disruption on a rejected trial and delayed natural recovery.
+  [Controlled switch evidence](./research/network-lab.md#playable-route-improvement)
 - [ ] **Field-test same-room screen recovery.** On restricted networks,
   compare [on-demand relay](./research/channel-network-design.md#idle-room-peers-for-delivery-recovery)
   under the [layered-forwarding validation plan](./research/channel-forwarding-plan.md#review-and-validation-plan)
   after model review. Measure first picture, recovery when a peer leaves, load
   on an existing call and the cost of finding a path through two idle peers.
-- [ ] **NAT field coverage.** The bounded random-mapping Native implementation
-  and ordinary Native-to-Browser linear extension have controlled media and
-  retirement evidence. Measure difficult physical networks and sustained
-  concurrent use; these controls do not establish population success rates.
+- [ ] **NAT field coverage.** Measure difficult physical networks and sustained
+  concurrent use. [Random-mapping and linear-extension controls](./research/nat-traversal.md#random-mapping-collision-control)
 - [ ] **Codec capability and efficiency comparison.** Measure actual platform
   encoder/decoder and Browser capabilities, then compare one available codec
   with H.264 using synthetic text and motion. Compare hardware and software
@@ -252,55 +232,32 @@ the feedback period; they do not delay that delivery.
   interoperability correction. Keep transport consent and Piik route recovery
   with their existing owners; validate the SDK driving contract before relying
   on an isolated timeout reproduction.
-- [ ] **Shared-link website coverage.** Extend the implemented webpage player
-  and original-media forwarding toward VideoTogether's playback coverage.
-  Validate actual supported websites, source-issued media grants, commercial live
-  sources within the standard PDT/64 KiB boundary, target Browser behavior and
-  cross-network delivery. Live sources without a usable program-time mapping,
-  larger live playlists and low-latency HLS remain outside that first boundary. The
-  [verification record](./verification-status.md#current-evidence) separates the
-  matched Bilibili main-player controls from broader website coverage. Trace
-  observed responses through frame association before extending source discovery.
-  Extend the official embedded-player coverage. Keep each viewer's account
-  access in its original player. Retain the
-  [shared playback owner](./research/channel-network-design.md#synchronized-video-sources):
-  the sharer controls common playback; viewers own sound, participation and
-  access through their own platform accounts. The supplied girigirilove player
-  remains blocked by the original site's regional access restriction; retry its
-  compatibility check when the original player is accessible. Broader platform
-  acceptance remains separate from the local direct-media controls. Retain
-  trusted source identity and necessary original-page popup/login behavior
-  without building a browser.
-  Explain the complete trusted-site scope and local website-login behavior before
-  use; media capability still does not grant room access or arbitrary native control.
+- [ ] **Shared-link website coverage.** Extend actual website and official
+  embedded-player coverage toward VideoTogether's playback coverage. Verify
+  source-issued media grants, supported commercial live sources, target Browsers
+  and cross-network delivery. Trace observed responses through frame association
+  before extending discovery. Retry girigirilove when the original player is
+  accessible. Explain the trusted-site scope and local website login before use.
+  [Playback and authority boundaries](./research/channel-network-design.md#synchronized-video-sources) ·
+  [Website evidence](./verification-status.md#current-evidence)
 - [ ] **3.0 Native platform acceptance.** Verify physical Android capture and
-  recovery after loss of the media path. Complete physical microphone/camera acceptance for the
-  Windows WebView entry; controlled runtime fallback, device
-  permission and shutdown checks are in the
-  [verification record](./verification-status.md#windows-and-android).
-  Investigate the observed Windows WebView renderer exit during room navigation.
-  Continue remaining Linux/macOS device acceptance, including
-  macOS Quit, Dock/Finder return and permissions,
-  and Linux hardware encoding and physical sound. Retain the accepted
-  [network model](./research/channel-network-design.md)
-  and [room-data model](./research/channel-storage-and-identity.md).
-  Complete additional Linux distribution OBS checks after the stock Alpine and
-  Flathub controls. Exercise macOS input separately.
-  [Platform coverage](./research/room-interactions.md#local-obs-input) includes
-  Linux FFmpeg-to-Firefox playback and Windows OBS playback and retirement.
+  media-path recovery, and the Windows WebView entry with physical microphones
+  and cameras. Investigate the observed WebView renderer exit during room
+  navigation. Exercise macOS Quit, Dock/Finder return, permissions, physical
+  capture, sound and input. Verify Linux hardware encoding and physical sound,
+  and complete the remaining Linux distribution OBS checks.
+  [Device evidence](./verification-status.md#device-evidence-boundary) ·
+  [Local OBS coverage](./research/room-interactions.md#local-obs-input)
 - [ ] **Enhanced microphone suppression on physical devices (#518).** Compare
   matched-level voice clarity, acoustic echo and mobile runtime cost for the
-  optional RNNoise mode. The
-  [microphone assessment](./research/media-fidelity.md#stronger-microphone-suppression)
-  records the Browser comparison and integration boundary. Retain Browser voice
-  processing as the default and keep screen/system audio unprocessed.
+  optional RNNoise mode.
+  [Microphone assessment](./research/media-fidelity.md#stronger-microphone-suppression)
 
 ## Held By Owner
 
-- [ ] **Non-Web desktop interface.** Do not integrate the graphical status-window
-  proof or rewrite the room UI with native widgets. The
-  [runtime assessment](./research/cross-platform-client-runtime.md#30-windows-native-entry-prototype)
-  records the distinction; the system-WebView evaluation above reuses the Web UI.
+- [ ] **Non-Web desktop interface.** Keep the graphical status-window proof and
+  native widget rewrite out of the desktop product.
+  [Runtime assessment](./research/cross-platform-client-runtime.md#30-windows-native-entry-prototype)
 - [ ] **Automatic room-voice exclusion from Native display sound.** Deferred
   from the first 3.0 internal test. Keep Browser playback; the
   [playback/AEC boundary](./research/channel-network-design.md#implementation-boundary)
@@ -332,16 +289,12 @@ the feedback period; they do not delay that delivery.
   efficiency, frame delivery and compatible fallback before proposing adoption.
   Transport feedback and retransmission remain with the existing RTC owner;
   investigate a demonstrated defect there separately from codec expansion.
-- **Native H264 scene-change latency.** Revisit when a concrete encoder or SDK
-  improvement can reduce coded-frame bursts while preserving quality and live
-  recovery. The available small parameter changes were evaluated and rejected;
-  keep CBR. The [encoder assessment](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)
-  owns those controls and the current tradeoff.
-- **Virtual gamepads beyond Windows.** Linux uinput passed its isolated kernel
-  gate; desktop permissions and game recognition need physical checks. macOS
-  virtual HID needs an entitled App and macOS SDK/runtime checks. The
-  [co-play assessment](./research/room-interactions.md#remote-co-play) owns
-  platform evidence; Piik does not bundle or install optional input drivers.
+- **Native H264 scene-change latency.** Revisit an encoder or SDK improvement
+  that reduces coded-frame bursts while preserving quality and live recovery.
+  [Encoder assessment](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)
+- **Virtual gamepads beyond Windows.** Verify Linux desktop permissions and
+  physical game recognition. macOS virtual HID needs an entitled App and SDK/runtime
+  checks. [Co-play assessment](./research/room-interactions.md#remote-co-play)
 - **Platform output.** A registered receiver may act as an ordinary Viewer after
   the [platform-output gate](./research/platform-output.md) passes.
 - **Additional languages.** Review community catalogs and rendered UI through
@@ -354,8 +307,8 @@ the feedback period; they do not delay that delivery.
   reports first-launch blocking; the troubleshooting guide provides a scoped
   opening procedure, not a signing fix. Verify downloaded bundles on a Mac when
   signing becomes available.
-- **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
-  establishes no cost saving; keep the existing P2P-only Demo pending a concrete option.
+- **Managed Demo hosting.** Keep the existing P2P-only Demo pending a concrete
+  option. [Provider assessment](./operations/website.md#managed-hosting-assessment)
 - **Phone as a Host microphone.** Revisit only for a concrete use case that
   justifies the [pairing and input boundary](./research/camera-and-microphone.md#phone-microphone-assessment).
 - **Mobile controlled endpoints.** Separate scope from desktop keyboard/mouse

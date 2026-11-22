@@ -54,7 +54,6 @@
     duration: Number.isFinite(video.duration) ? video.duration : null, readyState: video.readyState, ended: video.ended,
     buffered: Array.from({ length: video.buffered.length }, (_, index) => [video.buffered.start(index), video.buffered.end(index)]) });
   let timer;
-  let reported = new Set();
   const identity = video => {
     if (video.srcObject) return video.srcObject;
     if (video.currentSrc) return video.currentSrc;
@@ -79,8 +78,10 @@
     if (timer !== undefined) return;
     timer = setTimeout(() => {
       timer = undefined;
-      const removed = [...reported].filter(id => !elements.has(id));
-      reported = new Set(elements.keys());
+      // Resolve replacements against the whole candidate batch, including separate DOM mutations.
+      const previous = [...elements.keys()];
+      discoverVideos();
+      const removed = previous.filter(id => !elements.has(id));
       send({ kind: 'candidates', removed, candidates: [...elements].map(([media, entry]) => {
         const { video } = entry;
         const observed = resource(entry);
@@ -93,8 +94,7 @@
       }) });
     }, 80);
   };
-  const discover = () => {
-    for (const [source, child] of children) if (!child.element.isConnected) { children.delete(source); send({ kind: 'removed', removed: child.frame }); }
+  const discoverVideos = () => {
     const videos = document.querySelectorAll('video');
     const removed = [...elements].filter(([, entry]) => !entry.video.isConnected);
     if (removed.length && videos.length <= 64) {
@@ -121,9 +121,16 @@
       byVideo.set(video, entry); elements.set(media, entry);
       for (const event of ['emptied', 'loadstart']) video.addEventListener(event, report, { signal: lifetime.signal });
       for (const event of ['loadedmetadata', 'loadeddata', 'play', 'playing', 'pause', 'seeked', 'ratechange', 'ended', 'waiting', 'error']) {
-        video.addEventListener(event, () => { send({ kind: 'sample', media, resource: resource(entry), event }); if (event === 'loadedmetadata' || event === 'loadeddata') report(); }, { signal: lifetime.signal });
+        video.addEventListener(event, () => {
+          if (!video.isConnected) return;
+          send({ kind: 'sample', media, resource: resource(entry), event });
+          if (event === 'loadedmetadata' || event === 'loadeddata') report();
+        }, { signal: lifetime.signal });
       }
     }
+  };
+  const discover = () => {
+    for (const [source, child] of children) if (!child.element.isConnected) { children.delete(source); send({ kind: 'removed', removed: child.frame }); }
     report();
   };
   new MutationObserver(discover).observe(document, { childList: true, subtree: true });

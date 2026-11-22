@@ -2005,6 +2005,7 @@ impl Engine {
         match event {
             RtcEvent::IceConnectionStateChange(state) => {
                 if state.is_connected() {
+                    self.linear_enabled = false;
                     #[cfg(not(target_os = "android"))]
                     self.stop_host_refresh();
                     self.trace_pair(RtcPairEvent::IceConnected);

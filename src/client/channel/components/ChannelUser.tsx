@@ -45,7 +45,7 @@ export function ChannelActivityIndicators({ voice, sharing, viewing, sendingFile
       label={personVoiceLabel(voice, copy)} />}
     {sharing && <ActivityBadge icon="cast" label={t("channel.roomParticipants.sharing")} />}
     {viewing && viewingLabel && <ActivityBadge icon={viewingStatus ? "eye" : viewingAppearance[viewing].icon} status={viewingStatus}
-      label={viewingStatus ? joinSentences(copy.lang, [t("viewer.title.watching"), viewingLabel]) : viewingLabel} viewing={viewing} />}
+      label={viewingLabel} viewing={viewing} />}
     {file && <ActivityBadge icon={file.icon} label={t(file.label)} />}
   </span>;
 }

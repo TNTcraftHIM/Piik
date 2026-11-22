@@ -2,153 +2,61 @@
 
 Last updated: 2026-11-22
 
-This is the compact execution/deployment index. Product modules own behavior,
-[verification status](./verification-status.md) summarizes material evidence limits,
-and Git/PRs own completed history.
-
 ## Isolated 3.0 Prototype
 
-The [3.0 site-and-room prototype](../prototype/channel-server/README.md) uses one Rust core
-across Server, Native and Browser/WASM, with the shared Web UI for chat, screen
-sharing, selective watching, room voice and App control. Normal development and
-distribution use these Rust/Web paths; Go tooling only builds the pinned
-Cloudflared helper. Work stays on `feat/channel-prototype`, separately from 2.x.
-The Windows x64 App, Linux x64 Server and universal Android test APK ship the
-same Web bundle. An Android emulator entered a Windows-hosted room, read chat,
-watched a shared window and recovered from a signaling interruption. The Linux
-Server retained private-room access and history across restart. Package receipts
-identify each build. [Verification scope](./verification-status.md)
+The internal Windows x64 App, Linux x64 Server and universal Android test APK
+ship the same Web bundle. They use the shared Rust core and Web UI on
+`feat/channel-prototype`. Package receipts own exact builds and individual
+platform results. [Verification scope](./verification-status.md)
 
-The channel owns user identity and the room directory. Lightweight channels put the
-room writer in the creator's Browser or linked App. A hosted Server runs the
-writers and retains confirmed history and private grants while creators are away.
-The public Demo profile admits guest-created rooms by invitation and omits them
-from public discovery. New image messages retain a thumbnail. Room writers
-support authenticated message deletion and clearing history.
+The channel owns identity and room discovery. The room writer runs on the creator's
+device in a lightweight channel, or on the Server for a hosted channel. The public
+Demo profile admits guest-created rooms by invitation.
 [Hosting and moderation](./research/server-hosting-plan.md)
 
-The channel connection pool combines activity demand, room interest and sparse
-channel standby within endpoint admission limits. Bounded concurrent attempts
-let independent demand progress while a candidate is still unresponsive.
-Each screen, voice source,
-file holder and forwarded webpage source selects its own paths on the room's
-authorized confirmed connections. Standby carries no business payload. Existing
-delivery survives unrelated activity changes; a replacement needs payload proof.
-Browser and Native enforce forwarding limits per kind across rooms. Controlled
-Native and Browser relay paths recovered picture and sound after a 50-second
-UDP interruption. Independent-network coverage and physical-device cost remain
-under [evaluation](./research/channel-forwarding-plan.md#review-and-validation-plan).
+Conversation reaches the room writer through the site WebSocket. Each screen,
+voice source, file holder and forwarded webpage source uses its own delivery
+paths on authorized connections. Optional site forwarding uses the Server's
+Native endpoint when offered by the operator and allowed by the room owner.
+[Network model](./research/channel-network-design.md) ·
+[Data model](./research/channel-storage-and-identity.md)
 
-App hosting follows its Native endpoint and process lifetime. Personal voice,
-shares, watches and capture consent remain page-owned; connecting an App does not
-transfer existing Browser rooms. The shared launcher supports Local HTTPS,
-Cloudflare public invitations and an operator-configured HTTPS invitation origin,
-with separate data per approved site. The App saves
-its local site address for later starts. Changes to the public invitation address
-do not replace Native room identity or storage.
-
-The [network model](./research/channel-network-design.md) owns routing and activity
-lifetimes; the [data model](./research/channel-storage-and-identity.md) owns identity,
-history, reactions and participant-held files. The
-[Server reference](../prototype/channel-server/README.md) covers shared UI/App flows;
-the [Native reference](../prototype/channel-native/README.md) covers capture, encoding,
-sound and input, with the [Android runtime](../mobile/README.md) owning its shell.
-Sites open through ordinary URLs, Browser bookmarks or the App's local saved-site
-list. Browser invitations can be opened in a running native-window App through
-local confirmation. Navigation remains separate from device approval; automatic
-address discovery is not planned.
-
-The current UI offers configurable microphone and listening shortcuts for the
-voice dock's selected room, with opt-in Windows background registration.
-On a site hosted by the Windows App, its room tool can show a compact voice
-overlay. The overlay follows the selected voice room and keeps the same voice
-session when it is adjusted or closed.
-Local failure guidance uses current operation facts and links to the matching
-3.0 guide. A failed site connection offers a user-requested same-origin check.
-App workspace navigation verifies the target site before leaving the
-current page; webpage-video sources retain their separate browsing scope.
-[Verification status](./verification-status.md) owns evidence and platform limits;
-[TODO](./todo.md) owns remaining implementation and acceptance work.
+The Windows App uses the shared interface in a system WebView and offers a
+Browser entry. [Desktop runtime](./research/cross-platform-client-runtime.md#30-system-webview-client-evaluation)
+The [Server/App reference](../prototype/channel-server/README.md),
+[Native reference](../prototype/channel-native/README.md) and
+[Android runtime](../mobile/README.md) cover platform setup and use.
 
 ## Accepted Release Contract
 
-Published 2.x wire, Native-control, capture and storage compatibility is owned by
-the [maintenance contract](https://github.com/TNTcraftHIM/Piik/blob/main/docs/status.md#accepted-release-contract)
-and [published versioning rules](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/versioning.md).
-The internal 3.0 candidate uses matching Web/App/Server artifacts under this
-tree's [versioning rules](./standards/versioning.md).
+Published 2.x compatibility is owned by the
+[maintenance contract](https://github.com/TNTcraftHIM/Piik/blob/main/docs/status.md#accepted-release-contract)
+and its [versioning rules](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/versioning.md).
+Internal 3.0 uses matching artifacts under this tree's
+[versioning rules](./standards/versioning.md) and
+[saved-data formats](../prototype/channel-server/README.md#saved-data-and-files).
 
 ## Accepted Interaction Phase
 
-The 3.0 shared UI implements conversation and retained reactions, unread markers,
-mentions and replies, Markdown with copyable code blocks, inline image previews
-and file delivery, room voice, multiple screen sources with selective watching,
-personal sound choices and attended input.
-The full workspace remains the default; an optional screen-centred interface
-keeps the same rooms and activities. A first-use suggestion appears only in an
-empty site without a saved view choice; invitations and existing rooms remain
-direct, and the choice can be changed later from Interface settings.
-The shared UI has Simplified Chinese, English, Traditional Chinese, Japanese and
-Korean catalogs. The third language control opens the additional languages;
-presentation uses the same text, icon and illustration rules across languages.
-Their ownership follows the network and data models above; current platform
-coverage is in [verification status](./verification-status.md).
-Published 2.x interaction behavior remains with the
-[maintenance standards](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/README.md).
+The 3.0 shared UI brings conversations, files, screen sharing, selective
+watching, room voice and attended input into the same room. The full workspace
+is the default, and the optional screen-centred view shares the room and
+activity lifetimes. [Interaction design](./research/room-interactions.md#workspace-hierarchy)
 
 ## Current Work
 
-First-beta feedback and confirmed blocking defects take priority. Follow-up UI,
-terminal and documentation work stays separate from the delivered test package.
-Conversation now uses the domain WebSocket to reach its actual room host,
-independently of peer reachability. Media and file bytes retain their peer paths.
-The delivered candidates include this path, room-list management, responsive
-grid/focus viewing and the shared Native picture-quality policy. Data retention
-across updates depends on the supported storage formats; older private experiments
-follow the [documented reset boundary](../prototype/channel-server/README.md#saved-data-and-files).
-Package receipts retain each candidate's exact source and tested scope.
-[TODO](./todo.md) owns remaining work and owner holds. Applicable defects continue
-to feed the separate 2.x maintenance line, which preserves its published contracts.
-
-The current source adds optional site forwarding through the existing Server
-Native endpoint. Operators offer the capability; room owners separately save
-their permission through ordinary room settings. Existing room routing chooses
-the service only when it needs another path, preserving healthy P2P delivery.
-The [network model](./research/channel-network-design.md#site-forwarding-assistance)
-owns the permissions and lease lifecycle. Matching package acceptance remains
-separate from the controlled runtime checks.
-
-Independent text automation and local OBS input reuse the conversation and source
-owners described in the [integration boundaries](./research/room-interactions.md#extension-boundaries).
-The matched candidate set now includes local OBS input on supported desktop Apps,
-with Windows media and lifecycle evidence. The delivered Windows candidate integrates
-the shared interface into a system WebView window, retaining an explicit Browser
-entry. The [runtime assessment](./research/cross-platform-client-runtime.md#30-system-webview-client-evaluation)
-separates earlier proof evidence from the integrated package's acceptance;
-other desktop platforms retain their current entry.
-Windows software H264 selection is included in matched internal candidates and
-has passed the normal sharing, viewing, bitrate-change and shutdown flow.
-The current source supports synchronized viewing through the Browser source
-picker, including supported YouTube links through the official embedded player.
-Windows App can select another webpage player in an independent window; Browser
-viewers try its independently usable media URL, or explicitly use their own App
-window. Playback control uses room commands without peer media. Explicit original
-media forwarding now uses the existing room peer paths and Browser media
-adapters for files, HLS VOD and selected clear static DASH tracks. The DASH path
-has matched Windows WebView discovery and independent Browser playback evidence
-with a local clear source. Broader website acceptance remains open.
-Matched Windows checks cover ordinary Bilibili
-main-player controls, authorized member playback, Native relay overrides and website permission
-reset. [Verification status](./verification-status.md) owns their limits; broader
-website, live-source, cross-network and platform acceptance remain in TODO.
+First-beta feedback and confirmed blocking defects take priority. The first
+public 3.0 contract and wider website, network and physical-device acceptance
+remain open. Applicable defects also feed the separate 2.x maintenance line.
+[TODO](./todo.md)
 
 ## Deployment
 
-3.0 remains an internal candidate. Its Rust runtime setup is owned by the
-[Server/App reference](../prototype/channel-server/README.md) and its packaging
-and rollout procedure by [deployment](./deployment.md).
+3.0 remains an internal candidate. The
+[Server/App reference](../prototype/channel-server/README.md) owns Rust runtime
+setup and [deployment](./deployment.md) owns packaging and rollout.
 
 Published Demo/private services, website delivery and mirrors remain on the
-maintenance line; the [published deployment index](https://github.com/TNTcraftHIM/Piik/blob/main/docs/status.md#deployment)
-owns their current arrangement. Immutable release descriptors, runtime `REVISION`
-and operator records own exact delivered identity and postflight results.
+maintenance line. [Published deployment index](https://github.com/TNTcraftHIM/Piik/blob/main/docs/status.md#deployment)
+Immutable release descriptors, runtime `REVISION` and operator records own
+exact delivered identity and postflight results.

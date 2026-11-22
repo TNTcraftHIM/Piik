@@ -2247,6 +2247,31 @@ test("local stop does not retire another capture acknowledged before its authori
   } finally { session.close(); }
 });
 
+test("a screen capture replaces a prepared webpage and survives a second start while pending", async () => {
+  const { session, socket } = await setup();
+  const page = new appLink.AppPage(crypto.randomUUID(), "https://video.test/", async () => null, () => {}, () => {});
+  const closePage = vi.spyOn(page, "close");
+  vi.spyOn(session as unknown as { connectApp(): Promise<appLink.ChannelApp> }, "connectApp")
+    .mockResolvedValue({ preparePage: async () => page } as unknown as appLink.ChannelApp);
+  const getDisplayMedia = vi.fn(async () => remoteStream("display", [remoteTrack("video")]));
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia } });
+  try {
+    await session.prepareWatchPage("first", page.url);
+    expect(session.watchPage("first")?.url).toBe(page.url);
+    const starting = session.startScreen("first");
+    // Observe a rejection immediately if the candidate loses ownership before publish.
+    await Promise.race([starting, vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"))]);
+    const publish = socket.sent.at(-1)!;
+    await expect(session.startScreen("first")).rejects.toThrow("operation_pending");
+    socket.receive({ type: "ack", requestId: publish.requestId });
+    await starting;
+    expect(getDisplayMedia).toHaveBeenCalledOnce();
+    expect(closePage).toHaveBeenCalledOnce();
+    expect(session.watchPage("first")).toBeUndefined();
+    expect(session.getSnapshot().ownedScreens.has((publish.publication as { id: string }).id)).toBe(true);
+  } finally { session.close(); }
+});
+
 test("camera and display shares use independent picture publications and the same stop owner", async () => {
   const { session, socket } = await setup();
   const display = remoteTrack("video"), camera = remoteTrack("video");
@@ -5598,7 +5623,8 @@ test.each(["binding", "replacement"])("a deliberate retry after reconnect scopes
   const { session, peer } = await setup();
   try {
     const state = structuredClone(session.getSnapshot().state!);
-    const sending = session.sendMessage("first", "synthetic retry");
+    const saved = { ...message(1), text: "synthetic retry", time: Date.now() };
+    const sending = session.sendMessage("first", saved.text);
     const interrupted = expect(sending).rejects.toThrow("disconnected");
     const original = await peer.next();
     expect(original.type).toBe("chat");
@@ -5613,13 +5639,21 @@ test.each(["binding", "replacement"])("a deliberate retry after reconnect scopes
     resumed.receive({ type: "ack", requestId: resumed.sent.findLast(command => command.type === "browse" && command.active)!.requestId });
     peer.page(await peer.next(), [], false, null, binding);
 
-    const retry = session.sendMessage("first", "synthetic retry");
+    const interaction = session.getSnapshot().interactionsByRoom.get("first")!;
+    interaction.setOverlayEnabled(true);
+    const releaseOverlay = interaction.showOverlay();
+    peer.reply(peer.interactions.at(-1)!, { type: "interaction_ready", serverTime: Date.now(), reactionIds: ["heart"], publicationReactions: [] }, binding);
+    expect(interaction.getSnapshot().ready).toBe(true);
+    const retry = session.sendMessage("first", saved.text);
     const repeated = await peer.next();
     expect(repeated.requestId).not.toBe(original.requestId);
     if (binding === "binding") expect(repeated).toEqual({ ...original, requestId: repeated.requestId });
     else expect(repeated).toMatchObject({ ...original, requestId: repeated.requestId, nonce: expect.not.stringMatching(original.nonce) });
-    peer.reply(repeated, { type: "confirmed", message: message(1), inserted: binding === "replacement" }, binding);
+    peer.reply(repeated, { type: "confirmed", message: saved, inserted: binding === "replacement" }, binding);
     await retry;
+    expect(session.getSnapshot().messagesByRoom.first).toMatchObject([{ id: saved.id, text: saved.text }]);
+    expect(interaction.getSnapshot().overlayMessages.map(item => item.id)).toEqual(binding === "replacement" ? [saved.id] : []);
+    releaseOverlay();
   } finally { session.close(); }
 });
 

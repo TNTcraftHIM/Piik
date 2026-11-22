@@ -369,7 +369,6 @@ export const ko = {
   "channel.voiceDock.voiceJoined": "음성 참여 중",
   "channel.voiceDock.selectRoom": "제어할 음성 방을 선택하세요",
   "channel.voiceDock.openRoom": "{name} 열기",
-  "channel.voiceDock.voiceParticipants": "음성 참여자",
   "channel.invitationLink.copied": "복사됨",
   "channel.invitationLink.copyInvitation": "초대 링크 복사",
   "channel.invitationLink.copyFailed": "위 링크를 직접 복사하세요.",

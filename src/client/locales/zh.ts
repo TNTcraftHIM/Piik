@@ -473,7 +473,6 @@ export const zh = {
   "channel.voiceDock.voiceJoined": "语音已加入",
   "channel.voiceDock.selectRoom": "选择要控制的语音房间",
   "channel.voiceDock.openRoom": "打开「{name}」",
-  "channel.voiceDock.voiceParticipants": "当前语音用户",
   "channel.invitationLink.copied": "已复制",
   "channel.invitationLink.copyInvitation": "复制邀请",
   "channel.invitationLink.copyFailed": "请手动复制上方链接。",

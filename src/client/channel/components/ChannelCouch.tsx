@@ -135,9 +135,11 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
       area.current.closest(".lr-floating-panel") ?? surfaceDocument?.body ?? area.current.ownerDocument.body,
     )}
     {target && selected && state && session && <RoomQuickReactions key={selected.userId} id={pickerId} trigger={target.trigger} side="below"
-      identity={<ChannelUser id={selected.userId} name={selected.name} avatar={selected.avatar} self={selected.userId === selfUserId}
-        owner={!!selected.owner} online roomActivity={selected} collaboration={selected.collaboration}
-        onPreviewAvatar={() => setAvatarPreview({ userId: selected.userId, trigger: target.trigger })} />}
+      identity={<div className="lr-person-menu-target">
+        <ChannelUser id={selected.userId} name={selected.name} avatar={selected.avatar} self={selected.userId === selfUserId}
+          owner={!!selected.owner} online roomActivity={selected} collaboration={selected.collaboration}
+          onPreviewAvatar={() => setAvatarPreview({ userId: selected.userId, trigger: target.trigger })} />
+      </div>}
       person={{ peerId: selected.userId, displayName: selected.name }} selfPeerId={selfUserId}
       hostPeerId={people.find(person => person.owner)?.userId} reactionIds={state.reactionIds}
       canSend={state.ready && !state.pending && !state.coolingDown}

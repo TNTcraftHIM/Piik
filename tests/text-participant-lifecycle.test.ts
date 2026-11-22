@@ -58,6 +58,51 @@ test.each(['welcome', 'admission', 'browse'] as const)('stop fences the pending 
   expect(socket.eventNames()).toEqual([]);
 });
 
+test.each(['revoked', 'rebound'] as const)('a %s room retires signed requests while preserving pending browse', async change => {
+  const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
+  vi.useFakeTimers();
+  const [local, user, host, binding] = Array.from({ length: 4 }, () => randomUUID());
+  const client = new TextParticipant({ url: 'ws://fixture.invalid', origin: 'http://fixture.invalid', name: 'Fixture', roomId: 'room' });
+  const connected = client.connect(), socket = boundary.socket;
+  const receive = (event: object) => socket.emit('message', Buffer.from(JSON.stringify(event)));
+  const room = { id: 'room', authorized: true, available: true, reading: true, delivery: { hostSessionId: host, bindingId: binding } };
+  const state = { channel: { hostingMode: 'lightweight', rooms: [room] }, sessions: [{ id: host, signingKey: Array(32).fill(0) }] };
+  socket.readyState = 1; socket.emit('open');
+  receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture', sessionId: local, selfProfile: { id: user }, state });
+  await Promise.resolve();
+  receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
+  await connected;
+
+  const history = client.history().catch((error: Error) => error.message);
+  const observed = vi.fn();
+  void history.then(observed);
+  const browse = client.browse(room.id);
+  const browseId = socket.sent.at(-1)!.requestId;
+  room.reading = false;
+  receive({ type: 'state', state });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(observed).not.toHaveBeenCalled();
+
+  if (change === 'revoked') room.authorized = false;
+  else room.delivery.bindingId = randomUUID();
+  receive({ type: 'state', state });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(observed).toHaveBeenCalledExactlyOnceWith('room_unavailable');
+  if (change === 'revoked') {
+    receive({ type: 'error', code: 'room_access_required', requestId: browseId });
+    await expect(browse).rejects.toThrow('room_access_required');
+  } else {
+    receive({ type: 'ack', requestId: browseId });
+    await browse;
+    receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
+  }
+  const stopping = client.stop();
+  receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
+  await vi.advanceTimersByTimeAsync(0);
+  socket.readyState = 3; socket.emit('close'); await stopping;
+  expect(vi.getTimerCount()).toBe(0);
+});
+
 test('concurrent stop callers await the same leave and socket retirement, including its failure', async () => {
   const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
   const { SessionSigner } = await import('../prototype/channel-browser/pkg/piik_channel_browser.js');

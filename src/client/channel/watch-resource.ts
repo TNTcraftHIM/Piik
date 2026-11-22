@@ -79,6 +79,7 @@ export async function openWatchResource(resourceId: string, read: WatchByteReade
     const request = new AbortController();
     requests.add(request);
     let pendingReads = 0;
+    let advertisedSize: number | null = null;
     const close = () => request.abort();
     request.signal.addEventListener("abort", () => {
       requests.delete(request);
@@ -96,8 +97,11 @@ export async function openWatchResource(resourceId: string, read: WatchByteReade
         const result = await readBounded(id, offset, length, request.signal);
         request.signal.throwIfAborted();
         if (result.bytes.byteLength > length || (result.totalSize !== null && (!Number.isSafeInteger(result.totalSize) || result.totalSize < 0))) throw new Error("watch_media_failed");
-        if (data.type === "stat") port.postMessage({ id: data.id, size: result.totalSize, mimeType: result.mimeType });
-        else {
+        if (data.type === "stat") {
+          advertisedSize = result.totalSize;
+          port.postMessage({ id: data.id, size: advertisedSize, mimeType: result.mimeType });
+        } else {
+          if (result.totalSize !== advertisedSize) throw new Error("watch_media_changed");
           const bytes = new Uint8Array(result.bytes).buffer;
           port.postMessage({ id: data.id, bytes }, [bytes]);
         }

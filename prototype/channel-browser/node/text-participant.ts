@@ -293,6 +293,13 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       const previous = this.state?.channel.rooms.find(room => room.id === this.roomId)?.delivery?.bindingId;
       this.state = event.state;
       const room = this.state.channel.rooms.find(room => room.id === this.roomId);
+      // All pending conversation records belong to the one selected room and its previous binding.
+      if (!room?.authorized || !room.available || room.delivery?.bindingId !== previous) {
+        for (const [id, pending] of this.pending) {
+          if (pending.expects !== 'ack' && pending.expects !== 'room_created')
+            this.complete(id, undefined, new Error('room_unavailable'));
+        }
+      }
       // A restored Host has a fresh runtime: restate this participant's one reading intent.
       if (!this.stopped && room?.delivery && room.delivery.bindingId !== previous)
         void this.request({ type: 'browse', roomId: room.id, active: true }).catch(error => this.emit('failure', error));

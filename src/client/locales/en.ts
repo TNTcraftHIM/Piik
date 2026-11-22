@@ -475,7 +475,6 @@ export const en: Record<CopyKey, string> = {
   "channel.voiceDock.voiceJoined": "Voice joined",
   "channel.voiceDock.selectRoom": "Choose a voice room to control",
   "channel.voiceDock.openRoom": "Open {name}",
-  "channel.voiceDock.voiceParticipants": "Voice participants",
   "channel.invitationLink.copied": "Copied",
   "channel.invitationLink.copyInvitation": "Copy invitation",
   "channel.invitationLink.copyFailed": "Copy the link above manually.",

@@ -29,5 +29,5 @@
 .c3-room-tool .c3-room-start p { margin: 0; }
 .c3-room-tool :is(.c3-voice-entry, .c3-voice-dock) { padding: 8px 2px 0; gap: 8px; border-top: 1px solid var(--line); }
 .c3-room-tool .c3-voice-entry small { display: none; }
-.c3-room-tool .c3-voice-participants, .c3-room-tool .c3-voice-dock > svg { display: none; }
+.c3-room-tool .c3-voice-dock > svg { display: none; }
 .c3-room-tool .c3-voice-controls { gap: 2px; }

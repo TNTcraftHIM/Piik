@@ -97,7 +97,7 @@ export class ChannelTransport {
   private localOfferFailed = false;
   private answer: ChannelSignal | null = null;
   private candidates: NonNullable<ChannelSignal["candidate"]>[] = [];
-  private readonly linearCandidates = new LinearCandidateAdmission();
+  private linearCandidates: LinearCandidateAdmission | null = new LinearCandidateAdmission();
   private operations: Promise<void> = Promise.resolve();
   private deadline: ReturnType<typeof setTimeout> | null;
   private closed = false;
@@ -146,6 +146,9 @@ export class ChannelTransport {
       if (candidate) options.send({ candidate: candidate.toJSON() });
     };
     this.pc.onnegotiationneeded = () => { if (!this.localOfferFailed) this.offer(); };
+    this.pc.oniceconnectionstatechange = () => {
+      if (["connected", "completed"].includes(this.pc.iceConnectionState)) this.linearCandidates = null;
+    };
     this.pc.onconnectionstatechange = () => {
       if (this.pc.connectionState === "connected") {
         if (this.inputEnabled) {
@@ -933,7 +936,7 @@ export class ChannelTransport {
   }
 
   private async addCandidate(candidate: NonNullable<ChannelSignal["candidate"]>): Promise<void> {
-    if (this.closed || candidate.origin === "linear" && !this.linearCandidates.admit(this.pc, candidate)) return;
+    if (this.closed || candidate.origin === "linear" && !this.linearCandidates?.admit(this.pc, candidate)) return;
     const { origin, ...ice } = candidate;
     await addRemoteIceCandidate(this.pc, { ...ice, candidate: ice.candidate ?? "" }, origin);
   }
@@ -1007,6 +1010,7 @@ export class ChannelTransport {
     this.pc.onicecandidate = null;
     this.pc.ontrack = null;
     this.pc.onnegotiationneeded = null;
+    this.pc.oniceconnectionstatechange = null;
     this.pc.onconnectionstatechange = null;
     this.pc.ondatachannel = null;
     this.input?.close();

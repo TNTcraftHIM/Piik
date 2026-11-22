@@ -27,9 +27,10 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
   const shortcuts = useVoiceShortcuts(activity?.roomId, toggle,
     channel.connection === "connected" ? channel.backgroundVoiceShortcuts : undefined);
   const roomId = activity?.roomId ?? "";
-  const readLevels = useCallback(() => channel.voiceActivity(roomId), [channel.voiceActivity, roomId]);
   const overlay = useContext(VoiceOverlay);
-  const levels = useVoiceLevels(readLevels, !!activity, overlay?.target?.ownerDocument);
+  const readRemote = !!overlay?.target && !activity?.deafened;
+  const readLevels = useCallback(() => channel.voiceActivity(roomId, !readRemote), [channel.voiceActivity, roomId, readRemote]);
+  const levels = useVoiceLevels(readLevels, !!activity && (!activity.muted || readRemote), overlay?.target?.ownerDocument);
   useEffect(() => { if (!activity && overlay?.target) overlay.close(); }, [activity, overlay]);
   if (!activity || !state) return null;
   const nameOfRoom = (id: string) => state.channel.rooms.find(room => room.id === id)?.name ?? id;
@@ -37,10 +38,9 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
   const multipleRooms = joined.length > 1;
   const { muted, deafened } = activity;
   const available = channel.connection === "connected" && !!state.channel.rooms.find(room => room.id === roomId)?.available;
-  const appearances = roomVoicePeople(state, roomId, levels);
-  const participants = state.users.filter(user => appearances.has(user.id));
+  const appearances = overlay?.target ? roomVoicePeople(state, roomId, levels) : null;
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
-  const speaking = participants.filter(user => (appearances.get(user.id)?.level ?? 0) > .01);
+  const speaking = appearances ? state.users.filter(user => (appearances.get(user.id)?.level ?? 0) > .01) : [];
   return <section className="c3-voice-dock" aria-label={t("channel.voiceDock.voiceControls")}>
     <Glyph name="headphones" size={22} />
     <div className="c3-voice-destination">
@@ -60,17 +60,6 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
       </div>
       <ChannelVoiceSettings channel={channel} roomId={roomId} available={available} shortcuts={shortcuts} />
     </div>
-    <div className="c3-voice-participants" aria-label={t("channel.voiceDock.voiceParticipants")}>
-      {participants.slice(0, 4).map(user => {
-        const avatar = profileAvatar(user, channel.profiles.get(user.id)) ?? undefined;
-        const voice = appearances.get(user.id)!;
-        return <Tooltip key={user.id}
-          kind={voice.deafened ? "hint-voice-deafen" : voice.microphone ? "hint-voice-microphone-on" : "hint-voice-microphone-off"} text={user.name}>
-          <span aria-label={user.name}><PawnSvg color={participantColor(user.id)} identity={user.id} avatar={avatar} voice={voice} /></span>
-        </Tooltip>;
-      })}
-      {participants.length > 4 && <small>+{participants.length - 4}</small>}
-    </div>
     {overlay?.target && createPortal(<div className="c3-speaking-overlay">
       <div className="c3-speaking-overlay-header">
         <strong title={roomName}>{roomName}</strong>
@@ -86,7 +75,7 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
       <div className="c3-speaking-overlay-people">
         {speaking.slice(0, 4).map(user => <div key={user.id}>
           <PawnSvg color={participantColor(user.id)} identity={user.id}
-            avatar={profileAvatar(user, channel.profiles.get(user.id)) ?? undefined} voice={appearances.get(user.id)} />
+            avatar={profileAvatar(user, channel.profiles.get(user.id)) ?? undefined} voice={appearances?.get(user.id)} />
           <span title={user.name}>{user.name}</span>
         </div>)}
       </div>

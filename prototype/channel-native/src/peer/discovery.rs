@@ -498,6 +498,28 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn first_ice_connection_retires_linear_signaling_before_dtls() -> Result<()> {
+        use crate::peer::{server_udp::ServerUdp, tests::support::endpoint};
+        let fixed = ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
+        let runtime = Runtime::new(Some(fixed));
+        let (peer, _events) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+        let generation = peer.call(|engine| {
+            engine.linear_enabled = true;
+            Ok(engine.rtc.direct_api().local_ice_credentials().ufrag)
+        }).await?;
+        assert!(peer.can_signal_linear(generation.clone()).await);
+        peer.call(|engine| {
+            engine.event(RtcEvent::IceConnectionStateChange(str0m::IceConnectionState::Connected));
+            assert!(!engine.rtc.is_connected());
+            Ok(())
+        }).await?;
+        assert!(!peer.can_signal_linear(generation).await);
+        peer.close().await?;
+        runtime.close().await;
+        Ok(())
+    }
+
     #[test]
     fn udp_ice_urls_keep_endpoints_and_configured_credentials() -> Result<()> {
         let mut parsed = Vec::new();

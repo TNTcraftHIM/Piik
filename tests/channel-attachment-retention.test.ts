@@ -314,6 +314,43 @@ test("clearing one room cache withdraws its copies and ignores an older cache sn
   } finally { files.reset(); }
 });
 
+test("clearing a room retires its completed OPFS download and preserves a selected upload", async () => {
+  const command = vi.fn(async (_command: ChannelCommand) => {}), files = setup(command);
+  const file = new File(["GIF89a"], attachment.name), signal = new AbortController().signal;
+  const upload = new File(["GIF89a"], attachment.name);
+  const selected = { ...key, messageSeq: 2 };
+  const getFileHandle = vi.fn(async (_name: string) => ({
+    getFile: async () => file, createWritable: async () => ({ close: async () => {}, abort: async () => {} }),
+  }));
+  const removeEntry = vi.fn(async (_name: string) => {});
+  stubTransferStorage({ getFileHandle, removeEntry });
+  vi.spyOn(FileStore.prototype, "removeMessages").mockResolvedValue();
+  vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new DOMException("Cache full", "QuotaExceededError"));
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({
+    ...await hosting.loadRoomHosting(),
+    FileDelivery: class {
+      start() { return "[]"; } update() { return "[]"; } next_deadline() {} free() {}
+      control() { return JSON.stringify([{ type: "complete", key }]); }
+    },
+  } as never);
+  try {
+    files.confirmed(key.roomId, { ...message, seq: selected.messageSeq }, [{ id: attachment.id, attachment, file: upload }]);
+    const downloaded = files.content(key, attachment, signal);
+    await vi.waitFor(() => expect(command).toHaveBeenCalledWith({ type: "file_receive", ...key, enabled: true }));
+    files.data("source", "control", "verified");
+    expect(await downloaded).toBe(file);
+    expect(command).toHaveBeenCalledWith({ type: "file_offer", ...key, sha256: attachment.sha256, available: true });
+    await files.clearLocalCache(key.roomId);
+    expect(command).toHaveBeenCalledWith({ type: "file_offer", ...key, sha256: attachment.sha256, available: false });
+    expect(removeEntry).toHaveBeenCalledExactlyOnceWith(getFileHandle.mock.calls[0][0]);
+    expect(files.originalAvailability(key, attachment, false)).toBeUndefined();
+    command.mockClear();
+    files.resume(key.roomId);
+    expect(command).toHaveBeenCalledExactlyOnceWith({ type: "file_offer", ...selected, sha256: attachment.sha256, available: true });
+    expect(await files.content(selected, attachment, signal)).toBe(upload);
+  } finally { files.reset(); vi.unstubAllGlobals(); }
+});
+
 test("a legacy inline GIF remains readable without a live session, cache or transfer", async () => {
   const command = vi.fn(), send = vi.fn(), load = vi.spyOn(hosting, "loadRoomHosting");
   const files = new ChannelAttachments(command, send);
