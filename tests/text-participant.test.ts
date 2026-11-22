@@ -56,6 +56,10 @@ test('Node text conversation ignores unrelated media descriptions and retains si
             if (request.command.type === 'history') {
               reply({ type: 'history_message', message });
               reply({ type: 'history_end', count: 1, hasMore: false, oldestSeq: 1, before: null });
+            } else if (request.command.type === 'delete_message') {
+              expect(request.command).toEqual({ type: 'delete_message', messageSeq: message.seq, messageId: message.id });
+              socket.send(JSON.stringify({ type: 'ack', requestId: address.requestId }));
+              reply({ type: 'message_deleted', messageSeq: message.seq });
             } else {
               expect(request.command).toMatchObject({ type: 'chat', text: 'notice', attachments: [] });
               reply({ type: 'confirmed', message: { ...message, text: 'notice' }, inserted: true });
@@ -72,15 +76,67 @@ test('Node text conversation ignores unrelated media descriptions and retains si
     expect(await client.history()).toEqual({ messages: [message], hasMore: false, oldestSeq: 1, before: null });
     expect(live).toEqual([]);
     const delivered = once(client, 'live');
-    expect(await client.chat('notice')).toMatchObject({ text: 'notice' });
+    const confirmed = await client.chat('notice');
+    expect(confirmed).toMatchObject({ text: 'notice' });
     await delivered;
     expect(live).toEqual([{ ...message, text: 'live' }]);
+    await expect(client.deleteOwnMessage({ ...confirmed, userId: owner })).rejects.toThrow('own_confirmed_message_required');
+    await client.deleteOwnMessage(confirmed);
     await client.stop();
-    expect(commands).toEqual(['join', 'browse', 'conversation', 'conversation', 'leave']);
+    expect(commands).toEqual(['join', 'browse', 'conversation', 'conversation', 'conversation', 'leave']);
     expect(errors).toEqual([]);
   } finally {
     await client.stop();
     signer.free();
+    for (const socket of server.clients) socket.terminate();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+});
+
+test('a rejected room selection can be retried without exposing or mixing unconfirmed rooms', async () => {
+  const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
+  const [sessionId, userId] = Array.from({ length: 2 }, () => randomUUID());
+  const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+  await once(server, 'listening');
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Expected loopback port');
+  const origin = 'http://127.0.0.1:' + address.port;
+  const client = new TextParticipant({ url: origin.replace('http:', 'ws:') + '/prototype/channel', origin, name: 'Text fixture' });
+  const ready: ReturnType<typeof client.summary>[] = [];
+  client.on('ready', summary => ready.push(summary));
+  const state = (reading: boolean) => ({ channel: { hostingMode: 'hosted',
+    rooms: [{ id: 'valid', authorized: true, available: true, reading }] }, sessions: [] });
+  server.on('connection', socket => socket.on('message', raw => {
+    const command = JSON.parse(raw.toString());
+    if (command.type === 'join') {
+      socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential',
+        sessionId, selfProfile: { id: userId }, state: state(false) }));
+    } else if (command.type === 'browse' && command.roomId === 'missing') {
+      socket.send(JSON.stringify({ type: 'error', code: 'room_unavailable', requestId: command.requestId }));
+    } else if (command.type === 'browse' && command.roomId === 'valid') {
+      socket.send(JSON.stringify({ type: 'state', state: state(true) }));
+      socket.send(JSON.stringify({ type: 'ack', requestId: command.requestId }));
+    } else if (command.type === 'leave') {
+      socket.send(JSON.stringify({ type: 'ack', requestId: command.requestId }));
+    }
+  }));
+  try {
+    await client.connect();
+    await expect(client.browse('missing')).rejects.toThrow('room_unavailable');
+    expect(client.summary()).toMatchObject({ roomId: undefined, reading: false });
+    expect(ready).toEqual([]);
+
+    const browsing = client.browse('valid');
+    expect(client.summary()).toMatchObject({ roomId: undefined, reading: false });
+    await expect(client.browse('other')).rejects.toThrow('room_selection_pending');
+    await browsing;
+    expect(ready).toMatchObject([{ roomId: 'valid', reading: true }]);
+    await expect(client.browse('other')).rejects.toThrow('room_already_selected');
+
+    await client.reconnect();
+    expect(ready).toMatchObject([{ roomId: 'valid', reading: true }, { roomId: 'valid', reading: true }]);
+  } finally {
+    await client.stop();
     for (const socket of server.clients) socket.terminate();
     await new Promise<void>(resolve => server.close(() => resolve()));
   }
@@ -138,7 +194,7 @@ test('text pagination, replies and mentions use signed Core commands and host co
           endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true } }, action: { type: 'sync' } }));
         room.finish();
         socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
-          selfProfile: { id: user }, state: { channel: { rooms: [{ id: 'room', authorized: true, available: true, reading: true,
+          selfProfile: { id: user }, state: { channel: { hostingMode: 'lightweight', rooms: [{ id: 'room', authorized: true, available: true, reading: true,
             delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()] }] } }));
       } else if (command.type === 'conversation') {
         const request = JSON.parse(command.packet.payload);
@@ -239,7 +295,7 @@ test('text retries keep one nonce across a lost confirmation and sign the curren
           endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true } }, action: { type: 'sync' } }));
         room.finish();
         socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
-          selfProfile: { id: user }, state: { channel: { rooms: [{ id: 'room', authorized: true, available: true, reading: true,
+          selfProfile: { id: user }, state: { channel: { hostingMode: 'lightweight', rooms: [{ id: 'room', authorized: true, available: true, reading: true,
             delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()] }] } }));
       } else if (command.type === 'conversation') {
         const request = JSON.parse(command.packet.payload);
@@ -306,7 +362,7 @@ test('text message reactions use advertised support and Core counted-history non
   let stored = { ...message, reactions: { revision: 0, counts: {} as Record<string, number> } };
   let now = 1000, advertise = true;
   let transition: 'binding' | 'revoked' | undefined;
-  const state = () => ({ channel: { rooms: [{ id: 'room', authorized: true, available: true, reading: true,
+  const state = () => ({ channel: { hostingMode: 'lightweight', rooms: [{ id: 'room', authorized: true, available: true, reading: true,
     delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()] }] });
   const historySnapshots: unknown[] = [], received: Record<string, unknown>[] = [], errors: unknown[] = [];
   const reactPackets: unknown[] = [];

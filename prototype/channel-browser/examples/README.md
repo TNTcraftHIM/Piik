@@ -18,6 +18,8 @@ The example supports these operations:
 | Read recent confirmed text | Signed `history` with no `before` cursor reads the latest bounded page, currently up to 50 messages / 256 KiB. It is not a complete room export. |
 | Send a notification or conversational response | Signed `chat` with a fresh nonce and no attachments; success waits for the room Host's stored confirmation. |
 | React to a confirmed message from a bot | `react` checks the Host's advertised reaction IDs, then sends the existing signed counted-message reaction. |
+| Create a room on a hosted site | `createRoom` returns the Server's committed room receipt. The site applies its ordinary room creation policy. |
+| Delete a message this participant sent | `deleteOwnMessage` checks the author and waits for the current room writer's signed deletion receipt. |
 | Receive new messages and leave | Verified `live_message` events feed the CLI behavior; `leave` and socket retirement close the participant. |
 
 The interactive `!ping` command sends plain-text `pong`; it does not create a
@@ -67,9 +69,8 @@ grants; the new process creates a fresh session and signing key. No password,
 invitation key, session ID or signing key is saved in that file.
 
 For a Node bot or notifier, import `TextParticipant` from
-`../node/text-participant`. The CLI uses that same internal client. Its current methods are `connect`, `chat`, `history`, `react`,
-`reconnect`, `stop`, and verified `live`/`confirmed` events; the example's `!ping`
-behavior lives only in `main`. A fresh Host binding requires reissuing the existing
+`../node/text-participant`. The CLI uses that same internal client and implements
+the `!ping` behavior in `main`. A fresh Host binding requires reissuing the existing
 Browse reading intent. Host-offline sends fail rather than fabricate confirmation.
 Reading history does not re-execute old commands; external side effects are not
 promised exactly once. This client uses no media peers or database access.
@@ -89,6 +90,30 @@ const participant = new TextParticipant({
 `admission` also accepts `password`. File I/O belongs to the CLI or your caller;
 the transport accepts an initial `credential` and emits a `credential` event
 with its Welcome value. Treat that event as a secret, not a status to print.
+
+With `roomId` omitted, `connect()` joins the site. A participant can create a
+room on a hosted site and then select it for reading. `createRoom()` returns the
+committed room with its Server-assigned `id`. Each instance reads one selected
+room, and `reconnect()` resumes reading it. On lightweight sites, `createRoom()`
+returns `room_writer_required` because creation needs a Browser or App writer.
+
+```ts
+const participant = new TextParticipant({ url, origin, name: 'Build notices', credential });
+await participant.connect();
+try {
+  const room = await participant.createRoom({ name: 'Build notices', icon: 'couch', access: 'public', hidden: false });
+  await participant.browse(room.id);
+  const message = await participant.chat('Build started');
+  await participant.deleteOwnMessage(message);
+} finally {
+  await participant.stop();
+}
+```
+
+Pass a confirmed message from the selected room to `deleteOwnMessage()`. The
+method rejects another author's message with `own_confirmed_message_required`,
+including when the participant manages the room. If the deletion receipt is
+lost, read history again to check whether the message remains.
 
 `history()` returns `{ messages, hasMore, oldestSeq, before }` for the latest page.
 Messages are ordered oldest to newest. While `hasMore` is true, pass the first

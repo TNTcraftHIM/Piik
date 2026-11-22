@@ -31,7 +31,7 @@ test.each(['welcome', 'admission', 'browse'] as const)('stop fences the pending 
   const receive = (event: object) => socket.emit('message', Buffer.from(JSON.stringify(event)));
   socket.readyState = 1; socket.emit('open');
   receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local, selfProfile: { id: user },
-    state: { channel: { rooms: [{ id: 'room', authorized: true, available: true, reading: true,
+    state: { channel: { hostingMode: 'lightweight', rooms: [{ id: 'room', authorized: true, available: true, reading: true,
       delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: Array(32).fill(0) }] } });
   if (phase !== 'welcome') await Promise.resolve();
   if (phase === 'browse') {
@@ -69,7 +69,7 @@ test('concurrent stop callers await the same leave and socket retirement, includ
   const receive = (event: object) => socket.emit('message', Buffer.from(JSON.stringify(event)));
   socket.readyState = 1; socket.emit('open');
   receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local, selfProfile: { id: user },
-    state: { channel: { rooms: [{ id: 'room', authorized: true, available: true, reading: true,
+    state: { channel: { hostingMode: 'lightweight', rooms: [{ id: 'room', authorized: true, available: true, reading: true,
       delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: Array(32).fill(0) }] } });
   await Promise.resolve();
   receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
@@ -106,7 +106,7 @@ test('a completed old browse cannot announce readiness for a replacement socket'
   vi.useFakeTimers();
   const [local, host, binding, user] = Array.from({ length: 4 }, () => randomUUID());
   const welcome = { type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local, selfProfile: { id: user },
-    state: { channel: { rooms: [{ id: 'room', authorized: true, available: true, reading: true,
+    state: { channel: { hostingMode: 'lightweight', rooms: [{ id: 'room', authorized: true, available: true, reading: true,
       delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: Array(32).fill(0) }] } };
   const client = new TextParticipant({ url: 'ws://fixture.invalid', origin: 'http://fixture.invalid', roomId: 'room', name: 'Fixture' });
   const ready = vi.fn(); client.on('ready', ready);
@@ -129,5 +129,46 @@ test('a completed old browse cannot announce readiness for a replacement socket'
   next.emit('message', Buffer.from(JSON.stringify({ type: 'ack', requestId: next.sent.at(-1)!.requestId })));
   await Promise.resolve(); await Promise.resolve();
   next.readyState = 3; next.emit('close'); await stopping;
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test.each(['hosted', 'lightweight'] as const)('Node room creation respects %s writer placement', async hostingMode => {
+  const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
+  vi.useFakeTimers();
+  const [sessionId, userId] = Array.from({ length: 2 }, () => randomUUID());
+  const client = new TextParticipant({ url: 'ws://fixture.invalid', origin: 'http://fixture.invalid', name: 'Fixture' });
+  const connected = client.connect(), socket = boundary.socket;
+  const receive = (event: object) => socket.emit('message', Buffer.from(JSON.stringify(event)));
+  socket.readyState = 1; socket.emit('open');
+  receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId, selfProfile: { id: userId },
+    state: { channel: { hostingMode, rooms: [] }, sessions: [] } });
+  await connected;
+  const settings = { name: 'Fixture room', icon: 'couch', access: 'public', hidden: false } as const;
+  const creation = client.createRoom(settings);
+  if (hostingMode === 'lightweight') {
+    await expect(creation).rejects.toThrow('room_writer_required');
+    expect(socket.sent.map(command => command.type)).toEqual(['join']);
+  } else {
+    const request = socket.sent.at(-1)!;
+    expect(request).toMatchObject({ type: 'create_room', room: { ...settings, id: 'new', creatorId: userId, hasPassword: false } });
+    const room = { ...request.room as object, id: 'assigned' };
+    const observed = vi.fn();
+    void creation.then(observed, observed);
+    receive({ type: 'ack', requestId: request.requestId });
+    receive({ type: 'room_created', room, requestId: 'unrelated' });
+    await Promise.resolve(); await Promise.resolve();
+    expect(observed).not.toHaveBeenCalled();
+    receive({ type: 'room_created', room, requestId: request.requestId });
+    expect(await creation).toEqual(room);
+    const browsing = client.browse(room.id);
+    expect(socket.sent.at(-1)).toMatchObject({ type: 'browse', roomId: room.id, active: true });
+    receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
+    await browsing;
+  }
+  const stopping = client.stop();
+  receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
+  await Promise.resolve(); await Promise.resolve();
+  socket.readyState = 3; socket.emit('close');
+  await stopping;
   expect(vi.getTimerCount()).toBe(0);
 });
