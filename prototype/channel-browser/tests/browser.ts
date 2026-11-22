@@ -1,6 +1,6 @@
 import { FileStore } from "../../../src/client/channel/file-store";
 import { checkTransferStorage } from "./transfer-storage";
-import { BrowserRoomHost, conversation_broadcast, createRoomPolicy, createSessionSigner, initializeRuntime, decode_control, encode_control, verify_reply, type SentResult } from "../src/room-host";
+import { BrowserRoomHost, conversation_broadcast, createRoomPolicy, createSessionSigner, initializeRuntime, decode_control, encode_control, verify_conversation, type SentResult } from "../src/room-host";
 import type { SignedConversationPacket } from "../../../src/client/channel/protocol";
 import { IDENTITY_IMAGE_URL_BYTES, identityIconSchema } from "../../../src/client/channel/protocol";
 import { imageBytes, prepareInlineImage } from "../../../src/client/channel/image-preview";
@@ -625,8 +625,10 @@ window.runBrowserRoomCheck = async () => {
     const confirmation = replies[0];
     check(replies.length === 2 && confirmation.record.type === "confirmed" && confirmation.record.message.seq === 112 && confirmation.record.inserted,
       "signed peer send confirms persisted room sequence");
-    const signedReply = signer.sign(session, JSON.stringify(confirmation));
-    check(JSON.stringify(JSON.parse(verify_reply(signedReply, signer.signing_key()))) === JSON.stringify(confirmation), "Rust verifies typed reply");
+    const receiptView = JSON.stringify({ channel: { rooms: [{ id: host.roomId, authorized: true, available: true,
+      delivery: { hostSessionId: session, bindingId } }] }, sessions: [{ id: session, signingKey }] });
+    const verifiedReply = (reply: object) => JSON.parse(verify_conversation(signer.sign(session, JSON.stringify(reply)), peerSession, receiptView));
+    check(JSON.stringify(verifiedReply(confirmation)) === JSON.stringify(confirmation), "Rust verifies typed reply");
     try { await host.dispatchPeer({ ...packet, payload: packet.payload + " " }, Date.now()); throw new Error("tampered signature accepted"); }
     catch (error) { check(String(error).includes("invalid_conversation_signature"), "tampered request rejected before storage"); }
     const repeated = await host.dispatchPeer(packet, Date.now());
@@ -642,7 +644,7 @@ window.runBrowserRoomCheck = async () => {
     check(interaction[0].record.type === "reaction" && interaction[0].record.event.senderUserId === peerMember.userId
       && interaction[0].record.event.target.userId === owner.userId && interaction[0].record.event.occurredAt === 2000
       && interaction[0].requestId === JSON.parse(interactionPacket.payload).requestId, "immediate signed result retains authenticated actor, target, time and request identity");
-    check(JSON.parse(verify_reply(signer.sign(session, JSON.stringify(interaction[0])), signer.signing_key())).record.event.id === interaction[0].record.event.id, "Host signature covers the immediate result");
+    check(verifiedReply(interaction[0]).record.event.id === interaction[0].record.event.id, "Host signature covers the immediate result");
     const replayed = await host.dispatchPeer(interactionPacket, 2001);
     check(replayed[0].record.type === "reaction" && replayed[0].record.event === null, "replayed person nonce cannot animate twice");
     const limited = await host.dispatchPeer(peerPacket({ type: "react", nonce: ++reactionNonce, reaction: "wave", target: { type: "person", userId: owner.userId } }), 2001);

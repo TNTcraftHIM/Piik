@@ -1436,7 +1436,15 @@ export class ChannelSession {
     if (!key) return roomId || null;
     if (!roomId) return null;
     if (this.view.connection === "connected") {
-      await this.action(`enter:${roomId}`, () => this.request({ type: "enter_room", roomId, inviteKey: key }));
+      const entry = `enter:${roomId}`;
+      if (this.view.pending.has(entry)) {
+        const checkSession = this.sessionContext();
+        await this.waitForState(() => !this.view.pending.has(entry));
+        checkSession();
+        const latest = new URLSearchParams(location.hash.slice(1));
+        if (latest.get("room") !== roomId || latest.get("invite") !== key) return null;
+      }
+      await this.action(entry, () => this.request({ type: "enter_room", roomId, inviteKey: key }));
       const current = new URLSearchParams(location.hash.slice(1));
       if (this.credential && stored(credentialKey) === this.credential
         && current.get("room") === roomId && current.get("invite") === key) {

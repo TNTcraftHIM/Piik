@@ -74,12 +74,9 @@ export class ChannelConversation {
     const { runtime } = await this.ready();
     const { state, sessionId, connected } = this.options.context();
     if (!connected || !state || !sessionId) throw new Error("disconnected");
-    const address = JSON.parse(runtime.verify_conversation(JSON.stringify(packet), sessionId, JSON.stringify(state))) as ConversationAddress;
-    if ("record" in JSON.parse(packet.payload)) {
-      const hostSessionId = state.channel.rooms.find(room => room.id === address.roomId)?.delivery?.hostSessionId;
-      if (address.sender !== hostSessionId) throw new Error("invalid_conversation_sender");
-      const key = state.sessions.find(session => session.id === packet.sender)!.signingKey;
-      this.options.reply(JSON.parse(runtime.verify_reply(JSON.stringify(packet), Uint8Array.from(key))));
+    const address = JSON.parse(runtime.verify_conversation(JSON.stringify(packet), sessionId, JSON.stringify(state))) as ConversationAddress | ConversationReply;
+    if ("record" in address) {
+      this.options.reply(address);
       return;
     }
     const host = this.options.host(address.roomId);

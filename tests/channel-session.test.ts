@@ -706,6 +706,30 @@ test.each(["throws", "ignores-write"] as const)("room invitation survives reload
   } finally { session.close(); reloaded?.close(); }
 });
 
+test.each(["done", "error"])("only the current same-room invite follows a pending %s reply", async firstResult => {
+  const { session, socket } = await setup(1000, false, "");
+  try {
+    location.hash = "room=first&invite=previous";
+    const previous = session.acceptInvitation().catch(error => error.message);
+    const first = socket.sent.findLast(command => command.type === "enter_room")!;
+    location.hash = "room=first&invite=intermediate";
+    const intermediate = session.acceptInvitation();
+    location.hash = "room=first&invite=current";
+    const current = session.acceptInvitation();
+    socket.receive({ type: "room_reply", roomId: "first", requestId: first.requestId,
+      result: firstResult === "done" ? { type: "done" } : { type: "error", code: "room_access_required" } });
+    expect(await previous).toBe(firstResult === "done" ? "first" : "room_access_required");
+    await expect(intermediate).resolves.toBeNull();
+    const entries = socket.sent.filter(command => command.type === "enter_room");
+    expect(entries.map(command => command.inviteKey)).toEqual(["previous", "current"]);
+    expect(location.hash).toBe("#room=first&invite=current");
+    socket.receive({ type: "room_reply", roomId: "first", requestId: entries[1].requestId, result: { type: "done" } });
+    await expect(current).resolves.toBe("first");
+    expect(location.hash).toBe("#room=first");
+    expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
 test("late room admission preserves a newer invitation fragment", async () => {
   const { session, socket } = await setup(1000, false, "");
   try {

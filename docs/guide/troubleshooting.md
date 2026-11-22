@@ -203,10 +203,11 @@ If the check cannot confirm a Piik response, ask the host for the current site l
 
 #### Room creation returns 403
 
-If site connection or room creation is rejected with HTTP 403, operators should
-check that the frontend and WebSocket reach the same site service and
-that the browser's exact origin is allowed; see the [runtime setup](../../prototype/channel-server/README.md#run).
-A proxy/WAF HTTP error needs that operator's logs. Do not disable origin checks.
+A 2.x Server can return HTTP 403 when creating a room. In 3.0, room creation
+uses the site's established WebSocket. If Piik says the room does not meet the
+site's creation policy, ask the site owner which rooms guests can create.
+If the WebSocket connection itself returns HTTP 403, check the proxy logs,
+the upstream service and the browser's exact origin. [3.0 runtime setup](../../prototype/channel-server/README.md#run)
 
 ### App and page versions are incompatible
 
@@ -218,7 +219,7 @@ Install it, restart Piik App and reload the page. Then select **App** again.
 ### Chat or history will not load
 
 1. Check the site connection at the top. Use **Reconnect** when it is disconnected.
-2. Read the room notice. **This room is unavailable** means its host needs to return: keep the hosting Browser page open, or restart the App that hosts it. Opening your own App does not take over someone else's room.
+2. Read the room notice. For an unavailable Browser-hosted room, ask its creator to reopen the hosting page in the original profile. For an App-hosted room, ask them to restart the hosting App. For a Server-hosted room, ask the site operator to check the Server.
 3. If the room is online, use **Load messages** after a failed read and keep the complete error. A storage error belongs to the room host; collect its report too.
 
 Chat, history, message reactions and attachment descriptions travel through

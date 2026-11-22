@@ -139,10 +139,10 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
         described["watchActivities"] = json!([{"playback":{"timeline":"future-timeline"}}]);
         described["pairs"] = json!([{"futureTransport":true}]);
         let text_view: ConversationView = serde_json::from_value(described).unwrap();
-        assert_eq!(
+        assert!(matches!(
             text_view.verify(&forwarded, owner_session).unwrap(),
-            address
-        );
+            piik_channel_core::conversation::ReceivedConversation::Command(received) if received == address
+        ));
         let replies = network.conversation(&room, &forwarded).replies().unwrap();
         for reply in replies {
             let returned = signer.sign(owner_session, &reply).unwrap();

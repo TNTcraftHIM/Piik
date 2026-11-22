@@ -209,6 +209,14 @@ pub fn verify_delivery(
                 })
         },
     )
+    .map(|(address, _)| address)
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum ReceivedConversation {
+    Command(ConversationAddress),
+    Reply(ConversationReply),
 }
 
 impl ConversationView {
@@ -216,8 +224,8 @@ impl ConversationView {
         &self,
         packet: &SignedPacket,
         local: Uuid,
-    ) -> Result<ConversationAddress, &'static str> {
-        verify_delivery_with(
+    ) -> Result<ReceivedConversation, &'static str> {
+        let (address, host) = verify_delivery_with(
             packet,
             local,
             self.sessions
@@ -231,7 +239,31 @@ impl ConversationView {
                     .find(|room| room.id == id)
                     .map(|room| room.scope)
             },
-        )
+        )?;
+        #[derive(Deserialize)]
+        struct Body<'a> {
+            #[serde(default, borrow, deserialize_with = "present_record")]
+            record: Option<&'a serde_json::value::RawValue>,
+        }
+        // Preserve a present null as a record so the typed decoder rejects it.
+        fn present_record<'de, D: serde::Deserializer<'de>>(
+            deserializer: D,
+        ) -> Result<Option<&'de serde_json::value::RawValue>, D::Error> {
+            Deserialize::deserialize(deserializer).map(Some)
+        }
+        let body: Body =
+            serde_json::from_str(&packet.payload).map_err(|_| "invalid_conversation")?;
+        let Some(record) = body.record else {
+            return Ok(ReceivedConversation::Command(address));
+        };
+        if address.sender != host {
+            return Err("invalid_conversation_sender");
+        }
+        let record = serde_json::from_str(record.get()).map_err(|_| "invalid_conversation")?;
+        Ok(ReceivedConversation::Reply(ConversationReply {
+            address,
+            record,
+        }))
     }
 }
 
@@ -240,7 +272,7 @@ fn verify_delivery_with(
     local: Uuid,
     signing_key: Option<[u8; 32]>,
     room: impl FnOnce(&str) -> Option<ConversationScope>,
-) -> Result<ConversationAddress, &'static str> {
+) -> Result<(ConversationAddress, Uuid), &'static str> {
     let address = verify_address(packet, signing_key.ok_or("session_expired")?)?;
     let scope = room(&address.room_id)
         .filter(|scope| scope.authorized && scope.available)
@@ -254,7 +286,7 @@ fn verify_delivery_with(
     {
         return Err("invalid_conversation_scope");
     }
-    Ok(address)
+    Ok((address, delivery.host_session_id))
 }
 impl ConversationAddress {
     pub fn reply(&self) -> Self {

@@ -155,7 +155,13 @@ test('narrow conversation verification keeps authority required and signed recor
   const packet = (change = {}) => signer.sign(host, JSON.stringify({ ...address, ...change, record }));
   const verify = (value: string, view: unknown = state) => rust.verify_conversation(value, local, JSON.stringify(view));
   try {
-    expect(JSON.parse(verify(packet()))).toEqual(address);
+    expect(JSON.parse(verify(packet()))).toEqual({ ...address, record });
+    const altered = { ...JSON.parse(packet()), payload: JSON.stringify({ ...address, requestId: 'changed', record }) };
+    expect(() => verify(JSON.stringify(altered))).toThrow();
+    const hostedHere = { ...state, channel: { rooms: [{ ...state.channel.rooms[0], delivery: { hostSessionId: local, bindingId: binding } }] } };
+    expect(() => verify(packet(), hostedHere)).toThrow();
+    const nullRecord = signer.sign(host, JSON.stringify({ ...address, record: null }));
+    expect(() => verify(nullRecord)).toThrow();
     expect(() => verify(packet(), { ...state, sessions: [{ id: host, signingKey: [...other.signing_key()] }] })).toThrow();
     expect(() => verify(packet({ bindingId: randomUUID() }))).toThrow();
     expect(() => verify(packet({ recipient: randomUUID() }))).toThrow();
@@ -164,8 +170,7 @@ test('narrow conversation verification keeps authority required and signed recor
     }
     expect(() => verify(packet(), { ...state, sessions: [{ id: host }] })).toThrow();
     const futureRecord = signer.sign(host, JSON.stringify({ ...address, record: { type: 'future-conversation-record' } }));
-    expect(JSON.parse(verify(futureRecord))).toEqual(address);
-    expect(() => rust.verify_reply(futureRecord, signer.signing_key())).toThrow();
+    expect(() => verify(futureRecord)).toThrow();
   } finally { signer.free(); other.free(); }
 });
 

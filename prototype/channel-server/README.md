@@ -186,15 +186,20 @@ with its matching `web/` under `/opt/piik/current`.
 The [systemd template](../../deploy/systemd/piik.service.example)
 reads `/etc/piik/piik.env`, runs `/opt/piik/current/piik-server` on HTTP 8787 and
 stores data under `/var/lib/piik`. Put the matching environment values in that
-file, install the unit as `/etc/systemd/system/piik.service`, then run
-`sudo systemctl daemon-reload` and `sudo systemctl enable --now piik`.
+file and install the unit as `/etc/systemd/system/piik.service`.
 
 For the 3.0 public Demo profile, install the
 [Demo drop-in](../../deploy/systemd/piik-demo.conf.example) as
 `/etc/systemd/system/piik.service.d/demo.conf` before first launch and set
 `PIIK_CHANNEL_WEB_ORIGIN=https://demo.piik.tv` in the service environment file.
-For an existing 3.0 channel, set its saved creation policy to invite-only in
-channel settings as the owner.
+Once the unit and any drop-in are in place, run `sudo systemctl daemon-reload`
+and `sudo systemctl enable --now piik`.
+
+For an existing lightweight channel, the owner can select **Unlisted,
+invitation-only rooms** in site settings. An existing hosted channel keeps its
+room writers and history on the Server when this policy changes. To run a
+lightweight Demo alongside that saved data, initialize the Demo in a separate
+empty data directory using the drop-in.
 
 Set `PIIK_CHANNEL_WEB_ORIGIN` to the exact HTTPS origin users will open.
 Terminate HTTPS at your reverse proxy and forward HTTP/WebSocket traffic to the

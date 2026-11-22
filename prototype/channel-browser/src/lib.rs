@@ -269,17 +269,6 @@ impl SessionSigner {
 }
 
 #[wasm_bindgen]
-pub fn verify_reply(packet: &str, key: &[u8]) -> Result<String, JsValue> {
-    encode(
-        &ConversationReply::verify(
-            &parse::<SignedPacket>(packet)?,
-            key.try_into().map_err(|_| error("invalid_request"))?,
-        )
-        .map_err(error)?,
-    )
-}
-
-#[wasm_bindgen]
 pub fn verify_conversation(packet: &str, local: &str, state: &str) -> Result<String, JsValue> {
     let packet = parse::<SignedPacket>(packet)?;
     let local = Uuid::parse_str(local).map_err(|_| error("invalid_request"))?;

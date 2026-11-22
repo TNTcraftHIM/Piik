@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { z } from 'zod';
-import init, { history_page_size, SessionSigner, verify_conversation, verify_reply } from '../pkg/piik_channel_browser.js';
-import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, roomSchema, roomSummarySchema, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary } from '../../../src/client/channel/protocol';
+import init, { history_page_size, SessionSigner, verify_conversation } from '../pkg/piik_channel_browser.js';
+import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, roomSchema, roomSummarySchema, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationAddress, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary } from '../../../src/client/channel/protocol';
 await init({ module_or_path: readFileSync(new URL('../pkg/piik_channel_browser_bg.wasm', import.meta.url)) });
 type ConversationCommand = Extract<ChannelCommand, {
   type: 'chat' | 'history' | 'interaction_ready' | 'react' | 'delete_message';
@@ -322,12 +322,9 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     }
     if (event.type !== 'conversation' || !this.state || !this.sessionId)
       return;
-    const address = JSON.parse(verify_conversation(JSON.stringify(event.packet), this.sessionId, JSON.stringify(this.state)));
-    const room = this.state.channel.rooms.find(room => room.id === address.roomId);
-    if (address.roomId !== this.roomId || address.sender !== room?.delivery?.hostSessionId)
+    const reply = JSON.parse(verify_conversation(JSON.stringify(event.packet), this.sessionId, JSON.stringify(this.state))) as ConversationAddress | ConversationReply;
+    if (reply.roomId !== this.roomId || !('record' in reply))
       throw new Error('invalid_conversation_sender');
-    const sender = this.state.sessions.find(session => session.id === address.sender)!;
-    const reply = JSON.parse(verify_reply(JSON.stringify(event.packet), Uint8Array.from(sender.signingKey))) as ConversationReply;
     const record = reply.record;
     const pending = this.pending.get(reply.requestId);
     if (record.type === 'error') {
