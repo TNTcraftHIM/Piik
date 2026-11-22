@@ -4,9 +4,9 @@ import type { CaptureDevice } from "../../media/capture-devices";
 import { MicrophoneDeviceSelect } from "./MicrophoneDeviceSelect";
 import { AudioVolumeControl } from "./AudioVolumeControl";
 
-export function MicrophoneSettings({ enabled, disabled, volume, onVolume, deviceId, onDevice, loadDevices, voiceProcessing, onVoiceProcessing, host, browser = true }: {
+export function MicrophoneSettings({ enabled, disabled, volume, onVolume, deviceId, onDevice, loadDevices, voiceProcessing, onVoiceProcessing, host, browser = true, sharing = false }: {
   enabled: boolean; disabled?: boolean; host: boolean;
-  browser?: boolean;
+  browser?: boolean; sharing?: boolean;
   volume: number; onVolume: (volume: number) => void;
   deviceId: string; onDevice: (id: string) => void; loadDevices: () => Promise<CaptureDevice[]>;
   voiceProcessing?: boolean; onVoiceProcessing?: (enabled: boolean) => void;
@@ -14,9 +14,10 @@ export function MicrophoneSettings({ enabled, disabled, volume, onVolume, device
   const { t } = useCopy();
   return <div className="lr-door-group lr-audio-settings" role="group" aria-label={t("host.microphone.settings")}>
       <MicrophoneDeviceSelect value={deviceId} load={loadDevices}
+        label={sharing ? "host.commentary.device" : "voice.input.device"}
         onChange={onDevice} disabled={disabled} revision={enabled} browser={browser} />
       <AudioVolumeControl volume={volume} onVolume={onVolume} disabled={disabled}
-        label="host.microphone.volume"
+        label={sharing ? "host.commentary.volume" : "voice.input.volume"}
         hint={host ? "hint-microphone-volume" : "hint-voice-microphone-volume"} />
         {voiceProcessing !== undefined && onVoiceProcessing ? <div className="lr-row-group">
           <SwitchItem checked={voiceProcessing} onChange={onVoiceProcessing} disabled={disabled}

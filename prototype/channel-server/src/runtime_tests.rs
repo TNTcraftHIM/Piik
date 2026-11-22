@@ -614,6 +614,93 @@ fn stored_turn(
     binding
 }
 
+#[tokio::test]
+async fn conversation_confirmation_keeps_healthy_readers_state_in_turn_order() {
+    use piik_channel_core::{conversation::SessionSigner, wire::RoomAccess, StoredRoomHost};
+
+    let folder = tempfile::tempdir().unwrap();
+    let domain = Domain::open(
+        folder.path(),
+        "owner",
+        "http://localhost".into(),
+        None,
+        vec![],
+    )
+    .unwrap();
+    let (host, mut reader, mut observer, packet) = {
+        let mut hub = domain.hub.lock().unwrap();
+        let mut host = Endpoint::join(&mut hub, "owner");
+        let mut reader = Endpoint::join(&mut hub, "invite");
+        let mut observer = Endpoint::join(&mut hub, "invite");
+        let policy = RoomState::new(
+            "living".into(),
+            "Living".into(),
+            Default::default(),
+            host.user,
+            RoomAccess::Public,
+            false,
+            None,
+        )
+        .unwrap();
+        let mut room = StoredRoomHost::create(Path::new(":memory:"), policy).unwrap();
+        host.request(&mut hub, json!({"type":"admit_room","room":room.summary()}));
+        host.request(
+            &mut hub,
+            json!({"type":"host_register","room":room.summary()}),
+        );
+        stored_turn(&mut hub, &mut host, &mut room);
+        reader.request(
+            &mut hub,
+            json!({"type":"browse","roomId":"living","active":true}),
+        );
+        let binding = stored_turn(&mut hub, &mut host, &mut room);
+        let packet = SessionSigner::from_seed([1;32]).sign(host.session, &json!({
+            "roomId":"living","bindingId":binding,"sender":host.session,
+            "recipient":reader.session,"requestId":"chat",
+            "record":{"type":"confirmed","inserted":true,"message":{
+                "id":Uuid::new_v4(),"seq":1,"userId":reader.user,"text":"Hello","time":1,"attachments":[]
+            }}
+        })).unwrap();
+        reader.drain();
+        observer.drain();
+        // Keep this reader's writer paused until the next authority turn.
+        let queue = &hub.clients[&reader.id].events;
+        while queue.capacity() > 0 {
+            queue
+                .try_send(Event::Ack {
+                    request_id: "queued".into(),
+                })
+                .unwrap();
+        }
+        (host, reader, observer, packet)
+    };
+
+    let request =
+        Request::parse(&json!({"type":"conversation","packet":packet}).to_string()).unwrap();
+    let confirmation = dispatch_request(&domain, host.id, request);
+    tokio::pin!(confirmation);
+    let completed = confirmation.as_mut().now_or_never().is_some();
+    observer.request(
+        &mut domain.hub.lock().unwrap(),
+        json!({"type":"set_profile","avatar":null,"name":"Updated"}),
+    );
+    reader.drain();
+    if !completed {
+        confirmation.await;
+    }
+    let names: Vec<_> = std::iter::from_fn(|| observer.events.try_recv().ok())
+        .filter_map(|event| match event {
+            Event::State { state } => state
+                .users
+                .into_iter()
+                .find(|user| user.id == observer.user)
+                .map(|user| user.name),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(names, ["Friend", "Updated"]);
+}
+
 #[test]
 fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
     use piik_channel_core::{

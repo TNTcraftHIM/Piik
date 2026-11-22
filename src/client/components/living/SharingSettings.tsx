@@ -36,7 +36,7 @@ export function SharingSettings({ id, open, busy, presets, picture, pictureSumma
       </section>
       {audio !== undefined && <section id={`${id}-sound`} className="lr-sharing-section" role="tabpanel" tabIndex={0}
         aria-labelledby={`${id}-sound-tab`} hidden={tab !== "sound"}>
-        <div className="lr-sharing-audio-controls">{audio}</div>
+        {tab === "sound" && <div className="lr-sharing-audio-controls">{audio}</div>}
       </section>}
       {connection ? <details className="lr-sharing-connection">
         <summary aria-label={t("host.settings.connection")}>

@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { inlineImageFile, prepareInlineImage } from "../src/client/channel/image-preview";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 test("byte-identical and over-budget encodings stay out of history", async () => {
   const file = new File(["abc"], "small.webp", { type: "image/webp" });
@@ -21,6 +21,30 @@ test("unsupported input and cancelled work cannot begin image decoding", async (
   const request = new AbortController(); request.abort();
   await expect(prepareInlineImage(new File(["bytes"], "image.png"), "image/png", 65536, request.signal)).rejects.toMatchObject({ name: "AbortError" });
   expect(image).not.toHaveBeenCalled();
+});
+
+test("cancelling a pending decode retires its URL and ignores a late result", async () => {
+  const file = new File(["synthetic image"], "image.png", { type: "image/png" });
+  const request = new AbortController();
+  const create = vi.spyOn(URL, "createObjectURL");
+  const revoke = vi.spyOn(URL, "revokeObjectURL");
+  const removeAttribute = vi.fn();
+  const createElement = vi.fn();
+  let decoded!: () => void;
+  const pendingDecode = new Promise<void>(resolve => { decoded = resolve; });
+  vi.stubGlobal("Image", class { decode() { return pendingDecode; } removeAttribute = removeAttribute; });
+  vi.stubGlobal("document", { createElement });
+
+  const preview = prepareInlineImage(file, file.type, 1024, request.signal);
+  const cancelled = expect(preview).rejects.toMatchObject({ name: "AbortError" });
+  request.abort();
+  await cancelled;
+  expect(removeAttribute).toHaveBeenCalledExactlyOnceWith("src");
+  expect(revoke).toHaveBeenCalledExactlyOnceWith(create.mock.results[0].value);
+
+  decoded();
+  await pendingDecode;
+  expect(createElement).not.toHaveBeenCalled();
 });
 
 test("a preview file uses its rendition's format without claiming to be the original", async () => {

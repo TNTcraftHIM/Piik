@@ -246,8 +246,8 @@ export class BrowserRoomHost implements HostedRoom {
   }
 
   get roomId(): string { return this.room.room_id(); }
-  summary(): RoomSummary { return JSON.parse(this.room.summary()); }
-  currentReaders(): string[] { return JSON.parse(this.room.current_readers()); }
+  summary(): Promise<RoomSummary> { return this.enqueue(() => JSON.parse(this.room.summary())); }
+  currentReaders(): Promise<string[]> { return this.enqueue(() => JSON.parse(this.room.current_readers())); }
 
   /** Capture persisted policy and complete history at one IndexedDB commit. */
   snapshot(): Promise<BrowserRoomSnapshot> {
@@ -326,7 +326,7 @@ export class BrowserRoomHost implements HostedRoom {
     });
   }
 
-  private enqueue<T>(work: () => Promise<T>): Promise<T> {
+  private enqueue<T>(work: () => T | Promise<T>): Promise<T> {
     if (this.closing) return Promise.reject(new Error("closed"));
     const result = this.tail.then(work).catch(error => { throw failure(error); });
     this.tail = result.then(() => {}, () => {});

@@ -32,6 +32,14 @@ The pre-cutover Server release is guaranteed only through bounded health
 and postflight. It has no retention contract afterward and is not a maintained
 backup; Git and immutable artifacts own history.
 
+An open page can request a previous build's deferred module after deployment.
+The affected settings action reports its load failure and offers a manual refresh.
+Refreshing follows the page's normal retirement of sharing, playback and voice;
+the user chooses when to do it. This uses
+[Vite's load-error event](https://vite.dev/guide/build.html#load-error-handling)
+and the existing UI failure surface. Protocol and stored-data compatibility
+remain with the [versioning contract](./standards/versioning.md#public-compatibility-promise).
+
 ## Managed One-click Hosting
 
 Reviewed 2026-11-17. Vercel can serve Web assets, and its

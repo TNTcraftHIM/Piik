@@ -110,6 +110,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
   const [limitsRetry, setLimitsRetry] = useState(0);
   const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
   const [preparations, setPreparations] = useState<Record<string, { percent: number; cancel: () => void }>>({});
+  const preparationProgressId = useId();
   const percentFormat = useMemo(() => new Intl.NumberFormat(lang, { style: "percent" }), [lang]);
   const identityLifetime = useRef<AbortController | null>(null);
   const composing = useRef(false);
@@ -516,7 +517,12 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
         onClick={() => { void removeFile(entry); }} />
     </div>)}</div>}
     {preparation && <div className="c3-file-preparation">
-      <span>{t("conversation.preparingAttachments", { percent: percentFormat.format(preparation.percent / 100) })}</span>
+      <div className="c3-attachment-progress">
+        <label htmlFor={preparationProgressId}>{t("conversation.preparingAttachments")}{" "}
+          <span aria-hidden="true">{percentFormat.format(preparation.percent / 100)}</span>
+        </label>
+        <progress id={preparationProgressId} value={preparation.percent} max={100} />
+      </div>
       <ChannelAction icon="x" quiet label={t("conversation.cancelAttachmentPreparation")} onClick={preparation.cancel} />
     </div>}
     {fileError && <p className="c3-file-error" role="status">{fileError}</p>}

@@ -393,23 +393,24 @@ export class ChannelAttachments {
 
   async describe(files: DraftFile[], signal?: AbortSignal, onProgress?: (percent: number) => void): Promise<PreparedFile[]> {
     const lifetime = this.lifetime;
+    const preparation = signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal;
     const module = await this.module(), limits = attachmentLimitsSchema.parse(JSON.parse(module.attachment_limits()));
-    signal?.throwIfAborted(); lifetime.signal.throwIfAborted();
+    preparation.throwIfAborted();
     if (files.length > limits.maxAttachmentsPerMessage || files.some(entry => entry.file.size > limits.maxFileBytes)) throw new Error("invalid_attachments");
     const prepared: PreparedFile[] = [];
     let inlineBytes = 0;
     const totalBytes = files.reduce((total, entry) => total + entry.file.size, 0);
     let hashedBytes = 0, reportedPercent = 0;
     const mediaTypes = await Promise.all(files.map(async entry => module.attachment_media_type(new Uint8Array(await entry.file.slice(0, 12).arrayBuffer()))));
+    preparation.throwIfAborted();
     let remainingImages = mediaTypes.filter(type => type.startsWith("image/")).length;
     for (const [index, entry] of files.entries()) {
       let hash: AttachmentHash | null = new module.AttachmentHash();
       try {
         for (let offset = 0; offset < entry.file.size; offset += 65536) {
-          signal?.throwIfAborted();
-          lifetime.signal.throwIfAborted();
+          preparation.throwIfAborted();
           const bytes = new Uint8Array(await entry.file.slice(offset, offset + 65536).arrayBuffer());
-          signal?.throwIfAborted(); lifetime.signal.throwIfAborted(); hash.update(bytes);
+          preparation.throwIfAborted(); hash.update(bytes);
           if (onProgress) {
             hashedBytes += bytes.byteLength;
             // Leave room for image renditions and metadata after the original bytes are hashed.
@@ -423,11 +424,12 @@ export class ChannelAttachments {
         const finished = hash; hash = null;
         const sha256 = finished.finish();
         const mediaType = mediaTypes[index];
-        signal?.throwIfAborted(); lifetime.signal.throwIfAborted();
+        preparation.throwIfAborted();
         let inlineImage: ImageRendition | undefined;
         if (mediaType.startsWith("image/")) {
           const budget = Math.floor((limits.maxInlineImageBytes - inlineBytes) / remainingImages--);
-          inlineImage = await prepareInlineImage(entry.file, mediaType, budget, signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal);
+          inlineImage = await prepareInlineImage(entry.file, mediaType, budget, preparation);
+          preparation.throwIfAborted();
           if (inlineImage) inlineBytes += Math.floor(inlineImage.data.length / 4) * 3 - (inlineImage.data.endsWith("==") ? 2 : inlineImage.data.endsWith("=") ? 1 : 0);
         }
         prepared.push({ ...entry, attachment: attachmentSchema.parse({ id: entry.id, name: entry.file.name, size: entry.file.size, mediaType, sha256 }),

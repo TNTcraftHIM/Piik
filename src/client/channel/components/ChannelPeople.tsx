@@ -12,7 +12,7 @@ export function ChannelPeople({ channel, roomId, active, onBack }: { channel: Ch
   const [directory, setDirectory] = useState<{ ids: string[]; next?: string | null }>({ ids: [] });
   const [loading, setLoading] = useState(false), [failed, setFailed] = useState(false);
   const request = useRef<AbortController | null>(null);
-  const loadedIds = useRef<string[] | null>(null);
+  const firstPageLoaded = useRef(false);
   const load = async (after?: string) => {
     if (request.current || channel.connection !== "connected") return;
     const current = request.current = new AbortController();
@@ -21,7 +21,7 @@ export function ChannelPeople({ channel, roomId, active, onBack }: { channel: Ch
       const page = await channel.queryProfiles(after ? { after } : {}, current.signal);
       if (!current.signal.aborted) {
         const pageIds = page.profiles.map(user => user.id);
-        loadedIds.current = [...new Set([...(loadedIds.current ?? []), ...pageIds])];
+        firstPageLoaded.current = true;
         setDirectory(previous => ({ ids: [...new Set([...previous.ids, ...pageIds])], next: page.nextCursor }));
       }
     } catch { if (!current.signal.aborted) setFailed(true); }
@@ -33,7 +33,7 @@ export function ChannelPeople({ channel, roomId, active, onBack }: { channel: Ch
     }
   };
   useEffect(() => {
-    loadedIds.current = null;
+    firstPageLoaded.current = false;
     setDirectory({ ids: [] }); setLoading(false); setFailed(false);
     return () => {
       request.current?.abort();
@@ -42,8 +42,8 @@ export function ChannelPeople({ channel, roomId, active, onBack }: { channel: Ch
   }, [state?.channel.id, self?.id]);
   useEffect(() => {
     if (!active || channel.connection !== "connected") return;
-    if (loadedIds.current === null) void load();
-    else void channel.loadProfiles(loadedIds.current).catch(() => {});
+    if (!firstPageLoaded.current) void load();
+    else void channel.loadProfiles(directory.ids).catch(() => {});
   }, [active, state?.channel.id, self?.id, channel.connection]);
   useEffect(() => {
     if (active) setDirectory(previous => state?.users.every(user => previous.ids.includes(user.id)) ? previous

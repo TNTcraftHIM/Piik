@@ -176,9 +176,17 @@ pub(crate) fn demands(
 }
 
 type Pump = Pin<Box<dyn Future<Output = (Video, Result<()>)> + Send>>;
+/// The decoded source dimensions and adaptation intent used to start a worker.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DecodedFormat {
+    pub width: u32,
+    pub height: u32,
+    pub preference: crate::capture::DegradationPreference,
+}
 struct Entry {
     video: Video,
     control: EncodingControl,
+    format: Option<DecodedFormat>,
     encoding: EncodingRequest,
 }
 impl Entry {
@@ -216,19 +224,20 @@ impl Encodings {
         video: Video,
         kind: EncodingRequest,
         requests: watch::Receiver<u64>,
-        external: Option<Arc<Input>>,
+        external: Option<(&Arc<Input>, DecodedFormat)>,
     ) -> Entry {
         let control = encoding.control();
         self.pumps.push(pump(
             encoding,
             video.clone(),
             requests,
-            external,
+            external.map(|(input, _)| input.clone()),
             self.codec,
         ));
         Entry {
             video,
             control,
+            format: external.map(|(_, format)| format),
             encoding: kind,
         }
     }
@@ -248,7 +257,7 @@ impl Encodings {
     pub async fn reconcile(
         &mut self,
         next: &[VideoDemand],
-        external: Option<&Arc<Input>>,
+        external: Option<(&Arc<Input>, DecodedFormat)>,
         mut encode: impl FnMut(u32) -> Result<Encoding>,
     ) -> Vec<(Video, Result<()>)> {
         self.inputs.retain(|id, input| {
@@ -283,11 +292,21 @@ impl Encodings {
                 }
                 EncodingRequest::Encode(bitrate) => bitrate,
             };
-            if let Some(entry) = self.derived.get_mut(&demand.key()) {
+            // During restoration, the existing worker keeps serving its reader
+            // until IDR adoption. Only an Encode demand requires the new format.
+            let key = demand.key();
+            if self
+                .derived
+                .get(&key)
+                .is_some_and(|entry| entry.format != external.map(|(_, format)| format))
+            {
+                self.derived.remove(&key).unwrap().retire();
+            }
+            if let Some(entry) = self.derived.get_mut(&key) {
                 if select(demand, &entry.video, true) && entry.encoding != demand.encoding {
                     if let Err(error) = entry.control.set_bitrate(bitrate) {
                         eprintln!("Native output encoding failed: {error:#}");
-                        let entry = self.derived.remove(&demand.key()).unwrap();
+                        let entry = self.derived.remove(&key).unwrap();
                         failed.push((entry.video.clone(), Err(error)));
                         entry.retire();
                     } else {
@@ -303,14 +322,9 @@ impl Encodings {
                 }
                 match encode(bitrate) {
                     Ok(encoding) => {
-                        let entry = self.entry(
-                            encoding,
-                            video,
-                            demand.encoding,
-                            requests,
-                            external.cloned(),
-                        );
-                        self.derived.insert(demand.key(), entry);
+                        let entry =
+                            self.entry(encoding, video, demand.encoding, requests, external);
+                        self.derived.insert(key, entry);
                     }
                     Err(error) => {
                         eprintln!("Native output encoding failed: {error:#}");

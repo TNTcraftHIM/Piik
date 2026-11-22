@@ -1,6 +1,6 @@
 //! One received video owns at most one decoder; its original AU feed stays live.
 use super::{
-    encodings::{self, EncodingRequest, Encodings, VideoDemand},
+    encodings::{self, DecodedFormat, EncodingRequest, Encodings, VideoDemand},
     video::{Input, Video},
 };
 use crate::{
@@ -74,7 +74,6 @@ struct Decoding {
     frames: Frames,
     input: Arc<Input>,
     format: watch::Receiver<Option<Format>>,
-    encoding_settings: Option<(u32, u32, DegradationPreference)>,
     task: JoinHandle<Result<()>>,
 }
 impl Decoding {
@@ -130,7 +129,6 @@ impl Decoding {
             frames,
             input,
             format: formats,
-            encoding_settings: None,
             task,
         })
     }
@@ -174,30 +172,19 @@ fn needs_decoder(next: &[VideoDemand]) -> bool {
 async fn apply(
     decoding: &mut Decoding,
     next: &[VideoDemand],
-    baseline: &Video,
     preference: DegradationPreference,
 ) -> Vec<Video> {
     let Some(format) = *decoding.format.borrow() else {
         return vec![];
     };
-    let settings = (format.width, format.height, preference);
-    if decoding
-        .encoding_settings
-        .is_some_and(|current| current != settings)
-    {
-        // Geometry and source-owned adaptation intent require new workers.
-        // Decoder FPS is only a startup hint; live workers follow source PTS.
-        // Retain the decoder, source clock and readers.
-        let previous = std::mem::replace(
-            &mut decoding.encodings,
-            Encodings::new(baseline.time(), baseline.changed(), decoding.codec),
-        );
-        previous.stop().await;
-    }
-    decoding.encoding_settings = Some(settings);
+    let profile = DecodedFormat {
+        width: format.width,
+        height: format.height,
+        preference,
+    };
     decoding
         .encodings
-        .reconcile(next, Some(&decoding.input), |bitrate| {
+        .reconcile(next, Some((&decoding.input, profile)), |bitrate| {
             decoding.frames.encode(
                 Settings {
                     degradation_preference: preference,
@@ -300,12 +287,12 @@ async fn run(
                             break;
                         }
                     }
-                    failed = apply(decoder, &current, &baseline, preference).await;
+                    failed = apply(decoder, &current, preference).await;
                 }
             }
             Wake::Format => {
                 if let Some(decoder) = &mut decoding {
-                    failed = apply(decoder, &current, &baseline, preference).await;
+                    failed = apply(decoder, &current, preference).await;
                 }
             }
             Wake::Encoded((video, result)) => {
@@ -397,116 +384,127 @@ pub(crate) mod tests {
         }
     }
 
+    #[cfg(windows)]
     #[tokio::test]
-    async fn geometry_and_preference_replace_encodings_but_fps_does_not() -> Result<()> {
-        use std::sync::atomic::{AtomicUsize, Ordering};
+    async fn reconfigure_keeps_each_incumbent_until_its_original_is_adopted() -> Result<()> {
+        use crate::capture::Encoding;
 
         let epoch = Instant::now();
         let baseline = Video::new(
             SourceTime::local(epoch, SystemInstant::now(epoch)),
-            Arc::new(Notify::new()),
+            Default::default(),
         );
-        let (format, formats) = watch::channel(None);
-        let input = baseline.subscribe();
-        let mut decoding = Decoding {
-            codec: VideoCodec::H264,
-            encodings: Encodings::new(baseline.time(), baseline.changed(), VideoCodec::H264),
-            frames: Frames::new(FrameTiming::Source)?,
-            input: input.clone(),
-            format: formats,
-            encoding_settings: None,
-            task: tokio::spawn(async { Ok(()) }),
-        };
-        let completed = Arc::new(AtomicUsize::new(0));
-        let mut current = Format {
-            width: 320,
-            height: 180,
+        let first = baseline.subscribe();
+        let second = baseline.subscribe();
+        let mut next = [&first, &second].map(|viewer| VideoDemand {
+            output: Uuid::new_v4(),
+            rid: String::new(),
+            input: Arc::downgrade(viewer),
+            encoding: EncodingRequest::Encode(300_000),
+            source: Some(baseline.clone()),
+        });
+        let format = Format {
+            width: 640,
+            height: 360,
             fps: 30,
         };
-        format.send_replace(Some(current));
-        assert!(apply(
-            &mut decoding,
-            &[],
-            &baseline,
-            DegradationPreference::Balanced
-        )
-        .await
-        .is_empty());
-        for next in [
-            Format {
-                width: 640,
-                ..current
-            },
-            Format {
-                width: 640,
-                height: 360,
-                fps: 60,
-            },
-        ] {
-            let work = completed.clone();
-            let video = baseline.clone();
-            decoding.encodings.pumps.push(Box::pin(async move {
-                work.fetch_add(1, Ordering::SeqCst);
-                (video, Ok(()))
-            }));
-            let before = completed.load(Ordering::SeqCst);
-            // Equal notifications and nominal cadence changes retain the worker.
-            for fps in [current.fps, 60, 29] {
-                format.send_replace(Some(Format { fps, ..current }));
-                assert!(apply(
-                    &mut decoding,
-                    &[],
-                    &baseline,
-                    DegradationPreference::Balanced
-                )
-                .await
-                .is_empty());
-                assert_eq!(completed.load(Ordering::SeqCst), before);
-                assert_eq!(decoding.encodings.pumps.len(), 1);
-                assert!(Arc::ptr_eq(&input, &decoding.input));
-            }
-
-            format.send_replace(Some(next));
-            assert!(apply(
-                &mut decoding,
-                &[],
-                &baseline,
-                DegradationPreference::Balanced
-            )
+        let (formats, rx) = watch::channel(Some(format));
+        let mut decoder = Decoding {
+            codec: VideoCodec::Vp8,
+            encodings: Encodings::new(baseline.time(), baseline.changed(), VideoCodec::Vp8),
+            frames: Frames::new(FrameTiming::Source)?,
+            input: baseline.subscribe(),
+            format: rx,
+            task: tokio::spawn(async { Ok(()) }),
+        };
+        let frame = |n: u8| EncodedFrame {
+            bytes: vec![n],
+            presentation_time: epoch + Duration::from_millis(u64::from(n)),
+            keyframe: true,
+            vp8: None,
+        };
+        let mut controls = Vec::new();
+        let mut allocate = |_| {
+            let worker = Encoding::with_test_frame(frame(1));
+            controls.push(worker.control());
+            Ok(worker)
+        };
+        let profile = DecodedFormat {
+            width: format.width,
+            height: format.height,
+            preference: DegradationPreference::Balanced,
+        };
+        assert!(decoder
+            .encodings
+            .reconcile(&next, Some((&decoder.input, profile)), &mut allocate)
             .await
             .is_empty());
-            assert_eq!(completed.load(Ordering::SeqCst), before + 1);
-            assert!(decoding.encodings.pumps.is_empty());
-            assert!(Arc::ptr_eq(&input, &decoding.input));
-            current = next;
-        }
-        let work = completed.clone();
-        let video = baseline.clone();
-        decoding.encodings.pumps.push(Box::pin(async move {
-            work.fetch_add(1, Ordering::SeqCst);
-            (video, Ok(()))
-        }));
-        let before = completed.load(Ordering::SeqCst);
+        tokio::time::timeout(Duration::from_secs(1), async {
+            tokio::select! {
+                (a,b) = async { tokio::join!(first.recv(), second.recv()) } => {
+                    assert_eq!(a.unwrap().bytes, vec![1]);
+                    assert_eq!(b.unwrap().bytes, vec![1]);
+                }
+                _ = decoder.encodings.pumps.next() => panic!("incumbent ended early"),
+            }
+        })
+        .await?;
+
+        formats.send_replace(Some(Format { fps: 60, ..format }));
+        assert!(apply(&mut decoder, &next, profile.preference)
+            .await
+            .is_empty());
+        assert!(controls.iter().all(|worker| !worker.is_stopped()));
+        next[0].encoding = EncodingRequest::Forward;
+        direct(&next);
+        let resized = DecodedFormat {
+            width: 320,
+            height: 180,
+            ..profile
+        };
+        let replacement = Encoding::with_test_frame(frame(2));
+        let new_control = replacement.control();
+        let mut candidate = Some(replacement);
+        assert!(decoder
+            .encodings
+            .reconcile(&next, Some((&decoder.input, resized)), |_| Ok(candidate
+                .take()
+                .unwrap()))
+            .await
+            .is_empty());
+        assert!(!controls[0].is_stopped());
+        assert!(controls[1].is_stopped());
+        tokio::time::timeout(Duration::from_secs(1), async {
+            tokio::select! {
+                au = second.recv() => assert_eq!(au.unwrap().bytes, vec![2]),
+                _ = decoder.encodings.pumps.next() => panic!("replacement ended early"),
+            }
+        })
+        .await?;
+
+        // A failed optional upgrade must leave the constrained worker usable.
+        assert!(!first.failed(&baseline));
+        decoder.encodings.retire_unused();
+        assert!(!controls[0].is_stopped());
+        next[1].encoding = EncodingRequest::Forward;
+        direct(&next);
         assert!(apply(
-            &mut decoding,
-            &[],
-            &baseline,
+            &mut decoder,
+            &next,
             DegradationPreference::MaintainFramerate
         )
         .await
         .is_empty());
-        assert_eq!(completed.load(Ordering::SeqCst), before + 1);
-        assert!(decoding.encodings.pumps.is_empty());
-        assert!(Arc::ptr_eq(&input, &decoding.input));
-        assert_eq!(
-            decoding.encoding_settings,
-            Some((
-                current.width,
-                current.height,
-                DegradationPreference::MaintainFramerate
-            ))
-        );
-        decoding.stop().await;
+        assert!(!controls[0].is_stopped() && !new_control.is_stopped());
+        // One reader leaves while the other still waits for the original IDR.
+        first.close();
+        decoder.encodings.retire_unused();
+        assert!(controls[0].is_stopped() && !new_control.is_stopped());
+        baseline.write(frame(3));
+        assert_eq!(second.recv().await.unwrap().bytes, vec![3]);
+        decoder.encodings.retire_unused();
+        assert!(new_control.is_stopped() && !decoder.encodings.has_derived());
+        decoder.stop().await;
         Ok(())
     }
 
@@ -544,7 +542,6 @@ pub(crate) mod tests {
             frames,
             input: baseline.subscribe(),
             format: formats,
-            encoding_settings: None,
             task: tokio::spawn(async move {
                 format.send_replace(Some(Format {
                     width: 640,

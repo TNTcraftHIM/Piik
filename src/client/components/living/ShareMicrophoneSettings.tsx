@@ -3,7 +3,7 @@ import { MicrophoneSettings } from "./MicrophoneSettings";
 import { SwitchItem } from "./primitives";
 import { useCopy } from "../../ui/copy";
 
-export type ShareMicrophoneSettingsProps = Omit<ComponentProps<typeof MicrophoneSettings>, "host"> & {
+export type ShareMicrophoneSettingsProps = Omit<ComponentProps<typeof MicrophoneSettings>, "host" | "sharing"> & {
   available: boolean;
   busy?: boolean;
   canDisable?: boolean;
@@ -17,11 +17,11 @@ export function ShareMicrophoneSettings({ available, enabled, disabled, busy, ca
   return <div className="lr-door-group lr-audio-settings">
     <SwitchItem checked={enabled} label={t("host.commentary.include")}
       hint={enabled ? "hint-microphone-off" : "hint-microphone-on"}
-      note={t(!available ? "host.commentary.unavailable" : enabled && roomMicrophone ? "host.commentary.duplicate" : "host.commentary.description")}
+      note={t(!available ? "host.commentary.unavailable" : "host.commentary.description")}
       disabled={!available || (disabled || busy) && !(enabled && canDisable)} onChange={onEnabled} />
     {enabled && roomMicrophone ? <small role="status">
       {t("host.commentary.duplicate")}
     </small> : null}
-    {enabled ? <MicrophoneSettings {...settings} host enabled={enabled} disabled={!available || disabled} /> : null}
+    {enabled ? <MicrophoneSettings {...settings} host sharing enabled={enabled} disabled={!available || disabled} /> : null}
   </div>;
 }

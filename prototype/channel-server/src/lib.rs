@@ -124,11 +124,21 @@ impl NativeService {
 
 pub fn ice_servers_from_environment() -> anyhow::Result<Vec<serde_json::Value>> {
     match std::env::var("PIIK_CHANNEL_ICE_SERVERS") {
-        Ok(value) => Ok(serde_json::from_str(&value)?),
+        Ok(value) => {
+            let servers: Vec<serde_json::Value> = serde_json::from_str(&value)
+                .map_err(|_| anyhow::anyhow!("PIIK_CHANNEL_ICE_SERVERS must be a JSON array"))?;
+            for server in &servers {
+                native::ice_server(server.clone())
+                    .map_err(|error| error.context("Invalid PIIK_CHANNEL_ICE_SERVERS entry"))?;
+            }
+            Ok(servers)
+        }
         Err(std::env::VarError::NotPresent) => Ok(vec![serde_json::json!({ "urls": [
             "stun:stun.cloudflare.com:3478", "stun:stun.miwifi.com:3478", "stun:stun.chat.bilibili.com:3478"
         ] })]),
-        Err(error) => Err(error.into()),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            anyhow::bail!("PIIK_CHANNEL_ICE_SERVERS must be valid Unicode")
+        }
     }
 }
 

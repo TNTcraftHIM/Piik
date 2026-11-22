@@ -143,10 +143,15 @@ async fn server_seeds_demo_policy_and_restores_later_admin_choice() {
     process.kill().await.unwrap();
 
     let invalid_data = temp.path().join("invalid");
-    for key in [POLICY_ENV, MODE_ENV, "PIIK_CHANNEL_SERVICE_TRANSIT"] {
+    for (key, value) in [
+        (POLICY_ENV, "public"),
+        (MODE_ENV, "public"),
+        ("PIIK_CHANNEL_SERVICE_TRANSIT", "public"),
+        ("PIIK_CHANNEL_ICE_SERVERS", "[false]"),
+    ] {
         let output = timeout(
             DEADLINE,
-            server(&invalid_data, &frontend).env(key, "public").output(),
+            server(&invalid_data, &frontend).env(key, value).output(),
         )
         .await
         .expect("Invalid configuration should exit")

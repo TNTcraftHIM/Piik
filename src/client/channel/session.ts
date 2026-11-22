@@ -1465,7 +1465,19 @@ export class ChannelSession {
     const retry = previous?.bindingId === bindingId && previous.content === content && previous.files.length === files.length
       && files.every((entry, index) => entry.id === previous.files[index].id && entry.file === previous.files[index].file) ? previous : undefined;
     const preparationSignal = preparation && signal ? AbortSignal.any([preparation.signal, signal]) : preparation?.signal ?? signal;
-    const prepared = retry?.files ?? (files.length ? await this.attachments.describe(files, preparationSignal, preparation?.progress) : []);
+    let prepared = retry?.files ?? [];
+    if (!retry && files.length) {
+      const lifetime = new AbortController();
+      const unsubscribe = this.subscribe(() => {
+        if (this.closed || this.view.sessionId !== sessionId) lifetime.abort(new Error("disconnected"));
+        else if (this.conversationBinding(roomId) !== bindingId) lifetime.abort(new Error("room_unavailable"));
+      });
+      const fileSignal = preparationSignal ? AbortSignal.any([preparationSignal, lifetime.signal]) : lifetime.signal;
+      try {
+        prepared = await this.attachments.describe(files, fileSignal, preparation?.progress);
+        fileSignal.throwIfAborted();
+      } finally { unsubscribe(); }
+    }
     if (this.closed || this.view.sessionId !== sessionId) throw new Error("disconnected");
     preparationSignal?.throwIfAborted();
     if (this.conversationBinding(roomId) !== bindingId) throw new Error("room_unavailable");

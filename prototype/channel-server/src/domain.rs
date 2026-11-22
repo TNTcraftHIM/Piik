@@ -425,7 +425,7 @@ async fn dispatch_request(state: &Domain, connection: Uuid, request: Request) {
     ) {
         return create_room(state, connection, request).await;
     }
-    let (events, close) = {
+    let (client, event) = {
         let mut hub = state.hub.lock().unwrap();
         if !matches!(
             request.command,
@@ -441,38 +441,33 @@ async fn dispatch_request(state: &Domain, connection: Uuid, request: Request) {
         {
             return;
         }
-        let effects = hub.authority.handle(connection, request, now());
-        let events = effects
-            .events
-            .into_iter()
-            .filter_map(|(connection, event)| {
-                hub.clients
-                    .get(&connection)
-                    .cloned()
-                    .map(|client| (client, event))
-            })
-            .collect::<Vec<_>>();
-        (events, effects.close)
-    };
-    // A history page produces more frames than the socket's 64-event queue.
-    // Backpressure belongs to this reader turn, never the shared authority lock.
-    for (client, event) in events {
-        let mut closing = client.close.subscribe();
-        if *closing.borrow() {
-            continue;
-        }
-        let sent = tokio::select! {
-            _ = closing.changed() => continue,
-            sent = tokio::time::timeout(Duration::from_secs(5), client.events.send(event)) => sent,
+        let mut effects = hub.authority.handle(connection, request, now());
+        // Queue authority snapshots in the turn that produced them. Otherwise a
+        // later turn can reach healthy readers while this one waits for a peer.
+        let ([(_, Event::Conversation { .. })], []) =
+            (effects.events.as_slice(), effects.close.as_slice())
+        else {
+            hub.apply(effects);
+            return;
         };
-        if !matches!(sent, Ok(Ok(()))) {
-            let _ = client.close.send(true);
-        }
+        let (target, event) = effects.events.pop().unwrap();
+        let Some(client) = hub.clients.get(&target).cloned() else {
+            return;
+        };
+        (client, event)
+    };
+    // History pages span more than one socket queue. Wait for the sole recipient.
+    let mut closing = client.close.subscribe();
+    if *closing.borrow() {
+        return;
     }
-    state.hub.lock().unwrap().apply(Effects {
-        events: Vec::new(),
-        close,
-    });
+    let sent = tokio::select! {
+        _ = closing.changed() => return,
+        sent = tokio::time::timeout(Duration::from_secs(5), client.events.send(event)) => sent,
+    };
+    if !matches!(sent, Ok(Ok(()))) {
+        let _ = client.close.send(true);
+    }
 }
 
 async fn session(mut socket: WebSocket, state: Domain) {

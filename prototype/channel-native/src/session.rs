@@ -2895,7 +2895,7 @@ async fn next_host_command(hosting: &mut Option<Hosting>) -> Option<HostCommand>
 }
 
 // Normalize the browser RTCIceServer shape into Native's typed configuration.
-fn ice_server(mut value: serde_json::Value) -> Result<crate::peer::IceServer> {
+pub fn ice_server(mut value: serde_json::Value) -> Result<crate::peer::IceServer> {
     let object = value
         .as_object_mut()
         .ok_or_else(|| anyhow!("invalid_ice_server"))?;

@@ -5510,21 +5510,28 @@ test.each(["timeout", "cancel"])("same draft retries its prepared attachment aft
   } finally { session.close(); }
 });
 
-test.each(["revoked access", "changed binding"] as const)("%s retires a file preparation before its late result can retain a send", async changed => {
+test.each(["revoked access", "changed binding", "closed session"] as const)("%s retires a file preparation before its late result can retain a send", async changed => {
   const { session, socket, peer } = await setup();
   const file = new File(["synthetic note"], "note.txt"), id = crypto.randomUUID();
   let finish!: (files: Awaited<ReturnType<ChannelAttachments["describe"]>>) => void;
-  vi.spyOn(session.attachments, "describe").mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const describe = vi.spyOn(session.attachments, "describe").mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
   const attempts = (session as unknown as { outgoingMessages: Map<string, unknown> }).outgoingMessages;
   try {
     const sending = session.sendMessage("first", "synthetic note", [{ id, file }]);
-    const rejected = expect(sending).rejects.toThrow("room_unavailable");
+    const code = changed === "closed session" ? "disconnected" : "room_unavailable";
+    const rejected = expect(sending).rejects.toThrow(code);
     const state = structuredClone(session.getSnapshot().state!);
     if (changed === "revoked access") {
       state.channel.rooms[0].authorized = false;
       delete state.channel.rooms[0].delivery;
-    } else state.channel.rooms[0].delivery!.bindingId = "replacement";
-    socket.receive({ type: "state", state });
+      socket.receive({ type: "state", state });
+    } else if (changed === "changed binding") {
+      state.channel.rooms[0].delivery!.bindingId = "replacement";
+      socket.receive({ type: "state", state });
+    } else {
+      session.close();
+    }
+    expect(describe.mock.calls[0][1]).toMatchObject({ aborted: true, reason: new Error(code) });
     expect(attempts.has("first")).toBe(false);
     finish([{ id, file, attachment: { id, name: file.name, size: file.size, mediaType: "application/octet-stream", sha256: "a".repeat(64) } }]);
     await rejected;

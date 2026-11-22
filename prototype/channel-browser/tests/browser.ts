@@ -39,7 +39,7 @@ window.runBrowserRoomCheck = async () => {
   const policy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Browser-owned room", icon: "future-room_7", creatorId: owner.userId,
     access: "public", hidden: false });
   let host = await BrowserRoomHost.open(database, policy);
-  check(host.summary().icon === "future-room_7", "unknown valid decorative key survives the shared policy and summary");
+  check((await host.summary()).icon === "future-room_7", "unknown valid decorative key survives the shared policy and summary");
   const dispatch = async (command: object, signal?: AbortSignal, target = host): Promise<Output> => target.dispatch({
     now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
     action: { type: "command", context: { connection, sessionId: session, requestId: crypto.randomUUID(), now: Date.now() }, command },
@@ -389,22 +389,38 @@ window.runBrowserRoomCheck = async () => {
     check(imageSaved.reply?.result.type === "done" && imageSaved.projection.summary.icon === "future-room_7" && !("picture" in imageSaved.projection.summary),
       "the room directory keeps only the preset after the picture is saved");
     const imageAbort = new AbortController(), originalRoomPut = IDBObjectStore.prototype.put;
+    await host.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
+      action: { type: "command", context: { connection, sessionId: peerSession, requestId: "guest-browse", now: Date.now() },
+        command: { type: "browse", roomId: host.roomId, active: true } } });
+    let pendingSummary: ReturnType<BrowserRoomHost["summary"]> | undefined;
+    let pendingReaders: Promise<string[]> | undefined;
+    let closing: Promise<void> | undefined;
     IDBObjectStore.prototype.put = function (...args) {
       const request = originalRoomPut.apply(this, args);
-      if (this.name === "rooms") request.addEventListener("success", () => imageAbort.abort(), { once: true });
+      if (this.name === "rooms") request.addEventListener("success", () => {
+        pendingSummary = host.summary();
+        pendingReaders = host.currentReaders();
+        closing = host.close();
+        imageAbort.abort();
+      }, { once: true });
       return request;
     };
     try {
-      check((await dispatch({ ...imageChange, picture: png }, imageAbort.signal)).reply?.result.code === "AbortError",
+      check((await dispatch({ ...imageChange, name: "Pending rename", picture: png, access: "private" }, imageAbort.signal)).reply?.result.code === "AbortError",
         "failed image replacement does not confirm after IndexedDB put success");
     } finally { IDBObjectStore.prototype.put = originalRoomPut; }
-    await host.close(); host = await BrowserRoomHost.open(database, policy); await bindHost();
+    check((await pendingSummary)?.name === imageChange.name && (await pendingReaders)?.includes(peerSession),
+      "reads queued during the failed write see the confirmed name and audience before close");
+    await closing;
+    const closedRead = await host.summary().catch((error: Error) => error.message);
+    check(closedRead === "closed", "a closed host rejects new reads");
+    host = await BrowserRoomHost.open(database, policy); await bindHost();
     const savedPolicyForHost = async () => (await BrowserRoomHost.storedPolicies(database))
       .map(value => JSON.parse(value)).find(policy => policy.id === host.roomId);
     check((await savedPolicyForHost()).picture === icon, "reopening preserves the committed picture after the replacement was aborted");
     await dispatch({ ...imageChange, picture: null });
     await host.close(); host = await BrowserRoomHost.open(database, policy); await bindHost();
-    check(host.summary().icon === "future-room_7" && !(await savedPolicyForHost()).picture, "clearing the picture keeps the room preset");
+    check((await host.summary()).icon === "future-room_7" && !(await savedPolicyForHost()).picture, "clearing the picture keeps the room preset");
     try { await prepareIdentityImage(new Blob(["not an image"])); throw new Error("invalid image accepted"); }
     catch (error) { check(String(error) !== "Error: invalid image accepted", "native decoder rejects unsupported image contents"); }
     const initial = await dispatch({ type: "browse", active: true, roomId: host.roomId });
@@ -421,7 +437,8 @@ window.runBrowserRoomCheck = async () => {
     const privatePolicy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Hidden room", icon: "future-room_7", picture: png,
       creatorId: owner.userId, access: "private", hidden: true });
     const privateHost = await BrowserRoomHost.open(database, privatePolicy);
-    check(JSON.parse(privatePolicy).picture === png && privateHost.summary().icon === "future-room_7" && !("picture" in privateHost.summary()),
+    const privateSummary = await privateHost.summary();
+    check(JSON.parse(privatePolicy).picture === png && privateSummary.icon === "future-room_7" && !("picture" in privateSummary),
       "WASM room creation retains the picture and returns only its decorative key in the summary");
     await privateHost.bind(bindingId);
     try {
@@ -599,7 +616,7 @@ window.runBrowserRoomCheck = async () => {
       check((await send("After owner transfer", "after-bind")).message.seq === 111, "stale message consumed no sequence");
     } finally { await previousHost.close(); await lateClaim.close(); if (host !== replacement) await replacement.close(); }
     await dispatch({ type: "browse", roomId: host.roomId, active: true });
-    check(host.currentReaders().length === 1 && host.currentReaders()[0] === session, "reading audience comes from shared room state");
+    check((await host.currentReaders()).join() === session, "reading audience comes from shared room state");
     const packet = peerPacket({ type: "chat", text: "Signed peer", nonce: "peer-send", attachments: [] });
     const fileControl = { type: "cancel", key: { roomId: host.roomId, messageSeq: 1, attachmentId: crypto.randomUUID() }, offset: 0, requestId: crypto.randomUUID() };
     const frame = JSON.parse(decode_control(encode_control(JSON.stringify({ kind: "file", body: fileControl }))));
@@ -649,7 +666,7 @@ window.runBrowserRoomCheck = async () => {
     } finally { await snapshot.close(); }
     host = await BrowserRoomHost.open(database, policy); await bindHost();
     const beforeImport = await history();
-    check(beforeImport.messages.at(-1)?.seq === 113 && host.summary().name === "After snapshot", "snapshot did not roll back live data");
+    check(beforeImport.messages.at(-1)?.seq === 113 && (await host.summary()).name === "After snapshot", "snapshot did not roll back live data");
 
     const staleSnapshot = await host.snapshot(), currentSnapshot = await host.snapshot();
     try {
@@ -741,7 +758,7 @@ window.runBrowserRoomCheck = async () => {
     try { await host.bind(crypto.randomUUID()); throw new Error("old writer rebound after restore"); }
     catch (error) { check(String(error).includes("room_host_conflict"), "old writer cannot reacquire restored policy with its prior stored binding"); }
     await host.close(); host = await BrowserRoomHost.open(database, policy); bindingId = crypto.randomUUID(); await bindHost();
-    check(host.summary().name === "New binding policy" && (await savedPolicyForHost()).picture === png && host.currentReaders().length === 0,
+    check((await host.summary()).name === "New binding policy" && (await savedPolicyForHost()).picture === png && (await host.currentReaders()).length === 0,
       "restore reopens stable policy with no previous live activity");
     check((await history()).messages.at(-1)?.seq === 112, "older restored history remains authoritative over the newer discarded sequence");
     check((await dispatch({ type: "browse", roomId: host.roomId, active: true })).projection.lastMessageSeq === 112,

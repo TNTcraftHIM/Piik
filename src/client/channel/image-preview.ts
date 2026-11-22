@@ -15,10 +15,11 @@ function encoded(bytes: Uint8Array): string {
 export async function prepareInlineImage(file: File, mediaType: string, budget: number, signal?: AbortSignal): Promise<ImageRendition | undefined> {
   signal?.throwIfAborted();
   if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(mediaType) || budget < 1) return undefined;
+  const image = new Image();
   const url = URL.createObjectURL(file.slice(0, file.size, mediaType));
   let preparedCanvas: HTMLCanvasElement | undefined;
-  try {
-    const image = new Image(); image.src = url;
+  const prepare = async () => {
+    image.src = url;
     await image.decode(); signal?.throwIfAborted();
     const canvas = preparedCanvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
@@ -42,10 +43,20 @@ export async function prepareInlineImage(file: File, mediaType: string, budget: 
         return { data: encoded(output), mediaType: blob.type as ImageRendition["mediaType"], original: false, width: canvas.width, height: canvas.height };
       }
     }
-  } catch (error) { if (signal?.aborted) throw error; }
+  };
+  let cancel!: () => void;
+  const cancelled = new Promise<never>((_, reject) => { cancel = () => reject(signal?.reason); });
+  signal?.addEventListener("abort", cancel, { once: true });
+  try {
+    return await Promise.race([prepare(), cancelled]);
+  } catch {
+    signal?.throwIfAborted();
+    return undefined;
+  }
   finally {
+    signal?.removeEventListener("abort", cancel);
+    if (signal?.aborted) image.removeAttribute("src");
     if (preparedCanvas) preparedCanvas.width = preparedCanvas.height = 0;
     URL.revokeObjectURL(url);
   }
-  return undefined;
 }
