@@ -9,6 +9,12 @@ This development example uses the generated WASM and site from the same source
 revision. The [versioning contract](../../../docs/standards/versioning.md#public-compatibility-promise)
 defines the future public API promise.
 
+For a separate Node project, run `npm run package:text-participant` from the
+repository root using the usual WASM tools and `cargo-about` 0.9.3.
+The command rebuilds the Core adapter and saves the generated tarball in
+`build/text-participant/` by default. Pass a different output directory after
+`--` when needed. See the [Node package quickstart](../node/README.md).
+
 The example supports these operations:
 
 | Consumer action | Existing owner and result |
@@ -165,7 +171,7 @@ nonces using the existing message validation. The client does not automatically
 retry, retain an outbox or replay messages on reconnect; callers own their retry
 decision and any persistence of the original send.
 
-`react(messageSeq, reaction)` adds one counted reaction to a confirmed message:
+`react(messageSeq, messageId, reaction)` adds one counted reaction to a confirmed message:
 
 ```ts
 const result = await participant.react(confirmed.seq, confirmed.id, 'heart');

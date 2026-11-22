@@ -16,6 +16,7 @@
     "build:web": "node scripts/build-channel-web.mjs",
     "package:app": "node scripts/assemble-app.mjs",
     "package:app-candidate": "node scripts/package-app-candidate.mjs",
+    "package:text-participant": "node prototype/channel-browser/build.mjs && node scripts/package-text-participant.mjs",
     "check:rust": "node scripts/check-rust.mjs",
     "check:container": "node scripts/check-container.mjs",
     "typecheck": "node prototype/channel-browser/build.mjs && tsc -b --pretty false && tsc -p prototype/channel-browser/tsconfig.json",

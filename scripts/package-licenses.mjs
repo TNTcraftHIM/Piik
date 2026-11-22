@@ -110,8 +110,8 @@ function rustNotices(repositoryRoot, manifest, targets, features = []) {
   return readFileSync(output, "utf8");
 }
 
-export function writeChannelWebLicenseNotices(repositoryRoot, outputFile) {
-  writeWebLicenseNotices(repositoryRoot, outputFile);
+export function writeChannelWebLicenseNotices(repositoryRoot, outputFile, packages) {
+  writeWebLicenseNotices(repositoryRoot, outputFile, packages);
   appendFileSync(outputFile, section("Browser Rust/WASM adapter",
     rustNotices(repositoryRoot, "prototype/channel-browser/Cargo.toml", ["wasm32-unknown-unknown"])));
 }
