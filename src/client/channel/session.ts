@@ -242,7 +242,7 @@ export class ChannelSession {
   private pendingWatchPlayers = new Map<string, WatchPlayer>();
   private watchPlayers = new Map<string, WatchPlayer>();
   private sourceSelections = new Map<string, SourceSelection>();
-  private local = new Map<string, { roomId: string; kind: "screen" | "voice"; stream: MediaStream; microphone?: MicrophoneInput; audio?: HostAudio; profile?: QualityProfile; camera?: boolean }>();
+  private local = new Map<string, { roomId: string; kind: "screen" | "voice"; stream: MediaStream; microphone?: MicrophoneInput; audio?: HostAudio; camera?: boolean }>();
   private conversation = new ChannelConversation({
     context: () => ({ sessionId: this.view.sessionId, state: this.view.state, connected: this.view.connection === "connected" }),
     host: roomId => this.hostedRooms.get(roomId)?.host,
@@ -2301,7 +2301,7 @@ export class ChannelSession {
   async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, audio, profile, codec, camera, source, publicationId }: { microphone?: MicrophoneInput; audio?: HostAudio; profile?: QualityProfile; codec?: BrowserVideoCodecPreference; camera?: boolean; source?: ScreenSource; publicationId?: string } = {}): Promise<string> {
     const id = publicationId ?? crypto.randomUUID();
     const sourceProfile = kind === "screen" ? profile ?? this.view.quality : undefined;
-    this.local.set(id, { roomId, kind, stream, microphone, audio, profile: sourceProfile, camera });
+    this.local.set(id, { roomId, kind, stream, microphone, audio, camera });
     this.media.setLocal(id, stream, sourceProfile, codec);
     try {
       if (microphone && !microphone.stream.active) throw new Error("microphone_unavailable");
@@ -2344,7 +2344,8 @@ export class ChannelSession {
     let share = this.screenShares.get(roomId);
     if (!share) {
       const local = [...this.local].find(([, capture]) => capture.kind === "screen" && capture.roomId === roomId);
-      share = { id: local?.[0] ?? crypto.randomUUID(), profile: local?.[1].profile ?? this.view.quality,
+      const id = local?.[0] ?? crypto.randomUUID();
+      share = { id, profile: this.media.localProfile(id) ?? this.view.quality,
         codecMode: this.view.videoCodecMode, encodingExecution: this.view.encodingExecution,
         volume: { level: 1, muted: false }, microphone: { deviceId: "", volume: 1, voiceProcessing: true } };
       this.screenShares.set(roomId, share);
@@ -2498,7 +2499,7 @@ export class ChannelSession {
           ?? this.view.state?.publications.find(publication => publication.id === share.id)?.paused ?? false;
         setMediaPaused(candidate, paused);
         if (mixed) setMediaPaused(mixed.sourceStream, paused);
-        this.local.set(share.id, { roomId, kind: "screen", stream: candidate, audio: mixed, profile: share.profile, camera: source === "camera" });
+        this.local.set(share.id, { roomId, kind: "screen", stream: candidate, audio: mixed, camera: source === "camera" });
         this.admittedPublications.add(share.id);
         this.media.setLocal(share.id, candidate, share.profile, codec, paused);
         this.observeScreen(share.id, candidate);
@@ -3261,7 +3262,6 @@ export class ChannelSession {
               throw error;
             }
             if (!current() || this.local.get(publicationId) !== local) throw new DOMException("Capture cancelled", "AbortError");
-            local.profile = profile;
           } else {
             const app = this.app;
             if (!app?.screens.has(publicationId)) throw new Error("capture_unavailable");
@@ -3320,12 +3320,9 @@ export class ChannelSession {
               if (!local.audio?.outputGainAvailable && (volume.level !== 1 || volume.muted)) throw new Error("source_audio_unavailable");
               local.audio?.setVolume(volume.muted ? 0 : volume.level);
               appliedVolume = volume;
-              if (local.profile?.maxAudioBitrate !== profile.maxAudioBitrate) {
-                await this.media.configureLocalAudio(publicationId, profile.maxAudioBitrate!);
-                if (!current() || this.local.get(publicationId) !== local) throw new DOMException("Capture cancelled", "AbortError");
-                local.profile = { ...local.profile!, maxAudioBitrate: profile.maxAudioBitrate };
-                appliedProfile = profile;
-              }
+              await this.media.configureLocalAudio(publicationId, profile.maxAudioBitrate!);
+              if (!current() || this.local.get(publicationId) !== local) throw new DOMException("Capture cancelled", "AbortError");
+              appliedProfile = profile;
             }
             const app = this.app;
             if (app?.hasSourceAudioControl(publicationId)) {

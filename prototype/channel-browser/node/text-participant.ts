@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { z } from 'zod';
-import init, { SessionSigner, verify_conversation, verify_reply } from '../pkg/piik_channel_browser.js';
+import init, { history_page_size, SessionSigner, verify_conversation, verify_reply } from '../pkg/piik_channel_browser.js';
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, roomSchema, roomSummarySchema, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary } from '../../../src/client/channel/protocol';
 await init({ module_or_path: readFileSync(new URL('../pkg/piik_channel_browser_bg.wasm', import.meta.url)) });
 type ConversationCommand = Extract<ChannelCommand, {
@@ -337,8 +337,12 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     }
     if (record.type === pending?.expects && (record.type === 'interaction_ready' || record.type === 'reaction' || record.type === 'message_deleted'))
       this.complete(reply.requestId, record);
-    if (record.type === 'history_message' && pending?.expects === 'history_end')
-      pending.records.push(record.message);
+    if (record.type === 'history_message' && pending?.expects === 'history_end') {
+      if (pending.records.length >= history_page_size())
+        this.complete(reply.requestId, undefined, new Error('incomplete_history'));
+      else
+        pending.records.push(record.message);
+    }
     if (record.type === 'history_end' && pending?.expects === 'history_end') {
       const messages = pending.records;
       if (record.count !== messages.length || record.hasMore && !messages.length)

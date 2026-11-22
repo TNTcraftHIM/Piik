@@ -4,6 +4,12 @@ import { useSurfaceDocument } from "../ui/panel-window";
 const empty: ReadonlyMap<string, number> = new Map();
 type ReadLevels = () => Promise<ReadonlyMap<string, number>>;
 
+function equalLevels(previous: ReadonlyMap<string, number>, next: ReadonlyMap<string, number>): boolean {
+  if (previous.size !== next.size) return false;
+  for (const [id, level] of next) if (previous.get(id) !== level) return false;
+  return true;
+}
+
 /** Meter observations belong to the visible surface, not the media lifetime. */
 export function useVoiceLevels(read: ReadLevels, enabled: boolean, displayDocument?: Document | null): ReadonlyMap<string, number> {
   const surface = useSurfaceDocument();
@@ -12,15 +18,18 @@ export function useVoiceLevels(read: ReadLevels, enabled: boolean, displayDocume
   useEffect(() => {
     const view = owner?.defaultView;
     if (!enabled || !owner || !view) return;
+    const publish = (levels: ReadonlyMap<string, number>) => {
+      setSample(previous => previous.read === read && equalLevels(previous.levels, levels) ? previous : { read, levels });
+    };
     let stop = () => {};
     const refresh = () => {
       stop();
-      setSample({ read, levels: empty });
+      publish(empty);
       if (owner.visibilityState !== "visible") return;
       let active = true, timer: number;
       const update = async () => {
-        try { const levels = await read(); if (active) setSample({ read, levels }); }
-        catch { if (active) setSample({ read, levels: empty }); }
+        try { const levels = await read(); if (active) publish(levels); }
+        catch { if (active) publish(empty); }
         finally { if (active) timer = view.setTimeout(() => void update(), 150); }
       };
       stop = () => { active = false; view.clearTimeout(timer); };

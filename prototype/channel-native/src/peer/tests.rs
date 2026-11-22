@@ -560,6 +560,7 @@ async fn close_cancels_a_full_command_output() -> Result<()> {
             }],
             vec![],
             vec![],
+            vec![],
         )
         .await?;
     tokio::time::sleep(Duration::from_millis(150)).await;

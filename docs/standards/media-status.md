@@ -52,16 +52,19 @@ over a reused comic's default; localized tooltips retain that context.
   the known failure boundary: unknown/session/settings failures must not default
   to capture advice, and retiring a share must retain a known App control or
   media-connection failure instead of replacing it with a generic stop notice.
-- Host couch: each Viewer has one round lamp. Grey means present without a media
-  connection, blue means connecting, green means a committed picture or voice
-  route, and amber means a recent picture receive freeze. `participantConnection`
-  projects the server's confirmed picture/voice facts for both the lamp and
-  topology; microphone capture and sharing controls do not own connectivity.
+- On the 2.x Host couch, each Viewer has one round lamp. Grey means present
+  without a media connection, blue means connecting, green means a committed
+  picture or voice route, and amber means a recent picture receive freeze.
+  `participantConnection` projects the server's confirmed picture/voice facts for
+  both the lamp and topology. Microphone capture and sharing controls do not
+  own connectivity.
   The Host's own pawn has no duplicate lamp. `deriveParticipantStatus` supplies
   both the couch and Host overview; neither stores another copy of the status.
-- Viewer couch: pawns have no round lamps. While awaiting media readiness a
-  pawn's body breathes gently; it becomes still when ready. This expresses the
-  same roster fact without claiming to know other Viewers' quality.
+- On the 2.x Viewer couch, pawns have no round lamps. While awaiting media
+  readiness, a pawn's body breathes gently and becomes still when ready. The
+  motion expresses the scope of the roster evidence, which is readiness.
+- The 3.0 couch shows room presence and activities.
+  [3.0 Room Workspace](./visual-language.md#30-room-workspace)
 - Integrated pawn accessories describe participation: headphones mean voice
   membership, worn on the head while listening and around the neck when listening
   is paused. The microphone boom extends when input is on and folds up when muted.
@@ -70,8 +73,8 @@ over a reused comic's default; localized tooltips retain that context.
   existing pawn motion. Their facts come from voice membership/publication,
   local listening and native grants; leaving an activity removes its marker.
   Pausing listening does not mute the
-  microphone or change forwarding or routes. The route lamp remains separate;
-  accessory positions do not assert connection health or speaking activity.
+  microphone or change forwarding or routes. The 2.x route lamp remains separate.
+  Accessory positions do not assert connection health or speaking activity.
   When measured voice levels are available, the microphone boom may show that
   activity. Use the speaking endpoint's current room stream; forwarding a voice
   or sharing its user identity does not make it the local microphone.
@@ -115,7 +118,7 @@ over a reused comic's default; localized tooltips retain that context.
   problem. Losing focus alone never means waiting for media.
 - Recovery: every projection is recomputed from current facts. A warning requires
   current evidence; an expired or mismatched sample becomes unknown, not healthy
-  or disconnected. A ready participant can therefore return to a green readiness
+  or disconnected. In 2.x, a ready participant can return to a green readiness
   lamp without claiming that its quality has recovered. No warning latch or
   additional timer is needed.
 
@@ -130,14 +133,14 @@ resolution or bitrate alone does not prove poor quality; a static screen or a
 small source can legitimately need little data. Do not introduce UI thresholds
 or a new quality score.
 
-Current roster messages expose committed `mediaReady` to both roles, not a
+2.x roster messages expose committed `mediaReady` to both roles, not a
 complete remote quality/failure state. Missing readiness means waiting or
 recovery, not confirmed disconnection; departed participants leave the roster.
 Viewer receive evidence is shared with its parent and the Host, not with every
 other Viewer. No additional remote-quality broadcast is needed.
 
-The Host's amber participant lamp requires an active share, committed readiness,
-fresh receive evidence for the current upstream, and a positive
+The 2.x Host's amber participant lamp requires an active share, committed
+readiness, fresh receive evidence for the current upstream, and a positive
 `freezeCountDelta` or `freezeDurationMsDelta`. The existing evidence-expiry path
 clears stale warnings. Hidden, paused and other diagnostic-only windows provide
 no freeze proof; low FPS, resolution or bitrate is not a substitute.

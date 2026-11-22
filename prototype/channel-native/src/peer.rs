@@ -556,11 +556,6 @@ impl Drop for CaptureLease {
     }
 }
 enum Input {
-    WatchPlans(
-        Vec<piik_channel_core::watch_delivery::WatchBytePlan>,
-        Vec<(Uuid, Vec<String>)>,
-        oneshot::Sender<()>,
-    ),
     RegisterWatchReader(
         Uuid,
         Arc<dyn crate::watch::Reader>,
@@ -572,6 +567,7 @@ enum Input {
         Vec<PairInfo>,
         Vec<PublicationInfo>,
         Vec<FilePlan>,
+        Vec<piik_channel_core::watch_delivery::WatchBytePlan>,
         oneshot::Sender<()>,
     ),
     Signal(Uuid, Signal, oneshot::Sender<Result<()>>),
@@ -920,10 +916,6 @@ impl NativePeers {
                         Turn::Input(Input::RegisterWatchReader(resource, reader, done)) => {
                             let _ = done.send(d.watches.register(resource, reader).await);
                         }
-                        Turn::Input(Input::WatchPlans(plans, room_peers, done)) => {
-                            d.watches.update(plans, room_peers).await;
-                            let _ = done.send(());
-                        }
                         Turn::Input(Input::RevokeWatchReader(resource)) => {
                             d.watches.revoke(resource).await;
                         }
@@ -932,7 +924,11 @@ impl NativePeers {
                                 d.send_input(outgoing).await;
                             }
                         }
-                        Turn::Input(Input::Update(plans, info, files, done)) => {
+                        Turn::Input(Input::Update(plans, info, files, watch_bytes, done)) => {
+                            let room_peers = plans.iter()
+                                .map(|pair| (pair.peer_id, pair.rooms.clone()))
+                                .collect();
+                            d.watches.update(watch_bytes, room_peers).await;
                             d.update(plans, info, files).await;
                             let _ = done.send(());
                         }
@@ -1097,31 +1093,13 @@ impl NativePeers {
         pairs: Vec<PairInfo>,
         publications: Vec<PublicationInfo>,
         files: Vec<FilePlan>,
+        watch_bytes: Vec<piik_channel_core::watch_delivery::WatchBytePlan>,
     ) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         self.input
-            .send(Input::Update(pairs, publications, files, tx))
+            .send(Input::Update(pairs, publications, files, watch_bytes, tx))
             .await?;
         Ok(rx.await?)
-    }
-    pub async fn update_watch(
-        &self,
-        plans: Vec<piik_channel_core::watch_delivery::WatchBytePlan>,
-        pairs: &[PairInfo],
-    ) -> Result<()> {
-        let (done, completed) = oneshot::channel();
-        self.input
-            .send(Input::WatchPlans(
-                plans,
-                pairs
-                    .iter()
-                    .map(|pair| (pair.peer_id, pair.rooms.clone()))
-                    .collect(),
-                done,
-            ))
-            .await?;
-        completed.await?;
-        Ok(())
     }
     pub async fn register_watch_reader(
         &self,

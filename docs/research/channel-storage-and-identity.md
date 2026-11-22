@@ -138,13 +138,13 @@ there is no separate offline push or global mention-count service.
 Send time and author belong to the message rather than a second copy on every
 attachment. A text message can contain attachments, and an attachment message
 can have a caption. Store descriptions inside the confirmed message, rather
-than creating an upload/pending/commit lifecycle for metadata. The room owner
+than creating an upload/pending/commit lifecycle for metadata. The room writer
 saves the message transactionally and restores it on ordinary restart.
 Serving availability is derived from current
 readable copies, not a permanent `available` flag on the saved message.
 
 All sixteen reactions count accepted actions, including repeated actions by the
-same person. The room owner confirms each action once and emits its live effect
+same person. The room writer confirms each action once and emits its live effect
 after the owning turn commits. For a message reaction the writer checks the
 selected message's room sequence and stable ID. Message totals are saved with the message;
 history restores totals without replaying effects. Picture totals belong to the
@@ -165,7 +165,7 @@ Keep one confirmed order at the actual room runtime:
    actual room host with a stable send identity.
    The authenticated user is its author; the carrier's identity or a nickname cannot
    replace that author.
-2. The room owner authorizes the command and commits the message, its order and
+2. The room writer authorizes the command and commits the message, its order and
    retry identity in one transaction. Failed storage means the send is not confirmed.
 3. Return the host-signed confirmed message identity and order through the domain
    WebSocket, and send confirmed changes to the room's current readers over that
@@ -173,10 +173,10 @@ Keep one confirmed order at the actual room runtime:
 4. Participants replace their pending local echo with that result and cache only
    confirmed history. An unconfirmed send stays separate from readable history.
 
-Confirmation means the room owner saved the message, not that every participant
-received it or that its attachment was copied. The domain only forwards live
-packets: it stores no conversation, issues no second confirmation and cannot
-serve an offline host's history. Its operator can see the forwarded plaintext;
+Confirmation records a successful save by the room writer. Delivery to each
+participant and attachment copying are independent of confirmation. The domain
+forwards live packets without storing conversation or issuing a second
+confirmation. Its operator can see the forwarded plaintext;
 the signing boundary authenticates the host, not confidentiality from the domain.
 Keep retry association with the
 retained message rather than a permanent second ledger. Automatic retries stay
@@ -198,9 +198,9 @@ serializes room operations through the transaction's
 not an individual write's success. Failure ends that operation without advancing
 the confirmed order or blocking the next command.
 
-Participants synchronize from the room owner through the existing domain WebSocket.
-No peer connection is needed to read or send conversation. The domain forwards
-the authenticated response; it does not confirm it.
+Participants synchronize from the room writer through the existing domain
+WebSocket. No peer connection is needed to read or send conversation. The domain
+forwards the authenticated response; it does not confirm it.
 Load a bounded recent window at a fixed history boundary, then continue with
 confirmed changes after that boundary. Older pages are requested when needed.
 Each page is limited to 50 records and 256 KiB of serialized message data,
@@ -215,9 +215,9 @@ illustrates separating recent history, older pagination and subsequent events.
 
 Refresh the latest reading window when its domain connection or room-host binding recovers or changes,
 including when the room-host binding stays the same. A reader browsing older
-history keeps that selected window. Refresh from the room owner's current result,
+history keeps that selected window. Refresh from the room writer's current result,
 including removals. Participants keep a bounded reading window in page memory;
-reloading or re-entering retrieves it from the room owner. Browser room authority
+reloading or re-entering retrieves it from the room writer. Browser room authority
 and retained attachments use their existing IndexedDB stores; localStorage remains
 for small preferences. Original author departure does not erase
 confirmed messages.
@@ -230,18 +230,17 @@ effects use live confirmed text, with a bounded single-line summary for long
 messages; loading history never replays effects or alters the stored message.
 
 The current room-host binding scopes history requests and live replies. A fresh
-binding replaces the previous reading window with the owner's current result,
+binding replaces the previous reading window with the writer's current result,
 even when its newest message is older or the history is empty. Only live arrivals
 from that binding can extend the refreshed window. Restore stops the previous
 writer and registers the same room identity with a fresh binding; no separate
 backup generation is needed. The shared room core owns synchronization identities
 and cursors; storage adapters supply atomic reads and writes.
 
-Do not silently evict the owner's confirmed history as if it were a participant
+Do not silently evict the room's confirmed history as if it were a participant
 cache. If storage cannot accept a message, report that failed send and preserve
 existing data. Participants may reclaim their reading cache independently.
-History is read from its actual room owner; no peer history replica or domain
-history store is needed. The room remains the single writer and confirmation owner.
+The bound room writer is the sole source of live history and confirmations.
 
 ## File Sources And Reachability
 
@@ -257,7 +256,7 @@ sender has no permanent priority over other usable copies.
 
 A holder announcement is a claim of availability, not evidence of correct bytes.
 The original sender supplies the content identity through its authenticated send;
-the room owner confirms it with the attachment record. The receiver authenticates
+the room writer confirms it with the attachment record. The receiver authenticates
 that record through the shared room-control boundary, independently of the holder
 or intermediate relays. A provider cannot replace the expected size, digest or
 verification data. Changing file contents creates a new attachment, not an update

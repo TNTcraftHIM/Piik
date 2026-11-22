@@ -907,6 +907,39 @@ fn projection_capture(result: oneshot::Sender<Result<CaptureLease, String>>) -> 
 }
 
 #[tokio::test]
+async fn capture_confirmation_returns_shared_signal_failure_to_carrier() {
+    let (mut session, mut socket, _remote, state) = capture_projection_session().await;
+    session.state(state, &mut socket).await.unwrap();
+    let (result, response) = oneshot::channel();
+    let mut request = projection_capture(result);
+    request.replaces = Some(Uuid::new_v4());
+    session.prepare_capture(request, &mut socket).await.unwrap();
+    let id = session.pending_captures.keys().next().unwrap().clone();
+    let live = session.live.as_mut().unwrap();
+    let pair_id = Uuid::new_v4();
+    live.pairs.insert(pair_id);
+    let (send, commands) = mpsc::channel(1);
+    let _driver_output = std::mem::replace(&mut live.commands, commands);
+    send.send(NativeEvent::Command(Command::Signal {
+        pair_id,
+        payload: serde_json::from_value(json!({"resync":true})).unwrap(),
+    })).await.unwrap();
+    let mut failed = Box::pin(futures_util::sink::unfold((), |(), message: Message| async move {
+        let frame: serde_json::Value = serde_json::from_str(message.to_text().unwrap()).unwrap();
+        assert_eq!(frame["type"], "signal");
+        Err::<(), _>(tokio_tungstenite::tungstenite::Error::ConnectionClosed)
+    }));
+    let outcome = session.event(Event::RoomReply {
+        room_id: "target".into(),
+        request_id: Some(id),
+        result: RoomResult::Done,
+    }, &mut failed).await;
+    assert!(outcome.unwrap_err().is::<tokio_tungstenite::tungstenite::Error>());
+    assert!(matches!(response.await, Ok(Err(code)) if code == "disconnected"));
+    session.release().await.unwrap();
+}
+
+#[tokio::test]
 async fn capture_prepare_waits_for_room_authority_before_platform_preparation() {
     tokio::time::timeout(Duration::from_secs(10), async {
         let (mut session, mut socket, mut remote, state) = capture_projection_session().await;

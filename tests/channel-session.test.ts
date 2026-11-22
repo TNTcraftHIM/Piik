@@ -2665,15 +2665,15 @@ test("Browser source replacement keeps its publication, rejects only the candida
   const old = remoteTrack("video"), expired = remoteTrack("video"), next = remoteTrack("video"), cancelled = remoteTrack("video"), stopped = remoteTrack("video");
   const oldStream = remoteStream("old", [old]), nextStream = remoteStream("next", [next]);
   let grant!: (stream: MediaStream) => void;
-  const getDisplayMedia = vi.fn().mockResolvedValueOnce(oldStream)
+  const getDisplayMedia = vi.fn()
     .mockRejectedValueOnce(new DOMException("Declined", "NotAllowedError"))
     .mockResolvedValueOnce(remoteStream("expired", [expired]))
     .mockResolvedValueOnce(nextStream)
     .mockImplementation(() => new Promise<MediaStream>(resolve => { grant = resolve; }));
   vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia } });
   try {
-    const initial = session.startScreen("first");
-    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const profile = { ...QUALITY_PROFILES["720p30"], maxAudioBitrate: 96_000 };
+    const initial = session.publish("screen", "first", oldStream, { profile });
     const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; source: ScreenSource; videoSettings: VideoSettings };
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await initial;
@@ -2705,6 +2705,8 @@ test("Browser source replacement keeps its publication, rejects only the candida
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await ackSourceUpdate(socket);
     await replacing;
+    expect(session.screenQuality(publication.id)?.applied).toEqual(profile);
+    expect(socket.sent.at(-1)?.publication).toMatchObject({ id: publication.id, videoSettings: screenVideoSettings(profile) });
     expect(session.getSnapshot().streams.get(publication.id)).toBe(nextStream);
     expect(socket.sent.filter(command => command.type === "publish")).toHaveLength(2);
     expect(old.stop).toHaveBeenCalledOnce();

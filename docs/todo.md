@@ -314,8 +314,8 @@ the feedback period; they do not delay that delivery.
   Keep mature congestion control and accept quality reduction under sustained
   high loss; concrete accounting/recovery defects remain ordinary bug fixes.
   [Evidence](./research/node-local-media-design.md#persistent-loss-with-low-source-utilization).
-- [ ] **Multiple remote-control screens.** Deferred on 2026-10-17. Keep one
-  shared source; Viewer screen switching and simultaneous screens are later work.
+- [ ] **2.x remote control across multiple screens.** Deferred on 2026-10-17.
+  Keep remote input bound to one process-wide source.
 - [ ] **32-bit Windows/Linux Apps.** Deferred on 2026-10-02. No package or
   website option is planned.
 - [ ] **Windows ARM64 App.** Deferred on 2026-10-03. Keep Windows downloads x64-only.

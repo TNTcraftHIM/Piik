@@ -40,7 +40,7 @@ use tokio::{
 };
 use tokio_tungstenite::{
     connect_async_tls_with_config,
-    tungstenite::{client::IntoClientRequest, protocol::WebSocketConfig, Message},
+    tungstenite::{client::IntoClientRequest, protocol::WebSocketConfig, Error as SocketError, Message},
     MaybeTlsStream, WebSocketStream,
 };
 use uuid::Uuid;
@@ -109,6 +109,21 @@ fn new_signer() -> Result<SessionSigner> {
     getrandom::fill(&mut seed)
         .map_err(|error| anyhow!("session key generation failed: {error}"))?;
     Ok(SessionSigner::from_seed(seed))
+}
+
+// A peer request can drain signaling for other operations while it waits.
+// The caller gets the normal disconnect result; the carrier owns recovery.
+fn reply_to_request<T>(reply: oneshot::Sender<Result<T, String>>, outcome: Result<T>) -> Result<()> {
+    match outcome {
+        Err(error) if error.is::<SocketError>() => {
+            let _ = reply.send(Err("disconnected".into()));
+            Err(error)
+        }
+        result => {
+            let _ = reply.send(result.map_err(|error| error.to_string()));
+            Ok(())
+        }
+    }
 }
 
 struct RoomTurns {
@@ -965,9 +980,9 @@ impl Session {
                                 HostCommand::RelayCapacity { request, result } => self.relay_capacity(request, result, socket).await?,
                                 HostCommand::RegisterWatchReader { resource_id, reader, result } => {
                                     let registered = if let Some(live) = &mut self.live {
-                                        await_peer(live.peers.register_watch_reader(resource_id, reader), &mut live.commands, &live.pairs, &mut live.room, &live.peers, socket).await.map(|retired| WatchReaderRegistration { session_id: live.session, retired }).map_err(|error| error.to_string())
-                                    } else { Err("hosting_unavailable".into()) };
-                                    let _ = result.send(registered);
+                                        await_peer(live.peers.register_watch_reader(resource_id, reader), &mut live.commands, &live.pairs, &mut live.room, &live.peers, socket).await.map(|retired| WatchReaderRegistration { session_id: live.session, retired })
+                                    } else { Err(anyhow!("hosting_unavailable")) };
+                                    reply_to_request(result, registered)?;
                                 },
                                 HostCommand::RevokeWatchReader { resource_id } => {
                                     if let Some(live) = &self.live { live.peers.revoke_watch_reader(resource_id).await?; }
@@ -976,8 +991,8 @@ impl Session {
                                     let _ = result.send(self.hosting_description());
                                 },
                                 HostCommand::ConnectionMetrics { room_id, publication_id, result } => {
-                                    let measured = self.connection_metrics(&room_id, publication_id, socket).await.map_err(|error| error.to_string());
-                                    let _ = result.send(measured);
+                                    let measured = self.connection_metrics(&room_id, publication_id, socket).await;
+                                    reply_to_request(result, measured)?;
                                 },
                                 HostCommand::DeleteRetired { id, creator, result } => {
                                     let removed = self.delete_retired_room(&id, creator).is_ok();
@@ -1046,10 +1061,7 @@ impl Session {
                 }
                 Step::Work(Ok(false)) => return Ok(false),
                 Step::Work(Err(error)) => {
-                    if error
-                        .downcast_ref::<tokio_tungstenite::tungstenite::Error>()
-                        .is_some()
-                    {
+                    if error.is::<SocketError>() {
                         return Ok(false);
                     }
                     return Err(error);
@@ -1099,8 +1111,7 @@ impl Session {
             })
         }
         .await;
-        let _ = result.send(response.map_err(|e| e.to_string()));
-        Ok(())
+        reply_to_request(result, response)
     }
     async fn connection_metrics(
         &mut self,
@@ -1860,10 +1871,8 @@ impl Session {
             &live.peers,
             socket,
         )
-        .await
-        .map_err(|error| error.to_string());
-        let _ = request.result.send(result);
-        Ok(())
+        .await;
+        reply_to_request(request.result, result)
     }
 
     async fn prepare_source(
@@ -1908,10 +1917,8 @@ impl Session {
             &live.peers,
             socket,
         )
-        .await
-        .map_err(|e| e.to_string());
-        let _ = request.result.send(result);
-        Ok(())
+        .await;
+        reply_to_request(request.result, result)
     }
 
     async fn commit_capture(
@@ -2218,7 +2225,7 @@ impl Session {
         )
         .await;
         let source = result.as_ref().ok().and_then(|input| input.source.clone());
-        let _ = request.result.send(result.map_err(|e| e.to_string()));
+        reply_to_request(request.result, result)?;
         // The producer is committed. Metadata follows the normal room projection;
         // reporting failure must never roll back or cancel that producer.
         if let Some(source) = source {
@@ -2766,17 +2773,8 @@ impl Session {
                 }
             }
             await_peer(
-                live.peers.update_watch(state.watch_bytes, &state.pairs),
-                &mut live.commands,
-                &live.pairs,
-                &mut live.room,
-                &live.peers,
-                socket,
-            )
-            .await?;
-            await_peer(
                 live.peers
-                    .update(state.pairs, state.publications, state.files),
+                    .update(state.pairs, state.publications, state.files, state.watch_bytes),
                 &mut live.commands,
                 &live.pairs,
                 &mut live.room,

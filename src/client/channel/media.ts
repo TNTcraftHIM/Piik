@@ -92,6 +92,10 @@ export class ChannelMedia {
     this.refresh();
   }
 
+  localProfile(id: string): QualityProfile | undefined {
+    return this.local.get(id)?.profile;
+  }
+
   setLocalPaused(id: string, paused: boolean): void {
     const local = this.local.get(id);
     if (!local) return;
@@ -128,6 +132,7 @@ export class ChannelMedia {
   async configureLocalAudio(id: string, bitrate: number): Promise<void> {
     const local = this.local.get(id);
     if (!local?.profile) throw new Error("capture_unavailable");
+    if (local.profile.maxAudioBitrate === bitrate) return;
     const previous = screenAudioBitrate(local.profile.maxAudioBitrate);
     const current = () => this.local.get(id) === local;
     const senders = (value: number) => [...this.peers.values()].flatMap(peer => peer.plan.outgoing

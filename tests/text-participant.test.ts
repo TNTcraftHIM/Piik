@@ -177,7 +177,12 @@ test('text pagination, replies and mentions use signed Core commands and host co
   const signer = new rust.SessionSigner(randomBytes(32));
   const room = new rust.RoomHost(rust.create_room_policy(JSON.stringify({ id: 'room', name: 'Room', icon: 'couch',
     creatorId: owner, access: 'public', hidden: false, password: null })));
-  const messages = [1, 2, 3].map(seq => ({ id: randomUUID(), seq, userId: owner, text: `message ${seq}`, time: seq, attachments: [] }));
+  const pageSize = rust.history_page_size();
+  const messages = Array.from({ length: pageSize + 1 }, (_, index) => {
+    const seq = index + 1;
+    return { id: randomUUID(), seq, userId: owner, text: `message ${seq}`, time: seq, attachments: [] };
+  });
+  const overflowBefore = messages.length + 1;
   let malformedPage: 'count' | 'empty-more' | undefined;
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await once(server, 'listening');
@@ -205,22 +210,24 @@ test('text pagination, replies and mentions use signed Core commands and host co
           const work = result.Ok.value;
           if (work.type === 'read') {
             const page = new rust.HistoryPage();
-            for (const message of messages.filter(message => work.before == null || message.seq < work.before).slice(-2).reverse())
+            for (const message of messages.filter(message => work.before == null || message.seq < work.before).slice(-pageSize).reverse())
               page.push(JSON.stringify({ ...message, reactions: { revision: 0, counts: {} } }));
             result = { Ok: { type: 'history', value: JSON.parse(page.finish(1n, work.before == null ? undefined : BigInt(work.before))) } };
           } else {
             try {
               const confirmation = JSON.parse(rust.prepare_confirmation(JSON.stringify(work.draft), JSON.stringify({ type: 'new',
-                lastSeq: 3, reply: messages.find(message => message.seq === work.draft.reply?.seq) })));
+                lastSeq: messages.length, reply: messages.find(message => message.seq === work.draft.reply?.seq) })));
               result = { Ok: { type: 'history', value: confirmation } };
             } catch (error) { result = { Err: String(error) }; }
           }
         }
         const { replies } = JSON.parse(room.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)));
         for (const reply of replies) {
-          if (reply.record.type === 'history_end' && malformedPage) {
-            if (malformedPage === 'count') reply.record.count++;
-            else reply.record.hasMore = true;
+          if (reply.record.type === 'history_end') {
+            if (request.command.before === overflowBefore)
+              reply.record = { type: 'history_message', message: messages[0] };
+            else if (malformedPage === 'count') reply.record.count++;
+            else if (malformedPage === 'empty-more') reply.record.hasMore = true;
           }
           socket.send(JSON.stringify({ type: 'conversation', packet: JSON.parse(signer.sign(host, JSON.stringify(reply))) }));
         }
@@ -229,9 +236,10 @@ test('text pagination, replies and mentions use signed Core commands and host co
   }));
   try {
     await client.connect();
-    let page = await client.history();
+    const latestPage = await client.history();
+    let page = latestPage;
     expect(page).toMatchObject({ hasMore: true, oldestSeq: 1, before: null });
-    expect(page.messages.map(message => message.seq)).toEqual([2, 3]);
+    expect(page.messages.map(message => message.seq)).toEqual(messages.slice(1).map(message => message.seq));
     const sequences = page.messages.map(message => message.seq);
     let pages = 1;
     while (page.hasMore) {
@@ -240,7 +248,7 @@ test('text pagination, replies and mentions use signed Core commands and host co
       pages++;
     }
     expect(pages).toBe(2);
-    expect(sequences).toEqual([1, 2, 3]);
+    expect(sequences).toEqual(messages.map(message => message.seq));
     expect(new Set(sequences).size).toBe(sequences.length);
     expect(page).toMatchObject({ hasMore: false, oldestSeq: 1, before: 2 });
     expect(await client.history(1)).toEqual({ messages: [], hasMore: false, oldestSeq: 1, before: 1 });
@@ -255,8 +263,11 @@ test('text pagination, replies and mentions use signed Core commands and host co
     expect(received[3].nonce).toBe(options.nonce);
     await expect(client.chat('plain', { mentions: [{ userId: owner, start: 0, end: 5 }] })).rejects.toThrow('invalid_mentions');
     await expect(client.chat('reply', { reply: { seq: 99, messageId: randomUUID(), notify: false } })).rejects.toThrow('message_unavailable');
+    const oversized = client.history(overflowBefore).catch(error => error as Error);
+    expect(await client.history()).toEqual(latestPage);
+    expect(await Promise.race([oversized, Promise.resolve('still pending')])).toMatchObject({ message: 'incomplete_history' });
     malformedPage = 'count';
-    await expect(client.history()).rejects.toThrow('incomplete_history');
+    await expect(client.history(2)).rejects.toThrow('incomplete_history');
     malformedPage = 'empty-more';
     await expect(client.history(1)).rejects.toThrow('incomplete_history');
     expect(live).toEqual([]);
