@@ -76,6 +76,7 @@ export class BrowserVoiceEndpoint {
     const connections = [...this.connections.values()].filter(connection => !connection.config.pending && connection.pc.connectionState === "connected");
     await Promise.all(connections.map(async connection => {
       const received = [...this.received].filter(([, binding]) => binding.connectionId === connection.config.connectionId);
+      if (received.length === 0) return;
       const stats = await this.wait(connection, () => connection.pc.getStats()).catch(error => {
         if (this.current(connection)) throw error;
         return null;

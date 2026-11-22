@@ -79,7 +79,7 @@ interface PendingRequest<T = unknown> {
   schema: z.ZodType<T>;
   resolve: (value: T) => void;
   reject: (error: Error) => void;
-  timer: number | null;
+  retire: () => void;
 }
 
 export interface NativeShareInput {
@@ -697,9 +697,9 @@ export class NativeClient {
     );
   }
 
-  async microphones(): Promise<{ id: string; label: string }[]> {
+  async microphones(signal?: AbortSignal): Promise<{ id: string; label: string }[]> {
     if (!this.health.nativeMedia.microphone) throw new Error("Piik App microphone is unavailable");
-    return (await this.request("list-microphones", {}, microphoneListResponseSchema)).devices;
+    return (await this.request("list-microphones", {}, microphoneListResponseSchema, undefined, undefined, signal)).devices;
   }
 
   async setMicrophone(shareId: string, enabled: boolean, volume: number, deviceId = ""): Promise<void> {
@@ -788,7 +788,9 @@ export class NativeClient {
     schema: z.ZodType<T>,
     timeoutMs: number | null = REQUEST_TIMEOUT_MS,
     onRequested?: () => void,
+    signal?: AbortSignal,
   ): Promise<T> {
+    if (signal?.aborted) return Promise.reject(signal.reason);
     if (this.closed || this.socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(new NativeRequestError("unavailable", type));
     }
@@ -796,11 +798,20 @@ export class NativeClient {
     const began = performance.now();
     const details = { type, requestId: id };
     return new Promise<T>((resolveRequest, rejectRequest) => {
+      const retire = () => {
+        this.pending.delete(id);
+        if (timer !== null) window.clearTimeout(timer);
+        signal?.removeEventListener("abort", abort);
+      };
+      const abort = () => {
+        retire();
+        rejectRequest(signal?.reason);
+      };
       const timer =
         timeoutMs === null
           ? null
           : window.setTimeout(() => {
-              this.pending.delete(id);
+              retire();
               debugEvent("native", "request-timeout", { ...details, durationMs: performance.now() - began });
               rejectRequest(new NativeRequestError("timeout", type));
             }, timeoutMs);
@@ -815,8 +826,9 @@ export class NativeClient {
           debugError("native", "request-failed", error, { ...details, durationMs: performance.now() - began });
           rejectRequest(error);
         },
-        timer,
+        retire,
       });
+      signal?.addEventListener("abort", abort, { once: true });
       try {
         debugEvent("native", "request", { ...details, requested: fields, timeoutMs });
         this.socket.send(
@@ -828,8 +840,7 @@ export class NativeClient {
           }),
         );
       } catch (error) {
-        if (timer !== null) window.clearTimeout(timer);
-        this.pending.delete(id);
+        retire();
         debugError("native", "request-failed", error, { ...details, durationMs: performance.now() - began });
         rejectRequest(new NativeRequestError("send-failed", type, { cause: error }));
         return;
@@ -851,8 +862,7 @@ export class NativeClient {
     if (id) {
       const pending = this.pending.get(id);
       if (!pending) return;
-      this.pending.delete(id);
-      if (pending.timer !== null) window.clearTimeout(pending.timer);
+      pending.retire();
       const failure = requestFailedResponseSchema.safeParse(value);
       if (failure.success) {
         if (failure.data.code === "source-canceled") {
@@ -911,10 +921,9 @@ export class NativeClient {
 
   private rejectPending(): void {
     for (const request of this.pending.values()) {
-      if (request.timer !== null) window.clearTimeout(request.timer);
+      request.retire();
       request.reject(new NativeRequestError("disconnected", request.operation));
     }
-    this.pending.clear();
   }
 }
 

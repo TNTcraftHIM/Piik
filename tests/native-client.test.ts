@@ -948,6 +948,57 @@ describe("native App private wire", () => {
     } finally { client.close(); }
   });
 
+  it("retires canceled microphone lists while the current list and control socket stay usable", async () => {
+    const requests: Record<string, unknown>[] = [];
+    let socket!: Socket;
+    class Socket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = Socket.OPEN;
+      protocol = `piik-client-v10.${health.instanceToken}`;
+      constructor() { super(); socket = this; queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
+      close() { this.readyState = Socket.CLOSING; }
+      reply(id: unknown, type: string, fields = {}) {
+        this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ version: 10, id, type, ...fields }) }));
+      }
+      send(payload: string) {
+        const request = JSON.parse(payload) as Record<string, unknown>;
+        if (request.type === "hello") queueMicrotask(() => this.reply(request.id, "ready"));
+        else if (request.type === "ping") queueMicrotask(() => this.reply(request.id, "pong"));
+        else requests.push(request);
+      }
+    }
+    vi.stubGlobal("WebSocket", Socket);
+    const clearRequestTimer = vi.fn(clearTimeout);
+    vi.stubGlobal("window", { setTimeout, clearTimeout: clearRequestTimer, location: new URL("https://piik.example/") });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...health, nativeMedia: { ...health.nativeMedia, microphone: true },
+    }))));
+    const client = (await NativeClient.connect())!;
+    try {
+      await expect(client.microphones(AbortSignal.abort())).rejects.toMatchObject({ name: "AbortError" });
+      expect(requests).toHaveLength(0);
+      clearRequestTimer.mockClear();
+      const closed = new AbortController();
+      const canceled = client.microphones(closed.signal);
+      const current = new AbortController();
+      const listing = client.microphones(current.signal);
+      closed.abort();
+      await expect(canceled).rejects.toMatchObject({ name: "AbortError" });
+      expect(clearRequestTimer).toHaveBeenCalledOnce();
+      expect(requests).toEqual([0, 1].map(() => ({ version: 10, id: expect.any(String), type: "list-microphones" })));
+      const [oldRequest, currentRequest] = requests;
+      socket.reply(oldRequest!.id, "microphone-list", { devices: [{ id: "old", label: "Old microphone" }] });
+      expect(clearRequestTimer).toHaveBeenCalledOnce();
+      socket.reply(currentRequest!.id, "microphone-list", { devices: [{ id: "new", label: "New microphone" }] });
+      await expect(listing).resolves.toEqual([{ id: "new", label: "New microphone" }]);
+      expect(clearRequestTimer).toHaveBeenCalledTimes(2);
+      current.abort();
+      expect(clearRequestTimer).toHaveBeenCalledTimes(2);
+      await expect(client.ping()).resolves.toBeUndefined();
+    } finally { client.close(); }
+  });
+
   it.each([false, true])("requests receiver reuse only from a capable App (%s)", async (supported) => {
     const requests: Record<string, unknown>[] = [];
     class Socket extends EventTarget {

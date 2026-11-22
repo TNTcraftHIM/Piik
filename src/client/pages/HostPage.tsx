@@ -669,8 +669,8 @@ export function HostPage({
     return client.sources();
   }, []);
   const microphoneClient = nativeActive ? nativeConnection.current : null;
-  const loadMicrophoneDevices = useCallback(() => microphoneClient
-    ? microphoneClient.microphones() : browserCaptureDevices("audioinput"), [microphoneClient]);
+  const loadMicrophoneDevices = useCallback((signal: AbortSignal) => microphoneClient
+    ? microphoneClient.microphones(signal) : browserCaptureDevices("audioinput"), [microphoneClient]);
   const nativeSourceRequestRef = useRef<object | null>(null);
   const nativePreviewTailRef = useRef<Promise<void>>(Promise.resolve());
   const nativeSourcePathRef = useRef<NativeCapturePath | null>(null);
