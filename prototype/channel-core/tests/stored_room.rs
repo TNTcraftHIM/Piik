@@ -1509,6 +1509,139 @@ fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
 }
 
 #[test]
+fn committed_removals_reach_their_background_file_participants() {
+    let path = std::env::temp_dir().join(format!("piik-file-moderation-{}.sqlite", Uuid::new_v4()));
+    let [owner, holder, receiver, reader, sibling] = std::array::from_fn(|_| Uuid::new_v4());
+    let mut host =
+        StoredRoomHost::create(&path, policy("room", owner, RoomAccess::Public)).unwrap();
+    let attachment = json!({"id": Uuid::new_v4(), "name": "file", "size": 3,
+        "mediaType": "application/octet-stream", "sha256": piik_channel_core::attachment::sha256_hex(b"abc")});
+    let send = |host: &mut StoredRoomHost, nonce: &str| {
+        sent(peer(
+            host,
+            owner,
+            owner,
+            ConversationCommand::Chat {
+                nonce: nonce.into(),
+                text: String::new(),
+                mentions: vec![],
+                reply: None,
+                attachments: vec![serde_json::from_value(attachment.clone()).unwrap()],
+                inline_images: Default::default(),
+            },
+        ))
+        .message
+        .message
+    };
+    let first = send(&mut host, "first");
+    let second = send(&mut host, "second");
+    let register = |host: &mut StoredRoomHost, actor, value: Value| {
+        let command = Request::parse(&value.to_string()).unwrap().command;
+        let mut turn = input(owner, actor, |context| HostAction::Command {
+            context,
+            command,
+        });
+        for id in [holder, receiver, reader, sibling] {
+            turn.endpoints.insert(
+                id,
+                Endpoint {
+                    member: Member { user_id: id },
+                    ..turn.endpoints[&owner].clone()
+                },
+            );
+        }
+        assert!(matches!(
+            host.dispatch(turn).unwrap().reply.unwrap().result,
+            RoomResult::Done
+        ));
+    };
+    register(
+        &mut host,
+        reader,
+        json!({"type":"browse","roomId":"room","active":true}),
+    );
+    for (seq, actor) in [(first.seq, holder), (second.seq, sibling)] {
+        register(
+            &mut host,
+            actor,
+            json!({"type":"file_offer","roomId":"room","messageSeq":seq,"attachmentId":attachment["id"],"sha256":attachment["sha256"],"available":true}),
+        );
+    }
+    for seq in [first.seq, second.seq] {
+        register(
+            &mut host,
+            receiver,
+            json!({"type":"file_receive","roomId":"room","messageSeq":seq,"attachmentId":attachment["id"],"enabled":true}),
+        );
+    }
+    assert_eq!(host.current_readers(), vec![reader]);
+    let moderate = |host: &mut StoredRoomHost, command| {
+        let request = ConversationRequest {
+            address: ConversationAddress {
+                room_id: "room".into(),
+                binding_id: owner,
+                sender: owner,
+                recipient: owner,
+                request_id: Uuid::new_v4().to_string(),
+            },
+            command,
+        };
+        let packet = SessionSigner::from_seed([1; 32])
+            .sign(owner, &request)
+            .unwrap();
+        host.dispatch_peer(&packet, 2).unwrap()
+    };
+    let rejected = moderate(
+        &mut host,
+        ConversationCommand::DeleteMessage {
+            message_seq: first.seq,
+            message_id: Uuid::new_v4(),
+        },
+    );
+    assert!(rejected.result.is_err() && rejected.projection_update.is_none());
+    assert_eq!(rejected.replies().unwrap().len(), 1);
+    for (command, expected_holder, remaining) in [
+        (
+            ConversationCommand::DeleteMessage {
+                message_seq: first.seq,
+                message_id: first.id,
+            },
+            holder,
+            Some(second.seq),
+        ),
+        (
+            ConversationCommand::ClearHistory {
+                through_seq: second.seq,
+            },
+            sibling,
+            None,
+        ),
+    ] {
+        let outcome = moderate(&mut host, command);
+        let files = &outcome.projection_update.as_ref().unwrap().projection.views[&receiver].files;
+        assert_eq!(
+            files
+                .iter()
+                .map(|plan| plan.message_seq)
+                .collect::<Vec<_>>(),
+            remaining.into_iter().collect::<Vec<_>>()
+        );
+        let mut recipients: Vec<_> = outcome
+            .replies()
+            .unwrap()
+            .into_iter()
+            .map(|reply| reply.address.recipient)
+            .collect();
+        recipients.sort();
+        let mut expected = vec![owner, reader, receiver, expected_holder];
+        expected.sort();
+        assert_eq!(recipients, expected);
+    }
+    drop(host);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn restored_sequence_rejects_reactions_for_its_previous_message() {
     let owner = Uuid::new_v4();
     let path = std::env::temp_dir().join(Uuid::new_v4().to_string());

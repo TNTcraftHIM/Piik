@@ -58,17 +58,21 @@ export class RoomReadMarkers {
       const id = room.id, record = this.saved[id];
       const saved = typeof record === "number" ? record : record?.seq;
       const binding = room.available ? room.delivery?.bindingId : undefined;
+      const observed = this.observed.get(id);
+      const storedBinding = typeof record === "object" ? record.binding : undefined;
+      const entering = !!binding && fromAuthority && observed !== binding;
+      // Another tab can see a restored room before this page gets its projection.
+      if (!entering && observed && storedBinding && observed !== storedBinding) {
+        next[id] = this.positions[id] ?? 0;
+        continue;
+      }
       let position = saved ?? this.positions[id] ?? (binding ? room.lastMessageSeq : 0);
+      if (!entering) position = Math.max(position, this.positions[id] ?? 0);
       if (binding) {
-        const entering = fromAuthority && this.observed.get(id) !== binding;
-        const storedBinding = typeof record === "object" ? record.binding : undefined;
         const rebound = entering && storedBinding !== binding;
         // Only a fresh authority projection may supersede another binding.
         // Same-binding storage can be ahead of this tab's last projection.
         if (rebound) position = Math.min(position, room.lastMessageSeq);
-        else if (this.observed.get(id) === binding && (!storedBinding || storedBinding === binding)) {
-          position = Math.max(position, this.positions[id] ?? 0);
-        }
         if (entering) this.observed.set(id, binding);
         if (entering || !storedBinding || storedBinding === binding) {
           if (advance?.roomId === id) position = Math.max(position, Math.min(advance.seq, room.lastMessageSeq));

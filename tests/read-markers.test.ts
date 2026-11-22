@@ -23,12 +23,12 @@ test.each([true, false])("a stale tab cannot undo a restored read cursor (storag
 
   const restored = [room("restored", "new-binding", 1), otherRoom];
   expect(owner.project("site", "reader", restored)).toEqual({ restored: 1, other: 2 });
-  if (eventFirst) staleTab.refresh(before, key);
+  if (eventFirst) expect(staleTab.refresh(before, key).restored).toBe(6);
   const staleSeq = eventFirst ? 6 : 7;
   const otherWithMessage = { ...otherRoom, lastMessageSeq: 3 };
   const stale = [room("restored", "old-binding", staleSeq), otherWithMessage];
   staleTab.advance(stale, "restored", staleSeq);
-  if (!eventFirst) staleTab.refresh(stale, key);
+  if (!eventFirst) expect(staleTab.refresh(stale, key).restored).toBe(6);
   expect.soft(staleTab.advance(stale, "other", 3)).toMatchObject({ other: 3 });
   expect.soft(JSON.parse(storage.get(key)!)).toMatchObject({ restored: { seq: 1, binding: "new-binding" }, other: { seq: 3 } });
 
@@ -68,6 +68,7 @@ test.each(["storage refresh", "new room"])("a failed write preserves local progr
   const tab = new RoomReadMarkers();
   expect(tab.project("site", "reader", [room]).room).toBe(1);
   expect(tab.advance([room], "room", 7).room).toBe(7);
+  expect(tab.refresh([{ ...room, available: false }]).room).toBe(7);
   const result = trigger === "storage refresh" ? tab.refresh([room])
     : tab.project("site", "reader", [room, { ...room, id: "second" }]);
   expect(result.room).toBe(7);

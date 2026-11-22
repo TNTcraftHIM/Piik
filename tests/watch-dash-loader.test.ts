@@ -4,6 +4,15 @@ vi.mock("../src/shared/media-resource", () => ({
   mediaManifestBytes: () => 1048576,
 }));
 import { attachWatchDashReader } from "../src/client/channel/watch-dash-loader";
+import { requireClearStaticManifest } from "../src/client/channel/watch-dash-media";
+
+test("a DASH update must supply a complete static MPD before Shaka applies it", () => {
+  const root = { tagName: "MPD", attributes: {}, children: [], parent: null };
+  expect(() => requireClearStaticManifest(root)).not.toThrow();
+  expect(() => requireClearStaticManifest({ ...root, tagName: "Patch" })).toThrow("watch_invalid_manifest");
+  expect(() => requireClearStaticManifest({ ...root, attributes: { type: "dynamic" } })).toThrow("watch_live_timeline_unsupported");
+});
+
 const resource = "10000000-0000-4000-8000-000000000001";
 function sdk() {
   const schemes = new Map<string, any>(),

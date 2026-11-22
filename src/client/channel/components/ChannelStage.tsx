@@ -204,7 +204,7 @@ function SourceControl({ source, onInputPolicy, onInputDecide, onInputSimultaneo
 }
 
 /** Subscription belongs to the caller. Focus only changes the layout of existing players. */
-export function ChannelStage({ theaterMode: [theater, setTheater], buffering, sources, focusedId, canSubscribe, onFocus, onWatch, onUnwatch, onRetryPicture, onPause, onStop, onPresentation,
+export function ChannelStage({ theaterMode: [theater, setTheater], buffering, sources, focusedId, canSubscribe, onFocus: onChangeFocus, onWatch, onUnwatch, onRetryPicture, onPause, onStop, onPresentation,
   onInputPolicy, onInputDecide, onInputSimultaneous, onInputShortcut }: ChannelStageProps) {
   const { lang, t } = useCopy();
   const retained = sources.filter(source => source.owned || source.subscribed);
@@ -215,6 +215,13 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
     : active.find(source => source.kind === "watch" && source.player?.presentation.kind === "embed"))?.id;
   const layoutSources = JSON.stringify([active.map(source => source.id), available.map(source => source.id)]);
   const stage = useRef<HTMLElement>(null), grid = useRef<HTMLDivElement>(null);
+  const pendingFocus = useRef<{ id: string; trigger: Element | null } | null>(null);
+  const onFocus = (id: string | null) => {
+    pendingFocus.current = id && id !== focused?.id
+      ? { id, trigger: document.activeElement?.closest(".c3-monitor-layout-action button") ?? null }
+      : null;
+    onChangeFocus(id);
+  };
   const [columns, setColumns] = useState<number>();
   useLayoutEffect(() => {
     const parent = stage.current, tiles = grid.current;
@@ -267,6 +274,17 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
       for (const panel of tile.querySelectorAll<HTMLElement>('[popover]:popover-open')) panel.hidePopover();
     }
   }, [layoutSources, focused?.id]);
+  useLayoutEffect(() => {
+    const request = pendingFocus.current;
+    pendingFocus.current = null;
+    const tiles = grid.current;
+    if (!tiles || !request || request.id !== focused?.id) return;
+    // The focus button can scroll the strip down and disappears when its tile moves to the main row.
+    tiles.scrollTop = 0;
+    if (request.trigger && !request.trigger.isConnected && document.activeElement === document.body) {
+      tiles.querySelector<HTMLElement>(".c3-monitor-tile.is-focused")?.focus({ preventScroll: true });
+    }
+  }, [focused?.id]);
   const hasFocusedMedia = focused?.kind === "watch" ? !!focused.player?.video : !!focused?.stream;
   useEffect(() => { if (!hasFocusedMedia) setTheater(false); }, [focused?.id, hasFocusedMedia, setTheater]);
   if (!sources.length) return null;
@@ -315,7 +333,7 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
           const diagnosis = canSubscribe && !source.pending && !source.hidden
             ? diagnoseChannelFact({ area: "screen", paused: source.paused, deliveryFailed: source.deliveryFailed })
             : null;
-          return <article key={source.id} hidden={source.hidden} inert={source.hidden} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
+          return <article key={source.id} hidden={source.hidden} inert={source.hidden} tabIndex={isFocused ? -1 : undefined} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
             style={centeredStart ? { gridColumn: `${centeredStart} / span 2` } : undefined}
             data-publication-id={source.id} data-focusable={focusable || undefined} data-playback-controls-scope
             aria-label={`${title} / ${source.name} / ${source.roomName}`}
@@ -426,7 +444,7 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
 }) {
   const { t } = useCopy();
   const embedded = source.player?.presentation.kind === "embed";
-  return <article hidden={source.hidden} inert={source.hidden} data-embed={source.player?.presentation.kind === "embed" || undefined} data-publication-id={source.id} data-source-kind="watch" data-watch-mode={source.receiving?.mode} data-focusable={focusable || undefined} data-playback-controls-scope
+  return <article hidden={source.hidden} inert={source.hidden} tabIndex={focused ? -1 : undefined} data-embed={source.player?.presentation.kind === "embed" || undefined} data-publication-id={source.id} data-source-kind="watch" data-watch-mode={source.receiving?.mode} data-focusable={focusable || undefined} data-playback-controls-scope
     className={`c3-monitor-tile${focused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
     style={centeredStart ? { gridColumn: `${centeredStart} / span 2` } : undefined}
     aria-label={`${source.title} / ${source.name} / ${source.roomName}`} onClick={event => {

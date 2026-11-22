@@ -33,12 +33,13 @@ interactive terminal after an update and accepted keyboard input there.
 Linux WHIP playback coverage is recorded
 in the [local OBS input research](./research/room-interactions.md#local-obs-input).
 
-The matching Channel 33 Android test APK and Windows App ran on a controlled
-local network. On an API 35 x86_64 emulator, the Android launcher opened the
-system browser, which read a desktop message and displayed the captured Windows
-test window. After the site connection returned, the same page resumed its room
-and viewing state. Peer media loss and physical handset behavior require
-separate measurements.
+The matching beta.39 Android APK and Windows App passed bidirectional chat,
+640 × 360 video, synthetic audio and stop-view checks on a controlled local
+network. The actual media endpoints were Windows WebView2 and Android Chrome
+on an API 35 x86_64 emulator, using a nominated P2P UDP path. Native-to-Native
+delivery and physical handset capture require separate measurements. An earlier
+matched-package control also retained room and viewing state after a site
+connection interruption.
 
 Three loopback Chromium sessions kept B’s screen playing through A while
 B and C established an additional connection. After A left, the original
@@ -298,7 +299,11 @@ OBS stop and Piik revocation released input permissions and UDP resources. The
 unchanged input implementation also passed stop/restart, retired-resource
 deletion, reauthorization and controlling-page closure; package receipts identify
 that preceding regression separately from the final package's media check.
-Other desktop platforms and cross-NAT media remain outside this input evidence. Android compiles
+Stock Alpine OBS with libnice now also passes two starts and stops on the same
+input permission, with H264 and Opus decoded by Firefox across an isolated
+guest network. A kernel ingress filter keeps the additional Linux media
+candidate restricted to the same machine. Flathub, other desktop platforms and
+cross-NAT media remain separate acceptance. Android compiles
 with the shared changes but does not advertise this desktop input capability.
 
 Switching between the full workspace and simple sharing retains actual Browser

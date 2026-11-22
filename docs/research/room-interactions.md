@@ -482,8 +482,12 @@ phase; completing that phase retires the selection, not the resulting source.
 
 The App's loopback control listener is separate from the site's tunnel target,
 so Local network and Public invite use the same input adapter. HTTP requires the
-page-issued bearer; the existing RTC pump supplies loopback-only media sockets,
-candidates and actual datagrams, without public discovery or a second room graph.
+page-issued bearer; the existing RTC pump supplies media sockets restricted to
+the same machine, without public discovery or a second room graph. On Linux,
+an additional socket binds an actual local IPv4 address for senders that omit
+loopback ICE candidates. A kernel socket filter admits only loopback ingress;
+the engine accepts only its own sockets and bound local addresses. Candidate
+creation fails closed if that filter cannot be installed.
 H264 complete access units and Opus RTP retain the existing source clocks and
 Sender Reports. Derived outputs use the existing encoder policy; an externally
 configured source carries no invented capture ceiling. No RTC fork was added.
@@ -500,23 +504,13 @@ and the synthetic Opus tone after each restart. Its P010/NVENC control failed
 inside OBS before sending a High 10 stream; returning to NV12/x264 restored
 playback on the same permit. It does not verify Piik's High 10 rejection message.
 
-On Linux, the App accepted a local FFmpeg WHIP stream with H264 video and
-Opus audio. An independent Firefox process on the same Linux host decoded both
-streams. The fixture ran at approximately 0.6 fps. Playback cadence under normal
-load and viewer decoding across the guest network still need verification.
-
-Alpine OBS 32.1.2 and Flathub OBS 33.0.1 completed WHIP signaling with the
-same H264 and Opus parameters as the App, then failed to connect to its
-loopback media address. Both packages used libnice. With the same Alpine OBS
-binary and libdatachannel 0.24.3 built with libjuice, Firefox decoded 166 video
-frames and received audio. The tested OBS WHIP output also ignored the profile's
-network bind address. Stock Linux package compatibility remains open.
-[OBS 32.1.2 WHIP output](https://github.com/obsproject/obs-studio/blob/32.1.2/plugins/obs-webrtc/whip-output.cpp#L279)
-
-On November 21 the packaged Alpine OBS 32.1.2-r4 with libdatachannel 0.24.3-r0
-and libnice 0.1.22-r0 was run twice against App review build `19948350` using
-the same Piik authorization. Both starts reached `Connecting`, then `Failed`
-and `Closed`. Piik reported an input error and Firefox received no inbound RTP.
+Stock Alpine OBS 32.1.2-r4 with libdatachannel 0.24.3-r0 and libnice 0.1.22-r0
+started twice on one Piik permission. Firefox in a separate network namespace
+decoded 640 × 360 H264 and Opus after both starts. Stopping each input released
+its UDP sockets. Packets sent directly to the local-input socket from the other
+namespace were dropped by its kernel filter. The FFmpeg WHIP control also
+retained picture and sound. These checks use synthetic sources; Flathub,
+physical capture and other distribution packages remain separate acceptance.
 
 In libnice 0.1.22, automatic ICE gathering enumerates local addresses with
 `include_loopback=FALSE`. On Linux this excludes interfaces marked

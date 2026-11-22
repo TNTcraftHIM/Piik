@@ -96,6 +96,9 @@ fn host_candidates(
 
 #[path = "discovery.rs"]
 mod discovery;
+#[cfg(target_os = "linux")]
+#[path = "local_input_udp.rs"]
+mod local_input_udp;
 #[path = "nat64.rs"]
 mod nat64;
 #[cfg(test)]
@@ -511,7 +514,11 @@ impl Runtime {
                         if discovery::route(&mut engines,&packet){continue;}
                         let owner=packet.owner;
                         for (id,engine) in &mut engines {
-                            if (owner.is_none()||owner==Some((*id,engine.handle.instance))) && engine.receive(packet.at,packet.source,packet.destination,&packet.bytes) {
+                            let admitted = match owner {
+                                Some(pair) => pair == (*id, engine.handle.instance),
+                                None => !engine.events.local(),
+                            };
+                            if admitted && engine.receive(packet.at,packet.source,packet.destination,&packet.bytes) {
                                 engine.drain();break;
                             }
                         }
@@ -686,6 +693,12 @@ impl Runtime {
         let mut sockets = vec![];
         if local_input {
             sockets.push(Arc::new(UdpIo::new(UdpSocket::bind("127.0.0.1:0").await?)?));
+            #[cfg(target_os = "linux")]
+            match self.interface_state().await.and_then(local_input_udp::bind) {
+                Ok(Some(socket)) => sockets.push(Arc::new(socket)),
+                Ok(None) => {}
+                Err(error) => eprintln!("Native local input interface candidate unavailable: {error}"),
+            }
         } else if let Some(fixed) = &self.fixed {
             ensure!(
                 prepared.is_none(),
@@ -712,7 +725,7 @@ impl Runtime {
         ensure!(!sockets.is_empty(), "no UDP socket");
         let mut config = Rtc::builder()
             .clear_codecs()
-            // WHIP's fixed loopback socket can receive checks without initiating them.
+            // The local WHIP sender initiates connectivity checks.
             .set_ice_lite(local_input)
             .set_rtp_mode(true)
             .enable_bwe(Some(Bitrate::bps(300_000)))
@@ -1623,6 +1636,9 @@ impl Engine {
         }
     }
 
+    fn local_input_allows(&self, ip: std::net::IpAddr) -> bool {
+        self.sockets.iter().any(|socket| socket.local_addr().is_ok_and(|a| a.ip() == ip))
+    }
     fn receive(
         &mut self,
         at: Instant,
@@ -1631,8 +1647,7 @@ impl Engine {
         bytes: &[u8],
     ) -> bool {
         if self.events.local()
-            && (source.ip() != std::net::Ipv4Addr::LOCALHOST
-                || destination.ip() != std::net::Ipv4Addr::LOCALHOST)
+            && (!self.local_input_allows(source.ip()) || !self.local_input_allows(destination.ip()))
         {
             return false;
         }
@@ -1671,7 +1686,12 @@ impl Engine {
         let report = self
             .udp_send_failures
             .record(source, destination, error, self.peer_stats.as_ref());
-        if self.selected_source() == Some(source) {
+        if self
+            .peer_stats
+            .as_ref()
+            .and_then(|stats| stats.selected_candidate_pair.as_ref())
+            .is_some_and(|pair| pair.local.addr == source && pair.remote.addr == destination)
+        {
             self.source_error = Some(source);
         }
         if report {
@@ -1839,9 +1859,7 @@ impl Engine {
                     break;
                 }
                 Ok(Output::Transmit(packet)) => {
-                    if self.events.local()
-                        && packet.destination.ip() != std::net::Ipv4Addr::LOCALHOST
-                    {
+                    if self.events.local() && !self.local_input_allows(packet.destination.ip()) {
                         continue;
                     }
                     let available = super::MAX_ICE_CANDIDATES.saturating_sub(

@@ -198,6 +198,23 @@
 .c3-watch-embed-preview { min-width: 200px; min-height: 200px; aspect-ratio: 16 / 9; }
 .c3-watch-embed-preview > *, .c3-watch-embed-preview iframe { display: block; width: 100%; height: 100%; min-height: 200px; border: 0; }
 
+.c3-watch-player:has(> .c3-watch-page-thumbnail) {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  background: var(--wall-2);
+  > .c3-watch-controls { position: relative; inset: auto; margin-block-end: 10px; }
+}
+.c3-watch-page-thumbnail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding-inline: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.c3-watch-page-thumbnail > svg { flex: none; }
+
 .c3-watch-native-slot { flex: 1 0 180px; min-width: 0; aspect-ratio: 16 / 9; }
 .c3-watch-player[data-native-page] > .c3-mini-message { position: absolute; inset: 0 0 auto; pointer-events: none; }
 .c3-watch-player[data-native-page] > .c3-mini-message button { pointer-events: auto; }

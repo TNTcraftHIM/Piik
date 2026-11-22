@@ -1,6 +1,5 @@
 .c3-room-preview { height: 100dvh; display: flex; flex-direction: column; min-width: 0; }
 .c3-room-preview-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: none; }
-.c3-room-preview-trigger { display: inline-flex; }
 .c3-room-preview-options > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .c3-room-preview-options h2 { margin: 0; font-size: 15px; }
 .c3-room-preview-options fieldset { margin: 12px 0; padding: 0; border: 0; }

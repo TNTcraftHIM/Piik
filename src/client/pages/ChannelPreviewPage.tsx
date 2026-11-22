@@ -69,10 +69,11 @@ export function ChannelPreviewPage() {
 }
 
 /** Session and App connection owners supply data; this view keeps one set of room slots. */
-export function ChannelRoomPage({ channel, selected, onSelect, appControl, layout = "workspace", offerLayout = false, onLayoutChange }: {
+export function ChannelRoomPage({ channel, selected, onSelect, appControl, layout = "workspace", offerLayout = false, onLayoutChange, previewOptions }: {
   channel: ChannelController; selected: string; onSelect(id: string): void; appControl: ReactNode;
   layout?: InterfaceLayout; offerLayout?: boolean;
   onLayoutChange?: (value: InterfaceLayout) => void;
+  previewOptions?: ReactNode;
 }) {
   const { t } = useCopy();
   const [pickerRoom, setPickerRoom] = useState<string | null>(null);
@@ -349,6 +350,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           {onLayoutChange && <ChannelInterfaceControl value={layout} onChange={onLayoutChange} />}
           <ChannelFeedbackSounds channel={channel} />
           <ChannelForwardingSettings channel={channel} />
+          {previewOptions}
         </>} />
       </div></header>
       <aside id="c3-room-list" className="c3-sidebar" aria-label={t("channel.previewPage.rooms")}>

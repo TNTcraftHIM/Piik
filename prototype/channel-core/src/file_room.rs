@@ -99,11 +99,16 @@ impl FileRoom {
         }
         self.prune();
     }
-    pub fn remove_messages(&mut self, from: u64, through: u64) -> bool {
-        let before = self.files.len();
-        self.files
-            .retain(|(seq, _), _| !(from..=through).contains(seq));
-        before != self.files.len()
+    pub fn remove_messages(&mut self, from: u64, through: u64) -> BTreeSet<Uuid> {
+        let mut participants = BTreeSet::new();
+        for (_, file) in self
+            .files
+            .extract_if(.., |(seq, _), _| (from..=through).contains(seq))
+        {
+            participants.extend(file.holders);
+            participants.extend(file.receivers);
+        }
+        participants
     }
     fn prune(&mut self) {
         self.files

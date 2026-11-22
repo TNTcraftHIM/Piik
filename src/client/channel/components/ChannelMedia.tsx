@@ -24,6 +24,7 @@ import type { VideoFit, VideoRotation } from "../../media/video-geometry";
 import type { ChannelScreenInput, ScreenPresentation } from "../types";
 import { watchSeekPosition } from "../watch-media";
 import { useCopy } from "../../ui/copy";
+import { Glyph } from "../../ui/icons";
 import { RemoteControl } from "../../components/living/RemoteControl";
 import type { InputTransport } from "../../remote-control/input-route";
 import { ChannelAction } from "./ChannelAction";
@@ -212,7 +213,10 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       <span className="c3-frame-wait"><BrandMark size={32} motion="loop" />{t("watch.waiting")}</span>
     </div>}
     {pageId && <div ref={native.slot} className="c3-watch-native-slot" />}
-    {surface.kind === "external" && !player.error && !native.mounted && <div className="c3-mini-message"><div className="c3-frame-wait c3-watch-result">
+    {surface.kind === "external" && thumbnail && !player.error && <div className="c3-watch-page-thumbnail">
+      <Glyph name="globe" size={24} /> <span>{t("watch.originalPage")}</span>
+    </div>}
+    {surface.kind === "external" && !thumbnail && !player.error && !native.mounted && <div className="c3-mini-message"><div className="c3-frame-wait c3-watch-result">
       {preparing && <BrandMark size={32} motion="loop" />}<span>{t(preparing ? "watch.waiting" : "watch.inWindow")}</span>
       <Btn icon="window" title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />
     </div></div>}

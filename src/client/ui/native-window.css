@@ -29,7 +29,6 @@ html[data-piik-native-window="integrated"]:not(:has(:fullscreen)) .c3-site-bar::
   app-region: drag;
 }
 html[data-piik-native-window="integrated"] .c3-site-bar > .c3-global-tools { order: 2; }
-html[data-piik-native-window="integrated"] .c3-site-bar { height: var(--native-caption-height); }
 html[data-piik-native-window] .lr-header-controls .lr-btn.is-quiet:not([popover] .lr-btn) {
   --muted: var(--ink);
 }
@@ -40,17 +39,5 @@ html[data-piik-native-window] .lr-app > .lr-client-launch { place-items: safe ce
 html[data-piik-native-window] .lr-app > .lr-top { flex: none; width: 100%; margin-inline: 0; }
 html[data-piik-native-window="integrated"] :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading)
   :is(button, a, input, select, textarea, [role=button], [popover], .lr-comic-tip-wrap) { app-region: no-drag; }
-html[data-piik-native-window] :is(.c3-site-identity, .c3-global-tools) { min-width: 0; }
-html[data-piik-native-window="system"] .c3-site-identity { flex: 1; }
-html[data-piik-native-window="integrated"] .c3-site-identity { flex: 0 1 auto; max-width: none; }
-@container channel-shell (max-width: 700px) {
-  html[data-piik-native-window="integrated"] .c3-site-bar :is(.lr-app-connect, #c3-rooms-trigger) {
-    width: var(--control-compact-size);
-    padding: 0;
-  }
-  html[data-piik-native-window="integrated"] .c3-site-bar :is(.lr-app-connect, #c3-rooms-trigger) > .lr-cap {
-    display: none;
-  }
-}
 html[data-piik-native-window="integrated"]:has(:fullscreen)
   :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading) { padding-right: 16px; app-region: no-drag; }

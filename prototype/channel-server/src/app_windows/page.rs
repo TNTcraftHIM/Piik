@@ -143,19 +143,12 @@ impl PageView {
                 position: previous.position.to_logical::<f64>(scale).into(),
                 size: previous.size.to_logical::<f64>(scale).into(),
             };
-            self.view.set_visible(false)?;
-            if let Err(error) = self.view.reparent(parent) {
-                let _ = self.view.set_visible(true);
-                return Err(error.into());
-            }
+            // Reparent the live player without sending the website a visibility transition.
+            self.view.reparent(parent)?;
             self.mounted = Some((parent, standalone_bounds));
             self.window.set_visible(false);
         }
-        if let Err(error) = self
-            .view
-            .set_bounds(bounds)
-            .and_then(|()| self.view.set_visible(true))
-        {
+        if let Err(error) = self.view.set_bounds(bounds) {
             let _ = self.release_mount();
             return Err(error.into());
         }
@@ -164,11 +157,9 @@ impl PageView {
 
     fn release_mount(&mut self) -> Result<()> {
         if let Some((_, bounds)) = self.mounted {
-            self.view.set_visible(false)?;
             self.view.reparent(self.window.hwnd())?;
             self.mounted = None;
             self.view.set_bounds(bounds)?;
-            self.view.set_visible(true)?;
         }
         Ok(())
     }

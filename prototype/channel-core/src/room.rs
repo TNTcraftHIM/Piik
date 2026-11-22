@@ -442,7 +442,7 @@ impl RoomRuntime {
     pub fn attachments_available(&self) -> bool {
         self.writer.is_some()
     }
-    pub(crate) fn remove_message_files(&mut self, from: u64, through: u64) -> bool {
+    pub(crate) fn remove_message_files(&mut self, from: u64, through: u64) -> BTreeSet<Uuid> {
         self.files.remove_messages(from, through)
     }
     pub(crate) fn forwarding_available(
@@ -2506,7 +2506,7 @@ mod tests {
                 .iter()
                 .map(|entry| (entry.session_id, entry.sending, entry.receiving))
                 .collect::<Vec<_>>(),
-            [(b, true, false), (c, false, true), (d, true, true)]
+            [(b, true, false), (c, false, true)]
         );
         room.files.remove(c, 1, file.id, false);
         room.reconcile_with_pairs(&endpoints, 3, &pairs);

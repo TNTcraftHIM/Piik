@@ -39,7 +39,7 @@ test("only a known silent source hides local volume for either role; unknown pag
 });
 
 test("DASH audio uses the active public variant and PageSuppliedMedia delegates without treating unknown as absent", () => {
-  const dash = new WatchDashMedia({} as HTMLVideoElement, "root", vi.fn(), new AbortController().signal, vi.fn());
+  const dash = new WatchDashMedia({} as HTMLVideoElement, { resourceId: "root", read: vi.fn() }, new AbortController().signal, vi.fn());
   const variants = vi.fn(() => [] as { active: boolean; audioId: number | null; audioCodec: string | null }[]);
   (dash as unknown as { player: { getVariantTracks: typeof variants } }).player = { getVariantTracks: variants };
   expect(dash.audioAvailable()).toBeUndefined();

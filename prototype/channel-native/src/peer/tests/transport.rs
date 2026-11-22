@@ -453,30 +453,39 @@ async fn source_checks_preserve_current_paths_and_shared_socket_siblings() -> Re
     let (second_send, second_receive) = open(&second, &second_peer, &mut second_peer_events)
         .await
         .context("second shared listener peer")?;
-    tokio::time::timeout(Duration::from_secs(5), async {
-        while !first
-            .call(|engine| Ok(engine.selected_source().is_some()))
-            .await?
-        {
+    let (source, destination) = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Some(selected) = first
+                .call(|engine| {
+                    Ok(engine
+                        .peer_stats
+                        .as_ref()
+                        .and_then(|stats| stats.selected_candidate_pair.as_ref())
+                        .map(|pair| (pair.local.addr, pair.remote.addr)))
+                })
+                .await?
+            {
+                return Ok::<_, anyhow::Error>(selected);
+            }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-        Ok::<_, anyhow::Error>(())
     })
     .await
     .context("selected source observation")??;
     let present = completed_source_check(true).await;
     first
         .call(move |engine| {
-            let source = engine.selected_source().unwrap();
             let error = std::io::Error::from(std::io::ErrorKind::NetworkUnreachable);
             let mut probe = source;
             probe.set_port(source.port().wrapping_add(1));
-            engine.send_failed(probe, source, &error);
+            engine.send_failed(probe, destination, &error);
+            engine.send_failed(source, source, &error);
+            engine.check_source();
             ensure!(
-                engine.source_error.is_none(),
+                engine.source_error.is_none() && engine.source_check.is_none(),
                 "unrelated candidate probe became selected-path failure"
             );
-            engine.send_failed(source, source, &error);
+            engine.send_failed(source, destination, &error);
             engine.source_check = Some((Some(source), present));
             engine.check_source();
             ensure!(
@@ -492,7 +501,6 @@ async fn source_checks_preserve_current_paths_and_shared_socket_siblings() -> Re
     let stale_absent = completed_source_check(false).await;
     first
         .call(move |engine| {
-            let source = engine.selected_source().unwrap();
             ensure!(
                 engine.source_error.is_none(),
                 "successful traffic retained the failure fact"
@@ -501,7 +509,7 @@ async fn source_checks_preserve_current_paths_and_shared_socket_siblings() -> Re
             engine.sent_from(source);
             engine.send_failed(
                 source,
-                source,
+                destination,
                 &std::io::Error::from(std::io::ErrorKind::NetworkUnreachable),
             );
             engine.check_source();
@@ -515,10 +523,9 @@ async fn source_checks_preserve_current_paths_and_shared_socket_siblings() -> Re
     let absent = completed_source_check(false).await;
     first
         .call(move |engine| {
-            let source = engine.selected_source().unwrap();
             engine.send_failed(
                 source,
-                source,
+                destination,
                 &std::io::Error::from(std::io::ErrorKind::NetworkUnreachable),
             );
             engine.source_check = Some((Some(source), absent));
@@ -919,6 +926,7 @@ async fn local_input_delivery(publisher_offer: impl FnOnce(&str) -> String) -> R
     let sender_runtime = Runtime::new(None);
     // Local ingest must not consume or advertise the room server's shared UDP.
     let fixed = ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
+    let shared_address = fixed.sockets[0].local_addr()?;
     let receiver_runtime = Runtime::new(Some(fixed));
     let prepared = std::net::UdpSocket::bind("127.0.0.1:0")?;
     let (sender, _events) = endpoint(&sender_runtime, Uuid::new_v4(), Some(prepared)).await?;
@@ -953,25 +961,26 @@ async fn local_input_delivery(publisher_offer: impl FnOnce(&str) -> String) -> R
         .context("local SDP accept/answer")?;
     ensure!(input.answer.lines().any(|line| line == "a=ice-lite"));
     let answer = SdpAnswer::from_sdp_string(&input.answer)?;
-    let address = answer
+    let advertised: HashSet<_> = answer
         .media_lines
         .iter()
         .flat_map(|line| line.ice_candidates())
-        .next()
-        .context("no local candidate")?
-        .addr();
-    ensure!(address.ip() == std::net::Ipv4Addr::LOCALHOST);
+        .map(|candidate| candidate.addr())
+        .collect();
+    ensure!(advertised.iter().any(|a| a.ip() == std::net::Ipv4Addr::LOCALHOST));
+    ensure!(!advertised.contains(&shared_address));
     ensure!(
         input.ended.borrow().is_none(),
         "answer must precede first media"
     );
+    let owned = advertised.clone();
     input
         .transport
-        .call(|engine| {
-            ensure!(
-                engine.sockets.len() == 1
-                    && engine.sockets[0].local_addr()?.ip() == std::net::Ipv4Addr::LOCALHOST
-            );
+        .call(move |engine| {
+            let bound: HashSet<_> = engine.sockets.iter()
+                .map(|socket| socket.local_addr())
+                .collect::<std::io::Result<_>>()?;
+            ensure!(owned == bound);
             ensure!(
                 engine.discovery.is_none()
                     && engine.turn_setup_task.is_none()
@@ -1037,7 +1046,7 @@ async fn local_input_delivery(publisher_offer: impl FnOnce(&str) -> String) -> R
         .context("close and join local transport")?;
     ensure!(matches!(&*input.ended.borrow(), Some(Ok(()))));
     ensure!(
-        std::net::UdpSocket::bind(address).is_ok(),
+        advertised.into_iter().all(|address| std::net::UdpSocket::bind(address).is_ok()),
         "local input socket was not joined/released"
     );
     for track in tracks.values() {

@@ -259,11 +259,8 @@ impl RoomProjection {
                 let sending = view
                     .files
                     .iter()
-                    .any(|file| file.source_id == Some(*session) || !file.downstream.is_empty());
-                let receiving = view
-                    .files
-                    .iter()
-                    .any(|file| file.receiving || file.upstream.is_some());
+                    .any(|file| file.source_id == Some(*session));
+                let receiving = view.files.iter().any(|file| file.receiving);
                 (sending || receiving).then_some(crate::wire::FileActivity {
                     session_id: *session,
                     sending,
@@ -1393,28 +1390,31 @@ impl RoomHost {
                 .last_message_seq
                 .max(confirmation.message.message.seq);
         }
-        let files_changed = match &result {
+        let removed_files = match &result {
             Ok(ConversationResult::History(HistoryResult::MessageDeleted { message_seq })) => {
-                self.room.remove_message_files(*message_seq, *message_seq)
+                Some(self.room.remove_message_files(*message_seq, *message_seq))
             }
             Ok(ConversationResult::History(HistoryResult::HistoryCleared { through_seq })) => {
-                self.room.remove_message_files(0, *through_seq)
+                Some(self.room.remove_message_files(0, *through_seq))
             }
-            _ => false,
+            _ => None,
         };
-        let projection_update = files_changed.then(|| {
-            self.room.reconcile_with_pairs(
-                &authority.endpoints,
-                authority.now,
-                &authority.confirmed_pairs,
-            );
-            HostOutput {
-                binding_id: authority.binding_id,
-                revision: authority.revision,
-                projection: self.room.projection(&authority.endpoints),
-                reply: None,
-            }
-        });
+        let projection_update = removed_files
+            .as_ref()
+            .is_some_and(|participants| !participants.is_empty())
+            .then(|| {
+                self.room.reconcile_with_pairs(
+                    &authority.endpoints,
+                    authority.now,
+                    &authority.confirmed_pairs,
+                );
+                HostOutput {
+                    binding_id: authority.binding_id,
+                    revision: authority.revision,
+                    projection: self.room.projection(&authority.endpoints),
+                    reply: None,
+                }
+            });
         let committed = match &mut result {
             Ok(ConversationResult::History(HistoryResult::Reacted(confirmation))) => confirmation
                 .event
@@ -1442,10 +1442,17 @@ impl RoomHost {
             address,
             result,
             projection_update,
+            removal_recipients: removed_files.map_or_else(Vec::new, |participants| {
+                self.readers_and_file_participants(&participants)
+            }),
         })
     }
 
     pub fn current_readers(&self) -> Vec<Uuid> {
+        self.readers_and_file_participants(&BTreeSet::new())
+    }
+
+    fn readers_and_file_participants(&self, participants: &BTreeSet<Uuid>) -> Vec<Uuid> {
         self.authority
             .as_ref()
             .map(|authority| {
@@ -1453,7 +1460,8 @@ impl RoomHost {
                     .endpoints
                     .iter()
                     .filter_map(|(session, endpoint)| {
-                        (self.room.reading(*session)
+                        (endpoint.connected
+                            && (self.room.reading(*session) || participants.contains(session))
                             && self
                                 .room
                                 .authorize(endpoint.member, crate::RoomPermission::Read)

@@ -202,6 +202,8 @@ App, language, theme and help belong to the site bar above the room toolbar.
 They do not move into the sharing group when a sidebar collapses. Place connection
 dots beside the site identity; App leads the right-hand utility group. The room
 toolbar owns the single companion-pane toggle; the main body fills the released width.
+Size the site bar from its own available width. Shorten the site name and use
+shared compact actions before wrapping identity and utilities as complete groups.
 Site maintenance is separate from a room's access settings.
 Under each room, show one row per person taking part in voice, sharing,
 watching or a file transfer. Combine their Browser and App activities on that
@@ -227,6 +229,10 @@ action order. Thumbnail density retains the title, reactions, watcher count/list
 and direct stop watching or stop sharing action. Its shared playback controls
 keep play/pause, sound and playback settings available; selecting the picture
 promotes it to the full controls without remounting its player.
+An original webpage that is mounted only in the main picture uses a quiet globe
+and source label in its thumbnail. Keep its controls available without suggesting
+that a black rectangle is a live video preview. Explicitly focusing a picture
+reveals its main area and preserves keyboard access after the focus trigger moves.
 
 In full-size synchronized playback, give the timeline the width of the playback
 bar and keep the time readout beside the transport controls. The sharer can

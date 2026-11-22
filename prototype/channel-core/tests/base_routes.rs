@@ -1899,7 +1899,6 @@ fn idle_file_copies_hold_no_room_data_grant_and_signaling_recovery_preserves_act
     assert_eq!(host_plan.downstream, [viewer_session]);
     assert!(!host_plan.receiving);
     let active_people = [
-        (host_session, (true, true)),
         (source_session, (true, false)),
         (viewer_session, (false, true)),
     ]
@@ -1907,7 +1906,7 @@ fn idle_file_copies_hold_no_room_data_grant_and_signaling_recovery_preserves_act
     assert_eq!(
         file_activity(&network, host, &room),
         active_people,
-        "the host receives and sends its assigned file branch"
+        "only the selected source and requesting viewer participate in the file transfer"
     );
     let (reply_seq, reply) = offer_file(&mut network, viewer, &room, "return.bin");
     command(
@@ -1918,12 +1917,11 @@ fn idle_file_copies_hold_no_room_data_grant_and_signaling_recovery_preserves_act
     assert_eq!(
         file_activity(&network, host, &room),
         [
-            (host_session, (true, true)),
             (source_session, (true, true)),
             (viewer_session, (true, true))
         ]
         .into(),
-        "each endpoint can receive one attachment while serving the other"
+        "each requester can receive one attachment while serving the other"
     );
     command(
         &mut network,

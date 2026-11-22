@@ -29,7 +29,8 @@ const mpdTracks: WatchMpdChoice[] = [{ candidate: {"id":"10000000-0000-4000-8000
 const watchSamples = [
   ["off", "关闭", "Off"], ["owner", "分享者", "Sharer"], ["viewer", "观看者", "Viewer"],
   ["available", "尚未加入", "Available"], ["blocked", "等待手动播放", "Playback blocked"],
-  ["native-owner", "分享原网页", "Share original page"], ["native-viewer", "观看原网页", "Watch original page"],
+  ["native-owner", "同步网页里的视频", "Sync video on its webpage"], ["native-viewer", "观看网页视频", "Watch webpage video"],
+  ["native-owner-thumbnail", "原网页与共享画面", "Original page and shared screen"],
   ["website-failed", "浏览器播放失败", "Browser playback failed"],
   ["live-owner", "直播分享者", "Live sharer"], ["live-viewer", "直播观看者", "Live viewer"],
   ["live-ended", "直播已结束", "Live ended"], ["live-expired", "直播位置已过期", "Live position expired"],
@@ -96,7 +97,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     ? ["一起看电影的阿达和她的小伙伴们", "Benjamin watching with friends tonight"][index] : user.name }));
   const screenUsers = [users[1], users[2], users[0], ...users.slice(3)];
   const [selected, setSelected] = useState(() => invitedRoom === "studio" && roomCount > 1 ? invitedRoom : roomCount ? "friday" : ""), [count, setCount] = useState(() => {
-    const value = Number(new URLSearchParams(location.search).get("screens"));
+    const value = Number(new URLSearchParams(location.search).get("screens") ?? (watchMode === "native-owner-thumbnail" ? 1 : 0));
     return screenCounts.includes(value) ? value : 0;
   });
   const picture = new URLSearchParams(location.search).get("picture");
@@ -409,11 +410,10 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     restoreRoomBackup: async () => { sample.received(); throw new Error("preview_storage_unavailable"); },
     browserCapturePreparation: () => undefined,
   } satisfies Partial<ChannelController> as unknown as ChannelController;
-  return <div className="c3-room-preview">
-    <ChannelRoomPage channel={channel} layout={layout} offerLayout={offerLayout} onLayoutChange={changeLayout} selected={selected} onSelect={setSelected}
-      appControl={<><AppConnectionButton discovery={previewAppDiscovery} connected={false} wakeURL={null} />
-        <span ref={optionsTrigger} className="c3-room-preview-trigger"><Btn icon="sliders" title={{ text: zh ? "预览选项" : "Preview options" }}
-          quiet size="compact" hint="hint-advanced" expanded={optionsOpen} controls={optionsId} popoverTarget={optionsId} /></span></>} />
+  const optionsLabel = { text: zh ? "预览选项" : "Preview options" };
+  const previewOptions = <>
+    <span ref={optionsTrigger}><Btn icon="sliders" title={optionsLabel} cap={optionsLabel}
+      quiet size="compact" hint="hint-advanced" expanded={optionsOpen} controls={optionsId} popoverTarget={optionsId} /></span>
     <div ref={optionsPanel} id={optionsId} popover="auto" role="dialog" aria-label={zh ? "预览选项" : "Preview options"}
           className="lr-anchored-card c3-room-preview-options" onToggle={event => {
             if (event.target === event.currentTarget) setOptionsOpen(event.newState === "open");
@@ -436,6 +436,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
               title={zh ? chinese : english}
               selected={watchMode === mode} onClick={() => {
                 setWatchMode(mode); setWatchActivity(sampleWatch(mode));
+                if (mode === "native-owner-thumbnail") {
+                  setCount(1); setSharingRoom(null); setStopped(new Set()); setUnwatched(new Set());
+                }
               }}>{zh ? chinese : english}</Chip>)}
           </div></fieldset>
           <div className="c3-room-preview-tools">
@@ -458,6 +461,11 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
             </Chip>)}
           </div></fieldset>
           <a className="lr-btn is-compact is-quiet" href="/__tooltip-preview#channel-guide-preview"><Glyph name="book" size={18} />{zh ? "返回控件目录" : "Back to UI catalogue"}</a>
-    </div><span className="visually-hidden" role="status">{sample.notice}</span>
+    </div>
+  </>;
+  return <div className="c3-room-preview">
+    <ChannelRoomPage channel={channel} layout={layout} offerLayout={offerLayout} onLayoutChange={changeLayout} selected={selected} onSelect={setSelected}
+      appControl={<AppConnectionButton discovery={previewAppDiscovery} connected={false} wakeURL={null} />} previewOptions={previewOptions} />
+    <span className="visually-hidden" role="status">{sample.notice}</span>
   </div>;
 }

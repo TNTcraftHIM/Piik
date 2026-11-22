@@ -158,7 +158,7 @@ impl RoomTurns {
         let mut replies = outcome.replies().map_err(anyhow::Error::msg)?;
         if let Some(record) = replies.iter().find_map(|reply| reply.record.broadcast()) {
             for reader in hosted.current_readers() {
-                if reader != address.recipient && reader != self.local {
+                if reader != address.recipient {
                     replies.push(ConversationReply {
                         address: conversation::ConversationAddress {
                             recipient: reader,
@@ -170,6 +170,9 @@ impl RoomTurns {
             }
         }
         for reply in replies {
+            if reply.address.recipient == self.local && address.recipient != self.local {
+                continue;
+            }
             let packet = self
                 .signer
                 .sign(self.local, &reply)

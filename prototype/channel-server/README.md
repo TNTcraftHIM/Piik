@@ -430,31 +430,34 @@ change is being committed.
 
 The shared Native capability controls availability. Android currently lacks the
 received-video adaptation used by this input and does not expose this choice.
-Windows OBS-to-Browser media and retirement have been exercised; other desktop
-platforms still need their runtime acceptance.
+Windows and stock Alpine OBS-to-Browser media and retirement have been exercised;
+other desktop packages and platforms still need their runtime acceptance.
 
-On Linux, Alpine OBS Studio 32.1.2 and Flathub OBS Studio 33.0.1 can reach
-the WHIP endpoint but fail to connect media. Both packages use libnice, which
-skipped the loopback interface in local tests. Piik accepts media on loopback.
-The OBS **Bind to IP** setting did not enable loopback for WHIP on Alpine.
-FFmpeg with WHIP output delivered H.264 and Opus to Firefox on Linux. Alpine
-OBS also delivered picture and sound with a test build of libdatachannel 0.24.3
-using libjuice. The ICE backend is selected when libdatachannel is built.
+On Linux, Piik also offers a local-interface media address for OBS packages
+whose ICE backend omits loopback addresses. The socket accepts only traffic
+arriving through Linux loopback; the input stays on this machine. Stock Alpine
+OBS Studio 32.1.2 with libnice passed picture, sound and stop/restart checks with
+Firefox on a separate network. FFmpeg WHIP remains supported. Flathub and other
+distribution packages still need their own runtime checks.
 
 ## Watching video together
 
-Choose **Start sharing → Browser → Watch together**. A direct video address plays
-inside Piik. For a YouTube video or Short, play the preview in the official
+Choose **Start sharing → Browser → Watch together**. **Play direct video URL**
+opens a playable video link in Piik. Direct links can point to video files,
+supported HLS streams or clear static DASH (`.mpd`) streams.
+For a YouTube video or Short, play the preview in the official
 player, then confirm sharing. Browser viewers can watch without an App or
 extension. If preparing an embedded player is unavailable, the explicit App
 webpage entry remains available. A hidden embedded player pauses locally;
 **Start local playback** returns it to the shared position.
 
-With the Windows App connected, **Open webpage and choose video**
+With the Windows App connected, **Open webpage and select video**
 opens a separate website window; select its player after loading or signing in.
 If the player uses a media buffer, Piik offers the video addresses discovered in
-that page. Choose one for Browser viewers to try, or share the original webpage
-only. Selecting an address does not enable uploading.
+that page. Choose **Sync video on its webpage** to sync the chosen player’s
+playback while viewers open the same page in their App and select the video.
+**Share this video** for a complete file or a supported HLS stream lets Browser
+viewers try the site first and choose **Receive from sharer** if needed.
 The list updates as the page discovers media. For indexed or DASH sources,
 choose a video track and optional audio track, then explicitly confirm forwarding.
 The App sends the original encoded bytes through the room's peer paths;
@@ -465,10 +468,9 @@ When an HLS source offers multiple audio tracks, playback settings let each
 participant choose their own audio without changing the shared progress.
 
 When the selected player exposes an independently usable media address, Browser
-viewers load it directly from the source. If it cannot play there, **Watch in App**
-opens the original webpage for that viewer to select its player. This requires a
-supported App but no browser extension. Website login state stays in its separate
-App browsing profile; Piik does not send the sharer's cookies to viewers.
+viewers load it directly from the source. If direct playback fails, viewers can
+choose **Open webpage and select video** in a supported App and pick the player
+there. Each viewer signs in on the website if needed.
 
 Playback state travels through the room's signaling connection. Direct viewing
 does not need a peer media path. The sharer can also choose **Share settings →

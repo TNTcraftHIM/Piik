@@ -32,6 +32,20 @@ function dashFailure(error: unknown): Error {
   );
 }
 
+/** Inspect the parsed presentation before Shaka resolves linked periods or initializes DRM. */
+export function requireClearStaticManifest(mpd: shaka.extern.xml.Node): void {
+  if (mpd.tagName !== "MPD") throw new Error("watch_invalid_manifest");
+  if ((mpd.attributes.type ?? "static") !== "static")
+    throw new Error("watch_live_timeline_unsupported");
+  const visit = (node: shaka.extern.xml.Node) => {
+    const localName = node.tagName.slice(node.tagName.indexOf(":") + 1);
+    if (localName === "ContentProtection")
+      throw new Error("watch_media_encryption_unsupported");
+    for (const child of node.children) if (typeof child !== "string") visit(child);
+  };
+  visit(mpd);
+}
+
 /** Shaka owns DASH/MSE. HTMLVideoMedia retains the element, controls and retirement. */
 export class WatchDashMedia {
   private player?: shaka.Player;
@@ -39,8 +53,7 @@ export class WatchDashMedia {
   private closed = false;
   constructor(
     private video: HTMLVideoElement,
-    private resourceId: string,
-    private read: WatchByteReader,
+    private source: string | { resourceId: string; read: WatchByteReader },
     private signal: AbortSignal,
     private failed: (error: Error) => void,
   ) {}
@@ -52,12 +65,23 @@ export class WatchDashMedia {
       if (!library.Player.isBrowserSupported())
         throw new Error("watch_media_unsupported");
       const player = (this.player = new library.Player());
-      this.bridge = attachWatchDashReader(
-        library,
-        player,
-        this.read,
-        this.signal,
-      );
+      let url: string;
+      if (typeof this.source === "string") {
+        player.configure({ manifest: {
+          dash: { manifestPreprocessorTXml: requireClearStaticManifest },
+          raiseFatalErrorOnManifestUpdateRequestFailure: true,
+        } });
+        // Shaka imports these XML fragments after preprocessing the MPD.
+        const { LINKED_MPD, XLINK } = library.net.NetworkingEngine.AdvancedRequestType;
+        player.getNetworkingEngine()!.registerRequestFilter((_type, _request, context) => {
+          if (context?.type === LINKED_MPD || context?.type === XLINK)
+            throw new Error("watch_invalid_manifest");
+        });
+        url = this.source;
+      } else {
+        this.bridge = attachWatchDashReader(library, player, this.source.read, this.signal);
+        url = this.bridge.url(this.source.resourceId);
+      }
       player.addEventListener("error", (event) => {
         if (!this.signal.aborted && !this.closed)
           this.failed(
@@ -67,7 +91,7 @@ export class WatchDashMedia {
       await player.attach(this.video);
       this.signal.throwIfAborted();
       await player.load(
-        this.bridge.url(this.resourceId),
+        url,
         undefined,
         "application/dash+xml",
       );

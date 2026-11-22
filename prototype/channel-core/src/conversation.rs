@@ -411,9 +411,7 @@ impl ConversationRecord {
             } => Some(Self::LiveMessage {
                 message: message.clone(),
             }),
-            Self::MessageDeleted { .. }
-            | Self::HistoryCleared { .. }
-            | Self::Reaction { event: Some(_), .. } => Some(self.clone()),
+            Self::Reaction { event: Some(_), .. } => Some(self.clone()),
             _ => None,
         }
     }
@@ -461,6 +459,9 @@ pub enum ConversationResult {
 }
 #[derive(Serialize)]
 pub struct ConversationOutcome {
+    /// Captured at commit while the retiring file registrations are still known.
+    #[serde(skip)]
+    pub(crate) removal_recipients: Vec<Uuid>,
     #[serde(rename = "projectionUpdate", skip_serializing_if = "Option::is_none")]
     pub projection_update: Option<crate::host::HostOutput>,
     pub address: ConversationAddress,
@@ -468,7 +469,23 @@ pub struct ConversationOutcome {
 }
 impl ConversationOutcome {
     pub fn replies(self) -> Result<Vec<ConversationReply>, &'static str> {
-        self.address.replies(self.result)
+        let mut replies = self.address.replies(self.result)?;
+        if !self.removal_recipients.is_empty() {
+            let confirmation = replies[0].clone();
+            replies.extend(
+                self.removal_recipients
+                    .into_iter()
+                    .filter(|id| *id != confirmation.address.recipient)
+                    .map(|recipient| ConversationReply {
+                        address: ConversationAddress {
+                            recipient,
+                            ..confirmation.address.clone()
+                        },
+                        record: confirmation.record.clone(),
+                    }),
+            );
+        }
+        Ok(replies)
     }
 }
 impl ConversationAddress {

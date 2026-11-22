@@ -158,19 +158,25 @@ describe("Webpage watch presentation", () => {
   });
 
   it.each([
-    ["https://video.test/example.MP4?quality=hd", true],
-    ["https://video.test/stream.m3u8?token=signed", true],
-    ["https://video.test/stream.mpd?token=signed", false],
-    ["https://video.test/watch?id=42", false],
-  ])("chooses the default playback entry for %s", (initialURL, direct) => {
+    ["https://video.test/example.MP4?quality=hd", true, true],
+    ["https://video.test/stream.m3u8?token=signed", true, true],
+    ["https://video.test/stream.mpd?token=signed", true, true],
+    ["https://video.test/stream.mpd?token=signed", true, false],
+    ["https://video.test/watch?id=42", false, true],
+  ] as const)("chooses the default playback entry for %s (direct %s, App connected %s)", (initialURL, direct, appConnected) => {
     setCopy({ lang: "en" });
-    const channel = { appConnected: true, pagePlayer: true, pending: new Set(), watchPage: () => undefined,
+    const channel = { appConnected, pagePlayer: appConnected, pending: new Set(), watchPage: () => undefined,
       watchEmbed: () => undefined, sourceSelectionCommitting: () => false } as unknown as ChannelController;
     const html = renderToStaticMarkup(createElement(WatchSourceDialog, {
       channel, roomId: "room", initialURL, onClose: vi.fn(),
     }));
     expect(html).toMatch(direct ? /type="submit"[^>]*aria-label="Play direct video URL"/ : /type="submit"[^>]*aria-label="Open webpage and select video"/);
-    expect(html).toMatch(direct ? /type="button"[^>]*aria-label="Open webpage and select video"/ : /type="button"[^>]*aria-label="Play direct video URL"/);
+    if (appConnected) {
+      expect(html).toMatch(direct ? /type="button"[^>]*aria-label="Open webpage and select video"/ : /type="button"[^>]*aria-label="Play direct video URL"/);
+    } else {
+      expect(html.match(/<button[^>]*aria-label="Play direct video URL"[^>]*>/)?.[0]).not.toContain("disabled");
+      expect(html).not.toContain(t("en", "watch.connectApp"));
+    }
   });
 
   it("disables playback for a non-HTTP URL with a playlist extension", () => {
@@ -204,7 +210,7 @@ describe("Webpage watch presentation", () => {
     } as unknown as ChannelController;
     const html = renderToStaticMarkup(createElement(WatchSourceDialog, { channel, roomId: "room", onClose: vi.fn() }));
     expect(html).toContain(t("en", "watch.browserSource.originalHelp"));
-    const originalPage = html.match(/<button[^>]*aria-label="Share original webpage only"[^>]*>/)?.[0];
+    const originalPage = html.match(/<button[^>]*aria-label="Sync video on its webpage"[^>]*>/)?.[0];
     expect(originalPage).toBeDefined();
     expect(originalPage).not.toContain("disabled");
     expect(html.includes(`aria-label="${t("en", "watch.forward.direct")}"`)).toBe(direct);
@@ -382,7 +388,7 @@ describe("Webpage watch presentation", () => {
     expect(program).not.toContain("Connect Piik App");
     expect(program).not.toContain('aria-label="Open webpage and select video"');
     const disconnected = render({ ...source, onAppWatch: undefined });
-    expect(disconnected).toContain("Connect Piik App");
+    expect(disconnected).toContain(t("en", "watch.connectApp"));
     expect(disconnected).not.toContain('aria-label="Open webpage and select video"');
     const receiving = { peerAvailable: true, peerSupported: true, mode: "direct" as const, browserSource: false, onPeer: vi.fn(), onDirect: vi.fn() };
     const unsupported = { ...source, onAppWatch: undefined, originalPageAvailable: false, originalPageUnavailable: t("en", "watch.pageUnsupported") };

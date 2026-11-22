@@ -286,6 +286,30 @@ test("App webpage selection has its own candidates and closes pending reads with
     expect((app as unknown as { requests: Map<string, unknown> }).requests.size).toBe(0);
   } finally { app.close(); }
 });
+test("page candidate descriptions can grow during another App request", async () => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket);
+    const candidate = { id: crypto.randomUUID(), title: "Episode", url: null, duration: 60 };
+    const capacity = app.relayCapacity();
+    socket.receive({ type: "page_candidates", pageId: page.id, url: "https://video.test/page",
+      title: "Upcoming episodes", candidates: [{ ...candidate, language: "en" }] });
+    const result = { sessionId: crypto.randomUUID(), relayOverride: 2 };
+    socket.reply(result);
+    await expect(capacity).resolves.toEqual(result);
+    expect(page.candidates).toEqual([candidate]);
+    expect(app.connected).toBe(true);
+  } finally { app.close(); }
+});
+test.each([undefined, -1])("invalid required candidate duration (%s) retires the App connection", async duration => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket);
+    socket.receive({ type: "page_candidates", pageId: page.id, url: "https://video.test/page",
+      candidates: [{ id: crypto.randomUUID(), title: "Episode", url: null, duration }] });
+    expect(app.connected).toBe(false);
+  } finally { app.close(); }
+});
 test("cancelling prepare retires the page and ignores its late confirmation", async () => {
   const { app, socket } = await setup();
   try {

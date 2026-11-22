@@ -115,15 +115,16 @@ export class HTMLVideoMedia implements WatchMedia {
     let url: string;
     let hlsModule: typeof import("./watch-hls") | undefined;
     let hlsResource: WatchResourceSource | undefined;
+    if (format === "dash") {
+      if (this.timeline === "program") throw new Error("watch_live_timeline_unsupported");
+      if (typeof source === "function") throw new Error("watch_media_unsupported");
+      const dash = this.dash = new WatchDashMedia(this.video, source, this.lifetime.signal, error => {
+        this.failure = error; this.video.dispatchEvent(new Event("error"));
+      });
+      await dash.open(); return;
+    }
     if (typeof source === "object") {
       const peer = source;
-      if (format === "dash") {
-        if (this.timeline === "program") throw new Error("watch_live_timeline_unsupported");
-        const dash = this.dash = new WatchDashMedia(this.video, peer.resourceId, peer.read, this.lifetime.signal, error => {
-          this.failure = error; this.video.dispatchEvent(new Event("error"));
-        });
-        await dash.open(); return;
-      }
       if (format === "hls") {
         hlsModule = await import("./watch-hls");
         this.lifetime.signal.throwIfAborted();
@@ -149,7 +150,6 @@ export class HTMLVideoMedia implements WatchMedia {
         source = signal => openWatchResource(peer.resourceId, peer.read, signal);
       }
     }
-    if (format === "dash") throw new Error("watch_media_unsupported");
     if (typeof source === "function") {
       const resource = await source(this.lifetime.signal);
       if (this.lifetime.signal.aborted) { resource.close(); return; }

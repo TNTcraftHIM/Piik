@@ -199,6 +199,35 @@ test("confirmed message removal discards its retained copy and blocks stale atta
   } finally { files.reset(); }
 });
 
+test("background downloads follow the removed message sequence and room", async () => {
+  const command = vi.fn(async (_command: ChannelCommand) => {});
+  const files = setup(command), cancel = vi.fn(() => "[]");
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ initializeRuntime: async () => {},
+    FileDelivery: class {
+      start() { return "[]"; } update() { return "[]"; } next_deadline() { return undefined; }
+      cancel = cancel; free() {}
+    },
+  } as never);
+  stubTransferStorage({ getFileHandle: async () => ({ createWritable: async () => ({ abort: async () => {} }) }),
+    removeEntry: async () => {} });
+  vi.spyOn(FileStore.prototype, "removeMessages").mockResolvedValue();
+  const sibling = { ...key, messageSeq: key.messageSeq + 1 }, other = { ...key, roomId: "second" };
+  const keys = [key, sibling, other];
+  files.update("endpoint", { domainId: "domain", userId: "self" }, [],
+    [key.roomId, other.roomId].map(id => ({ id, authorized: true, available: true, reading: false })) as ChannelRoom[], []);
+  const downloads = keys.map(fileKey => files.download(fileKey, attachment).catch(error => error));
+  try {
+    await vi.waitFor(() => expect(command.mock.calls.filter(([event]) => event.type === "file_receive" && event.enabled)).toHaveLength(3));
+    files.removeMessages(key.roomId, seq => seq === key.messageSeq);
+    expect(await downloads[0]).toMatchObject({ name: "AbortError" });
+    expect(keys.map(fileKey => files.status(fileKey).busy)).toEqual([false, true, true]);
+    files.removeMessages(key.roomId, seq => seq <= sibling.messageSeq);
+    expect(await downloads[1]).toMatchObject({ name: "AbortError" });
+    expect(files.status(other).busy).toBe(true);
+    expect(cancel.mock.calls).toEqual([[JSON.stringify(key)], [JSON.stringify(sibling)]]);
+  } finally { files.reset(); await Promise.all(downloads); vi.unstubAllGlobals(); }
+});
+
 test("clearing one room cache withdraws its copies and ignores an older cache snapshot", async () => {
   const command = vi.fn(async (_command: ChannelCommand) => {});
   const files = setup(command), file = new File(["GIF89a"], attachment.name);

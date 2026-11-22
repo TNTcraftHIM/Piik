@@ -91,7 +91,7 @@
 .c3-monitor.is-theater > .c3-monitor-directory { display: none; }
 .c3-monitor.is-theater > .c3-monitor-heading { padding: 8px 12px; background: var(--paper); }
 .c3-monitor.is-theater .c3-theater-source { display: flex; }
-.c3-monitor.is-theater .c3-monitor-grid { display: block; flex: 1; min-height: 0; height: auto; }
+.c3-monitor.is-theater .c3-monitor-grid { display: block; flex: 1; min-height: 0; height: auto; scrollbar-gutter: auto; }
 .c3-monitor.is-theater .c3-monitor-tile:not(.is-focused) { display: none; }
 .c3-monitor.is-theater .c3-monitor-tile.is-focused { width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; }
 .c3-monitor.is-theater .c3-mini-player { border-radius: 0; }

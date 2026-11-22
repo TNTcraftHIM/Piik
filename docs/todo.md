@@ -278,9 +278,8 @@ the feedback period; they do not delay that delivery.
   and Linux hardware encoding and physical sound. Retain the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-  Resolve Linux OBS builds that omit the loopback media candidate. Verify a
-  stock OBS package, a viewer across the guest network, and stop/restart. Exercise
-  macOS input separately.
+  Complete Flathub and additional Linux distribution OBS checks after the stock
+  Alpine control. Exercise macOS input separately.
   [Platform coverage](./research/room-interactions.md#local-obs-input) includes
   Linux FFmpeg-to-Firefox playback and Windows OBS playback and retirement.
 - [ ] **Enhanced microphone suppression on physical devices (#518).** Compare

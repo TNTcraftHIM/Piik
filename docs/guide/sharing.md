@@ -49,15 +49,17 @@ If Piik reports an unsupported video format, stop streaming, select **NV12** und
 
 ## Watch a webpage video together
 
-In a 3.0 test room, select **Start sharing → Watch together** and paste a direct video URL or copy the page address from your browser’s address bar.
+In a 3.0 test room, select **Start sharing → Browser → Watch together** and paste a direct video URL or the page address from your browser’s address bar.
 
-- **Direct video link or YouTube.** Select **Play direct video URL** or, for YouTube, **Watch together**. Everyone can use a browser. Each person plays the video from its original source.
-- **Watch on the original webpage.** In the Windows App, select **Open webpage and select video**. Sign in on the website if needed and play the video. Return to Piik and click **Share original webpage only** beside the player you want. Each viewer uses Piik App on Windows and selects **Open webpage and select video** in the room. Piik opens the page the sharer chose. Each viewer signs in with their own account if needed and selects the player. The webpage then appears inside the room’s main picture. The sharer controls play, pause and seeking for everyone.
-- **Share from App to browser viewers.** Under **Choose playback source**, complete video files offer **Share this video**. Viewers first play from the original website; if that fails, they can select **Receive from sharer**. Other sources still offer **Forward through App**. Only viewers receiving from the sharer use the sharer’s or relay’s upload bandwidth and need a working media connection. If access expires, the sharer restores playback on the original website, then the viewer selects **Retry**.
+- **Direct video link or YouTube.** If you have a playable video link, select **Play direct video URL**. For YouTube, select **Watch together**, play the preview in YouTube’s player, then confirm with **Select video**. Everyone can watch in a browser.
+- **Sync video on its webpage.** In the Windows Piik App, select **Open webpage and select video**. Sign in if needed, start the video, then return to Piik and choose **Sync video on its webpage** beside that player. Viewers using the webpage player also select **Open webpage and select video** in the Windows App. Each opens the same page, signs in if needed, and selects the matching video. The sharer controls play, pause and position for that video.
+- **Share this video.** Under **Choose playback source**, select the card for a complete video file or a supported HLS stream the App found. Viewers try the site first in their browsers. If playback fails, they can choose **Receive from sharer** to use the sharer’s upload bandwidth. Other sources may offer **Forward through App**. If site access expires, the sharer can restore playback there and viewers can select **Retry**.
+
+Direct links can point to video files, supported HLS streams or static DASH (`.mpd`) streams without DRM.
 
 If you're already watching a shared webpage video in the Windows App, open **Playback settings → Open webpage and select video** to use the website's player. The current video keeps playing while you choose. Select the player to switch, or close the chooser to keep watching in Piik. When the source supports direct playback, use **Playback settings → Play directly from website** to return to Piik's player. For YouTube, press Play in the preview to switch.
 
-With direct links, YouTube and original webpages, each viewer loads the video from its origin. A cloud tunnel used to reach the room carries the playback controls and position. To switch episodes, the sharer selects **Switch source** and viewers join the new activity.
+When viewers play directly from the site, each device loads the video independently. To switch episodes, the sharer selects **Switch source** and viewers join the new activity.
 
 ## Share settings
 
