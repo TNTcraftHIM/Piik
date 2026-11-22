@@ -19,30 +19,14 @@ fn first_codec(codec: VideoCodec, frame: &crate::EncodedFrame) -> Result<RtpCode
         frame.keyframe,
         "capture encoding did not start independently"
     );
-    let sdp_fmtp_line = match codec {
-        VideoCodec::H264 => {
-            let mut sps = H264Sps::default();
-            sps.access_unit(&frame.bytes)?;
-            let profile = sps
-                .last
-                .ok_or_else(|| anyhow!("capture first access unit has no SPS"))?;
-            format!(
-                "packetization-mode=1;profile-level-id={:02x}{:02x}{:02x}",
-                profile[0], profile[1], profile[2]
-            )
-        }
-        VideoCodec::Vp8 => String::new(),
-    };
-    Ok(RtpCodec {
-        mime_type: match codec {
-            VideoCodec::H264 => "video/H264",
-            VideoCodec::Vp8 => "video/VP8",
-        }
-        .into(),
-        clock_rate: 90_000,
-        sdp_fmtp_line,
-        ..Default::default()
-    })
+    match codec {
+        VideoCodec::H264 => H264Sps::initial_codec(&frame.bytes),
+        VideoCodec::Vp8 => Ok(RtpCodec {
+            mime_type: "video/VP8".into(),
+            clock_rate: 90_000,
+            ..Default::default()
+        }),
+    }
 }
 
 async fn initial(
@@ -350,13 +334,8 @@ mod tests {
         let original = [0x42, 0xe0, 0x1f];
         video.set_codec(RtpCodec::h264(original))?;
         let reader = video.subscribe();
-        let frame = |profile: [u8; 3], ms| crate::EncodedFrame {
-            bytes: [
-                vec![0, 0, 1, 0x67],
-                profile.to_vec(),
-                vec![0, 0, 1, 0x65, 1],
-            ]
-            .concat(),
+        let frame = |profile: [u8; 3], tail: &[u8], ms| crate::EncodedFrame {
+            bytes: [vec![0, 0, 1, 0x67], profile.to_vec(), tail.to_vec()].concat(),
             presentation_time: now + Duration::from_millis(ms),
             keyframe: true,
             vp8: None,
@@ -369,8 +348,16 @@ mod tests {
             bitrate: 500_000,
             degradation_preference: DegradationPreference::Balanced,
         };
-        for (profile, compatible) in [([0x4d, 0, 0x1f], false), ([0x42, 0xe0, 0x32], true)] {
-            let candidate = Encoding::with_test_frame(frame(profile, 1));
+        let recovery = &[0, 0, 1, 0x68, 1, 0, 0, 1, 0x65, 1][..];
+        let mut next_ms = 1;
+        for (profile, tail, compatible) in [
+            (original, &[0, 0, 1, 0x65, 1][..], false),
+            (original, &[0, 0, 1, 0x68, 1, 0, 0, 1, 0x61, 1], false),
+            ([0x4d, 0, 0x1f], recovery, false),
+            ([0x42, 0xe0, 0x32], recovery, true),
+        ] {
+            let candidate = Encoding::with_test_frame(frame(profile, tail, next_ms));
+            next_ms += 1;
             let candidate_control = candidate.control();
             let (result, _receiver) = oneshot::channel();
             let (_, prepared) = prepare(
@@ -387,8 +374,13 @@ mod tests {
             } else {
                 assert!(candidate_control.is_stopped());
                 assert!(!control.is_stopped());
-                video.write(frame(original, 2));
-                assert_eq!(reader.recv().await.unwrap().bytes, frame(original, 2).bytes);
+                video.write(frame(original, recovery, next_ms));
+                let delivered = tokio::time::timeout(Duration::from_secs(1), reader.recv()).await?;
+                assert_eq!(
+                    delivered.unwrap().bytes,
+                    frame(original, recovery, next_ms).bytes
+                );
+                next_ms += 1;
             }
         }
         Ok(())

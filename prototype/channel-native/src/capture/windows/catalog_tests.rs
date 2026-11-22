@@ -8,6 +8,26 @@ use windows::{
 };
 
 #[test]
+fn independent_catalog_failures_preserve_selectable_sources() {
+    let failed = || Err(anyhow!("injected enumeration failure"));
+    let source = |kind| Target {
+        kind,
+        source_id: "1".into(),
+        title: "Fixture".into(),
+        pid: 0,
+        creation_time: None,
+    };
+    let windows = combine_catalogs(Ok(vec![source(TargetKind::Window)]), failed()).unwrap();
+    assert!(matches!(windows.as_slice(), [Target { kind: TargetKind::Window, .. }]));
+    let displays = combine_catalogs(failed(), Ok(vec![source(TargetKind::Display)])).unwrap();
+    assert!(matches!(displays.as_slice(), [Target { kind: TargetKind::Display, .. }]));
+    for result in [combine_catalogs(failed(), failed()), combine_catalogs(failed(), Ok(vec![]))] {
+        assert_eq!(result.unwrap_err().to_string(), "capture_targets_failed");
+    }
+    assert!(combine_catalogs(Ok(vec![]), Ok(vec![])).unwrap().is_empty());
+}
+
+#[test]
 fn catalog_reads_caption_while_own_window_thread_is_busy() {
     let hwnd = unsafe {
         CreateWindowExW(

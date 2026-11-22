@@ -56,7 +56,7 @@ export function sampleRoomTopology(state: ChannelSnapshot, roomId: string, publi
 }
 
 /** Guide and room previews share local sample props, never a Session or backend. */
-export function useChannelGuideSample({ multiRoom = false, showSampleAttachment = false } = {}) {
+export function useChannelGuideSample({ multiRoom = false, multiVoice = false, showSampleAttachment = false } = {}) {
   const { lang } = useCopy(), zh = lang === "zh";
   const [site, setSite] = useState({ name: "Friends", icon: "couch" });
   const [settingsByRoom, setSettingsByRoom] = useState<Record<string, Partial<RoomSettings>>>({});
@@ -83,6 +83,7 @@ export function useChannelGuideSample({ multiRoom = false, showSampleAttachment 
   }
   const [voiceByRoom, setVoiceByRoom] = useState<Record<string, { muted: boolean; deafened: boolean }>>({
     friday: { muted: false, deafened: false },
+    ...(multiRoom && multiVoice ? { studio: { muted: true, deafened: false } } : {}),
   });
   const [voiceLevel, setVoiceLevel] = useState<number>();
   const voiceActivity = useCallback(async () => new Map(voiceLevel === undefined ? [] : [

@@ -1,7 +1,7 @@
 //! Frontend assets and the domain's bound network entries.
 use axum::{
     extract::Request,
-    http::{header, HeaderValue},
+    http::{header, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::Response,
     routing::{get_service, MethodRouter},
@@ -9,9 +9,11 @@ use axum::{
 };
 use axum_server::tls_rustls::RustlsConfig;
 use rustls::pki_types::CertificateDer;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::{future::Future, time::Duration};
 use tokio::net::TcpListener;
 use tower_http::{
@@ -122,12 +124,97 @@ pub fn frontend(directory: &Path) -> anyhow::Result<Router> {
         "frontend directory must contain index.html"
     );
     Ok(Router::new()
+        .merge(bundle_routes(directory)?)
         .route("/", document(index.clone()))
         .route("/__channel-preview", document(index.clone()))
         .route("/index.html", document(index))
         .fallback_service(static_files(
             ServeDir::new(directory).append_index_html_on_directories(false),
         )))
+}
+
+pub(crate) fn bundle_routes<S: Clone + Send + Sync + 'static>(
+    directory: &Path,
+) -> anyhow::Result<Router<S>> {
+    #[derive(Deserialize)]
+    struct Chunk {
+        file: String,
+        #[serde(default)]
+        css: Vec<String>,
+        #[serde(default)]
+        assets: Vec<String>,
+    }
+    // Development asset directories may omit the build manifest.
+    let manifest: HashMap<String, Chunk> = match std::fs::read(directory.join("vite-manifest.json"))
+    {
+        Ok(bytes) => serde_json::from_slice(&bytes)?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => HashMap::new(),
+        Err(error) => return Err(error.into()),
+    };
+    let mut tags = HashMap::new();
+    for chunk in manifest.into_values() {
+        for file in std::iter::once(chunk.file)
+            .chain(chunk.css)
+            .chain(chunk.assets)
+        {
+            if file.starts_with("assets/") {
+                tags.insert(
+                    format!("/{file}"),
+                    HeaderValue::from_str(&format!("W/\"{file}\""))?,
+                );
+            }
+        }
+    }
+    let files = static_files(ServeDir::new(directory).append_index_html_on_directories(false));
+    Ok(Router::new().route(
+        "/assets/{*file}",
+        get_service(files).layer(middleware::from_fn_with_state(Arc::new(tags), cache_bundle)),
+    ))
+}
+
+async fn cache_bundle(
+    axum::extract::State(tags): axum::extract::State<Arc<HashMap<String, HeaderValue>>>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    let Some(tag) = tags.get(request.uri().path()) else {
+        return next.run(request).await;
+    };
+    let opaque = &tag.as_bytes()[2..];
+    let matches = request
+        .headers()
+        .get_all(header::IF_NONE_MATCH)
+        .iter()
+        .any(|value| {
+            let bytes = value.as_bytes().trim_ascii();
+            bytes == b"*"
+                || bytes.split(|&byte| byte == b',').any(|token| {
+                    let token = token.trim_ascii();
+                    token.strip_prefix(b"W/").unwrap_or(token) == opaque
+                })
+        });
+    if request.headers().contains_key(header::IF_NONE_MATCH) {
+        request.headers_mut().remove(header::IF_MODIFIED_SINCE);
+    }
+    if matches {
+        request.headers_mut().remove(header::RANGE);
+    }
+    let mut response = next.run(request).await;
+    if matches && response.status() == StatusCode::OK {
+        response = Response::new(axum::body::Body::empty());
+        *response.status_mut() = StatusCode::NOT_MODIFIED;
+        response
+            .headers_mut()
+            .insert(header::VARY, HeaderValue::from_static("Accept-Encoding"));
+    }
+    if response.status().is_success() || response.status() == StatusCode::NOT_MODIFIED {
+        response.headers_mut().insert(header::ETAG, tag.clone());
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("private, max-age=31536000, immutable"),
+        );
+    }
+    response
 }
 
 pub(crate) fn static_files<F>(files: ServeDir<F>) -> SetResponseHeader<ServeDir<F>, HeaderValue> {
@@ -227,11 +314,18 @@ mod tests {
         fs::write(directory.join("assets/adapter.wasm"), identity).unwrap();
         fs::write(directory.join("assets/adapter.wasm.br"), brotli).unwrap();
         fs::write(directory.join("assets/adapter.wasm.gz"), gzip).unwrap();
+        fs::write(
+            directory.join("vite-manifest.json"),
+            r#"{"adapter":{"file":"assets/adapter.wasm"}}"#,
+        )
+        .unwrap();
         let routes = frontend(&directory).unwrap().nest(
             "/app",
-            Router::new().fallback_service(static_files(
-                ServeDir::new(&directory).fallback(document(index)),
-            )),
+            bundle_routes(&directory)
+                .unwrap()
+                .fallback_service(static_files(
+                    ServeDir::new(&directory).fallback(document(index)),
+                )),
         );
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -256,12 +350,37 @@ mod tests {
                     request_bytes(address, path, &format!("Accept-Encoding: {encoding}\r\n")).await,
                 ));
             }
+            let (status, headers, body) = request_bytes(
+                address,
+                path,
+                "If-None-Match: \"other\", \"assets/adapter.wasm\"\r\nAccept-Encoding: gzip\r\n",
+            )
+            .await;
+            assert_eq!(status, 304);
+            assert!(body.is_empty());
+            assert_eq!(headers["etag"], r#"W/"assets/adapter.wasm""#);
+            assert_eq!(headers["vary"], "Accept-Encoding");
+            assert_eq!(
+                headers["cache-control"],
+                "private, max-age=31536000, immutable"
+            );
         }
+        assert_eq!(
+            request_bytes(address, "/app/assets/missing.js", "If-None-Match: *\r\n")
+                .await
+                .0,
+            404
+        );
         stop.send(()).unwrap();
         server.await.unwrap();
         fs::remove_dir_all(directory).unwrap();
         for (encoding, response) in responses {
             assert_eq!(response.0, 200);
+            assert_eq!(response.1["etag"], r#"W/"assets/adapter.wasm""#);
+            assert_eq!(
+                response.1["cache-control"],
+                "private, max-age=31536000, immutable"
+            );
             assert_eq!(
                 response.1.get("content-type").map(String::as_str),
                 Some("application/wasm")

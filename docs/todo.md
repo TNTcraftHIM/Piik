@@ -232,6 +232,10 @@ the feedback period; they do not delay that delivery.
   and ordinary Native-to-Browser linear extension have controlled media and
   retirement evidence. Measure difficult physical networks and sustained
   concurrent use; these controls do not establish population success rates.
+- [ ] **Native candidates after an IPv6 address change.** Verify address-change
+  notifications and candidate freshness during the initial ICE attempt. Keep
+  candidate updates with the existing interface monitor, socket and connection
+  generation; qualify the upstream monitor behavior before changing its pin.
 - [ ] **Codec capability and efficiency comparison.** Measure actual platform
   encoder/decoder and Browser capabilities, then compare one available codec
   with H.264 using synthetic text and motion. Compare hardware and software
@@ -278,8 +282,8 @@ the feedback period; they do not delay that delivery.
   and Linux hardware encoding and physical sound. Retain the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-  Complete Flathub and additional Linux distribution OBS checks after the stock
-  Alpine control. Exercise macOS input separately.
+  Complete additional Linux distribution OBS checks after the stock Alpine and
+  Flathub controls. Exercise macOS input separately.
   [Platform coverage](./research/room-interactions.md#local-obs-input) includes
   Linux FFmpeg-to-Firefox playback and Windows OBS playback and retirement.
 - [ ] **Enhanced microphone suppression on physical devices (#518).** Compare

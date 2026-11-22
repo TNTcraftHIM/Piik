@@ -41,7 +41,7 @@ const onMessage = message => {
   if (message.text.trim() !== '!help' || message.userId === bot.summary().userId) return;
   void bot.chat('Share your Piik version and the step that failed.', {
     reply: { seq: message.seq, messageId: message.id, notify: true },
-  }).then(() => bot.react(message.seq, message.id, 'wave')).catch(report);
+  }).catch(report);
 };
 bot.on('failure', report).on('live', onMessage);
 
@@ -57,7 +57,8 @@ try {
   bot.off('live', onMessage);
   process.off('SIGINT', requestStop);
   process.off('SIGTERM', requestStop);
-  await bot.stop();
+  try { await bot.stop(); }
+  finally { bot.off('failure', report); }
 }
 ```
 
@@ -100,6 +101,11 @@ try {
   reject their own promises. `disconnected` signals socket retirement.
   `reconnect()` explicitly resumes the same instance's identity and room
   intent. `stop()` closes the participant and frees its signing resources.
+
+Attach a `live` listener once per participant. It stays registered across
+`reconnect()`. Messages sent during a disconnection can be read with
+`history()`. Only fresh broadcasts trigger the listener when browsing resumes.
+An embedding application removes its own listener with `off('live', onMessage)`.
 
 If a send times out after the Host commits it, the caller can explicitly
 retry with the same `chat` nonce and original content as long as the original

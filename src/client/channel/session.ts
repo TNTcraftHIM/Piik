@@ -511,8 +511,9 @@ export class ChannelSession {
       this.applyState(event.state, true);
       void this.syncAppWatching(resumed);
       void this.resumeWatches();
+      const socket = this.socket;
       void this.restoreHosts(event.sessionId, skipRestoreRoom).catch(error => {
-        if (!this.closed && this.view.sessionId === event.sessionId) this.patch({ error: error instanceof Error ? error.message : "storage_failed" });
+        if (!this.closed && this.socket === socket && this.view.sessionId === event.sessionId) this.patch({ error: error instanceof Error ? error.message : "storage_failed" });
       });
       if (resumed) {
         this.media.resync();
@@ -1183,38 +1184,66 @@ export class ChannelSession {
 
   private async restoreHosts(sessionId: string, skipRoom?: string): Promise<void> {
     if (typeof indexedDB === "undefined") return;
+    const socket = this.socket;
+    const current = () => this.socket === socket && this.view.sessionId === sessionId && !this.closed;
     await this.hostCleanup;
-    if (this.view.sessionId !== sessionId || this.closed) return;
+    if (!current()) return;
     const state = this.view.state, self = this.view.self;
     if (!state || !self) return;
     const storage = await this.browserStorage(state.channel.id, self.id);
     const policies = await storage.storedPolicies();
-    if (this.view.sessionId !== sessionId || this.closed) return;
-    const retained = new Set(policies.map(policy => (JSON.parse(policy) as { id: string }).id));
+    if (!current()) return;
+    const retained = new Map<string, string>();
+    let storageFailed = false;
+    for (const policy of policies) {
+      try {
+        const { id } = JSON.parse(policy);
+        if (typeof id === "string") retained.set(id, policy);
+        else storageFailed = true;
+      } catch { storageFailed = true; }
+    }
     for (const [id, hosted] of this.hostedRooms) if (!retained.has(id)) {
+      if (!current()) return;
       this.hostedRooms.delete(id);
       await hosted.host.close();
     }
-    for (const policy of policies) {
-      const id = (JSON.parse(policy) as { id: string }).id;
+    for (const [id, policy] of retained) {
+      if (!current()) return;
       if (id === skipRoom) continue;
       if (!this.view.state?.channel.rooms.some(room => room.id === id && room.creatorId === self.id)) continue;
       let hosted = this.hostedRooms.get(id);
-      if (!hosted) {
-        const host = await storage.open(policy);
-        if (this.view.sessionId !== sessionId || this.closed) { await host.close(); return; }
-        hosted = { host };
-        this.hostedRooms.set(id, hosted);
+      let room: RoomSummary;
+      try {
+        if (!hosted) {
+          const host = await storage.open(policy);
+          if (!current()) { await host.close(); return; }
+          hosted = { host };
+          this.hostedRooms.set(id, hosted);
+        }
+        room = await hosted.host.summary();
+      } catch {
+        if (!current()) return;
+        if (this.hostedRooms.get(id) !== hosted) continue;
+        if (hosted) {
+          this.hostedRooms.delete(id);
+          await hosted.host.close();
+        }
+        storageFailed = true;
+        continue;
       }
-      const room = await hosted.host.summary();
-      if (this.hostedRooms.get(id) !== hosted || this.view.sessionId !== sessionId || this.closed) return;
+      if (!current()) return;
+      if (this.hostedRooms.get(id) !== hosted) continue;
       try { await this.request({ type: "host_register", room, resumeBinding: hosted.bindingId }); }
       catch (error) {
+        if (!current()) return;
         if (!(error instanceof Error) || !["room_not_in_domain", "room_already_hosted"].includes(error.message)) throw error;
-        if (this.hostedRooms.get(id) === hosted) this.hostedRooms.delete(id);
+        if (this.hostedRooms.get(id) !== hosted) continue;
+        this.hostedRooms.delete(id);
         await hosted.host.close();
       }
     }
+    if (!current()) return;
+    if (storageFailed) this.patch({ error: "storage_failed" });
     for (const room of this.view.state?.channel.rooms ?? []) {
       if (room.delivery?.hostSessionId === sessionId && !this.hostedRooms.has(room.id)) {
         this.write({ type: "host_stop", roomId: room.id, bindingId: room.delivery.bindingId });

@@ -5,6 +5,7 @@ import type { TextParticipant } from '../prototype/channel-browser/node/text-par
 
 function fixture() {
   const client = Object.assign(new EventEmitter(), { summary: () => ({ userId: 'bot' }),
+    history: vi.fn(async (_before: number) => ({ messages: [] as { seq: number; id: string; text: string; userId: string }[] })),
     chat: vi.fn(async () => ({ seq: 2 })), react: vi.fn(async () => ({})) });
   const report = vi.fn();
   const detach = attachSupportBot(client as unknown as TextParticipant, report);
@@ -26,6 +27,35 @@ test('one live help message gets a quoted Markdown answer and one reaction; othe
     expect(client.chat).toHaveBeenCalledTimes(1);
     expect(client.listenerCount('live')).toBe(0);
   } finally { await detach(); }
+});
+
+test('a fresh help command quotes the latest report from its author in the preceding page', async () => {
+  const { client, detach, send } = fixture();
+  client.history.mockResolvedValue({ messages: [
+    { seq: 1, id: 'first', userId: 'friend', text: 'First report' },
+    { seq: 2, id: 'second', userId: 'friend', text: 'My camera is missing' },
+    { seq: 3, id: 'other', userId: 'other', text: 'My microphone is missing' },
+    { seq: 4, id: 'command', userId: 'friend', text: '!help' },
+  ] });
+  try {
+    send('!help last', 'bot');
+    client.emit('live', { seq: 5, id: 'new', userId: 'friend', text: '!help last' });
+    await vi.waitFor(() => expect(client.chat).toHaveBeenCalledOnce());
+    expect(client.history).toHaveBeenCalledExactlyOnceWith(5);
+    expect(client.chat).toHaveBeenCalledWith(expect.any(String), { reply: { seq: 2, messageId: 'second', notify: true } });
+    expect(client.react).not.toHaveBeenCalled();
+  } finally { await detach(); }
+});
+
+test('detaching during a history read prevents the delayed answer', async () => {
+  const { client, detach, send } = fixture();
+  let complete!: (page: { messages: [] }) => void;
+  client.history.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+  send('!help last');
+  const drained = detach();
+  complete({ messages: [] });
+  await drained;
+  expect(client.chat).not.toHaveBeenCalled();
 });
 
 test('reaction rejection does not resend the confirmed reply', async () => {

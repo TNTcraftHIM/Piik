@@ -159,7 +159,8 @@ export function Glyph({
   useEffect(() => {
     const graphic = graphicRef.current;
     if (!draw || !graphic?.closest(":is(button, a):is(.lr-btn.is-primary, .lr-tv-big, .lr-join-go, .lr-tv-overlay)")) return;
-    return bindSvgReplayOnPointerEnter(graphic);
+    return bindSvgReplayOnPointerEnter(graphic, () =>
+      !graphic.getAnimations({ subtree: true }).some(animation => animation.playState === "running"));
   }, [draw]);
 
   return (
@@ -177,7 +178,7 @@ export function Glyph({
       focusable="false"
       className={glyphClass}
     >
-      {body}
+      {isSolid ? <g>{body}</g> : body}
     </svg>
   );
 }

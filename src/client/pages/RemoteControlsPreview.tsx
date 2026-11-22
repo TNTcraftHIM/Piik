@@ -13,7 +13,6 @@ import { STATUS_CATALOG } from "../ui/media-status";
 import { Btn } from "../components/living/primitives";
 import type { RemoteControlRequest } from "../native/wire";
 import type { RemoteInputEvent } from "../remote-control/input-session";
-import { gamepadReport } from "../remote-control/gamepad";
 import { picturePoint, pictureRect, rotatePicturePoint, videoRotation } from "../media/video-geometry";
 import { RemoteTouchpad } from "../remote-control/touchpad";
 import { RemoteViewport } from "../remote-control/viewport";
@@ -41,15 +40,13 @@ export function RemoteControlsPreview() {
   const [stickMode, setStickMode] = useState<"keyboard" | "gamepad">("keyboard");
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [lastInput, setLastInput] = useState("");
-  const leftStick = useCallback((x: number, y: number) => {
-    const report = gamepadReport({ buttons: [], axes: [x, y] });
-    setLastInput(JSON.stringify(report));
+  const stickInput = useCallback((side: "left" | "right", x: number, y: number) => {
+    setLastInput(JSON.stringify({ type: "stick", side, x: Number(x.toFixed(2)), y: Number(y.toFixed(2)) }));
   }, []);
-  const rightStick = useCallback((x: number, y: number) => {
-    const report = gamepadReport({ buttons: [], axes: [0, 0, x, y] });
-    setLastInput(JSON.stringify(report));
-  }, []);
+  const leftStick = useCallback((x: number, y: number) => stickInput("left", x, y), [stickInput]);
+  const rightStick = useCallback((x: number, y: number) => stickInput("right", x, y), [stickInput]);
   const stickMouse = useCallback((x: number, y: number) => setLastInput(JSON.stringify({ type: "relative", dx: x, dy: y })), []);
+  const stickPositions = useRef<RoomPreferences["stickPositions"]>({});
   const mouseVideo = useRef<HTMLVideoElement>(null);
   const mouseLayer = useRef<HTMLDivElement>(null);
   const mouseSurface = useRef<HTMLDivElement>(null);
@@ -123,8 +120,8 @@ export function RemoteControlsPreview() {
   return <><PermissionRequestPreview /><section id="remote-control-preview" className="cp-section">
     <header className="cp-section-head"><div>
       <h2>{t("remote.inputTools")}</h2>
-      <p>{en ? "Expand the mini mouse and drag its lower half to move the pointer. Hold and move L or R to drag, or hold a button with one finger and move the lower half with another. Pinch or pan the picture with two fingers to adjust the local view. Tap the wheel to middle-click, swipe to scroll, or hold to drag. Try direct touch or the compact trackpad below. Input stays in the local log."
-        : "展开迷你鼠标，拖动下半部移动光标。按住 L 或 R 后移动即可拖拽，也可用一指按住按钮、另一指拖动下半部。在画面上双指缩放或平移可调整本地视图。滚轮可轻点中击、滑动滚动、长按后拖动。下方可切换直接触摸或光标触控板，输入仅记录在本地。"}</p>
+      <p>{en ? "Expand the mini mouse and drag its lower half to move the pointer. Hold and move L or R to drag, or hold a button with one finger and move the lower half with another. Pinch or pan the picture with two fingers to adjust the local view. Tap the wheel to middle-click, swipe to scroll, or hold to drag. Try direct touch or the compact trackpad below. Tap a joystick handle to open its pad or drag the handle to move it. Input stays in the local log."
+        : "展开迷你鼠标，拖动下半部移动光标。按住 L 或 R 后移动即可拖拽，也可用一指按住按钮、另一指拖动下半部。在画面上双指缩放或平移可调整本地视图。滚轮可轻点中击、滑动滚动、长按后拖动。下方可切换直接触摸或光标触控板。轻点摇杆拉手展开杆盘，拖动拉手调整位置。输入仅记录在本地。"}</p>
     </div></header>
     <div className="cp-stage" style={{ maxWidth: 480 }}>
       <StageTv live label={en ? "Local mouse example" : "本地鼠标示例"}>
@@ -145,6 +142,7 @@ export function RemoteControlsPreview() {
           {pointer && <RemoteMouse pointer={pointer} positionRef={mouseLayer} touchMode={touchMode}
             virtualSticksEnabled={virtualSticksEnabled} touchOnlySticks={touchOnlySticks} mapping={stickMode}
             onLeftStick={leftStick} onRightStick={rightStick} onStickMouse={stickMouse}
+            readStickPositions={() => stickPositions.current} onStickPositionChange={(side, position) => { stickPositions.current[side] = position; }}
             pointAt={(x, y) => mouseVideo.current && picturePoint(mouseVideo.current, x, y)} />}
         </div>
       </StageTv>

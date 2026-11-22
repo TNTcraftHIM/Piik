@@ -152,6 +152,32 @@ fn catalog_window_title(window: &Window, pid: u32) -> Option<String> {
 mod catalog_tests;
 
 pub fn targets() -> Result<Vec<Target>> {
+    combine_catalogs(window_targets(), display_targets())
+}
+
+fn combine_catalogs(
+    windows: Result<Vec<Target>>,
+    displays: Result<Vec<Target>>,
+) -> Result<Vec<Target>> {
+    let mut sources = Vec::new();
+    let mut failed = false;
+    for (catalog, reason) in [
+        (windows, "window_enumeration_failed"),
+        (displays, "display_enumeration_failed"),
+    ] {
+        match catalog {
+            Ok(items) => sources.extend(items),
+            Err(_) => {
+                failed = true;
+                log::warn!(target: "piik.capture", "{reason}");
+            }
+        }
+    }
+    ensure!(!failed || !sources.is_empty(), "capture_targets_failed");
+    Ok(sources)
+}
+
+fn window_targets() -> Result<Vec<Target>> {
     let mut targets = Vec::new();
     for window in Window::enumerate()? {
         // Inaccessible/protected processes are not selectable input identities.
@@ -173,6 +199,11 @@ pub fn targets() -> Result<Vec<Target>> {
             creation_time: Some(created.to_string()),
         });
     }
+    Ok(targets)
+}
+
+fn display_targets() -> Result<Vec<Target>> {
+    let mut targets = Vec::new();
     for monitor in Monitor::enumerate()? {
         let Some(title) = monitor
             .name()

@@ -68,7 +68,7 @@
 .c3-watch-position[data-seeking] .c3-watch-time { color: var(--action); }
 .c3-mini-player[data-thumbnail] .c3-mini-controls > :is(.lr-chat-overlay-toggle, .lr-remote-controls),
 .c3-mini-player[data-thumbnail] .c3-mini-controls:not(.c3-watch-controls) .lr-playback-window { display: none; }
-.c3-mini-player[data-thumbnail] > :is(.lr-remote-input-surface, .c3-mini-message) { display: none; }
+.c3-mini-player[data-thumbnail] > :is(.lr-remote-input-surface, .c3-mini-message:not([data-source-paused])) { display: none; }
 .c3-mini-controls {
   z-index: 4;
   position: absolute;

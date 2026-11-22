@@ -34,6 +34,9 @@ its original representation; each output retains its negotiated formats and
 payload mappings. Incoming SDP, expected encoding eligibility, actual SPS and
 downstream capabilities remain separate facts. The expected encoder format admits
 an encoding attempt; the produced H264 SPS establishes that feed's actual format.
+A new local encoder must supply SPS and PPS before its first IDR. Starting or
+replacing an encoder uses this same independent-frame check; a rejected
+replacement leaves the existing producer running.
 Reuse str0m's `CodecConfig::match_params` for H264 profile and
 packetization matching. A matching receiver gets the original bytes; a required
 compatible representation uses the existing decoder and encoder pool. Every

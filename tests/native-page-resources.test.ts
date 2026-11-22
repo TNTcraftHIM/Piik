@@ -60,16 +60,18 @@ function candidateBridge(clock?: Pick<typeof globalThis, "setTimeout" | "clearTi
     PerformanceObserver: class { observe() {} }, MutationObserver: class { constructor(callback: () => void) { discover = callback; } observe() {} },
     setTimeout(callback: () => void) { flush = callback; return 1; }, clearTimeout() {}, ...clock,
   });
-  return { bodies, iframes, discover, hide() { listeners.get("pagehide")?.forEach(listener => listener({})); },
+  return { bodies, iframes, discover, flush: () => flush(), hide() { listeners.get("pagehide")?.forEach(listener => listener({})); },
     setVideos(next: typeof videos) { for (const old of videos) if (!next.includes(old)) old.isConnected = false; videos = next; discover(); if (!clock) flush(); },
     message(event: unknown) { return Promise.all((listeners.get("message") ?? []).map(listener => listener(event))); },
   };
 }
 function ownedVideo(index: number) {
+  const events = new EventTarget();
   return { isConnected: true, currentSrc: `https://media.test/${index}.mp4?signature=${"a".repeat(3900)}`,
     title: `Video ${index}`, duration: 30, currentTime: 0, paused: true, playbackRate: 1, readyState: 4, ended: false,
     buffered: { length: 0 }, pause() { this.paused = true; }, async play() { this.paused = false; },
-    getAttribute(_name: string): string | null { return null; }, addEventListener() {} };
+    getAttribute(_name: string): string | null { return null; }, querySelectorAll: (_selector: string): { src: string; getAttribute(name: string): string | null }[] => [],
+    addEventListener: events.addEventListener.bind(events), dispatchEvent: events.dispatchEvent.bind(events) };
 }
 
 test("candidate batches fit Native IPC and explicitly remove the replaced element without losing later candidates", () => {
@@ -96,10 +98,12 @@ test("same element changes its resource without changing identity, and removing 
   expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ candidates: [], removed: [id] });
 });
 
-test.each([false, true])("rebuilding the sole player of the same resource keeps its commands on the replacement (preloaded=%s)", async preloaded => {
+test.each(["currentSrc", "src", "source"])("rebuilding the sole player of the same resource keeps its commands on the replacement (%s)", async declaration => {
   const bridge = candidateBridge(), first = ownedVideo(0);
-  const next = { ...ownedVideo(0), currentSrc: preloaded ? first.currentSrc : "", src: first.currentSrc,
-    getAttribute: (name?: string) => name === "src" ? first.currentSrc : null };
+  const next = { ...ownedVideo(0), currentSrc: declaration === "currentSrc" ? first.currentSrc : "", src: first.currentSrc,
+    getAttribute: (name: string) => name === "src" && declaration === "src" ? first.currentSrc : null,
+    querySelectorAll: (selector: string) => selector === ":scope > source" && declaration === "source"
+      ? [{ src: first.currentSrc, getAttribute: () => first.currentSrc }] : [] };
   bridge.setVideos([first]);
   const { frame, candidates: [{ media }] } = JSON.parse(bridge.bodies.at(-1)!);
   bridge.setVideos([next]);
@@ -110,6 +114,65 @@ test.each([false, true])("rebuilding the sole player of the same resource keeps 
   expect(first.currentTime).toBe(0);
   bridge.setVideos([ownedVideo(0), ownedVideo(0)]);
   expect(JSON.parse(bridge.bodies.at(-1)!).removed).toEqual([media]);
+});
+
+test.each(["object", "long URL"])("the selected %s keeps a bounded resource token only while its full identity matches", kind => {
+  const bridge = candidateBridge();
+  const prefix = `https://media.test/?token=${"a".repeat(4096)}`;
+  const original = { ...ownedVideo(0), currentSrc: prefix + "one", srcObject: kind === "object" ? {} : null };
+  if (kind === "object") original.currentSrc = "https://media.test/previous.mp4";
+  const report = () => JSON.parse(bridge.bodies.at(-1)!);
+  bridge.setVideos([original]);
+  const first = report().candidates[0];
+  expect(first.resource).toMatch(/^[0-9a-f-]{36}$/);
+  expect(first.url).toBeNull();
+  const replacement = { ...original };
+  bridge.setVideos([replacement]);
+  expect(report()).toMatchObject({ candidates: [first], removed: [] });
+  if (kind === "object") replacement.srcObject = {};
+  else replacement.currentSrc = prefix + "two";
+  bridge.setVideos([replacement]);
+  expect(report().candidates[0]).toMatchObject({ media: first.media, url: null });
+  expect(report().candidates[0].resource).not.toBe(first.resource);
+});
+
+test("unresolved replacement with multiple declared sources cannot inherit the selected player", () => {
+  const bridge = candidateBridge(), first = ownedVideo(0);
+  bridge.setVideos([first]);
+  const { media } = JSON.parse(bridge.bodies.at(-1)!).candidates[0];
+  const next = { ...ownedVideo(1), currentSrc: "", querySelectorAll: () => [first.currentSrc, "https://media.test/ad.mp4"]
+    .map(src => ({ src, getAttribute: () => src })) };
+  bridge.setVideos([next]);
+  expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ removed: [media] });
+});
+
+test.each(["URL", "stream"])("a selected empty player reports its first %s in the sample before the candidate update", kind => {
+  const bridge = candidateBridge();
+  const video = { ...ownedVideo(0), currentSrc: "", srcObject: null as object | null };
+  const last = () => JSON.parse(bridge.bodies.at(-1)!);
+  bridge.setVideos([video]);
+  const { media, resource } = last().candidates[0];
+  expect(resource).toBe("");
+  if (kind === "URL") video.currentSrc = "https://media.test/movie.mp4";
+  else video.srcObject = {};
+  video.dispatchEvent(new Event("loadedmetadata"));
+  const ready = last().resource;
+  expect(ready).toEqual(kind === "URL" ? video.currentSrc : expect.stringMatching(/^[0-9a-f-]{36}$/));
+  expect(last()).toMatchObject({ kind: "sample", media, event: "loadedmetadata" });
+  bridge.flush();
+  expect(last()).toMatchObject({ kind: "candidates", candidates: [{ media, resource: ready }], removed: [] });
+  if (kind === "URL") video.currentSrc = "https://media.test/next.mp4";
+  else video.srcObject = {};
+  video.dispatchEvent(new Event("loadedmetadata"));
+  expect(last().resource).not.toBe(ready);
+});
+
+test("a new empty element cannot inherit the previous empty player's selection", () => {
+  const bridge = candidateBridge(), first = { ...ownedVideo(0), currentSrc: "" };
+  bridge.setVideos([first]);
+  const { media } = JSON.parse(bridge.bodies.at(-1)!).candidates[0];
+  bridge.setVideos([{ ...first }]);
+  expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ removed: [media], candidates: [{ resource: "", media: expect.not.stringMatching(media) }] });
 });
 
 test("same iframe WindowProxy navigating retires its previous document without retiring a sibling", () => {

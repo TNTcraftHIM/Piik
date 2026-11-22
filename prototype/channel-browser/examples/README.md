@@ -217,6 +217,10 @@ template, followed by one `wave` reaction attempt on the incoming message.
 The room Host confirms both operations. A declined or rate-limited reaction
 does not resend the confirmed reply. It does not process history as commands.
 
+Send `!help last` to discuss your previous report. The bot reads one retained
+page before the command and quotes your latest non-command text in that page.
+If it finds no match, it replies to the command asking you to describe the issue.
+
 From the repository root, after the same dependency/WASM setup above:
 
 ```sh
@@ -235,7 +239,9 @@ Ctrl+C or SIGTERM removes the handler and closes the participant, then waits for
 pending handler work to settle. A disconnect ends this example without automatic
 reconnect or replay. `attachSupportBot` can also be imported; its returned async
 cleanup removes its listener and drains work, while the caller retains ownership
-of the participant connection. No module registry or plugin loader is involved.
+of the participant connection. An embedding application can keep the handler
+attached across `reconnect()`. The same listener receives new messages once
+room browsing resumes. Commands sent during the gap stay in room history.
 
 The existing tooling tsconfig checks the Node client and examples during the normal
 repository checks. Its retained test uses a loopback WebSocket fixture and the

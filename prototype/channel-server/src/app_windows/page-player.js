@@ -5,7 +5,7 @@
     const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
     return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join('-');
   };
-  const frame = uuid(), elements = new Map(), ids = new WeakMap();
+  const frame = uuid(), elements = new Map(), byVideo = new WeakMap();
   const children = new Map();
   const encoder = new TextEncoder();
   const forward = message => {
@@ -55,18 +55,38 @@
     buffered: Array.from({ length: video.buffered.length }, (_, index) => [video.buffered.start(index), video.buffered.end(index)]) });
   let timer;
   let reported = new Set();
-  // A freshly inserted video can have an explicit source before currentSrc is selected.
-  const resource = video => video.currentSrc || (!video.srcObject && video.getAttribute('src') ? video.src : '');
+  const identity = video => {
+    if (video.srcObject) return video.srcObject;
+    if (video.currentSrc) return video.currentSrc;
+    // A fresh element can declare its source before the browser selects it.
+    const src = video.getAttribute('src');
+    if (src !== null) return src.trim() ? video.src : null;
+    const sources = video.querySelectorAll(':scope > source');
+    return sources.length === 1 && sources[0].getAttribute('src')?.trim() ? sources[0].src : null;
+  };
+  const resource = entry => {
+    const value = identity(entry.video) ?? '';
+    if (value !== entry.identity) {
+      entry.identity = value;
+      // Native correlates ordinary URLs with responses. Keep objects and oversized URLs local.
+      entry.resource = typeof value === 'string' && value.length <= 4096 && encoder.encode(value).length <= 4096 ? value : uuid();
+    }
+    return entry.resource;
+  };
   const report = () => {
     if (timer !== undefined) return;
     timer = setTimeout(() => {
       timer = undefined;
       const removed = [...reported].filter(id => !elements.has(id));
       reported = new Set(elements.keys());
-      send({ kind: 'candidates', removed, candidates: [...elements].map(([media, { video }]) => {
+      send({ kind: 'candidates', removed, candidates: [...elements].map(([media, entry]) => {
+        const { video } = entry;
+        const observed = resource(entry);
         let url = null;
-        try { const source = new URL(video.currentSrc); if (['http:', 'https:'].includes(source.protocol) && !source.username && !source.password && source.href.length <= 4096) url = source.href; } catch {}
-        return { media, resource: resource(video).slice(0, 4096), title: (video.getAttribute('aria-label') || video.title || document.title || location.hostname).slice(0, 256), url,
+        if (observed && observed === video.currentSrc) {
+          try { const source = new URL(observed); if (['http:', 'https:'].includes(source.protocol) && !source.username && !source.password) url = source.href; } catch {}
+        }
+        return { media, resource: observed, title: (video.getAttribute('aria-label') || video.title || document.title || location.hostname).slice(0, 256), url,
           duration: Number.isFinite(video.duration) ? video.duration : null };
       }) });
     }, 80);
@@ -76,23 +96,27 @@
     const videos = document.querySelectorAll('video');
     const removed = [...elements].filter(([, entry]) => !entry.video.isConnected);
     if (removed.length === 1 && videos.length <= 64) {
-      const [media, { video: old }] = removed[0];
-      // A site can rebuild its player while keeping the exact same loaded resource.
-      const matches = old.currentSrc && !old.srcObject ? [...videos].filter(video => !video.srcObject && resource(video) === old.currentSrc) : [];
-      if (matches.length === 1 && !ids.has(matches[0])) {
-        ids.delete(old);
-        ids.set(matches[0], media);
+      const [, entry] = removed[0];
+      // Only an unambiguous replacement of the observed source can inherit the selection.
+      const matches = entry.identity ? [...videos].filter(video => identity(video) === entry.identity) : [];
+      if (matches.length === 1 && !byVideo.has(matches[0])) {
+        byVideo.delete(entry.video);
+        byVideo.set(matches[0], entry);
       }
     }
     for (const [id, entry] of removed) { entry.lifetime.abort(); elements.delete(id); }
     for (const video of videos) {
       if (elements.size >= 64) break;
-      if (ids.has(video) && elements.has(ids.get(video))) continue;
-      const media = ids.get(video) || uuid(), lifetime = new AbortController();
-      ids.set(video, media); elements.set(media, { video, lifetime });
+      const entry = byVideo.get(video) || { media: uuid() };
+      const { media } = entry;
+      if (elements.has(media)) continue;
+      const lifetime = new AbortController();
+      entry.video = video;
+      entry.lifetime = lifetime;
+      byVideo.set(video, entry); elements.set(media, entry);
       for (const event of ['emptied', 'loadstart']) video.addEventListener(event, report, { signal: lifetime.signal });
       for (const event of ['loadedmetadata', 'loadeddata', 'play', 'playing', 'pause', 'seeked', 'ratechange', 'ended', 'waiting', 'error']) {
-        video.addEventListener(event, () => { send({ kind: 'sample', media, resource: resource(video).slice(0, 4096), event }); if (event === 'loadedmetadata' || event === 'loadeddata') report(); }, { signal: lifetime.signal });
+        video.addEventListener(event, () => { send({ kind: 'sample', media, resource: resource(entry), event }); if (event === 'loadedmetadata' || event === 'loadeddata') report(); }, { signal: lifetime.signal });
       }
     }
     report();

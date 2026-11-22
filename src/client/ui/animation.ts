@@ -18,30 +18,29 @@ export function replaySvgAnimations(root: Element): void {
   }
 }
 
-/** Replay a marked graphic whenever its owning interactive surface is entered. */
+/** Replay on entering the control unless its beforeReplay hook returns false. */
 export function bindSvgReplayOnPointerEnter(
   graphic: SVGSVGElement,
-  beforeReplay?: () => void,
+  beforeReplay?: () => boolean | void,
 ): () => void {
   const owner =
     graphic.closest<HTMLElement>(
       "button, a, [role='button'], [role='img']",
     ) ?? graphic;
+  const replay = () => {
+    if (beforeReplay?.() !== false) replaySvgAnimations(graphic);
+  };
   const handlePointerOver = (event: Event) => {
     const pointer = event as PointerEvent;
     if (pointer.pointerType === "touch") return;
     if (pointer.relatedTarget instanceof Node && owner.contains(pointer.relatedTarget)) {
       return;
     }
-    beforeReplay?.();
-    replaySvgAnimations(graphic);
+    replay();
   };
   owner.addEventListener("pointerover", handlePointerOver);
   const handleFocus = () => {
-    if (owner.matches(":focus-visible")) {
-      beforeReplay?.();
-      replaySvgAnimations(graphic);
-    }
+    if (owner.matches(":focus-visible")) replay();
   };
   owner.addEventListener("focusin", handleFocus);
   return () => {

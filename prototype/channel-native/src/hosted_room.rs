@@ -3,7 +3,7 @@ use anyhow::{anyhow, bail, Result};
 use piik_channel_core::{
     conversation::{ConversationOutcome, SignedPacket},
     host::{HostInput, HostOutput, RoomSummary},
-    storage::StorageDataError,
+    storage::{StorageDataError, StoreResult},
     RoomBackup, RoomState, StoredRoomHost,
 };
 use std::{
@@ -12,6 +12,8 @@ use std::{
     path::{Path, PathBuf},
 };
 use uuid::Uuid;
+
+const INSTALL_EXTENSION: &str = "piik-room-install";
 
 pub struct HostedRoom {
     path: PathBuf,
@@ -45,12 +47,8 @@ impl HostedRoom {
     pub fn from_backup(path: &Path, backup: &RoomBackup, identity: (Uuid, Uuid)) -> Result<Self> {
         backup_identity(backup, identity)?;
         let file_owner = lock(path, &backup.metadata().policy.id)?;
-        let host = StoredRoomHost::from_backup(path, backup).map_err(anyhow::Error::from_boxed)?;
-        Ok(Self {
-            path: path.into(),
-            host,
-            binding: None,
-            _file_owner: file_owner,
+        Self::install(path, file_owner, |staged| {
+            StoredRoomHost::from_backup(staged, backup)
         })
     }
 
@@ -81,8 +79,47 @@ impl HostedRoom {
 
     pub fn create(path: &Path, policy: RoomState) -> Result<Self> {
         let file_owner = lock(path, &policy.id)?;
-        let host =
-            StoredRoomHost::create(path, policy).map_err(|error| anyhow!(error.to_string()))?;
+        Self::install(path, file_owner, |staged| {
+            StoredRoomHost::create(staged, policy)
+        })
+    }
+
+    fn install(
+        path: &Path,
+        file_owner: File,
+        initialize: impl FnOnce(&Path) -> StoreResult<StoredRoomHost>,
+    ) -> Result<Self> {
+        // Discovery treats an existing room path as committed, including on restart.
+        // tempfile passes both paths directly to Win32 when publishing.
+        let parent = std::fs::canonicalize(
+            path.parent()
+                .filter(|dir| !dir.as_os_str().is_empty())
+                .unwrap_or(Path::new(".")),
+        )?;
+        let target = parent.join(
+            path.file_name()
+                .ok_or_else(|| anyhow!("invalid room path"))?,
+        );
+        let scratch = target.with_added_extension(INSTALL_EXTENSION);
+        remove_install_dir(&scratch)?;
+        let staging = tempfile::Builder::new()
+            .prefix(
+                scratch
+                    .file_name()
+                    .ok_or_else(|| anyhow!("invalid room path"))?,
+            )
+            .rand_bytes(0)
+            .tempdir_in(&parent)?;
+        let staged = tempfile::TempPath::try_from_path(staging.path().join("room.sqlite"))?;
+        drop(initialize(&staged).map_err(storage_error)?);
+        staged.persist_noclobber(&target).map_err(|failure| {
+            if failure.error.kind() == io::ErrorKind::AlreadyExists {
+                anyhow!("room_already_exists")
+            } else {
+                failure.error.into()
+            }
+        })?;
+        let host = StoredRoomHost::open(path).map_err(storage_error)?;
         Ok(Self {
             path: path.into(),
             host,
@@ -142,6 +179,38 @@ impl HostedRoom {
     }
 }
 
+fn remove_install_dir(path: &Path) -> io::Result<()> {
+    match std::fs::remove_dir_all(path) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        result => result,
+    }
+}
+
+/// Discovery may run beside another process installing into the same directory.
+pub(crate) fn reclaim_room_install(path: &Path) -> io::Result<()> {
+    if path.extension().and_then(|ext| ext.to_str()) != Some(INSTALL_EXTENSION) {
+        return Ok(());
+    }
+    let target = path.with_extension("");
+    if target.extension().and_then(|ext| ext.to_str()) != Some("sqlite") {
+        return Ok(());
+    }
+    let owner = match File::options()
+        .read(true)
+        .write(true)
+        .open(target.with_added_extension("lock"))
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    match try_lock_file(&owner) {
+        Ok(()) => remove_install_dir(path),
+        Err(error) if error.kind() == io::ErrorKind::WouldBlock => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
 pub(crate) fn backup_identity(backup: &RoomBackup, (domain, owner): (Uuid, Uuid)) -> Result<()> {
     if backup.metadata().domain_id != domain || backup.metadata().policy.creator_id != owner {
         bail!("backup_owner_mismatch");
@@ -160,14 +229,12 @@ pub fn try_lock_file(file: &File) -> io::Result<()> {
 }
 
 fn lock(path: &Path, room_id: &str) -> Result<File> {
-    let mut lock_path = path.as_os_str().to_os_string();
-    lock_path.push(".lock");
     let file = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
         .read(true)
         .write(true)
-        .open(lock_path)?;
+        .open(path.with_added_extension("lock"))?;
     match try_lock_file(&file) {
         Ok(()) => Ok(file),
         Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
@@ -182,10 +249,55 @@ mod tests {
     use super::*;
 
     #[test]
+    fn interrupted_initialization_keeps_the_room_path_available_for_retry() -> Result<()> {
+        let folder = tempfile::tempdir()?;
+        let owner = Uuid::new_v4();
+        let policy = |id: &str| {
+            RoomState::new(
+                id.into(),
+                id.into(),
+                Default::default(),
+                owner,
+                piik_channel_core::wire::RoomAccess::Public,
+                false,
+                None,
+            )
+            .unwrap()
+        };
+        let path = folder.path().join("living.sqlite");
+        let sibling = folder.path().join("quiet.sqlite");
+        let quiet = HostedRoom::create(&sibling, policy("quiet"))?;
+        let result = HostedRoom::install(&path, lock(&path, "living")?, |staged| {
+            File::create_new(staged)?;
+            assert!(!path.try_exists()?);
+            Err("interrupted_before_schema".into())
+        });
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "interrupted_before_schema"
+        );
+        assert!(!path.try_exists()?);
+        drop(HostedRoom::create(&path, policy("living"))?);
+        let original = std::fs::read(&path)?;
+        assert!(HostedRoom::create(&path, policy("replacement")).is_err());
+        assert_eq!(std::fs::read(&path)?, original);
+        assert_eq!(
+            HostedRoom::open(&path, "living", owner)?.summary().id,
+            "living"
+        );
+        assert_eq!(quiet.summary().id, "quiet");
+        Ok(())
+    }
+
+    #[test]
     fn backup_replacement_keeps_exclusive_ownership_and_requires_a_fresh_binding() -> Result<()> {
         use piik_channel_core::{backup::RoomMetadata, host::HostAction, wire::RoomAccess};
-        let folder = std::env::temp_dir().join(format!("piik-native-backup-{}", Uuid::new_v4()));
-        std::fs::create_dir(&folder)?;
+        let root = tempfile::tempdir()?;
+        let mut folder = root.path().to_owned();
+        while folder.as_os_str().len() < 270 {
+            folder.push("nested-room-installation");
+        }
+        std::fs::create_dir_all(&folder)?;
         let (domain, owner, old_binding) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
         let room = RoomState::new(
             "room".into(),
@@ -242,7 +354,6 @@ mod tests {
         assert_eq!(restored.summary().id, "room");
         assert!(restored.binding().is_none());
         drop((host, restored, backup));
-        std::fs::remove_dir_all(folder)?;
         Ok(())
     }
 

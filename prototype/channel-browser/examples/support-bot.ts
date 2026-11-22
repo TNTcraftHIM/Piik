@@ -5,15 +5,28 @@ import { pathToFileURL } from 'node:url';
 import { TextParticipant } from '../node/text-participant';
 import type { ChannelMessage } from '../../../src/client/channel/protocol';
 
-type Conversation = Pick<TextParticipant, 'on' | 'off' | 'summary' | 'chat' | 'react'>;
+type Conversation = Pick<TextParticipant, 'on' | 'off' | 'summary' | 'chat' | 'react' | 'history'>;
 
 /** One concrete handler; it owns its subscription, not the participant or room. */
 export function attachSupportBot(participant: Conversation, report: (error: unknown) => void) {
   let stopped = false;
   const pending = new Set<Promise<void>>();
   const receive = (message: ChannelMessage) => {
-    if (stopped || message.userId === participant.summary().userId || message.text.trim() !== '!help') return;
+    const command = message.text.trim();
+    if (stopped || message.userId === participant.summary().userId || (command !== '!help' && command !== '!help last')) return;
     const work = (async () => {
+      if (command === '!help last') {
+        const page = await participant.history(message.seq);
+        if (stopped) return;
+        const previous = page.messages.findLast(item => item.userId === message.userId
+          && item.text.trim().length > 0 && !item.text.trim().startsWith('!'));
+        const target = previous ?? message;
+        await participant.chat(previous
+          ? 'For this report, which Piik version and sharing source did you use?'
+          : 'Describe what happened first. I could not find an earlier report from you in recent messages.',
+        { reply: { seq: target.seq, messageId: target.id, notify: true } });
+        return;
+      }
       await participant.chat([
         '### Sharing support',
         '',
@@ -60,7 +73,7 @@ async function main() {
   const disconnected = once(participant, 'disconnected');
   try {
     await participant.connect();
-    console.log('Support bot ready; only new !help messages receive a quoted answer.');
+    console.log('Support bot ready. Send !help for a template or !help last to discuss your previous message.');
     await Promise.race([stopping, disconnected]);
   } finally {
     // Remove the handler before closing the shared client; pending requests reject on stop.

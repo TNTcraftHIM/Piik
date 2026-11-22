@@ -1,5 +1,5 @@
 import { useWatchPageSlot } from "./use-watch-page-slot";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
 import { Btn } from "../../components/living/primitives";
 import { BrandMark } from "../../components/living/BrandMark";
 import { PlaybackControlsReveal } from "../../components/living/PlaybackControlsReveal";
@@ -97,6 +97,8 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const { lang, t } = useCopy();
   const slot = useRef<HTMLDivElement>(null), controls = useRef<HTMLDivElement>(null);
   const videoRef = useMemo(() => ({ current: player.video }), [player]);
+  const snapshot = () => player.mediaState;
+  const mediaState = useSyncExternalStore(player.subscribeMedia, snapshot, snapshot);
   const controlsId = useId();
   const surface = player.presentation, embedded = surface.kind === "embed";
   const pageId = surface.kind === "external" && nativeStage && presentation === "full" && !player.error &&
@@ -106,12 +108,12 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const audioOptions = audioTracks.map(track => ({ ...track, label: [mediaLanguageLabel(track.language, lang) || track.name,
     track.channels ? t("watch.forward.channels", { count: track.channels }) : undefined].filter(Boolean).join(" · ") }));
   const preparing = player.waitingForPicture;
-  const ownerPaused = player.video?.paused ?? player.mediaState?.paused ?? paused;
+  const ownerPaused = player.video?.paused ?? mediaState?.paused ?? paused;
   const audioAvailable = player.media.audioAvailable?.() !== false;
   const [htmlMedia, setMedia] = useState({ position: 0, duration: 0, volume: 1, muted: false, rate: 1 });
-  const live = player.mediaState?.live;
-  const media = player.video && !live ? htmlMedia : { position: player.mediaState?.position ?? 0, duration: player.mediaState?.duration ?? 0,
-    rate: player.mediaState?.rate ?? 1, volume: htmlMedia.volume, muted: htmlMedia.muted };
+  const live = mediaState?.live;
+  const media = player.video && !live ? htmlMedia : { position: mediaState?.position ?? 0, duration: mediaState?.duration ?? 0,
+    rate: mediaState?.rate ?? 1, volume: htmlMedia.volume, muted: htmlMedia.muted };
   const silent = media.muted || media.volume === 0;
   const seekStart = live?.seekable[0]?.[0] ?? 0, seekEnd = live?.seekable.at(-1)?.[1] ?? media.duration;
   const seekAvailable = seekEnd > seekStart && (!live || live.seekable.length > 0);
@@ -129,7 +131,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const openOriginal = !owned && website && originalPageAvailable && surface.kind !== "external" ? onAppWatch : undefined;
   const settingsOriginal = !player.error && openOriginal;
   const localControls = !!player.video || !!receivingSettings || !!settingsOriginal || owned && !embedded;
-  const hasControls = localControls || !embedded && !thumbnail && !!player.mediaState;
+  const hasControls = localControls || !embedded && !thumbnail && !!mediaState;
   const failure = channelErrorPresentation(player.error, t,
     receiving?.mode === "peer" ? "watch.forward.failed" : website && player.video ? "watch.browserFailed" : "watch.failed").message;
   const diagnosis = player.error ? diagnoseChannelFact({ area: "error", code: player.error }) : null;
@@ -356,9 +358,9 @@ function readStickPositions() {
   return readRoomPreferences().stickPositions;
 }
 
-export function ChannelVideo({ stream, owned, localSource, label, presentation = "full", inputs, onPresentation, input, interaction = null, buffering, onRetryPicture, retryAvailable = true, theaterMode, onToggleTheater }: {
+export function ChannelVideo({ stream, owned, localSource, sourcePaused = false, label, presentation = "full", inputs, onPresentation, input, interaction = null, buffering, onRetryPicture, retryAvailable = true, theaterMode, onToggleTheater }: {
   stream: MediaStream; owned: boolean; localSource: boolean; label: string; inputs?: readonly ChannelScreenInput[];
-  presentation?: "full" | "thumbnail" | "background";
+  presentation?: "full" | "thumbnail" | "background"; sourcePaused?: boolean;
   input?: InputTransport;
   buffering?: PlaybackSettingsProps["buffering"];
   onRetryPicture?(): void; retryAvailable?: boolean;
@@ -543,12 +545,12 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
     {rendered.map(input => <ChannelVideoInput key={`${input.flowId}:${input.stream.id}`} input={input} visible={input.flowId === displayed.flowId && input.stream === displayed.stream}
       negotiatedFlowId={"localDisplayKey" in input ? undefined : input.flowId}
       interactive={interactive} label={label} fit={pictureFit} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
-    <RoomChatOverlay session={interaction} visible={interactive && ready && !blocked && !paused} />
-    {!ready && !blocked && <div className="c3-mini-message" role="status">
-      <span className="c3-frame-wait"><BrandMark size={32} motion="loop" />
-        {t("screen.waitingPicture")}</span>
+    <RoomChatOverlay session={interaction} visible={interactive && ready && !blocked && !paused && !sourcePaused} />
+    {(sourcePaused || !ready && !blocked) && <div className="c3-mini-message" data-source-paused={sourcePaused || undefined} role="status">
+      <span className="c3-frame-wait">{sourcePaused ? <Glyph name="pause" size={24} /> : <BrandMark size={32} motion="loop" />}
+        {t(sourcePaused ? "host.pauseNotice" : "screen.waitingPicture")}</span>
     </div>}
-    {blocked && <div className="c3-mini-message"><Btn icon="play" title="playback.play" cap="playback.play"
+    {blocked && !sourcePaused && <div className="c3-mini-message"><Btn icon="play" title="playback.play" cap="playback.play"
       onClick={play} hint="hint-local-play" /></div>}
     <div id={controlsId} ref={controls} className="c3-mini-controls lr-media-toolbar lr-media-overlay lr-media-controls" role="group" aria-label={t("playback.controls")}>
       <Btn icon={paused ? "play" : "pause"} title={paused ? "playback.play" : "playback.pause"} quiet

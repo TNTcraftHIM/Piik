@@ -532,6 +532,12 @@ The table describes current export formats and defaults. The [storage and backup
 
 Native room storage uses SQLite schema 9 and Browser hosting uses IndexedDB schema 7. Opening an older private room store reports `unsupported_storage_version` and preserves its contents. Use the build that created it to access the existing history. Room backups use archive version 3 and room copies use version 2. Import checks the format before replacing a room. Deleted rows carry only their room sequence and hashed retry identity, so restore preserves message order and rejects a delayed send after deletion.
 
+A new Native room is initialized and closed in a private staging directory before
+its final database path is published without replacing an existing file. The
+room's exclusive file lock covers installation. Room discovery reclaims an
+interrupted installation only after acquiring that same lock. An unreadable
+room retires its own writer; other rooms can complete restoration.
+
 Excluding file originals preserves attachment descriptions and inline images already
 stored in history. The archive's retained-file inventory keeps its existing count
 and aggregate-byte budgets; exceeding either fails the export without dropping

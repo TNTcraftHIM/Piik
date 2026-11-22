@@ -15,12 +15,12 @@
   :where(html:not([data-reduced-motion])) {
     .lr-glyph-draw:not(.lr-spin):not(:disabled *, [aria-disabled="true"] *),
     :is(button, a):is(.lr-btn.is-primary, .lr-tv-big, .lr-join-go, .lr-tv-overlay):not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible) .lr-glyph:not(.lr-glyph-draw):not(.lr-spin) {
-      & > :is(path, circle, rect, line) {
+      &.is-solid > g, & > :is(path, circle, rect, line) {
         stroke-dasharray: 1;
         stroke-dashoffset: 1;
         animation: lr-glyph-in calc(var(--glyph-duration) * var(--glyph-stroke-share, 1)) cubic-bezier(.45, .05, .35, 1) calc(var(--glyph-duration) * var(--glyph-stroke-start, 0)) both;
       }
-      &.is-solid > :is(path, circle, rect), & > :is([fill="currentColor"], [fill^="#"]) {
+      &.is-solid > g, & > :is([fill="currentColor"], [fill^="#"]) {
         stroke-dasharray: none;
         stroke-dashoffset: 0;
         transform-box: fill-box;

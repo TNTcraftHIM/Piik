@@ -144,6 +144,7 @@ describe("realtime quality controls", () => {
 
     expect(getDisplayMedia).toHaveBeenCalledWith({
       video: {
+        displaySurface: "browser",
         width: { max: 1920 },
         height: { max: 1080 },
         frameRate: { ideal: 30, max: 30 },

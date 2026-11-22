@@ -3,7 +3,7 @@ import type { RemoteGamepadReport } from "./protocol";
 
 // Standard Gamepad layout. Platform backends own native device formats.
 // https://www.w3.org/TR/gamepad/#remapping
-export function gamepadReport(pad: Pick<Gamepad, "buttons" | "axes">): RemoteGamepadReport {
+function gamepadReport(pad: Pick<Gamepad, "buttons" | "axes">): RemoteGamepadReport {
   let buttons = 0;
   for (let index = 0; index < 17; index++) {
     if (pad.buttons[index]?.pressed) buttons |= 1 << index;
@@ -100,13 +100,15 @@ export class RemoteGamepad {
     if (this.index !== null && this.index !== pad?.index) this.input({ type: "gamepad-stop" });
     this.index = pad?.index ?? null; this.setConnected(Boolean(pad));
     if (pad && this.touchReport) this.clearVirtualSticks();
-    const report = pad ? gamepadReport(pad) : this.touchReport;
-    if (report && time >= this.nextReport) {
-      const interval = 1000 / 60;
-      this.nextReport = time + interval - ((time - this.nextReport) % interval);
-      // Repeat the complete current report so the native driver can enumerate
-      // a newly attached virtual device even when the player holds still.
-      this.input({ type: "gamepad", gamepad: report });
+    if (time >= this.nextReport) {
+      const report = pad ? gamepadReport(pad) : this.touchReport;
+      if (report) {
+        const interval = 1000 / 60;
+        this.nextReport = time + interval - ((time - this.nextReport) % interval);
+        // Repeat the complete current report so the native driver can enumerate
+        // a newly attached virtual device even when the player holds still.
+        this.input({ type: "gamepad", gamepad: report });
+      }
     }
     this.resume();
   };

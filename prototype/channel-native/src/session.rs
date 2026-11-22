@@ -1449,11 +1449,10 @@ impl Session {
                 {
                     return Ok(());
                 }
-                if let Some(hosted) = self
-                    .live
-                    .as_mut()
-                    .and_then(|live| live.room.rooms.get_mut(&room_id))
-                {
+                if let Some(live) = self.live.as_mut() {
+                    let Some(hosted) = live.room.rooms.get_mut(&room_id) else {
+                        return Ok(());
+                    };
                     if let Some(OpeningRoom {
                         work:
                             OpeningWork::Register {
@@ -1464,8 +1463,22 @@ impl Session {
                     {
                         *unpublished_copy = false;
                     }
-                    hosted.bind(binding_id)?;
-                    eprintln!("Native room bound: {room_id}");
+                    match hosted.bind(binding_id) {
+                        Ok(()) => eprintln!("Native room bound: {room_id}"),
+                        Err(error) => {
+                            eprintln!("Native room binding failed: {room_id}: {error}");
+                            live.room.rooms.remove(&room_id);
+                            write(
+                                socket,
+                                &Command::HostStop {
+                                    room_id,
+                                    binding_id,
+                                },
+                                None,
+                            )
+                            .await?;
+                        }
+                    }
                 }
                 self.hosting_ready();
             }
@@ -2810,6 +2823,9 @@ fn stored_rooms(directory: &std::path::Path) -> Result<Vec<RoomFile>> {
     let mut files = vec![];
     for path in paths {
         if path.extension().and_then(|value| value.to_str()) != Some("sqlite") {
+            if let Err(error) = crate::hosted_room::reclaim_room_install(&path) {
+                eprintln!("Native room staging cleanup failed: {}: {error}", path.display());
+            }
             continue;
         }
         let policy = match stored_room_policy(&path) {

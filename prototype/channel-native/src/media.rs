@@ -245,6 +245,28 @@ pub(crate) struct H264Sps {
     last: Option<[u8; 3]>,
 }
 impl H264Sps {
+    /// A fresh encoder has no parameter sets at the receiver yet.
+    #[cfg(feature = "capture")]
+    pub(crate) fn initial_codec(bytes: &[u8]) -> Result<RtpCodec> {
+        let mut sps = Self::default();
+        let mut pps = false;
+        for nal in h264::nals(bytes)? {
+            match nal[0] & 0x1f {
+                7 => sps.check(&nal[1..])?,
+                8 if nal.len() > 1 => pps = true,
+                5 if nal.len() > 1 && pps => {
+                    if let Some(codec) = sps.codec() {
+                        return Ok(codec);
+                    }
+                    break;
+                }
+                1..=5 => break,
+                _ => {}
+            }
+        }
+        anyhow::bail!("initial H264 access unit requires SPS and PPS before IDR")
+    }
+
     pub fn access_unit(&mut self, bytes: &[u8]) -> Result<()> {
         // Annex B escapes start codes inside NAL payloads. Both three- and
         // four-byte delimiters contain this suffix; only the SPS prefix is needed.

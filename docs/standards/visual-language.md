@@ -51,7 +51,7 @@ For 3.0, use this responsibility map:
 | App and site utilities | App connection, presentation preferences, help and the current site's identity | Stable shell area; site maintenance attaches to site identity, separate from personal settings |
 | App entry and management | Saved destinations, exact-origin device approval, local hosting and updates | One site-management list and detail surface separates bookmarks, device consent and startup preference; invitation entry and local hosting stay distinct, and the page does not own the hosted runtime or update operation |
 | Room navigation and management | The named room's conversation, invitation, access and room settings | Room identity, directory and room tools; browsing a room is separate from joining an activity |
-| Personal voice | This user's voice participation, microphone and listening | Stable personal activity area identifying the actual voice room; device-wide settings retain their wider scope |
+| Personal voice | This user's voice participation, microphone and listening | Stable personal activity area identifying the actual voice room; selecting its controls and opening that room are separate actions; device-wide settings retain their wider scope |
 | Publishing and source | A particular share and what its recipients receive: source selection, broadcast pause/stop, source sound and input permission | Controls attached to that share; starting a share names its destination room |
 | Local viewing | This user's playback/preview, listening, picture fit and playback preferences | The corresponding player; publishing controls remain a separate group even for one's own picture |
 | Layout and window | Focus/grid, fullscreen and detached presentation | A distinct viewing group; changing presentation preserves the existing media/session owner |
@@ -1161,6 +1161,8 @@ belong to the shared icon definition: draw a check in one left-to-right stroke,
 build an object before its details, and reveal an off-state slash last. Related
 directions and on/off variants follow the same grammar; equivalent parts may draw
 together. Keep ordinary icons still rather than choreographing every path.
+Solid multi-part symbols enter as one shape. Re-entering a primary control
+during its drawing continues that drawing; a completed drawing can replay.
 Disabled controls and passive status icons
 retain their informative pose; busy indicators retain their progress beat.
 Do not add a per-scene timer or another interaction/state owner. Outside status

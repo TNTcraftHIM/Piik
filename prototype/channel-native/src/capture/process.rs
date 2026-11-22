@@ -490,10 +490,7 @@ async fn child(
                             && keyframe
                             && !reader_shared.state.lock().unwrap().independent
                         {
-                            // A new implementation cannot borrow the preceding child's SPS.
-                            let mut sps = crate::media::H264Sps::default();
-                            sps.access_unit(&bytes)?;
-                            ensure!(sps.codec().is_some(), "replacement H264 AU has no SPS");
+                            crate::media::H264Sps::initial_codec(&bytes)?;
                         }
                         reader_shared.output(
                             qpc,

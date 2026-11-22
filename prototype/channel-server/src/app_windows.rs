@@ -642,9 +642,9 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
     });
     let navigation = events.create_proxy();
     config.window_navigation = window.as_ref().map(|_| {
-        std::sync::Arc::new(move |url: String| {
+        app::WindowNavigation::new(move |url| {
             navigation.send_event(ServiceEvent::Navigate(url)).is_ok()
-        }) as std::sync::Arc<dyn Fn(String) -> bool + Send + Sync>
+        })
     });
     let page_events = events.create_proxy();
     config.page_player = window.as_ref().map(|_| {

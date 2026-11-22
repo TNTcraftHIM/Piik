@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { RemoteInputEvent } from "../../remote-control/input-session";
 import { REMOTE_TEXT_BYTES, type RemoteInputPlatform } from "../../remote-control/protocol";
@@ -33,12 +33,13 @@ const PAGES = REMOTE_KEYBOARD_PAGES;
 
 // The local input owns IME composition. Committed text and physical keys use
 // their existing input operations, without clipboard access or another channel.
-export function RemoteKeyboard({ input, close, mouseControl, touch, platform, onSurfaceChange, releaseKey, onReleaseKeyChange, allowText = true, virtualSticks, stickMode, stickVisibility }: {
+export function RemoteKeyboard({ input, close, mouseControl, inputSurface, touch, platform, onSurfaceChange, releaseKey, onReleaseKeyChange, allowText = true, virtualSticks, stickMode, stickVisibility }: {
   virtualSticks?: { checked: boolean; onChange(checked: boolean): void };
   stickVisibility?: { checked: boolean; onChange(checked: boolean): void };
   stickMode?: { value: "keyboard" | "gamepad"; onChange(value: "keyboard" | "gamepad"): void };
   input: (event: RemoteInputEvent) => void; close: () => void;
   mouseControl?: ReactNode; touch: boolean;
+  inputSurface?: RefObject<HTMLElement | null>;
   platform: RemoteInputPlatform;
   onSurfaceChange?: (owner: Document) => void;
   releaseKey: number; onReleaseKeyChange: (key: number) => void;
@@ -71,19 +72,22 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
   const panelWindow = usePanelWindow(true, onSurfaceChange);
   const owner = panelWindow.surfaceDocument ?? document;
   const presses = useMemo(() => new RemoteKeyboardPresses(input), [input]);
+  const reset = useCallback(() => { presses.reset(); setModifiers([]); }, [presses]);
   useEffect(() => {
     panel.current?.focus({ preventScroll: true });
-    const reset = () => { presses.reset(); setModifiers([]); };
+    const picture = inputSurface?.current;
     const hidden = () => { if (owner.hidden) reset(); };
     reset();
     owner.defaultView?.addEventListener("blur", reset);
+    if (picture?.ownerDocument === owner) picture.addEventListener("blur", reset);
     owner.addEventListener("visibilitychange", hidden);
     return () => {
       owner.defaultView?.removeEventListener("blur", reset);
+      picture?.removeEventListener("blur", reset);
       owner.removeEventListener("visibilitychange", hidden);
       presses.reset();
     };
-  }, [presses, owner]);
+  }, [presses, owner, inputSurface, reset]);
   useEffect(() => {
     if (owner !== document) owner.title = `${t("remote.keyboard")} · Piik`;
   }, [owner, t]);
@@ -107,7 +111,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
         presses.down(event.pointerId, [...modifiers, code], !modifiersKeys.some(([, value]) => value === code));
       }}
       onPointerUp={event => { presses.up(event.pointerId); releaseModifiers(); }}
-      onPointerCancel={() => { presses.reset(); setModifiers([]); }}
+      onPointerCancel={reset}
       onLostPointerCapture={event => { presses.up(event.pointerId); releaseModifiers(); }}
       onClick={event => {
         if (event.detail === 0) { presses.tap([...modifiers, code]); releaseModifiers(); }
@@ -134,6 +138,10 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
   </div>;
 
   const keyboard = <SurfaceDocument.Provider value={owner}><section ref={panel} tabIndex={-1} className="lr-remote-keyboard" aria-label={t("remote.keyboard")}
+    onBlur={event => {
+      if (event.currentTarget.contains(event.relatedTarget) || inputSurface?.current?.contains(event.relatedTarget)) return;
+      reset();
+    }}
     onContextMenu={event => { if ((event.target as Element).closest("button")) event.preventDefault(); }}
     onKeyDown={event => {
       event.stopPropagation();
@@ -147,7 +155,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       {!panelWindow.detached && <>
         {panelWindowAPI(window) && <Tooltip kind="hint-window-detach" place="below" text={t("floating.detach")}>
           <button type="button" className="lr-btn is-dense is-quiet lr-popover-close" aria-label={t("floating.detach")} disabled={panelWindow.opening}
-            onClick={() => { presses.reset(); setModifiers([]); void panelWindow.open(); }}><Glyph name="pip" size={18} /></button>
+            onClick={() => { reset(); void panelWindow.open(); }}><Glyph name="pip" size={18} /></button>
         </Tooltip>}
         <button type="button" className="lr-btn is-dense is-quiet lr-popover-close" aria-label={t("common.close")} onClick={close}><Glyph name="x" size={17} /></button>
       </>}
@@ -160,7 +168,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
         className={page === value ? "is-selected" : undefined} aria-selected={page === value}
         aria-controls={`${id}-panel`} tabIndex={page === value ? 0 : -1}
         aria-label={t(`remote.keys.${value}`)} onClick={() => {
-          presses.reset(); setModifiers([]); setPage(value); saveRoomPreferences({ keyboardPage: value });
+          reset(); setPage(value); saveRoomPreferences({ keyboardPage: value });
         }}>
         {value === "letters" ? "ABC" : value === "symbols" ? "123" : value === "functions" ? "Fn" : t("remote.keys.text")}
       </button>)}
@@ -181,7 +189,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       <label className="lr-remote-combine-keys"><input type="checkbox" checked={combineKeys}
         aria-label={t("remote.combinationMode")}
         onChange={event => {
-          presses.reset(); setModifiers([]); setCombineKeys(event.target.checked);
+          reset(); setCombineKeys(event.target.checked);
           saveRoomPreferences({ combineKeys: event.target.checked });
         }} />
         {t("remote.combinationMode")}</label>
@@ -215,7 +223,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       </div>
     </>}
     </div>
-    <details className="lr-settings-disclosure lr-remote-keyboard-settings">
+    <details className="lr-settings-disclosure lr-remote-keyboard-settings" onFocusCapture={reset}>
       <summary aria-label={t("remote.localSettings")}>
         <span><Glyph name="sliders" size={17} />{t("remote.localSettings")}</span>
         <Glyph name="chevron" size={16} className="lr-sharing-chevron" />

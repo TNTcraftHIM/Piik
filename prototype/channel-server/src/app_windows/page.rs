@@ -841,29 +841,25 @@ impl Pages {
                 resource,
                 event,
             } => {
-                if page
+                let Some(candidate) = page
                     .selected
-                    .and_then(|id| page.candidates.get(&id))
-                    .is_some_and(|c| {
-                        c.view == view_key
-                            && c.frame == message.frame
-                            && c.source.media == media
-                            && !c.source.resource.is_empty()
-                            && c.source.resource != resource
+                    .and_then(|id| page.candidates.get_mut(&id))
+                    .filter(|c| {
+                        c.view == view_key && c.frame == message.frame && c.source.media == media
                     })
-                {
+                else {
+                    return;
+                };
+                if resource.len() > 4096 {
+                    return;
+                }
+                if candidate.source.resource.is_empty() {
+                    candidate.source.resource = resource;
+                } else if candidate.source.resource != resource {
                     self.pages.remove(&key);
                     return;
                 }
-                if page
-                    .selected
-                    .and_then(|id| page.candidates.get(&id))
-                    .is_some_and(|c| {
-                        c.view == view_key && c.frame == message.frame && c.source.media == media
-                    })
-                {
-                    page.emit(json!({"type":"page_sample","pageId":page.id,"event":event}));
-                }
+                page.emit(json!({"type":"page_sample","pageId":page.id,"event":event}));
             }
             PageEvent::Blocked { media } => {
                 if page
@@ -1172,6 +1168,40 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
     pages.publish(window, reply);
     assert!(pages.pages.is_empty());
     assert_eq!(events.try_recv().unwrap()["type"], "page_closed");
+
+    let mut loaded = Box::pin(connection.request(prepare.clone()));
+    assert!(futures_util::poll!(&mut loaded).is_pending());
+    pages.operation(commands.try_recv().unwrap(), &target, target.create_proxy());
+    loaded.await.unwrap();
+    let loading = pages.pages.values().next().unwrap();
+    let view = loading.root;
+    windows.insert(loading.views.borrow()[&view].window.id());
+    let (frame, media) = (Uuid::new_v4(), Uuid::new_v4());
+    let send = |pages: &mut Pages, mut message: Value| {
+        message["document"] = json!(frame);
+        message["frame"] = json!(frame);
+        pages.message(view, &message.to_string());
+    };
+    send(&mut pages, json!({"kind":"document"}));
+    send(
+        &mut pages,
+        json!({"kind":"candidates","removed":[],"candidates":[{"media":media,"resource":"","title":"Loading video"}]}),
+    );
+    let loading = pages.pages.get_mut(&view).unwrap();
+    let selected = *loading.candidates.keys().next().unwrap();
+    loading.selected = Some(selected);
+    // Two immediate samples can arrive before the next batched candidate report.
+    let sample = |resource: &str| json!({"kind":"sample","media":media,"resource":resource,"event":"loadedmetadata"});
+    send(&mut pages, sample("blob:first"));
+    assert_eq!(
+        pages.pages[&view].candidates[&selected].source.resource,
+        "blob:first"
+    );
+    send(&mut pages, sample("blob:second"));
+    assert!(pages.pages.is_empty());
+    assert!(
+        std::iter::from_fn(|| events.try_recv().ok()).any(|event| event["type"] == "page_closed")
+    );
 
     let mut retry = Box::pin(connection.request(prepare));
     assert!(futures_util::poll!(&mut retry).is_pending());

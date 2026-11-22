@@ -21,6 +21,11 @@ export class WatchPlayer {
   set error(value: string | null) { this.failure = value; }
   private localState: WatchMediaState | null = null;
   get mediaState(): Readonly<WatchMediaState> | null { return this.localState; }
+  private mediaListeners = new Set<() => void>();
+  subscribeMedia = (listener: () => void) => {
+    this.mediaListeners.add(listener);
+    return () => { this.mediaListeners.delete(listener); };
+  };
   private offset: number | null = null;
   private playback: WatchPlayback | null = null;
   private alignedPlayback: WatchPlayback | null = null;
@@ -132,9 +137,13 @@ export class WatchPlayer {
       || Object.entries(state).some(([key, value]) => key !== "buffered" && previous[key as keyof WatchMediaState] !== value)
       || state.buffered?.length !== previous.buffered?.length
       || !!state.buffered?.some(([start, end], index) => start !== previous.buffered?.[index][0] || end !== previous.buffered?.[index][1]);
-    this.localState = state;
     this.observedAt = performance.now();
-    if (changed) this.changed();
+    if (!changed) return;
+    this.localState = state;
+    for (const listener of this.mediaListeners) listener();
+    // The room also shows picture readiness. Timeline and buffer updates belong to the player.
+    if (!previous || previous.readyState !== state.readyState || previous.paused !== state.paused || previous.ended !== state.ended)
+      this.changed();
   }
   update(playback: WatchPlayback): void {
     const changed = !this.playback || Object.entries(playback).some(([key, value]) => this.playback![key as keyof WatchPlayback] !== value);

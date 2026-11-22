@@ -29,6 +29,8 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
   const levels = useVoiceLevels(readLevels, !!activity);
   if (!activity || !state) return null;
   const nameOfRoom = (id: string) => state.channel.rooms.find(room => room.id === id)?.name ?? id;
+  const roomName = nameOfRoom(roomId);
+  const multipleRooms = joined.length > 1;
   const { muted, deafened } = activity;
   const available = channel.connection === "connected" && !!state.channel.rooms.find(room => room.id === roomId)?.available;
   const appearances = roomVoicePeople(state, roomId, levels);
@@ -39,13 +41,17 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
     <div className="c3-voice-destination">
       <div className="c3-voice-room-info">
         <small>{t("channel.voiceDock.voiceJoined")}</small>
-        <Tooltip className="c3-voice-room" overflow={{ text: nameOfRoom(roomId), selector: "button, select" }}>
-        {joined.length === 1 ? <button type="button" onClick={() => onBrowse(roomId)}>{nameOfRoom(roomId)}</button>
-          : <select className="lr-select" aria-label={t("channel.voiceDock.selectRoom")} value={roomId}
-            onChange={event => onSelect(event.target.value)}>
-            {joined.map(value => <option key={value.roomId} value={value.roomId}>{nameOfRoom(value.roomId)}</option>)}
-          </select>}
-        </Tooltip>
+        <div className="c3-voice-room-choice">
+          <Tooltip className="c3-voice-room" overflow={{ text: roomName, selector: "button, select" }}>
+            {multipleRooms ? <select className="lr-select" aria-label={t("channel.voiceDock.selectRoom")} value={roomId}
+              onChange={event => onSelect(event.target.value)}>
+              {joined.map(value => <option key={value.roomId} value={value.roomId}>{nameOfRoom(value.roomId)}</option>)}
+            </select> : <button type="button" onClick={() => onBrowse(roomId)}>{roomName}</button>}
+          </Tooltip>
+          {multipleRooms && <Btn icon="arrowRight" size="compact" quiet textTooltip
+            title={{ text: t("channel.voiceDock.openRoom", { name: roomName }) }}
+            onClick={() => onBrowse(roomId)} />}
+        </div>
       </div>
       <ChannelVoiceSettings channel={channel} roomId={roomId} available={available} shortcuts={shortcuts} />
     </div>

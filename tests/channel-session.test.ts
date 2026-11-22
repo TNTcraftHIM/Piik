@@ -2211,7 +2211,7 @@ test("camera and display shares use independent picture publications and the sam
     socket.receive({ type: "ack", requestId: first.requestId });
     await screenStarting;
     expect(getDisplayMedia).toHaveBeenCalledWith({
-      video: { width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 30, max: 30 } },
+      video: { displaySurface: "browser", width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 30, max: 30 } },
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false,
         voiceIsolation: false, channelCount: { ideal: 2 }, restrictOwnAudio: true },
       systemAudio: "include", windowAudio: "window",
@@ -4304,6 +4304,85 @@ test("fresh Welcome restores only rooms still listed in the channel directory", 
   } finally { session.close(); }
 });
 
+test.each(["open", "summary"])("Welcome restores the next Browser room after malformed policy and %s failure", async stage => {
+  const policy = (id: string) => JSON.stringify({ id, creatorId: "self", name: id, icon: "couch", access: "public", hidden: false });
+  const host = { roomId: "second", summary: () => JSON.parse(policy("second")), close: vi.fn(async () => {}) };
+  const damaged = { roomId: "first", summary: async () => { throw new Error("invalid_room_policy"); }, close: vi.fn(async () => {}) };
+  vi.stubGlobal("indexedDB", {});
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: {
+    storedPolicies: async () => ["{", policy("first"), policy("second")],
+    open: async (_database: string, value: string) => {
+      if (JSON.parse(value).id === "first") {
+        if (stage === "open") throw new Error("invalid_room_policy");
+        return damaged;
+      }
+      return host;
+    },
+  } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const { session, socket } = await setup();
+  try {
+    await vi.waitFor(() => expect(socket.sent.find(command => command.type === "host_register")?.room).toMatchObject({ id: "second" }));
+    socket.receive({ type: "ack", requestId: socket.sent.find(command => command.type === "host_register")!.requestId });
+    await vi.waitFor(() => expect(session.getSnapshot().error).toBe("storage_failed"));
+    expect(damaged.close).toHaveBeenCalledTimes(stage === "summary" ? 1 : 0);
+  } finally { session.close(); }
+});
+
+test.each(["success", "failure"])("Welcome restores the next room after a removed writer's delayed summary %s", async outcome => {
+  const policy = (id: string) => ({ id, creatorId: "self", name: id, icon: "couch", access: "public", hidden: false });
+  let finish!: () => void;
+  const first = { roomId: "first", close: vi.fn(async () => {}), summary: vi.fn(() => new Promise((resolve, reject) => {
+    finish = () => outcome === "success" ? resolve(policy("first")) : reject(new Error("storage_failed"));
+  })) };
+  const second = { roomId: "second", close: vi.fn(async () => {}), summary: () => policy("second") };
+  vi.stubGlobal("indexedDB", {});
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: {
+    storedPolicies: async () => [JSON.stringify(policy("first")), JSON.stringify(policy("second"))],
+    open: async (_database: string, value: string) => JSON.parse(value).id === "first" ? first : second,
+  } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const { session, socket } = await setup();
+  try {
+    await vi.waitFor(() => expect(first.summary).toHaveBeenCalledOnce());
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.rooms = state.channel.rooms.filter(room => room.id !== "first");
+    socket.receive({ type: "state", state });
+    expect(first.close).toHaveBeenCalledOnce();
+    finish();
+    await vi.waitFor(() => expect(socket.sent.find(command => command.type === "host_register")?.room).toMatchObject({ id: "second" }));
+    socket.receive({ type: "ack", requestId: socket.sent.find(command => command.type === "host_register")!.requestId });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(session.getSnapshot().error).toBeNull();
+    expect(first.close).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test("a delayed Browser room open from the previous socket closes after same-session recovery", async () => {
+  const policy = JSON.stringify({ id: "first", creatorId: "self", name: "First", icon: "couch", access: "public", hidden: false });
+  const host = () => ({ roomId: "first", summary: () => JSON.parse(policy), close: vi.fn(async () => {}), bind: vi.fn(async () => {}) });
+  const prior = host(), replacement = host();
+  let finishPrior!: (value: typeof prior) => void;
+  const open = vi.fn(async () => replacement).mockImplementationOnce(() => new Promise(resolve => { finishPrior = resolve; }));
+  vi.stubGlobal("indexedDB", {});
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: { storedPolicies: async () => [policy], open } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const { session } = await setup();
+  try {
+    await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
+    const state = structuredClone(session.getSnapshot().state!);
+    session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    await vi.waitFor(() => expect(resumed.sent.some(command => command.type === "host_register")).toBe(true));
+    const registration = resumed.sent.find(command => command.type === "host_register")!;
+    resumed.receive({ type: "host_bound", roomId: "first", bindingId: "new-binding" });
+    resumed.receive({ type: "ack", requestId: registration.requestId });
+    finishPrior(prior);
+    await vi.waitFor(() => expect(prior.close).toHaveBeenCalledOnce());
+    expect(replacement.bind).toHaveBeenCalledWith("new-binding");
+    expect(resumed.sent.filter(command => command.type === "host_register")).toEqual([registration]);
+  } finally { session.close(); }
+});
+
 test("same-session recovery retires its own host binding when the committed room policy is gone", async () => {
   const policy = JSON.stringify({ id: "first", creatorId: "self", name: "First", icon: "couch", access: "public", hidden: false });
   let policies = [policy];
@@ -6185,11 +6264,12 @@ test.each(["initial", "replacement", "proved replacement"])("an audio-first %s s
   } finally { media.reset(); session.close(); }
 });
 
-test("a video ending before its first decoded proof fails only its assigned flow", async () => {
+test.each(["ended", "removetrack"])("loss of video before its first decoded proof (%s) fails only its assigned flow", async ending => {
   const fixture = await screenFixture();
   const { media, session, state, pc, sent, changed } = fixture;
   const video = remoteTrack("video"), voice = remoteTrack("audio");
-  const picture = remoteStream("picture", [video]), sibling = remoteStream("voice", [voice]);
+  const tracks = [video, remoteTrack("audio")];
+  const picture = remoteStream("picture", tracks), sibling = remoteStream("voice", [voice]);
   state.publications.push({ audience: [], id: "sibling-voice", roomId: "first", sessionId: "z", userId: "other", kind: "voice", paused: false });
   state.pairs[0].incoming.push({ id: "voice-flow", publicationId: "sibling-voice", selected: true, inputFlowId: null });
   state.subscriptions = ["screen", "sibling-voice"];
@@ -6204,8 +6284,13 @@ test("a video ending before its first decoded proof fails only its assigned flow
     await Promise.resolve();
     expect(sent.filter(command => command.type === "flow_state" && command.flowId === "screen-flow")).toEqual([]);
 
-    Object.defineProperty(video, "readyState", { value: "ended" });
-    video.dispatchEvent(new Event("ended"));
+    if (ending === "ended") {
+      Object.defineProperty(video, "readyState", { value: "ended" });
+      video.dispatchEvent(new Event("ended"));
+    } else {
+      tracks.shift();
+      picture.dispatchEvent(new Event("removetrack"));
+    }
     expect(sent.filter(command => command.type === "flow_state" && command.state === "failed")).toEqual([
       { type: "flow_state", pairId: "pair", flowId: "screen-flow", state: "failed" },
     ]);

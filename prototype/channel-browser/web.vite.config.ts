@@ -6,6 +6,7 @@ export default mergeConfig(base, defineConfig({
   root: resolve(import.meta.dirname, "web"),
   publicDir: resolve(import.meta.dirname, "../../public"),
   build: {
+    manifest: "vite-manifest.json",
     outDir: resolve(import.meta.dirname, "../../build/channel-web"),
     emptyOutDir: true,
   },

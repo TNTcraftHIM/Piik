@@ -86,6 +86,17 @@ const PACKAGE_TARGET: &str = match option_env!("PIIK_BUILD_TARGET") {
 pub type WebsitePermissionReset =
     Arc<dyn Fn(String, oneshot::Sender<std::result::Result<(), String>>) -> bool + Send + Sync>;
 
+pub struct WindowNavigation {
+    latest: std::sync::Mutex<u64>,
+    dispatch: Box<dyn Fn(String) -> bool + Send + Sync>,
+}
+
+impl WindowNavigation {
+    pub fn new(dispatch: impl Fn(String) -> bool + Send + Sync + 'static) -> Self {
+        Self { latest: std::sync::Mutex::new(0), dispatch: Box::new(dispatch) }
+    }
+}
+
 pub struct Config {
     pub data_root: PathBuf,
     pub assets: PathBuf,
@@ -94,7 +105,7 @@ pub struct Config {
     pub terminal_notice: Option<String>,
     pub page_player: Option<page::Dispatcher>,
     pub website_permission_reset: Option<WebsitePermissionReset>,
-    pub window_navigation: Option<Arc<dyn Fn(String) -> bool + Send + Sync>>,
+    pub window_navigation: Option<WindowNavigation>,
     pub cloudflared: PathBuf,
     pub ice_servers: Vec<Value>,
     pub update: update::Config,
@@ -439,6 +450,7 @@ pub async fn serve(
         .map(|(site, id)| (site, Arc::new(Permission::new(id))))
         .collect();
     let index = config.assets.join("index.html");
+    let bundles = web::bundle_routes(&config.assets)?;
     let assets =
         web::static_files(ServeDir::new(&config.assets).fallback(web::document(index.clone())));
     let closing = watch::channel(false).0;
@@ -468,6 +480,7 @@ pub async fn serve(
             .map_err(|(_, detail)| anyhow::anyhow!("{}", detail.0))?;
     }
     let router = Router::new()
+        .merge(bundles)
         .route("/", web::document(index.clone()))
         .route("/index.html", web::document(index))
         .route("/connect-discovery", get(discovery))
@@ -965,11 +978,22 @@ async fn open_window(State(app): State<Arc<App>>, Json(request): Json<OpenWindow
     {
         return Err(invalid_request("Invalid site URL"));
     }
-    verify_launcher_site(&app, &url.origin().ascii_serialization()).await?;
-    let Some(navigate) = &app.config.window_navigation else {
+    let origin = url.origin().ascii_serialization();
+    let Some(navigation) = &app.config.window_navigation else {
+        verify_launcher_site(&app, &origin).await?;
         return Ok(Json(json!({"opened":false})));
     };
-    if !navigate(request.url) {
+    let intent = {
+        let mut latest = navigation.latest.lock().unwrap();
+        *latest = latest.wrapping_add(1);
+        *latest
+    };
+    verify_launcher_site(&app, &origin).await?;
+    let latest = navigation.latest.lock().unwrap();
+    if *latest != intent {
+        return Err((StatusCode::CONFLICT, Json(json!({"detail":"Site selection changed"}))));
+    }
+    if !(navigation.dispatch)(request.url) {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({"detail":"Window unavailable"})),
@@ -3738,7 +3762,7 @@ mod lifecycle_tests {
                 terminal_notice: None,
                 page_player: None,
                 website_permission_reset: None,
-                window_navigation: Some(Arc::new({
+                window_navigation: Some(WindowNavigation::new({
                     let navigations = navigations.clone();
                     let available = available.clone();
                     move |url| {
@@ -3896,6 +3920,31 @@ mod lifecycle_tests {
             StatusCode::OK
         );
         assert_eq!(*navigations.lock().unwrap(), vec![invitation.as_str()]);
+        // A cold-start launcher and a saved-site window can verify targets concurrently.
+        let delayed = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let slow = format!("http://{}", delayed.local_addr().unwrap());
+        let (arrived, mut checks) = mpsc::unbounded_channel();
+        let marker = tokio::spawn(async move {
+            let routes = Router::new().route("/healthz", get(move || {
+                let (release, wait) = oneshot::channel::<()>();
+                arrived.send(release).unwrap();
+                async move { wait.await.unwrap(); crate::domain::HEALTH_MARKER }
+            }));
+            axum::serve(delayed, routes).await.unwrap();
+        });
+        let select = |target: &str| client.post(&open).header("Origin", &local)
+            .header("Content-Type", "application/json").body(json!({"url":target}).to_string());
+        for (target, status) in [(remote, StatusCode::OK), (local.as_str(), StatusCode::UNPROCESSABLE_ENTITY)] {
+            let response = tokio::spawn(select(&slow).send());
+            let release = timeout(IO_TIMEOUT, checks.recv()).await.unwrap().unwrap();
+            assert!(!navigations.lock().unwrap().contains(&slow));
+            assert_eq!(select(target).send().await.unwrap().status(), status);
+            release.send(()).unwrap();
+            assert_eq!(response.await.unwrap().unwrap().status(), StatusCode::CONFLICT);
+            assert_eq!(*navigations.lock().unwrap(), vec![invitation.as_str(), remote]);
+        }
+        marker.abort();
+        let _ = marker.await;
         for url in [
             "javascript:alert(1)",
             "file:///private",
@@ -3978,7 +4027,7 @@ mod lifecycle_tests {
                 .status(),
             StatusCode::OK
         );
-        assert!(navigations.lock().unwrap().len() == 1);
+        assert_eq!(navigations.lock().unwrap().len(), 2);
         let registry = app.registry.lock().await;
         assert!(registry.sites.bookmarks().unwrap().is_empty());
         assert!(

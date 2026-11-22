@@ -36,10 +36,16 @@ in the [local OBS input research](./research/room-interactions.md#local-obs-inpu
 The matching beta.39 Android APK and Windows App passed bidirectional chat,
 640 × 360 video, synthetic audio and stop-view checks on a controlled local
 network. The actual media endpoints were Windows WebView2 and Android Chrome
-on an API 35 x86_64 emulator, using a nominated P2P UDP path. Native-to-Native
-delivery and physical handset capture require separate measurements. An earlier
+on an API 35 x86_64 emulator, using a nominated P2P UDP path. Physical handset
+capture requires separate measurements. An earlier
 matched-package control also retained room and viewing state after a site
 connection interruption.
+
+Two Windows beta.39 Apps on one machine used the ordinary Watch action to
+select Native source → Native viewer relay → WebView playback. Both Native
+endpoints advanced matching cross-App byte counts while decoded frames advanced
+in the viewing page. This establishes that endpoint selection and local media
+path, not connectivity across independent networks.
 
 Three loopback Chromium sessions kept B’s screen playing through A while
 B and C established an additional connection. After A left, the original
@@ -299,10 +305,10 @@ OBS stop and Piik revocation released input permissions and UDP resources. The
 unchanged input implementation also passed stop/restart, retired-resource
 deletion, reauthorization and controlling-page closure; package receipts identify
 that preceding regression separately from the final package's media check.
-Stock Alpine OBS with libnice now also passes two starts and stops on the same
+Stock Alpine and Flathub OBS with libnice also pass two starts and stops on the same
 input permission, with H264 and Opus decoded by Firefox across an isolated
 guest network. A kernel ingress filter keeps the additional Linux media
-candidate restricted to the same machine. Flathub, other desktop platforms and
+candidate restricted to the same machine. Other desktop configurations and
 cross-NAT media remain separate acceptance. Android compiles
 with the shared changes but does not advertise this desktop input capability.
 

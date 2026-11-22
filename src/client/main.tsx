@@ -1,18 +1,19 @@
-import { lazy, type ComponentType } from "react";
 import { mountApp } from "./mount";
 import "./channel/bootstrap";
 import "./ui/native-window";
 
-const AppLauncherPage = lazy(() => import("./pages/AppLauncherPage").then(module => ({ default: module.AppLauncherPage })));
-const ChannelPreviewPage = lazy(() => import("./pages/ChannelPreviewPage").then(module => ({ default: module.ChannelPreviewPage })));
-const previewPages: Record<string, ComponentType> = import.meta.env.DEV ? {
-  "/__tooltip-preview": lazy(() => import("./pages/TooltipPreviewPage").then(module => ({ default: module.TooltipPreviewPage }))),
-  "/__status-preview": lazy(() => import("./pages/StatusPreviewPage").then(module => ({ default: module.StatusPreviewPage }))),
-  "/__playback-preview": lazy(() => import("./pages/PlaybackPreviewPage").then(module => ({ default: module.PlaybackPreviewPage }))),
-} : {};
-const PreviewPage = previewPages[location.pathname];
+async function loadPage() {
+  if (import.meta.env.DEV) {
+    switch (location.pathname) {
+      case "/__tooltip-preview": return (await import("./pages/TooltipPreviewPage")).TooltipPreviewPage;
+      case "/__status-preview": return (await import("./pages/StatusPreviewPage")).StatusPreviewPage;
+      case "/__playback-preview": return (await import("./pages/PlaybackPreviewPage")).PlaybackPreviewPage;
+    }
+  }
+  if (location.pathname === "/client" || location.pathname === "/client/") {
+    return (await import("./pages/AppLauncherPage")).AppLauncherPage;
+  }
+  return (await import("./pages/ChannelPreviewPage")).ChannelPreviewPage;
+}
 
-void mountApp(PreviewPage
-  ? <PreviewPage />
-  : location.pathname === "/client" || location.pathname === "/client/"
-    ? <AppLauncherPage /> : <ChannelPreviewPage />);
+void mountApp(loadPage);

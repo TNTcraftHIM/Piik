@@ -338,8 +338,7 @@ export class ChannelMedia {
           video?.removeEventListener("ended", changed);
         }
       };
-      if (kind === "screen" && !video && previous?.stream === stream
-        && (previous.ready || previous.video?.readyState === "ended")) {
+      if (!video && previous?.stream === stream && previous.video) {
         input.failed = true;
         this.reportInput(peer, id, input);
       }

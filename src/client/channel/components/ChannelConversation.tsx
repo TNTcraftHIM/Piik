@@ -115,6 +115,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
   const composing = useRef(false);
   const chooser = useRef<HTMLInputElement>(null);
   const log = useRef<HTMLDivElement>(null);
+  const latestAction = useRef<HTMLDivElement>(null);
   const [offscreenUnread, setOffscreenUnread] = useState<string>();
   useLayoutEffect(() => {
     setOffscreenUnread(undefined);
@@ -128,6 +129,12 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
   }, [conversationScope, unreadMessage, hidden, surfaceDocument]);
   const content = useRef<HTMLDivElement>(null);
   const reading = useRef({ position: 0, following: true });
+  const [followingLatest, setFollowingLatest] = useState(true);
+  const setFollowing = useCallback((following: boolean) => {
+    if (reading.current.following === following) return;
+    reading.current.following = following;
+    setFollowingLatest(following);
+  }, []);
   const readingAnchor = useRef<{ scope: string; message: string; offset: number } | null>(null);
   const lastArrival = useRef<{ scope: string; seq: number; ready: boolean } | null>(null);
   useLayoutEffect(() => {
@@ -259,9 +266,11 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
       if (!target.ownerDocument.defaultView?.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         target.animate([{ backgroundColor: "color-mix(in srgb, var(--action) 18%, transparent)" }, { backgroundColor: getComputedStyle(target).backgroundColor }], { duration: motionDuration(target, "emphasis"), easing: "ease-out" });
       }
-      reading.current = { position: log.current!.scrollTop, following: false }; setJump(null);
+      reading.current.position = log.current!.scrollTop;
+      setFollowing(false);
+      setJump(null);
     }
-  }, [jump, conversationScope, hidden, loadingHistory, messages]);
+  }, [jump, conversationScope, hidden, loadingHistory, messages, setFollowing]);
   useLayoutEffect(() => { setSelection(null); setJump(null); jumpRequest.current = null; setJumpFailed(false); composing.current = false; }, [conversationScope]);
   const cancelUnreadLookup = useCallback(() => {
     unreadLookup.current?.abort();
@@ -272,13 +281,13 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
   }, []);
   const showMessage = useCallback(async (seq: number) => {
     cancelUnreadLookup();
-    setJumpFailed(false); readingAnchor.current = null; reading.current.following = false;
+    setJumpFailed(false); readingAnchor.current = null; setFollowing(false);
     const request = { scope: conversationScope, seq };
     jumpRequest.current = request; setJump(request);
     if (messages.some(message => message.seq === seq)) return;
     try { if (!onMessage) throw new Error("unavailable"); await onMessage(roomId, seq); }
     catch { if (jumpRequest.current === request) { setJump(null); setJumpFailed(true); } }
-  }, [cancelUnreadLookup, conversationScope, messages, onMessage, roomId]);
+  }, [cancelUnreadLookup, conversationScope, messages, onMessage, roomId, setFollowing]);
   async function jumpToUnread() {
     const target = messages.find(message => message.id === unreadMessage);
     if (target) { await showMessage(target.seq); return; }
@@ -292,7 +301,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
       if (controller.signal.aborted) return;
       setUnreadLookupResult({ through: lastSeq, target: message?.id });
       if (message) {
-        readingAnchor.current = null; reading.current.following = false;
+        readingAnchor.current = null; setFollowing(false);
         setJump({ scope: conversationScope, seq: message.seq, id: message.id });
       }
     } catch (error) {
@@ -328,8 +337,12 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
     const request = identityLifetime.current = new AbortController();
     return () => request.abort();
   }, [domainId, selfUserId]);
-  useLayoutEffect(() => { readingAnchor.current = null; reading.current = { position: 0, following: true }; }, [conversationScope]);
-  useLayoutEffect(() => { if (history?.atLatest) reading.current.following = true; }, [history?.atLatest]);
+  useLayoutEffect(() => {
+    readingAnchor.current = null;
+    reading.current.position = 0;
+    setFollowing(true);
+  }, [conversationScope, setFollowing]);
+  useLayoutEffect(() => { if (history?.atLatest) setFollowing(true); }, [history?.atLatest, setFollowing]);
   useLayoutEffect(() => {
     const anchor = readingAnchor.current;
     if (anchor?.scope === conversationScope && !loadingHistory && log.current) {
@@ -379,7 +392,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
     event.preventDefault();
     if ((!hasText && !files.length) || textTooLong || !canSend || working || composing.current) return;
     input.current?.focus({ preventScroll: true });
-    reading.current.following = true;
+    setFollowing(true);
     const request = identityLifetime.current!;
     setFileError("");
     const controller = files.length ? new AbortController() : undefined;
@@ -443,12 +456,13 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
       <div className="c3-history-more"><ChannelAction icon="chat" quiet busy={unreadLookupBusy || loadingHistory} disabled={!available}
         label={t("conversation.jumpToNew")} onClick={() => { void jumpToUnread(); }} /></div>}
     <ChannelSettingsError error={unreadLookupError} />
-    <div className="c3-message-log" ref={log} role="log" aria-label={t("conversation.messages")}
+    <div className="c3-message-log" ref={log} tabIndex={-1} role="log" aria-label={t("conversation.messages")}
       onScroll={event => {
-        const node = event.currentTarget, saved = reading.current;
+        const node = event.currentTarget;
         // Content growth can emit scroll without the reader moving upward.
-        reading.current = { position: node.scrollTop, following: (saved.following && node.scrollTop >= saved.position)
-          || node.scrollHeight - node.scrollTop - node.clientHeight < 60 };
+        setFollowing((reading.current.following && node.scrollTop >= reading.current.position)
+          || node.scrollHeight - node.scrollTop - node.clientHeight < 60);
+        reading.current.position = node.scrollTop;
         readVisible();
       }}>
       <div className="c3-message-content" ref={content}>
@@ -463,7 +477,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
               readingAnchor.current = message ? { scope: conversationScope, message: message.dataset.messageId!, offset: message.getBoundingClientRect().top - top } : null;
             }
             const anchor = readingAnchor.current;
-            reading.current.following = false;
+            setFollowing(false);
             void onHistory(roomId).catch(() => {
               if (readingAnchor.current === anchor) readingAnchor.current = null;
             });
@@ -482,12 +496,19 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
     </div>
     <ChannelSettingsError error={deleteFailure?.scope === conversationScope ? deleteFailure.code : null} />
     {jumpFailed && <p className="c3-file-error" role="status">{t("conversation.originalUnavailable")}</p>}
-    {roomId && (history?.atLatest === false || (!history && (!loadingHistory || messages.length > 0))) && <div className="c3-history-more"><ChannelAction icon={history ? "arrowDown" : "refresh"} quiet
-      label={history ? t("conversation.latest") : t("conversation.load")} busy={loadingHistory} disabled={!available} onClick={() => {
+    {roomId && (history ? !history.atLatest || !followingLatest : !loadingHistory || messages.length > 0) && <div className="c3-history-more" ref={latestAction}><ChannelAction icon={history ? "arrowDown" : "refresh"} quiet
+      label={history ? t("conversation.latest") : t("conversation.load")} busy={loadingHistory} disabled={!history?.atLatest && !available} onClick={() => {
         cancelUnreadLookup();
         readingAnchor.current = null;
-        reading.current.following = true;
-        void onLatest(roomId).catch(() => {});
+        const node = log.current;
+        if (node && latestAction.current?.contains(node.ownerDocument.activeElement)) node.focus({ preventScroll: true });
+        if (!history?.atLatest) {
+          void onLatest(roomId).catch(() => {});
+        } else if (node) {
+          node.scrollTop = node.scrollHeight;
+          reading.current.position = node.scrollTop;
+        }
+        setFollowing(true);
       }} /></div>}
     {files.length > 0 && <div className="c3-draft-files">{files.map(entry => <div key={entry.id}>
       <Glyph name="save" size={15} /><span>{entry.file.name}</span><small>{fileSize(entry.file.size)}</small>

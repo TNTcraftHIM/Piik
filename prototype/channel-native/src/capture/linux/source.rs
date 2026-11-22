@@ -26,12 +26,15 @@ pub fn targets() -> Result<Vec<Target>> {
         "PipeWire capture plugin unavailable"
     );
     tokio::runtime::Handle::try_current()?.block_on(async {
-        let portal = Screencast::new().await?;
+        let portal = match Screencast::new().await {
+            Ok(portal) => portal,
+            Err(ashpd::Error::PortalNotFound(_)) => return Ok(Vec::new()),
+            Err(error) => return Err(error.into()),
+        };
         let kinds = portal.available_source_types().await?;
-        ensure!(
-            kinds.intersects(SourceType::Monitor | SourceType::Window),
-            "desktop capture unavailable"
-        );
+        if !kinds.intersects(SourceType::Monitor | SourceType::Window) {
+            return Ok(Vec::new());
+        }
         Ok(vec![Target {
             kind: TargetKind::Picker,
             source_id: "0".into(),

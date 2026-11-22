@@ -326,21 +326,32 @@ test('native owner progress reuses the observation tick without publishing playb
     patch: vi.fn(async () => {}), listen: () => () => {}, focus: vi.fn(async () => {}), close: vi.fn() };
   const changed = vi.fn();
   const player = new WatchPlayer('room', true, new AppPageMedia(port), changed);
+  const mediaChanged = vi.fn();
+  const unsubscribe = player.subscribeMedia(mediaChanged);
   const send = vi.fn(async () => {});
   try {
     await player.ready(); player.calibrate(5000, 100, 100); player.activate(send);
     await player.serialize(async () => {});
     expect(player.mediaState?.position).toBe(12);
     changed.mockClear();
+    mediaChanged.mockClear();
     await vi.advanceTimersByTimeAsync(2000);
     expect(changed).not.toHaveBeenCalled();
     position = 13; paused = false;
     await vi.advanceTimersByTimeAsync(1000);
     expect(player.mediaState?.position).toBe(13);
     expect(changed).toHaveBeenCalledTimes(1);
+    expect(mediaChanged).toHaveBeenCalledTimes(1);
+    changed.mockClear();
     bufferEnd = 70;
     await vi.advanceTimersByTimeAsync(1000);
-    expect(changed).toHaveBeenCalledTimes(2);
+    expect(mediaChanged).toHaveBeenCalledTimes(2);
+    expect(changed).not.toHaveBeenCalled();
+    unsubscribe();
+    position = 14;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(mediaChanged).toHaveBeenCalledTimes(2);
+    expect(changed).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
   } finally { player.close(); }
 });

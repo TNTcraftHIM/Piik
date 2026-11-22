@@ -172,6 +172,11 @@ describe("Screen delivery result", () => {
     const paused = renderToStaticMarkup(createElement(ChannelStage, { ...props, sources: [{ ...source, paused: true }] }));
     expect(paused).not.toContain("Picture delivery failed");
     expect(paused).not.toContain('aria-label="Picture help"');
+    const pausedWithStream = renderToStaticMarkup(createElement(ChannelStage, { ...props, sources: [{ ...source, stream, paused: true }] }));
+    expect(pausedWithStream).toContain(en["host.pauseNotice"]);
+    expect(pausedWithStream).not.toContain(en["screen.waitingPicture"]);
+    expect(pausedWithStream).toContain("<video");
+    expect(retained).not.toContain(en["host.pauseNotice"]);
 
     const reconnecting = renderToStaticMarkup(createElement(ChannelStage, { ...props, canSubscribe: false }));
     expect(reconnecting).not.toContain('aria-label="Picture help"');

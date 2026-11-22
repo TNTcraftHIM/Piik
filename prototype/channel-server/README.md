@@ -430,15 +430,15 @@ change is being committed.
 
 The shared Native capability controls availability. Android currently lacks the
 received-video adaptation used by this input and does not expose this choice.
-Windows and stock Alpine OBS-to-Browser media and retirement have been exercised;
+Windows, stock Alpine and Flathub OBS-to-Browser media and retirement have been exercised;
 other desktop packages and platforms still need their runtime acceptance.
 
 On Linux, Piik also offers a local-interface media address for OBS packages
 whose ICE backend omits loopback addresses. The socket accepts only traffic
 arriving through Linux loopback; the input stays on this machine. Stock Alpine
-OBS Studio 32.1.2 with libnice passed picture, sound and stop/restart checks with
-Firefox on a separate network. FFmpeg WHIP remains supported. Flathub and other
-distribution packages still need their own runtime checks.
+OBS Studio 32.1.2 and Flathub OBS Studio 33.0.1 with libnice passed picture,
+sound and stop/restart checks with Firefox on a separate network. FFmpeg WHIP
+remains supported. Other distribution packages still need their own runtime checks.
 
 ## Watching video together
 

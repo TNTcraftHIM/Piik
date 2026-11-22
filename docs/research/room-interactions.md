@@ -509,8 +509,11 @@ started twice on one Piik permission. Firefox in a separate network namespace
 decoded 640 × 360 H264 and Opus after both starts. Stopping each input released
 its UDP sockets. Packets sent directly to the local-input socket from the other
 namespace were dropped by its kernel filter. The FFmpeg WHIP control also
-retained picture and sound. These checks use synthetic sources; Flathub,
-physical capture and other distribution packages remain separate acceptance.
+retained picture and sound. Flathub stable OBS 33.0.1, launched through Flatpak
+with its Freedesktop runtime, also passed two starts and stops using the same
+Piik permission. Firefox in a second network namespace decoded 640 × 360 video
+and Opus after both starts. These checks use synthetic sources; physical capture
+and other distribution packages remain separate acceptance.
 
 In libnice 0.1.22, automatic ICE gathering enumerates local addresses with
 `include_loopback=FALSE`. On Linux this excludes interfaces marked

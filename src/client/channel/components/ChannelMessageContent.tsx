@@ -13,12 +13,14 @@ const tags = new Set(["p", "em", "strong", "s", "ul", "ol", "li", "blockquote"])
 
 function CodeBlock({ text }: { text: string }) {
   const { t } = useCopy(), clipboard = useClipboardResult(text);
+  const copied = clipboard.status === "copied" ? t("channel.messageContent.copied") : undefined;
+  const error = clipboard.status === "failed" ? t("channel.messageContent.copyFailed") : undefined;
   return <div className="c3-code-block">
-    <div className="c3-code-actions lr-embedded-actions"><ChannelAction icon={clipboard.status === "copied" ? "check" : "copy"}
-      label={clipboard.status === "copied" ? t("channel.messageContent.copied") : t("channel.messageContent.copyCode")}
+    <div className="c3-code-actions lr-embedded-actions"><ChannelAction icon={copied ? "check" : "copy"}
+      label={copied ?? t("channel.messageContent.copyCode")}
       quiet disabled={!text} onClick={clipboard.copy} /></div>
     <pre tabIndex={0}><code>{text}</code></pre>
-    {clipboard.status === "failed" && <small role="status">{t("channel.messageContent.copyFailed")}</small>}
+    <small role="status" aria-atomic="true" className={error ? undefined : "visually-hidden"}>{error ?? copied}</small>
   </div>;
 }
 

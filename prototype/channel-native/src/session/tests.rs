@@ -1,6 +1,27 @@
 use super::*;
 use serde_json::json;
 
+#[test]
+fn discovery_reclaims_only_abandoned_room_installations() -> Result<()> {
+    let folder = tempfile::tempdir()?;
+    let path = folder.path().join(format!("{}.sqlite", Uuid::new_v4()));
+    let lock = std::fs::File::create_new(path.with_added_extension("lock"))?;
+    crate::hosted_room::try_lock_file(&lock)?;
+    let staging = path.with_added_extension("piik-room-install");
+    std::fs::create_dir(&staging)?;
+    let history = staging.join("room.sqlite");
+    std::fs::write(&history, b"private import")?;
+    let unrelated = folder.path().join("other.sqlite.piik-room-install");
+    std::fs::create_dir(&unrelated)?;
+    assert!(stored_rooms(folder.path())?.is_empty());
+    assert!(history.try_exists()?);
+    drop(lock);
+    assert!(stored_rooms(folder.path())?.is_empty());
+    assert!(!staging.try_exists()?);
+    assert!(unrelated.try_exists()?);
+    Ok(())
+}
+
 fn self_profile(state: &Snapshot, session: Uuid) -> piik_channel_core::wire::UserInfo {
     let user_id = state
         .sessions
@@ -15,6 +36,63 @@ fn self_profile(state: &Snapshot, session: Uuid) -> piik_channel_core::wire::Use
         avatar: None,
         version: user.version.clone(),
     }
+}
+
+#[tokio::test]
+async fn failed_rebind_retires_only_the_room_that_cannot_reload() {
+    let (mut session, mut socket, mut remote, _) = capture_projection_session().await;
+    let directory = tempfile::tempdir().unwrap();
+    let old = Uuid::new_v4();
+    for id in ["damaged", "healthy"] {
+        let policy = RoomState::new(
+            id.into(),
+            id.into(),
+            Default::default(),
+            Uuid::new_v4(),
+            RoomAccess::Public,
+            false,
+            None,
+        )
+        .unwrap();
+        let path = directory.path().join(format!("{id}.sqlite"));
+        let mut room = HostedRoom::create(&path, policy).unwrap();
+        room.bind(old).unwrap();
+        if id == "damaged" {
+            piik_channel_core::storage::Storage::open_existing(&path)
+                .unwrap()
+                .save(&json!({}))
+                .unwrap();
+        }
+        session
+            .live
+            .as_mut()
+            .unwrap()
+            .room
+            .rooms
+            .insert(id.into(), room);
+    }
+    let binding_id = Uuid::new_v4();
+    session
+        .event(
+            Event::HostBound {
+                room_id: "damaged".into(),
+                binding_id,
+            },
+            &mut socket,
+        )
+        .await
+        .unwrap();
+    let request = piik_channel_core::wire::Request::parse(
+        remote.next().await.unwrap().unwrap().to_text().unwrap(),
+    )
+    .unwrap();
+    assert!(
+        matches!(request.command, Command::HostStop { room_id, binding_id: id } if room_id == "damaged" && id == binding_id)
+    );
+    let rooms = &session.live.as_ref().unwrap().room.rooms;
+    assert!(!rooms.contains_key("damaged"));
+    assert_eq!(rooms["healthy"].binding(), Some(old));
+    session.release().await.unwrap();
 }
 
 #[tokio::test]
