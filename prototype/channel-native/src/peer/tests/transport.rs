@@ -418,14 +418,6 @@ async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()>
     Ok(())
 }
 
-async fn completed_source_check(assigned: bool) -> JoinHandle<bool> {
-    let task = tokio::spawn(async move { assigned });
-    while !task.is_finished() {
-        tokio::task::yield_now().await;
-    }
-    task
-}
-
 #[tokio::test]
 async fn source_checks_preserve_current_paths_and_shared_socket_siblings() -> Result<()> {
     use crate::peer::tests::support::{endpoint, exchange, open};
@@ -471,7 +463,25 @@ async fn source_checks_preserve_current_paths_and_shared_socket_siblings() -> Re
     })
     .await
     .context("selected source observation")??;
-    let present = completed_source_check(true).await;
+    first
+        .call(move |engine| {
+            let original = engine.peer_stats.clone().unwrap();
+            let mut next = original.clone();
+            next.selected_candidate_pair.as_mut().unwrap().remote.addr = source;
+            engine.send_failed(
+                source,
+                destination,
+                &std::io::Error::from_raw_os_error(10051),
+            );
+            engine.event(RtcEvent::PeerStats(next));
+            ensure!(
+                engine.source_error.is_none(),
+                "reselected remote inherited the old path error"
+            );
+            engine.event(RtcEvent::PeerStats(original));
+            Ok(())
+        })
+        .await?;
     first
         .call(move |engine| {
             let error = std::io::Error::from(std::io::ErrorKind::NetworkUnreachable);
@@ -481,53 +491,36 @@ async fn source_checks_preserve_current_paths_and_shared_socket_siblings() -> Re
             engine.send_failed(source, source, &error);
             engine.check_source();
             ensure!(
-                engine.source_error.is_none() && engine.source_check.is_none(),
+                engine.source_error.is_none(),
                 "unrelated candidate probe became selected-path failure"
             );
             engine.send_failed(source, destination, &error);
-            engine.source_check = Some((Some(source), present));
             engine.check_source();
             ensure!(
-                engine.source_check.is_none()
-                    && engine.source_error == Some(source)
-                    && engine.rtc.is_alive(),
+                engine.source_error == Some(source) && engine.rtc.is_alive(),
                 "assigned source was failed or its present result cached"
             );
             Ok(())
         })
         .await?;
     exchange(&first_send, &first_receive, "assigned-source-survives").await?;
-    let stale_absent = completed_source_check(false).await;
     first
         .call(move |engine| {
             ensure!(
                 engine.source_error.is_none(),
                 "successful traffic retained the failure fact"
             );
-            engine.source_check = Some((Some(source), stale_absent));
-            engine.sent_from(source);
+            // Model removal with an address the OS cannot bind on this loopback fixture.
+            let mut removed = source;
+            removed.set_ip("192.0.2.253".parse()?);
+            let mut stats = engine.peer_stats.clone().unwrap();
+            stats.selected_candidate_pair.as_mut().unwrap().local.addr = removed;
+            engine.event(RtcEvent::PeerStats(stats));
             engine.send_failed(
-                source,
+                removed,
                 destination,
-                &std::io::Error::from(std::io::ErrorKind::NetworkUnreachable),
+                &std::io::Error::from_raw_os_error(10051),
             );
-            engine.check_source();
-            ensure!(
-                engine.rtc.is_alive() && engine.source_check.is_none(),
-                "completed old absent result survived success followed by a new error"
-            );
-            Ok(())
-        })
-        .await?;
-    let absent = completed_source_check(false).await;
-    first
-        .call(move |engine| {
-            engine.send_failed(
-                source,
-                destination,
-                &std::io::Error::from(std::io::ErrorKind::NetworkUnreachable),
-            );
-            engine.source_check = Some((Some(source), absent));
             engine.check_source();
             ensure!(
                 !engine.rtc.is_alive()
@@ -561,39 +554,6 @@ async fn source_checks_preserve_current_paths_and_shared_socket_siblings() -> Re
     Ok(())
 }
 
-#[tokio::test]
-async fn source_check_task_retires_with_its_transport() -> Result<()> {
-    struct Dropped(Arc<AtomicBool>);
-    impl Drop for Dropped {
-        fn drop(&mut self) {
-            self.0.store(true, Ordering::Release);
-        }
-    }
-    let runtime = Runtime::new(Some(ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?));
-    let (transport, _) =
-        crate::peer::tests::support::endpoint(&runtime, Uuid::new_v4(), None).await?;
-    let dropped = Arc::new(AtomicBool::new(false));
-    let guard = Dropped(dropped.clone());
-    transport
-        .call(move |engine| {
-            engine.source_check = Some((
-                None,
-                tokio::spawn(async move {
-                    let _guard = guard;
-                    std::future::pending::<bool>().await
-                }),
-            ));
-            Ok(())
-        })
-        .await?;
-    transport.close().await?;
-    ensure!(
-        dropped.load(Ordering::Acquire),
-        "retirement did not cancel and join verification"
-    );
-    runtime.close().await;
-    Ok(())
-}
 #[path = "admission.rs"]
 mod admission;
 #[path = "bulk.rs"]
@@ -660,9 +620,30 @@ async fn fixed_udp_selects_each_bound_address_and_preserves_wildcard_sending() -
             exchange(&received, &sent, "return-to-local-base").await?;
             tokio::time::timeout(Duration::from_secs(5), async {
                 loop {
-                    if let Some(source) = sender.call(|engine| Ok(engine.selected_source())).await?
+                    if sender
+                        .call(move |engine| {
+                            let Some(pair) = engine
+                                .peer_stats
+                                .as_ref()
+                                .and_then(|stats| stats.selected_candidate_pair.as_ref())
+                            else {
+                                return Ok(false);
+                            };
+                            ensure!(
+                                pair.local.addr == selected,
+                                "ICE selected another local base"
+                            );
+                            engine.send_failed(
+                                selected,
+                                pair.remote.addr,
+                                &std::io::Error::from_raw_os_error(10051),
+                            );
+                            engine.check_source();
+                            ensure!(engine.rtc.is_alive(), "usable loopback alias was retired");
+                            Ok(true)
+                        })
+                        .await?
                     {
-                        ensure!(source == selected, "ICE selected another local base");
                         return Ok::<_, anyhow::Error>(());
                     }
                     tokio::time::sleep(Duration::from_millis(10)).await;

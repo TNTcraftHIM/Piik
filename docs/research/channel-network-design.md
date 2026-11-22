@@ -644,9 +644,10 @@ Ordinary Native peers gather IPv4 and IPv6 through the same RTC transport owner;
 an unavailable address family does not disable the other. Wildcard listeners
 exclude loopback interfaces from ICE/STUN discovery. Explicit loopback listeners
 remain available for a configured local forwarding backend.
-Selected-path send errors trigger an interface check on the existing transport
-observation cycle. A confirmed removed source address retires that physical pair
-through the normal failure path; successful sends cancel the obsolete check.
+Selected-path send errors trigger a local source-address bind check on the
+existing transport observation cycle. An address-unavailable result retires that
+physical pair through the normal failure path. Successful sends and selected-path
+changes clear obsolete errors.
 Candidate probes and other pairs retain their own lifetimes.
 
 An ordinary Native connection with exclusive sockets may send Browser peers one

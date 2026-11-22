@@ -84,7 +84,6 @@ pub struct OriginReader {
     context: MediaContext,
     stopped: watch::Receiver<bool>,
     client: reqwest::Client,
-    context_client: Option<reqwest::Client>,
     resources: Mutex<BTreeMap<Uuid, Resource>>,
 }
 impl OriginReader {
@@ -143,34 +142,14 @@ impl OriginReader {
                 reload: Arc::new(Mutex::new(())),
             },
         };
-        let client = |policy| {
-            reqwest::Client::builder()
-                .redirect(policy)
-                .referer(false)
-                .build()
-        };
-        let context_client = context
-            .request
-            .as_ref()
-            .map(|request| {
-                let origin = request.url.origin();
-                let limited = reqwest::redirect::Policy::limited(10);
-                client(reqwest::redirect::Policy::custom(move |attempt| {
-                    if attempt.url().origin() != origin {
-                        attempt.stop()
-                    } else {
-                        limited.redirect(attempt)
-                    }
-                }))
-            })
-            .transpose()?;
         let reader = Arc::new(Self {
             root,
             context,
             stopped,
-            // reqwest removes sensitive headers across origins; source URLs may contain grants.
-            client: client(reqwest::redirect::Policy::limited(10))?,
-            context_client,
+            client: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .referer(false)
+                .build()?,
             resources: Mutex::new(BTreeMap::from([(root, resource)])),
         });
         Ok(reader)
@@ -186,39 +165,62 @@ impl OriginReader {
             .request
             .as_ref()
             .filter(|request| url.origin() == request.url.origin());
-        let client = if observed.is_some() {
-            self.context_client.as_ref().unwrap()
+        let mut target = url.clone();
+        let mut page_cookies = target.origin() == url::Url::parse(&self.context.url)?.origin();
+        let mut redirects = 0;
+        let range = if let Some(length) = length {
+            let end = offset
+                .checked_add(length as u64 - 1)
+                .ok_or_else(|| anyhow!("invalid_watch_range"))?;
+            Some(format!("bytes={offset}-{end}"))
         } else {
-            &self.client
+            None
         };
-        let mut request = client
-            .get(url.clone())
-            .header(reqwest::header::ACCEPT_ENCODING, "identity");
-        if let Some(length) = length {
-            request = request.header(
-                reqwest::header::RANGE,
-                format!(
-                    "bytes={offset}-{}",
-                    offset
-                        .checked_add(length as u64 - 1)
-                        .ok_or_else(|| anyhow!("invalid_watch_range"))?
-                ),
-            );
-        }
-        if url.origin() == url::Url::parse(&self.context.url)?.origin() {
-            if let Some(cookie) = (self.context.cookies)(url.as_str().to_owned()).await? {
-                request = request.header(reqwest::header::COOKIE, cookie);
+        let response = loop {
+            let mut request = self
+                .client
+                .get(target.clone())
+                .header(reqwest::header::ACCEPT_ENCODING, "identity");
+            if let Some(range) = &range {
+                request = request.header(reqwest::header::RANGE, range.as_str());
             }
-        }
-        if let Some(observed) = observed {
-            if let Some(value) = &observed.referer {
-                request = request.header(reqwest::header::REFERER, value);
+            if page_cookies {
+                if let Some(cookie) = (self.context.cookies)(target.to_string()).await? {
+                    request = request.header(reqwest::header::COOKIE, cookie);
+                }
             }
-            if let Some(value) = &observed.user_agent {
-                request = request.header(reqwest::header::USER_AGENT, value);
+            if let Some(observed) = observed {
+                if let Some(value) = &observed.referer {
+                    request = request.header(reqwest::header::REFERER, value);
+                }
+                if let Some(value) = &observed.user_agent {
+                    request = request.header(reqwest::header::USER_AGENT, value);
+                }
             }
-        }
-        let response = request.send().await.map_err(request_failure)?;
+            let response = request.send().await.map_err(request_failure)?;
+            if !matches!(response.status().as_u16(), 301 | 302 | 303 | 307 | 308) {
+                break response;
+            }
+            ensure!(redirects < 10, "watch_media_unavailable");
+            let next = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|location| location.to_str().ok())
+                .and_then(|location| target.join(location).ok())
+                .filter(|url| {
+                    matches!(url.scheme(), "http" | "https")
+                        && url.username().is_empty()
+                        && url.password().is_none()
+                })
+                .ok_or_else(|| anyhow!("watch_media_unavailable"))?;
+            if next.origin() != target.origin() {
+                ensure!(observed.is_none(), "watch_media_unavailable");
+                // Once a redirect leaves the source origin, page cookies stay detached.
+                page_cookies = false;
+            }
+            target = next;
+            redirects += 1;
+        };
         ensure!(
             response.status().is_success() || response.status().as_u16() == 416,
             "watch_media_unavailable"
@@ -1471,6 +1473,9 @@ mod tests {
                                 "Owned browser"
                             );
                             assert_eq!(request.headers().get("range").unwrap(), "bytes=0-15");
+                            if request.uri().path() == "/file" {
+                                assert_eq!(request.headers().get("cookie").unwrap(), "fixture=file");
+                            }
                             if request.uri().path() == "/same" || request.uri().path() == "/cross" {
                                 let location = if request.uri().path() == "/same" {
                                     "/file".into()
@@ -1494,6 +1499,9 @@ mod tests {
         for (path, succeeds) in [("same", true), ("cross", false)] {
             let url = format!("{source_url}/{path}");
             let (mut ctx, _page, _) = context(url.clone(), Format::File, Some(128));
+            ctx.cookies = Arc::new(|url| Box::pin(async move {
+                Ok((url::Url::parse(&url)?.path() == "/file").then(|| "fixture=file".into()))
+            }));
             ctx.request = Some(Arc::new(super::super::ObservedRequestContext {
                 url: url::Url::parse(&url).unwrap(),
                 referer: Some("https://page.test/".parse().unwrap()),

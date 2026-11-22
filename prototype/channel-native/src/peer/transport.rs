@@ -8,7 +8,6 @@ use crate::media::{
 };
 use crate::peer::{IceServer, PeerState};
 use anyhow::{anyhow, ensure, Context, Result};
-use futures_util::FutureExt;
 use rtc_rtp as rtp;
 use std::{
     collections::{HashMap, HashSet},
@@ -420,7 +419,6 @@ impl HostRefresh {
 pub(crate) struct Engine {
     udp_send_failures: udp_diagnostics::UdpSendFailures,
     source_error: Option<SocketAddr>,
-    source_check: Option<(Option<SocketAddr>, JoinHandle<bool>)>,
     stats_origin: Instant,
     peer_stats: Option<PeerStats>,
     ingress_stats: HashMap<(Mid, Option<Rid>), MediaIngressStats>,
@@ -860,7 +858,6 @@ impl Runtime {
         let engine = Engine {
             udp_send_failures: udp_diagnostics::UdpSendFailures::default(),
             source_error: None,
-            source_check: None,
             stats_origin,
             peer_stats: None,
             ingress_stats: HashMap::new(),
@@ -1733,10 +1730,6 @@ impl Engine {
             let _ = watcher.task.await;
         }
         self.nat64.take();
-        if let Some((_, task)) = self.source_check.take() {
-            task.abort();
-            let _ = task.await;
-        }
         if let Some(task) = self.discovery.take() {
             task.abort();
             let _ = task.await;
@@ -1797,14 +1790,6 @@ impl Engine {
         }
         true
     }
-    fn selected_source(&self) -> Option<SocketAddr> {
-        self.peer_stats
-            .as_ref()?
-            .selected_candidate_pair
-            .as_ref()
-            .map(|pair| pair.local.addr)
-    }
-
     fn send_failed(&mut self, source: SocketAddr, destination: SocketAddr, error: &std::io::Error) {
         if error.kind() == std::io::ErrorKind::WouldBlock {
             return;
@@ -1826,57 +1811,19 @@ impl Engine {
     }
 
     fn check_source(&mut self) {
-        if let Some((source, result)) = self
-            .source_check
-            .as_mut()
-            .and_then(|(source, task)| task.now_or_never().map(|result| (*source, result)))
-        {
-            self.source_check.take();
-            if let (Some(source), Ok(false)) = (source, result) {
-                if self.source_error == Some(source)
-                    && self.selected_source() == Some(source)
-                    && self.state.load(Ordering::Acquire) == PeerState::Connected as u8
-                {
-                    self.fail();
-                }
-            }
-            return;
-        }
-        let Some(source) = self
-            .source_error
-            .filter(|source| Some(*source) == self.selected_source())
-        else {
+        let Some(mut source) = self.source_error else {
             return;
         };
-        if self.source_check.is_some()
-            || self.state.load(Ordering::Acquire) != PeerState::Connected as u8
-        {
+        if self.state.load(Ordering::Acquire) != PeerState::Connected as u8 {
             return;
         }
-        self.source_check = Some((
-            Some(source),
-            tokio::spawn(async move {
-                let interfaces = netwatch::interfaces::State::new().await;
-                let assigned = interfaces
-                    .interfaces
-                    .values()
-                    .flat_map(|interface| interface.addrs())
-                    .any(|address| address.addr() == source.ip());
-                assigned
-            }),
-        ));
-    }
-
-    fn sent_from(&mut self, source: SocketAddr) {
-        if self.source_error == Some(source) {
-            self.source_error = None;
-        }
-        if let Some((checked_source, task)) = &mut self.source_check {
-            if *checked_source == Some(source) {
-                // Abort alone cannot revoke a result already completed but not yet joined.
-                *checked_source = None;
-                task.abort();
-            }
+        // A local bind also recognizes usable addresses outside interface enumeration
+        // (e.g. a configured loopback alias). Other bind errors are inconclusive.
+        source.set_port(0);
+        if std::net::UdpSocket::bind(source)
+            .is_err_and(|error| error.kind() == std::io::ErrorKind::AddrNotAvailable)
+        {
+            self.fail();
         }
     }
 
@@ -2034,8 +1981,8 @@ impl Engine {
                             },
                         ) {
                             self.send_failed(packet.source, packet.destination, &error);
-                        } else {
-                            self.sent_from(packet.source);
+                        } else if self.source_error == Some(packet.source) {
+                            self.source_error = None;
                         }
                     }
                 }
@@ -2156,20 +2103,20 @@ impl Engine {
             RtcEvent::PeerStats(stats) => {
                 self.udp_send_failures
                     .flush((!self.events.local()).then_some(self.handle.pair));
-                let previous = self
-                    .peer_stats
-                    .as_ref()
-                    .and_then(|stats| stats.selected_candidate_pair.as_ref());
-                if let Some(selected) = stats.selected_candidate_pair.as_ref().filter(|selected| {
-                    previous.is_none_or(|old| {
-                        old.protocol != selected.protocol
-                            || old.local.addr != selected.local.addr
-                            || old.remote.addr != selected.remote.addr
-                    })
-                }) {
-                    self.trace_pair(RtcPairEvent::SelectedPair {
-                        ipv6: selected.local.addr.is_ipv6(),
-                    });
+                let path = |stats: &PeerStats| {
+                    stats
+                        .selected_candidate_pair
+                        .as_ref()
+                        .map(|pair| (pair.protocol, pair.local.addr, pair.remote.addr))
+                };
+                let selected = path(&stats);
+                if self.peer_stats.as_ref().and_then(path) != selected {
+                    self.source_error = None;
+                    if let Some((_, local, _)) = selected {
+                        self.trace_pair(RtcPairEvent::SelectedPair {
+                            ipv6: local.is_ipv6(),
+                        });
+                    }
                 }
                 self.peer_stats = Some(stats.clone());
                 // Recheck continuing selected-path errors on the existing SDK observation.

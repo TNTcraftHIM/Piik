@@ -2345,6 +2345,16 @@ fn offline_room_host_consumes_pair_failure_before_resuming_a_prepared_branch() {
     );
     let offline = network.authority.disconnect(connections[0], 100);
     network.deliver(offline);
+    let other_topology = topology(&mut network, connections[source], &other_room, None);
+    assert!(other_topology.session_ids.contains(&sessions[0]));
+    let sibling_endpoints = (
+        sessions[0].min(sessions[source]),
+        sessions[0].max(sessions[source]),
+    );
+    assert!(other_topology
+        .pairs
+        .iter()
+        .any(|pair| pair.confirmed && (pair.first, pair.second) == sibling_endpoints));
     command(
         &mut network,
         connections[relay],
@@ -2458,6 +2468,17 @@ fn offline_room_host_consumes_pair_failure_before_resuming_a_prepared_branch() {
             .any(|old| old.selected
                 && old.sender == edge.sender
                 && old.receiver == edge.receiver)));
+
+    command(
+        &mut network,
+        connections[source],
+        json!({"type":"link_state","pairId":sibling_pair.id,"state":"failed"}),
+    );
+    let retired = topology(&mut network, connections[source], &other_room, None);
+    assert!(retired
+        .pairs
+        .iter()
+        .all(|pair| !pair.confirmed || (pair.first, pair.second) != sibling_endpoints));
 }
 
 #[test]

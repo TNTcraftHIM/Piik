@@ -1,7 +1,21 @@
 import type Hls from "hls.js";
+import type { MediaFragment } from "hls.js";
 import type { WatchTimeline } from "./protocol";
 
 export interface WatchLiveWindow { active: boolean; seekable: [number, number][]; syncPosition: number | null }
+
+function validateProgramWindow(fragments: MediaFragment[]): void {
+  if (!fragments.length) throw new Error("watch_live_timeline_unsupported");
+  for (const [index, fragment] of fragments.entries()) {
+    const start = fragment.programDateTime, end = fragment.endProgramDateTime;
+    // hls.js extrapolates across DIS tags and interprets zone-less dates in each player's local time.
+    const raw = fragment.rawProgramDateTime;
+    const anchored = raw ? /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw) : !fragment.tagList.some(([tag]) => tag === "DIS");
+    if (!anchored || !Number.isFinite(start) || !Number.isFinite(end) || end! <= start!
+      || (index > 0 && start! < fragments[index - 1].endProgramDateTime! - 1))
+      throw new Error("watch_live_timeline_unsupported");
+  }
+}
 
 /** HLS owns segment time and sliding. These public facts map into one activity coordinate. */
 export class WatchHlsTimeline {
@@ -17,11 +31,7 @@ export class WatchHlsTimeline {
       return null;
     }
     const fragments = details.fragments;
-    if (!fragments.length || fragments.some(fragment => !Number.isFinite(fragment.programDateTime)
-      || !Number.isFinite(fragment.endProgramDateTime) || fragment.endProgramDateTime! <= fragment.programDateTime!))
-      throw new Error("watch_live_timeline_unsupported");
-    for (let i = 1; i < fragments.length; i++)
-      if (fragments[i].programDateTime! < fragments[i - 1].endProgramDateTime! - 1) throw new Error("watch_live_timeline_unsupported");
+    validateProgramWindow(fragments);
     const date = this.hls.playingDate?.getTime();
     const position = this.programPosition(video.currentTime) ?? (date !== undefined && Number.isFinite(date) ? date / 1000 : null);
     if (position === null) throw new Error("watch_live_timeline_unavailable");
@@ -51,7 +61,10 @@ export class WatchHlsTimeline {
 
   localPosition(position: number): number {
     if (this.coordinate !== "program") return position;
-    const fragment = this.hls.latestLevelDetails?.fragments.findLast((fragment, index, fragments) => {
+    const details = this.hls.latestLevelDetails;
+    if (!details) throw new Error("watch_live_position_unavailable");
+    validateProgramWindow(details.fragments);
+    const fragment = details.fragments.findLast((fragment, index, fragments) => {
       if (fragment.gap || fragment.programDateTime === null || fragment.endProgramDateTime === null) return false;
       const end = fragment.endProgramDateTime / 1000;
       const next = fragments[index + 1];

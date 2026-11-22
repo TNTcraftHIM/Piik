@@ -13,6 +13,8 @@ export interface RouteGraphNode {
   you?: boolean;
   host?: boolean;
   kind?: "person" | "endpoint" | "sfu";
+  endpointKind?: "app" | "webpage";
+  endpointLabel?: string;
   /** Presence without an upstream can still have an explicit waiting state. */
   pending?: boolean;
   description?: string;
@@ -68,7 +70,7 @@ export function routeGraphLayout(nodes: readonly RouteGraphNode[], rootId: strin
       const angle = (index + .5) * 2 * Math.PI / nodes.length;
       return [id, {
         x: width / 2 + (nodes.length < 2 ? 0 : Math.sin(angle) * (width - fittedGap) / 2),
-        y: height / 2 - 4 - (nodes.length < 3 ? 0 : Math.cos(angle) * (height / 2 - 43)),
+        y: height / 2 - 4 - (nodes.length < 3 ? 0 : Math.cos(angle) * (height / 2 - 51)),
       }];
     }));
     return { config, points, order, width, height, spacing, fittedGap, outline };

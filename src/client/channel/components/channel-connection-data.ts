@@ -7,8 +7,8 @@ import { EMPTY_METRICS } from "../../types";
 
 type Translate = (key: CopyKey, vars?: Record<string, string>) => string;
 
-function hopRoute(topology: ChannelTopology, from: string, to: string, presentation = false): "p2p" | "sfu" {
-  return !presentation && (from === topology.transitSession || to === topology.transitSession) ? "sfu" : "p2p";
+function hopRoute(topology: ChannelTopology, from: string, to: string): "p2p" | "sfu" {
+  return from === topology.transitSession || to === topology.transitSession ? "sfu" : "p2p";
 }
 
 export function hasSelectedLocalDisplay(topology: ChannelTopology | null, sessionId: string): boolean {
@@ -27,7 +27,7 @@ export function channelConnectionGraph(state: ChannelSnapshot, roomId: string, s
   const edges: RouteGraphEdge[] = screen ? screen.edges.map(edge => ({
     from: edge.sender, to: edge.receiver, selected: edge.selected,
     ready: edge.proof === "forwardable" || edge.proof === "decoded", presentation: edge.presentation,
-    route: hopRoute(topology, edge.sender, edge.receiver, edge.presentation),
+    route: edge.presentation ? undefined : hopRoute(topology, edge.sender, edge.receiver),
   })) : topology.pairs.map(pair => ({ from: pair.first, to: pair.second, selected: true, ready: pair.confirmed }));
   const apps = new Set(screen?.edges.filter(edge => edge.presentation).map(edge => edge.sender));
   const display = new Set(screen?.edges.filter(edge => edge.presentation).map(edge => edge.receiver));
@@ -36,25 +36,34 @@ export function channelConnectionGraph(state: ChannelSnapshot, roomId: string, s
     : topology.sessionIds;
   const sessionUsers = new Map(state.sessions.map(session => [session.id, session.userId]));
   const identity = (id: string) => sessionUsers.get(id) ?? id;
-  const people = ids.filter(id => id !== topology.transitSession && (screen || sessionUsers.has(id)));
+  const people = ids.filter(id => id !== topology.transitSession && sessionUsers.has(id));
   const groups = [...new Set(people.map(identity))].map(userId => ({ userId,
     name: state.users.find(user => user.id === userId)?.name ?? t("voice.participant"),
     ids: people.filter(id => identity(id) === userId).sort(),
   }));
-  const endpoint = (id: string) => apps.has(id) ? "App" : display.has(id) || id === sessionId ? t("connection.webpage")
-    : t("connection.endpoint", { number: String(groups.find(group => group.userId === identity(id))!.ids.indexOf(id) + 1) });
+  const endpointKind = (id: string) => apps.has(id) ? "app" as const
+    : display.has(id) || id === sessionId ? "webpage" as const : undefined;
+  const endpoint = (id: string) => {
+    const kind = endpointKind(id);
+    if (kind) return kind === "app" ? "App" : t("connection.webpage");
+    const group = groups.find(group => group.userId === identity(id));
+    return t("connection.endpoint", { number: String((group?.ids.indexOf(id) ?? 0) + 1) });
+  };
+  const roomMembers = new Set(room?.participantSessionIds);
   const nodes = ids.map((id, index): RouteGraphNode => {
     if (id === topology.transitSession) return { id, identity: id, kind: "sfu", label: t(screen ? "connection.siteForwarding" : "connection.siteService") };
     const userId = sessionUsers.get(id);
-    if (!screen && !userId) return { id, kind: "endpoint", you: id === sessionId,
+    if (!userId) return { id, kind: "endpoint", you: id === sessionId,
       label: t("connection.endpoint", { number: String(index + 1) }) };
     const name = connectionSessionName(state, id, t);
     const multiple = groups.some(group => group.userId === identity(id) && group.ids.length > 1);
-    const qualifier = apps.has(id) || display.has(id) || multiple ? endpoint(id) : null;
+    const host = id === room?.delivery?.hostSessionId && userId === room?.creatorId;
+    const kind = endpointKind(id);
+    const showEndpoint = multiple || !!kind || !host && !roomMembers.has(id);
     return { id, identity: userId ?? id,
-      kind: multiple ? "endpoint" : "person",
-      you: id === sessionId, host: id === room?.delivery?.hostSessionId && userId === room?.creatorId,
-      label: qualifier ? `${name} (${qualifier})` : name };
+      kind: showEndpoint ? "endpoint" : "person", endpointKind: kind,
+      endpointLabel: showEndpoint ? endpoint(id) : undefined,
+      you: id === sessionId, host, label: name };
   });
   return { nodes, rootId, edges, endpointGroups: groups.filter(group => group.ids.length > 1)
     .map(group => ({ ...group, endpoints: group.ids.map(endpoint) })) };
@@ -91,7 +100,7 @@ export function channelConnectionRows(state: ChannelSnapshot, sessionId: string,
     // Without picture topology, a sample may be the App's local display hop.
     return [{ key: `${sample.ownerSessionId}/${sample.flowId}/${sample.metrics.rtpStatsId}`, connectionId: sample.connectionId,
       media: publication.kind === "voice" ? "audio" : "video", direction: sample.direction,
-      route: topology ? hopRoute(topology, from, to, localDisplay) : undefined, label, metrics,
+      route: topology && !localDisplay ? hopRoute(topology, from, to) : undefined, label, metrics,
       detailOnly: publication.kind === "screen" && !topology?.screen || localDisplay || !sample.selected || undefined }];
   });
 }

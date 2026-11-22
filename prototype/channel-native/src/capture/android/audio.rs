@@ -90,7 +90,11 @@ impl AudioCapture {
     pub async fn recv(&mut self) -> Option<Result<AudioFrame>> {
         match self.frames.recv().await {
             Some(frame) => Some(Ok(frame)),
-            None => self.completion.take()?.await.ok()?.err().map(Err),
+            None => {
+                let result = self.completion.as_mut()?.await;
+                self.completion = None;
+                result.ok()?.err().map(Err)
+            }
         }
     }
     pub fn stop(mut self) -> Result<()> {

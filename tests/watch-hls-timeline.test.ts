@@ -6,11 +6,39 @@ import { watchSeekPosition } from "../src/client/channel/watch-media";
 
 const epoch = 1794744000;
 
+function fragment(start: number, end: number, programStart: number) {
+  return { start, end, rawProgramDateTime: new Date(programStart * 1000).toISOString(), tagList: [],
+    programDateTime: programStart * 1000, endProgramDateTime: (programStart + end - start) * 1000 };
+}
+
+test("a refreshed program window requires a zoned source date at each discontinuity", () => {
+  const playlist = (date?: string) => M3U8Parser.parseLevelPlaylist([
+    "#EXTM3U", "#EXT-X-TARGETDURATION:2", "#EXT-X-PROGRAM-DATE-TIME:2026-11-15T00:00:00Z",
+    "#EXTINF:2,", "a.ts", "#EXT-X-DISCONTINUITY", ...(date ? ["#EXT-X-PROGRAM-DATE-TIME:" + date] : []),
+    "#EXTINF:2,", "b.ts", "#EXTINF:2,", "c.ts",
+  ].join("\n"), "https://example.test/live.m3u8", 0, PlaylistLevelType.MAIN, 0, null);
+  const input = fixture(0, epoch);
+  let details = playlist("2026-11-15T01:00:10+01:00");
+  Object.defineProperty(input.hls, "latestLevelDetails", { get: () => details });
+  const timeline = new WatchHlsTimeline(input.hls, "program");
+  input.video.currentTime = 5;
+  const position = Date.parse("2026-11-15T00:00:13Z") / 1000;
+  expect(timeline.read(input.video)?.position).toBe(position);
+  expect(timeline.localPosition(position)).toBe(5);
+  for (const date of [undefined, "2026-11-15T00:00:10"]) {
+    details = playlist(date);
+    const inferred = details.fragments[1].programDateTime! / 1000;
+    expect(() => timeline.localPosition(inferred)).toThrow("watch_live_timeline_unsupported");
+    expect(() => timeline.read(input.video)).toThrow("watch_live_timeline_unsupported");
+  }
+  details = playlist("2026-11-15T00:00:10Z");
+  expect(timeline.read(input.video)?.position).toBe(position);
+});
+
 test("pointer and directional keyboard seeks around a program gap map to playable media", () => {
   const { hls, video, details } = fixture(0, epoch);
   details.fragments = [
-    { start: 0, end: 8, programDateTime: epoch * 1000, endProgramDateTime: (epoch + 8) * 1000 },
-    { start: 8, end: 12, programDateTime: (epoch + 12) * 1000, endProgramDateTime: (epoch + 16) * 1000 },
+    fragment(0, 8, epoch), fragment(8, 12, epoch + 12),
   ];
   const timeline = new WatchHlsTimeline(hls, "program");
   const ranges = timeline.read(video)!.live.seekable;
@@ -22,7 +50,7 @@ test("pointer and directional keyboard seeks around a program gap map to playabl
 });
 function fixture(start: number, programStart: number, live = true, liveSyncPosition = start + 3) {
   const video = { currentTime: start + 2, buffered: { length: 1, start: () => start, end: () => start + 6 } } as unknown as HTMLVideoElement;
-  const details = { live, fragments: [{ start, end: start + 6, programDateTime: programStart * 1000, endProgramDateTime: (programStart + 6) * 1000 }] };
+  const details = { live, fragments: [fragment(start, start + 6, programStart)] };
   const hls = { latestLevelDetails: details, liveSyncPosition,
     get playingDate() { return new Date((programStart + video.currentTime - start) * 1000); } } as unknown as Hls;
   return { video, details, hls };
@@ -63,7 +91,7 @@ test("a seek uses the target fragment mapping while the prior playing-date obser
 
 test("a shared media boundary uses the next fragment's program date", () => {
   const { hls, video, details } = fixture(0, epoch, true, 6);
-  details.fragments.push({ start: 6, end: 12, programDateTime: (epoch + 10) * 1000, endProgramDateTime: (epoch + 16) * 1000 });
+  details.fragments.push(fragment(6, 12, epoch + 10));
   const timeline = new WatchHlsTimeline(hls, "program");
 
   video.currentTime = timeline.localPosition(epoch + 10);

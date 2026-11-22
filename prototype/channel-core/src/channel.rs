@@ -2088,13 +2088,25 @@ impl Channel {
             .transpose()?;
         let relay = self.service_relay(view.room.can_manage && projection.allow_service_relay);
         let mut scope = room.planning_sessions(self.service_endpoint, None);
+        // A confirmed physical pair can outlive either current signaling socket.
+        let confirmed: BTreeSet<_> = self
+            .transports
+            .confirmed_pairs(&self.identity)
+            .chain(self.transports.recovering_pairs(&self.identity))
+            .filter(|(first, second)| scope.contains(first) && scope.contains(second))
+            .collect();
+        let connected_by_pair: BTreeSet<_> = confirmed
+            .iter()
+            .flat_map(|&(first, second)| [first, second])
+            .collect();
         scope.retain(|id| {
-            self.identity
-                .sessions
-                .get(id)
-                .is_some_and(|s| s.connection.is_some())
+            connected_by_pair.contains(id)
+                || self
+                    .identity
+                    .sessions
+                    .get(id)
+                    .is_some_and(|s| s.connection.is_some())
         });
-        let confirmed: BTreeSet<_> = self.transports.confirmed_pairs(&self.identity).collect();
         let pairs = self
             .transports
             .admitted_pairs()

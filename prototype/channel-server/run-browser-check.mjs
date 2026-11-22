@@ -46,9 +46,10 @@ function start(command, args) {
   return service;
 }
 async function ready(process, url) {
-  for (let index = 0; index < 100; index++) {
-    if (await fetch(url).then(response => response.ok).catch(() => false)) return;
-    if (process.child.exitCode !== null) throw new Error(process.output());
+  const signal = AbortSignal.timeout(10_000);
+  while (!signal.aborted) {
+    if (process.child.exitCode !== null || process.child.signalCode !== null) throw new Error(process.output());
+    if (await fetch(url, { signal }).then(response => response.ok).catch(() => false)) return;
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   throw new Error(`Acceptance service did not become ready: ${process.output()}`);

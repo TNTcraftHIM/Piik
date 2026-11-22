@@ -14,10 +14,11 @@ export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames 
   const forwarding = mode === "site-forwarding";
   if (forwarding) mode = "both";
   const roomOnly = mode === "room" || mode === "room-links";
+  const participants = roomOnly ? ["host", "self", "friend", "app"] : ["host", "self", "friend"];
   const state = snapshotSchema.parse({
     channel: { id: "domain", name: "Friends", icon: "couch", ownerId: "host-user", roomCreationPolicy: "ordinary", hostingMode: "lightweight", historyWindow: 100, userCount: 3, managedRoomIds: [],
       rooms: [{ id: "room", name: "Living room", icon: "couch", creatorId: "host-user", access: "public", hidden: false,
-        hasPassword: false, authorized: true, canManage: false, participantSessionIds: ["host", "self", "friend", "app"],
+        hasPassword: false, authorized: true, canManage: false, participantSessionIds: participants,
         fileActivity: [],
         available: true, reading: true, lastMessageSeq: 0, capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding" } }] },
@@ -32,7 +33,7 @@ export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames 
     })), subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   } satisfies z.input<typeof snapshotSchema>);
   const topology: ChannelTopology = { serviceAvailable: false, serviceEnabled: false, bindingId: "binding", transitSession: null,
-    sessionIds: ["app", "friend", "host", "self"], pairs: roomOnly ? [] : [
+    sessionIds: [], pairs: roomOnly ? [] : [
       { first: "friend", second: "host", confirmed: true }, { first: "host", second: "self", confirmed: true },
     ], screen: mode === "app" ? { publicationId: "screen-host", sourceSessionId: "host", edges: [
     { sender: "host", receiver: "app", selected: true, proof: "forwardable", presented: null, presentation: false },
@@ -64,14 +65,10 @@ export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames 
     state.sessions.push({ ...state.sessions.find(session => session.id === "host")!, id: "site-service" });
     topology.serviceAvailable = topology.serviceEnabled = true;
     topology.transitSession = "site-service";
-    topology.sessionIds.push("site-service");
     const path = ["host", "site-service", "self", "friend"];
     topology.screen!.edges = path.slice(1).map((receiver, index) => ({ sender: path[index], receiver, selected: true,
       proof: "forwardable", presented: null, presentation: false }));
-    topology.pairs = topology.screen!.edges.map(({ sender, receiver }) => {
-      const [first, second] = [sender, receiver].sort();
-      return { first, second, confirmed: true };
-    });
+    topology.pairs = [];
     for (const sample of metrics) if (sample.peerId === "host") {
       sample.peerId = "site-service"; sample.pairId = "pair-site-service";
       sample.connectionId = `${sample.ownerSessionId}/${sample.pairId}`;
@@ -90,9 +87,7 @@ export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames 
     // The site owner stays separate; one room owner has an App and a webpage.
     state.channel.rooms[0].creatorId = "self-user";
     state.channel.rooms[0].delivery!.hostSessionId = "app";
-    topology.pairs = [
-      { first: "app", second: "friend", confirmed: true },
-    ];
+    topology.pairs = [];
     topology.screen = { publicationId: "screen-self", sourceSessionId: "app", edges: [
       { sender: "app", receiver: "self", selected: true, proof: "decoded", presented: true, presentation: true },
       { sender: "app", receiver: "friend", selected: true, proof: "forwardable", presented: null, presentation: false },
@@ -101,7 +96,6 @@ export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames 
   }
   if (mode === "multiple-endpoints") {
     state.sessions.push({ ...state.sessions.find(value => value.id === "friend")!, id: "friend-app" });
-    topology.sessionIds.push("friend-app");
     topology.screen = { publicationId: "screen-host", sourceSessionId: "host", edges: [
       { sender: "host", receiver: "app", selected: true, proof: "forwardable", presented: null, presentation: false },
       { sender: "app", receiver: "self", selected: true, proof: "decoded", presented: true, presentation: true },
@@ -114,14 +108,23 @@ export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames 
     state.sessions.push({ id: "guest", userId: "guest-user", online: true, signingKey: Array(32).fill(0) });
     state.channel.userCount++;
     state.channel.rooms[0].participantSessionIds.push("guest");
-    topology.sessionIds = ["app", "friend", "guest", "host", "self"];
     topology.pairs = [
-      { first: "app", second: "self", confirmed: false },
+      { first: "app", second: "host", confirmed: false },
       { first: "friend", second: "host", confirmed: true },
       { first: "friend", second: "self", confirmed: true },
       { first: "host", second: "self", confirmed: true },
     ];
   }
+  // Selected and preparing picture flows both use already confirmed physical pairs.
+  for (const { sender, receiver } of topology.screen?.edges ?? []) {
+    const [first, second] = [sender, receiver].sort();
+    if (!topology.pairs.some(pair => pair.first === first && pair.second === second)) {
+      topology.pairs.push({ first, second, confirmed: true });
+    }
+  }
+  const room = state.channel.rooms[0];
+  topology.sessionIds = [...new Set([...room.participantSessionIds, room.delivery!.hostSessionId,
+    ...topology.pairs.flatMap(pair => [pair.first, pair.second])])].sort();
   return { state, topology, metrics: mode === "host-endpoints" || mode === "multiple-endpoints" ? [] : metrics, roomId: "room", sessionId: "self" };
 }
 

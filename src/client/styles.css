@@ -1342,6 +1342,8 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-route-hit,
 .lr-route-name-static { position: relative; display: block; width: 100%; height: 100%; }
 .lr-route-name { position: absolute; display: block; line-height: 14px; text-align: center; transform: translateX(-50%); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lr-route-name-text, .lr-route-endpoint-label { display: block; overflow: hidden; text-overflow: ellipsis; }
+.lr-route-endpoint-label { font-size: 10px; font-weight: 600; }
 .lr-route.is-outline .lr-route-name { text-align: left; transform: none; }
 .lr-route-name-hint:focus-visible { outline: 2px solid var(--ink); border-radius: 8px; }
 .lr-route-hit:hover,

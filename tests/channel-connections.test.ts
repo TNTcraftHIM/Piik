@@ -81,7 +81,7 @@ describe("channel connection presentation", () => {
     fixture.topology.transitSession = "app";
     const graph = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
     expect(graph.nodes.find(node => node.id === "app")).toMatchObject({ kind: "sfu", label: "connection.siteForwarding" });
-    expect(graph.nodes.find(node => node.id === "self")).toMatchObject({ kind: "person", identity: "self-user", you: true });
+    expect(graph.nodes.find(node => node.id === "self")).toMatchObject({ kind: "endpoint", endpointKind: "webpage", identity: "self-user", you: true });
     expect(graph.endpointGroups).toEqual([]);
     const routed = channelConnectionPreview("app");
     routed.topology.transitSession = "app";
@@ -135,7 +135,7 @@ describe("channel connection presentation", () => {
     expect(graph.nodes.find(node => node.id === "unknown")).toMatchObject({ kind: "endpoint", label: "connection.endpoint" });
     expect(graph.nodes.map(node => node.id)).toEqual(["app", "friend", "guest", "host", "self", "unknown"]);
     expect(graph.edges.map(({ from, to, ready }) => [from, to, ready])).toEqual([
-      ["app", "self", false], ["friend", "host", true], ["friend", "self", true], ["host", "self", true],
+      ["app", "host", false], ["friend", "host", true], ["friend", "self", true], ["host", "self", true],
     ]);
     expect(graph.nodes.filter(node => node.host).map(node => node.id)).toEqual(["host"]);
     expect(graph.endpointGroups.map(group => group.ids)).toEqual([["app", "self"]]);
@@ -159,15 +159,18 @@ describe("channel connection presentation", () => {
   it("retains the real App display edge and separates endpoints sharing a user identity", () => {
     const fixture = channelConnectionPreview("app");
     const graph = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
-    expect(graph.nodes.find(node => node.id === "app")).toMatchObject({ identity: "self-user", label: "Nori (App)" });
-    expect(graph.nodes.find(node => node.id === "self")).toMatchObject({ identity: "self-user", label: "Nori (connection.webpage)", you: true });
+    expect(graph.nodes.find(node => node.id === "app")).toMatchObject({ identity: "self-user", label: "Nori", endpointKind: "app", endpointLabel: "App" });
+    expect(graph.nodes.find(node => node.id === "self")).toMatchObject({ identity: "self-user", label: "Nori", endpointKind: "webpage", endpointLabel: "connection.webpage", you: true });
+    expect(fixture.state.channel.rooms[0].participantSessionIds).not.toContain("app");
     expect(graph.edges).toHaveLength(3);
     expect(graph.edges[2]).toMatchObject({ selected: false, ready: false });
     const rows = channelConnectionRows(fixture.state, fixture.sessionId, fixture.topology, fixture.metrics, t);
     expect(rows.filter(row => row.label === "connection.localDisplay")).toHaveLength(2);
-    expect(rows.filter(row => row.label === "connection.localDisplay").every(row => row.detailOnly)).toBe(true);
+    expect(rows.filter(row => row.label === "connection.localDisplay").every(row => row.detailOnly && !row.route)).toBe(true);
     expect(rows.find(row => row.key.startsWith("app/screen-host-receive"))?.detailOnly).toBeUndefined();
-    expect(renderToStaticMarkup(createElement(ChannelConnectionReport, fixture))).toContain(say("connection.localDisplayHint"));
+    const html = renderToStaticMarkup(createElement(ChannelConnectionReport, fixture));
+    expect(html).toContain(say("connection.localDisplayHint"));
+    expect(html).toContain(`← Nori (App) · ${say("connection.localDisplay")}`);
     fixture.topology.screen!.edges.find(edge => edge.presentation)!.selected = false;
     expect(renderToStaticMarkup(createElement(ChannelConnectionReport, fixture))).not.toContain(say("connection.localDisplayHint"));
   });
@@ -192,8 +195,9 @@ describe("channel connection presentation", () => {
     expect(reader.replace(/<\/?span>/g, "")).toContain(`<li>Nori (App) · ${say("common.host")} ← Kiki`);
     fixture.topology.screen = null;
     const untyped = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
-    expect(untyped.nodes.find(node => node.id === "app")?.label).toBe("Nori (connection.endpoint)");
-    expect(untyped.nodes.find(node => node.id === "self")?.label).toBe("Nori (connection.webpage)");
+    expect(untyped.nodes.find(node => node.id === "app")).toMatchObject({ label: "Nori", endpointLabel: "connection.endpoint" });
+    expect(untyped.nodes.find(node => node.id === "app")?.endpointKind).toBeUndefined();
+    expect(untyped.nodes.find(node => node.id === "self")).toMatchObject({ label: "Nori", endpointLabel: "connection.webpage" });
   });
 
   it("keeps each person's physical endpoints and only labels an App from its actual display hop", () => {
@@ -203,12 +207,12 @@ describe("channel connection presentation", () => {
     expect(graph.edges).toHaveLength(4);
     expect(graph.endpointGroups.map(group => group.userId)).toEqual(["self-user", "friend-user"]);
     expect(graph.nodes.filter(node => node.kind === "endpoint")).toHaveLength(4);
-    expect(graph.nodes.find(node => node.id === "friend-app")?.label).toBe("Kiki (App)");
+    expect(graph.nodes.find(node => node.id === "friend-app")).toMatchObject({ label: "Kiki", endpointKind: "app" });
     fixture.state.users.find(user => user.id === "friend-user")!.name = "Nori";
     fixture.topology.screen!.edges = fixture.topology.screen!.edges.map(edge => ({ ...edge, presentation: false }));
     const untyped = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
     expect(untyped.endpointGroups).toHaveLength(2); // Equal names do not merge people.
-    expect(untyped.nodes.some(node => node.label.includes("(App)"))).toBe(false);
+    expect(untyped.nodes.some(node => node.endpointKind === "app")).toBe(false);
   });
 
   it("scopes an unwatched picture's empty path to that share while room voice remains active", () => {

@@ -9,7 +9,7 @@ use crate::{
     },
 };
 use anyhow::{anyhow, Result};
-use futures_util::future::BoxFuture;
+use futures_util::{future::BoxFuture, FutureExt};
 use rtc_shared::time::SystemInstant;
 use std::{
     collections::VecDeque,
@@ -265,6 +265,7 @@ fn run(
         let work: Result<()> = async {
             'work: loop {
                 let mut response = None;
+                let mut microphone_frame = None;
                 tokio::select! {
                     biased;
                     _ = wait_stopped(&mut stop) => break,
@@ -364,18 +365,28 @@ fn run(
                     _ = async { prepared.as_mut().unwrap().cancelled.wait_for(|v| *v).await.ok(); }, if prepared.is_some() => {
                         if let Some(input) = prepared.take().and_then(|p| p.input) { close(input).await; }
                     },
-                    frame = async { system.as_mut().unwrap().capture.recv().await }, if system.is_some() => match frame {
-                        Some(Ok(frame)) => mix.push(0, frame),
-                        end => { failed(system.take().unwrap(), &ended(end)).await; mix.clear(0); }
+                    frame = async { system.as_mut().unwrap().capture.recv().await }, if system.is_some() => {
+                        match frame {
+                            Some(Ok(frame)) => mix.push(0, frame),
+                            end => { failed(system.take().unwrap(), &ended(end)).await; mix.clear(0); }
+                        }
+                        // The biased select reads system sound first. Include already queued
+                        // commentary before advancing the mixer's output clock.
+                        microphone_frame = mic.as_mut().and_then(|input| input.capture.recv().now_or_never());
                     },
-                    frame = async { mic.as_mut().unwrap().capture.recv().await }, if mic.is_some() => match frame {
+                    frame = async { mic.as_mut().unwrap().capture.recv().await }, if mic.is_some() => {
+                        microphone_frame = Some(frame);
+                    },
+                }
+                if let Some(frame) = microphone_frame {
+                    match frame {
                         Some(Ok(frame)) => mix.push(1, frame),
                         end => {
                             failed(mic.take().unwrap(), &ended(end)).await;
                             mix.clear(1);
                             microphone.enabled = false;
                         }
-                    },
+                    }
                 }
                 publish_state(&system, &microphone);
                 if let Some((reply, result)) = response { let _ = reply.send(result); }
@@ -1020,7 +1031,6 @@ mod tests {
     #[tokio::test]
     async fn independent_inputs_retain_one_opus_source_and_join_on_cancel() -> Result<()> {
         crate::diagnostics::enable()?;
-        use futures_util::FutureExt;
         use std::sync::Mutex;
         tokio::time::timeout(Duration::from_secs(3), async {
             let epoch = Instant::now();
@@ -1103,15 +1113,20 @@ mod tests {
                 })
                 .await?;
             for millis in [20, 40] {
-                mic_pcm
-                    .send(frame(epoch, millis, [0.2, 0.4]))
-                    .await?;
-                system_pcm
-                    .send(frame(epoch, millis, [0.1, 0.2]))
-                    .await?;
+                // Fill both capture queues before yielding to the mixer.
+                mic_pcm.try_send(frame(epoch, millis, [0.2, 0.4]))?;
+                system_pcm.try_send(frame(epoch, millis, [0.1, 0.2]))?;
             }
             let mixed = received.recv().await.unwrap();
             assert_eq!(mixed.header.timestamp.wrapping_sub(first_timestamp), 960);
+            let mut reference = rusty_opus::OpusEncoder::new(48_000, 2, rusty_opus::Application::Audio)?;
+            reference.complexity = 10;
+            reference.use_cbr = true;
+            let mut encoded = [0; 1500];
+            for (samples, packet) in [([0.1, 0.2], &first_packets[0]), ([0.2, 0.4], &mixed)] {
+                let length = encode_audio(&mut reference, &mut samples.repeat(960), *control.settings.borrow(), &mut encoded)?;
+                assert_eq!(&encoded[..length], &packet.payload[..], "published PCM mix");
+            }
             assert_eq!(control.source.borrow().as_ref(), Some(&id));
             assert!(control
                 .configure_microphone(SourceMicrophoneSettings {
@@ -1132,9 +1147,7 @@ mod tests {
             ready_system.await??;
             assert!(control.state.borrow().source_audio);
             for millis in [60, 80] {
-                mic_pcm
-                    .send(frame(epoch, millis, [0.2, 0.4]))
-                    .await?;
+                // Commentary is enabled but has no new PCM during this interval.
                 system_pcm
                     .send(frame(epoch, millis, [0.1, 0.2]))
                     .await?;
