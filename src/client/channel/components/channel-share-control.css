@@ -16,6 +16,7 @@
 .c3-watch-source-list { gap: 12px; }
 .c3-watch-source-choice { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }
 .c3-watch-source-choice > .lr-btn { justify-self: start; }
+.c3-watch-source-alternative { border-block-start: 1px solid var(--line); padding-block-start: 8px; }
 .lr-anchored-card.c3-quality-picker {
   width: min(640px, calc(100vw - 16px)); max-height: calc(100dvh - 16px);
   padding: 0; overflow: hidden;

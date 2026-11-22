@@ -22,6 +22,15 @@ use std::{ffi::c_void, mem::size_of};
 
 pub(super) struct System;
 
+#[derive(Debug)]
+pub(super) struct PendingUnicodeRelease(pub u16);
+
+impl std::fmt::Display for PendingUnicodeRelease {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Unicode key release pending")
+    }
+}
+
 // Geometry and injection run synchronously on the caller thread. Restore its DPI
 // context, so this executor does not change capture or WebView process defaults.
 struct Dpi(DPI_AWARENESS_CONTEXT);
@@ -130,7 +139,23 @@ impl Sink for System {
 
     fn apply(&mut self, bounds: Bounds, action: &Action) -> Result<()> {
         let _dpi = Dpi::enter();
+        Self::apply_with(bounds, action, |inputs| unsafe {
+            SendInput(inputs, size_of::<INPUT>() as i32)
+        })
+    }
+}
+
+impl System {
+    pub(super) fn apply_with(
+        bounds: Bounds,
+        action: &Action,
+        mut send: impl FnMut(&[INPUT]) -> u32,
+    ) -> Result<()> {
         let inputs = match action {
+            Action::Held(Held::Unicode(unit), false) => {
+                vec![key(*unit, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP)]
+            }
+            Action::Held(Held::Unicode(_), true) => anyhow::bail!("unexpected_unicode_press"),
             Action::Move(x, y) => {
                 let (left, top, width, height) = unsafe {
                     (
@@ -210,23 +235,23 @@ impl Sink for System {
         if inputs.is_empty() {
             return Ok(());
         }
-        let accepted = unsafe { SendInput(&inputs, size_of::<INPUT>() as i32) };
+        let accepted = send(&inputs);
         // UIPI rejection has no reliable GetLastError explanation. Report what
         // Windows accepted; the owner retains permission and only retries releases.
         if accepted as usize != inputs.len() {
-            // A partial text batch may end between a UTF-16 press/release pair.
-            if matches!(action, Action::Text(_)) && accepted % 2 == 1 {
-                unsafe {
-                    SendInput(
-                        &inputs[accepted as usize..accepted as usize + 1],
-                        size_of::<INPUT>() as i32,
-                    );
-                }
-            }
-            anyhow::bail!(
+            let error = anyhow::anyhow!(
                 "Windows accepted {accepted} of {} input events",
                 inputs.len()
             );
+            if matches!(action, Action::Text(_)) && accepted % 2 == 1 {
+                let release = &inputs[accepted as usize];
+                if send(std::slice::from_ref(release)) != 1 {
+                    // Text records are KEYBDINPUT, with the UTF-16 unit in wScan.
+                    let unit = unsafe { release.Anonymous.ki.wScan };
+                    return Err(error.context(PendingUnicodeRelease(unit)));
+                }
+            }
+            return Err(error);
         }
         Ok(())
     }

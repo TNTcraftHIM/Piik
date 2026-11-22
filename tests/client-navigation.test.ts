@@ -43,7 +43,7 @@ function mount(navigation: NonNullable<AppDiscovery["navigation"]> = vi.fn(async
   const open = vi.fn(() => popup);
   vi.stubGlobal("window", { open });
   const discovery = { navigation, health: vi.fn(), connect: vi.fn(), isIncompatible: () => false };
-  const render = () => { hooks.index = 0; return OpenInClient({ discovery, targetURL: invitation, active: true, disabled: false, downloadURL: "https://download.example/" }); };
+  const render = () => { hooks.index = 0; return OpenInClient({ discovery, targetURL: invitation, active: true, disabled: false }); };
   buttons(render())[0]!.props.onClick();
   return { popup, open, discovery, render };
 }
@@ -73,15 +73,17 @@ test("missing native window closes the reserved tab and explains browser availab
   await settle();
   expect(page.popup.close).toHaveBeenCalledOnce();
   expect(page.popup.location.replace).not.toHaveBeenCalled();
-  expect(JSON.stringify(page.render())).toContain("client.connect.navigationUnsupported");
+  const rendered = JSON.stringify(page.render());
+  expect(rendered).toContain("client.connect.navigationUnsupported");
+  expect(rendered).toContain('"topic":"appVersion"');
 });
 
-test("an absent App closes the reserved tab and offers the existing download link", async () => {
+test("an absent App closes the reserved tab and offers the matching App guide", async () => {
   const page = mount(vi.fn(async () => null));
   await settle();
   expect(page.popup.close).toHaveBeenCalledOnce();
   expect(page.popup.location.replace).not.toHaveBeenCalled();
-  expect(JSON.stringify(page.render())).toContain("client.connect.download");
+  expect(JSON.stringify(page.render())).toContain('"topic":"appVersion"');
 });
 
 test("dismissal cancels discovery, closes its tab and rejects a late result", async () => {

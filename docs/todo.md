@@ -27,6 +27,11 @@ the feedback period; they do not delay that delivery.
   against the first release's actual readers, writers and stored samples.
   Keep optional API/Bot capabilities within existing actions and authority.
   Existing module boundaries remain the implementation baseline.
+- [ ] **Open-page assets across a site update.** A page opened before a same-wire
+  update can request a retired lazy module on its first backup export and receive
+  a 404. Decide the supported asset lifetime before freezing the public
+  compatibility promise. The existing settings result offers an explicit
+  refresh action; keep active sharing under user control.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
@@ -78,6 +83,9 @@ the feedback period; they do not delay that delivery.
   viewer playback on the reported accessible websites in matching Windows
   App and Web packages. Local replacement and pending-read shutdown controls
   are in the [verification record](./verification-status.md#current-evidence).
+  Check audio choice when the source exposes several AAC candidates. The matched
+  member-video control passed with one selected AAC source; the earlier attempt
+  with several choices did not record the submitted selection.
 - [ ] **2.x periodic brief picture stalls.** With a particular Host or Viewer,
   normally clear playback pauses for less than half a second every few seconds
   or tens of seconds, skips several frames and sometimes briefly blurs. A roughly
@@ -275,6 +283,7 @@ the feedback period; they do not delay that delivery.
   Windows WebView entry; controlled runtime fallback, device
   permission and shutdown checks are in the
   [verification record](./verification-status.md#windows-and-android).
+  Investigate the observed Windows WebView renderer exit during room navigation.
   Continue remaining Linux/macOS device acceptance, including
   macOS Quit, Dock/Finder return and permissions,
   and Linux hardware encoding and physical sound. Retain the accepted

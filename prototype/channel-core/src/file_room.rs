@@ -42,15 +42,24 @@ struct File {
     parents: BTreeMap<Uuid, Uuid>,
     refused: BTreeSet<(Uuid, Uuid)>,
 }
+impl File {
+    fn source_limit(&self, session: Uuid, endpoint: &Endpoint, limits: &RelayLimits) -> usize {
+        if endpoint.member.user_id == self.author_id {
+            limits.default
+        } else {
+            limits.overrides.get(&session).copied().unwrap_or(limits.default)
+        }
+    }
+}
 #[derive(Clone, Default)]
 pub(crate) struct FileRoom {
     files: BTreeMap<(u64, Uuid), File>,
 }
 impl FileRoom {
-    pub fn available(&self, key: &(u64, Uuid), is_live: impl Fn(&Uuid) -> bool) -> bool {
-        self.files
-            .get(key)
-            .is_some_and(|file| file.holders.iter().any(is_live))
+    pub fn available(&self, key: &(u64, Uuid), endpoints: &BTreeMap<Uuid, Endpoint>, limits: &RelayLimits) -> bool {
+        self.files.get(key).is_some_and(|file| file.holders.iter().any(|id| {
+            endpoints.get(id).is_some_and(|endpoint| endpoint.connected && file.source_limit(*id, endpoint, limits) > 0)
+        }))
     }
 
     pub fn install(
@@ -206,16 +215,12 @@ impl FileRoom {
                 let Some(endpoint) = endpoints.get(&source) else {
                     continue;
                 };
+                let limit = file.source_limit(source, endpoint, limits);
+                if limit == 0 {
+                    continue;
+                }
                 let mut grants = limits.clone();
-                grants.source_direct_limit = Some(if endpoint.member.user_id == file.author_id {
-                    limits.default
-                } else {
-                    limits
-                        .overrides
-                        .get(&source)
-                        .copied()
-                        .unwrap_or(limits.default)
-                });
+                grants.source_direct_limit = Some(limit);
                 let parents = activity_parents(
                     source,
                     &file.receivers,

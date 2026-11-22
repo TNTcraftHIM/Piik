@@ -2,6 +2,7 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Existing translations may be partial; keys are checked against zh.
 export const ko = {
+  "watch.forward.mainHelp": "Piik에서 재생하고 재생 위치를 조절해요. 시청하는 동안 원래 페이지를 열어 두세요. 동영상은 내 App에서 업로드해요.",
   "watch.forward.tracksHelp": "영상과 선택할 음성을 따로 고르세요. 확인하면 이 기기의 업로드 대역폭을 사용해 전송합니다.",
   "watch.forward.noVideoTrack": "전송할 수 있는 영상 트랙이 없습니다. 원래 웹페이지에서 계속 시청할 수 있습니다.",
   "watch.forward.videoOnly": "영상만, 소리 없이",
@@ -13,7 +14,7 @@ export const ko = {
   "watch.joined": "시청 참여 중",
   "watch.noViewers": "아직 다른 시청 참여자가 없습니다.",
   "watch.browserSource.skip": "웹페이지 동영상 동기화",
-  "watch.browserSource.originalHelp": "시청자는 웹페이지 재생을 지원하는 Piik App에서 같은 페이지를 열어요. Piik은 선택한 동영상의 재생만 동기화해요.",
+  "watch.browserSource.originalHelp": "시청자는 웹페이지 재생을 지원하는 Piik App에서 같은 페이지를 열어요. 선택한 동영상은 내 웹페이지 플레이어에 맞춰 재생돼요.",
   "watch.forward.title": "원본 동영상 전달",
   "watch.forward.upload": "이 기기의 업로드 대역폭을 사용해 방 연결로 원본 동영상을 보내요.",
   "watch.forward.active": "전달 중이에요. 중지해도 웹페이지는 유지돼요.",
@@ -490,6 +491,7 @@ export const ko = {
   "channel.error.deviceUnavailable": "기기를 사용할 수 없어요. 브라우저 권한과 다른 앱을 확인하세요.",
   "channel.error.disconnected": "연결이 끊겼어요. 재연결하고 다시 시도하세요.",
   "channel.error.actionFailed": "작업을 완료하지 못했어요. 다시 시도해 주세요.",
+  "channel.error.deferredModuleLoad": "페이지의 일부를 불러오지 못했어요. 새로고침해도 괜찮을 때 다시 시도해 주세요. 새로고침하면 이 창의 공유, 재생 또는 음성 채팅이 중단될 수 있어요.",
   "channel.error.busy": "다른 작업이 진행 중입니다. 잠시 후 다시 시도해 주세요.",
   "state.peer.present": "방에 있음",
   "state.peer.voiceConnected": "음성 연결됨",
@@ -847,7 +849,6 @@ export const ko = {
   "client.connect.saveFailed": "설정을 저장하지 못했어요. 다시 시도해 주세요.",
   "client.connect.invalid": "유효하지 않은 사이트 주소",
   "client.connect.unavailable": "App에 연결하지 못했어요. Piik App을 실행한 상태로 유지하고 브라우저에서 팝업과 로컬 네트워크 접근을 허용하세요.",
-  "client.connect.download": "App 다운로드",
   "client.connect.browserHint": "브라우저가 지원하는 소스로 공유하거나 시청할 수 있어요.",
   "client.launch.lanAddress": "로컬 초대 주소",
   "client.launch.chooseAddress": "주소 선택",

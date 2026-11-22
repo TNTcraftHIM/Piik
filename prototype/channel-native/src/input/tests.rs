@@ -54,6 +54,67 @@ fn desktop() -> (Desktop, Arc<Mutex<Recording>>) {
     let r = Arc::new(Mutex::new(Recording::default()));
     (Desktop::with_sink(Box::new(Recorder(r.clone()))), r)
 }
+
+#[cfg(target_os = "windows")]
+#[test]
+fn partial_unicode_cleanup_survives_source_retirement() {
+    use ::windows::Win32::UI::Input::KeyboardAndMouse::{
+        INPUT_KEYBOARD, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE,
+    };
+
+    struct Scripted(Arc<Mutex<Vec<Vec<(u16, u32)>>>>);
+    impl Sink for Scripted {
+        fn observe(&mut self, _: &Target) -> TargetState {
+            TargetState::Ready(Bounds::default())
+        }
+        fn apply(&mut self, bounds: Bounds, action: &Action) -> Result<()> {
+            windows::System::apply_with(bounds, action, |inputs| {
+                let mut calls = self.0.lock().unwrap();
+                calls.push(
+                    inputs
+                        .iter()
+                        .map(|input| {
+                            assert_eq!(input.r#type, INPUT_KEYBOARD);
+                            let key = unsafe { input.Anonymous.ki };
+                            (key.wScan, key.dwFlags.0)
+                        })
+                        .collect(),
+                );
+                // Accept 'A' and the high surrogate press. Refuse its release
+                // immediately and on the first tick, then accept it at close.
+                [3, 0, 0, 1][calls.len() - 1]
+            })
+        }
+    }
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let d = Desktop::with_sink(Box::new(Scripted(calls.clone())));
+    let (s, mut replies, _) = source(&d);
+    s.set_mode(Mode::Ask).unwrap();
+    let mut client = Client::new(&s);
+    let grant = client.approve(&s, &mut replies);
+    let text = "A\u{1f600}Z";
+    client.send(&s, json!({"type":"text","text":text,"grant":grant}));
+    let state = client.state(&mut replies);
+    assert_eq!(state["grant"], grant);
+    assert_eq!(state["inputFailed"], true);
+    s.retire_capture();
+    d.tick();
+    d.close();
+    d.tick();
+
+    let down = KEYEVENTF_UNICODE.0;
+    let up = (KEYEVENTF_UNICODE | KEYEVENTF_KEYUP).0;
+    let batch = text
+        .encode_utf16()
+        .flat_map(|u| [(u, down), (u, up)])
+        .collect();
+    let release = vec![(0xd83d, up)];
+    assert_eq!(
+        *calls.lock().unwrap(),
+        vec![batch, release.clone(), release.clone(), release]
+    );
+}
+
 fn source(d: &Desktop) -> (Source, mpsc::Receiver<Reply>, watch::Receiver<SourceView>) {
     d.source(
         Uuid::new_v4(),

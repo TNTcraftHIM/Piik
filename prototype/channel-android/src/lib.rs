@@ -9,7 +9,12 @@ use jni::{
     Env, EnvUnowned,
 };
 use piik_channel_prototype::app::{self, Config};
-use std::{path::PathBuf, sync::OnceLock, thread::JoinHandle};
+use std::{
+    panic::{catch_unwind, AssertUnwindSafe},
+    path::PathBuf,
+    sync::OnceLock,
+    thread::JoinHandle,
+};
 use tokio::sync::oneshot;
 
 #[cfg(target_os = "android")]
@@ -85,7 +90,7 @@ pub fn nativeStart<'local>(
                     std::thread::Builder::new()
                         .name("piik-app".into())
                         .spawn(move || {
-                            let result: Result<()> = (|| {
+                            let result: Result<()> = catch_unwind(AssertUnwindSafe(|| {
                                 tokio::runtime::Builder::new_multi_thread()
                                     .worker_threads(2)
                                     .enable_all()
@@ -102,7 +107,8 @@ pub fn nativeStart<'local>(
                                         )
                                         .await
                                     })
-                            })();
+                            }))
+                            .unwrap_or_else(|_| Err(anyhow!("App runtime panicked")));
                             let reason = result
                                 .as_ref()
                                 .err()

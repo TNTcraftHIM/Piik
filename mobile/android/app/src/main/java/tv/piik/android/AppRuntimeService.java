@@ -105,20 +105,30 @@ public final class AppRuntimeService extends Service {
       startup = null;
       runtime = started;
       failure = error;
-      if (error != null) android.util.Log.e("PiikRuntime", "runtime startup failed", error);
-      else android.util.Log.i("PiikRuntime", "runtime ready: " + started.entryURL());
-      if (started != null) started.stopped.thenAccept(reason -> main.post(() -> {
-        if (instance != this || runtime != started) return;
-        runtime = null;
-        failure = new IllegalStateException(reason.isEmpty() ? "App runtime stopped" : reason);
-        android.util.Log.e("PiikRuntime", "runtime stopped", failure);
-        work.execute(() -> closeRuntime(started));
-        refreshNotification();
-        notifyActivity();
-      }));
+      if (error != null) {
+        android.util.Log.e("PiikRuntime", "runtime startup failed", error);
+      } else {
+        String reason = started.stopped.getNow(null);
+        if (reason != null) {
+          runtimeStopped(started, reason);
+          return;
+        }
+        started.stopped.thenAccept(exit -> main.post(() -> runtimeStopped(started, exit)));
+        android.util.Log.i("PiikRuntime", "runtime ready: " + started.entryURL());
+      }
       refreshNotification();
       notifyActivity();
     }));
+  }
+
+  void runtimeStopped(NativeRuntime started, String reason) {
+    if (instance != this || runtime != started) return;
+    runtime = null;
+    failure = new IllegalStateException(reason.isEmpty() ? "App runtime stopped" : reason);
+    android.util.Log.e("PiikRuntime", "runtime stopped", failure);
+    work.execute(() -> closeRuntime(started));
+    refreshNotification();
+    notifyActivity();
   }
 
   static void closeRuntime(NativeRuntime runtime) {

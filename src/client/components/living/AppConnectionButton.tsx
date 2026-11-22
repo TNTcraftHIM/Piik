@@ -1,6 +1,5 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { activateClient, clientLaunchURL, isClientActivated, watchClientActivation } from "../../lib/app-launch";
-import { useProjectLink } from "../../lib/use-project-link";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
@@ -45,7 +44,6 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
   const [state, setState] = useState<AppConnectionState>("idle");
   const wakeURL = launchTarget === undefined ? androidAppIntent("piik://app") : launchTarget;
   const [helpOpen, setHelpOpen] = useState(false);
-  const downloadURL = useProjectLink("/#download", "https://github.com/TNTcraftHIM/Piik/releases/latest", helpOpen);
   const helpId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const help = useRef<HTMLDivElement>(null);
@@ -322,13 +320,10 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         {state === "unavailable" && wakeURL && <a className="lr-btn" href={wakeURL} onClick={event => { event.preventDefault(); void connect(true); }}>
           <Glyph name="window" size={16} /><span>{t("client.connect.wakeApp")}</span>
         </a>}
-        {state === "unavailable" && <a className="lr-btn" href={downloadURL} target="_blank" rel="noopener noreferrer" aria-label={t("client.connect.download")}>
-          <Glyph name="arrowDown" size={16} /><span>{t("client.connect.download")}</span>
-        </a>}
       </div>
       {helpOpen && diagnosis && <ChannelDiagnosisHelp diagnosis={diagnosis} />}
       {targetURL && !(typeof window !== "undefined" && window.piikNativeWindow) && <OpenInClient
-        discovery={discovery} targetURL={targetURL} active={helpOpen} disabled={busy} downloadURL={downloadURL} />}
+        discovery={discovery} targetURL={targetURL} active={helpOpen} disabled={busy} />}
       {state !== "ready" && <p className="lr-app-connect-optional">{t("client.connect.browserHint")}</p>}
     </div>
   </>;

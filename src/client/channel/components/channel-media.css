@@ -69,7 +69,17 @@
 .c3-watch-position[data-seeking] .c3-watch-time { color: var(--action); }
 .c3-mini-player[data-thumbnail] .c3-mini-controls > :is(.lr-chat-overlay-toggle, .lr-remote-controls),
 .c3-mini-player[data-thumbnail] .c3-mini-controls:not(.c3-watch-controls) .lr-playback-window { display: none; }
-.c3-mini-player[data-thumbnail] > :is(.lr-remote-input-surface, .c3-mini-message:not([data-source-paused])) { display: none; }
+.c3-mini-player[data-thumbnail] > .lr-remote-input-surface,
+.c3-mini-player[data-thumbnail]:not(.c3-watch-player) > .c3-mini-message:not([data-source-paused]) { display: none; }
+.c3-watch-player[data-thumbnail] > .c3-mini-message {
+  inset: 6px 8px 42px;
+  text-align: center;
+}
+.c3-watch-player[data-thumbnail] .c3-mini-message .c3-frame-wait {
+  gap: 6px;
+  padding: 6px 8px;
+  overflow-wrap: anywhere;
+}
 .c3-mini-controls {
   --mini-controls-inset: 10px;
   z-index: 4;

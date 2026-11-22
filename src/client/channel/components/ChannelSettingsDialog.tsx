@@ -9,6 +9,7 @@ import { useSurfaceDocument } from "../../ui/panel-window";
 import { surfaceViewport } from "../../ui/window-appearance";
 import { navigateTabs } from "../../ui/tab-navigation";
 import { ChannelAction } from "./ChannelAction";
+import { isDeferredModuleFailure } from "../../lib/deferred-module-failure";
 import { channelErrorPresentation } from "../error-presentation";
 import { useLayerHistory } from "../../ui/layer-history";
 import "./channel-settings-dialog.css";
@@ -90,6 +91,12 @@ export function ChannelSettingsTabs<T extends string>({ id, label, tasks, select
 /** The action owner supplies its failure; error copy stays shared with the page. */
 export function ChannelSettingsError({ error }: { error: string | null }) {
   const { t } = useCopy();
+  if (error === "deferred_module_load_failed") {
+    return <div className="c3-settings-error">
+      <p role="alert">{t("channel.error.deferredModuleLoad")}</p>
+      <ChannelAction icon="refresh" quiet label={t("common.refresh")} onClick={() => window.location.reload()} />
+    </div>;
+  }
   const { message } = channelErrorPresentation(error, t);
   return message && <p className="c3-settings-error" role="alert">{message}</p>;
 }
@@ -113,8 +120,9 @@ export function useSettingsAction(open = true): { error: string | null; run: Set
       const result = await work();
       if (lifetime.current === current) onSuccess?.(result);
     } catch (error) {
-      if (lifetime.current === current && !(error instanceof DOMException && error.name === "AbortError"))
-        setError(error instanceof Error ? error.message : "operation_failed");
+      if (lifetime.current !== current || (error instanceof DOMException && error.name === "AbortError")) return;
+      if (isDeferredModuleFailure(error)) setError("deferred_module_load_failed");
+      else setError(error instanceof Error ? error.message : "operation_failed");
     }
   }, []);
   return { error, run };

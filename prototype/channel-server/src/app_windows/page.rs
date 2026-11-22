@@ -76,6 +76,7 @@ enum PageEvent {
 struct ReportedCandidate {
     media: Uuid,
     resource: String,
+    revision: u64,
     title: String,
     url: Option<String>,
     duration: Option<f64>,
@@ -214,7 +215,8 @@ impl Page {
             return;
         }
         let request = Uuid::new_v4();
-        let command = json!({"bridge":"piik-page-command","kind":if patch.is_some(){"patch"}else{"read"},"frame":candidate.frame,"media":candidate.source.media,"request":request,"patch":patch});
+        let command = json!({"bridge":"piik-page-command","kind":if patch.is_some(){"patch"}else{"read"},
+            "frame":candidate.frame,"media":candidate.source.media,"revision":candidate.source.revision,"request":request,"patch":patch});
         match self
             .views
             .borrow()
@@ -949,8 +951,8 @@ fn update_candidates(
         });
         if previous.is_some_and(|(id, old)| {
             selected == Some(*id)
-                && !old.source.resource.is_empty()
-                && old.source.resource != source.resource
+                && (old.source.revision != source.revision
+                    || !old.source.resource.is_empty() && old.source.resource != source.resource)
         }) {
             return false;
         }
@@ -1185,7 +1187,7 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
     send(&mut pages, json!({"kind":"document"}));
     send(
         &mut pages,
-        json!({"kind":"candidates","removed":[],"candidates":[{"media":media,"resource":"","title":"Loading video"}]}),
+        json!({"kind":"candidates","removed":[],"candidates":[{"media":media,"resource":"","revision":0,"title":"Loading video"}]}),
     );
     let loading = pages.pages.get_mut(&view).unwrap();
     let selected = *loading.candidates.keys().next().unwrap();
@@ -1253,6 +1255,7 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
             source: ReportedCandidate {
                 media: Uuid::new_v4(),
                 resource: "blob:owned".into(),
+                revision: 0,
                 title: "Owned popup".into(),
                 url: None,
                 duration: Some(60.),
@@ -1324,6 +1327,7 @@ mod candidate_tests {
         ReportedCandidate {
             media,
             resource: url.into(),
+            revision: 0,
             title: "Owned video".into(),
             url: Some(url.into()),
             duration: Some(30.),

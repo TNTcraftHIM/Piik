@@ -1,6 +1,7 @@
 import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 export const ja = {
+  "watch.forward.mainHelp": "Piik で再生し、再生位置を調整します。視聴中は元のページを開いたままにしてください。動画はお使いの App からアップロードされます。",
   "watch.forward.tracksHelp": "映像と必要な音声を個別に選んでください。確認すると、この端末のアップロード帯域を使って転送を開始します。",
   "watch.forward.noVideoTrack": "転送できる映像トラックがありません。元のウェブページでは引き続き視聴できます。",
   "watch.forward.videoOnly": "映像のみ、音声なし",
@@ -12,7 +13,7 @@ export const ja = {
   "watch.joined": "視聴に参加中",
   "watch.noViewers": "ほかの人はまだ視聴に参加していません。",
   "watch.browserSource.skip": "ウェブページの動画を同期",
-  "watch.browserSource.originalHelp": "視聴者はウェブページの再生に対応した Piik App で同じページを開きます。Piik は選択した動画の再生だけを同期します。",
+  "watch.browserSource.originalHelp": "視聴者はウェブページの再生に対応した Piik App で同じページを開きます。選んだ動画はあなたのウェブプレーヤーに合わせて再生されます。",
   "watch.forward.title": "元の動画を転送",
   "watch.forward.upload": "このデバイスのアップロード帯域を使い、ルームの接続を通して元の動画を送信します。",
   "watch.forward.active": "転送中です。停止してもウェブページは開いたままです。",
@@ -489,6 +490,7 @@ export const ja = {
   "channel.error.deviceUnavailable": "デバイスを利用できません。ブラウザーの権限や他のアプリを確認してください。",
   "channel.error.disconnected": "接続が切れました。再接続して再試行してください。",
   "channel.error.actionFailed": "操作を完了できませんでした。再試行してください。",
+  "channel.error.deferredModuleLoad": "ページの一部を読み込めませんでした。都合のよいときに再読み込みして、もう一度お試しください。再読み込みすると、このウィンドウでの共有、再生、通話が中断されることがあります。",
   "channel.error.busy": "別の操作を実行中です。しばらくしてから再試行してください。",
   "state.peer.present": "ルームに参加中",
   "state.peer.voiceConnected": "通話接続済み",
@@ -844,7 +846,6 @@ export const ja = {
   "client.connect.saveFailed": "設定を保存できませんでした。再試行してください。",
   "client.connect.invalid": "サイトのアドレスが無効です",
   "client.connect.unavailable": "App に接続できませんでした。Piik App を起動したままにし、ブラウザーでポップアップとローカルネットワークへのアクセスを許可してください。",
-  "client.connect.download": "App をダウンロード",
   "client.connect.browserHint": "ブラウザーでも視聴や、ブラウザーが対応するソースの共有を利用できます。",
   "client.launch.lanAddress": "ローカル招待のアドレス",
   "client.launch.chooseAddress": "アドレスを選択",

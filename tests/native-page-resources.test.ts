@@ -105,10 +105,10 @@ test.each(["currentSrc", "src", "source"])("rebuilding the sole player of the sa
     querySelectorAll: (selector: string) => selector === ":scope > source" && declaration === "source"
       ? [{ src: first.currentSrc, getAttribute: () => first.currentSrc }] : [] };
   bridge.setVideos([first]);
-  const { frame, candidates: [{ media }] } = JSON.parse(bridge.bodies.at(-1)!);
+  const { frame, candidates: [{ media, revision }] } = JSON.parse(bridge.bodies.at(-1)!);
   bridge.setVideos([next]);
   expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ removed: [], candidates: [{ media, resource: first.currentSrc }] });
-  await bridge.message({ data: { bridge: "piik-page-command", frame, media, kind: "patch",
+  await bridge.message({ data: { bridge: "piik-page-command", frame, media, revision, kind: "patch",
     request: webcrypto.randomUUID(), patch: { position: 12 } } });
   expect(next.currentTime).toBe(12);
   expect(first.currentTime).toBe(0);
@@ -125,7 +125,7 @@ test("a page rebuilding several players transfers commands only for each unique 
   const { candidates, removed } = JSON.parse(bridge.bodies.at(-1)!);
   expect(removed).toEqual([duplicate.media, otherDuplicate.media]);
   expect(candidates[1].media).toBe(selected.media);
-  await bridge.message({ data: { bridge: "piik-page-command", frame, media: selected.media, kind: "patch",
+  await bridge.message({ data: { bridge: "piik-page-command", frame, media: selected.media, revision: selected.revision, kind: "patch",
     request: webcrypto.randomUUID(), patch: { position: 12 } } });
   expect(next.currentTime).toBe(12);
   expect(other.currentTime).toBe(0);
@@ -182,6 +182,53 @@ test.each(["URL", "stream"])("a selected empty player reports its first %s in th
   expect(last().resource).not.toBe(ready);
 });
 
+test("changing the selected resource rejects old reads and seeks before the next candidate report", async () => {
+  const bridge = candidateBridge(), video = ownedVideo(0);
+  bridge.setVideos([video]);
+  const { frame, candidates: [{ media, revision }] } = JSON.parse(bridge.bodies.at(-1)!);
+  video.currentSrc = "https://media.test/replacement.mp4";
+  for (const kind of ["read", "patch"]) {
+    const request = webcrypto.randomUUID();
+    await bridge.message({ data: { bridge: "piik-page-command", frame, media, revision, request, kind, patch: { position: 15 } } });
+    expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ kind: "reply", request, error: "page_player_closed" });
+  }
+  expect(video.currentTime).toBe(0);
+});
+
+test("a pending original-page play admits a later pause and seek and reports only the current play failure", async () => {
+  const bridge = candidateBridge(), video = ownedVideo(0);
+  let rejectPlay!: (error: Error) => void;
+  video.play = () => new Promise<void>((_, reject) => { rejectPlay = reject; });
+  bridge.setVideos([video]);
+  const { frame, candidates: [{ media, revision }] } = JSON.parse(bridge.bodies.at(-1)!);
+  const patch = (values: object) => {
+    const request = webcrypto.randomUUID();
+    void bridge.message({ data: { bridge: "piik-page-command", kind: "patch", frame, media, revision, request, patch: values } });
+    expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ kind: "reply", request });
+  };
+  patch({ paused: false });
+  patch({ paused: true, position: 15 });
+  expect(video).toMatchObject({ paused: true, currentTime: 15 });
+  const before = bridge.bodies.length;
+  rejectPlay(new DOMException("denied", "NotAllowedError"));
+  await Promise.resolve();
+  expect(bridge.bodies).toHaveLength(before);
+  patch({ paused: false });
+  rejectPlay(new DOMException("denied", "NotAllowedError"));
+  await Promise.resolve();
+  expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ kind: "blocked", media });
+  patch({ paused: false });
+  rejectPlay(new Error("decode failure"));
+  await Promise.resolve();
+  expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ kind: "sample", media, event: "error" });
+  patch({ paused: false });
+  const previousSource = bridge.bodies.length;
+  video.currentSrc = "https://media.test/replacement.mp4";
+  rejectPlay(new Error("late failure from the previous source"));
+  await Promise.resolve();
+  expect(bridge.bodies).toHaveLength(previousSource);
+});
+
 test("a new empty element cannot inherit the previous empty player's selection", () => {
   const bridge = candidateBridge(), first = { ...ownedVideo(0), currentSrc: "" };
   bridge.setVideos([first]);
@@ -213,7 +260,7 @@ test("moving an existing player within its document retains its candidate while 
   expect(child.frame).not.toBe(first.frame);
   expect(child.candidates[0].media).not.toBe(first.candidates[0].media);
   const command = { data: { bridge: "piik-page-command", frame: child.frame,
-    media: child.candidates[0].media, kind: "patch", request: webcrypto.randomUUID(), patch: { paused: false, position: 12 } } };
+    media: child.candidates[0].media, revision: child.candidates[0].revision, kind: "patch", request: webcrypto.randomUUID(), patch: { paused: false, position: 12 } } };
   await main.message(command); await popup.message(command);
   expect(mainVideo).toMatchObject({ paused: true, currentTime: 0 });
   expect(popupVideo).toMatchObject({ paused: false, currentTime: 12 });

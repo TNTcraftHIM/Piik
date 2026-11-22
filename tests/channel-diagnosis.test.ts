@@ -7,7 +7,7 @@ describe("diagnosis using the current operation", () => {
     expect(diagnoseChannelFact({ area: "app", state: "approval" })).toMatchObject({ message: "client.connect.found", next: "client.connect.open" });
     expect(diagnoseChannelFact({ area: "app", state: "approving" })).toBeNull();
     expect(channelErrorPresentation("site_not_approved", key => key).message).toBe("client.sites.notAllowed");
-    expect(diagnoseChannelFact({ area: "app", state: "unavailable" })?.message).toBe("client.connect.unavailable");
+    expect(diagnoseChannelFact({ area: "app", state: "unavailable" })).toMatchObject({ message: "client.connect.unavailable", topic: "appVersion" });
   });
 
   it("keeps room availability, admission and the selected picture's retry separate", () => {

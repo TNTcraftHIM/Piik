@@ -47,7 +47,7 @@ export function diagnoseChannelFact(fact: ChannelFact): ChannelDiagnosis | null 
   if (fact.area === "app") {
     switch (fact.state) {
       case "approval": return { message: "client.connect.found", next: "client.connect.open", topic: "app" };
-      case "unavailable": return { message: "client.connect.unavailable", topic: "app" };
+      case "unavailable": return { message: "client.connect.unavailable", topic: "appVersion" };
       case "incompatible": return { message: "native.incompatible", topic: "appVersion" };
       default: return null;
     }

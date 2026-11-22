@@ -509,6 +509,36 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await browser(1, "tab", approvalTab);
     await browser(1, "open", `${local}/client?bookmarks`);
     await browser(1, "wait", ".lr-site-list");
+    const launcherTab = (await browser(1, "tab", "new", `${local}/client`)).targetId;
+    await browser(1, "wait", ".lr-launcher-empty");
+    await browser(1, "fill", ".lr-site-bookmark-open input", "https://draft.example");
+    await browser(1, "tab", approvalTab);
+    await browser(1, "find", "role", "button", "click", "--name", "Manage " + origin, "--exact");
+    await browser(1, "fill", ".lr-site-form input[maxlength]", "Friends");
+    await browser(1, "fill", ".lr-site-form input[inputmode=url]", `http://127.0.0.1:${otherCorePort}`);
+    await browser(1, "click", ".lr-site-form button[type=submit]");
+    await browser(1, "wait", ".lr-site-list");
+    await browser(1, "tab", launcherTab);
+    await until("returning launcher shows the saved site", () => evaluate(1,
+      "document.querySelector('.lr-launcher-site strong')?.textContent"), value => value === "Friends");
+    await browser(1, "tab", approvalTab);
+    await browser(1, "find", "role", "button", "click", "--name", "Manage Friends", "--exact");
+    await browser(1, "fill", ".lr-site-form input[maxlength]", "Renamed");
+    await browser(1, "click", ".lr-site-form button[type=submit]");
+    await browser(1, "wait", ".lr-site-list");
+    await browser(1, "tab", launcherTab);
+    await until("returning launcher uses the updated bookmark name", () => evaluate(1,
+      "document.querySelector('.lr-launcher-site strong')?.textContent"), value => value === "Renamed");
+    await browser(1, "tab", approvalTab);
+    await browser(1, "find", "role", "button", "click", "--name", "Manage Renamed", "--exact");
+    await browser(1, "click", ".lr-site-form-actions button[type=button]");
+    await browser(1, "wait", ".lr-site-list");
+    await browser(1, "tab", launcherTab);
+    await until("returning launcher removes the deleted destination", () => evaluate(1,
+      "document.querySelectorAll('.lr-launcher-site').length"), count => count === 0);
+    assert.equal(await evaluate(1, "document.querySelector('.lr-site-bookmark-open input').value"), "https://draft.example");
+    await browser(1, "tab", "close");
+    await browser(1, "tab", approvalTab);
     await browser(1, "find", "role", "button", "click", "--name", "Manage " + origin, "--exact");
     await browser(1, "find", "role", "button", "click", "--name", "Revoke App access", "--exact");
     await until("revocation removes only this Site's health authority", async () => (await health(origin)).status, value => value === 403);

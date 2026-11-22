@@ -30,13 +30,13 @@ export function LauncherWorkspace({ bookmarks, bookmarksError, onRetryBookmarks,
         {window.piikNativeWindow !== "integrated" && <Btn icon="star" quiet size="compact" title="client.launcher.manageSites" cap="client.launcher.manageSites" onClick={onManageBookmarks} />}
       </div>
       <nav className="lr-launcher-sites" aria-label={t("client.bookmarks.title")}>
-        {bookmarksError ? <div className="lr-launcher-empty"><p role="alert">{t("client.bookmarks.loadFailed")}</p><Btn icon="refresh" quiet cap="common.retry" title="common.retry" onClick={onRetryBookmarks} /></div>
-          : !bookmarks ? <p className="lr-launcher-empty" role="status">{t("common.loading")}</p>
+        {bookmarksError && <div className="lr-launcher-empty"><p role="alert">{t("client.bookmarks.loadFailed")}</p><Btn icon="refresh" quiet cap="common.retry" title="common.retry" onClick={onRetryBookmarks} /></div>}
+        {!bookmarks ? !bookmarksError && <p className="lr-launcher-empty" role="status">{t("common.loading")}</p>
           : bookmarks.length ? bookmarks.map(site => <button key={site.id} className="lr-launcher-site" onClick={() => onOpenBookmark(site)}>
             <span className="lr-launcher-site-symbol"><Glyph name="globe" size={22} /></span>
             <span><strong>{site.name || new URL(site.origin).hostname}</strong><small dir="ltr">{new URL(site.origin).host}</small></span>
             <Glyph name="arrowRight" size={16} />
-          </button>) : <div className="lr-launcher-empty"><Glyph name="star" size={28} /><p>{t("client.bookmarks.empty")}</p></div>}
+          </button>) : !bookmarksError && <div className="lr-launcher-empty"><Glyph name="star" size={28} /><p>{t("client.bookmarks.empty")}</p></div>}
       </nav>
       <div className="lr-launcher-local">
         <span className="lr-launcher-local-icon"><Glyph name="display" size={20} /></span>

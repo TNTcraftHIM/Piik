@@ -72,9 +72,11 @@ async function main() {
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
   const disconnected = once(participant, 'disconnected');
   try {
-    await participant.connect();
-    console.log('Support bot ready. Send !help for a template or !help last to discuss your previous message.');
-    await Promise.race([stopping, disconnected]);
+    const running = participant.connect().then(() => {
+      console.log('Support bot ready. Send !help for a template or !help last to discuss your previous message.');
+      return disconnected;
+    });
+    await Promise.race([stopping, running]);
   } finally {
     // Remove the handler before closing the shared client; pending requests reject on stop.
     const drained = detach();

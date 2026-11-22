@@ -67,6 +67,8 @@
   const resource = entry => {
     const value = identity(entry.video) ?? '';
     if (value !== entry.identity) {
+      // The first source binds an empty selection. Later replacements retire its commands.
+      if (entry.identity) entry.revision++;
       entry.identity = value;
       // Native correlates ordinary URLs with responses. Keep objects and oversized URLs local.
       entry.resource = typeof value === 'string' && value.length <= 4096 && encoder.encode(value).length <= 4096 ? value : uuid();
@@ -86,7 +88,7 @@
         if (observed && observed === video.currentSrc) {
           try { const source = new URL(observed); if (['http:', 'https:'].includes(source.protocol) && !source.username && !source.password) url = source.href; } catch {}
         }
-        return { media, resource: observed, title: (video.getAttribute('aria-label') || video.title || document.title || location.hostname).slice(0, 256), url,
+        return { media, resource: observed, revision: entry.revision, title: (video.getAttribute('aria-label') || video.title || document.title || location.hostname).slice(0, 256), url,
           duration: Number.isFinite(video.duration) ? video.duration : null };
       }) });
     }, 80);
@@ -110,7 +112,7 @@
     for (const [id, entry] of removed) { entry.lifetime.abort(); elements.delete(id); }
     for (const video of videos) {
       if (elements.size >= 64) break;
-      const entry = byVideo.get(video) || { media: uuid() };
+      const entry = byVideo.get(video) || { media: uuid(), revision: 0 };
       const { media } = entry;
       if (elements.has(media)) continue;
       const lifetime = new AbortController();
@@ -131,20 +133,33 @@
     timer = undefined;
     send({ kind: 'removed', removed: frame });
   });
-  addEventListener('message', async event => {
+  addEventListener('message', event => {
     const command = event.data;
     if (command?.bridge !== 'piik-page-command') return;
     for (const iframe of document.querySelectorAll('iframe')) iframe.contentWindow?.postMessage(command, '*');
     if (command.frame !== frame) return;
-    const video = elements.get(command.media)?.video;
-    if (!video?.isConnected) { send({ kind: 'reply', request: command.request, error: 'page_player_closed' }); return; }
+    const entry = elements.get(command.media), video = entry?.video;
+    if (video?.isConnected) resource(entry);
+    if (!video?.isConnected || entry.revision !== command.revision) {
+      send({ kind: 'reply', request: command.request, error: 'page_player_closed' });
+      return;
+    }
     try {
       if (command.kind === 'patch') {
         const value = command.patch;
         if (value.position !== undefined) video.currentTime = value.position;
         if (value.rate !== undefined) video.playbackRate = value.rate;
-        if (value.paused === true) video.pause();
-        else if (value.paused === false) await video.play();
+        if (value.paused !== undefined) {
+          entry.playRequest = command.request;
+          if (value.paused) video.pause();
+          else void video.play().catch(error => {
+            if (!video.isConnected || entry.video !== video || entry.playRequest !== command.request || error?.name === 'AbortError') return;
+            const observed = resource(entry);
+            if (entry.revision !== command.revision) return;
+            if (error?.name === 'NotAllowedError') send({ kind: 'blocked', media: command.media });
+            else send({ kind: 'sample', media: command.media, resource: observed, event: 'error' });
+          });
+        }
       }
       send({ kind: 'reply', request: command.request, state: state(video) });
     } catch (error) {

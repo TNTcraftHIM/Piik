@@ -51,8 +51,8 @@ process.once('SIGINT', requestStop);
 process.once('SIGTERM', requestStop);
 const disconnected = once(bot, 'disconnected');
 try {
-  await bot.connect();
-  await Promise.race([stopping, disconnected]);
+  const running = bot.connect().then(() => disconnected);
+  await Promise.race([stopping, running]);
 } finally {
   bot.off('live', onMessage);
   process.off('SIGINT', requestStop);

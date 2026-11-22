@@ -107,7 +107,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const audioTracks = player.media.audioTracks?.() ?? [];
   const audioOptions = audioTracks.map(track => ({ ...track, label: [mediaLanguageLabel(track.language, lang) || track.name,
     track.channels ? t("watch.forward.channels", { count: track.channels }) : undefined].filter(Boolean).join(" · ") }));
-  const preparing = player.waitingForPicture;
+  const waiting = player.waitingForPicture && !player.error && !player.blocked;
   const ownerPaused = player.video?.paused ?? mediaState?.paused ?? paused;
   const audioAvailable = player.media.audioAvailable?.() !== false;
   const [htmlMedia, setMedia] = useState({ position: 0, duration: 0, volume: 1, muted: false, rate: 1 });
@@ -211,36 +211,41 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     data-diagnosis={showDiagnosis ? true : undefined}
     data-standalone={!embedded && (!player.video || !!player.error && player.error !== "watch_update_failed") || undefined} data-thumbnail={!embedded && presentation === "thumbnail" || undefined}
     data-controls-hidden={!embedded && visibility.hidden} inert={presentation === "background"}>
-    {surface.kind !== "external" && preparing && !player.error && !player.blocked && <div className="c3-mini-message" role="status">
-      <span className="c3-frame-wait"><BrandMark size={32} motion="loop" />{t("watch.waiting")}</span>
+    {surface.kind !== "external" && waiting && <div className="c3-mini-message" role="status">
+      <span className="c3-frame-wait"><BrandMark size={thumbnail ? 24 : 32} motion="loop" />{t("watch.waiting")}</span>
     </div>}
     {pageId && <div ref={native.slot} className="c3-watch-native-slot" />}
-    {surface.kind === "external" && thumbnail && !player.error && <div className="c3-watch-page-thumbnail">
-      <Glyph name="globe" size={24} /> <span>{t("watch.originalPage")}</span>
+    {surface.kind === "external" && thumbnail && !player.error && !player.blocked && <div className="c3-watch-page-thumbnail">
+      {waiting ? <><BrandMark size={24} motion="loop" /><span role="status">{t("watch.waiting")}</span></>
+        : <><Glyph name="globe" size={24} /><span>{t("watch.originalPage")}</span></>}
     </div>}
-    {surface.kind === "external" && !thumbnail && !player.error && !native.mounted && <div className="c3-mini-message"><div className="c3-frame-wait c3-watch-result">
-      {preparing && <BrandMark size={32} motion="loop" />}<span>{t(preparing ? "watch.waiting" : "watch.inWindow")}</span>
-      <Btn icon="window" title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />
-    </div></div>}
+    {surface.kind === "external" && !thumbnail && !player.error && !player.blocked && !native.mounted &&
+      <div className="c3-mini-message"><div className="c3-frame-wait c3-watch-result">
+        {waiting && <BrandMark size={32} motion="loop" />}
+        <span role={waiting ? "status" : undefined}>{t(waiting ? "watch.waiting" : "watch.inWindow")}</span>
+        <Btn icon="window" title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />
+      </div></div>}
     {player.error ? <div className="c3-mini-message"><div className="c3-frame-wait c3-watch-result">
-      <span role="alert">{diagnosis ? t(diagnosis.message) : failure}</span>
-      {returnToSource && <Btn icon="window" title={owned ? "watch.openedPage" : "watch.openPage"}
-        cap={owned ? "watch.openedPage" : "watch.openPage"} tone="primary" disabled={disabled || receiving?.pending}
-        onClick={owned ? onFocusWindow : openOriginal} />}
-      {!owned && receiving?.mode === "direct" && receiving.browserSource && surface.kind !== "external" &&
-        <Btn icon="refresh" title="common.retry" cap="common.retry" size="compact" disabled={disabled || receiving.disabled || receiving.pending}
-          busy={receiving.pending} onClick={receiving.onDirect} />}
-      {owned && player.media.retainedByteSource && <Btn icon="refresh" title="common.retry" cap="common.retry" size="compact"
-        disabled={disabled || retryPending} busy={retryPending} onClick={onResume} />}
-      {owned && player.media.page && !returnToSource && <Btn icon="window" title={player.media.retainedByteSource ? "watch.openedPage" : "watch.focusWindow"}
-        cap={player.media.retainedByteSource ? "watch.openedPage" : "watch.focusWindow"} onClick={onFocusWindow} />}
-      {!owned && website && surface.kind !== "external" && !returnToSource && (openOriginal
-        ? <Btn icon="window" title="watch.openPage" cap="watch.openPage" disabled={disabled || receiving?.pending} onClick={openOriginal} />
-        : !(receiving?.peerAvailable && receiving.peerSupported) && (originalPageUnavailable
-          ? <small>{originalPageUnavailable}</small> : originalPageAvailable && <small>{t("watch.connectApp")}</small>))}
-      {receiving && <WatchPeerAction receiving={{ ...receiving, failed: true, disabled: disabled || receiving.disabled }} />}
-      {showDiagnosis && <ChannelDiagnosisHelp key={`${player.error}:${player.media.page?.id ?? ""}`} diagnosis={showDiagnosis}
-        details={owned && player.media.page && player.error === "watch_media_access_denied" ? ["diagnosis.sourcePageOpen"] : undefined} />}
+      <span role="alert">{!thumbnail && diagnosis ? t(diagnosis.message) : failure}</span>
+      {!thumbnail && <>
+        {returnToSource && <Btn icon="window" title={owned ? "watch.openedPage" : "watch.openPage"}
+          cap={owned ? "watch.openedPage" : "watch.openPage"} tone="primary" disabled={disabled || receiving?.pending}
+          onClick={owned ? onFocusWindow : openOriginal} />}
+        {!owned && receiving?.mode === "direct" && receiving.browserSource && surface.kind !== "external" &&
+          <Btn icon="refresh" title="common.retry" cap="common.retry" size="compact" disabled={disabled || receiving.disabled || receiving.pending}
+            busy={receiving.pending} onClick={receiving.onDirect} />}
+        {owned && player.media.retainedByteSource && <Btn icon="refresh" title="common.retry" cap="common.retry" size="compact"
+          disabled={disabled || retryPending} busy={retryPending} onClick={onResume} />}
+        {owned && player.media.page && !returnToSource && <Btn icon="window" title={player.media.retainedByteSource ? "watch.openedPage" : "watch.focusWindow"}
+          cap={player.media.retainedByteSource ? "watch.openedPage" : "watch.focusWindow"} onClick={onFocusWindow} />}
+        {!owned && website && surface.kind !== "external" && !returnToSource && (openOriginal
+          ? <Btn icon="window" title="watch.openPage" cap="watch.openPage" disabled={disabled || receiving?.pending} onClick={openOriginal} />
+          : !(receiving?.peerAvailable && receiving.peerSupported) && (originalPageUnavailable
+            ? <small>{originalPageUnavailable}</small> : originalPageAvailable && <small>{t("watch.connectApp")}</small>))}
+        {receiving && <WatchPeerAction receiving={{ ...receiving, failed: true, disabled: disabled || receiving.disabled }} />}
+        {showDiagnosis && <ChannelDiagnosisHelp key={`${player.error}:${player.media.page?.id ?? ""}`} diagnosis={showDiagnosis}
+          details={owned && player.media.page && player.error === "watch_media_access_denied" ? ["diagnosis.sourcePageOpen"] : undefined} />}
+      </>}
     </div></div>
       : player.blocked && <div className="c3-mini-message"><Btn icon="play" title="watch.resume" cap="watch.resume" onClick={onResume} /></div>}
     {hasControls && <div ref={controls} id={controlsId} className="c3-mini-controls c3-watch-controls lr-media-toolbar lr-media-overlay lr-media-controls" role="group" aria-label={t("playback.controls")}>

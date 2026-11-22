@@ -80,7 +80,6 @@ describe("shared App connection entry", () => {
     vi.stubGlobal("window", { location: { origin: "https://site.example" } });
     vi.mocked(useState).mockReturnValueOnce(["ready", vi.fn()])
       .mockReturnValueOnce([false, vi.fn()]).mockReturnValueOnce([false, vi.fn()])
-      .mockReturnValueOnce([false, vi.fn()])
       .mockReturnValueOnce([undefined, vi.fn()])
       .mockReturnValueOnce([{ url: "http://127.0.0.1:39721/client", updateSupported: false }, vi.fn()]);
     const html = renderToStaticMarkup(createElement(AppConnectionButton, { connected: true }));

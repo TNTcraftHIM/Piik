@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { SiteManagement, type SiteManagementProps } from "../components/living/SiteManagement";
 import type { SiteBookmark } from "../lib/site-address";
@@ -29,7 +29,7 @@ export function AppSiteBookmarks({ windowNavigation, entryURL, closeOnOpen = fal
   });
   const [bookmarks, setBookmarks] = useState<z.infer<typeof bookmarksSchema>["bookmarks"]>();
   const [loadError, setLoadError] = useState(false);
-  const [reload, setReload] = useState(0);
+  const bookmarkRead = useRef<AbortController | null>(null);
   const [address, setAddress] = useState(entry.open ?? "");
   const [pending, setPending] = useState(() => entry.open ? siteEntryURL(entry.open)?.href : undefined);
   const [openError, setOpenError] = useState<string>();
@@ -47,15 +47,27 @@ export function AppSiteBookmarks({ windowNavigation, entryURL, closeOnOpen = fal
       history.replaceState(history.state, "", location.pathname + location.search);
     }
   }, [entry]);
-  useEffect(() => {
+  const refreshBookmarks = useCallback(() => {
+    bookmarkRead.current?.abort();
     const abort = new AbortController();
-    setLoadError(false);
+    bookmarkRead.current = abort;
     void fetch("/api/client-launcher/bookmarks", { cache: "no-store", signal: abort.signal })
       .then(async response => { if (!response.ok) throw new Error(); return bookmarksSchema.parse(await response.json()); })
-      .then(result => setBookmarks(result.bookmarks))
+      .then(result => {
+        if (abort.signal.aborted) return;
+        setBookmarks(result.bookmarks);
+        setLoadError(false);
+      })
       .catch(() => { if (!abort.signal.aborted) setLoadError(true); });
-    return () => abort.abort();
-  }, [reload]);
+  }, []);
+  useEffect(() => {
+    refreshBookmarks();
+    window.addEventListener("focus", refreshBookmarks);
+    return () => {
+      window.removeEventListener("focus", refreshBookmarks);
+      bookmarkRead.current?.abort();
+    };
+  }, [refreshBookmarks]);
   async function change(method: "POST" | "DELETE", body?: { id?: string; origin: string; name: string }, id?: string): Promise<void> {
     if (busy) throw new Error("save_pending");
     setBookmarkBusy(true);
@@ -64,7 +76,10 @@ export function AppSiteBookmarks({ windowNavigation, entryURL, closeOnOpen = fal
         method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined,
       });
       if (!response.ok) throw new Error(response.status === 409 ? "bookmark_exists" : (await response.json()).detail);
-      setBookmarks(bookmarksSchema.parse(await response.json()).bookmarks);
+      const result = bookmarksSchema.parse(await response.json());
+      bookmarkRead.current?.abort();
+      setBookmarks(result.bookmarks);
+      setLoadError(false);
     } finally { setBookmarkBusy(false); }
   }
 
@@ -92,7 +107,7 @@ export function AppSiteBookmarks({ windowNavigation, entryURL, closeOnOpen = fal
   }
   const editor = bookmarks ? <SiteManagement {...access} busy={busy} bookmarks={bookmarks} currentOrigin={entry.site ? siteEntryURL(entry.site)?.origin : undefined}
       onSave={draft => change("POST", draft)} onRemove={id => change("DELETE", undefined, id)} onOpen={choose} />
-      : loadError ? <div role="alert"><p>{t("client.bookmarks.loadFailed")}</p><Btn icon="refresh" title="common.retry" cap="common.retry" onClick={() => setReload(value => value + 1)} /></div>
+      : loadError ? <div role="alert"><p>{t("client.bookmarks.loadFailed")}</p><Btn icon="refresh" title="common.retry" cap="common.retry" onClick={refreshBookmarks} /></div>
       : <p role="status">{t("common.loading")}</p>;
   const invitationForm = <>
     <form className="lr-site-bookmark-open" onSubmit={event => { event.preventDefault(); choose(address); }}>
@@ -105,7 +120,7 @@ export function AppSiteBookmarks({ windowNavigation, entryURL, closeOnOpen = fal
     {!pending && openError && <p role="alert">{openError}</p>}
   </>;
   return <>
-    {render ? render({ bookmarks, loadError, retry: () => setReload(value => value + 1),
+    {render ? render({ bookmarks, loadError, retry: refreshBookmarks,
       open: site => choose(site.origin), manage: () => setManaging(true), invitationForm })
       : <section className="c3-settings-dialog lr-site-bookmark-manager" data-app-shell aria-labelledby="site-bookmarks-title">
         <header className="c3-settings-dialog-heading"><h2 id="site-bookmarks-title">{t("client.sites.title")}</h2></header>

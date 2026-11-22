@@ -119,6 +119,19 @@ impl Domain {
             _ => unreachable!(),
         }
     }
+
+    async fn reconnect(&mut self, listener: &TcpListener, elapsed: u64) {
+        self.socket.close(None).await.unwrap();
+        self.authority.disconnect(self.connection, self.now);
+        self.now += elapsed;
+        self.authority.expire(self.now);
+        let (stream, _) = tokio::time::timeout(Duration::from_secs(5), listener.accept())
+            .await.unwrap().unwrap();
+        self.socket = accept_async(stream).await.unwrap();
+        self.connection = Uuid::new_v4();
+        self.events.clear();
+        self.commands.clear();
+    }
 }
 
 #[cfg(all(feature = "capture", target_os = "windows"))]
@@ -513,6 +526,126 @@ fn start(
         result
     });
     (stop, task)
+}
+
+#[tokio::test]
+async fn native_registration_refusal_keeps_its_other_room_online() {
+    for code in ["room_creation_restricted", "room_already_hosted"] {
+        let folder = tempfile::tempdir().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (stop, native) = start(
+            format!("ws://{}", listener.local_addr().unwrap()),
+            folder.path().into(),
+        );
+        let mut domain = Domain::accept(&listener).await;
+        domain
+            .until(|_, event| matches!(event, Event::Welcome { .. }))
+            .await;
+        loop {
+            let packet = domain.socket.next().await.unwrap().unwrap();
+            let request = Request::parse(packet.to_text().unwrap()).unwrap();
+            if matches!(&request.command, Command::HostRegister { room, .. } if room.id == "one") {
+                let refused = Event::Error {
+                    code: code.into(),
+                    request_id: request.request_id,
+                };
+                domain
+                    .socket
+                    .send(Message::Text(
+                        serde_json::to_string(&refused).unwrap().into(),
+                    ))
+                    .await
+                    .unwrap();
+                break;
+            }
+            let effects = domain
+                .authority
+                .handle(domain.connection, request, domain.now);
+            domain.apply(effects).await;
+        }
+        domain.bound("two").await;
+        domain.room_turn("two").await;
+        stop.send(()).unwrap();
+        domain.until(|_, event| matches!(event, Event::Ack { request_id } if request_id == "native-leave")).await;
+        native.await.unwrap().unwrap();
+        assert_eq!(
+            StoredRoomHost::open(&folder.path().join("one.sqlite"))
+                .unwrap()
+                .policy()
+                .id,
+            "one"
+        );
+    }
+}
+
+#[tokio::test]
+async fn native_recovery_respects_directory_removal_and_preserves_the_room_file() {
+    let folder = tempfile::tempdir().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let (stop, native) = start(
+        format!("ws://{}", listener.local_addr().unwrap()),
+        folder.path().into(),
+    );
+    let mut domain = Domain::accept(&listener).await;
+    domain
+        .until(|_, event| matches!(event, Event::Welcome { .. }))
+        .await;
+    // Drop the first admission before the authority sees it.
+    let packet = domain.socket.next().await.unwrap().unwrap();
+    assert!(matches!(
+        Request::parse(packet.to_text().unwrap()).unwrap().command,
+        Command::AdmitRoom { .. }
+    ));
+    domain.reconnect(&listener, 1000).await;
+    domain.bound("one").await;
+    domain.bound("two").await;
+    domain.room_turn("two").await;
+    domain
+        .command(
+            domain.connection,
+            json!({
+                "type":"delete_room", "roomId":"one", "deleteData":false, "requestId":"remove"
+            }),
+        )
+        .await;
+    domain
+        .until(|_, event| {
+            matches!(
+                event,
+                Event::RoomReply {
+                    result: piik_channel_core::host::RoomResult::Deleted {
+                        data_removed: false
+                    },
+                    ..
+                }
+            )
+        })
+        .await;
+    domain
+        .reconnect(&listener, piik_channel_core::RECOVERY_MS + 1)
+        .await;
+    domain.bound("two").await;
+    domain.room_turn("two").await;
+    assert!(
+        !domain.commands.iter().any(|command| matches!(command,
+            Command::AdmitRoom { room } | Command::HostRegister { room, .. } if room.id == "one"
+        )),
+        "a removed seed cannot be admitted again on a fresh session"
+    );
+    assert_eq!(
+        StoredRoomHost::open(&folder.path().join("one.sqlite"))
+            .unwrap()
+            .policy()
+            .id,
+        "one"
+    );
+    stop.send(()).unwrap();
+    domain
+        .until(
+            |_, event| matches!(event, Event::Ack { request_id } if request_id == "native-leave"),
+        )
+        .await;
+    native.await.unwrap().unwrap();
 }
 
 #[tokio::test]

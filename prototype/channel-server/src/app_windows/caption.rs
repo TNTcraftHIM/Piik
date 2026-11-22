@@ -58,6 +58,7 @@ impl Caption {
         let initial = Cell::new(true);
         let view = WebViewBuilder::new()
             .with_environment(content.environment())
+            .with_transparent(!standalone)
             .with_browser_accelerator_keys(false)
             .with_default_context_menus(false)
             .with_initialization_script(format!("window.piikCaptionStandalone = {standalone};"))

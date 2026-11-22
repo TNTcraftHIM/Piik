@@ -12,7 +12,9 @@ body { background: var(--wall); color: var(--ink); font: 12px system-ui; display
 body[data-standalone] { app-region: drag; }
 .title { display: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-inline: 16px 8px; font-weight: 600; }
 body[data-standalone] .title { display: block; flex: 1; }
-html[data-modal-material] body::before { content: ""; position: fixed; inset: 0; pointer-events: none; }
+/* The integrated caption already sits above the workspace's dialog backdrop. */
+html[data-modal-material] body:not([data-standalone]) { background: transparent; }
+html[data-modal-material] body[data-standalone]::before { content: ""; position: fixed; inset: 0; pointer-events: none; }
 .controls { position: relative; display: flex; flex: none; gap: 3px; padding: 0 7px; app-region: no-drag; }
 html[data-modal-material="image"] .controls { color: var(--primary-ink); }
 button { app-region: no-drag; width: 38px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: inherit; display: grid; place-items: center; cursor: pointer; }

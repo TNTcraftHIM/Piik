@@ -2,6 +2,7 @@ import { Component, StrictMode, Suspense, type ComponentType, type ReactNode } f
 import { createRoot } from "react-dom/client";
 import { StartupFailure } from "./components/living/StartupFailure";
 import { LoadingStatus } from "./components/living/WaitingStatus";
+import { installDeferredModuleFailureTracking } from "./lib/deferred-module-failure";
 import "./styles.css";
 
 class StartupBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -11,6 +12,7 @@ class StartupBoundary extends Component<{ children: ReactNode }, { failed: boole
 }
 
 export async function mountApp(loadPage: () => Promise<ComponentType>): Promise<void> {
+  installDeferredModuleFailureTracking();
   const container = document.getElementById("root");
   if (!container) throw new Error("Application root was not found");
   const root = createRoot(container);

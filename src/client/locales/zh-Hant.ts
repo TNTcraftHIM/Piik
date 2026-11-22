@@ -1,6 +1,7 @@
 import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 export const zhHant = {
+  "watch.forward.mainHelp": "在 Piik 中播放並調整進度。觀看時請保持原網頁開啟。影片由你的 App 上傳。",
   "watch.forward.tracksHelp": "分別選擇畫面及可選的聲音。確認後開始使用本機上傳頻寬。",
   "watch.forward.noVideoTrack": "沒有可轉發的影片軌道。你仍可在原網頁中觀看。",
   "watch.forward.videoOnly": "僅畫面，不帶聲音",
@@ -12,7 +13,7 @@ export const zhHant = {
   "watch.joined": "已加入觀看",
   "watch.noViewers": "還沒有其他人加入觀看。",
   "watch.browserSource.skip": "同步網頁裡的影片",
-  "watch.browserSource.originalHelp": "觀眾用支援網頁播放的 Piik App 開啟同一個網頁。Piik 只同步所選影片的播放。",
+  "watch.browserSource.originalHelp": "觀眾用支援網頁播放的 Piik App 開啟同一個網頁。所選影片跟隨你的網頁播放器同步播放。",
   "watch.forward.title": "轉發原始影片",
   "watch.forward.upload": "使用本機上傳頻寬，透過房間連線傳送原始影片。",
   "watch.forward.active": "已開啟轉發。停止轉發會保留網頁播放。",
@@ -489,6 +490,7 @@ export const zhHant = {
   "channel.error.deviceUnavailable": "裝置暫不可用，請檢查瀏覽器權限及裝置占用。",
   "channel.error.disconnected": "連線已中斷，請重新連線後再試。",
   "channel.error.actionFailed": "未能完成操作，請重試。",
+  "channel.error.deferredModuleLoad": "未能載入這部分頁面。請在方便時重新整理後再試，重新整理可能中斷此視窗的分享、播放和語音。",
   "channel.error.busy": "有操作正在進行，請稍後重試。",
   "state.peer.present": "已在房間",
   "state.peer.voiceConnected": "語音已連線",
@@ -844,7 +846,6 @@ export const zhHant = {
   "client.connect.saveFailed": "未能儲存設定，請重試。",
   "client.connect.invalid": "站點網址無效",
   "client.connect.unavailable": "未能連線 App。請保持 Piik App 執行，並允許瀏覽器開啟新視窗和存取區域網路。",
-  "client.connect.download": "下載 App",
   "client.connect.browserHint": "仍可觀看，並使用瀏覽器支援的分享方式。",
   "client.launch.lanAddress": "區域網路邀請網址",
   "client.launch.chooseAddress": "選擇網址",

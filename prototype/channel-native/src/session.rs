@@ -1214,7 +1214,6 @@ impl Session {
                     .live
                     .as_ref()
                     .is_some_and(|live| live.session == session_id);
-                let mut new_rooms = BTreeSet::new();
                 let mut creating = Vec::new();
                 if !resumed {
                     self.release().await?;
@@ -1231,16 +1230,13 @@ impl Session {
                                     Err(error) => return Err(error),
                                 };
                                 file.id = policy.id;
-                                if !state.channel.rooms.iter().any(|room| room.id == file.id)
+                                if !file.bootstrap
+                                    && !state.channel.rooms.iter().any(|room| room.id == file.id)
                                     && !(self.service_admission.is_some()
                                         && state.channel.managed_room_ids.contains(&file.id))
                                 {
-                                    if file.bootstrap {
-                                        new_rooms.insert(file.id.clone());
-                                    } else {
-                                        self.files.push(file);
-                                        continue;
-                                    }
+                                    self.files.push(file);
+                                    continue;
                                 }
                                 let creator = if self.service_admission.is_some()
                                     && state.channel.hosting_mode
@@ -1281,9 +1277,9 @@ impl Session {
                                     );
                                     continue;
                                 }
-                                new_rooms.insert(file.id.clone());
                                 HostedRoom::create(&file.path, policy)
                             }
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
                             Err(error) => Err(error.into()),
                         };
                         let host = match host {
@@ -1370,7 +1366,7 @@ impl Session {
                     .await?;
                 }
                 for (id, hosted) in &mut self.live.as_mut().unwrap().room.rooms {
-                    if new_rooms.contains(id) {
+                    if self.files.iter().any(|file| file.bootstrap && &file.id == id) {
                         write(
                             socket,
                             &Command::AdmitRoom {
@@ -1718,10 +1714,13 @@ impl Session {
                         .as_ref()
                         .is_some_and(|live| live.room.rooms.contains_key(id))
                 }) {
-                    if self.hosting.is_none() && code != "room_not_in_domain" {
+                    if self.hosting.is_none()
+                        && !matches!(code.as_str(), "room_not_in_domain" | "room_creation_restricted" | "room_already_hosted")
+                    {
                         bail!("room registration failed: {code}");
                     }
                     let id = request_id.as_ref().unwrap();
+                    eprintln!("Native room registration failed: {id}: {code}");
                     self.live.as_mut().unwrap().room.rooms.remove(id);
                     self.files.retain(|file| &file.id != id);
                     if let Some(opening) = self.opening.remove(id) {
@@ -2680,6 +2679,15 @@ impl Session {
     }
 
     async fn state(&mut self, mut state: Snapshot, socket: &mut Writer<'_>) -> Result<()> {
+        // Once the directory confirms a seed, reconnects may only reopen it.
+        for file in self.files.iter_mut().filter(|file| file.bootstrap) {
+            if state.channel.managed_room_ids.contains(&file.id)
+                || state.channel.rooms.iter().any(|room| room.id == file.id)
+            {
+                file.bootstrap = false;
+                file.name.clear();
+            }
+        }
         if let Some(live) = &mut self.live {
             live.room.rooms.retain(|id, room| {
                 room.binding().is_none()

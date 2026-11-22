@@ -663,6 +663,8 @@ enum TargetState {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Held {
+    #[cfg(target_os = "windows")]
+    Unicode(u16),
     Key(u16),
     Button(u8),
 }
@@ -1175,7 +1177,15 @@ impl Executor {
                         }
                         self.release_holds(source, c);
                         if self.releases.is_empty() {
-                            source.endpoint.apply(self.sink.as_mut(), bounds, &action)
+                            let result = source.endpoint.apply(self.sink.as_mut(), bounds, &action);
+                            #[cfg(target_os = "windows")]
+                            if let Some(pending) = result.as_ref().err().and_then(|error| {
+                                error.downcast_ref::<windows::PendingUnicodeRelease>()
+                            }) {
+                                self.releases
+                                    .insert(Held::Unicode(pending.0), source.endpoint.clone());
+                            }
+                            result
                         } else {
                             Err(anyhow!("input_cleanup_pending"))
                         }

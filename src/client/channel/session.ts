@@ -1267,7 +1267,7 @@ export class ChannelSession {
       try { await this.request({ type: "host_register", room, resumeBinding: hosted.bindingId }); }
       catch (error) {
         if (!current()) return;
-        if (!(error instanceof Error) || !["room_not_in_domain", "room_already_hosted"].includes(error.message)) throw error;
+        if (!(error instanceof Error) || !["room_not_in_domain", "room_already_hosted", "room_creation_restricted"].includes(error.message)) throw error;
         if (this.hostedRooms.get(id) !== hosted) continue;
         this.hostedRooms.delete(id);
         await hosted.host.close();

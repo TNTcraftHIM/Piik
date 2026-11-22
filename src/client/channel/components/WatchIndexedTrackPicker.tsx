@@ -11,6 +11,12 @@ import type { NativePageMpdSelection } from "../../native/wire";
 
 interface TrackChoice { id: string; name: string; kind?: "video" | "audio"; label: string; metadata: string }
 
+/** Defaults follow the current catalog. An explicit pick follows only its own ID. */
+export function resolveWatchTrack<T extends { id: string }>(choices: readonly T[], pickedId: string | null): T | undefined {
+  if (pickedId === null) return choices.length === 1 ? choices[0] : undefined;
+  return choices.find(choice => choice.id === pickedId);
+}
+
 /** Only a unique usable track is a default; metadata never guesses a pairing. */
 export function WatchIndexedTrackPicker({ choices, disabled, busy, mainPlayback, onConfirm }: {
   choices: readonly WatchIndexedChoice[]; disabled?: boolean; busy?: boolean; mainPlayback?: boolean;
@@ -77,22 +83,20 @@ function WatchTrackPicker({ choices, disabled, busy, mainPlayback, onConfirm }: 
 }) {
   const { t } = useCopy();
   const id = useId();
-  const [videoId, setVideoId] = useState("");
+  const [videoId, setVideoId] = useState<string | null>(null);
   const [audioId, setAudioId] = useState<string | null>(null);
+  if (!choices.length) return null;
   const videos = choices.filter(choice => choice.kind === "video"), audios = choices.filter(choice => choice.kind === "audio");
   const unavailable = choices.filter(choice => !choice.kind);
-  const selectedVideo = videos.find(choice => choice.id === videoId);
-  const selectedAudio = audios.find(choice => choice.id === audioId);
-  useEffect(() => {
-    if (!selectedVideo) setVideoId(videos.length === 1 ? videos[0].id : "");
-    if (audioId !== "" && !selectedAudio) setAudioId(audios.length === 1 ? audios[0].id : null);
-  }, [videoId, audioId, selectedVideo, selectedAudio, choices]);
-  const videoChoice = <select className="lr-select" aria-labelledby={`${id}-video`} value={videoId} disabled={disabled || busy}
+  const selectedVideo = resolveWatchTrack(videos, videoId);
+  const selectedAudio = resolveWatchTrack(audios, audioId);
+  const videoOnly = audioId === "" || (audioId === null && audios.length === 0);
+  const videoChoice = <select className="lr-select" aria-labelledby={`${id}-video`} value={selectedVideo?.id ?? ""} disabled={disabled || busy}
     onChange={event => setVideoId(event.target.value)}>
     <option value="" disabled>{t("watch.chooseVideoTrack")}</option>
     {videos.map(choice => <option key={choice.id} value={choice.id}>{choice.label || choice.name}</option>)}
   </select>;
-  const audioChoice = <select className="lr-select" aria-labelledby={`${id}-audio`} value={audioId === "" || !audios.length ? "video-only" : audioId ?? ""} disabled={disabled || busy}
+  const audioChoice = <select className="lr-select" aria-labelledby={`${id}-audio`} value={videoOnly ? "video-only" : selectedAudio?.id ?? ""} disabled={disabled || busy}
     onChange={event => setAudioId(event.target.value === "video-only" ? "" : event.target.value)}>
     <option value="" disabled>{t("watch.chooseAudioTrack")}</option>
     <option value="video-only">{t("watch.forward.videoOnly")}</option>
@@ -102,7 +106,7 @@ function WatchTrackPicker({ choices, disabled, busy, mainPlayback, onConfirm }: 
     <p>{t(mainPlayback ? "watch.forward.mainHelp" : "watch.forward.tracksHelp")}</p>
     <section className="c3-external-input" aria-labelledby={`${id}-video`}>
       <h3 id={`${id}-video`}><Glyph name="tv" size={18} /> {t("host.settings.picture")}</h3>
-      {videos.length ? videos.length > 1 ? videoChoice : <p className="lr-source-option-copy">{videos[0].name}</p>
+      {videos.length ? videos.length > 1 || !selectedVideo ? videoChoice : <p className="lr-source-option-copy">{videos[0].name}</p>
         : <p role="status">{t("watch.forward.noVideoTrack")}</p>}
     </section>
     <section className="c3-external-input" aria-labelledby={`${id}-audio`}>
@@ -111,8 +115,8 @@ function WatchTrackPicker({ choices, disabled, busy, mainPlayback, onConfirm }: 
     </section>
     {unavailable.length > 0 && <p role="status">{t("watch.forward.trackUnavailable")}</p>}
     <Btn icon="share" tone="primary" title="watch.forward.confirmTracks" cap="watch.forward.confirmTracks" busy={busy}
-      disabled={disabled || busy || !selectedVideo || audios.length > 1 && audioId === null || !!audioId && !selectedAudio}
-      onClick={() => { if (selectedVideo) onConfirm(videoId, selectedAudio?.id); }} />
+      disabled={disabled || busy || !selectedVideo || !videoOnly && !selectedAudio}
+      onClick={() => { if (selectedVideo) onConfirm(selectedVideo.id, selectedAudio?.id); }} />
     <details className="c3-settings-details"><summary>{t("watch.forward.trackOptions")}</summary>
       {choices.map(choice => <p className="lr-source-option-copy" key={choice.id}><span>{choice.name}</span>
         <small>{choice.metadata}</small></p>)}

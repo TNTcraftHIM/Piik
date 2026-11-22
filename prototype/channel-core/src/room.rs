@@ -199,7 +199,7 @@ impl RoomRuntime {
 
     #[cfg(test)]
     pub(crate) fn snapshot(&self, member: Member, session: Uuid) -> Option<RoomSnapshot> {
-        let view = self.recipient(member, session, |_| true)?;
+        let view = self.recipient(member, session, true, |_| false)?;
         self.project(BTreeMap::from([(session, view)]))
             .snapshot(session, true)
     }
@@ -208,12 +208,13 @@ impl RoomRuntime {
         &self,
         endpoints: &BTreeMap<Uuid, Endpoint>,
     ) -> crate::host::RoomProjection {
+        let limits = self.relay_limits();
         self.project(
             endpoints
                 .iter()
                 .filter_map(|(session, endpoint)| {
-                    self.recipient(endpoint.member, *session, |id| {
-                        endpoints.get(id).is_some_and(|endpoint| endpoint.connected)
+                    self.recipient(endpoint.member, *session, endpoint.connected, |key| {
+                        self.files.available(key, endpoints, &limits)
                     })
                     .map(|view| (*session, view))
                 })
@@ -225,7 +226,8 @@ impl RoomRuntime {
         &self,
         member: Member,
         session: Uuid,
-        is_live: impl Fn(&Uuid) -> bool,
+        connected: bool,
+        file_available: impl Fn(&(u64, Uuid)) -> bool,
     ) -> Option<RoomRecipient> {
         let room = self.policy.view(member.user_id);
         let authorized = room.as_ref().is_some_and(|room| room.authorized);
@@ -283,15 +285,11 @@ impl RoomRuntime {
             file_availability: self
                 .activity
                 .get(&session)
-                .filter(|activity| activity.reading && authorized && is_live(&session))
+                .filter(|activity| activity.reading && authorized && connected)
                 .and_then(|activity| activity.file_observation.as_ref())
                 .map(|observation| crate::wire::FileAvailability {
                     observation_id: observation.id,
-                    available: observation
-                        .keys
-                        .iter()
-                        .map(|key| self.files.available(key, &is_live))
-                        .collect(),
+                    available: observation.keys.iter().map(file_available).collect(),
                 }),
             relay_override: self
                 .activity
@@ -2347,6 +2345,39 @@ mod tests {
             .room
             .file_availability
             .is_none());
+    }
+
+    #[test]
+    fn file_observation_and_delivery_follow_copy_forwarding_permission() {
+        let id = Uuid::from_u128;
+        let (fixture, endpoints) = screen_room();
+        let mut room = RoomRuntime::new(fixture.policy);
+        let (reader, copy, author) = (id(1), id(2), id(3));
+        room.set_writer(reader, crate::wire::HostingMode::Lightweight);
+        let file = crate::AttachmentDescriptor {
+            id: id(30),
+            name: "copy.bin".into(),
+            size: 1,
+            media_type: "application/octet-stream".into(),
+            sha256: crate::attachment::sha256_hex(b"a"),
+        };
+        let member = endpoints[&reader].member;
+        room.browse(member, reader, true).unwrap();
+        room.observe_files(member, reader, id(31), vec![(1, file.id)]).unwrap();
+        room.finish_file(copy, 1, author, file.clone(), true, true).unwrap();
+        room.finish_file(reader, 1, author, file.clone(), false, true).unwrap();
+        let pairs = confirmed_pairs(&[(1, 2), (1, 3)]);
+        for (step, limit, expected_source) in [(1, 0, None), (2, 1, Some(copy)), (3, 0, Some(author))] {
+            room.set_relay_capacity(endpoints[&copy].member, copy, Some(limit)).unwrap();
+            if step == 3 {
+                room.set_relay_capacity(endpoints[&author].member, author, Some(0)).unwrap();
+                room.finish_file(author, 1, author, file.clone(), true, true).unwrap();
+            }
+            room.reconcile_with_pairs(&endpoints, step, &pairs);
+            let view = room.projection(&endpoints).snapshot(reader, true).unwrap();
+            assert_eq!(view.files[0].upstream, expected_source);
+            assert_eq!(view.room.file_availability.unwrap().available, [expected_source.is_some()]);
+        }
     }
 
     fn screen_room() -> (RoomRuntime, BTreeMap<Uuid, Endpoint>) {
@@ -4904,7 +4935,7 @@ mod tests {
         assert!(admitted.room.capabilities.history_seek);
         let projection = room.project(BTreeMap::from([(
             viewer_session,
-            room.recipient(viewer, viewer_session, |_| true).unwrap(),
+            room.recipient(viewer, viewer_session, true, |_| false).unwrap(),
         )]));
         assert!(
             !projection
