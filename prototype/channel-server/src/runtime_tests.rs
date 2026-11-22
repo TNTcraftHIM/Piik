@@ -918,7 +918,12 @@ async fn start_server(
     let address = listener.local_addr().unwrap();
     let (stop, stopped) = oneshot::channel();
     let folder = folder.to_owned();
-    let udp = piik_channel_native::peer::server_udp::ServerUdp::bind(&[(address, None)]).unwrap();
+    // A free TCP port does not reserve the same port for UDP in parallel tests.
+    let udp = piik_channel_native::peer::server_udp::ServerUdp::bind(&[(
+        std::net::SocketAddr::new(address.ip(), 0),
+        None,
+    )])
+    .unwrap();
     let task = tokio::spawn(serve(
         listener,
         state,
@@ -959,8 +964,11 @@ async fn wildcard_listeners_host_native_rooms_and_retire_on_stop() {
         let bound = listener.local_addr().unwrap();
         assert!(bound.ip().is_unspecified());
         let address = SocketAddr::new(dial, bound.port());
-        let udp =
-            piik_channel_native::peer::server_udp::ServerUdp::bind(&[(address, None)]).unwrap();
+        let udp = piik_channel_native::peer::server_udp::ServerUdp::bind(&[(
+            SocketAddr::new(dial, 0),
+            None,
+        )])
+        .unwrap();
         let (stop, stopped) = oneshot::channel();
         let task = tokio::spawn(serve(
             listener,

@@ -2868,6 +2868,7 @@ dependencies = [
  "libc",
  "libvpx-native-sys",
  "log",
+ "n0-watcher",
  "ndk",
  "ndk-context",
  "netwatch",

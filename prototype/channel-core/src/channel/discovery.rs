@@ -76,14 +76,20 @@ struct DiscoveryPlan {
     preparing: BTreeSet<Pair>,
     relevant_failures: BTreeSet<DiscoveryEdge>,
     interests: BTreeMap<DiscoveryEdge, Interest>,
-    candidates: BTreeSet<DiscoveryEdge>,
     completions: Vec<(DiscoveryEdge, BTreeSet<Pair>)>,
     required_retries: BTreeSet<DiscoveryEdge>,
 }
 impl DiscoveryPlan {
+    fn keep(&mut self, edge: DiscoveryEdge, interest: Interest) {
+        self.interests
+            .entry(edge)
+            .and_modify(|old| *old = (*old).max(interest))
+            .or_insert(interest);
+    }
+
     fn retain_direct(&mut self, discovery: &Discovery<'_>, pair: Pair, waiting: bool) {
         if waiting {
-            self.interests.insert(discovery.proposal(pair), Interest::Delivery);
+            self.keep(discovery.proposal(pair), Interest::Delivery);
         } else {
             self.preparing.insert(pair);
         }
@@ -93,7 +99,6 @@ struct Discovery<'a> {
     identity: &'a Identity,
     transports: &'a TransportBook,
     confirmed: BTreeSet<Pair>,
-    discovery: Option<Pair>,
 }
 impl Discovery<'_> {
     fn standby(
@@ -106,11 +111,7 @@ impl Discovery<'_> {
         for pair in crate::connectivity::standby(peers, links, |pair| {
             self.transports.rejected(&self.proposal(pair))
         }) {
-            let edge = self.proposal(pair);
-            plan.interests
-                .entry(edge)
-                .and_modify(|old| *old = (*old).max(interest))
-                .or_insert(interest);
+            plan.keep(self.proposal(pair), interest);
         }
     }
     fn proposal(&self, endpoints: Pair) -> DiscoveryEdge {
@@ -152,17 +153,36 @@ impl Discovery<'_> {
                         .filter(|e| carried_edge(e) && self.confirmed.contains(&e.endpoints));
                 for edge in carried {
                     if joined && repair.segments.contains(edge) {
-                        plan.interests.insert(edge.clone(), Interest::Delivery);
+                        plan.keep(edge.clone(), Interest::Delivery);
                     } else {
                         plan.preparing.insert(edge.endpoints);
                     }
                 }
                 if let Some(e) = repair.trial.as_ref().filter(|e| {
                     carried_edge(e)
-                        && Some(e.endpoints) == self.discovery
+                        && self.transports.pending(e)
                         && !self.confirmed.contains(&e.endpoints)
                 }) {
-                    plan.candidates.insert(e.clone());
+                    plan.keep(e.clone(), Interest::Activity);
+                    let mut pending = Repair {
+                        trial: Some(e.clone()),
+                        ..Repair::default()
+                    };
+                    let links = repair
+                        .segments
+                        .iter()
+                        .filter_map(|edge| {
+                            (carried_edge(edge) && self.confirmed.contains(&edge.endpoints))
+                                .then_some(edge.endpoints)
+                        })
+                        .collect();
+                    let (source, viewer) = edge.endpoints;
+                    if pending.retain_frontiers(source, viewer, &links, |p| self.proposal(p)) {
+                        plan.completions.push((
+                            e.clone(),
+                            pending.segments.iter().map(|edge| edge.endpoints).collect(),
+                        ));
+                    }
                 }
             }
         }
@@ -198,8 +218,9 @@ impl Discovery<'_> {
                 .filter(|(a, b)| eligible.contains(a) && eligible.contains(b))
                 .collect();
             if waiting {
-                let pending = self.discovery.and_then(|pair| DiscoveryEdge::current(pair, self.identity));
-                let mut proven = self.transports.failures().chain(pending.iter())
+                let mut proven = self.transports
+                    .failures()
+                    .chain(self.transports.pending_edges())
                     .filter(|edge| self.current(edge) && self.transports.previously_confirmed(edge))
                     .map(|edge| (edge.endpoints, self.transports.retry_after(edge).unwrap_or(0)))
                     .peekable();
@@ -207,7 +228,7 @@ impl Discovery<'_> {
                     if let Some(key) = crate::connectivity::retry_candidate(&eligible, &links, pair, proven) {
                         let edge = self.proposal(key);
                         plan.required_retries.insert(edge.clone());
-                        plan.candidates.insert(edge.clone());
+                        plan.keep(edge.clone(), Interest::Activity);
                         let mut restore = Repair { trial: Some(edge.clone()), ..Repair::default() };
                         let completes = restore.retain_frontiers(source, viewer, &links, |p| self.proposal(p));
                         let prefix: BTreeSet<_> = restore.segments.iter().map(|e| e.endpoints).collect();
@@ -226,7 +247,7 @@ impl Discovery<'_> {
                     if waiting {
                         plan.completions.push((direct.clone(), BTreeSet::new()));
                     }
-                    plan.candidates.insert(direct);
+                    plan.keep(direct, Interest::Activity);
                 }
                 continue;
             }
@@ -242,7 +263,7 @@ impl Discovery<'_> {
                     let e = self.proposal((a, b));
                     !links.contains(&(a, b))
                         && !self.transports.rejected(&e)
-                        && (self.discovery == Some((a, b)) || !self.transports.has_pair((a, b)))
+                        && (self.transports.pending(&e) || !self.transports.has_pair((a, b)))
                 }).or_else(|| {
                     let failures = self.transports.failures().filter_map(|edge| {
                         if !self.current(edge) || self.transports.has_pair(edge.endpoints) {
@@ -257,13 +278,13 @@ impl Discovery<'_> {
                 if self.transports.rejected(&trial) {
                     plan.required_retries.insert(trial.clone());
                 }
-                plan.candidates.insert(trial.clone());
+                plan.keep(trial.clone(), Interest::Activity);
                 repair.trial = Some(trial);
             }
             let bridges = repair.retain_frontiers(source, viewer, &links, |pair| self.proposal(pair));
             if repair.joined {
                 for edge in &repair.segments {
-                    plan.interests.insert(edge.clone(), Interest::Delivery);
+                    plan.keep(edge.clone(), Interest::Delivery);
                 }
             } else {
                 let prefix: BTreeSet<_> = repair.segments.iter().map(|edge| edge.endpoints).collect();
@@ -284,7 +305,7 @@ impl Discovery<'_> {
     ) {
         let available = |a: Uuid, b: Uuid| {
             let pair = (a.min(b), a.max(b));
-            Some(pair) == self.discovery || !self.transports.has_pair(pair)
+            !self.transports.has_pair(pair) || self.transports.pending(&self.proposal(pair))
         };
         if let Some(first) = crate::connectivity::candidate(scope, graph, demand, available) {
             let edge = self.proposal(first);
@@ -294,10 +315,10 @@ impl Discovery<'_> {
                 if let Some(next) = crate::connectivity::candidate(scope, graph, demand, |a, b| {
                     (a, b) != first && available(a, b)
                 }) {
-                    plan.candidates.insert(self.proposal(next));
+                    plan.keep(self.proposal(next), Interest::Activity);
                 }
             }
-            plan.candidates.insert(edge);
+            plan.keep(edge, Interest::Activity);
         }
     }
 }
@@ -310,7 +331,6 @@ impl Channel {
             identity: &self.identity,
             transports: &self.transports,
             confirmed: self.transports.confirmed_pairs(&self.identity).collect(),
-            discovery: self.transports.discovery_endpoints(),
         };
         let mut plan = DiscoveryPlan::default();
         let online = endpoints.iter()
@@ -365,12 +385,10 @@ impl Channel {
             discovery.ordinary(&scope, &graph, &demand, &mut plan);
         }
         self.repairs.retain(|key, _| plan.retained.contains(key));
-        let preparing = plan.preparing.into_iter()
-            .filter_map(|pair| DiscoveryEdge::current(pair, &self.identity));
-        for edge in plan.candidates.into_iter().chain(preparing) {
-            plan.interests.entry(edge)
-                .and_modify(|interest| *interest = (*interest).max(Interest::Activity))
-                .or_insert(Interest::Activity);
+        for pair in std::mem::take(&mut plan.preparing) {
+            if let Some(edge) = DiscoveryEdge::current(pair, &self.identity) {
+                plan.keep(edge, Interest::Activity);
+            }
         }
         plan.relevant_failures.extend(plan.interests.keys().cloned());
         self.transports.retain_failures(&plan.relevant_failures);
@@ -481,7 +499,7 @@ mod tests {
             transports.retire(attempt, &identity, 0);
         }
         let discovery = Discovery {
-            identity: &identity, transports: &transports, discovery: None,
+            identity: &identity, transports: &transports,
             confirmed: [pair(source, writer), pair(relay, viewer)].into(),
         };
         let mut plan = DiscoveryPlan::default();
@@ -507,12 +525,12 @@ mod tests {
         // The disconnected direct shortcut is already retrying when the middle leg cools down.
         let shortcut = DiscoveryEdge::current(direct, &identity).unwrap();
         transports.reconcile_with_standby([], [], &[(shortcut.clone(), Interest::Activity)].into(),
-            &[], &[shortcut].into(), &BTreeSet::new(), 50_001, |_| PAIR_DEGREE_LIMIT);
+            &[], &[shortcut.clone()].into(), &BTreeSet::new(), 50_001, |_| PAIR_DEGREE_LIMIT);
         let discovery = Discovery {
-            identity: &identity, transports: &transports, discovery: transports.discovery_endpoints(),
+            identity: &identity, transports: &transports,
             confirmed: [pair(source, writer), pair(relay, viewer)].into(),
         };
-        assert_eq!(discovery.discovery, Some(direct));
+        assert!(transports.pending(&shortcut));
         for waiting in [false, true] {
             let mut plan = DiscoveryPlan::default();
             discovery.repair(&projection, &[source, writer, relay, viewer].into(),
@@ -535,13 +553,13 @@ mod tests {
         let retries = [last.clone()].into();
         transports.reconcile_with_standby([], [], &request, &[], &retries,
             &BTreeSet::new(), 55_003, |_| PAIR_DEGREE_LIMIT);
-        assert_eq!(transports.discovery_endpoints(), Some(last.endpoints));
+        assert!(transports.pending(&last));
         assert!(transports.expire_discovery(75_003));
 
         // Once the writer–relay leg returns, the old viewer leg can finish
         // delivery. The never-confirmed shortcuts are still candidates.
         let discovery = Discovery {
-            identity: &identity, transports: &transports, discovery: None,
+            identity: &identity, transports: &transports,
             confirmed: [pair(source, writer), middle.endpoints].into(),
         };
         let mut plan = DiscoveryPlan::default();
@@ -562,7 +580,6 @@ mod tests {
             identity: &identity,
             transports: &TransportBook::default(),
             confirmed: BTreeSet::new(),
-            discovery: None,
         };
         let mut plan = DiscoveryPlan::default();
         discovery.ordinary(
@@ -571,7 +588,7 @@ mod tests {
             &[direct, outside].into(),
             &mut plan,
         );
-        assert_eq!(plan.candidates.len(), 1);
-        assert!(plan.candidates.contains(&discovery.proposal(direct)));
+        assert_eq!(plan.interests.len(), 1);
+        assert!(plan.interests.get(&discovery.proposal(direct)) == Some(&Interest::Activity));
     }
 }

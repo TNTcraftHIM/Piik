@@ -152,6 +152,8 @@ pub(crate) struct Runtime {
     tx: mpsc::Sender<Command>,
     task: JoinHandle<()>,
     fixed: Option<Arc<ServerUdp>>,
+    #[cfg(not(target_os = "android"))]
+    interfaces: tokio::sync::OnceCell<netwatch::netmon::Monitor>,
     #[cfg(test)]
     test_codecs: Option<str0m::format::CodecConfig>,
 }
@@ -542,6 +544,8 @@ impl Runtime {
             tx,
             task,
             fixed,
+            #[cfg(not(target_os = "android"))]
+            interfaces: tokio::sync::OnceCell::new(),
             #[cfg(test)]
             test_codecs: None,
         }
@@ -641,6 +645,23 @@ impl Runtime {
             }
         }
     }
+    async fn interface_state(&self) -> Result<netwatch::interfaces::State> {
+        #[cfg(not(target_os = "android"))]
+        {
+            use n0_watcher::Watcher;
+            let monitor = self
+                .interfaces
+                .get_or_try_init(netwatch::netmon::Monitor::new)
+                .await?;
+            Ok(monitor.interface_state().get())
+        }
+        // Android's netwatch backend has no interface-change notifications.
+        #[cfg(target_os = "android")]
+        {
+            Ok(netwatch::interfaces::State::new().await)
+        }
+    }
+
     async fn add_engine(
         &self,
         pair: Uuid,
@@ -721,10 +742,13 @@ impl Runtime {
             Bitrate::bps(requested.minimum_bps),
             Bitrate::bps(desired_bps(requested.desired_bps)),
         );
-        let interfaces = if local_input {
-            None
+        let interfaces = if sockets
+            .iter()
+            .any(|socket| socket.local_addr().is_ok_and(|addr| addr.ip().is_unspecified()))
+        {
+            Some(self.interface_state().await?)
         } else {
-            Some(netwatch::interfaces::State::new().await)
+            None
         };
         // Reuse this snapshot's route fact; no extra interface probe is needed.
         // Platforms without it keep the first ordinary IPv4 base as fallback.
@@ -1395,7 +1419,7 @@ impl Transport {
                         current,
                         packet.header.timestamp,
                         wallclock,
-                        packet.payload.to_vec(),
+                        packet.payload.as_ref(),
                     )
                     .marker(packet.header.marker)
                     .nackable(out.kind == MediaKind::Video),

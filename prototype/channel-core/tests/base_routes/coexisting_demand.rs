@@ -143,7 +143,7 @@ fn one_screen_reduces_two_decoded_outputs_while_another_stays_selected() {
 }
 
 #[test]
-fn file_receivers_in_one_or_two_rooms_share_the_discovery_slot() {
+fn file_receivers_in_one_or_two_rooms_keep_delivery_during_parallel_shortcuts() {
     for separate_rooms in [false, true] {
         let mut network = RoomNetwork::new();
         let sockets = [(); 5].map(|_| Uuid::new_v4());
@@ -184,29 +184,28 @@ fn file_receivers_in_one_or_two_rooms_share_the_discovery_slot() {
         };
         receive(&first_room, 0, 2);
         receive(&second_room, sender, receiver);
-        let shortcut = |n: &RoomNetwork, source: usize, viewer: usize| {
+        let upstream = |n: &RoomNetwork, viewer: usize| {
             n.state(sockets[viewer])
-                .pairs
+                .files
                 .iter()
-                .find(|p| p.peer_id == ids[source])
-                .map(|p| p.id)
+                .find(|file| file.receiving)
+                .unwrap()
+                .upstream
         };
-        let first = shortcut(&network, 0, 2);
-        let second = shortcut(&network, sender, receiver);
-        assert_ne!(first.is_some(), second.is_some());
-        let (a, b, trial) = first
-            .map(|id| (0, 2, id))
-            .unwrap_or_else(|| (sender, receiver, second.unwrap()));
-        for socket in [sockets[a], sockets[b]] {
-            command(
-                &mut network,
-                socket,
-                json!({"type":"link_state","pairId":trial,"state":"connected"}),
-            );
-        }
-        assert_eq!(shortcut(&network, a, b), Some(trial));
-        assert!(shortcut(&network, 0, 2).is_some());
-        assert!(shortcut(&network, sender, receiver).is_some());
+        let first = pair(&network, sockets[2], ids[0]).id;
+        let second = pair(&network, sockets[receiver], ids[sender]).id;
+        assert_ne!(first, second);
+        let second_relay = if separate_rooms { 1 } else { 2 };
+        assert_eq!(upstream(&network, 2), Some(ids[1]));
+        assert_eq!(upstream(&network, receiver), Some(ids[second_relay]));
+
+        connect(&mut network, [sockets[0], sockets[2]], first);
+        assert_eq!(upstream(&network, 2), Some(ids[1]));
+        assert_eq!(upstream(&network, receiver), Some(ids[second_relay]));
+        assert_eq!(pair(&network, sockets[receiver], ids[sender]).id, second);
+        connect(&mut network, [sockets[sender], sockets[receiver]], second);
+        assert_eq!(upstream(&network, receiver), Some(ids[second_relay]));
+        assert_eq!(pair(&network, sockets[2], ids[0]).id, first);
         command(&mut network, sockets[2], json!({"type":"leave"}));
         command(&mut network, sockets[receiver], json!({"type":"leave"}));
         for (source, viewer) in [(0, 2), (sender, receiver)] {
@@ -355,10 +354,11 @@ fn cold_voice_file_and_watch_byte_repair_use_the_only_room_reader() {
 
     for kind in ["voice", "file", "watch"] {
         let mut network = RoomNetwork::new();
-        let [source, helper, receiver] = [(); 3].map(|_| Uuid::new_v4());
+        let [source, helper, receiver, lobby] = [(); 4].map(|_| Uuid::new_v4());
         let (source_id, _) = join(&mut network, source, None);
         let (helper_id, _) = join(&mut network, helper, None);
         let (receiver_id, _) = join(&mut network, receiver, None);
+        join(&mut network, lobby, None);
         let room = network.create(source, RoomAccess::Public, false);
         for peer in [source, helper, receiver] {
             browse(&mut network, peer, &room, true);
@@ -394,7 +394,11 @@ fn cold_voice_file_and_watch_byte_repair_use_the_only_room_reader() {
             None
         };
         let direct = pair(&network, source, receiver_id);
-        assert!(network.state(helper).pairs.is_empty());
+        assert!(network
+            .state(helper)
+            .pairs
+            .iter()
+            .all(|p| p.rooms.is_empty() && p.incoming.is_empty() && p.outgoing.is_empty()));
         command(
             &mut network,
             source,
@@ -407,7 +411,9 @@ fn cold_voice_file_and_watch_byte_repair_use_the_only_room_reader() {
                 .state(helper)
                 .pairs
                 .iter()
-                .find(|p| !confirmed.contains(&p.id))
+                .find(|p| {
+                    [source_id, receiver_id].contains(&p.peer_id) && !confirmed.contains(&p.id)
+                })
                 .expect("failed direct demand should discover the reader")
                 .clone();
             confirmed.insert(edge.id);
@@ -469,8 +475,16 @@ fn cold_voice_file_and_watch_byte_repair_use_the_only_room_reader() {
                 ],
             );
         }
+        let outside = network.state(lobby);
+        assert!(outside.files.is_empty() && outside.watch_bytes.is_empty());
+        assert!(outside
+            .pairs
+            .iter()
+            .all(|p| p.incoming.is_empty() && p.outgoing.is_empty() && !p.rooms.contains(&room)));
         browse(&mut network, helper, &room, false);
-        assert!(network.state(helper).files.is_empty());
+        assert!(
+            network.state(helper).files.is_empty() && network.state(helper).watch_bytes.is_empty()
+        );
         assert!(network
             .state(helper)
             .pairs

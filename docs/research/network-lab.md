@@ -416,15 +416,41 @@ From C clicking Watch to its first video frame callback, one run took
 selected at most one screen output in each run. This fixture exercises reuse
 of a confirmed pair on loopback. Independent-network coverage remains open.
 
+### Concurrent connection admission
+
+A wire-40 Core control used 20 independent rooms, one silent first candidate
+and reachable peers reporting connection 100 ms after allocation. Allowing four
+channel attempts and two per endpoint reduced the other 19 rooms' allocation
+range from 20.0–21.8 s to 0–0.6 s. The existing selected flow kept its pair and
+flow IDs. These virtual-clock timings measure admission, not first picture.
+The shared-source control also verified that an untried connection receives a
+vacated slot before an eligible retry with no earlier successful connection.
+
+In a four-browser control, only A–C signaling was blocked. From that pair's
+first browser projection, D received four decoded frames of A's source by
+4.570 s. D's selected relay leg first appeared at 2.241 s; another room used
+an already established connection. Existing voice kept the same pair, track
+and RTP report while received samples advanced. The observed peak was three
+simultaneous connection attempts.
+
+A Windows protocol control separately traced slow Native room replies to
+interface enumeration before each new pair. Ten of twelve scans took
+1.126–1.234 s. With a shared netwatch monitor, the first snapshot took 1.187 s
+and subsequent reads took less than 1 ms. The same final Browse operation took
+2,423 ms before and 133 ms after the change, with the original five-second
+request deadline. This is one instrumented comparison on the local machine.
+
 ### Recovery after UDP blackout
 
 Linux network namespaces isolated the relay and its router. Both fixtures used
-Native and Browser WASM builds from tree `bee3869e`. After a 50.180 s UDP
-blackout and a relay NAT address change, the Native path restored decoded
-picture and source audio 8.013 s after traffic resumed. The Browser relay path
-restored both in 10.406 s after a 50.140 s blackout. Both passed the 30 s
-recovery window with the selected route, continuity and WAN RTP verified.
-These timings describe the two Linux lab fixtures.
+Native and Browser WASM builds from tree `295ad897`. After a 50-second UDP
+blackout and a relay NAT address change, the Native path established a new
+host connection in 2.673 s and restored decoded picture and source audio in
+5.906 s after traffic resumed. The Browser relay restored both in 2.805 s.
+Both passed the 30 s recovery window with the selected route, continuity and
+WAN RTP verified. The first Browser setup timed out before fault injection
+while guest memory was low; the same binaries passed after retired lab copies
+were removed. These timings describe the two Linux lab fixtures.
 
 ### Recovery after a screen relay leaves
 

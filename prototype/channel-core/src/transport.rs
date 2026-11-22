@@ -1,5 +1,6 @@
 use crate::wire::{FlowBinding, FlowState, PairInfo, UdpPreparation};
 use serde::{Deserialize, Serialize};
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
@@ -14,6 +15,19 @@ pub(crate) enum Interest {
 
 /// Distinct pending or established peer connections per ordinary endpoint.
 pub(crate) const PAIR_DEGREE_LIMIT: usize = 64;
+
+const CHANNEL_ATTEMPT_LIMIT: usize = 4;
+const ENDPOINT_ATTEMPT_LIMIT: usize = 2;
+type PairKey = (Uuid, Uuid);
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum DiscoveryRank {
+    Restoration,
+    Completion,
+    Activity,
+    Room,
+    Channel,
+}
 
 const DISCOVERY_TIMEOUT_MS: u64 = 20_000;
 const REQUIRED_RETRY_MS: u64 = 5_000;
@@ -102,19 +116,22 @@ struct Failure {
 /// Current physical attempts shared by flow, room and standby interests.
 #[derive(Clone, Default)]
 pub struct TransportBook {
-    // One optional trial for the channel. A terminal failure is remembered
-    // only while the same demand and socket generations still justify it.
-    discovery: Option<Pending>,
+    discovery: BTreeMap<PairKey, Pending>,
+    // Keep failures while the same demand and socket generations justify them.
     rejected: BTreeMap<DiscoveryEdge, Failure>,
     next_required_retry: Option<u64>,
-    pairs: BTreeMap<(Uuid, Uuid), Pair>,
+    pairs: BTreeMap<PairKey, Pair>,
 }
 
 impl TransportBook {
-    pub(crate) fn discovery_endpoints(&self) -> Option<(Uuid, Uuid)> {
+    pub(crate) fn pending(&self, edge: &DiscoveryEdge) -> bool {
         self.discovery
-            .as_ref()
-            .map(|pending| pending.edge.endpoints)
+            .get(&edge.endpoints)
+            .is_some_and(|pending| pending.edge == *edge)
+    }
+
+    pub(crate) fn pending_edges(&self) -> impl Iterator<Item = &DiscoveryEdge> {
+        self.discovery.values().map(|pending| &pending.edge)
     }
 
     pub(crate) fn failures(&self) -> impl Iterator<Item = &DiscoveryEdge> {
@@ -138,7 +155,7 @@ impl TransportBook {
             .is_some_and(|failure| failure.was_confirmed)
             || self
                 .discovery
-                .as_ref()
+                .get(&edge.endpoints)
                 .is_some_and(|pending| pending.edge == *edge && pending.restoring)
     }
 
@@ -229,7 +246,7 @@ impl TransportBook {
                 if pair.confirmed_by == [Some(edge.sockets.0), Some(edge.sockets.1)]
                     || self
                         .discovery
-                        .as_ref()
+                        .get(key)
                         .is_some_and(|pending| pending.edge == *edge)
                 {
                     pair.interest = interest;
@@ -239,129 +256,138 @@ impl TransportBook {
             pair.interest = Interest::Recovering;
             recovering.contains(key)
         });
-        // Only an admitted unconfirmed physical attempt owns this timer.
-        if self.discovery.as_ref().is_some_and(|pending| {
-            let edge = &pending.edge;
-            !self.pairs.contains_key(&edge.endpoints)
-                || !requests
-                    .get(&edge.endpoints)
-                    .is_some_and(|(current, _)| *current == edge)
-        }) {
-            self.discovery = None;
+        self.discovery.retain(|key, pending| {
+            self.pairs.contains_key(key)
+                && requests
+                    .get(key)
+                    .is_some_and(|(edge, _)| **edge == pending.edge)
+        });
+        // An activity can leave a pair with only standby interest.
+        let mut standby: Vec<_> = self
+            .discovery
+            .keys()
+            .filter_map(|&key| {
+                let interest = self.pairs[&key].interest;
+                (interest <= Interest::Room).then_some((Reverse(interest), key))
+            })
+            .collect();
+        standby.sort_unstable();
+        for (_, key) in standby.into_iter().skip(1) {
+            self.release(key);
         }
 
         self.trim_standby(&degree_limit);
-        for (key, flows) in needed {
-            self.admit(key, Interest::Activity, flows, None, &degree_limit);
+        let mut prefixes = BTreeMap::<_, Vec<_>>::new();
+        for (edge, prefix) in completions {
+            prefixes.entry(edge).or_default().push(prefix);
         }
-        let prefix_ready = |book: &Self, prefix: &BTreeSet<_>| {
-            prefix.iter().all(|key| {
-                let Some((edge, _)) = requests.get(key) else {
-                    return false;
-                };
-                book.pairs
-                    .get(key)
-                    .is_some_and(|p| p.confirmed_by == [Some(edge.sockets.0), Some(edge.sockets.1)])
-            })
+        let ready_prefixes = |book: &Self, edge: &DiscoveryEdge| {
+            prefixes
+                .get(edge)
+                .into_iter()
+                .flatten()
+                .copied()
+                .filter(|prefix| {
+                    prefix.iter().all(|key| {
+                        let Some((edge, _)) = requests.get(key) else {
+                            return false;
+                        };
+                        book.pairs.get(key).is_some_and(|p| {
+                            p.confirmed_by == [Some(edge.sockets.0), Some(edge.sockets.1)]
+                        })
+                    })
+                })
+                .collect::<Vec<_>>()
         };
-        if let Some(current) = &self.discovery {
-            if self.pairs[&current.edge.endpoints].flows.has_lease()
-                || (current.restoring && required_retries.contains(&current.edge))
-                || completions
-                    .iter()
-                    .any(|(edge, prefix)| edge == &current.edge && prefix_ready(self, prefix))
-            {
-                return;
+
+        // Protect all ready prefixes of each in-flight attempt, including
+        // multiple room requests that share a physical attempt.
+        let mut protected = BTreeSet::new();
+        for (&key, pending) in &self.discovery {
+            if pending.restoring && required_retries.contains(&pending.edge) {
+                protected.insert(key);
+            }
+            for prefix in ready_prefixes(self, &pending.edge) {
+                protected.insert(key);
+                protected.extend(prefix);
             }
         }
-        // Restore a required previously working leg ahead of an unverified shortcut.
-        for edge in required_retries {
-            if !self.previously_confirmed(edge)
-                || self.has_pair(edge.endpoints)
-                || !requests
-                    .get(&edge.endpoints)
-                    .is_some_and(|&(e, priority)| e == edge && priority == Interest::Activity)
-            {
+        for (key, flows) in needed {
+            self.admit(
+                key,
+                Interest::Activity,
+                flows,
+                None,
+                &protected,
+                &degree_limit,
+            );
+        }
+
+        let mut candidates = Vec::new();
+        for &(edge, interest) in requests.values() {
+            let rank = match interest {
+                Interest::Activity
+                    if required_retries.contains(edge) && self.previously_confirmed(edge) =>
+                {
+                    DiscoveryRank::Restoration
+                }
+                Interest::Activity if prefixes.contains_key(edge) => DiscoveryRank::Completion,
+                Interest::Activity => DiscoveryRank::Activity,
+                Interest::Room => DiscoveryRank::Room,
+                Interest::Channel => DiscoveryRank::Channel,
+                _ => continue,
+            };
+            candidates.push((rank, self.retry_after(edge), edge, interest));
+        }
+        // Requests enter in pair order. Keep that order within ties.
+        candidates.sort_by_key(|&(rank, retry, _, _)| (rank, retry));
+        for (rank, _, edge, interest) in candidates {
+            if self.has_pair(edge.endpoints) {
                 continue;
             }
-            let mut prefixes = completions
-                .iter()
-                .filter(|(candidate, _)| candidate == edge)
-                .peekable();
-            let admitted = if prefixes.peek().is_none() {
-                self.admit(
-                    edge.endpoints,
-                    Interest::Activity,
-                    Directions::default(),
-                    None,
-                    &degree_limit,
-                )
-            } else {
-                prefixes.any(|(_, prefix)| {
-                    prefix_ready(self, prefix)
-                        && self.admit(
-                            edge.endpoints,
-                            Interest::Activity,
-                            Directions::default(),
-                            Some(prefix),
-                            &degree_limit,
-                        )
-                })
-            };
+            let ready = ready_prefixes(self, edge);
+            let completes = !ready.is_empty();
+            if prefixes.contains_key(edge) && !completes {
+                continue;
+            }
+            let empty = BTreeSet::new();
+            let admitted = ready
+                .into_iter()
+                .chain((!completes).then_some(&empty))
+                .any(|prefix| {
+                    let mut reserved = protected.clone();
+                    reserved.extend(prefix);
+                    self.admit(
+                        edge.endpoints,
+                        interest,
+                        Directions::default(),
+                        Some((rank, completes)),
+                        &reserved,
+                        &degree_limit,
+                    )
+                });
             if admitted {
                 self.start_discovery(edge, now);
-                return;
-            }
-        }
-        for (edge, prefix) in completions {
-            if requests
-                .get(&edge.endpoints)
-                .is_some_and(|&(e, interest)| e == edge && interest == Interest::Activity)
-                && !self.has_pair(edge.endpoints)
-                && prefix_ready(self, prefix)
-                && self.admit(
-                    edge.endpoints,
-                    Interest::Activity,
-                    Directions::default(),
-                    Some(prefix),
-                    &degree_limit,
-                )
-            {
-                self.start_discovery(edge, now);
-                return;
-            }
-        }
-        for priority in [Interest::Activity, Interest::Room, Interest::Channel] {
-            if self
-                .discovery
-                .as_ref()
-                .is_some_and(|p| self.pairs[&p.edge.endpoints].interest >= priority)
-            {
-                break;
-            }
-            for (&key, &(edge, interest)) in &requests {
-                if interest != priority
-                    || self.pairs.contains_key(&key)
-                    || completions.iter().any(|(completion, _)| completion == edge)
-                    || !self.admit(key, interest, Directions::default(), None, &degree_limit)
-                {
-                    continue;
+                if completes || rank == DiscoveryRank::Restoration {
+                    protected.insert(edge.endpoints);
+                    protected.extend(ready_prefixes(self, edge).into_iter().flatten().copied());
                 }
-                self.start_discovery(edge, now);
-                return;
             }
         }
     }
 
     fn start_discovery(&mut self, edge: &DiscoveryEdge, now: u64) {
-        self.discovery = Some(Pending {
-            edge: edge.clone(),
-            deadline: now.saturating_add(DISCOVERY_TIMEOUT_MS),
-            restoring: self
-                .rejected
-                .remove(edge)
-                .is_some_and(|failure| failure.was_confirmed),
-        });
+        self.discovery.insert(
+            edge.endpoints,
+            Pending {
+                edge: edge.clone(),
+                deadline: now.saturating_add(DISCOVERY_TIMEOUT_MS),
+                restoring: self
+                    .rejected
+                    .remove(edge)
+                    .is_some_and(|failure| failure.was_confirmed),
+            },
+        );
     }
 
     // A service can lose its larger allowance while its room leases are still live.
@@ -390,50 +416,113 @@ impl TransportBook {
         }
     }
 
-    fn release(&mut self, key: (Uuid, Uuid)) {
+    fn release(&mut self, key: PairKey) {
         self.pairs.remove(&key);
-        if self.discovery_endpoints() == Some(key) {
-            self.discovery = None;
-        }
+        self.discovery.remove(&key);
     }
 
-    // Reserve both endpoint slots before releasing either standby.
+    // Reserve all required capacity before releasing either endpoint's resources.
     fn admit(
         &mut self,
-        key: (Uuid, Uuid),
+        key: PairKey,
         priority: Interest,
         flows: Directions,
-        prefix: Option<&BTreeSet<(Uuid, Uuid)>>,
+        discovery: Option<(DiscoveryRank, bool)>,
+        protected: &BTreeSet<PairKey>,
         degree_limit: &impl Fn(Uuid) -> usize,
     ) -> bool {
-        let can_replace_partial = flows.has_lease() || prefix.is_some();
-        let replaced_trial = if flows.has_lease() {
-            None
-        } else {
-            self.discovery_endpoints()
+        let replace_partial = discovery.is_none_or(|(_, completes)| completes);
+        let replace_pending = discovery.is_none_or(|(rank, _)| rank <= DiscoveryRank::Completion);
+        let channel_full = discovery.is_some() && self.discovery.len() == CHANNEL_ATTEMPT_LIMIT;
+        let reclaimable = |key: &PairKey, pair: &Pair| {
+            let replace_activity = if self.discovery.contains_key(key) {
+                replace_pending
+            } else {
+                replace_partial
+            };
+            !protected.contains(key)
+                && !pair.flows.has_lease()
+                && (pair.interest < priority
+                    || (replace_activity && pair.interest == Interest::Activity))
         };
-        let mut victims: Vec<_> = replaced_trial.into_iter().collect();
+        let mut reclaimable_trials: Vec<_> = self
+            .discovery
+            .keys()
+            .filter_map(|&key| {
+                let pair = &self.pairs[&key];
+                reclaimable(&key, pair).then_some((pair.interest, key))
+            })
+            .collect();
+        reclaimable_trials.sort_unstable();
+        if channel_full && reclaimable_trials.is_empty() {
+            return false;
+        }
+
+        let mut victims = BTreeSet::new();
+        if discovery.is_some() && priority <= Interest::Room {
+            if let Some(&standby) = self
+                .discovery
+                .keys()
+                .find(|key| self.pairs[key].interest <= Interest::Room)
+            {
+                if !reclaimable(&standby, &self.pairs[&standby]) {
+                    return false;
+                }
+                victims.insert(standby);
+            }
+        }
+        let incident = |key: PairKey, endpoint| key.0 == endpoint || key.1 == endpoint;
+        if discovery.is_some() {
+            for endpoint in [key.0, key.1] {
+                let occupied = self
+                    .discovery
+                    .keys()
+                    .filter(|&&key| incident(key, endpoint) && !victims.contains(&key))
+                    .count();
+                if occupied >= ENDPOINT_ATTEMPT_LIMIT {
+                    let Some(&(_, victim)) = reclaimable_trials
+                        .iter()
+                        .find(|(_, key)| incident(*key, endpoint) && !victims.contains(key))
+                    else {
+                        return false;
+                    };
+                    victims.insert(victim);
+                }
+            }
+        }
         for endpoint in [key.0, key.1] {
-            let incident = self.pairs.iter().filter(|(key, _)| {
-                Some(**key) != replaced_trial && (key.0 == endpoint || key.1 == endpoint)
-            });
+            let incident = self
+                .pairs
+                .iter()
+                .filter(|(&key, _)| incident(key, endpoint) && !victims.contains(&key));
             let needed = (incident.clone().count() + 1).saturating_sub(degree_limit(endpoint));
             if needed == 0 {
                 continue;
             }
+            let needs_trial_slot =
+                channel_full && !victims.iter().any(|key| self.discovery.contains_key(key));
             let mut available: Vec<_> = incident
                 .filter_map(|(&key, pair)| {
-                    let lower = pair.interest < priority
-                        || (can_replace_partial && pair.interest == Interest::Activity);
-                    (lower && !pair.flows.has_lease() && !prefix.is_some_and(|p| p.contains(&key)))
-                        .then_some((pair.interest, key))
+                    let no_trial = !self.discovery.contains_key(&key);
+                    reclaimable(&key, pair).then_some((
+                        needs_trial_slot && no_trial,
+                        pair.interest,
+                        no_trial,
+                        key,
+                    ))
                 })
                 .collect();
             if available.len() < needed {
                 return false;
             }
             available.sort_unstable();
-            victims.extend(available.into_iter().take(needed).map(|(_, key)| key));
+            victims.extend(available.into_iter().take(needed).map(|(_, _, _, key)| key));
+        }
+        if channel_full && !victims.iter().any(|key| self.discovery.contains_key(key)) {
+            let Some(&(_, victim)) = reclaimable_trials.first() else {
+                return false;
+            };
+            victims.insert(victim);
         }
         for victim in victims {
             self.release(victim);
@@ -522,13 +611,8 @@ impl TransportBook {
         pair.confirmed_by[side] = Some(connection);
         let confirmed = peer_connection.is_some() && pair.confirmed_by[1 - side] == peer_connection;
         pair.was_confirmed |= confirmed;
-        if confirmed
-            && self
-                .discovery
-                .as_ref()
-                .is_some_and(|pending| pending.edge.endpoints == (*first, *second))
-        {
-            self.discovery = None;
+        if confirmed {
+            self.discovery.remove(&(*first, *second));
         }
         confirmed
     }
@@ -557,7 +641,7 @@ impl TransportBook {
         }
         pair.id = Uuid::new_v4();
         pair.attempt = Attempt::Prepared;
-        if let Some(pending) = self.discovery.as_mut().filter(|p| p.edge.endpoints == *key) {
+        if let Some(pending) = self.discovery.get_mut(key) {
             pending.deadline = now.saturating_add(DISCOVERY_TIMEOUT_MS);
         }
         true
@@ -565,18 +649,22 @@ impl TransportBook {
 
     pub(crate) fn expire_discovery(&mut self, now: u64) -> bool {
         let retry_due = self.next_required_retry.take_if(|at| *at <= now).is_some();
-        let Some(pending) = self.discovery.take_if(|pending| pending.deadline <= now) else {
-            return retry_due;
-        };
-        self.pairs.remove(&pending.edge.endpoints);
-        self.rejected.insert(
-            pending.edge,
-            Failure {
-                retry_after: now.saturating_add(REQUIRED_RETRY_MS),
-                was_confirmed: pending.restoring,
-            },
-        );
-        true
+        let pending_before = self.discovery.len();
+        self.discovery.retain(|key, pending| {
+            if pending.deadline > now {
+                return true;
+            }
+            self.pairs.remove(key);
+            self.rejected.insert(
+                pending.edge.clone(),
+                Failure {
+                    retry_after: now.saturating_add(REQUIRED_RETRY_MS),
+                    was_confirmed: pending.restoring,
+                },
+            );
+            false
+        });
+        retry_due || self.discovery.len() < pending_before
     }
 
     pub fn retire(&mut self, id: Uuid, identity: &crate::identity::Identity, now: u64) {
@@ -724,7 +812,7 @@ mod tests {
             2,
             |_| 1,
         );
-        assert_eq!(book.discovery_endpoints(), Some(waiting.endpoints));
+        assert!(book.pending(&waiting));
         assert!(!book.has_pair(first.endpoints));
         assert!(!book.rejected(&first));
     }
@@ -778,7 +866,7 @@ mod tests {
         );
         assert!(book.flow(next_id, Uuid::from_u128(23)).unwrap().selected);
         assert!(book.flow(old_id, Uuid::from_u128(21)).is_none());
-        assert_eq!(book.discovery_endpoints(), Some(waiting.endpoints));
+        assert!(book.pending(&waiting));
     }
 
     #[test]
@@ -896,7 +984,7 @@ mod tests {
             2,
             |_| 2,
         );
-        assert_eq!(book.discovery_endpoints(), Some(first_finish.endpoints));
+        assert!(book.pending(&first_finish));
         assert_eq!(book.pairs[&left.endpoints].id, first);
         assert!(!book.has_pair(right.endpoints));
         let finishing = book.pairs[&first_finish.endpoints].id;
@@ -912,7 +1000,7 @@ mod tests {
         );
         assert_eq!(book.pairs[&first_finish.endpoints].id, finishing);
         assert_eq!(
-            book.discovery.as_ref().unwrap().deadline,
+            book.discovery[&first_finish.endpoints].deadline,
             2 + DISCOVERY_TIMEOUT_MS
         );
         confirm(&mut book, &first_finish);
@@ -974,7 +1062,7 @@ mod tests {
             2,
             |_| 2,
         );
-        assert_eq!(book.discovery_endpoints(), Some(room.endpoints));
+        assert!(book.pending(&room));
         assert_eq!(book.pairs[&neighbor.endpoints].id, retained);
         assert!(!book.has_pair(channel.endpoints));
     }
@@ -1010,7 +1098,7 @@ mod tests {
             |_| 1,
         );
         assert_eq!(book.pairs[&channel.endpoints].id, old);
-        assert_eq!(book.discovery_endpoints(), Some(channel.endpoints));
+        assert!(book.pending(&channel));
 
         book.reconcile_with_standby(
             [],
@@ -1022,7 +1110,7 @@ mod tests {
             2,
             |_| 1,
         );
-        assert_eq!(book.discovery_endpoints(), Some(room.endpoints));
+        assert!(book.pending(&room));
         assert!(!book.has_pair(channel.endpoints));
         assert!(!book.rejected(&channel));
         assert!(!book.connected(
@@ -1042,7 +1130,7 @@ mod tests {
             3,
             |_| 2,
         );
-        assert_eq!(book.discovery_endpoints(), Some(channel.endpoints));
+        assert!(book.pending(&channel));
         assert_eq!(book.pairs[&room.endpoints].id, ready);
     }
 
@@ -1160,7 +1248,7 @@ mod tests {
         assert!(book.expire_discovery(shortcut_timeout));
         assert!(!book.previously_confirmed(&shortcut));
         update(&mut book, &interests, vec![], shortcut_timeout);
-        assert_eq!(book.discovery_endpoints(), Some(leg.endpoints));
+        assert!(book.pending(&leg));
         assert!(book.previously_confirmed(&leg));
         let attempt = book.pairs[&leg.endpoints].id;
         book.retire(attempt, &identity, shortcut_timeout + 1);
@@ -1178,7 +1266,7 @@ mod tests {
             retry,
             |_| 1,
         );
-        assert_eq!(book.discovery_endpoints(), Some(leg.endpoints));
+        assert!(book.pending(&leg));
         assert!(book.confirmed_pairs(&identity).next().is_none());
         assert!(book.expire_discovery(retry + DISCOVERY_TIMEOUT_MS));
         assert!(book.previously_confirmed(&leg));
@@ -1226,7 +1314,7 @@ mod tests {
             1,
             |_| 1,
         );
-        assert_eq!(book.discovery_endpoints(), Some(second.endpoints));
+        assert!(book.pending(&second));
         assert_eq!(book.pairs[&first.endpoints].id, first_id);
         assert!(book.has_pair(second.endpoints));
 
@@ -1240,7 +1328,360 @@ mod tests {
             2,
             |_| 1,
         );
-        assert!(book.discovery_endpoints().is_none());
+        assert!(book.discovery.is_empty());
         assert!(book.pairs.is_empty());
+    }
+    #[test]
+    fn an_endpoint_degree_waiter_keeps_its_demand_while_other_pairs_start() {
+        let mut book = TransportBook::default();
+        let first = edge(1, 2);
+        let waiting = edge(1, 3);
+        let independent = edge(4, 5);
+        let candidates = [first.clone(), waiting.clone(), independent.clone()];
+        let mut interests = candidates
+            .iter()
+            .cloned()
+            .map(|e| (e, Interest::Activity))
+            .collect::<BTreeMap<_, _>>();
+        let completions = candidates.map(|e| (e, BTreeSet::new()));
+        let update = |book: &mut TransportBook, interests: &_, now| {
+            book.reconcile_with_standby(
+                [],
+                [],
+                interests,
+                &completions,
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+                now,
+                |_| 1,
+            );
+        };
+        update(&mut book, &interests, 0);
+        let first_id = book.pairs[&first.endpoints].id;
+        let independent_id = book.pairs[&independent.endpoints].id;
+        assert!(!book.has_pair(waiting.endpoints));
+        assert!(!book.rejected(&waiting));
+        update(&mut book, &interests, 1);
+        assert_eq!(book.pairs[&first.endpoints].id, first_id);
+        assert_eq!(
+            book.discovery[&first.endpoints].deadline,
+            DISCOVERY_TIMEOUT_MS
+        );
+
+        interests.remove(&first);
+        update(&mut book, &interests, 2);
+        assert!(!book.has_pair(first.endpoints));
+        assert!(book.pending(&waiting));
+        assert_eq!(book.pairs[&independent.endpoints].id, independent_id);
+        assert_eq!(
+            book.discovery[&independent.endpoints].deadline,
+            DISCOVERY_TIMEOUT_MS
+        );
+    }
+
+    #[test]
+    fn in_flight_completions_share_a_confirmed_prefix_until_the_last_use() {
+        let mut book = TransportBook::default();
+        let prefix = edge(1, 2);
+        let first = edge(2, 3);
+        let sibling = edge(2, 4);
+        let competitor = edge(2, 5);
+        let competitor_prefix = edge(5, 6);
+        let mut interests = BTreeMap::from([
+            (prefix.clone(), Interest::Activity),
+            (competitor_prefix.clone(), Interest::Activity),
+        ]);
+        let update = |book: &mut TransportBook, interests: &_, completions: &[_], now| {
+            book.reconcile_with_standby(
+                [],
+                [],
+                interests,
+                completions,
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+                now,
+                |_| 3,
+            );
+        };
+        update(&mut book, &interests, &[], 0);
+        let prefix_id = confirm(&mut book, &prefix);
+        confirm(&mut book, &competitor_prefix);
+        interests.extend(
+            [first.clone(), sibling.clone(), competitor.clone()].map(|e| (e, Interest::Activity)),
+        );
+        let completions = [
+            (first.clone(), [prefix.endpoints].into()),
+            (sibling.clone(), [prefix.endpoints].into()),
+            (competitor.clone(), [competitor_prefix.endpoints].into()),
+        ];
+        update(&mut book, &interests, &completions, 1);
+        assert!(book.pending(&first));
+        assert!(book.pending(&sibling));
+        assert!(!book.has_pair(competitor.endpoints));
+        assert!(!book.rejected(&competitor));
+        let sibling_id = book.pairs[&sibling.endpoints].id;
+        interests.remove(&first);
+        update(&mut book, &interests, &completions[1..], 2);
+        assert!(!book.has_pair(first.endpoints));
+        assert!(book.pending(&competitor));
+        assert_eq!(book.pairs[&prefix.endpoints].id, prefix_id);
+        assert_eq!(
+            book.discovery[&sibling.endpoints].deadline,
+            1 + DISCOVERY_TIMEOUT_MS
+        );
+        assert_eq!(confirm(&mut book, &sibling), sibling_id);
+        assert!(book.pairs[&prefix.endpoints].was_confirmed);
+    }
+
+    #[test]
+    fn a_shared_completion_can_start_when_only_one_rooms_prefix_can_fit() {
+        let mut book = TransportBook::default();
+        let first_prefix = edge(1, 3);
+        let leased_prefix = edge(2, 3);
+        let trial = edge(3, 4);
+        let mut interests = BTreeMap::from([
+            (first_prefix.clone(), Interest::Activity),
+            (leased_prefix.clone(), Interest::Activity),
+        ]);
+        let grant = (leased_prefix.endpoints, "second room".to_owned());
+        let update = |book: &mut TransportBook, interests: &_, completions: &[_], now| {
+            book.reconcile_with_standby(
+                [],
+                [grant.clone()],
+                interests,
+                completions,
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+                now,
+                |_| 2,
+            );
+        };
+        update(&mut book, &interests, &[], 0);
+        confirm(&mut book, &first_prefix);
+        let leased_id = confirm(&mut book, &leased_prefix);
+        interests.insert(trial.clone(), Interest::Activity);
+        let completions = [
+            (trial.clone(), [first_prefix.endpoints].into()),
+            (trial.clone(), [leased_prefix.endpoints].into()),
+        ];
+        update(&mut book, &interests, &completions, 1);
+        assert!(book.pending(&trial));
+        assert!(!book.has_pair(first_prefix.endpoints));
+        assert_eq!(book.pairs[&leased_prefix.endpoints].id, leased_id);
+        assert!(book.serves_room(leased_id, "second room"));
+        assert_eq!(book.failures().count(), 0);
+    }
+
+    #[test]
+    fn required_restoration_reclaims_only_the_pending_pair_needed_by_both_budgets() {
+        let mut book = TransportBook::default();
+        let trial = edge(1, 2);
+        let idle = edge(1, 3);
+        let restoration = edge(1, 4);
+        let leased = edge(4, 5);
+        let siblings = [edge(6, 7), edge(8, 9), edge(10, 11)];
+        let mut interests = BTreeMap::from([(idle.clone(), Interest::Channel)]);
+        let mut completions = Vec::new();
+        let mut retries = BTreeSet::new();
+        let update = |book: &mut TransportBook,
+                      interests: &_,
+                      completions: &[_],
+                      retries: &_,
+                      grants: Vec<_>,
+                      now| {
+            book.reconcile_with_standby(
+                [],
+                grants,
+                interests,
+                completions,
+                retries,
+                &BTreeSet::new(),
+                now,
+                |id| if id == Uuid::from_u128(1) { 2 } else { 1 },
+            );
+        };
+        update(&mut book, &interests, &completions, &retries, vec![], 0);
+        let idle_id = confirm(&mut book, &idle);
+        // A same-generation failure from a previously confirmed connection.
+        book.rejected.insert(
+            restoration.clone(),
+            Failure {
+                retry_after: REQUIRED_RETRY_MS,
+                was_confirmed: true,
+            },
+        );
+        retries.insert(restoration.clone());
+        interests.extend(siblings.iter().cloned().map(|e| (e, Interest::Activity)));
+        interests.insert(restoration.clone(), Interest::Activity);
+        interests.insert(trial.clone(), Interest::Room);
+        completions.extend(siblings.iter().cloned().map(|e| (e, BTreeSet::new())));
+        let grant = (leased.endpoints, "file room".to_owned());
+        update(
+            &mut book,
+            &interests,
+            &completions,
+            &retries,
+            vec![grant.clone()],
+            1,
+        );
+        assert_eq!(book.discovery.len(), CHANNEL_ATTEMPT_LIMIT);
+        let trial_id = book.pairs[&trial.endpoints].id;
+        let siblings_ids = siblings.each_ref().map(|e| book.pairs[&e.endpoints].id);
+        update(
+            &mut book,
+            &interests,
+            &completions,
+            &retries,
+            vec![grant],
+            REQUIRED_RETRY_MS,
+        );
+        assert_eq!(book.pairs[&trial.endpoints].id, trial_id);
+        assert_eq!(
+            book.discovery[&trial.endpoints].deadline,
+            1 + DISCOVERY_TIMEOUT_MS
+        );
+        assert!(book.rejected(&restoration));
+        assert_eq!(book.pairs[&idle.endpoints].id, idle_id);
+
+        update(
+            &mut book,
+            &interests,
+            &completions,
+            &retries,
+            vec![],
+            REQUIRED_RETRY_MS + 1,
+        );
+        assert_eq!(book.discovery.len(), CHANNEL_ATTEMPT_LIMIT);
+        assert!(book.pending(&restoration));
+        assert!(book.previously_confirmed(&restoration));
+        assert!(!book.has_pair(trial.endpoints));
+        assert!(!book.rejected(&trial));
+        assert!(book.peer(trial.endpoints.0, trial_id).is_none());
+        assert_eq!(book.pairs[&idle.endpoints].id, idle_id);
+        for (edge, id) in siblings.iter().zip(siblings_ids) {
+            assert_eq!(book.pairs[&edge.endpoints].id, id);
+            assert_eq!(
+                book.discovery[&edge.endpoints].deadline,
+                1 + DISCOVERY_TIMEOUT_MS
+            );
+        }
+    }
+
+    #[test]
+    fn preparation_confirmation_and_expiry_each_affect_only_their_pair() {
+        let mut book = TransportBook::default();
+        let prepared = edge(1, 2);
+        let silent = edge(3, 4);
+        let soon_ready = edge(5, 6);
+        let candidates = [prepared.clone(), silent.clone(), soon_ready.clone()];
+        let interests = candidates
+            .iter()
+            .cloned()
+            .map(|e| (e, Interest::Activity))
+            .collect();
+        let mut completions = vec![(prepared.clone(), BTreeSet::new())];
+        completions.extend(candidates.map(|e| (e, BTreeSet::new())));
+        let update = |book: &mut TransportBook, completions: &[_], now| {
+            book.reconcile_with_standby(
+                [],
+                [],
+                &interests,
+                completions,
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+                now,
+                |_| 1,
+            );
+        };
+        update(&mut book, &completions, 0);
+        assert_eq!(book.discovery.len(), 3);
+        let old = book.pairs[&prepared.endpoints].id;
+        let silent_id = book.pairs[&silent.endpoints].id;
+        let ready_id = book.pairs[&soon_ready.endpoints].id;
+        update(&mut book, &completions[1..], DISCOVERY_TIMEOUT_MS - 1);
+        assert_eq!(book.pairs[&prepared.endpoints].id, old);
+        assert!(book.prepare(old, DISCOVERY_TIMEOUT_MS - 1));
+        assert_ne!(book.pairs[&prepared.endpoints].id, old);
+        assert_eq!(book.pairs[&silent.endpoints].id, silent_id);
+        assert_eq!(
+            book.discovery[&silent.endpoints].deadline,
+            DISCOVERY_TIMEOUT_MS
+        );
+        assert_eq!(confirm(&mut book, &soon_ready), ready_id);
+        assert!(book.expire_discovery(DISCOVERY_TIMEOUT_MS));
+        assert!(book.rejected(&silent));
+        assert!(!book.has_pair(silent.endpoints));
+        assert_eq!(
+            book.discovery[&prepared.endpoints].deadline,
+            2 * DISCOVERY_TIMEOUT_MS - 1
+        );
+        assert!(book.peer(prepared.endpoints.0, old).is_none());
+        let prepared_id = confirm(&mut book, &prepared);
+        assert!(book.prepared(prepared_id));
+        assert_eq!(book.pairs[&soon_ready.endpoints].id, ready_id);
+        assert!(book.discovery.is_empty());
+    }
+
+    #[test]
+    fn fresh_activity_gets_a_freed_slot_ahead_of_an_eligible_retry() {
+        let mut book = TransportBook::default();
+        let first = edge(1, 2);
+        let second = edge(1, 3);
+        let fresh = edge(1, 4);
+        let mut interests = BTreeMap::new();
+        let required = [first.clone(), second.clone()].into();
+        let update =
+            |book: &mut TransportBook, interests: &BTreeMap<DiscoveryEdge, Interest>, now| {
+                let completions = interests
+                    .keys()
+                    .cloned()
+                    .map(|e| (e, BTreeSet::new()))
+                    .collect::<Vec<_>>();
+                book.reconcile_with_standby(
+                    [],
+                    [],
+                    interests,
+                    &completions,
+                    &required,
+                    &BTreeSet::new(),
+                    now,
+                    |_| PAIR_DEGREE_LIMIT,
+                );
+            };
+        interests.insert(first.clone(), Interest::Activity);
+        update(&mut book, &interests, 0);
+        interests.insert(second.clone(), Interest::Activity);
+        update(&mut book, &interests, REQUIRED_RETRY_MS + 1);
+        interests.insert(fresh.clone(), Interest::Activity);
+        update(&mut book, &interests, REQUIRED_RETRY_MS + 2);
+        assert!(!book.has_pair(fresh.endpoints));
+        assert!(book.expire_discovery(DISCOVERY_TIMEOUT_MS));
+        update(
+            &mut book,
+            &interests,
+            DISCOVERY_TIMEOUT_MS + REQUIRED_RETRY_MS,
+        );
+        assert!(book.pending(&fresh));
+        assert!(book.pending(&second));
+        assert!(!book.has_pair(first.endpoints));
+        assert!(book.rejected(&first));
+        assert!(book.expire_discovery(2 * DISCOVERY_TIMEOUT_MS + REQUIRED_RETRY_MS));
+        assert!(book.rejected(&second));
+        assert!(book.rejected(&fresh));
+        assert!(book.discovery.is_empty());
+
+        // When both retries are eligible and only one slot is available,
+        // the earlier deadline wins within the same priority.
+        interests.remove(&fresh);
+        let other = edge(1, 5);
+        interests.insert(other.clone(), Interest::Activity);
+        update(
+            &mut book,
+            &interests,
+            2 * DISCOVERY_TIMEOUT_MS + 2 * REQUIRED_RETRY_MS,
+        );
+        assert!(book.pending(&other));
+        assert!(book.pending(&first));
+        assert!(!book.has_pair(second.endpoints));
     }
 }

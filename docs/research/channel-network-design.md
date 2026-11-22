@@ -668,6 +668,11 @@ Server shares fixed UDP listeners across its peer connections. Piik's
 [socket owner](../../prototype/channel-native/src/peer/transport.rs) dispatches
 packets through str0m's public `Rtc::accepts` and `handle_input` interfaces;
 the SDK owns ICE and media demultiplexing.
+Desktop wildcard candidate discovery reads a runtime-owned netwatch monitor.
+New pairs share its lazy initialization and current interface snapshot.
+Concrete socket bindings need no interface scan. Android enumerates interfaces
+when acquiring a wildcard-bound pair because its netwatch backend does not
+provide interface-change notifications.
 The Server entry binds both address families on the actual HTTP port by default,
 before opening domain data. Configured listeners must all bind successfully;
 IPv6 sockets are v6-only so both families can use that port. Local binding and an

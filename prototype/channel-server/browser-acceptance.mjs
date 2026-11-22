@@ -1275,7 +1275,9 @@ async function roomsAndFiles() {
     const { history_page_size } = await import('/prototype/channel-browser/pkg/piik_channel_browser.js');
     return history_page_size();
   })()`);
-  // Prepare real history records in one transaction without rendering each send.
+  // The bulk insert bypasses live delivery. Both readers must leave before it starts.
+  await until("both readers have left the private room before history seeding", () => Promise.all([0, 1].map(view)), values =>
+    values.every(value => value.state.channel.rooms.some(entry => entry.id === room.id && entry.reading === false)));
   await evaluate(0, `(async () => {
     const { prepare_confirmation, message_retry_key } = await import('/prototype/channel-browser/pkg/piik_channel_browser.js');
     const host = ${hook}.session.hostedRooms.get(${JSON.stringify(room.id)}).host;

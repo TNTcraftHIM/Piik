@@ -9,6 +9,9 @@ default-run = "piik-channel-native"
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util"] }
 
+[target.'cfg(not(target_os = "android"))'.dependencies]
+n0-watcher = "=1.0.1"
+
 [workspace]
 
 [features]

@@ -93,6 +93,24 @@ These slots bound assigned peer connections, not the sockets used inside a
 Native preparation attempt; the transport adapter owns those existing limits.
 [Connection resource accounting](https://github.com/libp2p/go-libp2p/blob/master/p2p/host/resource-manager/README.md#the-transient-scope)
 
+The scheduler allows four simultaneous attempts per
+channel and two per endpoint. Standby discovery remains serial. Each attempt
+keeps its own socket generations, deadline and recovery evidence in TransportBook.
+Admission reserves both endpoints and attempt allowances before releasing any
+lower-priority resource. In-flight completions protect their confirmed prefixes
+together; withdrawing one use cannot remove another activity's path.
+
+Within each priority, try candidates without a current-generation failure first,
+then eligible retries in retry-deadline order. Required recovery of a previously
+confirmed connection keeps its precedence. An admitted completion keeps its
+attempt budget. This order favors first connection under continuing arrivals;
+it does not promise fairness under unlimited demand or occupied physical capacity.
+Per-peer and aggregate dialing limits are separate in
+[libp2p's dial limiter](https://github.com/libp2p/go-libp2p/blob/v0.41.1/p2p/net/swarm/limiter.go).
+ICE check scheduling remains with the transport library.
+[RFC 8445 scheduling](https://www.rfc-editor.org/rfc/rfc8445.html#section-6.1.4.2)
+[Concurrent admission controls](./network-lab.md#concurrent-connection-admission)
+
 The channel owns physical admission, attempt deadlines and connection failure
 generations. A room retains authorized delivery intent while no complete path
 is confirmed. Once a complete authorized path is confirmed, the room creates a

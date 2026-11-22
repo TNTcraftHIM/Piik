@@ -356,10 +356,11 @@ fn cancelling_a_waiting_file_keeps_lobby_pair_and_recovery_needs_current_proof()
 #[test]
 fn cold_screen_direct_failure_discovers_a_room_reader_before_media_failure() {
     let mut net = RoomNetwork::new();
-    let [owner, receiver, helper] = [(); 3].map(|_| Uuid::new_v4());
+    let [owner, receiver, helper, lobby] = [(); 4].map(|_| Uuid::new_v4());
     let source = join(&mut net, owner, "Source");
     let viewer = join(&mut net, receiver, "Viewer");
-    join(&mut net, helper, "Reader");
+    let reader = join(&mut net, helper, "Reader");
+    join(&mut net, lobby, "Lobby");
     let room = net.create(owner, RoomAccess::Public, false);
     command(
         &mut net,
@@ -371,15 +372,52 @@ fn cold_screen_direct_failure_discovers_a_room_reader_before_media_failure() {
     let pending = pair(&net, receiver, source);
     assert!(input(pending, screen).is_none());
     let direct = pending.id;
-    assert!(net.state(helper).pairs.is_empty());
+    no_payload_grants(&net, helper);
 
     command(
         &mut net,
         receiver,
         json!({"type":"link_state","pairId":direct,"state":"failed"}),
     );
-    let repair = net.state(helper).pairs.first().expect("room reader repair");
-    assert!([source, viewer].contains(&repair.peer_id));
+    let mut confirmed = Vec::new();
+    for _ in 0..2 {
+        let leg = net
+            .state(helper)
+            .pairs
+            .iter()
+            .find(|p| [source, viewer].contains(&p.peer_id) && !confirmed.contains(&p.id))
+            .expect("reader connects both sides of the failed direct path");
+        let peer = if leg.peer_id == source {
+            owner
+        } else {
+            receiver
+        };
+        let id = leg.id;
+        link_connected(&mut net, helper, id);
+        link_connected(&mut net, peer, id);
+        confirmed.push(id);
+    }
+    let upstream = pair(&net, helper, source);
+    let transit = input(upstream, screen).unwrap();
+    let incoming = pair(&net, receiver, reader);
+    let delivery = input(incoming, screen).unwrap();
+    assert_eq!(delivery.input_flow_id, Some(transit.id));
+    for (socket, edge, flow, proof) in [
+        (helper, upstream.id, transit.id, "forwardable"),
+        (receiver, incoming.id, delivery.id, "decoded"),
+    ] {
+        command(
+            &mut net,
+            socket,
+            json!({"type":"flow_state","pairId":edge,"flowId":flow,"state":proof}),
+        );
+    }
+    assert!(
+        input(pair(&net, receiver, reader), screen)
+            .unwrap()
+            .selected
+    );
+    no_payload_grants(&net, lobby);
     let state = net.state(receiver);
     assert!(state.subscriptions.contains(&screen));
     assert!(!state.failed_subscriptions.contains(&screen));

@@ -28,7 +28,9 @@ support authenticated message deletion and clearing history.
 [Hosting and moderation](./research/server-hosting-plan.md)
 
 The channel connection pool combines activity demand, room interest and sparse
-channel standby within endpoint admission limits. Each screen, voice source,
+channel standby within endpoint admission limits. Bounded concurrent attempts
+let independent demand progress while a candidate is still unresponsive.
+Each screen, voice source,
 file holder and forwarded webpage source selects its own paths on the room's
 authorized confirmed connections. Standby carries no business payload. Existing
 delivery survives unrelated activity changes; a replacement needs payload proof.
