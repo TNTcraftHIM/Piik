@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 pub(super) struct Sites(Connection);
 
-#[derive(Serialize)]
+#[derive(PartialEq, Serialize)]
 pub(super) struct Bookmark {
     pub id: Uuid,
     pub origin: String,

@@ -278,6 +278,9 @@ separate its bookmark, App consent and startup preference. Bookmarks store a
 site address and optional name separately from device approval. Editing or
 removing a bookmark does not grant or revoke access. A changed invitation address
 can be updated manually; saved bookmarks contain no room invitation key.
+The launcher checks the public Piik marker at the site origin before adding, changing or
+opening a site address. A saved bookmark can be renamed offline. An unavailable site can be retried. In the Windows workspace,
+external links open in the system Browser. The webpage player accepts ordinary media sites.
 
 From a Browser page, **App → Open in client** finds a running native-window App
 and opens its local confirmation page. The original room invitation can be passed

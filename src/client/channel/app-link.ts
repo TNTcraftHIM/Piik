@@ -17,14 +17,17 @@ import { NativeRoomHosting } from "./hosting-api";
 import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 import { debugEvent } from "../lib/debug";
+import { nativeVoiceShortcutEventSchema, nativeVoiceShortcutsReportSchema, type NativeVoiceShortcutsReport } from "../native/wire";
+import type { VoiceShortcutAction, VoiceShortcuts } from "./voice-shortcut-binding";
 
 export const APP_PROTOCOL = 23;
 const APP_REQUEST_BYTES = 256 * 1024;
 const SOURCE_LIST_TIMEOUT_MS = 8_000;
+const SHORTCUT_ACTION_MAX_AGE_MS = 1_000;
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
   version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional(), updateSupported: z.boolean().optional(), pagePlayer: z.boolean().optional(),
-  externalScreenInputAvailable: z.boolean().optional() });
+  externalScreenInputAvailable: z.boolean().optional(), backgroundVoiceShortcuts: z.boolean().optional() });
 type AppHealth = z.infer<typeof healthSchema>;
 const measured = z.number().finite().nonnegative();
 const nativeStreamMetricSchema = z.object({
@@ -244,6 +247,11 @@ export const channelAppDiscovery: AppDiscovery = {
   isIncompatible,
 };
 
+export interface BackgroundVoiceShortcuts {
+  configure(bindings: VoiceShortcuts | null): Promise<NativeVoiceShortcutsReport>;
+  subscribe(listener: (action: VoiceShortcutAction) => void): () => void;
+}
+
 /** Hosting survives this link; captures selected through it belong to this page. */
 export class ChannelApp {
   private socket: WebSocket;
@@ -265,6 +273,7 @@ export class ChannelApp {
   private pages = new Map<string, AppPage>();
   readonly pagePlayer: boolean;
   readonly externalScreenInputAvailable: boolean;
+  readonly backgroundVoiceShortcuts?: BackgroundVoiceShortcuts;
 
   get connected(): boolean { return this.authenticated && this.socket.readyState === WebSocket.OPEN; }
   get screens(): ReadonlySet<string> { return new Set([...this.captures.keys(), ...this.externalInputs.keys()]); }
@@ -287,10 +296,23 @@ export class ChannelApp {
     private readonly onClose: () => void, onCaptureState: (publicationId: string, error?: "capture_audio_failed" | "capture_failed") => void,
     onInputState: (publicationId: string, state: ChannelRemoteControlState) => void = () => {},
     private readonly onAudioState: (publicationId: string) => void = () => {},
-    onExternalInput: (event: NativeExternalInputState) => void = () => {}) {
+    onExternalInput: (event: NativeExternalInputState) => void = () => {},
+    canReceiveVoiceShortcut: () => boolean = () => false) {
     const health = healthSchema.parse(verifiedHealth);
     this.pagePlayer = health.pagePlayer === true;
     this.externalScreenInputAvailable = health.externalScreenInputAvailable === true;
+    const voiceShortcutListeners = new Set<(action: VoiceShortcutAction) => void>();
+    if (health.backgroundVoiceShortcuts === true) this.backgroundVoiceShortcuts = {
+      configure: async bindings => {
+        if (!this.connected) throw new Error("app_disconnected");
+        const fields = bindings ?? { microphone: null, listening: null };
+        return nativeVoiceShortcutsReportSchema.parse(await this.request({ type: "voice_shortcuts", enabled: bindings !== null, ...fields }));
+      },
+      subscribe: listener => {
+        voiceShortcutListeners.add(listener);
+        return () => { voiceShortcutListeners.delete(listener); };
+      },
+    };
     this.roomHosting = new NativeRoomHosting(`http://127.0.0.1:${health.port}/rooms/${channelId}/${userId}`,
       { Authorization: `Bearer ${health.token}`, "X-Piik-Credential": credential });
     const socket = this.socket = new WebSocket(`ws://127.0.0.1:${health.port}/rooms`, `piik-channel-rooms.${health.token}`);
@@ -325,6 +347,17 @@ export class ChannelApp {
           const event = inputStateSchema.parse(reply);
           failure = "consumer";
           if (this.captures.has(event.publicationId) || this.prepared.has(event.publicationId)) onInputState(event.publicationId, event.state);
+          return;
+        }
+        if (reply.type === "voice_shortcut") {
+          if (!this.backgroundVoiceShortcuts || !this.connected || !canReceiveVoiceShortcut()) return;
+          const event = nativeVoiceShortcutEventSchema.safeParse(reply);
+          if (!event.success) return;
+          const timeDifference = Math.abs(Date.now() - event.data.activatedAtMs);
+          if (timeDifference > SHORTCUT_ACTION_MAX_AGE_MS) return;
+          const action = event.data.action === "toggle_microphone" ? "microphone" : "listening";
+          try { voiceShortcutListeners.forEach(listener => listener(action)); }
+          catch { debugEvent("native", "voice-shortcut-consumer-failed"); }
           return;
         }
         if (reply.type === "capture_audio_failed") {

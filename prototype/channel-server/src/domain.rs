@@ -30,6 +30,8 @@ use std::{
 use tokio::sync::{mpsc, watch, Semaphore};
 use uuid::Uuid;
 
+pub(crate) const HEALTH_MARKER: &str = "piik-channel-prototype";
+
 #[derive(Clone)]
 struct Client {
     events: mpsc::Sender<Event>,
@@ -795,7 +797,7 @@ impl Domain {
         stop: impl Future<Output = ()>,
     ) -> anyhow::Result<()> {
         let app = Router::new()
-            .route("/healthz", get(|| async { "piik-channel-prototype" }))
+            .route("/healthz", get(|| async { HEALTH_MARKER }))
             .route("/prototype/channel", get(upgrade))
             .route("/prototype/channel/identity", get(identify))
             .route(

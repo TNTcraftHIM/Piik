@@ -1,6 +1,6 @@
 import { RoomCreationInterrupted } from "./room-creation";
 import { YouTubeMedia } from "./watch-youtube-media";
-import { PageSuppliedMedia, preparePageSuppliedWatchMedia, preparePortableWatchMedia, observeWatchSources, type WatchMediaSources } from "./watch-page-media";
+import { PageSuppliedMedia, preparePageSuppliedWatchMedia, preparePortableWatchMedia, observeWatchSources, directForwardFileURL, type WatchMediaSources } from "./watch-page-media";
 import { canMoveYouTubePlayer, canWatchInBrowser, youtubeVideoId, youtubeStartSeconds, youtubeSourceId, originalWatchURL } from "./watch-youtube-source";
 import { indexedMediaSelection } from "./watch-indexed-source";
 import { WatchBytes } from "./watch-bytes";
@@ -343,6 +343,7 @@ export class ChannelSession {
     }
     const remoteControls = new Map([...(patch.remoteControls ?? this.view.remoteControls)].filter(([id]) => ownedScreens.has(id)));
     this.view = { ...this.view, ...patch, watchPlayers: new Map(this.watchPlayers), pagePlayer: this.app?.pagePlayer ?? false, appConnected: this.app?.connected ?? false,
+      backgroundVoiceShortcuts: this.app?.connected ? this.app.backgroundVoiceShortcuts : undefined,
       externalScreenInputAvailable: this.app?.connected === true && this.app.externalScreenInputAvailable, ownedScreens, localScreens, remoteControls };
     for (const listener of this.listeners) listener();
   }
@@ -1064,7 +1065,7 @@ export class ChannelSession {
       if (this.closed || this.view.connection !== "connected" || this.view.self?.id !== self.id
           || this.view.state?.channel.id !== state.channel.id) throw new Error("disconnected");
       if (!this.app) {
-        const app = new ChannelApp(health, state.channel.id, self.id, this.credential, self.name, () => {
+        const app: ChannelApp = new ChannelApp(health, state.channel.id, self.id, this.credential, self.name, () => {
           if (this.app !== app) return;
           this.app = undefined;
           for (const share of this.screenShares.values()) this.forgetInactiveScreen(share.id);
@@ -1083,7 +1084,7 @@ export class ChannelSession {
           if (event.state === "prepared") void this.commitExternalScreen(app, event).catch(() => {});
           if (event.state === "closed") this.forgetInactiveScreen(event.publicationId);
           this.patch({});
-        });
+        }, () => this.app === app && this.view.connection === "connected" && this.voiceParticipation.size > 0);
         this.app = app;
       }
     }
@@ -2539,7 +2540,7 @@ export class ChannelSession {
     const selection = this.sourceSelections.get(roomId), page = selection?.page;
     return page ? { url: page.url, candidates: page.candidates, watchSources: selection?.watchSources } : undefined;
   };
-  selectWatchPage = async (roomId: string, candidateId: string, activityId?: string, reportError = true, mode?: "choose-source"): Promise<boolean> => {
+  selectWatchPage = async (roomId: string, candidateId: string, activityId?: string, reportError = true, mode?: "choose-source" | "original-page"): Promise<boolean> => {
     if (activityId) { await this.selectWatchingPage(activityId, candidateId, reportError); return true; }
     return this.action(`screen:${roomId}`, async () => {
       const selection = this.sourceSelections.get(roomId), page = selection?.page;
@@ -2550,6 +2551,10 @@ export class ChannelSession {
       selection.controller.signal.throwIfAborted();
       const selected = page.candidates.find(value => value.id === candidateId);
       if (!selected) throw new Error("watch_page_unavailable");
+      if (mode === "original-page") {
+        await this.commitWatch(roomId, { kind: "website", url: page.url }, new AppPageMedia(page), selection);
+        return true;
+      }
       // Both opaque players and a failed direct URL retain explicit page-source choices.
       const watchSources: NonNullable<SourceSelection["watchSources"]> = selection.watchSources = { candidateId, choices: [], indexed: [], mpd: [] };
       this.patch({});
@@ -2592,10 +2597,12 @@ export class ChannelSession {
   }
   selectWatchForwardSource = (roomId: string, choiceId: string, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const selection = this.sourceSelections.get(roomId), page = selection?.page;
-    if (!selection || !page || !selection.watchSources?.choices.some(choice => choice.id === choiceId)) throw new Error("watch_page_unavailable");
+    const choice = selection?.watchSources?.choices.find(value => value.id === choiceId);
+    if (!selection || !page || !choice) throw new Error("watch_page_unavailable");
     selection.discovery?.unsubscribe();
     const source = await page.prepareMedia(choiceId, selection.controller.signal);
-    await this.commitPageSuppliedWatch(roomId, page, selection, source);
+    const mediaUrl = source.format === "file" ? directForwardFileURL(choice) : undefined;
+    await this.commitPageSuppliedWatch(roomId, page, selection, source, mediaUrl);
   }, reportError);
   selectWatchIndexedSource = (roomId: string, videoId: string, audioId?: string, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const selection = this.sourceSelections.get(roomId), page = selection?.page;
@@ -2630,9 +2637,9 @@ export class ChannelSession {
     const byteSource = await page.prepareMpdMedia(selected, selection.controller.signal);
     await this.commitPageSuppliedWatch(roomId, page, selection, byteSource);
   }, reportError);
-  private async commitPageSuppliedWatch(roomId: string, page: AppPage, selection: SourceSelection, byteSource: WatchByteSource): Promise<void> {
+  private async commitPageSuppliedWatch(roomId: string, page: AppPage, selection: SourceSelection, byteSource: WatchByteSource, mediaUrl?: string): Promise<void> {
     const media = await preparePageSuppliedWatchMedia(page, byteSource, selection.controller.signal);
-    await this.commitWatch(roomId, { kind: "website", url: page.url }, media, selection, byteSource);
+    await this.commitWatch(roomId, { kind: "website", url: page.url, ...(mediaUrl && { mediaUrl }) }, media, selection, byteSource);
   }
   focusWatch = async (id: string): Promise<void> => {
     const media = this.watchPlayers.get(id)?.media;
@@ -2821,12 +2828,15 @@ export class ChannelSession {
       { hlsDeadlineOwner: "reader", timeline: activity.playback.timeline }), mode);
       return;
     }
-    const embed = youtubeSourceId(activity.source);
-    if (embed && !canWatchInBrowser(activity.source, current)) throw new Error("watch_media_unsupported");
     const url = activity.source.kind === "media" ? activity.source.url : activity.source.mediaUrl;
-    if (!url && !embed) throw new Error("watch_page_required");
-    const format = activity.source.kind === "media" ? directWatchFormat(new URL(activity.source.url)) : undefined;
-    await this.joinWatchMedia(id, embed ? new YouTubeMedia(embed, undefined, true) : new HTMLVideoMedia(url!, format, activity.playback.timeline));
+    if (url) {
+      await this.joinWatchMedia(id, new HTMLVideoMedia(url, directWatchFormat(new URL(url)), activity.playback.timeline));
+      return;
+    }
+    const embed = youtubeSourceId(activity.source);
+    if (!embed) throw new Error("watch_page_required");
+    if (!canWatchInBrowser(activity.source, current)) throw new Error("watch_media_unsupported");
+    await this.joinWatchMedia(id, new YouTubeMedia(embed, undefined, true));
   });
   private async joinWatchMedia(id: string, media: WatchMedia, mode: WatchMode = "direct"): Promise<void> {
     const activity = this.view.state?.watchActivities.find(value => value.id === id);

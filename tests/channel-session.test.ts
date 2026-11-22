@@ -10958,15 +10958,16 @@ test('webpage sharing commits the current top-level URL delivered before selecti
   } finally { session.close(); }
 });
 
-test('selecting a child webpage keeps its updated URL through empty source discovery and explicit confirmation', async () => {
+test.each(['original-page', 'choose-source'] as const)('selecting a child webpage keeps its updated URL in %s mode', async mode => {
   const { session } = await setup(1000, false);
   const pageId = crypto.randomUUID(), candidateId = crypto.randomUUID();
   let confirm!: (state: unknown) => void;
   const ready = { position: 12, paused: false, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] };
   const dispose = vi.fn();
+  const discover = vi.fn(async () => ({ choices: [], indexedCandidates: [], mpdCandidates: [], byteSource: null }));
   const page = new appLink.AppPage(pageId, 'https://video.test/', command => {
     if (command.type === 'page_select') return new Promise(resolve => { confirm = resolve; });
-    if (command.type === 'page_media_sources') return Promise.resolve({ choices: [], indexedCandidates: [], byteSource: null });
+    if (command.type === 'page_media_sources') return discover();
     return Promise.resolve(ready);
   }, dispose, () => {});
   const app = { preparePage: vi.fn(async () => page), stopCaptures: vi.fn(), close: () => page.close() } as unknown as appLink.ChannelApp;
@@ -10975,16 +10976,27 @@ test('selecting a child webpage keeps its updated URL through empty source disco
   const commit = vi.spyOn(session as unknown as { commitWatch(roomId: string, source: unknown, media: unknown, selection: unknown): Promise<void> }, 'commitWatch').mockResolvedValue();
   try {
     await session.prepareWatchPage('first', page.url);
-    page.receive({ type: 'page_candidates', pageId, url: page.url, candidates: [{ id: candidateId, title: 'Child video', url: null, duration: 60 }] });
-    const selecting = session.selectWatchPage('first', candidateId);
-    // Native resolves the selected view before confirming page_select; the homepage stays open.
-    page.receive({ type: 'page_candidates', pageId, url: 'https://video.test/video/child', candidates: [{ id: candidateId, title: 'Child video', url: null, duration: 60 }] });
-    confirm(ready);
-    await expect(selecting).resolves.toBe(false);
-    expect(session.watchPage('first')).toMatchObject({ url: 'https://video.test/video/child', watchSources: { candidateId, choices: [], indexed: [] } });
+    const candidates = [
+      { id: crypto.randomUUID(), title: 'Homepage trailer', url: null, duration: 10 },
+      { id: candidateId, title: 'Child video', url: 'https://media.test/child.mp4', duration: 60 },
+    ];
+    expect(session.watchPage('first')?.candidates).toHaveLength(0);
+    page.receive({ type: 'page_candidates', pageId, url: page.url, candidates });
     expect(commit).not.toHaveBeenCalled();
+    const selecting = session.selectWatchPage('first', candidateId, undefined, false, mode);
+    // Native resolves the selected view before confirming page_select; the homepage stays open.
+    page.receive({ type: 'page_candidates', pageId, url: 'https://video.test/video/child', candidates });
+    confirm(ready);
+    await expect(selecting).resolves.toBe(mode === 'original-page');
+    expect(page.selectedCandidateId).toBe(candidateId);
     expect(dispose).not.toHaveBeenCalled();
-    await session.selectWatchBrowserSource('first', null);
+    if (mode === 'original-page') {
+      expect(discover).not.toHaveBeenCalled();
+    } else {
+      expect(session.watchPage('first')).toMatchObject({ url: 'https://video.test/video/child', watchSources: { candidateId, choices: [], indexed: [] } });
+      expect(commit).not.toHaveBeenCalled();
+      await session.selectWatchBrowserSource('first', null);
+    }
     expect(commit.mock.calls[0]?.[1]).toEqual({ kind: 'website', url: 'https://video.test/video/child' });
   } finally { session.close(); }
 });
@@ -11241,6 +11253,7 @@ test.each(['portable', 'forward'] as const)('a live %s selection keeps the prepa
     const start = socket.sent.findLast(command => command.type === 'start_watch')!;
     expect(start.playback).toMatchObject({ timeline: 'program', position: epoch + 6 });
     expect(start.byteSource).toEqual(mode === 'forward' ? source : undefined);
+    expect(start.source).toEqual({ kind: 'website', url: page.url, ...(mode === 'portable' && { mediaUrl: choice.displayURL }) });
     expect(prepare).toHaveBeenCalledTimes(mode === 'forward' ? 1 : 0);
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch')).toBe(true));
@@ -11997,8 +12010,8 @@ test.each(['direct', 'choice'] as const)('portable %s preparation failure retain
   } finally { session.close(); }
 });
 
-test('a direct URL inspection failure discovers page resources before explicit forwarding commits', async () => {
-  const choice = { id: crypto.randomUUID(), displayURL: 'https://media.test/no-cors.mp4', name: 'Original video', format: 'file' as const };
+test('explicit file forwarding publishes the selected direct URL and retains the App reader', async () => {
+  const choice = { id: crypto.randomUUID(), displayURL: 'https://media.test/no-cors.mp4?signature=fixture', name: 'Original video', format: 'file' as const };
   const discover = vi.fn(async () => ({ choices: [choice], indexedCandidates: [], byteSource: null }));
   const { session, page, candidateId, commit, dispose, socket } = await websiteSourceSelection(discover);
   commit.mockRestore();
@@ -12024,7 +12037,7 @@ test('a direct URL inspection failure discovers page resources before explicit f
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
     const start = socket.sent.findLast(command => command.type === 'start_watch')!;
     expect(prepare).toHaveBeenCalledWith(choice.id, expect.any(AbortSignal));
-    expect(start.source).toEqual({ kind: 'website', url: page.url });
+    expect(start.source).toEqual({ kind: 'website', url: page.url, mediaUrl: choice.displayURL });
     expect(start.byteSource).toEqual(byteSource);
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch')).toBe(true));

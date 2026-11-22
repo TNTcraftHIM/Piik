@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode, t
 import { createPortal } from "react-dom";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
+import { surfaceViewport } from "../../ui/window-appearance";
 import { usePanelWindow, panelWindowAPI, SurfaceDocument, PANEL_SIZE } from "../../ui/panel-window";
 import { Btn } from "./primitives";
 import "./floating-panel.css";
@@ -143,10 +144,9 @@ export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpe
       // Native hiding/adoption can precede React's effect cleanup. Only this
       // document's visible panel can update its remembered in-page position.
       if (panel.ownerDocument !== document || !panel.matches(":popover-open")) return;
-      const layout = document.documentElement;
-      const width = viewport?.width ?? layout.clientWidth, height = viewport?.height ?? layout.clientHeight;
-      const maxWidth = Math.max(0, width - 24), maxHeight = Math.max(0, height - 24);
-      const left = (viewport?.offsetLeft ?? 0) + 12, top = (viewport?.offsetTop ?? 0) + 12;
+      const bounds = surfaceViewport(panel.ownerDocument);
+      const maxWidth = Math.max(0, bounds.width - 24), maxHeight = Math.max(0, bounds.height - 24);
+      const left = bounds.left + 12, top = bounds.top + 12;
       let point = change && "x" in change ? change : undefined;
       if (change && "corner" in change) {
         const { rect, corner, dx, dy } = change;
@@ -180,8 +180,7 @@ export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpe
     // movement owner. Retargeting an open palette must not undo a user's drag.
     const anchor = anchorOnOpen && getTrigger()?.getBoundingClientRect();
     if (anchor) {
-      const top = (viewport?.offsetTop ?? 0) + 12;
-      const bottom = top + (viewport?.height ?? document.documentElement.clientHeight) - 24;
+      const bottom = surfaceViewport(panel.ownerDocument).bottom - 12;
       const below = anchor.bottom + 8;
       place({ x: anchor.x + anchor.width / 2 - panel.offsetWidth / 2,
         y: below + panel.offsetHeight <= bottom ? below : anchor.top - panel.offsetHeight - 8 });
@@ -189,6 +188,7 @@ export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpe
     viewport?.addEventListener("resize", resize);
     viewport?.addEventListener("scroll", resize);
     window.addEventListener("resize", resize);
+    document.addEventListener("fullscreenchange", resize);
     // Content changes keep the chosen top-left corner; viewport changes above
     // retain relative placement. Both still constrain the panel to the viewport.
     const observer = new ResizeObserver(() => place({ x: panel.offsetLeft, y: panel.offsetTop }));
@@ -199,6 +199,7 @@ export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpe
       viewport?.removeEventListener("resize", resize);
       viewport?.removeEventListener("scroll", resize);
       window.removeEventListener("resize", resize);
+      document.removeEventListener("fullscreenchange", resize);
       observer.disconnect();
     };
   }, [open, trigger, compact, anchorOnOpen, detached]);

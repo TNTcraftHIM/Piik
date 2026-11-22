@@ -205,7 +205,8 @@ describe("Webpage watch presentation", () => {
     expect(html).toContain(t("en", "watch.browserSource.originalHelp"));
     expect(html.indexOf(t("en", "watch.browserSource.originalHelp"))).toBeLessThan(html.indexOf('aria-label="Share original webpage only"'));
     expect(html.includes('aria-label="Play Owned video in Piik"')).toBe(direct);
-    expect(html.includes('aria-label="Forward Owned video"')).toBe(direct);
+    expect(html.includes(`aria-label="${t("en", "watch.forward.shareFile")}"`)).toBe(direct);
+    expect(html.includes(t("en", "watch.forward.shareFileHelp"))).toBe(direct);
   });
 
 

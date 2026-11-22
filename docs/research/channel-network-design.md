@@ -300,6 +300,14 @@ volume and mute follow the viewer across the retry. While a viewer chooses a
 player on the original webpage, the current player retains its subscription.
 The candidate replaces it after media readiness and room confirmation.
 
+For an explicitly selected complete file, the App may retain its byte source
+and publish the matching media URL in the same activity. Each viewer tries
+that URL independently. A viewer that chooses the offered forwarding path
+adds byte demand; other viewers keep loading from the origin. Clearing the
+byte source retires those transfers without ending direct playback. The
+media element can load an ordinary cross-origin file even when a script cannot
+read its bytes. Manifest-based formats retain their own fetch and timeline rules.
+
 When a discovered media URL loads in the sharer's Browser player, that player
 owns playback in the Piik stage. Prepare it before replacing the current share;
 retire the discovery page after the room confirms the new activity. Loading

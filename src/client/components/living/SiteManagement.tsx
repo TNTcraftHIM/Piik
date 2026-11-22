@@ -2,7 +2,7 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 import { BackButton, Btn, Pill } from "./primitives";
 import { Glyph } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
-import { siteEntryURL } from "../../lib/site-address";
+import { siteEntryError, siteEntryURL } from "../../lib/site-address";
 import { isStartupSite, type AppMode } from "../../lib/app-launch";
 import type { SiteBookmark } from "../../lib/site-address";
 import "./site-management.css";
@@ -76,7 +76,7 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
       }
       setDetail(undefined);
     } catch (error) {
-      setBookmarkError(error instanceof Error && error.message === "bookmark_exists" ? "client.bookmarks.duplicate" : "client.connect.saveFailed");
+      setBookmarkError(error instanceof Error && error.message === "bookmark_exists" ? "client.bookmarks.duplicate" : siteEntryError(error instanceof Error && error.message) ?? "client.connect.saveFailed");
     } finally { setPending(undefined); }
   }
   // Device-operation failures belong to the caller's accessError.

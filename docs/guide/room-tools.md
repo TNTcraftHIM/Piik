@@ -28,8 +28,8 @@ then choose grid or focus. The grid arranges separate screens to fit the window;
 focus keeps the other pictures available. Stopping one picture keeps the others playing.
 
 Changing interfaces keeps current shares, watches, drafts and joined voice.
-Joined voice retains its controls and leave action. Switch back to **Full workspace**
-for the room directory and wider administration. **Invitation → Access settings**
+Joined voice retains its controls and leave action. In either view, open **Rooms**
+to create or select a room. **Invitation → Access settings**
 opens the existing room settings in either view. The browser remembers your choice.
 
 ## Manage a room
@@ -163,6 +163,14 @@ You can join voice in more than one room. When several are joined, use the voice
 room selector to choose which room's microphone, listening and leave controls
 you are changing. Switching the conversation or stopping a picture does not
 leave those voice rooms. Leave each room when you are finished.
+
+**Ctrl+Shift+M** toggles your microphone; **Ctrl+Shift+D** toggles listening.
+On macOS, use **Command** instead of Ctrl. Both act on the room selected in the
+voice controls. Change or clear a binding in **Voice settings → Keyboard shortcuts**;
+press Esc to cancel recording. Page shortcuts work while Piik or its room tool
+has focus. Text entry and remote keyboard control take priority.
+With a supported Windows App connected, enable **Allow shortcuts in other apps**.
+Each binding shows whether Windows registered it.
 
 Browser microphone access requires a secure context, such as accepted HTTPS
 or localhost. The [App reference](../../prototype/channel-server/README.md#local-app-link)

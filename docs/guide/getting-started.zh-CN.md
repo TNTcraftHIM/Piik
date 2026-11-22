@@ -104,8 +104,8 @@
 ### 版本升级
 
 先阅读 3.0 内测包附带的升级说明；没有另行要求时，沿用原数据目录，更新 App 后刷新所用网页。
-提示 `unsupported_storage_version` 或 `unsupported_domain_checkpoint` 时，保留旧数据，
-按[存储格式排查](./troubleshooting.zh-CN.md#内测-app-提示-unsupportedstorageversion)处理。
+提示 `unsupported_storage_version` 或 `unsupported_domain_checkpoint` 时，按
+[内测数据重置步骤](./troubleshooting.zh-CN.md#内测-app-提示-unsupportedstorageversion)重新开始。
 公开的 2.x 下载不是本次 3.0 内测更新。
 
 ## 使用已有站点分享

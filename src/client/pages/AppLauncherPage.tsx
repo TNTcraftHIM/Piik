@@ -21,7 +21,7 @@ import { useReleaseUpdate } from "../lib/use-release-update";
 import { AppSiteBookmarks } from "./AppSiteBookmarks";
 import type { SiteManagementProps } from "../components/living/SiteManagement";
 import { downloadBlob } from "../lib/download";
-import { publicSiteOrigin } from "../lib/site-address";
+import { openLauncherSite, publicSiteOrigin } from "../lib/site-address";
 
 const localCertificateSchema = z.object({ origin: z.string().url(), sha256Fingerprint: z.string().regex(/^[A-Fa-f0-9]{64}$/) });
 const launcherStateSchema = z.object({
@@ -146,9 +146,11 @@ export function AppLauncherPage() {
         setError(previous => state.detail ? { kind: "launch", reason: state.reason, detail: state.detail }
           : state.target || previous?.kind === "load" ? null : previous);
         setLoading(false);
+        // External startup is opened by the launcher's site-navigation controls.
+        if (state.startupSite && !state.startupMode) enterOnReady = false;
         if (enterOnReady && (state.target || state.detail)) {
           enterOnReady = false;
-          if (state.target) window.location.replace(launchURL(state.target, { debug: state.debug === true, controlPort: state.controlPort }));
+          if (state.target) void enterOwnedSite(launchURL(state.target, { debug: state.debug === true, controlPort: state.controlPort }), state.windowNavigation);
         }
         if (state.starting) timer = setTimeout(() => void readState(), 750);
       })
@@ -219,6 +221,12 @@ export function AppLauncherPage() {
     return clientLaunchURL(target, presentation, settings.debug, settings.controlPort);
   }
 
+  async function enterOwnedSite(url: string, integrated: boolean): Promise<void> {
+    if (!integrated) { window.location.replace(url); return; }
+    try { await openLauncherSite(url); }
+    catch { setError({ kind: "launch" }); setLaunching(false); }
+  }
+
   function changeMode(next: AppMode): void {
     setMode(next);
     savePreferredAppMode(next);
@@ -258,7 +266,7 @@ export function AppLauncherPage() {
         return;
       }
       const result = launcherResultSchema.parse(await response.json());
-      window.location.replace(launchURL(result.target));
+      await enterOwnedSite(launchURL(result.target), windowNavigation);
     } catch {
       setError({ kind: "launch" });
       setLaunching(false);
@@ -418,7 +426,7 @@ export function AppLauncherPage() {
           bookmarks={navigation.bookmarks} bookmarksError={navigation.loadError} onRetryBookmarks={navigation.retry}
           onOpenBookmark={navigation.open} onManageBookmarks={navigation.manage}
           ready={!!target} starting={starting} invitationForm={navigation.invitationForm} footer={footer}
-          localSiteAction={target ? <a className="lr-btn is-primary" href={launchURL(target)}>
+          localSiteAction={target ? <a className="lr-btn is-primary" href={launchURL(target)} onClick={event => { event.preventDefault(); void enterOwnedSite(event.currentTarget.href, windowNavigation); }}>
             <Glyph name="arrowRight" size={19} /><span className="lr-cap">{t("client.connect.continue")}</span>
           </a> : <Btn icon="arrowRight" title="client.launch.configure" cap="client.launch.configure" busy={starting} disabled={starting}
             onClick={() => setPanel("launch")} />}
@@ -438,6 +446,7 @@ export function AppLauncherPage() {
         {starting ? <LoadingStatus label="client.launch.starting" waitingCaption /> : <form className="c3-settings-panels lr-client-launch-panel" onSubmit={launch}>
           <SiteStartControls mode={mode} onModeChange={changeMode} roomError={roomError}
             target={target} localCertificate={localCertificate} entryURL={launchURL}
+            onOpen={event => { event.preventDefault(); void enterOwnedSite(event.currentTarget.href, windowNavigation); }}
             port={sitePort === undefined ? undefined : { value: sitePort, onChange: setPortDraft }}
             publicEntry={localAddress ? { ...publicEntry, localAddress,
               error: publicEntryError ? t("client.launch.invalidPublicAddress") : undefined,

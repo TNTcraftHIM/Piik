@@ -84,7 +84,7 @@ function collect(node: ts.Node): void {
   if (ts.isVariableDeclaration(node) && /^(?:launcher.*|localCertificate)Schema$/.test(node.name.getText(source))) {
     declarations.push(`const ${node.getText(source)};`);
   }
-  if (ts.isFunctionDeclaration(node) && ["beginStateChange", "changeMode", "changeSite", "manageSite", "approveSite", "enableDebug", "exportDebug", "launchURL", "launch"].includes(node.name?.text ?? "")) {
+  if (ts.isFunctionDeclaration(node) && ["beginStateChange", "changeMode", "changeSite", "manageSite", "approveSite", "enableDebug", "exportDebug", "launchURL", "enterOwnedSite", "launch"].includes(node.name?.text ?? "")) {
     declarations.push(node.getText(source));
   }
   if (ts.isCallExpression(node) && node.expression.getText(source) === "useEffect"
@@ -143,7 +143,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, { debug = false, mode, startup =
   const actions = runInNewContext(executable, {
     ...setters, z, fetch, window, URLSearchParams, AbortController, downloadBlob: downloads,
     stateChanges: { current: { revision: 0, pending: 0 } },
-    siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, startupSite: saved.startupSite, openOnApproval: false,
+    windowNavigation: false, siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, startupSite: saved.startupSite, openOnApproval: false,
     mode: initialMode, lang: "en", appDebug: debug, lan: saved.lan, sitePort: saved.sitePort, savePreferredAppMode,
     publicEntry: { existing: publicOrigin !== undefined, origin: publicOrigin ?? "" }, publicSiteOrigin,
     consoleLanguage: () => "en", clientLaunchURL, currentThemePreference: () => null, hasCopyPreference: () => false,

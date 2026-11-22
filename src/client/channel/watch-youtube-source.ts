@@ -52,7 +52,8 @@ export function youtubeSourceId(source: { kind: string; url: string }): string |
 }
 
 export function canWatchInBrowser(source: WatchSource, current?: Pick<WatchPlayer, "presentation" | "mode">): boolean {
-  if (!youtubeSourceId(source)) return source.kind === "media" || !!source.mediaUrl;
+  if (source.kind === "media" || source.mediaUrl) return true;
+  if (!youtubeSourceId(source)) return false;
   const replacingPage = current?.presentation.kind === "external" && current.mode === "direct";
   return !replacingPage || canMoveYouTubePlayer();
 }

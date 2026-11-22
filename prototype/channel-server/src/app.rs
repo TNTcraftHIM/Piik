@@ -15,6 +15,8 @@ mod sites;
 mod tunnel;
 #[path = "app_update.rs"]
 pub mod update;
+#[path = "app_voice_shortcuts.rs"]
+mod voice_shortcuts;
 #[path = "app_whip.rs"]
 mod whip;
 
@@ -97,16 +99,6 @@ pub struct Config {
     pub ice_servers: Vec<Value>,
     pub update: update::Config,
 }
-fn entry_url(site: &str, port: u16) -> Result<String> {
-    if site.is_empty() {
-        return Ok(format!("http://127.0.0.1:{port}/client"));
-    }
-    let mut url = url::Url::parse(&site)?;
-    url.query_pairs_mut()
-        .append_pair("piik-client-port", &port.to_string());
-    url.set_fragment(Some("piik-client=1"));
-    Ok(url.into())
-}
 struct Permission {
     data_id: Uuid,
     revoked: watch::Sender<bool>,
@@ -173,6 +165,7 @@ struct App {
     closing: watch::Sender<bool>,
     launch: Mutex<Option<hosted::Launch>>,
     desktop: Desktop,
+    voice_shortcuts: voice_shortcuts::Owner,
     external_inputs: whip::Inputs,
     update: update::Owner,
     capture_targets: CaptureTargetReader,
@@ -432,11 +425,10 @@ pub async fn serve(
     let owner = lock_directory(&config.data_root)?;
     let sites = sites::Sites::open(&config.data_root)?;
     let startup_intent = sites.startup()?;
-    let entry = match &startup_intent {
-        sites::StartupIntent::External(site) => entry_url(site, address.port())?,
-        sites::StartupIntent::Owned(_) => format!("{}?start=1", entry_url("", address.port())?),
-        sites::StartupIntent::None => entry_url("", address.port())?,
-    };
+    let mut entry = format!("http://{address}/client");
+    if !matches!(startup_intent, sites::StartupIntent::None) {
+        entry.push_str("?start=1");
+    }
     let open_browser = config.open_browser;
     let terminal_enabled = (config.open_browser || ready.is_some()) && config.page_player.is_none()
         && std::env::var_os("PIIK_CHANNEL_APP_NO_BROWSER").is_none();
@@ -456,6 +448,7 @@ pub async fn serve(
         external_inputs: whip::Inputs::default(),
         capture_targets: CaptureTargetReader::default(),
         capture_microphones: CaptureTargetReader::default(),
+        voice_shortcuts: voice_shortcuts::Owner::default(),
         config,
         port: address.port(),
         token: Uuid::new_v4().to_string(),
@@ -789,6 +782,9 @@ async fn health(State(app): State<Arc<App>>) -> Json<Value> {
     if app.config.page_player.is_some() {
         state["pagePlayer"] = json!(true);
     }
+    if voice_shortcuts::AVAILABLE {
+        state["backgroundVoiceShortcuts"] = json!(true);
+    }
     #[cfg(feature = "capture")]
     if piik_channel_native::peer::supports_external_input() {
         state["externalScreenInputAvailable"] = json!(true);
@@ -877,19 +873,21 @@ async fn save_bookmark(
     if origin.len() > 4096 || name.encode_utf16().count() > 40 {
         return Err(invalid_request("Invalid bookmark"));
     }
-    let registry = app.registry.lock().await;
-    if let Some(id) = request.id {
-        if !registry
-            .sites
-            .bookmarks()
-            .map_err(operation_failure)?
-            .iter()
-            .any(|entry| entry.id == id)
-        {
-            return Err((
-                StatusCode::NOT_FOUND,
-                Json(json!({"detail":"Bookmark not found"})),
-            ));
+    let mut registry = app.registry.lock().await;
+    let saved = |registry: &Registry| {
+        request.id.map(|id| {
+            registry.sites.bookmarks().map_err(operation_failure)?.into_iter()
+                .find(|entry| entry.id == id)
+                .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"detail":"Bookmark not found"}))))
+        }).transpose()
+    };
+    let previous = saved(&registry)?;
+    if previous.as_ref().is_none_or(|entry| entry.origin != origin) {
+        drop(registry);
+        verify_launcher_site(&app, &origin).await?;
+        registry = app.registry.lock().await;
+        if saved(&registry)? != previous {
+            return Err((StatusCode::PRECONDITION_FAILED, Json(json!({"detail":"Bookmark changed"}))));
         }
     }
     let bookmark = sites::Bookmark {
@@ -921,6 +919,37 @@ async fn delete_bookmark(State(app): State<Arc<App>>, Path(id): Path<Uuid>) -> A
         json!({"bookmarks":registry.sites.bookmarks().map_err(operation_failure)?}),
     ))
 }
+// Check the public marker without sending invitation parameters or App credentials.
+async fn verify_launcher_site(app: &App, origin: &str) -> std::result::Result<(), (StatusCode, Json<Value>)> {
+    // An active LAN listener and the loopback listener serve the same App-owned domain.
+    // Its ephemeral HTTPS certificate belongs to that listener only.
+    let local = app.registry.lock().await.local.as_ref()
+        .filter(|local| matches!(local.request.mode, hosted::Mode::Local) && local.invitation == origin)
+        .map(|local| local.origin.clone());
+    verify_site(local.as_deref().unwrap_or(origin)).await
+}
+
+async fn verify_site(origin: &str) -> std::result::Result<(), (StatusCode, Json<Value>)> {
+    let unavailable = || (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"detail":"site_unavailable"})));
+    let mismatch = || (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({"detail":"not_piik_site"})));
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(IO_TIMEOUT)
+        .build()
+        .map_err(|_| unavailable())?;
+    let mut response = client.get(format!("{origin}/healthz")).send().await.map_err(|_| unavailable())?;
+    if response.status() == StatusCode::NOT_FOUND {
+        return Err(mismatch());
+    }
+    if response.status() != StatusCode::OK {
+        return Err(unavailable());
+    }
+    let mut expected = crate::domain::HEALTH_MARKER.as_bytes();
+    while let Some(chunk) = response.chunk().await.map_err(|_| unavailable())? {
+        expected = expected.strip_prefix(chunk.as_ref()).ok_or_else(mismatch)?;
+    }
+    if expected.is_empty() { Ok(()) } else { Err(mismatch()) }
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct OpenWindow {
@@ -936,11 +965,9 @@ async fn open_window(State(app): State<Arc<App>>, Json(request): Json<OpenWindow
     {
         return Err(invalid_request("Invalid site URL"));
     }
+    verify_launcher_site(&app, &url.origin().ascii_serialization()).await?;
     let Some(navigate) = &app.config.window_navigation else {
-        return Err((
-            StatusCode::NOT_IMPLEMENTED,
-            Json(json!({"detail":"Window navigation is not supported"})),
-        ));
+        return Ok(Json(json!({"opened":false})));
     };
     if !navigate(request.url) {
         return Err((
@@ -1248,6 +1275,7 @@ enum Operation {
         publication_id: Uuid,
         key: u8,
     },
+    VoiceShortcuts(voice_shortcuts::Settings),
     #[serde(untagged)]
     Page(page::Operation),
 }
@@ -1518,6 +1546,7 @@ async fn connection(
             }
         };
         let processing = async {
+            let mut voice_shortcuts = app.voice_shortcuts.connect();
             let (page_events, mut page_queue) = mpsc::channel(64);
             let pages = Arc::new(page::Connection::for_site(
                 app.config.page_player.clone(),
@@ -1578,6 +1607,10 @@ async fn connection(
                 captures.retain(|_, capture| capture.pending.is_some() || capture.active.is_some());
                 let message = tokio::select! {
                     _ = pages.overflowed() => return Err(anyhow!("page_player_event_queue_full")),
+                    event = voice_shortcuts.next() => {
+                        timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                        continue;
+                    }
                     Some(event) = page_queue.recv() => {
                         if event["type"] == "page_closed" { if let Some(id)=event["pageId"].as_str().and_then(|id|Uuid::parse_str(id).ok()){pages.stop_media(id);} }
                         timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
@@ -1914,7 +1947,7 @@ async fn connection(
                     .get("id")
                     .and_then(Value::as_str)
                     .filter(|id| !id.is_empty() && id.len() <= 256);
-                let response = match (id, serde_json::from_value::<Request>(value.clone())) {
+                let response = match (id, serde_json::from_str::<Request>(&text)) {
                     (Some(_), Ok(request)) => {
                         let result: Result<Value> = match request.operation {
                             Operation::PrepareExternalInput {
@@ -2689,6 +2722,15 @@ async fn connection(
                                     Err(error) => Err(error),
                                 }
                             }
+                            Operation::VoiceShortcuts(settings) => {
+                                if host.is_none() {
+                                    Err(anyhow!("hello_required"))
+                                } else {
+                                    // This loop writes the report before polling the new registration's events.
+                                    voice_shortcuts.configure(settings)
+                                        .and_then(|report| Ok(serde_json::to_value(report)?))
+                                }
+                            }
                         };
                         control_reply(request.id, result)
                     }
@@ -2969,6 +3011,9 @@ mod lifecycle_tests {
         let site = "https://owned.test".to_string();
         let key = (site.clone(), Uuid::from_u128(1), Uuid::from_u128(2));
         let permission = Arc::new(Permission::new(Uuid::from_u128(3)));
+        let other_site = "https://other.test".to_string();
+        let other_key = (other_site.clone(), key.1, key.2);
+        let other_permission = Arc::new(Permission::new(Uuid::from_u128(4)));
         let (commands, mut receiver) = mpsc::channel(1);
         let (ready, admitted) = watch::channel(None);
         let (stop, mut stopped) = watch::channel(false);
@@ -2985,6 +3030,17 @@ mod lifecycle_tests {
             stop: stop.clone(),
             task: tokio::spawn(async move {
                 let _ = stopped.changed().await;
+                Ok(())
+            }),
+        };
+        let mut other_stopped = stop.subscribe();
+        let other_host = Host {
+            credential: "owned".into(),
+            commands: commands.clone(),
+            ready: watch::channel(Some(Ok(()))).1,
+            stop: stop.clone(),
+            task: tokio::spawn(async move {
+                let _ = other_stopped.changed().await;
                 Ok(())
             }),
         };
@@ -3005,8 +3061,11 @@ mod lifecycle_tests {
             token: "owned".into(),
             registry: Mutex::new(Registry {
                 sites: sites::Sites::open(directory.path()).unwrap(),
-                approvals: BTreeMap::from([(site.clone(), permission.clone())]),
-                hosts: BTreeMap::from([(key.clone(), host)]),
+                approvals: BTreeMap::from([
+                    (site.clone(), permission.clone()),
+                    (other_site.clone(), other_permission),
+                ]),
+                hosts: BTreeMap::from([(key.clone(), host), (other_key, other_host)]),
                 local: None,
             }),
             closing: watch::channel(false).0,
@@ -3035,6 +3094,7 @@ mod lifecycle_tests {
                 })),
                 ..Default::default()
             },
+            voice_shortcuts: voice_shortcuts::Owner::default(),
             update: update::Owner::disabled(),
         });
         // The Native readiness producer is held before Welcome/bindings. Restoring
@@ -3154,6 +3214,42 @@ mod lifecycle_tests {
                 serde_json::from_str::<Value>(hello.to_text().unwrap()).unwrap(),
                 json!({"id":"hello","result":null})
             );
+            if voice_shortcuts::AVAILABLE {
+                let exchange =
+                    async |socket: &mut tokio_tungstenite::WebSocketStream<_>, request: Value| {
+                        socket
+                            .send(WsMessage::Text(request.to_string().into()))
+                            .await
+                            .unwrap();
+                        let reply = timeout(IO_TIMEOUT, socket.next()).await.unwrap().unwrap().unwrap();
+                        serde_json::from_str::<Value>(reply.to_text().unwrap()).unwrap()
+                    };
+                let enable = json!({
+                    "id":"voice","type":"voice_shortcuts","enabled":true,"microphone":null,"listening":null
+                });
+                let result = json!({"id":"voice","result":{"microphone":"unbound","listening":"unbound"}});
+                assert_eq!(exchange(&mut socket, enable.clone()).await, result);
+
+                let mut other_request = request.clone();
+                let other_origin = if revoke { &other_site } else { &site };
+                other_request.headers_mut().insert("Origin", other_origin.parse().unwrap());
+                let (mut other, _) = connect_async(other_request).await.unwrap();
+                assert_eq!(
+                    exchange(&mut other, json!({
+                        "id":"hello","type":"hello","channelId":key.1,
+                        "userId":key.2,"credential":"owned","name":"Other tab"
+                    })).await,
+                    json!({"id":"hello","result":null})
+                );
+                let mut disable = enable.clone();
+                disable["enabled"] = json!(false);
+                assert_eq!(exchange(&mut other, disable).await, result);
+                assert_eq!(
+                    exchange(&mut other, enable).await,
+                    json!({"id":"voice","error":"voice_shortcuts_in_use"})
+                );
+                other.close(None).await.unwrap();
+            }
             // A previously approved control remains valid while its Native Host
             // loses admission. Identity reads do not reuse the readiness gate.
             ready.send_replace(None);
@@ -3247,6 +3343,12 @@ mod lifecycle_tests {
                 .unwrap() else { panic!("pending local endpoint read expected") };
             timeout(IO_TIMEOUT, result.closed()).await.unwrap();
             assert!(!*stop.borrow(), "control retirement stopped its independent Host");
+            if voice_shortcuts::AVAILABLE {
+                let settings = serde_json::from_value(json!({
+                    "enabled":true,"microphone":null,"listening":null
+                })).unwrap();
+                assert!(app.voice_shortcuts.connect().configure(settings).is_ok());
+            }
         }
         timeout(IO_TIMEOUT, app.shutdown()).await.unwrap();
         assert!(*stop.borrow());
@@ -3384,6 +3486,7 @@ mod lifecycle_tests {
             external_inputs: whip::Inputs::default(),
             capture_targets: CaptureTargetReader::default(),
             capture_microphones: CaptureTargetReader::default(),
+            voice_shortcuts: voice_shortcuts::Owner::default(),
             update: update::Owner::disabled(),
         });
         let server_app = app.clone();
@@ -3536,6 +3639,71 @@ mod lifecycle_tests {
     };
 
     #[tokio::test]
+    async fn external_startup_checks_the_site_before_opening_it() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let directory = tempfile::tempdir().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let site = format!("http://{}", listener.local_addr().unwrap());
+        let mut sites = sites::Sites::open(directory.path()).unwrap();
+        let bookmark = sites::Bookmark { id: Uuid::new_v4(), origin: site.clone(), name: "Old".into() };
+        sites.save_bookmark(&bookmark).unwrap();
+        sites.approve(&site, true, false).unwrap();
+        sites.set_startup(&sites::StartupIntent::External(site.clone())).unwrap();
+        drop(sites);
+        let release = Arc::new(tokio::sync::Notify::new());
+        let waiting = Arc::new(tokio::sync::Notify::new());
+        let gate = release.clone();
+        let requested = waiting.clone();
+        let fixture = tokio::spawn(async move {
+            let routes = Router::new().route("/healthz", get(move || async move {
+                requested.notify_one();
+                gate.notified().await;
+                "ordinary page"
+            }));
+            axum::serve(listener, routes).await.unwrap();
+        });
+        let config = Config {
+            data_root: directory.path().into(), assets: directory.path().into(),
+            open_browser: false, terminal_notice: None, page_player: None,
+            website_permission_reset: None, window_navigation: None,
+            cloudflared: PathBuf::new(), ice_servers: vec![], update: Default::default(),
+        };
+        let (ready, entry) = oneshot::channel();
+        let (stop, stopped) = oneshot::channel();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let service = tokio::spawn(serve(listener, config, async { let _ = stopped.await; }, Some(ready)));
+        let client = reqwest::Client::builder().timeout(Duration::from_secs(2)).build().unwrap();
+        let health = || client.get(format!("{origin}/health")).header("Origin", &site).send();
+        assert_eq!(health().await.expect("local health independent of startup site").status(), StatusCode::OK);
+        assert_eq!(entry.await.unwrap(), format!("{origin}/client?start=1"));
+        let state = client.get(format!("{origin}/api/client-launcher")).send().await.unwrap();
+        let state: Value = serde_json::from_slice(&state.bytes().await.unwrap()).unwrap();
+        assert_eq!(state["startupSite"], site);
+        let navigation = tokio::spawn(reqwest::Client::new().post(format!("{origin}/api/client-launcher/open"))
+            .header("Origin", &origin).header("Content-Type", "application/json")
+            .body(json!({"url":site}).to_string()).send());
+        timeout(Duration::from_secs(2), waiting.notified()).await.unwrap();
+        assert_eq!(health().await.unwrap().status(), StatusCode::OK);
+        release.notify_one();
+        let rejected = navigation.await.unwrap().unwrap();
+        assert_eq!(rejected.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let detail: Value = serde_json::from_slice(&rejected.bytes().await.unwrap()).unwrap();
+        assert_eq!(detail["detail"], "not_piik_site");
+        fixture.abort();
+        let _ = fixture.await;
+        let renamed = reqwest::Client::new().post(format!("{origin}/api/client-launcher/bookmarks"))
+            .header("Origin", &origin).header("Content-Type", "application/json")
+            .body(json!({"id":bookmark.id, "origin":site, "name":"Offline rename"}).to_string())
+            .send().await.unwrap();
+        assert_eq!(renamed.status(), StatusCode::OK);
+        let result: Value = serde_json::from_slice(&renamed.bytes().await.unwrap()).unwrap();
+        assert_eq!(result["bookmarks"][0]["name"], "Offline rename");
+        stop.send(()).unwrap();
+        service.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
     async fn bookmarks_and_window_navigation_are_local_and_keep_separate_authority() {
         let _ = rustls::crypto::ring::default_provider().install_default();
         use std::sync::{
@@ -3546,7 +3714,15 @@ mod lifecycle_tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let local = format!("http://{address}");
-        let remote = "https://friend.example";
+        let site_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let site_origin = format!("http://{}", site_listener.local_addr().unwrap());
+        let remote = site_origin.as_str();
+        let lan = web::LanHttps::bind("127.0.0.1".parse().unwrap(), 0).await.unwrap();
+        let lan_origin = lan.origin().to_owned();
+        let domain = crate::domain::Domain::open(
+            &directory.path().join("domain"), "owner", site_origin.clone(), Some(lan_origin.clone()), vec![],
+        ).unwrap();
+        let site = tokio::spawn(domain.serve_with_https(site_listener, Some(lan), Router::new(), std::future::pending()));
         let mut sites = sites::Sites::open(directory.path()).unwrap();
         let permission = Arc::new(Permission::new(sites.approve(remote, true, false).unwrap()));
         sites
@@ -3591,6 +3767,7 @@ mod lifecycle_tests {
             external_inputs: whip::Inputs::default(),
             capture_targets: CaptureTargetReader::default(),
             capture_microphones: CaptureTargetReader::default(),
+            voice_shortcuts: voice_shortcuts::Owner::default(),
             update: update::Owner::disabled(),
         });
         let router = Router::new()
@@ -3692,7 +3869,7 @@ mod lifecycle_tests {
                 .status(),
             StatusCode::CONFLICT
         );
-        let invitation = "https://friend.example/rooms/abc?view=screen#invite=secret";
+        let invitation = format!("{remote}/rooms/abc?view=screen#invite=secret");
         let open = format!("{local}/api/client-launcher/open");
         assert_eq!(
             client
@@ -3718,7 +3895,7 @@ mod lifecycle_tests {
                 .status(),
             StatusCode::OK
         );
-        assert_eq!(*navigations.lock().unwrap(), vec![invitation]);
+        assert_eq!(*navigations.lock().unwrap(), vec![invitation.as_str()]);
         for url in [
             "javascript:alert(1)",
             "file:///private",
@@ -3750,6 +3927,28 @@ mod lifecycle_tests {
                 .status(),
             StatusCode::SERVICE_UNAVAILABLE
         );
+        for (reply, expected) in [
+            (axum::response::Html("<html>Ordinary website</html>").into_response(), StatusCode::UNPROCESSABLE_ENTITY),
+            (axum::response::Redirect::temporary(remote).into_response(), StatusCode::SERVICE_UNAVAILABLE),
+            (StatusCode::SERVICE_UNAVAILABLE.into_response(), StatusCode::SERVICE_UNAVAILABLE),
+        ] {
+            let fixture = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let origin = format!("http://{}", fixture.local_addr().unwrap());
+            let status = reply.status();
+            let headers = reply.headers().clone();
+            let body = axum::body::to_bytes(reply.into_body(), 1024).await.unwrap();
+            let server = tokio::spawn(async move {
+                let routes = Router::new().route("/healthz", get(move || async move { (status, headers, body) }));
+                axum::serve(fixture, routes).await.unwrap();
+            });
+            for (endpoint, request) in [(&open, json!({"url":origin})), (&endpoint, json!({"origin":origin,"name":"Other"}))] {
+                let response = client.post(endpoint).header("Origin", &local)
+                    .header("Content-Type", "application/json").body(request.to_string()).send().await.unwrap();
+                assert_eq!(response.status(), expected);
+            }
+            server.abort();
+            let _ = server.await;
+        }
         let current = client
             .get(&endpoint)
             .header("Origin", &local)
@@ -3790,6 +3989,22 @@ mod lifecycle_tests {
             &permission
         ));
         drop(registry);
+        // The very same self-signed entry is unavailable externally and verifiable while App-owned.
+        assert_eq!(verify_site(&lan_origin).await.unwrap_err().0, StatusCode::SERVICE_UNAVAILABLE);
+        app.registry.lock().await.local = Some(LocalSite {
+            origin: site_origin.clone(), invitation: lan_origin.clone(),
+            request: serde_json::from_value(json!({"mode":"local"})).unwrap(),
+            permission: Arc::new(Permission::new(Uuid::new_v4())),
+        });
+        available.store(true, Ordering::Relaxed);
+        for (route, body) in [(&endpoint, json!({"origin":lan_origin,"name":"LAN"})), (&open, json!({"url":lan_origin}))] {
+            let response = client.post(route).header("Origin", &local).header("Content-Type", "application/json")
+                .body(body.to_string()).send().await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+        assert_eq!(navigations.lock().unwrap().last(), Some(&lan_origin));
+        site.abort();
+        let _ = site.await;
         server.abort();
         let _ = server.await;
     }
@@ -3831,6 +4046,7 @@ mod lifecycle_tests {
             external_inputs: whip::Inputs::default(),
             capture_targets: CaptureTargetReader::default(),
             capture_microphones: CaptureTargetReader::default(),
+            voice_shortcuts: voice_shortcuts::Owner::default(),
             update: update::Owner::disabled(),
         });
         let router = Router::new()
@@ -4018,6 +4234,7 @@ mod lifecycle_tests {
                 external_inputs: whip::Inputs::default(),
                 capture_targets: CaptureTargetReader::default(),
                 capture_microphones: CaptureTargetReader::default(),
+                voice_shortcuts: voice_shortcuts::Owner::default(),
                 update: update::Owner::disabled(),
             })
         };
@@ -4241,6 +4458,7 @@ mod lifecycle_tests {
             external_inputs: whip::Inputs::default(),
             capture_targets: CaptureTargetReader::default(),
             capture_microphones: CaptureTargetReader::default(),
+            voice_shortcuts: voice_shortcuts::Owner::default(),
             update: update::Owner::disabled(),
         });
         // Observe the actual HTTP handler future being dropped, without replacing
@@ -4361,6 +4579,23 @@ mod lifecycle_tests {
 #[cfg(all(test, feature = "capture"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn voice_shortcut_wire_requires_explicit_slots_and_strict_bindings() {
+        let valid = r#"{"id":"1","type":"voice_shortcuts","enabled":true,"microphone":null,"listening":{"key":"F10","ctrl":true,"alt":false,"shift":true,"meta":false}}"#;
+        assert!(matches!(
+            serde_json::from_str::<Request>(valid).unwrap().operation,
+            Operation::VoiceShortcuts(_)
+        ));
+        for invalid in [
+            valid.replace(r#""microphone":null,"#, ""),
+            valid.replace(r#""microphone":null"#, r#""microphone":null,"roomId":"private""#),
+            valid.replace(r#""meta":false"#, r#""meta":false,"muted":true"#),
+            valid.replace(r#""meta":false"#, r#""meta":false,"meta":true"#),
+        ] {
+            assert!(serde_json::from_str::<Request>(&invalid).is_err(), "{invalid}");
+        }
+    }
 
     #[test]
     fn old_external_ready_and_end_cannot_retire_the_successor_pending_source() {

@@ -1,0 +1,52 @@
+.c3-diagnosis-result, .c3-diagnosis-help {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  min-width: 0;
+  text-align: center;
+}
+
+.c3-diagnosis-result > svg {
+  display: block;
+  width: min(220px, 100%) !important;
+  height: auto;
+}
+
+.c3-diagnosis-result > .c3-diagnosis-verdict {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.c3-diagnosis-help {
+  margin-block-start: 2px;
+  width: 100%;
+  font-size: 13px;
+}
+
+.c3-diagnosis-help a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--action);
+}
+
+.c3-diagnosis-help details {
+  width: min(290px, 100%);
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--wall);
+  text-align: start;
+}
+
+.c3-diagnosis-help summary {
+  padding-block: 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.c3-diagnosis-help ul {
+  margin: 0 0 10px;
+  padding-inline-start: 1.3em;
+}

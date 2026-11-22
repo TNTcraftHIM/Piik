@@ -69,12 +69,19 @@
 }
 
 .c3-monitor-source-row .lr-btn:not(:where(.c3-monitor-source-row [popover] *)) { --button-size: var(--control-dense-size); --button-padding: 0; min-width: var(--button-size); height: var(--button-size); gap: 2px; }
-.c3-monitor-wait { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; aspect-ratio: 16 / 9; padding: 18px; border-radius: var(--c3-media-radius) var(--c3-media-radius) 0 0; background: var(--stage, var(--wall-2)); color: var(--muted); font-size: 12px; }
+.c3-monitor-wait {
+  --ink: var(--piik-dark-ink);
+  --muted: var(--piik-dark-muted);
+  --action: var(--piik-dark-action);
+  --control-hover: var(--piik-dark-hover);
+  display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px;
+  aspect-ratio: 16 / 9; padding: 18px; border-radius: var(--c3-media-radius) var(--c3-media-radius) 0 0;
+  background: var(--stage, var(--wall-2)); color: var(--muted); font-size: 12px;
+}
 .c3-monitor-wait[data-failed] > svg { color: var(--danger); }
 .c3-monitor-wait-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; max-width: 100%; }
 .c3-monitor-tile.is-thumbnail .c3-monitor-wait[data-failed] { padding: 8px; gap: 4px; text-align: center; }
 .c3-monitor-tile.is-thumbnail .c3-monitor-wait[data-failed] > svg { display: none; }
-.c3-picture-help { margin: 0; padding-inline-start: 1.4em; display: grid; gap: 0.75em; }
 /* Theater changes the existing stage's layout; every subscription stays mounted. */
 .c3-app:has(.c3-monitor.is-theater) .c3-shell { visibility: hidden; }
 .c3-shell:has(.c3-monitor.is-theater) { container-type: normal; }

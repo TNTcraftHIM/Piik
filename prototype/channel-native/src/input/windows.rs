@@ -1,5 +1,6 @@
 use super::{Action, Bounds, Held, Sink, TargetState};
 use crate::capture::{Target, TargetKind};
+use crate::windows_hotkeys::{Binding, Hotkeys};
 use ::windows::Win32::{
     Foundation::{CloseHandle, FILETIME, HWND, RECT},
     Graphics::{
@@ -254,77 +255,31 @@ fn key(scan: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {
 /// thread owns its Windows message queue/registration; the executor owns consent.
 pub(super) struct Shortcut {
     pub key: u8,
-    thread_id: u32,
-    task: Option<std::thread::JoinHandle<()>>,
+    _hotkeys: Hotkeys,
 }
 impl Shortcut {
     pub fn new(key: u8, owner: std::sync::Weak<std::sync::Mutex<super::Executor>>) -> Result<Self> {
-        let (ready, started) = std::sync::mpsc::sync_channel(1);
-        let task = std::thread::Builder::new()
-            .name("piik-input-stop".into())
-            .spawn(move || unsafe {
-                let mut message = MSG::default();
-                // Create the queue before publishing its id to the closing owner.
-                let _ = PeekMessageW(&mut message, None, 0, 0, PM_NOREMOVE);
-                if let Err(error) = RegisterHotKey(
-                    None,
-                    1,
-                    MOD_CONTROL | MOD_ALT | MOD_NOREPEAT,
-                    0x6f + u32::from(key),
-                ) {
-                    let _ = ready.send(Err(error));
-                    return;
+        let (hotkeys, [result]) = Hotkeys::register(
+            "piik-input-stop",
+            [Some(Binding {
+                modifiers: MOD_CONTROL | MOD_ALT,
+                key: 0x6f + u32::from(key),
+            })],
+            move |_| {
+                if let Some(owner) = owner.upgrade() {
+                    owner.lock().unwrap().revoke();
                 }
-                let id = ::windows::Win32::System::Threading::GetCurrentThreadId();
-                if ready.send(Ok(id)).is_ok() {
-                    while GetMessageW(&mut message, None, 0, 0).0 > 0 {
-                        if message.message == WM_HOTKEY {
-                            if let Some(owner) = owner.upgrade() {
-                                owner.lock().unwrap().revoke();
-                            }
-                        }
-                    }
-                }
-                let _ = UnregisterHotKey(None, 1);
-            })?;
-        match started.recv() {
-            Ok(Ok(thread_id)) => Ok(Self {
-                key,
-                thread_id,
-                task: Some(task),
-            }),
-            result => {
-                let _ = task.join();
-                anyhow::bail!("input_shortcut_unavailable: {result:?}")
-            }
-        }
+            },
+        )?;
+        let Some(hotkeys) = hotkeys else {
+            anyhow::bail!("input_shortcut_unavailable: {result:?}")
+        };
+        Ok(Self { key, _hotkeys: hotkeys })
     }
 
     #[cfg(test)]
     pub(super) fn notify_test(&self) -> Result<()> {
-        unsafe {
-            PostThreadMessageW(
-                self.thread_id,
-                WM_HOTKEY,
-                Default::default(),
-                Default::default(),
-            )?;
-        }
+        self._hotkeys.notify_test(0)?;
         Ok(())
-    }
-}
-impl Drop for Shortcut {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = PostThreadMessageW(
-                self.thread_id,
-                WM_QUIT,
-                Default::default(),
-                Default::default(),
-            );
-        }
-        if let Some(task) = self.task.take() {
-            let _ = task.join();
-        }
     }
 }

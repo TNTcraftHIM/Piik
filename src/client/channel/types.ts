@@ -9,7 +9,7 @@ import type { ChannelAttachments, DraftFile } from "./attachments";
 import type { FeedbackCue } from "./feedback-audio";
 import type { RoomCopyInfo } from "./backup-archive";
 import type { NativeCaptureTarget, EncodingExecution } from "../native/wire";
-import type { NativeCaptureRequest, NativeCaptureSources, NativeExternalInput, ChannelRemoteControlState, NativeConnectionMetrics, NativeRelayCapacity } from "./app-link";
+import type { BackgroundVoiceShortcuts, NativeCaptureRequest, NativeCaptureSources, NativeExternalInput, ChannelRemoteControlState, NativeConnectionMetrics, NativeRelayCapacity } from "./app-link";
 import type { RemoteStopShortcut } from "../native/wire";
 import type { InputTransport } from "../remote-control/input-route";
 import type { RemoteControlMode } from "../remote-control/protocol";
@@ -74,6 +74,7 @@ export interface ChannelView {
   voicePlaybackByUser: ReadonlyMap<string, { volume: number; muted: boolean }>;
   listeningVolume: number;
   appConnected: boolean;
+  backgroundVoiceShortcuts?: BackgroundVoiceShortcuts;
   ownedScreens: ReadonlySet<string>;
   /** Local playback provenance, independent of this page's capture controls. */
   localScreens: ReadonlySet<string>;
@@ -112,7 +113,7 @@ export interface ChannelActions {
   watchEmbed(roomId: string): WatchMedia | undefined;
   prepareWatchPage(roomId: string, url: string, activityId?: string, reportError?: boolean): Promise<void>;
   watchPage(roomId: string, activityId?: string): { url: string; candidates: readonly NativePageCandidate[]; activityId?: string; watchSources?: WatchMediaSources } | undefined;
-  selectWatchPage(roomId: string, candidateId: string, activityId?: string, reportError?: boolean, mode?: "choose-source"): Promise<boolean>;
+  selectWatchPage(roomId: string, candidateId: string, activityId?: string, reportError?: boolean, mode?: "choose-source" | "original-page"): Promise<boolean>;
   selectWatchBrowserSource(roomId: string, choiceId: string | null, reportError?: boolean): Promise<void>;
   focusWatch(id: string): Promise<void>;
   focusWatchPage(roomId: string, activityId?: string): Promise<void>;

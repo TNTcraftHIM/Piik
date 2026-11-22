@@ -481,6 +481,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             paused: publication.paused, pausePending: publication.sessionId !== sessionId && busy("pause", publication.id),
             pauseAvailable: publication.sessionId === sessionId || connected,
             deliveryFailed: state?.failedSubscriptions.includes(publication.id),
+            roomAdmitted: rooms.find(value => value.id === publication.roomId)?.authorized,
+            deliveryScope: JSON.stringify([roomId, sessionId, publication.sessionId,
+              rooms.find(value => value.id === publication.roomId)?.delivery?.bindingId]),
             awaitingRoute: connected && !channel.localScreens.has(publication.id) && !channel.ownedScreens.has(publication.id)
               && state?.subscriptions.includes(publication.id) && !selectedInputs.has(publication.id),
             available: rooms.find(value => value.id === publication.roomId)?.available ?? false,

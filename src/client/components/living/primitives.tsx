@@ -56,6 +56,7 @@ export function Btn({
   pressed,
   expanded,
   hasPopup,
+  keyShortcuts,
   controls,
   popoverTarget,
   onClick,
@@ -87,6 +88,7 @@ export function Btn({
   hasPopup?: AriaAttributes["aria-haspopup"];
   controls?: string;
   popoverTarget?: string;
+  keyShortcuts?: string;
   onClick?: () => void;
   type?: "button" | "submit";
   /** Shared hint comic with its localized caption. */
@@ -123,6 +125,7 @@ export function Btn({
       aria-pressed={pressed}
       aria-expanded={expanded}
       aria-haspopup={hasPopup}
+      aria-keyshortcuts={keyShortcuts}
       aria-controls={controls}
       popoverTarget={popoverTarget}
       style={softDisabled ? SOFT_DISABLED_STYLE : undefined}

@@ -3,11 +3,15 @@ import type { NativePageMediaChoice, NativePageIndexedCandidate, NativePageMpdCa
 import { inspectIndexedTrack, type IndexedTrackInspection } from "./watch-indexed-source";
 import { limitWatchReads } from "./watch-resource";
 import { HTMLVideoMedia, createResourceWatchMedia, type WatchMedia, type WatchMediaEvent, type WatchMediaPatch, type WatchMediaState } from "./watch-media";
-import type { WatchByteSource, WatchFormat, WatchTimeline } from "./protocol";
+import { watchSourceSchema, type WatchByteSource, type WatchFormat, type WatchTimeline } from "./protocol";
 
 export interface WatchIndexedChoice { candidate: NativePageIndexedCandidate; inspection?: IndexedTrackInspection; error?: string }
 export interface WatchMpdChoice { candidate: NativePageMpdCandidate; catalog?: NativePageMpdCatalog; error?: string }
 export interface WatchMediaSources { choices: readonly NativePageMediaChoice[]; indexed: readonly WatchIndexedChoice[]; mpd: readonly WatchMpdChoice[]; error?: string }
+
+export function directForwardFileURL(choice: NativePageMediaChoice): string | undefined {
+  if (choice.format === "file" && watchSourceSchema.safeParse({ kind: "media", url: choice.displayURL }).success) return choice.displayURL;
+}
 
 /** One page observation owns its resource cache, reads and listener retirement. */
 export function observeWatchSources(page: AppPage, lifetime: AbortSignal, publish: (sources: WatchMediaSources) => void): { ready: Promise<WatchMediaSources>; unsubscribe(): void } {

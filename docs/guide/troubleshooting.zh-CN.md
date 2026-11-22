@@ -191,13 +191,14 @@ Piik App 的本地网络邀请使用临时自签名 HTTPS 证书，浏览器可�
 ### 内测 App 提示 `unsupported_storage_version`
 
 此错误或 `unsupported_domain_checkpoint` 表示当前版本不能读取已有存储格式。
-先停止对应的 App 或 Server，保留原数据，再按该内测包的升级说明处理。
-[数据参考](../../prototype/channel-server/README.md#saved-data-and-files)说明两者的数据目录；
-格式兼容的内测更新不需要重置。包内没有对应恢复说明时，先提供版本和完整错误反馈，再处理数据。
+3.0 内测不迁移旧格式。退出对应 App 或 Server，重置该内测资料后重新开始：
 
-只有 Windows 内测包附带 `reset-beta-app-data.ps1` 且明确要求使用新数据时，才按包内说明运行它。
-该脚本会把旧 App 目录改名为带时间戳的备份，不会迁移数据库；它不是 Android 或 macOS/Linux 的重置流程。
-不要为重试连接卸载 Android App 或清空浏览器存储。
+- Windows：双击内测包附带的 **重置3.0内测数据.bat**，选择默认数据或该包的验收数据。
+- Android：在系统设置中清除 **Piik 3.0** 的应用数据。
+- 浏览器托管的房间：清除对应 Piik 站点的数据。
+- Server：使用新的数据目录，目录位置见[数据参考](../../prototype/channel-server/README.md#saved-data-and-files)。
+
+重置会删除所选范围内的本地身份、授权、房间和历史。格式未变化的更新继续使用原数据，连接失败也不需要重置数据。
 
 ## 开始分享
 

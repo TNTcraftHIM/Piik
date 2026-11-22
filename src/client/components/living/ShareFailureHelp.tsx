@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from "react";
-import { useProjectLink } from "../../lib/use-project-link";
+import { diagnosisGuide } from "../../channel/diagnosis";
 import type { StatusDescriptor } from "../../ui/media-status";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
@@ -20,8 +20,7 @@ export function ShareFailureHelp({ status, label, code, checks }: {
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
   const copyRequest = useRef<object | null>(null);
   const hint = (status.tooltip ?? status.comic)!;
-  const guide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}troubleshooting.html`,
-    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/troubleshooting${lang === "zh" ? ".zh-CN" : ""}.md`, open);
+  const guide = diagnosisGuide("troubleshooting", lang).fallback;
   return <>
     <StatusIndicator status={status} label={label} onActivate={() => {
       copyRequest.current = null;

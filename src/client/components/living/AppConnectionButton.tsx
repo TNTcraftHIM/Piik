@@ -17,6 +17,8 @@ import { channelAppDiscovery } from "../../channel/app-link";
 import { OpenInClient } from "./OpenInClient";
 import { currentTheme, subscribeTheme } from "../../ui/theme";
 import type {} from "../../ui/native-window";
+import { diagnoseChannelFact, type AppConnectionState } from "../../channel/diagnosis";
+import { ChannelDiagnosisHelp } from "../../channel/components/ChannelDiagnosisHelp";
 
 interface AppConnectionProps {
   onConnected?: (health: NonNullable<Awaited<ReturnType<AppDiscovery["health"]>>>, signal: AbortSignal) => void | Promise<void>;
@@ -40,7 +42,7 @@ interface ConnectionAttempt {
 export function AppConnectionButton({ onConnected, discovery = channelAppDiscovery, connected, available = true, targetURL, wakeURL: launchTarget }: AppConnectionProps) {
   const { lang, t } = useCopy();
   const theme = useSyncExternalStore(subscribeTheme, currentTheme, currentTheme);
-  const [state, setState] = useState<"idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible">("idle");
+  const [state, setState] = useState<AppConnectionState>("idle");
   const wakeURL = launchTarget === undefined ? androidAppIntent("piik://app") : launchTarget;
   const [helpOpen, setHelpOpen] = useState(false);
   const downloadURL = useProjectLink("/#download", "https://github.com/TNTcraftHIM/Piik/releases/latest", helpOpen);
@@ -264,6 +266,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
     incompatible: "native.incompatible",
   } as const)[state]);
   const failed = state === "unavailable" || state === "incompatible";
+  const diagnosis = diagnoseChannelFact({ area: "app", state });
   const update = ready ? release : null;
   const availableUpdate = update?.kind === "update-available" || update?.kind === "major-update";
   const title = availableUpdate ? t("client.connect.update", { current: build!.version, version: update.version }) : label;
@@ -306,15 +309,15 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
           <Glyph name="x" size={16} />
         </button>
       </div>
-      <p id={`${helpId}-message`}>{state === "busy" ? t("client.connect.permissionHint") : label}</p>
+      <p id={`${helpId}-message`}>{state === "busy" ? t("client.connect.permissionHint") : diagnosis ? t(diagnosis.message) : label}</p>
       {state === "ready" && build && <p className="lr-app-connect-version">
         <span>{t("client.launch.version", { version: build.version })}</span>
 
       </p>}
       {update && <AppReleaseNotice update={update} managementURL={management?.updateSupported ? management.url : undefined} />}
       <div className="lr-app-connect-actions">
-        {!ready && state !== "busy" && state !== "approving" && <button type="button" className="lr-btn" aria-label={t(state === "approval" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")} onClick={() => void connect()}>
-          <Glyph name={state === "approval" ? "arrowRight" : "refresh"} size={16} /><span>{t(state === "approval" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")}</span>
+        {!ready && state !== "busy" && state !== "approving" && <button type="button" className={state === "approval" ? "lr-btn is-primary" : "lr-btn"} onClick={() => void connect()}>
+          <Glyph name={state === "approval" ? "arrowRight" : "refresh"} size={16} /><span>{t(diagnosis?.next ?? (state === "waking" ? "client.connect.continue" : "common.retry"))}</span>
         </button>}
         {failed && wakeURL && <a className="lr-btn" href={wakeURL} onClick={event => { event.preventDefault(); void connect(true); }}>
           <Glyph name="window" size={16} /><span>{t("client.connect.wakeApp")}</span>
@@ -323,6 +326,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
           <Glyph name="arrowDown" size={16} /><span>{t("client.connect.download")}</span>
         </a>}
       </div>
+      {helpOpen && diagnosis && <ChannelDiagnosisHelp diagnosis={diagnosis} />}
       {targetURL && !(typeof window !== "undefined" && window.piikNativeWindow) && <OpenInClient
         discovery={discovery} targetURL={targetURL} active={helpOpen} disabled={busy} downloadURL={downloadURL} />}
       {state !== "ready" && <p className="lr-app-connect-optional">{t("client.connect.browserHint")}</p>}

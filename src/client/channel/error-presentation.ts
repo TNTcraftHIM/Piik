@@ -1,6 +1,7 @@
 import type { CopyKey } from "../locales";
 import type { UnsupportedVideoFormat } from "../native/wire";
 import { isIncompatibleProtocol } from "./protocol";
+import { diagnoseChannelFact } from "./diagnosis";
 
 export interface ChannelErrorPresentation {
   message: string | null;
@@ -12,10 +13,10 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
   fallback: CopyKey = "channel.error.actionFailed", unsupportedVideoFormat?: UnsupportedVideoFormat): ChannelErrorPresentation {
   const display = (key: CopyKey, connectionHelp = false): ChannelErrorPresentation => ({ message: t(key), connectionHelp });
   if (!error) return { message: null, connectionHelp: true };
+  const diagnosis = diagnoseChannelFact({ area: "error", code: error });
+  if (diagnosis) return display(diagnosis.message);
   if (error === "room_busy") return display("channel.error.busy");
   if (error === "room_creation_restricted") return display("channel.error.roomCreationRestricted");
-  if (error === "attachment_unavailable" || error === "file_unavailable" || error === "file_source_unavailable")
-    return display("channel.attachment.sourceUnavailable");
   if (error === "file_transfer_interrupted") return display("channel.attachment.transferInterrupted");
   if (error === "saved_copy_missing") return display("channel.attachment.savedCopyMissing");
   if (error === "reveal_saved_copy_failed") return display("channel.attachment.revealSavedFailed");
@@ -55,8 +56,6 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.error.restoreScratchLimit");
   if (error === "backup_room_not_admitted")
     return display("channel.error.backupRoomNotAdmitted");
-  if (error === "unsupported_storage_version")
-    return display("channel.error.unsupportedStorageVersion");
   if (error === "unsupported_backup_version")
     return display("channel.error.unsupportedBackupVersion");
   if (error === "backup_content_limit")
@@ -84,12 +83,9 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
   }
   if (error === "external_input_failed")
     return display("channel.error.externalInputFailed");
-  if (error === "watch_media_unplayable") return display("watch.sourceUnplayable");
-  if (error === "watch_media_access_denied") return display("watch.mediaAccessDenied");
   if (error === "watch_media_decode_failed")
     return display("watch.decodeFailed");
   if (error === "watch_live_position_unavailable") return display("watch.livePositionUnavailable");
-  if (error === "watch_source_inspection_unavailable") return display("watch.sourceAccessRequired");
   if (error === "watch_live_timeline_unsupported" || error === "watch_live_timeline_unavailable" || error === "watch_timeline_changed"
     || error === "watch_live_hls_atomic_read_required" || error === "watch_live_hls_timeline_unsupported")
     return display("watch.liveUnsupported");
@@ -98,11 +94,6 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
   if (error === "watch_mpd_unsupported" || error === "watch_indexed_unsupported" || error === "invalid_watch_index"
     || /^watch_(?:live_hls_unsupported|media_(?:encryption_unsupported|encoding_unsupported|range_unsupported|size_unavailable)|manifest_extension_unsupported|manifest_limit|resource_limit|mp4_parse_failed)$/.test(error))
     return display("watch.forward.unsupported");
-  if (error === "watch_page_closed" || error === "page_player_closed")
-    return display("watch.forward.sourceUnavailable");
-  if (error === "watch_mpd_invalid") return display("watch.forward.sourceUnavailable");
-  if (/^(?:watch_(?:invalid_manifest|page_unavailable|media_(?:unavailable|timeout|credentials_unavailable|changed|truncated)|resource_unavailable|source_(?:unavailable|failed|changed|retired))|invalid_watch_range_response)$/.test(error))
-    return display("watch.forward.sourceUnavailable");
   if (error === "watch_source_busy" || error === "watch_read_busy")
     return display("watch.forward.busy");
   if (error === "watch_read_timeout")
@@ -136,8 +127,6 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.error.ownerMismatch");
   if (/room_host_conflict|room_storage_in_use/.test(error))
     return display("channel.error.roomHostConflict");
-  if (error === "room_host_offline")
-    return display("channel.error.roomHostOffline");
   if (/^(?:room_unavailable|room_not_found|invalid_room_id)$/.test(error))
     return display("channel.error.roomUnavailable");
   if (/password/i.test(error))

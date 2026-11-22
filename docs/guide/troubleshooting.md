@@ -231,17 +231,16 @@ storage to retry; that can remove retained files, identity or a Browser-hosted r
 ### The beta App reports `unsupported_storage_version`
 
 This error, or `unsupported_domain_checkpoint`, means the running version cannot
-read the saved format. Stop the affected App or Server, preserve its data and
-follow that test package's upgrade instructions. The [saved-data reference](../../prototype/channel-server/README.md#saved-data-and-files)
-identifies the App and Server directories. Updating a compatible beta does not
-require a reset. If the package has no matching recovery instructions, report
-the version and complete error before changing its data.
+read the saved format. Internal 3.0 builds do not migrate obsolete formats.
+Exit the affected App or Server, then reset its test data:
 
-If your Windows test package supplies `reset-beta-app-data.ps1` and explicitly
-requires fresh data, that helper renames the old App directory to a timestamped
-backup; it does not migrate the database. It is not an Android or macOS/Linux
-reset procedure. Do not uninstall Android App or clear browser storage to retry
-a connection.
+- Windows: open **重置3.0内测数据.bat** from the test package and choose its default or review data.
+- Android: clear **Piik 3.0** application data in system settings.
+- Browser-hosted rooms: clear data for the affected Piik site.
+- Server: use a new data directory. See the [saved-data reference](../../prototype/channel-server/README.md#saved-data-and-files).
+
+A reset removes local identity, approvals, rooms and history in the selected scope.
+Keep using existing data when the format has not changed. Connection failures do not require a data reset.
 
 ## Starting a share
 

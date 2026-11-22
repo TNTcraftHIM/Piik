@@ -7,6 +7,8 @@ pub mod diagnostics;
 mod file;
 pub mod hosted_room;
 pub mod input;
+#[cfg(target_os = "windows")]
+pub mod windows_hotkeys;
 mod media;
 pub mod peer;
 #[cfg(all(feature = "capture", target_os = "linux"))]

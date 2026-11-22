@@ -23,11 +23,26 @@
 .c3-mini-message .c3-watch-result { flex-direction: column; max-width: min(360px, calc(100% - 24px)); text-align: center; }
 .c3-monitor-tile:not(.is-thumbnail) > .c3-watch-player:is([data-external], [data-failed]) { min-height: 240px; }
 .c3-watch-player:is([data-external], [data-failed]) .c3-mini-message { inset: 88px 12px 64px; }
-.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) > .c3-watch-player[data-standalone]:not(:fullscreen) {
+.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) > .c3-watch-player[data-standalone]:not(:fullscreen),
+.c3-video.c3-watch-player[data-diagnosis]:not(:fullscreen) {
   aspect-ratio: auto;
   grid-template-rows: minmax(160px, auto) auto;
   > .c3-mini-message { position: relative; inset: auto; grid-area: 1 / 1; padding: 16px 8px; }
   > .c3-mini-controls { grid-area: 2 / 1; }
+}
+.c3-video.c3-watch-player[data-diagnosis]:not(:fullscreen) {
+  display: grid;
+  > .c3-mini-message {
+    place-items: safe center;
+    overflow-y: auto;
+    pointer-events: auto;
+  }
+  > .c3-mini-controls {
+    position: relative;
+    inset: auto;
+    justify-self: center;
+    margin-block-end: 10px;
+  }
 }
 .c3-watch-timeline { display: flex; flex: 1 1 160px; flex-direction: column; justify-content: center; min-width: 78px; }
 .c3-watch-timeline :is(input, progress) { min-width: 0; width: 100%; height: 22px; margin: 0; accent-color: var(--action); }

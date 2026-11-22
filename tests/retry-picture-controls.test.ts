@@ -18,8 +18,7 @@ test("picture retry is immediately available for waiting remote screens",()=>{
   const help = buttons.find(tag => tag.includes('aria-label="Picture help"'));
   const disabledAttribute = /\s(?:disabled(?=[\s=>])|aria-disabled="true")/;
   expect(retry).toMatch(disabledAttribute);
-  expect(help).toBeDefined();
-  expect(help).not.toMatch(disabledAttribute);
+  expect(help).toBeUndefined();
   for (const state of [{ deliveryFailed: false }, { paused: true }, { owned: true }, { localSource: true }, { stream }, { hidden: true }]) {
     const markup = renderToStaticMarkup(createElement(ChannelStage, { ...props, sources: [{ ...source, ...state }] }));
     expect(markup).not.toContain('aria-label="Picture help"');

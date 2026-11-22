@@ -25,18 +25,26 @@ import { ChannelContentReactions } from "./ChannelContentReactions";
 import { BrandLoader } from "../../components/living/BrandMark";
 import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
 import { ChannelSettingsDialog } from "./ChannelSettingsDialog";
+import { ChannelDiagnosisHelp } from "./ChannelDiagnosisHelp";
+import { diagnoseChannelFact, type ChannelDiagnosis } from "../diagnosis";
+import { Comic } from "../../components/living/Comic";
 
-function PictureDeliveryHelp() {
+function PictureDeliveryHelp({ diagnosis, admitted, onRetry }: {
+  diagnosis: ChannelDiagnosis; admitted: boolean | undefined; onRetry?: () => void;
+}) {
   const { t } = useCopy();
   const [open, setOpen] = useState(false);
   return <>
     <ChannelAction icon="help" label={t("screen.pictureHelp")} iconOnly quiet onClick={() => setOpen(true)} />
     {open && <ChannelSettingsDialog compact title={t("screen.pictureHelp")} onClose={() => setOpen(false)}>
-      <ol className="c3-picture-help">
-        <li>{t("screen.pictureHelpViewer")}</li>
-        <li>{t("screen.pictureHelpPublisher")}</li>
-        <li>{t("screen.pictureHelpForwarding", { setting: t("room.transit.allow") })}</li>
-      </ol>
+      <div className="c3-settings-panels c3-diagnosis-result">
+        <Comic kind="route-failed" theme="paper" />
+        <p className="c3-diagnosis-verdict">{t(diagnosis.message)}</p>
+        {onRetry && diagnosis.next && <Btn icon="refresh" size="compact" tone="primary"
+          title={diagnosis.next} cap={diagnosis.next}
+          onClick={() => { setOpen(false); onRetry(); }} />}
+        <ChannelDiagnosisHelp diagnosis={diagnosis} details={admitted ? ["diagnosis.roomAdmitted"] : undefined} />
+      </div>
     </ChannelSettingsDialog>}
   </>;
 }
@@ -85,6 +93,8 @@ export interface ScreenStageSource {
   audience: readonly ScreenAudiencePerson[];
   reactions?: MessageReactions;
   deliveryFailed?: boolean;
+  roomAdmitted?: boolean;
+  deliveryScope?: string;
   awaitingRoute?: boolean;
   stream?: MediaStream;
   sourceAudio?: SourceAudioControl;
@@ -302,6 +312,9 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
           const microphone = source.sourceMicrophone;
           const sourceDetail = `${source.name} / ${source.roomName}${source.localSource ? ` / ${t("screen.localPreview")}` : ""}`;
           const title = screenTitle(source, t);
+          const diagnosis = canSubscribe && !source.pending && !source.hidden
+            ? diagnoseChannelFact({ area: "screen", paused: source.paused, deliveryFailed: source.deliveryFailed })
+            : null;
           return <article key={source.id} hidden={source.hidden} inert={source.hidden} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
             style={centeredStart ? { gridColumn: `${centeredStart} / span 2` } : undefined}
             data-publication-id={source.id} data-focusable={focusable || undefined} data-playback-controls-scope
@@ -327,7 +340,9 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
                     {onRetryPicture && <Btn icon="refresh" size="compact" quiet
                       title="screen.retryPicture" cap="screen.retryPicture" disabled={!canSubscribe || source.pending}
                       onClick={() => onRetryPicture(source.id)} />}
-                    {source.deliveryFailed && !source.hidden && <PictureDeliveryHelp />}
+                    {diagnosis && <PictureDeliveryHelp
+                      key={source.deliveryScope} diagnosis={diagnosis} admitted={source.roomAdmitted}
+                      onRetry={onRetryPicture ? () => onRetryPicture(source.id) : undefined} />}
                   </div>}</div>}
             <footer>
               <div className="c3-monitor-source-row" data-tooltip-controls>

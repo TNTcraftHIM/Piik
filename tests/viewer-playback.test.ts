@@ -160,6 +160,7 @@ describe("Screen delivery result", () => {
       onInputPolicy: vi.fn(), onInputDecide: vi.fn(), onInputSimultaneous: vi.fn(), onInputShortcut: vi.fn() };
     const failed = renderToStaticMarkup(createElement(ChannelStage, props));
     expect(failed).toContain("Picture delivery failed. Retrying.");
+    expect(failed).toContain('aria-label="Picture help"');
     expect(failed).not.toContain("Connecting picture");
     expect(failed).toContain('aria-label="Stop watching Shared screen"');
 
@@ -170,6 +171,12 @@ describe("Screen delivery result", () => {
     expect(retained).toContain('aria-label="Stop watching Shared screen"');
     const paused = renderToStaticMarkup(createElement(ChannelStage, { ...props, sources: [{ ...source, paused: true }] }));
     expect(paused).not.toContain("Picture delivery failed");
+    expect(paused).not.toContain('aria-label="Picture help"');
+
+    const reconnecting = renderToStaticMarkup(createElement(ChannelStage, { ...props, canSubscribe: false }));
+    expect(reconnecting).not.toContain('aria-label="Picture help"');
+    const retrying = renderToStaticMarkup(createElement(ChannelStage, { ...props, sources: [{ ...source, pending: true }] }));
+    expect(retrying).not.toContain('aria-label="Picture help"');
   });
 });
 

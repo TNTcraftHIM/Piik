@@ -17,7 +17,7 @@ import { MAX_AUDIO_SEND_BITRATE, QUALITY_PROFILES, VIDEO_CAPTURE_LIMITS, capture
 import { activateNativePicker } from "../../native/activation";
 import type { NativeCaptureSources } from "../app-link";
 import type { ChannelController } from "../types";
-import type { WatchMediaSources } from "../watch-page-media";
+import { directForwardFileURL, type WatchMediaSources } from "../watch-page-media";
 import { screenTitle } from "../presentation";
 import { useLayerHistory } from "../../ui/layer-history";
 import { channelErrorPresentation } from "../error-presentation";
@@ -418,11 +418,14 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
         {pageSources.choices.length > 0 && <div className="lr-source-picker-list" data-text-list>
           {pageSources.choices.map(choice => {
             const source = new URL(choice.displayURL), name = choice.name || source.host;
+            const originFirst = !!directForwardFileURL(choice);
             return <div key={choice.id} className="c3-external-input" role="group" aria-label={name}><CaptureSourceCard title={name} description={source.host + source.pathname}
               action={t("watch.browserSource.selectNamed", { name })} icon="play" hint="hint-source-picker" disabled={busy}
               onSelect={() => { void run(() => channel.selectWatchBrowserSource(roomId, choice.id, false), onClose); }} />
-              <Btn icon="share" quiet title={{ text: t("watch.forward.enableNamed", { name }) }} cap="watch.forward.fromApp" disabled={busy}
-                onClick={() => { void run(() => channel.selectWatchForwardSource(roomId, choice.id, false), onClose); }} /></div>;
+              <Btn icon="share" quiet title={{ text: t(originFirst ? "watch.forward.shareFile" : "watch.forward.enableNamed", { name }) }}
+                cap={originFirst ? "watch.forward.shareFile" : "watch.forward.fromApp"} disabled={busy}
+                onClick={() => { void run(() => channel.selectWatchForwardSource(roomId, choice.id, false), onClose); }} />
+              {originFirst && <p>{t("watch.forward.shareFileHelp")}</p>}</div>;
           })}
         </div>}
         {pageSources.indexed.length > 0 && <WatchIndexedTrackPicker choices={pageSources.indexed} busy={busy} mainPlayback
@@ -434,9 +437,11 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
         <Btn icon="globe" quiet title="watch.browserSource.skip" cap="watch.browserSource.skip" disabled={busy}
           onClick={() => { void run(() => channel.selectWatchBrowserSource(roomId, null, false), onClose); }} />
       </> : page.candidates.length ? <div className="lr-source-picker-list">
-        {page.candidates.map((candidate, index) => <div key={candidate.id} className="c3-external-input"><CaptureSourceCard title={candidate.title || t("watch.videoNumber", { number: String(index + 1) })}
+        {page.candidates.map((candidate, index) => <div key={candidate.id} className="c3-external-input" role="group" aria-label={candidate.title || t("watch.videoNumber", { number: String(index + 1) })}><CaptureSourceCard title={candidate.title || t("watch.videoNumber", { number: String(index + 1) })}
           action={t("watch.selectVideoNamed", { name: candidate.title || String(index + 1) })} icon="play" hint="hint-source-picker" disabled={busy}
           onSelect={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, activityId, false), committed => { if (committed) onClose(); }); }} />
+          {!activityId && <Btn icon="globe" quiet title="watch.browserSource.skip" cap="watch.browserSource.skip" disabled={busy}
+            onClick={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, undefined, false, "original-page"), onClose); }} />}
           {!activityId && candidate.url && <Btn icon="sliders" quiet title="watch.browserSource.title" cap="watch.browserSource.title" disabled={busy}
             onClick={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, undefined, false, "choose-source")); }} />}
         </div>)}

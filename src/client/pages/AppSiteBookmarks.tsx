@@ -6,7 +6,7 @@ import { Btn } from "../components/living/primitives";
 import { ChannelSettingsDialog } from "../channel/components/ChannelSettingsDialog";
 import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
-import { siteEntryURL } from "../lib/site-address";
+import { openLauncherSite, siteEntryError, siteEntryURL } from "../lib/site-address";
 import "../components/living/site-bookmarks.css";
 
 const bookmarksSchema = z.object({ bookmarks: z.array(z.object({ id: z.string(), origin: z.string().url(), name: z.string() })) });
@@ -23,7 +23,9 @@ export function AppSiteBookmarks({ windowNavigation, entryURL, closeOnOpen = fal
   const { t } = useCopy();
   const [entry] = useState(() => {
     const hash = new URLSearchParams(location.hash.slice(1));
-    return { site: hash.get("site"), open: hash.get("open") };
+    const startup = render && !access.ownedStartup && new URLSearchParams(location.search).get("start") === "1"
+      ? access.startupSite : undefined;
+    return { site: hash.get("site"), open: hash.get("open") ?? startup, startup };
   });
   const [bookmarks, setBookmarks] = useState<z.infer<typeof bookmarksSchema>["bookmarks"]>();
   const [loadError, setLoadError] = useState(false);
@@ -36,7 +38,14 @@ export function AppSiteBookmarks({ windowNavigation, entryURL, closeOnOpen = fal
   const [bookmarkBusy, setBookmarkBusy] = useState(false);
   const busy = bookmarkBusy || access.busy;
   useEffect(() => {
-    if (entry.site || entry.open) history.replaceState(history.state, "", location.pathname + location.search);
+    const url = new URL(location.href);
+    if (entry.startup && url.searchParams.get("start") === "1") {
+      url.searchParams.delete("start");
+      history.replaceState(history.state, "", url);
+      void open(entry.startup);
+    } else if (entry.site || entry.open) {
+      history.replaceState(history.state, "", location.pathname + location.search);
+    }
   }, [entry]);
   useEffect(() => {
     const abort = new AbortController();
@@ -54,7 +63,7 @@ export function AppSiteBookmarks({ windowNavigation, entryURL, closeOnOpen = fal
       const response = await fetch(`/api/client-launcher/bookmarks${id ? `/${encodeURIComponent(id)}` : ""}`, {
         method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined,
       });
-      if (!response.ok) throw new Error(response.status === 409 ? "bookmark_exists" : "save_failed");
+      if (!response.ok) throw new Error(response.status === 409 ? "bookmark_exists" : (await response.json()).detail);
       setBookmarks(bookmarksSchema.parse(await response.json()).bookmarks);
     } finally { setBookmarkBusy(false); }
   }
@@ -65,25 +74,20 @@ export function AppSiteBookmarks({ windowNavigation, entryURL, closeOnOpen = fal
     setOpenError(undefined);
     if (!url) { setOpenError(t("client.bookmarks.invalidAddress")); return; }
     if (windowNavigation) setPending(url.href);
-    else location.assign(entryURL(url.href));
+    else void open(url.href);
   }
   function cancelNavigation(): void {
     setPending(undefined);
     setOpenError(undefined);
   }
-  async function open(): Promise<void> {
-    if (!pending || busy || opening) return;
-    if (!windowNavigation) { location.assign(entryURL(pending)); return; }
+  async function open(target = pending): Promise<void> {
+    if (!target || busy || opening) return;
     setOpening(true); setOpenError(undefined);
     try {
-      const response = await fetch("/api/client-launcher/open", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: entryURL(pending) }),
-      });
-      if (!response.ok) throw new Error();
-      z.object({ opened: z.literal(true) }).parse(await response.json());
+      await openLauncherSite(entryURL(target));
       setPending(undefined);
-      if (closeOnOpen) window.close();
-    } catch { setOpenError(t("client.bookmarks.openFailed")); }
+      if (closeOnOpen && windowNavigation) window.close();
+    } catch (error) { setOpenError(t(siteEntryError(error instanceof Error && error.message) ?? "client.bookmarks.openFailed")); }
     finally { setOpening(false); }
   }
   const editor = bookmarks ? <SiteManagement {...access} busy={busy} bookmarks={bookmarks} currentOrigin={entry.site ? siteEntryURL(entry.site)?.origin : undefined}

@@ -40,6 +40,7 @@ fn fixture() -> (
         external_inputs: Inputs::default(),
         capture_targets: Default::default(),
         capture_microphones: Default::default(),
+        voice_shortcuts: Default::default(),
         update: update::Owner::disabled(),
     });
     let binding = Uuid::new_v4();

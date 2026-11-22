@@ -81,6 +81,7 @@ impl Fixture {
             external_inputs: whip::Inputs::default(),
             capture_targets: Default::default(),
             capture_microphones: Default::default(),
+            voice_shortcuts: Default::default(),
             update: update::Owner::disabled(),
         });
         let router = Router::new()

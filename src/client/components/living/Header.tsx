@@ -10,7 +10,7 @@ import { applyTheme, currentTheme, subscribeTheme } from "../../ui/theme";
 import { Glyph } from "../../ui/icons";
 import { AppConnectionButton } from "./AppConnectionButton";
 import { useAnchoredPopover } from "./use-anchored-popover";
-import { useProjectLink } from "../../lib/use-project-link";
+import { diagnosisGuide } from "../../channel/diagnosis";
 import { Btn } from "./primitives";
 
 export type LedState = "live" | "busy" | "warn" | "bad" | "off";
@@ -85,8 +85,7 @@ const webRelease = /^v\d+\.\d+\.\d+$/.test(webVersion)
 
 function BrowserHelpContent({ active, diagnosticControl }: { active: boolean; diagnosticControl?: React.ReactNode }) {
   const { lang, t } = useCopy();
-  const guide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}troubleshooting.html`,
-    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/troubleshooting${lang === "zh" ? ".zh-CN" : ""}.md`, active);
+  const guide = diagnosisGuide("troubleshooting", lang).fallback;
   return <div className="lr-help-content">
     <header><strong>Piik Web</strong>
       {webRelease ? <a href={webRelease} target="_blank" rel="noopener noreferrer"

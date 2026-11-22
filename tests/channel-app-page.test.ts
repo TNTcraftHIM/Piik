@@ -34,6 +34,26 @@ async function openPage(app: ChannelApp, socket: Socket) {
 }
 const state = { position: 12, paused: false, rate: 1, duration: null, readyState: 4, ended: false, buffered: [[0, 60]] as [number, number][] };
 
+test("background voice shortcuts accept small clock differences and discard delayed or far-future events", async () => {
+  vi.stubGlobal("WebSocket", Socket);
+  const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
+    token: "test-token", port: 8793, backgroundVoiceShortcuts: true }, "site", "user", "credential", "Me",
+  () => {}, () => {}, undefined, undefined, undefined, () => true);
+  const socket = Socket.current;
+  socket.onopen?.(); socket.reply(null); await app.ready;
+  const listener = vi.fn();
+  const unsubscribe = app.backgroundVoiceShortcuts!.subscribe(listener);
+  const now = 1_795_326_377_608;
+  const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+  try {
+    socket.receive({ type: "voice_shortcut", action: "toggle_microphone", activatedAtMs: now + 1 });
+    socket.receive({ type: "voice_shortcut", action: "toggle_listening", activatedAtMs: now });
+    socket.receive({ type: "voice_shortcut", action: "toggle_microphone", activatedAtMs: now - 1_450 });
+    socket.receive({ type: "voice_shortcut", action: "toggle_listening", activatedAtMs: now + 10_000 });
+    expect(listener.mock.calls).toEqual([["microphone"], ["listening"]]);
+  } finally { clock.mockRestore(); unsubscribe(); app.close(); }
+});
+
 test("page readiness rechecks events delivered before an older read reply", async () => {
   vi.useFakeTimers();
   const { app, socket } = await setup(), cancel = new AbortController();

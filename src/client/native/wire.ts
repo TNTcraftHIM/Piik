@@ -1,6 +1,17 @@
 import { z } from "zod";
 import { watchFormatSchema } from "../../shared/watch-format";
 
+const voiceShortcutStatusSchema = z.enum(["registered", "unavailable", "unbound"]);
+export const nativeVoiceShortcutsReportSchema = z.strictObject({
+  microphone: voiceShortcutStatusSchema, listening: voiceShortcutStatusSchema,
+});
+export type NativeVoiceShortcutsReport = z.infer<typeof nativeVoiceShortcutsReportSchema>;
+
+export const nativeVoiceShortcutEventSchema = z.strictObject({
+  type: z.literal("voice_shortcut"), action: z.enum(["toggle_microphone", "toggle_listening"]),
+  activatedAtMs: z.number().int().positive().safe(),
+});
+
 export const unsupportedVideoFormatSchema = z.object({
   codec: z.literal("h264"), profileIdc: z.number().int().min(0).max(255),
   constraintFlags: z.number().int().min(0).max(255), levelIdc: z.number().int().min(0).max(255),

@@ -11,6 +11,9 @@ import { profileAvatar, roomVoicePeople } from "../presentation";
 import { ChannelVoiceSettings } from "./ChannelVoiceSettings";
 import { useCallback } from "react";
 import { useVoiceLevels } from "../../room-voice/use-voice-levels";
+import { resolveVoiceDockControls } from "../voice-dock-controls";
+import { useVoiceShortcuts } from "../use-voice-shortcuts";
+import { voiceShortcutAria } from "../voice-shortcut-binding";
 
 /** One persistent control surface for this endpoint's independently joined rooms. */
 export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
@@ -18,8 +21,9 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
 }) {
   const { t } = useCopy();
   const state = channel.state;
-  const joined = state?.voice.filter(value => value.sessionId === channel.sessionId) ?? [];
-  const activity = joined.find(value => value.roomId === selected) ?? joined[0];
+  const { joined, activity, microphoneDisabled, toggle } = resolveVoiceDockControls(channel, selected);
+  const shortcuts = useVoiceShortcuts(activity?.roomId, toggle,
+    channel.connection === "connected" ? channel.backgroundVoiceShortcuts : undefined);
   const roomId = activity?.roomId ?? "";
   const readLevels = useCallback(() => channel.voiceActivity(roomId), [channel.voiceActivity, roomId]);
   const levels = useVoiceLevels(readLevels, !!activity);
@@ -43,7 +47,7 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
           </select>}
         </Tooltip>
       </div>
-      <ChannelVoiceSettings channel={channel} roomId={roomId} available={available} />
+      <ChannelVoiceSettings channel={channel} roomId={roomId} available={available} shortcuts={shortcuts} />
     </div>
     <div className="c3-voice-participants" aria-label={t("channel.voiceDock.voiceParticipants")}>
       {participants.slice(0, 4).map(user => {
@@ -58,12 +62,12 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
     </div>
     <div className="c3-voice-controls">
       <AudioVolumeMenu volume={channel.voiceInput.volume} onVolume={channel.setInputVolume} label="host.microphone.volume">
-        <VoiceMicrophoneButton active={!muted} level={levels.get(channel.sessionId ?? "")} disabled={muted && !channel.canUnmute(roomId)} quiet
-          onClick={() => run(channel.setMuted(roomId, !muted))} />
+        <VoiceMicrophoneButton active={!muted} level={levels.get(channel.sessionId ?? "")} disabled={microphoneDisabled} quiet
+          keyShortcuts={voiceShortcutAria(shortcuts.bindings.microphone)} onClick={() => toggle("microphone")} />
       </AudioVolumeMenu>
       <AudioVolumeMenu volume={channel.listeningVolume} onVolume={channel.setListeningVolume} label="voice.listeningVolume">
         <VoiceListeningButton deafened={deafened} quiet
-          onClick={() => run(channel.setDeafened(roomId, !deafened))} />
+          keyShortcuts={voiceShortcutAria(shortcuts.bindings.listening)} onClick={() => toggle("listening")} />
       </AudioVolumeMenu>
       <Btn icon="door" title="voice.leave" hint="hint-voice-leave" draw="voice-membership" size="compact" quiet
         onClick={() => run(channel.leaveVoice(roomId))} />

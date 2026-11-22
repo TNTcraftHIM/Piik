@@ -334,6 +334,17 @@ Room voice from the same source endpoint plays once locally across joined rooms;
 mute and deafen still apply per room. Different endpoints remain separate,
 including those of one user.
 
+Voice shortcuts work in the focused Piik page or detached room
+tool. Ctrl+Shift+M toggles the microphone and Ctrl+Shift+D toggles listening in
+the room shown in the voice dock. macOS uses Command in place of Ctrl. Both keys
+can be reassigned or cleared. Text entry, IME composition, shortcut recording
+and remote keyboard control have priority. A held key toggles once.
+
+Windows also supports opt-in background shortcuts. While the user
+has joined voice, the App registers the keys with Windows and sends each action
+to one user-selected, approved App connection. The page applies the same dock
+action. If background registration is unavailable, page shortcuts remain usable.
+
 ### Identity And Share Titles
 
 The custom avatar sits upright on the couch as a rounded square. The headset

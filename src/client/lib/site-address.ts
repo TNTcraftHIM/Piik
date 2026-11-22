@@ -15,3 +15,18 @@ export function publicSiteOrigin(value: string): string | null {
   const url = siteEntryURL(value);
   return url?.protocol === "https:" && url.pathname === "/" && !url.search && !url.hash ? url.origin : null;
 }
+
+export function siteEntryError(reason: unknown) {
+  if (reason === "not_piik_site") return "client.bookmarks.notPiik" as const;
+  if (reason === "site_unavailable") return "client.bookmarks.unavailable" as const;
+  return undefined;
+}
+
+export async function openLauncherSite(url: string): Promise<void> {
+  const response = await fetch("/api/client-launcher/open", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }),
+  });
+  const result = await response.json();
+  if (!response.ok || typeof result.opened !== "boolean") throw new Error(result.detail);
+  if (!result.opened) location.assign(url);
+}

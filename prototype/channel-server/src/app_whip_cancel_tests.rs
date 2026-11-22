@@ -74,6 +74,7 @@ async fn native_and_external_cancellation_keep_the_other_preparation_owner() -> 
     let app = Arc::new(App {
         capture_targets: Default::default(),
         capture_microphones: Default::default(),
+        voice_shortcuts: Default::default(),
         config: Config {
             data_root: directory.path().into(),
             assets: directory.path().into(),

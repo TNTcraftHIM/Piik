@@ -159,7 +159,7 @@ enum ServiceEvent {
         launcher: url::Url,
     },
     Navigate(String),
-    ContentLoading,
+    ContentLoading(String),
     Mount(watch_mount::Request, String, u64),
     Finished,
     PopupClosed(WindowId),
@@ -297,6 +297,56 @@ impl Drop for Core {
     }
 }
 
+// The App service selects the workspace origin. Page links cannot select another one.
+#[derive(Clone, Default)]
+struct WorkspaceOrigins {
+    launcher: Option<url::Origin>,
+    site: Option<url::Origin>,
+    opening: Option<url::Origin>,
+}
+impl WorkspaceOrigins {
+    fn handles(&self, address: &str, open_external: bool) -> bool {
+        if address == "about:blank" {
+            return true;
+        }
+        let Ok(url) = url::Url::parse(address) else { return false };
+        let origin = url.origin();
+        if matches!(url.scheme(), "http" | "https" | "blob")
+            && (self.launcher.as_ref() == Some(&origin) || self.site.as_ref() == Some(&origin) || self.opening.as_ref() == Some(&origin))
+        {
+            return true;
+        }
+        if open_external && matches!(url.scheme(), "http" | "https") && url.username().is_empty() && url.password().is_none() {
+            if let Err(error) = webbrowser::open(url.as_str()) {
+                eprintln!("Open link in browser: {error}");
+            }
+        }
+        false
+    }
+}
+
+fn workspace_navigation(view: &WebView, origins: Rc<RefCell<WorkspaceOrigins>>) -> Result<()> {
+    unsafe {
+        view.webview().add_NavigationStarting(
+            &webview2_com::NavigationStartingEventHandler::create(Box::new(move |_, args| {
+                let Some(args) = args else { return Ok(()) };
+                let mut uri = windows_core::PWSTR::null();
+                args.Uri(&mut uri)?;
+                let mut redirected = Default::default();
+                args.IsRedirected(&mut redirected)?;
+                let mut user_initiated = Default::default();
+                args.IsUserInitiated(&mut user_initiated)?;
+                let allowed = origins.borrow().handles(
+                    &webview2_com::take_pwstr(uri), user_initiated.as_bool() && !redirected.as_bool(),
+                );
+                args.SetCancel(!allowed)
+            })),
+            &mut Default::default(),
+        )?;
+    }
+    Ok(())
+}
+
 struct PopupWindow {
     caption: caption::Caption,
     content: WebView,
@@ -308,6 +358,7 @@ impl PopupWindow {
         environment: webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Environment,
         events: EventLoopProxy<ServiceEvent>,
         pending: PendingPermissions,
+        origins: Rc<RefCell<WorkspaceOrigins>>,
         controls: &WindowControls,
     ) -> Result<Self> {
         let id = window.id();
@@ -316,6 +367,13 @@ impl PopupWindow {
         let load_events = events.clone();
         let webview = WebViewBuilder::new()
             .with_environment(environment)
+            .with_new_window_req_handler({
+                let origins = origins.clone();
+                move |url, _| {
+                    origins.borrow().handles(&url, true);
+                    NewWindowResponse::Deny
+                }
+            })
             .with_initialization_script(SYSTEM_PRESENTATION)
             .with_initialization_script(download::SCRIPT)
             .with_document_title_changed_handler(move |title| { let _ = title_events.send_event(ServiceEvent::PopupTitle(id, title)); })
@@ -333,6 +391,7 @@ impl PopupWindow {
             })
             .build_as_child(window.as_ref())?;
         let download_events = events.clone();
+        workspace_navigation(&webview, origins)?;
         download::install(&webview, Some(Rc::new(move |url, status| {
             let _ = download_events.send_event(ServiceEvent::Download(id, url, status));
         })), None)?;
@@ -378,6 +437,7 @@ type Popups = Rc<RefCell<Vec<PopupWindow>>>;
 
 // Fields drop in this order: both WebViews retire before their native owner.
 struct MainWindow {
+    origins: Rc<RefCell<WorkspaceOrigins>>,
     receipts: Rc<download::ReceiptBook>,
     document: Rc<std::cell::Cell<u64>>,
     caption: caption::Caption,
@@ -413,16 +473,18 @@ impl MainWindow {
         let document = Rc::new(std::cell::Cell::new(0u64));
         let loading_document = document.clone();
         let ipc_document = document.clone();
+        let origins = Rc::new(RefCell::new(WorkspaceOrigins::default()));
+        let popup_origins = origins.clone();
         let content = WebViewBuilder::new_with_web_context(context).with_url("about:blank")
             .with_initialization_script(CAPABILITY)
             .with_initialization_script(reveal::SCRIPT)
             .with_initialization_script_for_main_only(watch_mount::SCRIPT, true)
             .with_initialization_script(download::SCRIPT)
-            .with_on_page_load_handler(move |event, _| {
+            .with_on_page_load_handler(move |event, url| {
                 // Wry maps Started to top-level ContentLoading, after cancellation is resolved.
                 if matches!(event, PageLoadEvent::Started) {
                     loading_document.set(loading_document.get().wrapping_add(1));
-                    let _ = load_events.send_event(ServiceEvent::ContentLoading);
+                    let _ = load_events.send_event(ServiceEvent::ContentLoading(url));
                 }
             })
             .with_ipc_handler(move |request| {
@@ -439,12 +501,13 @@ impl MainWindow {
                     let _ = content_events.send_event(ServiceEvent::Content(message));
                 }
             })
-            .with_new_window_req_handler(move |_, features| {
+            .with_new_window_req_handler(move |url, features| {
+                if !popup_origins.borrow().handles(&url, true) { return NewWindowResponse::Deny; }
                 let create = || -> Result<NewWindowResponse> {
                     let window = Rc::new(popup::builder(window_builder()?, features.size, features.position, &popup_controls)
                         .with_decorations(false).with_undecorated_shadow(true).build(&popup_target)?);
                     let popup = PopupWindow::new(window, features.opener.environment, popup_events.clone(),
-                        popup_pending.clone(), &popup_controls)?;
+                        popup_pending.clone(), popup_origins.clone(), &popup_controls)?;
                     let response = NewWindowResponse::Create { webview: popup.content.webview() };
                     popups.borrow_mut().push(popup);
                     Ok(response)
@@ -458,6 +521,7 @@ impl MainWindow {
             .build_as_child(window.as_ref())?;
         let download_events = events.clone();
         let id = window.id();
+        workspace_navigation(&content, origins.clone())?;
         download::install(&content, Some(Rc::new(move |url, status| {
             let _ = download_events.send_event(ServiceEvent::Download(id, url, status));
         })), Some(receipts.clone()))?;
@@ -482,7 +546,7 @@ impl MainWindow {
 
         let caption = caption::Caption::new(&window, &content, events, controls, false)?;
         let result = Self {
-            receipts, document,
+            receipts, document, origins,
             caption,
             content,
             window,
@@ -651,10 +715,21 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             Event::UserEvent(ServiceEvent::Mount(request, source, generation)) => {
                 if let Some(main) = &window { request.apply(main, &mut pages, &source, generation); }
             }
-            Event::UserEvent(ServiceEvent::ContentLoading) => {
+            Event::UserEvent(ServiceEvent::ContentLoading(url)) => {
                 pages.release_mounts();
                 if let Some(main) = &window {
                     if prompt.as_ref().is_some_and(|dialog| dialog.stale(main)) { prompt.take(); }
+                    let origin = url::Url::parse(&url).ok().map(|page| page.origin());
+                    let mut origins = main.origins.borrow_mut();
+                    if origins.opening.is_some() && origins.opening == origin {
+                        origins.site = origins.opening.take();
+                        prompt.take();
+                        pending.borrow_mut().clear();
+                        popups.borrow_mut().clear();
+                        slot = None;
+                        main.window.set_fullscreen(None);
+                        main.position_caption(&controls, None);
+                    }
                     main.caption.content_loading();
                 }
             }
@@ -786,7 +861,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                         launcher.set_fragment(Some(&fragment.finish()));
                         let window = Rc::new(popup::builder(window_builder()?, None, None, &controls)
                             .with_decorations(false).with_undecorated_shadow(true).build(target)?);
-                        let popup = PopupWindow::new(window, main.content.environment(), page_events.clone(), pending.clone(), &controls)?;
+                        let popup = PopupWindow::new(window, main.content.environment(), page_events.clone(), pending.clone(), main.origins.clone(), &controls)?;
                         popup.content.load_url(launcher.as_str())?;
                         bookmarks_window = Some(popup.window.id());
                         popups.borrow_mut().push(popup);
@@ -799,20 +874,16 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             }
             Event::UserEvent(ServiceEvent::Navigate(url)) => {
                 if let Some(main) = &window {
+                    main.origins.borrow_mut().opening = url::Url::parse(&url).ok().map(|u| u.origin());
                     match main.content.load_url(&url) {
                         Ok(()) => {
-                            // Navigation retires the old page's surfaces and permission requests;
-                            // its App-hosted rooms remain with the service.
-                            prompt.take();
-                            pending.borrow_mut().clear();
-                            popups.borrow_mut().clear();
-                            slot = None;
-                            main.window.set_fullscreen(None);
-                            main.position_caption(&controls, None);
                             main.window.set_minimized(false);
                             main.window.set_focus();
                         }
-                        Err(error) => eprintln!("Open site in Piik: {error:#}"),
+                        Err(error) => {
+                            main.origins.borrow_mut().opening.take();
+                            eprintln!("Open site in Piik: {error:#}");
+                        }
                     }
                 }
             }
@@ -839,6 +910,10 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 }
             }
             Event::UserEvent(ServiceEvent::Ready { entry, launcher }) => {
+                if let Some(main) = &window {
+                    let site = url::Url::parse(&entry).ok().map(|u| u.origin());
+                    *main.origins.borrow_mut() = WorkspaceOrigins { launcher: Some(launcher.origin()), site, opening: None };
+                }
                 launcher_url = Some(launcher);
                 let opened = match &window {
                     Some(main) => main.content.load_url(&entry).map_err(anyhow::Error::from),
