@@ -4,6 +4,26 @@ export interface ViewerAudioSnapshot {
   boostAvailable: boolean;
 }
 
+/** Room voice outputs share one context while any of them uses a gain graph. */
+export class VoicePlaybackContext {
+  private context: AudioContext | null = null;
+  private outputs = 0;
+
+  acquire(): AudioContext {
+    this.context ??= new AudioContext();
+    this.outputs++;
+    return this.context;
+  }
+
+  release(): void {
+    if (--this.outputs === 0) {
+      const context = this.context!;
+      this.context = null;
+      void context.close().catch(() => undefined);
+    }
+  }
+}
+
 export class ViewerAudio {
   private level = 1;
   private muted = false;
@@ -19,8 +39,7 @@ export class ViewerAudio {
   constructor(
     private readonly video: HTMLMediaElement,
     private readonly onChange: (snapshot: ViewerAudioSnapshot) => void,
-    // Room voice lends one context to all its local playback sinks.
-    private readonly createContext?: () => AudioContext,
+    private readonly voiceContext?: VoicePlaybackContext,
     private readonly maxLevel = 2,
   ) {
     this.level = video.volume;
@@ -56,11 +75,12 @@ export class ViewerAudio {
   setLevel(level: number): void {
     if (this.disposed || !Number.isFinite(level)) return;
     this.level = Math.max(0, Math.min(this.boostAvailable ? this.maxLevel : 1, level));
+    if (this.voiceContext && this.level === 1) this.releaseGraph();
     // iPhone video.volume is system-owned. Explicit adjustment uses the same
     // gain node below and above 100%; untouched playback stays native.
     if (this.level !== 1 && this.boostAvailable && !this.context) {
       try {
-        this.context = this.createContext ? this.createContext() : new AudioContext();
+        this.context = this.voiceContext?.acquire() ?? new AudioContext();
         this.gain = this.context.createGain();
         this.gain.gain.value = 0;
         this.gain.connect(this.context.destination);
@@ -180,7 +200,8 @@ export class ViewerAudio {
     this.context = null;
     if (context) {
       context.removeEventListener("statechange", this.sync);
-      if (!this.createContext) void context.close().catch(() => undefined);
+      if (this.voiceContext) this.voiceContext.release();
+      else void context.close().catch(() => undefined);
     }
   }
 }

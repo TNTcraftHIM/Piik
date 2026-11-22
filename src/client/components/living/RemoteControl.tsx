@@ -376,7 +376,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           touchOnlySticks={touchOnlySticks} mapping={gamepadAvailable && !gamepadConnected ? stickMode : "keyboard"} onLeftStick={gamepadAvailable && !gamepadConnected ? leftStick : undefined}
           onRightStick={gamepadAvailable && !gamepadConnected ? rightStick : undefined} onStickMouse={moveStickMouse} />}
       </div>}
-      {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
+      {active && keyboardOpen && <RemoteKeyboard input={input} inputSurface={surface} touch={touchControls} platform={state.platform}
         virtualSticks={touchControls ? { checked: virtualSticksEnabled, onChange: checked => {
           setVirtualSticksEnabled(checked); saveRoomPreferences({ virtualSticksEnabled: checked });
         } } : undefined}

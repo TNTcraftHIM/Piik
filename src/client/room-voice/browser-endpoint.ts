@@ -2,7 +2,7 @@ import type { ClientMessage, IceConfig, RoomVoiceState, VoiceConnection, VoiceDe
 import { observeDebugConnection } from "../lib/debug-webrtc";
 import { waitForConnectionOperation } from "../webrtc/connection-operation";
 import type { MicrophoneInput } from "../media/microphone-input";
-import { ViewerAudio } from "../media/viewer-audio";
+import { ViewerAudio, VoicePlaybackContext } from "../media/viewer-audio";
 import { configureAudioSender, audioSenderCeiling } from "../media/quality";
 import { preferRoomVoiceAudio } from "../webrtc/opus-receive-sdp";
 import { addRemoteIceCandidate, iceServersWithNatPrediction, natPredictionSurveyUrls, NatPredictionCandidateEmitter } from "../webrtc/nat-prediction";
@@ -55,9 +55,8 @@ export class BrowserVoiceEndpoint {
   private state: RoomVoiceState | null = null;
   private peerId = "";
   private generation = 0;
-  private playbackContext: AudioContext | null = null;
+  private readonly playbackContext = new VoicePlaybackContext();
   private listeningVolume = 1;
-  private readonly createPlaybackContext = (): AudioContext => this.playbackContext ??= new AudioContext();
   readonly muted = new Set<string>();
   readonly peerVolumes = new Map<string, number>();
   deafened = false;
@@ -252,10 +251,6 @@ export class BrowserVoiceEndpoint {
       binding.audio.pause(); binding.playback?.dispose(); binding.playback = undefined;
       binding.audio.srcObject = null; binding.audio.remove(); binding.audio = undefined;
     }
-    if (![...this.received.values()].some(received => received.playback)) {
-      const context = this.playbackContext; this.playbackContext = null;
-      if (context) void context.close().catch(() => {});
-    }
     binding.blocked = false;
   }
   private removeReceived(key: string): void {
@@ -282,7 +277,7 @@ export class BrowserVoiceEndpoint {
         const stream = new MediaStream([track]);
         audio.srcObject = stream;
         // Independent 0–200% master and person controls compose to at most 4×.
-        binding.playback = new ViewerAudio(audio, () => {}, this.createPlaybackContext, 4);
+        binding.playback = new ViewerAudio(audio, () => {}, this.playbackContext, 4);
         binding.playback.bind(stream);
         this.syncPlayback();
         document.body.append(audio);

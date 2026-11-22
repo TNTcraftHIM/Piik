@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ViewerAudio } from "../src/client/media/viewer-audio.ts";
+import { ViewerAudio, VoicePlaybackContext } from "../src/client/media/viewer-audio.ts";
 
 class PlaybackVideo extends EventTarget {
   volume = 1;
@@ -61,7 +61,7 @@ describe("Viewer local audio", () => {
     vi.stubGlobal("AudioContext", PlaybackContext);
     vi.stubGlobal("MediaStream", AudioStream);
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
   it("retains gain on its mute echo when the system ignores volume writes", () => {
     const video = new PlaybackVideo();
@@ -209,35 +209,53 @@ describe("Viewer local audio", () => {
     audio.dispose();
   });
 
-  it("shares a lent context while muting and retiring each voice sink independently", () => {
-    const context = new PlaybackContext();
+  it("shares a context only among voice outputs with gain graphs", () => {
+    const voiceContext = new VoicePlaybackContext();
     const gains: PlaybackContext["gain"][] = [];
-    vi.spyOn(context, "createGain").mockImplementation(() => {
+    vi.spyOn(PlaybackContext.prototype, "createGain").mockImplementation(() => {
       const gain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
       gains.push(gain); return gain;
     });
-    const elements = [new PlaybackVideo(), new PlaybackVideo()];
+    const elements = [new PlaybackVideo(), new PlaybackVideo(), new PlaybackVideo()];
     const outputs = elements.map(element => new ViewerAudio(element as unknown as HTMLAudioElement,
-      vi.fn(), () => context as unknown as AudioContext, 4));
-    outputs.forEach(output => { output.bind(new AudioStream([audioTrack()]) as unknown as MediaStream); output.setLevel(2); });
+      vi.fn(), voiceContext, 4));
+    outputs.forEach(output => output.bind(new AudioStream([audioTrack()]) as unknown as MediaStream));
+    outputs[0].setLevel(2);
+    outputs[1].setLevel(2);
+    const context = PlaybackContext.instances[0];
     context.start();
     expect(PlaybackContext.instances).toHaveLength(1);
     expect(gains.map(gain => gain.gain.value)).toEqual([2, 2]);
-    expect(elements.every(element => element.muted)).toBe(true);
+    expect(elements.map(element => element.muted)).toEqual([true, true, false]);
     outputs[0].setLevel(4);
     expect(gains.map(gain => gain.gain.value)).toEqual([4, 2]);
     outputs[0].setMuted(true);
     expect(gains.map(gain => gain.gain.value)).toEqual([0, 2]);
-    outputs[0].dispose();
+    outputs[0].setLevel(1);
     expect(gains[0].disconnect).toHaveBeenCalledOnce();
+    expect(elements[0].muted).toBe(true);
+    outputs[0].setMuted(false);
+    expect(elements[0].muted).toBe(false);
     expect(context.close).not.toHaveBeenCalled();
     outputs[1].setLevel(0);
     expect(gains[1].gain.value).toBe(0);
     outputs[1].setLevel(1.5);
     expect(gains[1].gain.value).toBe(1.5);
     outputs[1].dispose();
-    expect(context.close).not.toHaveBeenCalled();
-    void context.close();
+    expect(context.close).toHaveBeenCalledOnce();
+    expect(elements[2].muted).toBe(false);
+
+    outputs[2].setLevel(0.5);
+    expect(PlaybackContext.instances).toHaveLength(2);
+    const nextContext = PlaybackContext.instances[1];
+    nextContext.start();
+    expect(gains[2].gain.value).toBe(0.5);
+    outputs[2].setLevel(1);
+    expect(nextContext.close).toHaveBeenCalledOnce();
+    expect(elements[2].muted).toBe(false);
+    outputs[0].dispose();
+    outputs[2].dispose();
+    expect(nextContext.close).toHaveBeenCalledOnce();
   });
 
   it("uses current preferences after resume and ignores completions after disposal", async () => {
