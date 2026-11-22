@@ -2,7 +2,7 @@ import type { NativeConnectionMetrics } from "./app-link";
 import { EMPTY_METRICS, type ConnectionMetrics } from "../types";
 import type { ChannelConnectionSample } from "./types";
 
-export type NativeMetricSamples = Map<string, { timestamp: number; bytes: number; metrics: ConnectionMetrics }>;
+export type NativeMetricSamples = Map<string, { timestamp: number; bytes: number; codec: string | null; bitrate: number | null }>;
 
 /** Native SDK samples retain their own physical-connection clock and counters. */
 export function collectNativeConnectionMetrics(report: NativeConnectionMetrics, previous: NativeMetricSamples): ChannelConnectionSample[] {
@@ -11,11 +11,12 @@ export function collectNativeConnectionMetrics(report: NativeConnectionMetrics, 
     const key = JSON.stringify([report.sessionId, connection.connectionId, stream.flowId, stream.direction, stream.media, stream.outputId, stream.mid, stream.rid]);
     retained.add(key);
     const prior = previous.get(key);
-    const windowMs = prior && stream.sampleTimestampMs > prior.timestamp
+    const sameCounters = prior && prior.codec === stream.codec && stream.bytes >= prior.bytes;
+    const windowMs = sameCounters && stream.sampleTimestampMs > prior.timestamp
       ? stream.sampleTimestampMs - prior.timestamp : null;
-    const bitrate = windowMs !== null && stream.bytes >= prior!.bytes
-      ? (stream.bytes - prior!.bytes) * 8 / windowMs
-      : stream.sampleTimestampMs === prior?.timestamp ? prior.metrics.bitrateKbps : null;
+    let bitrate: number | null = null;
+    if (prior && windowMs !== null) bitrate = (stream.bytes - prior.bytes) * 8 / windowMs;
+    else if (sameCounters && stream.sampleTimestampMs === prior.timestamp && stream.bytes === prior.bytes) bitrate = prior.bitrate;
     const metrics: ConnectionMetrics = {
       ...EMPTY_METRICS, sampleTimestampMs: stream.sampleTimestampMs, sampleWindowMs: windowMs,
       rtpStatsId: key, rtpMid: stream.mid, rtpRid: stream.rid,
@@ -27,7 +28,7 @@ export function collectNativeConnectionMetrics(report: NativeConnectionMetrics, 
         audioPacketLossPercent: stream.lossFraction === null ? null : stream.lossFraction * 100,
         audioJitterMs: stream.jitterMs } : { codec: stream.codec }),
     };
-    previous.set(key, { timestamp: stream.sampleTimestampMs, bytes: stream.bytes, metrics });
+    previous.set(key, { timestamp: stream.sampleTimestampMs, bytes: stream.bytes, codec: stream.codec, bitrate });
     return { ownerSessionId: report.sessionId, connectionId: connection.connectionId, selected: stream.selected,
       pairId: connection.pairId, peerId: connection.peerId, flowId: stream.flowId, publicationId: stream.publicationId,
       direction: stream.direction, media: stream.media, metrics };

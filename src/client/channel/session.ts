@@ -1208,7 +1208,8 @@ export class ChannelSession {
   private async browserStorage(channelId: string, userId: string) {
     const runtime = await loadRoomHosting(), database = roomDatabaseName(channelId, userId);
     return {
-      storedPolicies: () => runtime.BrowserRoomHost.storedPolicies(database),
+      storedRoomIds: () => runtime.BrowserRoomHost.storedRoomIds(database),
+      openExisting: (id: string) => runtime.BrowserRoomHost.openExisting(database, id),
       open: (policy: string) => runtime.BrowserRoomHost.open(database, policy),
     };
   }
@@ -1222,23 +1223,15 @@ export class ChannelSession {
     const state = this.view.state, self = this.view.self;
     if (!state || !self) return;
     const storage = await this.browserStorage(state.channel.id, self.id);
-    const policies = await storage.storedPolicies();
+    const retained = new Set(await storage.storedRoomIds());
     if (!current()) return;
-    const retained = new Map<string, string>();
     let storageFailed = false;
-    for (const policy of policies) {
-      try {
-        const { id } = JSON.parse(policy);
-        if (typeof id === "string") retained.set(id, policy);
-        else storageFailed = true;
-      } catch { storageFailed = true; }
-    }
     for (const [id, hosted] of this.hostedRooms) if (!retained.has(id)) {
       if (!current()) return;
       this.hostedRooms.delete(id);
       await hosted.host.close();
     }
-    for (const [id, policy] of retained) {
+    for (const id of retained) {
       if (!current()) return;
       if (id === skipRoom) continue;
       if (!this.view.state?.channel.rooms.some(room => room.id === id && room.creatorId === self.id)) continue;
@@ -1246,20 +1239,21 @@ export class ChannelSession {
       let room: RoomSummary;
       try {
         if (!hosted) {
-          const host = await storage.open(policy);
+          const host = await storage.openExisting(id);
           if (!current()) { await host.close(); return; }
           hosted = { host };
           this.hostedRooms.set(id, hosted);
         }
         room = await hosted.host.summary();
-      } catch {
+        if (room.creatorId !== self.id) throw new Error("owner_mismatch");
+      } catch (error) {
         if (!current()) return;
         if (this.hostedRooms.get(id) !== hosted) continue;
         if (hosted) {
           this.hostedRooms.delete(id);
           await hosted.host.close();
         }
-        storageFailed = true;
+        if (!(error instanceof Error && error.message === "room_not_found")) storageFailed = true;
         continue;
       }
       if (!current()) return;
@@ -1653,12 +1647,7 @@ export class ChannelSession {
       current();
       const host = await storage.open(policy);
       creation = "committed";
-      try { current(); } catch (error) { await host.close(); throw error; }
-      this.hostedRooms.set(room.id, { host });
-      const summary = await host.summary();
-      current();
-      if (this.hostedRooms.get(room.id)?.host !== host) throw new Error("disconnected");
-      await this.request({ type: "host_register", room: summary });
+      await this.registerBrowserHost(room.id, host, current);
       await this.request({ type: "browse", roomId: room.id, active: true });
       return room.id;
     } catch (error) {
@@ -1666,6 +1655,14 @@ export class ChannelSession {
       throw new RoomCreationInterrupted(room.id, creation === "committed");
     }
   }, reportError);
+  private async registerBrowserHost(roomId: string, host: HostedRoom, current: () => void): Promise<void> {
+    try { current(); } catch (error) { await host.close(); throw error; }
+    this.hostedRooms.set(roomId, { host });
+    const summary = await host.summary();
+    current();
+    if (this.hostedRooms.get(roomId)?.host !== host) throw new Error("disconnected");
+    await this.request({ type: "host_register", room: summary });
+  }
   private sessionContext(): () => void {
     const { sessionId, self, state } = this.view, socket = this.socket;
     if (!sessionId || !self || !state || this.view.connection !== "connected") throw new Error("disconnected");
@@ -2011,6 +2008,7 @@ export class ChannelSession {
       await this.readings.get(room.id)?.ready;
       current();
       const cached = await this.cacheRoomBackupFiles(room.id, metadata.retainedFiles, contents);
+      current();
       return { roomId: room.id, cached };
     } catch {
       throw new RoomCreationInterrupted(room.id, true);
@@ -2088,7 +2086,6 @@ export class ChannelSession {
       else {
         const stage = source.stage;
         if (!stage) throw new Error("invalid_backup");
-        const policy = source.kind === "copy" ? JSON.stringify(metadata.policy) : stage.policy;
         await this.request({ type: "admit_room", room: roomSummarySchema.parse({ ...metadata.policy, hasPassword: metadata.policy.passwordHash != null }) });
         check(); owner?.current();
         const hosted = this.hostedRooms.get(target);
@@ -2097,7 +2094,7 @@ export class ChannelSession {
         const cancel = new AbortController();
         const unsubscribe = this.subscribe(() => { try { check(); } catch { cancel.abort(); } });
         try {
-          if (source.kind === "copy") await stage.createRoom(policy, cancel.signal);
+          if (source.kind === "copy") await stage.createRoom(JSON.stringify(metadata.policy), cancel.signal);
           else await stage.replace(cancel.signal);
           committed = true;
         }
@@ -2107,10 +2104,8 @@ export class ChannelSession {
           if (hosted.bindingId) this.write({ type: "host_stop", roomId: target, bindingId: hosted.bindingId });
           await hosted.host.close();
         }
-        const host = await (await this.browserStorage(metadata.domainId, metadata.policy.creatorId)).open(policy);
-        try { check(); } catch (error) { await host.close(); throw error; }
-        this.hostedRooms.set(target, { host });
-        await this.request({ type: "host_register", room: await host.summary() });
+        const host = await (await this.browserStorage(metadata.domainId, metadata.policy.creatorId)).openExisting(target);
+        await this.registerBrowserHost(target, host, check);
       }
       await this.waitForState(() => {
         const room = this.view.state?.channel.rooms.find(room => room.id === target);
@@ -2120,6 +2115,7 @@ export class ChannelSession {
       this.browse(target);
       await this.reading?.ready; check();
       const cached = await this.cacheRoomBackupFiles(target, metadata.retainedFiles, contents);
+      check();
       return { roomId: target, cached };
     } catch (error) {
       if (committed) throw new Error("room_restored_connection_failed");
@@ -3174,8 +3170,8 @@ export class ChannelSession {
       requested: share.requestedMicrophone ?? actual };
   };
 
-  sourceMicrophones = (publicationId: string) => this.local.get(publicationId)?.kind === "screen"
-    ? browserCaptureDevices("audioinput") : this.app?.hasSourceAudioControl(publicationId) ? this.app.sourceMicrophones() : Promise.resolve([]);
+  sourceMicrophones = (publicationId: string, signal?: AbortSignal) => this.local.get(publicationId)?.kind === "screen"
+    ? browserCaptureDevices("audioinput") : this.app?.hasSourceAudioControl(publicationId) ? this.app.sourceMicrophones(signal) : Promise.resolve([]);
 
   setSourceMicrophone = (publicationId: string, settings: SourceMicrophoneSettings): Promise<void> => {
     const owner = [...this.screenShares].find(([, share]) => share.id === publicationId);
@@ -3249,35 +3245,35 @@ export class ChannelSession {
     if (!share || this.sourceSelections.has(owner![0]) || share.audioChange) return Promise.reject(new Error("capture_unavailable"));
     const profile = { ...requested, maxAudioBitrate: share.profile.maxAudioBitrate };
     if (!supportsCaptureProfile(profile)) return Promise.reject(new Error("capture_quality_unsupported"));
+    const local = this.local.get(publicationId), app = this.app;
+    const captureId = app?.captureId(publicationId);
+    if (!local && !captureId) return Promise.reject(new Error("capture_unavailable"));
     share.requestedProfile = profile;
     this.patch({});
     if (share.qualityChange) return share.qualityChange;
-    const current = () => [...this.screenShares.values()].includes(share);
+    const current = () => this.screenShares.get(owner![0]) === share
+      && (local ? this.local.get(publicationId) === local : this.app === app && app?.captureId(publicationId) === captureId);
     share.qualityChange = this.action(`quality:${publicationId}`, async () => {
       do {
         const profile = share.requestedProfile!;
         try {
-          const local = this.local.get(publicationId);
           if (local) {
             const previous = share.profile;
             await this.media.configureLocal(publicationId, profile);
-            if (!current() || this.local.get(publicationId) !== local) throw new DOMException("Capture cancelled", "AbortError");
+            if (!current()) throw new DOMException("Capture cancelled", "AbortError");
             try {
               await this.request({ type: "publish", publication: { id: publicationId, roomId: local.roomId, kind: "screen",
                 videoSettings: screenVideoSettings(profile) } });
             } catch (error) {
-              if (current() && this.local.get(publicationId) === local) await this.media.configureLocal(publicationId, previous);
+              if (current()) await this.media.configureLocal(publicationId, previous);
               throw error;
             }
-            if (!current() || this.local.get(publicationId) !== local) throw new DOMException("Capture cancelled", "AbortError");
           } else {
-            const app = this.app;
-            if (!app?.screens.has(publicationId)) throw new Error("capture_unavailable");
-            await app.setCaptureQuality(publicationId, profile);
-            if (this.app !== app) throw new DOMException("Capture cancelled", "AbortError");
+            await app!.setCaptureQuality(publicationId, profile);
           }
         } catch (error) {
-          if (current() && share.requestedProfile !== profile) continue;
+          if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+          if (share.requestedProfile !== profile) continue;
           throw error;
         }
         if (!current()) throw new DOMException("Capture cancelled", "AbortError");

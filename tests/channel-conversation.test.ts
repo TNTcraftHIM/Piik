@@ -7,8 +7,19 @@ import { readFile } from "node:fs/promises";
 
 afterEach(() => vi.restoreAllMocks());
 
+function conversationState(host: string, sender: string, binding: string, domain: string): ChannelSnapshot {
+  return { channel: { id: domain, name: "Friends", icon: "couch", ownerId: host, roomCreationPolicy: "ordinary", hostingMode: "lightweight", managedRoomIds: [], historyWindow: 100, userCount: 2,
+    rooms: [{
+      id: "room", name: "Room", icon: "couch", creatorId: host, access: "public", hidden: false, hasPassword: false,
+      voiceBitrate: 64000, relayCapacity: 2, relayOverride: null, authorized: true, canManage: true, available: true,
+      reading: true, participantSessionIds: [host, sender], lastMessageSeq: 0, fileActivity: [], capabilities: { attachments: true },
+      delivery: { hostSessionId: host, bindingId: binding },
+    }] }, sessions: [], users: [], files: [], publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], iceServers: [], pairs: [],
+  };
+}
+
 test("the Browser room host fans out Core-selected reactions and suppresses an acknowledged nonce retry", async () => {
-  const state = { channel: { rooms: [{ id: "room", delivery: { bindingId: "binding", hostSessionId: "host" } }] } } as ChannelSnapshot;
+  const state = conversationState("host", "source", "binding", "domain");
   const sent: SignedConversationPacket[] = [];
   const event = { id: "event", occurredAt: 1000, senderUserId: "user", reaction: "heart", target: { type: "message" as const, messageSeq: 1, messageId: "message" } };
   const snapshot = { type: "message" as const, messageId: "message", messageSeq: 1, revision: 1, counts: { heart: 1 } };
@@ -63,14 +74,7 @@ test("signed conversation uses Domain delivery without peers and still fences si
     createSessionSigner: async (seed: Uint8Array) => new rust.SessionSigner(seed),
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const [host, sender, binding, domain] = [1, 2, 3, 4].map(value => `00000000-0000-0000-0000-${String(value).padStart(12, "0")}`);
-  let state = { channel: { id: domain, name: "Friends", icon: "couch", ownerId: host, roomCreationPolicy: "ordinary", hostingMode: "lightweight", managedRoomIds: [], historyWindow: 100, userCount: 2,
-    rooms: [{
-      id: "room", name: "Room", icon: "couch", creatorId: host, access: "public", hidden: false, hasPassword: false,
-      voiceBitrate: 64000, relayCapacity: 2, relayOverride: null, authorized: true, canManage: true, available: true,
-      reading: true, participantSessionIds: [host, sender], lastMessageSeq: 0, fileActivity: [], capabilities: { attachments: true },
-      delivery: { hostSessionId: host, bindingId: binding },
-    }] }, sessions: [], users: [], files: [], publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], iceServers: [], pairs: [],
-  } as ChannelSnapshot;
+  let state = conversationState(host, sender, binding, domain);
   const requests: SignedConversationPacket[] = [], replies: SignedConversationPacket[] = [], received = vi.fn();
   const dispatchPeer = vi.fn(async (packet: SignedConversationPacket) => {
     const { command: _command, ...address } = JSON.parse(packet.payload);
@@ -104,7 +108,7 @@ test("signed conversation uses Domain delivery without peers and still fences si
 });
 
 test("retiring a room during a conversation commit does not read or broadcast from its released host", async () => {
-  const state = { channel: { rooms: [{ id: "room", delivery: { bindingId: "binding", hostSessionId: "host" } }] } } as ChannelSnapshot;
+  const state = conversationState("host", "source", "binding", "domain");
   const record: ConversationReply["record"] = { type: "reaction", nonce: 1,
     event: { id: "event", occurredAt: 1000, senderUserId: "user", reaction: "heart", target: { type: "message", messageSeq: 1, messageId: "message" } }, snapshot: null };
   let finish!: (replies: ConversationReply[]) => void;

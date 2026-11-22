@@ -10,6 +10,20 @@ import { QUALITY_PROFILES, screenVideoSettings } from "../../../src/client/media
 
 declare global { interface Window { runBrowserRoomCheck(): Promise<object> } }
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
+async function storedPolicies(database: string): Promise<string[]> {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(database);
+    request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+  });
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction("rooms");
+      const request = tx.objectStore("rooms").getAll();
+      tx.oncomplete = () => resolve(request.result.map(record => record.policy));
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally { db.close(); }
+}
 interface Output {
   projection: {
     summary: { icon: string };
@@ -345,7 +359,7 @@ window.runBrowserRoomCheck = async () => {
     });
     old.close();
     try {
-      try { await BrowserRoomHost.storedPolicies(previousDatabase); throw new Error("old schema accepted"); }
+      try { await BrowserRoomHost.storedRoomIds(previousDatabase); throw new Error("old schema accepted"); }
       catch (error) { check(String(error).includes("unsupported_storage_version"), "previous private schema is explicitly rejected"); }
       const saved = await new Promise<IDBDatabase>((resolve, reject) => {
         const request = indexedDB.open(previousDatabase, 6);
@@ -415,7 +429,7 @@ window.runBrowserRoomCheck = async () => {
     const closedRead = await host.summary().catch((error: Error) => error.message);
     check(closedRead === "closed", "a closed host rejects new reads");
     host = await BrowserRoomHost.open(database, policy); await bindHost();
-    const savedPolicyForHost = async () => (await BrowserRoomHost.storedPolicies(database))
+    const savedPolicyForHost = async () => (await storedPolicies(database))
       .map(value => JSON.parse(value)).find(policy => policy.id === host.roomId);
     check((await savedPolicyForHost()).picture === icon, "reopening preserves the committed picture after the replacement was aborted");
     await dispatch({ ...imageChange, picture: null });
@@ -578,7 +592,7 @@ window.runBrowserRoomCheck = async () => {
     await bindHost();
     const restored = await dispatch({ type: "browse", active: true, roomId: host.roomId });
     check(restored.projection.publications.length === 0, "restart restores policy/history, not capture");
-    check((await BrowserRoomHost.storedPolicies(database)).length === 2, "persisted room policies enumerated");
+    check((await storedPolicies(database)).length === 2, "persisted room policies enumerated");
     const publication = crypto.randomUUID();
     check((await dispatch({ type: "publish", publication: { id: publication, roomId: host.roomId,
       kind: "screen", source: { kind: "screen", name: null }, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } })).reply?.result.type === "done",
@@ -610,7 +624,7 @@ window.runBrowserRoomCheck = async () => {
         const replies = await previousHost.dispatchPeer(peerPacket(command, previousBinding), Date.now());
         check(replies[0]?.record.type === "error" && replies[0].record.code === "stale_room_host", "old owner cannot confirm history or an immediate result");
       }
-      const saved = (await BrowserRoomHost.storedPolicies(database)).map(value => JSON.parse(value)).find(value => value.id === replacement.roomId);
+      const saved = (await storedPolicies(database)).map(value => JSON.parse(value)).find(value => value.id === replacement.roomId);
       check(saved.name === "New binding policy", "stale policy did not overwrite current policy");
       host = replacement;
       check((await send("After owner transfer", "after-bind")).message.seq === 111, "stale message consumed no sequence");
@@ -720,7 +734,7 @@ window.runBrowserRoomCheck = async () => {
       try { await conflicting.replace(); throw new Error("cross-room ID collision accepted"); }
       catch (error) { check(error instanceof DOMException && error.name === "ConstraintError", "actual destination unique constraint aborts the complete replacement"); }
     } finally { await conflicting.close(); }
-    const failedPolicy = (await BrowserRoomHost.storedPolicies(database)).map(value => JSON.parse(value)).find(value => value.id === host.roomId);
+    const failedPolicy = (await storedPolicies(database)).map(value => JSON.parse(value)).find(value => value.id === host.roomId);
     check(JSON.stringify(await history()) === JSON.stringify(beforeImport) && failedPolicy.name === "After snapshot",
       "replacement failure rolls back both old history and policy");
 
@@ -777,19 +791,19 @@ window.runBrowserRoomCheck = async () => {
     const copiedRow = { ...rows.find(row => "id" in row)!, id: crypto.randomUUID() };
     try {
       await installed.append(copiedRow);
-      const before = await BrowserRoomHost.storedPolicies(database);
+      const before = await storedPolicies(database);
       for (const id of [host.roomId, unboundId]) {
         try { await installed.createRoom(localPolicy(id)); throw new Error("existing room accepted"); }
         catch (error) { check(String(error).includes("room_host_conflict"), "create rejects bound and unbound targets"); }
       }
-      check(JSON.stringify(await BrowserRoomHost.storedPolicies(database)) === JSON.stringify(before), "conflicts preserve room policies");
+      check(JSON.stringify(await storedPolicies(database)) === JSON.stringify(before), "conflicts preserve room policies");
       const cancelled = new AbortController();
       cancelled.abort();
       try { await installed.createRoom(localPolicy(targetId), cancelled.signal); throw new Error("aborted create committed"); }
       catch (error) { check(error instanceof DOMException && error.name === "AbortError", "create observes abort"); }
-      check(JSON.stringify(await BrowserRoomHost.storedPolicies(database)) === JSON.stringify(before), "abort preserves the database");
+      check(JSON.stringify(await storedPolicies(database)) === JSON.stringify(before), "abort preserves the database");
       await installed.createRoom(localPolicy(targetId));
-      const after = (await BrowserRoomHost.storedPolicies(database)).map(value => JSON.parse(value).id);
+      const after = (await storedPolicies(database)).map(value => JSON.parse(value).id);
       check(!after.includes(tempId) && after.includes(targetId) && after.includes(unboundId), "only the formal room ID is installed");
       const installedHost = await BrowserRoomHost.open(database, localPolicy(targetId));
       try {
@@ -829,21 +843,47 @@ window.runBrowserRoomCheck = async () => {
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     try {
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction("rooms", "readwrite");
+        tx.objectStore("rooms").put({ id: legacyId, policy });
+        tx.oncomplete = () => resolve(); tx.onabort = () => reject(tx.error);
+      });
+      try {
+        const switched = await BrowserRoomHost.openExisting(database, legacyId);
+        await switched.close();
+        throw new Error("damaged room switched identity");
+      } catch (error) {
+        check(String(error).includes("invalid_room_policy"), "the stored policy must match its room key");
+      }
+      const ids = await BrowserRoomHost.storedRoomIds(database);
+      check(ids.includes(legacyId) && ids.includes(host.roomId), "discovery retains both physical keys");
+      const healthy = await BrowserRoomHost.openExisting(database, host.roomId);
+      try { check((await healthy.summary()).id === host.roomId, "a healthy sibling reopens"); }
+      finally { await healthy.close(); }
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction("rooms", "readwrite");
+        tx.objectStore("rooms").delete(legacyId);
+        tx.oncomplete = () => resolve(); tx.onabort = () => reject(tx.error);
+      });
+      try { await BrowserRoomHost.openExisting(database, legacyId); throw new Error("deleted room reopened"); }
+      catch (error) { check(String(error).includes("room_not_found"), "a disappeared key stays deleted"); }
+      check(!(await BrowserRoomHost.storedRoomIds(database)).includes(legacyId), "recovery creates no room");
+
       for (const [field, value, expected] of [["icon", undefined, "invalid_request"], ["voiceBitrate", 0, "invalid_room_policy"],
         ["relayCapacity", 0, "invalid_room_policy"], ["passwordHash", "invalid", "invalid_room_policy"],
         ["inviteHash", Array(32).fill(7), "invalid_room_policy"]] as const) {
         const invalid = { ...JSON.parse(legacyPolicy), id: crypto.randomUUID(), [field]: value };
-        const before = await BrowserRoomHost.storedPolicies(database);
+        const before = await storedPolicies(database);
         let opened: BrowserRoomHost | undefined, error: string | undefined;
         try { opened = await BrowserRoomHost.open(database, JSON.stringify(invalid)); }
         catch (cause) { error = String(cause); }
         finally { await opened?.close(); }
-        check(JSON.stringify(await BrowserRoomHost.storedPolicies(database)) === JSON.stringify(before), `${field} is rejected before IndexedDB writes`);
+        check(JSON.stringify(await storedPolicies(database)) === JSON.stringify(before), `${field} is rejected before IndexedDB writes`);
         check(error === expected, `${field} reports its policy error`);
         const oldPolicy = JSON.stringify({ ...invalid, id: legacyId });
         await new Promise<void>((resolve, reject) => {
           const tx = db.transaction("rooms", "readwrite"), rooms = tx.objectStore("rooms"), request = rooms.get(legacyId);
-          request.onsuccess = () => rooms.put({ ...request.result, policy: oldPolicy });
+          request.onsuccess = () => rooms.put({ ...request.result, id: legacyId, policy: oldPolicy });
           tx.oncomplete = () => resolve(); tx.onabort = () => reject(tx.error);
         });
         error = undefined;
@@ -851,7 +891,7 @@ window.runBrowserRoomCheck = async () => {
         catch (cause) { error = String(cause); }
         finally { await opened?.close(); }
         check(error === expected, `saved ${field} reports its policy error`);
-        check((await BrowserRoomHost.storedPolicies(database)).includes(oldPolicy), `invalid saved ${field} remains unchanged`);
+        check((await storedPolicies(database)).includes(oldPolicy), `invalid saved ${field} remains unchanged`);
       }
     } finally { db.close(); }
     await checkReplyStorage();

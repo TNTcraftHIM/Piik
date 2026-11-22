@@ -2,7 +2,7 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Existing translations may be partial; keys are checked against zh.
 export const ko = {
-  "watch.forward.mainHelp": "Piik에서 재생하고 재생 위치를 조절해요. 시청하는 동안 원래 페이지를 열어 두세요. 동영상은 내 App에서 업로드해요.",
+  "watch.forward.mainHelp": "Piik에서 재생하고 재생 위치를 조절해요. 영상은 내 앱에서 전달하며 원본 웹페이지 창은 숨겨져요. 이 창을 닫으면 모두의 함께 보기가 끝나요.",
   "watch.forward.tracksHelp": "영상과 선택할 음성을 따로 고르세요. 확인하면 이 기기의 업로드 대역폭을 사용해 전송합니다.",
   "watch.forward.noVideoTrack": "전송할 수 있는 영상 트랙이 없습니다. 원래 웹페이지에서 계속 시청할 수 있습니다.",
   "watch.forward.videoOnly": "영상만, 소리 없이",

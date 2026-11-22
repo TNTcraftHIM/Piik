@@ -149,6 +149,19 @@ async fn actual_vp8_then_h264_on_the_same_ssrc_replaces_only_video_format() -> R
         let reader = f.driver.pairs[&pair].latest[&(input, MediaKind::Video)];
         let reader_task = f.driver.pairs[&pair].tasks[&reader].task.id();
         let q_ssrc = set_codec(&f, vp8(), "q").await?;
+        let old_sample = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let stats = incoming_pc.connection_metrics().await?;
+                if let Some(sample) = stats.streams.iter().find(|sample| {
+                    sample.counters.rid.as_deref() == Some("q")
+                        && sample.counters.codec.as_deref() == Some("video/VP8")
+                }) {
+                    break Ok::<_, anyhow::Error>(sample.counters.sample_timestamp_ms);
+                }
+                f.step().await?;
+            }
+        })
+        .await??;
         f.parents[0].video_enabled = false;
         // The q representation switches while h still supplies the old format.
         ensure!(set_codec(&f, h264(), "q").await? == q_ssrc);
@@ -156,6 +169,16 @@ async fn actual_vp8_then_h264_on_the_same_ssrc_replaces_only_video_format() -> R
         f.until(|f| source(f, input).is_some_and(|s| s.codec().mime_type == "video/H264"))
             .await
             .context("H264 payload owns the new source format")?;
+        ensure!(
+            incoming_pc
+                .connection_metrics()
+                .await?
+                .streams
+                .iter()
+                .all(|sample| sample.counters.rid.as_deref() != Some("q")
+                    || sample.counters.sample_timestamp_ms > old_sample),
+            "cached VP8 measurement survived the H264 packet"
+        );
         let current = source(&f, input).unwrap().clone();
         ensure!(current.id != previous.id);
         ensure!(current.video().unwrap().time().epoch == previous.video().unwrap().time().epoch);

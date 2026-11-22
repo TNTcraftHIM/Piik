@@ -557,9 +557,17 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
         onPaste={event => { if (attachmentsAvailable && event.clipboardData.files.length) { event.preventDefault(); addFiles([...event.clipboardData.files]); } }}
         onChange={event => { const next = event.target.value; updateDraft(previous => ({ ...previous, text: next, mentions: editMentions(previous.text, next, previous.mentions) })); setMentionIndex(0); setSelection({ start: event.target.selectionStart, end: event.target.selectionEnd }); }}
         onSelect={event => { if (event.currentTarget.ownerDocument.activeElement === event.currentTarget) setSelection({ start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd }); }}
-        onBlur={() => setSelection(null)}
+        onBlur={() => {
+          composing.current = false;
+          setSelection(null);
+        }}
         onCompositionStart={() => { composing.current = true; setSelection(null); }}
-        onCompositionEnd={event => { composing.current = false; setSelection({ start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd }); }}
+        onCompositionEnd={event => {
+          // Closing the detached window can finish composition after blur.
+          if (!composing.current) return;
+          composing.current = false;
+          setSelection({ start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd });
+        }}
         onKeyDown={event => {
           if (composing.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
           if (query && event.key === "Escape") { event.preventDefault(); setSelection(null); return; }

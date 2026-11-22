@@ -1,7 +1,7 @@
 import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 export const ja = {
-  "watch.forward.mainHelp": "Piik で再生し、再生位置を調整します。視聴中は元のページを開いたままにしてください。動画はお使いの App からアップロードされます。",
+  "watch.forward.mainHelp": "Piik で再生位置を操作し、動画はお使いの App から転送されます。元のページのウィンドウは非表示になります。このウィンドウを閉じると、全員の同時視聴が終了します。",
   "watch.forward.tracksHelp": "映像と必要な音声を個別に選んでください。確認すると、この端末のアップロード帯域を使って転送を開始します。",
   "watch.forward.noVideoTrack": "転送できる映像トラックがありません。元のウェブページでは引き続き視聴できます。",
   "watch.forward.videoOnly": "映像のみ、音声なし",

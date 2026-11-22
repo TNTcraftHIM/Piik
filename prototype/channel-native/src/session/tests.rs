@@ -22,6 +22,32 @@ fn discovery_reclaims_only_abandoned_room_installations() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn discovery_skips_non_room_entries_and_preserves_the_root_error() -> Result<()> {
+    let folder = tempfile::tempdir()?;
+    std::fs::create_dir(folder.path().join("a.sqlite"))?;
+    std::fs::write(folder.path().join("b.sqlite"), b"damaged")?;
+    let path = folder.path().join("c.sqlite");
+    let policy = RoomState::new(
+        "healthy".into(),
+        "Healthy".into(),
+        Default::default(),
+        Uuid::new_v4(),
+        RoomAccess::Public,
+        false,
+        None,
+    )
+    .unwrap();
+    drop(HostedRoom::create(&path, policy)?);
+    let files = stored_rooms(folder.path())?;
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].id, "healthy");
+    std::fs::remove_file(&path)?;
+    assert!(stored_room_policy(&path)?.is_none());
+    assert!(stored_rooms(&path).is_err());
+    Ok(())
+}
+
 fn self_profile(state: &Snapshot, session: Uuid) -> piik_channel_core::wire::UserInfo {
     let user_id = state
         .sessions
@@ -36,6 +62,70 @@ fn self_profile(state: &Snapshot, session: Uuid) -> piik_channel_core::wire::Use
         avatar: None,
         version: user.version.clone(),
     }
+}
+
+#[tokio::test]
+async fn welcome_restores_stored_rooms_for_the_admitted_creator_or_hosted_service() -> Result<()> {
+    for hosted_service in [true, false] {
+        let (mut session, mut socket, _remote, mut state) = capture_projection_session().await;
+        let session_id = session.live.as_ref().unwrap().session;
+        let user = self_profile(&state, session_id).id;
+        session.release().await?;
+        let directory = tempfile::tempdir()?;
+        let guest = Uuid::new_v4();
+        if hosted_service {
+            state.channel.hosting_mode = piik_channel_core::wire::HostingMode::Hosted;
+            let (admission, mut requests) = mpsc::channel::<ServiceAdmission>(1);
+            session.service_admission = Some(admission);
+            tokio::spawn(async move {
+                let (_, ack) = requests.recv().await.unwrap();
+                ack.send(()).unwrap();
+            });
+        }
+        for (index, room) in state.channel.rooms.iter_mut().enumerate() {
+            let creator = if index == 0 { guest } else { user };
+            room.creator_id = if hosted_service { creator } else { user };
+            room.delivery = None;
+            room.available = false;
+            let policy = RoomState::new(
+                room.id.clone(),
+                room.name.clone(),
+                Default::default(),
+                creator,
+                RoomAccess::Public,
+                false,
+                None,
+            )
+            .unwrap();
+            let path = directory.path().join(format!("{index}.sqlite"));
+            drop(HostedRoom::create(&path, policy)?);
+            session.files.push(RoomFile {
+                path,
+                id: room.id.clone(),
+                name: String::new(),
+                bootstrap: false,
+            });
+        }
+        session
+            .event(
+                Event::Welcome {
+                    connection_id: Uuid::new_v4(),
+                    protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+                    self_profile: self_profile(&state, session_id),
+                    credential: "fixture".into(),
+                    session_id,
+                    state,
+                    invitation_origin: None,
+                },
+                &mut socket,
+            )
+            .await?;
+        let rooms = &session.live.as_ref().unwrap().room.rooms;
+        assert!(rooms.contains_key("offline"));
+        assert_eq!(rooms.contains_key("target"), hosted_service);
+        session.release().await?;
+    }
+    Ok(())
 }
 
 #[tokio::test]

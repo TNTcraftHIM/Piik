@@ -582,7 +582,14 @@ async fn fixed_udp_selects_each_bound_address_and_preserves_wildcard_sending() -
             ]
         };
         let fixed = ServerUdp::bind(&bindings)?;
-        let selected = SocketAddr::from(([127, 0, 0, 2], fixed.sockets[0].local_addr()?.port()));
+        // Wildcard sending uses the assigned loopback address. The explicit
+        // binding case exercises selection of its second socket.
+        let ip = if wildcard {
+            [127, 0, 0, 1]
+        } else {
+            [127, 0, 0, 2]
+        };
+        let selected = SocketAddr::from((ip, fixed.sockets[0].local_addr()?.port()));
         let server = Runtime::new(Some(fixed));
         let remote = Runtime::new(Some(ServerUdp::bind(&[("127.0.0.3:0".parse()?, None)])?));
         let (sender, mut candidates) = endpoint(&server, Uuid::new_v4(), None).await?;

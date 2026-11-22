@@ -15,6 +15,12 @@ export interface NewRoomPolicy extends RoomSettings {
   id: string; creatorId: string;
 }
 interface RoomRecord { id: string; policy: string; bindingId?: string; clearedThrough?: number }
+function savedRoom(record: RoomRecord, id: string): RoomHost {
+  const room = new RoomHost(record.policy);
+  if (room.room_id() === id) return room;
+  room.free();
+  throw new Error("invalid_room_policy");
+}
 interface RetainedMessage extends ChannelMessage { reactions: MessageReactions }
 type StoredRow = BackupHistoryRow & { roomId: string; retryKey: string };
 function indexed(row: BackupHistoryRow) { return "id" in row ? { ...row, retryKey: message_retry_key(row.userId, row.nonce) } : row; }
@@ -207,13 +213,13 @@ export class BrowserRoomHost implements HostedRoom {
   private storedBindingId: string | undefined;
   private constructor(private db: IDBDatabase, private room: RoomHost) {}
 
-  static async storedPolicies(databaseName: string): Promise<string[]> {
+  static async storedRoomIds(databaseName: string): Promise<string[]> {
     const db = await openDatabase(databaseName);
     try {
       return await new Promise((resolve, reject) => {
         const tx = db.transaction("rooms", "readonly");
-        const request = tx.objectStore("rooms").getAll();
-        tx.oncomplete = () => resolve(request.result.map((record: { policy: string }) => record.policy));
+        const request = tx.objectStore("rooms").getAllKeys();
+        tx.oncomplete = () => resolve(request.result.filter((key): key is string => typeof key === "string"));
         tx.onabort = () => reject(tx.error ?? new Error("storage_failed"));
       });
     } finally { db.close(); }
@@ -221,28 +227,38 @@ export class BrowserRoomHost implements HostedRoom {
 
   static async open(databaseName: string, policy: string): Promise<BrowserRoomHost> {
     await initializeRuntime();
-    let room = new RoomHost(policy);
+    const room = new RoomHost(policy);
+    return this.loadRoom(databaseName, room.room_id(), room);
+  }
+
+  static async openExisting(databaseName: string, id: string): Promise<BrowserRoomHost> {
+    await initializeRuntime();
+    return this.loadRoom(databaseName, id);
+  }
+
+  private static async loadRoom(databaseName: string, id: string, room?: RoomHost): Promise<BrowserRoomHost> {
     let db: IDBDatabase | undefined;
     try {
       db = await openDatabase(databaseName);
-      const host = new BrowserRoomHost(db, room);
       let saved: RoomRecord | undefined;
       let lastSeq = 0;
-      await host.transaction(["rooms", "messages"], "readwrite", (tx, abort) => {
+      await transaction(db, ["rooms", "messages"], room ? "readwrite" : "readonly", (tx, abort) => {
         const rooms = tx.objectStore("rooms");
-        read(rooms.get(room.room_id()), value => {
+        read(rooms.get(id), value => {
           saved = value;
-          if (!saved) rooms.add({ id: room.room_id(), policy: room.policy() });
+          if (!saved && room) rooms.add({ id, policy: room.policy() });
         }, abort);
-        read(tx.objectStore("messages").openCursor(IDBKeyRange.bound([host.roomId], [host.roomId, Infinity]), "prev"), cursor => {
+        read(tx.objectStore("messages").openCursor(IDBKeyRange.bound([id], [id, Infinity]), "prev"), cursor => {
           lastSeq = cursor?.value.seq ?? 0;
         }, abort);
       }, () => {});
-      if (saved) { const previous = room; room = new RoomHost(saved.policy); host.room = room; previous.free(); }
-      host.room.seed_history(BigInt(lastSeq));
+      if (saved) { const previous = room; room = savedRoom(saved, id); previous?.free(); }
+      if (!room) throw new Error("room_not_found");
+      room.seed_history(BigInt(lastSeq));
+      const host = new BrowserRoomHost(db, room);
       host.storedBindingId = saved?.bindingId;
       return host;
-    } catch (error) { room.free(); db?.close(); throw error; }
+    } catch (error) { room?.free(); db?.close(); throw error; }
   }
 
   get roomId(): string { return this.room.room_id(); }
@@ -301,7 +317,7 @@ export class BrowserRoomHost implements HostedRoom {
             if (!record) throw new Error("storage_failed");
             if (record.bindingId !== this.storedBindingId) throw new Error("room_host_conflict");
             if (this.bindingId !== bindingId) {
-              replacement = new RoomHost(record.policy);
+              replacement = savedRoom(record, this.roomId);
               read(tx.objectStore("messages").openCursor(IDBKeyRange.bound([this.roomId], [this.roomId, Infinity]), "prev"), cursor => {
                 replacement!.seed_history(BigInt(cursor?.value.seq ?? 0));
               }, abort);

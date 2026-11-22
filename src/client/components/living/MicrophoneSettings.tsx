@@ -8,7 +8,7 @@ export function MicrophoneSettings({ enabled, disabled, volume, onVolume, device
   enabled: boolean; disabled?: boolean; host: boolean;
   browser?: boolean; sharing?: boolean;
   volume: number; onVolume: (volume: number) => void;
-  deviceId: string; onDevice: (id: string) => void; loadDevices: () => Promise<CaptureDevice[]>;
+  deviceId: string; onDevice: (id: string) => void; loadDevices: (signal?: AbortSignal) => Promise<CaptureDevice[]>;
   voiceProcessing?: boolean; onVoiceProcessing?: (enabled: boolean) => void;
 }) {
   const { t } = useCopy();

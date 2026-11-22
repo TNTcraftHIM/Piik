@@ -14,7 +14,7 @@ export const en: Record<CopyKey, string> = {
   "watch.chooseAudioTrack": "Choose audio",
   "watch.forward.trackOptions": "Track options",
   "watch.forward.resume": "Resume forwarding this video",
-  "watch.forward.mainHelp": "Playback and seeking move to Piik. Keep the original page open to continue watching. Your App uploads the video.",
+  "watch.forward.mainHelp": "Play and seek in Piik while your App forwards the video. Piik hides the source window. Closing that window ends the watch for everyone.",
   "watch.forward.tracksHelp": "Choose a video track and optional audio separately. Confirmation starts using this device’s upload bandwidth.",
   "watch.forward.noVideoTrack": "No video track is available to forward. You can still watch the original webpage.",
   "watch.forward.videoOnly": "Video only, without audio",

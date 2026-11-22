@@ -278,6 +278,7 @@ export class ChannelApp {
   get connected(): boolean { return this.authenticated && this.socket.readyState === WebSocket.OPEN; }
   get screens(): ReadonlySet<string> { return new Set([...this.captures.keys(), ...this.externalInputs.keys()]); }
   hasCapture(publicationId: string): boolean { return this.captures.has(publicationId); }
+  captureId(publicationId: string): string | undefined { return this.captures.get(publicationId)?.id; }
   externalInput(publicationId: string): NativeExternalInput | undefined { return this.externalInputs.get(publicationId); }
   supportsCaptureCodec(codec: NativeCaptureSources["codecs"][number]): boolean { return this.captureCodecs.includes(codec); }
 
@@ -609,9 +610,9 @@ export class ChannelApp {
     return this.captures.has(publicationId) && !!this.audioStates.get(publicationId)?.sourceAudio;
   }
 
-  async sourceMicrophones(): Promise<CaptureDevice[]> {
+  async sourceMicrophones(signal?: AbortSignal): Promise<CaptureDevice[]> {
     await this.ready;
-    return z.array(z.object({ id: z.string(), label: z.string() }).strict()).parse(await this.request({ type: "microphones" }));
+    return z.array(z.object({ id: z.string(), label: z.string() }).strict()).parse(await this.request({ type: "microphones" }, undefined, signal));
   }
 
   async setSourceMicrophone(publicationId: string, roomId: string, settings: NativeSourceMicrophone): Promise<void> {

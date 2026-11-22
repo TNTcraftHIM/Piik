@@ -7,7 +7,7 @@ type DeviceList = { status: "loading" | "ready" | "failed"; devices: CaptureDevi
 
 // Shared presentation only: the caller owns capture and device replacement.
 export function MicrophoneDeviceSelect({ value, load, onChange, label, disabled, revision, browser = true }: {
-  value: string; load: () => Promise<CaptureDevice[]>;
+  value: string; load: (signal?: AbortSignal) => Promise<CaptureDevice[]>;
   onChange: (id: string) => void; label: CopyKey; disabled?: boolean; revision?: unknown; browser?: boolean;
 }) {
   const { t } = useCopy();
@@ -18,21 +18,22 @@ export function MicrophoneDeviceSelect({ value, load, onChange, label, disabled,
   const unavailable = browser && (!mediaDevices?.getUserMedia || !mediaDevices.enumerateDevices);
   useEffect(() => {
     if (unavailable) return;
-    let current = true;
-    let request = 0;
+    let pending: AbortController;
     const update = () => {
-      const token = ++request;
+      pending?.abort();
+      pending = new AbortController();
+      const { signal } = pending;
       setList(previous => ({ ...previous, status: "loading" }));
-      void load().then(devices => {
-        if (current && request === token) setList({ status: "ready", devices });
+      void load(signal).then(devices => {
+        if (!signal.aborted) setList({ status: "ready", devices });
       }, () => {
-        if (current && request === token) setList(previous => ({ ...previous, status: "failed" }));
+        if (!signal.aborted) setList(previous => ({ ...previous, status: "failed" }));
       });
     };
     update();
     mediaDevices?.addEventListener("devicechange", update);
     return () => {
-      current = false;
+      pending.abort();
       mediaDevices?.removeEventListener("devicechange", update);
     };
   }, [load, refresh, revision, mediaDevices, unavailable]);

@@ -1,7 +1,7 @@
 import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 export const zhHant = {
-  "watch.forward.mainHelp": "在 Piik 中播放並調整進度。觀看時請保持原網頁開啟。影片由你的 App 上傳。",
+  "watch.forward.mainHelp": "在 Piik 中播放及調整進度，由你的 App 轉發影片。Piik 會隱藏原網頁視窗。關閉該視窗會結束所有人的同步觀看。",
   "watch.forward.tracksHelp": "分別選擇畫面及可選的聲音。確認後開始使用本機上傳頻寬。",
   "watch.forward.noVideoTrack": "沒有可轉發的影片軌道。你仍可在原網頁中觀看。",
   "watch.forward.videoOnly": "僅畫面，不帶聲音",

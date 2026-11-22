@@ -149,7 +149,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const { sourceMicrophones } = channel;
   const loadAudioApplications = useCallback(async () => (await nativeSources()).sources, [nativeSources]);
   const sharingId = sharing?.id;
-  const loadMicrophones = useCallback(() => sharingId ? sourceMicrophones(sharingId) : Promise.resolve([]), [sharingId, sourceMicrophones]);
+  const loadMicrophones = useCallback((signal?: AbortSignal) => sharingId ? sourceMicrophones(sharingId, signal) : Promise.resolve([]), [sharingId, sourceMicrophones]);
   const roomMicrophone = channel.state?.voice.some(voice => voice.sessionId === channel.sessionId && !voice.muted);
   const busy = channel.pending.has(`screen:${roomId}`) || !!sharing && channel.pending.has(`source-audio:${sharing.id}`);
   const cancellable = !!captureRequest || channel.pending.has(`screen:${roomId}`) && !channel.sourceSelectionCommitting(roomId);

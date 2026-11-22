@@ -2,7 +2,7 @@
 #[path = "app_stun.rs"]
 mod stun;
 
-use super::{console::Console, stop_hosts, tunnel, ApiResult, App, Permission};
+use super::{console::Console, sites::StartupIntent, stop_hosts, tunnel, ApiResult, App, Permission};
 use crate::{domain::Domain, web};
 use axum::{extract::State, http::StatusCode, Json};
 use piik_channel_core::wire::HostingMode;
@@ -331,12 +331,28 @@ async fn run(
         eprintln!("Certificate SHA-256: {}", certificate.sha256_fingerprint);
     }
     let permission = Arc::new(Permission::new(identity.namespace));
-    app.registry.lock().await.local = Some(super::LocalSite {
-        origin: origin.clone(),
-        invitation: invitation.clone(),
-        request: request.clone(),
-        permission: permission.clone(),
-    });
+    {
+        let mut registry = app.registry.lock().await;
+        // A successful retry can change how the same auto-started site is hosted.
+        if matches!(
+            registry
+                .sites
+                .startup()
+                .map_err(|error| Failure::new("configuration", error))?,
+            StartupIntent::Owned(_)
+        ) {
+            registry
+                .sites
+                .set_startup(&StartupIntent::Owned(request.clone()))
+                .map_err(|error| Failure::new("configuration", error))?;
+        }
+        registry.local = Some(super::LocalSite {
+            origin: origin.clone(),
+            invitation: invitation.clone(),
+            request: request.clone(),
+            permission: permission.clone(),
+        });
+    }
     let (commands, mut restores) = mpsc::channel::<crate::domain::RestoreDomain>(1);
     let domain = domain.with_restores(commands);
     let (stop_domain, mut domain_stopped) = watch::channel(false);

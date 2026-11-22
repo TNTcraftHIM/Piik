@@ -679,8 +679,10 @@ impl Pages {
                     .filter(|view| view.document.is_some());
                 let result = view
                     .ok_or_else(|| "page_candidate_unavailable".to_owned())
-                    .map(|view| {
-                        view.window.set_visible(false);
+                    .map(|_| {
+                        for view in views.values() {
+                            view.window.set_visible(false);
+                        }
                         Value::Null
                     });
                 let _ = reply.send(result);
@@ -1263,13 +1265,6 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
         },
     );
     reopened.selected = Some(candidate);
-    assert!(pages.close_window(opener));
-    assert!(
-        !*retired.borrow(),
-        "closing the opener retired the selected popup"
-    );
-    assert_eq!(pages.pages.values().next().unwrap().selected_view(), child);
-
     for (operation, visible) in [
         (Operation::PageHide { page_id }, false),
         (Operation::PageFocus { page_id }, true),
@@ -1285,7 +1280,16 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
             visible
         );
         assert!(!*retired.borrow());
+        let page = pages.pages.values().next().unwrap();
+        assert!(!page.views.borrow()[&page.root].window.is_visible());
     }
+
+    assert!(pages.close_window(opener));
+    assert!(
+        !*retired.borrow(),
+        "closing the opener retired the selected popup"
+    );
+    assert_eq!(pages.pages.values().next().unwrap().selected_view(), child);
 
     let mut close = Box::pin(connection.request(Operation::PageClose { page_id }));
     assert!(futures_util::poll!(&mut close).is_pending());

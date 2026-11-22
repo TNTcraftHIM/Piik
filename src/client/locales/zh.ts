@@ -12,7 +12,7 @@ export const zh = {
   "watch.chooseAudioTrack": "选择声音",
   "watch.forward.trackOptions": "轨道选项",
   "watch.forward.resume": "继续转发当前视频",
-  "watch.forward.mainHelp": "在 Piik 中播放并调整进度。观看时请保持原网页打开。视频由你的 App 上传。",
+  "watch.forward.mainHelp": "在 Piik 中播放和调整进度，由你的 App 转发视频。Piik 会隐藏原网页窗口。关闭该窗口将结束所有人的同步观看。",
   "watch.forward.tracksHelp": "分别选择一段画面和可选的声音。确认后开始使用本机上传带宽。",
   "watch.forward.noVideoTrack": "没有可转发的视频轨道。你仍可在原网页中观看。",
   "watch.forward.videoOnly": "仅画面，不带声音",

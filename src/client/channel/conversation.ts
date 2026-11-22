@@ -74,7 +74,10 @@ export class ChannelConversation {
     const { runtime } = await this.ready();
     const { state, sessionId, connected } = this.options.context();
     if (!connected || !state || !sessionId) throw new Error("disconnected");
-    const address = JSON.parse(runtime.verify_conversation(JSON.stringify(packet), sessionId, JSON.stringify(state))) as ConversationAddress | ConversationReply;
+    const rooms = state.channel.rooms.map(({ id, authorized, available, delivery }) => ({ id, authorized, available, delivery }));
+    const sessions = state.sessions.map(({ id, signingKey }) => ({ id, signingKey }));
+    const view = { channel: { rooms }, sessions };
+    const address = JSON.parse(runtime.verify_conversation(JSON.stringify(packet), sessionId, JSON.stringify(view))) as ConversationAddress | ConversationReply;
     if ("record" in address) {
       this.options.reply(address);
       return;

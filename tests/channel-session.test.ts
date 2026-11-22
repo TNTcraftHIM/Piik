@@ -1216,11 +1216,11 @@ test("App hosting uses its own participant while Browser rooms retain their page
     close: vi.fn(async () => {}),
   };
   vi.stubGlobal("indexedDB", {});
-  const storedPolicies = vi.fn(async () => [JSON.stringify(localRoom), JSON.stringify({ ...localRoom, id: "removed-from-domain" })]);
+  const storedRoomIds = vi.fn(async () => [localRoom.id, "removed-from-domain"]);
   const open = vi.fn(async () => host);
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
     createRoomPolicy: async (input: unknown) => JSON.stringify(input),
-    BrowserRoomHost: { open, storedPolicies },
+    BrowserRoomHost: { openExisting: open, storedRoomIds },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const { session, socket } = await setup(1000, true, "room=first", true, ["first", "second", localRoom.id]);
   const app = await startFixtureApp(session);
@@ -1235,7 +1235,7 @@ test("App hosting uses its own participant while Browser rooms retain their page
     const register = socket.sent.find(command => command.type === "host_register")!;
     socket.receive({ type: "host_bound", roomId: localRoom.id, bindingId: "browser-binding" });
     socket.receive({ type: "ack", requestId: register.requestId });
-    expect(storedPolicies).toHaveBeenCalledOnce();
+    expect(storedRoomIds).toHaveBeenCalledOnce();
     expect(open).toHaveBeenCalledOnce();
 
     const creating = session.createRoom({ name: "App room", icon: "couch", access: "private", hidden: true, password: "private-room" });
@@ -1297,7 +1297,7 @@ test("App hosting uses its own participant while Browser rooms retain their page
     expect(socket.sent).toHaveLength(domainCommands);
     expect(resumedApp.sent.map(command => command.type)).toEqual(["hello"]);
     expect(host.close).not.toHaveBeenCalled();
-    expect(storedPolicies).toHaveBeenCalledOnce();
+    expect(storedRoomIds).toHaveBeenCalledOnce();
     const healthChecks = discovery.mock.calls.length;
     session.close();
     expect(discovery).toHaveBeenCalledTimes(healthChecks);
@@ -3506,7 +3506,7 @@ test("a late source-ceiling rejection cannot configure a stopped capture or its 
     socket.receive({ type: "ack", requestId: first.requestId }); await starting;
     const originalCalls = previousConstraints.mock.calls.length;
     const changing = session.setScreenQuality(id, QUALITY_PROFILES["720p30"]);
-    const rejected = expect(changing).rejects.toThrow("room_unavailable");
+    const rejected = expect(changing).rejects.toMatchObject({ name: "AbortError" });
     await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "publish",
       publication: { id, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } }));
     const updating = socket.sent.at(-1)!;
@@ -3520,6 +3520,7 @@ test("a late source-ceiling rejection cannot configure a stopped capture or its 
     expect(previousConstraints).toHaveBeenCalledTimes(originalCalls + 1);
     expect(next.stop).not.toHaveBeenCalled();
     expect(session.screenQuality(id)).toBeUndefined();
+    expect(session.getSnapshot().error).toBeNull();
     expect(session.getSnapshot().streams.get((replacement.publication as { id: string }).id)?.getVideoTracks()).toEqual([next]);
   } finally { session.close(); }
 });
@@ -3623,8 +3624,16 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
       expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
       expect(session.getSnapshot().error).toBe(error === "capture_cancelled" ? null : error);
     }
-    const devices = session.sourceMicrophones(publicationId);
+    const settingsPanel = new AbortController();
+    const dismissed = session.sourceMicrophones(publicationId, settingsPanel.signal);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("microphones"));
+    const obsolete = app.sent.at(-1)!;
+    const rejected = expect(dismissed).rejects.toMatchObject({ name: "AbortError" });
+    settingsPanel.abort();
+    await rejected;
+    const devices = session.sourceMicrophones(publicationId);
+    await vi.waitFor(() => expect(app.sent.at(-1)?.id).not.toBe(obsolete.id));
+    app.receive({ id: obsolete.id, result: [{ id: "obsolete", label: "Old microphone" }] });
     app.receive({ id: app.sent.at(-1)!.id, result: [{ id: "native-device", label: "Native microphone" }] });
     await expect(devices).resolves.toEqual([{ id: "native-device", label: "Native microphone" }]);
     const activateMicrophone = vi.spyOn(nativeActivation, "activateNativePicker").mockImplementation(() => {});
@@ -3967,9 +3976,15 @@ test.each([
     expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
     expect(session.getSnapshot().error).toBeNull();
 
+    const editing = session.setScreenQuality(publicationId, QUALITY_PROFILES["720p30"]);
+    const cancelled = expect(editing).rejects.toMatchObject({ name: "AbortError" });
+    const edit = app.sent.at(-1)!;
+    expect(edit.type).toBe("capture_video_settings");
     if (order === "domain-first") socket.receive({ type: "state", state: empty });
     app.receive({ type: "capture_ended", publicationId, captureId, failed });
     if (order === "app-first") socket.receive({ type: "state", state: empty });
+    app.receive({ id: edit.id, error: "capture_unavailable" });
+    await cancelled;
     expect(session.getSnapshot().error).toBe(failed ? "capture_failed" : null);
     expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(false);
     expect(session.nativeCaptureSelection("first")).toBeUndefined();
@@ -4399,12 +4414,21 @@ test("arming OBS preserves the current capture controls until the external sourc
     expect(session.screenEncodingExecution(publicationId)).toBe("auto");
     expect(session.sourceMicrophone(publicationId)).toMatchObject({ enabled: true, available: true });
     expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true, canMute: true, bitrate: 64_000 });
+    const editing = session.setScreenQuality(publicationId, QUALITY_PROFILES["1080p30"]);
+    const cancelled = expect(editing).rejects.toMatchObject({ name: "AbortError" });
+    const edit = app.sent.at(-1)!;
+    expect(edit).toMatchObject({ type: "capture_video_settings", captureId: original });
+    expect(session.setScreenQuality(publicationId, QUALITY_PROFILES["1080p60"])).toBe(editing);
     const external = crypto.randomUUID();
     app.receive({ type: "external_input_state", publicationId, state: "prepared", captureId: external, sessionId, codec: "h264" });
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("commit_capture"));
     expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true, canMute: true });
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.sourceMicrophone(publicationId)).toMatchObject({ enabled: false, available: false }));
+    app.receive({ id: edit.id, error: "capture_unavailable" });
+    await cancelled;
+    expect(app.sent.filter(command => command.type === "capture_video_settings")).toHaveLength(1);
+    expect(session.getSnapshot().error).toBeNull();
     expect(session.sourceAudio(publicationId)).toBeUndefined();
   } finally { session.close(); }
 });
@@ -4418,13 +4442,13 @@ function acceptCreatedRoom(socket: ChannelSocket): void {
 
 test("fresh Welcome restores only rooms still listed in the channel directory", async () => {
   const policy = (id: string) => ({ id, creatorId: "self", name: id, icon: "couch", access: "public", hidden: false, hasPassword: false });
-  const revoked = JSON.stringify(policy("revoked"));
-  const retained = JSON.stringify(policy("first"));
+  const revoked = "revoked";
+  const retained = "first";
   const host = { roomId: "first", summary: () => policy("first"), bind: vi.fn(async () => {}), close: vi.fn(async () => {}) };
   const open = vi.fn(async (_database: string, _policy: string) => host);
   vi.stubGlobal("indexedDB", {});
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: {
-    storedPolicies: async () => [revoked, retained], open,
+    storedRoomIds: async () => [revoked, retained], openExisting: open,
   } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const { session, socket } = await setup();
   try {
@@ -4438,15 +4462,19 @@ test("fresh Welcome restores only rooms still listed in the channel directory", 
   } finally { session.close(); }
 });
 
-test.each(["open", "summary"])("Welcome restores the next Browser room after malformed policy and %s failure", async stage => {
+test.each(["open", "summary", "removed", "creator"])("Welcome restores the next Browser room after %s failure", async stage => {
   const policy = (id: string) => JSON.stringify({ id, creatorId: "self", name: id, icon: "couch", access: "public", hidden: false });
   const host = { roomId: "second", summary: () => JSON.parse(policy("second")), close: vi.fn(async () => {}) };
-  const damaged = { roomId: "first", summary: async () => { throw new Error("invalid_room_policy"); }, close: vi.fn(async () => {}) };
+  const damaged = { roomId: "first", summary: async () => {
+    if (stage === "creator") return { ...JSON.parse(policy("first")), creatorId: "another-user" };
+    throw new Error("invalid_room_policy");
+  }, close: vi.fn(async () => {}) };
   vi.stubGlobal("indexedDB", {});
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: {
-    storedPolicies: async () => ["{", policy("first"), policy("second")],
-    open: async (_database: string, value: string) => {
-      if (JSON.parse(value).id === "first") {
+    storedRoomIds: async () => ["first", "second"],
+    openExisting: async (_database: string, id: string) => {
+      if (id === "first") {
+        if (stage === "removed") throw new Error("room_not_found");
         if (stage === "open") throw new Error("invalid_room_policy");
         return damaged;
       }
@@ -4457,8 +4485,8 @@ test.each(["open", "summary"])("Welcome restores the next Browser room after mal
   try {
     await vi.waitFor(() => expect(socket.sent.find(command => command.type === "host_register")?.room).toMatchObject({ id: "second" }));
     socket.receive({ type: "ack", requestId: socket.sent.find(command => command.type === "host_register")!.requestId });
-    await vi.waitFor(() => expect(session.getSnapshot().error).toBe("storage_failed"));
-    expect(damaged.close).toHaveBeenCalledTimes(stage === "summary" ? 1 : 0);
+    await vi.waitFor(() => expect(session.getSnapshot().error).toBe(stage === "removed" ? null : "storage_failed"));
+    expect(damaged.close).toHaveBeenCalledTimes(stage === "summary" || stage === "creator" ? 1 : 0);
   } finally { session.close(); }
 });
 
@@ -4471,8 +4499,8 @@ test.each(["success", "failure"])("Welcome restores the next room after a remove
   const second = { roomId: "second", close: vi.fn(async () => {}), summary: () => policy("second") };
   vi.stubGlobal("indexedDB", {});
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: {
-    storedPolicies: async () => [JSON.stringify(policy("first")), JSON.stringify(policy("second"))],
-    open: async (_database: string, value: string) => JSON.parse(value).id === "first" ? first : second,
+    storedRoomIds: async () => ["first", "second"],
+    openExisting: async (_database: string, id: string) => id === "first" ? first : second,
   } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const { session, socket } = await setup();
   try {
@@ -4497,7 +4525,7 @@ test("a delayed Browser room open from the previous socket closes after same-ses
   let finishPrior!: (value: typeof prior) => void;
   const open = vi.fn(async () => replacement).mockImplementationOnce(() => new Promise(resolve => { finishPrior = resolve; }));
   vi.stubGlobal("indexedDB", {});
-  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: { storedPolicies: async () => [policy], open } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: { storedRoomIds: async () => ["first"], openExisting: open } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const { session } = await setup();
   try {
     await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
@@ -4519,10 +4547,10 @@ test("a delayed Browser room open from the previous socket closes after same-ses
 
 test("same-session recovery retires its own host binding when the committed room policy is gone", async () => {
   const policy = JSON.stringify({ id: "first", creatorId: "self", name: "First", icon: "couch", access: "public", hidden: false });
-  let policies = [policy];
+  let ids = ["first"];
   const host = { roomId: "first", summary: () => ({ ...JSON.parse(policy), hasPassword: false }), bind: vi.fn(async () => {}), close: vi.fn(async () => {}) };
   vi.stubGlobal("indexedDB", {});
-  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: { storedPolicies: async () => policies, open: async () => host } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: { storedRoomIds: async () => ids, openExisting: async () => host } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const { session, socket } = await setup();
   try {
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === "host_register")).toBe(true));
@@ -4531,7 +4559,7 @@ test("same-session recovery retires its own host binding when the committed room
     socket.receive({ type: "ack", requestId: registration.requestId });
     const retained = structuredClone(session.getSnapshot().state!);
     retained.channel.rooms[0].delivery = { hostSessionId: "endpoint", bindingId: "owned-binding" };
-    policies = [];
+    ids = [];
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
@@ -4544,14 +4572,14 @@ test("same-session recovery retires its own host binding when the committed room
 
 test.each(["room_already_hosted", "room_creation_restricted", "storage_failed"])("Browser handles %s during room registration on reconnect", async denial => {
   const policy = (id: string) => ({ id, creatorId: "self", name: id, icon: "couch", access: id === "second" ? "private" : "public", hidden: id === "second" });
-  let policies = [JSON.stringify(policy("second"))];
+  let ids = ["second"];
   const hosts = new Map(["first", "second"].map(id => [id, {
     roomId: id, summary: () => policy(id), close: vi.fn(async () => {}), bind: vi.fn(async () => {}),
   }]));
   vi.stubGlobal("indexedDB", {});
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: {
-    storedPolicies: async () => policies,
-    open: async (_database: string, value: string) => hosts.get(JSON.parse(value).id),
+    storedRoomIds: async () => ids,
+    openExisting: async (_database: string, id: string) => hosts.get(id),
   } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const { session, socket } = await setup();
   try {
@@ -4572,7 +4600,7 @@ test.each(["room_already_hosted", "room_creation_restricted", "storage_failed"])
       state.channel.rooms[0].delivery = { hostSessionId: "other-page", bindingId: "other-binding" };
     }
     state.channel.rooms[1].delivery = { hostSessionId: "endpoint", bindingId: "own-binding" };
-    policies = [JSON.stringify(policy("first")), JSON.stringify(policy("second"))];
+    ids = ["first", "second"];
     session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
     resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
@@ -4607,7 +4635,7 @@ test.each(["registered", "retry-registration"])("Browser hosting does not depend
   vi.stubGlobal("indexedDB", {});
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
     createRoomPolicy: async (input: unknown) => JSON.stringify(input),
-    BrowserRoomHost: { storedPolicies: async () => storedPolicy ? [storedPolicy] : [],
+    BrowserRoomHost: { storedRoomIds: async () => storedPolicy ? [host.roomId] : [], openExisting: async () => host,
       open: async (_database: string, policy: string) => { storedPolicy = policy; host.roomId = JSON.parse(policy).id; return host; } },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const { session, socket } = await setup();
@@ -4708,7 +4736,7 @@ test("host binding precedes its first input and a failed binding retires that ho
     createRoomPolicy: async (input: unknown) => JSON.stringify(input),
     BrowserRoomHost: {
       open: async (_database: string, policy: string) => { host.roomId = (JSON.parse(policy) as { id: string }).id; return host; },
-      storedPolicies: async () => [],
+      storedRoomIds: async () => [],
     },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const { session, socket } = await setup();
@@ -9432,7 +9460,7 @@ async function setupRoomBackup() {
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
     initializeRuntime: async () => {},
     attachment_limits: () => JSON.stringify({ maxFileBytes: 1024, maxInlineImageBytes: 65536, maxAttachmentsPerMessage: 8, maxRetainedBytes: 1024, maxRetainedFiles: 8 }),
-    BrowserRoomHost: { storedPolicies: async () => [policy], open, stage: vi.fn(async () => stage) },
+    BrowserRoomHost: { storedRoomIds: async () => ["first"], openExisting: open, open, stage: vi.fn(async () => stage) },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const context = await setup();
   await vi.waitFor(() => expect(context.socket.sent.some(command => command.type === "host_register")).toBe(true));
@@ -9877,7 +9905,7 @@ test("room restore releases staging when its session reconnects during append", 
   } finally { session.close(); }
 });
 
-test.each(["success", "create-failed", "registration-failed", "duplicate", "native-success", "native-unconfirmed"] as const)("guest room copy under the channel-assigned ID: %s", async outcome => {
+test.each(["success", "create-failed", "registration-failed", "reconnect-during-cache", "duplicate", "native-success", "native-unconfirmed"] as const)("guest room copy under the channel-assigned ID: %s", async outcome => {
   const { session, socket, state, read, stage, metadata, row, nextHost } = await setupRoomBackup();
   state.channel.ownerId = "another-owner";
   socket.receive({ type: "state", state });
@@ -9919,7 +9947,10 @@ test.each(["success", "create-failed", "registration-failed", "duplicate", "nati
   nextHost.summary = () => ({ ...metadata.policy, hasPassword: false });
   if (outcome === "create-failed") stage.createRoom.mockRejectedValueOnce(new Error("storage_failed"));
   if (outcome === "duplicate") stage.createRoom.mockRejectedValueOnce(new Error("room_host_conflict"));
-  vi.spyOn(session.attachments, "restoreRetained").mockResolvedValue(true);
+  vi.spyOn(session.attachments, "restoreRetained").mockImplementation(async () => {
+    if (outcome === "reconnect-during-cache") { session.reconnect(); return false; }
+    return true;
+  });
   const send = socket.send.bind(socket);
   socket.send = data => {
     send(data);
@@ -9945,7 +9976,8 @@ test.each(["success", "create-failed", "registration-failed", "duplicate", "nati
       await expect(importing).resolves.toEqual({ roomId: id, cached: true });
       expect(socket.sent).toContainEqual(expect.objectContaining({ type: "browse", roomId: id }));
     } else {
-      const expected = { duplicate: "room_host_conflict", "create-failed": "storage_failed", "registration-failed": "room_restored_connection_failed", "native-unconfirmed": "room_restore_unconfirmed" };
+      const expected = { duplicate: "room_host_conflict", "create-failed": "storage_failed", "registration-failed": "room_restored_connection_failed",
+        "reconnect-during-cache": "room_restored_connection_failed", "native-unconfirmed": "room_restore_unconfirmed" };
       await expect(importing).rejects.toThrow(expected[outcome]);
     }
     expect(read).toHaveBeenCalledOnce();
@@ -10091,6 +10123,26 @@ test("room restore rebinds before installing file copies, and optional cache fai
     expect(session.getSnapshot().state!.publications.map(publication => publication.id)).toEqual(expect.arrayContaining([sibling.screenId, sibling.voiceId]));
     expect(session.getSnapshot().state!.subscriptions).toContain(sibling.watchedId);
     expect(session.getSnapshot().state!.voice.some(member => member.roomId === "second")).toBe(true);
+  } finally { session.close(); }
+});
+
+test("room restore stops registration when its committed Browser writer leaves the directory during summary", async () => {
+  const { session, socket, nextHost, stage, state } = await setupRoomBackup();
+  const summary = nextHost.summary();
+  let finish!: (value: typeof summary) => void;
+  const delayed = vi.fn(() => new Promise<typeof summary>(resolve => { finish = resolve; }));
+  Object.assign(nextHost, { summary: delayed });
+  try {
+    const restoring = session.restoreRoomBackup(new Blob(), "first").catch(error => error);
+    await vi.waitFor(() => expect(delayed).toHaveBeenCalledOnce());
+    expect(stage.replace).toHaveBeenCalledOnce();
+    state.channel.rooms = state.channel.rooms.filter(room => room.id !== "first");
+    socket.receive({ type: "state", state });
+    expect(nextHost.close).toHaveBeenCalledOnce();
+    finish(summary);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(socket.sent.filter(command => command.type === "host_register")).toHaveLength(1);
+    expect(await restoring).toMatchObject({ message: "room_restored_connection_failed" });
   } finally { session.close(); }
 });
 
@@ -10281,7 +10333,7 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
   const { session, socket, stage, metadata, nextHost, read } = await setupRoomBackup();
   metadata.policy = { ...metadata.policy, id: "imported", creatorId: "archived-user" }; stage.policy = JSON.stringify(metadata.policy);
   Object.assign(metadata, { ownCredential: { userId: "archived-user", credential: "archived-credential" } });
-  const runtime = await hosting.loadRoomHosting(); vi.spyOn(runtime.BrowserRoomHost, "storedPolicies").mockResolvedValue([]);
+  const runtime = await hosting.loadRoomHosting(); vi.spyOn(runtime.BrowserRoomHost, "storedRoomIds").mockResolvedValue([]);
   nextHost.summary = () => ({ id: "imported", name: "First", creatorId: "archived-user", icon: "couch", access: "public", hidden: false, hasPassword: false });
   const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", avatar: null, version: profileVersion } }))));

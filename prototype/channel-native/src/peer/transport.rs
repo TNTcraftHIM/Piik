@@ -2223,6 +2223,7 @@ impl Engine {
                 };
                 let params = codec(params);
                 let ssrc = *ssrc;
+                let stats_key = (mid, rid);
                 let rid = rid.map(|r| r.to_string()).unwrap_or_default();
                 if !self.tracks.contains_key(&mid) {
                     // Padding can precede the first encoded frame under another
@@ -2267,12 +2268,15 @@ impl Engine {
                     return;
                 }
                 if !packet.payload.is_empty() {
-                    track
+                    let previous = track
                         .track
                         .encodings
                         .lock()
                         .unwrap()
                         .insert(ssrc, (rid, params.clone()));
+                    if previous.is_some_and(|(_, old)| old.payload_type != params.payload_type) {
+                        self.ingress_stats.remove(&stats_key);
+                    }
                 }
                 let sequence = *packet.seq_no;
                 let time = packet.time.numer();

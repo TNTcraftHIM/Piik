@@ -20,6 +20,7 @@ type QualityLimitationDurations = Record<
 
 export interface StatsAccumulator {
   mediaId: string | null;
+  codecId: string | null;
   ssrc: number | null;
   trackIdentifier: string | null;
   lossSourceId: string | null;
@@ -43,6 +44,7 @@ export interface StatsAccumulator {
   previousVideoJitterBufferEmittedCount: number | null;
   previousQualityLimitationDurations: QualityLimitationDurations | null;
   audioMediaId: string | null;
+  audioCodecId: string | null;
   audioSsrc: number | null;
   audioTrackIdentifier: string | null;
   audioLossSourceId: string | null;
@@ -93,6 +95,7 @@ export function captureMetrics(
 export function createStatsAccumulator(): StatsAccumulator {
   return {
     mediaId: null,
+    codecId: null,
     ssrc: null,
     trackIdentifier: null,
     lossSourceId: null,
@@ -116,6 +119,7 @@ export function createStatsAccumulator(): StatsAccumulator {
     previousVideoJitterBufferEmittedCount: null,
     previousQualityLimitationDurations: null,
     audioMediaId: null,
+    audioCodecId: null,
     audioSsrc: null,
     audioTrackIdentifier: null,
     audioLossSourceId: null,
@@ -581,6 +585,7 @@ export function collectConnectionMetricsFromReport(
         : "unknown";
 
   const mediaId = media?.id ?? null;
+  const codecId = stringValue(media, "codecId");
   const ssrc = numberValue(media, "ssrc");
   const trackIdentifier = media
     ? mediaTrackIdentifier(report, media, direction)
@@ -593,6 +598,7 @@ export function collectConnectionMetricsFromReport(
   const sameMedia =
     mediaId !== null &&
     mediaId === previous.mediaId &&
+    codecId === previous.codecId &&
     ssrc === previous.ssrc &&
     trackIdentifier === previous.trackIdentifier;
   const sameLossSource =
@@ -779,6 +785,7 @@ export function collectConnectionMetricsFromReport(
     sampleWindowMs !== null,
   );
   previous.mediaId = mediaId;
+  previous.codecId = codecId;
   previous.ssrc = ssrc;
   previous.trackIdentifier = trackIdentifier;
   previous.lossSourceId = lossSourceId;
@@ -825,6 +832,7 @@ export function collectConnectionMetricsFromReport(
       : null;
   const audioLossSource = direction === "send" ? audioRemoteInbound : audio;
   const audioMediaId = audio?.id ?? null;
+  const audioCodecId = stringValue(audio, "codecId");
   const audioSsrc = numberValue(audio, "ssrc");
   const audioTrackIdentifier = audio
     ? mediaTrackIdentifier(report, audio, direction)
@@ -834,6 +842,7 @@ export function collectConnectionMetricsFromReport(
   const sameAudio =
     audioMediaId !== null &&
     audioMediaId === previous.audioMediaId &&
+    audioCodecId === previous.audioCodecId &&
     audioSsrc === previous.audioSsrc &&
     audioTrackIdentifier === previous.audioTrackIdentifier;
   const sameAudioLossSource =
@@ -922,6 +931,7 @@ export function collectConnectionMetricsFromReport(
       ? audioEstimatedPlayoutTimestamp - videoEstimatedPlayoutTimestamp
       : null;
   previous.audioMediaId = audioMediaId;
+  previous.audioCodecId = audioCodecId;
   previous.audioSsrc = audioSsrc;
   previous.audioTrackIdentifier = audioTrackIdentifier;
   previous.audioLossSourceId = audioLossSourceId;

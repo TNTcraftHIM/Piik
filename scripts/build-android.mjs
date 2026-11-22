@@ -124,6 +124,8 @@ for (const { abi, goarch, rust, machine } of targets) {
   console.log(`Android cloudflared ${CLOUDFLARED_VERSION}: ${abi} PIE (16KB)`);
 }
 if (!tunnelOnly) {
+  const variant = release ? 'release' : 'debug';
+  const rustLibrary = 'libpiik_channel_android.so';
   const versionCode = androidVersionCode(version);
   const versionName = version === 'development' ? `${version}-${revision.slice(0, 7)}` : version;
   const launcher = readdirSync(join(gradleHome, 'lib')).find(name => /^gradle-launcher-.*\.jar$/.test(name));
@@ -135,7 +137,7 @@ if (!tunnelOnly) {
   if (!libclang) throw new Error('The configured Android NDK must contain libclang for native bindings.');
   const sysroot = join(dirname(tools), 'sysroot').replaceAll('\\', '/');
   for (const { abi, rust, machine } of targets) {
-    const output = join(android, 'app', 'src', 'main', 'jniLibs', abi, 'libpiik_channel_android.so');
+    const output = join(android, 'app', 'src', 'main', 'jniLibs', abi, rustLibrary);
     const key = rust.replaceAll('-', '_');
     const env = { ...process.env, CARGO_TARGET_DIR: cargoTarget,
       PATH: [tools, process.env.PATH].filter(Boolean).join(delimiter), LIBCLANG_PATH: libclang,
@@ -148,8 +150,8 @@ if (!tunnelOnly) {
       [`CFLAGS_${key}`]: `--target=${rust}29`, [`CXXFLAGS_${key}`]: `--target=${rust}29` };
     run('cargo', ['+1.91.0', 'build', '--locked', '--manifest-path', join(root, 'prototype', 'channel-android', 'Cargo.toml'),
       '--target', rust, '--lib', ...(release ? ['--release'] : [])], { env });
-    copyFileSync(join(cargoTarget, rust, release ? 'release' : 'debug', 'libpiik_channel_android.so'), output);
-    run(join(tools, `llvm-strip${exe}`), ['--strip-debug', output]);
+    run(join(tools, `llvm-strip${exe}`),
+      ['--strip-unneeded', '-o', output, join(cargoTarget, rust, variant, rustLibrary)]);
     rmSync(join(dirname(output), 'libpiik_frame_dropper.so'), { force: true });
     const elf = execFileSync(join(tools, `llvm-readelf${exe}`), ['-h', '-l', '-d', output], { encoding: 'utf8', windowsHide: true });
     const loads = [...elf.matchAll(/^\s*LOAD\s+.*$/gm)];
@@ -173,7 +175,6 @@ if (!tunnelOnly) {
     `-PpiikVersion=${versionName}`, `-PpiikVersionCode=${versionCode}`,
     release ? ':app:packageRelease' : ':app:packageDebug', '--rerun',
     release ? ':app:assembleRelease' : ':app:assembleDebug', '--console=plain']);
-  const variant = release ? 'release' : 'debug';
   const apk = join(android, 'app', 'build', 'outputs', 'apk', variant, `app-${variant}.apk`);
   if (!existsSync(apk)) throw new Error('The Android build did not produce its APK.');
   if (release) {
@@ -185,10 +186,18 @@ if (!tunnelOnly) {
     if (!badging.includes(`package: name='tv.piik.android.channel3' versionCode='${versionCode}' versionName='${versionName}'`) ||
         /application-debuggable/.test(badging) || !badging.includes("native-code: 'arm64-v8a' 'x86_64'"))
       throw new Error('Android release identity, ABIs or debuggable flag differs from the package contract.');
+    assertCleanRevision(root, revision);
+  }
+  const symbols = join(output ?? dirname(apk), 'native-symbols');
+  for (const { abi, rust } of targets) {
+    const directory = join(symbols, abi);
+    mkdirSync(directory, { recursive: true });
+    copyFileSync(join(cargoTarget, rust, variant, rustLibrary), join(directory, rustLibrary));
+  }
+  console.log(`Piik Android native symbols: ${symbols}`);
+  if (release) {
     const { id: target, artifact } = ANDROID_APP_PACKAGE_TARGET;
     const digest = sha256(apk);
-    assertCleanRevision(root, revision);
-    mkdirSync(output, { recursive: true });
     copyFileSync(apk, join(output, artifact));
     writeFileSync(join(output, `${artifact}.sha256`), `${digest}  ${artifact}\n`, 'ascii');
     writeFileSync(join(output, artifact.replace(/\.apk$/, '.release.json')),

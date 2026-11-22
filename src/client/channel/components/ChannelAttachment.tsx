@@ -98,19 +98,29 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
     if (!current || previewBusy) return;
     setPreviewBusy(true); setPreviewError(null);
     const request = current.request;
-    let candidate: string | null = null;
     try {
       const verified = await client.content(key, file, request.signal, inlineImage);
       if (request.signal.aborted) return;
-      candidate = URL.createObjectURL(verified);
-      const image = new Image(); image.src = candidate;
-      await image.decode();
-      if (request.signal.aborted || resource.current !== current || current.request !== request) return;
+      const image = new Image();
+      const candidate = URL.createObjectURL(verified);
+      const discard = () => {
+        image.removeAttribute("src");
+        URL.revokeObjectURL(candidate);
+      };
+      request.signal.addEventListener("abort", discard, { once: true });
+      try {
+        image.src = candidate;
+        await image.decode();
+      } catch (error) {
+        if (!request.signal.aborted) discard();
+        throw error;
+      } finally { request.signal.removeEventListener("abort", discard); }
+      if (request.signal.aborted) return;
       if (current.url) URL.revokeObjectURL(current.url);
-      current.url = candidate; candidate = null; setPreview(current.url);
+      current.url = candidate; setPreview(current.url);
       setOriginalShown(true);
     } catch (error) { if (!request.signal.aborted) setPreviewError(error instanceof Error ? error.message : "image_load_failed"); }
-    finally { if (candidate) URL.revokeObjectURL(candidate); if (!request.signal.aborted) setPreviewBusy(false); }
+    finally { if (!request.signal.aborted) setPreviewBusy(false); }
   }
   function cancelPreview() {
     resource.current?.request.abort();
@@ -176,6 +186,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
       width={inlineImage?.width} height={inlineImage?.height} onError={() => {
       const current = resource.current;
       if (!current || current.url !== preview) return;
+      cancelPreview();
       URL.revokeObjectURL(current.url); current.url = null;
       setPreview(null); setPreviewError("image_decode_failed"); setImageOpen(false);
     }} /></button>}

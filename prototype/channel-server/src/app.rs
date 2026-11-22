@@ -1591,6 +1591,7 @@ async fn connection(
             let mut audio_states = FuturesUnordered::new();
             let mut operations = FuturesUnordered::new();
             let mut opening: Option<BoxFuture<'static, Value>> = None;
+            let mut metrics: Option<BoxFuture<'static, Value>> = None;
             let mut targets = None;
             let mut microphones = None;
             let mut previews = FuturesUnordered::new();
@@ -1862,6 +1863,11 @@ async fn connection(
                     }
                     response = async { opening.as_mut().expect("room open pending").await }, if opening.is_some() => {
                         opening = None;
+                        timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
+                        continue;
+                    }
+                    response = async { metrics.as_mut().expect("metrics pending").await }, if metrics.is_some() => {
+                        metrics = None;
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         continue;
                     }
@@ -2293,9 +2299,9 @@ async fn connection(
                                 room_id,
                                 publication_id,
                             } => match &host {
-                                Some(commands) if operations.is_empty() => {
+                                Some(commands) if metrics.is_none() => {
                                     let commands = commands.clone();
-                                    operations.push(async move {
+                                    metrics = Some(async move {
                                         let measured = timeout(IO_TIMEOUT, async {
                                             let (result, response) = oneshot::channel();
                                             commands.send(HostCommand::ConnectionMetrics { room_id, publication_id, result }).await.map_err(|_| anyhow!("hosting_unavailable"))?;
@@ -3451,6 +3457,7 @@ mod lifecycle_tests {
         let (stop, mut stopped) = watch::channel(false);
         let (registered, mut registrations) = mpsc::unbounded_channel();
         let (revoked, mut revocations) = mpsc::unbounded_channel();
+        let (metrics, mut measurements) = mpsc::unbounded_channel();
         let task = tokio::spawn(async move {
             let (_provider_alive, provider_retired) = watch::channel(false);
             loop {
@@ -3459,6 +3466,7 @@ mod lifecycle_tests {
                     command=inputs.recv()=>match command {
                         Some(HostCommand::RegisterWatchReader { resource_id,reader,result })=>{registered.send((resource_id,reader)).unwrap();let _=result.send(Ok(piik_channel_native::session::WatchReaderRegistration { session_id: session, retired: provider_retired.clone() }));},
                         Some(HostCommand::RevokeWatchReader { resource_id })=>{let _=revoked.send(resource_id);},
+                        Some(HostCommand::ConnectionMetrics { result, .. })=>{metrics.send(result).unwrap();},
                         Some(_)=>panic!("unexpected host command"),None=>break,
                     }
                 }
@@ -3569,6 +3577,18 @@ mod lifecycle_tests {
         let pending_metadata = Uuid::new_v4();
         send!(metadata(pending_metadata, 65536));
         timeout(Duration::from_secs(3), slow.recv()).await.unwrap().unwrap();
+        let metrics = |id: &str| json!({"id":id,"type":"connection_metrics","roomId":"room"});
+        send!(metrics("metrics"));
+        send!(metrics("duplicate"));
+        assert_eq!(receive!(), json!({"id":"duplicate","error":"request_pending"}));
+        let measure = || piik_channel_native::peer::NativeConnectionMetrics {
+            session_id: session, binding_id: channel, connections: vec![],
+        };
+        measurements.recv().await.unwrap().send(Err("room_unavailable".into())).unwrap();
+        assert_eq!(receive!(), json!({"id":"metrics","error":"room_unavailable"}));
+        send!(metrics("retry"));
+        measurements.recv().await.unwrap().send(Ok(measure())).unwrap();
+        assert_eq!(receive!(), json!({"id":"retry","result":measure()}));
         send!(json!({"id":"cancel-metadata","type":"page_media_resource","action":"cancel","pageId":page,"readId":pending_metadata}));
         let replies = [receive!(), receive!()];
         assert!(replies.iter().any(|reply| reply["id"] == "cancel-metadata" && reply["error"].is_null()));
@@ -3639,7 +3659,10 @@ mod lifecycle_tests {
         timeout(Duration::from_secs(3),slow.recv()).await.unwrap().unwrap();
         send!(metadata(Uuid::new_v4(), 65536));
         timeout(Duration::from_secs(3), slow.recv()).await.unwrap().unwrap();
+        send!(metrics("closing"));
+        let mut closing_metrics = timeout(Duration::from_secs(3), measurements.recv()).await.unwrap().unwrap();
         socket.close(None).await.unwrap();
+        timeout(Duration::from_secs(3), closing_metrics.closed()).await.unwrap();
         for _ in 0..2 {
             timeout(Duration::from_secs(3), released_reads.recv()).await.unwrap().unwrap();
         }

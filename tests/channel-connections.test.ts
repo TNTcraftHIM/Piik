@@ -285,6 +285,15 @@ describe("channel connection presentation", () => {
     });
     stream.ageMs = 500;
     expect(collectNativeConnectionMetrics(report, previous)[0]!.metrics.bitrateKbps).toBe(400);
+    stream.codec = "video/VP8";
+    stream.sampleTimestampMs = 3000; stream.bytes = 90_000;
+    expect(collectNativeConnectionMetrics(report, previous)[0]!.metrics).toMatchObject({ sampleWindowMs: null, bitrateKbps: null });
+    stream.sampleTimestampMs = 4000; stream.bytes = 100_000;
+    expect(collectNativeConnectionMetrics(report, previous)[0]!.metrics.bitrateKbps).toBe(80);
+    stream.sampleTimestampMs = 5000; stream.bytes = 100;
+    expect(collectNativeConnectionMetrics(report, previous)[0]!.metrics).toMatchObject({ sampleWindowMs: null, bitrateKbps: null });
+    stream.sampleTimestampMs = 6000; stream.bytes = 1100;
+    expect(collectNativeConnectionMetrics(report, previous)[0]!.metrics.bitrateKbps).toBe(8);
     report.connections[0]!.connectionId = "physical-2";
     expect(collectNativeConnectionMetrics(report, previous)[0]!.metrics.bitrateKbps).toBeNull();
     expect(previous.size).toBe(1);

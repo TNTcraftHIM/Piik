@@ -157,7 +157,7 @@ export interface ChannelActions {
   setSourceAudio(publicationId: string, settings: { bitrate?: number; level?: number; muted?: boolean }): Promise<void>;
   sourceMicrophone(publicationId: string): SourceMicrophoneConfiguration & { browser: boolean; canDisable: boolean; available: boolean; requested: SourceMicrophoneConfiguration } | undefined;
   setSourceMicrophone(publicationId: string, settings: SourceMicrophoneSettings): Promise<void>;
-  sourceMicrophones(publicationId: string): Promise<CaptureDevice[]>;
+  sourceMicrophones(publicationId: string, signal?: AbortSignal): Promise<CaptureDevice[]>;
   activateApp(verifiedHealth?: unknown, signal?: AbortSignal): Promise<void>;
   browse(roomId: string): void;
   roomTopology(roomId: string, publicationId?: string, signal?: AbortSignal): Promise<ChannelTopology>;

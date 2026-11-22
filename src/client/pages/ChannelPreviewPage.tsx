@@ -112,8 +112,12 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const [newRoom, setNewRoom] = useState<string | RoomCreationInterrupted | null>(null);
   const closeRoomSettings = useCallback(() => setManagedRoomId(null), []);
   const previousLayout = useRef(layout);
+  const previousDrawer = useRef<typeof mobilePane>("room");
   useEffect(() => {
-    if (sidebarsInline || layout !== previousLayout.current) setMobilePane("room");
+    if (sidebarsInline || layout !== previousLayout.current) {
+      previousDrawer.current = "room";
+      setMobilePane("room");
+    }
     previousLayout.current = layout;
   }, [sidebarsInline, layout, setMobilePane]);
   const [toolSurface, setToolSurface] = useState<RoomToolSurface>({ open: false, document: null });
@@ -245,11 +249,19 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     channel.browse(roomId);
   }, [state?.channel.id, roomId, room?.authorized, room?.available]);
   useEffect(() => {
-    if (sidebarsInline || mobilePane === "room") return;
+    const closedDrawer = previousDrawer.current;
+    previousDrawer.current = sidebarsInline ? "room" : mobilePane;
+    if (sidebarsInline) return;
+    if (mobilePane === "room") {
+      if (closedDrawer !== "room") {
+        const trigger = closedDrawer === "rooms" ? "c3-rooms-trigger" : "c3-companion-trigger";
+        document.getElementById(trigger)?.focus({ preventScroll: true });
+      }
+      return;
+    }
     const heading = mobilePane === "chat" ? document.querySelector<HTMLElement>(".c3-chat-panel .c3-chat-heading button")
       : document.getElementById(mobilePane === "rooms" ? "c3-room-list-heading" : "c3-people-heading");
     heading?.focus();
-    const pane = heading?.closest("aside, .c3-chat-panel");
     const escape = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !event.defaultPrevented && !event.isComposing &&
         !document.querySelector('[popover="auto"]:popover-open, dialog:modal')) {
@@ -258,11 +270,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       }
     };
     document.addEventListener("keydown", escape);
-    return () => {
-      document.removeEventListener("keydown", escape);
-      if (pane?.contains(document.activeElement))
-        document.getElementById(mobilePane === "rooms" ? "c3-rooms-trigger" : "c3-companion-trigger")?.focus({ preventScroll: true });
-    };
+    return () => document.removeEventListener("keydown", escape);
   }, [mobilePane, sidebarsInline, setMobilePane]);
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
   const stageWatches = watches.filter(activity => activity.roomId === roomId || activeWatches.includes(activity));

@@ -1249,15 +1249,14 @@ impl Session {
                                     self.files.push(file);
                                     continue;
                                 }
-                                let creator = if self.service_admission.is_some()
+                                let service_hosts_room = self.service_admission.is_some()
                                     && state.channel.hosting_mode
-                                        == piik_channel_core::wire::HostingMode::Hosted
-                                {
-                                    policy.creator_id
-                                } else {
-                                    user
-                                };
-                                HostedRoom::open(&file.path, &file.id, creator)
+                                        == piik_channel_core::wire::HostingMode::Hosted;
+                                if !service_hosts_room && policy.creator_id != user {
+                                    eprintln!("Native room data unavailable: {}: owner_mismatch", file.path.display());
+                                    continue;
+                                }
+                                HostedRoom::open(&file.path, &file.id, policy.creator_id)
                             }
                             Err(error)
                                 if error.kind() == std::io::ErrorKind::NotFound
@@ -2862,8 +2861,17 @@ fn stored_rooms(directory: &std::path::Path) -> Result<Vec<RoomFile>> {
 
 fn stored_room_policy(path: &std::path::Path) -> Result<Option<RoomState>> {
     let read = || -> piik_channel_core::storage::StoreResult<Option<RoomState>> {
-        std::fs::metadata(path)?;
-        let store = piik_channel_core::storage::Storage::open_existing(path)?;
+        match std::fs::metadata(path) {
+            Ok(metadata) if !metadata.is_file() => return Ok(None),
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        }
+        let store = match piik_channel_core::storage::Storage::open_existing(path) {
+            Ok(store) => store,
+            Err(_) if !path.try_exists()? => return Ok(None),
+            Err(error) => return Err(error),
+        };
         let Some(policy) = store.load()? else {
             return Ok(None);
         };

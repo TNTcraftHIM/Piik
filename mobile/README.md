@@ -47,6 +47,12 @@ Rust JNI libraries and cloudflared helpers, bundles the
 inputs, icons and third-party notices to the existing Gradle project.
 `CARGO_TARGET_DIR` can place build output outside the checkout;
 `WASM_BINDGEN` and `CARGO_ABOUT` can point to installed tool executables.
+The APK contains stripped JNI libraries. Keep its matching `native-symbols/<ABI>/`
+directory with the exact APK for crash diagnosis, using the APK's SHA-256 and
+reported ABI to select the symbols. Decode a crash with
+`ndk-stack -sym native-symbols/<ABI> -dump tombstone.txt`; source line information
+depends on the Cargo profile's debug information.
+[NDK symbolization guide](https://developer.android.com/ndk/guides/ndk-stack)
 For a signed release candidate, use the same entry point with a new output directory:
 
 ```sh
