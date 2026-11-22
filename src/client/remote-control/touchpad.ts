@@ -13,6 +13,7 @@ type Contact = Point & { start: Point };
 export class RemoteTouchpad {
   position: Point = { x: 0.5, y: 0.5 };
   private contacts = new Map<number, Contact>();
+  private directTarget: (() => Point | null) | null = null;
   private hold: ReturnType<typeof setTimeout> | null = null;
   private fingers = 0;
   private moved = false;
@@ -69,24 +70,36 @@ export class RemoteTouchpad {
     this.changed(this.position);
   }
 
-  down(id: number, x: number, y: number, position: Point | null): void {
+  // The screen contact stays with the gesture even when the picture moves.
+  private aimAtContact(): boolean {
+    if (!this.directTarget) return true;
+    const target = this.directTarget();
+    if (!target) return false;
+    this.position = target;
+    this.changed(target);
+    return true;
+  }
+
+  down(id: number, x: number, y: number, pointAt: ((x: number, y: number) => Point | null) | null): void {
+    const contact = { x, y, start: { x, y } };
     if (!this.contacts.size) {
       if (this.mode === "direct") {
-        if (!position) return;
-        this.position = position;
-        this.changed(this.position);
+        if (!pointAt) return;
+        this.directTarget = () => pointAt(contact.x, contact.y);
+        if (!this.aimAtContact()) { this.directTarget = null; return; }
       }
       this.started = performance.now();
       this.fingers = 0;
       this.moved = this.held.size > 0;
       this.gesture = "pending";
     }
-    this.contacts.set(id, { x, y, start: { x, y } });
+    this.contacts.set(id, contact);
     this.fingers = Math.max(this.fingers, this.contacts.size);
     this.clearHold();
     if (this.fingers === 1 && !this.moved) {
       this.hold = setTimeout(() => {
         this.hold = null;
+        if (!this.aimAtContact()) return;
         this.dragging = true;
         this.input({ type: "move", ...this.position });
         if (!this.held.has(0)) this.input({ type: "button", button: 0, down: true });
@@ -112,11 +125,14 @@ export class RemoteTouchpad {
       this.moved = true;
       this.clearHold();
     }
-    if (!this.moved && !this.dragging) return;
-    // Keep the initial displacement while deciding tap versus motion. Updating
-    // the origin before this threshold loses the start of every small swipe.
-    contact.x = x; contact.y = y;
-    this.moveBy(dx, dy);
+    if (this.directTarget) {
+      contact.x = x; contact.y = y;
+      if ((this.moved || this.dragging) && this.aimAtContact()) this.input({ type: "move", ...this.position });
+    } else if (this.moved || this.dragging) {
+      // Keep the initial displacement while deciding a relative tap versus motion.
+      contact.x = x; contact.y = y;
+      this.moveBy(dx, dy);
+    }
   }
 
   moveBy(dx: number, dy: number): void {
@@ -169,17 +185,27 @@ export class RemoteTouchpad {
     this.pair = next;
   }
 
-  up(id: number): void {
+  up(id: number, x?: number, y?: number): void {
+    const contact = this.contacts.get(id);
+    if (!contact) return;
+    if (this.directTarget && this.fingers === 1 && x !== undefined && y !== undefined) { contact.x = x; contact.y = y; }
     this.movePair();
-    if (!this.contacts.delete(id)) return;
+    this.contacts.delete(id);
     this.clearHold();
     if (this.contacts.size) return;
-    if (!this.moved && !this.dragging && performance.now() - this.started < REMOTE_TOUCH_HOLD_MS && this.fingers <= 2) {
+    const before = this.position;
+    const tap = !this.moved && !this.dragging && performance.now() - this.started < REMOTE_TOUCH_HOLD_MS && this.fingers <= 2;
+    const aimed = (this.dragging || tap) && this.aimAtContact();
+    if (this.dragging && aimed && (before.x !== this.position.x || before.y !== this.position.y)) {
+      this.input({ type: "move", ...this.position });
+    }
+    if (aimed && tap) {
       const button = this.fingers === 2 ? 2 : 0;
       this.input({ type: "move", ...this.position });
       this.input({ type: "button", button, down: true });
       this.input({ type: "button", button, down: false });
     }
+    this.directTarget = null;
     this.endDrag();
   }
 
@@ -219,6 +245,7 @@ export class RemoteTouchpad {
     this.pair = null;
     this.clearHold();
     this.endDrag();
+    this.directTarget = null;
     this.contacts.clear();
     for (const button of [...this.held]) this.button(button, false);
   }

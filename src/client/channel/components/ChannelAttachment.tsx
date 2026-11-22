@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Glyph } from "../../ui/icons";
-import { useCopy } from "../../ui/copy";
+import { joinItems, useCopy } from "../../ui/copy";
 import type { ChannelAttachment as Attachment, ImageRendition } from "../protocol";
 import { type ChannelAttachments, fileSize, isNativeSavePending } from "../attachments";
 import { inlineImageFile } from "../image-preview";
@@ -38,14 +38,14 @@ function observeCard(element: Element, onVisibility: (visible: boolean) => void)
   };
 }
 
-function TransferProgress({ label, bytes }: { label: string; bytes?: { received: number; total: number | null } | null }) {
+function TransferProgress({ label, accessibleLabel, bytes }: { label: string; accessibleLabel: string; bytes?: { received: number; total: number | null } | null }) {
   const total = bytes?.total || undefined;
   return <div className="c3-attachment-progress">
     <div>
       <small role="status">{label}</small>
       {total && bytes ? <small>{Math.floor(bytes.received / total * 100)}%</small> : null}
     </div>
-    <progress aria-label={label} max={total} value={total ? bytes?.received : undefined} />
+    <progress aria-label={accessibleLabel} max={total} value={total ? bytes?.received : undefined} />
     {bytes && <small>{fileSize(bytes.received)}{bytes.total !== null && ` / ${fileSize(bytes.total)}`}</small>}
   </div>;
 }
@@ -53,7 +53,8 @@ function TransferProgress({ label, bytes }: { label: string; bytes?: { received:
 export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImage }: {
   roomId: string; messageSeq: number; file: Attachment; client: ChannelAttachments; inlineImage?: ImageRendition;
 }) {
-  const { t } = useCopy();
+  const { lang, t } = useCopy();
+  const labelForFile = (label: string) => joinItems(lang, [label, file.name]);
   const key = { roomId, messageSeq, attachmentId: file.id };
   const downloadSurface = useRef<HTMLDivElement>(null);
   const surfaceDocument = useSurfaceDocument();
@@ -131,14 +132,22 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   const savePending = isNativeSavePending(download.outcome);
   const saved = savedCopy || download.outcome === "saved";
   const canReveal = savedCopy && typeof (downloadSurface.current?.ownerDocument ?? surfaceDocument)?.defaultView?.piikRevealDownload === "function";
+  const canRetryDownload = !unavailable && download.error &&
+    !["file_offer_failed", "reveal_saved_copy_failed", "saved_copy_missing"].includes(download.error);
+  const downloadLabel = download.busy ? t("channel.attachment.cancelDownload")
+    : savePending ? t(saving ? "channel.attachment.saving" : "channel.attachment.downloadRequested")
+    : canReveal ? t("channel.attachment.revealSaved")
+    : canRetryDownload ? t("common.retry")
+    : t(isImage ? "channel.attachment.downloadOriginal" : "channel.attachment.download");
+  const imageLabel = t(previewBusy ? "channel.attachment.cancelImageLoading" : "channel.attachment.viewImage");
+  const saveLabel = t("channel.attachment.saving");
   const originalNotice = !imageOpen && !download.busy && !previewBusy && !savePending ? originalStatus : undefined;
   const cardStatus = [...new Set([downloadMessage, !imageOpen ? previewMessage : undefined, originalNotice].filter(Boolean))].join(" ");
   return <div className="c3-attachment" ref={downloadSurface}>
     <div className="c3-attachment-file"><Glyph name={saved ? "check" : "fileDown"} size={21} />
       <div><Tooltip overflow={{ text: file.name, selector: "strong" }}><strong>{file.name}</strong></Tooltip><small>{fileSize(file.size)}</small></div>
-      <ChannelAction icon={download.busy ? "x" : canReveal ? "folder" : "arrowDown"}
-        label={download.busy ? t("channel.attachment.cancelDownload") : savePending ? t(saving ? "channel.attachment.saving" : "channel.attachment.downloadRequested")
-          : canReveal ? t("channel.attachment.revealSaved") : isImage ? t("channel.attachment.downloadOriginal") : t("channel.attachment.download")}
+      <ChannelAction icon={download.busy ? "x" : canReveal ? "folder" : canRetryDownload ? "refresh" : "arrowDown"}
+        label={downloadLabel} accessibleLabel={labelForFile(downloadLabel)}
         quiet iconOnly={savePending} busy={savePending || (revealing && !download.busy)}
         disabled={unavailable && !download.busy && !savePending && !canReveal}
         onClick={() => {
@@ -152,15 +161,15 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
           void client.download(key, file, inlineImage, surface ?? undefined).catch(() => {});
         }} />
     </div>
-    {(download.busy || (previewBusy && !imageOpen)) && <TransferProgress label={progressLabel} bytes={progressBytes} />}
-    {saving && <TransferProgress label={t("channel.attachment.saving")} bytes={savedBytes} />}
+    {(download.busy || (previewBusy && !imageOpen)) && <TransferProgress label={progressLabel} accessibleLabel={labelForFile(progressLabel)} bytes={progressBytes} />}
+    {saving && <TransferProgress label={saveLabel} accessibleLabel={labelForFile(saveLabel)} bytes={savedBytes} />}
     {!download.busy && !savePending && saved && <small className="c3-attachment-saved" role="status">{t("channel.attachment.saved")}</small>}
     {!download.busy && (download.outcome === "requested" || download.outcome === "dispatched") && <small role="status">{t(download.outcome === "requested"
       ? "channel.attachment.downloadRequested" : "channel.attachment.downloadSent")}</small>}
     {download.outcome === "cancelled" && <small role="status">{t("channel.attachment.downloadCancelled")}</small>}
     {isImage && !preview && <ChannelAction icon={previewBusy ? "x" : "eye"} quiet
       disabled={unavailable && !previewBusy}
-      label={previewBusy ? t("channel.attachment.cancelImageLoading") : t("channel.attachment.viewImage")}
+      label={imageLabel} accessibleLabel={labelForFile(imageLabel)}
       onClick={() => { if (previewBusy) cancelPreview(); else void showImage(); }} />}
     {preview && <button type="button" className="c3-attachment-preview" aria-label={t("channel.attachment.openImage", { name: file.name })}
       onClick={() => setImageOpen(true)}><img src={preview} alt={file.name} loading="lazy" decoding="async"
@@ -171,7 +180,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
       setPreview(null); setPreviewError("image_decode_failed"); setImageOpen(false);
     }} /></button>}
     {imageOpen && preview && <ChannelImageDialog src={preview} name={file.name} description={previewBusy ? undefined : imageStatus}
-      progress={previewBusy ? <TransferProgress label={progressLabel} bytes={progressBytes} /> : undefined}
+      progress={previewBusy ? <TransferProgress label={progressLabel} accessibleLabel={labelForFile(progressLabel)} bytes={progressBytes} /> : undefined}
       original={!originalShown ? { busy: previewBusy, disabled: unavailable, onLoad: () => { void showImage(); }, onCancel: cancelPreview } : undefined}
       onClose={() => { if (previewBusy) cancelPreview(); setImageOpen(false); }} />}
     {cardStatus && <small role="status">{cardStatus}</small>}

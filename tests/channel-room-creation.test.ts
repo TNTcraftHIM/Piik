@@ -16,15 +16,24 @@ test("an invitation-only form or quick launch ignores public and password draft 
 });
 
 test("room edits only send changed fields and preserve explicit picture and password removal", () => {
-  expect(roomSettingsPatch({ name: " New name " })).toEqual({ name: "New name" });
-  expect(roomSettingsPatch({ picture: null, password: "", removePassword: true })).toEqual({ picture: null, password: null });
-  expect(roomSettingsPatch({ access: "public", password: "", removePassword: false })).toEqual({ access: "public" });
+  const room = { access: "private", hidden: false, hasPassword: true } as const;
+  expect(roomSettingsPatch({ name: " New name " }, room)).toEqual({ name: "New name" });
+  expect(roomSettingsPatch({ picture: null, password: "", removePassword: true }, room)).toEqual({ picture: null, password: null });
+  expect(roomSettingsPatch({ access: "public", password: "", removePassword: false }, room)).toEqual({ access: "public" });
 });
+
+test("a remote switch to public omits private drafts unless the manager explicitly selects private", () => {
+  const room = { access: "public", hidden: false, hasPassword: false } as const;
+  const draft = { name: "Renamed", hidden: true, password: "new password" };
+  expect(roomSettingsPatch(draft, room)).toEqual({ name: "Renamed" });
+  expect(roomSettingsPatch({ ...draft, access: "private" }, room)).toEqual({ ...draft, access: "private" });
+});
+
 test("policy changes discard admission drafts and send only necessary invitation-only constraints", () => {
   const stale = { name: " Renamed ", access: "public", hidden: false, password: "old draft" } as const;
   const compliant = { access: "private", hidden: true, hasPassword: false } as const;
-  expect(roomSettingsPatch(stale, compliant)).toEqual({ name: "Renamed" });
+  expect(roomSettingsPatch(stale, compliant, true)).toEqual({ name: "Renamed" });
   const oldRoom = { access: "public", hidden: false, hasPassword: true } as const;
-  expect(roomSettingsPatch(stale, oldRoom)).toEqual({ name: "Renamed", access: "private", hidden: true, password: null });
-  expect(roomSettingsPatch({ password: "old draft" }, oldRoom)).toEqual({});
+  expect(roomSettingsPatch(stale, oldRoom, true)).toEqual({ name: "Renamed", access: "private", hidden: true, password: null });
+  expect(roomSettingsPatch({ password: "old draft" }, oldRoom, true)).toEqual({});
 });

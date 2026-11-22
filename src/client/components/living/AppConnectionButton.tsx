@@ -35,6 +35,7 @@ interface ConnectionAttempt {
   popup: Window | null;
   automatic: boolean;
   open?: () => void;
+  recheck?: () => void;
   cancel?: () => void;
 }
 
@@ -72,7 +73,12 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
   useEffect(() => {
     if (connected === false) rememberBuild(null);
     const refresh = async (returned = false) => {
-      if (!available || pending.current || (automaticFailed.current && !connected)) return;
+      if (!available) return;
+      if (pending.current) {
+        if (returned && isClientActivated()) pending.current.recheck?.();
+        return;
+      }
+      if (automaticFailed.current && !connected) return;
       if (returned && connected === false && isClientActivated()) {
         await connect(false, true);
         return;
@@ -145,7 +151,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
     const verifyApproval = async (reported = false) => {
       if (approving || signal.aborted) return;
       approving = true;
-      const health = await native?.health({ signal }).catch(() => null);
+      const health = await native?.health({ signal, waitForPermission: Boolean(attempt.popup) }).catch(() => null);
       if (signal.aborted) return;
       approving = false;
       if (health) {
@@ -179,6 +185,8 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       }
     };
     const activate = async (health: NonNullable<Awaited<ReturnType<AppDiscovery["health"]>>>) => {
+      attempt.recheck = undefined;
+      attempt.open = undefined;
       if (onConnected) {
         // One attempt owns discovery, approval and the control handshake.
         attempt.popup?.close();
@@ -225,10 +233,12 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
           return;
         }
         approvalOrigin = new URL(url).origin;
+        attempt.recheck = () => void verifyApproval();
         attempt.open = () => {
           if (signal.aborted || attempt.popup) return;
           attempt.popup = window.open(url, "_blank");
           if (!attempt.popup) { finish("unavailable"); return; }
+          attempt.recheck = undefined;
           attempt.open = undefined;
           setState("approving"); help.current?.hidePopover();
         };

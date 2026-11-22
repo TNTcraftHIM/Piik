@@ -336,12 +336,12 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           if (event.pointerType === "touch") {
             event.preventDefault(); event.stopPropagation(); setTouchPointer(touchpad.current);
             surface.current?.focus({ preventScroll: true });
-            touchpad.current?.down(event.pointerId, event.clientX, event.clientY, point(event.clientX, event.clientY));
+            touchpad.current?.down(event.pointerId, event.clientX, event.clientY, point);
           }
         }}
         onPointerUp={event => {
           if (event.pointerType === "touch") {
-            event.preventDefault(); event.stopPropagation(); touchpad.current?.up(event.pointerId);
+            event.preventDefault(); event.stopPropagation(); touchpad.current?.up(event.pointerId, event.clientX, event.clientY);
           }
         }}
         onClick={event => { event.preventDefault(); event.stopPropagation(); }}

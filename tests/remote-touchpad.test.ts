@@ -14,31 +14,69 @@ it("targets the touched picture directly, ignores letterboxing and retires gestu
       return picture && { ...picture, rotation: 0 };
     }, event => events.push(event), () => {}, () => {},
     { scale: 1, transform: () => {} });
-    pad.down(1, 320, 10, picturePoint(video, 320, 10)); pad.move(1, 350, 100); pad.up(1);
+    const pointAt = (x: number, y: number) => picturePoint(video, x, y);
+    pad.down(1, 320, 10, pointAt); pad.move(1, 350, 100); pad.up(1);
     expect(events).toEqual([]); expect(vi.getTimerCount()).toBe(0);
 
-    pad.down(1, 320, 100, picturePoint(video, 320, 100)); pad.up(1);
+    pad.down(1, 320, 100, pointAt); pad.up(1);
     expect(events).toEqual([{ type: "move", x: .8, y: .25 },
       { type: "button", button: 0, down: true }, { type: "button", button: 0, down: false }]);
     events.length = 0;
-    pad.down(2, 80, 150, picturePoint(video, 80, 150)); vi.advanceTimersByTime(500);
+    pad.down(2, 80, 150, pointAt); vi.advanceTimersByTime(500);
     pad.move(2, 160, 190); pad.up(2);
     expect(events).toEqual([{ type: "move", x: .2, y: .5 }, { type: "button", button: 0, down: true },
       { type: "move", x: .4, y: .7 }, { type: "button", button: 0, down: false }]);
 
     events.length = 0;
-    pad.down(3, 100, 150, picturePoint(video, 100, 150)); vi.advanceTimersByTime(500);
+    pad.down(3, 100, 150, pointAt); vi.advanceTimersByTime(500);
     pad.setMode("trackpad"); pad.up(3);
     expect(events.filter(event => event.type === "button")).toEqual([
       { type: "button", button: 0, down: true }, { type: "button", button: 0, down: false }]);
     expect(events.at(-1)).toEqual({ type: "move", x: .25, y: .5 });
     expect(vi.getTimerCount()).toBe(0);
     events.length = 0;
-    pad.down(4, 100, 150, { x: .9, y: .9 }); pad.move(4, 140, 150); pad.up(4);
+    pad.down(4, 100, 150, pointAt); pad.move(4, 140, 150); pad.up(4);
     expect(events).toEqual([{ type: "move", x: .35, y: .5 }]);
     pad.setMode("direct");
-    pad.down(5, 320, 100, picturePoint(video, 320, 100)); pad.up(5);
+    pad.down(5, 320, 100, pointAt); pad.up(5);
     expect(events.at(-3)).toEqual({ type: "move", x: .8, y: .25 });
+  } finally { vi.useRealTimers(); }
+});
+
+it("uses the current picture for a direct hold, drag and release across a decoded resize", () => {
+  vi.useFakeTimers();
+  try {
+    const frame = { left: 0, top: 0, width: 400, height: 400 };
+    const source = { videoWidth: 400, videoHeight: 200, style: { objectFit: "contain" }, dataset: {},
+      getBoundingClientRect: () => frame };
+    const video = source as unknown as HTMLVideoElement;
+    const pointAt = (x: number, y: number) => picturePoint(video, x, y);
+    const events: RemoteInputEvent[] = [];
+    const pad = new RemoteTouchpad(() => ({ ...pictureRect(video)!, rotation: 0 }),
+      event => events.push(event), () => {}, () => {}, { scale: 1, transform: () => {} });
+
+    pad.down(1, 160, 180, pointAt);
+    pad.move(1, 162, 180);
+    Object.assign(source, { videoWidth: 200, videoHeight: 400 });
+    pad.refresh();
+    expect(events).toEqual([]);
+    vi.advanceTimersByTime(500);
+    pad.move(1, 172, 180);
+    frame.left = 10;
+    pad.up(1, 174, 180);
+    pad.cancel(1);
+    expect(events).toEqual([
+      { type: "move", x: .31, y: .45 }, { type: "button", button: 0, down: true },
+      { type: "move", x: .36, y: .45 }, { type: "move", x: .32, y: .45 },
+      { type: "button", button: 0, down: false },
+    ]);
+
+    events.length = 0;
+    pad.down(2, 160, 180, pointAt);
+    frame.left = 500;
+    vi.advanceTimersByTime(500);
+    pad.up(2);
+    expect(events).toEqual([]);
   } finally { vi.useRealTimers(); }
 });
 

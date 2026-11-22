@@ -267,7 +267,7 @@ export class ChannelApp {
   private activationURL?: string;
   private processAudioExclusion = false;
   private captureCodecs: NativeCaptureSources["codecs"] = [];
-  private previewTail: Promise<unknown> = Promise.resolve();
+  private previewTail: Promise<void> = Promise.resolve();
   private pendingSources?: Promise<NativeCaptureSources>;
   private readonly roomHosting: NativeRoomHosting;
   private pages = new Map<string, AppPage>();
@@ -553,7 +553,7 @@ export class ChannelApp {
       finally { signal?.removeEventListener("abort", cancel); }
     });
     // Wait for the App's stop/join acknowledgement even after local cancellation.
-    this.previewTail = preview;
+    this.previewTail = preview.then(() => {});
     return preview;
   }
 

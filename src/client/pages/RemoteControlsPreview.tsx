@@ -132,10 +132,10 @@ export function RemoteControlsPreview() {
             if (event.button !== 0) return;
             event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
             pointer?.down(event.pointerId, event.clientX, event.clientY,
-              mouseVideo.current && picturePoint(mouseVideo.current, event.clientX, event.clientY));
+              (x, y) => mouseVideo.current && picturePoint(mouseVideo.current, x, y));
           }}
           onPointerMove={event => pointer?.move(event.pointerId, event.clientX, event.clientY)}
-          onPointerUp={event => pointer?.up(event.pointerId)}
+          onPointerUp={event => pointer?.up(event.pointerId, event.clientX, event.clientY)}
           onPointerCancel={event => pointer?.cancel(event.pointerId)}
           onLostPointerCapture={event => pointer?.cancel(event.pointerId)}
           onContextMenu={event => event.preventDefault()}>

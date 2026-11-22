@@ -17,18 +17,19 @@ export function roomDraft(room?: ChannelRoom): RoomDraft {
     password: "", removePassword: false, relayCapacity: room?.relayCapacity ?? DEFAULT_RELAY_CAPACITY };
 }
 
-export function roomSettingsPatch(dirty: Partial<RoomDraft>, invitationOnlyRoom?: Pick<ChannelRoom, "access" | "hidden" | "hasPassword">): Partial<RoomSettings> {
+export function roomSettingsPatch(dirty: Partial<RoomDraft>, room: Pick<ChannelRoom, "access" | "hidden" | "hasPassword">, inviteOnly = false): Partial<RoomSettings> {
   const { name, password, removePassword, access, hidden, ...settings } = dirty;
   const fields = { ...settings, ...(name === undefined ? {} : { name: name.trim() }) };
-  if (invitationOnlyRoom) {
+  if (inviteOnly) {
     if (Object.keys(fields).length === 0) return fields;
     return { ...fields,
-      ...(invitationOnlyRoom.access !== "private" ? { access: "private" } : {}),
-      ...(!invitationOnlyRoom.hidden ? { hidden: true } : {}),
-      ...(invitationOnlyRoom.hasPassword ? { password: null } : {}) };
+      ...(room.access !== "private" ? { access: "private" } : {}),
+      ...(!room.hidden ? { hidden: true } : {}),
+      ...(room.hasPassword ? { password: null } : {}) };
   }
-  return { ...fields, ...(access === undefined ? {} : { access }),
-    ...(hidden === undefined ? {} : { hidden }),
+  const changes = { ...fields, ...(access === undefined ? {} : { access }) };
+  if ((access ?? room.access) === "public") return changes;
+  return { ...changes, ...(hidden === undefined ? {} : { hidden }),
     ...(password ? { password } : removePassword ? { password: null } : {}) };
 }
 

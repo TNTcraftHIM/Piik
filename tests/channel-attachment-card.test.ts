@@ -41,6 +41,20 @@ describe("attachment original availability", () => {
     expect(markup).not.toContain(t("zh", "channel.attachment.noOriginalSource"));
   });
 
+  it.each([undefined, true])("labels the actionable retry with the filename when availability is %s", availability => {
+    const markup = renderCard(availability, false, "file_transfer_interrupted");
+    expect(markup).toContain(`aria-label="${t("zh", "common.retry")}、room.png"`);
+    expect(markup).toContain(t("zh", "channel.attachment.transferInterrupted"));
+    expect(markup).not.toContain('disabled=""');
+  });
+
+  it("keeps an interruption visible while the original is unavailable", () => {
+    const markup = renderCard(false, false, "file_transfer_interrupted");
+    expect(markup).toContain(t("zh", "channel.attachment.transferInterrupted"));
+    expect(markup).toContain(t("zh", "channel.attachment.noOriginalSource"));
+    expect(markup).not.toContain(t("zh", "common.retry"));
+  });
+
   it("keeps a failed native save visible when the last holder leaves", () => {
     const markup = renderCard(false, false, "download_failed");
     expect(markup).toContain(t("zh", "channel.attachment.saveFailed"));

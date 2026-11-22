@@ -816,6 +816,33 @@ describe("initial App discovery", () => {
     expect(discovery.connect).toHaveBeenCalledOnce();
     await page.connect(); expect(page.window.open).toHaveBeenCalledOnce(); page.cleanup();
   });
+  it("finishes a waiting page's handshake when another page approves the site", async () => {
+    const waiting = mount(false, "idle", false, false, undefined, true);
+    const granting = mount();
+    try {
+      await settle();
+      expect(waiting.setState).toHaveBeenLastCalledWith("approval");
+      await granting.openApproval();
+      granting.message();
+      await settle();
+      expect(granting.activateClient).toHaveBeenCalledOnce();
+
+      waiting.native.discoverNativeHealth.mockResolvedValueOnce(null);
+      waiting.activateElsewhere();
+      await settle();
+      expect(waiting.onConnected).not.toHaveBeenCalled();
+      expect(waiting.setState).toHaveBeenLastCalledWith("approval");
+
+      waiting.window.dispatchEvent(new Event("focus"));
+      waiting.document.dispatchEvent(new Event("visibilitychange"));
+      await settle();
+      expect(waiting.native.discoverNativeHealth).toHaveBeenCalledTimes(3);
+      expect(waiting.native.discoverNativeHealth).toHaveBeenLastCalledWith(expect.objectContaining({ waitForPermission: false }));
+      expect(waiting.onConnected).toHaveBeenCalledOnce();
+      expect(waiting.setState).toHaveBeenLastCalledWith("ready");
+      expect(waiting.window.open).not.toHaveBeenCalled();
+    } finally { granting.cleanup(); waiting.cleanup(); }
+  });
   it("stops failed discovery across focus, permits manual retry, and aborts on unmount", async () => {
     const discovery = { connect: vi.fn(async (_options?: AppDiscoveryOptions): Promise<string | null> => null), health: vi.fn(async () => ({})), isIncompatible: () => false };
     const page = mount(true, "idle", false, false, discovery, true);

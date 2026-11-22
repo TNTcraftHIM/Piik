@@ -279,7 +279,7 @@ function RoomSettings({ channel, room, onClose }: {
           <RoomForm room={room} value={{ ...roomDraft(room), ...draft }} onChange={fields => setDraft(previous => ({ ...previous, ...fields }))}
             inviteOnly={inviteOnly} disabled={!available || working} busy={busy}
             onCancel={onClose} onSave={() => {
-              const changes = roomSettingsPatch(draft, inviteOnly ? room : undefined);
+              const changes = roomSettingsPatch(draft, room, inviteOnly);
               return Object.keys(changes).length ? run(() => channel.updateRoom(room.id, changes, false), onClose) : Promise.resolve(onClose());
             }} />
           {room.access === "private" && members.length > 0 && <details className="c3-room-members">
