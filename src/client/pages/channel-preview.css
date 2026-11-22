@@ -1,5 +1,5 @@
 /* The workspace owns placement; shared controls, palette, cast and motion keep their owners. */
-.c3-app { --c3-content-width: calc(100% - 40px); --c3-navigation-size: 240px; --c3-companion-size: 320px; --c3-companion-width: var(--c3-companion-size); --c3-heading-height: 66px; height: 100dvh; min-height: 0; padding-top: 20px; }
+.c3-app { --c3-content-width: calc(100% - 40px); --c3-navigation-size: 240px; --c3-companion-size: 320px; --c3-companion-width: var(--c3-companion-size); --c3-heading-height: 66px; --c3-stage-picture-min: 160px; --c3-compact-stage-padding: 10px; height: 100dvh; min-height: 0; padding-top: 20px; }
 .c3-shell { flex: 1; min-height: 0; width: var(--c3-content-width); margin: 0 auto 24px; display: grid; grid-template-columns: var(--c3-navigation-size) minmax(0, 1fr) var(--c3-companion-width); grid-template-rows: auto var(--c3-heading-height) minmax(0, 1fr) auto; background: var(--paper); border: 1px solid var(--line); border-radius: var(--c3-shell-radius); box-shadow: var(--panel-shadow); overflow: clip; container: channel-shell / size; }
 .c3-shell[data-companion="none"] { --c3-companion-width: 0px; }
 .c3-shell:not([data-companion="people"]) > .c3-people-panel { display: none; }
@@ -187,7 +187,7 @@
   .c3-room-actions:empty { display: none; }
 }
 @container channel-room (max-height: 680px) {
-  .c3-workspace.has-screens .c3-monitor { --stage-padding: 10px; gap: 8px; }
+  .c3-workspace.has-screens .c3-monitor { --stage-padding: var(--c3-compact-stage-padding); gap: 8px; }
   .c3-workspace .c3-conversation { padding: 8px 12px; gap: 8px; }
 }
 @container channel-room (max-height: 420px) {
@@ -213,14 +213,20 @@
   }
 }
 @media (min-width: 701px) and (max-height: 700px) {
-  .c3-shell { grid-template-rows: auto var(--c3-heading-height) minmax(0, 1fr) auto auto; }
+  .c3-shell { grid-template-rows: auto var(--c3-heading-height) minmax(auto, 1fr) auto auto; }
   .c3-sidebar { grid-row: 2 / 5; }
-  .c3-shell .c3-personal { grid-column: 1 / -1; grid-row: 5; display: flex; gap: 16px; padding: 6px 12px; border-top: 1px solid var(--line); }
-  .c3-personal .c3-voice-entry { flex: 0 1 240px; }
-  .c3-personal .c3-voice-dock { display: flex; flex: 1; min-width: 0; gap: 8px; padding: 0; }
-  .c3-personal .c3-voice-destination { flex-basis: auto; }
+}
+@media (max-height: 700px) {
+  .c3-shell:not([data-layout="quick"]):has(.c3-workspace.has-screens) { overflow-y: auto; }
+  .c3-shell:not([data-layout="quick"]) .c3-main-body:has(.c3-workspace.has-screens) {
+    min-height: calc(var(--c3-stage-picture-min) + 2 * var(--c3-compact-stage-padding));
+  }
+  .c3-shell .c3-personal { grid-column: 1 / -1; grid-row: 5; display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 6px 12px; border-top: 1px solid var(--line); }
+  .c3-personal .c3-voice-entry { flex: 0 1 min(240px, 25%); }
+  .c3-personal .c3-voice-dock { display: flex; flex: 1 1 min-content; min-width: 0; gap: 8px; padding: 0; }
+  .c3-personal .c3-voice-destination { flex-basis: 8ch; }
   .c3-personal .c3-voice-controls { width: auto; gap: 4px; }
-  .c3-shell .c3-personal .c3-identity { flex: 0 1 180px; order: -1; }
+  .c3-shell .c3-personal .c3-identity { flex: 0 1 min(180px, 25%); order: -1; }
 }
 @media (max-width: 1100px) {
   .c3-app { --c3-content-width: calc(100% - 24px); }
@@ -257,7 +263,7 @@
 }
 @media (max-width: 700px) {
   .c3-app { --c3-content-width: calc(100% - 16px); --c3-heading-height: 60px; padding-top: 8px; }
-  .c3-shell[data-sidebars="overlay"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto auto; margin-bottom: 8px; border-radius: var(--c3-shell-radius); }
+  .c3-shell[data-sidebars="overlay"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(auto, 1fr) auto auto; margin-bottom: 8px; border-radius: var(--c3-shell-radius); }
   .c3-shell[data-sidebars="overlay"] > :is(.c3-sidebar, .c3-site-bar, .c3-people-panel, .c3-personal, .c3-chat-panel, .c3-room-presence),
   .c3-shell[data-sidebars="overlay"] :is(.c3-room-heading, .c3-main-body) { grid-column: 1; }
   .c3-site-bar { padding-inline: 12px; column-gap: 4px; }

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Btn } from "../../components/living/primitives";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
+import { useLayerHistory } from "../../ui/layer-history";
 import { useCopy } from "../../ui/copy";
 import { channelErrorPresentation } from "../error-presentation";
 import type { ChannelRoom, RoomInvitationState } from "../protocol";
@@ -19,13 +20,14 @@ export function ChannelRoomInvitation({ channel, room, onManageAccess }: {
   const [open, setOpen] = useState(false);
   const label = t("invite.room.title", { name: room.name });
   useAnchoredPopover(trigger, panel, { maxHeight: 560 });
+  useLayerHistory(panel, open);
   return <span className="c3-room-invitation-entry" ref={trigger}>
     <Btn icon="link" title={{ text: label }} textTooltip quiet size="dense" expanded={open} controls={id} popoverTarget={id} />
     <div id={id} ref={panel} popover="auto" role="dialog" aria-label={label}
       className="lr-anchored-card c3-room-invitation" onToggle={event => {
         if (event.target === event.currentTarget) setOpen(event.newState === "open");
       }}>
-      {open && <RoomInvitation key={room.id} channel={channel} room={room} onClose={() => panel.current?.hidePopover()}
+      {open && <RoomInvitation channel={channel} room={room} onClose={() => panel.current?.hidePopover()}
         onManageAccess={onManageAccess} />}
     </div>
   </span>;

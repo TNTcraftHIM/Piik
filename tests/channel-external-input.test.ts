@@ -136,6 +136,13 @@ test("unknown profile remains numeric and a generic error ignores unrelated form
   const genericMessage = channelErrorPresentation("external_input_failed", copy, undefined, format).message;
   expect(genericMessage).toContain("streaming connection and log in OBS");
   expect(genericMessage).not.toMatch(/H\.264|NV12|profile_idc/);
+  const level = channelErrorPresentation("external_video_format_unsupported", copy, undefined,
+    { ...format, profileIdc: 100, levelIdc: 60 }).message;
+  expect(level).toMatch(/High, Level 6\.0.*64003c.*5\.2.*frame rate/);
+  expect(level).not.toContain("NV12");
+  const offer = channelErrorPresentation("external_video_offer_unsupported", copy, undefined, format).message;
+  expect(offer).toMatch(/offer.*H\.264/);
+  expect(offer).not.toMatch(/Received|SPS/);
   expect(channelErrorPresentation("external_video_format_unsupported", copy, undefined,
     { ...format, levelIdc: 0 }).message).toContain("level_idc=0");
 });

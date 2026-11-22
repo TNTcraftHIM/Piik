@@ -1499,7 +1499,7 @@ fn external_input_event(
     }
     if let Some(error) = error {
         event["error"] = json!(match error {
-            "room_unavailable" | "external_video_format_unsupported" => error,
+            "room_unavailable" | "external_video_format_unsupported" | "external_video_offer_unsupported" => error,
             _ => "external_input_failed",
         });
     }
@@ -1755,9 +1755,10 @@ async fn connection(
                             Err(error) => {
                                 if let Some(capture) = captures.get_mut(&publication_id) { capture.pending = None; }
                                 let _ = response.send(Err(StatusCode::UNPROCESSABLE_ENTITY));
-                                let retired = error.to_string() == "room_unavailable";
+                                let reason = error.to_string();
+                                let retired = reason == "room_unavailable";
                                 if retired { external_page.remove(publication_id); }
-                                let event = captures.get(&publication_id).unwrap().external_event(publication_id, false, retired, Some(if retired {"room_unavailable"} else {"external_input_failed"}));
+                                let event = captures.get(&publication_id).unwrap().external_event(publication_id, false, retired, Some(&reason));
                                 timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                             }
                         }
@@ -4716,6 +4717,7 @@ mod tests {
                 "external_video_format_unsupported",
                 "external_video_format_unsupported",
             ),
+            ("external_video_offer_unsupported", "external_video_offer_unsupported"),
             ("private decoder detail", "external_input_failed"),
         ] {
             let failed = external_input_event(publication, None, None, false, Some(reason));

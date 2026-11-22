@@ -74,8 +74,10 @@ Native adds IPv6 aliases for numeric IPv4 UDP candidates through the SDK's publi
 API. One connection-scoped lookup of `ipv4only.arpa` discovers the prefix under
 [RFC 7050](https://www.rfc-editor.org/rfc/rfc7050.html#section-3); synthesis follows
 the six [RFC 6052 layouts](https://www.rfc-editor.org/rfc/rfc6052.html#section-2.2).
-Initial ICE must have a non-loopback IPv6 base and an IPv4 peer. Connected/retired
-engines release bootstrap work; failed discovery or exhausted aliases preserve
+Initial ICE starts discovery once it has both a non-loopback IPv6 base and an
+IPv4 peer candidate. Desktop interface refresh can supply the first usable IPv6
+base after gathering starts. First ICE nomination or pair retirement releases
+bootstrap work. Failed discovery or exhausted aliases preserve
 ordinary candidates. There is no persistent prefix cache or SDK fork. Well-known
 prefix synthesis is limited to global IPv4; network-specific prefixes retain
 private-address support.

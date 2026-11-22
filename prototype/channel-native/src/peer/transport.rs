@@ -260,14 +260,14 @@ fn validate_local_offer(offer: &SdpOffer) -> Result<()> {
             line.simulcast().is_none(),
             "local input does not accept layered tracks"
         );
-        let (kind, expected) = match line.typ.to_string().as_str() {
+        let (kind, expected, unsupported) = match line.typ.to_string().as_str() {
             "video" => {
                 video += 1;
-                (MediaKind::Video, Codec::H264)
+                (MediaKind::Video, Codec::H264, "external_video_offer_unsupported")
             }
             "audio" => {
                 audio += 1;
-                (MediaKind::Audio, Codec::Opus)
+                (MediaKind::Audio, Codec::Opus, "unsupported local input codec")
             }
             _ => anyhow::bail!("unsupported local input media"),
         };
@@ -276,7 +276,7 @@ fn validate_local_offer(offer: &SdpOffer) -> Result<()> {
                 .iter()
                 .any(|params| params.spec().codec == expected
                     && crate::media::supported(&codec(params).rtp_codec, kind)),
-            "unsupported local input codec"
+            "{unsupported}"
         );
     }
     ensure!(
@@ -848,6 +848,13 @@ impl Runtime {
         let (bandwidth, rx) = watch::channel(Estimate::Startup(300_000.0));
         let urls = discovery::urls(ice);
         let (turn_ready, turn_setup) = mpsc::channel(super::MAX_ICE_CANDIDATES);
+        let has_ipv6 = bases
+            .iter()
+            .any(|base| base.local.is_ipv6() && !base.local.ip().is_loopback());
+        #[cfg(not(target_os = "android"))]
+        let can_refresh_ipv6 = refresh.is_some();
+        #[cfg(target_os = "android")]
+        let can_refresh_ipv6 = false;
         #[cfg(not(target_os = "android"))]
         let refresh = refresh.map(|(monitor, socket)| {
             let seen = bases.iter().map(|base| base.local).collect();
@@ -868,11 +875,8 @@ impl Runtime {
             discovery: None,
             #[cfg(not(target_os = "android"))]
             host_refresh: None,
-            nat64: (!local_input
-                && bases
-                    .iter()
-                    .any(|base| base.local.is_ipv6() && !base.local.ip().is_loopback()))
-            .then(nat64::Bootstrap::default),
+            nat64: (!local_input && (has_ipv6 || can_refresh_ipv6))
+                .then(|| nat64::Bootstrap::new(has_ipv6)),
             discovery_routes: HashMap::new(),
             turn: HashMap::new(),
             turn_setup,
@@ -1701,6 +1705,11 @@ impl Engine {
         }
         for candidate in candidates {
             if let Some(candidate) = self.rtc.add_local_candidate(candidate).cloned() {
+                if let Some(bootstrap) = &mut self.nat64 {
+                    // The desktop refresh watches the wildcard IPv6 socket.
+                    bootstrap.has_ipv6 = true;
+                    bootstrap.start_if_ready(&self.handle);
+                }
                 self.emit(Event::Candidate(self.handle.pair, candidate, None));
             }
         }
@@ -1715,13 +1724,10 @@ impl Engine {
         let Some(bootstrap) = &mut self.nat64 else {
             return;
         };
-        let (start, aliases) = bootstrap.candidate(candidate);
-        for alias in aliases {
+        for alias in bootstrap.candidate(candidate) {
             self.rtc.add_remote_candidate(alias);
         }
-        if start {
-            bootstrap.task = Some(tokio::spawn(discovery::nat64(self.handle.clone())));
-        }
+        bootstrap.start_if_ready(&self.handle);
     }
     async fn close(&mut self) {
         #[cfg(not(target_os = "android"))]
@@ -2006,6 +2012,7 @@ impl Engine {
             RtcEvent::IceConnectionStateChange(state) => {
                 if state.is_connected() {
                     self.linear_enabled = false;
+                    self.nat64.take();
                     #[cfg(not(target_os = "android"))]
                     self.stop_host_refresh();
                     self.trace_pair(RtcPairEvent::IceConnected);
@@ -2017,7 +2024,6 @@ impl Engine {
                     // later Failed state. Reuse the owned pair replacement.
                     self.fail();
                 } else if state.is_connected() && self.rtc.is_connected() {
-                    self.nat64.take();
                     self.state
                         .store(PeerState::Connected as u8, Ordering::Release);
                     self.emit(Event::State(self.handle.pair, PeerState::Connected));

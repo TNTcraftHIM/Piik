@@ -464,6 +464,8 @@ export const zhHant = {
   "channel.error.appDisconnected": "與 App 的連線已中斷。請確認 App 正在執行，然後重試。",
   "channel.error.externalInputUnavailable": "目前 App 無法接收本機串流。",
   "channel.error.externalVideoFormatUnsupported": "目前不支援這個 OBS 視訊格式。請先停止串流，將「設定 → 進階 → 視訊 → 色彩格式」設為 NV12（8 位元、4:2:0），並在「輸出 → 串流」中選擇 H.264 Baseline、Main 或 High，再重新開始串流。此連線無法自動將 High 10 降為 8 位元。",
+  "channel.error.externalVideoLevelUnsupported": "Piik 最高支援 H.264 Level 5.2。請停止串流，在「設定 → 視訊」中降低輸出解析度或影格率，再重新開始串流。",
+  "channel.error.externalVideoOfferUnsupported": "OBS 未提供相容的 H.264 視訊格式。請停止串流，在「設定 → 輸出」中選擇 H.264 串流編碼器及 Baseline、Main 或 High 設定檔，在「設定 → 進階 → 視訊」中將色彩格式設為 NV12（8 位元、4:2:0），再重新開始串流。",
   "channel.error.externalInputFailed": "Piik 未能接收本機 OBS 的音訊與視訊。請檢查 OBS 的串流連線與日誌，然後重新開始串流。",
   "channel.error.invalidTitle": "標題不能超過 64 個字元。",
   "channel.error.captureFailed": "分享遇到問題，請重新選擇視窗或螢幕。",

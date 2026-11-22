@@ -418,7 +418,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             <Tooltip className="c3-room-title" overflow={{ text: room?.name ?? (unlistedRoom ? t("channel.previewPage.openRoom") : t("channel.previewPage.roomsOverview")), selector: "h2" }}>
               <h2>{room?.name ?? (unlistedRoom ? t("channel.previewPage.openRoom") : t("channel.previewPage.roomsOverview"))}</h2>
             </Tooltip>
-            {room && <ChannelRoomInvitation channel={channel} room={room} onManageAccess={() => setManagedRoomId(room.id)} />}
+            {room && <ChannelRoomInvitation key={room.id} channel={channel} room={room} onManageAccess={() => setManagedRoomId(room.id)} />}
           </div>
           <div className="c3-room-toolbar"><div className="c3-room-actions">
             {(layout !== "quick" || visibleScreens.length > 0) && room?.authorized && !mine.some(source => source.roomId === roomId) && !activeWatches.some(source => source.roomId === roomId && ownsWatch(source.id)) &&

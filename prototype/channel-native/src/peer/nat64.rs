@@ -58,9 +58,9 @@ const LIMIT: usize = super::super::MAX_ICE_CANDIDATES;
 
 /// Initial ICE only. Pending inputs and emitted endpoints share LIMIT slots;
 /// prefixes have their own PREFIX_LIMIT. Originals always remain SDK-owned.
-#[derive(Default)]
 pub(super) struct Bootstrap {
-    pub task: Option<JoinHandle<()>>,
+    pub has_ipv6: bool,
+    pub(super) task: Option<JoinHandle<()>>,
     pending: Vec<Candidate>,
     prefixes: Option<Vec<Prefix>>,
     emitted: HashSet<SocketAddr>,
@@ -73,18 +73,32 @@ impl Drop for Bootstrap {
     }
 }
 impl Bootstrap {
-    pub fn candidate(&mut self, candidate: Candidate) -> (bool, Vec<Candidate>) {
+    pub fn new(has_ipv6: bool) -> Self {
+        Self {
+            has_ipv6,
+            pending: Vec::new(),
+            prefixes: None,
+            emitted: HashSet::new(),
+            task: None,
+        }
+    }
+    pub fn start_if_ready(&mut self, handle: &super::Transport) {
+        if self.has_ipv6 && !self.pending.is_empty() && self.task.is_none() {
+            self.task = Some(tokio::spawn(super::discovery::nat64(handle.clone())));
+        }
+    }
+    pub fn candidate(&mut self, candidate: Candidate) -> Vec<Candidate> {
         if candidate.proto() != Protocol::Udp || !candidate.addr().is_ipv4() {
-            return (false, Vec::new());
+            return Vec::new();
         }
         if self.prefixes.is_some() {
-            return (false, self.aliases(&candidate));
+            return self.aliases(&candidate);
         }
         if self.pending.len() < LIMIT && !self.pending.iter().any(|c| c.addr() == candidate.addr())
         {
             self.pending.push(candidate);
         }
-        (self.task.is_none() && !self.pending.is_empty(), Vec::new())
+        Vec::new()
     }
     pub fn resolved(&mut self, prefixes: Vec<Prefix>) -> Vec<Candidate> {
         self.prefixes = Some(prefixes.into_iter().take(PREFIX_LIMIT).collect());
@@ -197,11 +211,11 @@ mod tests {
     }
     #[test]
     fn late_discovery_deduplicates_and_bounds_derived_work() {
-        let mut bootstrap = Bootstrap::default();
+        let mut bootstrap = Bootstrap::new(true);
         for port in 1..=LIMIT as u16 + 1 {
             let original =
                 Candidate::host(SocketAddr::from(([192, 168, 1, 1], port)), "udp").unwrap();
-            assert!(bootstrap.candidate(original.clone()).1.is_empty());
+            assert!(bootstrap.candidate(original.clone()).is_empty());
             bootstrap.candidate(original);
         }
         assert_eq!(bootstrap.pending.len(), LIMIT);
@@ -214,13 +228,13 @@ mod tests {
         assert_eq!(bootstrap.emitted.len(), LIMIT);
         assert!(bootstrap
             .candidate(Candidate::host("192.168.1.1:1".parse().unwrap(), "udp").unwrap())
-            .1
             .is_empty());
-        let mut failed = Bootstrap::default();
+        let mut failed = Bootstrap::new(true);
         let original = Candidate::host("8.8.8.8:1234".parse().unwrap(), "udp").unwrap();
-        assert!(failed.candidate(original.clone()).0);
+        assert!(failed.candidate(original.clone()).is_empty());
         assert!(failed.resolved(Vec::new()).is_empty());
-        assert!(!failed.candidate(original).0);
+        assert!(failed.candidate(original).is_empty());
+        assert!(failed.pending.is_empty());
     }
     #[tokio::test]
     async fn loopback_ipv6_does_not_start_discovery() -> anyhow::Result<()> {
@@ -248,7 +262,7 @@ mod tests {
         let (left, _) = endpoint(&left_runtime, Uuid::new_v4(), None).await?;
         let (right, mut events) = endpoint(&right_runtime, Uuid::new_v4(), None).await?;
         left.call(|engine| {
-            let mut bootstrap = Bootstrap::default();
+            let mut bootstrap = Bootstrap::new(true);
             bootstrap.resolved(Vec::new());
             engine.nat64 = Some(bootstrap);
             Ok(())
@@ -257,6 +271,7 @@ mod tests {
         right
             .call(|engine| {
                 engine.nat64 = Some(Bootstrap {
+                    has_ipv6: true,
                     prefixes: Some(vec![Prefix::new("2001:db8:64::".parse().unwrap(), 64)]),
                     emitted: (1..=LIMIT as u16)
                         .map(|port| SocketAddr::new(Ipv6Addr::LOCALHOST.into(), port))
@@ -282,6 +297,7 @@ mod tests {
         let task = tokio::spawn(std::future::pending::<()>());
         let cancellation = task.abort_handle();
         let bootstrap = Bootstrap {
+            has_ipv6: true,
             task: Some(task),
             pending: Vec::new(),
             prefixes: None,

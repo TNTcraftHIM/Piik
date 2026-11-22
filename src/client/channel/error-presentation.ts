@@ -70,9 +70,9 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
   if (error === "app_request_timeout") return display("native.fail.requestTimeout");
   if (error === "external_input_unavailable")
     return display("channel.error.externalInputUnavailable");
+  if (error === "external_video_offer_unsupported") return display("channel.error.externalVideoOfferUnsupported");
   if (error === "external_video_format_unsupported") {
-    const recovery = t("channel.error.externalVideoFormatUnsupported");
-    if (!unsupportedVideoFormat) return { message: recovery, connectionHelp: false };
+    if (!unsupportedVideoFormat) return display("channel.error.externalVideoFormatUnsupported");
     const { profileIdc, constraintFlags, levelIdc } = unsupportedVideoFormat;
     const profiles: Record<number, string> = { 66: "Baseline", 77: "Main", 88: "Extended", 100: "High", 110: "High 10", 122: "High 4:2:2", 244: "High 4:4:4" };
     const profile = profiles[profileIdc] ?? `profile_idc=${profileIdc}`;
@@ -80,6 +80,8 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
       : [10, 11, 12, 13, 20, 21, 22, 30, 31, 32, 40, 41, 42, 50, 51, 52, 60, 61, 62].includes(levelIdc)
         ? `${Math.floor(levelIdc / 10)}.${levelIdc % 10}` : `level_idc=${levelIdc}`;
     const sps = [profileIdc, constraintFlags, levelIdc].map(value => value.toString(16).padStart(2, "0")).join("");
+    const recovery = [60, 61, 62].includes(levelIdc) && [66, 77, 88, 100].includes(profileIdc)
+      ? t("channel.error.externalVideoLevelUnsupported") : t("channel.error.externalVideoFormatUnsupported");
     return { message: `${t("channel.error.externalVideoFormatReceived", { profile, level, sps })} ${recovery}`, connectionHelp: false };
   }
   if (error === "external_input_failed")

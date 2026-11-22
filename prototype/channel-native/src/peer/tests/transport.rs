@@ -1076,11 +1076,17 @@ async fn local_input_rejects_direction_codec_and_extra_media() -> Result<()> {
     sender.offer().await?;
     let (_, sdp) = sender.local_description().await?;
     let offer = sdp;
-    for invalid in [
-        offer.replace("a=sendonly", "a=sendrecv"),
-        offer.replace("H264/90000", "VP8/90000"),
-    ] {
-        ensure!(runtime.accept_local_input(&invalid).await.is_err());
+    ensure!(runtime.accept_local_input(&offer.replace("a=sendonly", "a=sendrecv")).await.is_err());
+    // Keep the actual sender offer and replace all advertised profiles with High 10.
+    let mut high10 = offer.clone();
+    for (offset, prefix) in offer.match_indices("profile-level-id=") {
+        let start = offset + prefix.len();
+        high10.replace_range(start..start + 6, "6e0034");
+    }
+    ensure!(high10 != offer);
+    for rejected in [high10, offer.replace("H264/90000", "VP8/90000")] {
+        let error = runtime.accept_local_input(&rejected).await.err().context("expected rejection")?;
+        ensure!(error.to_string() == "external_video_offer_unsupported", "{error}");
     }
     let orientation_offer = offer.replace(
         "a=sendonly",
@@ -1139,6 +1145,75 @@ fn wildcard_candidates_ignore_unusable_interfaces_without_losing_valid_paths() -
         explicit
     );
     assert!(host_candidates("169.254.83.107:42000".parse()?, interfaces.into_iter()).is_err());
+    Ok(())
+}
+
+#[cfg(not(target_os = "android"))]
+#[tokio::test]
+async fn nat64_lookup_waits_for_both_families_and_retires_at_nomination() -> Result<()> {
+    use crate::peer::tests::support::endpoint;
+    use netwatch::interfaces::{IpNet, Ipv6AddrFlags};
+    let runtime = Runtime::new(Some(ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?));
+    for has_ipv6 in [false, true] {
+        let (peer, _) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+        let cancelled = peer
+            .call(move |e| {
+                e.nat64 = Some(nat64::Bootstrap::new(has_ipv6));
+                e.host_refresh = Some(HostRefresh::spawn(std::future::pending()));
+                let remote = Candidate::host("127.0.0.1:42100".parse()?, "udp")?;
+                e.nat64_candidate(remote.clone());
+                let lookup = |e: &Engine| e.nat64.as_ref().unwrap().task.as_ref().map(|t| t.id());
+                let initial = lookup(e);
+                assert_eq!(initial.is_some(), has_ipv6);
+                let address = |tentative| IpNet::V6 {
+                    net: "2001:db8::10/64".parse().unwrap(),
+                    scope_id: 0,
+                    flags: Ipv6AddrFlags {
+                        tentative,
+                        ..Default::default()
+                    },
+                };
+                for tentative in [true, false] {
+                    let hosts =
+                        host_candidates("[::]:42000".parse()?, [address(tentative)].into_iter())?;
+                    e.add_refreshed_host_candidates(hosts);
+                    if tentative {
+                        assert_eq!(lookup(e), initial);
+                    }
+                }
+                let started = lookup(e).context("ready IPv6 and IPv4 remote should start DNS64")?;
+                if let Some(initial) = initial {
+                    assert_eq!(initial, started);
+                }
+                e.add_refreshed_host_candidates(host_candidates(
+                    "[::]:42000".parse()?,
+                    [address(false)].into_iter(),
+                )?);
+                e.nat64_candidate(remote);
+                assert_eq!(lookup(e), Some(started));
+                let cancelled = e
+                    .nat64
+                    .as_ref()
+                    .unwrap()
+                    .task
+                    .as_ref()
+                    .unwrap()
+                    .abort_handle();
+                // Retire within this actor turn, before the DNS task can run.
+                e.event(RtcEvent::IceConnectionStateChange(
+                    str0m::IceConnectionState::Connected,
+                ));
+                assert!(e.nat64.is_none());
+                Ok(cancelled)
+            })
+            .await?;
+        peer.close().await?;
+        assert!(cancelled.is_finished());
+        let prefixes = nat64::discover(["64:ff9b::c000:aa".parse()?], 1);
+        assert_eq!(prefixes.len(), 1);
+        assert!(discovery::deliver_nat64(&peer, prefixes).await.is_err());
+    }
+    runtime.close().await;
     Ok(())
 }
 

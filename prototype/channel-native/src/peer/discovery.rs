@@ -222,7 +222,14 @@ pub(super) async fn nat64(handle: Transport) {
         )
     })
     .unwrap_or_default();
-    let _ = handle
+    let _ = deliver_nat64(&handle, prefixes).await;
+}
+
+pub(super) async fn deliver_nat64(
+    handle: &Transport,
+    prefixes: Vec<super::nat64::Prefix>,
+) -> Result<()> {
+    handle
         .call(move |engine| {
             if let Some(bootstrap) = &mut engine.nat64 {
                 for alias in bootstrap.resolved(prefixes) {
@@ -231,7 +238,7 @@ pub(super) async fn nat64(handle: Transport) {
             }
             Ok(())
         })
-        .await;
+        .await
 }
 
 async fn binding(

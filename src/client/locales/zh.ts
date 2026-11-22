@@ -588,6 +588,8 @@ export const zh = {
   "channel.error.appDisconnected": "与 App 的连接已断开。请确认 App 正在运行，然后重试。",
   "channel.error.externalInputUnavailable": "当前 App 无法接收本机推流。",
   "channel.error.externalVideoFormatUnsupported": "暂不支持此 OBS 视频格式。请先停止推流，将“设置 → 高级 → 视频 → 色彩格式”设为 NV12（8 位、4:2:0），并在“输出 → 直播”中选择 H.264 Baseline、Main 或 High，再重新推流。此连接无法自动将 High 10 降为 8 位。",
+  "channel.error.externalVideoLevelUnsupported": "Piik 支持的 H.264 最高为 Level 5.2。请停止推流，在“设置 → 视频”中降低输出分辨率或帧率，再重新推流。",
+  "channel.error.externalVideoOfferUnsupported": "OBS 未提供兼容的 H.264 视频格式。请停止推流，在“设置 → 输出”中选择 H.264 推流编码器及 Baseline、Main 或 High 配置，在“设置 → 高级 → 视频”中将色彩格式设为 NV12（8 位、4:2:0），再重新推流。",
   "channel.error.externalVideoFormatReceived": "收到 H.264 {profile}，Level {level}（SPS {sps}）。",
   "channel.error.externalInputFailed": "Piik 未能接收到本机 OBS 的音视频。请检查 OBS 的推流连接和日志，然后重新推流。",
   "channel.error.invalidTitle": "标题不能超过 64 个字符。",
