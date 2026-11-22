@@ -215,24 +215,21 @@ Use the shared [upstream refresh procedure](../../CONTRIBUTING.md#temporary-depe
 for the remaining temporary forks below; it prepares review candidates without
 changing their current pins.
 
-Optional port mapping selects its socket in the pair-owned worker, independently
-of host-candidate signaling. Native pins `portmapper` 0.20.0 to
-[`0a61bb64facc469d015f5ba537dda57c94cdcb17`](https://github.com/TNTcraftHIM/net-tools/commit/0a61bb64facc469d015f5ba537dda57c94cdcb17),
-a one-file scheduling repair on the
-[official 0.20.0 baseline](https://github.com/n0-computer/net-tools/tree/80b449c74d38c564c598ae286de13032276f3515/portmapper).
-It moves synchronous gateway discovery onto Tokio's blocking pool and awaits it
-through existing private callers, preserving the public API and mapping protocols.
-The Git workspace also supplies sibling `netwatch` 0.20.0, so Native's direct
-`netwatch` entry uses that same revision. Its source is unchanged from the
-published release; this keeps one netwatch source in each consuming graph.
-Both crates retain upstream MIT/Apache-2.0 licensing.
+Native pins `netwatch` and `portmapper` 0.20.0, and Server pins `netwatch`, to the same
+[net-tools revision](https://github.com/TNTcraftHIM/net-tools/commit/fac75a3ab554df1edecec353920ec7af673f533a).
+On desktop, interface address and IPv6 DAD changes reach the existing monitor.
+A connecting Native pair can then advertise a newly usable address on its
+original UDP socket until ICE selects its first path. Android takes an interface snapshot when creating the pair.
 
-[Upstream PR #268](https://github.com/n0-computer/net-tools/pull/268) carries the
-repair after the maintainer requested a submission in
-[issue #266](https://github.com/n0-computer/net-tools/issues/266).
-When an upstream release includes the repair, return both direct entries
-to that release and regenerate Native, Server and Android locks, then run the
-existing mapping timer/lifecycle checks and package notice collection.
+The pair-owned mapping worker delegates synchronous gateway discovery to Tokio's
+blocking pool. When a gateway advertises NAT-PMP and explicitly reports that
+PCP mapping is unsupported, the worker can create a NAT-PMP lease and renew it
+if the gateway changes the external port. Both crates retain their upstream
+MIT/Apache-2.0 licensing. [Upstream PR #268](https://github.com/n0-computer/net-tools/pull/268)
+covers the scheduling fix requested in [issue #266](https://github.com/n0-computer/net-tools/issues/266).
+Return both dependencies to an upstream release once it covers the scheduling,
+interface notification and lease fixes. Regenerate the Native, Server and Android
+locks and verify IPv6 trickle, mapping lifecycle and package notices.
 
 Native uses str0m's public RTP/Sans-I/O interface, pinned to official
 [30189fda](https://github.com/algesten/str0m/commit/30189fda95d5d7b90d5eb7b19a54a6d9f4856e64).

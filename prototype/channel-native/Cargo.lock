@@ -2414,7 +2414,7 @@ dependencies = [
 [[package]]
 name = "netwatch"
 version = "0.20.0"
-source = "git+https://github.com/TNTcraftHIM/net-tools?rev=0a61bb64facc469d015f5ba537dda57c94cdcb17#0a61bb64facc469d015f5ba537dda57c94cdcb17"
+source = "git+https://github.com/TNTcraftHIM/net-tools?rev=fac75a3ab554df1edecec353920ec7af673f533a#fac75a3ab554df1edecec353920ec7af673f533a"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -3020,7 +3020,7 @@ dependencies = [
 [[package]]
 name = "portmapper"
 version = "0.20.0"
-source = "git+https://github.com/TNTcraftHIM/net-tools?rev=0a61bb64facc469d015f5ba537dda57c94cdcb17#0a61bb64facc469d015f5ba537dda57c94cdcb17"
+source = "git+https://github.com/TNTcraftHIM/net-tools?rev=fac75a3ab554df1edecec353920ec7af673f533a#fac75a3ab554df1edecec353920ec7af673f533a"
 dependencies = [
  "base64 0.23.1",
  "bytes",

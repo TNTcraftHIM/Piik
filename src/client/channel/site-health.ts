@@ -1,4 +1,4 @@
-/** Check only the Domain serving this page and its site WebSocket. */
+/** Check the HTTP response from the Domain serving this page. */
 export async function currentSiteResponds(signal: AbortSignal): Promise<boolean> {
   try {
     const response = await fetch(new URL("/healthz", location.origin), {

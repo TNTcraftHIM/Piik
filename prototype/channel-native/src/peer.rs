@@ -793,8 +793,7 @@ struct Driver {
     bandwidth_changed: Arc<Notify>,
     admitted: HashSet<Uuid>,
     pairs: HashMap<Uuid, Pair>,
-    // Preserve Driver's Sync contract; only exclusive get_mut accesses this slot.
-    retiring_pair: std::sync::Mutex<Option<futures_util::future::BoxFuture<'static, ()>>>,
+    retiring_pair: Option<JoinHandle<()>>,
     preparings: HashMap<Uuid, preparation::Pending>,
     publications: HashMap<Uuid, PublicationInfo>,
     sources: HashMap<Uuid, Source>,
@@ -858,7 +857,7 @@ impl NativePeers {
                 bandwidth_changed: bandwidth_changed.clone(),
                 admitted: HashSet::new(),
                 pairs: HashMap::new(),
-                retiring_pair: std::sync::Mutex::new(None),
+                retiring_pair: None,
                 preparings: HashMap::new(),
                 publications: HashMap::new(),
                 sources: HashMap::new(),
@@ -2738,9 +2737,9 @@ impl Driver {
         }
     }
     async fn finish_pair_retirement(&mut self) {
-        if let Some(retiring) = self.retiring_pair.get_mut().unwrap().as_mut() {
-            retiring.await;
-            *self.retiring_pair.get_mut().unwrap() = None;
+        if let Some(retiring) = self.retiring_pair.as_mut() {
+            retiring.await.expect("pair retirement task failed");
+            self.retiring_pair = None;
         }
     }
     async fn retire_pair(&mut self, id: Uuid) -> bool {
@@ -2752,8 +2751,8 @@ impl Driver {
         };
         let released = !pair.outputs.is_empty();
         let peer = pair.plan.peer_id;
-        // Retain the whole cleanup future if stop cancels this Driver turn.
-        *self.retiring_pair.get_mut().unwrap() = Some(Box::pin(close_pair(pair)));
+        // Cleanup progresses even when a detach queue is full. Shutdown joins the same task.
+        self.retiring_pair = Some(tokio::spawn(close_pair(pair)));
         for message in self.inputs.disconnected(id) {
             self.send_input(message).await;
         }
@@ -3783,26 +3782,35 @@ fn prepared_candidate(remote: std::net::SocketAddrV4) -> Result<Candidate> {
     let candidate = IceCandidate::host(remote.into(), "udp")?;
     Ok(signal_candidate(candidate, None))
 }
-async fn close_pair(mut pair: Pair) {
+fn close_pair(mut pair: Pair) -> impl std::future::Future<Output = ()> {
     pair.state.store(PeerState::Closed as u8, Ordering::Release);
-    if let Some(mapping) = pair.mapping.as_mut() {
-        mapping.close().await;
+    if let Some(mapping) = &pair.mapping {
+        mapping.cancel();
     }
-    let _ = pair.pc.close().await;
-    for (_, _, task) in [pair.dc.take(), pair.bulk.take(), pair.input.take()]
-        .into_iter()
-        .flatten()
-    {
+    for (_, _, task) in [&pair.dc, &pair.bulk, &pair.input].into_iter().flatten() {
         task.abort();
-        let _ = task.await;
     }
-    pair.data.close().await;
-    for (_, task) in pair.tasks {
-        task.task.abort();
-        let _ = task.task.await;
+    for reader in pair.tasks.values() {
+        reader.task.abort();
     }
-    for (_, output) in pair.outputs {
-        output.close(&pair.pc).await;
+    async move {
+        if let Some(mapping) = pair.mapping.as_mut() {
+            mapping.close().await;
+        }
+        let _ = pair.pc.close().await;
+        for (_, _, task) in [pair.dc.take(), pair.bulk.take(), pair.input.take()]
+            .into_iter()
+            .flatten()
+        {
+            let _ = task.await;
+        }
+        pair.data.close().await;
+        for (_, task) in pair.tasks {
+            let _ = task.task.await;
+        }
+        for (_, output) in pair.outputs {
+            output.close(&pair.pc).await;
+        }
     }
 }
 

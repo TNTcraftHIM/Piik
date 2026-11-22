@@ -16,6 +16,7 @@ import { hasCopyPreference, isCopyKey, useCopy } from "../ui/copy";
 import { consoleLanguage } from "../locales";
 import { Glyph } from "../ui/icons";
 import { currentThemePreference, subscribeTheme } from "../ui/theme";
+import { nativeBookmarkWindow } from "../ui/native-window";
 import { clientLaunchURL, isStartupSite, readPreferredAppMode, savePreferredAppMode, type AppMode, type ClientLaunchPresentation } from "../lib/app-launch";
 import { useReleaseUpdate } from "../lib/use-release-update";
 import { AppSiteBookmarks } from "./AppSiteBookmarks";
@@ -351,7 +352,7 @@ export function AppLauncherPage() {
   </>;
   return (
     <div className={`lr-app${homeReady ? " lr-launcher-page" : ""}`}>
-      <AppHeader appIdentity={<BrandLockup size={30} className="is-compact" suffix={<small>App</small>} />} homeHref="/client" diagnosticControl={appDebug === undefined ? null : (
+      {!nativeBookmarkWindow && <AppHeader appIdentity={<BrandLockup size={30} className="is-compact" suffix={<small>App</small>} />} homeHref="/client" diagnosticControl={appDebug === undefined ? null : (
         <Btn icon={appDebug ? "arrowDown" : "cpu"} size="compact" quiet
           title={appDebug ? "client.launch.debugExportHint" : "client.launch.debugHint"}
           cap={appDebug ? "client.launch.debugExport" : "debug.start"}
@@ -359,7 +360,7 @@ export function AppLauncherPage() {
           hint={appDebug ? "hint-debug-export" : "debug-start"} busy={debugBusy}
           disabled={debugBusy || (!appDebug && (loading || error?.kind === "load"))}
           onClick={() => void (appDebug ? exportDebug() : enableDebug())} />
-      )} />
+      )} />}
       <main className={homeReady ? undefined : "lr-client-launch"}>
         {debugError && <Pill icon="alert" tone="bad" comic="warning" alert label={t(appDebug ? "client.launch.debugExportFailed" : "client.launch.debugFailed")} />}
         {loading ? (
@@ -441,7 +442,7 @@ export function AppLauncherPage() {
               : appUpdate.view && (appUpdate.view.operationId || appUpdate.error) && <AppUpdateStatus {...appUpdate} view={appUpdate.view} />}
         </LauncherWorkspace>} />}
       </main>
-      {!homeReady && <footer className="lr-client-footer">{footer}</footer>}
+      {!homeReady && !nativeBookmarkWindow && <footer className="lr-client-footer">{footer}</footer>}
       {homeReady && panel === "launch" && <ChannelSettingsDialog title={t("client.launch.room")} closeDisabled={starting} onClose={() => setPanel(undefined)}>
         {starting ? <LoadingStatus label="client.launch.starting" waitingCaption /> : <form className="c3-settings-panels lr-client-launch-panel" onSubmit={launch}>
           <SiteStartControls mode={mode} onModeChange={changeMode} roomError={roomError}

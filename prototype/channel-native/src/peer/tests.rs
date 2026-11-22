@@ -453,7 +453,7 @@ pub(super) fn driver() -> (
             bandwidth_changed: Arc::new(Notify::new()),
             admitted: HashSet::new(),
             pairs: HashMap::new(),
-            retiring_pair: std::sync::Mutex::new(None),
+            retiring_pair: None,
             preparings: HashMap::new(),
             publications: HashMap::new(),
             sources: HashMap::new(),

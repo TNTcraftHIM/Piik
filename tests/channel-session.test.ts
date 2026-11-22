@@ -3892,6 +3892,54 @@ test.each([
   } finally { session.close(); }
 });
 
+test.each(["track ended", "explicit stop"] as const)("a synchronized video loading over a shared display follows the source lifetime (%s)", async operation => {
+  const { session, socket } = await setup(1000, false);
+  const display = remoteTrack("video"), player = new WatchTestVideo();
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn().mockResolvedValue(remoteStream("display", [display])) } });
+  vi.stubGlobal("document", { createElement: () => player });
+  session.setVideoCodecMode("vp8");
+  try {
+    const publishing = nextSocketCommand(socket, "publish");
+    const sharing = session.startScreen("first");
+    const publication = await publishing;
+    socket.receive({ type: "ack", requestId: publication.requestId });
+    await sharing;
+
+    player.readyState = 0;
+    const watching = session.startWatch("first", "https://media.test/film.mp4").catch(error => error);
+    await vi.waitFor(() => expect(player.src).toBe("https://media.test/film.mp4"));
+    const id = (publication.publication as { id: string }).id;
+    let stopping: Promise<void> | undefined;
+    if (operation === "explicit stop") stopping = session.stopScreen(id);
+    else {
+      Object.defineProperty(display, "readyState", { value: "ended" });
+      display.dispatchEvent(new Event("ended"));
+    }
+    const removal = socket.sent.findLast(command => command.type === "unpublish")!;
+    expect(removal.publicationId).toBe(id);
+    socket.receive({ type: "ack", requestId: removal.requestId });
+    await stopping;
+
+    player.readyState = 2;
+    player.dispatchEvent(new Event("loadeddata"));
+    if (operation === "explicit stop") {
+      expect(await watching).toMatchObject({ name: "AbortError" });
+      expect(player.src).toBe("");
+      expect(socket.sent.some(command => command.type === "start_watch")).toBe(false);
+      return;
+    }
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "start_watch")).toBe(true));
+    const activity = socket.sent.findLast(command => command.type === "start_watch")!;
+    const updating = nextSocketCommand(socket, "update_watch");
+    socket.receive({ type: "room_reply", roomId: "first", requestId: activity.requestId, result: { type: "watch_ready", serverTime: 100000 } });
+    const playback = await updating;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: playback.requestId, result: { type: "done" } });
+    expect(await watching).toBeUndefined();
+    expect(session.getSnapshot().watchPlayers.get(activity.id as string)?.video).toBe(player);
+    expect(socket.sent.some(command => command.type === "stop_watch")).toBe(false);
+  } finally { session.close(); }
+});
+
 test.each(["native", "obs"] as const)("committed %s capture retires only its room video when automatic preview fails", async source => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
     domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
@@ -8767,7 +8815,11 @@ test("Browser applies the shared per-kind budget before dispatching assignments 
     const firstPeer = crypto.randomUUID(), otherPeer = crypto.randomUUID();
     const state = structuredClone(session.getSnapshot().state!);
     state.channel.id = crypto.randomUUID(); state.channel.ownerId = userId;
-    state.channel.rooms.forEach(room => { room.creatorId = userId; room.participantSessionIds = []; room.delivery = undefined; });
+    state.channel.rooms.forEach(room => {
+      room.creatorId = userId;
+      room.participantSessionIds = [sessionId];
+      room.delivery = { hostSessionId: source, bindingId: crypto.randomUUID() };
+    });
     state.users[0].id = userId;
     state.sessions[0] = { ...state.sessions[0], id: sessionId, userId };
     const screen1 = crypto.randomUUID(), screen2 = crypto.randomUUID(), voice = crypto.randomUUID();
@@ -8792,6 +8844,9 @@ test("Browser applies the shared per-kind budget before dispatching assignments 
     socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId, state });
     expect(budget).toHaveBeenCalledOnce();
     session.setForwardingLimit(1);
+    const updates = () => socket.sent.filter(command => command.type === "relay_capacity");
+    const capacities = (capacity: number | null) => ["first", "second"].map(roomId => ({ type: "relay_capacity", roomId, capacity, requestId: expect.any(String) }));
+    expect(updates()).toEqual(capacities(1));
     state.pairs[1].outgoing.push(competing);
     socket.receive({ type: "state", state });
     expect(media.mock.lastCall![1].pairs.map(pair => pair.outgoing)).toEqual([first, [voiceFlow, own, microphone]]);
@@ -8801,13 +8856,40 @@ test("Browser applies the shared per-kind budget before dispatching assignments 
     expect(refused()).toHaveLength(1);
     socket.receive({ type: "state", state });
     expect(refused()).toHaveLength(1);
+    expect(updates()).toEqual(capacities(1));
+    session.setForwardingLimit(2);
+    expect(updates().slice(-2)).toEqual(capacities(2));
+    expect(media.mock.lastCall![1].pairs.map(pair => pair.outgoing)).toEqual([first, [voiceFlow, own, microphone, competing]]);
     session.setForwardingLimit(0);
     expect(media.mock.lastCall![1].pairs.map(pair => pair.outgoing)).toEqual([[], [own, microphone]]);
     expect(files.mock.lastCall![2][0].downstream).toEqual([]);
-    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_branch_refused", downstreamId: otherPeer }));
+    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "byte_branch_refused", downstreamId: otherPeer, target: expect.objectContaining({ kind: "file" }) }));
     session.setForwardingLimit(-1);
+    expect(updates().slice(-2)).toEqual(capacities(null));
     expect(media.mock.lastCall![1].pairs[1].outgoing).toContainEqual(competing);
     expect(files.mock.lastCall![2][0].downstream).toEqual([otherPeer]);
+
+    session.setForwardingLimit(2);
+    const prior = updates().length;
+    state.channel.rooms[0].delivery!.bindingId = crypto.randomUUID();
+    state.channel.rooms[1].delivery = undefined;
+    socket.receive({ type: "state", state });
+    expect(updates().slice(prior)).toEqual([capacities(2)[0]]);
+    socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId, state });
+    expect(updates().slice(prior)).toEqual([capacities(2)[0], capacities(2)[0]]);
+    const currentWrite = updates().at(-1)!;
+    socket.receive({ type: "error", requestId: currentWrite.requestId, code: "room_busy" });
+    socket.receive({ type: "state", state });
+    const retry = updates().at(-1)!;
+    expect(retry).toEqual(capacities(2)[0]);
+    expect(retry.requestId).not.toBe(currentWrite.requestId);
+    socket.receive({ type: "error", requestId: currentWrite.requestId, code: "room_busy" });
+    socket.receive({ type: "state", state });
+    expect(updates().at(-1)).toBe(retry);
+    socket.receive({ type: "room_reply", roomId: "first", requestId: retry.requestId, result: { type: "done" } });
+    state.channel.rooms[0].relayOverride = 2;
+    socket.receive({ type: "state", state });
+    expect(updates().at(-1)).toBe(retry);
   } finally { session.close(); }
 });
 

@@ -735,7 +735,7 @@ impl Channel {
             | Command::Browse { room_id, .. }
             | Command::RoomDataState { room_id, .. }
             | Command::FileOffer { room_id, .. }
-            | Command::FileBranchRefused { room_id, .. }
+            | Command::ByteBranchRefused { room_id, .. }
             | Command::ForwardingAvailable { room_id, .. }
             | Command::FileReceive { room_id, .. }
             | Command::ObserveFiles { room_id, .. }

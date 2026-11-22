@@ -1,5 +1,6 @@
 //! Optional default-gateway mapping for one connection's actual IPv4 socket.
 use super::{transport::Transport, MAX_ICE_CANDIDATES};
+use crate::diagnostics::{rtc_pair, RtcPairEvent};
 use netwatch::interfaces::HomeRouter;
 use portmapper::Client;
 use std::{
@@ -53,7 +54,16 @@ impl Mapping {
             let port =
                 NonZeroU16::new(base.addr().port()).expect("eligible host candidate has a port");
             let addresses = worker.watch_external_address();
-            let _ = worker.probe().await;
+            if let Ok(Ok(probe)) = worker.probe().await {
+                rtc_pair(
+                    transport.pair,
+                    RtcPairEvent::GatewayProbe {
+                        upnp: probe.upnp,
+                        pcp: probe.pcp,
+                        nat_pmp: probe.nat_pmp,
+                    },
+                );
+            }
             worker.update_local_port(port);
             forward(base, addresses, transport).await;
         });
@@ -64,8 +74,12 @@ impl Mapping {
         }
     }
 
-    pub(super) async fn close(&mut self) {
+    pub(super) fn cancel(&self) {
         self.watcher.abort();
+    }
+
+    pub(super) async fn close(&mut self) {
+        self.cancel();
         let _ = (&mut self.watcher).await;
         // The published client exposes best-effort deactivation, not a release ack.
         self.client.deactivate();
@@ -74,7 +88,7 @@ impl Mapping {
 
 impl Drop for Mapping {
     fn drop(&mut self) {
-        self.watcher.abort();
+        self.cancel();
     }
 }
 
@@ -122,7 +136,7 @@ async fn forward(
         let Ok(candidate) = Candidate::server_reflexive(mapped.into(), base.addr(), "udp") else {
             continue;
         };
-        if transport.add_local_candidate(candidate).await.is_err() {
+        if transport.add_gateway_candidate(candidate).await.is_err() {
             break;
         }
     }
@@ -136,6 +150,69 @@ mod tests {
     use std::{net::SocketAddr, time::Duration};
     use tokio::sync::oneshot;
     use uuid::Uuid;
+
+    #[tokio::test]
+    async fn blocked_file_detach_retires_only_its_gateway_publisher() -> Result<()> {
+        let (mut driver, mut events, _commands, _stop) = crate::peer::tests::driver();
+        let id = Uuid::new_v4();
+        let sibling = Uuid::new_v4();
+        for pair in [id, sibling] {
+            let plan = piik_channel_core::wire::PairInfo {
+                id: pair,
+                peer_id: Uuid::new_v4(),
+                rooms: vec![],
+                incoming: vec![],
+                outgoing: vec![],
+                udp_preparation: None,
+                can_receive_video_layers: false,
+            };
+            let socket = std::net::UdpSocket::bind("127.0.0.1:0")?;
+            driver
+                .create_pair(&plan, Some((socket, "127.0.0.1:41001".parse()?)))
+                .await?;
+        }
+        let retired = driver.pairs[&id].pc.clone();
+        let healthy = driver.pairs[&sibling].pc.clone();
+        let file_channel = retired.create_channel("piik-file").await?;
+        driver.install_dc(id, file_channel).await?;
+        let bulk_reader = driver.pairs[&id].bulk.as_ref().unwrap().2.abort_handle();
+        let (updates, addresses) = watch::channel(None);
+        let (candidates, _pending) = mpsc::channel(1);
+        let base = Candidate::host("127.0.0.1:41002".parse()?, "udp")?;
+        driver.pairs.get_mut(&id).unwrap().mapping = Some(Mapping {
+            client: Client::default(),
+            candidates,
+            watcher: tokio::spawn(forward(base, addresses, retired.clone())),
+        });
+        let held = driver.files.hold_queue_capacity().await;
+        let mut retirement = Box::pin(driver.retire_pair(id));
+        tokio::select! {
+            result = &mut retirement => panic!("file detach unexpectedly completed: {result}"),
+            result = tokio::time::timeout(Duration::from_secs(2), updates.closed()) => result?,
+        }
+        ensure!(updates.send(Some("203.0.113.5:41003".parse()?)).is_err());
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while retired.connection_metrics().await.is_ok() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await?;
+        healthy.connection_metrics().await?;
+        ensure!(bulk_reader.is_finished());
+        while let Ok(event) = events.try_recv() {
+            ensure!(
+                !matches!(event, Event::Candidate(pair, candidate, _) if pair == id && candidate.addr().port() == 41003)
+            );
+        }
+        drop(held);
+        tokio::time::timeout(Duration::from_secs(2), retirement).await?;
+        driver.retire_pair(sibling).await;
+        driver.files.close().await;
+        driver.watches.close().await;
+        driver.transport.close().await;
+        Ok(())
+    }
+
     #[tokio::test]
     async fn gateway_lookup_yields_accepts_later_candidates_and_retires() -> Result<()> {
         fn host(address: &str, port: u16) -> Result<Candidate> {

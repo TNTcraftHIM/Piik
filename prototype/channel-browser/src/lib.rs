@@ -464,19 +464,31 @@ impl ForwardingBudget {
         Self::default()
     }
 
+    pub fn capacity_reply(&mut self, request_id: &str) {
+        self.0.capacity_reply(request_id);
+    }
+
+    pub fn reconnected(&mut self) {
+        self.0.reconnected();
+    }
+
     pub fn apply(
         &mut self,
         limit: Option<u8>,
+        session_id: &str,
         user_id: &str,
         snapshot: &str,
     ) -> Result<String, JsValue> {
         let mut snapshot = parse(snapshot)?;
-        let refusals = self.0.apply(
+        let capacity = self.0.capacity_updates(
+            Uuid::parse_str(session_id).map_err(|_| error("invalid_session"))?, limit, &snapshot,
+        );
+        let commands = self.0.apply(
             limit,
             Uuid::parse_str(user_id).map_err(|_| error("invalid_user"))?,
             &mut snapshot,
         );
-        encode(&serde_json::json!({ "snapshot": snapshot, "refusals": refusals }))
+        encode(&serde_json::json!({ "snapshot": snapshot, "commands": commands, "capacity": capacity }))
     }
 }
 

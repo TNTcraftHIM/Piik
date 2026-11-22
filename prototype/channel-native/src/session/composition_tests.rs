@@ -184,11 +184,9 @@ async fn changing_native_limit_rechecks_a_verified_holder_and_reports_one_refusa
         .iter()
         .filter_map(|message| Request::parse(message.to_text().ok()?).ok())
         .filter_map(|request| match request.command {
-            Command::FileBranchRefused {
+            Command::ByteBranchRefused {
                 room_id,
-                message_seq,
-                attachment_id,
-                source_id,
+                target: piik_channel_core::wire::ByteBranchTarget::File { message_seq, attachment_id, source_id },
                 downstream_id,
             } => Some((
                 room_id,
@@ -215,7 +213,7 @@ async fn changing_native_limit_rechecks_a_verified_holder_and_reports_one_refusa
     ensure!(writer.messages.iter().all(|message| !message
         .to_text()
         .unwrap_or("")
-        .contains("file_branch_refused")));
+        .contains("byte_branch_refused")));
     native.release().await?;
     Ok(())
 }

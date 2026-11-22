@@ -33,7 +33,7 @@ If you can enter the room and chat but media or files cannot connect, use the [n
 
 [Startup](#app-startup-fails-or-no-page-opens) · [Android installation](#android-apk-will-not-install) · [macOS](#macos-blocks-first-launch) ·
 [Public invite / 1033](#public-invitation-fails-or-shows-1033) · [Local invitation](#local-invitation-will-not-open) ·
-[Local certificate](#local-https-certificate-warning) · [Invitation or password](#an-invitation-or-password-is-rejected) · [Site connection](#the-page-opens-but-the-site-will-not-connect)
+[Local certificate](#local-https-certificate-warning) · [Invitation or password](#an-invitation-or-password-is-rejected) · [Site connection](#the-page-opens-but-the-site-will-not-connect) · [App version](#app-and-page-versions-are-incompatible)
 
 ### App startup fails, or no page opens
 
@@ -196,8 +196,10 @@ reload. A 2.x App or site is not a replacement for the test endpoint.
 
 ### The page opens but the site will not connect
 
-Read the status at the top of the page. If it remains disconnected, compare the
-same link in another browser or network and read the visible error.
+Open **Connection help** on the connection screen. If Piik answered the web
+request but the site still cannot connect, ask the site administrator to check
+that the proxy forwards WebSockets to the same Piik service as the webpage.
+If the check cannot confirm a Piik response, ask the host for the current site link.
 
 #### Room creation returns 403
 
@@ -205,6 +207,11 @@ If site connection or room creation is rejected with HTTP 403, operators should
 check that the frontend and WebSocket reach the same site service and
 that the browser's exact origin is allowed; see the [runtime setup](../../prototype/channel-server/README.md#run).
 A proxy/WAF HTTP error needs that operator's logs. Do not disable origin checks.
+
+### App and page versions are incompatible
+
+Ask the site administrator for the 3.0 test package that matches this site.
+Install it, restart Piik App and reload the page. Then select **App** again.
 
 ## Chat and files
 
@@ -219,6 +226,9 @@ the site connection. They do not need media UDP. If chat works but picture,
 voice or file transfer fails, check that activity below.
 
 ### An attachment will not open or download
+
+If Piik reports that storage is full, free up space on the device that is
+downloading, then choose **Download** again.
 
 1. Keep the sending page, or another participant holding a readable copy, online. A saved attachment card alone does not provide its file content.
 2. Try **Download** or **View image**. Use **Cancel download** to stop a pending transfer, then retry when the source or connection is available.
@@ -255,7 +265,7 @@ under [Reporting a problem](#reporting-a-problem).
 
 Allow screen recording when your OS asks. Browser screen capture needs HTTPS or
 `localhost`; try sharing from a desktop computer. In the source picker, choose
-**Browser → Choose what to share** to open the browser's screen, window or tab
+**Browser → Share a screen** to open the browser's screen, window or tab
 chooser. Missing App sources are covered below.
 
 ### App windows or screens are missing
@@ -269,10 +279,15 @@ The source picker distinguishes these outcomes:
 | Message | Next step |
 | --- | --- |
 | Cannot connect to Piik App | Confirm the App is running and this site is approved. Close idle pages using the App if it reports a busy request, then retry. |
-| Piik App and this page are incompatible | Update Piik App and reload the page. |
+| App and page versions are incompatible | [Update Piik App and reload the page](#app-and-page-versions-are-incompatible). |
 | Piik App capture is currently unavailable | Check the App diagnostics for capture or encoder availability. Review your encoding setting or use browser capture. |
 | Could not read the screen and window list | Refresh to retry. If it keeps failing, collect both the App and browser reports. |
-| No sources available | The list was read successfully, but this tab has no selectable sources. Check the other source tabs. |
+| No sources available | Check the other source tabs. On Windows, a window or display may still be available in the other tab. |
+
+On Linux, **System chooser** appears when the desktop's ScreenCast Portal offers
+window or screen capture. If it is missing, try **Browser → Share a screen**.
+To restore the App picker, check that your desktop's portal backend is running
+and supports screencasting.
 
 Local-network permission lets the page contact App. For media failures after
 connection, check [WebRTC settings](./network.md#browser-webrtc-restrictions).

@@ -183,6 +183,10 @@ assigned by the room planner within its existing limits. Off (`0`) withdraws
 third-party business forwarding. A positive value limits distinct downstream peers
 for **each kind**. The baseline accounts for the peers of a Browser page or
 App runtime across the rooms it serves.
+Changes are sent through the existing room capacity command for each current
+binding. A rejected update can be retried on the next projection; reconnecting
+does not preserve an unconfirmed write. This contribution cap does not limit
+one's own voice or original byte source.
 
 The room manager sets the default number of downstream connections. A live
 screen follows the room default until its publisher chooses a direct limit
@@ -200,6 +204,11 @@ $D_{v,k}\subseteq R_{v,k}$ and $|D_{v,k}|=\min(L,|R_{v,k}|)$. Auto removes
 that personal cap. Existing requests retain priority for available slots.
 Two screen flows to the same peer use one screen slot and produce two streams.
 Adding voice on that connection uses one voice slot. [ForwardingBudget](../../prototype/channel-core/src/forwarding.rs)
+
+An endpoint reports a refused attachment or watch-byte branch to its room.
+The report identifies the activity, current byte source and downstream. Both
+use file slots. When capacity returns, the room retries waiting branches and
+preserves healthy delivery through an alternate relay.
 
 When the last file relay to one downstream ends and the limit has space,
 the endpoint wakes rooms whose file demand it previously refused. Voice

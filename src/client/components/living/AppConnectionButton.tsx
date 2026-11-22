@@ -319,10 +319,10 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         {!ready && state !== "busy" && state !== "approving" && <button type="button" className={state === "approval" ? "lr-btn is-primary" : "lr-btn"} onClick={() => void connect()}>
           <Glyph name={state === "approval" ? "arrowRight" : "refresh"} size={16} /><span>{t(diagnosis?.next ?? (state === "waking" ? "client.connect.continue" : "common.retry"))}</span>
         </button>}
-        {failed && wakeURL && <a className="lr-btn" href={wakeURL} onClick={event => { event.preventDefault(); void connect(true); }}>
+        {state === "unavailable" && wakeURL && <a className="lr-btn" href={wakeURL} onClick={event => { event.preventDefault(); void connect(true); }}>
           <Glyph name="window" size={16} /><span>{t("client.connect.wakeApp")}</span>
         </a>}
-        {failed && <a className="lr-btn" href={downloadURL} target="_blank" rel="noopener noreferrer" aria-label={t("client.connect.download")}>
+        {state === "unavailable" && <a className="lr-btn" href={downloadURL} target="_blank" rel="noopener noreferrer" aria-label={t("client.connect.download")}>
           <Glyph name="arrowDown" size={16} /><span>{t("client.connect.download")}</span>
         </a>}
       </div>

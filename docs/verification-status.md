@@ -40,6 +40,11 @@ on an API 35 x86_64 emulator, using a nominated P2P UDP path. Physical handset
 capture requires separate measurements. An earlier
 matched-package control also retained room and viewing state after a site
 connection interruption.
+The beta.39 Android emulator also shared a synthetic single application through
+the real MediaProjection picker and Native MediaCodec. An independent Windows
+Chrome decoded the 320 × 640 H264 picture. Returning from Home resumed the
+same grant and viewing session; stopping released the projection and encoders.
+Physical devices, capture audio and media-path loss remain separate checks.
 
 Two Windows beta.39 Apps on one machine used the ordinary Watch action to
 select Native source → Native viewer relay → WebView playback. Both Native
@@ -196,6 +201,7 @@ Actual website controls have narrower evidence than the local fixtures:
 | Source | Observed behavior | Remaining scope |
 | --- | --- | --- |
 | Bilibili ordinary video | A matched Windows package decodes 1080p AV1/AAC in the sharer's main player and an unlinked Browser without site login. Pause, an unbuffered backward seek and forwarding off/on pass; local playback survives forwarding changes. Closing the provider retires both players while site connections remain. | One ordinary sample; cached Viewer playback may continue after forwarding is disabled. Live sources, cross-network delivery and broader catalogue coverage remain open. |
+| Bilibili original webpage | Two independent beta.39 Windows Apps played the same public sample without login, followed pause and seek to 120 seconds, and retired both players when the source window closed. The main App connections remained available. | The reported unexpected exit and member-only original-page viewing need their matching field checks. |
 | Bilibili authorized member video | The same matched package passes 1080p AV1/AAC playback beyond the preview interval in the sharer's main player and an unlinked Browser without site login. Common pause, an unbuffered forward seek and normal retirement pass. Protected tracks remain excluded. | Member-specific backward seeking, cross-network delivery and broader catalogue coverage remain open. |
 | YouTube public videos | Independent Browsers verified playback, pause, seek, source transfer without reload and retirement for an ordinary video in the official player. A Shorts link passed playback, pause, resume and retirement on both ends. Separate controls cover hidden-view resumption, failed replacement and submission during navigation. | Advertisements, account/region restrictions, live sources and physical mobile-device behavior remain unverified. |
 | Supplied girigirilove page | The original site redirects to a region-unavailable page in the test environment. | No player was accessible; Piik compatibility cannot be concluded. |
@@ -485,6 +491,16 @@ by target retirement when its Browser closes. Its
 [linear-mapping control](./research/nat-traversal.md#random-mapping-collision-control)
 retains the experiment's assertion failures and the independent evidence checks.
 Virtual-LAN loading reports retain their own investigation in [TODO](./todo.md#now).
+
+On isolated Linux networks, changing IPv6 during initial Native ICE setup then
+publishing a fresh candidate on the same socket preserved the ICE generation.
+Native-to-Native data and decoded VP8 matched the source; Native-to-Chromium
+also exchanged data and decoded video on the new address. Retiring the old
+instance prevented later candidate publication and released its port. A separate
+SDK loopback gateway verified PCP's explicit unsupported-MAP response falling
+back to an already detected NAT-PMP service, with renewal and deactivation.
+These controls establish the specific paths, not physical-router compatibility
+or a population success rate.
 
 Browser WebRTC and the Native RTC SDK own congestion control and transport
 adaptation. Current controls establish constrained-output recovery, healthy

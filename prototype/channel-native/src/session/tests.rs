@@ -1365,9 +1365,11 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
 
 #[tokio::test]
 async fn app_forwarding_limit_follows_the_admitted_identity_across_rooms_and_restarts() {
-    let (mut session, mut socket, _remote, state) = capture_projection_session().await;
+    let (mut session, mut socket, mut remote, mut state) = capture_projection_session().await;
     let directory = tempfile::tempdir().unwrap();
     let session_id = session.live.as_ref().unwrap().session;
+    state.channel.rooms[0].reading = true;
+    session.state(state.clone(), &mut socket).await.unwrap();
     let (_commands, received) = mpsc::channel(1);
     session.hosting = Some(Hosting {
         directory: directory.path().into(), identity: (state.channel.id, state.sessions[0].user_id),
@@ -1379,6 +1381,10 @@ async fn app_forwarding_limit_follows_the_admitted_identity_across_rooms_and_res
         session.relay_capacity(RelayCapacityRequest::Set { session_id, capacity }, answer, &mut socket).await.unwrap();
         assert_eq!(response.await.unwrap().unwrap().relay_override, capacity);
         assert_eq!(session.hosting.as_ref().unwrap().forwarding_limit().unwrap(), capacity);
+        let frame = tokio::time::timeout(Duration::from_secs(2), remote.next()).await.unwrap().unwrap().unwrap();
+        let request = piik_channel_core::wire::Request::parse(frame.to_text().unwrap()).unwrap();
+        assert!(matches!(request.command, Command::RelayCapacity { room_id, capacity: sent }
+            if room_id == "target" && sent == capacity));
     }
     for (expected, capacity) in [(Uuid::new_v4(), Some(2)), (session_id, Some(u8::MAX))] {
         let (answer, response) = oneshot::channel();

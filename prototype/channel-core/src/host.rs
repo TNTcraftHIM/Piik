@@ -416,21 +416,8 @@ impl RoomRuntime {
                 op.history =
                     self.file_command(member, session, message_seq, attachment_id, true, available)?
             }
-            Command::FileBranchRefused {
-                message_seq,
-                attachment_id,
-                source_id,
-                downstream_id,
-                ..
-            } => {
-                self.refuse_file_branch(
-                    session,
-                    message_seq,
-                    attachment_id,
-                    source_id,
-                    downstream_id,
-                )?;
-            }
+            Command::ByteBranchRefused { target, downstream_id, .. } =>
+                self.refuse_byte_branch(member, session, target, downstream_id)?,
             Command::ForwardingAvailable { kind, .. } => self.forwarding_available(session, kind),
             Command::FileReceive {
                 message_seq,

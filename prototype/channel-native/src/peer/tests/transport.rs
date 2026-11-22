@@ -319,7 +319,7 @@ async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()>
     });
     let (_, bandwidth) = watch::channel(Estimate::Startup(0.0));
     let (started, running) = oneshot::channel();
-    let (ended, mut dropped) = oneshot::channel();
+    let (ended, dropped) = oneshot::channel();
     struct Ended(Option<oneshot::Sender<()>>);
     impl Drop for Ended {
         fn drop(&mut self) {
@@ -398,21 +398,20 @@ async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()>
     };
     drop(retirement); // Driver's stop select cancels this exact work future.
     assert!(driver.pairs.is_empty());
-    assert!(!observer.is_finished());
+    dropped.await?;
+    assert!(observer.is_finished());
     let mut shutdown = Box::pin(driver.finish_pair_retirement());
     assert!(
         std::future::poll_fn(|cx| std::task::Poll::Ready(shutdown.as_mut().poll(cx).is_pending()))
             .await
     );
-    assert!(dropped.try_recv().is_err());
     done.send(()).unwrap();
     shutdown.await;
     assert!(
         observer.is_finished(),
         "Driver shutdown must join the removed Pair reader"
     );
-    dropped.await?;
-    assert!(driver.retiring_pair.get_mut().unwrap().is_none());
+    assert!(driver.retiring_pair.is_none());
     driver.files.close().await;
     driver.watches.close().await;
     driver.transport.close().await;
@@ -627,6 +626,8 @@ async fn fixed_udp_selects_each_bound_address_and_preserves_wildcard_sending() -
         let server = Runtime::new(Some(fixed));
         let remote = Runtime::new(Some(ServerUdp::bind(&[("127.0.0.3:0".parse()?, None)])?));
         let (sender, mut candidates) = endpoint(&server, Uuid::new_v4(), None).await?;
+        #[cfg(not(target_os = "android"))]
+        assert!(sender.call(|e| Ok(e.host_refresh.is_none())).await?);
         let (receiver, mut events) = endpoint(&remote, Uuid::new_v4(), None).await?;
         let candidates: Vec<_> = std::iter::from_fn(|| candidates.try_recv().ok())
             .filter_map(|event| match event {
@@ -959,6 +960,8 @@ async fn local_input_delivery(publisher_offer: impl FnOnce(&str) -> String) -> R
         .accept_local_input(&local_offer)
         .await
         .context("local SDP accept/answer")?;
+    #[cfg(not(target_os = "android"))]
+    assert!(input.transport.call(|e| Ok(e.host_refresh.is_none())).await?);
     ensure!(input.answer.lines().any(|line| line == "a=ice-lite"));
     let answer = SdpAnswer::from_sdp_string(&input.answer)?;
     let advertised: HashSet<_> = answer
@@ -1148,6 +1151,35 @@ fn wildcard_candidates_ignore_unusable_interfaces_without_losing_valid_paths() -
         explicit
     );
     assert!(host_candidates("169.254.83.107:42000".parse()?, interfaces.into_iter()).is_err());
+    Ok(())
+}
+
+#[cfg(not(target_os = "android"))]
+#[tokio::test]
+async fn nominated_ice_path_retires_refresh_before_dtls() -> Result<()> {
+    use crate::peer::tests::support::endpoint;
+    let runtime = Runtime::new(None);
+    let (pc, mut events) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+    let before: SocketAddr = "[2001:db8::1]:42000".parse()?;
+    let late: SocketAddr = "[2001:db8::2]:42000".parse()?;
+    pc.call(move |e| {
+        // Supply a pending watcher even on test hosts without IPv6 sockets.
+        e.host_refresh.get_or_insert_with(|| HostRefresh::spawn(std::future::pending()));
+        e.add_refreshed_host_candidates(vec![Candidate::host(before, "udp")?]);
+        e.event(RtcEvent::IceConnectionStateChange(str0m::IceConnectionState::Connected));
+        assert_eq!(e.state.load(Ordering::Acquire), PeerState::New as u8);
+        e.add_refreshed_host_candidates(vec![Candidate::host(late, "udp")?]);
+        assert!(e.host_refresh.as_ref().unwrap().stop.is_none());
+        Ok(())
+    }).await?;
+    let published: Vec<_> = std::iter::from_fn(|| events.try_recv().ok())
+        .filter_map(|ev| match ev {
+            Event::Candidate(_, c, _) => Some(c.addr()),
+            _ => None,
+        }).collect();
+    assert!(published.contains(&before));
+    assert!(!published.contains(&late));
+    runtime.close().await;
     Ok(())
 }
 

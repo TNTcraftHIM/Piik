@@ -162,7 +162,7 @@ pub(crate) struct Runtime {
 }
 #[derive(Clone)]
 pub(crate) struct Transport {
-    pair: Uuid,
+    pub(super) pair: Uuid,
     instance: Uuid,
     tx: mpsc::Sender<Command>,
 }
@@ -396,6 +396,24 @@ pub(super) struct TransportMetrics {
     pub bwe_bps: Option<f64>,
     pub streams: Vec<TransportStreamMetric>,
 }
+#[cfg(not(target_os = "android"))]
+struct HostRefresh {
+    stop: Option<oneshot::Sender<()>>,
+    task: JoinHandle<()>,
+}
+#[cfg(not(target_os = "android"))]
+impl HostRefresh {
+    fn spawn(refresh: impl std::future::Future<Output = ()> + Send + 'static) -> Self {
+        let (stop, stopped) = oneshot::channel();
+        let task = tokio::spawn(async move {
+            tokio::select! {
+                _ = stopped => {}
+                _ = refresh => {}
+            }
+        });
+        Self { stop: Some(stop), task }
+    }
+}
 pub(crate) struct Engine {
     udp_send_failures: udp_diagnostics::UdpSendFailures,
     source_error: Option<SocketAddr>,
@@ -408,6 +426,8 @@ pub(crate) struct Engine {
     handle: Transport,
     sockets: Vec<Arc<UdpIo>>,
     discovery: Option<JoinHandle<()>>,
+    #[cfg(not(target_os = "android"))]
+    host_refresh: Option<HostRefresh>,
     nat64: Option<nat64::Bootstrap>,
     discovery_routes: HashMap<rtc_stun::message::TransactionId, discovery::Route>,
     turn: HashMap<usize, turn::Endpoint>,
@@ -755,6 +775,24 @@ impl Runtime {
             Bitrate::bps(requested.minimum_bps),
             Bitrate::bps(desired_bps(requested.desired_bps)),
         );
+        #[cfg(not(target_os = "android"))]
+        let refresh = if !local_input && self.fixed.is_none() {
+            let wildcard = sockets
+                .iter()
+                .filter_map(|socket| socket.local_addr().ok())
+                .find(|addr| addr.is_ipv6() && addr.ip().is_unspecified());
+            if let Some(socket) = wildcard {
+                let monitor = self
+                    .interfaces
+                    .get_or_try_init(netwatch::netmon::Monitor::new)
+                    .await?;
+                Some((monitor.interface_state(), socket))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         let interfaces = if sockets
             .iter()
             .any(|socket| socket.local_addr().is_ok_and(|addr| addr.ip().is_unspecified()))
@@ -809,6 +847,13 @@ impl Runtime {
         let (bandwidth, rx) = watch::channel(Estimate::Startup(300_000.0));
         let urls = discovery::urls(ice);
         let (turn_ready, turn_setup) = mpsc::channel(super::MAX_ICE_CANDIDATES);
+        #[cfg(not(target_os = "android"))]
+        let refresh = refresh.map(|(monitor, socket)| {
+            let seen = bases.iter().map(|base| base.local).collect();
+            handle
+                .clone()
+                .refresh_host_candidates(monitor, socket, seen)
+        });
         let engine = Engine {
             udp_send_failures: udp_diagnostics::UdpSendFailures::default(),
             source_error: None,
@@ -821,6 +866,8 @@ impl Runtime {
             handle: handle.clone(),
             sockets,
             discovery: None,
+            #[cfg(not(target_os = "android"))]
+            host_refresh: None,
             nat64: (!local_input
                 && bases
                     .iter()
@@ -872,6 +919,17 @@ impl Runtime {
             .await
             .map_err(|_| anyhow!("transport closed"))?;
         ready.await?;
+        #[cfg(not(target_os = "android"))]
+        if let Some(refresh) = refresh {
+            handle
+                .call(move |engine| {
+                    if engine.state.load(Ordering::Acquire) == PeerState::New as u8 {
+                        engine.host_refresh = Some(HostRefresh::spawn(refresh));
+                    }
+                    Ok(())
+                })
+                .await?;
+        }
         if !local_input {
             rtc_pair(
                 pair,
@@ -955,6 +1013,46 @@ fn add_reader(
 }
 
 impl Transport {
+    #[cfg(not(target_os = "android"))]
+    async fn refresh_host_candidates(
+        self,
+        mut monitor: n0_watcher::Direct<netwatch::interfaces::State>,
+        socket: SocketAddr,
+        mut seen: HashSet<SocketAddr>,
+    ) {
+        use n0_watcher::Watcher;
+        while seen.len() < super::MAX_ICE_CANDIDATES {
+            let Ok(state) = monitor.updated().await else {
+                return;
+            };
+            let addresses = state
+                .interfaces
+                .values()
+                .filter(|iface| iface.is_up())
+                .flat_map(|iface| iface.addrs());
+            let Ok(candidates) = host_candidates(socket, addresses) else {
+                return;
+            };
+            let remaining = super::MAX_ICE_CANDIDATES - seen.len();
+            let fresh: Vec<_> = candidates
+                .into_iter()
+                .filter(|candidate| seen.insert(candidate.addr()))
+                .take(remaining)
+                .collect();
+            if fresh.is_empty() {
+                continue;
+            }
+            let updated = self
+                .call(move |engine| {
+                    engine.add_refreshed_host_candidates(fresh);
+                    Ok(())
+                })
+                .await;
+            if updated.is_err() {
+                return;
+            }
+        }
+    }
     pub(super) async fn connection_metrics(&self) -> Result<TransportMetrics> {
         self.call(|engine| Ok(engine.connection_metrics())).await
     }
@@ -1159,9 +1257,10 @@ impl Transport {
     pub async fn remote_description(&self) -> bool {
         self.call(|e| Ok(e.remote)).await.unwrap_or(false)
     }
-    pub(super) async fn add_local_candidate(&self, candidate: Candidate) -> Result<()> {
+    pub(super) async fn add_gateway_candidate(&self, candidate: Candidate) -> Result<()> {
         self.call(move |e| {
             if let Some(candidate) = e.rtc.add_local_candidate(candidate).cloned() {
+                e.trace_pair(RtcPairEvent::GatewayCandidateAdmitted);
                 e.emit(Event::Candidate(e.handle.pair, candidate, None));
             }
             Ok(())
@@ -1587,6 +1686,24 @@ fn codec(params: &PayloadParams) -> RtpCodecParameters {
 }
 
 impl Engine {
+    #[cfg(not(target_os = "android"))]
+    fn stop_host_refresh(&mut self) {
+        if let Some(watcher) = &mut self.host_refresh {
+            watcher.stop.take();
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    fn add_refreshed_host_candidates(&mut self, candidates: Vec<Candidate>) {
+        // A queued interface update can arrive after ICE selects its first path.
+        if !self.host_refresh.as_ref().is_some_and(|watcher| watcher.stop.is_some()) {
+            return;
+        }
+        for candidate in candidates {
+            if let Some(candidate) = self.rtc.add_local_candidate(candidate).cloned() {
+                self.emit(Event::Candidate(self.handle.pair, candidate, None));
+            }
+        }
+    }
     fn linear_current(&mut self, ufrag: &str) -> bool {
         self.linear_enabled
             && Instant::now() < self.stats_origin + Duration::from_secs(5)
@@ -1606,6 +1723,11 @@ impl Engine {
         }
     }
     async fn close(&mut self) {
+        #[cfg(not(target_os = "android"))]
+        if let Some(mut watcher) = self.host_refresh.take() {
+            watcher.stop.take();
+            let _ = watcher.task.await;
+        }
         self.nat64.take();
         if let Some((_, task)) = self.source_check.take() {
             task.abort();
@@ -1811,7 +1933,17 @@ impl Engine {
             }
         }
     }
-    fn emit(&self, event: Event) {
+    fn emit(&mut self, event: Event) {
+        #[cfg(not(target_os = "android"))]
+        if matches!(
+            event,
+            Event::State(
+                _,
+                PeerState::Connected | PeerState::Failed | PeerState::Closed
+            )
+        ) {
+            self.stop_host_refresh();
+        }
         self.events.emit(event, &self.overflow);
     }
     fn drain(&mut self) {
@@ -1922,6 +2054,8 @@ impl Engine {
         match event {
             RtcEvent::IceConnectionStateChange(state) => {
                 if state.is_connected() {
+                    #[cfg(not(target_os = "android"))]
+                    self.stop_host_refresh();
                     self.trace_pair(RtcPairEvent::IceConnected);
                 } else if state.is_disconnected() {
                     self.trace_pair(RtcPairEvent::IceDisconnected);

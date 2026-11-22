@@ -12,6 +12,9 @@ declare global {
   }
 }
 
+export const nativeBookmarkWindow = window.piikNativeWindow === "system"
+  && location.pathname === "/client" && new URLSearchParams(location.search).has("bookmarks");
+
 // The Windows host supplies this capability. Content only describes appearance
 // and the slot reserved for the separately trusted window controls.
 if (window.piikNativeWindow) {
@@ -22,7 +25,7 @@ if (window.piikNativeWindow) {
 
 if (window.piikNativeWindow && window.ipc) {
   const integrated = window.piikNativeWindow === "integrated";
-  if (!integrated && location.pathname === "/client" && new URLSearchParams(location.search).has("bookmarks")) {
+  if (nativeBookmarkWindow) {
     window.addEventListener("piik-window-appearance", event => {
       const { detail } = event as CustomEvent<{ theme?: unknown; language?: unknown } | null>;
       if (detail?.theme === "light" || detail?.theme === "dark") applyWindowTheme(detail.theme);

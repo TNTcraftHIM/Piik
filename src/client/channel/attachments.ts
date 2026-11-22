@@ -28,7 +28,7 @@ interface Sink {
   tail: Promise<void>; promise: Promise<File>; resolve(file: File): void; reject(error: Error): void;
 }
 export interface AttachmentProgress { received: number; total: number; state: "waiting" | "connecting" | "waiting-source" | "receiving" | "finishing" }
-interface PendingSink { key: ChannelFileKey; ready: Promise<Sink>; consumers: Set<symbol>; progress: AttachmentProgress; receive?: symbol }
+interface PendingSink { key: ChannelFileKey; ready: Promise<Sink>; consumers: Set<symbol>; progress: AttachmentProgress | null; receive?: symbol }
 export function isNativeSavePending(outcome?: DownloadOutcome): boolean {
   return outcome === "requested" || outcome === "started";
 }
@@ -162,7 +162,7 @@ export class ChannelAttachments {
         changed = true;
         continue;
       }
-      if (entry.progress.state === "finishing") continue;
+      if (!entry.progress || entry.progress.state === "finishing") continue;
       const matches = (plan: ChannelFilePlan) => plan.roomId === entry.key.roomId && plan.messageSeq === entry.key.messageSeq
         && plan.attachment.id === entry.key.attachmentId;
       const plan = plans.find(matches);
@@ -344,7 +344,7 @@ export class ChannelAttachments {
     }
     for (const [id, entry] of this.sinks) {
       if (!entry.consumers.size || (roomId && entry.key.roomId !== roomId)) continue;
-      if (!receiving.delete(id) && entry.progress.state !== "finishing") this.requestReceive(entry);
+      if (!receiving.delete(id) && entry.progress && entry.progress.state !== "finishing") this.requestReceive(entry);
     }
     for (const key of receiving.values()) {
       void this.command({ type: "file_receive", ...key, enabled: false }).catch(() => {});
@@ -458,7 +458,7 @@ export class ChannelAttachments {
   peerState(peer: string, available: boolean): void {
     for (const plan of this.plans.filter(plan => plan.upstream === peer)) {
       const entry = this.sinks.get(fileKeyString({ roomId: plan.roomId, messageSeq: plan.messageSeq, attachmentId: plan.attachment.id }));
-      if (entry && entry.progress.state !== "finishing" && (!available || entry.progress.state === "connecting")) {
+      if (entry?.progress && entry.progress.state !== "finishing" && (!available || entry.progress.state === "connecting")) {
         entry.progress = { ...entry.progress, state: available ? "waiting" : "connecting" }; this.changed();
       }
     }
@@ -636,7 +636,7 @@ export class ChannelAttachments {
         void entry.ready.then(sink => {
           if (effect.type === "failed") { if (!sink.complete) return this.stopSink(entry, new Error(effect.code)); return; }
           sink.tail = sink.tail.then(async () => {
-            if (this.sinks.get(fileKeyString(key)) !== entry) return;
+            if (this.sinks.get(fileKeyString(key)) !== entry || !entry.progress) return;
             sink.lifetime.signal.throwIfAborted();
             if (effect.type === "write") {
               const bytes = new Uint8Array(effect.bytes);
@@ -663,6 +663,7 @@ export class ChannelAttachments {
               sink.lifetime.signal.throwIfAborted();
               if (!this.current(runtime) || this.sinks.get(fileKeyString(key)) !== entry || this.messageRemoved(key)) return;
               const readable = retained ?? file;
+              entry.progress = null;
               this.installSource({ key, attachment: sink.attachment, file: readable, status: idle, retained: Boolean(retained) });
               void this.command({ type: "file_receive", ...key, enabled: false }).catch(() => {}); sink.resolve(readable);
               if (retained) {

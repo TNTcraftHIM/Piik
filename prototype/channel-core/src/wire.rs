@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 41;
+pub const CHANNEL_PROTOCOL: u8 = 42;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -68,11 +68,9 @@ pub enum Command {
         sha256: String,
         available: bool,
     },
-    FileBranchRefused {
+    ByteBranchRefused {
         room_id: String,
-        message_seq: u64,
-        attachment_id: Uuid,
-        source_id: Uuid,
+        target: ByteBranchTarget,
         downstream_id: Uuid,
     },
     ForwardingAvailable {
@@ -264,8 +262,12 @@ pub enum Command {
     Leave,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Request {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
+    #[serde(flatten)]
     pub command: Command,
 }
 
@@ -1233,14 +1235,21 @@ pub struct WatchSubscription {
     pub id: Uuid,
     pub mode: WatchMode,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase", rename_all_fields = "camelCase", deny_unknown_fields)]
+pub enum ByteBranchTarget {
+    File { message_seq: u64, attachment_id: Uuid, source_id: Uuid },
+    Watch { activity_id: Uuid, source: WatchByteSource },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WatchFormat {
     File,
     Hls,
     Dash,
 }
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WatchByteSource {
     pub session_id: Uuid,

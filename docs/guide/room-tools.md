@@ -107,18 +107,16 @@ adds a line and **Send** sends the message. Ctrl+Enter or Command+Enter also sen
 In a lightweight site, the room creator’s device saves messages and reactions.
 In a hosted site, the server saves them. Open the room to read its history while
 that device or server is online. Chat uses the site connection.
-Images use a shared 512 KiB budget per message for immediate display. Small
-originals stay unchanged; larger still images get a clear preview up to 2048px.
-Select a picture to enlarge it, then **View original** for its full resolution.
-**Download original** saves the full file. If the card says **No one is currently
+Chat keeps a still thumbnail with the message when one is available. Select
+it to enlarge it, then choose **View original** for the full resolution or
+animation. If the card has no thumbnail, choose **View image** to load the
+original. **Download original** saves the full file. If the card says **No one is currently
 offering the original**, you can still open its thumbnail. Download becomes
 available again when someone with a copy returns. In the desktop App you can
 also open the folder holding a copy you already saved.
 
-GIF, animated PNG and animated WebP retain their animation. If an animated
-original exceeds its share of the message budget, **View image** loads it over
-the existing P2P path. Other files use that same on-demand path, reusing active
-connections. Selecting a user's profile picture also opens the image viewer;
+Images and other files load on demand from a readable local copy or someone
+offering the original in the room. Selecting a user's profile picture also opens the image viewer;
 Escape or its close button returns to the room.
 
 Selecting a person in the room opens their interaction menu. Expressions and

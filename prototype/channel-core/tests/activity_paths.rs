@@ -211,7 +211,7 @@ fn file_and_watch_use_the_confirmed_shortcut_while_voice_keeps_its_relay() {
     command(
         &mut net,
         b,
-        json!({"type":"file_branch_refused","roomId":room,"messageSeq":seq,"attachmentId":attachment.id,"sourceId":c_session,"downstreamId":a_session}),
+        json!({"type":"byte_branch_refused","roomId":room,"target":{"kind":"file","messageSeq":seq,"attachmentId":attachment.id,"sourceId":c_session},"downstreamId":a_session}),
     );
     assert!(net.state(a).files[0].receiving);
     assert_eq!(net.state(a).files[0].upstream, None);

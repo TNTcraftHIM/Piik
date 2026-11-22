@@ -1,4 +1,4 @@
-use crate::wire::{Command, FlowState, Kind, Snapshot};
+use crate::wire::{ByteBranchTarget, Command, FlowState, Kind, Request, Snapshot};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
@@ -17,12 +17,64 @@ pub enum ForwardingKind {
 pub struct ForwardingBudget {
     admitted: BTreeSet<(ForwardingKind, Uuid)>,
     refused: BTreeSet<(Uuid, Uuid)>,
-    refused_files: BTreeSet<(crate::file_room::FileKey, Uuid, Uuid)>,
+    refused_bytes: BTreeSet<(String, ByteBranchTarget, Uuid)>,
     limited_rooms: BTreeSet<(String, ForwardingKind)>,
     previous_limit: Option<u8>,
+    pending_capacity: BTreeMap<Uuid, (Uuid, Option<u8>)>,
 }
 
 impl ForwardingBudget {
+    pub fn reconnected(&mut self) {
+        self.pending_capacity.clear();
+    }
+
+    pub fn capacity_reply(&mut self, request_id: &str) {
+        if let Ok(id) = Uuid::parse_str(request_id) {
+            self.pending_capacity.retain(|_, (pending, _)| *pending != id);
+        }
+    }
+
+    pub fn capacity_updates(&mut self, session: Uuid, limit: Option<u8>, snapshot: &Snapshot) -> Vec<Request> {
+        let mut updates = Vec::new();
+        let mut pending = BTreeMap::new();
+        for room in snapshot
+            .channel
+            .rooms
+            .iter()
+            .filter(|room| room.available && room.authorized)
+        {
+            let Some(binding) = &room.delivery else {
+                continue;
+            };
+            if room.relay_override.is_none()
+                && binding.host_session_id != session
+                && !room.reading
+                && !room.participant_session_ids.contains(&session)
+                && !snapshot.files.iter().any(|file| file.room_id == room.id)
+            {
+                continue;
+            }
+            let binding_id = binding.binding_id;
+            let in_flight = self.pending_capacity.get(&binding_id).copied();
+            if let Some((id, target)) = in_flight {
+                if target == limit {
+                    pending.insert(binding_id, (id, target));
+                    continue;
+                }
+            } else if room.relay_override == limit {
+                continue;
+            }
+            let request_id = Uuid::new_v4();
+            updates.push(Request {
+                request_id: Some(request_id.to_string()),
+                command: Command::RelayCapacity { room_id: room.id.clone(), capacity: limit },
+            });
+            pending.insert(binding_id, (request_id, limit));
+        }
+        self.pending_capacity = pending;
+        updates
+    }
+
     /// Apply all room grants together, before handing plans to the transports.
     pub fn apply(
         &mut self,
@@ -106,12 +158,6 @@ impl ForwardingBudget {
         });
         self.reconcile(limit, requested);
         let admitted = &self.admitted;
-        for plan in &mut snapshot.watch_bytes {
-            if plan.upstream.is_some() {
-                plan.downstream
-                    .retain(|peer| admitted.contains(&(ForwardingKind::File, *peer)));
-            }
-        }
         let mut refused = BTreeSet::new();
         for pair in &mut snapshot.pairs {
             pair.outgoing.retain(|flow| {
@@ -133,49 +179,46 @@ impl ForwardingBudget {
                 allowed
             });
         }
-        let mut refused_files = BTreeSet::new();
-        for plan in &mut snapshot.files {
-            if plan.author_id != user_id || plan.upstream.is_some() {
-                plan.downstream.retain(|peer| {
-                    let allowed = admitted.contains(&(ForwardingKind::File, *peer));
-                    if !allowed {
-                        self.limited_rooms
-                            .insert((plan.room_id.clone(), ForwardingKind::File));
-                        if let Some(source) = plan.source_id {
-                            refused_files.insert((
-                                crate::file_room::FileKey {
-                                    room_id: plan.room_id.clone(),
-                                    message_seq: plan.message_seq,
-                                    attachment_id: plan.attachment.id,
-                                },
-                                source,
-                                *peer,
-                            ));
-                        }
-                    }
-                    allowed
-                });
+        let mut refused_bytes = BTreeSet::new();
+        let mut allow = |room: &str, target: &ByteBranchTarget, peer: Uuid| {
+            if admitted.contains(&(ForwardingKind::File, peer)) {
+                return true;
+            }
+            self.limited_rooms.insert((room.to_owned(), ForwardingKind::File));
+            refused_bytes.insert((room.to_owned(), target.clone(), peer));
+            false
+        };
+        for plan in &mut snapshot.watch_bytes {
+            if plan.upstream.is_some() {
+                let target = ByteBranchTarget::Watch { activity_id: plan.activity_id, source: plan.source.clone() };
+                plan.downstream.retain(|peer| allow(&plan.room_id, &target, *peer));
             }
         }
-        let mut commands: Vec<_> = refused
-            .difference(&self.refused)
-            .map(|&(pair_id, flow_id)| Command::FlowState {
-                pair_id,
-                flow_id,
-                state: FlowState::Failed,
-            })
-            .collect();
+        for plan in &mut snapshot.files {
+            if plan.author_id != user_id || plan.upstream.is_some() {
+                if let Some(source_id) = plan.source_id {
+                    let target = ByteBranchTarget::File { message_seq: plan.message_seq, attachment_id: plan.attachment.id, source_id };
+                    plan.downstream.retain(|peer| allow(&plan.room_id, &target, *peer));
+                }
+            }
+        }
+        let mut commands = Vec::new();
+        commands.extend(
+            refused
+                .difference(&self.refused)
+                .map(|&(pair_id, flow_id)| Command::FlowState {
+                    pair_id,
+                    flow_id,
+                    state: FlowState::Failed,
+                }),
+        );
         self.refused = refused;
-        commands.extend(refused_files.difference(&self.refused_files).map(
-            |(key, source, peer)| Command::FileBranchRefused {
-                room_id: key.room_id.clone(),
-                message_seq: key.message_seq,
-                attachment_id: key.attachment_id,
-                source_id: *source,
-                downstream_id: *peer,
+        commands.extend(refused_bytes.difference(&self.refused_bytes).map(
+            |(room_id, target, peer)| Command::ByteBranchRefused {
+                room_id: room_id.clone(), target: target.clone(), downstream_id: *peer,
             },
         ));
-        self.refused_files = refused_files;
+        self.refused_bytes = refused_bytes;
         commands.extend(
             wake.into_iter()
                 .map(|(room_id, kind)| Command::ForwardingAvailable { room_id, kind }),
@@ -284,7 +327,9 @@ mod tests {
             matches!(reports.as_slice(), [Command::FlowState {pair_id, flow_id, state:FlowState::Failed}] if *pair_id == id(8) && *flow_id == relay.id)
         );
         assert_eq!(filtered.pairs[0].outgoing, vec![own]);
-        assert!(budget.apply(Some(0), id(1), &mut raw.clone()).is_empty());
+        assert!(budget
+            .apply(Some(0), id(1), &mut raw.clone())
+            .is_empty());
         let mut absent = raw.clone();
         absent.pairs[0].outgoing = vec![own];
         assert!(budget.apply(Some(0), id(1), &mut absent).is_empty());

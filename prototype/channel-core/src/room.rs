@@ -38,6 +38,7 @@ struct FileObservation {
 
 #[derive(Clone)]
 struct Watch {
+    refused: BTreeSet<(Uuid, Uuid)>,
     parents: BTreeMap<Uuid, Uuid>,
     user_id: Uuid,
     session_id: Uuid,
@@ -128,6 +129,7 @@ impl RoomRuntime {
         self.files.reset_routes();
         for watch in self.watch_activities.values_mut() {
             watch.parents.clear();
+            watch.refused.clear();
         }
         for publication in self.publications.values_mut() {
             publication.reset_routes();
@@ -453,6 +455,9 @@ impl RoomRuntime {
         use crate::forwarding::ForwardingKind;
         if kind.is_none_or(|kind| kind == ForwardingKind::File) {
             self.files.forwarding_available(sender);
+            for watch in self.watch_activities.values_mut() {
+                watch.refused.retain(|(from, _)| *from != sender);
+            }
         }
         for publication in self.publications.values_mut() {
             if kind.is_none_or(|kind| {
@@ -465,16 +470,25 @@ impl RoomRuntime {
             }
         }
     }
-    pub(crate) fn refuse_file_branch(
-        &mut self,
-        sender: Uuid,
-        seq: u64,
-        id: Uuid,
-        source: Uuid,
-        downstream: Uuid,
+    pub(crate) fn refuse_byte_branch(
+        &mut self, member: Member, sender: Uuid, target: crate::wire::ByteBranchTarget, downstream: Uuid,
     ) -> Result<(), &'static str> {
-        self.files
-            .refuse_branch(seq, id, source, sender, downstream)
+        if !self.selected_service().is_some_and(|service| service.session_id == sender) {
+            self.authorize(member, RoomPermission::Read)?;
+        }
+        match target {
+            crate::wire::ByteBranchTarget::File { message_seq, attachment_id, source_id } =>
+                self.files.refuse_branch(message_seq, attachment_id, source_id, sender, downstream),
+            crate::wire::ByteBranchTarget::Watch { activity_id, source } => {
+                let watch = self.watch_activities.get_mut(&activity_id).ok_or("unassigned_watch_branch")?;
+                if watch.byte_source.as_ref() != Some(&source) || sender == source.session_id
+                    || watch.parents.get(&downstream) != Some(&sender) {
+                    return Err("unassigned_watch_branch");
+                }
+                watch.refused.insert((sender, downstream));
+                Ok(())
+            }
+        }
     }
     pub(crate) fn file_command(
         &mut self,
@@ -856,6 +870,7 @@ impl RoomRuntime {
         self.watch_activities.insert(
             id,
             Watch {
+                refused: BTreeSet::new(),
                 parents: BTreeMap::new(),
                 user_id: member.user_id,
                 session_id: session,
@@ -905,6 +920,7 @@ impl RoomRuntime {
         let activity = self.watch_activities.get_mut(&id).unwrap();
         if activity.byte_source != source {
             activity.parents.clear();
+            activity.refused.clear();
             activity.byte_source = source;
         }
         Ok(())
@@ -1381,7 +1397,8 @@ impl RoomRuntime {
                 activity.byte_source = None;
             }
         }
-        self.files.reconcile(&readable);
+        let service = self.selected_service().map(|service| service.session_id);
+        self.files.reconcile(&readable, service);
         self.publications
             .retain(|_, publication| readable.contains(&publication.info.session_id));
         self.activity
@@ -1414,7 +1431,6 @@ impl RoomRuntime {
             .collect();
         let (mut new_relays, active) = self.relay_sessions();
         let mut routable = readable.clone();
-        let service = self.selected_service().map(|service| service.session_id);
         if let Some(endpoint) = transit_endpoint {
             let session = endpoint.session_id;
             if service.is_none() && !active.contains(&session) && !self.reading(session) {
@@ -1461,7 +1477,7 @@ impl RoomRuntime {
             .route(endpoints, &byte_neighbors, &new_relays, &limits);
         let mut waiting_bytes = self.files.waiting();
         for (id, watch) in &mut self.watch_activities {
-            let receivers = self
+            let receivers: BTreeSet<_> = self
                 .activity
                 .iter()
                 .filter_map(|(session, activity)| {
@@ -1469,6 +1485,9 @@ impl RoomRuntime {
                         .then_some(*session)
                 })
                 .collect();
+            watch.refused.retain(|(from, to)| {
+                !receivers.is_empty() && routable.contains(from) && routable.contains(to)
+            });
             watch.parents = watch
                 .byte_source
                 .as_ref()
@@ -1480,7 +1499,7 @@ impl RoomRuntime {
                         &byte_neighbors,
                         &new_relays,
                         &limits,
-                        &BTreeSet::new(),
+                        &watch.refused,
                     )
                 })
                 .unwrap_or_default();
@@ -1528,7 +1547,6 @@ impl RoomRuntime {
             if publication.info.kind == Kind::Screen {
                 // A screen source owns its outputs. Forwarders share their
                 // remaining capacity across all other screens in the room.
-                screen_limits.overrides.remove(&publication.info.session_id);
                 screen_limits.source_direct_limit = publication
                     .info
                     .screen
@@ -1808,6 +1826,16 @@ mod tests {
         assert_eq!(viewer.upstream, Some(id(1)));
         assert!(viewer.receiving);
         assert!(room.watch_byte_plans(id(2)).is_empty());
+        let target = crate::wire::ByteBranchTarget::Watch {
+            activity_id: id(10),
+            source: source_plan.source,
+        };
+        room.refuse_byte_branch(owner, id(1), target, id(3)).unwrap();
+        room.join_watch(endpoints[&id(3)].member, id(3), id(10), Some(WatchMode::Direct)).unwrap();
+        room.reconcile_with_pairs(&endpoints, 2, &pairs);
+        room.join_watch(endpoints[&id(3)].member, id(3), id(10), Some(WatchMode::Peer)).unwrap();
+        room.reconcile_with_pairs(&endpoints, 2, &pairs);
+        assert_eq!(room.watch_byte_plans(id(3))[0].upstream, Some(id(1)));
         room.set_watch_byte_source(owner, id(1), id(10), None, &endpoints)
             .unwrap();
         room.reconcile_with_pairs(&endpoints, 3, &pairs);
@@ -2403,7 +2431,7 @@ mod tests {
         room.set_relay_capacity(endpoints[&a].member, a, Some(1))
             .unwrap();
         room.reconcile_with_pairs(&endpoints, 1, &confirmed);
-        room.refuse_file_branch(a, 1, file.id, b, c).unwrap();
+        room.refuse_byte_branch(endpoints[&a].member, a, crate::wire::ByteBranchTarget::File { message_seq: 1, attachment_id: file.id, source_id: b }, c).unwrap();
         room.set_relay_capacity(endpoints[&a].member, a, Some(0))
             .unwrap();
         confirmed.insert((b, c));
@@ -3274,6 +3302,40 @@ mod tests {
             .flows()
             .any(|flow| flow.publication_id == id(10) && flow.sender == id(2)));
         assert!(room.subscriptions(id(4)).contains(&id(10)));
+    }
+
+    #[test]
+    fn publishing_voice_and_watch_bytes_uses_the_source_fanout() {
+        use crate::wire::{WatchByteSource, WatchFormat, WatchMode, WatchPlayback, WatchSource, WatchTimeline};
+        let id = Uuid::from_u128;
+        let (existing, endpoints) = screen_room();
+        let mut room = RoomRuntime::new(existing.policy);
+        room.set_default_relay_capacity(2);
+        let source = id(1);
+        let owner = endpoints[&source].member;
+        let watch = id(10);
+        let voice = id(20);
+        let listeners = [id(2), id(3)];
+        for session in [source, listeners[0], listeners[1]] {
+            room.set_voice(endpoints[&session].member, session, true, false, false).unwrap();
+        }
+        room.publish(owner, source, voice, Kind::Voice, None, None).unwrap();
+        room.start_watch(owner, source, watch,
+            WatchSource::Media { url: "https://example.com/movie.mp4".into() },
+            WatchPlayback { timeline: WatchTimeline::Media, position: 0., paused: true, rate: 1., anchor_time: 0 },
+            Some(WatchByteSource { session_id: source, resource_id: id(11), format: WatchFormat::File }),
+            &endpoints,
+        ).unwrap();
+        for session in listeners {
+            room.join_watch(endpoints[&session].member, session, watch, Some(WatchMode::Peer)).unwrap();
+        }
+        let pairs = confirmed_pairs(&[(1, 2), (1, 3)]);
+        for limit in [Some(1), Some(0), None] {
+            room.set_relay_capacity(owner, source, limit).unwrap();
+            room.reconcile_with_pairs(&endpoints, 1, &pairs);
+            assert_eq!(room.flows().filter(|flow| flow.publication_id == voice && flow.sender == source).count(), 2);
+            assert_eq!(room.watch_byte_plans(source)[0].downstream, listeners);
+        }
     }
 
     #[test]

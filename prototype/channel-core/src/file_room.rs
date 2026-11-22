@@ -114,12 +114,13 @@ impl FileRoom {
         self.files
             .retain(|_, file| !file.holders.is_empty() || !file.receivers.is_empty());
     }
-    pub fn reconcile(&mut self, admitted: &BTreeSet<Uuid>) {
+    pub fn reconcile(&mut self, admitted: &BTreeSet<Uuid>, service: Option<Uuid>) {
+        let routable = |id: &Uuid| admitted.contains(id) || service == Some(*id);
         for file in self.files.values_mut() {
             file.holders.retain(|id| admitted.contains(id));
             file.receivers.retain(|id| admitted.contains(id));
             file.refused.retain(|(sender, peer)| {
-                !file.receivers.is_empty() && admitted.contains(sender) && admitted.contains(peer)
+                !file.receivers.is_empty() && routable(sender) && routable(peer)
             });
             if file
                 .source
@@ -340,7 +341,7 @@ mod tests {
                 .install(reader, 1, author, attachment.clone(), false)
                 .unwrap();
             let online = BTreeSet::from([holder, reader]);
-            files.reconcile(&online);
+            files.reconcile(&online, None);
             route(&mut files, &[(holder, reader)], &Default::default());
             files
         };
@@ -361,8 +362,8 @@ mod tests {
         assert!(budget.apply(Some(1), holder, &mut raw).is_empty());
         raw.files.extend(waiting.plans("waiting", holder));
         let reports = budget.apply(Some(1), holder, &mut raw);
-        let [Command::FileBranchRefused {
-            source_id,
+        let [Command::ByteBranchRefused {
+            target: crate::wire::ByteBranchTarget::File { source_id, .. },
             downstream_id,
             ..
         }] = reports.as_slice()
@@ -450,7 +451,7 @@ mod tests {
         files
             .install(reader, 1, author, attachment.clone(), false)
             .unwrap();
-        files.reconcile(&members);
+        files.reconcile(&members, None);
         let mut limits = RelayLimits::default();
         limits.overrides.extend([(author, 0), (copy, 0)]);
         route(&mut files, &edges, &limits);
@@ -472,7 +473,7 @@ mod tests {
         for holder in [author, copy] {
             files.remove(holder, 1, attachment.id, true);
         }
-        files.reconcile(&members);
+        files.reconcile(&members, None);
         route(&mut files, &edges, &limits);
         assert_eq!(files.plans("room", reader)[0].source_id, None);
     }

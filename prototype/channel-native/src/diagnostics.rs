@@ -93,6 +93,12 @@ pub(crate) enum RtcPairEvent {
         prepared: bool,
     },
     PairSetupFailed,
+    GatewayProbe {
+        upnp: bool,
+        pcp: bool,
+        nat_pmp: bool,
+    },
+    GatewayCandidateAdmitted,
     IceConnected,
     IceDisconnected,
     TransportConnected,
@@ -485,6 +491,15 @@ mod tests {
             },
         );
         recorder.rtc_pair(first, RtcPairEvent::OrdinaryFallback);
+        recorder.rtc_pair(
+            first,
+            RtcPairEvent::GatewayProbe {
+                upnp: false,
+                pcp: false,
+                nat_pmp: true,
+            },
+        );
+        recorder.rtc_pair(first, RtcPairEvent::GatewayCandidateAdmitted);
         recorder.rtc_pair(first, RtcPairEvent::SelectedPair { ipv6: true });
         recorder.rtc_pair(first, RtcPairEvent::TransportConnected);
         recorder.rtc_pair(
@@ -517,7 +532,7 @@ mod tests {
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect();
-        assert_eq!(events.len(), 7);
+        assert_eq!(events.len(), 9);
         assert!(events
             .iter()
             .all(|event| event["level"] == "INFO" && event["target"] == "piik.rtc"));
@@ -525,10 +540,10 @@ mod tests {
             .iter()
             .map(|event| serde_json::from_str(event["message"].as_str().unwrap()).unwrap())
             .collect();
-        assert!(details[..6]
+        assert!(details[..8]
             .iter()
             .all(|event| event["pair"] == pair_alias(first)));
-        assert_eq!(details[6]["pair"], pair_alias(second));
+        assert_eq!(details[8]["pair"], pair_alias(second));
         assert_ne!(pair_alias(first), pair_alias(second));
         assert_eq!(pair_alias(first), "pair-848dc696e2308b21");
         assert_eq!(
@@ -540,10 +555,18 @@ mod tests {
         assert_eq!(details[3]["event"]["stage"], "ordinary_fallback");
         assert_eq!(
             details[4]["event"],
+            serde_json::json!({"stage":"gateway_probe","upnp":false,"pcp":false,"nat_pmp":true})
+        );
+        assert_eq!(
+            details[5]["event"],
+            serde_json::json!({"stage":"gateway_candidate_admitted"})
+        );
+        assert_eq!(
+            details[6]["event"],
             serde_json::json!({"stage":"selected_pair","ipv6":true})
         );
-        assert_eq!(details[5]["event"]["stage"], "transport_connected");
-        assert_eq!(details[6]["event"]["stage"], "preparation_finished");
+        assert_eq!(details[7]["event"]["stage"], "transport_connected");
+        assert_eq!(details[8]["event"]["stage"], "preparation_finished");
         for raw in [first.to_string(), second.to_string()] {
             assert!(!text.contains(&raw));
         }

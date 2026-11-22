@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import type { NativeCaptureTarget } from "../../native/wire";
+import { ChannelDiagnosisHelp } from "../../channel/components/ChannelDiagnosisHelp";
 import { audioApplicationKey, audioApplications, nativeCaptureTargetKey } from "../../native/capture-selection";
 import { useCopy } from "../../ui/copy";
 import { Glyph, type GlyphName } from "../../ui/icons";
@@ -388,6 +389,8 @@ export function CaptureSourcePicker({
               {t(activeTab ? "host.sourcePicker.empty" : "host.capture.noSource")}
             </span>
           ) : null}
+          {nativeTab && (nativeSources.kind === "failed" || (nativeSources.kind === "ready" && sources.length === 0)) &&
+            <ChannelDiagnosisHelp diagnosis={{ topic: "capture" }} />}
         </div>
       </div>
     </div>

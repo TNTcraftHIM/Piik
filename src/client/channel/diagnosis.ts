@@ -6,6 +6,7 @@ const guideSections = {
   troubleshooting: ["troubleshooting", "", ""],
   site: ["troubleshooting", "the-page-opens-but-the-site-will-not-connect", "网页能打开但站点连接不上"],
   app: ["troubleshooting", "opening-app-and-joining-a-room", "打开-app-与加入房间"],
+  appVersion: ["troubleshooting", "app-and-page-versions-are-incompatible", "app-与页面版本不兼容"],
   room: ["troubleshooting", "an-invitation-or-password-is-rejected", "邀请或密码被拒绝"],
   offline: ["troubleshooting", "chat-or-history-will-not-load", "聊天或历史记录加载不出来"],
   picture: ["troubleshooting", "when-video-will-not-connect", "画面连接不上"],
@@ -17,7 +18,7 @@ const guideSections = {
 
 export type ChannelHelpTopic = keyof typeof guideSections;
 export function diagnosisGuide(topic: ChannelHelpTopic, lang: string) {
-  const zh = lang === "zh";
+  const zh = lang === "zh" || lang === "zh-Hant";
   const [page, enAnchor, zhAnchor] = guideSections[topic];
   const anchor = zh ? zhAnchor : enAnchor;
   const githubAnchor = topic === "storage" ? anchor.replace("unsupportedstorageversion", "unsupported_storage_version") : anchor;
@@ -47,7 +48,7 @@ export function diagnoseChannelFact(fact: ChannelFact): ChannelDiagnosis | null 
     switch (fact.state) {
       case "approval": return { message: "client.connect.found", next: "client.connect.open", topic: "app" };
       case "unavailable": return { message: "client.connect.unavailable", topic: "app" };
-      case "incompatible": return { message: "native.incompatible", topic: "app" };
+      case "incompatible": return { message: "native.incompatible", topic: "appVersion" };
       default: return null;
     }
   }

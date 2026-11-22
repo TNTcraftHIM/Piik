@@ -337,6 +337,14 @@ impl Files {
     pub async fn detach(&self, peer: Uuid) {
         let _ = self.input.send(Input::Detach(peer)).await;
     }
+    #[cfg(test)]
+    pub(crate) async fn hold_queue_capacity(&self) -> impl Drop + 'static {
+        let mut permits = Vec::new();
+        for _ in 0..self.input.max_capacity() {
+            permits.push(self.input.clone().reserve_owned().await.unwrap());
+        }
+        permits
+    }
     pub async fn close(self) {
         let _ = self.cancel.send(true);
         let _ = self.task.await;

@@ -126,16 +126,13 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
     ? "channel.attachment.finishing" : "channel.attachment.receiving")
     : t(previewBusy ? "channel.attachment.loadingOriginalImage" : "channel.attachment.waitingData");
   const progressBytes = progress && (progress.received > 0 || progress.state === "receiving" || progress.state === "finishing") ? progress : null;
-  const imageStatus = (!originalShown ? originalStatus : undefined) ?? previewMessage ?? imageDescription;
+  const imageStatus = [...new Set([previewMessage, !originalShown ? originalStatus : undefined].filter(Boolean))].join(" ") || imageDescription;
   const saving = download.outcome === "started", savedBytes = download.saveProgress;
   const savePending = isNativeSavePending(download.outcome);
   const saved = savedCopy || download.outcome === "saved";
   const canReveal = savedCopy && typeof (downloadSurface.current?.ownerDocument ?? surfaceDocument)?.defaultView?.piikRevealDownload === "function";
   const originalNotice = !imageOpen && !download.busy && !previewBusy && !savePending ? originalStatus : undefined;
-  const cardStatus = originalNotice && (download.error === "saved_copy_missing"
-    || download.error === "reveal_saved_copy_failed" || download.error === "download_failed")
-    ? `${downloadMessage} ${originalNotice}`
-    : originalNotice ?? downloadMessage ?? (!imageOpen ? previewMessage : undefined);
+  const cardStatus = [...new Set([downloadMessage, !imageOpen ? previewMessage : undefined, originalNotice].filter(Boolean))].join(" ");
   return <div className="c3-attachment" ref={downloadSurface}>
     <div className="c3-attachment-file"><Glyph name={saved ? "check" : "fileDown"} size={21} />
       <div><Tooltip overflow={{ text: file.name, selector: "strong" }}><strong>{file.name}</strong></Tooltip><small>{fileSize(file.size)}</small></div>
@@ -152,7 +149,6 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
             void client.revealSavedCopy(key, file, surface).catch(() => {}).finally(() => setRevealing(false));
             return;
           }
-          setPreviewError(null);
           void client.download(key, file, inlineImage, surface ?? undefined).catch(() => {});
         }} />
     </div>

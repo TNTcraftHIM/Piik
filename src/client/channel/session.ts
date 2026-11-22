@@ -496,6 +496,7 @@ export class ChannelSession {
       const forwardingKey = JSON.stringify([event.state.channel.id, event.selfProfile.id]);
       const forwardingLimit = resumed ? this.view.forwardingLimit : readRoomPreferences().forwardingLimitByIdentity[forwardingKey] ?? -1;
       this.forwardingBudget ??= this.conversation.forwardingBudget();
+      if (resumed) this.forwardingBudget?.reconnected();
       this.patch({ sessionId: event.sessionId, self: event.selfProfile, profiles: new Map([[event.selfProfile.id, event.selfProfile]]), connection: "connected", error: null, siteURL: this.siteURL(), forwardingLimit });
       this.readings.clear();
       for (const room of event.state.channel.rooms) if (room.reading) this.readingRooms.add(room.id);
@@ -567,6 +568,7 @@ export class ChannelSession {
         }
       });
     } else if (event.type === "room_reply") {
+      if (event.requestId) this.forwardingBudget?.capacity_reply(event.requestId);
       const request = event.requestId ? this.requests.get(event.requestId) : undefined;
       if (!request || request.roomId !== event.roomId || !event.requestId) return;
       this.requests.delete(event.requestId);
@@ -594,6 +596,7 @@ export class ChannelSession {
       }
     } else if (event.type === "signal") this.media.signal(event.pairId, event.payload);
     else if (event.type === "ack" || event.type === "error") {
+      if (event.requestId) this.forwardingBudget?.capacity_reply(event.requestId);
       const request = event.requestId ? this.requests.get(event.requestId) : null;
       if (request && event.requestId) {
         this.requests.delete(event.requestId);
@@ -752,16 +755,18 @@ export class ChannelSession {
   private applyForwarding(sessionId: string, state: ChannelSnapshot, userId: string | undefined): void {
     const limit = this.view.forwardingLimit;
     const result = userId && this.forwardingBudget
-      ? JSON.parse(this.forwardingBudget.apply(limit < 0 ? undefined : limit, userId, JSON.stringify(state))) as {
+      ? JSON.parse(this.forwardingBudget.apply(limit < 0 ? undefined : limit, sessionId, userId, JSON.stringify(state))) as {
         snapshot: Pick<ChannelSnapshot, "watchBytes" | "pairs" | "files">;
-        refusals: ChannelCommand[];
-      } : { snapshot: state, refusals: [] };
+        commands: ChannelCommand[];
+        capacity: (ChannelCommand & { requestId: string })[];
+      } : { snapshot: state, commands: [], capacity: [] };
     const { pairs, files, watchBytes } = result.snapshot;
     this.watchBytes.update(sessionId, watchBytes, pairs);
     this.media.update(sessionId, { ...state, pairs });
     if (userId) this.attachments.update(sessionId, { domainId: state.channel.id, userId }, files, state.channel.rooms, pairs);
     else this.attachments.reset();
-    for (const command of result.refusals) this.send(command);
+    for (const update of result.capacity) this.write(update);
+    for (const command of result.commands) this.send(command);
   }
 
   private siteURL(): string {
@@ -2321,7 +2326,8 @@ export class ChannelSession {
 
   private observeScreen(id: string, stream: MediaStream): void {
     stream.getVideoTracks()[0]?.addEventListener("ended", () => {
-      if (this.local.get(id)?.stream === stream) void this.stopScreen(id).catch(() => {});
+      // This source ended. A new picker, player or App input still owns its preparation.
+      if (this.local.get(id)?.stream === stream) void this.retireScreenPublication(id).catch(() => {});
     }, { once: true });
   }
 
@@ -3382,15 +3388,19 @@ export class ChannelSession {
       if (selection && !selection.committing) this.finishSourceSelection(roomId, selection);
       this.screenShares.delete(roomId);
     }
-    const browser = this.local.get(publicationId);
     // stop_capture also retires a pending Native candidate for a Browser incumbent.
-    const nativeStop = this.app?.stopCapture(publicationId);
+    await Promise.all([this.app?.stopCapture(publicationId), this.retireScreenPublication(publicationId)]);
+  });
+
+  private async retireScreenPublication(publicationId: string): Promise<void> {
+    const browser = this.local.get(publicationId);
     if (browser) this.retireCapture(publicationId);
     this.retireWatch(publicationId);
+    this.forgetInactiveScreen(publicationId);
     this.refreshActivity();
-    await Promise.all([nativeStop, browser && this.view.connection === "connected"
-      ? this.request({ type: "unpublish", publicationId }, undefined, browser.roomId) : undefined]);
-  });
+    if (browser && this.view.connection === "connected")
+      await this.request({ type: "unpublish", publicationId }, undefined, browser.roomId);
+  }
 
   private voiceCaptureEnded(id: string, stream: MediaStream): void {
     const capture = this.local.get(id);

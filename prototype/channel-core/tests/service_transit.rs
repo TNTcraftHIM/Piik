@@ -429,6 +429,12 @@ fn exact_service_lease_carries_assigned_media_and_bytes_without_room_read() {
         "forwarding is not a personal file operation"
     );
 
+    command(&mut net, service, json!({"type":"byte_branch_refused","roomId":room,"downstreamId":destination,
+        "target":{"kind":"file","messageSeq":1,"attachmentId":attachment.id,"sourceId":source}}));
+    assert!(net.state(service).files.is_empty());
+    command(&mut net, service, json!({"type":"forwarding_available","roomId":room,"kind":"file"}));
+    assert_eq!(net.state(service).files[0].downstream, [destination]);
+
     let activity = start_peer_watch(&mut net, host, viewer, &room, source);
     let bytes = &net.state(service).watch_bytes[0];
     assert_eq!(bytes.upstream, Some(source));

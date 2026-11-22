@@ -57,6 +57,8 @@ In a 3.0 test room, select **Start sharing → Browser → Watch together** and 
 
 Direct links can point to video files, supported HLS streams or static DASH (`.mpd`) streams without DRM.
 
+**Sync video on its webpage** syncs playback of the selected video only. To show the rest of the page, choose **Browser → Share a screen** and share the browser tab.
+
 If you're already watching a shared webpage video in the Windows App, open **Playback settings → Open webpage and select video** to use the website's player. The current video keeps playing while you choose. Select the player to switch, or close the chooser to keep watching in Piik. When the source supports direct playback, use **Playback settings → Play directly from website** to return to Piik's player. For YouTube, press Play in the preview to switch.
 
 When viewers play directly from the site, each device loads the video independently. To switch episodes, the sharer selects **Switch source** and viewers join the new activity.

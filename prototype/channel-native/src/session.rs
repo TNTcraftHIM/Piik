@@ -1336,6 +1336,9 @@ impl Session {
                         pairs: BTreeSet::new(),
                     });
                 }
+                if let Some(live) = &mut self.live {
+                    live.forwarding_budget.reconnected();
+                }
                 self.recovery = None;
                 self.state(state, socket).await?;
                 if let Some(admission) = &self.service_admission {
@@ -1525,6 +1528,7 @@ impl Session {
                 }
             }
             Event::Ack { request_id: id } => {
+                if let Some(live) = &mut self.live { live.forwarding_budget.capacity_reply(&id); }
                 let room_id = self
                     .opening
                     .iter()
@@ -1602,6 +1606,7 @@ impl Session {
                 request_id: Some(id),
                 result,
             } => {
+                if let Some(live) = &mut self.live { live.forwarding_budget.capacity_reply(&id); }
                 if self
                     .pending_captures
                     .get(&id)
@@ -1664,6 +1669,7 @@ impl Session {
                 }
             }
             Event::Error { code, request_id } => {
+                if let (Some(live), Some(id)) = (&mut self.live, &request_id) { live.forwarding_budget.capacity_reply(id); }
                 let opening_id = self.opening.iter().find_map(|(room, opening)| {
                     (request_id.as_ref() == Some(&opening.request_id)).then(|| room.clone())
                 });
@@ -2716,7 +2722,8 @@ impl Session {
                 .find(|session| session.id == live.session)
                 .ok_or_else(|| anyhow!("session_expired"))?
                 .user_id;
-            let refusals = live
+            let updates = live.forwarding_budget.capacity_updates(live.session, self.forwarding_limit, &state);
+            let forwarding_commands = live
                 .forwarding_budget
                 .apply(self.forwarding_limit, user_id, &mut state);
             live.pairs = state.pairs.iter().map(|pair| pair.id).collect();
@@ -2769,8 +2776,11 @@ impl Session {
                 socket,
             )
             .await?;
-            for refusal in refusals {
-                write(socket, &refusal, None).await?;
+            for update in updates {
+                write(socket, &update.command, update.request_id.as_deref()).await?;
+            }
+            for command in forwarding_commands {
+                write(socket, &command, None).await?;
             }
         }
         Ok(())

@@ -580,9 +580,11 @@ test.each(["before", "after"])("a new room writer completes a pending download w
     expect(open).toHaveBeenCalledOnce();
     expect(start).toHaveBeenCalledOnce();
     expect(cancel).not.toHaveBeenCalled();
+    expect(files.progress(key)).toBeNull();
     if (timing === "after") {
       expect(removeEntry).not.toHaveBeenCalled();
       await expect((await files.content(key, attachment, controller.signal)).text()).resolves.toBe("GIF89a");
+      expect(files.progress(key)).toBeNull();
       files.reset();
       await vi.waitFor(() => expect(removeEntry).toHaveBeenCalledOnce());
     }

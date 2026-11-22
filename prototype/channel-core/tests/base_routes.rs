@@ -4122,7 +4122,7 @@ fn refused_file_branch_recovers_on_the_shared_pair_without_retiring_voice() {
     command(
         &mut network,
         relay,
-        json!({"type":"file_branch_refused","roomId":room,"messageSeq":seq,"attachmentId":attachment.id,"sourceId":a,"downstreamId":c}),
+        json!({"type":"byte_branch_refused","roomId":room,"target":{"kind":"file","messageSeq":seq,"attachmentId":attachment.id,"sourceId":a},"downstreamId":c}),
     );
     let waiting = &network.state(viewer).files[0];
     assert!(waiting.receiving);
@@ -4273,7 +4273,7 @@ fn check_hosted_file_shortcut(warmed: bool) {
     command(
         &mut network,
         relay,
-        json!({"type":"file_branch_refused","roomId":room,"messageSeq":seq,"attachmentId":attachment.id,"sourceId":a,"downstreamId":c}),
+        json!({"type":"byte_branch_refused","roomId":room,"target":{"kind":"file","messageSeq":seq,"attachmentId":attachment.id,"sourceId":a},"downstreamId":c}),
     );
     assert_eq!(network.state(viewer).files[0].upstream, None);
     assert_eq!(voice_flow(&network), Some(active_voice));
@@ -5341,6 +5341,16 @@ fn reader_relay_reserves_capacity_across_publications_before_proof() {
         )
     );
     assert_eq!(output_peers(&network), [second_viewer_session]);
+
+    subscribe_screen(&mut network, viewer, first);
+    assert!(screen_input(&network, viewer, relay, first).is_none());
+    let mut budget = piik_channel_core::forwarding::ForwardingBudget::default();
+    for update in budget.capacity_updates(relay, Some(2), network.state(reader)) {
+        command(&mut network, reader, serde_json::to_value(update).unwrap());
+    }
+    assert!(screen_input(&network, viewer, relay, first).is_some());
+    assert_eq!(screen_input(&network, second_viewer, relay, second), Some(second_branch));
+
     browse(&mut network, reader, &room, false);
     assert!(screen_input(&network, viewer, relay, first).is_none());
     assert!(screen_input(&network, second_viewer, relay, second).is_none());
@@ -5523,4 +5533,92 @@ fn in_flight_room_updates_merge_at_the_room_host() {
     );
     assert!(policy.hidden);
     assert_eq!(policy.voice_bitrate, 96000);
+}
+
+#[test]
+fn busy_room_retries_the_personal_limit_on_the_next_snapshot() {
+    use piik_channel_core::{forwarding::ForwardingBudget, wire::Request};
+    let mut network = RoomNetwork::new();
+    let socket = Uuid::new_v4();
+    let (session, _) = join(&mut network, socket, None);
+    let room = network.create(socket, RoomAccess::Public, false);
+    let mut pending = Vec::new();
+    for _ in 0..64 {
+        let request = Request::parse(&json!({"type":"browse","roomId":room,"active":true}).to_string()).unwrap();
+        let effect = network.authority.handle(socket, request, 100);
+        assert!(effect.events.iter().any(|(_, event)| matches!(event, Event::HostInput { .. })));
+        pending.push(effect);
+    }
+    let mut budget = ForwardingBudget::default();
+    let update = budget.capacity_updates(session, Some(1), network.state(socket)).into_iter()
+        .find(|u| matches!(&u.command, piik_channel_core::wire::Command::RelayCapacity { room_id, .. } if room_id == &room)).unwrap();
+    let refused = network.command(socket, serde_json::to_value(update).unwrap());
+    let id = refused.events.iter().find_map(|(_, event)| match event {
+        Event::Error { code, request_id } if code == "room_busy" => request_id.as_deref(),
+        _ => None,
+    }).unwrap();
+    budget.capacity_reply(id);
+    for effect in pending { network.deliver(effect); }
+    for update in budget.capacity_updates(session, Some(1), network.state(socket)) {
+        command(&mut network, socket, serde_json::to_value(update).unwrap());
+    }
+    assert_eq!(network.state(socket).channel.rooms.iter().find(|r| r.id == room).unwrap().relay_override, Some(1));
+}
+
+#[test]
+fn watch_uses_an_alternate_while_a_file_keeps_the_relays_only_slot() {
+    use piik_channel_core::forwarding::ForwardingBudget;
+    let mut net = RoomNetwork::new();
+    let [source, relay, alternate, viewer, reader] = [(); 5].map(|_| Uuid::new_v4());
+    let [s, r, a, v, x] = [source, relay, alternate, viewer, reader].map(|socket| join(&mut net, socket, None).0);
+    let room = net.create(source, RoomAccess::Public, false);
+    let file_room = net.create(source, RoomAccess::Public, false);
+    browse(&mut net, relay, &room, true);
+    browse(&mut net, relay, &file_room, true);
+    for (from, to, id) in [(source, relay, s), (relay, reader, r), (relay, viewer, r)] {
+        warm_pair(&mut net, from, to, id);
+    }
+    let (seq,file) = offer_file(&mut net,source,&file_room,"watch-quota.bin");
+    let receive = |enabled| json!({"type":"file_receive","roomId":file_room,"messageSeq":seq,"attachmentId":file.id,"enabled":enabled});
+    command(&mut net,reader,receive(true));
+    let initial = net.state(relay).clone();
+    assert_eq!(initial.files.iter().find(|p|p.room_id==file_room).unwrap().downstream, [x]);
+    let watch = Uuid::new_v4();
+    let resource = Uuid::new_v4();
+    let byte_source=json!({"sessionId":s,"resourceId":resource,"format":"file"});
+    command(&mut net,source,json!({"type":"start_watch","roomId":room,"id":watch,
+        "source":{"kind":"media","url":"https://example.com/movie.mp4"},
+        "playback":{"timeline":"media","position":0,"paused":false,"rate":1,"anchorTime":0},
+        "byteSource":byte_source}));
+    command(&mut net,viewer,json!({"type":"join_watch","roomId":room,"id":watch,"mode":"peer"}));
+    let upstream = |net:&RoomNetwork| net.state(viewer).watch_bytes.iter().find(|p|p.activity_id==watch).unwrap().upstream;
+    assert_eq!(upstream(&net),Some(r));
+    browse(&mut net,alternate,&room,true);
+    warm_pair(&mut net,source,alternate,s);
+    warm_pair(&mut net,alternate,viewer,a);
+    assert_eq!(upstream(&net),Some(r));
+    let user=initial.sessions.iter().find(|p|p.id==r).unwrap().user_id;
+    let mut budget=ForwardingBudget::default();
+    assert!(budget.apply(Some(1),user,&mut initial.clone()).is_empty());
+    let before=net.state(relay).clone();
+    let commands=budget.apply(Some(1),user,&mut before.clone());
+    assert_eq!(commands.len(),1);
+    let refuse=serde_json::to_value(&commands[0]).unwrap();
+    assert_eq!(refuse,json!({"type":"byte_branch_refused","roomId":room,"downstreamId":v,
+        "target":{"kind":"watch","activityId":watch,"source":byte_source}}));
+    command(&mut net,relay,refuse.clone());
+    assert_eq!(upstream(&net),Some(a));
+    assert_eq!(net.state(relay).files.iter().find(|p|p.room_id==file_room).unwrap().downstream, [x]);
+    command(&mut net,reader,receive(false));
+    let freed=net.state(relay).clone();
+    let wakes=budget.apply(Some(1),user,&mut freed.clone());
+    assert_eq!(wakes.len(),1);
+    let wake=serde_json::to_value(&wakes[0]).unwrap();
+    assert_eq!(wake,json!({"type":"forwarding_available","roomId":room,"kind":"file"}));
+    command(&mut net,relay,wake);
+    assert_eq!(upstream(&net),Some(a));
+    let replacement=json!({"sessionId":s,"resourceId":Uuid::new_v4(),"format":"file"});
+    command(&mut net,source,json!({"type":"set_watch_byte_source","roomId":room,"id":watch,"byteSource":replacement}));
+    let late=net.command(relay,refuse);
+    assert!(late.events.iter().any(|(_,event)| matches!(event, Event::RoomReply { result:piik_channel_core::host::RoomResult::Error{code}, .. } if code=="unassigned_watch_branch")));
 }

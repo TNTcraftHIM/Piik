@@ -30,8 +30,8 @@ rtc-stun = "=0.21.1"
 rtc-turn = "=0.21.1"
 rtc-crypto = { version = "=0.21.1", default-features = false, features = ["crypto-ring"] }
 sansio = "1"
-portmapper = { version = "=0.20.0", git = "https://github.com/TNTcraftHIM/net-tools", rev = "0a61bb64facc469d015f5ba537dda57c94cdcb17", default-features = false }
-netwatch = { version = "=0.20.0", git = "https://github.com/TNTcraftHIM/net-tools", rev = "0a61bb64facc469d015f5ba537dda57c94cdcb17" }
+portmapper = { version = "=0.20.0", git = "https://github.com/TNTcraftHIM/net-tools", rev = "fac75a3ab554df1edecec353920ec7af673f533a", default-features = false }
+netwatch = { version = "=0.20.0", git = "https://github.com/TNTcraftHIM/net-tools", rev = "fac75a3ab554df1edecec353920ec7af673f533a" }
 netdev = { version = "=0.46.3", default-features = false, features = ["gateway"] }
 socket2 = { version = "0.6", features = ["all"] }
 noq-udp = "=1.4.0"

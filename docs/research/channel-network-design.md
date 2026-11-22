@@ -686,6 +686,10 @@ New pairs share its lazy initialization and current interface snapshot.
 Concrete socket bindings need no interface scan. Android enumerates interfaces
 when acquiring a wildcard-bound pair because its netwatch backend does not
 provide interface-change notifications.
+While desktop ICE is still finding its first path, a newly usable IPv6 address
+can become a candidate on the same wildcard socket and transport instance.
+The existing candidate bound applies. First-path selection stops this observer;
+retirement cancels it and waits for its task, including queued updates.
 The Server entry binds both address families on the actual HTTP port by default,
 before opening domain data. Configured listeners must all bind successfully;
 IPv6 sockets are v6-only so both families can use that port. Local binding and an
@@ -701,7 +705,8 @@ Each Native pair may map its actual default-gateway IPv4 socket using the
 [portmapper client](../../prototype/channel-native/README.md#rtc-dependency). Its
 background probe, protocol selection and renewal stay with that library;
 mapping does not delay ICE or replace IPv6 and STUN candidates. Mapped addresses
-use the existing candidate signaling. Pair retirement joins the address watcher
+use the existing candidate signaling. Pair retirement cancels address producers
+before waiting for unrelated delivery queues, then joins the address watcher
 and requests best-effort deactivation through the library's existing lifecycle.
 
 Prepare a replacement, prove it usable, commit, then release old work. The Channel wire exposes room topology as sessionIds and pairs. Each activity

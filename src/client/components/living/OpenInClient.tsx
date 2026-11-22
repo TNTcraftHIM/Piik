@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AppDiscovery } from "../../native/discovery";
 import { clientNavigationURL } from "../../channel/client-navigation";
+import { ChannelDiagnosisHelp } from "../../channel/components/ChannelDiagnosisHelp";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 
@@ -57,10 +58,11 @@ export function OpenInClient({ discovery, targetURL, active, disabled, downloadU
     <div className="lr-app-connect-actions">
       {managementURL && !disabled ? <a className="lr-btn" href={clientNavigationURL(managementURL, targetURL)} target="_blank" rel="noopener noreferrer">{content}</a>
         : <button type="button" className="lr-btn" disabled={disabled || state === "busy"} aria-busy={state === "busy" || undefined} onClick={() => void open()}>{content}</button>}
-      {failed && <a className="lr-btn" href={downloadURL} target="_blank" rel="noopener noreferrer" aria-label={t("client.connect.download")}>
+      {(state === "unsupported" || state === "unavailable") && <a className="lr-btn" href={downloadURL} target="_blank" rel="noopener noreferrer" aria-label={t("client.connect.download")}>
         <Glyph name="arrowDown" size={16} /><span>{t("client.connect.download")}</span>
       </a>}
     </div>
     {failed && <p role="status">{t(state === "unsupported" ? "client.connect.navigationUnsupported" : state === "incompatible" ? "native.incompatible" : "client.connect.unavailable")}</p>}
+    {state === "incompatible" && <ChannelDiagnosisHelp diagnosis={{ topic: "appVersion" }} />}
   </>;
 }

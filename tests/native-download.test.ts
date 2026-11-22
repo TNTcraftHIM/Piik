@@ -176,6 +176,47 @@ test("one attachment save owns the request through its native result", async () 
   files.reset(); expect(f.anchors).toEqual([]);
 });
 
+test("same-named saves keep their results across room switches, retries, and history removal", async () => {
+  const f = fixture(), files = new ChannelAttachments(async () => {}, async () => {});
+  const file = { id: "image", name: "same.gif", size: 6, mediaType: "image/gif" as const, sha256: "a".repeat(64) };
+  const first = { roomId: "first", messageSeq: 1, attachmentId: file.id };
+  const second = { ...first, roomId: "second" };
+  const inline = { data: btoa("GIF89a"), mediaType: file.mediaType, original: true, width: 1, height: 1 };
+  const scope = { domainId: "domain", userId: "reader" };
+  const select = (roomId: string) => files.update("endpoint", scope, [], [first, second].map(key => ({
+    id: key.roomId, authorized: true, available: true, reading: key.roomId === roomId,
+  })) as ChannelRoom[], []);
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
+  vi.spyOn(FileStore.prototype, "removeMessages").mockResolvedValue();
+  try {
+    select(first.roomId);
+    await files.download(first, file, inline);
+    const firstUrl = f.clicked[0].href;
+    select(second.roomId);
+    const otherFile = { ...file, sha256: "b".repeat(64) };
+    await files.download(second, otherFile, { ...inline, data: btoa("GIF87a") });
+    const secondUrl = f.clicked[1].href;
+    expect(f.clicked.map(link => link.download)).toEqual([file.name, file.name]);
+    expect(secondUrl).not.toBe(firstUrl);
+    f.report(secondUrl, { status: "progress", received: 3, total: 6 });
+    f.report(firstUrl, "failed");
+    expect(files.status(first)).toMatchObject({ outcome: "failed", error: "download_failed" });
+    expect(files.status(second)).toMatchObject({ outcome: "started", error: null, saveProgress: { received: 3, total: 6 } });
+
+    select(first.roomId);
+    await files.download(first, file, inline);
+    const retryUrl = f.clicked[2].href;
+    f.report(firstUrl, "cancelled");
+    expect(files.status(first)).toMatchObject({ outcome: "requested", error: null });
+    files.removeMessages(first.roomId, seq => seq <= first.messageSeq);
+    f.report(retryUrl, "saved");
+    expect(files.status(first)).toEqual({ busy: false, error: null });
+    expect(f.anchors).toEqual([f.clicked[1]]);
+    f.report(secondUrl, "saved");
+    expect(files.status(second)).toMatchObject({ outcome: "saved", error: null, saveProgress: undefined });
+  } finally { files.reset(); }
+});
+
 test("a missing saved copy cannot release a pending native save from another surface", async () => {
   const home = fixture(), panel = fixture(true, "https://owned.test", false);
   const files = new ChannelAttachments(async () => {}, async () => {});

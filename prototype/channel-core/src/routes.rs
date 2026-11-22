@@ -22,15 +22,9 @@ impl Default for RelayLimits {
 impl RelayLimits {
     pub fn get(&self, endpoint: Uuid, source: Uuid) -> usize {
         if endpoint == source {
-            if let Some(limit) = self.source_direct_limit {
-                return limit;
-            }
+            return self.source_direct_limit.unwrap_or(self.default);
         }
-        match self.overrides.get(&endpoint).copied() {
-            Some(0) if endpoint == source => self.default,
-            Some(capacity) => capacity,
-            None => self.default,
-        }
+        self.overrides.get(&endpoint).copied().unwrap_or(self.default)
     }
 }
 
@@ -1124,7 +1118,7 @@ mod tests {
         assert!(order.iter().all(|v| plan.confirmed_path(*v, &screen)));
     }
     #[test]
-    fn zero_limit_exempts_only_the_source() {
+    fn personal_limits_apply_only_to_relays() {
         let id = Uuid::from_u128;
         let mut limits = RelayLimits {
             shared: Default::default(),
@@ -1133,7 +1127,7 @@ mod tests {
             overrides: [(id(1), 1), (id(2), 4), (id(3), 3)].into(),
         };
         assert_eq!(limits.get(id(1), id(2)), 1);
-        assert_eq!(limits.get(id(2), id(2)), 4);
+        assert_eq!(limits.get(id(2), id(2)), 2);
         assert_eq!(limits.get(id(3), id(2)), 3);
         for endpoint in [id(1), id(2), id(3)] {
             limits.overrides.insert(endpoint, 0);

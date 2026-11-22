@@ -14,7 +14,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
 export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 41;
+export const CHANNEL_PROTOCOL = 42;
 export function isIncompatibleProtocol(code: string): boolean {
   return code === "incompatible_protocol" || code.endsWith(": incompatible_protocol");
 }
@@ -310,7 +310,9 @@ export type ChannelCommand =
   | ({ type: "file_offer"; sha256: string; available: boolean } & ChannelFileKey)
   | ({ type: "file_receive"; enabled: boolean } & ChannelFileKey)
   | { type: "observe_files"; roomId: string; observationId: string; keys: [number, string][] }
-  | ({ type: "file_branch_refused"; downstreamId: string; sourceId: string } & ChannelFileKey)
+  | { type: "byte_branch_refused"; roomId: string; downstreamId: string; target:
+      | { kind: "file"; messageSeq: number; attachmentId: string; sourceId: string }
+      | { kind: "watch"; activityId: string; source: WatchByteSource } }
   | { type: "forwarding_available"; roomId: string; kind?: "voice" | "file" | "screen" }
   | ({ type: "update_room"; roomId: string } & Partial<RoomSettings>)
   | { type: "enter_room"; roomId: string; password?: string; inviteKey?: string }

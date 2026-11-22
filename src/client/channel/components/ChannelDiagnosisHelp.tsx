@@ -4,7 +4,7 @@ import { diagnosisGuide, type ChannelDiagnosis } from "../diagnosis";
 import "./channel-diagnosis-help.css";
 
 export function ChannelDiagnosisHelp({ diagnosis, details }: {
-  diagnosis: ChannelDiagnosis;
+  diagnosis: Pick<ChannelDiagnosis, "topic">;
   details?: readonly CopyKey[];
 }) {
   const { lang, t } = useCopy();
