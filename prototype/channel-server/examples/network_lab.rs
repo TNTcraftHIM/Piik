@@ -170,10 +170,12 @@ async fn participant() -> Result<()> {
                     _ => None,
                 };
                 if let Some(state) = state {
-                    emit(json!({"type":"plan", "pairs":state.pairs.iter().map(|p| json!({"id":p.id,"peerId":p.peer_id,"preparation":p.udp_preparation,"rooms":p.rooms,"incoming":p.incoming,"outgoing":p.outgoing})).collect::<Vec<_>>()}));
+                    let room = state.channel.rooms.iter().find(|room| room.id == ROOM && room.available && room.authorized);
+                    let room_host_session_id = room.and_then(|room| room.delivery.as_ref()).map(|delivery| delivery.host_session_id);
+                    emit(json!({"type":"plan", "roomHostSessionId":room_host_session_id, "pairs":state.pairs.iter().map(|p| json!({"id":p.id,"peerId":p.peer_id,"preparation":p.udp_preparation,"rooms":p.rooms,"incoming":p.incoming,"outgoing":p.outgoing})).collect::<Vec<_>>()}));
                     snapshots.send_replace(Some(state.clone()));
                     peers.as_ref().unwrap().update(state.pairs, state.publications, state.files).await?;
-                    if !browsing && state.channel.rooms.iter().any(|room| room.id == ROOM && room.available && room.authorized) {
+                    if !browsing && room.is_some() {
                         send(&mut socket, Command::Browse { room_id: ROOM.into(), active: true, relay_capacity: None }).await?;
                         send(&mut socket, Command::Voice { room_id: ROOM.into(), joined: true, muted: true, deafened: false }).await?;
                         browsing = true;

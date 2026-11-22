@@ -14,6 +14,7 @@ import { channelConnectionGraph, channelConnectionRows, connectionSessionName, h
 import { collectNativeConnectionMetrics, type NativeMetricSamples } from "../native-connection-metrics";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import "./channel-connections.css";
+import "./channel-room-controls.css";
 
 interface Observations {
   scope: string;
@@ -32,15 +33,16 @@ export function ChannelConnectionReport({ state, roomId, sessionId, topology, me
   const rows = channelConnectionRows(state, sessionId, topology, metrics, t);
   const displayOnly = hasSelectedLocalDisplay(topology, sessionId);
   return <div className="c3-connection-report">
-    {!!graph?.endpointGroups.length && <section className="c3-connection-identities" aria-label={t("connection.samePersonEndpoints")}>
-      <p className="c3-connection-note">{t("connection.samePersonEndpoints")}</p>
+    {!!graph?.endpointGroups.length && <details className="c3-connection-identities c3-settings-details">
+      <summary>{t("connection.samePersonEndpoints")}</summary>
       <dl>{graph.endpointGroups.map(group => <div key={group.userId} style={{ borderInlineStartColor: participantColor(group.userId) }}>
         <dt><PawnSvg color={participantColor(group.userId)} identity={group.userId} /><span>{group.name}</span></dt>
         <dd>{group.endpoints.join(" / ")}</dd>
       </div>)}</dl>
-    </section>}
-    {graph && <section aria-label={t("host.topology")}><RouteGraph {...graph} emptyLabel={topology?.screen ? t("connection.noScreenPath") : undefined} /></section>}
-    {graph && (graph.edges.length > 0 || !topology?.screen) && <p className="c3-connection-note">{t(graph.edges.length ? "connection.pathLegend" : "connection.signalOnly")}</p>}
+    </details>}
+    {graph && <RouteGraph {...graph} label={topology?.screen ? undefined : t("connection.room")}
+      emptyLabel={t(topology?.screen ? "connection.noScreenPath" : "connection.noRoomLinks")} />}
+    {!!graph?.edges.length && <p className="c3-connection-note">{t(topology?.screen ? "connection.pathLegend" : "connection.roomLinkLegend")}</p>}
     {displayOnly && <p className="c3-connection-note">{t("connection.localDisplayHint")}</p>}
     {metrics.some(sample => sample.ownerSessionId !== sessionId && sample.media === "video")
       && <p className="c3-connection-note">{t("connection.appMetricScope")}</p>}

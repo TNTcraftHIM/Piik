@@ -7,15 +7,15 @@ import { parseArgs } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import { LabNetwork, command, type NatMode } from "./network-lab/network";
 import { echoWorker, udpProbe, filteringProbe } from "./network-lab/udp";
-import { checkCalibration, checkMapping } from "./network-lab/scenarios";
+import { checkCalibration, checkMapping, connectedNativePair } from "./network-lab/scenarios";
 import { readPacketFlows } from "./network-lab/packets";
 import { LabProcess } from "./network-lab/process";
 import { media } from "./network-lab/browser";
 
 const cases = {
   ordinary: "preserve NAT: Browser → real Native room → Browser; history/file/audio/decoded video",
-  prepared: "sequential NAT: real Core-required preparation → Native DataChannel",
-  recovery: "established Native pair: 50s UDP loss + remap → replacement DataChannel within 30s",
+  prepared: "sequential NAT: Core-required preparation → connected Native room-host pair",
+  recovery: "active Native transit: 50s UDP loss + remap → new physical pair and decoded media within 30s",
   media: "calibrated prepared Native transit: decoded media, 50s UDP loss and recovery through Native root → Native probe",
   "browser-relay": "Browser source → Native room → Browser relay → decoded viewer; 50s UDP loss and recovery",
 };
@@ -57,18 +57,19 @@ async function run(name: keyof typeof cases): Promise<void> {
   // Reuse this entry's worker with the same TypeScript loader (or bundled JS).
   const worker = (label: string, ns: string, task: string) => start(label, ns, process.execPath,
     [...process.execArgv, process.argv[1]!, "--worker", task]);
-  const browserCase = name === "ordinary" || name === "media" || name === "browser-relay";
+  const browserCase = name !== "prepared";
+  const nativeTransit = name === "media" || name === "recovery";
   const mapping = values.mapping as "sequential" | "descending";
   const modes: NatMode[] = name === "media" ? [mapping, mapping, "preserve", "preserve"]
-    : name === "browser-relay" ? ["preserve", "preserve", "preserve", "preserve"]
+    : name === "browser-relay" || name === "recovery" ? ["preserve", "preserve", "preserve", "preserve"]
     : name === "ordinary" ? ["preserve", "preserve", "preserve"]
-    : name === "prepared" ? [mapping, mapping] : ["preserve", "preserve"];
+    : [mapping, mapping];
   const result: any = { case: name, scope: cases[name], endpointMappings: modes, passed: false,
     sourceHead: process.env.SOURCE_HEAD ?? command("git", ["-C", source, "rev-parse", "HEAD"]), kernel: command("uname", ["-sr"]), node: process.version };
   let capture: LabProcess | undefined;
   try {
     network.setup(modes);
-    const fullConeNodes = name === "media" ? [2, 3] : name === "browser-relay" ? [1, 2, 3] : [];
+    const fullConeNodes = nativeTransit ? [2, 3] : name === "browser-relay" ? [1, 2, 3] : [];
     for (const index of fullConeNodes) network.exec(network.router(index), "nft", [
       "add chain ip lab_nat prerouting { type nat hook prerouting priority dstnat; policy accept; }\n"
       + `add rule ip lab_nat prerouting iifname \"wan0\" ip daddr ${network.publicIP(index)} meta l4proto udp dnat to 10.71.${index + 1}.2\n`
@@ -87,10 +88,11 @@ async function run(name: keyof typeof cases): Promise<void> {
       return { mapping: probe.records[0], filtering: value };
     }));
     await echo.close();
-    // Reachability, not fake plans, retains the Native transit path when Core
-    // would otherwise choose the legal Browser-to-Browser shortcut.
-    const blocked = name === "ordinary" ? [[1, 2], [2, 1]] : name === "media"
-      ? [[0, 3], [3, 0], [1, 2], [2, 1], [2, 3], [3, 2]] : [];
+    // Install the transit topology before joining so connection attempts and
+    // route selection see the same reachable peers as the media checks.
+    const blocked = name === "ordinary" ? [[1, 2], [2, 1]] : nativeTransit
+      ? [[0, 3], [3, 0], [1, 2], [2, 1], [2, 3], [3, 2]] : name === "browser-relay"
+      ? [[1, 2], [2, 1], [1, 3], [3, 1], [0, 3], [3, 0]] : [];
     for (const [index, peer] of blocked) network.exec(network.router(index!), "nft", [
       `add rule inet lab_filter faults ip daddr ${network.publicIP(peer!)} meta l4proto udp counter drop`,
     ]);
@@ -100,30 +102,17 @@ async function run(name: keyof typeof cases): Promise<void> {
     const domain = start("domain", network.wan, executable, ["domain", join(output, "domain")],
       { ...process.env, PIIK_CHANNEL_PORT: browserCase ? "9001" : "9000" });
     await domain.wait(() => domain.records.some(row => row.event?.type === "domain-ready"), signal);
-    if (browserCase) await media({ source, output, executable, network, start, signal, result }, name as "ordinary" | "media" | "browser-relay");
+    if (browserCase) await media({ source, output, executable, network, start, signal, result }, name);
     else {
       start("native-host", network.endpoint(0), executable, ["host", join(output, "host")]);
       const reader = start("native-reader", network.endpoint(1), executable, ["participant"]);
-      const ready = (since = 0) => reader.records.some(row => row.atMs >= since && row.event?.type === "native-command"
-        && row.event.command.type === "base_state" && row.event.command.ready);
-      await reader.wait(() => ready(), signal, 90_000);
-      result.plans = reader.records.filter(row => row.event?.type === "plan").flatMap(row => row.event.pairs);
-      if (name === "prepared") {
-        assert(result.plans.some((pair: any) => pair.preparation === "required"));
-        assert(reader.records.some(row => row.event?.type === "native-signal" && row.event.udp === "complete"));
-      } else {
-        const initial = result.plans.at(-1).id;
-        const blockedAt = Date.now();
-        network.setFault(0, "udp-block", 1);
-        await delay(50_000, undefined, { signal });
-        result.blocked = network.counters(0);
-        assert(result.blocked.faultDrops > 0, "Blackout must hit actual peer traffic");
-        result.remap = network.remapUDP(0);
-        const restored = Date.now(); network.setFault(0, "none", 1);
-        await reader.wait(() => ready(restored), signal, 30_000);
-        result.recovery = { blockedAt, restoredAt: restored, events: reader.records.filter(row => row.atMs >= blockedAt) };
-        assert(result.recovery.events.some((row: any) => row.event?.type === "plan" && row.event.pairs.some((pair: any) => pair.id !== initial)));
-      }
+      let initial: ReturnType<typeof connectedNativePair>;
+      await reader.wait(() => Boolean(initial = connectedNativePair(reader.records, { prepared: true })), signal, 90_000);
+      assert(initial);
+      result.nativePair = initial;
+      const { peerId } = initial;
+      result.plans = reader.records.filter(row => row.event?.type === "plan")
+        .flatMap(row => row.event.pairs.filter((pair: { peerId: string }) => pair.peerId === peerId));
       await delay(3000, undefined, { signal });
     }
     result.passed = true;
@@ -139,16 +128,17 @@ async function run(name: keyof typeof cases): Promise<void> {
         result.packetFlows = await readPacketFlows(join(output, "wan.pcap"));
         result.counters = modes.map((_, index) => network.counters(index));
         if (result.passed) {
-          const edges = result.mediaEdges ?? (name === "ordinary" ? [[0, 1], [0, 2]] : name === "media" ? [[0, 2], [0, 1], [1, 3]] : [[0, 1]]);
-          for (const [a, b] of edges) for (const [from, to] of [[a!, b!], [b!, a!]]) assert(result.packetFlows.some((flow: any) =>
+          const flows = name === "recovery" ? result.recoveryPacketFlows : result.packetFlows;
+          const edges = result.mediaEdges ?? (name === "ordinary" ? [[0, 1], [0, 2]] : nativeTransit ? [[0, 2], [0, 1], [1, 3]] : [[0, 1]]);
+          for (const [a, b] of edges) for (const [from, to] of [[a!, b!], [b!, a!]]) assert(flows.some((flow: any) =>
             flow.source === network.publicIP(from) && flow.destination === network.publicIP(to) && (browserCase ? flow.kind === "rtp" : flow.kind === "other")), "Actual peer wire traffic must cross every selected edge");
-          if (name === "media") {
-            const nativeMedia = result.packetFlows.filter((flow: any) => flow.kind === "rtp"
+          if (nativeTransit) {
+            const nativeMedia = flows.filter((flow: any) => flow.kind === "rtp"
               && flow.source === network.publicIP(0) && flow.destination === network.publicIP(1));
-            assert(nativeMedia.some((media: any) => result.packetFlows.some((feedback: any) => feedback.kind === "rtcp"
+            assert(nativeMedia.some((media: any) => flows.some((feedback: any) => feedback.kind === "rtcp"
               && feedback.source === media.destination && feedback.destination === media.source
               && feedback.sourcePort === media.destinationPort && feedback.destinationPort === media.sourcePort)),
-            "Prepared Native media tuple must carry reverse RTCP");
+            "Native media tuple must carry reverse RTCP");
           }
         }
       }

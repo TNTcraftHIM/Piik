@@ -296,8 +296,8 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const document = Object.assign(new EventTarget(), { visibilityState: "visible" });
   const native = {
     discoverNativeConnect: vi.fn(async (_options: AppDiscoveryOptions): Promise<string | null> => approval),
-    discoverNativeHealth: vi.fn(async (options: { signal: AbortSignal; waitForPermission?: boolean }): Promise<object | null> =>
-      options.waitForPermission === false && !activated ? null : {}),
+    discoverNativeHealth: vi.fn(async (_options: { signal: AbortSignal; waitForPermission?: boolean }): Promise<object | null> =>
+      activated || window.open.mock.calls.length > 0 ? {} : null),
     NativeCompatibilityError: class extends Error {},
   };
   const pending = { current: null as { controller: AbortController; cancel?: () => void } | null };
@@ -707,14 +707,16 @@ describe("App connection approval", () => {
 });
 
 describe("initial App discovery", () => {
-  it("leaves local permission untouched on mount and requests it only for an explicit connection", async () => {
+  it.each([true, false])("checks site approval on explicit connection when loopback permission still says prompt (approved: %s)", async approved => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL(`${site}/`) });
     const permission = Object.assign(new EventTarget(), { state: "prompt" });
     vi.stubGlobal("navigator", { permissions: { query: vi.fn(async () => permission) } });
     const fetcher = vi.fn(async (input: string) => {
-      const port = Number(new URL(input).port);
-      return Response.json({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
-        port, connectURL: `http://127.0.0.1:${port}/client` });
+      const url = new URL(input), port = Number(url.port);
+      if (port !== NATIVE_CLIENT_PORT_START) throw new TypeError("No fixture App");
+      const identity = { service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port };
+      if (url.pathname === "/health") return approved ? Response.json({ ...identity, token: "fixture-token" }) : new Response(null, { status: 403 });
+      return Response.json({ ...identity, connectURL: `http://127.0.0.1:${port}/client` });
     });
     vi.stubGlobal("fetch", fetcher);
     const page = mount(false, "idle", false, false, channelAppDiscovery, true);
@@ -724,8 +726,8 @@ describe("initial App discovery", () => {
       expect(page.setState).toHaveBeenLastCalledWith("idle");
       expect(page.showHelp).not.toHaveBeenCalled();
       await page.connect();
-      expect(fetcher).toHaveBeenCalled();
-      expect(page.setState).toHaveBeenLastCalledWith("approval");
+      expect(page.setState).toHaveBeenLastCalledWith(approved ? "ready" : "approval");
+      expect(page.onConnected).toHaveBeenCalledTimes(approved ? 1 : 0);
       expect(page.window.open).not.toHaveBeenCalled();
     } finally { page.cleanup(); vi.unstubAllGlobals(); }
   });

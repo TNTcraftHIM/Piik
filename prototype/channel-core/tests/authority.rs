@@ -353,6 +353,27 @@ fn state(effects: &Effects, connection: Uuid) -> &Snapshot {
         .expect("personalized state")
 }
 
+#[test]
+fn a_lobby_pair_broadcasts_once_on_dual_confirmation() {
+    let mut core = Authority::new("owner".into(), vec![]).unwrap();
+    let [first, second] = [(); 2].map(|_| Uuid::new_v4());
+    let (session, _, _) = join(&mut core, first, false, 0);
+    let (_, _, joined) = join(&mut core, second, false, 1);
+    let pair = joined.pairs.iter().find(|p| p.peer_id == session).unwrap().id;
+    let connected = json!({"type":"link_state","state":"connected","pairId":pair});
+    assert!(apply(&mut core, first, connected.clone(), 2).events.is_empty());
+    let confirmed = apply(&mut core, second, connected.clone(), 3);
+    for socket in [first, second] {
+        let snapshot = state(&confirmed, socket);
+        assert_eq!(snapshot.pairs.len(), 1);
+        assert_eq!(snapshot.pairs[0].id, pair);
+    }
+    assert!(apply(&mut core, first, connected.clone(), 4).events.is_empty());
+    assert!(apply(&mut core, second, connected, 4).events.is_empty());
+    let left = apply(&mut core, second, json!({"type":"leave"}), 5);
+    assert!(state(&left, first).pairs.is_empty());
+}
+
 #[cfg(feature = "sqlite")]
 mod support;
 

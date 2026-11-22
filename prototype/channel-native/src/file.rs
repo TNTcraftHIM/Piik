@@ -177,9 +177,6 @@ impl Files {
                         if links
                             .get(&peer)
                             .is_some_and(|link| link.senders.current(Lane::Control, token, true))
-                            && leases
-                                .get(&peer)
-                                .is_some_and(|lease| lease.rooms.contains(&key(&control).room_id))
                         {
                             core.control(peer, control, now())
                         } else {

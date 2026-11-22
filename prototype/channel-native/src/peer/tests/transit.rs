@@ -1,4 +1,4 @@
-//! Still-applicable source/base lifetime assertions, through current real endpoints.
+//! Still-applicable source and room data channel lifetime assertions, through current real endpoints.
 use super::*;
 use support::{vp8, Fixture};
 
@@ -495,7 +495,7 @@ async fn physical_failure_retires_only_that_source_and_keeps_other_flow_leases()
     result
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn early_base_channels_follow_physical_slots_until_room_projection_arrives() -> Result<()> {
+async fn early_room_data_channels_follow_physical_slots_until_room_projection_arrives() -> Result<()> {
     use crate::peer::transport::{Channel, ChannelEvent};
 
     async fn open(f: &mut Fixture, label: &str) -> Result<Arc<Channel>> {
@@ -599,12 +599,14 @@ async fn early_base_channels_follow_physical_slots_until_room_projection_arrives
             .await;
         f.until(|f| f.driver.pairs[&sink].reported.contains("room"))
             .await?;
-        ensure!(!f.driver.pairs[&sink].base_failed);
+        ensure!(!f.driver.pairs[&sink].room_data_failed);
+        let input = f.driver.pairs[&sink].input.as_ref().context("input probe")?.0;
         f.plans.last_mut().unwrap().rooms.clear();
         f.driver
             .update(f.plans.clone(), vec![f.publication.clone()], vec![])
             .await;
         ensure!(f.driver.pairs[&sink].dc.is_none() && f.driver.pairs[&sink].bulk.is_none());
+        ensure!(f.driver.pairs[&sink].input.as_ref().is_some_and(|channel| channel.0 == input));
         ensure!(!f.driver.pairs[&sink]
             .data
             .senders()
@@ -631,7 +633,7 @@ async fn early_base_channels_follow_physical_slots_until_room_projection_arrives
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn base_channel_failure_preserves_media_on_the_same_physical_pair() -> Result<()> {
+async fn room_data_channel_failure_preserves_media_on_the_same_physical_pair() -> Result<()> {
     fn take_reports(f: &mut Fixture) -> Vec<Command> {
         let mut reports = std::mem::take(&mut f.reported);
         let mut retained = Vec::new();
@@ -700,9 +702,9 @@ async fn base_channel_failure_preserves_media_on_the_same_physical_pair() -> Res
             for room in &plan.rooms {
                 ensure!(
                     replayed.iter().any(|command| matches!(command,
-                    Command::BaseState { room_id, pair_id, ready: true }
+                    Command::RoomDataState { room_id, pair_id, ready: true }
                     if room_id == room && *pair_id == plan.id)),
-                    "resync lost the installed base endpoint"
+                    "resync lost the installed room data channel"
                 );
             }
             ensure!(
@@ -728,20 +730,29 @@ async fn base_channel_failure_preserves_media_on_the_same_physical_pair() -> Res
                 && forwardable.iter().copied().collect::<HashSet<_>>() == expected,
             "resync must report each current picture flow once, not its source audio"
         );
-        f.driver.fail_base(sink).await;
-        ensure!(f.driver.pairs[&sink].base_failed && f.driver.pairs[&sink].connected());
+        f.driver.fail_room_data(sink).await;
+        ensure!(f.driver.pairs[&sink].room_data_failed && f.driver.pairs[&sink].connected());
         let lost = take_reports(&mut f);
         ensure!(lost.iter().any(|command| matches!(command,
-            Command::BaseState { pair_id, ready: false, .. } if *pair_id == sink)));
+            Command::RoomDataState { pair_id, ready: false, .. } if *pair_id == sink)));
         f.driver.resync().await;
         let replayed = take_reports(&mut f);
         ensure!(
             replayed.iter().any(|command| matches!(command,
-            Command::BaseState { pair_id, ready: false, .. } if *pair_id == sink))
+            Command::RoomDataState { pair_id, ready: false, .. } if *pair_id == sink))
                 && !replayed.iter().any(|command| matches!(command,
-                Command::BaseState { pair_id, ready: true, .. } if *pair_id == sink)),
-            "resync resurrected a failed base channel"
+                Command::RoomDataState { pair_id, ready: true, .. } if *pair_id == sink)),
+            "resync resurrected a failed room data channel"
         );
+        f.plans.last_mut().unwrap().rooms = vec!["new-room".into()];
+        f.driver.update(f.plans.clone(), vec![f.publication.clone()], vec![]).await;
+        f.until(|f| f.driver.pairs[&sink].reported.contains("new-room")).await?;
+        f.driver.resync().await;
+        let restored = take_reports(&mut f);
+        ensure!(restored.iter().any(|command| matches!(command,
+            Command::RoomDataState { pair_id, room_id, ready: true } if *pair_id == sink && room_id == "new-room")));
+        ensure!(!restored.iter().any(|command| matches!(command,
+            Command::RoomDataState { pair_id, room_id, .. } if *pair_id == sink && room_id == "room")));
         f.until(|f| {
             f.observed(&output.1, MediaKind::Video)
                 .is_some_and(|p| p.2.wrapping_sub(before.2) > 9000)

@@ -32,6 +32,7 @@ export function readStoredCopy(): Partial<CopyPrefs> {
 
 const stored = readStoredCopy();
 let explicit = Object.keys(stored).length > 0;
+let windowCopy: "following" | "chosen" | undefined;
 const state: CopyPrefs = {
   lang: resolveLang(typeof navigator === "undefined" ? undefined : navigator.language),
   ...stored,
@@ -61,6 +62,7 @@ function apply(next: Partial<CopyPrefs>): void {
 
 function commit(next: Partial<CopyPrefs>): void {
   explicit = true;
+  windowCopy = "chosen";
   apply(next);
   try {
     window.localStorage.setItem(LANG_STORAGE_KEY, state.lang);
@@ -74,7 +76,7 @@ function commit(next: Partial<CopyPrefs>): void {
 // without re-notify loops.
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (event) => {
-    if (event.key === LANG_STORAGE_KEY) {
+    if (event.key === LANG_STORAGE_KEY && windowCopy !== "following") {
       const stored = readStoredCopy();
       explicit = Object.keys(stored).length > 0;
       apply(stored);
@@ -85,8 +87,15 @@ if (typeof window !== "undefined") {
 // Non-React setter for local choices and product previews.
 export const setCopy = commit;
 
+/** The native utility window follows the main window until a local choice. */
+export function applyWindowCopy(lang: Lang): void {
+  if (windowCopy === "chosen") return;
+  windowCopy = "following";
+  apply({ lang });
+}
+
 export function hasCopyPreference(): boolean {
-  return explicit;
+  return explicit && windowCopy !== "following";
 }
 
 // Explicit launcher choices replace and persist the destination preference.

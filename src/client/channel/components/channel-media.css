@@ -38,7 +38,6 @@
 .c3-watch-shared progress::-webkit-progress-bar { background: var(--control-edge); }
 .c3-watch-shared progress::-webkit-progress-value { background: var(--action); }
 .c3-watch-player .c3-mini-volume { width: clamp(40px, 12cqi, 88px); flex: none; }
-.c3-watch-player > .c3-mini-controls { flex-wrap: nowrap; max-width: calc(100% - 20px); gap: clamp(2px, 1cqi, 6px); }
 .c3-mini-controls .lr-viewer-action-separator { display: block; width: 1px; height: 20px; margin-inline: 2px; background: var(--control-edge); }
 .c3-watch-player[data-thumbnail] .c3-watch-shared { flex: none; }
 .c3-watch-player[data-thumbnail] .c3-watch-timeline { display: none; }

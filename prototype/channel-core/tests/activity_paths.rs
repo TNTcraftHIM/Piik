@@ -49,19 +49,12 @@ fn pair(net: &RoomNetwork, socket: Uuid, peer: Uuid) -> &PairInfo {
         .unwrap()
 }
 
-fn confirm_pair(net: &mut RoomNetwork, room: &str, sockets: [Uuid; 2], pair: Uuid) {
+fn confirm_pair(net: &mut RoomNetwork, sockets: [Uuid; 2], pair: Uuid) {
     for socket in sockets {
         command(
             net,
             socket,
             json!({"type":"link_state","pairId":pair,"state":"connected"}),
-        );
-    }
-    for socket in sockets {
-        command(
-            net,
-            socket,
-            json!({"type":"base_state","roomId":room,"pairId":pair,"ready":true}),
         );
     }
 }
@@ -141,7 +134,7 @@ fn file_and_watch_use_the_confirmed_shortcut_while_voice_keeps_its_relay() {
             json!({"type":"subscribe","publicationId":screen,"enabled":true}),
         );
         let edge = pair(&net, socket, b_session).id;
-        confirm_pair(&mut net, &room, [socket, b], edge);
+        confirm_pair(&mut net, [socket, b], edge);
     }
     let mic = Uuid::new_v4();
     command(
@@ -224,7 +217,7 @@ fn file_and_watch_use_the_confirmed_shortcut_while_voice_keeps_its_relay() {
     assert_eq!(net.state(a).files[0].upstream, None);
     assert_eq!(selected_voice(&net, c, mic), voice);
 
-    confirm_pair(&mut net, &room, [a, c], ac);
+    confirm_pair(&mut net, [a, c], ac);
     assert_eq!(net.state(a).files[0].source_id, Some(c_session));
     assert_eq!(
         net.state(a).files[0].upstream,

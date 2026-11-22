@@ -92,12 +92,12 @@ export class ChannelAttachments {
     const id = fileKeyString(key), entry = this.savedReceipts.get(id), store = this.store;
     const view = surface.ownerDocument.defaultView;
     if (!entry || !store || !this.hasSavedCopy(key, attachment) || !view?.piikRevealDownload) return;
+    const previous = this.downloads.get(id);
     const result = await view.piikRevealDownload(entry.receipt);
     if (result === "cancelled") return;
     if (this.store !== store || this.savedReceipts.get(id) !== entry) return;
     if (result === "unavailable") this.savedReceipts.delete(id);
-    const previous = this.downloads.get(id);
-    if (!previous?.status.busy && previous?.status.outcome !== "started") {
+    if (this.downloads.get(id) === previous && !previous?.status.busy && !isNativeSavePending(previous?.status.outcome)) {
       if (result === "revealed") {
         if (previous?.status.error === "reveal_saved_copy_failed") previous.status = { ...previous.status, error: null };
       } else {
@@ -595,6 +595,7 @@ export class ChannelAttachments {
         const data = effect.type === "send_control" ? JSON.stringify(effect.control) : new Uint8Array(effect.frame);
         const allowed = () => this.current(runtime)
           && this.rooms.some(room => room.id === key.roomId && room.authorized && room.available)
+          && this.roomPeers.some(([id, rooms]) => id === peer && rooms.includes(key.roomId))
           && (terminal || !this.messageRemoved(key) && this.plans.some(plan => plan.roomId === key.roomId && plan.messageSeq === key.messageSeq
             && plan.attachment.id === key.attachmentId && (plan.upstream === peer || plan.downstream.includes(peer))));
         void this.sendData(peer, kind, data, allowed)

@@ -304,6 +304,11 @@ another topology planner or mandatory direct ICE connections.
    range requests. Cancel removes that recipient's demand; it does not retire
    delivery still needed by others. Release a shared flow after its last demand.
 
+A Pull from a known current peer can arrive before its room grant or byte assignment.
+File and forwarded webpage delivery retain bounded request metadata. Reading
+or sending bytes requires both the matching grant and plan. Cancellation, peer
+retirement or revocation retires the corresponding pending request.
+
 Range responses and cancellation are accepted only for their matching active
 request. Retrying establishes a new request.
 
@@ -501,20 +506,18 @@ directory entry; automatic recovery cannot recreate a removed room. Explicit
 backup import may restore an absent entry after authenticating as that room's
 creator. An archive's identifiers alone do not grant that authority.
 
-In the current prototype an online room's creator can delete its authoritative policy and
-history. The hosting runtime commits that local deletion before the domain
-confirms directory removal. Removing only a directory entry is a separate user
-intent: it retires room access and activity without deleting the host's data,
-even if that host comes online during confirmation. The UI offers this operation
-for an offline room. Downloaded files and participant-held copies retain their
-existing owners.
+In a lightweight channel, removing only the directory entry retires room access
+and activity. The creator keeps the local room data even if the host comes
+online during confirmation. The creator can also delete an online room's policy
+and history. Its writer commits that deletion before the channel confirms
+directory removal. If directory removal fails after the commit, the old binding
+retires and the offline entry remains available for explicit removal.
+An authorized deletion can finish after the requester disconnects.
 
-The two owners have separate stores. If local deletion commits but the directory
-cannot confirm removal, the old binding retires and the summary remains offline
-for explicit removal. Already-authorized deletion completion survives the
-requester's disconnect; a lost reply cannot keep a nonexistent host available.
-Existing directory membership and live binding/revision checks provide recovery
-without a second deletion ledger.
+Removing a Server-hosted room also deletes its authoritative policy and
+history. For an offline room, the channel withdraws the entry and saves the
+pending deletion until the Server confirms cleanup. The owner can retry after
+a restart. In both modes, participants keep the files they saved independently.
 
 ### Backups
 

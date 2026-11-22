@@ -156,10 +156,13 @@ directions afterward. The maintained decreasing-map control also recovered
 picture and source sound after its 50-second interruption. These are isolated
 kernel-NAT results, not physical-network success rates.
 
-`ordinary` covers the real Native room's history, file and Browser media path;
-`prepared` covers the prepared Native DataChannel; `recovery` covers its established
-UDP loss and remapping; `media` covers decoded media through a prepared Native
-transit probe, followed by a 50-second outage and decoded recovery through that
+`ordinary` covers the real Native room's history, file and Browser media path.
+`prepared` requires completed UDP preparation and a connected physical pair to
+the current Native room host. `recovery` keeps a screen and audio publication
+active during 50 seconds of UDP loss and a transit-router UDP remap. The
+receiver must resume decoding through a replacement Native pair to the same host.
+`media` covers decoded media through a prepared Native transit probe, followed
+by a 50-second outage and decoded recovery through that
 transit while the original source stays active. `browser-relay` checks decoded
 picture and source sound after a 50-second UDP outage around a Browser relay,
 retaining the healthy source.
@@ -183,8 +186,8 @@ build the same Native example and Browser WASM, then use the existing namespace,
 and cleanup owners. These five controls use NAT and UDP filtering, not seeded
 netem delay/loss, so system `iproute2` is sufficient. Build identity, tool versions,
 logs, bounded packet captures and the existing result are retained for seven days,
-including failed runs. Passing a DataChannel control does not establish decoded
-media recovery; this job does not establish physical capture or Internet success rates.
+including failed runs. The media controls check decoded recovery in the lab.
+Physical capture and Internet success rates require separate observations.
 
 The separate `public-peer` control opens a normal Android App's temporary public
 room from the runner's Chrome. Prepare an isolated App-hosted room and Native
@@ -413,6 +416,16 @@ From C clicking Watch to its first video frame callback, one run took
 selected at most one screen output in each run. This fixture exercises reuse
 of a confirmed pair on loopback. Independent-network coverage remains open.
 
+### Recovery after UDP blackout
+
+Linux network namespaces isolated the relay and its router. Both fixtures used
+Native and Browser WASM builds from tree `bee3869e`. After a 50.180 s UDP
+blackout and a relay NAT address change, the Native path restored decoded
+picture and source audio 8.013 s after traffic resumed. The Browser relay path
+restored both in 10.406 s after a 50.140 s blackout. Both passed the 30 s
+recovery window with the selected route, continuity and WAN RTP verified.
+These timings describe the two Linux lab fixtures.
+
 ### Recovery after a screen relay leaves
 
 Four Chromium sessions at `9bb55c3e` shared a synthetic screen through a
@@ -441,6 +454,21 @@ Raising the relay's file limit to two resumed the pending download. The
 recipient verified all 12,582,929 bytes against the sender's SHA-256. The
 room used the routing implementation from `5493e339` and a synthetic
 microphone. This run measures admission and recovery on a shared relay.
+
+### Idle physical connection cost
+
+On 2026-11-21, on one Windows host, two Chromium 156 instances using the production transport
+adapter on local ICE paths reached 64 idle pairs per endpoint. At 64, each
+endpoint exchanged 7.825 KiB/s of UDP payload. Growing from two to 64 pairs
+added 26.8 and 25.9 MiB to the respective working sets. Two debug Windows
+Native driver processes reached 64 pairs with staggered handshakes. In the
+later 24-second idle window each used about 6% of one logical CPU and exchanged
+about 15,100 UDP payload bytes/s. Two burst controls from 20 to 40 pairs confirmed
+38 and 34 pairs. Their harness held signaling until both plan updates finished;
+the instrumented run first observed a preparation timeout 23.64 seconds after
+submission. These adapter measurements used local signaling,
+zero business payload and same-host ICE. Mobile cost and public NAT success
+require measurements on those networks.
 
 ### First frame on a cold and reused connection
 

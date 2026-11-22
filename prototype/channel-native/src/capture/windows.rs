@@ -27,7 +27,7 @@ use windows::{
         System::Threading::{
             CreateEventW, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
         },
-        UI::WindowsAndMessaging::{GetWindowThreadProcessId, IsWindow},
+        UI::WindowsAndMessaging::{GetWindowThreadProcessId, InternalGetWindowText, IsWindow},
     },
 };
 use windows_capture::{
@@ -137,17 +137,31 @@ fn creation_time(pid: u32) -> Result<u64> {
         Ok(((creation.dwHighDateTime as u64) << 32) | creation.dwLowDateTime as u64)
     }
 }
+fn catalog_window_title(window: &Window, pid: u32) -> Option<String> {
+    if pid != std::process::id() {
+        return window.title().ok();
+    }
+    // GetWindowText synchronously messages same-process windows. Read the stored
+    // caption so a busy App window cannot stall the shared source catalog.
+    let mut caption = [0u16; 4097];
+    let len = unsafe { InternalGetWindowText(HWND(window.as_raw_hwnd()), &mut caption) };
+    (len > 0).then(|| String::from_utf16_lossy(&caption[..len as usize]))
+}
+
+#[cfg(test)]
+mod catalog_tests;
+
 pub fn targets() -> Result<Vec<Target>> {
     let mut targets = Vec::new();
     for window in Window::enumerate()? {
-        let Ok(title) = window.title() else { continue };
-        if title.trim().is_empty() {
-            continue;
-        }
         // Inaccessible/protected processes are not selectable input identities.
         let Ok(pid) = window.process_id() else {
             continue;
         };
+        let Some(title) = catalog_window_title(&window, pid) else { continue };
+        if title.trim().is_empty() {
+            continue;
+        }
         let Ok(created) = creation_time(pid) else {
             continue;
         };

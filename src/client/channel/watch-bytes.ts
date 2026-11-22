@@ -116,18 +116,21 @@ export class WatchBytes {
         const requestId = effect.type === "send_control" ? effect.control.requestId : effect.requestId;
         const pending = effect.type === "send_control" && effect.control.type === "pull" ? this.pending.get(requestId) : undefined;
         const current = () => this.current(runtime) && !failedResponses.has(requestId) && (!pending || this.pending.get(requestId) === pending);
-        const allowed = () => current() && this.plans.some(plan => plan.activityId === key.activityId && plan.roomId === key.roomId
+        // A terminal frame can retire an old plan while the pair still serves this room.
+        const roomGranted = () => this.roomPeers.some(([peer, rooms]) => peer === effect.peer && rooms.includes(key.roomId));
+        const terminalAllowed = () => this.current(runtime) && roomGranted();
+        const allowed = () => current() && roomGranted() && this.plans.some(plan => plan.activityId === key.activityId && plan.roomId === key.roomId
           && sameSource(plan.source, source) && (plan.upstream === effect.peer || plan.downstream.includes(effect.peer)));
         const data = effect.type === "send_chunk" ? Uint8Array.from(effect.frame)
           : this.controlFrame(runtime, effect.control);
-        void this.send(effect.peer, effect.type === "send_chunk" ? "chunk" : "control", data, terminal ? () => this.current(runtime) : allowed)
+        void this.send(effect.peer, effect.type === "send_chunk" ? "chunk" : "control", data, terminal ? terminalAllowed : allowed)
           .then(() => { if (pending && current()) pending.sent(); })
           .catch(() => {
             if (!current() || terminal) return;
             if (effect.type === "send_chunk") {
               failedResponses.add(requestId);
               const error = this.controlFrame(runtime, { type: "error", key, requestId, code: "watch_path_unavailable" });
-              return this.send(effect.peer, "control", error, () => this.current(runtime)).catch(() => {});
+              return this.send(effect.peer, "control", error, terminalAllowed).catch(() => {});
             }
             this.effects(runtime, runtime.delivery.request_failed(requestId, "watch_path_unavailable"));
           });

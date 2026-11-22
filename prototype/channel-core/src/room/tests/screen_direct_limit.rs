@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn source_session_owns_limit_across_updates_and_transfer() {
     let id = Uuid::from_u128;
-    let (mut room, mut endpoints) = screen_on_room_base();
+    let (mut room, mut endpoints) = screen_room();
     let source = id(3);
     let target = id(4);
     let screen = id(10);
@@ -53,11 +53,11 @@ fn source_session_owns_limit_across_updates_and_transfer() {
 #[test]
 fn source_direct_limit_replans_live_outputs() {
     let id = Uuid::from_u128;
-    let (prior, endpoints) = screen_on_room_base();
+    let (prior, endpoints) = screen_room();
     let mut room = RoomRuntime::new(prior.policy.clone());
     let source = id(3);
     let screen = id(10);
-    room.set_host_session(source);
+    room.set_writer(source, crate::wire::HostingMode::Lightweight);
     room.set_default_relay_capacity(1);
     room.set_relay_capacity(endpoints[&source].member, source, Some(2))
         .unwrap();

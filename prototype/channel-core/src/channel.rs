@@ -9,7 +9,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
 const MAX_ACTIVE_ROOMS: usize = 32;
@@ -157,10 +157,7 @@ impl crate::host::RoomProjection {
     }
 
     fn room_data_grants(&self) -> impl Iterator<Item = ((Uuid, Uuid), String)> + '_ {
-        self.base_links
-            .iter()
-            .map(|link| (link.parent.min(link.child), link.parent.max(link.child)))
-            .chain(self.byte_pairs())
+        self.byte_pairs()
             .collect::<BTreeSet<_>>()
             .into_iter()
             .map(|pair| (pair, self.summary.id.clone()))
@@ -230,6 +227,7 @@ impl Channel {
             .user_id;
         let mut events = Vec::new();
         let mut broadcast = false;
+        let mut confirmed_peer = None;
         let mut leave = false;
         let mut replies = Vec::new();
         match command {
@@ -341,26 +339,14 @@ impl Channel {
                         .transports
                         .connected(session_id, connection, peer_connection, pair_id)
                     {
-                        let rooms: Vec<_> = self
-                            .remote
-                            .iter()
-                            .filter(|(_, room)| {
-                                let scope = room.planning_sessions(self.service_endpoint, None);
-                                scope.contains(&session_id) && scope.contains(&peer)
-                            })
-                            .map(|(id, _)| id.clone())
-                            .collect();
-                        for room in rooms {
-                            if let Ok(event) = self.host_input(&room, HostAction::Sync) {
-                                events.push(event);
-                            }
-                        }
+                        broadcast = true;
+                        confirmed_peer = Some(peer);
                     }
-                } else if self.can_prepare_udp(session_id, peer) && self.transports.prepare(pair_id)
+                } else if self.can_prepare_udp(session_id, peer) && self.transports.prepare(pair_id, now)
                 {
                     broadcast = true;
                 } else {
-                    self.transports.retire(pair_id, &self.identity);
+                    self.transports.retire(pair_id, &self.identity, now);
                     let affected: Vec<_> = self
                         .remote
                         .iter_mut()
@@ -392,6 +378,22 @@ impl Channel {
         }
         if broadcast {
             self.reconcile();
+        }
+        if let Some(peer) = confirmed_peer {
+            let rooms: Vec<_> = self
+                .remote
+                .iter()
+                .filter(|(_, room)| {
+                    let scope = room.planning_sessions(self.service_endpoint, None);
+                    scope.contains(&session_id) && scope.contains(&peer)
+                })
+                .map(|(id, _)| id.clone())
+                .collect();
+            for room in rooms {
+                if let Ok(event) = self.host_input(&room, HostAction::Sync) {
+                    events.push(event);
+                }
+            }
         }
         Ok(Outcome {
             events,
@@ -460,11 +462,7 @@ impl Channel {
                     view.transit_endpoint = view.transit_endpoint.filter(|endpoint| {
                         Some(*endpoint) == self.service_endpoint
                             && endpoint.session_id == *session
-                            && (projection
-                                .base_links
-                                .iter()
-                                .any(|link| link.parent == *session || link.child == *session)
-                                || projection.flows.iter().any(|flow| {
+                            && (projection.flows.iter().any(|flow| {
                                     flow.sender == *session || flow.receiver == *session
                                 })
                                 || byte_transit(view))
@@ -602,11 +600,6 @@ impl Channel {
                             .iter()
                             .any(|p| p.id == flow.publication_id)
                 });
-                projection.base_links.retain(|link| {
-                    [link.parent, link.child]
-                        .into_iter()
-                        .all(|s| routable_sessions.contains(&s))
-                });
             }
         }
         self.reconcile_transports(&endpoints);
@@ -740,7 +733,7 @@ impl Channel {
             | Command::JoinWatch { room_id, .. }
             | Command::StopWatch { room_id, .. }
             | Command::Browse { room_id, .. }
-            | Command::BaseState { room_id, .. }
+            | Command::RoomDataState { room_id, .. }
             | Command::FileOffer { room_id, .. }
             | Command::FileBranchRefused { room_id, .. }
             | Command::ForwardingAvailable { room_id, .. }
@@ -1200,7 +1193,7 @@ impl Channel {
             } if self.hosting_mode == HostingMode::Hosted => {
                 HostAction::RemoveHostedRoom { context }
             }
-            Command::BaseState {
+            Command::RoomDataState {
                 room_id,
                 pair_id,
                 ready,
@@ -1209,9 +1202,9 @@ impl Channel {
                     .peer(context.session_id, pair_id)
                     .ok_or("unassigned_pair")?;
                 if !self.transports.serves_room(pair_id, &room_id) {
-                    return Err("not_assigned_base");
+                    return Err("not_assigned_room_data");
                 }
-                HostAction::BaseState {
+                HostAction::RoomDataState {
                     context,
                     peer,
                     ready,
@@ -1256,7 +1249,7 @@ impl Channel {
 
     pub(crate) fn current_report(&self, session: Uuid, command: &Command) -> bool {
         match command {
-            Command::BaseState {
+            Command::RoomDataState {
                 room_id, pair_id, ..
             } => {
                 self.peer(session, *pair_id).is_some()
@@ -1439,18 +1432,6 @@ impl Channel {
         if projection.views.len() > MAX_SESSIONS
             // Each publication can retain committed and prepared tree flows.
             || projection.flows.len() > MAX_PUBLICATIONS * (MAX_TREE_EDGES + MAX_TREE_EDGES)
-            || projection
-                .base_links
-                .iter()
-                .filter(|link| link.selected)
-                .count()
-                > MAX_TREE_EDGES
-            || projection
-                .base_links
-                .iter()
-                .filter(|link| !link.selected)
-                .count()
-                > 2
         {
             return Err("invalid_room_projection");
         }
@@ -1467,6 +1448,20 @@ impl Channel {
                         .views
                         .get(&voice.session_id)
                         .is_some_and(|v| v.authorized)
+            })
+        {
+            return Err("invalid_room_projection");
+        }
+        // The room nominates relays inside its existing participant and service grants.
+        let relay_scope = RemoteRoom::projected_sessions(binding, projection, self.service_endpoint, None);
+        let service = self.service_endpoint
+            .filter(|_| projection.allow_service_relay)
+            .map(|service| service.session_id);
+        if projection.relay_session_ids.len() > MAX_SESSIONS
+            || !projection.relay_session_ids.is_subset(&relay_scope)
+            || projection.relay_session_ids.iter().any(|id| {
+                projection.views.get(id).is_some_and(|view| view.relay_override == Some(0))
+                    || (self.hosting_mode == HostingMode::Hosted && *id == binding.session && Some(*id) != service)
             })
         {
             return Err("invalid_room_projection");
@@ -1546,11 +1541,7 @@ impl Channel {
             if !endpoints.contains_key(recipient)
                 || view.transit_endpoint.is_some()
                     && (Some(*recipient) != self.service_endpoint.map(|service| service.session_id)
-                        || !(projection
-                            .base_links
-                            .iter()
-                            .any(|link| link.parent == *recipient || link.child == *recipient)
-                            || projection.flows.iter().any(|flow| {
+                        || !(projection.flows.iter().any(|flow| {
                                 flow.sender == *recipient || flow.receiver == *recipient
                             })
                             || byte_transit(view)))
@@ -1697,17 +1688,30 @@ impl Channel {
                 }
             }
         }
+        // A room may finish planning a confirmed path after another room reports its loss.
+        // Validate its lineage and grants, then retire it before publishing the projection.
+        let retired: BTreeSet<_> = self
+            .transports
+            .failures()
+            .filter(|edge| {
+                crate::transport::DiscoveryEdge::current(edge.endpoints, &self.identity).as_ref()
+                    == Some(edge)
+                    && !self.transports.has_pair(edge.endpoints)
+                    && !binding.failed_pairs.contains_key(&edge.endpoints)
+            })
+            .map(|edge| edge.endpoints)
+            .collect();
         // Signaling can reconnect while the same admitted transport continues delivering.
         let current_pair = |parent: Uuid, child: Uuid| {
             let pair = (parent.min(child), parent.max(child));
-            (confirmed.contains(&pair), self.transports.has_pair(pair))
+            (confirmed.contains(&pair) || retired.contains(&pair), self.transports.has_pair(pair))
         };
         let previous_view =
             |child: Uuid| room.projection.as_ref().and_then(|p| p.views.get(&child));
         for ((seq, _), ((author, attachment), tree)) in &file_trees {
             if !valid_byte_tree(tree, |parent, child| {
-                let (confirmed, admitted) = current_pair(parent, child);
-                confirmed
+                let (confirmed_or_retired, admitted) = current_pair(parent, child);
+                confirmed_or_retired
                     || admitted
                         && previous_view(child).is_some_and(|v| {
                             v.files.iter().any(|old| {
@@ -1724,8 +1728,8 @@ impl Channel {
         }
         for (activity, tree) in &watch_trees {
             if !valid_byte_tree(tree, |parent, child| {
-                let (confirmed, admitted) = current_pair(parent, child);
-                confirmed
+                let (confirmed_or_retired, admitted) = current_pair(parent, child);
+                confirmed_or_retired
                     || admitted
                         && previous_view(child).is_some_and(|v| {
                             v.watch_bytes.iter().any(|old| {
@@ -1815,8 +1819,8 @@ impl Channel {
             .collect();
         let mut inputs = BTreeSet::new();
         for flow in &projection.flows {
-            let (confirmed, admitted) = current_pair(flow.sender, flow.receiver);
-            if !(confirmed || (admitted && previous.contains_key(&flow.id)))
+            let (confirmed_or_retired, admitted) = current_pair(flow.sender, flow.receiver);
+            if !(confirmed_or_retired || (admitted && previous.contains_key(&flow.id)))
                 || !flow_ids.insert(flow.id)
                 || !inputs.insert((flow.publication_id, flow.receiver, flow.selected))
                 || flow.sender == flow.receiver
@@ -1892,80 +1896,6 @@ impl Channel {
                 current = flows[&input_id];
             }
         }
-        for link in &projection.base_links {
-            if link.room_id != id
-                || link.parent == link.child
-                || ![link.parent, link.child].into_iter().all(|s| {
-                    projection
-                        .views
-                        .get(&s)
-                        .is_some_and(|view| view.authorized || view.transit_endpoint.is_some())
-                })
-            {
-                return Err("invalid_room_projection");
-            }
-        }
-        let base_root = projection.base_root(binding.session);
-        if self.hosting_mode == HostingMode::Lightweight && base_root != binding.session {
-            return Err("invalid_room_projection");
-        }
-        let mut base_parents = BTreeMap::new();
-        for link in projection.base_links.iter().filter(|link| link.selected) {
-            if link.child == base_root
-                || base_parents.insert(link.child, link.parent).is_some()
-            {
-                return Err("invalid_room_projection");
-            }
-        }
-        for child in base_parents.keys() {
-            let mut path = BTreeSet::new();
-            let mut node = *child;
-            while node != base_root {
-                if !path.insert(node) {
-                    return Err("invalid_room_projection");
-                }
-                node = *base_parents.get(&node).ok_or("invalid_room_projection")?;
-            }
-        }
-        let candidates: Vec<_> = projection
-            .base_links
-            .iter()
-            .filter(|link| !link.selected)
-            .collect();
-        let mut proposed = base_parents.clone();
-        if let [link] = candidates.as_slice() {
-            if !base_parents.contains_key(&link.child) || base_parents[&link.child] == link.parent {
-                return Err("invalid_room_projection");
-            }
-            proposed.insert(link.child, link.parent);
-        } else if let [first, second] = candidates.as_slice() {
-            let (entry, branch) = if first.child == second.parent {
-                (*first, *second)
-            } else {
-                (*second, *first)
-            };
-            if entry.child != branch.parent
-                || entry.parent == branch.child
-                || base_parents.get(&branch.child) != Some(&entry.parent)
-                || base_parents
-                    .get(&entry.child)
-                    .is_some_and(|parent| *parent != branch.child)
-            {
-                return Err("invalid_room_projection");
-            }
-            proposed.insert(entry.child, entry.parent);
-            proposed.insert(branch.child, branch.parent);
-        }
-        for link in candidates {
-            let mut path = BTreeSet::new();
-            let mut parent = link.child;
-            while parent != base_root {
-                if !path.insert(parent) {
-                    return Err("invalid_room_projection");
-                }
-                parent = *proposed.get(&parent).ok_or("invalid_room_projection")?;
-            }
-        }
         let room = self.remote.get_mut(id).unwrap();
         let previous_scope = room.planning_sessions(self.service_endpoint, None);
         let binding = room.binding.as_mut().unwrap();
@@ -1997,14 +1927,8 @@ impl Channel {
         room.projection = Some(next);
         // A room can project a lease after another activity exhausted this edge.
         let mut invalidated = false;
-        for edge in self.transports.failures() {
-            let (first, second) = edge.endpoints;
-            if crate::transport::DiscoveryEdge::current(edge.endpoints, &self.identity).as_ref() == Some(edge)
-                && !self.transports.has_pair(edge.endpoints)
-                && !room.binding.as_ref().unwrap().failed_pairs.contains_key(&edge.endpoints)
-            {
-                invalidated |= room.failed_pair(first, second);
-            }
+        for (first, second) in retired {
+            invalidated |= room.failed_pair(first, second);
         }
         self.reconcile();
         let mut accepted = self.finish_host_output(id, output, true);
@@ -2111,7 +2035,7 @@ impl Channel {
         session: Uuid,
         publication_id: Option<Uuid>,
     ) -> Result<crate::topology::RoomTopology, &'static str> {
-        use crate::topology::{BaseEdge, BaseTopology, RoomTopology, ScreenEdge, ScreenTopology};
+        use crate::topology::{RoomPair, RoomTopology, ScreenEdge, ScreenTopology};
         let member = self.identity.member(
             self.identity
                 .sessions
@@ -2163,6 +2087,24 @@ impl Channel {
             })
             .transpose()?;
         let relay = self.service_relay(view.room.can_manage && projection.allow_service_relay);
+        let mut scope = room.planning_sessions(self.service_endpoint, None);
+        scope.retain(|id| {
+            self.identity
+                .sessions
+                .get(id)
+                .is_some_and(|s| s.connection.is_some())
+        });
+        let confirmed: BTreeSet<_> = self.transports.confirmed_pairs(&self.identity).collect();
+        let pairs = self
+            .transports
+            .admitted_pairs()
+            .filter(|(first, second)| scope.contains(first) && scope.contains(second))
+            .map(|(first, second)| RoomPair {
+                first,
+                second,
+                confirmed: confirmed.contains(&(first, second)),
+            })
+            .collect();
         Ok(RoomTopology {
             service_available: relay.available,
             service_enabled: relay.enabled,
@@ -2171,19 +2113,8 @@ impl Channel {
                 .views
                 .iter()
                 .find_map(|(session, view)| view.transit_endpoint.is_some().then_some(*session)),
-            base: BaseTopology {
-                root_session_id: projection.base_root(binding.session),
-                edges: projection
-                    .base_links
-                    .iter()
-                    .filter(|link| link.selected)
-                    .map(|link| BaseEdge {
-                        sender: link.parent,
-                        receiver: link.child,
-                        ready: link.ready,
-                    })
-                    .collect(),
-            },
+            session_ids: scope.into_iter().collect(),
+            pairs,
             screen,
         })
     }
@@ -2254,7 +2185,6 @@ impl Channel {
                         snapshot.room.delivery = Some(RoomDelivery {
                             host_session_id: binding.session,
                             binding_id: binding.id,
-                            next_hops: room_next_hops(session_id, &projection.base_links),
                         });
                         if snapshot.room.available
                             && binding.applied_revision >= binding.projection_floor
@@ -2347,29 +2277,6 @@ impl Channel {
             ice_servers: self.ice_servers.clone(),
         }
     }
-}
-
-fn room_next_hops(session: Uuid, links: &[crate::transport::BaseLink]) -> BTreeMap<Uuid, Uuid> {
-    let mut result = BTreeMap::new();
-    let mut pending = VecDeque::from([(session, session)]);
-    while let Some((current, first)) = pending.pop_front() {
-        for link in links.iter().filter(|link| link.selected) {
-            let next = if link.parent == current {
-                link.child
-            } else if link.child == current {
-                link.parent
-            } else {
-                continue;
-            };
-            if next == session || result.contains_key(&next) {
-                continue;
-            }
-            let first = if current == session { next } else { first };
-            result.insert(next, first);
-            pending.push_back((next, first));
-        }
-    }
-    result
 }
 
 #[derive(Clone, Deserialize, Serialize)]

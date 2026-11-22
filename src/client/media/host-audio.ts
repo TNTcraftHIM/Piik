@@ -96,7 +96,7 @@ export class HostAudio {
       request.signal.throwIfAborted();
       if (!stream.getAudioTracks().some(track => track.readyState === "live")) throw new Error("No live microphone");
       input = new MicrophoneInput(stream, context, settings.volume, () => {
-        if (this.microphone === input) { this.microphoneRequest?.abort(); this.clearMicrophone(); }
+        if (this.microphone === input) this.clearMicrophone();
       });
       const node = this.context.createMediaStreamSource(input.stream);
       node.connect(this.gain!);

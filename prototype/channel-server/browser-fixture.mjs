@@ -61,6 +61,7 @@ function captureProbe(name) {
     const warn = console.warn.bind(console);
     console.warn = (...args) => { warnings.push(args.map(value => String(value))); if (warnings.length > 20) warnings.shift(); warn(...args); };
     const blockedPeers = new Set(), pairPeers = new Map(), flowBindings = new Map(), flowStreams = new Map(), senders = [], channelOwners = new Map();
+    const unreachablePeers = new Set();
     let videoStall = null;
     let retainedSource = null;
     let blockedOffers = 0;
@@ -79,6 +80,10 @@ function captureProbe(name) {
         counts[direction][type]++;
       }
       for (const pair of event.state?.pairs ?? []) {
+        if (!pairPeers.has(pair.id) && unreachablePeers.has(pair.peerId)) {
+          // Let the session apply this projection before reporting its transport failure.
+          setTimeout(() => window.__channelGate?.session.media.peers.get(pair.id)?.transport.fail(), 0);
+        }
         pairPeers.set(pair.id, pair.peerId);
         for (const flow of [...pair.incoming, ...pair.outgoing]) flowBindings.set(flow.id, flow);
       }
@@ -466,6 +471,7 @@ function captureProbe(name) {
             missingStatsIds: retainedSource.statsIds.filter(id => !rows.some(row => row.statsId === id)) } : null };
       },
       blockPeer(sessionId) { blockedPeers.add(sessionId); },
+      rejectPeer(sessionId) { unreachablePeers.add(sessionId); blockedPeers.add(sessionId); },
       unblockPeer(sessionId) { blockedPeers.delete(sessionId); },
       async limitVideo(publicationId, peerId, maxFramerate, scaleResolutionDownBy) {
         const session = window.__channelGate.session;

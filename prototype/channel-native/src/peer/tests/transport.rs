@@ -159,7 +159,7 @@ async fn source_ended_before_ready_fails_only_its_current_flow() -> Result<()> {
             data,
             state,
             dc_open: false,
-            base_failed: false,
+            room_data_failed: false,
             reported: HashSet::new(),
             deadline: None,
             overflow: Arc::new(AtomicBool::new(false)),
@@ -379,7 +379,7 @@ async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()>
             data,
             state,
             dc_open: false,
-            base_failed: false,
+            room_data_failed: false,
             reported: HashSet::new(),
             deadline: None,
             overflow: Arc::new(AtomicBool::new(false)),
@@ -605,19 +605,19 @@ async fn fixed_udp_selects_each_bound_address_and_preserves_wildcard_sending() -
     use crate::peer::tests::support::{endpoint, exchange, open};
 
     for wildcard in [false, true] {
-        let reserved = std::net::UdpSocket::bind("127.0.0.1:0")?;
-        let port = reserved.local_addr()?.port();
-        drop(reserved);
-        let selected = SocketAddr::from(([127, 0, 0, 2], port));
         let bindings = if wildcard {
-            vec![(SocketAddr::from(([0, 0, 0, 0], port)), None)]
+            vec![("0.0.0.0:0".parse()?, None)]
         } else {
+            let reserved = std::net::UdpSocket::bind("127.0.0.1:0")?;
+            let port = reserved.local_addr()?.port();
             vec![
                 (SocketAddr::from(([127, 0, 0, 1], port)), None),
-                (selected, None),
+                (SocketAddr::from(([127, 0, 0, 2], port)), None),
             ]
         };
-        let server = Runtime::new(Some(ServerUdp::bind(&bindings)?));
+        let fixed = ServerUdp::bind(&bindings)?;
+        let selected = SocketAddr::from(([127, 0, 0, 2], fixed.sockets[0].local_addr()?.port()));
+        let server = Runtime::new(Some(fixed));
         let remote = Runtime::new(Some(ServerUdp::bind(&[("127.0.0.3:0".parse()?, None)])?));
         let (sender, mut candidates) = endpoint(&server, Uuid::new_v4(), None).await?;
         let (receiver, mut events) = endpoint(&remote, Uuid::new_v4(), None).await?;

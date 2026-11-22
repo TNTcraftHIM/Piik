@@ -87,7 +87,7 @@ describe("opt-in Browser diagnostics", () => {
     const { ChannelTransport } = await import("../src/client/channel/transport");
     const release = debug.installBrowserDebug();
     const transport = new ChannelTransport({ polite: true, iceServers: [], send: vi.fn(), receive: vi.fn(),
-      connected: vi.fn(), base: vi.fn(), failed: vi.fn() });
+      connected: vi.fn(), roomData: vi.fn(), failed: vi.fn() });
     const error = new Event("error");
     Object.assign(error, { error: new Error("Synthetic browser diagnostic") });
     page.dispatchEvent(error);

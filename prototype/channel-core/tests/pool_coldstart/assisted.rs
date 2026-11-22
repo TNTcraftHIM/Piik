@@ -28,7 +28,7 @@ fn first_assisted_subscription_connects_both_legs_and_returns_to_ordinary_viewin
     let room = net.create(owner, RoomAccess::Public, false);
     let screen = publish_screen(&mut net, owner, &room);
     for socket in [owner, browser, native] {
-        assert!(net.state(socket).pairs.is_empty());
+        no_payload_grants(&net, socket);
     }
     command(
         &mut net,

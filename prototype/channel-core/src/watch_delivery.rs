@@ -169,6 +169,7 @@ impl WatchDelivery {
         plans: Vec<WatchBytePlan>,
         room_peers: Vec<(Uuid, Vec<String>)>,
     ) -> Vec<WatchEffect> {
+        let previous_peers = std::mem::take(&mut self.room_peers);
         self.room_peers = room_peers
             .into_iter()
             .map(|(peer, rooms)| (peer, rooms.into_iter().collect()))
@@ -214,10 +215,11 @@ impl WatchDelivery {
             .deferred
             .iter()
             .filter_map(|(id, p)| {
-                if !self
-                    .room_peers
-                    .get(&p.peer)
-                    .is_some_and(|rooms| rooms.contains(&p.key.room_id))
+                if !self.room_peers.contains_key(&p.peer)
+                    || (previous_peers
+                        .get(&p.peer)
+                        .is_some_and(|rooms| rooms.contains(&p.key.room_id))
+                        && !self.grants(p.peer, &p.key.room_id))
                 {
                     return Some((*id, "watch_path_unavailable"));
                 }
@@ -239,13 +241,14 @@ impl WatchDelivery {
             .deferred
             .iter()
             .filter_map(|(id, p)| {
-                self.plans
-                    .get(&(p.key.room_id.clone(), p.key.activity_id))
-                    .is_some_and(|plan| {
-                        plan.downstream.contains(&p.peer)
-                            && (plan.source.session_id == self.session || plan.upstream.is_some())
-                    })
-                    .then_some(*id)
+                (self.grants(p.peer, &p.key.room_id)
+                    && self
+                        .plans
+                        .get(&(p.key.room_id.clone(), p.key.activity_id))
+                        .is_some_and(|plan| {
+                            plan.downstream.contains(&p.peer) && self.can_read(plan)
+                        }))
+                .then_some(*id)
             })
             .collect();
         for id in ready {
@@ -292,6 +295,17 @@ impl WatchDelivery {
             .flat_map(|id| self.stop(id, "watch_path_unavailable", true))
             .collect()
     }
+    fn grants(&self, peer: Uuid, room_id: &str) -> bool {
+        self.room_peers
+            .get(&peer)
+            .is_some_and(|rooms| rooms.contains(room_id))
+    }
+    fn can_read(&self, plan: &WatchBytePlan) -> bool {
+        plan.source.session_id == self.session
+            || plan
+                .upstream
+                .is_some_and(|peer| self.grants(peer, &plan.room_id))
+    }
     fn pull(
         &mut self,
         consumer: Option<Uuid>,
@@ -300,8 +314,12 @@ impl WatchDelivery {
         offset: u64,
         length: usize,
     ) -> Vec<WatchEffect> {
+        if consumer.is_some_and(|peer| !self.room_peers.contains_key(&peer)) {
+            return vec![];
+        }
+        let granted = consumer.is_none_or(|peer| self.grants(peer, &key.room_id));
         let reject = |code: &str| match consumer {
-            Some(peer) => vec![WatchEffect::SendControl {
+            Some(peer) if granted => vec![WatchEffect::SendControl {
                 peer,
                 control: WatchControl::Error {
                     key: key.clone(),
@@ -309,35 +327,28 @@ impl WatchDelivery {
                     code: code.into(),
                 },
             }],
+            Some(_) => vec![],
             None => vec![WatchEffect::Failed {
                 request_id,
                 code: code.into(),
             }],
         };
-        if consumer.is_some_and(|peer| {
-            !self
-                .room_peers
-                .get(&peer)
-                .is_some_and(|rooms| rooms.contains(&key.room_id))
-        }) {
-            return vec![];
-        }
         if length == 0 || length > WATCH_WINDOW_BYTES || offset.checked_add(length as u64).is_none()
         {
             return reject("invalid_watch_range");
         }
-        if self.pending.len() + self.deferred.len() >= WATCH_MAX_PENDING
-            || self.pending.contains_key(&request_id)
-            || self.deferred.contains_key(&request_id)
-        {
+        if self.pending.contains_key(&request_id) || self.deferred.contains_key(&request_id) {
             return reject("watch_read_busy");
         }
+        let full = self.pending.len() + self.deferred.len() >= WATCH_MAX_PENDING;
         let plan = self.plans.get(&(key.room_id.clone(), key.activity_id));
         if let Some(peer) = consumer {
-            if !plan.is_some_and(|plan| {
-                plan.downstream.contains(&peer)
-                    && (plan.source.session_id == self.session || plan.upstream.is_some())
-            }) {
+            if !granted
+                || !plan.is_some_and(|plan| plan.downstream.contains(&peer) && self.can_read(plan))
+            {
+                if full {
+                    return reject("watch_read_busy");
+                }
                 self.deferred.insert(
                     request_id,
                     Deferred {
@@ -360,16 +371,27 @@ impl WatchDelivery {
         let supplier = if plan.source.session_id == self.session {
             None
         } else {
-            let Some(upstream) = plan.upstream else {
+            let Some(upstream) = plan
+                .upstream
+                .filter(|peer| self.grants(*peer, &key.room_id))
+            else {
                 return reject("watch_path_unavailable");
             };
             Some(upstream)
         };
+        let source = plan.source.clone();
+        let mut effects = Vec::new();
+        if full {
+            let Some(waiting) = self.deferred.keys().next().copied() else {
+                return reject("watch_read_busy");
+            };
+            effects = self.stop(waiting, "watch_read_busy", true);
+        }
         self.pending.insert(
             request_id,
             Pending {
                 key: key.clone(),
-                source: plan.source.clone(),
+                source,
                 offset,
                 length,
                 consumer,
@@ -377,8 +399,8 @@ impl WatchDelivery {
                 response: None,
             },
         );
-        match supplier {
-            Some(peer) => vec![WatchEffect::SendControl {
+        effects.push(match supplier {
+            Some(peer) => WatchEffect::SendControl {
                 peer,
                 control: WatchControl::Pull {
                     key,
@@ -386,14 +408,15 @@ impl WatchDelivery {
                     offset,
                     length,
                 },
-            }],
-            None => vec![WatchEffect::Read {
+            },
+            None => WatchEffect::Read {
                 key,
                 request_id,
                 offset,
                 length,
-            }],
-        }
+            },
+        });
+        effects
     }
     pub fn control(&mut self, peer: Uuid, control: WatchControl) -> Vec<WatchEffect> {
         if let WatchControl::Pull {
@@ -556,7 +579,7 @@ impl WatchDelivery {
     }
     fn stop(&mut self, request_id: Uuid, code: &str, notify: bool) -> Vec<WatchEffect> {
         if let Some(pending) = self.deferred.remove(&request_id) {
-            return if notify {
+            return if notify && self.grants(pending.peer, &pending.key.room_id) {
                 vec![WatchEffect::SendControl {
                     peer: pending.peer,
                     control: WatchControl::Error {
@@ -881,9 +904,12 @@ mod tests {
             &source.read(key(), id(100), 7, 10)[0],
             WatchEffect::Read { .. }
         ));
-        assert!(
-            matches!(&source.read(key(), id(101), 7, 10)[0], WatchEffect::Failed { code, .. } if code == "watch_read_busy")
-        );
+        let effects = source.read(key(), id(101), 7, 10);
+        assert!(effects.iter().any(|effect| matches!(effect,
+            WatchEffect::Read { request_id, .. } if *request_id == id(101))));
+        assert!(effects.iter().any(|effect| matches!(effect,
+            WatchEffect::SendControl { peer, control: WatchControl::Error { code, .. } }
+                if *peer == id(2) && code == "watch_read_busy")));
         source.peer_closed(id(2));
         assert!(source.deferred.is_empty());
         assert!(
@@ -896,6 +922,60 @@ mod tests {
         assert!(!retired
             .iter()
             .any(|effect| matches!(effect, WatchEffect::Read { .. })));
+    }
+    #[test]
+    fn early_pulls_require_current_grant_and_never_resume_after_revocation() {
+        let mut source = WatchDelivery::new(id(1));
+        let pull = |request| WatchControl::Pull {
+            key: key(),
+            request_id: id(request),
+            offset: 0,
+            length: 10,
+        };
+        let plan = plan(None, vec![id(2)], false);
+        let roomless = || vec![(id(2), vec!["other-room".into()])];
+        source.update(vec![], roomless());
+        assert!(source.control(id(2), pull(20)).is_empty());
+        assert!(source.update(vec![plan.clone()], roomless()).is_empty());
+        assert!(source.deferred.contains_key(&id(20)));
+        source.peer_closed(id(2));
+        assert!(source.update(vec![plan.clone()], peers()).is_empty());
+
+        source.update(vec![], peers());
+        assert!(source.control(id(2), pull(21)).is_empty());
+        assert!(source.update(vec![], roomless()).is_empty());
+        assert!(source.update(vec![plan.clone()], peers()).is_empty());
+
+        source.update(vec![], roomless());
+        assert!(source.control(id(2), pull(22)).is_empty());
+        assert!(source.update(vec![], roomless()).is_empty());
+        assert!(matches!(
+            source.update(vec![plan], peers()).as_slice(),
+            [WatchEffect::Read { request_id, .. }] if *request_id == id(22)
+        ));
+    }
+    #[test]
+    fn tentative_pulls_cannot_displace_authorized_watch_reads() {
+        let mut source = WatchDelivery::new(id(1));
+        source.update(vec![plan(None, vec![], true)], vec![(id(2), vec![])]);
+        for request in 20..20 + WATCH_MAX_PENDING as u128 {
+            assert!(source
+                .control(
+                    id(2),
+                    WatchControl::Pull {
+                        key: key(),
+                        request_id: id(request),
+                        offset: 0,
+                        length: 10,
+                    }
+                )
+                .is_empty());
+        }
+        assert!(matches!(
+            source.read(key(), id(100), 0, 10).as_slice(),
+            [WatchEffect::Read { request_id, .. }] if *request_id == id(100)
+        ));
+        assert_eq!(source.deferred.len(), WATCH_MAX_PENDING - 1);
     }
     #[test]
     fn single_request_failure_preserves_siblings_and_route_change_is_recoverable() {

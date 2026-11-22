@@ -1341,7 +1341,15 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
         assert_eq!(output.projection.summary.relay_capacity, 7);
         assert!(output.projection.participant_session_ids.is_empty());
         assert!(output.projection.publications.is_empty());
-        assert!(output.projection.base_links.is_empty());
+        assert!(output.projection.flows.is_empty());
+        assert!(output.projection.voice.is_empty());
+        assert!(output.projection.watch_activities.is_empty());
+        assert!(output.projection.views.values().all(|view| {
+            view.subscriptions.is_empty()
+                && view.watch_subscriptions.is_empty()
+                && view.watch_bytes.is_empty()
+                && view.files.is_empty()
+        }));
         assert!(
             matches!(peer(&mut restored, owner, owner, ConversationCommand::History { before: None }).unwrap(),
                 HistoryResult::Page { messages, .. } if messages.len() == 1 && messages[0].message.text == room)

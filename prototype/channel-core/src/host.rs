@@ -4,7 +4,7 @@ use crate::{
     history::{HistoryRequest, HistoryResult},
     identity::{Endpoint, Member},
     room::{RoomRecipient, RoomRuntime, RoomSnapshot},
-    transport::{BaseLink, Flow},
+    transport::Flow,
     wire::{Command, FlowState, PublicationInfo, Room, RoomAccess, RoomCapabilities, VoiceInfo},
     RoomState,
 };
@@ -96,7 +96,7 @@ pub enum HostAction {
         receiver: Uuid,
         state: FlowState,
     },
-    BaseState {
+    RoomDataState {
         context: RequestContext,
         peer: Uuid,
         ready: bool,
@@ -177,6 +177,7 @@ pub struct RoomReply {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomProjection {
+    pub relay_session_ids: BTreeSet<Uuid>,
     pub allow_service_relay: bool,
     pub watch_activities: Vec<crate::wire::WatchActivity>,
     pub last_message_seq: u64,
@@ -194,23 +195,9 @@ pub struct RoomProjection {
     pub voice: Vec<VoiceInfo>,
     pub views: BTreeMap<Uuid, RoomRecipient>,
     pub flows: Vec<Flow>,
-    pub base_links: Vec<BaseLink>,
 }
 
 impl RoomProjection {
-    pub(crate) fn base_root(&self, writer: Uuid) -> Uuid {
-        let children: BTreeSet<_> = self
-            .base_links
-            .iter()
-            .filter(|link| link.selected)
-            .map(|link| link.child)
-            .collect();
-        self.base_links
-            .iter()
-            .find(|link| link.selected && !children.contains(&link.parent))
-            .map_or(writer, |link| link.parent)
-    }
-
     /// Each physical pair has one demand entry. A waiting delivery can use a repair trial.
     pub(crate) fn requested_pairs(&self) -> BTreeMap<(Uuid, Uuid), bool> {
         let publishers: BTreeMap<_, _> = self
@@ -686,7 +673,6 @@ mod tests {
                 host.room.set_relay_capacity(reader, id(6), Some(0)).unwrap();
             }
             host.room.reconcile(&endpoints, 0);
-            assert!(host.room.base_links().next().is_none());
             assert!(host.room.flows().next().is_none());
             if voice {
                 for session in [source, receiver] {
@@ -1541,7 +1527,7 @@ impl RoomHost {
             | HostAction::RemoveHostedRoom { context }
             | HostAction::Revoke { context, .. }
             | HostAction::FlowState { context, .. }
-            | HostAction::BaseState { context, .. } => Some(context.clone()),
+            | HostAction::RoomDataState { context, .. } => Some(context.clone()),
             _ => None,
         };
         let apply = (|| -> Result<RoomResult, &'static str> {
@@ -1564,12 +1550,12 @@ impl RoomHost {
                 HostAction::RouteWake => {
                     self.room.expire_media(input.now);
                 }
-                HostAction::BaseState {
+                HostAction::RoomDataState {
                     context,
                     peer,
                     ready,
                 } => {
-                    self.room.base_state(context.session_id, *peer, *ready)?;
+                    self.room.room_data_state(context.session_id, *peer, *ready)?;
                 }
                 HostAction::Command { context, command } => {
                     if matches!(

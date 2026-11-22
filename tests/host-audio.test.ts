@@ -125,6 +125,28 @@ test("commentary and source replacement retain one published output and retire t
   expect(nextVideo.stop).not.toHaveBeenCalled();
 });
 
+test("unplugging the old commentary microphone preserves the pending device switch", async () => {
+  const { getUserMedia } = mixerSetup();
+  const oldMic = new Track("audio"), newMic = new Track("audio");
+  const audio = new HostAudio(media(new Track("video")));
+  audio.start();
+  const settings = { deviceId: "headset", volume: 1, voiceProcessing: true };
+  getUserMedia.mockResolvedValueOnce(media(oldMic));
+  await audio.setMicrophone(true, settings);
+  let grant!: (stream: MediaStream) => void;
+  getUserMedia.mockReturnValueOnce(new Promise<MediaStream>(resolve => { grant = resolve; }));
+  const switching = audio.setMicrophone(true, { ...settings, deviceId: "desk" });
+  oldMic.readyState = "ended";
+  oldMic.onended!();
+  expect(audio.microphoneEnabled).toBe(false);
+  grant(media(newMic));
+  await switching;
+  expect(audio.microphoneEnabled).toBe(true);
+  expect(newMic.readyState).toBe("live");
+  audio.dispose();
+  expect(newMic.stop).toHaveBeenCalledOnce();
+});
+
 test("ending a share retires microphone permission completed after disposal", async () => {
   const { getUserMedia, contexts } = mixerSetup();
   let complete!: (stream: MediaStream) => void;

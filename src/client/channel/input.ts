@@ -89,7 +89,7 @@ export class ChannelInput {
       this.endpoints.delete(id);
       changed = true;
     }
-    for (const [publicationId, flow] of selected) if (connected && !this.endpoints.has(publicationId)) {
+    for (const [publicationId, flow] of selected) if (connected && globalThis.crypto?.subtle && !this.endpoints.has(publicationId)) {
       const secret = crypto.getRandomValues(new Uint8Array(32));
       const identity = { endpointId: sessionId!.replaceAll("-", ""),
         secret: Array.from(secret, byte => byte.toString(16).padStart(2, "0")).join("") };

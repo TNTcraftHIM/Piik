@@ -292,7 +292,7 @@ test.each(['file', 'hls'] as const)('%s byte source registration retains the pag
     expect(socket.sent.at(-1)).toMatchObject({ type: 'page_media_sources', pageId });
     socket.reply({ choices: [{ id: choiceId, displayURL: 'https://media.test/movie.m3u8', name: 'Movie', format }], indexedCandidates: [], mpdCandidates: [], byteSource: null });
     expect((await choices).choices[0]?.format).toBe(format);
-    const preparing = page.prepareMedia(choiceId);
+    const preparing = page.prepareMedia(choiceId, new AbortController().signal);
     expect(socket.sent.at(-1)).toMatchObject({ type: 'page_media_prepare', pageId, choiceId });
     const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format };
     socket.reply(source); await expect(preparing).resolves.toEqual(source);

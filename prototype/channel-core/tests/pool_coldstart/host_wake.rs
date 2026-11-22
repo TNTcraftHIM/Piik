@@ -116,11 +116,12 @@ fn adding_a_watch_provider_reuses_its_confirmed_pair_in_another_room() {
         "byteSource":{"sessionId":app,"resourceId":Uuid::new_v4(),"format":"file"}}),
     );
     assert_eq!(pair(&net, viewer, app).id, established);
+    assert!(pair(&net, viewer, app).rooms.contains(&room));
     assert_eq!(net.state(viewer).watch_bytes[0].upstream, Some(app));
 
     // The other room continues using the pair while this room repairs its data channel.
     let report =
-        |ready| json!({"type":"base_state","roomId":room,"pairId":established,"ready":ready});
+        |ready| json!({"type":"room_data_state","roomId":room,"pairId":established,"ready":ready});
     command(&mut net, viewer, report(false));
     assert_eq!(net.state(viewer).watch_bytes[0].upstream, None);
     assert!(!pair(&net, viewer, app).rooms.contains(&room));

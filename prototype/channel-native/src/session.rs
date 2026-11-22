@@ -2875,7 +2875,7 @@ fn current(pairs: &BTreeSet<Uuid>, command: &Command) -> bool {
         Command::Signal { pair_id, .. }
         | Command::LinkState { pair_id, .. }
         | Command::FlowState { pair_id, .. }
-        | Command::BaseState { pair_id, .. } => pair_id,
+        | Command::RoomDataState { pair_id, .. } => pair_id,
         _ => return false,
     };
     pairs.contains(pair)

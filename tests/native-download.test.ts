@@ -176,6 +176,43 @@ test("one attachment save owns the request through its native result", async () 
   files.reset(); expect(f.anchors).toEqual([]);
 });
 
+test("a missing saved copy cannot release a pending native save from another surface", async () => {
+  const home = fixture(), panel = fixture(true, "https://owned.test", false);
+  const files = new ChannelAttachments(async () => {}, async () => {});
+  const file = { id: "owned", name: "owned.txt", size: 5, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
+  const key = { roomId: "room", messageSeq: 1, attachmentId: file.id };
+  const receipt = "a2ba9eea-8aa4-4ce9-97f2-3ff030242412";
+  let finishReveal!: (result: "unavailable") => void;
+  const reveal = new Promise<"unavailable">(resolve => { finishReveal = resolve; });
+  Object.assign(home.view, { piikRevealDownload: () => reveal });
+  vi.spyOn(FileStore.prototype, "receipts").mockResolvedValue([{ key, sha256: file.sha256, receipt }]);
+  const forget = vi.spyOn(FileStore.prototype, "forgetReceipt").mockResolvedValue();
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
+  vi.spyOn(files, "content").mockResolvedValue(new File(["owned"], file.name));
+
+  try {
+    files.update("session", { domainId: "domain", userId: "reader" }, [], [{ id: key.roomId, authorized: true }] as ChannelRoom[], []);
+    await vi.waitFor(() => expect(files.hasSavedCopy(key, file)).toBe(true));
+    const locating = files.revealSavedCopy(key, file, { ownerDocument: home.document } as Element);
+    const surface = { ownerDocument: panel.document } as Element;
+    const saving = files.download(key, file, undefined, surface);
+    await saving;
+    expect(files.status(key).outcome).toBe("requested");
+
+    finishReveal("unavailable");
+    await locating;
+    expect(forget).toHaveBeenCalledOnce();
+    expect(files.hasSavedCopy(key, file)).toBe(false);
+    expect(files.status(key)).toMatchObject({ outcome: "requested", error: null });
+    expect(files.download(key, file, undefined, surface)).toBe(saving);
+    expect(panel.clicked).toHaveLength(1);
+
+    panel.report(panel.clicked[0].href, "started");
+    panel.report(panel.clicked[0].href, "saved");
+    expect(files.status(key)).toMatchObject({ outcome: "saved", error: null });
+  } finally { files.reset(); }
+});
+
 test("an adopted attachment uses its current document and window when bytes arrive", async () => {
   const home = fixture(), pip = fixture(true, "https://owned.test", false);
   const files = new ChannelAttachments(async () => {}, async () => {});

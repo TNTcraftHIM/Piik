@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 39;
+pub const CHANNEL_PROTOCOL: u8 = 40;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -256,7 +256,7 @@ pub enum Command {
         pair_id: Uuid,
         state: FlowState,
     },
-    BaseState {
+    RoomDataState {
         room_id: String,
         pair_id: Uuid,
         ready: bool,
@@ -818,13 +818,12 @@ pub struct FileActivity {
     pub receiving: bool,
 }
 
-/// The domain derives these destinations from the accepted room base tree.
+/// The current room writer binding for commands and confirmed conversation.
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomDelivery {
     pub host_session_id: Uuid,
     pub binding_id: Uuid,
-    pub next_hops: BTreeMap<Uuid, Uuid>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

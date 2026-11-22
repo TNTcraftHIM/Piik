@@ -55,7 +55,7 @@ class Peer extends EventTarget {
 }
 test("pre-SDP linear origin survives flush, API rejection spends a slot and ordinary ICE stays usable",async()=>{
   vi.stubGlobal("RTCPeerConnection",Peer);
-  const transport=new ChannelTransport({polite:true,iceServers:[],send:vi.fn(),receive:vi.fn(),connected:vi.fn(),base:vi.fn(),failed:vi.fn()});
+  const transport=new ChannelTransport({polite:true,iceServers:[],send:vi.fn(),receive:vi.fn(),connected:vi.fn(),roomData:vi.fn(),failed:vi.fn()});
   const peer=transport.pc as unknown as Peer;
   try {
     peer.addIceCandidate.mockRejectedValueOnce(new DOMException("rejected","OperationError"));

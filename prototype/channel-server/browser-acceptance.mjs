@@ -1409,7 +1409,15 @@ if (roomsOnly) await mkdir(join(temporary, "downloads"));
 try {
   for (const index of active) {
     const script = join(temporary, `${index}.js`);
-    if (!backupOnly) await writeFile(script, captureProbe(String.fromCharCode(65 + index)));
+    if (!backupOnly) {
+      let probe = captureProbe(String.fromCharCode(65 + index));
+      if (nativeOnly && index === 2) {
+        // Roomless standby may start as soon as C enters the site.
+        const source = await until("Native test source authenticates before the viewer", () => view(1), value => value.connection === "connected");
+        probe += `;window.__channelProbe.rejectPeer(${JSON.stringify(source.sessionId)});`;
+      }
+      await writeFile(script, probe);
+    }
     await browser(index, "open", `${origin}/__channel-preview${index === 0 ? `#owner=${encodeURIComponent(ownerKey)}` : ""}`);
   }
   const initial = [];

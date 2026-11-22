@@ -11,347 +11,6 @@ mod support;
 use support::RoomNetwork;
 
 #[test]
-fn zero_leaf_join_order_insertion_passes_the_domain_projection_and_preserves_existing_voice() {
-    let mut network = RoomNetwork::new();
-    let owner = Uuid::new_v4();
-    let a = Uuid::new_v4();
-    let b = Uuid::new_v4();
-    admit(
-        &mut network,
-        owner,
-        json!({"type":"join","name":"Owner","ownerKey":"owner"}),
-    );
-    let a_session = admit(&mut network, a, json!({"type":"join","name":"A"})).0;
-    let b_session = admit(&mut network, b, json!({"type":"join","name":"B"})).0;
-    let room = room(&mut network, owner, "public", false);
-    let apply = |network: &mut RoomNetwork, connection, value| {
-        let effects = command(network, connection, value);
-        assert!(
-            !effects.events.iter().any(|(_, event)| matches!(
-                event,
-                Event::Error { .. }
-                    | Event::RoomReply {
-                        result: RoomResult::Error { .. },
-                        ..
-                    }
-            )),
-            "actual domain/room operation must accept the bounded insertion"
-        );
-    };
-    apply(
-        &mut network,
-        owner,
-        json!({"type":"update_room","roomId":room,"name":"Limited","icon":"couch","access":"public","hidden":false,"relayCapacity":1}),
-    );
-    apply(
-        &mut network,
-        owner,
-        json!({"type":"browse","roomId":room,"active":true}),
-    );
-    apply(
-        &mut network,
-        a,
-        json!({"type":"browse","roomId":room,"active":true,"relayCapacity":0}),
-    );
-    let ack = |network: &mut RoomNetwork| {
-        for connection in [owner, a, b] {
-            let pairs: Vec<_> = network
-                .state(connection)
-                .pairs
-                .iter()
-                .filter(|pair| pair.rooms.contains(&room))
-                .map(|pair| pair.id)
-                .collect();
-            for pair in pairs {
-                apply(
-                    network,
-                    connection,
-                    json!({"type":"base_state","roomId":room,"pairId":pair,"ready":true}),
-                );
-            }
-        }
-    };
-    ack(&mut network);
-    for connection in [owner, a] {
-        apply(
-            &mut network,
-            connection,
-            json!({"type":"voice","roomId":room,"joined":true,"muted":false,"deafened":false}),
-        );
-    }
-    ack(&mut network);
-    let owner_a = network
-        .state(owner)
-        .pairs
-        .iter()
-        .find(|pair| pair.peer_id == a_session)
-        .unwrap()
-        .id;
-    connect_pair(&mut network, [owner, a], owner_a);
-    let first_voice = Uuid::new_v4();
-    apply(
-        &mut network,
-        a,
-        json!({"type":"publish","publication":{"id":first_voice,"roomId":room,"kind":"voice"}}),
-    );
-    let old: Vec<_> = network
-        .state(owner)
-        .pairs
-        .iter()
-        .flat_map(|pair| {
-            pair.incoming
-                .iter()
-                .filter(|flow| flow.publication_id == first_voice)
-                .map(move |flow| (pair.id, flow.id))
-        })
-        .collect();
-    assert_eq!(old.len(), 1);
-    for (pair, flow) in &old {
-        apply(
-            &mut network,
-            owner,
-            json!({"type":"flow_state","pairId":pair,"flowId":flow,"state":"forwardable"}),
-        );
-    }
-    apply(
-        &mut network,
-        b,
-        json!({"type":"browse","roomId":room,"active":true,"relayCapacity":2}),
-    );
-    apply(
-        &mut network,
-        b,
-        json!({"type":"voice","roomId":room,"joined":true,"muted":false,"deafened":false}),
-    );
-    let second_voice = Uuid::new_v4();
-    apply(
-        &mut network,
-        b,
-        json!({"type":"publish","publication":{"id":second_voice,"roomId":room,"kind":"voice"}}),
-    );
-    let mut confirmed = None;
-    for _ in 0..2 {
-        let (connection, edge) = [owner, a]
-            .into_iter()
-            .find_map(|connection| {
-                let edge = network
-                    .state(connection)
-                    .pairs
-                    .iter()
-                    .find(|pair| pair.peer_id == b_session)?
-                    .id;
-                (Some(edge) != confirmed).then_some((connection, edge))
-            })
-            .expect("both direct legs for the new speaker");
-        connect_pair(&mut network, [connection, b], edge);
-        confirmed = Some(edge);
-    }
-    ack(&mut network);
-    assert!(old.iter().all(
-        |(edge, flow)| network.state(owner).pairs.iter().any(|pair| {
-            pair.id == *edge
-                && pair
-                    .incoming
-                    .iter()
-                    .any(|binding| binding.id == *flow && binding.selected)
-        })
-    ));
-    assert!(network.state(a).pairs.iter().any(|pair| pair
-        .incoming
-        .iter()
-        .any(|flow| flow.publication_id == second_voice && flow.selected)));
-    assert!(network
-        .state(a)
-        .pairs
-        .iter()
-        .flat_map(|pair| &pair.outgoing)
-        .all(|flow| flow.publication_id == first_voice));
-
-    assert!(network.state(b).pairs.iter().any(|pair| pair
-        .outgoing
-        .iter()
-        .any(|flow| flow.publication_id == second_voice && flow.selected)));
-}
-
-#[test]
-fn capacity_transition_keeps_candidate_hops_out_of_the_directory_and_other_room_leases() {
-    let mut network = RoomNetwork::new();
-    let owner = Uuid::new_v4();
-    let first = Uuid::new_v4();
-    let second = Uuid::new_v4();
-    let owner_session = admit(
-        &mut network,
-        owner,
-        json!({"type":"join","name":"Owner","ownerKey":"owner"}),
-    )
-    .0;
-    let first_session = admit(&mut network, first, json!({"type":"join","name":"First"})).0;
-    let second_session = admit(&mut network, second, json!({"type":"join","name":"Second"})).0;
-    let a = room(&mut network, owner, "public", false);
-    let b = room(&mut network, owner, "public", false);
-    for id in [&a, &b] {
-        for connection in [owner, first, second] {
-            command(
-                &mut network,
-                connection,
-                json!({"type":"browse","roomId":id,"active":true}),
-            );
-            command(
-                &mut network,
-                connection,
-                json!({"type":"voice","roomId":id,"joined":true,"muted":true,"deafened":true}),
-            );
-        }
-        for _ in 0..2 {
-            for connection in [owner, first, second] {
-                let pairs: Vec<_> = network
-                    .state(connection)
-                    .pairs
-                    .iter()
-                    .filter(|pair| pair.rooms.contains(id))
-                    .map(|pair| pair.id)
-                    .collect();
-                for pair in pairs {
-                    command(
-                        &mut network,
-                        connection,
-                        json!({"type":"base_state","roomId":id,"pairId":pair,"ready":true}),
-                    );
-                }
-            }
-        }
-    }
-    for (connection, session) in [(first, first_session), (second, second_session)] {
-        let edge = network
-            .state(owner)
-            .pairs
-            .iter()
-            .find(|pair| pair.peer_id == session)
-            .unwrap()
-            .id;
-        connect_pair(&mut network, [owner, connection], edge);
-    }
-    let publication = Uuid::new_v4();
-    for connection in [owner, first, second] {
-        command(
-            &mut network,
-            connection,
-            json!({"type":"voice","roomId":a,"joined":true,"muted":false,"deafened":false}),
-        );
-    }
-    command(
-        &mut network,
-        first,
-        json!({"type":"publish","publication":{"id":publication,"roomId":a,"kind":"voice"}}),
-    );
-    for connection in [owner, first, second] {
-        let flows: Vec<_> = network
-            .state(connection)
-            .pairs
-            .iter()
-            .flat_map(|pair| pair.incoming.iter().map(move |flow| (pair.id, flow.id)))
-            .collect();
-        for (pair, flow) in flows {
-            command(
-                &mut network,
-                connection,
-                json!({"type":"flow_state","pairId":pair,"flowId":flow,"state":"forwardable"}),
-            );
-        }
-    }
-    let voice = |network: &RoomNetwork| {
-        [owner, second].map(|connection| {
-            network
-                .state(connection)
-                .pairs
-                .iter()
-                .flat_map(|pair| &pair.incoming)
-                .find(|flow| flow.publication_id == publication && flow.selected)
-                .unwrap()
-                .id
-        })
-    };
-    let incumbent_voice = voice(&network);
-    let hops = |network: &RoomNetwork, id: &str| {
-        network
-            .state(owner)
-            .channel
-            .rooms
-            .iter()
-            .find(|room| room.id == id)
-            .unwrap()
-            .delivery
-            .as_ref()
-            .unwrap()
-            .next_hops
-            .clone()
-    };
-    let old_a = hops(&network, &a);
-    let old_b = hops(&network, &b);
-    let denied = command(
-        &mut network,
-        first,
-        json!({"type":"update_room","roomId":a,"name":"Denied","icon":"couch","access":"public","hidden":false,"relayCapacity":1}),
-    );
-    assert!(denied.events.iter().any(|(_, event)| matches!(
-        event,
-        Event::RoomReply {
-            result: RoomResult::Error { .. },
-            ..
-        }
-    )));
-    command(
-        &mut network,
-        owner,
-        json!({"type":"update_room","roomId":a,"name":"Limited","icon":"couch","access":"public","hidden":false,"relayCapacity":1}),
-    );
-    let candidate = network
-        .state(first)
-        .pairs
-        .iter()
-        .find(|pair| pair.peer_id == second_session)
-        .unwrap()
-        .id;
-    assert_eq!(hops(&network, &a), old_a);
-    connect_pair(&mut network, [first, second], candidate);
-    assert_eq!(hops(&network, &a), old_a);
-    command(
-        &mut network,
-        first,
-        json!({"type":"base_state","roomId":a,"pairId":candidate,"ready":true}),
-    );
-    assert_eq!(hops(&network, &a), old_a);
-    command(
-        &mut network,
-        second,
-        json!({"type":"base_state","roomId":a,"pairId":candidate,"ready":true}),
-    );
-    assert_ne!(hops(&network, &a), old_a);
-    assert_eq!(voice(&network), incumbent_voice);
-    assert_eq!(hops(&network, &b), old_b);
-    assert_eq!(
-        network
-            .state(owner)
-            .pairs
-            .iter()
-            .filter(|pair| pair.rooms.contains(&b))
-            .count(),
-        2,
-        "the old physical pairs still carry the other room"
-    );
-    assert!(network
-        .state(owner)
-        .channel
-        .rooms
-        .iter()
-        .find(|room| room.id == a)
-        .unwrap()
-        .delivery
-        .as_ref()
-        .is_some_and(|delivery| delivery.host_session_id == owner_session));
-}
-
-#[test]
 fn deletion_withdraws_directory_authority_across_restart_without_recreating_the_room() {
     let mut network = RoomNetwork::new();
     let owner = Uuid::new_v4();
@@ -1308,22 +967,6 @@ fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
     let shared_pair = core.state(b).pairs[0].id;
     assert!(core.state(b).pairs[0].incoming.is_empty());
     connect_pair(&mut core, [a, b], shared_pair);
-    for room in [&living, &studio] {
-        let pair = core
-            .state(b)
-            .pairs
-            .iter()
-            .find(|pair| pair.rooms.contains(room))
-            .unwrap()
-            .id;
-        for connection in [a, b] {
-            command(
-                &mut core,
-                connection,
-                json!({"type":"base_state","roomId":room,"pairId":pair,"ready":true}),
-            );
-        }
-    }
     let picture = Uuid::new_v4();
     command(
         &mut core,
@@ -1437,7 +1080,8 @@ fn private_room_entry_and_revoke_preserve_site_identity_and_other_activity() {
         owner,
         json!({"type":"join","name":"Owner","ownerKey":"owner"}),
     );
-    let (_, _, creator_state) = admit(&mut core, creator, json!({"type":"join","name":"Creator"}));
+    let (creator_session, _, creator_state) =
+        admit(&mut core, creator, json!({"type":"join","name":"Creator"}));
     assert!(creator_state
         .channel
         .rooms
@@ -1506,13 +1150,25 @@ fn private_room_entry_and_revoke_preserve_site_identity_and_other_activity() {
         ),
         guest,
     );
-    assert_eq!(shared.pairs.len(), 1);
-    assert!(shared.pairs[0].incoming.is_empty());
-    let pair = shared.pairs[0].id;
+    let requested = shared
+        .pairs
+        .iter()
+        .find(|p| p.peer_id == creator_session)
+        .unwrap();
+    assert!(requested.incoming.is_empty());
+    let pair = requested.id;
     connect_pair(&mut core, [creator, guest], pair);
     let shared = core.state(guest);
-    assert_eq!(shared.pairs[0].id, pair);
-    assert_eq!(shared.pairs[0].incoming.len(), 2);
+    assert_eq!(
+        shared
+            .pairs
+            .iter()
+            .find(|p| p.id == pair)
+            .unwrap()
+            .incoming
+            .len(),
+        2
+    );
     rejected(command(
         &mut core,
         outsider,
@@ -1526,9 +1182,9 @@ fn private_room_entry_and_revoke_preserve_site_identity_and_other_activity() {
     let guest_state = state(revoked, guest);
     assert!(!guest_state.channel.rooms.iter().any(|r| r.id == room));
     assert!(!guest_state.publications.iter().any(|p| p.id == private_pub));
-    assert_eq!(guest_state.pairs[0].id, pair);
+    let retained = guest_state.pairs.iter().find(|p| p.id == pair).unwrap();
     assert_eq!(
-        guest_state.pairs[0]
+        retained
             .incoming
             .iter()
             .map(|flow| flow.publication_id)

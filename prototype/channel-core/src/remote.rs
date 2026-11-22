@@ -55,6 +55,103 @@ pub(crate) struct RemoteRoom {
     pub projection: Option<RoomProjection>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum ByteActivity {
+    File(u64, Uuid),
+    Watch(Uuid),
+}
+
+struct ByteRoute<'a> {
+    upstream: &'a mut Option<Uuid>,
+    downstream: &'a mut Vec<Uuid>,
+    receiving: bool,
+}
+
+fn byte_routes(
+    view: &mut crate::room::RoomRecipient,
+) -> impl Iterator<Item = (ByteActivity, ByteRoute<'_>)> {
+    let files = view.files.iter_mut().map(|p| {
+        (
+            ByteActivity::File(p.message_seq, p.attachment.id),
+            ByteRoute {
+                upstream: &mut p.upstream,
+                downstream: &mut p.downstream,
+                receiving: p.receiving,
+            },
+        )
+    });
+    let watches = view.watch_bytes.iter_mut().map(|p| {
+        (
+            ByteActivity::Watch(p.activity_id),
+            ByteRoute {
+                upstream: &mut p.upstream,
+                downstream: &mut p.downstream,
+                receiving: p.receiving,
+            },
+        )
+    });
+    files.chain(watches)
+}
+
+fn retire_byte_branches(projection: &mut RoomProjection, first: Uuid, second: Uuid) -> bool {
+    let mut cuts = BTreeMap::new();
+    for (parent, child) in [(first, second), (second, first)] {
+        if let Some(view) = projection.views.get_mut(&child) {
+            for (id, branch) in byte_routes(view) {
+                if *branch.upstream == Some(parent) {
+                    cuts.insert(id, (parent, child));
+                }
+            }
+        }
+    }
+    if cuts.is_empty() {
+        return false;
+    }
+    let mut trees: BTreeMap<_, BTreeMap<_, _>> = BTreeMap::new();
+    for (&session, view) in &mut projection.views {
+        for (id, branch) in byte_routes(view).filter(|(id, _)| cuts.contains_key(id)) {
+            trees.entry(id).or_default().insert(session, branch);
+        }
+    }
+    for (id, mut tree) in trees {
+        let (mut parent, mut child) = cuts[&id];
+        let mut disconnected = vec![child];
+        while let Some(session) = disconnected.pop() {
+            if let Some(branch) = tree.get_mut(&session) {
+                *branch.upstream = None;
+                disconnected.append(branch.downstream);
+            }
+        }
+        // An upstream relay may have served only the disconnected subtree.
+        while let Some(branch) = tree.get_mut(&parent) {
+            branch.downstream.retain(|peer| *peer != child);
+            if branch.receiving || !branch.downstream.is_empty() {
+                break;
+            }
+            let Some(grandparent) = branch.upstream.take() else {
+                break;
+            };
+            child = parent;
+            parent = grandparent;
+        }
+    }
+    for (&session, view) in &mut projection.views {
+        view.files.retain(|p| {
+            p.receiving
+                || p.source_id == Some(session)
+                || p.upstream.is_some()
+                || !p.downstream.is_empty()
+        });
+        view.watch_bytes.retain(|p| {
+            p.receiving
+                || p.source.session_id == session
+                || p.upstream.is_some()
+                || !p.downstream.is_empty()
+        });
+    }
+    true
+}
+
 impl RemoteRoom {
     pub fn occupies_slot(&self) -> bool {
         self.reservation.is_some() || self.binding.is_some()
@@ -64,36 +161,28 @@ impl RemoteRoom {
         let (Some(binding), Some(projection)) = (&mut self.binding, &mut self.projection) else {
             return false;
         };
-        let old = (projection.flows.len(), projection.base_links.len());
-        let affected = |a, b| (a == first && b == second) || (a == second && b == first);
-        projection
-            .flows
-            .retain(|flow| !affected(flow.sender, flow.receiver));
-        projection
-            .base_links
-            .retain(|link| !affected(link.parent, link.child));
-        let mut lost_byte_edge = false;
-        for (endpoint, peer) in [(first, second), (second, first)] {
-            let Some(view) = projection.views.get_mut(&endpoint) else {
-                continue;
-            };
-            let files = view
-                .files
-                .iter_mut()
-                .map(|plan| (&mut plan.upstream, &mut plan.downstream));
-            let watches = view
-                .watch_bytes
-                .iter_mut()
-                .map(|plan| (&mut plan.upstream, &mut plan.downstream));
-            for (upstream, downstream) in files.chain(watches) {
-                if *upstream == Some(peer) {
-                    *upstream = None;
-                    lost_byte_edge = true;
+        let mut pending: Vec<_> = projection.flows.iter()
+            .filter(|flow| (flow.sender, flow.receiver) == (first, second)
+                || (flow.sender, flow.receiver) == (second, first))
+            .map(|flow| flow.id).collect();
+        let lost_flow = !pending.is_empty();
+        if lost_flow {
+            let mut children: BTreeMap<_, Vec<_>> = BTreeMap::new();
+            for flow in &projection.flows {
+                if let Some(input) = flow.input_flow_id {
+                    children.entry(input).or_default().push(flow.id);
                 }
-                downstream.retain(|child| *child != peer);
             }
+            let mut retired = BTreeSet::new();
+            while let Some(id) = pending.pop() {
+                if retired.insert(id) {
+                    pending.extend(children.remove(&id).unwrap_or_default());
+                }
+            }
+            projection.flows.retain(|flow| !retired.contains(&flow.id));
         }
-        if !lost_byte_edge && old == (projection.flows.len(), projection.base_links.len()) {
+        let lost_byte_edge = retire_byte_branches(projection, first, second);
+        if !lost_byte_edge && !lost_flow {
             return false;
         }
         // Keep the invalidation until this binding acknowledges a covering input,
@@ -134,7 +223,6 @@ impl RemoteRoom {
             projection.picture = None;
             projection.next_route_deadline = None;
             projection.flows.clear();
-            projection.base_links.clear();
             projection.publications.clear();
             projection.watch_activities.clear();
             projection.voice.clear();
@@ -243,7 +331,7 @@ impl RemoteRoom {
             | HostAction::RemoveHostedRoom { context }
             | HostAction::Revoke { context, .. }
             | HostAction::FlowState { context, .. }
-            | HostAction::BaseState { context, .. } => Some(ReplyOwner::Request {
+            | HostAction::RoomDataState { context, .. } => Some(ReplyOwner::Request {
                 context: context.clone(),
                 member: endpoints[&context.session_id].member,
                 completion: None,

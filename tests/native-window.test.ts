@@ -30,7 +30,7 @@ test("native appearance follows the selected locale when the document language c
   const messages: Array<{ kind: string; language?: string }> = [];
   const root = { lang: "en", dataset: { theme: "light" }, style: { setProperty: vi.fn() } };
   let changed: () => void = () => {};
-  vi.stubGlobal("window", { piikNativeWindow: "integrated", ipc: {
+  vi.stubGlobal("window", { piikNativeWindow: "integrated", addEventListener: vi.fn(), ipc: {
     postMessage: (message: string) => messages.push(JSON.parse(message)),
   } });
   vi.stubGlobal("document", { documentElement: root, querySelectorAll: () => [], addEventListener: vi.fn() });
@@ -59,7 +59,8 @@ test("standalone App captions follow their document's modal material without int
   let dialogs: string[] = [];
   let changed: () => void = () => {};
   vi.stubGlobal("location", new URL("https://piik.test/client"));
-  vi.stubGlobal("window", { piikNativeWindow: "system", ipc: {
+  vi.stubGlobal("navigator", { language: "en-US" });
+  vi.stubGlobal("window", { piikNativeWindow: "system", addEventListener: vi.fn(), ipc: {
     postMessage: (message: string) => messages.push(JSON.parse(message)),
   } });
   vi.stubGlobal("document", { documentElement: root,

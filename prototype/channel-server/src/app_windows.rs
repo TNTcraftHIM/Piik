@@ -353,7 +353,7 @@ impl PopupWindow {
         Ok(Self { caption, content: webview, window })
     }
 
-    fn follow_main_theme(&self, launcher: Option<&url::Url>, theme: &Theme, language: Language) {
+    fn follow_main_appearance(&self, launcher: Option<&url::Url>, theme: &Theme, language: Language) {
         let Some(page) = self.content.url().ok().and_then(|url| url::Url::parse(&url).ok()) else {
             return;
         };
@@ -362,9 +362,9 @@ impl PopupWindow {
             && page.query_pairs().any(|(key, _)| key == "bookmarks")
         {
             let origin = serde_json::json!(page.origin().ascii_serialization());
-            let theme = serde_json::json!(theme.code());
+            let appearance = serde_json::json!({ "theme": theme.code(), "language": language.code() });
             let _ = self.content.evaluate_script(&format!(
-                "if(location.origin==={origin}&&location.pathname==='/client'&&new URLSearchParams(location.search).has('bookmarks'))window.dispatchEvent(new CustomEvent('piik-window-theme',{{detail:{theme}}}));"
+                "if(location.origin==={origin}&&location.pathname==='/client'&&new URLSearchParams(location.search).has('bookmarks'))window.dispatchEvent(new CustomEvent('piik-window-appearance',{{detail:{appearance}}}));"
             ));
         } else if page.scheme() == "https"
             && page.host_str() == Some("piik.tv")
@@ -642,7 +642,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 }
                 pages.appearance(&theme, language);
                 for child in popups.borrow().iter() {
-                    child.follow_main_theme(launcher_url.as_ref(), &theme, language);
+                    child.follow_main_appearance(launcher_url.as_ref(), &theme, language);
                 }
                 if let Some(prompt) = &prompt {
                     prompt.update_appearance(&theme, language);
@@ -775,9 +775,9 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                             open.window.set_focus();
                             return Ok(());
                         }
-                        launcher.query_pairs_mut().append_pair("bookmarks", "1").append_pair("piik-preferences", "copy");
+                        launcher.query_pairs_mut().append_pair("bookmarks", "1");
                         let mut fragment = url::form_urlencoded::Serializer::new(String::new());
-                        fragment.append_pair("piik-client", "1").append_pair("piik-lang", language.code());
+                        fragment.append_pair("piik-client", "1");
                         if let Some(site) = main.content.url().ok().and_then(|url| url::Url::parse(&url).ok())
                             .filter(|url| matches!(url.scheme(), "http" | "https") && url.origin() != launcher.origin())
                         {
@@ -835,7 +835,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             }
             Event::UserEvent(ServiceEvent::PopupLoaded(id)) => {
                 if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == id) {
-                    child.follow_main_theme(launcher_url.as_ref(), &theme, language);
+                    child.follow_main_appearance(launcher_url.as_ref(), &theme, language);
                 }
             }
             Event::UserEvent(ServiceEvent::Ready { entry, launcher }) => {

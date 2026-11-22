@@ -125,7 +125,28 @@ describe("channel connection presentation", () => {
     expect(screenAudience(state, publication)).toEqual([]); // Topology alone never creates viewers.
   });
 
-  it("keeps reading-only rooms free of peer paths and media statistics", () => {
+  it("shows only projected, undirected room links and keeps an isolated endpoint visible", () => {
+    const fixture = channelConnectionPreview("room-links");
+    fixture.state.users.push({ id: "outside-user", name: "Outside", version: "a".repeat(64) });
+    fixture.state.sessions.push({ id: "outside", userId: "outside-user", online: true, signingKey: Array(32).fill(0) });
+    fixture.topology.sessionIds.push("unknown");
+    const graph = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
+    expect(graph.rootId).toBeNull();
+    expect(graph.nodes.find(node => node.id === "unknown")).toMatchObject({ kind: "endpoint", label: "connection.endpoint" });
+    expect(graph.nodes.map(node => node.id)).toEqual(["app", "friend", "guest", "host", "self", "unknown"]);
+    expect(graph.edges.map(({ from, to, ready }) => [from, to, ready])).toEqual([
+      ["app", "self", false], ["friend", "host", true], ["friend", "self", true], ["host", "self", true],
+    ]);
+    expect(graph.nodes.filter(node => node.host).map(node => node.id)).toEqual(["host"]);
+    expect(graph.endpointGroups.map(group => group.ids)).toEqual([["app", "self"]]);
+    const html = renderToStaticMarkup(createElement(ChannelConnectionReport, fixture));
+    expect(html).toContain(say("connection.roomLinkLegend"));
+    expect(html).toContain("is-pending");
+    expect(html).not.toContain("Outside");
+    expect(html).not.toContain(say("connection.siteForwarding"));
+  });
+
+  it("shows no peer paths or media measurements when the room has none", () => {
     const fixture = channelConnectionPreview("room");
     const graph = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
     expect(graph.edges).toEqual([]);
@@ -192,11 +213,11 @@ describe("channel connection presentation", () => {
 
   it("scopes an unwatched picture's empty path to that share while room voice remains active", () => {
     const fixture = channelConnectionPreview("unwatched");
-    expect(fixture.topology.base.edges.length).toBeGreaterThan(0);
+    expect(fixture.topology.pairs.length).toBeGreaterThan(0);
     expect(fixture.topology.screen?.edges).toEqual([]);
     const html = renderToStaticMarkup(createElement(ChannelConnectionReport, fixture));
     expect(html).toContain(say("connection.noScreenPath"));
-    expect(html).not.toContain(say("connection.signalOnly"));
+    expect(html).not.toContain(say("connection.noRoomLinks"));
     expect(html).not.toContain(say("host.topology.idle"));
     expect(html).toContain('data-media="audio" data-direction="receive"');
   });

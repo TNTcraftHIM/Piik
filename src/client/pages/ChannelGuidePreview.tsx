@@ -49,7 +49,9 @@ export function sampleRoomTopology(state: ChannelSnapshot, roomId: string, publi
   const room = state.channel.rooms.find(room => room.id === roomId)!;
   const delivery = room.delivery!;
   const screen = state.publications.find(value => value.roomId === roomId && value.id === publicationId && value.kind === "screen");
-  return { serviceAvailable: room.serviceRelay?.available ?? false, serviceEnabled: room.serviceRelay?.enabled ?? false, bindingId: delivery.bindingId, transitSession: null, base: { rootSessionId: delivery.hostSessionId, edges: [] },
+  const sessionIds = [...new Set([delivery.hostSessionId, ...room.participantSessionIds])].sort();
+  return { serviceAvailable: room.serviceRelay?.available ?? false, serviceEnabled: room.serviceRelay?.enabled ?? false,
+    bindingId: delivery.bindingId, transitSession: null, sessionIds, pairs: [],
     screen: screen ? { publicationId: screen.id, sourceSessionId: screen.sessionId, edges: [] } : null };
 }
 
@@ -145,7 +147,7 @@ export function useChannelGuideSample({ multiRoom = false, showSampleAttachment 
     ...(multiRoom ? [{ id: "studio", name: zh ? "创作小屋" : "Creative studio", icon: "star" }] : [])]
     .map(room => ({ creatorId: "sample-ada", access: "private" as const, hidden: false, hasPassword: false,
       authorized: true, canManage: true, available: true, reading: true, lastMessageSeq: room.id === "friday" ? sampleMessages.at(-1)?.seq ?? 0 : messagesByRoom[room.id]?.at(-1)?.seq ?? 0,
-      delivery: { hostSessionId: appSessionId, bindingId: `sample-binding-${room.id}`, nextHops: {} },
+      delivery: { hostSessionId: appSessionId, bindingId: `sample-binding-${room.id}` },
       serviceRelay: { enabled: settingsByRoom[room.id]?.allowServiceRelay ?? false, available: false },
       fileActivity: [],
       participantSessionIds: room.id === "studio" ? ["sample-coco-session", ...(voiceByRoom.studio ? ["sample-ada-session"] : [])]

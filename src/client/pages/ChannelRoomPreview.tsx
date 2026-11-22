@@ -396,7 +396,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       setCreatedRooms(previous => [...previous, { ...sample.channel.state!.channel.rooms[0], ...settings,
         serviceRelay: { enabled: settings.allowServiceRelay ?? false, available: false },
         id, name: settings.name, picture: settings.picture ?? undefined, participantSessionIds: [sample.channel.sessionId!],
-        delivery: { hostSessionId: sample.channel.sessionId!, bindingId: `sample-binding-${id}`, nextHops: {} } }]);
+        delivery: { hostSessionId: sample.channel.sessionId!, bindingId: `sample-binding-${id}` } }]);
       setSelected(id);
       return id;
     }, enterRoom: async () => sample.received(), revokeRoomAccess: async () => sample.received(),

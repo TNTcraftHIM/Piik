@@ -24,6 +24,7 @@ import { MicrophoneInput } from "../src/client/media/microphone-input";
 import { ChannelTransport } from "../src/client/channel/transport";
 import { QUALITY_PROFILES, screenVideoSettings, type VideoSettings } from "../src/client/media/quality";
 import { ChannelAttachments } from "../src/client/channel/attachments";
+import { WatchBytes } from "../src/client/channel/watch-bytes";
 import { FileStore } from "../src/client/channel/file-store";
 import { CHANNEL_PROTOCOL, identityIconSchema, messageSchema, publicationSchema, snapshotSchema, signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply, type ScreenSource, type WatchByteSource } from "../src/client/channel/protocol";
 import type { ChannelScreenInput } from "../src/client/channel/types";
@@ -163,7 +164,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
         participantSessionIds: id === "first" ? ["endpoint"] : [],
         lastMessageSeq: 0, fileActivity: [],
         available: true, reading: id === "first", capabilities: { attachments: true },
-        delivery: { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } } })) },
+        delivery: { hostSessionId: "host", bindingId: "binding" } })) },
     users: [{ id: "self", name: "Me", version: profileVersion }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
     publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   } });
@@ -231,6 +232,31 @@ test("writer-confirmed moderation removes messages, quotations and transfers for
     expect(reader.session.getSnapshot().readByRoom.first).toBe(3);
     expect(moderator.session.getSnapshot().messagesByRoom.first).toEqual([]);
   } finally { reader.session.close(); moderator.session.close(); }
+});
+
+test("a history clear waiting for browse cannot apply its previous range to a new binding", async () => {
+  const { session, socket, peer } = await setup();
+  const send = vi.mocked((session as unknown as { conversation: ChannelConversation }).conversation.send);
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.rooms[0].lastMessageSeq = 18;
+    socket.receive({ type: "state", state });
+    const clearing = expect(session.purgeRoomHistory("first")).rejects.toThrow("room_unavailable");
+    state.channel.rooms[0].delivery!.bindingId = "replacement";
+    state.channel.rooms[0].lastMessageSeq = 30;
+    socket.receive({ type: "state", state });
+    await clearing;
+    expect(send.mock.calls.some(([command]) => command.type === "clear_history")).toBe(false);
+
+    socket.receive({ type: "ack", requestId: socket.sent.findLast(command => command.type === "browse" && command.active)!.requestId });
+    peer.page(await peer.next(), [message(30)], false, 30, "replacement");
+    const fresh = session.purgeRoomHistory("first");
+    const command = await peer.next();
+    expect(command).toMatchObject({ type: "clear_history", throughSeq: 30 });
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ type: "clear_history" }), command.requestId, "replacement");
+    peer.reply(command, { type: "history_cleared", throughSeq: 30 }, "replacement");
+    await fresh;
+  } finally { session.close(); }
 });
 
 test("the owner submits room creation policy and reads the authoritative update", async () => {
@@ -1058,15 +1084,13 @@ test("interaction readiness follows Domain read admission without waiting for a 
   const { session, socket, peer } = await setup(1000, false, "room=first", false);
   try {
     const state = structuredClone(session.getSnapshot().state!);
-    state.channel.rooms[0].delivery!.nextHops = {};
-    socket.receive({ type: "state", state });
     const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
     socket.receive({ type: "ack", requestId: browse.requestId });
     await vi.waitFor(() => expect(peer.interactions).toHaveLength(1));
     const pending = session.getSnapshot().interactionsByRoom.get("first")!;
     expect(pending.getSnapshot().ready).toBe(false);
     expect(RoomPeerConnection.instances).toHaveLength(0);
-    state.channel.rooms[0].delivery!.nextHops = { host: "unused-route" };
+    state.pairs = [{ id: "standby", peerId: "host", canReceiveVideoLayers: false, rooms: [], incoming: [], outgoing: [] }];
     socket.receive({ type: "state", state });
     await Promise.resolve();
     expect(peer.interactions).toHaveLength(1);
@@ -1109,6 +1133,7 @@ test("content reaction targets and delayed events stay with the current room bin
 });
 
 test.each([false, true])("peer path changes do not reload the Domain conversation or move historical reading (%s)", async historical => {
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const { session, socket, peer } = await setup(2);
   try {
     await peer.history([message(3), message(4)], true);
@@ -1116,8 +1141,9 @@ test.each([false, true])("peer path changes do not reload the Domain conversatio
     const before = session.getSnapshot().messagesByRoom.first;
     const sent = peer.sent.length;
     const state = structuredClone(session.getSnapshot().state!);
-    for (const nextHops of [{}, { host: "unopened-peer" }] as Array<Record<string, string>>) {
-      state.channel.rooms[0].delivery!.nextHops = nextHops;
+    const standby: (typeof state.pairs)[number] = { id: "standby", peerId: "host", canReceiveVideoLayers: false, rooms: [], incoming: [], outgoing: [] };
+    for (const pairs of [[standby], []]) {
+      state.pairs = pairs;
       socket.receive({ type: "state", state });
       await Promise.resolve(); await Promise.resolve();
       expect(peer.sent).toHaveLength(sent);
@@ -3858,6 +3884,61 @@ test.each([
   } finally { session.close(); }
 });
 
+test.each(["native", "obs"] as const)("committed %s capture retires only its room video when automatic preview fails", async source => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  const { session, socket } = await setup(1000, false);
+  const app = await startFixtureApp(session);
+  vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
+  const command = async (transport: ChannelSocket, type: string) => {
+    await vi.waitFor(() => expect(transport.sent.some(value => value.type === type)).toBe(true));
+    return transport.sent.findLast(value => value.type === type)!;
+  };
+  const activities = new Map<string, string>();
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    for (const roomId of ["first", "second"]) {
+      const opening = session.startWatch(roomId, "https://media.test/video.mp4");
+      for (const type of ["start_watch", "update_watch"]) {
+        await vi.waitFor(() => expect(socket.sent.some(c => c.type === type && c.roomId === roomId)).toBe(true));
+        const request = socket.sent.findLast(c => c.type === type && c.roomId === roomId)!;
+        activities.set(roomId, request.id as string);
+        socket.receive({ type: "room_reply", roomId, requestId: request.requestId,
+          result: type === "start_watch" ? { type: "watch_ready", serverTime: 100000 } : { type: "done" } });
+      }
+      await opening;
+    }
+    const captureId = crypto.randomUUID(), sessionId = crypto.randomUUID();
+    let starting: Promise<unknown> | undefined;
+    if (source === "native") {
+      starting = session.startNativeScreen("first", { kind: "display", sourceId: "1", title: "Display" }).catch(error => error);
+      const prepare = await command(app, "prepare_capture");
+      app.receive({ id: prepare.id, result: { captureId, sessionId, codec: "h264" } });
+    } else {
+      const opening = session.startExternalScreen("first");
+      const prepare = await command(app, "prepare_external_input");
+      app.receive({ id: prepare.id, result: { endpoint: "http://127.0.0.1:8793/whip/screen", token: "test" } });
+      await opening;
+      app.receive({ type: "external_input_state", publicationId: prepare.publicationId, state: "prepared", captureId, sessionId, codec: "h264" });
+    }
+    const commit = await command(app, "commit_capture");
+    app.receive({ id: commit.id, result: null });
+    const preview = await command(socket, "subscribe");
+    socket.receive({ type: "error", requestId: preview.requestId, code: "room_unavailable" });
+    const stop = await command(socket, "stop_watch");
+    expect(stop).toMatchObject({ id: activities.get("first"), roomId: "first" });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: stop.requestId, result: { type: "done" } });
+    await starting;
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("screen:first")).toBe(false));
+    expect(session.getSnapshot().ownedScreens.has(commit.publicationId as string)).toBe(true);
+    expect([...session.getSnapshot().watchPlayers.keys()]).toEqual([activities.get("second")]);
+    expect(session.getSnapshot().error).toBe("room_unavailable");
+    expect(app.sent.some(c => ["cancel_external_input", "cancel_capture", "stop_capture"].includes(String(c.type)))).toBe(false);
+  } finally { session.close(); }
+});
+
 test("stopping committed Native capture retires its pending automatic preview error", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
@@ -3978,7 +4059,7 @@ test("external input keeps its waiting activity while each prepared stream uses 
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("commit_capture"));
     expect(app.sent.at(-1)).toMatchObject({ publicationId, captureId });
     app.receive({ id: app.sent.at(-1)!.id, result: null });
-    await vi.waitFor(() => expect(watch).toHaveBeenCalledWith(publicationId, "first"));
+    await vi.waitFor(() => expect(watch).toHaveBeenCalledWith(publicationId, "first", expect.any(AbortSignal)));
     app.receive({ type: "external_input_state", publicationId, state: "live", captureId, sessionId, codec: "h264" });
     expect(session.externalInput("first")?.state).toBe("live");
     app.receive({ type: "external_input_state", publicationId, state: "waiting" });
@@ -4081,7 +4162,7 @@ test.each(["browser", "camera", "native"] as const)("waiting OBS can switch to %
       await vi.waitFor(() => expect(session.getSnapshot().pending.has("screen:first")).toBe(false));
       expect(video.stop).toHaveBeenCalledOnce();
       expect(session.externalInput("first")?.state).toBe("live");
-      expect(watch).toHaveBeenCalledWith(publicationId, "first");
+      expect(watch).toHaveBeenCalledWith(publicationId, "first", expect.any(AbortSignal));
     }
   } finally { session.close(); }
 });
@@ -4228,7 +4309,7 @@ test("same-session recovery retires its own host binding when the committed room
     socket.receive({ type: "host_bound", roomId: "first", bindingId: "owned-binding" });
     socket.receive({ type: "ack", requestId: registration.requestId });
     const retained = structuredClone(session.getSnapshot().state!);
-    retained.channel.rooms[0].delivery = { hostSessionId: "endpoint", bindingId: "owned-binding", nextHops: {} };
+    retained.channel.rooms[0].delivery = { hostSessionId: "endpoint", bindingId: "owned-binding" };
     policies = [];
     session.reconnect();
     const resumed = ChannelSocket.current;
@@ -4258,8 +4339,8 @@ test("a room hosted by another page cannot block this page's other rooms from re
     socket.receive({ type: "host_bound", roomId: "second", bindingId: "own-binding" });
     socket.receive({ type: "ack", requestId: register.requestId });
     const state = structuredClone(session.getSnapshot().state!);
-    state.channel.rooms[0].delivery = { hostSessionId: "other-page", bindingId: "other-binding", nextHops: {} };
-    state.channel.rooms[1].delivery = { hostSessionId: "endpoint", bindingId: "own-binding", nextHops: {} };
+    state.channel.rooms[0].delivery = { hostSessionId: "other-page", bindingId: "other-binding" };
+    state.channel.rooms[1].delivery = { hostSessionId: "endpoint", bindingId: "own-binding" };
     policies = [JSON.stringify(policy("first")), JSON.stringify(policy("second"))];
     session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
@@ -4629,7 +4710,7 @@ test("room service preference uses the normal room policy writer", async () => {
 });
 
 const topologyResponse = () => ({ serviceAvailable: false, serviceEnabled: false, bindingId: "binding", transitSession: null,
-  base: { rootSessionId: "host", edges: [{ sender: "host", receiver: "endpoint", ready: false }] },
+  sessionIds: ["endpoint", "helper", "host", "source"], pairs: [{ first: "endpoint", second: "host", confirmed: false }],
   screen: { publicationId: "screen", sourceSessionId: "source", edges: [
     { sender: "source", receiver: "endpoint", selected: true, proof: null, presented: null, presentation: false },
     { sender: "helper", receiver: "endpoint", selected: false, proof: "decoded", presented: false, presentation: true },
@@ -4666,8 +4747,8 @@ test("topology parsing and server refusal reject only the read", async () => {
   const { session, socket } = await setup();
   try {
     for (const result of [
-      { type: "topology", topology: { bindingId: "binding", transitSession: null, base: { rootSessionId: "host", edges: [] }, screen: null, address: "private" } },
-      { type: "topology", topology: { bindingId: "old-binding", transitSession: null, base: { rootSessionId: "host", edges: [] }, screen: null } },
+      { type: "topology", topology: { ...topologyResponse(), screen: null, address: "private" } },
+      { type: "topology", topology: { ...topologyResponse(), bindingId: "old-binding", screen: null } },
       { type: "error", code: "room_access_required" },
     ]) {
       const reading = session.roomTopology("first"), rejected = expect(reading).rejects.toThrow();
@@ -4765,7 +4846,7 @@ test("automatic audio ceilings isolate room voice and tolerate a source sender r
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const transport = new ChannelTransport({ polite: true, iceServers: [],
-    send() {}, receive() {}, connected() {}, base() {}, failed() {} });
+    send() {}, receive() {}, connected() {}, roomData() {}, failed() {} });
   const pc = RoomPeerConnection.instances[0];
   const voice = remoteStream("voice", [remoteTrack("audio")]);
   const screen = remoteStream("source", [remoteTrack("audio")]);
@@ -4797,7 +4878,7 @@ test("authoritative sender pause retains tracks, layer choices and independent r
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const transport = new ChannelTransport({ polite: true, iceServers: [], canReceiveVideoLayers: true,
-    send() {}, receive() {}, connected() {}, base() {}, failed() {} });
+    send() {}, receive() {}, connected() {}, roomData() {}, failed() {} });
   const pc = RoomPeerConnection.instances[0];
   const screen = remoteStream("paused-source", [remoteTrack("video"), remoteTrack("audio")]);
   const voice = remoteStream("voice", [remoteTrack("audio")]);
@@ -4840,7 +4921,7 @@ test("screen audio waits for negotiated encodings and updates bitrate and pause 
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
   const transport = new ChannelTransport({ polite: true, iceServers: [],
-    send() {}, receive() {}, connected() {}, base() {}, failed() {} });
+    send() {}, receive() {}, connected() {}, roomData() {}, failed() {} });
   const pc = RoomPeerConnection.instances[0];
   const add = pc.addTrack.bind(pc);
   let negotiated = false;
@@ -5192,7 +5273,7 @@ test.each(["timeout", "cancel"])("same draft retries its prepared attachment aft
   } finally { session.close(); }
 });
 
-test("revoked room access retires a file preparation before its late result can retain a send", async () => {
+test.each(["revoked access", "changed binding"] as const)("%s retires a file preparation before its late result can retain a send", async changed => {
   const { session, socket, peer } = await setup();
   const file = new File(["synthetic note"], "note.txt"), id = crypto.randomUUID();
   let finish!: (files: Awaited<ReturnType<ChannelAttachments["describe"]>>) => void;
@@ -5202,14 +5283,45 @@ test("revoked room access retires a file preparation before its late result can 
     const sending = session.sendMessage("first", "synthetic note", [{ id, file }]);
     const rejected = expect(sending).rejects.toThrow("room_unavailable");
     const state = structuredClone(session.getSnapshot().state!);
-    state.channel.rooms[0].authorized = false;
-    delete state.channel.rooms[0].delivery;
+    if (changed === "revoked access") {
+      state.channel.rooms[0].authorized = false;
+      delete state.channel.rooms[0].delivery;
+    } else state.channel.rooms[0].delivery!.bindingId = "replacement";
     socket.receive({ type: "state", state });
     expect(attempts.has("first")).toBe(false);
     finish([{ id, file, attachment: { id, name: file.name, size: file.size, mediaType: "application/octet-stream", sha256: "a".repeat(64) } }]);
     await rejected;
     expect(peer.sent).toHaveLength(0);
     expect(attempts.has("first")).toBe(false);
+  } finally { session.close(); }
+});
+
+test.each(["binding", "replacement"])("a deliberate retry after reconnect scopes its nonce to the %s binding", async binding => {
+  const { session, peer } = await setup();
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    const sending = session.sendMessage("first", "synthetic retry");
+    const interrupted = expect(sending).rejects.toThrow("disconnected");
+    const original = await peer.next();
+    expect(original.type).toBe("chat");
+    if (original.type !== "chat") throw new Error("Expected a chat command");
+    session.reconnect();
+    await interrupted;
+
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    state.channel.rooms[0].delivery!.bindingId = binding;
+    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "ack", requestId: resumed.sent.findLast(command => command.type === "browse" && command.active)!.requestId });
+    peer.page(await peer.next(), [], false, null, binding);
+
+    const retry = session.sendMessage("first", "synthetic retry");
+    const repeated = await peer.next();
+    expect(repeated.requestId).not.toBe(original.requestId);
+    if (binding === "binding") expect(repeated).toEqual({ ...original, requestId: repeated.requestId });
+    else expect(repeated).toMatchObject({ ...original, requestId: repeated.requestId, nonce: expect.not.stringMatching(original.nonce) });
+    peer.reply(repeated, { type: "confirmed", message: message(1), inserted: binding === "replacement" }, binding);
+    await retry;
   } finally { session.close(); }
 });
 
@@ -5539,7 +5651,7 @@ test("stopping a watch during signaling recovery closes its input before retirin
     const base = session.getSnapshot().state!;
     const initial = { ...base,
       channel: { ...base.channel, id: domainId, ownerId: userId, rooms: base.channel.rooms.map(room => ({ ...room, creatorId: userId,
-        participantSessionIds: [viewer], delivery: { hostSessionId: source, bindingId, nextHops: { [source]: source } } })) },
+        participantSessionIds: [viewer], delivery: { hostSessionId: source, bindingId } })) },
       users: [{ id: userId, name: "Viewer", version: profileVersion }, { id: sourceUser, name: "Source", version: profileVersion }],
       sessions: [{ id: viewer, userId, online: true, signingKey: testSigningKey }, { id: source, userId: sourceUser, online: true, signingKey: testSigningKey }],
     };
@@ -5684,7 +5796,7 @@ test("screen input shares its existing pair and retains only the committed flow'
     const binding = { publicationId, controllerSessionId: controller, routeId: trial,
       upstream: { pairId: upstreamPair, peerId: source, flowId: upstreamFlow },
       downstream: { pairId: downstreamPair, peerId: controller, flowId: trial } };
-    const relayState = { ...state, subscriptions: [], pairs: [
+    const relayState = { ...state, subscriptions: [publicationId], pairs: [
       { id: upstreamPair, peerId: source, canReceiveVideoLayers: false, rooms: ["first"], outgoing: [], incoming: [{ id: upstreamFlow, publicationId, selected: true, inputFlowId: null }] },
       { id: downstreamPair, peerId: controller, canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [{ id: trial, publicationId, selected: true, inputFlowId: upstreamFlow }] },
     ] };
@@ -5692,15 +5804,20 @@ test("screen input shares its existing pair and retains only the committed flow'
       route_input: (frame: string) => JSON.stringify({ frame: { ...JSON.parse(frame), flowId: upstreamFlow }, route: { nextHop: source, binding } }),
       input_binding_current: () => true,
     } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
-    const relayInput = new ChannelInput({ context: () => ({ sessionId: local, state: relayState, connected: true }), register: vi.fn(async () => {}),
+    const relayRegister = vi.fn(async () => {});
+    const relayInput = new ChannelInput({ context: () => ({ sessionId: local, state: relayState, connected: true }), register: relayRegister,
       send: (peer, frame) => relayMedia.sendInput(peer, frame), changed: () => {} });
     const relayMedia = new ChannelMedia(() => {}, () => {}, undefined, undefined, undefined,
       (pair, channel) => relayInput.setChannel(pair, channel));
+    // A LAN HTTP Viewer can carry another controller's ciphertext while watching.
+    const subtle = vi.spyOn(crypto, "subtle", "get").mockReturnValue(undefined!);
     try {
       const start = RoomPeerConnection.instances.length;
       relayMedia.update(local, relayState);
       const [up, down] = RoomPeerConnection.instances.slice(start);
       for (const transport of [up, down]) { transport.connected(); for (const channel of transport.channels) channel.open(); }
+      relayInput.update();
+      expect(relayRegister).not.toHaveBeenCalled();
       const upInput = up.channels.find(channel => channel.label === "piik-input")!;
       const downInput = down.channels.find(channel => channel.label === "piik-input")!;
       const frame = { publicationId, controllerSessionId: controller, routeId: trial, flowId: trial,
@@ -5727,7 +5844,7 @@ test("screen input shares its existing pair and retains only the committed flow'
       await vi.waitFor(() => expect(upInput.send).toHaveBeenCalledTimes(3));
       expect(JSON.parse(upInput.send.mock.calls[2][0])).toMatchObject({ flowId: upstreamFlow, data: frame.data });
       expect(up.channels.filter(channel => channel.label === "piik-input")).toHaveLength(1);
-    } finally { relayInput.reset(); relayMedia.reset(); }
+    } finally { subtle.mockRestore(); relayInput.reset(); relayMedia.reset(); }
   } finally { control?.dispose(); input.reset(); media.reset(); session.close(); }
 });
 
@@ -6808,7 +6925,7 @@ test("an explicit picture edit leaves the sender queue available to its pool han
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const pool = channelEncodingFixture(), videoPool = new BrowserEncodingPool();
   const transport = new ChannelTransport({ polite: true, iceServers: [], videoPool, send() {},
-    receive() {}, connected() {}, base() {}, failed() {} });
+    receive() {}, connected() {}, roomData() {}, failed() {} });
   const source = pool.source(), profile = QUALITY_PROFILES["1080p30"];
   try {
     transport.setOutgoing(new Map([["screen", { kind: "screen", stream: remoteStream("source", [source]), profile }]]));
@@ -6833,7 +6950,7 @@ test("pooled carriers retain the logical source and pending offer across replace
   const pool = channelEncodingFixture(), videoPool = new BrowserEncodingPool();
   const signals: ChannelSignal[] = [], failed = vi.fn(), outgoingFailed = vi.fn();
   const transport = new ChannelTransport({ polite: true, iceServers: [], videoPool, send: value => signals.push(value),
-    receive() {}, connected() {}, base() {}, failed, outgoingFailed });
+    receive() {}, connected() {}, roomData() {}, failed, outgoingFailed });
   const pc = RoomPeerConnection.instances[0], first = pool.source(), next = pool.source(), voice = remoteTrack("audio");
   const profile = QUALITY_PROFILES["1080p30"];
   const outputs = new Map([
@@ -6914,7 +7031,7 @@ test.each(["carrier", "source"])("retiring an in-flight %s releases its pending 
   const pool = channelEncodingFixture(), videoPool = new BrowserEncodingPool(), source = pool.source();
   const failed = vi.fn(), outgoingFailed = vi.fn();
   const transport = new ChannelTransport({ polite: true, iceServers: [], videoPool, send() {},
-    receive() {}, connected() {}, base() {}, failed, outgoingFailed });
+    receive() {}, connected() {}, roomData() {}, failed, outgoingFailed });
   const pc = RoomPeerConnection.instances[0], profile = QUALITY_PROFILES["1080p30"];
   const output = { kind: "screen" as const, stream: remoteStream("source", [source]), profile };
   const outputs = new Map([["first", output], ["sibling", output]]);
@@ -7070,7 +7187,7 @@ test.each([false, true])("source replacement rescales the retained video sender 
   const failed = vi.fn(), outgoingFailed = vi.fn();
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
   const transport = new ChannelTransport({ polite: true, iceServers: [], canReceiveVideoLayers: layered,
-    send() {}, receive() {}, connected() {}, base() {}, failed, outgoingFailed });
+    send() {}, receive() {}, connected() {}, roomData() {}, failed, outgoingFailed });
   const pc = RoomPeerConnection.instances[0];
   const add = vi.spyOn(pc, "addTransceiver");
   const profile = QUALITY_PROFILES["1080p30"];
@@ -7313,7 +7430,7 @@ test("bulk waits for its own open and buffer while control and media remain avai
     expect(control.send).toHaveBeenLastCalledWith("still-open-after-replacement");
     expect(RoomPeerConnection.instances).toEqual([pc]);
     expect(pc.close).not.toHaveBeenCalled();
-    expect(sent.some(command => command.type === "base_state" && !command.ready)).toBe(false);
+    expect(sent.some(command => command.type === "room_data_state" && !command.ready)).toBe(false);
   } finally { media.reset(); session.close(); }
 });
 
@@ -7335,6 +7452,191 @@ test("queued room data rechecks its owner before sending without closing the sha
     expect(control.send).toHaveBeenCalledExactlyOnceWith("current-room-content");
     expect(pc.close).not.toHaveBeenCalled();
   } finally { media.reset(); session.close(); }
+});
+
+test.each(["revoked", "source ended"] as const)("Watch Cancel checks the room grant when the path ends (%s)", async outcome => {
+  const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeRuntime: async () => {} } as never);
+  const { session, media, state, pc } = await setupRoomMedia();
+  const [viewer, provider, activityId, resourceId] = Array.from({ length: 4 }, () => crypto.randomUUID());
+  const key = { roomId: "first", activityId, resourceId };
+  const source: WatchByteSource = { sessionId: provider, resourceId, format: "file" };
+  const plan = { roomId: key.roomId, activityId, source, upstream: provider, downstream: [], receiving: true };
+  const providerPlan = { ...plan, upstream: null, downstream: [viewer], receiving: false };
+  const remote = new rust.WatchDelivery(provider);
+  const send = vi.fn<ConstructorParameters<typeof WatchBytes>[0]>((_peer, kind, data, allowed) => media.sendData("z", kind, data, allowed));
+  const watch = new WatchBytes(send);
+  const [control] = pc.channels;
+  const wire = () => control.send.mock.calls.map(([frame]) => JSON.parse(frame).body);
+  try {
+    state.pairs[0].rooms = ["first", "second"];
+    media.update("a", state);
+    pc.connected(); control.open();
+    if (outcome === "revoked") control.bufferedAmount = 65536;
+    watch.update(viewer, [plan], [{ peerId: provider, rooms: state.pairs[0].rooms }]);
+    const reading = watch.read("first", activityId, source, resourceId, 0, 64, new AbortController().signal);
+    const stopped = reading.catch(error => error);
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+    if (outcome === "source ended") {
+      // The recipient gets the Pull before its own room projection arrives.
+      expect(wire().map(body => body.type)).toEqual(["pull"]);
+      expect(JSON.parse(remote.control(viewer, JSON.stringify(wire()[0])))).toEqual([]);
+    } else {
+      expect(control.send).not.toHaveBeenCalled();
+      state.pairs[0].rooms = ["second"];
+      media.update("a", state);
+    }
+    watch.update(viewer, [], [{ peerId: provider, rooms: state.pairs[0].rooms }]);
+    expect(await stopped).toMatchObject({ message: outcome === "revoked" ? "watch_path_unavailable" : "watch_source_changed" });
+    expect(send.mock.calls.map(([, , frame]) => JSON.parse(frame as string).body.type)).toEqual(["pull", "cancel"]);
+    control.bufferedAmount = 0; control.dispatchEvent(new Event("bufferedamountlow"));
+    await media.sendData("z", "control", JSON.stringify({ body: { type: "other_room" } }));
+    if (outcome === "revoked") {
+      expect(wire().map(body => body.type)).toEqual(["other_room"]);
+    } else {
+      expect(wire().map(body => body.type)).toEqual(["pull", "cancel", "other_room"]);
+      expect(wire()[1]).toMatchObject({ key, requestId: wire()[0].requestId });
+      remote.control(viewer, JSON.stringify(wire()[1]));
+      expect(JSON.parse(remote.update(JSON.stringify([providerPlan]), JSON.stringify([[viewer, ["first"]]])))).toEqual([]);
+    }
+    expect(pc.close).not.toHaveBeenCalled();
+  } finally { watch.reset(); remote.free(); media.reset(); session.close(); }
+});
+
+test.each([true, false])("Watch bulk failure only writes Error with its room grant (revoked %s)", async revoked => {
+  const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeRuntime: async () => {} } as never);
+  const { session, media, state, pc } = await setupRoomMedia();
+  const [viewer, relay, provider, activityId, resourceId, requestId] = Array.from({ length: 6 }, () => crypto.randomUUID());
+  const key = { roomId: "first", activityId, resourceId };
+  const source: WatchByteSource = { sessionId: provider, resourceId, format: "file" };
+  const plan = { roomId: key.roomId, activityId, source, upstream: provider, downstream: [viewer], receiving: false };
+  const upstream = new rust.WatchDelivery(provider);
+  upstream.update(JSON.stringify([{ ...plan, upstream: null, downstream: [relay] }]), JSON.stringify([[relay, ["first"]]]));
+  const send = vi.fn<ConstructorParameters<typeof WatchBytes>[0]>(async (peer, kind, data, allowed) => {
+    if (peer === viewer) return media.sendData("z", kind, data, allowed);
+    const [read] = JSON.parse(upstream.control(relay, JSON.stringify(JSON.parse(data as string).body)));
+    for (const effect of JSON.parse(upstream.read_result(read.requestId, JSON.stringify({
+      mimeType: "video/mp4", totalSize: 3, bytes: [1, 2, 3], eof: true,
+    })))) {
+      watch.data(provider, "chunk", Uint8Array.from(effect.frame));
+    }
+  });
+  const watch = new WatchBytes(send);
+  const [control, bulk] = pc.channels;
+  try {
+    state.pairs[0].rooms = ["first", "second"];
+    media.update("a", state);
+    pc.connected(); control.open(); bulk.open();
+    control.bufferedAmount = 65536;
+    bulk.send.mockImplementationOnce(() => { throw new Error("bulk unavailable"); });
+    watch.update(relay, [plan], [{ peerId: provider, rooms: ["first"] }, { peerId: viewer, rooms: state.pairs[0].rooms }]);
+    watch.data(viewer, "control", JSON.stringify({ type: "pull", key, requestId, offset: 0, length: 3 }));
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(3));
+    expect(bulk.send).toHaveBeenCalledOnce();
+    const sentError = JSON.parse(send.mock.calls[2][2] as string).body;
+    expect(sentError).toMatchObject({ type: "error", key, requestId, code: "watch_path_unavailable" });
+    if (revoked) {
+      state.pairs[0].rooms = ["second"];
+      media.update("a", state);
+      watch.update(relay, [], [{ peerId: provider, rooms: ["first"] }, { peerId: viewer, rooms: state.pairs[0].rooms }]);
+    }
+    control.bufferedAmount = 0; control.dispatchEvent(new Event("bufferedamountlow"));
+    await media.sendData("z", "control", "other room");
+    expect(control.send.mock.calls.map(([frame]) => frame)).toEqual(revoked ? ["other room"] : [JSON.stringify({ kind: "watch", body: sentError }), "other room"]);
+    expect(pc.close).not.toHaveBeenCalled();
+  } finally { watch.reset(); upstream.free(); media.reset(); session.close(); }
+});
+
+test.each([true, false])("File Cancel requires the recipient's room grant (revoked %s)", async revoked => {
+  const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeRuntime: async () => {} } as never);
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
+  stubTransferStorage({
+    getFileHandle: async () => ({ createWritable: async () => ({ abort: async () => {} }) }),
+    removeEntry: async () => {},
+  });
+  const { session, media, state, pc } = await setupRoomMedia();
+  const [viewer, provider, attachmentId] = Array.from({ length: 3 }, () => crypto.randomUUID());
+  const key = { roomId: "first", messageSeq: 1, attachmentId };
+  const attachment = { id: attachmentId, name: "range.bin", size: 3, mediaType: "application/octet-stream" as const, sha256: "0".repeat(64) };
+  const plan = { ...key, attachment, authorId: crypto.randomUUID(), sourceId: provider, upstream: provider, downstream: [], receiving: true };
+  const scope = { domainId: "domain", userId: "self" };
+  const send = vi.fn<ConstructorParameters<typeof ChannelAttachments>[1]>((_peer, kind, data, allowed) => {
+    const frame = kind === "control"
+      ? new TextDecoder().decode(rust.encode_control(JSON.stringify({ kind: "file", body: JSON.parse(data as string) })))
+      : data;
+    return media.sendData("z", kind, frame, allowed);
+  });
+  const files = new ChannelAttachments(async () => {}, send);
+  const [control] = pc.channels;
+  const abort = new AbortController();
+  const wire = () => control.send.mock.calls.map(([frame]) => JSON.parse(frame).body);
+  try {
+    state.pairs[0].rooms = ["first", "second"];
+    media.update("a", state);
+    pc.connected(); control.open();
+    if (revoked) control.bufferedAmount = 65536;
+    files.update(viewer, scope, [plan], state.channel.rooms, [{ peerId: provider, rooms: state.pairs[0].rooms }]);
+    const reading = files.content(key, attachment, abort.signal).catch(error => error);
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+    if (revoked) {
+      expect(control.send).not.toHaveBeenCalled();
+      state.pairs[0].rooms = ["second"];
+      media.update("a", state);
+      files.update(viewer, scope, [{ ...plan, upstream: null }], state.channel.rooms, [{ peerId: provider, rooms: state.pairs[0].rooms }]);
+    } else {
+      expect(wire().map(frame => frame.type)).toEqual(["pull"]);
+      abort.abort();
+      expect(await reading).toMatchObject({ name: "AbortError" });
+    }
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect(send.mock.calls.map(([, , frame]) => JSON.parse(frame as string).type)).toEqual(["pull", "cancel"]);
+    control.bufferedAmount = 0; control.dispatchEvent(new Event("bufferedamountlow"));
+    await media.sendData("z", "control", JSON.stringify({ body: { type: "other_room" } }));
+    expect(wire().map(frame => frame.type)).toEqual(revoked ? ["other_room"] : ["pull", "cancel", "other_room"]);
+    if (!revoked) expect(wire()[1]).toMatchObject({ key, requestId: wire()[0].requestId, offset: wire()[0].offset });
+    expect(pc.close).not.toHaveBeenCalled();
+  } finally { abort.abort(); files.reset(); media.reset(); session.close(); }
+});
+
+test("cancelled file retries share the bulk limit before the polite channel arrives", async () => {
+  const { session, media, pc } = await setupRoomMedia(false, "zz");
+  const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const holder = crypto.randomUUID(), viewer = crypto.randomUUID();
+  const source = new rust.FileDelivery(holder), receiver = new rust.FileDelivery(viewer);
+  const bytes = new Uint8Array(65536);
+  const attachment = { id: crypto.randomUUID(), name: "test.bin", size: bytes.length, mediaType: "application/octet-stream", sha256: "0".repeat(64) };
+  const key = { roomId: "first", messageSeq: 1, attachmentId: attachment.id };
+  const plan = { ...key, attachment, authorId: holder, sourceId: holder };
+  const pending: Promise<void>[] = [], errors: string[] = [];
+  try {
+    pc.connected();
+    const control = new RoomDataChannel("piik-room", { ordered: true });
+    pc.ondatachannel!({ channel: control }); control.open();
+    source.update(JSON.stringify([{ ...plan, upstream: null, downstream: [viewer], receiving: false }]), JSON.stringify([[viewer, ["first"]]]), 0n);
+    receiver.update(JSON.stringify([{ ...plan, upstream: holder, downstream: [], receiving: true }]), JSON.stringify([[holder, ["first"]]]), 0n);
+    const capacity = rust.data_queue_frames(true);
+    // Each retry has one live range. Its response is still waiting for bulk.
+    while (pending.length <= capacity) {
+      const [pull] = JSON.parse(receiver.start(JSON.stringify(key)));
+      const effects = JSON.parse(source.control(viewer, JSON.stringify(pull.control), 0n));
+      const chunks = effects[0].type === "read"
+        ? JSON.parse(source.read_result(JSON.stringify(key), 0n, effects[0].requestId, bytes)) : effects;
+      for (const chunk of chunks) {
+        expect(chunk.type).toBe("send_chunk");
+        pending.push(media.sendData("z", "chunk", Uint8Array.from(chunk.frame)).catch(error => { errors.push(error.message); }));
+      }
+      const [cancel] = JSON.parse(receiver.cancel(JSON.stringify(key)));
+      source.control(viewer, JSON.stringify(cancel.control), 0n);
+    }
+    await media.sendData("z", "control", "still-open");
+    expect(errors).toEqual(Array(pending.length - capacity).fill("data_channel_busy"));
+    const bulk = new RoomDataChannel("piik-file", { ordered: true });
+    pc.ondatachannel!({ channel: bulk }); bulk.open();
+    await Promise.all(pending);
+    expect(bulk.send).toHaveBeenCalledTimes(capacity);
+  } finally { source.free(); receiver.free(); media.reset(); session.close(); }
 });
 
 test("a connecting bulk channel has a bounded frame queue and releases admission after sending", async () => {
@@ -7568,7 +7870,7 @@ test.each(["candidate", "audio", "source", "pending", "late", "channel", "initia
   const sent: ChannelSignal[][] = [[], []], failed = vi.fn(), outgoingFailed = vi.fn();
   const transports = sent.map((signals, index) => new ChannelTransport({
     polite: Boolean(index), iceServers: [], send: signal => signals.push(signal),
-    receive() {}, connected() {}, base() {}, failed, outgoingFailed,
+    receive() {}, connected() {}, roomData() {}, failed, outgoingFailed,
   }));
   const [left, right] = transports, [pc, remote] = RoomPeerConnection.instances;
   const picture = remoteTrack("video"), voice = remoteTrack("audio"), next = remoteTrack(mode === "audio" ? "audio" : "video");
@@ -7659,7 +7961,7 @@ test.each(["candidate", "audio", "source", "pending", "late", "channel", "initia
     expect(pc.senders[0]).toBe(retained[0]);
     expect(wrapper.getTracks()).toEqual(mode === "source" ? [] : [picture]);
     expect(outgoingFailed.mock.calls).toEqual(["candidate", "pending", "channel"].includes(mode) ? [["candidate"]] : mode === "source" ? [["screen"]] : []);
-    expect(left.isBaseReady()).toBe(true);
+    expect(left.isRoomDataReady()).toBe(true);
     await expect(left.sendData("control", "still-open")).resolves.toBeUndefined();
     expect(pc.channels[0].send).toHaveBeenLastCalledWith("still-open");
     if (mode !== "late" && mode !== "channel") expect(sent[0].some(signal => signal.description)).toBe(false);
@@ -7712,7 +8014,7 @@ test("shared media negotiates stereo reception in both offer directions without 
   const sent: ChannelSignal[][] = [[], []], failed = vi.fn();
   const transports = sent.map((signals, index) => new ChannelTransport({
     polite: Boolean(index), iceServers: [], send: signal => signals.push(signal),
-    receive() {}, connected() {}, base() {}, failed,
+    receive() {}, connected() {}, roomData() {}, failed,
   }));
   const connections = RoomPeerConnection.instances;
   const voice = remoteTrack("audio"), audio = remoteTrack("audio"), video = remoteTrack("video");
@@ -7763,7 +8065,7 @@ test.each(["offer", "answer"])("resync recovers a lost %s on the same transport 
   const failed = [vi.fn(), vi.fn()], receive = [vi.fn(), vi.fn()];
   const transports = sent.map((signals, i) => new ChannelTransport({
     polite: Boolean(i), iceServers: [], send: payload => signals.push(signalSchema.parse(payload)),
-    receive: receive[i], connected: () => {}, base: () => {}, failed: failed[i],
+    receive: receive[i], connected: () => {}, roomData: () => {}, failed: failed[i],
   }));
   const [a, b] = transports, [pcA, pcB] = RoomPeerConnection.instances;
   const remoteA = vi.spyOn(pcA, "setRemoteDescription"), remoteB = vi.spyOn(pcB, "setRemoteDescription");
@@ -7833,7 +8135,7 @@ test.each([true, false])("an offer received during local offer creation follows 
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const sent: ChannelSignal[] = [], failed = vi.fn();
   const transport = new ChannelTransport({ polite, iceServers: [], send: payload => sent.push(payload),
-    receive() {}, connected() {}, base() {}, failed });
+    receive() {}, connected() {}, roomData() {}, failed });
   const pc = RoomPeerConnection.instances[0], exchangeId = crypto.randomUUID();
   let finish!: (value: RTCSessionDescriptionInit) => void;
   const creating = vi.spyOn(pc, "createOffer").mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
@@ -7861,7 +8163,7 @@ test("an earlier answer cannot finish a newer exchange on the same transport", a
   const sent: ChannelSignal[][] = [[], []], failed = vi.fn();
   const transports = sent.map((signals, i) => new ChannelTransport({
     polite: Boolean(i), iceServers: [], send: payload => signals.push(signalSchema.parse(payload)),
-    receive: () => {}, connected: () => {}, base: () => {}, failed,
+    receive: () => {}, connected: () => {}, roomData: () => {}, failed,
   }));
   const [a, b] = transports, [pcA, pcB] = RoomPeerConnection.instances;
   const remoteA = vi.spyOn(pcA, "setRemoteDescription");
@@ -7928,8 +8230,8 @@ test.each(["connected", "disconnected", "failed", "deadline"] as const)("a resum
     expect(resumed.sent.filter(command => command.type === "link_state" && command.state === "failed")).toEqual(failed ? [
       { type: "link_state", pairId: "kept", state: "failed" },
     ] : []);
-    expect(resumed.sent.filter(command => command.type === "base_state")).toEqual(mode === "connected" ? [
-      { type: "base_state", pairId: "kept", roomId: "first", ready: true },
+    expect(resumed.sent.filter(command => command.type === "room_data_state")).toEqual(mode === "connected" ? [
+      { type: "room_data_state", pairId: "kept", roomId: "first", ready: true },
     ] : []);
     expect(kept.close).toHaveBeenCalledTimes(failed ? 1 : 0);
     expect(removed.close).toHaveBeenCalledOnce();
@@ -7942,7 +8244,7 @@ test("source replacement releases unmapped streams and ignores their late track 
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const receive = vi.fn(), send = vi.fn();
-  const transport = new ChannelTransport({ polite: true, iceServers: [], send, receive, connected: () => {}, base: () => {}, failed: vi.fn() });
+  const transport = new ChannelTransport({ polite: true, iceServers: [], send, receive, connected: () => {}, roomData: () => {}, failed: vi.fn() });
   const pc = RoomPeerConnection.instances[0], stop = vi.fn();
   const stream = (id: string) => {
     const track = { stop };
@@ -7993,7 +8295,7 @@ test("an empty pair starts SCTP and reports physical connectivity without enabli
   expect(pc.channels.map(channel => channel.label)).toEqual(["piik-input"]);
   pc.connected(); pc.channels[0].open();
   expect(send.mock.calls.map(([command]) => command)).toContainEqual({ type: "link_state", pairId: "probe", state: "connected" });
-  expect(send.mock.calls.some(([command]) => command.type === "base_state")).toBe(false);
+  expect(send.mock.calls.some(([command]) => command.type === "room_data_state")).toBe(false);
   expect(media.sendInput("z-peer", "frame")).toBe(false);
   expect(input).not.toHaveBeenCalled();
   media.update("a-source", { ...state, pairs: [] });
@@ -8002,8 +8304,8 @@ test("an empty pair starts SCTP and reports physical connectivity without enabli
 
 test("physical data channels can precede room leases without admitting retired work", async () => {
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
-  const base = vi.fn(), data = vi.fn(), failed = vi.fn(), dataState = vi.fn();
-  const options = { iceServers: [], send() {}, receive() {}, connected() {}, base, data, failed, dataState };
+  const roomData = vi.fn(), data = vi.fn(), failed = vi.fn(), dataState = vi.fn();
+  const options = { iceServers: [], send() {}, receive() {}, connected() {}, roomData, data, failed, dataState };
   const mediaOnly = new ChannelTransport({ ...options, polite: false });
   mediaOnly.setRooms([]);
   expect(RoomPeerConnection.instances.at(-1)!.channels).toHaveLength(0);
@@ -8023,11 +8325,14 @@ test("physical data channels can precede room leases without admitting retired w
     transport.setRooms([]); transport.setRooms([]);
     expect([control.readyState, bulk.readyState]).toEqual(["connecting", "connecting"]);
     control.open(); bulk.open();
-    control.onmessage?.({ data: "before admission" });
+    const earlyChunk = new Uint8Array([1]).buffer;
+    control.onmessage?.({ data: "early control" });
+    bulk.onmessage?.({ data: earlyChunk });
     await expect(transport.sendData("control", "before admission")).rejects.toThrow("peer_data_unavailable");
-    expect(data).not.toHaveBeenCalled(); expect(base).not.toHaveBeenCalled();
+    expect(data).toHaveBeenCalledExactlyOnceWith("control", "early control");
+    expect(roomData).not.toHaveBeenCalled();
     transport.setRooms(["room"]);
-    expect(transport.isBaseReady()).toBe(true);
+    expect(transport.isRoomDataReady()).toBe(true);
     control.onmessage?.({ data: "current room" });
     await transport.sendData("control", "current room");
     expect(data).toHaveBeenLastCalledWith("control", "current room");
@@ -8037,25 +8342,32 @@ test("physical data channels can precede room leases without admitting retired w
     const pending = expect(transport.sendData("chunk", new Uint8Array([1]))).rejects.toThrow("peer_data_unavailable");
     await Promise.resolve();
     const oldClose = control.onclose;
+    const [oldControl, oldBulk] = [control.onmessage, bulk.onmessage];
     transport.setRooms([]);
     await pending;
     expect([control.readyState, bulk.readyState]).toEqual(["closed", "closed"]);
     const [nextControl, nextBulk] = arrive();
     transport.setRooms([]); transport.setRooms(["room"]);
     nextControl.open(); nextBulk.open(); oldClose?.();
-    expect(transport.isBaseReady()).toBe(true);
+    data.mockClear();
+    oldControl?.({ data: "retired control" });
+    oldBulk?.({ data: earlyChunk });
+    expect(data).not.toHaveBeenCalled();
+    expect(transport.isRoomDataReady()).toBe(true);
     nextControl.close();
-    expect(base).toHaveBeenLastCalledWith(false);
+    expect(roomData).toHaveBeenLastCalledWith(false);
     const [afterFailure, afterFailureBulk] = arrive();
     afterFailure.open(); afterFailureBulk.open();
-    data.mockClear(); base.mockClear();
-    afterFailure.onmessage?.({ data: "retired room" });
+    data.mockClear(); roomData.mockClear();
+    afterFailure.onmessage?.({ data: "early recovery control" });
+    afterFailureBulk.onmessage?.({ data: earlyChunk });
     transport.setRooms(["room"]);
-    expect(transport.isBaseReady()).toBe(false);
+    expect(transport.isRoomDataReady()).toBe(false);
     await expect(transport.sendData("control", "retired room")).rejects.toThrow("peer_data_unavailable");
-    expect(data).not.toHaveBeenCalled(); expect(base).not.toHaveBeenCalled();
+    expect(data).toHaveBeenCalledExactlyOnceWith("control", "early recovery control");
+    expect(roomData).not.toHaveBeenCalled();
     transport.setRooms(["room", "added"]);
-    expect(transport.isBaseReady()).toBe(true);
+    expect(transport.isRoomDataReady()).toBe(true);
     await transport.sendData("control", "new admission");
     expect(afterFailure.send).toHaveBeenLastCalledWith("new admission");
     const duplicate = new RoomDataChannel("piik-room", { ordered: true }); incoming({ channel: duplicate });
@@ -8075,22 +8387,22 @@ test("base proof waits for open data and connected transport; removing leases pr
   const { session, media, state, sent, pc } = await setupRoomMedia();
   try {
     pc.connected();
-    expect(sent.filter(command => command.type === "base_state")).toEqual([]);
+    expect(sent.filter(command => command.type === "room_data_state")).toEqual([]);
     expect(pc.channels[0].options).toEqual({ ordered: true });
     pc.channels[0].open();
-    expect(sent.filter(command => command.type === "base_state")).toEqual([{ type: "base_state", pairId: "pair", roomId: "first", ready: true }]);
+    expect(sent.filter(command => command.type === "room_data_state")).toEqual([{ type: "room_data_state", pairId: "pair", roomId: "first", ready: true }]);
     state.pairs[0].rooms.push("second");
     media.update("a", state);
-    expect(sent.at(-1)).toEqual({ type: "base_state", pairId: "pair", roomId: "second", ready: true });
+    expect(sent.at(-1)).toEqual({ type: "room_data_state", pairId: "pair", roomId: "second", ready: true });
     state.pairs[0].rooms = [];
     state.pairs[0].outgoing = [{ id: "screen-outgoing", publicationId: "screen", selected: true, inputFlowId: null }];
     media.update("a", state);
     expect(pc.close).not.toHaveBeenCalled();
-    expect(sent.filter(command => command.type === "base_state" && !command.ready)).toEqual([]);
+    expect(sent.filter(command => command.type === "room_data_state" && !command.ready)).toEqual([]);
     state.pairs = [];
     media.update("a", state);
     expect(pc.close).toHaveBeenCalledOnce();
-    expect(sent.filter(command => command.type === "base_state" && !command.ready)).toEqual([]);
+    expect(sent.filter(command => command.type === "room_data_state" && !command.ready)).toEqual([]);
   } finally { media.reset(); session.close(); }
 });
 
@@ -8098,15 +8410,15 @@ test("data failure retires only the base attempt and does not retry unchanged de
   const { session, media, state, sent, pc } = await setupRoomMedia();
   try {
     pc.connected(); pc.channels[0].open(); pc.channels[0].close();
-    expect(sent.at(-1)).toEqual({ type: "base_state", pairId: "pair", roomId: "first", ready: false });
+    expect(sent.at(-1)).toEqual({ type: "room_data_state", pairId: "pair", roomId: "first", ready: false });
     media.update("a", state); media.update("a", state);
     expect(pc.channels).toHaveLength(2);
     expect(pc.close).not.toHaveBeenCalled();
     expect(sent.some(command => command.type === "link_state" && command.state === "failed")).toBe(false);
     sent.length = 0;
     media.resync();
-    await vi.waitFor(() => expect(sent.filter(command => command.type === "base_state")).toEqual([
-      { type: "base_state", pairId: "pair", roomId: "first", ready: false },
+    await vi.waitFor(() => expect(sent.filter(command => command.type === "room_data_state")).toEqual([
+      { type: "room_data_state", pairId: "pair", roomId: "first", ready: false },
     ]));
     state.pairs[0].rooms.push("second");
     media.update("a", state);
@@ -8133,32 +8445,32 @@ test("transient transport loss retains base leases and proves new leases after r
     expect(sent).toEqual([]);
     expect(pc.close).not.toHaveBeenCalled();
     pc.connected();
-    expect(sent.filter(command => command.type === "base_state")).toEqual([
-      { type: "base_state", pairId: "pair", roomId: "second", ready: true },
+    expect(sent.filter(command => command.type === "room_data_state")).toEqual([
+      { type: "room_data_state", pairId: "pair", roomId: "second", ready: true },
     ]);
     pc.connectionState = "failed"; pc.onconnectionstatechange?.();
-    expect(sent.filter(command => command.type === "base_state" && !command.ready)).toEqual([
-      { type: "base_state", pairId: "pair", roomId: "first", ready: false },
-      { type: "base_state", pairId: "pair", roomId: "second", ready: false },
+    expect(sent.filter(command => command.type === "room_data_state" && !command.ready)).toEqual([
+      { type: "room_data_state", pairId: "pair", roomId: "first", ready: false },
+      { type: "room_data_state", pairId: "pair", roomId: "second", ready: false },
     ]);
     expect(sent.at(-1)).toEqual({ type: "link_state", pairId: "pair", state: "failed" });
   } finally { media.reset(); session.close(); }
 });
 
-test("connected media keeps its PC when the base channel exceeds the existing preparation deadline", async () => {
+test("connected media keeps its PC when the room data channel exceeds the existing preparation deadline", async () => {
   vi.useFakeTimers();
   const { session, media, state, sent, pc } = await setupRoomMedia();
   try {
     pc.connected();
     vi.advanceTimersByTime(19999);
-    expect(sent.some(command => command.type === "base_state")).toBe(false);
+    expect(sent.some(command => command.type === "room_data_state")).toBe(false);
     vi.advanceTimersByTime(1);
-    expect(sent.at(-1)).toEqual({ type: "base_state", pairId: "pair", roomId: "first", ready: false });
+    expect(sent.at(-1)).toEqual({ type: "room_data_state", pairId: "pair", roomId: "first", ready: false });
     expect(pc.close).not.toHaveBeenCalled();
     media.update("a", state);
     expect(pc.channels).toHaveLength(2);
     vi.advanceTimersByTime(20000);
-    expect(sent.filter(command => command.type === "base_state")).toHaveLength(1);
+    expect(sent.filter(command => command.type === "room_data_state")).toHaveLength(1);
   } finally { media.reset(); session.close(); }
 });
 
@@ -8181,7 +8493,7 @@ test("a base deadline settles missing-channel sends while polite screen media st
     const sender = pc.senders[0];
     const control = send("control"), chunk = send("chunk");
     await vi.advanceTimersByTimeAsync(20000);
-    expect(sent).toContainEqual({ type: "base_state", pairId: "pair", roomId: "first", ready: false });
+    expect(sent).toContainEqual({ type: "room_data_state", pairId: "pair", roomId: "first", ready: false });
     expect(pc.close).not.toHaveBeenCalled();
     expect(pc.senders).toEqual([sender]);
     expect(video.stop).not.toHaveBeenCalled();
@@ -8255,6 +8567,81 @@ test("browsing keeps watched-room reading and resumes the offline selection with
     expect(session.getSnapshot().state?.subscriptions).toEqual(["screen"]);
     expect(resumed.sent.some(command => ["unpublish", "voice"].includes(String(command.type))
       || command.type === "subscribe" && command.enabled === false)).toBe(false);
+  } finally { session.close(); }
+});
+
+test.each(["reconnected", "cancelled", "rejected", "revoked", "rebound"] as const)("single-picture retry preserves the original room reading across navigation until %s", async outcome => {
+  const { session, socket, peer } = await setup();
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.publications = [{ audience: [], id: "screen", roomId: "first", sessionId: "other", userId: "friend", kind: "screen",
+      source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }];
+    socket.receive({ type: "state", state });
+    const watching = session.watch("screen");
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await watching;
+    state.subscriptions = ["screen"];
+    socket.receive({ type: "state", state });
+    await peer.history([message(1)]);
+    const original = session.getSnapshot(), first = original.interactionsByRoom.get("first");
+    expect(first?.getSnapshot().ready).toBe(true);
+    expect(original.messagesByRoom.first).toEqual([message(1)]);
+    expect(original.historyByRoom.first).toBeDefined();
+
+    const retry = session.retryPicture("screen");
+    const completion = retry.catch(error => error);
+    const off = socket.sent.at(-1)!;
+    expect(off).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: false });
+    session.browse("second");
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    peer.page(await peer.next(), [], false, null);
+    await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.get("second")?.getSnapshot().ready).toBe(true));
+
+    const retired = { type: "browse", roomId: "first", active: false };
+    state.subscriptions = [];
+    socket.receive({ type: "state", state });
+    await Promise.resolve();
+    expect(session.getSnapshot().interactionsByRoom.get("first")).toBe(first);
+    expect(session.getSnapshot().messagesByRoom.first).toBe(original.messagesByRoom.first);
+    expect(session.getSnapshot().historyByRoom.first).toBe(original.historyByRoom.first);
+    expect(socket.sent).not.toContainEqual(retired);
+
+    if (outcome === "cancelled") {
+      const stopping = session.unwatch("screen");
+      socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+      await stopping;
+      expect(await completion).toMatchObject({ name: "AbortError" });
+    } else if (outcome === "revoked" || outcome === "rebound") {
+      if (outcome === "revoked") state.channel.rooms[0].authorized = false;
+      else state.channel.rooms[0].delivery!.bindingId = "new-binding";
+      socket.receive({ type: "state", state });
+      expect(session.getSnapshot().interactionsByRoom.has("first")).toBe(false);
+      socket.receive({ type: "ack", requestId: off.requestId });
+      expect(await completion).toMatchObject({ message: "room_context_changed" });
+      expect(socket.sent.slice(socket.sent.indexOf(off) + 1)).not.toContainEqual(expect.objectContaining({ type: "subscribe", enabled: true }));
+    } else {
+      socket.receive({ type: "ack", requestId: off.requestId });
+      await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true }));
+      const on = socket.sent.at(-1)!;
+      if (outcome === "reconnected") {
+        state.subscriptions = ["screen"];
+        socket.receive({ type: "state", state });
+        socket.receive({ type: "ack", requestId: on.requestId });
+        await retry;
+        expect(session.getSnapshot().interactionsByRoom.get("first")).toBe(first);
+        expect(session.getSnapshot().historyByRoom.first).toBe(original.historyByRoom.first);
+        expect(socket.sent).not.toContainEqual(retired);
+        return;
+      }
+      socket.receive({ type: "error", requestId: on.requestId, code: "room_unavailable" });
+      expect(await completion).toMatchObject({ message: "room_unavailable" });
+    }
+
+    expect(session.getSnapshot().interactionsByRoom.has("first")).toBe(false);
+    expect(session.getSnapshot().messagesByRoom.first).toBeUndefined();
+    expect(session.getSnapshot().historyByRoom.first).toBeUndefined();
+    expect(session.getSnapshot().interactionsByRoom.get("second")?.getSnapshot().ready).toBe(true);
+    if (outcome === "cancelled" || outcome === "rejected") expect(socket.sent).toContainEqual(retired);
   } finally { session.close(); }
 });
 
@@ -8637,18 +9024,17 @@ test("voice forwards without local listening and the same pair carries the rever
 
 test("history timeout remains explicit until a Domain retry, independently of peer readiness", async () => {
   vi.useFakeTimers();
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const { session, socket, peer } = await setup(1000, false);
   try {
     const state = structuredClone(session.getSnapshot().state!);
-    state.channel.rooms[0].delivery!.nextHops = {};
-    socket.receive({ type: "state", state });
     const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
     socket.receive({ type: "ack", requestId: browse.requestId });
     await vi.advanceTimersByTimeAsync(0);
     expect(peer.sent).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(session.getSnapshot().error).toBe("request_timeout");
-    state.channel.rooms[0].delivery!.nextHops = { host: "unused-peer" };
+    state.pairs = [{ id: "standby", peerId: "host", canReceiveVideoLayers: false, rooms: [], incoming: [], outgoing: [] }];
     socket.receive({ type: "state", state });
     await vi.advanceTimersByTimeAsync(0);
     expect(peer.sent).toHaveLength(1);
@@ -8686,9 +9072,6 @@ test("browse admission gates Domain history and reconnect cancels the old socket
     session.browse("second");
     const second = socket.sent.at(-1)!;
     const state = structuredClone(session.getSnapshot().state!);
-    const delivery = state.channel.rooms[1].delivery!;
-    delivery.nextHops = {};
-    socket.receive({ type: "state", state });
     socket.receive({ type: "ack", requestId: first.requestId }); await Promise.resolve();
     expect(peer.sent).toEqual([]);
     socket.receive({ type: "room_reply", roomId: "second", requestId: second.requestId, result: { type: "done" } });
@@ -8706,15 +9089,12 @@ test("browse admission gates Domain history and reconnect cancels the old socket
     const previous = await peer.next();
     expect(previous).toMatchObject({ type: "history", roomId: "second", before: 5 });
     peer.page(previous, [], false); await older;
-    delivery.nextHops = {};
-    socket.receive({ type: "state", state });
     const canceled = expect(session.loadLatestHistory("second")).rejects.toThrow("disconnected");
     await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:second")).toBe(true));
     expect(await peer.next()).toMatchObject({ type: "history", roomId: "second" });
     expect(peer.sent).toHaveLength(3);
     session.reconnect();
     await canceled;
-    delivery.nextHops = { host: "host" };
     const resumed = ChannelSocket.current; await resumed.onopen?.();
     resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
     expect(peer.sent).toHaveLength(3);
@@ -8748,7 +9128,7 @@ async function setupRoomBackup() {
   await vi.waitFor(() => expect(context.socket.sent.some(command => command.type === "host_register")).toBe(true));
   const register = context.socket.sent.find(command => command.type === "host_register")!;
   const state = structuredClone(context.session.getSnapshot().state!);
-  state.channel.rooms[0].delivery = { hostSessionId: "endpoint", bindingId: "binding", nextHops: {} };
+  state.channel.rooms[0].delivery = { hostSessionId: "endpoint", bindingId: "binding" };
   context.socket.receive({ type: "state", state });
   context.socket.receive({ type: "host_bound", roomId: "first", bindingId: "binding" });
   context.socket.receive({ type: "ack", requestId: register.requestId });
@@ -9182,7 +9562,7 @@ test.each(["success", "create-failed", "registration-failed", "duplicate", "nati
     vi.spyOn(appLink.ChannelApp.prototype, "restoreRoom").mockImplementationOnce(async archive => {
       expect(archive).toBe(encoded);
       if (outcome === "native-unconfirmed") throw new Error("room_restore_unconfirmed");
-      state.channel.rooms.push({ ...state.channel.rooms[0], id, delivery: { hostSessionId: "native-host", bindingId: "copied-binding", nextHops: {} } });
+      state.channel.rooms.push({ ...state.channel.rooms[0], id, delivery: { hostSessionId: "native-host", bindingId: "copied-binding" } });
       socket.receive({ type: "state", state });
       return { ...metadata.policy, id, hasPassword: false };
     });
@@ -9221,7 +9601,7 @@ test.each(["success", "create-failed", "registration-failed", "duplicate", "nati
         }
         socket.receive({ type: "host_bound", roomId: id, bindingId: "copied-binding" });
         state.channel.rooms.push({ ...state.channel.rooms[0], id,
-          delivery: { hostSessionId: "endpoint", bindingId: "copied-binding", nextHops: {} } });
+          delivery: { hostSessionId: "endpoint", bindingId: "copied-binding" } });
         socket.receive({ type: "state", state });
       }
       socket.receive({ type: "ack", requestId: request.requestId });
@@ -9581,7 +9961,7 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
     const restored = structuredClone(state);
     restored.channel.rooms = [{ id: "imported", name: "First", creatorId: "archived-user", icon: "couch", access: "public", hidden: false, hasPassword: false,
       authorized: true, canManage: true, voiceBitrate: 64_000, relayCapacity: 2, relayOverride: null, participantSessionIds: [], lastMessageSeq: 0, fileActivity: [], available: true, reading: false, capabilities: { attachments: true },
-      delivery: { hostSessionId: "new-endpoint", bindingId: "imported-binding", nextHops: {} } }];
+      delivery: { hostSessionId: "new-endpoint", bindingId: "imported-binding" } }];
     admission.receive({ type: "state", state: restored });
     await vi.waitFor(() => expect(admission.sent.some(command => command.type === "browse" && command.roomId === "imported")).toBe(true));
     const browse = admission.sent.find(command => command.type === "browse" && command.roomId === "imported")!;
@@ -11169,6 +11549,28 @@ test('local provider preparation failure releases only its reader and candidate,
   }finally{session.close();}
 });
 
+test('closing forwarding settings during direct preparation releases the reader and keeps the original page', async () => {
+  const { session, page, socket, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
+  const media = new AppPageMedia(page);
+  await media.opening;
+  (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set('owned', new WatchPlayer('first', true, media, () => {}));
+  const controller = new AbortController();
+  const prepare = vi.spyOn(page, 'prepareMedia').mockImplementation((_id, signal) =>
+    new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })));
+  const stop = vi.spyOn(page, 'stopMedia').mockResolvedValue();
+  try {
+    const changing = session.setWatchByteSource('owned', crypto.randomUUID(), controller.signal);
+    const cancelled = expect(changing).rejects.toMatchObject({ name: 'AbortError' });
+    expect(prepare.mock.calls[0]?.[1]).toBe(controller.signal);
+    controller.abort();
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: 'set_watch_byte_source', byteSource: null }));
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: socket.sent.at(-1)!.requestId, result: { type: 'done' } });
+    await cancelled;
+    expect(stop).toHaveBeenCalledOnce();
+    expect(dispose).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
 test('turning off remote forwarding preserves the Host local provider and reuses its admitted root on return', async () => {
   const {session,page,socket,dispose}=await websiteSourceSelection(async()=>({choices:[],indexedCandidates:[],byteSource:null}));
   localProviderVideo();const source={sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls' as const};
@@ -11613,7 +12015,7 @@ test('a direct URL inspection failure discovers page resources before explicit f
     const forwarding = session.selectWatchForwardSource('first', choice.id, false);
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
     const start = socket.sent.findLast(command => command.type === 'start_watch')!;
-    expect(prepare).toHaveBeenCalledWith(choice.id);
+    expect(prepare).toHaveBeenCalledWith(choice.id, expect.any(AbortSignal));
     expect(start.source).toEqual({ kind: 'website', url: page.url });
     expect(start.byteSource).toEqual(byteSource);
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
@@ -11906,6 +12308,7 @@ test("manual picture retry withdraws one selected flow while sibling picture, vo
     const before = socket.sent.length, retry = session.retryPicture("one");
     expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "one", enabled: false });
     const off = socket.sent.at(-1)!;
+    session.browse("second");
     state.subscriptions = ["two", "voice"]; state.pairs[0].incoming = state.pairs[0].incoming.filter(f => f.publicationId !== "one");
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().streams.has("one")).toBe(false);
@@ -11924,16 +12327,45 @@ test("manual picture retry withdraws one selected flow while sibling picture, vo
   } finally { session.close(); }
 });
 
-test.each(["browse", "closed", "disconnected", "replaced", "revoked"] as const)("manual picture retry does not reacquire a retired context (%s)", async mode => {
+test.each(["unwatch", "closed", "disconnected", "replaced", "revoked", "removed", "rebound"] as const)("manual picture retry does not reacquire a retired context (%s)", async mode => {
   const { session, socket, state } = await retryPictureFixture();
   try {
     const retry = session.retryPicture("one"), rejected = expect(retry).rejects.toThrow(), off = socket.sent.at(-1)!;
-    if (mode === "browse") session.browse("second");
+    if (mode === "unwatch") {
+      const stopping = session.unwatch("one");
+      socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+      await stopping;
+    }
     else if (mode === "closed") session.close();
     else if (mode === "disconnected") socket.close();
-    else { if (mode === "replaced") state.publications[0].sessionId = "replacement-source"; else state.channel.rooms[0].authorized = false; socket.receive({ type: "state", state }); }
+    else {
+      if (mode === "replaced") state.publications[0].sessionId = "replacement-source";
+      if (mode === "removed") state.publications.shift();
+      if (mode === "revoked") state.channel.rooms[0].authorized = false;
+      if (mode === "rebound") state.channel.rooms[0].delivery!.bindingId = "new-binding";
+      socket.receive({ type: "state", state });
+    }
     socket.receive({ type: "ack", requestId: off.requestId }); await rejected;
     expect(socket.sent.slice(socket.sent.indexOf(off) + 1).some(c => c.type === "subscribe" && c.publicationId === "one" && c.enabled)).toBe(false);
+  } finally { session.close(); }
+});
+
+test("an explicit unwatch supersedes a picture retry waiting for its new subscription", async () => {
+  const { session, socket } = await retryPictureFixture();
+  try {
+    const retry = session.retryPicture("one");
+    const cancelled = expect(retry).rejects.toMatchObject({ name: "AbortError" });
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "one", enabled: true }));
+    const enable = socket.sent.at(-1)!;
+    const stopping = session.unwatch("one");
+    const disable = socket.sent.at(-1)!;
+    expect(disable).toMatchObject({ type: "subscribe", publicationId: "one", enabled: false });
+    socket.receive({ type: "ack", requestId: disable.requestId });
+    await Promise.all([stopping, cancelled]);
+    socket.receive({ type: "ack", requestId: enable.requestId });
+    expect(session.getSnapshot().state?.subscriptions).toEqual(["two", "voice"]);
+    expect(session.getSnapshot().error).toBeNull();
   } finally { session.close(); }
 });
 
@@ -11957,7 +12389,7 @@ test("manual picture retry rejects a duplicate or failed withdrawal through the 
     await expect(session.retryPicture("one")).rejects.toThrow("operation_pending");
     socket.receive({ type: "error", requestId: off.requestId, code: "room_unavailable" }); await rejected;
     expect(session.getSnapshot().pending.has("retry-picture:one")).toBe(false);
-    expect(session.getSnapshot().state?.subscriptions).toContain("two"); expect(pc.close).not.toHaveBeenCalled();
+    expect(session.getSnapshot().state?.subscriptions).toEqual(["one", "two", "voice"]); expect(pc.close).not.toHaveBeenCalled();
     expect(socket.sent.slice(socket.sent.indexOf(off) + 1).some(c => c.type === "subscribe" && c.publicationId === "one" && c.enabled)).toBe(false);
   } finally { session.close(); }
 });
@@ -12228,11 +12660,20 @@ test.each(["remote-description", "local-answer", "room-channel", "input-channel"
     const dataChannel = RoomPeerConnection.prototype.createDataChannel;
     const install = stage === "room-channel" || stage === "input-channel"
       ? vi.spyOn(RoomPeerConnection.prototype, "createDataChannel").mockImplementation(function (this: RoomPeerConnection, label, options) {
-        if (this !== healthy && (stage === "room-channel" || label === "piik-input")) throw new DOMException("SCTP setup unavailable", "OperationError");
+        if ((stage === "room-channel" && this !== healthy) || (stage === "input-channel" && label === "piik-input")) throw new DOMException("SCTP setup unavailable", "OperationError");
         return dataChannel.call(this, label, options);
       }) : null;
     if (stage === "input-channel") {
       state.publications.push({ audience: [], id: "picture", roomId: "first", sessionId: "host", userId: "other", kind: "screen", source: { kind: "screen", name: null }, title: null, paused: false });
+      // Adding input to the live voice carrier must preserve its existing stream.
+      const healthyInputs: import("../src/client/channel/protocol").ChannelPair["incoming"] = healthyPlan.incoming;
+      healthyInputs.push({ id: "live-picture-flow", publicationId: "picture", selected: true, inputFlowId: null });
+      socket.receive({ type: "state", state });
+      expect(warning).toHaveBeenCalledWith("Could not create the screen input channel", expect.any(DOMException));
+      expect(socket.sent).not.toContainEqual({ type: "link_state", pairId: "healthy", state: "failed" });
+      expect(healthy.close).not.toHaveBeenCalled();
+      expect(session.getSnapshot().streams.get("healthy-voice")).toBe(retained);
+      healthyInputs.pop();
     }
     const rejoinPlan = plan("rejoined");
     if (stage === "input-channel") (rejoinPlan.incoming as import("../src/client/channel/protocol").ChannelPair["incoming"]).push({ id: "picture-flow", publicationId: "picture", selected: true, inputFlowId: null });

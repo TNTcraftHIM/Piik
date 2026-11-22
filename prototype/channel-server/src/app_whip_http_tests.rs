@@ -49,7 +49,7 @@ fn fixture() -> (
             "rooms":[{"id":"room","name":"Room","icon":"couch","creatorId":Uuid::new_v4(),"access":"private","hidden":false,
                 "hasPassword":false,"voiceBitrate":64000,"relayOverride":null,"authorized":true,"canManage":false,"available":true,"reading":false,
                 "lastMessageSeq":0,"participantSessionIds":[],"fileActivity":[],"capabilities":{"attachments":true},
-                "delivery":{"hostSessionId":Uuid::new_v4(),"bindingId":binding,"nextHops":{}}}]},
+                "delivery":{"hostSessionId":Uuid::new_v4(),"bindingId":binding}}]},
         "files":[],"users":[],"sessions":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[],
         "watchActivities":[],"watchSubscriptions":[],"watchBytes":[]
     })).unwrap();

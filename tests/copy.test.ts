@@ -145,6 +145,26 @@ describe("copy catalog", () => {
     expect(setItem).not.toHaveBeenCalled();
   });
 
+  it("follows the App window without copying its language as a preference", async () => {
+    vi.resetModules();
+    const setItem = vi.fn();
+    vi.stubGlobal("window", {
+      localStorage: { getItem: () => "ja", setItem },
+      addEventListener: () => {},
+    });
+    const copy = await import("../src/client/ui/copy");
+    expect(copy.currentLang()).toBe("ja");
+    copy.applyWindowCopy("en");
+    expect(copy.currentLang()).toBe("en");
+    expect(copy.hasCopyPreference()).toBe(false);
+    expect(setItem).not.toHaveBeenCalled();
+    copy.setCopy({ lang: "zh" });
+    copy.applyWindowCopy("en");
+    expect(copy.currentLang()).toBe("zh");
+    expect(copy.hasCopyPreference()).toBe(true);
+    expect(setItem).toHaveBeenCalledExactlyOnceWith("piik:ui-lang", "zh");
+  });
+
   it.each(["zh-Hant", "ja", "ko"] as const)("persists and hands off %s", async (lang) => {
     vi.resetModules();
     const stored = new Map<string, string>([["piik:ui-lang", lang]]);

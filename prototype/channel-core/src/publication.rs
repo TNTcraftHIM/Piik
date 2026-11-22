@@ -245,12 +245,7 @@ impl Publication {
         for child in unavailable {
             self.plan.detach(child);
         }
-        let origin_paths = BTreeSet::new();
-        if self
-            .plan
-            .capacity_children(helpers, limits, &origin_paths)
-            .is_empty()
-        {
+        if self.plan.capacity_children(helpers, limits).is_empty() {
             self.plan.parents = self.plan.activity_parents(
                 requested,
                 neighbors,
@@ -295,32 +290,14 @@ impl Publication {
             Some(OperationKind::Reduce { .. })
         ) {
             self.prepare_reduction(
-                requested,
-                connected,
-                helpers,
-                limits,
-                &origin_paths,
-                neighbors,
-                relays,
-                now,
+                requested, connected, helpers, limits, neighbors, relays, now,
             );
             return;
         }
-        if !self
-            .plan
-            .capacity_children(helpers, limits, &origin_paths)
-            .is_empty()
-        {
+        if !self.plan.capacity_children(helpers, limits).is_empty() {
             self.operation = None;
             self.prepare_reduction(
-                requested,
-                connected,
-                helpers,
-                limits,
-                &origin_paths,
-                neighbors,
-                relays,
-                now,
+                requested, connected, helpers, limits, neighbors, relays, now,
             );
             return;
         }
@@ -452,7 +429,6 @@ impl Publication {
         connected: &BTreeSet<Uuid>,
         helpers: &BTreeMap<Uuid, Uuid>,
         limits: &RelayLimits,
-        origin_paths: &BTreeSet<(Uuid, Uuid)>,
         neighbors: &BTreeMap<Uuid, BTreeSet<Uuid>>,
         relays: &BTreeSet<Uuid>,
         now: u64,
@@ -464,7 +440,7 @@ impl Publication {
                 OperationKind::Reduce { root, .. } => Some((*root, operation.deadline)),
                 _ => None,
             });
-        let excess = self.plan.capacity_children(helpers, limits, origin_paths);
+        let excess = self.plan.capacity_children(helpers, limits);
         let Some(first) = excess.first().copied() else {
             self.operation = None;
             return;

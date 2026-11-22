@@ -391,13 +391,18 @@ impl Pages {
             return false;
         };
         let page = self.pages.get_mut(&key).unwrap();
-        if view == page.root || page.selected_view() == view {
+        if page.views.borrow().len() == 1
+            || (page.selected.is_some() && page.selected_view() == view)
+        {
             self.pages.remove(&key);
         } else {
             page.candidates
                 .retain(|_, candidate| candidate.view != view);
             let removed = page.views.borrow_mut().remove(&view);
             drop(removed);
+            if view == page.root {
+                page.root = *page.views.borrow().keys().next().unwrap();
+            }
             page.candidates();
         }
         true
@@ -1169,8 +1174,9 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
     pages.operation(commands.try_recv().unwrap(), &target, target.create_proxy());
     assert_eq!(retry.await.unwrap()["pageId"], json!(page_id));
     assert_eq!(pages.pages.len(), 1);
-    let reopened = pages.pages.values().next().unwrap();
-    windows.insert(reopened.views.borrow()[&reopened.root].window.id());
+    let reopened = pages.pages.values_mut().next().unwrap();
+    let opener = reopened.views.borrow()[&reopened.root].window.id();
+    windows.insert(opener);
     let environment = reopened.views.borrow()[&reopened.root]
         .view
         .environment()
@@ -1190,11 +1196,66 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
             .unwrap();
     }
 
+    let child = Uuid::new_v4();
+    let mut view = page_view(
+        WebViewBuilder::new().with_environment(environment.cast().unwrap()),
+        child,
+        target.create_proxy(),
+        &target,
+    )
+    .unwrap();
+    let child_window = view.window.id();
+    windows.insert(child_window);
+    let retired = view.media.borrow().retired.subscribe();
+    view.document = Some(Uuid::new_v4());
+    reopened.views.borrow_mut().insert(child, view);
+    let candidate = Uuid::new_v4();
+    reopened.candidates.insert(
+        candidate,
+        Candidate {
+            view: child,
+            frame: Uuid::new_v4(),
+            ancestors: vec![],
+            source: ReportedCandidate {
+                media: Uuid::new_v4(),
+                resource: "blob:owned".into(),
+                title: "Owned popup".into(),
+                url: None,
+                duration: Some(60.),
+            },
+        },
+    );
+    reopened.selected = Some(candidate);
+    assert!(pages.close_window(opener));
+    assert!(
+        !*retired.borrow(),
+        "closing the opener retired the selected popup"
+    );
+    assert_eq!(pages.pages.values().next().unwrap().selected_view(), child);
+
+    for (operation, visible) in [
+        (Operation::PageHide { page_id }, false),
+        (Operation::PageFocus { page_id }, true),
+    ] {
+        let mut request = Box::pin(connection.request(operation));
+        assert!(futures_util::poll!(&mut request).is_pending());
+        pages.operation(commands.try_recv().unwrap(), &target, target.create_proxy());
+        request.await.unwrap();
+        assert_eq!(
+            pages.pages.values().next().unwrap().views.borrow()[&child]
+                .window
+                .is_visible(),
+            visible
+        );
+        assert!(!*retired.borrow());
+    }
+
     let mut close = Box::pin(connection.request(Operation::PageClose { page_id }));
     assert!(futures_util::poll!(&mut close).is_pending());
     assert_eq!(close.await.unwrap_err().to_string(), "page_player_timeout");
     pages.operation(commands.try_recv().unwrap(), &target, target.create_proxy());
     assert!(pages.pages.is_empty());
+    assert!(*retired.borrow());
     assert_eq!(events.try_recv().unwrap()["type"], "page_closed");
     drop(pages);
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -1213,10 +1274,7 @@ async fn cancelled_prepare_and_queued_close_release_native_windows() {
             ControlFlow::WaitUntil(deadline)
         };
     });
-    assert!(
-        windows.is_empty(),
-        "Tao did not destroy both native windows"
-    );
+    assert!(windows.is_empty(), "Tao did not destroy all test windows");
     assert!(
         browser_exited.get(),
         "WebView2 still owns the temporary profile"

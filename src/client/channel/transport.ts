@@ -73,7 +73,7 @@ interface TransportOptions {
   retire?(flowId: string): void;
   outgoingFailed?(flowId: string): void;
   connected(): void;
-  base(ready: boolean): void;
+  roomData(ready: boolean): void;
   failed(resourcesReleased: boolean): void;
   data?(kind: "control" | "chunk", data: string | Uint8Array): void;
   dataState?(ready: boolean): void;
@@ -107,9 +107,9 @@ export class ChannelTransport {
   private bulk: RTCDataChannel | null = null;
   private input: RTCDataChannel | null = null;
   private inputEnabled = false;
-  private writers = new Map<RTCDataChannel, ChannelWriter>();
+  private writers = new Map<"control" | "chunk", ChannelWriter>();
   private dataLifetime = new AbortController();
-  private baseFailed = false;
+  private roomDataFailed = false;
 
   outgoingMetrics(report: RTCStatsReport, flowIds: ReadonlySet<string>): Array<{ flowId: string; metrics: ConnectionMetrics }> {
     return [...this.sending].flatMap(([flowId, binding]) => {
@@ -154,7 +154,7 @@ export class ChannelTransport {
         }
         options.dataState?.(this.rooms.size > 0 && !this.dataLifetime.signal.aborted);
         options.connected();
-        this.reportBaseReady();
+        this.reportRoomDataReady();
         this.syncDeadline();
       } else if (this.pc.connectionState === "failed") this.fail();
       else if (["disconnected", "closed"].includes(this.pc.connectionState)) options.input?.(null);
@@ -181,14 +181,24 @@ export class ChannelTransport {
     };
   }
 
-  /** Input follows selected screens, independently of room-base leases. */
+  /** Input follows selected screens, independently of room data leases. */
   setInputEnabled(enabled: boolean, probe: boolean): void {
     if (this.closed) return;
     const changed = this.inputEnabled !== enabled;
     this.inputEnabled = enabled;
     // An empty pair needs an SCTP offer to start ICE. Input delivery still requires a selected screen.
     if ((enabled || probe) && !this.input && !this.options.polite && !["failed", "closed"].includes(this.pc.connectionState)) {
-      this.installInput(this.pc.createDataChannel("piik-input", { ordered: true }));
+      let channel: RTCDataChannel;
+      try { channel = this.pc.createDataChannel("piik-input", { ordered: true }); }
+      catch (error) {
+        // A live media carrier can continue without the optional input lane.
+        if (enabled && this.pc.connectionState === "connected" && error instanceof DOMException && error.name === "OperationError") {
+          console.warn("Could not create the screen input channel", error);
+          return;
+        }
+        throw error;
+      }
+      this.installInput(channel);
       this.retryOffer();
     } else if (changed) this.options.input?.(enabled ? this.input : null);
   }
@@ -235,7 +245,7 @@ export class ChannelTransport {
     this.rooms = new Set(rooms);
     if (changed && !rooms.length) this.closeData();
     if (added) {
-      this.baseFailed = false;
+      this.roomDataFailed = false;
       if (this.dataLifetime.signal.aborted) this.dataLifetime = new AbortController();
     }
     if (!rooms.length || this.dataLifetime.signal.aborted) { this.syncDeadline(); return; }
@@ -243,13 +253,13 @@ export class ChannelTransport {
       this.installChannel(this.pc.createDataChannel("piik-room", { ordered: true }));
     }
     this.ensureBulkChannel();
-    this.reportBaseReady();
+    this.reportRoomDataReady();
     this.syncDeadline();
     if (changed) this.retryOffer();
   }
 
-  isBaseReady(): boolean {
-    return !this.closed && !this.baseFailed && this.rooms.size > 0
+  isRoomDataReady(): boolean {
+    return !this.closed && !this.roomDataFailed && this.rooms.size > 0
       && this.channel?.readyState === "open" && this.pc.connectionState === "connected";
   }
 
@@ -257,17 +267,27 @@ export class ChannelTransport {
     if (!this.bulk && !this.options.polite) this.installChannel(this.pc.createDataChannel("piik-file", { ordered: true }));
   }
 
+  private writer(kind: "control" | "chunk"): ChannelWriter {
+    let writer = this.writers.get(kind);
+    if (!writer) {
+      writer = new ChannelWriter(kind);
+      this.writers.set(kind, writer);
+    }
+    return writer;
+  }
+
   private installChannel(channel: RTCDataChannel): void {
     const bulk = channel.label === "piik-file";
     if (bulk) this.bulk = channel; else this.channel = channel;
-    const writer = new ChannelWriter(channel, bulk ? "chunk" : "control");
-    this.writers.set(channel, writer);
+    const kind = bulk ? "chunk" : "control";
+    const writer = this.writer(kind);
+    writer.install(channel);
     const current = () => !this.closed && (bulk ? this.bulk : this.channel) === channel;
-    channel.onopen = () => { if (current()) { this.reportBaseReady(); this.syncDeadline(); } };
+    channel.onopen = () => { if (current()) { this.reportRoomDataReady(); this.syncDeadline(); } };
     const failed = () => {
       if (!current()) return;
       writer.close();
-      this.writers.delete(channel);
+      this.writers.delete(kind);
       if (bulk) {
         this.bulk = null;
         channel.close();
@@ -275,18 +295,20 @@ export class ChannelTransport {
         return;
       }
       this.channel = null;
-      this.failBase();
+      this.failRoomData();
       channel.close();
     };
     channel.onclose = failed;
     channel.onerror = failed;
     channel.binaryType = "arraybuffer";
     channel.onmessage = ({ data }) => {
-      if (!current() || !this.rooms.size || this.dataLifetime.signal.aborted) return;
-      if (bulk && data instanceof ArrayBuffer && data.byteLength <= MAX_FILE_FRAME_BYTES) this.options.data?.("chunk", new Uint8Array(data));
+      if (!current()) return;
+      if (bulk && this.rooms.size && !this.dataLifetime.signal.aborted
+        && data instanceof ArrayBuffer && data.byteLength <= MAX_FILE_FRAME_BYTES) this.options.data?.("chunk", new Uint8Array(data));
+      // Core may defer control from this pair until the room grant and plan arrive.
       else if (!bulk && typeof data === "string" && new TextEncoder().encode(data).length <= MAX_CONTROL_FRAME_BYTES) this.options.data?.("control", data);
     };
-    this.reportBaseReady();
+    this.reportRoomDataReady();
     this.syncDeadline();
   }
 
@@ -294,38 +316,22 @@ export class ChannelTransport {
     const lifetime = this.dataLifetime.signal;
     if (!this.rooms.size || lifetime.aborted) throw new Error("peer_data_unavailable");
     if (kind === "chunk") this.ensureBulkChannel();
-    let channel = kind === "control" ? this.channel : this.bulk;
-    if (!channel) {
-      await new Promise<void>((resolve, reject) => {
-        const installed = ({ channel }: RTCDataChannelEvent) => { if (channel.label === (kind === "control" ? "piik-room" : "piik-file")) { cleanup(); resolve(); } };
-        const aborted = () => { cleanup(); reject(new Error("peer_data_unavailable")); };
-        const cleanup = () => { this.pc.removeEventListener("datachannel", installed); lifetime.removeEventListener("abort", aborted); };
-        this.pc.addEventListener("datachannel", installed);
-        lifetime.addEventListener("abort", aborted, { once: true });
-        if (lifetime.aborted) aborted();
-      });
-      channel = kind === "control" ? this.channel : this.bulk;
-    }
-    if (lifetime.aborted) throw new Error("peer_data_unavailable");
-    if (!channel || !this.rooms.size) throw new Error("data_channel_unavailable");
-    const writer = this.writers.get(channel);
-    if (!writer) throw new Error("data_channel_unavailable");
-    try { await writer.send(data, allowed); }
+    try { await this.writer(kind).send(data, allowed); }
     catch (error) {
       if (lifetime.aborted || ["failed", "closed"].includes(this.pc.connectionState)) throw new Error("peer_data_unavailable");
       throw error;
     }
   }
 
-  private reportBaseReady(): void {
-    if (this.isBaseReady()) this.options.base(true);
+  private reportRoomDataReady(): void {
+    if (this.isRoomDataReady()) this.options.roomData(true);
   }
 
-  private failBase(): void {
-    if (!this.rooms.size || this.baseFailed) return;
-    this.baseFailed = true;
+  private failRoomData(): void {
+    if (!this.rooms.size || this.roomDataFailed) return;
+    this.roomDataFailed = true;
     this.closeData();
-    this.options.base(false);
+    this.options.roomData(false);
     this.syncDeadline();
   }
 
@@ -340,9 +346,9 @@ export class ChannelTransport {
   }
 
   private syncDeadline(): void {
-    if (this.pc.connectionState === "connected" && (!this.rooms.size || this.baseFailed || this.channel?.readyState === "open")) {
+    if (this.pc.connectionState === "connected" && (!this.rooms.size || this.roomDataFailed || this.channel?.readyState === "open")) {
       this.clearDeadline();
-    } else if (this.rooms.size && !this.baseFailed && this.channel?.readyState !== "open" && this.deadline === null) {
+    } else if (this.rooms.size && !this.roomDataFailed && this.channel?.readyState !== "open" && this.deadline === null) {
       this.deadline = setTimeout(() => this.timeout(), TRANSPORT_PREPARE_MS);
     }
   }
@@ -350,7 +356,7 @@ export class ChannelTransport {
   private timeout(): void {
     this.deadline = null;
     if (this.closed) return;
-    if (this.pc.connectionState === "connected") this.failBase();
+    if (this.pc.connectionState === "connected") this.failRoomData();
     else this.fail();
   }
 
@@ -934,8 +940,8 @@ export class ChannelTransport {
 
   resync(): void {
     this.enqueue(async () => {
-      if (this.baseFailed) this.options.base(false);
-      else this.reportBaseReady();
+      if (this.roomDataFailed) this.options.roomData(false);
+      else this.reportRoomDataReady();
       for (const [id, output] of this.sending) if (output.failed) this.options.outgoingFailed?.(id);
       this.options.send({ resync: true });
       this.resendOffer();
@@ -986,7 +992,7 @@ export class ChannelTransport {
 
   private fail(): void {
     if (this.closed) return;
-    this.failBase();
+    this.failRoomData();
     this.options.failed(this.close());
   }
 
@@ -1024,10 +1030,16 @@ class ChannelWriter {
   private lifetime = new AbortController();
   private queuedFrames = 0;
   private readonly maxQueuedFrames: number;
-  constructor(private channel: RTCDataChannel, private kind: "control" | "chunk") {
+  private installed!: (channel: RTCDataChannel | null) => void;
+  private channel = new Promise<RTCDataChannel | null>(resolve => { this.installed = resolve; });
+
+  constructor(private kind: "control" | "chunk") {
     // Session initializes the shared Core signer before joining or creating data lanes.
     this.maxQueuedFrames = data_queue_frames(kind === "chunk");
+  }
+  install(channel: RTCDataChannel): void {
     channel.bufferedAmountLowThreshold = DATA_SEND_BUFFER_BYTES / 2;
+    this.installed(channel);
   }
   send(data: string | Uint8Array, allowed?: () => boolean): Promise<void> {
     const size = typeof data === "string" ? new TextEncoder().encode(data).length : data.byteLength;
@@ -1035,23 +1047,24 @@ class ChannelWriter {
     if (this.queuedFrames >= this.maxQueuedFrames) return Promise.reject(new Error("data_channel_busy"));
     this.queuedFrames += 1;
     const work = this.tail.then(async () => {
-      this.lifetime.signal.throwIfAborted();
-      while (this.channel.readyState !== "open" || this.channel.bufferedAmount + size > DATA_SEND_BUFFER_BYTES) {
-        if (["closing", "closed"].includes(this.channel.readyState)) throw new Error("data_channel_unavailable");
+      const channel = await this.channel;
+      if (!channel || this.lifetime.signal.aborted) throw new Error("data_channel_unavailable");
+      while (channel.readyState !== "open" || channel.bufferedAmount + size > DATA_SEND_BUFFER_BYTES) {
+        if (["closing", "closed"].includes(channel.readyState)) throw new Error("data_channel_unavailable");
         await new Promise<void>((resolve, reject) => {
           const ready = () => { cleanup(); resolve(); };
           const failed = () => { cleanup(); reject(new Error("data_channel_unavailable")); };
-          const cleanup = () => { for (const event of ["open", "bufferedamountlow"]) this.channel.removeEventListener(event, ready); for (const event of ["closing", "close", "error"]) this.channel.removeEventListener(event, failed); this.lifetime.signal.removeEventListener("abort", failed); };
-          for (const event of ["open", "bufferedamountlow"]) this.channel.addEventListener(event, ready, { once: true });
-          for (const event of ["closing", "close", "error"]) this.channel.addEventListener(event, failed, { once: true });
+          const cleanup = () => { for (const event of ["open", "bufferedamountlow"]) channel.removeEventListener(event, ready); for (const event of ["closing", "close", "error"]) channel.removeEventListener(event, failed); this.lifetime.signal.removeEventListener("abort", failed); };
+          for (const event of ["open", "bufferedamountlow"]) channel.addEventListener(event, ready, { once: true });
+          for (const event of ["closing", "close", "error"]) channel.addEventListener(event, failed, { once: true });
           this.lifetime.signal.addEventListener("abort", failed, { once: true });
         });
       }
       if (allowed && !allowed()) throw new Error("room_unavailable");
-      if (typeof data === "string") this.channel.send(data); else this.channel.send(data as Uint8Array<ArrayBuffer>);
+      if (typeof data === "string") channel.send(data); else channel.send(data as Uint8Array<ArrayBuffer>);
     }).finally(() => { this.queuedFrames -= 1; });
     this.tail = work.catch(() => {});
     return work;
   }
-  close(): void { this.lifetime.abort(); }
+  close(): void { this.lifetime.abort(); this.installed(null); }
 }

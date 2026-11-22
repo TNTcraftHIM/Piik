@@ -547,12 +547,12 @@ pub async fn serve(
                 state = async { refresh.tick().await; launcher_view(&app).await }, if terminal.is_some() => {
                     terminal.as_mut().unwrap().show(state, false);
                 }
-                action = async { match terminal.as_mut() {
+                Some(action) = async { match terminal.as_mut() {
                     Some(view) => view.next().await,
                     None => std::future::pending().await,
                 }} => match action {
-                    Some(terminal::Command::Quit) => { app.closing.send_replace(true); break; }
-                    Some(terminal::Command::Diagnostics) => {
+                    terminal::Command::Quit => { app.closing.send_replace(true); break; }
+                    terminal::Command::Diagnostics => {
                         if report.is_some() { continue; }
                         if piik_channel_native::diagnostics::enabled() {
                             report = Some(diagnostics::export_to_directory(app.config.data_root.join("diagnostics")).boxed());
@@ -560,7 +560,7 @@ pub async fn serve(
                             terminal.as_ref().unwrap().message("Enable Help → Debug in the App launcher, reproduce the issue, then press D + Enter. / 请在 App 启动页启用帮助 → 调试，复现问题后按 D + Enter。");
                         }
                     }
-                    Some(action) => {
+                    action => {
                         if action != terminal::Command::Refresh && opening.is_some() { continue; }
                         let url = if action == terminal::Command::Launcher {
                             Some(format!("http://127.0.0.1:{}/client", app.port))
@@ -568,8 +568,8 @@ pub async fn serve(
                             let state = tokio::select! {
                                 _ = &mut stop => break,
                                 _ = closing.changed() => break,
-                                next = terminal.as_mut().unwrap().next() => {
-                                    if matches!(next, None | Some(terminal::Command::Quit)) {
+                                Some(next) = terminal.as_mut().unwrap().next() => {
+                                    if next == terminal::Command::Quit {
                                         app.closing.send_replace(true);
                                         break;
                                     }
@@ -594,7 +594,6 @@ pub async fn serve(
                             }
                         } else { terminal.as_ref().unwrap().message("Site is not ready; open the launcher. / 站点尚未就绪，请打开启动页。"); }
                     }
-                    None => { app.closing.send_replace(true); break; }
                 },
                 result = async { match report.as_mut() {
                     Some(report) => report.await,

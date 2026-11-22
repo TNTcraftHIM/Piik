@@ -93,7 +93,7 @@ export function AppSiteBookmarks({ windowNavigation, entryURL, closeOnOpen = fal
   const invitationForm = <>
     <form className="lr-site-bookmark-open" onSubmit={event => { event.preventDefault(); choose(address); }}>
       <label><span>{t("client.bookmarks.openInvitation")}</span>
-        <span className="lr-input"><Glyph name="link" size={18} /><input type="url" inputMode="url" required dir="ltr" autoComplete="off" disabled={busy || opening}
+        <span className="lr-input"><Glyph name="link" size={18} /><input inputMode="url" required dir="ltr" autoComplete="off" autoCapitalize="none" spellCheck={false} disabled={busy || opening}
           aria-label={t("client.bookmarks.invitationAddress")} placeholder="https://friends.example" value={address} onChange={event => setAddress(event.target.value)} /></span></label>
       <Btn icon="arrowRight" type="submit" size={render ? undefined : "compact"} tone={render ? "primary" : undefined} title="client.connect.openSite" cap="client.bookmarks.open" disabled={busy || opening} />
     </form>

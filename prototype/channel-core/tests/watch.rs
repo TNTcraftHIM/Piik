@@ -111,7 +111,9 @@ fn watch_confirmations_late_join_and_owner_control_do_not_create_media() {
     assert_eq!(net.state(owner).watch_activities[0].playback.position, 30.0);
     for c in [owner, viewer] {
         let state = net.state(c);
-        assert!(state.pairs.is_empty());
+        assert!(state.pairs.iter().all(|pair| pair.rooms.is_empty()
+            && pair.incoming.is_empty()
+            && pair.outgoing.is_empty()));
         assert!(state.publications.is_empty());
         assert_eq!(state.watch_activities[0].viewer_session_ids.len(), 1);
         assert!(!state.watch_activities[0]
@@ -437,7 +439,16 @@ fn watch_byte_source_and_mode_cross_the_real_room_projection() {
         provider_session
     );
     ready(net.command_at(viewer,json!({"type":"join_watch","roomId":room,"id":activity,"mode":"direct","requestId":"join"}),200),200);
-    assert!(net.state(viewer).watch_bytes.is_empty() && net.state(viewer).pairs.is_empty());
+    assert!(
+        net.state(viewer).watch_bytes.is_empty()
+            && net
+                .state(viewer)
+                .pairs
+                .iter()
+                .all(|pair| pair.rooms.is_empty()
+                    && pair.incoming.is_empty()
+                    && pair.outgoing.is_empty())
+    );
     ready(net.command_at(viewer,json!({"type":"join_watch","roomId":room,"id":activity,"mode":"peer","requestId":"join"}),300),300);
     let pair = net
         .state(viewer)
@@ -737,7 +748,11 @@ fn watch_audience_projects_all_modes_and_sessions_without_peer_demand() {
         );
         assert_eq!(state.channel.rooms[0].participant_session_ids.len(), 4);
         assert!(
-            state.pairs.is_empty() && state.watch_bytes.is_empty() && state.publications.is_empty()
+            state.pairs.iter().all(|pair| pair.rooms.is_empty()
+                && pair.incoming.is_empty()
+                && pair.outgoing.is_empty())
+                && state.watch_bytes.is_empty()
+                && state.publications.is_empty()
         );
     }
     net.command(

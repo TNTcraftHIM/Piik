@@ -723,7 +723,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
         "channel":{"id":Uuid::new_v4(),"name":"Capture projection","icon":"couch","ownerId":owner,
             "hostingMode":"lightweight","roomCreationPolicy":"ordinary","managedRoomIds":[],
             "userCount":2,"historyWindow":100,"rooms":[room("target",true,json!({
-                "hostSessionId":host,"bindingId":Uuid::new_v4(),"nextHops":{}
+                "hostSessionId":host,"bindingId":Uuid::new_v4()
             })),room("offline",false,serde_json::Value::Null)]},
         "users":[{"id":user,"name":"Source","version":"a".repeat(64)},{"id":owner,"name":"Owner","version":"b".repeat(64)}],
         "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]},
@@ -1138,7 +1138,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                     "id":id,"name":id,"icon":"couch","creatorId":user,"access":"public","hidden":false,
                     "hasPassword":false,"voiceBitrate":64_000,"authorized":true,"canManage":true,"available":true,
                     "reading":false,"lastMessageSeq":0,"participantSessionIds":[],"fileActivity":[],"capabilities":{"attachments":false},
-                    "delivery":{"hostSessionId":Uuid::new_v4(),"bindingId":binding,"nextHops":{}}
+                    "delivery":{"hostSessionId":Uuid::new_v4(),"bindingId":binding}
                 })
             };
             let mut state: Snapshot = serde_json::from_value(json!({

@@ -137,7 +137,13 @@ export class AppPage implements AppPagePort {
     if (bytes.length !== Math.min(length, Math.max(0, result.totalSize - offset))) throw new Error("invalid_app_response");
     return { mimeType: result.mimeType, totalSize: result.totalSize, bytes };
   }
-  async prepareMedia(choiceId: string): Promise<WatchByteSource> { return watchByteSourceSchema.parse(await this.command("page_media_prepare", { choiceId })); }
+  async prepareMedia(choiceId: string, signal: AbortSignal): Promise<WatchByteSource> {
+    const preparing = AbortSignal.any([this.lifetime.signal, signal]);
+    preparing.throwIfAborted();
+    const value = await this.request({ type: "page_media_prepare", pageId: this.id, choiceId }, preparing);
+    preparing.throwIfAborted();
+    return watchByteSourceSchema.parse(value);
+  }
   async inspectMpd(choiceId: string, signal: AbortSignal): Promise<NativePageMpdCatalog> {
     const choice = z.object({ choiceId: z.uuid() }).strict().parse({ choiceId });
     return nativePageMpdCatalogSchema.parse(await this.mediaRead("inspect_mpd", choice, signal));

@@ -28,9 +28,51 @@ export interface RouteGraphEdge {
   presentation?: boolean;
 }
 
-export function routeGraphLayout(nodes: readonly RouteGraphNode[], rootId: string,
+interface RoutePoint {
+  x: number;
+  y: number;
+  labelSide?: "top" | "right" | "bottom" | "left";
+}
+
+export function routeGraphLayout(nodes: readonly RouteGraphNode[], rootId: string | null,
   edges: readonly RouteGraphEdge[], containerWidth: number) {
   const config = topologyLayoutForWidth(containerWidth);
+  if (rootId === null) {
+    const outline = nodes.length > (config.baseWidth < 420 ? 6 : 8);
+    const width = outline && Number.isFinite(containerWidth)
+      ? Math.max(config.baseWidth, Math.min(1080, Math.round(containerWidth))) : config.baseWidth;
+    const spacing = outline ? 56 : 60;
+    const fittedGap = Math.min(136, width / 3);
+    const order = nodes.map(node => node.id);
+    if (outline) {
+      const left = Math.min(132, width / 2 - 44, width * .36);
+      const right = width - left;
+      const columns = Math.min(Math.floor(nodes.length / 4), Math.floor((right - left) / 96));
+      const sideCount = nodes.length - 2 * columns;
+      const rows = Math.ceil(sideCount / 2);
+      const top = columns ? 58 : 34;
+      const bottom = top + (rows - 1 + (columns ? 2 : 0)) * spacing;
+      const topSideRow = top + (columns ? spacing : 0);
+      const columnX = (index: number) => left + (index + .5) * (right - left) / columns;
+      const rim: RoutePoint[] = [
+        ...Array.from({ length: columns }, (_, i) => ({ x: columnX(i), y: top, labelSide: "top" as const })),
+        ...Array.from({ length: rows }, (_, i) => ({ x: right, y: topSideRow + i * spacing, labelSide: "right" as const })),
+        ...Array.from({ length: columns }, (_, i) => ({ x: columnX(columns - 1 - i), y: bottom, labelSide: "bottom" as const })),
+        ...Array.from({ length: sideCount - rows }, (_, i) => ({ x: left, y: topSideRow + (sideCount - rows - 1 - i) * spacing, labelSide: "left" as const })),
+      ];
+      const points = new Map(order.map((id, index) => [id, rim[index]]));
+      return { config, points, order, width, height: bottom + top, spacing, fittedGap, outline };
+    }
+    const height = nodes.length <= 2 ? 124 : 196;
+    const points = new Map<string, RoutePoint>(order.map((id, index) => {
+      const angle = (index + .5) * 2 * Math.PI / nodes.length;
+      return [id, {
+        x: width / 2 + (nodes.length < 2 ? 0 : Math.sin(angle) * (width - fittedGap) / 2),
+        y: height / 2 - 4 - (nodes.length < 3 ? 0 : Math.cos(angle) * (height / 2 - 43)),
+      }];
+    }));
+    return { config, points, order, width, height, spacing, fittedGap, outline };
+  }
   const ids = new Set(nodes.map(node => node.id));
   const parents = new Map<string, string>();
   // Only the layout chooses a preferred parent. Every actual edge is rendered.
@@ -43,7 +85,7 @@ export function routeGraphLayout(nodes: readonly RouteGraphNode[], rootId: strin
     if (parent) children.set(parent, [...children.get(parent) ?? [], node.id]);
   }
   const spacing = nodes.length > 11 ? 58 : 60;
-  const points = new Map<string, { x: number; y: number }>();
+  const points = new Map<string, RoutePoint>();
   const depths = new Map<string, number>();
   const order: string[] = [];
   let row = 0;

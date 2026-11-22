@@ -1,4 +1,4 @@
-import { memo, useId, useState } from "react";
+import { memo, useId, useState, type CSSProperties } from "react";
 import { useElementWidth } from "../../lib/use-element-width";
 import { useCopy } from "../../ui/copy";
 import { PawnSvg } from "./Pawn";
@@ -34,37 +34,56 @@ function edgeClass(edge: RouteGraphEdge): string {
 }
 
 /** Pure route presentation: callers own identities, topology, selection and proof. */
-export const RouteGraph = memo(function RouteGraph({ nodes, rootId, edges, selectedId, selectableIds, onSelect, emptyLabel }: {
+export const RouteGraph = memo(function RouteGraph({ nodes, rootId, edges, selectedId, selectableIds, onSelect, emptyLabel, label }: {
   nodes: readonly RouteGraphNode[];
-  rootId: string;
+  rootId: string | null;
   edges: readonly RouteGraphEdge[];
   selectedId?: string | null;
   selectableIds?: readonly string[];
   onSelect?: (id: string) => void;
   emptyLabel?: string;
+  label?: string;
 }) {
   const { t } = useCopy();
   const titleId = useId();
+  const undirected = rootId === null;
+  const graphLabel = label ?? t("host.topology");
   const [routeRef, containerWidth] = useElementWidth(640);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const { config, points, order, width, height, spacing, fittedGap, outline } = routeGraphLayout(nodes, rootId, edges, containerWidth);
   const byId = new Map(nodes.map(node => [node.id, node]));
   const selectable = new Set(selectableIds ?? (onSelect ? nodes.map(node => node.id) : []));
   const pending = (node: RouteGraphNode) => node.pending ??
-    (edges.some(edge => edge.to === node.id) && !edges.some(edge => edge.to === node.id && edge.selected && edge.ready));
-  const labelY = (point: { y: number }) => outline ? point.y + 4 : point.y + 24 * PAWN_SCALE + 12;
-  const labelLimit = (point: { x: number }) => outline
-    ? Math.min(config.maxVisibleLabelCodePoints, Math.floor((width - point.x - 40) / 11))
-    : Math.min(config.maxVisibleLabelCodePoints,
-      Math.floor((Math.min(fittedGap, point.x * 2, (width - point.x) * 2) - 12) / 11));
+    (!undirected && edges.some(edge => edge.to === node.id) && !edges.some(edge => edge.to === node.id && edge.selected && edge.ready));
+  const labelAbove = (y: number) => undirected && nodes.length > 2 && y < height / 2;
+  const labelTop = (y: number) => labelAbove(y) ? -9 : Math.min(spacing - 14, outline ? 18 : 24 * PAWN_SCALE + 26);
+  const nameSpace = (x: number) => Math.min(fittedGap, x * 2, (width - x) * 2) - 12;
+  const labelLimit = (point: { x: number }) => undirected ? Math.floor(nameSpace(point.x) / 5)
+    : Math.min(config.maxVisibleLabelCodePoints, Math.floor((outline ? width - point.x - 40 : nameSpace(point.x)) / 11));
   const renderName = (node: RouteGraphNode) => {
     const point = points.get(node.id)!;
     const canSelect = selectable.has(node.id);
     const Control = canSelect ? "button" : "span";
+    const side = point.labelSide;
+    const stacked = side === "top" || side === "bottom";
+    const labelParts = side ? node.label.match(/^(.*) \(([^()]+)\)$/u) : null;
+    const labelStyle: CSSProperties = stacked ? {
+      left: "50%", top: side === "top" ? (labelParts ? -28 : -14) : 49,
+      width: 92, textAlign: "center", transform: "translateX(-50%)",
+    } : side ? {
+      left: side === "right" ? 48 : undefined,
+      right: side === "left" ? 48 : undefined,
+      top: labelParts ? 12 : 19,
+      width: (side === "right" ? width - point.x : point.x) - 24,
+      textAlign: side === "right" ? "left" : "right",
+    } : {
+      left: outline ? 52 : "50%", top: labelTop(point.y),
+      width: outline ? width - point.x - 36 : undirected ? nameSpace(point.x) : labelLimit(point) * 11,
+    };
     const state = `${node.host ? " is-host" : ""}${pending(node) ? " is-pending" : ""}`;
     return <foreignObject key={`name-${node.id}`} className="lr-route-name-target"
       x={outline ? point.x - 24 : point.x - 48} y={point.y - 26}
-      width={outline ? width - point.x + 16 : 96} height={spacing}>
+      width={side ? 48 : outline ? width - point.x + 16 : 96} height={spacing}>
       <Tooltip overflow={{ text: node.label, selector: ".lr-route-name" }} className="lr-route-name-hint">
         <Control className={canSelect ? "lr-route-hit" : "lr-route-name-static"}
           type={canSelect ? "button" : undefined}
@@ -78,9 +97,9 @@ export const RouteGraph = memo(function RouteGraph({ nodes, rootId, edges, selec
             if (event.detail !== 0) event.currentTarget.blur();
           } : undefined}>
           <span className={`lr-route-label lr-route-name${state}${hoveredId === node.id ? " is-hovered" : ""}${selectedId === node.id ? " is-selected" : ""}`}
-            style={{ left: outline ? 52 : "50%", top: Math.min(spacing - 14, labelY(point) - point.y + 14),
-              width: outline ? width - point.x - 36 : labelLimit(point) * 11 }}>
-            {compactVisibleLabel(node.label, labelLimit(point))}
+            style={labelStyle}>
+            {labelParts ? <>{labelParts[1]}<br />{labelParts[2]}</>
+              : side ? node.label : compactVisibleLabel(node.label, labelLimit(point))}
           </span>
         </Control>
       </Tooltip>
@@ -90,10 +109,16 @@ export const RouteGraph = memo(function RouteGraph({ nodes, rootId, edges, selec
     from = outline ? 17 : 20, to = 18) => outline
     ? `M ${parent.x - from} ${parent.y} H ${parent.x - 28} V ${child.y} H ${child.x - to}`
     : `M ${parent.x + from} ${parent.y} Q ${(parent.x + child.x) / 2} ${parent.y + (child.y - parent.y) * 0.55}, ${child.x - to} ${child.y}`;
+  const pairPath = (first: { x: number; y: number }, second: { x: number; y: number }, from: number, to: number) => {
+    const dx = second.x - first.x, dy = second.y - first.y;
+    const length = Math.hypot(dx, dy);
+    const x = dx / length, y = dy / length;
+    return `M ${first.x + from * x} ${first.y + from * y} L ${second.x - to * x} ${second.y - to * y}`;
+  };
   // Only an explicit SFU node and its selected SFU edges use the existing rail.
   const rails = new Map(nodes.filter(node => node.kind === "sfu").flatMap(node => {
     const children = edges.filter(edge => edge.from === node.id && edge.selected && edge.route === "sfu" && points.has(edge.to));
-    if (outline || children.length < 2) return [];
+    if (undirected || outline || children.length < 2) return [];
     const point = points.get(node.id)!;
     return [[node.id, { x: point.x + fittedGap * .45, edges: children,
       minY: Math.min(...children.map(edge => points.get(edge.to)!.y)),
@@ -101,15 +126,17 @@ export const RouteGraph = memo(function RouteGraph({ nodes, rootId, edges, selec
   }));
   const drawableEdges = edges.filter(edge => points.has(edge.from) && points.has(edge.to));
   return <div ref={routeRef} className={`lr-route${outline ? " is-outline" : ""}`} role="group" aria-labelledby={titleId} tabIndex={0}>
-    <span id={titleId} className="visually-hidden">{t("host.topology")}</span>
+    <span id={titleId} className="visually-hidden">{graphLabel}</span>
     {drawableEdges.length === 0 && !nodes.some(pending) ? <p className="lr-route-idle">{emptyLabel ?? t("host.topology.idle")}</p> : null}
-    <svg viewBox={`0 0 ${width} ${height}`} aria-label={t("host.topology")}
-      style={{ width: "100%", maxWidth: outline || nodes.length > 11 ? config.baseWidth : 880 }}>
+    <svg viewBox={`0 0 ${width} ${height}`} aria-label={graphLabel}
+      style={{ width: "100%", maxWidth: undirected && outline ? width : outline || nodes.length > 11 ? config.baseWidth : 880 }}>
       {drawableEdges.map((edge, index) => {
         const parent = points.get(edge.from)!, point = points.get(edge.to)!;
         const rail = rails.get(edge.from);
         const d = rail?.edges.includes(edge)
           ? `M ${rail.x} ${point.y} H ${point.x - 18}`
+          : undirected ? pairPath(parent, point, byId.get(edge.from)?.kind === "sfu" ? SFU_HALF_WIDTH : 20,
+            byId.get(edge.to)?.kind === "sfu" ? SFU_HALF_WIDTH : 20)
           : linkPath(parent, point, byId.get(edge.from)?.kind === "sfu" ? SFU_HALF_WIDTH : undefined,
             byId.get(edge.to)?.kind === "sfu" ? SFU_HALF_WIDTH : undefined);
         return <path key={`edge-${index}`} d={d} className={edgeClass(edge)} />;
@@ -123,12 +150,14 @@ export const RouteGraph = memo(function RouteGraph({ nodes, rootId, edges, selec
       })}
       {order.map(id => {
         const node = byId.get(id)!, point = points.get(id)!;
+        const side = point.labelSide ?? (outline ? "right" : labelAbove(point.y) ? "top" : "bottom");
         if (node.kind === "sfu") return <g key={id}>
           <g className="lr-route-sfu" transform={`translate(${point.x - SFU_HALF_WIDTH}, ${point.y - 16})`}>
             <rect width={SFU_HALF_WIDTH * 2} height="32" rx="7" /><path d="M8 12h24M8 20h24" />
           </g>
-          <text className="lr-route-label is-sfu" x={outline ? point.x + 28 : point.x}
-            y={outline ? point.y + 4 : point.y + 32} textAnchor={outline ? "start" : "middle"}>{node.label}</text>
+          <text className="lr-route-label is-sfu" x={point.x + (side === "left" ? -26 : side === "right" ? 28 : 0)}
+            y={point.y + (side === "top" ? -24 : side === "bottom" ? 32 : 4)}
+            textAnchor={side === "left" ? "end" : side === "right" ? "start" : "middle"}>{node.label}</text>
         </g>;
         const selected = selectedId === id, hovered = hoveredId === id;
         return <g key={id} className={`lr-route-node${node.host ? " is-host" : ""}${pending(node) ? " is-pending" : ""}${hovered ? " is-hovered" : ""}${selected ? " is-selected" : ""}`}
@@ -149,7 +178,9 @@ export const RouteGraph = memo(function RouteGraph({ nodes, rootId, edges, selec
         const incoming = drawableEdges.filter(edge => edge.to === node.id);
         return <li key={node.id}>{node.label}{node.host ? ` · ${t("common.host")}` : ""}
           {node.description ? ` · ${node.description}` : incoming.map((edge, index) => <span key={index}>
-            {index ? "; " : " "}← {byId.get(edge.from)!.label} · {t(edge.route === "sfu" ? "state.route.sfu" : "state.route.p2p")}
+            {index ? "; " : " "}{undirected ? "↔" : "←"} {byId.get(edge.from)!.label}
+            {undirected ? (edge.ready ? ` · ${t("state.peer.connected")}` : "")
+              : ` · ${t(edge.route === "sfu" ? "state.route.sfu" : "state.route.p2p")}`}
             {edge.selected && edge.ready ? "" : ` · ${t("host.topology.pending")}`}
           </span>)}
         </li>;

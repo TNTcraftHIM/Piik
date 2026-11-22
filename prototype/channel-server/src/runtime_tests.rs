@@ -466,6 +466,23 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         .unwrap();
     let pair = state["state"]["pairs"][0]["id"].clone();
     assert!(pair.is_string());
+    for endpoint in [&mut operator, &mut viewer] {
+        endpoint.request(
+            &mut hub,
+            json!({"type":"link_state","pairId":pair,"state":"connected"}),
+        );
+    }
+    complete_host_turn(&mut hub, &mut operator, &mut host, &mut room_store);
+    assert!(viewer.drain().iter().any(|event| event["type"] == "state"
+        && event["state"]["pairs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["incoming"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|flow| flow["publicationId"] == publication.to_string()))));
     operator.drain();
     let database = rusqlite::Connection::open(&directory_path).unwrap();
     database.execute_batch("CREATE TRIGGER reject_checkpoint BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'metadata unavailable'); END;").unwrap();
@@ -498,7 +515,13 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         .iter()
         .find(|event| event["type"] == "state")
         .expect("committed room revocation must reach clients despite directory failure");
-    assert!(private["state"]["pairs"].as_array().unwrap().is_empty());
+    assert!(private["state"]["pairs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|pair| ["rooms", "incoming", "outgoing"]
+            .iter()
+            .all(|field| pair[*field].as_array().unwrap().is_empty())));
     assert!(!private["state"]["channel"]["rooms"]
         .as_array()
         .unwrap()
@@ -508,10 +531,6 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         .as_bool()
         .unwrap());
     let result = operator.drain();
-    assert!(
-        !result.iter().any(|event| event["type"] == "signal"),
-        "directory rollback restored signaling on the room host's revoked flow"
-    );
     assert!(result.iter().any(|event| event["type"] == "room_reply"
         && event["requestId"] == "make-private"
         && event["result"]["type"] == "done"));
@@ -1292,8 +1311,10 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
     })
     .await;
     assert!(
-        state.pairs.is_empty(),
-        "reading does not allocate an RTP/DataChannel pair"
+        state.pairs.iter().all(|pair| pair.rooms.is_empty()
+            && pair.incoming.is_empty()
+            && pair.outgoing.is_empty()),
+        "reading history requires no room data grant or media flow"
     );
     let signer = SessionSigner::from_seed([1; 32]);
     for index in 0..50 {
@@ -1464,7 +1485,9 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
             .unwrap()
             .binding_id
     );
-    assert_eq!(topology.base.root_session_id, native);
+    assert!(topology.pairs.iter().all(|pair| {
+        topology.session_ids.contains(&pair.first) && topology.session_ids.contains(&pair.second)
+    }));
     assert!(topology.screen.is_none());
     assert_eq!(
         serde_json::to_value(hub.lock().unwrap().authority.export_backup()).unwrap(),
@@ -1527,31 +1550,16 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
         )
         .await;
     }
-    let both = state_when(&mut admin, |state| {
-        state
-            .channel
-            .rooms
-            .iter()
-            .filter(|room| room.reading)
-            .count()
-            == 2
-            && state.pairs.iter().any(|pair| {
-                pair.peer_id == native
-                    && pair.rooms.iter().any(|id| id == "living")
-                    && pair.rooms.iter().any(|id| id == "studio")
-            })
+    state_when(&mut admin, |state| {
+        ["living", "studio"].iter().all(|id| {
+            state
+                .channel
+                .rooms
+                .iter()
+                .any(|room| room.id == *id && room.reading)
+        })
     })
     .await;
-    let pair = both
-        .pairs
-        .iter()
-        .find(|pair| {
-            pair.peer_id == native
-                && pair.rooms.iter().any(|id| id == "living")
-                && pair.rooms.iter().any(|id| id == "studio")
-        })
-        .unwrap()
-        .id;
     send_request(
         &mut admin,
         json!({"type":"browse", "roomId":"living", "active":false}),
@@ -1570,9 +1578,10 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
             .iter()
             .any(|room| room.id == "living" && !room.reading)
             && state
-                .pairs
+                .channel
+                .rooms
                 .iter()
-                .any(|current| current.id == pair && current.rooms == ["studio"])
+                .any(|room| room.id == "studio" && room.reading)
     })
     .await;
     assert!(remaining
@@ -2924,14 +2933,11 @@ async fn hosted_room_copy_installs_history_under_fresh_authority() {
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Stored);
         let mut zip = zip::ZipWriter::new_stream(&mut archive);
-        zip.start_file("manifest.json", options)
-            .unwrap();
+        zip.start_file("manifest.json", options).unwrap();
         zip.write_all(manifest.to_string().as_bytes()).unwrap();
-        zip.start_file("history.ndjson", options)
-            .unwrap();
+        zip.start_file("history.ndjson", options).unwrap();
         zip.write_all(history.as_bytes()).unwrap();
-        zip.start_file("settings.json", options)
-            .unwrap();
+        zip.start_file("settings.json", options).unwrap();
         zip.write_all(settings.to_string().as_bytes()).unwrap();
         zip.finish().unwrap();
         archive
@@ -3009,7 +3015,6 @@ async fn hosted_room_copy_installs_history_under_fresh_authority() {
     assert_eq!(status, 403, "{body}");
     assert_eq!(body["error"], "room_creation_restricted");
     assert_eq!(authority(), before);
-
 
     let (status, body) =
         room_copy_http(address, &creator_credential, creator_session, &valid).await;

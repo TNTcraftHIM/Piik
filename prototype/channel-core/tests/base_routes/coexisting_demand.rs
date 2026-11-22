@@ -8,20 +8,8 @@ fn peer_watch_establishes_the_grant_after_both_provider_pair_reports() {
     let (provider_session, _) = join(&mut net, provider, Some(&credential));
     join(&mut net, viewer, None);
     let room = net.create(page, RoomAccess::Public, false);
-    join_base(&mut net, provider, &room);
-    let existing = pair(&net, provider, page_session, &room).id;
-    for socket in [page, provider] {
-        command(
-            &mut net,
-            socket,
-            json!({"type":"link_state","pairId":existing,"state":"connected"}),
-        );
-        command(
-            &mut net,
-            socket,
-            json!({"type":"base_state","roomId":room,"pairId":existing,"ready":true}),
-        );
-    }
+    join_room_interests(&mut net, provider, &room);
+    let existing = warm_pair(&mut net, page, provider, page_session);
     let activity = Uuid::new_v4();
     command(
         &mut net,
@@ -41,7 +29,12 @@ fn peer_watch_establishes_the_grant_after_both_provider_pair_reports() {
         )
     };
     watch(&mut net, "direct");
-    assert!(net.state(viewer).pairs.is_empty());
+    assert!(net.state(viewer).watch_bytes.is_empty());
+    assert!(net
+        .state(viewer)
+        .pairs
+        .iter()
+        .all(|pair| !pair.rooms.contains(&room)));
     watch(&mut net, "peer");
     let provider_pair = net
         .state(viewer)
@@ -62,17 +55,14 @@ fn peer_watch_establishes_the_grant_after_both_provider_pair_reports() {
         viewer,
         json!({"type":"link_state","pairId":provider_pair,"state":"connected"}),
     );
-    assert_eq!(
-        pair(&net, viewer, provider_session, &room).id,
-        provider_pair
-    );
+    assert_eq!(pair(&net, viewer, provider_session).id, provider_pair);
     assert_eq!(
         net.state(viewer).watch_bytes[0].upstream,
         Some(provider_session)
     );
     watch(&mut net, "direct");
     assert!(net.state(viewer).watch_bytes.is_empty());
-    assert_eq!(pair(&net, provider, page_session, &room).id, existing);
+    assert_eq!(pair(&net, provider, page_session).id, existing);
 }
 
 #[test]
@@ -82,7 +72,7 @@ fn one_screen_reduces_two_decoded_outputs_while_another_stays_selected() {
     let [as_, bs, cs, xs, _] = [a, b, c, x, y].map(|peer| join(&mut net, peer, None).0);
     let room = net.create(a, RoomAccess::Public, false);
     for peer in [b, c] {
-        join_base(&mut net, peer, &room);
+        join_room_interests(&mut net, peer, &room);
         command(
             &mut net,
             peer,
@@ -169,20 +159,8 @@ fn file_receivers_in_one_or_two_rooms_share_the_discovery_slot() {
             for peers in members.windows(2) {
                 let parent = peers[0];
                 let child = peers[1];
-                join_base(&mut network, sockets[child], &room);
-                let id = pair(&network, sockets[child], ids[parent], &room).id;
-                for socket in [sockets[parent], sockets[child]] {
-                    command(
-                        &mut network,
-                        socket,
-                        json!({"type":"link_state","pairId":id,"state":"connected"}),
-                    );
-                    command(
-                        &mut network,
-                        socket,
-                        json!({"type":"base_state","roomId":room,"pairId":id,"ready":true}),
-                    );
-                }
+                join_room_interests(&mut network, sockets[child], &room);
+                warm_pair(&mut network, sockets[parent], sockets[child], ids[parent]);
             }
             room
         };
@@ -268,10 +246,12 @@ fn cancelling_file_or_screen_preserves_the_other_on_the_same_pair() {
                 socket,
                 json!({"type":"link_state","pairId":shared,"state":"connected"}),
             );
+        }
+        for socket in [source, viewer] {
             command(
                 &mut network,
                 socket,
-                json!({"type":"base_state","roomId":room,"pairId":shared,"ready":true}),
+                json!({"type":"room_data_state","roomId":room,"pairId":shared,"ready":true}),
             );
         }
         let (edge, flow) = screen_input(&network, viewer, upstream, screen).unwrap();
@@ -296,7 +276,7 @@ fn cancelling_file_or_screen_preserves_the_other_on_the_same_pair() {
                 json!({"type":"subscribe","publicationId":screen,"enabled":false}),
             );
             assert!(screen_input(&network, viewer, upstream, screen).is_none());
-            assert_eq!(pair(&network, viewer, upstream, &room).id, shared);
+            assert_eq!(pair(&network, viewer, upstream).id, shared);
             assert_eq!(network.state(viewer).files[0].upstream, Some(upstream));
         }
     }
@@ -413,7 +393,7 @@ fn cold_voice_file_and_watch_byte_repair_use_the_only_room_reader() {
             );
             None
         };
-        let direct = pair(&network, source, receiver_id, &room);
+        let direct = pair(&network, source, receiver_id);
         assert!(network.state(helper).pairs.is_empty());
         command(
             &mut network,
@@ -449,16 +429,6 @@ fn cold_voice_file_and_watch_byte_repair_use_the_only_room_reader() {
                     &mut network,
                     socket,
                     json!({"type":"link_state","pairId":edge.id,"state":"connected"}),
-                );
-            }
-        }
-        for (socket, peer_id) in [(source, source_id), (receiver, receiver_id)] {
-            let edge = pair(&network, helper, peer_id, &room);
-            for endpoint in [helper, socket] {
-                command(
-                    &mut network,
-                    endpoint,
-                    json!({"type":"base_state","roomId":room,"pairId":edge.id,"ready":true}),
                 );
             }
         }
@@ -603,12 +573,16 @@ fn background_file_trial_survives_another_room_link_failure_until_host_ack() {
     let [src, _, rx, _] = [source, helper, receiver, other].map(|p| join(&mut net, p, None).0);
     let room = net.create(source, RoomAccess::Public, false);
     browse(&mut net, helper, &room, true);
-    join_base(&mut net, other, &room);
+    join_room_interests(&mut net, other, &room);
     command(
         &mut net,
         other,
         json!({"type":"relay_capacity","roomId":room,"capacity":0}),
     );
+    let sibling = publish(&mut net, source, &room, "screen");
+    subscribe_screen(&mut net, other, sibling);
+    let link = pair(&net, other, src).id;
+    connect(&mut net, [source, other], link);
     let (seq, file) = offer_file(&mut net, source, &room, "background.bin");
     command(
         &mut net,
@@ -616,14 +590,14 @@ fn background_file_trial_survives_another_room_link_failure_until_host_ack() {
         json!({"type":"file_receive","roomId":room,"messageSeq":seq,
         "attachmentId":file.id,"enabled":true}),
     );
-    let direct = pair(&net, source, rx, &room);
+    let direct = pair(&net, source, rx);
     command(
         &mut net,
         source,
         json!({"type":"link_state","pairId":direct.id,"state":"failed"}),
     );
     let trial = net.state(helper).pairs[0].id;
-    let unrelated = pair(&net, other, src, &room).id;
+    let unrelated = pair(&net, other, src).id;
     let failure = json!({"type":"link_state","pairId":unrelated,"state":"failed"});
     let effects = net.authority.handle(
         other,
@@ -673,6 +647,7 @@ fn new_room_flow_consumes_an_existing_physical_failure() {
     }
     subscribe_screen(&mut net, receiver, screen);
     let direct = physical_pair(&net, receiver, source_id).unwrap();
+    connect(&mut net, [source, receiver], direct);
     // The second room has planned its first lease but the domain hasn't received it.
     let request = json!({"type":"subscribe","publicationId":sibling,"enabled":true});
     let effects = net.authority.handle(
@@ -689,12 +664,19 @@ fn new_room_flow_consumes_an_existing_physical_failure() {
         })
         .unwrap();
     let delayed = net.host_turn(&other, input);
+    assert!(delayed.projection.flows.iter().any(|flow| {
+        flow.publication_id == sibling && flow.sender == source_id && flow.receiver == receiver_id
+    }));
     command(
         &mut net,
         receiver,
         json!({"type":"link_state","pairId":direct,"state":"failed"}),
     );
-    assert!(net.state(receiver).pairs.is_empty());
+    assert!(net
+        .state(receiver)
+        .pairs
+        .iter()
+        .all(|pair| pair.id != direct));
     let update = json!({"type":"host_output","roomId":other,"output":delayed});
     let repair = net.authority.handle(
         source,
@@ -711,6 +693,7 @@ fn new_room_flow_consumes_an_existing_physical_failure() {
         .pairs
         .iter()
         .all(|p| p.peer_id != source_id));
+    assert!(net.state(receiver).subscriptions.contains(&sibling));
     assert_eq!(
         screen_input(&net, healthy, source_id, sibling).unwrap().0,
         shared

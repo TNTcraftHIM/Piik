@@ -81,6 +81,7 @@ interface VoiceParticipation {
 
 interface ScreenWatch {
   helperSessionId?: string;
+  retry?: { controller: AbortController; available: () => boolean };
   query?: AbortController;
   operation?: Promise<void>;
 }
@@ -223,7 +224,7 @@ export class ChannelSession {
   private get reading(): RoomReading | undefined { return this.readings.get(this.roomId); }
   private readingRooms = new Set<string>();
   private outgoingMessages = new Map<string, {
-    content: string; files: PreparedFile[]; command: Extract<ChannelCommand, { type: "chat" }>;
+    bindingId: string; content: string; files: PreparedFile[]; command: Extract<ChannelCommand, { type: "chat" }>;
   }>();
   private captureLifetime = new AbortController();
   private screenShares = new Map<string, ScreenShare>();
@@ -700,7 +701,10 @@ export class ChannelSession {
       this.requests.delete(id);
       request.reject(new Error("room_unavailable"));
     }
-    for (const id of this.outgoingMessages.keys()) if (!canRead(id)) this.outgoingMessages.delete(id);
+    for (const [id, attempt] of this.outgoingMessages) {
+      const bindingId = state.channel.rooms.find(room => room.id === id)?.delivery?.bindingId;
+      if (!canRead(id) || (bindingId && bindingId !== attempt.bindingId)) this.outgoingMessages.delete(id);
+    }
     this.patch({ state: visible, self: this.view.profiles.get(userId ?? "") ?? (this.view.self?.id === userId ? this.view.self : null), readByRoom,
       siteURL: this.siteURL(),
       voicePlaybackByUser: sameChannel ? new Map([...this.view.voicePlaybackByUser].filter(([id]) => state.users.some(user => user.id === id))) : new Map(),
@@ -769,20 +773,26 @@ export class ChannelSession {
     else if (command.type === "signal" && this.signals.length < 256) this.signals.push(command);
   }
 
+  private conversationBinding(roomId: string | undefined): string | undefined {
+    return this.view.state?.channel.rooms.find(room => room.id === roomId && room.authorized && room.available)?.delivery?.bindingId;
+  }
+
   private async request(command: ChannelCommand, result?: (event: ChannelReply) => void, roomId = this.commandRoom(command), options: {
     signal?: AbortSignal; replaceHistory?: boolean; refreshThrough?: number; bindingId?: string;
   } = {}): Promise<void> {
     const { signal, replaceHistory = false, refreshThrough, bindingId } = options;
-    const reading = roomId ? this.readings.get(roomId) : undefined;
+    const reading = roomId ? this.readings.get(roomId) : undefined, socket = this.socket;
     const conversation = command.type === "chat" || command.type === "history" || command.type === "history_seek" || command.type === "react"
       || command.type === "delete_message" || command.type === "clear_history";
+    const expectedBinding = conversation ? bindingId ?? this.conversationBinding(roomId) : undefined;
     if (conversation && reading && reading.roomId === roomId) await reading.ready;
     signal?.throwIfAborted();
-    if (bindingId && reading !== this.readings.get(roomId!)) throw new DOMException("Read cancelled", "AbortError");
-    if (this.view.connection !== "connected") return Promise.reject(new Error("disconnected"));
-    const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
-    const delivery = room?.delivery;
-    if (conversation && (!room?.available || !delivery || (bindingId && (!room.authorized || delivery.bindingId !== bindingId)))) return Promise.reject(new Error("room_unavailable"));
+    if (bindingId && command.type !== "chat" && reading !== this.readings.get(roomId!)) throw new DOMException("Read cancelled", "AbortError");
+    if (this.view.connection !== "connected" || this.socket !== socket) throw new Error("disconnected");
+    if (conversation && (!expectedBinding || this.conversationBinding(roomId) !== expectedBinding)) throw new Error("room_unavailable");
+    const tracksRoomBinding = command.type === "browse" || command.type === "room_topology";
+    const replyBinding = expectedBinding ?? (tracksRoomBinding
+      ? this.view.state?.channel.rooms.find(room => room.id === roomId)?.delivery?.bindingId : undefined);
     const requestId = crypto.randomUUID();
     const abort = () => {
       const request = this.requests.get(requestId);
@@ -802,11 +812,11 @@ export class ChannelSession {
             reject(error instanceof Error ? error : new Error("invalid_response"));
           }
         }),
-        ...(delivery && (conversation || command.type === "browse" || command.type === "room_topology") ? { bindingId: delivery.bindingId } : {}),
+        ...(replyBinding ? { bindingId: replyBinding } : {}),
         ...(command.type === "history_seek" ? { seekAfter: command.after } : {}),
         ...(command.type === "history" ? { history: { before: command.before, replace: replaceHistory, refreshThrough, entries: new Map() } } : {}) });
       signal?.addEventListener("abort", abort, { once: true });
-      if (conversation) void this.conversation.send(command, requestId, delivery!.bindingId).catch(error => {
+      if (conversation) void this.conversation.send(command, requestId, expectedBinding).catch(error => {
         if (!this.requests.delete(requestId)) return;
         reject(error instanceof Error ? error : new Error(String(error)));
       });
@@ -1104,7 +1114,7 @@ export class ChannelSession {
 
   private async syncAppWatching(resync = false): Promise<void> {
     if (this.closed || this.view.connection !== "connected") return;
-    const watches = [...this.watching].filter(([id]) => !this.local.has(id) && !this.view.pending.has(`watch:${id}`));
+    const watches = [...this.watching].filter(([id, watch]) => !this.local.has(id) && !watch.retry && !this.view.pending.has(`watch:${id}`));
     if (!watches.length) return;
     const socket = this.socket, sessionId = this.view.sessionId;
     const app = this.app?.connected ? this.app : undefined;
@@ -1118,7 +1128,7 @@ export class ChannelSession {
     if (app && helperSessionId) this.rememberLocalEndpoint(app, helperSessionId);
     // Cached placement hints are not authority acknowledgements after recovery.
     for (const [publicationId, watch] of watches) {
-      if (this.watching.get(publicationId) !== watch
+      if (this.watching.get(publicationId) !== watch || watch.retry
         || this.view.pending.has(`watch:${publicationId}`) || !resync && watch.helperSessionId === helperSessionId) continue;
       watch.helperSessionId = helperSessionId;
       // Assistance changes route placement; failure must not withdraw the watch.
@@ -1237,7 +1247,10 @@ export class ChannelSession {
     const state = this.view.state;
     const rooms = new Set(this.roomId ? [this.roomId] : []);
     for (const publication of state?.publications ?? []) {
-      if (publication.kind === "screen" && (this.view.ownedScreens.has(publication.id) || state?.subscriptions.includes(publication.id))) {
+      if (publication.kind !== "screen") continue;
+      const retry = this.watching.get(publication.id)?.retry;
+      if (this.view.ownedScreens.has(publication.id) || state?.subscriptions.includes(publication.id)
+        || (retry && !retry.controller.signal.aborted && retry.available())) {
         rooms.add(publication.roomId);
       }
     }
@@ -1379,26 +1392,28 @@ export class ChannelSession {
   sendMessage = (roomId: string, text: string, files: DraftFile[] = [], signal?: AbortSignal, options: ChatOptions = {}): Promise<void> => this.action(`chat:${roomId}`, async () => {
     signal?.throwIfAborted();
     if (files.length && !this.view.state?.channel.rooms.find(room => room.id === roomId)?.capabilities.attachments) throw new Error("attachments_unavailable");
-    const sessionId = this.view.sessionId;
+    const sessionId = this.view.sessionId, bindingId = this.conversationBinding(roomId);
+    if (!sessionId || this.view.connection !== "connected") throw new Error("disconnected");
+    if (!bindingId) throw new Error("room_unavailable");
     const reading = this.readings.get(roomId), followIntent = Symbol();
     if (reading) reading.followLatest = followIntent;
     const draft = { text, ...structuredClone(options) }, content = JSON.stringify(draft);
     const previous = this.outgoingMessages.get(roomId);
-    const retry = previous && previous.content === content && previous.files.length === files.length
+    const retry = previous?.bindingId === bindingId && previous.content === content && previous.files.length === files.length
       && files.every((entry, index) => entry.id === previous.files[index].id && entry.file === previous.files[index].file) ? previous : undefined;
     const prepared = retry?.files ?? (files.length ? await this.attachments.describe(files, signal) : []);
     if (this.closed || this.view.sessionId !== sessionId) throw new Error("disconnected");
     signal?.throwIfAborted();
-    if (!this.view.state?.channel.rooms.some(room => room.id === roomId && room.authorized)) throw new Error("room_unavailable");
+    if (this.conversationBinding(roomId) !== bindingId) throw new Error("room_unavailable");
     // Retry the prepared command even if its selected disk file is no longer readable.
-    const attempt = retry ?? { content, files: prepared, command: {
+    const attempt = retry ?? { bindingId, content, files: prepared, command: {
       type: "chat" as const, roomId, ...draft, nonce: crypto.randomUUID(), attachments: prepared.map(file => file.attachment),
       inlineImages: Object.fromEntries(prepared.flatMap(file => file.inlineImage ? [[file.id, file.inlineImage]] : [])),
     } };
     this.outgoingMessages.set(roomId, attempt);
     await this.request(attempt.command, event => {
       if (event.type === "confirmed") this.attachments.confirmed(roomId, event.message, prepared);
-    }, roomId, { signal });
+    }, roomId, { signal, bindingId });
     if (this.outgoingMessages.get(roomId) === attempt) this.outgoingMessages.delete(roomId);
     if (reading && reading.followLatest === followIntent) {
       const follow = () => {
@@ -1583,11 +1598,14 @@ export class ChannelSession {
     const publication = publicationId ? this.view.state?.publications.find(value => value.id === publicationId
       && value.roomId === roomId && value.kind === "screen") : undefined;
     if (publicationId && !publication) throw new Error("publication_unavailable");
-    return { bindingId, sourceSessionId: publication?.sessionId, current: () => {
+    const available = () => {
       const actual = this.view.state?.channel.rooms.find(room => room.id === roomId);
-      if (this.roomId !== selection || !actual?.authorized || !actual.available || actual.delivery?.bindingId !== bindingId
-        || (publicationId && !this.view.state?.publications.some(value => value.id === publicationId
-          && value.roomId === roomId && value.sessionId === publication?.sessionId && value.kind === "screen"))) throw new Error("room_context_changed");
+      return !!actual?.authorized && actual.available && actual.delivery?.bindingId === bindingId
+        && (!publicationId || !!this.view.state?.publications.some(value => value.id === publicationId
+          && value.roomId === roomId && value.sessionId === publication?.sessionId && value.kind === "screen"));
+    };
+    return { bindingId, sourceSessionId: publication?.sessionId, available, current: (scope: "view" | "publication" = "view") => {
+      if ((scope === "view" && this.roomId !== selection) || !available()) throw new Error("room_context_changed");
     } };
   }
 
@@ -2106,6 +2124,7 @@ export class ChannelSession {
     const watch: ScreenWatch = {};
     const operation = this.action(`watch:${publicationId}`, async () => {
       if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
+      this.watching.get(publicationId)?.retry?.controller.abort();
       this.watching.set(publicationId, watch);
       try {
         const app = this.app;
@@ -2140,7 +2159,9 @@ export class ChannelSession {
   };
   private retireWatch(publicationId: string): void {
     this.input.close(publicationId);
-    this.watching.get(publicationId)?.query?.abort();
+    const watch = this.watching.get(publicationId);
+    watch?.retry?.controller.abort();
+    watch?.query?.abort();
     this.watching.delete(publicationId);
   }
   unwatch = async (publicationId: string): Promise<void> => {
@@ -2158,11 +2179,33 @@ export class ChannelSession {
   retryPicture = (publicationId: string): Promise<void> => this.action(`retry-picture:${publicationId}`, async () => {
     const current = this.sessionContext();
     const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");
-    if (!publication || !this.watching.has(publicationId) || this.view.localScreens.has(publicationId)) throw new Error("publication_unavailable");
+    const watch = this.watching.get(publicationId);
+    if (!publication || !watch || this.view.localScreens.has(publicationId)) throw new Error("publication_unavailable");
+    if (watch.operation) throw new Error("operation_pending");
     const context = this.connectionContext(publication.roomId, publicationId);
-    await this.unwatch(publicationId);
-    current(); context.current();
-    await this.watch(publicationId, publication.roomId);
+    const controller = new AbortController();
+    watch.retry = { controller, available: context.available };
+    const check = () => { controller.signal.throwIfAborted(); current(); context.current("publication"); };
+    this.input.close(publicationId);
+    let withdrawn = false;
+    try {
+      await this.request({ type: "subscribe", publicationId, enabled: false }, undefined, publication.roomId, { signal: controller.signal });
+      withdrawn = true;
+      check();
+      await this.request({ type: "subscribe", publicationId, enabled: true, helperSessionId: watch.helperSessionId }, undefined, publication.roomId, { signal: controller.signal });
+      check();
+    } catch (error) {
+      controller.signal.throwIfAborted();
+      if (withdrawn && this.watching.get(publicationId) === watch) {
+        this.retireWatch(publicationId);
+        this.refreshActivity();
+      }
+      throw error;
+    } finally {
+      delete watch.retry;
+      this.browseRooms();
+    }
+    void this.syncAppWatching();
   });
   clearError = (): void => this.patch({ error: null });
 
@@ -2553,7 +2596,7 @@ export class ChannelSession {
     const selection = this.sourceSelections.get(roomId), page = selection?.page;
     if (!selection || !page || !selection.watchSources?.choices.some(choice => choice.id === choiceId)) throw new Error("watch_page_unavailable");
     selection.discovery?.unsubscribe();
-    const source = await page.prepareMedia(choiceId);
+    const source = await page.prepareMedia(choiceId, selection.controller.signal);
     await this.commitPageSuppliedWatch(roomId, page, selection, source);
   }, reportError);
   selectWatchIndexedSource = (roomId: string, videoId: string, audioId?: string, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
@@ -2638,7 +2681,7 @@ export class ChannelSession {
     if (this.view.state?.watchActivities.find(activity => activity.id === id)?.byteSource) throw new Error("watch_source_already_active");
     let byteSource: WatchByteSource;
     try {
-      byteSource = typeof choiceId === "string" ? await page.prepareMedia(choiceId) : "sourceId" in choiceId ? await page.prepareMpdMedia(choiceId, signal) : await page.prepareIndexedMedia(choiceId, signal);
+      byteSource = typeof choiceId === "string" ? await page.prepareMedia(choiceId, signal) : "sourceId" in choiceId ? await page.prepareMpdMedia(choiceId, signal) : await page.prepareIndexedMedia(choiceId, signal);
       signal.throwIfAborted();
       if (this.watchPlayers.get(id) !== player) throw new DOMException("Cancelled", "AbortError");
       await this.request({ type: "set_watch_byte_source", roomId: player.roomId, id, byteSource }, undefined, player.roomId);
@@ -2864,6 +2907,15 @@ export class ChannelSession {
   private async stopRoomWatch(roomId: string): Promise<void> {
     for (const [id, player] of this.watchPlayers) if (player.owner && player.roomId === roomId) await this.stopWatch(id);
   }
+
+  private async previewCommittedCapture(roomId: string, id: string, current: () => boolean, signal: AbortSignal): Promise<void> {
+    // Room confirmation replaces the shared video even if the local preview fails.
+    const retirement = this.stopRoomWatch(roomId);
+    const preview = this.watching.has(id) ? undefined : this.watch(id, roomId, signal);
+    const results = await Promise.allSettled([retirement, preview]);
+    if (!current()) throw new DOMException("Capture stopped", "AbortError");
+    for (const result of results) if (result.status === "rejected") throw result.reason;
+  }
   setWatchPlayback = (id: string, patch: Partial<Pick<WatchPlayback, "paused" | "position" | "rate">>): Promise<void> => {
     const player = this.watchPlayers.get(id);
     if (!player?.owner) return Promise.reject(new Error("not_watch_owner"));
@@ -2941,9 +2993,14 @@ export class ChannelSession {
         && this.sourceSelections.get(roomId) === selection
         && app.externalInput(share.id)?.captureId === event.captureId;
       try {
-        if (this.local.has(share.id)) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: event.sessionId }, undefined, roomId);
-        if (!current()) throw new DOMException("Input cancelled", "AbortError");
-        await app.commitCapture(share.id, event.captureId);
+        try {
+          if (this.local.has(share.id)) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: event.sessionId }, undefined, roomId);
+          if (!current()) throw new DOMException("Input cancelled", "AbortError");
+          await app.commitCapture(share.id, event.captureId);
+        } catch (error) {
+          if (current()) await app.cancelCapture(share.id).catch(() => {});
+          throw error;
+        }
         if (!current()) return;
         share.native = undefined;
         share.paused = undefined;
@@ -2952,11 +3009,7 @@ export class ChannelSession {
         const remoteControls = new Map(this.view.remoteControls);
         remoteControls.delete(share.id);
         this.patch({ remoteControls });
-        if (!this.watching.has(share.id)) await this.watch(share.id, roomId);
-        await this.stopRoomWatch(roomId);
-      } catch (error) {
-        if (current()) await app.cancelCapture(share.id).catch(() => {});
-        throw error;
+        await this.previewCommittedCapture(roomId, share.id, current, selection.controller.signal);
       } finally { this.finishSourceSelection(roomId, selection); }
     });
   }
@@ -3195,9 +3248,7 @@ export class ChannelSession {
       share.codec ??= share.codecMode === "auto" ? automaticVideoCodecPreference(prepared.codec) : manualVideoCodecPreference(prepared.codec);
       this.retireCapture(share.id);
       this.patch({});
-      // Native owns the source; this page previews it through the ordinary route.
-      if (!this.watching.has(share.id)) await this.watch(share.id, roomId, signal);
-      await this.stopRoomWatch(roomId);
+      await this.previewCommittedCapture(roomId, share.id, () => current() && this.app === app, signal);
     } catch (error) {
       if (!committed) await app?.cancelCapture(share.id).catch(() => {});
       throw error;

@@ -12,22 +12,17 @@ pub struct RoomTopology {
     /// A current forwarding lease, not room Read permission or a separate participant role.
     #[serde(default)]
     pub transit_session: Option<Uuid>,
-    pub base: BaseTopology,
+    pub session_ids: Vec<Uuid>,
+    pub pairs: Vec<RoomPair>,
     pub screen: Option<ScreenTopology>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BaseTopology {
-    pub root_session_id: Uuid,
-    pub edges: Vec<BaseEdge>,
-}
-
-#[derive(Clone, Deserialize, Serialize)]
-pub struct BaseEdge {
-    pub sender: Uuid,
-    pub receiver: Uuid,
-    pub ready: bool,
+pub struct RoomPair {
+    pub first: Uuid,
+    pub second: Uuid,
+    pub confirmed: bool,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

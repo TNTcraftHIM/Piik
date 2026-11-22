@@ -124,15 +124,15 @@ within its resource allowance and closes a pair when its last use ends.
 | Version | When peer connections are prepared and used |
 | --- | --- |
 | [v2.7.0](https://github.com/TNTcraftHIM/Piik/blob/e25bd009501793681c2fc52080846cd092bb917e/docs/standards/routing-transport.md#topology) | The room already supports multi-hop delivery from one screen host. Each viewer has at most one active upstream. Voice can establish the room graph before the host shares a screen. Voice and picture use the same route controller. Voice can use a companion transport on a selected edge. The route policy can use an embedded SFU. |
-| [Current 3.0 implementation](./channel-network-design.md#room-bootstrap-and-activity-paths) | Screen, voice, file and forwarded webpage bytes request physical pairs from one channel pool. Rooms use authorized subgraphs; confirmed pairs are reusable by other eligible activities. Failed direct paths can use same-room readers, and forwarding budgets apply independently per kind across rooms. |
+| [Current 3.0 implementation](./channel-network-design.md#room-bootstrap-and-activity-paths) | Screen, voice, file and forwarded webpage bytes request physical pairs from one channel pool. Rooms use authorized subgraphs; confirmed pairs are reusable by other eligible activities. Failed direct paths can use room-authorized relays, and forwarding budgets apply independently per kind across rooms. |
 
-The remaining pool scheduling is tracked in [TODO](../todo.md#active-work):
-first standby neighbors for lobby and idle-room interest, channel-wide gap
-repair, and a total physical degree budget. Existing code bounds optional
-discovery and idle retention; it does not yet apply a total degree limit to
-active and standby pairs together. These are implementation gaps within the
-same graph model. A new direct request can currently displace an idle neighbor.
-Admission and retention under a total degree budget remain open.
+Ordinary endpoints admit up to 64 pending or established pairs. A registered service
+admits up to MAX_SESSIONS minus one. Admission protects complete paths needed by
+business, then considers authorized room interest and finally channel standby.
+Standby tries ring neighbors and a bounded alternate after failure. DFS components
+and low-link information identify useful sparse links. Business repair can try
+other eligible pairs outside that window. The room publishes eligible forwarding
+sessions in RoomProjection.relaySessionIds. Discovery uses this set directly.
 
 ### Payloads
 
@@ -234,8 +234,18 @@ Let `G(t)` be the channel graph of confirmed endpoint pairs. For room `r`,
 `R_r(t)` selects the pairs eligible to carry its content. For a publication
 `s`, `T_s(t)` is the directed tree from its publishing endpoint to its
 authorized subscribers. A source has no parent. Every served non-source
-node has one active parent reachable from that source. Ignoring direction,
-**edges(T_s) ⊆ edges(R_r) ⊆ edges(G)**. Both outer graphs can have cycles.
+node has one active parent reachable from that source. At admission, each selected
+edge belongs to the authorized subgraph of G(t). Both outer graphs can have cycles.
+During signaling recovery, valid sessions retain previously confirmed transports.
+Existing leases keep their protection; unused transports have the lowest retention
+priority. Healthy selected flows can continue under their existing grants.
+A new assignment requires confirmation on both current signaling connections.
+During a failure episode, the pool remembers prior reachability for the same
+endpoint generations across repeated unconfirmed attempts. That history guides
+restoration. An admitted attempt has its own physical preparation window. To
+complete a path, admission checks both slots for the new pair while protecting
+its confirmed prefix and healthy uses. It can reclaim unleased partial paths
+from competing demands.
 
 A owns one screen publication and B owns another. A's screen can go directly
 from A to B along their existing pair. B's screen can travel back along B to
@@ -522,7 +532,7 @@ flowchart TD
   C["Channel · authority and connection demand"] -->|"authorized state"| R["RoomRuntime · room grants and delivery intent"]
   R -->|"confirmed path"| P["Activity · selected delivery and pending handoff"]
   R -->|"authorized unmet intent"| C
-  C -->|"cold start and repair requests"| T["TransportBook · channel graph, pair attempts and uses"]
+  C -->|"business, room and channel demand"| T["TransportBook · channel graph, pair attempts and uses"]
   P -->|"flow lease"| T
   T --> E["Browser media / Native Driver · physical transport"]
   A["Page / Native runtime · downstream counts by kind"] --> E
@@ -553,7 +563,7 @@ preserving valid branches. `Publication` owns media selection and delivery proof
 byte-source paths. The room projects receiving intent even before it can select
 an upstream. Channel discovery admits pairs and wakes the room through
 `HostInput.confirmed_pairs`. Required `RoomRecipient.screenHelpers` identifies
-the upstream receiver in assisted screen demand on channel wire 39.
+the upstream receiver in assisted screen demand.
 
 ## Review And Validation Plan
 
@@ -577,7 +587,7 @@ Measure proactive standby and total degree admission with the same connection ow
 
 | Scenario | Required observation |
 | --- | --- |
-| First screen, voice, file or forwarded-byte request on an empty graph | Intent reaches channel admission without a base tree or existing flow. Confirmed pairs wake the room and allow delivery preparation. |
+| First screen, voice, file or forwarded-byte request on an empty graph | Intent reaches channel admission without an existing flow. Confirmed pairs wake the room and allow delivery preparation. |
 | Both endpoints are online but physical capacity is occupied | Preserve the request without reporting ICE or media failure. A capacity change can start it; cancellation removes its unused demand. |
 | A's voice uses A–B–C while C sends a file directly to A | Each activity selects its own path. Withdrawing B's file contribution preserves voice; ending one use does not close another activity's pair. |
 | An indirect room path works while a direct pair is preparing | The receiver keeps playing on the authorized path. Confirming the pair makes it reusable. Receiving the payload on it allows the activity to switch. |

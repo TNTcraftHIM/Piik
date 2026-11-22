@@ -62,14 +62,14 @@ energy increased. Leaving the helper's room released its media, file and
 physical connection leases. These loopback controls establish cold-path repair,
 not reachability or performance on independent networks.
 
-The Core capacity run exercised two active rooms of 20 people each, their
+The wire-40 Core capacity run exercised two active rooms of 20 people each, their
 Browser and App endpoints, and one Server endpoint. All 32 rooms had a
 maximum-size uploaded picture. The lobby received built-in icons and each
 active reader received its room picture. With screen, voice and file demand,
-the largest observed full State was 200,775 bytes and HostOutput was 215,279
+the largest observed full State was 191,196 bytes and HostOutput was 153,747
 bytes, both within the 4 MiB frame bound.
 Real Browser/Server checks admitted 65 new retained identities, read paged offline
-profiles without peer connections, applied rename and avatar removal, found an
+profiles through channel signaling, applied rename and avatar removal, found an
 unloaded offline mention target, and exported an old author outside the reading
 window. Native archive checks retain 200 maximum-image identities and their
 credentials in a roughly 5 MB archive. Normal Browser export and restore retain
@@ -86,7 +86,7 @@ signers keep working when components initialize at the same time.
 Direct-media synchronized viewing passes local checks with three independent
 Browsers: common playback and late joining, local sound isolation, conversation,
 and activity retirement through Browser and Server room hosts. Watch-only
-participation constructs no peer connections. A separate control verifies real
+participation adds no media or byte-flow demand. A separate control verifies real
 autoplay refusal and trusted-click recovery. This is source-level evidence;
 cross-network clock accuracy and matched packages remain open.
 The Windows webpage connector passes normal App/Browser controls with an owned
@@ -164,7 +164,7 @@ No-PDT sources and opaque native-only creator URLs fail explicitly; proven VOD
 and explicit ordinary media paths remain covered separately.
 Watch audience checks cover direct, peer and Native webpage viewing with the
 same participant identities. Both sides show the shared count and names; joining
-direct viewing still creates no peer connection. Leave, preparation cancellation
+direct viewing adds no media or byte-flow demand. Leave, preparation cancellation
 and activity retirement remove only their corresponding audience entries.
 A matching Windows App/Web development package verifies the room list, couch
 and people panel against actual direct-media playback. The local viewer's

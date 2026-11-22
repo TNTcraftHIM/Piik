@@ -99,7 +99,15 @@ fn pair(net: &RoomNetwork, connection: Uuid, peer: Uuid) -> PairInfo {
         .clone()
 }
 
-fn confirm_hop(net: &mut RoomNetwork, endpoints: [Uuid; 2], pair_id: Uuid, room: &str) {
+fn assert_no_payload(net: &RoomNetwork, socket: Uuid) {
+    assert!(net
+        .state(socket)
+        .pairs
+        .iter()
+        .all(|p| p.rooms.is_empty() && p.incoming.is_empty() && p.outgoing.is_empty()));
+}
+
+fn confirm_hop(net: &mut RoomNetwork, endpoints: [Uuid; 2], pair_id: Uuid) {
     for socket in endpoints {
         assert!(net
             .state(socket)
@@ -112,33 +120,24 @@ fn confirm_hop(net: &mut RoomNetwork, endpoints: [Uuid; 2], pair_id: Uuid, room:
             json!({"type":"link_state","pairId":pair_id,"state":"connected"}),
         );
     }
-    acknowledge_hop(net, endpoints, pair_id, room);
 }
 
 fn acknowledge_hop(net: &mut RoomNetwork, endpoints: [Uuid; 2], pair_id: Uuid, room: &str) {
     for socket in endpoints {
-        if net
+        assert!(net
             .state(socket)
             .pairs
             .iter()
-            .any(|pair| pair.id == pair_id && pair.rooms.iter().any(|assigned| assigned == room))
-        {
-            command(
-                net,
-                socket,
-                json!({"type":"base_state","roomId":room,"pairId":pair_id,"ready":true}),
-            );
-        }
+            .any(|p| p.id == pair_id && p.rooms.iter().any(|r| r == room)));
+        command(
+            net,
+            socket,
+            json!({"type":"room_data_state","roomId":room,"pairId":pair_id,"ready":true}),
+        );
     }
 }
 
-fn confirm_service_path(
-    net: &mut RoomNetwork,
-    service: Uuid,
-    host: Uuid,
-    viewer: Uuid,
-    room: &str,
-) {
+fn confirm_service_path(net: &mut RoomNetwork, service: Uuid, host: Uuid, viewer: Uuid) {
     let mut pending = vec![host, viewer];
     while !pending.is_empty() {
         let (index, pair_id) = pending
@@ -155,7 +154,7 @@ fn confirm_service_path(
             })
             .expect("channel assigned the next service hop to both endpoints");
         let peer = pending.swap_remove(index);
-        confirm_hop(net, [service, peer], pair_id, room);
+        confirm_hop(net, [service, peer], pair_id);
     }
 }
 
@@ -239,7 +238,7 @@ fn bridge(
             viewer,
             json!({"type":"link_state","pairId":direct.id,"state":"failed"}),
         );
-        confirm_service_path(net, service, host, viewer, room);
+        confirm_service_path(net, service, host, viewer);
     } else {
         assert!(net
             .state(viewer)
@@ -328,7 +327,7 @@ fn exact_service_lease_carries_assigned_media_and_bytes_without_room_read() {
         );
     }
     set_preference(&mut net, host, &room, true);
-    assert!(net.state(service).pairs.is_empty());
+    assert_no_payload(&net, service);
     assert_eq!(
         topology(&mut net, host, &room).transit_session,
         None,
@@ -402,6 +401,10 @@ fn exact_service_lease_carries_assigned_media_and_bytes_without_room_read() {
         json!({"type":"file_receive","roomId":room,"messageSeq":1,
         "attachmentId":attachment.id,"enabled":true}),
     );
+    let up = pair(&net, service, source).id;
+    let down = pair(&net, service, destination).id;
+    acknowledge_hop(&mut net, [host, service], up, &room);
+    acknowledge_hop(&mut net, [service, viewer], down, &room);
     let file = &net.state(service).files[0];
     assert_eq!(file.upstream, Some(source));
     assert_eq!(file.downstream, vec![destination]);
@@ -476,7 +479,7 @@ fn exact_service_lease_carries_assigned_media_and_bytes_without_room_read() {
     assert!(net.state(operator_page).publications.is_empty());
     assert!(net.state(operator_page).files.is_empty());
     assert!(net.state(operator_page).watch_bytes.is_empty());
-    assert!(net.state(operator_page).pairs.is_empty());
+    assert_no_payload(&net, operator_page);
     for denied in [
         json!({"type":"browse","roomId":room,"active":true}),
         json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":"voice"}}),
@@ -527,17 +530,10 @@ fn exact_service_lease_carries_assigned_media_and_bytes_without_room_read() {
     assert!(net.state(service).files.is_empty());
     assert!(net.state(service).watch_bytes.is_empty());
     assert_eq!(topology(&mut net, host, &room).transit_session, None);
-    let [idle] = net.state(service).pairs.as_slice() else {
-        panic!("the opted-in room retains one idle service connection");
-    };
-    let (idle_id, idle_peer) = (idle.id, idle.peer_id);
-    assert!(idle.incoming.is_empty() && idle.outgoing.is_empty() && idle.rooms.is_empty());
-    let idle_socket = if idle_peer == source {
-        host
-    } else {
-        assert_eq!(idle_peer, destination);
-        viewer
-    };
+    assert_no_payload(&net, service);
+    let idle = pair(&net, service, source);
+    let idle_id = idle.id;
+    let idle_socket = host;
     let ordinary_room = private_room(&mut net, service, idle_socket);
     let ordinary_screen = screen(&mut net, service, idle_socket, &ordinary_room);
     let reused = pair(&net, idle_socket, relay);
@@ -559,7 +555,7 @@ fn exact_service_lease_carries_assigned_media_and_bytes_without_room_read() {
     );
 
     set_preference(&mut net, host, &room, false);
-    assert!(net.state(service).pairs.is_empty());
+    assert_no_payload(&net, service);
     assert_eq!(topology(&mut net, host, &room).transit_session, None);
 }
 
@@ -601,7 +597,7 @@ fn public_owner_opt_in_readback_distinguishes_availability_selection_and_work() 
     assert_eq!(projected(&net, host), Some((true, true)));
     assert_eq!(projected(&net, viewer), None);
     assert!(state.service_available && state.service_enabled && state.transit_session.is_none());
-    assert!(net.state(service).pairs.is_empty());
+    assert_no_payload(&net, service);
     assert!(net.policy(&room).allow_service_relay);
     assert_eq!(
         serde_json::to_value(net.policy(&room)).unwrap()["grants"],
@@ -764,7 +760,7 @@ fn transit_retirement_keeps_other_room_leases_and_rejects_old_service_outputs() 
         host,
         json!({"type":"host_output","roomId":second_room,"output":old_output}),
     ));
-    assert!(net.state(service).pairs.is_empty());
+    assert_no_payload(&net, service);
     assert!(net.policy(&second_room).allow_service_relay);
     assert!(net
         .state(service)
@@ -782,16 +778,22 @@ fn transit_retirement_keeps_other_room_leases_and_rejects_old_service_outputs() 
     assert!(topology(&mut net, host, &second_room).service_available);
 
     // Saved consent selects the current registered endpoint without another write.
-    confirm_service_path(&mut net, successor, host, viewer, &second_room);
+    confirm_service_path(&mut net, successor, host, viewer);
     prove_service_screen(&mut net, viewer, successor, source, replacement, second);
     let current = topology(&mut net, host, &second_room);
     assert_eq!(current.transit_session, Some(replacement));
+    let delivered = pair(&net, viewer, replacement)
+        .incoming
+        .into_iter()
+        .find(|flow| flow.publication_id == second)
+        .unwrap()
+        .id;
     command(
         &mut net,
         host,
         json!({"type":"host_stop","roomId":second_room,"bindingId":current.binding_id}),
     );
-    assert!(net.state(successor).pairs.is_empty());
+    assert_no_payload(&net, successor);
     let summary = piik_channel_core::host::RoomSummary::from_policy(&net.policy(&second_room));
     command(
         &mut net,
@@ -801,6 +803,23 @@ fn transit_retirement_keeps_other_room_leases_and_rejects_old_service_outputs() 
     let restarted = topology(&mut net, host, &second_room);
     assert_ne!(restarted.binding_id, current.binding_id);
     assert!(restarted.service_enabled);
+    assert!(net.state(viewer).subscriptions.contains(&second));
+    let current_publication = net
+        .state(viewer)
+        .publications
+        .iter()
+        .find(|p| p.id == second)
+        .unwrap();
+    assert!(current_publication
+        .audience
+        .iter()
+        .all(|watcher| watcher.state != AudienceState::Active));
+    assert!(net
+        .state(viewer)
+        .pairs
+        .iter()
+        .flat_map(|p| &p.incoming)
+        .all(|flow| flow.id != delivered));
     let operator_user = net
         .state(successor)
         .sessions
@@ -844,8 +863,11 @@ fn public_read_alone_does_not_keep_withdrawn_service_work() {
         states.iter().all(|state| state
             .pairs
             .iter()
-            .all(|pair| !retired_pairs.contains(&pair.id))),
-        "the domain must withdraw pure service pairs before the room host replies"
+            .all(|pair| !retired_pairs.contains(&pair.id)
+                || (pair.rooms.is_empty()
+                    && pair.incoming.is_empty()
+                    && pair.outgoing.is_empty()))),
+        "the domain must withdraw service grants before the room host replies"
     );
     accepted(net.deliver(effects));
     assert!(net.state(service).pairs.iter().all(|pair| {
@@ -858,7 +880,7 @@ fn public_read_alone_does_not_keep_withdrawn_service_work() {
     }));
     let effects = register_service(&mut net, Some(relay)).unwrap();
     accepted(net.deliver(effects));
-    confirm_service_path(&mut net, service, host, viewer, &room);
+    confirm_service_path(&mut net, service, host, viewer);
     prove_service_screen(&mut net, viewer, service, source, relay, picture);
     assert!(net.state(service).pairs.iter().any(|pair| {
         pair.incoming
@@ -903,37 +925,17 @@ fn public_read_alone_does_not_keep_withdrawn_service_work() {
         "the same user's real Browser stays distinct from pure service work"
     );
     let hosted = net.create(service, RoomAccess::Public, false);
-    command(
-        &mut net,
-        viewer,
-        json!({"type":"voice","roomId":hosted,
-        "joined":true,"muted":true,"deafened":true}),
-    );
-    assert!(
-        net.state(service)
-            .pairs
-            .iter()
-            .any(|pair| pair.rooms.contains(&hosted)),
-        "an actual room host retains its ordinary base role without the optional relay preference"
-    );
-    let hosting_pair = net
-        .state(service)
-        .pairs
-        .iter()
-        .find(|pair| pair.rooms.contains(&hosted))
-        .unwrap()
-        .id;
+    let own_screen = screen(&mut net, service, viewer, &hosted);
+    let own_pair = pair(&net, viewer, relay).id;
+    confirm_hop(&mut net, [service, viewer], own_pair);
     let effects = register_service(&mut net, None).unwrap();
-    assert!(effects.events.iter().any(|(connection, event)| {
-        *connection == service
-            && matches!(event, Event::State { state } if state.pairs.iter().any(|pair| pair.id == hosting_pair))
-    }));
     accepted(net.deliver(effects));
-    assert!(net
-        .state(service)
-        .pairs
+    let retained = pair(&net, viewer, relay);
+    assert_eq!(retained.id, own_pair);
+    assert!(retained
+        .incoming
         .iter()
-        .any(|pair| pair.id == hosting_pair && pair.rooms.contains(&hosted)));
+        .any(|flow| flow.publication_id == own_screen));
 }
 
 #[test]
@@ -962,12 +964,13 @@ fn service_socket_reconnect_cannot_revive_a_lease_even_when_host_missed_disconne
     accepted(net.deliver(effects));
     let picture = bridge(&mut net, host, viewer, service, source, relay, &room, true);
     let original_policy = serde_json::to_value(net.policy(&room)).unwrap();
-    let old_pair_ids: Vec<_> = net
-        .state(service)
-        .pairs
+    let prior = pair(&net, viewer, relay);
+    let old_flow = prior
+        .incoming
         .iter()
-        .map(|pair| pair.id)
-        .collect();
+        .find(|flow| flow.publication_id == picture)
+        .unwrap()
+        .id;
     let original_binding = topology(&mut net, host, &room).binding_id;
 
     // RoomHost misses the service's disconnected input, as happens while its page reconnects.
@@ -979,11 +982,14 @@ fn service_socket_reconnect_cannot_revive_a_lease_even_when_host_missed_disconne
         .iter()
         .any(|(_, event)| matches!(event, Event::HostInput { .. })));
     accepted(net.deliver(effects));
-    assert!(net
+    for pair in net
         .state(viewer)
         .pairs
         .iter()
-        .all(|pair| pair.peer_id != relay));
+        .filter(|pair| pair.peer_id == relay)
+    {
+        assert!(pair.rooms.is_empty() && pair.incoming.is_empty() && pair.outgoing.is_empty());
+    }
     assert!(matches!(
         register_service(&mut net, Some(relay)),
         Err("service_unavailable")
@@ -1007,10 +1013,10 @@ fn service_socket_reconnect_cannot_revive_a_lease_even_when_host_missed_disconne
         ),
         "a delayed old Welcome cannot register the replacement socket"
     );
-    assert!(net.state(resumed_service).pairs.is_empty());
+    assert_no_payload(&net, resumed_service);
     let effects = register_service(&mut net, Some(relay)).unwrap();
     accepted(net.deliver(effects));
-    assert!(net.state(resumed_service).pairs.is_empty());
+    assert_no_payload(&net, resumed_service);
 
     net.host_connection(&room, resumed_host);
     command(
@@ -1027,11 +1033,13 @@ fn service_socket_reconnect_cannot_revive_a_lease_even_when_host_missed_disconne
     let restored = topology(&mut net, resumed_host, &room);
     assert_eq!(restored.binding_id, original_binding);
     assert!(restored.service_enabled);
-    assert!(net
-        .state(resumed_service)
-        .pairs
-        .iter()
-        .all(|pair| !old_pair_ids.contains(&pair.id)));
+    command(
+        &mut net,
+        viewer,
+        json!({"type":"flow_state","pairId":prior.id,"flowId":old_flow,"state":"decoded"}),
+    );
+    assert_no_payload(&net, resumed_service);
+    assert_eq!(restored.transit_session, None);
     assert_eq!(
         serde_json::to_value(net.policy(&room)).unwrap(),
         original_policy
@@ -1051,7 +1059,7 @@ fn service_socket_reconnect_cannot_revive_a_lease_even_when_host_missed_disconne
             json!({"type":"link_state","pairId":direct,"state":"failed"}),
         );
     }
-    confirm_service_path(&mut net, resumed_service, resumed_host, viewer, &room);
+    confirm_service_path(&mut net, resumed_service, resumed_host, viewer);
     prove_service_screen(&mut net, viewer, resumed_service, source, relay, picture);
     assert_eq!(
         topology(&mut net, resumed_host, &room).transit_session,
@@ -1059,20 +1067,24 @@ fn service_socket_reconnect_cannot_revive_a_lease_even_when_host_missed_disconne
     );
     let effects = register_service(&mut net, None).unwrap();
     accepted(net.deliver(effects));
-    assert!(net.state(resumed_service).pairs.is_empty());
+    assert_no_payload(&net, resumed_service);
     let effects = register_service(&mut net, Some(relay)).unwrap();
     accepted(net.deliver(effects));
     assert!(topology(&mut net, resumed_host, &room).service_enabled);
-    confirm_service_path(&mut net, resumed_service, resumed_host, viewer, &room);
+    confirm_service_path(&mut net, resumed_service, resumed_host, viewer);
     prove_service_screen(&mut net, viewer, resumed_service, source, relay, picture);
     assert_eq!(
         topology(&mut net, resumed_host, &room).transit_session,
         Some(relay)
     );
+    command(&mut net, resumed_service, json!({"type":"leave"}));
+    for socket in [resumed_host, viewer] {
+        assert!(net.state(socket).pairs.iter().all(|p| p.peer_id != relay));
+    }
 }
 
 #[test]
-fn hosted_writer_accepts_participant_rooted_room_projection() {
+fn hosted_writer_projects_the_confirmed_pair_and_voice_flow_between_participants() {
     use piik_channel_core::{
         host::{RoomSummary, ServiceEndpoint},
         wire::HostingMode,
@@ -1114,10 +1126,6 @@ fn hosted_writer_accepts_participant_rooted_room_projection() {
     net.authority.reserve_hosted_creation(&creation).unwrap();
     policy.id = creation.summary().id.clone();
     let room = net.restore_room(writer, policy);
-    assert_eq!(
-        topology(&mut net, a, &room).base.root_session_id,
-        writer_session
-    );
     for peer in [a, b] {
         command(
             &mut net,
@@ -1125,13 +1133,21 @@ fn hosted_writer_accepts_participant_rooted_room_projection() {
             json!({"type":"voice","roomId":room,"joined":true,"muted":false,"deafened":false}),
         );
     }
-    let base = topology(&mut net, a, &room).base;
-    assert_eq!(base.root_session_id, source);
-    assert_eq!(base.edges.len(), 1);
-    assert_eq!(
-        (base.edges[0].sender, base.edges[0].receiver),
-        (source, receiver)
+    let voice = Uuid::new_v4();
+    command(
+        &mut net,
+        a,
+        json!({"type":"publish","publication":{"id":voice,"roomId":room,"kind":"voice"}}),
     );
+    let edge = pair(&net, b, source).id;
+    confirm_hop(&mut net, [a, b], edge);
+    assert!(pair(&net, b, source)
+        .incoming
+        .iter()
+        .any(|flow| flow.publication_id == voice));
+    assert!(topology(&mut net, a, &room).pairs.iter().any(
+        |p| p.confirmed && (p.first, p.second) == (source.min(receiver), source.max(receiver))
+    ));
     assert_eq!(
         net.state(a).channel.rooms[0]
             .delivery
@@ -1191,16 +1207,15 @@ fn hosted_transit_pair_survives_room_manager_session_expiry_until_revoked() {
     policy.id = creation.summary().id.clone();
     let room = net.restore_room(writer, policy);
     set_preference(&mut net, manager, &room, true);
-    screen(&mut net, source, viewer, &room);
+    let picture = screen(&mut net, source, viewer, &room);
     let direct = pair(&net, viewer, sender);
     command(
         &mut net,
         viewer,
         json!({"type":"link_state","pairId":direct.id,"state":"failed"}),
     );
-    // The first hop alone is already a live lease while the downstream prepares.
-    let input = pair(&net, source, service);
-    confirm_hop(&mut net, [writer, source], input.id, &room);
+    confirm_service_path(&mut net, writer, source, viewer);
+    prove_service_screen(&mut net, viewer, writer, sender, service, picture);
 
     let effects = net.authority.disconnect(manager, 100);
     accepted(net.deliver(effects));
@@ -1221,5 +1236,5 @@ fn hosted_transit_pair_survives_room_manager_session_expiry_until_revoked() {
 
     join(&mut net, manager, true);
     set_preference(&mut net, manager, &room, false);
-    assert!(net.state(writer).pairs.is_empty());
+    assert_no_payload(&net, writer);
 }

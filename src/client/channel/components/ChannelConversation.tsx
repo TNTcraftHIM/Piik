@@ -26,8 +26,8 @@ type Draft = { text: string; mentions: NonNullable<ChatOptions["mentions"]>; rep
 const emptyDraft: Draft = { text: "", mentions: [] };
 
 /** Browsing owns the conversation; drafts and reading position belong to this pane. */
-export function ChannelConversation({ domainId, roomId, roomName, roomIcon, roomPicture, entry, messages, users, profiles, queryProfiles, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, onMessage, findUnreadMessage, unreadAfter, lastMessageSeq, onRead, interaction, onBack, onDeleteMessage, canModerate, pending, historyChanges }: {
-  domainId: string | undefined; roomId: string; roomName: string; roomIcon?: string; roomPicture?: string; messages: ChannelMessage[]; users: ChannelUserSummary[];
+export function ChannelConversation({ domainId, roomId, bindingId, roomName, roomIcon, roomPicture, entry, messages, users, profiles, queryProfiles, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, onMessage, findUnreadMessage, unreadAfter, lastMessageSeq, onRead, interaction, onBack, onDeleteMessage, canModerate, pending, historyChanges }: {
+  domainId: string | undefined; roomId: string; bindingId?: string; roomName: string; roomIcon?: string; roomPicture?: string; messages: ChannelMessage[]; users: ChannelUserSummary[];
   profiles: ReadonlyMap<string, ChannelUser>; queryProfiles: ChannelController["queryProfiles"];
   entry?: ChannelEntry;
   selfUserId?: string | null;
@@ -88,9 +88,9 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
   const unreadLookup = useRef<AbortController | null>(null);
   const [unreadLookupBusy, setUnreadLookupBusy] = useState(false);
   const [unreadLookupError, setUnreadLookupError] = useState<string | null>(null);
-  const [unreadBoundary, setUnreadBoundary] = useState({ scope: conversationScope, after: unreadAfter });
+  const [unreadBoundary, setUnreadBoundary] = useState({ scope: conversationScope, bindingId, after: unreadAfter });
   const [unreadLookupResult, setUnreadLookupResult] = useState<{ through: number; target?: string } | null>(null);
-  const after = unreadBoundary.scope === conversationScope ? unreadBoundary.after : undefined;
+  const after = unreadBoundary.scope === conversationScope && unreadBoundary.bindingId === bindingId ? unreadBoundary.after : undefined;
   const lastSeq = messages.at(-1)?.seq ?? 0;
   const verifiedTarget = unreadLookupResult?.target;
   const unreadMessage = after !== undefined && verifiedTarget && messages.some(message => message.id === verifiedTarget)
@@ -100,9 +100,9 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, room
     && (!unreadLookupResult || !!verifiedTarget || lastSeq > unreadLookupResult.through);
   // Capture a visit's divider before markRead advances the durable personal cursor.
   useLayoutEffect(() => {
-    setUnreadBoundary(previous => previous.scope !== conversationScope || !hidden
-      ? { scope: conversationScope, after: unreadAfter } : previous);
-  }, [conversationScope, hidden]);
+    setUnreadBoundary(previous => previous.scope !== conversationScope || previous.bindingId !== bindingId || !hidden
+      ? { scope: conversationScope, bindingId, after: unreadAfter } : previous);
+  }, [conversationScope, bindingId, hidden]);
   const [draftFiles, setDraftFiles] = useState<Record<string, DraftFile[]>>({});
   const [limits, setLimits] = useState<AttachmentLimits | null>(null);
   const [mentionLimit, setMentionLimit] = useState<number | null>(null);

@@ -44,7 +44,7 @@ async fn native_and_external_cancellation_keep_the_other_preparation_owner() -> 
             "rooms":[{"id":"room","name":"Room","icon":"couch","creatorId":user,"access":"private","hidden":false,
                 "hasPassword":false,"voiceBitrate":64000,"relayOverride":null,"authorized":true,"canManage":false,"available":true,"reading":false,
                 "lastMessageSeq":0,"participantSessionIds":[],"fileActivity":[],"capabilities":{"attachments":true},
-                "delivery":{"hostSessionId":Uuid::new_v4(),"bindingId":binding,"nextHops":{}}}]},
+                "delivery":{"hostSessionId":Uuid::new_v4(),"bindingId":binding}}]},
         "files":[],"users":[],"sessions":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[],
         "watchActivities":[],"watchSubscriptions":[],"watchBytes":[]
     }))?;

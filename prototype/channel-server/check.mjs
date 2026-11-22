@@ -112,6 +112,8 @@ test("the frontend accepts real cross-room publications and subscriptions", { ti
 });
 
 test("authenticated users, signed conversation and selective source ownership", { timeout: 30_000 }, async t => {
+  const previous = await connect(t, { protocol: CHANNEL_PROTOCOL - 1 });
+  assert.equal(previous.welcome.code, "incompatible_protocol");
   const owner = await connect(t, { ownerKey, name: "Owner check" });
   const friend = await connect(t, { name: "Friend check" });
   const other = await connect(t, { name: "Other check" });

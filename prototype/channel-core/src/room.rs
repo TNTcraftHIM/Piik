@@ -3,8 +3,8 @@ use crate::{
     history::{HistoryRequest, MessageDraft},
     identity::{Endpoint, Member},
     publication::Publication,
-    routes::{activity_parents, BaseTree, RelayLimits},
-    transport::{BaseLink, Flow},
+    routes::{activity_parents, RelayLimits},
+    transport::Flow,
     wire::{
         validate_video_settings, AudienceState, FlowState, Kind, PublicationAudience,
         PublicationInfo, Room, RoomAccess, VideoSettings, VoiceInfo,
@@ -55,8 +55,7 @@ pub struct RoomRuntime {
     activity: BTreeMap<Uuid, Activity>,
     publications: BTreeMap<Uuid, Publication>,
     watch_activities: BTreeMap<Uuid, Watch>,
-    base: Option<BaseTree>,
-    hosted_writer: Option<Uuid>,
+    writer: Option<(Uuid, crate::wire::HostingMode)>,
     transit_endpoint: Option<crate::host::ServiceEndpoint>,
     repair_at: Option<u64>,
     failed_data_pairs: BTreeSet<(Uuid, Uuid)>,
@@ -106,8 +105,7 @@ impl RoomRuntime {
             activity: BTreeMap::new(),
             publications: BTreeMap::new(),
             watch_activities: BTreeMap::new(),
-            base: None,
-            hosted_writer: None,
+            writer: None,
             transit_endpoint: None,
             repair_at: None,
             failed_data_pairs: BTreeSet::new(),
@@ -124,7 +122,6 @@ impl RoomRuntime {
     }
 
     pub(crate) fn reset_routes(&mut self) {
-        self.base = self.base.as_ref().map(|base| BaseTree::new(base.root()));
         self.transit_endpoint = None;
         self.repair_at = None;
         self.failed_data_pairs.clear();
@@ -148,39 +145,18 @@ impl RoomRuntime {
             if let Some(previous) = self.selected_service() {
                 // Withdraw proof from the old service socket before deriving new work.
                 let session = previous.session_id;
-                let peers: BTreeSet<_> = self
-                    .base_links()
-                    .map(|link| (link.parent, link.child))
-                    .chain(
-                        self.files
-                            .plans(&self.policy.id, session)
-                            .into_iter()
-                            .flat_map(|p| {
-                                p.upstream
-                                    .into_iter()
-                                    .chain(p.downstream)
-                                    .map(move |peer| (session, peer))
-                            }),
-                    )
-                    .chain(self.watch_byte_plans(session).into_iter().flat_map(|p| {
-                        p.upstream
-                            .into_iter()
-                            .chain(p.downstream)
-                            .map(move |peer| (session, peer))
-                    }))
-                    .filter_map(|(a, b)| {
-                        if a == session {
-                            Some(b)
-                        } else {
-                            (b == session).then_some(a)
-                        }
-                    })
-                    .collect();
+                let files = self
+                    .files
+                    .plans(&self.policy.id, session)
+                    .into_iter()
+                    .flat_map(|plan| plan.upstream.into_iter().chain(plan.downstream));
+                let watches = self
+                    .watch_byte_plans(session)
+                    .into_iter()
+                    .flat_map(|plan| plan.upstream.into_iter().chain(plan.downstream));
+                let peers: BTreeSet<_> = files.chain(watches).collect();
                 for peer in peers {
                     self.retire_byte_pair(session, peer);
-                    if let Some(base) = &mut self.base {
-                        base.failed(session, peer);
-                    }
                 }
                 for publication in self.publications.values_mut() {
                     publication.retire_transport(session);
@@ -257,9 +233,6 @@ impl RoomRuntime {
             service.session_id == session
                 && (!files.is_empty()
                     || !watch_bytes.is_empty()
-                    || self
-                        .base_links()
-                        .any(|link| link.parent == session || link.child == session)
                     || self
                         .flows()
                         .any(|flow| flow.sender == session || flow.receiver == session))
@@ -341,7 +314,9 @@ impl RoomRuntime {
     }
 
     fn project(&self, views: BTreeMap<Uuid, RoomRecipient>) -> crate::host::RoomProjection {
+        let (relay_session_ids, _) = self.relay_sessions();
         crate::host::RoomProjection {
+            relay_session_ids,
             allow_service_relay: self.policy.allow_service_relay,
             watch_activities: self
                 .watch_activities
@@ -423,7 +398,6 @@ impl RoomRuntime {
             views,
             next_route_deadline: self.next_route_deadline(),
             flows: self.flows().collect(),
-            base_links: self.base_links().collect(),
         }
     }
 
@@ -449,7 +423,6 @@ impl RoomRuntime {
             shared: Default::default(),
             source_direct_limit: None,
             default: self.policy.relay_capacity as usize,
-            host: self.base.as_ref().map_or(Uuid::nil(), BaseTree::root),
             overrides: self
                 .activity
                 .iter()
@@ -463,19 +436,11 @@ impl RoomRuntime {
     }
 
     pub(crate) fn set_writer(&mut self, session: Uuid, mode: crate::wire::HostingMode) {
-        self.hosted_writer = (mode == crate::wire::HostingMode::Hosted).then_some(session);
-        if self.hosted_writer.is_none() {
-            self.set_host_session(session);
-        }
+        self.writer = Some((session, mode));
     }
 
-    pub fn set_host_session(&mut self, session: Uuid) {
-        if self.base.as_ref().is_none_or(|base| base.root() != session) {
-            self.base = Some(BaseTree::new(session));
-        }
-    }
     pub fn attachments_available(&self) -> bool {
-        self.base.is_some() || self.hosted_writer.is_some()
+        self.writer.is_some()
     }
     pub(crate) fn remove_message_files(&mut self, from: u64, through: u64) -> bool {
         self.files.remove_messages(from, through)
@@ -557,13 +522,45 @@ impl RoomRuntime {
             .get(&session)
             .is_some_and(|activity| activity.reading)
     }
-    fn required_base_sessions(&self) -> BTreeSet<Uuid> {
-        let mut required = self.files.demand();
+    fn forwarding_participants(&self) -> BTreeSet<Uuid> {
+        let mut participants = self.media_sessions();
+        participants.extend(self.files.demand());
         for (source, receiver) in self.watch_byte_pairs() {
-            required.extend([source, receiver]);
+            participants.extend([source, receiver]);
         }
-        required.extend(self.voice().map(|voice| voice.session_id));
-        required
+        participants
+    }
+
+    // Active participants can finish a bounded handoff after lowering their limit.
+    // A new third-party output always requires a positive effective allowance.
+    fn relay_sessions(&self) -> (BTreeSet<Uuid>, BTreeSet<Uuid>) {
+        use crate::wire::HostingMode;
+        let mut active = self.forwarding_participants();
+        let service = self.selected_service().map(|endpoint| endpoint.session_id);
+        if let Some((id, HostingMode::Lightweight)) = self.writer {
+            active.insert(id);
+        }
+        active.extend(service);
+        let mut candidates = active.clone();
+        candidates.extend(
+            self.activity
+                .iter()
+                .filter_map(|(id, state)| state.reading.then_some(*id)),
+        );
+        if let Some((writer, HostingMode::Hosted)) = self.writer {
+            if Some(writer) != service {
+                active.remove(&writer);
+                candidates.remove(&writer);
+            }
+        }
+        candidates.retain(|id| {
+            self.activity
+                .get(id)
+                .and_then(|state| state.relay_capacity)
+                .unwrap_or(self.policy.relay_capacity)
+                > 0
+        });
+        (candidates, active)
     }
 
     fn media_sessions(&self) -> BTreeSet<Uuid> {
@@ -1415,26 +1412,17 @@ impl RoomRuntime {
             .keys()
             .map(|session| (*session, self.subscriptions(*session)))
             .collect();
-        let mut required_base = self.required_base_sessions();
-        let mut demand = self.media_sessions();
-        demand.extend(&required_base);
+        let (mut new_relays, active) = self.relay_sessions();
         let mut routable = readable.clone();
         let service = self.selected_service().map(|service| service.session_id);
         if let Some(endpoint) = transit_endpoint {
             let session = endpoint.session_id;
-            if service.is_none()
-                && !demand.contains(&session)
-                && !self.reading(session)
-                && !self
-                    .base
-                    .as_ref()
-                    .is_some_and(|base| base.root() == session)
-            {
+            if service.is_none() && !active.contains(&session) && !self.reading(session) {
                 // Public Read alone is not consent to use the site's service.
                 routable.remove(&session);
             }
         }
-        if let Some(writer) = self.hosted_writer {
+        if let Some((writer, crate::wire::HostingMode::Hosted)) = self.writer {
             routable.remove(&writer);
         }
         routable.extend(service);
@@ -1444,34 +1432,6 @@ impl RoomRuntime {
                 (endpoint.connected && routable.contains(session)).then_some(*session)
             })
             .collect();
-        let mut base_members = demand.clone();
-        base_members.extend(
-            self.activity
-                .iter()
-                .filter_map(|(id, activity)| activity.reading.then_some(*id)),
-        );
-        if let Some(writer) = self.hosted_writer {
-            let eligible =
-                |id: &Uuid| *id != writer && connected.contains(id) && base_members.contains(id);
-            let willing =
-                |id: &Uuid| self.activity.get(id).and_then(|a| a.relay_capacity) != Some(0);
-            let preferred = demand.iter().find(|id| eligible(id) && willing(id));
-            if self.base.as_ref().is_none_or(|base| {
-                !eligible(&base.root())
-                    || (!willing(&base.root())
-                        && preferred.is_some()
-                        && !demand.contains(&base.root()))
-                    || (!demand.contains(&base.root()) && base.links().next().is_none())
-            }) {
-                self.base = preferred
-                    .or_else(|| demand.iter().find(|id| eligible(id)))
-                    .copied()
-                    .map(BaseTree::new);
-            }
-        }
-        base_members.extend(self.base.as_ref().map(BaseTree::root));
-        base_members.extend(service);
-        base_members.retain(|id| routable.contains(id));
         let limits = self.relay_limits();
         let mut neighbors = BTreeMap::<Uuid, BTreeSet<Uuid>>::new();
         for &(a, b) in confirmed_pairs {
@@ -1480,26 +1440,14 @@ impl RoomRuntime {
                 neighbors.entry(b).or_default().insert(a);
             }
         }
-        let participants = &demand;
-        let relays: BTreeSet<_> = base_members
-            .intersection(&routable)
-            .filter(|id| {
-                Some(**id) == service
-                    || (self.reading(**id)
-                        && self.activity.get(*id).and_then(|a| a.relay_capacity) != Some(0))
-                    || participants.contains(*id)
-                    || (self.hosted_writer.is_none()
-                        && self.base.as_ref().is_some_and(|b| b.root() == **id))
-            })
+        new_relays.retain(|id| routable.contains(id));
+        let relays: BTreeSet<_> = new_relays
+            .union(&active)
+            .filter(|id| routable.contains(id))
             .copied()
             .collect();
         self.failed_data_pairs
             .retain(|pair| !repair_due && confirmed_pairs.contains(pair));
-        let byte_relays = relays
-            .iter()
-            .filter(|id| self.activity.get(id).and_then(|a| a.relay_capacity) != Some(0))
-            .copied()
-            .collect();
         let mut byte_neighbors = neighbors.clone();
         for &(a, b) in &self.failed_data_pairs {
             if let Some(peers) = byte_neighbors.get_mut(&a) {
@@ -1510,7 +1458,7 @@ impl RoomRuntime {
             }
         }
         self.files
-            .route(endpoints, &byte_neighbors, &byte_relays, &limits);
+            .route(endpoints, &byte_neighbors, &new_relays, &limits);
         let mut waiting_bytes = self.files.waiting();
         for (id, watch) in &mut self.watch_activities {
             let receivers = self
@@ -1530,7 +1478,7 @@ impl RoomRuntime {
                         &receivers,
                         &watch.parents,
                         &byte_neighbors,
-                        &byte_relays,
+                        &new_relays,
                         &limits,
                         &BTreeSet::new(),
                     )
@@ -1541,65 +1489,6 @@ impl RoomRuntime {
                     .iter()
                     .any(|peer| *peer != source.session_id && !watch.parents.contains_key(peer))
             });
-        }
-        required_base = self.required_base_sessions();
-        demand = self.media_sessions();
-        demand.extend(&required_base);
-        base_members.extend(&demand);
-        let mut confirmed_demand = self.confirmed_delivery_pairs(&requested, confirmed_pairs);
-        if let Some(base) = &mut self.base {
-            let repairing = base.needs_repair(&demand, &connected);
-            if repairing
-                || demand
-                    .iter()
-                    .any(|&peer| base.pending_after_direct_failure(peer))
-            {
-                let root = base.root();
-                let relays: BTreeSet<_> = base_members
-                    .iter()
-                    .copied()
-                    .filter(|id| {
-                        connected.contains(id) && Some(*id) != service && limits.get(*id, root) > 0
-                    })
-                    .collect();
-                let paths = base.confirmed_repair_paths(&demand, &neighbors, &relays, &limits);
-                if paths.is_empty() && repairing && self.hosted_writer.is_some() {
-                    if let Some(helper) = relays.difference(&demand).next().copied() {
-                        confirmed_demand.extend(
-                            neighbors
-                                .get(&helper)
-                                .into_iter()
-                                .flatten()
-                                .filter(|&&peer| peer == root || demand.contains(&peer))
-                                .map(|&peer| (peer.min(helper), peer.max(helper))),
-                        );
-                        demand.insert(helper);
-                    }
-                }
-                for (parent, child) in paths {
-                    confirmed_demand.insert((parent.min(child), parent.max(child)));
-                    if parent == root || base.ready(parent) {
-                        demand.insert(child);
-                    }
-                }
-            }
-            if repairing {
-                demand.extend(service);
-            }
-            if repair_due {
-                base.retry_required(&required_base, &connected);
-            }
-            base.reconcile_confirmed(
-                &demand,
-                &base_members,
-                &connected,
-                &limits,
-                now,
-                &confirmed_demand,
-            );
-        }
-        if self.base.as_ref().is_some_and(BaseTree::candidate_ready) {
-            self.base.as_mut().unwrap().commit();
         }
         let mut reserved = BTreeMap::<(Uuid, Uuid), usize>::new();
         for flow in self.flows().filter(|flow| {
@@ -1639,7 +1528,6 @@ impl RoomRuntime {
             if publication.info.kind == Kind::Screen {
                 // A screen source owns its outputs. Forwarders share their
                 // remaining capacity across all other screens in the room.
-                screen_limits.host = publication.info.session_id;
                 screen_limits.overrides.remove(&publication.info.session_id);
                 screen_limits.source_direct_limit = publication
                     .info
@@ -1674,10 +1562,6 @@ impl RoomRuntime {
             }
             needs_repair |= publication.needs_repair(&subscribers, &connected);
         }
-        needs_repair |= self
-            .base
-            .as_ref()
-            .is_some_and(|base| base.needs_repair(&required_base, &connected));
         if !waiting_bytes {
             self.failed_data_pairs.clear();
         }
@@ -1690,36 +1574,10 @@ impl RoomRuntime {
         }
     }
 
-    fn confirmed_delivery_pairs(
-        &self,
-        requested: &BTreeMap<Uuid, BTreeSet<Uuid>>,
-        confirmed_pairs: &BTreeSet<(Uuid, Uuid)>,
-    ) -> BTreeSet<(Uuid, Uuid)> {
-        if confirmed_pairs.is_empty() {
-            return BTreeSet::new();
-        }
-        let voice = requested.iter().flat_map(|(&receiver, ids)| {
-            ids.iter()
-                .filter_map(|id| self.publications.get(id))
-                .filter(|publication| {
-                    publication.info.kind == Kind::Voice && !publication.info.paused
-                })
-                .map(move |publication| (publication.info.session_id, receiver))
-        });
-        self.files
-            .requested_pairs()
-            .chain(self.watch_byte_pairs())
-            .chain(voice)
-            .map(|(a, b)| (a.min(b), a.max(b)))
-            .filter(|pair| confirmed_pairs.contains(pair))
-            .collect()
-    }
-
     pub fn next_route_deadline(&self) -> Option<u64> {
         self.publications
             .values()
             .filter_map(Publication::deadline)
-            .chain(self.base.as_ref().and_then(BaseTree::deadline))
             .chain(self.repair_at)
             .min()
     }
@@ -1746,30 +1604,7 @@ impl RoomRuntime {
             })
     }
 
-    pub fn base_links(&self) -> impl Iterator<Item = BaseLink> + '_ {
-        self.base
-            .iter()
-            .flat_map(|base| base.links())
-            .map(|(parent, child)| BaseLink {
-                room_id: self.policy.id.clone(),
-                parent,
-                child,
-                ready: self.base.as_ref().is_some_and(|base| base.ready(child)),
-                selected: true,
-            })
-            .chain(self.base.iter().flat_map(|base| {
-                base.candidate_links()
-                    .into_iter()
-                    .map(|(parent, child)| BaseLink {
-                        room_id: self.policy.id.clone(),
-                        parent,
-                        child,
-                        ready: base.candidate_ready(),
-                        selected: false,
-                    })
-            }))
-    }
-    pub fn base_state(
+    pub fn room_data_state(
         &mut self,
         endpoint: Uuid,
         peer: Uuid,
@@ -1793,11 +1628,7 @@ impl RoomRuntime {
             }
             assigned && self.failed_data_pairs.insert(pair)
         };
-        Ok(self
-            .base
-            .as_mut()
-            .is_some_and(|base| base.state(endpoint, peer, ready))
-            || data)
+        Ok(data)
     }
 
     fn retire_byte_pair(&mut self, first: Uuid, second: Uuid) {
@@ -1815,9 +1646,6 @@ impl RoomRuntime {
         self.retire_byte_pair(first, second);
         self.failed_data_pairs
             .remove(&(first.min(second), first.max(second)));
-        if let Some(base) = &mut self.base {
-            base.failed(first, second);
-        }
         for publication in self.publications.values_mut() {
             publication.failed_pair(first, second);
         }
@@ -1901,7 +1729,7 @@ mod tests {
             )
             .unwrap(),
         );
-        room.set_host_session(id(1));
+        room.set_writer(id(1), crate::wire::HostingMode::Lightweight);
         let owner = endpoints[&id(1)].member;
         room.start_watch(
             owner,
@@ -1952,8 +1780,7 @@ mod tests {
         room.set_watch_byte_source(owner, id(1), id(10), Some(source), &endpoints)
             .unwrap();
         room.reconcile(&endpoints, 0);
-        assert!(room.required_base_sessions().is_empty());
-        assert!(room.base_links().next().is_none());
+        assert!(room.forwarding_participants().is_empty());
         room.join_watch(
             endpoints[&id(3)].member,
             id(3),
@@ -1963,11 +1790,12 @@ mod tests {
         .unwrap();
         room.reconcile(&endpoints, 1);
         assert_eq!(
-            room.required_base_sessions(),
+            room.forwarding_participants(),
             BTreeSet::from([id(3), id(4)])
         );
         let waiting = room.watch_byte_plans(id(3)).pop().unwrap();
         assert!(waiting.receiving && waiting.upstream.is_none());
+        room.browse(owner, id(1), true).unwrap();
         let pairs = confirmed_pairs(&[(1, 4), (1, 3)]);
         room.reconcile_with_pairs(&endpoints, 2, &pairs);
         let source_plan = room.watch_byte_plans(id(4)).pop().unwrap();
@@ -2008,20 +1836,20 @@ mod tests {
         room.reconcile(&endpoints, 4);
         assert!(room.watch_activities[&id(10)].byte_source.is_some());
         assert_eq!(
-            room.required_base_sessions(),
+            room.forwarding_participants(),
             BTreeSet::from([id(3), id(4)])
         );
         endpoints.remove(&id(4));
         room.reconcile(&endpoints, 5);
         assert!(room.watch_activities[&id(10)].byte_source.is_none());
-        assert!(room.required_base_sessions().is_empty());
+        assert!(room.forwarding_participants().is_empty());
         assert!(room.watch_activities.contains_key(&id(10)));
     }
 
     #[test]
     fn assisted_viewing_prepares_native_transit_and_preserves_the_viewer_branch() {
         let id = Uuid::from_u128;
-        let (mut room, mut endpoints) = screen_on_room_base();
+        let (mut room, mut endpoints) = screen_room();
         let viewer = endpoints[&id(2)].member;
         endpoints.insert(
             id(5),
@@ -2132,7 +1960,7 @@ mod tests {
     fn assisted_viewing_replaces_unproved_inputs_without_waiting_for_the_old_path() {
         let id = Uuid::from_u128;
         for playing in [false, true] {
-            let (mut room, mut endpoints) = screen_on_room_base();
+            let (mut room, mut endpoints) = screen_room();
             let viewer = endpoints[&id(2)].member;
             endpoints.insert(
                 id(5),
@@ -2219,7 +2047,7 @@ mod tests {
     fn assisted_viewing_failure_preserves_the_incumbent_without_repeating_the_choice() {
         let id = Uuid::from_u128;
         for failure in 0..3 {
-            let (mut room, mut endpoints) = screen_on_room_base();
+            let (mut room, mut endpoints) = screen_room();
             let viewer = endpoints[&id(2)].member;
             endpoints.insert(
                 id(5),
@@ -2275,7 +2103,7 @@ mod tests {
     fn assisted_viewing_authority_and_intent_retire_with_the_existing_activity() {
         use crate::wire::Command;
         let id = Uuid::from_u128;
-        let (mut room, mut endpoints) = screen_on_room_base();
+        let (mut room, mut endpoints) = screen_room();
         let viewer = endpoints[&id(2)].member;
         endpoints.insert(
             id(5),
@@ -2471,7 +2299,7 @@ mod tests {
                 .room
                 .file_availability
                 .is_none());
-            assert!(reader_view.files.is_empty() && room.base_links().next().is_none());
+            assert!(reader_view.files.is_empty());
         }
         room.command(member, reader, observe(vec![]), &endpoints)
             .unwrap();
@@ -2493,7 +2321,7 @@ mod tests {
             .is_none());
     }
 
-    fn screen_on_room_base() -> (RoomRuntime, BTreeMap<Uuid, Endpoint>) {
+    fn screen_room() -> (RoomRuntime, BTreeMap<Uuid, Endpoint>) {
         let id = Uuid::from_u128;
         let endpoints: BTreeMap<_, _> = (1..=4)
             .map(|value| {
@@ -2519,19 +2347,11 @@ mod tests {
             )
             .unwrap(),
         );
-        room.set_host_session(id(1));
+        room.set_writer(id(1), crate::wire::HostingMode::Lightweight);
         for (session, endpoint) in &endpoints {
             room.browse(endpoint.member, *session, true).unwrap();
             room.set_voice(endpoint.member, *session, true, true, false)
                 .unwrap();
-        }
-        for _ in 0..2 {
-            room.reconcile(&endpoints, 0);
-            let links: Vec<_> = room.base_links().collect();
-            for link in links {
-                room.base_state(link.parent, link.child, true).unwrap();
-                room.base_state(link.child, link.parent, true).unwrap();
-            }
         }
         let publication = id(10);
         room.publish(
@@ -2552,7 +2372,7 @@ mod tests {
     #[test]
     fn refused_file_transit_reuses_confirmed_pair_with_zero_forwarding() {
         let id = Uuid::from_u128;
-        let (fixture, endpoints) = screen_on_room_base();
+        let (fixture, endpoints) = screen_room();
         let (a, b, c, writer) = (id(1), id(2), id(3), id(4));
         let mut room = RoomRuntime::new(fixture.policy);
         room.set_writer(writer, crate::wire::HostingMode::Hosted);
@@ -2562,10 +2382,6 @@ mod tests {
             room.set_voice(endpoints[&session].member, session, true, true, false)
                 .unwrap();
             room.reconcile(&endpoints, 0);
-        }
-        for link in room.base_links().collect::<Vec<_>>() {
-            room.base_state(link.parent, link.child, true).unwrap();
-            room.base_state(link.child, link.parent, true).unwrap();
         }
         let file = crate::AttachmentDescriptor {
             id: id(9),
@@ -2577,17 +2393,21 @@ mod tests {
         room.finish_file(b, 1, b, file.clone(), true, true).unwrap();
         room.finish_file(c, 1, b, file.clone(), false, true)
             .unwrap();
+        let mut confirmed = BTreeSet::from([(a, b), (a, c)]);
+        room.reconcile_with_pairs(&endpoints, 0, &confirmed);
+        assert!(room.projection(&endpoints).views[&a].files.is_empty());
+        assert_eq!(
+            room.projection(&endpoints).views[&c].files[0].upstream,
+            None
+        );
         room.set_relay_capacity(endpoints[&a].member, a, Some(1))
             .unwrap();
-        let mut confirmed = BTreeSet::from([(a, b), (a, c)]);
         room.reconcile_with_pairs(&endpoints, 1, &confirmed);
         room.refuse_file_branch(a, 1, file.id, b, c).unwrap();
         room.set_relay_capacity(endpoints[&a].member, a, Some(0))
             .unwrap();
         confirmed.insert((b, c));
         room.reconcile_with_pairs(&endpoints, 2, &confirmed);
-        room.base_state(b, c, true).unwrap();
-        room.base_state(c, b, true).unwrap();
         room.reconcile_with_pairs(&endpoints, 3, &confirmed);
         let views = room.projection(&endpoints).views;
         assert_eq!(views[&c].files[0].upstream, Some(b));
@@ -2598,7 +2418,7 @@ mod tests {
     #[test]
     fn hosted_repair_reuses_the_helpers_confirmed_hop() {
         let id = Uuid::from_u128;
-        let (prior, endpoints) = screen_on_room_base();
+        let (prior, endpoints) = screen_room();
         let mut room = RoomRuntime::new(prior.policy);
         room.set_writer(id(5), crate::wire::HostingMode::Hosted);
         let (source, first_receiver, helper, waiting) = (id(1), id(2), id(3), id(4));
@@ -2616,10 +2436,8 @@ mod tests {
             .unwrap();
         room.finish_file(first_receiver, 1, source, file.clone(), false, true)
             .unwrap();
-        let pairs = BTreeSet::from([(source, first_receiver), (first_receiver, helper)]);
+        let mut pairs = BTreeSet::from([(source, first_receiver), (first_receiver, helper)]);
         room.reconcile_with_pairs(&endpoints, 0, &pairs);
-        room.base_state(source, first_receiver, true).unwrap();
-        room.base_state(first_receiver, source, true).unwrap();
         room.finish_file(waiting, 1, source, file, false, true)
             .unwrap();
         room.reconcile_with_pairs(&endpoints, 1, &pairs);
@@ -2627,15 +2445,22 @@ mod tests {
         room.reconcile_with_pairs(&endpoints, 2, &pairs);
         room.failed_pair(first_receiver, waiting);
         room.reconcile_with_pairs(&endpoints, 3, &pairs);
-        assert!(room
-            .base_links()
-            .any(|link| link.parent == first_receiver && link.child == helper));
+        assert_eq!(
+            room.projection(&endpoints).views[&waiting].files[0].upstream,
+            None
+        );
+        pairs.insert((helper, waiting));
+        room.reconcile_with_pairs(&endpoints, 4, &pairs);
+        let views = room.projection(&endpoints).views;
+        assert_eq!(views[&first_receiver].files[0].upstream, Some(source));
+        assert_eq!(views[&helper].files[0].upstream, Some(first_receiver));
+        assert_eq!(views[&waiting].files[0].upstream, Some(helper));
     }
 
     #[test]
     fn hosted_file_repair_uses_a_reader_with_both_confirmed_links() {
         let id = Uuid::from_u128;
-        let (prior, endpoints) = screen_on_room_base();
+        let (prior, endpoints) = screen_room();
         let mut room = RoomRuntime::new(prior.policy.clone());
         room.set_writer(id(5), crate::wire::HostingMode::Hosted);
         let (b, c, a, d) = (id(1), id(2), id(3), id(4));
@@ -2651,28 +2476,26 @@ mod tests {
         };
         room.files.install(b, 1, b, file.clone(), true).unwrap();
         room.files.install(c, 1, b, file.clone(), false).unwrap();
-        let pairs = BTreeSet::from([(b, d), (c, d)]);
+        let mut pairs = BTreeSet::from([(b, c)]);
         room.reconcile_with_pairs(&endpoints, 0, &pairs);
+        assert_eq!(
+            room.projection(&endpoints).views[&c].files[0].upstream,
+            Some(b)
+        );
         room.failed_pair(b, c);
-        room.reconcile_with_pairs(&endpoints, 1, &BTreeSet::new());
-        room.base_state(b, a, true).unwrap();
-        room.base_state(a, b, true).unwrap();
-        room.reconcile_with_pairs(&endpoints, 1, &BTreeSet::new());
-        room.base_state(a, c, true).unwrap();
+        pairs = [(b, a), (b, d)].into();
         room.reconcile_with_pairs(&endpoints, 1, &pairs);
-        assert!(room
-            .base_links()
-            .any(|link| link.parent == b && link.child == d));
-        for (parent, child) in [(b, d), (d, c)] {
-            room.base_state(parent, child, true).unwrap();
-            room.base_state(child, parent, true).unwrap();
-            room.reconcile_with_pairs(&endpoints, 2, &pairs);
-        }
+        assert_eq!(
+            room.projection(&endpoints).views[&c].files[0].upstream,
+            None
+        );
+        pairs.insert((c, d));
+        room.reconcile_with_pairs(&endpoints, 2, &pairs);
         assert_eq!(
             room.snapshot(endpoints[&c].member, c).unwrap().files[0].upstream,
             Some(d)
         );
-        assert!(!room.base_links().any(|link| link.child == a));
+        assert!(room.projection(&endpoints).views[&a].files.is_empty());
         room.browse(endpoints[&c].member, c, false).unwrap();
         room.reconcile_with_pairs(&endpoints, 2, &pairs);
         let room_view = room.projection(&endpoints).snapshot(a, true).unwrap().room;
@@ -2687,7 +2510,11 @@ mod tests {
         );
         room.files.remove(c, 1, file.id, false);
         room.reconcile_with_pairs(&endpoints, 3, &pairs);
-        assert_eq!(room.base_links().count(), 0);
+        assert!(room
+            .projection(&endpoints)
+            .views
+            .values()
+            .all(|view| view.files.is_empty()));
         assert!(room
             .projection(&endpoints)
             .snapshot(a, true)
@@ -2698,13 +2525,13 @@ mod tests {
     }
 
     #[test]
-    fn waiting_voice_and_files_reuse_a_confirmed_pair_after_room_ack() {
+    fn waiting_voice_and_files_use_confirmed_pairs_without_room_ack() {
         let id = Uuid::from_u128;
-        let (prior, endpoints) = screen_on_room_base();
+        let (prior, endpoints) = screen_room();
         let (a, b, c) = (id(1), id(2), id(3));
         for voice in [true, false] {
             let mut room = RoomRuntime::new(prior.policy.clone());
-            room.set_host_session(b);
+            room.set_writer(b, crate::wire::HostingMode::Lightweight);
             let file = crate::attachment::AttachmentDescriptor {
                 id: id(9),
                 name: "sample".into(),
@@ -2723,26 +2550,17 @@ mod tests {
                 room.files.install(a, 1, a, file.clone(), true).unwrap();
                 room.files.install(c, 1, a, file.clone(), false).unwrap();
             }
-            room.reconcile(&endpoints, 0);
-            room.base_state(b, a, true).unwrap();
-            room.base_state(a, b, true).unwrap();
-            room.reconcile(&endpoints, 1);
-            assert!(room
-                .base_links()
-                .any(|e| e.parent == b && e.child == c && !e.ready));
-            let pairs = BTreeSet::from([(a, c)]);
-            room.reconcile_with_pairs(&endpoints, 2, &pairs);
-            assert!(room
-                .base_links()
-                .any(|e| e.parent == a && e.child == c && !e.ready));
-            room.base_state(a, c, true).unwrap();
-            room.reconcile_with_pairs(&endpoints, 3, &pairs);
-            assert!(!room.base_links().any(|e| e.child == c && e.ready));
-            room.base_state(c, a, true).unwrap();
-            room.reconcile_with_pairs(&endpoints, 4, &pairs);
-            assert!(room
-                .base_links()
-                .any(|e| e.parent == a && e.child == c && e.ready));
+            room.reconcile_with_pairs(&endpoints, 0, &BTreeSet::from([(a, b)]));
+            assert!(room.flows().all(|flow| flow.receiver != c));
+            if !voice {
+                assert_eq!(
+                    room.projection(&endpoints).views[&c].files[0].upstream,
+                    None
+                );
+                assert!(!room.room_data_state(c, a, false).unwrap());
+            }
+            let pairs = BTreeSet::from([(a, b), (a, c)]);
+            room.reconcile_with_pairs(&endpoints, 1, &pairs);
             if voice {
                 assert!(room
                     .flows()
@@ -2754,17 +2572,30 @@ mod tests {
                     room.snapshot(endpoints[&c].member, c).unwrap().files[0].upstream,
                     Some(a)
                 );
+                assert!(room.room_data_state(c, a, false).unwrap());
+                room.reconcile_with_pairs(&endpoints, 2, &pairs);
+                assert_eq!(
+                    room.projection(&endpoints).views[&c].files[0].upstream,
+                    None
+                );
+                assert!(room.room_data_state(c, a, true).unwrap());
+                room.reconcile_with_pairs(&endpoints, 3, &pairs);
+                assert_eq!(
+                    room.projection(&endpoints).views[&c].files[0].upstream,
+                    Some(a)
+                );
                 room.files.remove(c, 1, file.id, false);
             }
             room.reconcile_with_pairs(&endpoints, 5, &pairs);
-            assert!(!room.base_links().any(|e| e.child == c));
+            assert!(room.flows().all(|flow| flow.receiver != c));
+            assert!(room.projection(&endpoints).views[&c].files.is_empty());
         }
     }
 
     #[test]
     fn waiting_viewers_share_a_confirmed_branch_and_keep_the_serving_flow() {
         let id = Uuid::from_u128;
-        let (original, mut endpoints) = screen_on_room_base();
+        let (original, mut endpoints) = screen_room();
         let mut room = RoomRuntime::new(original.policy.clone());
         for number in [5, 6] {
             endpoints.insert(
@@ -2855,7 +2686,7 @@ mod tests {
     #[test]
     fn reader_keeps_its_picture_lease_when_joining_voice_and_shares_capacity_when_watching() {
         let id = Uuid::from_u128;
-        let (template, endpoints) = screen_on_room_base();
+        let (template, endpoints) = screen_room();
         let mut room = RoomRuntime::new(template.policy.clone());
         let (a, b, c, d) = (id(1), id(2), id(3), id(4));
         let member = |session| endpoints[&session].member;
@@ -2933,23 +2764,14 @@ mod tests {
     fn voice_and_file_transit_release_after_the_last_room_activity() {
         let id = Uuid::from_u128;
         for file_mode in [true, false] {
-            let (old, ends) = screen_on_room_base();
+            let (old, ends) = screen_room();
             let mut r = RoomRuntime::new(old.policy.clone());
-            r.set_host_session(id(1));
+            r.set_writer(id(1), crate::wire::HostingMode::Lightweight);
             r.set_default_relay_capacity(1);
             for n in 1..=3 {
                 r.set_voice(ends[&id(n)].member, id(n), true, true, false)
                     .unwrap();
                 r.browse(ends[&id(n)].member, id(n), true).unwrap();
-                r.reconcile(&ends, 0);
-                for _ in 0..2 {
-                    let links: Vec<_> = r.base_links().collect();
-                    for l in links {
-                        r.base_state(l.parent, l.child, true).unwrap();
-                        r.base_state(l.child, l.parent, true).unwrap();
-                    }
-                    r.reconcile(&ends, 0);
-                }
             }
             if file_mode {
                 let a = crate::AttachmentDescriptor {
@@ -2994,11 +2816,11 @@ mod tests {
     #[test]
     fn confirmed_screen_transit_ends_with_the_readers_last_room_activity() {
         let id = Uuid::from_u128;
-        let (template, endpoints) = screen_on_room_base();
+        let (template, endpoints) = screen_room();
         let mut room = RoomRuntime::new(template.policy.clone());
         let (host, source, relay, viewer, screen) = (id(1), id(1), id(2), id(3), id(10));
         let member = |session| endpoints[&session].member;
-        room.set_host_session(host);
+        room.set_writer(host, crate::wire::HostingMode::Lightweight);
         room.browse(member(relay), relay, true).unwrap();
         room.set_voice(member(relay), relay, true, true, false)
             .unwrap();
@@ -3035,7 +2857,7 @@ mod tests {
             .any(|f| f.publication_id == screen && f.receiver == relay));
     }
     #[test]
-    fn ready_file_copy_retires_unneeded_insertion_without_preparing_voice() {
+    fn ready_file_copy_clears_unserved_holder_without_preparing_voice() {
         let id = Uuid::from_u128;
         let endpoints: BTreeMap<_, _> = (1..=3)
             .map(|value| {
@@ -3061,7 +2883,7 @@ mod tests {
             )
             .unwrap(),
         );
-        room.set_host_session(id(1));
+        room.set_writer(id(1), crate::wire::HostingMode::Lightweight);
         room.set_default_relay_capacity(1);
         room.set_relay_capacity(endpoints[&id(2)].member, id(2), Some(0))
             .unwrap();
@@ -3070,8 +2892,6 @@ mod tests {
                 .unwrap();
         }
         room.reconcile(&endpoints, 0);
-        room.base_state(id(1), id(2), true).unwrap();
-        room.base_state(id(2), id(1), true).unwrap();
         room.publish(
             endpoints[&id(1)].member,
             id(1),
@@ -3130,9 +2950,10 @@ mod tests {
                 .any(|activity| activity.session_id == id(3) && activity.sending),
             "the selected file source participates while its path prepares"
         );
-        assert!(room
-            .base_links()
-            .any(|link| !link.selected && (link.parent == id(3) || link.child == id(3))));
+        assert_eq!(
+            room.projection(&endpoints).views[&id(2)].files[0].upstream,
+            None
+        );
         assert!(
             room.flows()
                 .all(|flow| flow.id == voice.id && flow.selected),
@@ -3160,11 +2981,7 @@ mod tests {
                 .source_id,
             Some(id(1))
         );
-        assert!(
-            room.base_links()
-                .all(|link| link.selected && link.parent != id(3) && link.child != id(3)),
-            "the unused file source must not retain a candidate or base lease"
-        );
+        assert!(room.projection(&endpoints).views[&id(3)].files.is_empty());
         let retained: Vec<_> = room
             .flows()
             .filter(|flow| flow.publication_id == id(20))
@@ -3205,45 +3022,16 @@ mod tests {
             )
             .unwrap(),
         );
-        room.set_host_session(id(1));
+        room.set_writer(id(1), crate::wire::HostingMode::Lightweight);
         room.set_default_relay_capacity(3);
         for (session, capacity) in [(2, 1), (3, 0), (4, 0), (5, 2)] {
             room.set_relay_capacity(endpoints[&id(session)].member, id(session), Some(capacity))
                 .unwrap();
         }
-        // Ordinary admissions establish 1->{2,3,4}, then 2->5.
-        for sessions in [&[1, 2, 3, 4][..], &[5][..]] {
-            for session in sessions {
-                room.set_voice(
-                    endpoints[&id(*session)].member,
-                    id(*session),
-                    true,
-                    false,
-                    false,
-                )
+        for peer in 1..=5 {
+            room.set_voice(endpoints[&id(peer)].member, id(peer), true, false, false)
                 .unwrap();
-            }
-            room.reconcile(&endpoints, 0);
-            for link in room.base_links().collect::<Vec<_>>() {
-                room.base_state(link.parent, link.child, true).unwrap();
-                room.base_state(link.child, link.parent, true).unwrap();
-            }
-            room.reconcile(&endpoints, 1);
         }
-        let original: BTreeSet<_> = room
-            .base_links()
-            .map(|link| (link.parent, link.child))
-            .collect();
-        assert_eq!(
-            original,
-            [
-                (id(1), id(2)),
-                (id(1), id(3)),
-                (id(1), id(4)),
-                (id(2), id(5))
-            ]
-            .into()
-        );
         for source in [1, 5] {
             room.publish(
                 endpoints[&id(source)].member,
@@ -3269,59 +3057,32 @@ mod tests {
         }
         let old: BTreeSet<_> = room.flows().map(|flow| flow.id).collect();
         assert!(!old.is_empty());
-        let mut transports = crate::transport::TransportBook::default();
-        transports.reconcile(room.flows(), room.base_links());
         room.set_default_relay_capacity(2);
         room.reconcile_with_pairs(&endpoints, 10, &pairs);
-        let candidate = room
-            .base_links()
-            .find(|link| !link.selected)
-            .expect("a feasible sibling must migrate before any healthy subtree is retired");
-        assert_eq!((candidate.parent, candidate.child), (id(5), id(3)));
-        assert!(old
-            .iter()
-            .all(|id| room.flows().any(|flow| flow.id == *id && flow.selected)));
-        transports.reconcile(room.flows(), room.base_links());
-        let first_pair = transports
-            .snapshot(id(3), |_| false, |_| false)
-            .into_iter()
-            .find(|pair| pair.peer_id == id(5))
-            .unwrap()
-            .id;
-
-        // Withdrawing the reduction releases both candidate transport and voice work.
-        room.set_default_relay_capacity(3);
-        room.reconcile_with_pairs(&endpoints, 11, &pairs);
-        assert!(!room.base_links().any(|link| !link.selected));
-        assert!(!room.flows().any(|flow| !flow.selected));
-        assert_eq!(
-            room.base_links()
-                .map(|link| (link.parent, link.child))
-                .collect::<BTreeSet<_>>(),
-            original
-        );
-        transports.reconcile(room.flows(), room.base_links());
-        assert!(!transports
-            .snapshot(id(3), |_| false, |_| false)
-            .iter()
-            .any(|pair| pair.id == first_pair));
-
-        room.set_default_relay_capacity(2);
-        room.reconcile_with_pairs(&endpoints, 20, &pairs);
-        transports.reconcile(room.flows(), room.base_links());
-        let second_pair = transports
-            .snapshot(id(3), |_| false, |_| false)
-            .into_iter()
-            .find(|pair| pair.peer_id == id(5))
-            .unwrap()
-            .id;
-        assert_ne!(second_pair, first_pair);
         let deadline = room.next_route_deadline();
-        room.base_state(id(5), id(3), true).unwrap();
-        room.reconcile_with_pairs(&endpoints, 21, &pairs);
-        assert_eq!(room.next_route_deadline(), deadline);
-        room.base_state(id(3), id(5), true).unwrap();
+        assert!(deadline.is_some());
+        assert!(room.flows().all(|flow| flow.selected));
         pairs.insert((id(3), id(5)));
+        room.reconcile_with_pairs(&endpoints, 11, &pairs);
+        let abandoned = room.flows().find(|flow| !flow.selected).unwrap();
+        room.set_default_relay_capacity(3);
+        room.reconcile_with_pairs(&endpoints, 12, &pairs);
+        assert!(room.flows().all(|flow| flow.selected));
+        assert_eq!(
+            room.flows().map(|flow| flow.id).collect::<BTreeSet<_>>(),
+            old
+        );
+        assert_eq!(
+            room.flow_state(
+                abandoned.id,
+                abandoned.receiver,
+                abandoned.sender,
+                FlowState::Forwardable,
+                12
+            ),
+            Err("unassigned_flow")
+        );
+        room.set_default_relay_capacity(2);
         room.reconcile_with_pairs(&endpoints, 22, &pairs);
         let replacement = room
             .flows()
@@ -3353,18 +3114,7 @@ mod tests {
             .unwrap();
         }
         room.reconcile_with_pairs(&endpoints, 24, &pairs);
-        assert_eq!(
-            room.base_links()
-                .map(|link| (link.parent, link.child))
-                .collect::<BTreeSet<_>>(),
-            [
-                (id(1), id(2)),
-                (id(1), id(4)),
-                (id(2), id(5)),
-                (id(5), id(3))
-            ]
-            .into()
-        );
+
         assert!(!room.flows().any(|flow| !flow.selected));
         assert!(room
             .flows()
@@ -3373,16 +3123,10 @@ mod tests {
             room.flows().filter(|flow| flow.receiver == id(3)).count(),
             2
         );
-        transports.reconcile(room.flows(), room.base_links());
-        let peers = transports.snapshot(id(3), |_| false, |_| false);
-        assert!(
-            peers.iter().any(|pair| pair.peer_id == id(1)),
-            "the other voice source still uses the original pair"
-        );
-        assert_eq!(
-            peers.iter().find(|pair| pair.peer_id == id(5)).unwrap().id,
-            second_pair
-        );
+        assert_ne!(replacement.id, abandoned.id);
+        assert!(room.flows().any(|flow| flow.publication_id == id(25)
+            && flow.sender == id(1)
+            && flow.receiver == id(3)));
     }
 
     #[test]
@@ -3395,14 +3139,12 @@ mod tests {
                 shared: Default::default(),
                 source_direct_limit: None,
                 default: 3,
-                host: id(1),
                 overrides: if multiple_parents {
                     [(id(3), 0), (id(4), 0), (id(5), 0), (id(6), 0), (id(7), 2)].into()
                 } else {
                     [(id(2), 1), (id(3), 0), (id(4), 0), (id(5), 2)].into()
                 },
             };
-            let mut base = BaseTree::new(id(1));
             let mut picture = Publication::new(PublicationInfo {
                 screen: Some(crate::wire::ScreenInfo {
                     direct_limit: None,
@@ -3419,32 +3161,25 @@ mod tests {
                 video_settings: screen_settings(),
             });
             let helpers = BTreeMap::new();
-            let neighbors = all
-                .iter()
-                .map(|&peer| (peer, all.iter().copied().filter(|id| *id != peer).collect()))
-                .collect();
+            let mut neighbors = BTreeMap::<Uuid, BTreeSet<Uuid>>::new();
+            let origin_edges = [(1, 2), (1, 3), (1, 4), (2, 5)];
+            let extra_edges = if multiple_parents {
+                &[(2, 6), (2, 7)][..]
+            } else {
+                &[]
+            };
+            for &(a, b) in origin_edges.iter().chain(extra_edges) {
+                neighbors.entry(id(a)).or_default().insert(id(b));
+                neighbors.entry(id(b)).or_default().insert(id(a));
+            }
             let requested: BTreeSet<_> = (2..=count).map(id).collect();
             for requested in [
                 [id(2), id(3), id(4)].into_iter().collect(),
                 requested.clone(),
             ] {
-                base.reconcile(&requested, &all, &all, &limits, 0);
-                for (parent, child) in base.links().collect::<Vec<_>>() {
-                    base.state(parent, child, true);
-                    base.state(child, parent, true);
-                }
                 picture.reconcile(&requested, &all, &all, &helpers, &limits, &neighbors, 0);
                 for flow in picture.flows().collect::<Vec<_>>() {
                     picture.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1);
-                }
-            }
-            if multiple_parents {
-                // Physical trials from another activity can fail without changing
-                // this ready tree. Parent 1 then has no feasible reduction, while
-                // its overloaded child 2 can still move 5 to 7.
-                for endpoint in [3, 4] {
-                    base.failed(id(endpoint), id(7));
-                    picture.failed_pair(id(endpoint), id(7));
                 }
             }
             let old: BTreeMap<_, _> = picture
@@ -3457,12 +3192,8 @@ mod tests {
             } else {
                 (id(5), id(3))
             };
-            base.reconcile(&requested, &all, &all, &limits, 10);
-            assert_eq!(base.candidate_links(), vec![expected]);
-            let base_deadline = base.deadline();
-            base.reconcile(&requested, &all, &all, &limits, 1_000);
-            assert_eq!(base.candidate_links(), vec![expected]);
-            assert_eq!(base.deadline(), base_deadline);
+            neighbors.entry(expected.0).or_default().insert(expected.1);
+            neighbors.entry(expected.1).or_default().insert(expected.0);
             picture.reconcile(&requested, &all, &all, &helpers, &limits, &neighbors, 10);
             let candidate = picture.flows().find(|flow| !flow.selected).unwrap();
             assert_eq!((candidate.sender, candidate.receiver), expected);
@@ -3503,237 +3234,9 @@ mod tests {
     }
 
     #[test]
-    fn room_relay_limit_migrates_base_without_replacing_healthy_voice() {
-        let id = Uuid::from_u128;
-        let (mut room, endpoints) = screen_on_room_base();
-        for flow in room.flows().collect::<Vec<_>>() {
-            room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
-                .unwrap();
-        }
-        for (session, endpoint) in &endpoints {
-            room.set_voice(endpoint.member, *session, true, false, false)
-                .unwrap();
-        }
-        room.publish(
-            endpoints[&id(4)].member,
-            id(4),
-            id(20),
-            Kind::Voice,
-            None,
-            None,
-        )
-        .unwrap();
-        let mut pairs = screen_room_pairs();
-        room.reconcile_with_pairs(&endpoints, 2, &pairs);
-        for flow in room
-            .flows()
-            .filter(|flow| flow.publication_id == id(20))
-            .collect::<Vec<_>>()
-        {
-            room.flow_state(
-                flow.id,
-                flow.receiver,
-                flow.sender,
-                FlowState::Forwardable,
-                3,
-            )
-            .unwrap();
-        }
-        let voice: BTreeSet<_> = room
-            .flows()
-            .filter(|flow| flow.publication_id == id(20))
-            .map(|flow| flow.id)
-            .collect();
-        let picture: BTreeSet<_> = room
-            .flows()
-            .filter(|flow| flow.publication_id == id(10) && flow.selected)
-            .map(|flow| flow.id)
-            .collect();
-        room.set_default_relay_capacity(1);
-        room.reconcile_with_pairs(&endpoints, 10, &pairs);
-        let candidate = room.base_links().find(|link| !link.selected).unwrap();
-        assert_eq!(room.base_links().filter(|link| link.selected).count(), 3);
-        assert!(voice
-            .iter()
-            .all(|old| room.flows().any(|flow| flow.id == *old && flow.selected)));
-        room.base_state(candidate.parent, candidate.child, true)
-            .unwrap();
-        room.base_state(candidate.child, candidate.parent, true)
-            .unwrap();
-        pairs.insert((
-            candidate.parent.min(candidate.child),
-            candidate.parent.max(candidate.child),
-        ));
-        room.reconcile_with_pairs(&endpoints, 11, &pairs);
-        assert!(!room.base_links().any(|link| !link.selected));
-        assert!(room.base_links().any(|link| link.parent == candidate.parent
-            && link.child == candidate.child
-            && link.selected));
-        assert_eq!(
-            room.flows()
-                .filter(|flow| flow.publication_id == id(20) && flow.selected)
-                .map(|flow| flow.id)
-                .collect::<BTreeSet<_>>(),
-            voice,
-            "confirmation of a room pair preserves authorized voice leases"
-        );
-        assert!(
-            picture
-                .iter()
-                .all(|old| room.flows().any(|flow| flow.id == *old && flow.selected)),
-            "independent picture delivery keeps its healthy leases"
-        );
-        let mut transports = crate::transport::TransportBook::default();
-        transports.reconcile(room.flows(), room.base_links());
-        assert!(!transports.snapshot(id(1), |_| false, |_| false).is_empty());
-    }
-
-    #[test]
-    fn bounded_base_insertion_and_rotation_admit_a_relay_without_revoking_the_old_voice_path() {
-        let id = Uuid::from_u128;
-        for already_joined in [false, true] {
-            let endpoints: BTreeMap<_, _> = (1..=3)
-                .map(|value| {
-                    (
-                        id(value),
-                        Endpoint {
-                            signing_key: [value as u8; 32],
-                            member: Member { user_id: id(value) },
-                            connected: true,
-                        },
-                    )
-                })
-                .collect();
-            let mut room = RoomRuntime::new(
-                RoomState::new(
-                    "limited".into(),
-                    "Limited".into(),
-                    Default::default(),
-                    id(1),
-                    RoomAccess::Public,
-                    false,
-                    None,
-                )
-                .unwrap(),
-            );
-            room.set_host_session(id(1));
-            room.set_default_relay_capacity(1);
-            room.set_voice(endpoints[&id(1)].member, id(1), true, true, false)
-                .unwrap();
-            room.set_voice(endpoints[&id(2)].member, id(2), true, true, false)
-                .unwrap();
-            room.set_relay_capacity(
-                endpoints[&id(2)].member,
-                id(2),
-                Some(if already_joined { 2 } else { 0 }),
-            )
-            .unwrap();
-            room.reconcile(&endpoints, 0);
-            for link in room.base_links().collect::<Vec<_>>() {
-                room.base_state(link.parent, link.child, true).unwrap();
-                room.base_state(link.child, link.parent, true).unwrap();
-            }
-            room.reconcile(&endpoints, 1);
-            for endpoint in [id(1), id(2)] {
-                room.set_voice(endpoints[&endpoint].member, endpoint, true, false, false)
-                    .unwrap();
-            }
-            room.publish(
-                endpoints[&id(2)].member,
-                id(2),
-                id(20),
-                Kind::Voice,
-                None,
-                None,
-            )
-            .unwrap();
-            let mut pairs = confirmed_pairs(&[(1, 2)]);
-            room.reconcile_with_pairs(&endpoints, 2, &pairs);
-            for flow in room.flows().collect::<Vec<_>>() {
-                room.flow_state(
-                    flow.id,
-                    flow.receiver,
-                    flow.sender,
-                    FlowState::Forwardable,
-                    2,
-                )
-                .unwrap();
-            }
-            let old_voice = room.flows().find(|flow| flow.receiver == id(1)).unwrap().id;
-            room.command(
-                endpoints[&id(3)].member,
-                id(3),
-                crate::wire::Command::Browse {
-                    room_id: "limited".into(),
-                    active: true,
-                    relay_capacity: Some(2),
-                },
-                &endpoints,
-            )
-            .unwrap();
-            if already_joined {
-                room.reconcile_with_pairs(&endpoints, 3, &pairs);
-                for link in room
-                    .base_links()
-                    .filter(|link| link.selected)
-                    .collect::<Vec<_>>()
-                {
-                    room.base_state(link.parent, link.child, true).unwrap();
-                    room.base_state(link.child, link.parent, true).unwrap();
-                }
-                room.reconcile_with_pairs(&endpoints, 4, &pairs);
-                room.set_relay_capacity(endpoints[&id(2)].member, id(2), Some(0))
-                    .unwrap();
-            }
-            room.set_voice(endpoints[&id(3)].member, id(3), true, false, false)
-                .unwrap();
-            room.publish(
-                endpoints[&id(3)].member,
-                id(3),
-                id(21),
-                Kind::Voice,
-                None,
-                None,
-            )
-            .unwrap();
-            room.reconcile_with_pairs(&endpoints, 5, &pairs);
-            let candidates: Vec<_> = room.base_links().filter(|link| !link.selected).collect();
-            assert_eq!(candidates.len(), 2);
-            assert!(candidates
-                .iter()
-                .any(|link| link.parent == id(1) && link.child == id(3)));
-            assert!(candidates
-                .iter()
-                .any(|link| link.parent == id(3) && link.child == id(2)));
-            for link in candidates {
-                room.base_state(link.parent, link.child, true).unwrap();
-                room.base_state(link.child, link.parent, true).unwrap();
-            }
-            assert!(!room.flows().any(|flow| flow.publication_id == id(21)));
-            pairs.extend(confirmed_pairs(&[(1, 3), (2, 3)]));
-            room.reconcile_with_pairs(&endpoints, 6, &pairs);
-            assert!(room
-                .flows()
-                .any(|flow| flow.id == old_voice && flow.selected));
-            let selected: BTreeSet<_> = room
-                .base_links()
-                .filter(|link| link.selected)
-                .map(|link| (link.parent, link.child))
-                .collect();
-            assert_eq!(selected, [(id(1), id(3)), (id(3), id(2))].into());
-            assert!(!room.base_links().any(|link| !link.selected));
-            assert!(
-                room.flows()
-                    .any(|flow| flow.publication_id == id(21) && flow.sender == id(3)),
-                "the newly confirmed pairs allow the new source to deliver"
-            );
-        }
-    }
-
-    #[test]
     fn relay_reduction_uses_the_picture_switch_proof_and_preserves_the_viewer() {
         let id = Uuid::from_u128;
-        let (mut room, endpoints) = screen_on_room_base();
+        let (mut room, endpoints) = screen_room();
         let pairs = confirmed_pairs(&[(1, 3), (1, 2), (2, 4), (3, 4)]);
         for flow in room.flows().collect::<Vec<_>>() {
             room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
@@ -3776,7 +3279,7 @@ mod tests {
     #[test]
     fn zero_relay_limit_retires_an_excess_branch_at_its_deadline_but_allows_own_voice() {
         let id = Uuid::from_u128;
-        let (mut room, endpoints) = screen_on_room_base();
+        let (mut room, endpoints) = screen_room();
         let pairs = screen_room_pairs();
         for flow in room.flows().collect::<Vec<_>>() {
             room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
@@ -3801,28 +3304,15 @@ mod tests {
         )
         .unwrap();
         room.reconcile_with_pairs(&endpoints, 10, &pairs);
-        assert!(
-            room.base_links()
-                .filter(|link| link.selected)
-                .any(|link| link.parent == id(2)),
-            "the old branch remains during its bounded transition"
-        );
+        assert!(room
+            .flows()
+            .any(|flow| flow.publication_id == id(10) && flow.sender == id(2) && flow.selected));
         assert!(
             room.flows()
                 .any(|flow| flow.publication_id == id(20) && flow.sender == id(2)),
             "zero rejects relaying others, not originating voice"
         );
         room.reconcile_with_pairs(&endpoints, 20_010, &pairs);
-        assert!(!room
-            .base_links()
-            .filter(|link| link.selected)
-            .any(|link| link.parent == id(2)));
-        assert!(
-            room.base_links()
-                .filter(|link| link.selected && link.parent == id(1))
-                .count()
-                <= 1
-        );
         assert!(!room
             .flows()
             .any(|flow| flow.publication_id == id(10) && flow.sender == id(2)));
@@ -3838,7 +3328,7 @@ mod tests {
     #[test]
     fn failed_picture_delivery_follows_the_watch_until_current_decoded_proof() {
         let id = Uuid::from_u128;
-        let (mut room, endpoints) = screen_on_room_base();
+        let (mut room, endpoints) = screen_room();
         let mut pairs = screen_room_pairs();
         for receiver in [id(1), id(2)] {
             room.subscribe(endpoints[&receiver].member, receiver, id(10), true, None)
@@ -3992,7 +3482,7 @@ mod tests {
     fn source_title_follows_authority_and_committed_source_without_changing_routes() {
         use crate::wire::ScreenSource;
         let id = Uuid::from_u128;
-        let (mut room, mut endpoints) = screen_on_room_base();
+        let (mut room, mut endpoints) = screen_room();
         let member = endpoints[&id(3)].member;
         let metadata = |name: &str| {
             Some(ScreenSource {
@@ -4074,7 +3564,7 @@ mod tests {
     #[test]
     fn source_ceiling_upsert_preserves_routes_pause_and_transfer() {
         let id = Uuid::from_u128;
-        let (mut room, mut endpoints) = screen_on_room_base();
+        let (mut room, mut endpoints) = screen_room();
         let member = endpoints[&id(3)].member;
         let flows = serde_json::to_value(room.flows().collect::<Vec<_>>()).unwrap();
         let deadline = room.next_route_deadline();
@@ -4172,9 +3662,7 @@ mod tests {
     }
 
     #[test]
-    fn screen_repair_admits_service_when_base_uses_a_presentation_leaf() {
-        use crate::transport::TransportBook;
-
+    fn screen_repair_admits_permitted_service_instead_of_using_a_presentation_leaf() {
         let id = Uuid::from_u128;
         let [source, display, viewer, service] = [1, 2, 3, 4].map(id);
         let publication = id(10);
@@ -4204,7 +3692,7 @@ mod tests {
             )
             .unwrap(),
         );
-        room.set_host_session(source);
+        room.set_writer(source, crate::wire::HostingMode::Lightweight);
         room.set_service_relay_preference(true);
         room.service_endpoint(
             Some(crate::host::ServiceEndpoint {
@@ -4239,8 +3727,6 @@ mod tests {
         }
         let mut pairs = BTreeSet::from([(source, display)]);
         room.reconcile_with_pairs(&endpoints, 0, &pairs);
-        room.base_state(source, display, true).unwrap();
-        room.base_state(display, source, true).unwrap();
         let previews: Vec<_> = room.flows().collect();
         for preview in &previews {
             room.flow_state(
@@ -4269,8 +3755,6 @@ mod tests {
         denied.set_service_relay_preference(false);
         denied.failed_pair(source, viewer);
         denied.reconcile_with_pairs(&endpoints, 3, &pairs);
-        denied.base_state(display, viewer, true).unwrap();
-        denied.base_state(viewer, display, true).unwrap();
         denied.reconcile_with_pairs(&endpoints, 4, &pairs);
         assert!(!denied
             .flows()
@@ -4285,13 +3769,8 @@ mod tests {
 
         room.failed_pair(source, viewer);
         room.reconcile_with_pairs(&endpoints, 3, &pairs);
-        room.base_state(display, viewer, true).unwrap();
-        room.base_state(viewer, display, true).unwrap();
         room.reconcile_with_pairs(&endpoints, 4, &pairs);
 
-        assert!(room
-            .base_links()
-            .any(|link| { link.parent == display && link.child == viewer && link.ready }));
         let upstream = room
             .flows()
             .find(|flow| flow.sender == source && flow.receiver == service)
@@ -4301,20 +3780,11 @@ mod tests {
         assert!(!upstream.presentation);
         assert!(room.subscriptions(service).is_empty());
         let deadline = room.publications[&publication].deadline();
-        let mut transports = TransportBook::default();
-        transports.reconcile(room.flows(), room.base_links());
-        let pair = transports
-            .snapshot(source, |_| false, |_| true)
-            .into_iter()
-            .find(|pair| pair.peer_id == service)
-            .unwrap();
         // Another required path may already have scheduled the shared room wake.
         room.repair_at = Some(5_003);
         room.reconcile_with_pairs(&endpoints, 5_003, &pairs);
         assert!(room.flows().any(|flow| flow.id == upstream.id));
         assert_eq!(room.publications[&publication].deadline(), deadline);
-        transports.reconcile(room.flows(), room.base_links());
-        assert_eq!(transports.peer(source, pair.id), Some(service));
         room.flow_state(upstream.id, service, source, FlowState::Forwardable, 5_004)
             .unwrap();
         room.reconcile_with_pairs(&endpoints, 5_004, &pairs);
@@ -4329,9 +3799,7 @@ mod tests {
         assert!(room.flows().any(|flow| {
             flow.id == downstream.id && flow.selected && flow.proof == Some(FlowState::Decoded)
         }));
-        assert!(room
-            .base_links()
-            .any(|link| { link.parent == display && link.child == viewer && link.ready }));
+
         assert!(previews
             .iter()
             .all(|id| room.flows().any(|flow| flow.id == *id)));
@@ -4356,9 +3824,9 @@ mod tests {
     }
 
     #[test]
-    fn failed_screen_shortcut_is_not_a_new_base_candidate() {
+    fn failed_screen_shortcut_preserves_incumbent_and_cannot_prepare_again() {
         let id = Uuid::from_u128;
-        let (mut room, endpoints) = screen_on_room_base();
+        let (mut room, endpoints) = screen_room();
         let mut pairs = confirmed_pairs(&[(1, 3), (1, 2), (2, 4), (2, 3)]);
         for flow in room.flows().collect::<Vec<_>>() {
             room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 0)
@@ -4368,18 +3836,17 @@ mod tests {
         assert!(room
             .flows()
             .any(|flow| { flow.sender == id(3) && flow.receiver == id(2) && !flow.selected }));
-        let base = room
-            .base_links()
-            .map(|link| (link.parent, link.child))
-            .collect::<Vec<_>>();
+        let incumbent: BTreeSet<_> = room
+            .flows()
+            .filter(|flow| flow.selected)
+            .map(|flow| flow.id)
+            .collect();
         room.failed_pair(id(3), id(2));
         pairs.remove(&(id(2), id(3)));
         room.reconcile_with_pairs(&endpoints, 1, &pairs);
         assert_eq!(
-            room.base_links()
-                .map(|link| (link.parent, link.child))
-                .collect::<Vec<_>>(),
-            base
+            room.flows().map(|flow| flow.id).collect::<BTreeSet<_>>(),
+            incumbent
         );
         room.failed_pair(id(2), id(4));
         pairs.remove(&(id(2), id(4)));
@@ -4388,128 +3855,17 @@ mod tests {
         pairs.remove(&(id(1), id(2)));
         room.reconcile_with_pairs(&endpoints, 3, &pairs);
         assert!(!room
-            .base_links()
-            .any(|link| link.parent == id(3) && link.child == id(2)));
+            .flows()
+            .any(|flow| flow.sender == id(3) && flow.receiver == id(2)));
     }
 
     #[test]
-    fn required_repair_preserves_another_pending_physical_attempt() {
-        use crate::transport::TransportBook;
-
+    fn voice_uses_an_independent_confirmed_path_while_screen_plays() {
         let id = Uuid::from_u128;
-        let endpoints: BTreeMap<_, _> = (1..=4)
-            .map(|value| {
-                (
-                    id(value),
-                    Endpoint {
-                        signing_key: [value as u8; 32],
-                        member: Member { user_id: id(value) },
-                        connected: true,
-                    },
-                )
-            })
-            .collect();
-        let mut room = RoomRuntime::new(
-            RoomState::new(
-                "repair".into(),
-                "Repair".into(),
-                Default::default(),
-                id(3),
-                RoomAccess::Public,
-                false,
-                None,
-            )
-            .unwrap(),
-        );
-        room.set_host_session(id(3));
-        // Source=1 is ready; Relay=4 still owns the other root slot.
-        for endpoint in [1, 4] {
-            room.set_voice(
-                endpoints[&id(endpoint)].member,
-                id(endpoint),
-                true,
-                true,
-                false,
-            )
-            .unwrap();
-        }
-        room.reconcile(&endpoints, 0);
-        room.base_state(id(3), id(1), true).unwrap();
-        room.base_state(id(1), id(3), true).unwrap();
-        let mut transports = TransportBook::default();
-        transports.reconcile(room.flows(), room.base_links());
-        let original = transports
-            .snapshot(id(3), |_| true, |_| true)
-            .into_iter()
-            .find(|pair| pair.peer_id == id(4))
-            .unwrap();
-        let healthy = transports
-            .snapshot(id(3), |_| true, |_| true)
-            .into_iter()
-            .find(|pair| pair.peer_id == id(1))
-            .unwrap();
-
-        // The new Viewer=2 exhausts its assigned Source path. Its cooldown
-        // cannot revoke Relay's independent, still-valid connection attempt.
-        room.set_voice(endpoints[&id(2)].member, id(2), true, true, false)
-            .unwrap();
-        room.reconcile(&endpoints, 100);
-        assert!(room
-            .base_links()
-            .any(|link| link.parent == id(1) && link.child == id(2)));
-        room.failed_pair(id(1), id(2));
-        room.reconcile(&endpoints, 100);
-        assert_eq!(room.next_route_deadline(), Some(5_100));
-        room.reconcile(&endpoints, 5_096);
-        transports.reconcile(room.flows(), room.base_links());
-        assert!(transports.prepare(original.id));
-        let prepared = transports
-            .snapshot(id(3), |_| true, |_| true)
-            .into_iter()
-            .find(|pair| pair.peer_id == id(4))
-            .unwrap();
-        assert_ne!(prepared.id, original.id);
-        assert!(transports.prepared(prepared.id));
-        // The physical owner can transition immediately before a room wake.
-        room.reconcile(&endpoints, 5_100);
-        transports.reconcile(room.flows(), room.base_links());
-        assert_eq!(transports.peer(id(3), prepared.id), Some(id(4)));
-        assert_eq!(transports.peer(id(3), healthy.id), Some(id(1)));
-
-        assert!(!transports.connected(id(3), id(103), Some(id(104)), prepared.id));
-        assert!(transports.connected(id(4), id(104), Some(id(103)), prepared.id));
-        // Both signaling sockets resume. Only the second current report wakes the room.
-        assert!(!transports.connected(id(3), id(203), Some(id(204)), prepared.id));
-        assert!(transports.connected(id(4), id(204), Some(id(203)), prepared.id));
-        room.base_state(id(3), id(4), true).unwrap();
-        room.base_state(id(4), id(3), true).unwrap();
-        room.reconcile(&endpoints, 5_200);
-        // The Viewer's own next attempt may exhaust; the now-ready Relay then
-        // carries it without replacing either retained root connection.
-        assert!(room
-            .base_links()
-            .any(|link| link.parent == id(1) && link.child == id(2)));
-        room.failed_pair(id(1), id(2));
-        room.reconcile(&endpoints, 25_100);
-        assert!(room
-            .base_links()
-            .any(|link| link.parent == id(4) && link.child == id(2)));
-        room.base_state(id(4), id(2), true).unwrap();
-        room.base_state(id(2), id(4), true).unwrap();
-        room.reconcile(&endpoints, 25_101);
-        transports.reconcile(room.flows(), room.base_links());
-        assert_eq!(transports.peer(id(3), prepared.id), Some(id(4)));
-        assert_eq!(transports.peer(id(3), healthy.id), Some(id(1)));
-        assert_eq!(room.next_route_deadline(), None);
-    }
-
-    #[test]
-    fn a_working_screen_only_retries_its_room_link_when_voice_needs_it() {
-        let id = Uuid::from_u128;
-        let (fixture, endpoints) = screen_on_room_base();
+        let (fixture, endpoints) = screen_room();
         let mut room = RoomRuntime::new(fixture.policy.clone());
         let (host, source, viewer) = (id(1), id(2), id(3));
-        room.set_host_session(host);
+        room.set_writer(host, crate::wire::HostingMode::Lightweight);
         room.publish(
             endpoints[&source].member,
             source,
@@ -4537,14 +3893,26 @@ mod tests {
             .any(|flow| flow.id == picture.id && flow.proof == Some(FlowState::Decoded)));
         assert_eq!(room.next_route_deadline(), None);
 
-        room.set_voice(endpoints[&viewer].member, viewer, true, false, false)
-            .unwrap();
+        for peer in [host, viewer] {
+            room.set_voice(endpoints[&peer].member, peer, true, false, false)
+                .unwrap();
+        }
+        room.publish(
+            endpoints[&host].member,
+            host,
+            id(20),
+            Kind::Voice,
+            None,
+            None,
+        )
+        .unwrap();
         room.reconcile_with_pairs(&endpoints, 3, &pairs);
-        let retry = room
-            .next_route_deadline()
-            .expect("voice needs a path on the room base");
-        room.reconcile_with_pairs(&endpoints, retry, &pairs);
-        assert!(room.base_links().any(|link| link.child == viewer));
+        assert!(!room.flows().any(|flow| flow.publication_id == id(20)));
+        let pairs = BTreeSet::from([(source, viewer), (host, viewer)]);
+        room.reconcile_with_pairs(&endpoints, 4, &pairs);
+        assert!(room.flows().any(|flow| flow.publication_id == id(20)
+            && flow.sender == host
+            && flow.receiver == viewer));
         assert!(room
             .flows()
             .any(|flow| flow.id == picture.id && flow.proof == Some(FlowState::Decoded)));
@@ -4578,7 +3946,7 @@ mod tests {
                 )
                 .unwrap(),
             );
-            room.set_host_session(id(1));
+            room.set_writer(id(1), crate::wire::HostingMode::Lightweight);
             for (session, endpoint) in &endpoints {
                 room.browse(endpoint.member, *session, true).unwrap();
                 room.set_voice(endpoint.member, *session, true, true, false)
@@ -4586,10 +3954,6 @@ mod tests {
             }
             let mut pairs: BTreeSet<_> = (2..=count).map(|n| (id(1), id(n))).collect();
             room.reconcile_with_pairs(&endpoints, 0, &pairs);
-            for link in room.base_links().collect::<Vec<_>>() {
-                room.base_state(link.parent, link.child, true).unwrap();
-                room.base_state(link.child, link.parent, true).unwrap();
-            }
             room.publish(
                 endpoints[&id(1)].member,
                 id(1),
@@ -4640,8 +4004,8 @@ mod tests {
             room.reconcile_with_pairs(&endpoints, 2, &pairs);
             if count == 3 {
                 assert!(room
-                    .base_links()
-                    .any(|link| link.parent == id(3) && link.child == id(2)));
+                    .flows()
+                    .any(|flow| flow.sender == id(3) && flow.receiver == id(2)));
                 room.failed_pair(id(3), id(2));
                 pairs.remove(&(id(2), id(3)));
             }
@@ -4650,20 +4014,12 @@ mod tests {
                 .next_route_deadline()
                 .expect("required failed paths must have a repair wake");
             assert_eq!(deadline, if count == 2 { 5_002 } else { 5_003 });
-            // Demand toggles cannot bypass or restart the room's cooldown.
-            for enabled in [false, true] {
-                room.subscribe(endpoints[&id(2)].member, id(2), id(10), enabled, None)
-                    .unwrap();
-                room.reconcile_with_pairs(&endpoints, 1_000, &pairs);
-                assert_eq!(room.next_route_deadline(), Some(deadline));
-            }
+            room.reconcile_with_pairs(&endpoints, 1_000, &pairs);
+            assert_eq!(room.next_route_deadline(), Some(deadline));
             room.reconcile_with_pairs(&endpoints, deadline - 1, &pairs);
-            assert!(!room.base_links().any(|link| link.child == id(2)));
             assert!(!room.flows().any(|flow| flow.receiver == id(2)));
             room.reconcile_with_pairs(&endpoints, deadline, &pairs);
-            assert!(room
-                .base_links()
-                .any(|link| link.parent == id(1) && link.child == id(2)));
+
             assert!(!room.flows().any(|flow| flow.receiver == id(2)));
             pairs.insert((id(1), id(2)));
             room.reconcile_with_pairs(&endpoints, deadline, &pairs);
@@ -4692,8 +4048,6 @@ mod tests {
                 room.flow_state(old.id, id(2), id(1), FlowState::Decoded, deadline),
                 Err("unassigned_flow")
             );
-            room.base_state(id(1), id(2), true).unwrap();
-            room.base_state(id(2), id(1), true).unwrap();
             room.flow_state(restored.id, id(2), id(1), FlowState::Decoded, deadline + 1)
                 .unwrap();
             if let Some(preparing) = preparing {
@@ -4738,7 +4092,7 @@ mod tests {
     #[test]
     fn screen_transfer_requires_the_current_source_and_a_live_same_user_target() {
         let id = Uuid::from_u128;
-        let (mut room, mut endpoints) = screen_on_room_base();
+        let (mut room, mut endpoints) = screen_room();
         endpoints.insert(id(5), endpoints[&id(3)].clone());
         let source = endpoints[&id(3)].member;
         assert_eq!(
@@ -4778,9 +4132,9 @@ mod tests {
     }
 
     #[test]
-    fn screen_transfer_preserves_viewers_room_paths_and_unrelated_voice() {
+    fn screen_transfer_preserves_viewer_intent_and_unrelated_voice() {
         let id = Uuid::from_u128;
-        let (mut room, mut endpoints) = screen_on_room_base();
+        let (mut room, mut endpoints) = screen_room();
         endpoints.insert(id(5), endpoints[&id(3)].clone());
         let source = endpoints[&id(3)].member;
         room.browse(source, id(5), true).unwrap();
@@ -4793,19 +4147,7 @@ mod tests {
             .unwrap();
         let mut pairs = screen_room_pairs();
         pairs.insert((id(3), id(5)));
-        for now in 1..=3 {
-            room.reconcile_with_pairs(&endpoints, now, &pairs);
-            let links: Vec<_> = room.base_links().collect();
-            for link in links {
-                room.base_state(link.parent, link.child, true).unwrap();
-                room.base_state(link.child, link.parent, true).unwrap();
-            }
-        }
         room.reconcile_with_pairs(&endpoints, 4, &pairs);
-        let base: Vec<_> = room
-            .base_links()
-            .map(|link| (link.parent, link.child))
-            .collect();
         let old_screen: BTreeSet<_> = room
             .flows()
             .filter(|flow| flow.publication_id == id(10))
@@ -4838,12 +4180,7 @@ mod tests {
             .unwrap()
             .subscriptions
             .contains(&id(10)));
-        assert_eq!(
-            base,
-            room.base_links()
-                .map(|link| (link.parent, link.child))
-                .collect::<Vec<_>>()
-        );
+
         assert_eq!(
             voice,
             room.flows()
@@ -4884,7 +4221,7 @@ mod tests {
     #[test]
     fn same_endpoint_source_change_preserves_proven_paths_and_retires_old_preparation() {
         let id = Uuid::from_u128;
-        let (mut room, endpoints) = screen_on_room_base();
+        let (mut room, endpoints) = screen_room();
         let mut pairs = screen_room_pairs();
         let source = endpoints[&id(3)].member;
         let before: BTreeMap<_, _> = room
@@ -4959,7 +4296,7 @@ mod tests {
     #[test]
     fn media_preparation_waits_for_the_upstream_without_extending_its_own_deadline() {
         let id = Uuid::from_u128;
-        let (mut room, endpoints) = screen_on_room_base();
+        let (mut room, endpoints) = screen_room();
         let mut pairs = screen_room_pairs();
         let publication = id(10);
         let flows: BTreeMap<_, _> = room
@@ -5004,11 +4341,7 @@ mod tests {
         assert!(room
             .flows()
             .any(|flow| flow.sender == id(3) && flow.receiver == id(4)));
-        assert_eq!(
-            room.base_links().count(),
-            3,
-            "media expiry keeps the room base"
-        );
+
         assert_eq!(room.next_route_deadline(), Some(78_000));
 
         room.subscribe(endpoints[&id(4)].member, id(4), publication, false, None)
@@ -5029,7 +4362,7 @@ mod tests {
         Vec<Flow>,
     ) {
         let id = Uuid::from_u128;
-        let (mut room, endpoints) = screen_on_room_base();
+        let (mut room, endpoints) = screen_room();
         let mut pairs = screen_room_pairs();
         room.subscribe(endpoints[&id(1)].member, id(1), id(10), true, None)
             .unwrap();
@@ -5109,7 +4442,7 @@ mod tests {
     #[test]
     fn screen_audience_follows_watch_intent_and_current_decoded_proof() {
         let id = Uuid::from_u128;
-        let (mut room, endpoints) = screen_on_room_base();
+        let (mut room, endpoints) = screen_room();
         let audience = |room: &RoomRuntime, recipient| {
             room.snapshot(endpoints[&recipient].member, recipient)
                 .unwrap()
@@ -5185,7 +4518,6 @@ mod tests {
                 .filter(|f| f.publication_id == id(11))
                 .map(|f| f.id)
                 .collect();
-            let base: BTreeSet<_> = room.base_links().map(|f| (f.parent, f.child)).collect();
             let relay = shadow.iter().find(|f| f.receiver == id(2)).unwrap();
             let viewer = shadow.iter().find(|f| f.receiver == id(4)).unwrap();
             assert!(!room
@@ -5258,12 +4590,6 @@ mod tests {
                     .map(|f| f.id)
                     .collect::<BTreeSet<_>>(),
                 voice
-            );
-            assert_eq!(
-                room.base_links()
-                    .map(|f| (f.parent, f.child))
-                    .collect::<BTreeSet<_>>(),
-                base
             );
         }
     }

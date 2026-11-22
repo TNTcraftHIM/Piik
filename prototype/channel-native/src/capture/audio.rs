@@ -9,11 +9,14 @@ use std::{
 };
 use tokio::sync::{mpsc, oneshot};
 use wasapi::{AudioClient, DeviceEnumerator, Direction, SampleType, StreamMode, WaveFormat};
+use windows::core::{implement, Interface, Ref, HSTRING};
 use windows::Win32::{
     Foundation::{FILETIME, HANDLE, HWND, WAIT_FAILED, WAIT_OBJECT_0},
     Media::Audio::{
-        IAudioCaptureClient, AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY, AUDCLNT_BUFFERFLAGS_SILENT,
-        AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR,
+        ActivateAudioInterfaceAsync, IActivateAudioInterfaceAsyncOperation,
+        IActivateAudioInterfaceCompletionHandler, IActivateAudioInterfaceCompletionHandler_Impl,
+        IAudioCaptureClient, IAudioClient, AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY,
+        AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR, DEVINTERFACE_AUDIO_RENDER,
     },
     System::Threading::{
         CreateEventW, GetProcessTimes, OpenProcess, SetEvent, WaitForMultipleObjects,
@@ -201,14 +204,43 @@ impl Drop for Com {
     }
 }
 
+#[implement(IActivateAudioInterfaceCompletionHandler)]
+struct DefaultRenderActivation(std::sync::mpsc::Sender<()>);
+
+impl IActivateAudioInterfaceCompletionHandler_Impl for DefaultRenderActivation_Impl {
+    fn ActivateCompleted(
+        &self,
+        _: Ref<IActivateAudioInterfaceAsyncOperation>,
+    ) -> windows::core::Result<()> {
+        let _ = self.0.send(());
+        Ok(())
+    }
+}
+
+fn default_render_client() -> Result<AudioClient> {
+    // The render interface class opts this stream into Windows' default-device routing.
+    let path = HSTRING::from(format!("{{{DEVINTERFACE_AUDIO_RENDER:?}}}"));
+    let (done, activation) = std::sync::mpsc::channel();
+    let callback: IActivateAudioInterfaceCompletionHandler = DefaultRenderActivation(done).into();
+    let operation =
+        unsafe { ActivateAudioInterfaceAsync(&path, &IAudioClient::IID, None, &callback)? };
+    activation.recv()?;
+    let mut result = Default::default();
+    let mut interface = None;
+    unsafe { operation.GetActivateResult(&mut result, &mut interface)? };
+    result.ok()?;
+    let client = interface
+        .context("missing default render audio client")?
+        .cast()?;
+    Ok(AudioClient::from_iaudioclient(client, Direction::Render))
+}
+
 fn client(process: Option<(u32, bool)>) -> Result<AudioClient> {
     let client = match process {
         Some((pid, include_tree)) => {
             AudioClient::new_application_loopback_client(pid, include_tree)?
         }
-        None => DeviceEnumerator::new()?
-            .get_default_device(&Direction::Render)?
-            .get_iaudioclient()?,
+        None => default_render_client()?,
     };
     initialize(client)
 }
@@ -441,6 +473,19 @@ impl PacketAssembly {
     }
 }
 
+fn capture_active(control: &AudioControl, process: Option<&OwnedHandle>) -> Result<bool> {
+    if control.is_stopped() {
+        return Ok(false);
+    }
+    if let Some(process) = process {
+        ensure!(
+            unsafe { WaitForSingleObject(HANDLE(process.as_raw_handle()), 0) } != WAIT_OBJECT_0,
+            "audio process ended"
+        );
+    }
+    Ok(true)
+}
+
 fn run_capture(
     input: Input,
     control: &AudioControl,
@@ -472,11 +517,12 @@ fn run_capture(
     // GetBuffer's flags and timestamp belong to the original buffer, so handle it here.
     let capture: IAudioCaptureClient = unsafe { client.as_iaudioclient().GetService()? };
     let clock = CaptureClock::new()?;
-    let mut handles = vec![control.handle(), event.as_handle()];
+    let mut handles = vec![control.handle()];
     if let Some(process) = &process {
         handles.push(HANDLE(process.as_raw_handle()));
     }
-    if control.is_stopped() {
+    handles.push(event.as_handle());
+    if !capture_active(control, process.as_ref())? {
         return Ok(());
     }
     client.start_stream()?;
@@ -496,9 +542,12 @@ fn run_capture(
             if signaled == WAIT_OBJECT_0 {
                 return Ok(());
             }
-            ensure!(signaled.0 == WAIT_OBJECT_0.0 + 1, "audio process ended");
+            ensure!(
+                signaled.0 == WAIT_OBJECT_0.0 + handles.len() as u32 - 1,
+                "audio process ended"
+            );
             while unsafe { capture.GetNextPacketSize()? } > 0 {
-                if control.is_stopped() {
+                if !capture_active(control, process.as_ref())? {
                     return Ok(());
                 }
                 let (mut data, mut count, mut flags, mut timestamp) =
@@ -537,6 +586,37 @@ fn run_capture(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn packet_drain_observes_process_exit_and_explicit_stop() -> Result<()> {
+        let event = || -> Result<OwnedHandle> {
+            let handle = unsafe { CreateEventW(None, true, false, None)? };
+            Ok(unsafe { OwnedHandle::from_raw_handle(handle.0) })
+        };
+        let control = AudioControl(Arc::new(event()?));
+        let process = event()?;
+        assert!(capture_active(&control, Some(&process))?);
+        unsafe { SetEvent(HANDLE(process.as_raw_handle()))? };
+        assert_eq!(
+            capture_active(&control, Some(&process))
+                .unwrap_err()
+                .to_string(),
+            "audio process ended"
+        );
+        control.stop();
+        assert!(!capture_active(&control, Some(&process))?);
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "requires a Windows default render endpoint"]
+    fn default_render_interface_provides_event_driven_loopback() -> Result<()> {
+        let _com = Com::start()?;
+        let client = client(None)?;
+        let _event = client.set_get_eventhandle()?;
+        let _capture: IAudioCaptureClient = unsafe { client.as_iaudioclient().GetService()? };
+        Ok(())
+    }
 
     #[test]
     fn timestamp_errors_preserve_pcm_silence_and_sample_progression() -> Result<()> {

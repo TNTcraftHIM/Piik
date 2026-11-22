@@ -23,28 +23,31 @@ export function connectionSessionName(state: ChannelSnapshot, sessionId: string,
 export function channelConnectionGraph(state: ChannelSnapshot, roomId: string, sessionId: string,
   topology: ChannelTopology, t: Translate) {
   const screen = topology.screen;
-  const rootId = screen?.sourceSessionId ?? topology.base.rootSessionId;
+  const rootId = screen?.sourceSessionId ?? null;
   const edges: RouteGraphEdge[] = screen ? screen.edges.map(edge => ({
     from: edge.sender, to: edge.receiver, selected: edge.selected,
     ready: edge.proof === "forwardable" || edge.proof === "decoded", presentation: edge.presentation,
     route: hopRoute(topology, edge.sender, edge.receiver, edge.presentation),
-  })) : topology.base.edges.map(edge => ({ from: edge.sender, to: edge.receiver, selected: true, ready: edge.ready,
-    route: hopRoute(topology, edge.sender, edge.receiver) }));
+  })) : topology.pairs.map(pair => ({ from: pair.first, to: pair.second, selected: true, ready: pair.confirmed }));
   const apps = new Set(screen?.edges.filter(edge => edge.presentation).map(edge => edge.sender));
   const display = new Set(screen?.edges.filter(edge => edge.presentation).map(edge => edge.receiver));
   const room = state.channel.rooms.find(room => room.id === roomId);
-  const ids = [...new Set([rootId, ...edges.flatMap(edge => [edge.from, edge.to])])];
-  const identity = (id: string) => state.sessions.find(session => session.id === id)?.userId ?? id;
-  const people = ids.filter(id => id !== topology.transitSession);
+  const ids = screen ? [...new Set([screen.sourceSessionId, ...edges.flatMap(edge => [edge.from, edge.to])])]
+    : topology.sessionIds;
+  const sessionUsers = new Map(state.sessions.map(session => [session.id, session.userId]));
+  const identity = (id: string) => sessionUsers.get(id) ?? id;
+  const people = ids.filter(id => id !== topology.transitSession && (screen || sessionUsers.has(id)));
   const groups = [...new Set(people.map(identity))].map(userId => ({ userId,
     name: state.users.find(user => user.id === userId)?.name ?? t("voice.participant"),
     ids: people.filter(id => identity(id) === userId).sort(),
   }));
   const endpoint = (id: string) => apps.has(id) ? "App" : display.has(id) || id === sessionId ? t("connection.webpage")
     : t("connection.endpoint", { number: String(groups.find(group => group.userId === identity(id))!.ids.indexOf(id) + 1) });
-  const nodes = ids.map((id): RouteGraphNode => {
-    if (id === topology.transitSession) return { id, identity: id, kind: "sfu", label: t("connection.siteForwarding") };
-    const userId = state.sessions.find(session => session.id === id)?.userId;
+  const nodes = ids.map((id, index): RouteGraphNode => {
+    if (id === topology.transitSession) return { id, identity: id, kind: "sfu", label: t(screen ? "connection.siteForwarding" : "connection.siteService") };
+    const userId = sessionUsers.get(id);
+    if (!screen && !userId) return { id, kind: "endpoint", you: id === sessionId,
+      label: t("connection.endpoint", { number: String(index + 1) }) };
     const name = connectionSessionName(state, id, t);
     const multiple = groups.some(group => group.userId === identity(id) && group.ids.length > 1);
     const qualifier = apps.has(id) || display.has(id) || multiple ? endpoint(id) : null;

@@ -134,15 +134,20 @@ impl FileDelivery {
         room_peers: Vec<(Uuid, Vec<String>)>,
         now: u64,
     ) -> Vec<FileEffect> {
-        self.room_peers = room_peers
+        let room_peers: BTreeMap<_, BTreeSet<_>> = room_peers
             .into_iter()
             .map(|(peer, rooms)| (peer, rooms.into_iter().collect()))
             .collect();
         self.pending.retain(|(peer, key, _), _| {
-            self.room_peers
-                .get(peer)
-                .is_some_and(|rooms| rooms.contains(&key.room_id))
+            room_peers.get(peer).is_some_and(|rooms| {
+                rooms.contains(&key.room_id)
+                    || !self
+                        .room_peers
+                        .get(peer)
+                        .is_some_and(|old| old.contains(&key.room_id))
+            })
         });
+        self.room_peers = room_peers;
         let mut effects = self.expire(now);
         let next: BTreeMap<_, _> = plans
             .into_iter()
@@ -166,7 +171,14 @@ impl FileDelivery {
             }
         }
         let keys: Vec<_> = next.keys().cloned().collect();
-        for (key, plan) in next {
+        for (key, mut plan) in next {
+            let granted = |peer| {
+                self.room_peers
+                    .get(&peer)
+                    .is_some_and(|rooms| rooms.contains(&key.room_id))
+            };
+            plan.upstream = plan.upstream.filter(|peer| granted(*peer));
+            plan.downstream.retain(|peer| granted(*peer));
             let file = self.files.entry(key.clone()).or_insert_with(|| File {
                 plan: plan.clone(),
                 ranges: BTreeMap::new(),
@@ -233,14 +245,20 @@ impl FileDelivery {
                 if now < *deadline {
                     return true;
                 }
-                effects.push(FileEffect::SendControl {
-                    peer: *peer,
-                    control: FileControl::Error {
-                        key: key.clone(),
-                        request_id: *request_id,
-                        code: "file_route_timeout".into(),
-                    },
-                });
+                if self
+                    .room_peers
+                    .get(peer)
+                    .is_some_and(|rooms| rooms.contains(&key.room_id))
+                {
+                    effects.push(FileEffect::SendControl {
+                        peer: *peer,
+                        control: FileControl::Error {
+                            key: key.clone(),
+                            request_id: *request_id,
+                            code: "file_route_timeout".into(),
+                        },
+                    });
+                }
                 false
             });
         effects
@@ -269,23 +287,24 @@ impl FileDelivery {
             | FileControl::Cancel { key, .. }
             | FileControl::Error { key, .. } => key,
         };
-        if !self
-            .room_peers
-            .get(&peer)
-            .is_some_and(|rooms| rooms.contains(&key.room_id))
-        {
+        let Some(rooms) = self.room_peers.get(&peer) else {
             return vec![];
-        }
+        };
+        let granted = rooms.contains(&key.room_id);
         match control {
             FileControl::Pull {
                 key,
                 offset,
                 request_id,
             } => {
-                if !self
-                    .files
-                    .get(&key)
-                    .is_some_and(|file| file.plan.downstream.contains(&peer))
+                if !granted && offset % FILE_RANGE_BYTES as u64 != 0 {
+                    return vec![];
+                }
+                if !granted
+                    || !self
+                        .files
+                        .get(&key)
+                        .is_some_and(|file| file.plan.downstream.contains(&peer))
                 {
                     let slot = (peer, key.clone(), offset);
                     if self
@@ -298,6 +317,9 @@ impl FileDelivery {
                     if self.pending.len() >= FILE_MAX_PENDING_RANGES
                         && !self.pending.contains_key(&slot)
                     {
+                        if !granted {
+                            return vec![];
+                        }
                         return vec![FileEffect::SendControl {
                             peer,
                             control: FileControl::Error {
@@ -326,20 +348,26 @@ impl FileDelivery {
                 {
                     self.pending.remove(&slot);
                 }
-                self.remove_consumer(&key, Some(peer), Some(offset), Some(request_id))
+                if granted {
+                    self.remove_consumer(&key, Some(peer), Some(offset), Some(request_id))
+                } else {
+                    vec![]
+                }
             }
             FileControl::Error {
                 key,
                 request_id,
                 code,
             } => {
-                if self.files.get(&key).is_some_and(|file| {
-                    file.plan.upstream == Some(peer)
-                        && file
-                            .ranges
-                            .values()
-                            .any(|range| range.supplier == Supplier::Peer(peer, request_id))
-                }) {
+                if granted
+                    && self.files.get(&key).is_some_and(|file| {
+                        file.plan.upstream == Some(peer)
+                            && file
+                                .ranges
+                                .values()
+                                .any(|range| range.supplier == Supplier::Peer(peer, request_id))
+                    })
+                {
                     self.request_failed(&key, request_id, &code)
                 } else {
                     Vec::new()

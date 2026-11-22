@@ -8,6 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { fixture } from '../../prototype/channel-server/browser-fixture.mjs';
 import { readPacketFlows } from './packets';
+import { connectedNativePair } from './scenarios';
 import { command } from './network';
 import type { LabNetwork } from './network';
 import type { LabProcess } from './process';
@@ -19,17 +20,18 @@ export interface MediaLab {
 }
 
 // Real ChannelSession/UI; synthetic capture is shared with normal acceptance.
-export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser-relay'): Promise<void> {
+export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'recovery' | 'browser-relay'): Promise<void> {
   const { network, output, source, executable, start, signal, result } = lab;
   const prepared = mode === 'media', relayed = mode === 'browser-relay';
+  const remapped = mode === 'recovery', nativeTransit = prepared || remapped;
   const origin = 'http://198.51.100.1:9000', room = 'kernel-lab-room';
   const indices = relayed ? [0, 1, 2] : [0, 1];
   const sessions = indices.map(index => network.prefix+'-browser'+index);
-  let sourceBrowser = 0, viewerBrowser = 1, browserRelay: number | undefined;
+  const sourceBrowser = 0, browserRelay = 1, viewerBrowser = relayed ? 2 : 1;
   const browserOpened = new Set<number>();
   const cdp = new Map<number, string>();
   const browser = async (index: number, ...args: string[]) => {
-    const commandArgs = ['netns', 'exec', network.endpoint(index + (prepared ? 2 : 1)), process.env.AGENT_BROWSER_BIN ?? 'agent-browser',
+    const commandArgs = ['netns', 'exec', network.endpoint(index + (nativeTransit ? 2 : 1)), process.env.AGENT_BROWSER_BIN ?? 'agent-browser',
       '--session', sessions[index]!, '--json', '--executable-path', process.env.CHROMIUM_BIN ?? '/usr/bin/chromium',
       '--args', `--no-sandbox,--autoplay-policy=no-user-gesture-required,--disable-dev-shm-usage,--unsafely-treat-insecure-origin-as-secure=${origin}`,
       '--init-script', join(output, `${index}.js`), ...args];
@@ -74,7 +76,7 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
       { ...process.env, PIIK_CHANNEL_PORT: '9001' });
     await vite.wait(() => vite.stdout.includes('9000'), signal);
     start('native-host', network.endpoint(0), executable, ['host', join(output, 'host')]);
-    const relay = prepared ? start('native-relay', network.endpoint(1), executable, ['participant']) : undefined;
+    const relay = nativeTransit ? start('native-relay', network.endpoint(1), executable, ['participant']) : undefined;
     if (relay) await relay.wait(() => relay.records.some(row => row.event?.type === 'admitted'), signal);
     for (const index of indices) {
       await writeFile(join(output, `${index}.js`), f.captureProbe(index ? 'Viewer' : 'Source'));
@@ -82,7 +84,8 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
       await browser(index, 'open', `${origin}/__channel-preview#invite=owned-kernel-lab-invite`);
       cdp.set(index, (await browser(index, 'get', 'cdp-url')).cdpUrl);
       await f.until(`Browser${index} admitted`, () => f.view(index), (value: any) => value.connection === 'connected');
-      await f.action(index, `updateProfile({name:${JSON.stringify(index ? 'Owned viewer' : 'Owned source')},avatar:null})`);
+      const role = index === sourceBrowser ? 'source' : index === viewerBrowser ? 'viewer' : 'relay';
+      await f.action(index, `updateProfile({name:${JSON.stringify('Owned ' + role)},avatar:null})`);
       await f.until('Native room available', () => f.view(index), (value: any) => value.state.channel.rooms.some((entry: any) => entry.id === room && entry.available));
       await browser(index, 'click', '.c3-room-link[aria-label="Kernel room"]');
     }
@@ -90,32 +93,12 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
     result.initial = await Promise.all(indices.map(index => f.view(index)));
     const hostEndpoint = result.initial[0].state.channel.rooms.find((entry: any) => entry.id === room).delivery.hostSessionId;
     const transitEndpoint = relay?.records.find(row => row.event?.type === 'admitted')?.event.sessionId;
-    assert(hostEndpoint && (!prepared || (transitEndpoint && transitEndpoint !== hostEndpoint)));
+    assert(hostEndpoint && (!nativeTransit || (transitEndpoint && transitEndpoint !== hostEndpoint)));
     result.nativeHostEndpoint = hostEndpoint;
-    result.nativeEndpoint = prepared ? transitEndpoint : hostEndpoint;
+    result.nativeEndpoint = nativeTransit ? transitEndpoint : hostEndpoint;
     if (relayed) {
-      const links = (value: any) => value.state.pairs.filter((pair: any) => pair.rooms.includes(room));
-      result.initial = await f.until('Core forms the Browser relay base branch', () => Promise.all(indices.map(index => f.view(index))), (views: any[]) => {
-        const native = views[0].state.channel.rooms.find((entry: any) => entry.id === room).delivery.hostSessionId;
-        return views.some(view => links(view).length === 1 && links(view)[0].peerId !== native);
-      });
-      result.nativeEndpoint = result.initial[0].state.channel.rooms.find((entry: any) => entry.id === room).delivery.hostSessionId;
-      viewerBrowser = result.initial.findIndex((value: any) => links(value).length === 1 && links(value)[0].peerId !== result.nativeEndpoint);
-      browserRelay = result.initial.findIndex((value: any) => value.sessionId === links(result.initial[viewerBrowser])[0].peerId);
-      sourceBrowser = indices.find(index => index !== viewerBrowser && index !== browserRelay)!;
-      assert(browserRelay !== undefined && browserRelay >= 0 && sourceBrowser >= 0);
-      assert(links(result.initial[sourceBrowser]).some((pair: any) => pair.peerId === result.nativeEndpoint));
-      assert(links(result.initial[browserRelay]).some((pair: any) => pair.peerId === result.nativeEndpoint));
       result.roles = { sourceBrowser, browserRelay, viewerBrowser };
-      for (const [index, role] of [[sourceBrowser, 'source'], [browserRelay, 'relay'], [viewerBrowser, 'viewer']] as const) {
-        await f.action(index, `updateProfile({name:${JSON.stringify('Owned ' + role)},avatar:null})`);
-      }
       result.mediaEdges = [[sourceBrowser + 1, 0], [0, browserRelay + 1], [browserRelay + 1, viewerBrowser + 1]];
-      const shortcuts = [[sourceBrowser + 1, browserRelay + 1], [sourceBrowser + 1, viewerBrowser + 1], [0, viewerBrowser + 1]];
-      result.blockedShortcuts = shortcuts.flatMap(([from, to]) => [[from, to], [to, from]]);
-      for (const [from, to] of result.blockedShortcuts) network.exec(network.router(from), 'nft', [
-        `add rule inet lab_filter faults ip daddr ${network.publicIP(to)} meta l4proto udp counter drop`,
-      ]);
     }
     if (mode === 'ordinary') {
     await f.action(0, `sendMessage('${room}', 'Confirmed across calibrated NAT')`);
@@ -125,12 +108,13 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
     const stored = new DatabaseSync(join(output, 'host/room.sqlite'), { readOnly: true });
     try { result.nativeConfirmedMessages = stored.prepare('SELECT count(*) AS count FROM message WHERE room_id=?').get(room)!.count; assert.equal(result.nativeConfirmedMessages, 1); } finally { stored.close(); }
     }
-    await f.until('bidirectional Native-forwarded voice', () => Promise.all([sourceBrowser, viewerBrowser].map(index => f.sample(index))), (values: any[]) => values.every(value => value.inbound.some((row: any) => row.kind === 'audio' && row.samples > 0 && row.energy > 0)));
+    // Each blocked discovery edge can take a full attempt before Core finds the transit path.
+    await f.until('bidirectional Native-forwarded voice', () => Promise.all([sourceBrowser, viewerBrowser].map(index => f.sample(index))), (values: any[]) => values.every(value => value.inbound.some((row: any) => row.kind === 'audio' && row.samples > 0 && row.energy > 0)), 90_000);
     await f.evaluate(sourceBrowser, 'window.__channelProbe.captureAudio(true)');
     const publication = await f.capturedScreen(sourceBrowser, room); result.publication = publication;
     await f.action(viewerBrowser, `watch(${JSON.stringify(publication)})`);
     result.phase = 'viewer playing'; await f.playing(viewerBrowser, publication);
-    if (relay) {
+    if (prepared && relay) {
       result.preparedNativePairs = relay.records.filter(row => row.event?.type === 'plan')
         .flatMap(row => row.event.pairs).filter((pair: any) => pair.peerId === hostEndpoint && pair.preparation === 'required'
           && pair.incoming.some((flow: any) => flow.publicationId === publication && flow.selected));
@@ -156,21 +140,30 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
       return {atMs:Date.now(),width:video.videoWidth,height:video.videoHeight,frames:video.getVideoPlaybackQuality().totalVideoFrames,time:video.currentTime,pixels,
         audio,inbound:stats.inbound,connections:stats.connections,pairs:snap.state.pairs};})()`);
     const selectedPath = async (value: any) => {
-      const parent = relayed ? result.initial[browserRelay!].sessionId : result.nativeEndpoint;
+      const parent = relayed ? result.initial[browserRelay].sessionId : result.nativeEndpoint;
       assert(value.pairs.some((pair: any) => pair.peerId === parent && pair.incoming.some((flow: any) => flow.publicationId === publication && flow.selected)), 'selected picture must use the observed parent');
       if (relayed) {
-        const middle = await f.view(browserRelay!);
+        const middle = await f.view(browserRelay);
         assert(middle.state.pairs.some((pair: any) => pair.peerId === result.nativeEndpoint && pair.incoming.some((flow: any) => flow.publicationId === publication && flow.selected)), 'Browser relay must receive the selected Native output');
         assert(middle.state.pairs.some((pair: any) => pair.peerId === result.initial[viewerBrowser].sessionId && pair.outgoing.some((flow: any) => flow.publicationId === publication && flow.selected)), 'Browser relay must send that publication to the viewer');
+      }
+      if (relay) {
+        const plan = relay.records.findLast(row => row.event?.type === 'plan')?.event;
+        assert(plan?.pairs.some((pair: any) => pair.peerId === hostEndpoint && pair.incoming.some((flow: any) => flow.publicationId === publication && flow.selected)), 'Native relay must receive that publication from the room host');
       }
     };
     result.mediaBefore = await mediaSample(); await delay(3000, undefined, { signal }); result.mediaAfter = await mediaSample();
     assert(result.mediaAfter.frames > result.mediaBefore.frames && result.mediaAfter.time > result.mediaBefore.time);
     assert.notDeepEqual(result.mediaAfter.pixels, result.mediaBefore.pixels, 'actual decoded pixels must change');
     await selectedPath(result.mediaAfter);
-    if (relayed || prepared) {
-      const node = relayed ? browserRelay! + 1 : 1;
-      const route = relayed ? 'Browser relay' : 'prepared Native transit';
+    if (relayed || nativeTransit) {
+      const node = relayed ? browserRelay + 1 : 1;
+      const route = relayed ? 'Browser relay' : 'Native transit';
+      const initialPair = remapped && relay ? connectedNativePair(relay.records) : undefined;
+      if (remapped) {
+        assert(initialPair?.peerId === hostEndpoint, 'Native room-host pair must be connected before blackout');
+        result.nativePair = initialPair;
+      }
       result.sourceBeforeOutage = await f.sample(sourceBrowser);
       result.recovery = { blockedAt: Date.now() };
       result.phase = `${route} UDP blackout`;
@@ -181,15 +174,20 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
       let previous = await mediaSample();
       recoveryCapture = start('recovery-capture', network.wan, 'tcpdump', ['-i', 'internet', '-n', '-s', '96', '-U', '-w', join(output, 'recovery.pcap'), '-c', '10000', 'udp']);
       await recoveryCapture.wait(() => recoveryCapture!.stderr.includes('listening on'), signal);
+      if (remapped) result.remap = network.remapUDP(node);
       result.recovery.restoredAt = Date.now(); network.setFault(node, 'none', 1);
       result.phase = `${route} decoded picture and source audio recovery`;
-      for (const [from, to] of result.blockedShortcuts.filter(([from]: number[]) => from === node)) network.exec(network.router(from), 'nft', [
+      for (const [from, to] of result.blockedShortcuts.filter(([from, to]: number[]) => from === node || (remapped && to === node))) network.exec(network.router(from), 'nft', [
         `add rule inet lab_filter faults ip daddr ${network.publicIP(to)} meta l4proto udp counter drop`,
       ]);
       const recovered = await f.until(`${route} decoded picture and source sound recover`, mediaSample, (value: any) => {
         const advanced = value && previous && value.frames > previous.frames && value.time > previous.time && value.audio.some((row: any) =>
           previous.audio.some((before: any) => row.id === before.id && row.samples > before.samples && row.energy > before.energy));
-        previous = value; return advanced;
+        previous = value;
+        if (!initialPair || !relay) return advanced;
+        const pair = connectedNativePair(relay.records, { since: result.recovery.restoredAt, replaces: initialPair });
+        if (pair) result.recovery.nativePair = pair;
+        return advanced && Boolean(pair);
       }, 30_000);
       Object.assign(result.recovery, { recoveredAt: Date.now(), before: recovered });
       await delay(3000, undefined, { signal }); result.recovery.after = await mediaSample();
@@ -216,7 +214,7 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
     result.final = await Promise.all(indices.map(index => f.view(index)));
     await f.action(sourceBrowser, `stopScreen(${JSON.stringify(publication)})`);
     await f.until('source retirement reaches viewer', () => f.view(viewerBrowser), (value: any) => !value.state.publications.some((entry: any) => entry.id === publication));
-    for (const index of [sourceBrowser, viewerBrowser]) await f.action(index, `leaveVoice('${room}')`);
+    for (const index of indices) await f.action(index, `leaveVoice('${room}')`);
     for (const index of indices) await f.assertNoError(index, 'kernel NAT media');
     result.stop = await Promise.all(indices.map(index => f.sample(index)));
     assert(result.stop.every((value: any) => value.captures.every((track: any) => track.state === 'ended')));
@@ -231,7 +229,7 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
       })),
       cdp: await Promise.allSettled([...cdp].map(async ([index, url]) => ({ index,
         // Standard CDP, independently of an agent command or awaited page Promise.
-        health: JSON.parse(network.exec(network.endpoint(index + (prepared ? 2 : 1)), process.execPath, ['--input-type=module', '-e', `
+        health: JSON.parse(network.exec(network.endpoint(index + (nativeTransit ? 2 : 1)), process.execPath, ['--input-type=module', '-e', `
           const ws=new WebSocket(process.argv[1]), replies=[];let done=false;
           const finish=()=>{if(done)return;done=true;console.log(JSON.stringify(replies));ws.close();};
           const timer=setTimeout(finish,2000);

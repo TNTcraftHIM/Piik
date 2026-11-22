@@ -214,7 +214,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         if (signal.aborted) return;
         if (!url) { finish("unavailable"); return; }
         // A compatible App was found; health may only see an older, approved App.
-        const health = await native.health({ signal, waitForPermission: false }).catch(error => {
+        const health = await native.health({ signal, waitForPermission: !attempt.automatic }).catch(error => {
           if (native?.isIncompatible(error)) return null;
           throw error;
         });

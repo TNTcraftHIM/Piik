@@ -578,22 +578,20 @@ or focused picture never retargets those settings to another publication.
 In the accepted model, reading and writing conversation require the domain
 connection and current room host, independently of ICE. Domain Join/Welcome check
 one protocol version and reject older incompatible endpoints explicitly.
-Voice, sharing, watching and active file delivery use a bounded base tree rooted
-at the actual hosting session. Each edge requires an open reliable
-DataChannel at both endpoints. Voice follows the needed paths of that tree in
-either direction; a participant can forward without joining or hearing the call.
+Each speaker, screen publication, file and forwarded webpage activity selects
+paths on confirmed connections within its authorized room graph. An eligible
+participant can forward voice without joining or hearing the call.
 Leaving the room view ends reading, while active media and necessary transit remain.
 
 Each media flow has a lifetime separate from its publication and shared connection.
 Unwatching and watching again creates a new flow; late readiness or failure reports
-from the retired flow cannot change the replacement or close the room's base path.
+from the retired flow cannot change the replacement or close a shared transport used by another activity.
 Each active picture-preparation attempt has 20 seconds to deliver its first frame,
 even on an already connected path. If it expires, the same plan tries another
 available path. A downstream hop waiting for its upstream does not spend that
-window early. This media timeout keeps unrelated pictures, voice and the room's
-base connections.
+window early. This media timeout keeps unrelated pictures, voice and their physical connections.
 
-Each screen keeps its own distribution plan. Startup reuses ready base paths,
+Each screen keeps its own distribution plan. Startup reuses eligible confirmed connections,
 including required non-viewing transit. If those paths cannot carry the picture,
 the same plan seeks an alternative through the source or ready media relays.
 The plan may prepare a direct source path for a leaf or an internal relay while
@@ -603,17 +601,14 @@ room commits that branch together, keeping its prepared inputs and outputs.
 Players adopt their existing candidate elements and source sound, preserving
 volume and pause. Candidate failure, changed viewing demand or expiry keeps the
 required old paths; view toggles do not restart spent attempts.
-Only newly constructed branches use the prototype's small fanout policy; reversing
-an existing base path does not discard its third direction. Server-owned default
-rooms use the same plans through their real Native endpoint.
-Compatible base and media flows reuse physical peer connections. A relay can stop
+Server-owned default rooms use the same plans through their real Native endpoint.
+Compatible data and media flows reuse physical peer connections. A relay can stop
 watching while continuing to serve downstream viewers; its transit ends when that
 demand ends. A failed DataChannel repairs its room paths without closing healthy
 media on the same connection. Stopping one share keeps unrelated received and
 forwarded media alive. Browser relays can decode and re-encode. The Native
 participant forwards encoded Opus, VP8 and H264, and publishes App capture through
-those same plans. Server-hosted rooms can carry media through their Native root
-on the base paths; the same publication plan repairs failed direct paths.
+those same plans. Server-hosted rooms can carry media through their authorized Native endpoint; the same publication plan repairs failed direct paths.
 The 2.x-specific SFU-only and peer-only operator policies are not implemented.
 WebRTC owns ICE and congestion control.
 App and Server use the existing public STUN choices by default. Optional
@@ -703,7 +698,7 @@ new Browser origin cannot read the previous origin's saved login or room data.
 Messages contain complete file descriptions and their SHA256 digest. The selected
 file stays with its sender; a confirmed message does not upload bytes to the domain
 or room database. Browser- and Native-hosted rooms authorize requests from retained
-messages and deliver bytes through the existing room base tree, including the
+messages and deliver bytes over paths selected for each file, including the
 three default Server rooms. The domain database stores no file content.
 
 Concurrent recipients share requested ranges through relays. Each recipient

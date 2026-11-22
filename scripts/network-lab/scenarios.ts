@@ -1,6 +1,36 @@
 import type { Fault, NatMode } from "./network";
 import type { ProbeResult } from "./udp";
 
+interface NativePair {
+  id: string;
+  peerId: string;
+  preparation: "available" | "required" | null;
+}
+
+type NativeRecord = {
+  atMs: number;
+  event:
+    | { type: "plan"; roomHostSessionId: string | null; pairs: NativePair[] }
+    | { type: "native-command"; command: { type: string; pairId?: string; state?: string } }
+    | { type: "native-signal"; pairId: string; udp: string | null }
+    | { type: "admitted" | "participant-closed" | "process-closed" };
+};
+
+export function connectedNativePair(records: readonly NativeRecord[], {
+  prepared = false, since = 0, replaces,
+}: { prepared?: boolean; since?: number; replaces?: NativePair } = {}) {
+  const plan = records.findLast(row => row.event.type === "plan")?.event;
+  if (plan?.type !== "plan" || !plan.roomHostSessionId) return;
+  const pair = plan.pairs.find(pair => pair.peerId === plan.roomHostSessionId);
+  if (!pair || (replaces && (pair.peerId !== replaces.peerId || pair.id === replaces.id))) return;
+  const link = records.findLast(row => row.event.type === "native-command"
+    && row.event.command.type === "link_state" && row.event.command.pairId === pair.id);
+  if (link?.event.type !== "native-command" || link.event.command.state !== "connected" || link.atMs < since) return;
+  if (prepared && (pair.preparation !== "required" || !records.some(row => row.event.type === "native-signal"
+    && row.event.pairId === pair.id && row.event.udp === "complete" && row.atMs <= link.atMs))) return;
+  return { ...pair, connectedAt: link.atMs };
+}
+
 export interface Scenario {
   id: string;
   host: "browser" | "app";

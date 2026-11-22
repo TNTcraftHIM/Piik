@@ -226,18 +226,6 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
             .collect();
     }
     let room = output.projection.snapshot(sessions[0], true).unwrap();
-    output.projection.base_links = sessions
-        .iter()
-        .enumerate()
-        .skip(1)
-        .map(|(index, child)| crate::transport::BaseLink {
-            room_id: room_id.clone(),
-            parent: sessions[(index - 1) / 2],
-            child: *child,
-            ready: false,
-            selected: true,
-        })
-        .collect();
     output.projection.flows = room
         .publications
         .iter()
@@ -282,11 +270,6 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
         view.room.delivery = Some(RoomDelivery {
             host_session_id: sessions[0],
             binding_id: Uuid::new_v4(),
-            next_hops: sessions
-                .iter()
-                .skip(1)
-                .map(|session| (*session, sessions[1]))
-                .collect(),
         });
         for publication in &mut view.publications {
             publication.id = Uuid::new_v4();

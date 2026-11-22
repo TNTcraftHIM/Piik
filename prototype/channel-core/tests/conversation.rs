@@ -67,7 +67,7 @@ fn rejected(network: &mut RoomNetwork, connection: Uuid, packet: &SignedPacket, 
 }
 
 #[test]
-fn signed_conversation_uses_domain_carriage_without_media_paths_or_a_second_confirmation() {
+fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_confirmation() {
     let mut network = RoomNetwork::new();
     let owner = Uuid::new_v4();
     let reader = Uuid::new_v4();
@@ -91,7 +91,7 @@ fn signed_conversation_uses_domain_carriage_without_media_paths_or_a_second_conf
     );
     network.command(reader, json!({"type":"browse","roomId":room,"active":true}));
     for connection in [owner, reader] {
-        assert!(network.state(connection).pairs.is_empty());
+        assert_no_payload_grants(&network, connection);
     }
     let view = network
         .state(reader)
@@ -255,23 +255,82 @@ fn signed_conversation_uses_domain_carriage_without_media_paths_or_a_second_conf
 }
 
 #[test]
-fn reading_does_not_open_base_links_but_voice_still_does() {
+fn reading_keeps_standby_idle_until_voice_delivery_begins() {
     let mut network = RoomNetwork::new();
     let owner = Uuid::new_v4();
     let reader = Uuid::new_v4();
-    join(&mut network, owner);
-    join(&mut network, reader);
+    let owner_session = join(&mut network, owner);
+    let reader_session = join(&mut network, reader);
     let room = network.create(owner, RoomAccess::Public, false);
-    network.command(reader, json!({"type":"browse","roomId":room,"active":true}));
-    assert!(network.state(reader).pairs.is_empty());
+    for connection in [owner, reader] {
+        network.command(
+            connection,
+            json!({"type":"browse","roomId":room,"active":true}),
+        );
+        assert_no_payload_grants(&network, connection);
+    }
+    let standby = network
+        .state(reader)
+        .pairs
+        .iter()
+        .find(|pair| pair.peer_id == owner_session)
+        .expect("room readers can establish a standby pair")
+        .id;
+    for connection in [owner, reader] {
+        network.command(
+            connection,
+            json!({"type":"link_state","pairId":standby,"state":"connected"}),
+        );
+        network.command(
+            connection,
+            json!({"type":"voice","roomId":room,"joined":true,"muted":true,"deafened":false}),
+        );
+        assert_no_payload_grants(&network, connection);
+    }
+    assert_eq!(network.state(reader).voice.len(), 2);
     network.command(
         reader,
-        json!({"type":"voice","roomId":room,"joined":true,"muted":true,"deafened":false}),
+        json!({"type":"voice","roomId":room,"joined":true,"muted":false,"deafened":false}),
     );
-    assert!(!network.state(reader).pairs.is_empty());
+    let publication = Uuid::new_v4();
+    network.command(
+        reader,
+        json!({"type":"publish","publication":{"id":publication,"roomId":room,"kind":"voice","source":null,"videoSettings":null}}),
+    );
+    let incoming = network
+        .state(owner)
+        .pairs
+        .iter()
+        .find(|pair| pair.peer_id == reader_session)
+        .unwrap();
+    assert_eq!(incoming.id, standby);
+    assert!(incoming
+        .incoming
+        .iter()
+        .any(|flow| flow.publication_id == publication && flow.selected));
     network.command(
         reader,
         json!({"type":"voice","roomId":room,"joined":false,"muted":true,"deafened":false}),
     );
-    assert!(network.state(reader).pairs.is_empty());
+    for connection in [owner, reader] {
+        assert_no_payload_grants(&network, connection);
+    }
+    assert!(network
+        .state(owner)
+        .voice
+        .iter()
+        .all(|voice| voice.session_id != reader_session));
+    assert!(network
+        .state(reader)
+        .pairs
+        .iter()
+        .any(|pair| pair.id == standby));
+}
+
+fn assert_no_payload_grants(network: &RoomNetwork, connection: Uuid) {
+    let state = network.state(connection);
+    assert!(state.pairs.iter().all(|pair| {
+        pair.rooms.is_empty() && pair.incoming.is_empty() && pair.outgoing.is_empty()
+    }));
+    assert!(state.files.is_empty() && state.watch_bytes.is_empty());
 }

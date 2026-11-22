@@ -16,26 +16,26 @@ the feedback period; they do not delay that delivery.
 
 ### Active work
 
-- [ ] **Complete the channel connection pool.** Implement the accepted
-  [forwarding architecture](./research/channel-forwarding-plan.md#one-channel-connection-graph)
-  within the existing Channel and TransportBook owners: merge activity demand,
-  common-room interest and channel standby in that priority order. Establish
-  useful standby neighbors before business demand, repair gaps between channel
-  components, and admit pending and established pairs within a calibrated
-  endpoint degree. Reclaim useful idle neighbors under actual resource pressure,
-  rather than whenever an endpoint gains active work. Retire remaining room-tree
-  connection bootstrap after the pool supplies those interests.
-  Verify no business payload on lobby-only edges, zero business slots for
-  standby, and preservation of active leases. Capacity waiting must not start
-  a physical or payload timeout. Count shared old/new physical pairs once during
-  handoff and retire a pair only when no admitted use remains.
+- [ ] **Avoid connection attempts blocking unrelated rooms.** The channel's
+  single pending physical attempt makes independent reachable demand wait for
+  an unreachable candidate's ordinary and prepared attempts. Compare bounded
+  parallel admission inside TransportBook with the current serial baseline.
+  Preserve endpoint limits, current socket proof, required recovery priority,
+  healthy leases and SDK-owned ICE pacing; measure shared-source demand as well
+  as independent rooms before changing the scheduling policy.
 - [ ] **Freeze the first public 3.0 contract.** Confirm the
   [module and ownership baseline](./standards/engineering.md#architecture-baseline),
-  the remaining pool implementation and the
+  the connection pool and the
   [public compatibility boundary](./standards/versioning.md#public-compatibility-promise)
   against the first release's actual readers, writers and stored samples.
   Keep optional API/Bot capabilities within existing actions and authority.
   Existing module boundaries remain the implementation baseline.
+- [ ] **Intermittent room-reading acceptance stalls.** A protocol check timed
+  out waiting for an existing room's Browse reply. A separate Browser check
+  returned only sequences 1 and 1001 after preparing a full history window.
+  Both passed unchanged on repeat. Capture the pending request, writer queue
+  and covering projection when either recurs; retain the existing deadlines
+  and contiguous-history assertions until the cause is established.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,

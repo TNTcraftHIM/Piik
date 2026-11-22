@@ -1,10 +1,10 @@
 #![cfg(feature = "sqlite")]
 
-mod support;
 #[path = "pool_coldstart/assisted.rs"]
 mod assisted;
 #[path = "pool_coldstart/host_wake.rs"]
 mod host_wake;
+mod support;
 
 use piik_channel_core::{
     attachment::sha256_hex,
@@ -32,14 +32,28 @@ fn command(net: &mut RoomNetwork, connection: Uuid, request: Value) {
 }
 
 fn join(net: &mut RoomNetwork, connection: Uuid, name: &str) -> Uuid {
+    join_endpoint(net, connection, name).0
+}
+
+fn join_endpoint(net: &mut RoomNetwork, connection: Uuid, name: &str) -> (Uuid, String) {
     net.command(connection, json!({"type":"join","name":name}))
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::Welcome { session_id, .. } => Some(session_id),
+            Event::Welcome {
+                session_id,
+                credential,
+                ..
+            } => Some((session_id, credential)),
             _ => None,
         })
         .expect("joined channel")
+}
+
+fn no_payload_grants(net: &RoomNetwork, socket: Uuid) {
+    assert!(net.state(socket).pairs.iter().all(|pair| {
+        pair.rooms.is_empty() && pair.incoming.is_empty() && pair.outgoing.is_empty()
+    }));
 }
 
 fn pair(net: &RoomNetwork, connection: Uuid, peer: Uuid) -> &PairInfo {
@@ -129,7 +143,7 @@ fn first_screen_subscription_prepares_after_link_confirmation() {
     join(&mut net, receiver, "Viewer");
     let room = net.create(owner, RoomAccess::Public, false);
     let screen = publish_screen(&mut net, owner, &room);
-    assert!(net.state(receiver).pairs.is_empty());
+    no_payload_grants(&net, receiver);
 
     command(&mut net, receiver, subscribe(screen, true));
     assert!(net.state(receiver).subscriptions.contains(&screen));
@@ -164,7 +178,7 @@ fn first_voice_receiver_keeps_subscribed_until_the_link_is_confirmed() {
         owner,
         json!({"type":"publish","publication":{"id":voice,"roomId":room,"kind":"voice"}}),
     );
-    assert!(net.state(receiver).pairs.is_empty());
+    no_payload_grants(&net, receiver);
 
     command(
         &mut net,
@@ -192,7 +206,7 @@ fn first_file_request_waits_for_both_endpoints_and_wakes_the_room() {
     let recipient = join(&mut net, receiver, "Recipient");
     let room = net.create(owner, RoomAccess::Public, false);
     let file = offer_file(&mut net, owner, &room);
-    assert!(net.state(receiver).pairs.is_empty());
+    no_payload_grants(&net, receiver);
 
     command(&mut net, receiver, file_receive(&room, file, true));
     let waiting = &net.state(receiver).files[0];
@@ -232,7 +246,7 @@ fn first_forwarded_byte_request_connects_the_provider_to_the_receiver() {
         json!({"type":"join_watch","roomId":room,"id":watch,"mode":"direct"}),
     );
     assert!(net.state(receiver).watch_bytes.is_empty());
-    assert!(net.state(receiver).pairs.is_empty());
+    no_payload_grants(&net, receiver);
 
     command(
         &mut net,
@@ -264,7 +278,7 @@ fn withdrawing_a_file_keeps_the_screen_on_the_same_pair() {
     let room = net.create(owner, RoomAccess::Public, false);
     let file = offer_file(&mut net, owner, &room);
     let screen = publish_screen(&mut net, owner, &room);
-    assert!(net.state(receiver).pairs.is_empty());
+    no_payload_grants(&net, receiver);
 
     command(&mut net, receiver, file_receive(&room, file, true));
     let pending = pair(&net, receiver, source).id;
@@ -292,36 +306,51 @@ fn withdrawing_a_file_keeps_the_screen_on_the_same_pair() {
 }
 
 #[test]
-fn cancelling_a_waiting_file_retires_its_attempt() {
+fn cancelling_a_waiting_file_keeps_lobby_pair_and_recovery_needs_current_proof() {
     let mut net = RoomNetwork::new();
     let [owner, receiver] = [(); 2].map(|_| Uuid::new_v4());
     let source = join(&mut net, owner, "Source");
-    join(&mut net, receiver, "Recipient");
+    let (recipient, credential) = join_endpoint(&mut net, receiver, "Recipient");
     let room = net.create(owner, RoomAccess::Public, false);
     let file = offer_file(&mut net, owner, &room);
 
     command(&mut net, receiver, file_receive(&room, file, true));
-    let retired = pair(&net, receiver, source).id;
-    link_connected(&mut net, owner, retired);
+    let standby = pair(&net, receiver, source).id;
+    link_connected(&mut net, owner, standby);
     assert_eq!(net.state(receiver).files[0].upstream, None);
     command(&mut net, receiver, file_receive(&room, file, false));
     assert!(net.state(receiver).files.is_empty());
     assert!(net.state(owner).files.is_empty());
-    assert!(net.state(receiver).pairs.is_empty());
-    assert!(net.state(owner).pairs.is_empty());
+    assert_eq!(pair(&net, receiver, source).id, standby);
+    no_payload_grants(&net, receiver);
+    no_payload_grants(&net, owner);
 
-    link_connected(&mut net, receiver, retired);
-    assert!(net.state(receiver).pairs.is_empty());
+    link_connected(&mut net, receiver, standby);
+    assert!(net.state(receiver).files.is_empty());
+    no_payload_grants(&net, receiver);
 
-    command(&mut net, receiver, file_receive(&room, file, true));
-    let current = pair(&net, receiver, source).id;
-    assert_ne!(current, retired);
-    link_connected(&mut net, receiver, current);
-    link_connected(&mut net, owner, retired);
-    assert_eq!(pair(&net, receiver, source).id, current);
-    assert_eq!(net.state(receiver).files[0].upstream, None);
-    link_connected(&mut net, owner, current);
-    assert_eq!(net.state(receiver).files[0].upstream, Some(source));
+    let replacement = Uuid::new_v4();
+    let disconnected = net.authority.disconnect(receiver, 100);
+    net.deliver(disconnected);
+    assert_eq!(pair(&net, owner, recipient).id, standby);
+    command(
+        &mut net,
+        replacement,
+        json!({"type":"join","name":"Recipient","sessionId":recipient,"credential":credential}),
+    );
+    command(&mut net, replacement, file_receive(&room, file, true));
+    assert_eq!(pair(&net, replacement, source).id, standby);
+    net.command(
+        receiver,
+        json!({"type":"link_state","pairId":standby,"state":"connected"}),
+    );
+    link_connected(&mut net, owner, standby);
+    assert_eq!(net.state(replacement).files[0].upstream, None);
+    no_payload_grants(&net, replacement);
+    link_connected(&mut net, replacement, standby);
+    assert_eq!(pair(&net, replacement, source).id, standby);
+    assert!(pair(&net, replacement, source).rooms.contains(&room));
+    assert_eq!(net.state(replacement).files[0].upstream, Some(source));
 }
 
 #[test]
@@ -332,7 +361,11 @@ fn cold_screen_direct_failure_discovers_a_room_reader_before_media_failure() {
     let viewer = join(&mut net, receiver, "Viewer");
     join(&mut net, helper, "Reader");
     let room = net.create(owner, RoomAccess::Public, false);
-    command(&mut net, helper, json!({"type":"browse","roomId":room,"active":true}));
+    command(
+        &mut net,
+        helper,
+        json!({"type":"browse","roomId":room,"active":true}),
+    );
     let screen = publish_screen(&mut net, owner, &room);
     command(&mut net, receiver, subscribe(screen, true));
     let pending = pair(&net, receiver, source);

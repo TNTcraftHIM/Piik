@@ -14,7 +14,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
 export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 39;
+export const CHANNEL_PROTOCOL = 40;
 export function isIncompatibleProtocol(code: string): boolean {
   return code === "incompatible_protocol" || code.endsWith(": incompatible_protocol");
 }
@@ -51,7 +51,7 @@ export const roomSchema = z.object({
     fileAvailabilityLimit: z.number().int().positive().optional(),
   }),
   fileAvailability: z.object({ observationId: z.uuid(), available: z.array(z.boolean()) }).optional(),
-  delivery: z.object({ hostSessionId: id, bindingId: id, nextHops: z.record(id, id) }).optional(),
+  delivery: z.object({ hostSessionId: id, bindingId: id }).optional(),
 });
 export const roomSummarySchema = roomSchema.pick({ id: true, name: true, icon: true, creatorId: true, access: true, hidden: true, hasPassword: true, voiceBitrate: true, relayCapacity: true });
 export const screenSourceSchema = z.object({ kind: z.enum(["screen", "camera"]), name: identityNameSchema.nullable() });
@@ -164,7 +164,9 @@ export const channelTopologySchema = z.object({
   serviceEnabled: z.boolean(),
   bindingId: id,
   transitSession: id.nullable(),
-  base: z.object({ rootSessionId: id, edges: z.array(z.object({ sender: id, receiver: id, ready: z.boolean() }).strict()) }).strict(),
+  sessionIds: z.array(id),
+  pairs: z.array(z.object({ first: id, second: id, confirmed: z.boolean() }).strict()
+    .refine(pair => pair.first < pair.second)),
   screen: z.object({ publicationId: id, sourceSessionId: id, edges: z.array(z.object({
     sender: id, receiver: id, selected: z.boolean(), proof: z.enum(["forwardable", "decoded"]).nullable(),
     presented: z.boolean().nullable(), presentation: z.boolean(),
@@ -327,6 +329,6 @@ export type ChannelCommand =
   | { type: "signal"; pairId: string; payload: ChannelSignal }
   | { type: "link_state"; pairId: string; state: "connected" | "failed" }
   | { type: "flow_state"; flowId: string; pairId: string; state: "failed" | "forwardable" | "decoded" | "switch_ready" }
-  | { type: "base_state"; roomId: string; pairId: string; ready: boolean }
+  | { type: "room_data_state"; roomId: string; pairId: string; ready: boolean }
   | { type: "leave" };
 export type ChannelRequest = ChannelCommand & { requestId?: string };

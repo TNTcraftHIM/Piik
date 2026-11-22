@@ -27,13 +27,15 @@ from public discovery. New image messages retain a thumbnail. Room writers
 support authenticated message deletion and clearing history.
 [Hosting and moderation](./research/server-hosting-plan.md)
 
-The channel can prepare a physical connection from room-authorized delivery
-intent before any media flow exists. Each screen, voice source, file holder and
-forwarded webpage source selects its own paths on confirmed connections. Existing
+The channel connection pool combines activity demand, room interest and sparse
+channel standby within endpoint admission limits. Each screen, voice source,
+file holder and forwarded webpage source selects its own paths on the room's
+authorized confirmed connections. Standby carries no business payload. Existing
 delivery survives unrelated activity changes; a replacement needs payload proof.
-Browser and Native enforce forwarding limits per kind across rooms. Proactive
-standby and total physical connection admission remain under
-[evaluation](./research/channel-forwarding-plan.md#review-and-validation-plan).
+Browser and Native enforce forwarding limits per kind across rooms. Controlled
+Native and Browser relay paths recovered picture and sound after a 50-second
+UDP interruption. Independent-network coverage and physical-device cost remain
+under [evaluation](./research/channel-forwarding-plan.md#review-and-validation-plan).
 
 App hosting follows its Native endpoint and process lifetime. Personal voice,
 shares, watches and capture consent remain page-owned; connecting an App does not

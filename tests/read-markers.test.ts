@@ -14,7 +14,7 @@ test.each([true, false])("a stale tab cannot undo a restored read cursor (storag
   const staleTab = new RoomReadMarkers();
   const room = (id: string, bindingId: string, lastMessageSeq: number) => ({
     id, authorized: true, available: true, lastMessageSeq,
-    delivery: { bindingId, hostSessionId: "host", nextHops: {} },
+    delivery: { bindingId, hostSessionId: "host" },
   });
   const otherRoom = room("other", "other-binding", 2);
   const before = [room("restored", "old-binding", 6), otherRoom];
@@ -50,7 +50,7 @@ test.each([100, { seq: 100, binding: "old" }])("offline restore preserves unread
   tab.project("site", "reader", [room]);
   expect(JSON.parse(storage.get(key)!)).toEqual({ room: record });
   const projected = (lastMessageSeq: number, bindingId: string) => [{
-    ...room, lastMessageSeq, delivery: { bindingId, hostSessionId: "host", nextHops: {} },
+    ...room, lastMessageSeq, delivery: { bindingId, hostSessionId: "host" },
   }];
   expect(tab.project("site", "reader", projected(20, "new")).room).toBe(20);
   expect(tab.project("site", "reader", projected(21, "new")).room).toBe(20);
@@ -59,7 +59,7 @@ test.each([100, { seq: 100, binding: "old" }])("offline restore preserves unread
 
 test.each(["storage refresh", "new room"])("a failed write preserves local progress on %s", trigger => {
   const room = { id: "room", authorized: true, available: true, lastMessageSeq: 12,
-    delivery: { bindingId: "bound", hostSessionId: "host", nextHops: {} } };
+    delivery: { bindingId: "bound", hostSessionId: "host" } };
   let diskSeq = 1;
   vi.stubGlobal("localStorage", {
     getItem: () => JSON.stringify({ room: { seq: diskSeq, binding: "bound" } }),

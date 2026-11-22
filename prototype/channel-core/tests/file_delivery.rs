@@ -51,7 +51,7 @@ fn pending_pull_uses_room_leases_exact_cancellation_and_its_first_deadline() {
     assert_eq!(
         source.next_deadline(),
         None,
-        "an unleased peer cannot occupy waiting capacity"
+        "an unknown peer cannot occupy waiting capacity"
     );
     source.update(vec![], room_peers(), 0);
     source.control(id(2), pull.clone(), 10);
@@ -143,6 +143,53 @@ fn pending_pull_capacity_is_bounded_and_room_lease_retirement_clears_it() {
     assert!(source.update(vec![], vec![], 1).is_empty());
     assert_eq!(source.next_deadline(), None);
     assert!(source.expire(5000).is_empty());
+}
+
+#[test]
+fn early_pull_waits_for_grant_and_plan_and_retires_with_either_peer_or_grant() {
+    let mut source = FileDelivery::new(id(1));
+    let plan = plan(1, None, &[2], false, b"file");
+    let pull = |request| FileControl::Pull {
+        key: key(),
+        offset: 0,
+        request_id: id(request),
+    };
+    let roomless = || vec![(id(2), vec!["other-room".into()])];
+    source.update(vec![], roomless(), 0);
+    assert!(source.control(id(2), pull(20), 1).is_empty());
+    assert_eq!(source.next_deadline(), Some(5001));
+    assert!(source.update(vec![plan.clone()], roomless(), 2).is_empty());
+    assert!(source.expire(5001).is_empty());
+    assert!(source
+        .update(vec![plan.clone()], room_peers(), 5002)
+        .is_empty());
+
+    source.update(vec![], room_peers(), 5003);
+    assert!(source.control(id(2), pull(21), 5004).is_empty());
+    assert!(source.update(vec![], roomless(), 5005).is_empty());
+    assert_eq!(source.next_deadline(), None);
+    assert!(source
+        .update(vec![plan.clone()], room_peers(), 5006)
+        .is_empty());
+
+    source.update(vec![], roomless(), 5007);
+    assert!(source.control(id(2), pull(22), 5008).is_empty());
+    assert!(source.update(vec![], vec![], 5009).is_empty());
+    assert!(source
+        .update(vec![plan.clone()], room_peers(), 5010)
+        .is_empty());
+
+    source.update(vec![], roomless(), 5011);
+    assert!(source.control(id(2), pull(23), 5012).is_empty());
+    assert!(source.update(vec![], roomless(), 5013).is_empty());
+    assert!(matches!(
+        source.update(vec![plan], room_peers(), 5014).as_slice(),
+        [FileEffect::Read {
+            offset: 0,
+            length: 4,
+            ..
+        }]
+    ));
 }
 
 #[test]

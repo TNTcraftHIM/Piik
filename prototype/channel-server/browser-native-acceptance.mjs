@@ -599,17 +599,26 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
       if (native.exitCode !== null) throw new Error(`Native host exited: ${log}`);
       return view(0);
     }, value => value.state.channel.rooms.some(entry => entry.name === name && entry.available));
-    room = (await view(0)).state.channel.rooms.find(entry => entry.name === name && entry.available).id;
+    const hosted = (await view(0)).state.channel.rooms.find(entry => entry.name === name && entry.available);
+    room = hosted.id;
+    const nativeEndpoint = hosted.delivery.hostSessionId;
+    assert(!initial.some(value => value.sessionId === nativeEndpoint), "the room uses the standalone Native endpoint");
     for (const index of [1, 2]) await browser(index, "click", `.c3-room-link[aria-label="${name}"]`);
     for (const index of [1, 2]) await action(index, `joinVoice('${room}', true)`);
-    await until("both Browsers join the Native base", async () => Promise.all([view(1), view(2)]), values =>
-      values.every(value => value.state.pairs.some(pair => pair.rooms.includes(room))));
-    const pairs = await Promise.all([1, 2].map(async index =>
-      (await view(index)).state.pairs.find(pair => pair.rooms.includes(room))));
-    assert.equal(pairs[0].peerId, pairs[1].peerId, "voice must traverse the actual Native root");
-    assert(!initial.some(value => value.sessionId === pairs[0].peerId), "an administration page is not the Native root");
-    for (const index of [1, 2]) await until("Native DataChannel opens", () => sample(index), value =>
-      value.channels.some(channel => channel.state === "open"));
+    const nativePair = index => evaluate(index, `(() => {
+      const peer = [...${hook}.session.media.peers.values()].find(peer => peer.plan.peerId === ${JSON.stringify(nativeEndpoint)});
+      return peer && { plan: peer.plan, connected: peer.transport.pc.connectionState === 'connected',
+        input: peer.transport.input?.readyState, control: peer.transport.channel?.readyState, bulk: peer.transport.bulk?.readyState };
+    })()`);
+    const standby = await until("roomless Native probes connect on both Browsers", () => Promise.all([1, 2].map(nativePair)),
+      values => values.every(value => value?.connected && value.input === "open"));
+    for (const value of standby) {
+      assert.deepEqual(value.plan.rooms, []);
+      assert.deepEqual(value.plan.incoming, []);
+      assert.deepEqual(value.plan.outgoing, []);
+      assert(value.control === undefined && value.bulk === undefined, "idle room does not open byte payload channels");
+    }
+    const pairs = standby.map(value => value.plan);
 
     await action(1, `sendMessage('${room}', 'Confirmed by Native room')`);
     await until("Native-confirmed history arrives", () => evaluate(2,
@@ -623,11 +632,13 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
 
     await evaluate(2, `window.__channelProbe.blockPeer(${JSON.stringify(pairs[1].peerId)})`);
     await action(1, `setMuted('${room}', false)`);
-    await until("Native renegotiation offer is actually withheld", () => sample(2), value => value.blockedOffers > 0);
+    await until("Native media renegotiation offer is actually withheld", () => sample(2), value => value.protocol.some(event =>
+      event.pair === pairs[1].id && event.negotiation?.description === "offer" && event.negotiation.withheld
+      && event.negotiation.flows?.length));
     await evaluate(2, `window.__channelProbe.unblockPeer(${JSON.stringify(pairs[1].peerId)})`);
     await action(2, "reconnect()");
     await audible(2);
-    assert.equal((await view(2)).state.pairs.find(pair => pair.rooms.includes(room)).id, pairs[1].id,
+    assert.equal((await nativePair(2)).plan.id, pairs[1].id,
       "signaling recovery must complete pending negotiation on the existing pair");
     await action(2, `setMuted('${room}', false)`);
     await audible(1);
@@ -648,7 +659,7 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     assert(audioSeparationDb.every(db => db > 20),
       `Native screen sound lost stereo separation: ${JSON.stringify(audioSeparationDb)}`);
     assert((await view(2)).state.pairs.some(pair => pair.id === pairs[1].id && pair.incoming.some(flow => flow.publicationId === nativePicture)),
-      "picture startup must reuse the established Native base path");
+      "picture startup must reuse the connected Native peer");
 
     const carrier = () => evaluate(2, `(() => {
       const peer = ${hook}.session.media.peers.get(${JSON.stringify(pairs[1].id)});
@@ -676,8 +687,6 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
       await audioProgressing(2, sourceVoice);
       previousFlow = current.flow;
     }
-    await evaluate(2, `window.__channelProbe.unblockPeer(${JSON.stringify((await view(1)).sessionId)})`);
-
     const fileSize = 1024 * 1024 + 17;
     const expected = createHash("sha256").update(Buffer.from(Array.from({ length: fileSize }, (_, index) => index % 251))).digest("hex");
     await evaluate(1, `(async () => {
@@ -703,8 +712,10 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
       },error => {window.__fileCheck = {busy:false,error:String(error)}}).finally(() => {FileSystemFileHandle.prototype.createWritable=create});
       return true;
     })()`);
-    await until("file uses the Native base path", () => view(2), value => value.state.files.some(file =>
+    await until("file has its own route through the Native peer", () => view(2), value => value.state.files.some(file =>
       file.attachment.id === fileMessage.attachments[0].id && file.upstream === pairs[0].peerId));
+    await until("file demand opens the byte lane on the existing peer", () => nativePair(2), value =>
+      value?.plan.id === pairs[1].id && value.plan.rooms.includes(room) && value.bulk === "open");
     assert.equal((await evaluate(2, "window.__fileCheck")).busy, true, "the file must still be in flight");
     await action(1, "reconnect()");
     await browser(2, "click", '.c3-room-link[aria-label="Living room"]');
@@ -736,8 +747,8 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     await action(1, `leaveVoice('${room}')`);
     await action(1, `joinVoice('${room}')`);
     await advancing(2);
-    assert.equal((await view(2)).state.pairs.find(pair => pair.rooms.includes(room)).id, pairs[1].id,
-      "replacing voice capture must retain the room's physical connection");
+    assert.equal((await nativePair(2)).plan.id, pairs[1].id,
+      "replacing voice capture must retain the physical connection");
     await progressing(2, picture);
     for (const index of [0, 1, 2]) await assertNoError(index, "Native voice and room lifecycle");
 
@@ -765,10 +776,10 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     await progressing(2, picture);
     await browser(2, "screenshot", join(output, "native-room.png"), "--full");
     await writeFile(join(output, "native-result.json"), JSON.stringify({ passed: true, audioSeparationDb,
-      scenarios: ["Native admitted root", "room SQLite owns confirmed history", "lost offer recovery on an existing pair", "bidirectional encoded Opus forwarding",
-        "picture startup through Native base", "repeated Native AV carrier reuse with fresh flow proof", "simultaneous picture voice and file forwarding", "picture stop preserves voice",
+      scenarios: ["Native room authority", "standby probes connect before any room payload", "room SQLite owns confirmed history", "lost offer recovery on an existing pair", "bidirectional encoded Opus forwarding",
+        "picture startup reuses an established Native peer", "repeated Native AV carrier reuse with fresh flow proof", "simultaneous picture voice and file forwarding", "picture stop preserves voice",
         "peer file through Native with final digest", "signaling reconnect and view switch preserve file and voice", "no domain or Native file-byte store",
-        "view changes retain voice", "capture replacement keeps base", "other-room picture survives",
+        "view changes retain voice", "capture replacement keeps the physical pair", "other-room picture survives",
         "Native process expiry", "history restore without activity revival"] }, null, 2));
   } finally {
     await stop();

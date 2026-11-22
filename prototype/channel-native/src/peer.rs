@@ -694,7 +694,7 @@ struct Pair {
     data: DataLink,
     state: Arc<AtomicU8>,
     dc_open: bool,
-    base_failed: bool,
+    room_data_failed: bool,
     reported: HashSet<String>,
     deadline: Option<Deadline>,
     overflow: Arc<AtomicBool>,
@@ -2056,7 +2056,7 @@ impl Driver {
         }
         self.refresh_media(released).await;
         for id in self.pairs.keys().copied().collect::<Vec<_>>() {
-            self.base_ready(id).await;
+            self.report_room_data_ready(id).await;
         }
     }
     async fn create_pair(
@@ -2118,7 +2118,7 @@ impl Driver {
                 data,
                 state,
                 dc_open: false,
-                base_failed: false,
+                room_data_failed: false,
                 reported: HashSet::new(),
                 deadline: Some(Deadline::Connecting(
                     Instant::now()
@@ -2145,9 +2145,9 @@ impl Driver {
         let id = plan.id;
         let p = self.pairs.get_mut(&id).unwrap();
         if plan.rooms.iter().any(|r| !p.plan.rooms.contains(r)) {
-            p.base_failed = false;
+            p.room_data_failed = false;
         }
-        let retired_base = !p.plan.rooms.is_empty() && plan.rooms.is_empty();
+        let retired_room_data = !p.plan.rooms.is_empty() && plan.rooms.is_empty();
         p.reported.retain(|r| plan.rooms.contains(r));
         p.plan = plan;
         p.latest.retain(|(flow_id, _), _| {
@@ -2175,7 +2175,7 @@ impl Driver {
             task.task.abort();
             let _ = task.task.await;
         }
-        if retired_base {
+        if retired_room_data {
             for (_, dc, task) in [p.dc.take(), p.bulk.take()].into_iter().flatten() {
                 task.abort();
                 let _ = task.await;
@@ -2184,12 +2184,12 @@ impl Driver {
             p.data.unbind(Lane::Control);
             p.data.unbind(Lane::Bulk);
             p.dc_open = false;
-        } else if !p.plan.rooms.is_empty() && !p.polite && !p.base_failed && p.dc.is_none() {
+        } else if !p.plan.rooms.is_empty() && !p.polite && !p.room_data_failed && p.dc.is_none() {
             let dc = p.pc.create_channel("piik-room").await?;
             self.install_dc(id, dc).await?;
         }
         let p = self.pairs.get(&id).unwrap();
-        if !p.plan.rooms.is_empty() && !p.polite && !p.base_failed && p.bulk.is_none() {
+        if !p.plan.rooms.is_empty() && !p.polite && !p.room_data_failed && p.bulk.is_none() {
             let dc = p.pc.create_channel("piik-file").await?;
             self.install_dc(id, dc).await?;
         }
@@ -2255,7 +2255,7 @@ impl Driver {
                 self.signal(id, signal).await?;
             }
             self.refresh_media(false).await;
-            self.base_ready(id).await;
+            self.report_room_data_ready(id).await;
             Ok::<_, anyhow::Error>(())
         }
         .await;
@@ -2328,12 +2328,12 @@ impl Driver {
                 })
                 .await;
             }
-            if pair.base_failed || (pair.connected() && pair.dc_open) {
+            if pair.room_data_failed || (pair.connected() && pair.dc_open) {
                 for room_id in &pair.plan.rooms {
-                    self.send(Command::BaseState {
+                    self.send(Command::RoomDataState {
                         room_id: room_id.clone(),
                         pair_id: id,
-                        ready: !pair.base_failed,
+                        ready: !pair.room_data_failed,
                     })
                     .await;
                 }
@@ -2584,7 +2584,7 @@ impl Driver {
         if !dc.config.ordered || dc.config.reliability != str0m::channel::Reliability::Reliable {
             dc.close().await?;
             if lane == Lane::Control {
-                return Err(anyhow!("base DC must be reliable ordered"));
+                return Err(anyhow!("room data channel must be reliable ordered"));
             }
             return Ok(());
         }
@@ -2680,11 +2680,11 @@ impl Driver {
         }
         Ok(())
     }
-    async fn base_ready(&mut self, id: Uuid) {
+    async fn report_room_data_ready(&mut self, id: Uuid) {
         let Some(p) = self.pairs.get_mut(&id) else {
             return;
         };
-        if p.connected() && p.dc_open && !p.base_failed {
+        if p.connected() && p.dc_open && !p.room_data_failed {
             let rooms: Vec<_> = p
                 .plan
                 .rooms
@@ -2695,27 +2695,27 @@ impl Driver {
             p.reported.extend(rooms.clone());
             p.deadline = None;
             for room_id in rooms {
-                self.send(Command::BaseState {
+                self.send(Command::RoomDataState {
                     room_id,
                     pair_id: id,
                     ready: true,
                 })
                 .await;
             }
-        } else if p.connected() && (p.plan.rooms.is_empty() || p.base_failed) {
+        } else if p.connected() && (p.plan.rooms.is_empty() || p.room_data_failed) {
             p.deadline = None;
         } else if p.connected() && !matches!(p.deadline, Some(Deadline::Control(_))) {
             p.deadline = Some(Deadline::Control(Instant::now() + Duration::from_secs(20)));
         }
     }
-    async fn fail_base(&mut self, id: Uuid) {
+    async fn fail_room_data(&mut self, id: Uuid) {
         let Some(p) = self.pairs.get_mut(&id) else {
             return;
         };
-        if p.base_failed || p.plan.rooms.is_empty() {
+        if p.room_data_failed || p.plan.rooms.is_empty() {
             return;
         }
-        p.base_failed = true;
+        p.room_data_failed = true;
         p.dc_open = false;
         p.reported.clear();
         let rooms = p.plan.rooms.clone();
@@ -2729,7 +2729,7 @@ impl Driver {
             let _ = dc.close().await;
         }
         for room_id in rooms {
-            self.send(Command::BaseState {
+            self.send(Command::RoomDataState {
                 room_id,
                 pair_id: id,
                 ready: false,
@@ -2778,7 +2778,7 @@ impl Driver {
     async fn deadlines(&mut self) {
         // The callback's atomic connection fact can precede the queued State event.
         for id in self.pairs.keys().copied().collect::<Vec<_>>() {
-            self.base_ready(id).await;
+            self.report_room_data_ready(id).await;
         }
         let expired: Vec<_> = self
             .pairs
@@ -2792,7 +2792,7 @@ impl Driver {
         for (id, connected) in expired {
             self.pairs.get_mut(&id).unwrap().deadline = None;
             if connected {
-                self.fail_base(id).await;
+                self.fail_room_data(id).await;
             } else {
                 self.fail(id).await;
             }
@@ -3036,7 +3036,7 @@ impl Driver {
                             state: LinkState::Connected,
                         })
                         .await;
-                        self.base_ready(id).await;
+                        self.report_room_data_ready(id).await;
                     } else if matches!(state, PeerState::Failed | PeerState::Closed) {
                         self.fail(id).await;
                     }
@@ -3054,7 +3054,7 @@ impl Driver {
                     if p.dc.as_ref().is_some_and(|(t, _, _)| *t == token) {
                         p.dc_open = open;
                         if open {
-                            self.base_ready(id).await;
+                            self.report_room_data_ready(id).await;
                         } else {
                             let terminal = data::terminal(&p.state);
                             p.data.unbind(Lane::Control);
@@ -3065,7 +3065,7 @@ impl Driver {
                             if terminal {
                                 self.fail(id).await;
                             } else {
-                                self.fail_base(id).await;
+                                self.fail_room_data(id).await;
                             }
                         }
                     }

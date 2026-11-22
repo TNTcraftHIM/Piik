@@ -176,7 +176,7 @@ The [forwarding plan](./channel-forwarding-plan.md) defines grants, budgets and 
 The following sections describe the current planners within that architecture.
 The room projects source and receiver demand before a path exists. The channel
 admits the first pair on an empty graph and returns confirmed edges to the room.
-BaseTree can request bootstrap connections. TransportBook owns physical attempts
+TransportBook owns physical attempts
 and confirmation. Each activity selects parents for its own receivers.
 
 ### Choice And Cost
@@ -367,7 +367,7 @@ capacity waits or stops; it cannot interrupt working playback.
 Viewing changes alone do not trigger a global rewire or remove a needed bridge.
 
 The room's routing controller shares connection facts, admission and repair
-across base, voice/file and screen plans. Flow-specific replacement/completion
+across voice, file and screen plans. Flow-specific replacement/completion
 does not create another probing or reconnection subsystem; one picture's ICE
 timeout must not block another picture or chat. The sharer owns capture and
 demand; the controller selects distribution.
@@ -378,7 +378,7 @@ illustrates metadata without bytes. On A-B-C-D, a picture watched only by B need
 only A-B; a viewer at D also needs non-viewing C. A file distribution chooses its own path to interested recipients. A shorter screen candidate must prove reachability,
 source supply and actual capacity; a control link alone is insufficient.
 Different publications can share a physical pair. Stopping one removes only its
-work, preserving unrelated calls, transfers and base leases.
+work, preserving unrelated calls, transfers and connection leases.
 
 Playback buffering is a page-local preference, remembered for the Browser origin.
 Automatic leaves the receiver target unset; a custom 0..4000 ms target applies
@@ -458,7 +458,7 @@ Pure service forwarding is shown as a site node in connection details, not as
 another person in the room. Current availability, saved permission and assigned
 leases remain distinct facts; none proves that a viewer can reach the UDP listener.
 
-The same base/flow plans, connection leases and resource bounds govern service
+The same activity plans, connection leases and resource bounds govern service
 forwarding. No additional route planner, media socket graph or room identity is
 created. A reachable HTTP site or tunnel does not establish media connectivity;
 the Server's configured UDP entry must also be reachable.
@@ -518,7 +518,7 @@ Screen preparation also has a finite lifetime when its shared connection is alre
 connected. Each publication waits on one unproved frontier edge whose parent has
 the source; downstream nodes waiting for that parent are not blamed for missing
 frames. Reconciliation does not extend the current wait. Expiry retires that
-media attempt through the same plan, preserving unrelated flows and base paths.
+media attempt through the same plan, preserving unrelated flows and shared pairs.
 Lower candidate quality keeps the change uncommitted under that same deadline;
 it is not evidence that the media path has failed. Transport, track and render
 failure retain their existing immediate retirement paths.
@@ -606,15 +606,13 @@ physical pair receive a new pair identity.
 Each admitted physical pair acquires its connection resources once. Terminal
 failure releases those resources; if signaling is interrupted, the still-current
 lease reports that failure when signaling resumes instead of recreating the pair.
-Base reconciliation retains proved edges and re-evaluates unproved reservations
-against the ready tree, preferring shallower ready parents. Equally deep choices
-retain the current eligible parent. Unchanged edges keep their physical leases
-and endpoint acknowledgements. A complete path on confirmed edges
+A complete path on confirmed edges
 can replace an unproved screen fallback; proved media branches remain installed.
 Confirmed physical-pair failure informs both directions in every affected plan,
 including candidates first tried by another activity. A publication's media
-failure remains local to that publication. Base failure history retires when
-neither current demand nor an installed transit path needs it.
+failure remains local to that publication. Required UDP failures become eligible for retry after five seconds. Optional
+and idle failures do not schedule retries. A prepared replacement has its own
+physical ID and twenty-second deadline.
 An affected watch retains the selected path's delivery failure while replacement
 paths prepare; only current decoded proof clears it. Unwatch, source replacement
 or publication retirement ends that result. Optional trial failure preserves the
@@ -688,13 +686,12 @@ mapping does not delay ICE or replace IPv6 and STUN candidates. Mapped addresses
 use the existing candidate signaling. Pair retirement joins the address watcher
 and requests best-effort deactivation through the library's existing lifecycle.
 
-Prepare a replacement, prove it usable, commit, then release old work. A base
-edge requires both endpoints to confirm an installed open control DataChannel
-before the bootstrap link is ready. Voice uses its own media flows. DataChannel
-failure repairs base paths while preserving the pair's healthy media leases.
+Prepare a replacement, prove it usable, commit, then release old work. Channel wire 40 exposes room topology as sessionIds and pairs. Each activity
+selects its parents, so RoomDelivery needs no shared nextHops. RoomDataState
+reports whether the authorized room data lane is healthy. Voice retains its own media proof.
 Channel negotiation can arrive before the local room projection. The physical
 pair may retain its bounded incoming channel slots while inactive; a valid room
-lease still gates data delivery, sending and base proof. Repeated empty
+lease still gates data delivery, sending and room data readiness. Repeated empty
 projections do not retire those slots. Removing the last actual lease cancels
 its work; physical closure also clears channels received after a prior failure.
 Silent voice uses transport/forwarding readiness rather than waiting for audible
@@ -704,7 +701,7 @@ same transport owner. Retiring room-data work ends its queued and waiting sends
 while preserving the pair's picture and input work. A new room-data lease may
 acquire fresh channels on that same pair. Temporary ICE disconnection retains its Pair; confirmed
 failure retires it and allows the room to establish a replacement. Signaling
-resynchronization replays current connection, base and media facts alongside
+resynchronization replays current connection, room data and media facts alongside
 unfinished negotiation. A local report does not confirm that the room received
 it. Use these existing events; add no periodic probe protocol.
 
@@ -737,7 +734,7 @@ no desktop control. Changing the focused picture never retargets an input grant.
 
 Input follows the committed screen flow back to its source, using a separate
 encrypted logical DataChannel on the same peer connection. File readiness keeps
-its base-path scope; input failure does not retire other consumers or affect
+its room data grant scope; input failure does not retire other consumers or affect
 domain-carried conversation. A failed route trial preserves current grants, while replacing
 the selected flow retires the affected grants and held input. Native input uses
 the existing capture-source identity and page-owned capture lifetime. One App

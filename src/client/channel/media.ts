@@ -14,7 +14,7 @@ interface Peer {
   plan: ChannelPair;
   transport: ChannelTransport;
   inputs: Map<string, MediaInput>;
-  baseReady: Set<string>;
+  roomDataReady: Set<string>;
 }
 
 interface MediaInput {
@@ -188,7 +188,10 @@ export class ChannelMedia {
                 this.send({ type: "flow_state", flowId, pairId: plan.id, state: "failed" });
               }
             },
-            data: (kind, data) => { if (this.peers.get(plan.id)?.plan.rooms.length) this.data?.(plan.peerId, kind, data); },
+            data: (kind, data) => {
+              const current = this.peers.get(plan.id);
+              if (current?.transport === transport && (kind === "control" || current.plan.rooms.length)) this.data?.(plan.peerId, kind, data);
+            },
             dataState: ready => this.dataState?.(plan.peerId, ready),
             bulkClosed: () => this.bulkClosed?.(plan.peerId),
             input: channel => this.input?.(plan.id, channel),
@@ -203,9 +206,9 @@ export class ChannelMedia {
               this.send({ type: "link_state", pairId: plan.id, state: "failed" });
               this.refresh(released);
             },
-            base: ready => {
+            roomData: ready => {
               const current = this.peers.get(plan.id);
-              if (current) this.reportBase(current, ready);
+              if (current) this.reportRoomData(current, ready);
             },
           });
         } catch (error) {
@@ -213,10 +216,10 @@ export class ChannelMedia {
           this.send({ type: "link_state", pairId: plan.id, state: "failed" });
           continue;
         }
-        peer = { plan, transport, inputs: new Map(), baseReady: new Set() };
+        peer = { plan, transport, inputs: new Map(), roomDataReady: new Set() };
         this.peers.set(plan.id, peer);
       } else peer.plan = plan;
-      for (const room of peer.baseReady) if (!plan.rooms.includes(room)) peer.baseReady.delete(room);
+      for (const room of peer.roomDataReady) if (!plan.rooms.includes(room)) peer.roomDataReady.delete(room);
       try {
         peer.transport.setRooms(plan.rooms);
         const probe = !plan.rooms.length && !plan.incoming.length && !plan.outgoing.length;
@@ -229,7 +232,7 @@ export class ChannelMedia {
         this.send({ type: "link_state", pairId: plan.id, state: "failed" });
         continue;
       }
-      if (peer.transport.isBaseReady()) this.reportBase(peer, true);
+      if (peer.transport.isRoomDataReady()) this.reportRoomData(peer, true);
       for (const [flowId, input] of peer.inputs) {
         if (!plan.incoming.some(flow => flow.id === flowId)) {
           input.release?.();
@@ -247,11 +250,11 @@ export class ChannelMedia {
     this.refresh(released);
   }
 
-  private reportBase(peer: Peer, ready: boolean): void {
+  private reportRoomData(peer: Peer, ready: boolean): void {
     for (const roomId of peer.plan.rooms) {
-      if (ready && peer.baseReady.has(roomId)) continue;
-      if (ready) peer.baseReady.add(roomId); else peer.baseReady.delete(roomId);
-      this.send({ type: "base_state", roomId, pairId: peer.plan.id, ready });
+      if (ready && peer.roomDataReady.has(roomId)) continue;
+      if (ready) peer.roomDataReady.add(roomId); else peer.roomDataReady.delete(roomId);
+      this.send({ type: "room_data_state", roomId, pairId: peer.plan.id, ready });
     }
   }
 
@@ -264,7 +267,7 @@ export class ChannelMedia {
       if (["failed", "closed"].includes(peer.transport.pc.connectionState)) {
         this.send({ type: "link_state", pairId: peer.plan.id, state: "failed" });
       } else {
-        peer.baseReady.clear();
+        peer.roomDataReady.clear();
         if (peer.transport.pc.connectionState === "connected") this.reportConnected(peer);
         else for (const [id, input] of peer.inputs) this.reportInput(peer, id, input);
         peer.transport.resync();

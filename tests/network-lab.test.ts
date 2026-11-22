@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkAppPath, checkCalibration, checkContinuity, checkFaultHit, checkMapping, checkQualityRecovery, hasPicture, selectScenarios, summarizeTrials, type MediaSample } from "../scripts/network-lab/scenarios";
+import { checkAppPath, checkCalibration, checkContinuity, checkFaultHit, checkMapping, checkQualityRecovery, connectedNativePair, hasPicture, selectScenarios, summarizeTrials, type MediaSample } from "../scripts/network-lab/scenarios";
 import { checkMediaFeedback, checkMediaPath, packetFlows, type PacketFlow } from "../scripts/network-lab/packets";
 import type { ProbeResult } from "../scripts/network-lab/udp";
 
@@ -8,6 +8,44 @@ const baseline: ProbeResult = { sent: 12, received: 12, receivedBytes: 14400, du
     ({ destination, address: "198.51.100.11", port: 45678 })) };
 
 describe("network laboratory evidence", () => {
+  it("requires a connected incarnation of the current Native room-host pair", () => {
+    type Record = Parameters<typeof connectedNativePair>[0][number];
+    const original = { id: "original", peerId: "host", preparation: null };
+    const lobby = { id: "lobby", peerId: "other", preparation: "required" } as const;
+    const replacement = { ...original, id: "replacement" };
+    const plan = (atMs: number, pairs: Extract<Record["event"], { type: "plan" }>["pairs"], roomHostSessionId = "host"): Record => ({
+      atMs, event: { type: "plan", roomHostSessionId, pairs },
+    });
+    const link = (atMs: number, pairId: string, state = "connected"): Record => ({
+      atMs, event: { type: "native-command", command: { type: "link_state", pairId, state } },
+    });
+    const records = [plan(0, [original, lobby]), link(1, "lobby")];
+    expect(connectedNativePair(records)).toBeUndefined();
+    records.push(link(2, "original"));
+    expect(connectedNativePair(records)).toEqual({ ...original, connectedAt: 2 });
+    const outage = { since: 10, replaces: original };
+    expect(connectedNativePair([...records, link(11, "original")], outage)).toBeUndefined();
+    records.push(plan(8, [replacement, lobby]), link(9, "replacement"));
+    expect(connectedNativePair(records, outage)).toBeUndefined();
+    records.push(link(11, "replacement"));
+    expect(connectedNativePair(records, outage)).toEqual({ ...replacement, connectedAt: 11 });
+    expect(connectedNativePair([...records, plan(12, [lobby], "other"), link(13, "lobby")], outage)).toBeUndefined();
+    expect(connectedNativePair([...records, link(12, "replacement", "failed")], outage)).toBeUndefined();
+    expect(connectedNativePair([...records, plan(12, [lobby])], outage)).toBeUndefined();
+  });
+
+  it("ties required NAT preparation and completion to the connected incarnation", () => {
+    type Record = Parameters<typeof connectedNativePair>[0][number];
+    const expected = { id: "prepared", peerId: "host", preparation: "required" } as const;
+    const plan: Record = { atMs: 0, event: { type: "plan", roomHostSessionId: "host", pairs: [expected] } };
+    const link: Record = { atMs: 2, event: { type: "native-command", command: { type: "link_state", pairId: "prepared", state: "connected" } } };
+    const complete = (atMs: number, pairId: string): Record => ({ atMs, event: { type: "native-signal", pairId, udp: "complete" } });
+    const options = { prepared: true };
+    expect(connectedNativePair([plan, complete(1, "other"), link], options)).toBeUndefined();
+    expect(connectedNativePair([plan, link, complete(3, "prepared")], options)).toBeUndefined();
+    expect(connectedNativePair([plan, complete(1, "prepared"), link], options)).toEqual({ ...expected, connectedAt: 2 });
+  });
+
   it("keeps failed trials in counts without treating missing latency as zero", () => {
     const scenario = selectScenarios("smoke")[0]!;
     const trial = { scenario, prediction: true, seed: 1, passed: true, outcome: "media" as const };

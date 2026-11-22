@@ -75,8 +75,7 @@ The accepted module boundaries above apply to Browser, Native and Server.
 Each channel has one identity and directory authority; each available room has
 one writer that commits history before confirmation. Each activity owns its
 source and selected delivery paths, while the channel connection pool owns
-physical endpoint pairs. A shared room tree is a planning strategy, not another
-connection owner or a constraint on every activity's final path.
+physical endpoint pairs. Room grants select the eligible subgraph for each activity.
 Platform adapters execute those plans and own their local resources. Views,
 dialogs and layouts derive from these facts without owning the underlying
 activities.

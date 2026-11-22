@@ -1,6 +1,8 @@
 import controls from "./window-controls.json";
 import { windowAppearance } from "./window-appearance";
 import { applyWindowTheme } from "./theme";
+import { applyWindowCopy } from "./copy";
+import { isLang } from "../locales";
 import "./native-window.css";
 
 declare global {
@@ -21,9 +23,10 @@ if (window.piikNativeWindow) {
 if (window.piikNativeWindow && window.ipc) {
   const integrated = window.piikNativeWindow === "integrated";
   if (!integrated && location.pathname === "/client" && new URLSearchParams(location.search).has("bookmarks")) {
-    window.addEventListener("piik-window-theme", event => {
-      const { detail } = event as CustomEvent<unknown>;
-      if (detail === "light" || detail === "dark") applyWindowTheme(detail);
+    window.addEventListener("piik-window-appearance", event => {
+      const { detail } = event as CustomEvent<{ theme?: unknown; language?: unknown } | null>;
+      if (detail?.theme === "light" || detail?.theme === "dark") applyWindowTheme(detail.theme);
+      if (isLang(detail?.language)) applyWindowCopy(detail.language);
     });
   }
   const ipc = window.ipc;

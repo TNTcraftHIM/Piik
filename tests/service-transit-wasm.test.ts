@@ -13,8 +13,9 @@ test("Browser WASM saves room consent, keeps Read separate and derives fresh ser
   const endpoints = Object.fromEntries([[owner, ownerUser], [viewer, viewerUser], [service, operatorUser]].map(([session, user]) => [session, { member: { userId: user }, connected: true, signingKey: Array(32).fill(0) }]));
   let revision = 0;
   let serviceEndpoint: { sessionId: string; connectionId: string } | null = { sessionId: service, connectionId: serviceSocket };
+  let confirmedPairs: string[][] = [];
   const turn = (action: object, failedPairs: object[] = [], commit = true) => {
-    const work = JSON.parse(host.dispatch(JSON.stringify({ now: 100, bindingId: binding, channelOwnerId: ownerUser, hostSessionId: owner, revision: ++revision, endpoints, serviceEndpoint, failedPairs, action })));
+    const work = JSON.parse(host.dispatch(JSON.stringify({ now: 100, bindingId: binding, channelOwnerId: ownerUser, hostSessionId: owner, revision: ++revision, endpoints, confirmedPairs, serviceEndpoint, failedPairs, action })));
     expect(work.history).toBeNull();
     return JSON.parse(commit ? host.finish() : host.abort("storage_failed"));
   };
@@ -27,30 +28,23 @@ test("Browser WASM saves room consent, keeps Read separate and derives fresh ser
     expect(turn(preference(true)).reply.result.type).toBe("done");
     expect(JSON.parse(host.policy()).allowServiceRelay).toBe(true);
     expect(JSON.parse(host.summary())).not.toHaveProperty("allowServiceRelay");
-    turn({ type: "command", context: { ...context, sessionId: viewer }, command: { type: "voice", roomId: policy.id, joined: true, muted: true, deafened: true } });
+    for (const sessionId of [owner, viewer]) turn({ type: "command", context: { ...context, sessionId },
+      command: { type: "voice", roomId: policy.id, joined: true, muted: false, deafened: false } });
+    const publicationId = crypto.randomUUID();
+    turn({ type: "command", context, command: { type: "publish", publication: { id: publicationId, roomId: policy.id, kind: "voice" } } });
     const failedPairs = [{ first: owner, second: viewer, revision: revision + 1 }];
+    expect(turn({ type: "sync" }, failedPairs).projection.flows).toEqual([]);
+    confirmedPairs = [[owner, service].sort(), [service, viewer].sort()];
     const repairing = turn({ type: "sync" }, failedPairs);
     expect(repairing.projection.views[service]).toMatchObject({ authorized: false, transitEndpoint: serviceEndpoint, canManage: false, reading: false, subscriptions: [], watchSubscriptions: [] });
     expect(repairing.projection.views[service]).not.toHaveProperty("transit");
     expect(JSON.parse(host.policy()).grants).toEqual([viewerUser]);
-    type Link = { parent: string; child: string; ready: boolean };
-    const servicePeers = (links: Link[], ready: boolean) => links
-      .filter(link => link.ready === ready && (link.parent === service || link.child === service))
-      .map(link => link.parent === service ? link.child : link.parent).sort();
-    const expectedPeers = [owner, viewer].sort();
-    let acknowledged = repairing;
-    for (const [parent, child] of [[owner, service], [service, viewer]]) {
-      expect(acknowledged.projection.baseLinks).toContainEqual(expect.objectContaining({ parent, child, ready: false }));
-      for (const [sessionId, peer] of [[parent, child], [child, parent]]) {
-        acknowledged = turn({ type: "base_state", context: { ...context, sessionId }, peer, ready: true }, failedPairs);
-      }
-    }
-    expect(servicePeers(acknowledged.projection.baseLinks, true)).toEqual(expectedPeers);
+    expect(repairing.projection.flows).toContainEqual(expect.objectContaining({ sender: owner, receiver: service }));
     serviceEndpoint = { sessionId: service, connectionId: crypto.randomUUID() };
+    confirmedPairs = [];
     const replaced = turn({ type: "sync" }, failedPairs);
-    expect(replaced.projection.views[service]?.transitEndpoint).toEqual(serviceEndpoint);
-    expect(servicePeers(replaced.projection.baseLinks, false)).toEqual([owner]);
-    expect(servicePeers(replaced.projection.baseLinks, true)).toEqual([]);
+    expect(replaced.projection.views[service]).toBeUndefined();
+    expect(replaced.projection.flows).toEqual([]);
     serviceEndpoint = null;
     const unavailable = turn({ type: "sync" });
     expect(unavailable.projection.allowServiceRelay).toBe(true);
@@ -72,23 +66,25 @@ test("public Read does not retain pure site forwarding after the saved preferenc
     { member: { userId: session }, connected: true, signingKey: Array(32).fill(0) }]));
   let revision = 0;
   const context = (sessionId: string) => ({ connection: sessionId, sessionId, requestId: crypto.randomUUID(), now: 100 });
+  let confirmedPairs: string[][] = [];
   const turn = (action: object, failedPairs: object[] = []) => {
     host.dispatch(JSON.stringify({ now: 100, bindingId: binding, channelOwnerId: owner, hostSessionId: owner, revision: ++revision,
-      endpoints, serviceEndpoint: { sessionId: service, connectionId: service }, failedPairs, action }));
+      endpoints, confirmedPairs, serviceEndpoint: { sessionId: service, connectionId: service }, failedPairs, action }));
     return JSON.parse(host.finish());
   };
   const preference = (allowed: boolean) => ({ type: "command", context: context(owner),
     command: { type: "update_room", roomId: policy.id, ...settings, allowServiceRelay: allowed } });
   try {
     turn({ type: "sync" }); turn(preference(true));
-    turn({ type: "command", context: context(viewer), command: { type: "voice", roomId: policy.id, joined: true, muted: true, deafened: true } });
-    let current = turn({ type: "sync" }, [{ first: owner, second: viewer, revision: revision + 1 }]);
-    expect(current.projection.baseLinks.some((link: { parent: string; child: string }) => link.parent === service || link.child === service)).toBe(true);
-    for (const link of current.projection.baseLinks) for (const [sessionId, peer] of [[link.parent, link.child], [link.child, link.parent]]) {
-      current = turn({ type: "base_state", context: context(sessionId), peer, ready: true });
-    }
+    for (const sessionId of [owner, viewer]) turn({ type: "command", context: context(sessionId),
+      command: { type: "voice", roomId: policy.id, joined: true, muted: false, deafened: false } });
+    turn({ type: "command", context: context(owner), command: { type: "publish",
+      publication: { id: crypto.randomUUID(), roomId: policy.id, kind: "voice" } } });
+    confirmedPairs = [[owner, service].sort(), [service, viewer].sort()];
+    const current = turn({ type: "sync" }, [{ first: owner, second: viewer, revision: revision + 1 }]);
+    expect(current.projection.views[service].transitEndpoint.sessionId).toBe(service);
     const off = turn(preference(false));
-    expect(off.projection.baseLinks.some((link: { parent: string; child: string }) => link.parent === service || link.child === service)).toBe(false);
+    expect(off.projection.flows).toEqual([]);
     expect(off.projection.views[service]).toMatchObject({ authorized: true });
     expect(off.projection.views[service]).not.toHaveProperty("transitEndpoint");
     expect(off.projection.views[service]).not.toHaveProperty("transit");
