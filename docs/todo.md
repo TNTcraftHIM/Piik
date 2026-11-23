@@ -52,6 +52,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   also removes its other audio. Browser own-document exclusion and Native
   process-tree exclusion are already implemented; acoustic echo and duplicate
   commentary retain their separate microphone owners.
+- [ ] **iOS share and room-voice echo.** Confirm the reporting iOS/browser version,
+  display-capture audio track and share-microphone setting. The reported echo
+  returns through the shared picture. Compare with the share microphone disabled
+  while keeping room voice active before attributing it to source-audio capture.
 - [ ] **Virtual-LAN page loading.** Identify where the affected invitation stalls
   by comparing document and script results on the affected path and a working
   path. Controlled tests reproduce size-dependent HTTP stalls and fresh HTTPS
