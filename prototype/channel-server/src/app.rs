@@ -69,7 +69,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 23;
+const PROTOCOL: u8 = 24;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -1574,10 +1574,10 @@ async fn connection(
         };
         let processing = async {
             let mut voice_shortcuts = app.voice_shortcuts.connect();
-            let (page_events, mut page_queue) = mpsc::channel(64);
+            let (control_events, mut event_queue) = mpsc::channel(64);
             let pages = Arc::new(page::Connection::for_site(
                 app.config.page_player.clone(),
-                page_events,
+                control_events.clone(),
                 site.to_owned(),
             ));
             let mut host: Option<mpsc::Sender<HostCommand>> = None;
@@ -1639,7 +1639,7 @@ async fn connection(
                         timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                         continue;
                     }
-                    Some(event) = page_queue.recv() => {
+                    Some(event) = event_queue.recv() => {
                         if event["type"] == "page_closed" { if let Some(id)=event["pageId"].as_str().and_then(|id|Uuid::parse_str(id).ok()){pages.stop_media(id);} }
                         timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                         continue;
@@ -2206,8 +2206,8 @@ async fn connection(
                                             serde_json::to_value(pages.media_source(page))?;
                                     }
                                     // Selection facts (including the current top-level URL) precede confirmation.
-                                    for _ in 0..page_queue.len() {
-                                        let Ok(event) = page_queue.try_recv() else {
+                                    for _ in 0..event_queue.len() {
+                                        let Ok(event) = event_queue.try_recv() else {
                                             break;
                                         };
                                         timeout(
@@ -2383,6 +2383,7 @@ async fn connection(
                                         Ok((cancel, registration)) => {
                                             let replaces =
                                                 capture.source().map(SourceLease::producer_id);
+                                            let picker_events = cfg!(target_os = "android").then(|| control_events.clone());
                                             let commands = commands.clone();
                                             capture_starts.push(
                                                 async move {
@@ -2399,6 +2400,7 @@ async fn connection(
                                                             exclude_audio,
                                                             show_capture_border,
                                                             replaces,
+                                                            picker_events.as_ref().map(|events| (events, request.id.as_str())),
                                                         ),
                                                         registration,
                                                     )
@@ -2474,7 +2476,7 @@ async fn connection(
                             Operation::CancelCapture { publication_id } => {
                                 let cancel =
                                     captures.get_mut(&publication_id).and_then(|capture| {
-                                        capture.pending = None;
+                                        capture.pending.take_if(|pending| pending.kind == SourceKind::Capture);
                                         capture.lease().map(CaptureLease::cancel_microphone)
                                     });
                                 match cancel {
@@ -2873,6 +2875,7 @@ async fn prepare_capture(
     exclude_audio: Option<Target>,
     show_capture_border: bool,
     replaces: Option<Uuid>,
+    picker: Option<(&mpsc::Sender<Value>, &str)>,
 ) -> Result<CaptureResult> {
     if !cfg!(feature = "capture") {
         bail!("capture_unavailable");
@@ -2899,6 +2902,9 @@ async fn prepare_capture(
         .await
         .map_err(|_| anyhow!("hosting_unavailable"))?
         .map_err(anyhow::Error::msg)?;
+    if let Some((events, request_id)) = picker {
+        events.send(json!({"type":"picker_ready","requestId":request_id,"captureId":lease.id})).await?;
+    }
     lease.ready().await.map_err(|error| {
         if error.is::<Aborted>() {
             anyhow!("capture_cancelled")
@@ -4835,6 +4841,7 @@ mod tests {
         );
         let publication = publication_id;
         let (commands, mut received) = mpsc::channel(1);
+        let (picker_events, mut events) = mpsc::channel(1);
         let start = prepare_capture(
             &commands,
             publication,
@@ -4847,6 +4854,7 @@ mod tests {
             exclude_audio,
             show_capture_border,
             None,
+            Some((&picker_events, "selected-profile")),
         );
         let host = async {
             let HostCommand::PrepareCapture(request) = received.recv().await.unwrap() else {
@@ -4875,6 +4883,8 @@ mod tests {
             "test_capture_not_started"
         );
 
+        assert!(matches!(events.try_recv(), Err(mpsc::error::TryRecvError::Empty)));
+
         let invalid = Settings { fps: 0, ..settings };
         let error = prepare_capture(
             &commands,
@@ -4887,6 +4897,7 @@ mod tests {
             false,
             None,
             false,
+            None,
             None,
         )
         .await

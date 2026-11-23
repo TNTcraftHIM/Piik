@@ -3639,7 +3639,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     const publicationId = app.sent.at(-1)!.publicationId as string;
     expect(app.sent.at(-1)).toMatchObject({ type: "prepare_capture", publicationId, roomId: "first", target, audio: true, excludeAudio: excluded, showCaptureBorder: true, encodingExecution: "software" });
     expect(session.nativeCaptureSelection("first")).toBeUndefined();
-    expect(session.nativeCaptureRequest("first")).toEqual({ publicationId, activationURL });
+    expect(session.nativeCaptureRequest("first")).toBeUndefined();
     const captureId = crypto.randomUUID(), nativeSessionId = crypto.randomUUID();
     expect(app.sent.at(-1)?.codecMode).toBe("auto");
     app.receive({ id: app.sent.at(-1)!.id, result: { captureId, sessionId: nativeSessionId, codec: "h264" } });
@@ -3668,12 +3668,12 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     expect(session.sourceMicrophone(publicationId)).toMatchObject({ browser: false, available: true, ...microphone });
     expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true });
     for (const error of ["capture_cancelled", "capture_failed"]) {
+      const previousRequest = app.sent.at(-1)?.id;
       const replacement = session.startNativeScreen("first", target, false).catch(error => error);
-      await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
+      await vi.waitFor(() => expect(app.sent.at(-1)?.id).not.toBe(previousRequest));
+      expect(app.sent.at(-1)?.type).toBe("prepare_capture");
       expect(session.nativeCaptureSelection("first")).toEqual({ target, audio: true, excludeAudio: excluded, showCaptureBorder: true, current: true });
       app.receive({ id: app.sent.at(-1)!.id, error });
-      await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("cancel_capture"));
-      app.receive({ id: app.sent.at(-1)!.id, result: null });
       expect(await replacement).toMatchObject(error === "capture_cancelled" ? { name: "AbortError" } : { message: error });
       expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true });
       expect(session.nativeCaptureSelection("first")).toEqual({ target, audio: true, excludeAudio: excluded, showCaptureBorder: true, current: true });
@@ -4041,6 +4041,7 @@ test.each([
     const prepare = app.sent.at(-1)!;
     socket.receive({ type: "state", state: empty });
     app.receive({ type: "capture_ended", publicationId, captureId: oldCaptureId, failed: false });
+    app.receive({ type: "picker_ready", requestId: prepare.id, captureId });
     expect(session.nativeCaptureRequest("first")?.publicationId).toBe(publicationId);
     expect(app.sent.some(command => command.type === "stop_capture" || command.type === "cancel_capture")).toBe(false);
     app.receive({ id: prepare.id, result: { captureId, sessionId: nativeSessionId, codec: "h264" } });
@@ -4239,8 +4240,11 @@ test("pending Native capture stays page-owned through same-page stop and close",
     const publicationId = request.publicationId as string;
     expect(publicationId).toEqual(expect.any(String));
     expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
-    expect(session.nativeCaptureRequest("first")).toEqual({ publicationId, activationURL });
-    expect(activate).toHaveBeenCalledWith(activationURL);
+    expect(session.nativeCaptureRequest("first")).toBeUndefined();
+    const pendingCapture = crypto.randomUUID();
+    app.receive({ type: "picker_ready", requestId: request.id, captureId: pendingCapture });
+    expect(session.nativeCaptureRequest("first")).toEqual({ publicationId, activationURL: activationURL.replace("media#", `media/${pendingCapture}#`) });
+    expect(activate).not.toHaveBeenCalled();
 
     const listing = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
@@ -4259,14 +4263,26 @@ test("pending Native capture stays page-owned through same-page stop and close",
 
     const failed = session.startNativeScreen("first", target).catch(error => error);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
-    app.receive({ id: app.sent.at(-1)!.id, error: "capture_failed" });
-    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("cancel_capture"));
+    const refusedRequest = app.sent.at(-1)!;
+    app.receive({ id: refusedRequest.id, error: "room_unavailable" });
+    expect((await failed).message).toBe("room_unavailable");
+    app.receive({ type: "picker_ready", requestId: refusedRequest.id, captureId: crypto.randomUUID() });
+    expect(app.sent.at(-1)).toBe(refusedRequest);
     expect(session.nativeCaptureRequest("first")).toBeUndefined();
-    app.receive({ id: app.sent.at(-1)!.id, result: null });
-    expect((await failed).message).toBe("capture_failed");
 
     const closing = session.startNativeScreen("first", target).catch(error => error);
-    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
+    await vi.waitFor(() => expect(app.sent.at(-1)?.id).not.toBe(refusedRequest.id));
+    const successor = app.sent.at(-1)!;
+    expect(successor.type).toBe("prepare_capture");
+    app.receive({ type: "picker_ready", requestId: request.id, captureId: pendingCapture });
+    expect(session.nativeCaptureRequest("first")).toBeUndefined();
+    const nextCapture = crypto.randomUUID();
+    app.receive({ type: "picker_ready", requestId: successor.id, captureId: nextCapture });
+    const nextConfirmation = { publicationId: successor.publicationId, activationURL: activationURL.replace("media#", `media/${nextCapture}#`) };
+    expect(session.nativeCaptureRequest("first")).toEqual(nextConfirmation);
+    app.receive({ type: "picker_ready", requestId: request.id, captureId: pendingCapture });
+    expect(session.nativeCaptureRequest("first")).toEqual(nextConfirmation);
+    expect(activate).not.toHaveBeenCalled();
     expect(session.getSnapshot().ownedScreens.size).toBe(1);
     session.close();
     expect((await closing).message).toBe("app_disconnected");
@@ -12930,7 +12946,9 @@ test("review pending Native picker disconnect retires only that attempt and a ne
   async function connect(socket:ChannelSocket){await socket.onopen?.();socket.receive({id:socket.sent.at(-1)!.id,result:null});await vi.waitFor(()=>expect(session.getSnapshot().appConnected).toBe(true));}
   try {await connect(app);const listing=session.nativeSources();await vi.waitFor(()=>expect(app.sent.at(-1)?.type).toBe("targets"));app.receive({id:app.sent.at(-1)!.id,result:catalog});await listing;
     const pending=session.startNativeScreen("first",target).catch(e=>e);await vi.waitFor(()=>expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
-    expect(session.nativeCaptureRequest("first")?.activationURL).toBe("piik://media");app.close();expect(await pending).toMatchObject({message:"app_disconnected"});
+    const captureId = crypto.randomUUID();
+    app.receive({ type: "picker_ready", requestId: app.sent.at(-1)!.id, captureId });
+    expect(session.nativeCaptureRequest("first")?.activationURL).toContain(`media/${captureId}#Intent`);app.close();expect(await pending).toMatchObject({message:"app_disconnected"});
     expect(session.nativeCaptureRequest("first")).toBeUndefined();expect(session.nativeCaptureSelection("first")).toBeUndefined();
     await vi.waitFor(()=>expect(session.getSnapshot().pending.has("screen:first")).toBe(false));session.clearError();
     const reconnect=session.activateApp();await vi.waitFor(()=>expect(ChannelSocket.current).not.toBe(app));const next=ChannelSocket.current;await connect(next);await reconnect;
@@ -13877,7 +13895,8 @@ test.each(["dismiss", "cancel picker", "use browser", "retire OBS"] as const)(
   },
 );
 
-test("waiting OBS permit survives cancellation of a different Native screen candidate", async () => {
+test.each(["cancel screen", "reject then OBS ready", "OBS ready then reject"] as const)(
+  "an armed OBS input survives a different Native screen preparation: %s", async order => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({
     service: "piik-channel-app",
     protocol: appLink.APP_PROTOCOL,
@@ -13901,24 +13920,34 @@ test("waiting OBS permit survives cancellation of a different Native screen cand
     });
     await opening;
     const original = session.externalInput("first");
-    const selecting = session.startNativeScreen("first", {
-        kind: "display",
-        sourceId: "owned-native-B",
-        title: "Owned Native B",
-      }),
-      rejected = expect(selecting).rejects.toMatchObject({ name: "AbortError" });
+    const selecting = session.startNativeScreen("first", { kind: "display", sourceId: "owned-native-B", title: "Owned Native B" });
+    const rejected = expect(selecting).rejects.toMatchObject(order === "cancel screen" ? { name: "AbortError" } : { message: "capture_pending" });
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const preparing = app.sent.at(-1)!;
-    const cancel = session.cancelScreenSelection("first");
-    expect(app.sent.at(-1)).toMatchObject({ type: "cancel_capture", publicationId });
-    app.receive({ id: app.sent.at(-1)!.id, result: null });
-    await cancel;
-    app.receive({ id: preparing.id, error: "capture_cancelled" });
-    await rejected;
-    expect(session.externalInput("first")).toEqual(original);
+    if (order === "cancel screen") {
+      const cancel = session.cancelScreenSelection("first");
+      expect(app.sent.at(-1)).toMatchObject({ type: "cancel_capture", publicationId });
+      app.receive({ id: app.sent.at(-1)!.id, result: null });
+      await cancel;
+      app.receive({ id: preparing.id, error: "capture_cancelled" });
+      await rejected;
+      expect(session.externalInput("first")).toEqual(original);
+      expect(session.getSnapshot().error).toBeNull();
+    } else {
+      const ready = { type: "external_input_state", state: "prepared", publicationId, captureId: crypto.randomUUID(), sessionId: crypto.randomUUID(), codec: "h264" };
+      if (order === "OBS ready then reject") app.receive(ready);
+      app.receive({ id: preparing.id, error: "capture_pending" });
+      await rejected;
+      if (order === "reject then OBS ready") app.receive(ready);
+      await vi.waitFor(() => expect(app.sent.at(-1)).toMatchObject({ type: "commit_capture", captureId: ready.captureId }));
+      app.receive({ ...ready, state: "live" });
+      app.receive({ id: app.sent.at(-1)!.id, result: null });
+      await vi.waitFor(() => expect(session.sourceSelectionCommitting("first")).toBe(false));
+      expect(session.externalInput("first")).toMatchObject({ state: "live", captureId: ready.captureId });
+      expect(app.sent.some(command => command.type === "cancel_capture")).toBe(false);
+    }
     expect(app.sent.some((c) => c.type === "cancel_external_input")).toBe(false);
     expect(app.sent.some((c) => c.type === "stop_capture")).toBe(false);
-    expect(session.getSnapshot().error).toBeNull();
   } finally {
     session.close();
   }

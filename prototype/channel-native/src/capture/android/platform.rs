@@ -100,13 +100,13 @@ pub(super) struct Platform {
     vm: Arc<JavaVM>,
 }
 impl Platform {
-    pub fn new(audio: bool) -> Result<Self> {
-        Self::create(audio, None)
+    pub fn new(audio: bool, capture_id: uuid::Uuid) -> Result<Self> {
+        Self::create(Some(audio), capture_id.to_string())
     }
     pub fn microphone(device_id: String) -> Result<Self> {
-        Self::create(false, Some(device_id))
+        Self::create(None, device_id)
     }
-    fn create(audio: bool, microphone: Option<String>) -> Result<Self> {
+    fn create(screen_audio: Option<bool>, id: String) -> Result<Self> {
         let context = ndk_context::android_context();
         // Application global reference and VM are installed before app::serve starts.
         let vm = Arc::new(unsafe { JavaVM::from_raw(context.vm().cast()) });
@@ -123,10 +123,10 @@ impl Platform {
                 .l()?;
             let name = JString::from_str(
                 env,
-                if microphone.is_some() {
-                    "tv.piik.android.MicrophonePlatform"
-                } else {
+                if screen_audio.is_some() {
                     "tv.piik.android.CapturePlatform"
+                } else {
+                    "tv.piik.android.MicrophonePlatform"
                 },
             )?;
             let class = env
@@ -138,18 +138,18 @@ impl Platform {
                 )?
                 .l()?;
             let class = jni::objects::JClass::cast_local(env, class)?;
-            let instance = if let Some(device_id) = microphone {
-                let device = JString::from_str(env, device_id)?;
+            let id = JString::from_str(env, id)?;
+            let instance = if let Some(audio) = screen_audio {
                 env.new_object(
                     class,
-                    jni_sig!((android.content.Context, java.lang.String) -> void),
-                    &[(&*app).into(), (&device).into()],
+                    jni_sig!((android.content.Context, java.lang.String, boolean) -> void),
+                    &[(&*app).into(), (&id).into(), audio.into()],
                 )?
             } else {
                 env.new_object(
                     class,
-                    jni_sig!((android.content.Context, boolean) -> void),
-                    &[(&*app).into(), audio.into()],
+                    jni_sig!((android.content.Context, java.lang.String) -> void),
+                    &[(&*app).into(), (&id).into()],
                 )?
             };
             Ok(env.new_global_ref(instance)?)

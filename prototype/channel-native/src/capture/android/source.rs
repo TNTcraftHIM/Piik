@@ -41,14 +41,14 @@ pub struct Capture {
     thread: Option<thread::JoinHandle<Result<()>>>,
 }
 impl Capture {
-    pub fn start(target: Target, fps: u32, audio: bool) -> Result<Self> {
+    pub fn start(target: Target, fps: u32, audio: bool, capture_id: uuid::Uuid) -> Result<Self> {
         ensure!(
             matches!(target.kind, TargetKind::Picker),
             "Android capture uses the system picker"
         );
         ensure!(fps > 0, "invalid source FPS");
         let frames = Frames::new()?;
-        let platform = Platform::new(audio)?;
+        let platform = Platform::new(audio, capture_id)?;
         let worker = frames.clone();
         let projection = platform.clone();
         let fps = Arc::new(AtomicU32::new(fps));

@@ -15,7 +15,7 @@ public final class AppRuntimeService extends Service {
   NativeRuntime runtime;
   CompletableFuture<NativeRuntime> startup;
   Throwable failure;
-  final java.util.ArrayDeque<CaptureRequest> captureRequests = new java.util.ArrayDeque<>();
+  final ConcurrentLinkedQueue<CaptureRequest> captureRequests = new ConcurrentLinkedQueue<>();
   int projections, microphones;
 
   @Override

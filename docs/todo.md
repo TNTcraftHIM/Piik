@@ -45,9 +45,9 @@ the feedback period; they do not delay that delivery.
   capture the failed source request's elapsed time and outcome. If App control
   disconnects during webpage selection, capture its first close diagnostic to
   distinguish a control failure from a picker timeout or enumeration failure.
-  On Android, retire the selecting Activity when room admission fails before
-  the system picker opens, including when its launch arrives after rejection
-  and another selection is pending.
+  On Android, verify request-scoped system selection on the matching package:
+  rejected admission, cancellation with the picker open, and a cancelled
+  request's delayed intent while another selection is pending.
 - [ ] **Member-video viewing on the reporting network.** Verify the authorized
   source with the updated App and Browser on that network. Record the selected
   player and sharing mode, then locate any remaining source-access or delivery failure.

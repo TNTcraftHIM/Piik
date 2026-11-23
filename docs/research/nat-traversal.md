@@ -36,12 +36,8 @@ findings. Names of libraries or packaged classes do not prove active relay use.
 
 ## Rust Integration
 
-The 3.0 Native adapter retains str0m's ICE/DTLS/SCTP and adopts the actual prepared
-socket through its public transport boundary. Preparation has one authorized pair,
-deadline and socket owner; it adds no VPN, second graph or media wrapper. The
-[network model](./channel-network-design.md#reachability-and-repair) owns exact
-admission and budgets, including ordinary fallback and process-wide random-pool
-capacity. Capacity refusal does not queue another pool or extend the deadline.
+The [network model](./channel-network-design.md#reachability-and-repair) defines
+Native UDP preparation, its socket and request budgets, and ordinary ICE fallback.
 
 For stable/sequential observations, the stable side retains its survey socket.
 The bounded targets are `last + 4*step` and `last + 8*step`; authentication fixes

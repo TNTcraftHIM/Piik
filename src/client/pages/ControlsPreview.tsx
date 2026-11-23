@@ -47,7 +47,8 @@ const previewApplications = async () => SOURCES.sources;
 export function ControlsPreview() {
   const { t, lang } = useCopy();
   const en = lang === "en";
-  const displayPreview = new URLSearchParams(window.location.search).get("source") === "display";
+  const sourceDemo = new URLSearchParams(window.location.search).get("source");
+  const displayPreview = sourceDemo === "display";
   const [sound, setSound] = useState(true);
   const [operationNotice, setOperationNotice] = useState(true);
   const [commentary, setCommentary] = useState(false);
@@ -75,9 +76,9 @@ export function ControlsPreview() {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [name, setName] = useState("Piik friend");
   const [invalid, setInvalid] = useState(false);
-  const [sourceOpen, setSourceOpen] = useState(displayPreview);
+  const [sourceOpen, setSourceOpen] = useState(displayPreview || sourceDemo === "android");
   const [sourceRevision, setSourceRevision] = useState(0);
-  const [systemSourcePicker, setSystemSourcePicker] = useState(false);
+  const [systemSourcePicker, setSystemSourcePicker] = useState(sourceDemo === "android");
   const [browserCaptureSupported, setBrowserCaptureSupported] = useState(true);
   const [nativePermissionPreview, setNativePermissionPreview] = useState(false);
   const sourceTargets: NativeCaptureTarget[] = systemSourcePicker
@@ -306,9 +307,17 @@ export function ControlsPreview() {
           onExternalInput={sourceState === "ready" || sourceState === "refreshing" || sourceState === "empty"
             ? () => { setSourceOpen(false); notify(); } : undefined}
           loadCameras={previewCameras}
-          onNative={(_target, _audio, showBorder) => { setShowCaptureBorder(showBorder); setSourceOpen(false); notify(); }}
+          onNative={(target, _audio, showBorder) => {
+            setShowCaptureBorder(showBorder); setSourceOpen(false);
+            setNativePermissionPreview(target.kind === "picker");
+            if (target.kind !== "picker") notify();
+          }}
           onPreview={previewSource} onRefresh={() => setSourceState("refreshing")} onCancel={() => setSourceOpen(false)} />
-          : <div className="cp-stage-action"><Btn icon="cast" tone="primary" title="host.start" cap="host.start" hint="hint-share-start" onClick={() => setSourceOpen(true)} /></div>}
+          : nativePermissionPreview ? <div className="cp-stage-action">
+            <Btn icon="window" tone="primary" title="native.confirmInApp" cap="native.confirmInApp"
+              onClick={() => { setNativePermissionPreview(false); notify(); }} />
+            <Btn icon="x" quiet title="common.cancel" cap="common.cancel" onClick={() => setNativePermissionPreview(false)} />
+          </div> : <div className="cp-stage-action"><Btn icon="cast" tone="primary" title="host.start" cap="host.start" hint="hint-share-start" onClick={() => setSourceOpen(true)} /></div>}
       </StageTv></div>
     </section>
     <section id="playback-preview" className="cp-section">
@@ -329,12 +338,6 @@ export function ControlsPreview() {
           onToggleTheater={() => setTheater(!theater)} onReconnect={notify} reconnectAvailable />
       </StageTv></div></div>
       <p><a href="/__playback-preview">{en ? "Open the full playback preview" : "进入完整播放预览"} →</a></p>
-      <SwitchItem checked={nativePermissionPreview} onChange={setNativePermissionPreview}
-        label={t("native.confirmInApp")} />
-      {nativePermissionPreview && <div className="cp-stage"><StageTv label={t("native.confirmInApp")}>
-        <StageOverlay icon="window" comic="source-starting" tone="busy" message={t("native.confirmInApp")}
-          onActivate={() => { setNativePermissionPreview(false); notify(); }} />
-      </StageTv></div>}
     </section>
     <section id="launcher-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">08</span><h2>{t("client.launch.title")}</h2></header>

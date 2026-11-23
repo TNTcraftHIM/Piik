@@ -20,7 +20,10 @@ and Android's certificate trust. Gradle reads the paired Android artifact
 version from the JNI crate's Cargo lock. No Go business core or gomobile AAR is
 used by this shell. The independent cloudflared helper remains Go-built.
 
-Screen/app selection uses Android's system picker. One MediaProjection owns the
+After room admission, the Android App registers the screen request and the
+selecting page shows **Confirm in App**. Tapping it opens Android's system picker
+for that capture ID. Cancelled selections cannot claim a later request.
+One MediaProjection owns the
 image source and optional playback sound; Rust encodings use the shared Native
 producer and source clock. Permission and first-frame waits belong to the
 selecting page and use the same stop operation as active capture. The

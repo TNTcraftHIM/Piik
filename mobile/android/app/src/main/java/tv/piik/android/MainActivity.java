@@ -26,7 +26,11 @@ public final class MainActivity extends Activity {
     boolean projectionRequest, audioRequest;
   }
   private PendingCapture pending;
-  boolean mediaEntry() { return getIntent().getData() != null && "piik://media".equals(getIntent().getData().toString()); }
+  boolean mediaEntry() {
+    Uri uri = getIntent().getData();
+    return uri != null && "piik".equals(uri.getScheme()) && "media".equals(uri.getAuthority())
+        && uri.getQuery() == null && uri.getFragment() == null && uri.getPathSegments().size() <= 1;
+  }
   boolean wakeEntry() {
     return getIntent().getData() != null && "piik://app".equals(getIntent().getData().toString());
   }
@@ -88,6 +92,12 @@ public final class MainActivity extends Activity {
     super.onStart();
     current = this;
     visible = true;
+    // A keyed handoff can only claim a request from an already running Service.
+    if (mediaEntry() && getIntent().getData().getLastPathSegment() != null) {
+      if (AppRuntimeService.instance == null) finish();
+      else captureAvailable();
+      return;
+    }
     // Service foreground readiness precedes reopening even an existing runtime.
     startForegroundService(new Intent(this, AppRuntimeService.class));
   }
@@ -147,7 +157,13 @@ public final class MainActivity extends Activity {
     AppRuntimeService service = AppRuntimeService.instance;
     if (service == null) return;
     if (pending.capture == null) {
-      pending.capture = service.captureRequests.poll();
+      String captureId = getIntent().getData().getLastPathSegment();
+      for (CaptureRequest candidate : service.captureRequests) {
+        boolean matches = candidate instanceof CapturePlatform screen
+            ? screen.captureId.equals(captureId) : captureId == null;
+        if (matches && service.captureRequests.remove(candidate)) { pending.capture = candidate; break; }
+      }
+      if (captureId != null && pending.capture == null) { finish(); return; }
       if (pending.capture != null) pending.capture.presented(this);
     }
     CaptureRequest capture = pending.capture;

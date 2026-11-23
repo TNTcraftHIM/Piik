@@ -161,6 +161,11 @@ async fn native_and_external_cancellation_keep_the_other_preparation_owner() -> 
         // The explicit operation also cancels authorization before a permit exists.
         send!(json!({"id":"early-obs","type":"prepare_external_input","publicationId":publication,"roomId":"room"}));
         let HostCommand::AuthorizeInput { result, .. } = timeout(Duration::from_secs(3), requests.recv()).await?.unwrap() else { panic!("expected input authorization") };
+        send!(capture("busy-screen"));
+        ensure!(reply(&replies(&mut socket, &["busy-screen"]).await, "busy-screen")["error"] == "capture_pending");
+        send!(json!({"id":"cancel-screen","type":"cancel_capture","publicationId":publication}));
+        ensure!(reply(&replies(&mut socket, &["cancel-screen"]).await, "cancel-screen")["error"].is_null());
+        ensure!(!result.is_closed(), "screen cancellation took the pending OBS authorization");
         send!(json!({"id":"cancel-early","type":"cancel_external_input","publicationId":publication}));
         let cancelled = replies(&mut socket, &["early-obs", "cancel-early"]).await;
         ensure!(reply(&cancelled, "early-obs")["error"] == "capture_cancelled");

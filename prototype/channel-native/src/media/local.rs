@@ -184,6 +184,12 @@ impl Producer {
         let now = Instant::now();
         let clock = SystemInstant::now(now);
         anyhow::ensure!(mode.initial().supported(), "capture_codec_unsupported");
+        let video = Uuid::new_v4();
+        #[cfg(target_os = "android")]
+        let capture = {
+            let _ = (show_capture_border, execution);
+            Capture::start(target.clone(), settings.fps, audio, video)
+        };
         #[cfg(target_os = "windows")]
         let capture = Capture::start(
             target.clone(),
@@ -192,7 +198,7 @@ impl Producer {
             show_capture_border,
             execution,
         );
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(not(any(target_os = "windows", target_os = "android")))]
         let capture = {
             let _ = (show_capture_border, execution);
             Capture::start(target.clone(), settings.fps, audio)
@@ -238,7 +244,6 @@ impl Producer {
             video_settings,
             video_requests,
         };
-        let video = Uuid::new_v4();
         let (ready, started) = oneshot::channel();
         let (demands, requests) = watch::channel(Vec::new());
         let task = tokio::spawn(encodings::run(

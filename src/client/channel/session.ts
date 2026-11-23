@@ -3442,7 +3442,7 @@ export class ChannelSession {
     const signal = selection.controller.signal;
     const native = { target, audio, excludeAudio: target.kind === "display" ? excludeAudio : undefined, showCaptureBorder };
     let app: ChannelApp | undefined;
-    let committed = false;
+    let ownsPreparation = false;
     try {
       app = await this.connectApp();
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
@@ -3452,13 +3452,14 @@ export class ChannelSession {
         audio ? native.excludeAudio : undefined, share.volume.muted ? 0 : share.volume.level, showCaptureBorder);
       this.patch({});
       const prepared = await preparing;
+      ownsPreparation = true;
       if (!current() || this.app !== app) throw new DOMException("Capture cancelled", "AbortError");
       selection.committing = true;
       this.patch({});
       if (this.local.has(share.id)) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: prepared.sessionId }, undefined, roomId);
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       await app.commitCapture(share.id, prepared.captureId);
-      committed = true;
+      ownsPreparation = false;
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       share.native = native;
       share.paused = undefined;
@@ -3467,7 +3468,7 @@ export class ChannelSession {
       this.patch({});
       await this.previewCommittedCapture(roomId, share.id, () => current() && this.app === app, signal);
     } catch (error) {
-      if (!committed) await app?.cancelCapture(share.id).catch(() => {});
+      if (ownsPreparation) await app?.cancelCapture(share.id).catch(() => {});
       throw error;
     } finally { this.finishScreenSelection(roomId, share, selection); }
   });

@@ -12,7 +12,7 @@ import { appApprovalURL, appManagementURL, discoverLocalApp, type AppDiscovery, 
 import { nativeCaptureTargetSchema, nativeVideoCodecSchema, remoteControlStateSchema, remoteStopShortcutSchema, type NativeCaptureTarget, type EncodingExecution } from "../native/wire";
 import { remoteShortcutKeySchema, type RemoteControlMode } from "../remote-control/protocol";
 import type { QualityProfile } from "../media/quality";
-import { activateNativePicker } from "../native/activation";
+import { activateNativePicker, androidAppIntent } from "../native/activation";
 import { NativeRoomHosting } from "./hosting-api";
 import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
@@ -20,7 +20,7 @@ import { debugEvent, debugOperation } from "../lib/debug";
 import { nativeVoiceShortcutEventSchema, nativeVoiceShortcutsReportSchema, type NativeVoiceShortcutsReport } from "../native/wire";
 import type { VoiceShortcutAction, VoiceShortcuts } from "./voice-shortcut-binding";
 
-export const APP_PROTOCOL = 23;
+export const APP_PROTOCOL = 24;
 const APP_REQUEST_BYTES = 256 * 1024;
 const SOURCE_LIST_TIMEOUT_MS = 8_000;
 const SHORTCUT_ACTION_MAX_AGE_MS = 1_000;
@@ -88,6 +88,7 @@ export type NativeExternalInput = z.infer<typeof externalInputSchema> & { state:
 const previewSchema = z.string().max(23 + 4 * Math.ceil(64 * 1024 / 3))
   .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/).nullable();
 const captureAudioFailureSchema = z.object({ type: z.literal("capture_audio_failed"), publicationId: z.uuid() }).strict();
+const pickerReadySchema = z.object({ type: z.literal("picker_ready"), requestId: z.uuid(), captureId: z.uuid() }).strict();
 const captureEndedSchema = z.object({ type: z.literal("capture_ended"), publicationId: z.uuid(), captureId: z.uuid(), failed: z.boolean() }).strict();
 const microphoneSchema = z.object({ enabled: z.boolean(), deviceId: z.string(), volume: z.number().min(0).max(2) }).strict();
 export type NativeSourceMicrophone = z.infer<typeof microphoneSchema>;
@@ -255,7 +256,7 @@ export interface BackgroundVoiceShortcuts {
 /** Hosting survives this link; captures selected through it belong to this page. */
 export class ChannelApp {
   private socket: WebSocket;
-  private requests = new Map<string, { command: AppCommand; resolve(value: unknown): void; reject(error: Error): void }>();
+  private requests = new Map<string, { command: AppCommand; pickerURL?: string; resolve(value: unknown): void; reject(error: Error): void }>();
   readonly ready: Promise<void>;
   private rejectReady!: (error: Error) => void;
   private authenticated = false;
@@ -263,7 +264,7 @@ export class ChannelApp {
   private captures = new Map<string, { id: string; kind: "capture" | "external" }>();
   private externalInputs = new Map<string, NativeExternalInput>();
   private audioStates = new Map<string, z.infer<typeof audioStateSchema>>();
-  private prepared = new Map<string, "capture" | "external">();
+  private prepared = new Map<string, { requestId: string } | "external">();
   private activationURL?: string;
   private processAudioExclusion = false;
   private captureCodecs: NativeCaptureSources["codecs"] = [];
@@ -283,14 +284,19 @@ export class ChannelApp {
   externalInput(publicationId: string): NativeExternalInput | undefined { return this.externalInputs.get(publicationId); }
   supportsCaptureCodec(codec: NativeCaptureSources["codecs"][number]): boolean { return this.captureCodecs.includes(codec); }
 
+  private screenPreparation(publicationId: string) {
+    const pending = this.prepared.get(publicationId);
+    return pending === "external" ? undefined : pending;
+  }
+
   captureRequest(roomId: string): NativeCaptureRequest | undefined {
     if (!this.activationURL) return;
     let microphone: NativeCaptureRequest | undefined;
-    for (const { command } of this.requests.values()) {
+    for (const [requestId, { command, pickerURL }] of this.requests) {
       const { publicationId } = command;
       if (command.roomId !== roomId || !publicationId) continue;
-      if (command.type === "prepare_capture" && this.prepared.has(publicationId)) {
-        return { publicationId, activationURL: this.activationURL };
+      if (command.type === "prepare_capture" && pickerURL && this.screenPreparation(publicationId)?.requestId === requestId) {
+        return { publicationId, activationURL: pickerURL };
       }
       if (command.type === "capture_microphone" && this.captures.get(publicationId)?.id === command.captureId) {
         // An off command can supersede a device change before its reply arrives.
@@ -304,7 +310,7 @@ export class ChannelApp {
   constructor(verifiedHealth: unknown, channelId: string, userId: string, credential: string, name: string,
     private readonly onClose: () => void, onCaptureState: (publicationId: string, error?: "capture_audio_failed" | "capture_failed") => void,
     onInputState: (publicationId: string, state: ChannelRemoteControlState) => void = () => {},
-    private readonly onAudioState: (publicationId: string) => void = () => {},
+    private readonly onCaptureControlsChanged: (publicationId: string) => void = () => {},
     onExternalInput: (event: NativeExternalInputState) => void = () => {},
     canReceiveVoiceShortcut: () => boolean = () => false) {
     const health = healthSchema.parse(verifiedHealth);
@@ -353,6 +359,19 @@ export class ChannelApp {
           this.pages.get(event.pageId)?.receive(event);
           return;
         }
+        if (reply.type === "picker_ready") {
+          const { requestId, captureId } = pickerReadySchema.parse(reply);
+          const request = this.requests.get(requestId);
+          const publication = request?.command.publicationId;
+          if (request?.command.type === "prepare_capture" && publication && this.screenPreparation(publication)?.requestId === requestId) {
+            const intent = androidAppIntent(this.activationURL);
+            if (intent?.startsWith("intent://media#Intent")) {
+              request.pickerURL = intent.replace("media#Intent", `media/${captureId}#Intent`);
+              this.onCaptureControlsChanged(publication);
+            }
+          }
+          return;
+        }
         if (reply.type === "input_state") {
           const event = inputStateSchema.parse(reply);
           failure = "consumer";
@@ -391,7 +410,7 @@ export class ChannelApp {
           failure = "consumer";
           if (this.captures.has(publicationId) || this.prepared.has(publicationId)) {
             this.audioStates.set(publicationId, state);
-            onAudioState(publicationId);
+            this.onCaptureControlsChanged(publicationId);
           }
           return;
         }
@@ -565,18 +584,22 @@ export class ChannelApp {
       fps: profile.maxFramerate, bitrate: profile.maxBitrate, degradationPreference: profile.degradationPreference };
     if (!this.connected) throw new Error("app_disconnected");
     if (excludeAudio && (!audio || target.kind !== "display" || excludeAudio.kind !== "window" || !this.processAudioExclusion)) throw new Error("audio exclusion unavailable");
-    this.prepared.set(publicationId, "capture");
+    const preparation = { requestId: crypto.randomUUID() };
+    this.prepared.set(publicationId, preparation);
+    let reply: unknown;
     try {
-      const pending = this.request({ type: "prepare_capture", publicationId, roomId, target, audio, settings, codecMode, encodingExecution, showCaptureBorder,
-        audioSettings: { bitrate: profile.maxAudioBitrate ?? 128_000, gain }, ...(excludeAudio ? { excludeAudio } : {}) });
-      activateNativePicker(this.activationURL);
-      const capture = preparedCaptureSchema.parse(await pending);
-      if (!this.prepared.has(publicationId)) throw new DOMException("Capture cancelled", "AbortError");
-      return capture;
+      reply = await this.request({ type: "prepare_capture", publicationId, roomId, target, audio, settings, codecMode, encodingExecution, showCaptureBorder,
+        audioSettings: { bitrate: profile.maxAudioBitrate ?? 128_000, gain }, ...(excludeAudio ? { excludeAudio } : {}) }, preparation.requestId);
     } catch (error) {
-      await this.cancelCapture(publicationId).catch(() => {});
+      // A rejected prepare owns no lease. Another source may still be preparing.
+      if (this.prepared.get(publicationId) === preparation) this.prepared.delete(publicationId);
       throw error;
     }
+    if (this.prepared.get(publicationId) !== preparation) throw new DOMException("Capture cancelled", "AbortError");
+    const capture = preparedCaptureSchema.safeParse(reply);
+    if (capture.success) return capture.data;
+    await this.cancelCapture(publicationId).catch(() => {});
+    throw capture.error;
   }
 
   async prepareExternalInput(publicationId: string, roomId: string): Promise<void> {
@@ -596,7 +619,7 @@ export class ChannelApp {
 
   hasSourceAudioControl(publicationId: string): boolean {
     return this.connected && this.captures.get(publicationId)?.kind !== "external"
-      && (this.captures.has(publicationId) || this.prepared.get(publicationId) === "capture");
+      && (this.captures.has(publicationId) || !!this.screenPreparation(publicationId));
   }
 
   sourceMicrophone(publicationId: string): NativeSourceMicrophone | undefined {
@@ -625,7 +648,7 @@ export class ChannelApp {
     const applied = microphoneSchema.parse(await pending);
     if (this.captures.get(publicationId)?.id !== captureId) throw new DOMException("Capture cancelled", "AbortError");
     this.audioStates.set(publicationId, { sourceAudio: this.audioStates.get(publicationId)?.sourceAudio ?? false, microphone: applied });
-    this.onAudioState(publicationId);
+    this.onCaptureControlsChanged(publicationId);
   }
 
   async setCapturePaused(publicationId: string, paused: boolean): Promise<void> {

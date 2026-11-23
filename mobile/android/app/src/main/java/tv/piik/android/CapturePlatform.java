@@ -30,22 +30,20 @@ public final class CapturePlatform implements CaptureRequest {
     public void onDisplayChanged(int id) { if (Build.VERSION.SDK_INT < 34) screenSize(); }
   };
 
-  public CapturePlatform(Context context, boolean audioRequested) {
+  final String captureId;
+
+  public CapturePlatform(Context context, String captureId, boolean audioRequested) {
+    this.captureId = captureId;
     this.context = context.getApplicationContext();
     this.audioRequested = audioRequested;
     screenSize();
     texture.setOnFrameAvailableListener(ignored -> {
       synchronized (this) { if (!closed) { frame = true; notifyAll(); } }
     }, AppRuntimeService.main);
-    AppRuntimeService.main.post(() -> {
-      synchronized (this) {
-        if (closed) return;
-        service = AppRuntimeService.instance;
-        if (service == null) { fail("App runtime stopped"); return; }
-        service.captureRequests.add(this);
-        service.notifyActivity();
-      }
-    });
+    // JNI returns the lease only after this exact picker is available to claim.
+    service = AppRuntimeService.instance;
+    if (service == null) { dispose(); throw new IllegalStateException("App runtime stopped"); }
+    service.captureRequests.add(this);
   }
   public SurfaceTexture texture() { return texture; }
   public synchronized boolean isClosed() { return closed; }
