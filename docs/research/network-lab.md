@@ -388,6 +388,15 @@ source slots, median planning time fell from 125.2 to 6.6 µs. With only
 two source slots the same comparison measured 183.4 and 181.5 µs. Each
 measurement is the median of five batches of 200 plans on one machine.
 
+At `b079e283`, 911 of the same 1,024 graphs used a relay to deliver one
+screen over confirmed links with one output per endpoint. Removing each
+active relay in turn gave 2,127 departures. Once routing settled, every case
+reached the maximum viewer count obtainable while keeping the healthy part
+of the original path. Rebuilding the whole path could serve one more viewer
+in 194 cases, each requiring a change to a healthy viewer's path. The fixture
+supplied decode and switch evidence. NAT traversal and frame gaps require
+measurements on live connections.
+
 ### Screen Capacity With An Unreachable First Viewer
 
 Nine loopback Chromium runs at `0fb4f74a` kept channel signaling available

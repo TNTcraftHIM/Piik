@@ -13,7 +13,7 @@ import type { AppReleaseIdentity } from "../../lib/release-update";
 import { useReleaseUpdate } from "../../lib/use-release-update";
 import { AppReleaseNotice } from "./AppReleaseNotice";
 import { channelAppDiscovery } from "../../channel/app-link";
-import { OpenInClient } from "./OpenInClient";
+import { OpenInClient, type AppNavigationIssue } from "./OpenInClient";
 import { currentTheme, subscribeTheme } from "../../ui/theme";
 import type {} from "../../ui/native-window";
 import { diagnoseChannelFact, type AppConnectionState } from "../../channel/diagnosis";
@@ -55,6 +55,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
   const [automaticHint, setAutomaticHint] = useState(false);
   const [build, setBuild] = useState<AppReleaseIdentity>();
   const [management, setManagement] = useState<{ url: string; updateSupported: boolean }>();
+  const [navigationIssue, setNavigationIssue] = useState<AppNavigationIssue | null>(null);
   const { update: release, refresh: checkRelease } = useReleaseUpdate(build);
   function rememberBuild(health: (Partial<AppReleaseIdentity> & { updateSupported?: boolean; managementURL?: string }) | null) {
     setManagement(health?.managementURL ? { url: health.managementURL, updateSupported: health.updateSupported === true } : undefined);
@@ -263,18 +264,25 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
 
   const busy = state === "busy" || state === "waking" || state === "approving";
   const ready = state === "ready" && connected !== false;
-  const label = t(({
+  useEffect(() => {
+    if (!ready) return;
+    // Confirmed App readiness supersedes earlier discovery failures.
+    setNavigationIssue(issue => issue === "unavailable" || issue === "incompatible" ? null : issue);
+  }, [ready]);
+  const failed = state === "unavailable" || state === "incompatible";
+  const diagnosis = diagnoseChannelFact({ area: "app", state });
+  const label = t(state === "approval" || failed ? diagnosis!.message : ({
     idle: "client.connect.action",
     waking: "client.connect.returnToBrowser",
     busy: "client.connect.discovering",
-    approval: "client.connect.found",
     approving: "client.connect.approving",
     ready: connected === false ? "client.connect.action" : "client.connect.manage",
-    unavailable: "client.connect.unavailable",
-    incompatible: "native.incompatible",
   } as const)[state]);
-  const failed = state === "unavailable" || state === "incompatible";
-  const diagnosis = diagnoseChannelFact({ area: "app", state });
+  const navigationDiagnosis = navigationIssue === "unavailable" || navigationIssue === "incompatible"
+    ? diagnoseChannelFact({ area: "app", state: navigationIssue }) : null;
+  const navigationMessage = navigationIssue === "unsupported" ? "client.connect.navigationUnsupported"
+    : navigationIssue === "popup-blocked" ? "client.connect.navigationPopupBlocked" : navigationDiagnosis?.message;
+  const helpDiagnosis = state === "incompatible" ? diagnosis : navigationDiagnosis ?? diagnosis;
   const update = ready ? release : null;
   const availableUpdate = update?.kind === "update-available" || update?.kind === "major-update";
   const title = availableUpdate ? t("client.connect.update", { current: build!.version, version: update.version }) : label;
@@ -303,6 +311,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
     <div ref={help} id={helpId} popover="auto" role="dialog" aria-label={t("client.connect.action")} aria-describedby={`${helpId}-message`}
       className="lr-anchored-card lr-app-connect-help" onToggle={event => {
         setHelpOpen(event.newState === "open");
+        if (event.newState === "closed") setNavigationIssue(null);
         if (event.newState === "closed" && !pending.current?.popup) pending.current?.cancel?.();
         if (event.newState !== "open" || !trigger.current) return;
         if (ready) checkRelease();
@@ -317,7 +326,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
           <Glyph name="x" size={16} />
         </button>
       </div>
-      <p id={`${helpId}-message`}>{state === "busy" ? t("client.connect.permissionHint") : diagnosis ? t(diagnosis.message) : label}</p>
+      <p id={`${helpId}-message`}>{state === "busy" ? t("client.connect.permissionHint") : label}</p>
       {state === "ready" && build && <p className="lr-app-connect-version">
         <span>{t("client.launch.version", { version: build.version })}</span>
 
@@ -331,9 +340,10 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
           <Glyph name="window" size={16} /><span>{t("client.connect.wakeApp")}</span>
         </a>}
       </div>
-      {helpOpen && diagnosis && <ChannelDiagnosisHelp diagnosis={diagnosis} />}
       {targetURL && !(typeof window !== "undefined" && window.piikNativeWindow) && <OpenInClient
-        discovery={discovery} targetURL={targetURL} active={helpOpen} disabled={busy} />}
+        discovery={discovery} targetURL={targetURL} active={helpOpen} disabled={busy} onIssue={setNavigationIssue} />}
+      {navigationMessage && navigationMessage !== diagnosis?.message && <p role="status">{t(navigationMessage)}</p>}
+      {helpOpen && helpDiagnosis && <ChannelDiagnosisHelp diagnosis={helpDiagnosis} />}
       {state !== "ready" && <p className="lr-app-connect-optional">{t("client.connect.browserHint")}</p>}
     </div>
   </>;

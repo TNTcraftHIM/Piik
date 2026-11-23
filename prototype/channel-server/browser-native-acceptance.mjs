@@ -30,7 +30,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
   const assets = resolve(process.env.PIIK_CHANNEL_APP_WEB_DIR ?? "build/channel-web");
   const executable = resolve(process.env.CHANNEL_APP_EXECUTABLE ??
     `prototype/channel-server/target/debug/piik-channel-app${process.platform === "win32" ? ".exe" : ""}`);
-  const url = `${origin}/__channel-preview?piik-client-port=${port}#piik-client=1`;
+  const url = `${origin}/__channel-preview#piik-client=1&piik-client-port=${port}`;
   let app, otherServer, otherWeb, approvalTab, personalTab, log = "";
   const sourceLayers = [];
   const start = () => {
@@ -499,7 +499,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await approve(otherOrigin);
     const firstDomainTab = (await browser(0, "tab")).tabs.find(tab => tab.active).targetId;
     await browser(0, "tab", "new",
-      `${otherOrigin}/__channel-preview?piik-client-port=${port}#owner=${otherOwner}&piik-client=1`);
+      `${otherOrigin}/__channel-preview#owner=${otherOwner}&piik-client=1&piik-client-port=${port}`);
     await until("second Site admits its own Browser user", () => view(0), value => value.connection === "connected");
     await appReady(0);
     const otherIdentity = (await view(0)).self.id;

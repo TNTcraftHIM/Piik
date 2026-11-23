@@ -209,6 +209,12 @@ site's creation policy, ask the site owner which rooms guests can create.
 If the WebSocket connection itself returns HTTP 403, check the proxy logs,
 the upstream service and the browser's exact origin. [3.0 runtime setup](../../prototype/channel-server/README.md#run)
 
+### The page cannot connect to App
+
+Open Piik App and keep it running. Click **App → Retry** in the webpage, then
+allow local-network access if your browser asks. If the **Open App page** button
+does not open the approval page, allow popups for this site and try again.
+
 ### App and page versions are incompatible
 
 Ask the site administrator for the 3.0 test package that matches this site.

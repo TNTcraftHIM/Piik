@@ -63,6 +63,7 @@ interface PendingHistory {
   before?: number;
   replace: boolean;
   refreshThrough?: number;
+  latestThrough?: number;
   entries: Map<number, { message?: ChannelMessage; snapshot?: MessageReactionSnapshot }>;
   // Rows adjoining the requested page, bounded in its direction of travel.
   window: ChannelMessage[];
@@ -515,12 +516,6 @@ export class ChannelSession {
       for (const id of this.pendingWatchPlayers.keys()) {
         if (this.hasJoiningWatchCandidate(id)) this.retirePendingWatchPlayer(id);
       }
-      for (const activity of event.state.watchActivities) {
-        if (activity.sessionId === event.sessionId && !this.watchPlayers.has(activity.id))
-          this.write({ type: "stop_watch", roomId: activity.roomId, id: activity.id });
-        else if (event.state.watchSubscriptions.some(value => value.id === activity.id) && !this.watchPlayers.has(activity.id))
-          this.write({ type: "join_watch", roomId: activity.roomId, id: activity.id, mode: null });
-      }
       this.applyState(event.state, true);
       void this.syncAppWatching(resumed);
       void this.resumeWatches();
@@ -631,6 +626,16 @@ export class ChannelSession {
     }
     for (const id of this.localNativeEndpoints) if (!state.sessions.some(endpoint => endpoint.id === id)) this.localNativeEndpoints.delete(id);
     const previousRooms = this.view.state?.channel.rooms;
+    // A room writer can resume while this endpoint's channel socket stays connected.
+    for (const activity of state.watchActivities) {
+      if (this.watchPlayers.has(activity.id)) continue;
+      const room = state.channel.rooms.find(room => room.id === activity.roomId);
+      if (!room?.available || !room.authorized || (!restoring && !previousRooms?.some(previous =>
+        previous.id === room.id && !previous.available))) continue;
+      if (activity.sessionId === sessionId) this.write({ type: "stop_watch", roomId: room.id, id: activity.id });
+      else if (state.watchSubscriptions.some(value => value.id === activity.id))
+        this.write({ type: "join_watch", roomId: room.id, id: activity.id, mode: null });
+    }
     const userId = state.sessions.find(session => session.id === sessionId)?.userId;
     // Native can replace its Domain endpoint while this page's App control stays connected.
     const refreshHelper = !restoring && this.app?.connected
@@ -836,6 +841,7 @@ export class ChannelSession {
         ...(replyBinding ? { bindingId: replyBinding } : {}),
         ...(command.type === "history_seek" ? { seekAfter: command.after } : {}),
         ...(command.type === "history" ? { history: { before: command.before, replace: replaceHistory, refreshThrough, entries: new Map(),
+          ...(command.before === undefined && { latestThrough: this.view.state?.channel.rooms.find(room => room.id === roomId)?.lastMessageSeq }),
           window: command.before !== undefined && !replaceHistory ? this.view.messagesByRoom[command.roomId] ?? [] : [] } } : {}) });
       signal?.addEventListener("abort", abort, { once: true });
       if (conversation) void this.conversation.send(command, requestId, expectedBinding).catch(error => {
@@ -1032,7 +1038,8 @@ export class ChannelSession {
     const hasMore = canReadEarlier && (result.hasMore || (latest && request.clipped === true)
       || oldestSeq !== null && messages.length > 0 && messages[0].seq > oldestSeq);
     this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: messages },
-      historyByRoom: { ...this.view.historyByRoom, [roomId]: { hasMore, before: messages[0]?.seq, atLatest } } });
+      historyByRoom: { ...this.view.historyByRoom, [roomId]: { hasMore, before: messages[0]?.seq, atLatest,
+        ...(latest && request.latestThrough !== undefined && !result.hasMore && !page.length && { emptyThrough: request.latestThrough }) } } });
     void this.loadProfiles(historyProfileIds(messages)).catch(() => {});
   }
 
@@ -3687,7 +3694,10 @@ export class ChannelSession {
 
   private syncVoiceParticipation(roomId: string): Promise<void> {
     const intent = this.voiceParticipation.get(roomId);
-    const command = { type: "voice" as const, roomId, joined: !!intent, muted: intent?.muted ?? true, deafened: intent?.deafened ?? false };
+    // Listening can change while an unmute is still waiting for capture or publication.
+    const member = this.roomSnapshot?.voice.find(value => value.roomId === roomId && value.sessionId === this.view.sessionId);
+    const muted = !intent || intent.muted || (!this.admittedPublications.has(intent.publicationId ?? "") && (member?.muted ?? true));
+    const command = { type: "voice" as const, roomId, joined: !!intent, muted, deafened: intent?.deafened ?? false };
     if (this.view.connection !== "connected") return Promise.resolve();
     if (this.view.pending.has(`voice:${roomId}`)) {
       // Local intent can stop a source while an earlier authority reply is pending.

@@ -33,7 +33,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
   selfUserId?: string | null;
   canSend: boolean; sending: boolean; hidden: boolean; available: boolean;
   floating?: boolean;
-  attachments: ChannelAttachments; attachmentsAvailable?: boolean; history?: { hasMore: boolean; atLatest: boolean }; loadingHistory: boolean;
+  attachments: ChannelAttachments; attachmentsAvailable?: boolean; history?: ChannelController["historyByRoom"][string]; loadingHistory: boolean;
   onHistory: (roomId: string) => Promise<void>;
   onLatest: (roomId: string) => Promise<void>;
   onSend: ChannelController["sendMessage"];
@@ -240,7 +240,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
     if (!hidden && !unreadLookup.current && !unreadLookupBusy && !jump?.id && roomId && available && !loadingHistory && history?.atLatest && node?.getClientRects().length
       && doc?.visibilityState === "visible" && doc.hasFocus() && !doc.querySelector("dialog:modal") && doc.defaultView?.getComputedStyle(node).visibility === "visible"
       && (!doc.fullscreenElement || doc.fullscreenElement.contains(node)) && node.scrollHeight - node.scrollTop - node.clientHeight < 4) {
-      const seq = messages.at(-1)?.seq;
+      const seq = messages.at(-1)?.seq ?? history.emptyThrough;
       if (seq !== undefined) onRead?.(roomId, seq);
     }
   }
@@ -258,7 +258,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
       doc?.removeEventListener("close", readVisible, true);
       view?.removeEventListener("focus", readVisible, true);
     };
-  }, [conversationScope, messages, hidden, available, loadingHistory, history?.atLatest, lastMessageSeq, unreadLookupBusy, jump?.id, surfaceDocument, onRead]);
+  }, [conversationScope, messages, hidden, available, loadingHistory, history?.atLatest, history?.emptyThrough, lastMessageSeq, unreadLookupBusy, jump?.id, surfaceDocument, onRead]);
   useLayoutEffect(() => {
     if (!jump || jump.scope !== conversationScope || hidden || loadingHistory) return;
     const target = log.current?.querySelector<HTMLElement>(`[data-message-seq="${jump.seq}"]`);

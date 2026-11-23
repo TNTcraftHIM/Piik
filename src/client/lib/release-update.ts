@@ -1,4 +1,6 @@
-import { compare, major, valid } from "semver";
+import compare from "semver/functions/compare";
+import major from "semver/functions/major";
+import valid from "semver/functions/valid";
 import { splitReleaseHeadline, type ReleaseHeadline } from "../../shared/release-headline.mjs";
 
 export const DEFAULT_RELEASE_API_URL =

@@ -7,7 +7,8 @@ describe("diagnosis using the current operation", () => {
     expect(diagnoseChannelFact({ area: "app", state: "approval" })).toMatchObject({ message: "client.connect.found", next: "client.connect.open" });
     expect(diagnoseChannelFact({ area: "app", state: "approving" })).toBeNull();
     expect(channelErrorPresentation("site_not_approved", key => key).message).toBe("client.sites.notAllowed");
-    expect(diagnoseChannelFact({ area: "app", state: "unavailable" })).toMatchObject({ message: "client.connect.unavailable", topic: "appVersion" });
+    expect(diagnoseChannelFact({ area: "app", state: "unavailable" })).toMatchObject({ message: "client.connect.unavailable", topic: "appConnection" });
+    expect(diagnoseChannelFact({ area: "app", state: "incompatible" })).toMatchObject({ message: "client.connect.incompatible", topic: "appVersion" });
   });
 
   it("keeps room availability, admission and the selected picture's retry separate", () => {
@@ -22,7 +23,9 @@ describe("diagnosis using the current operation", () => {
 
   it("keeps source permissions, failed reads, attachment waits and incompatible storage tied to their own operations", () => {
     expect(diagnoseChannelFact({ area: "error", code: "watch_media_access_denied" })?.message).toBe("watch.mediaAccessDenied");
-    expect(diagnoseChannelFact({ area: "error", code: "watch_media_timeout" })?.message).toBe("watch.forward.sourceUnavailable");
+    for (const code of ["watch_media_timeout", "watch_read_timeout"]) {
+      expect(diagnoseChannelFact({ area: "error", code })).toMatchObject({ message: "watch.forward.readTimeout", topic: "webpage" });
+    }
     expect(diagnoseChannelFact({ area: "error", code: "capture_targets_failed" })?.topic).toBe("capture");
     expect(diagnoseChannelFact({ area: "attachment", state: "waiting-source" })?.topic).toBe("attachment");
     expect(diagnoseChannelFact({ area: "attachment", state: "connecting" })).toBeNull();

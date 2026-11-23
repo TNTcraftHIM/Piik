@@ -485,10 +485,10 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
         {source.owned ? <div className="c3-monitor-publishing" role="group" aria-label={t("screen.sharingControls", { title: source.title })}>
           {source.shareControls}
           <span className="c3-monitor-close"><Btn icon="stop" tone="danger" size="dense"
-            title="watch.stop" busy={source.pending} disabled={source.pending || source.available === false} onClick={source.onStop} /></span>
+            title="watch.stop" busy={source.pending} disabled={source.pending} onClick={source.onStop} /></span>
         </div> :
         <span className="c3-monitor-close"><Btn icon="x" quiet size="dense"
-          title="watch.leave" busy={source.pending} disabled={source.pending || source.available === false}
+          title="watch.leave" busy={source.pending} disabled={source.pending}
           onClick={source.onLeave} /></span>}
       </div>
     </div></footer>

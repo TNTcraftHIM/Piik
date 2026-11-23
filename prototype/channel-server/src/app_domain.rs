@@ -320,9 +320,9 @@ async fn run(
     };
     let mut ready = Ready::new(
         format!(
-            "{origin}/?piik-client-port={}#owner={}&piik-client=1",
-            app.port,
-            domain.owner_key()
+            "{origin}/#owner={}&piik-client=1&piik-client-port={}",
+            domain.owner_key(),
+            app.port
         ),
         https.as_ref(),
     );
@@ -364,11 +364,7 @@ async fn run(
             let _ = domain_stopped.changed().await;
         },
     ));
-    console.ready(if matches!(request.mode, Mode::External) {
-        &origin
-    } else {
-        &invitation
-    });
+    console.ready(&origin, &invitation, matches!(request.mode, Mode::External));
     progress.send_replace(Progress::Ready(ready.clone()));
     let (result, finished_service) = loop {
         tokio::select! {
@@ -417,7 +413,7 @@ async fn run(
                 drop(registry);
                 if result.is_ok() {
                     ready.target = format!(
-                        "{origin}/?piik-client-port={}#owner={}&piik-client=1", app.port, domain.owner_key()
+                        "{origin}/#owner={}&piik-client=1&piik-client-port={}", domain.owner_key(), app.port
                     );
                     progress.send_replace(Progress::Ready(ready.clone()));
                 } else {

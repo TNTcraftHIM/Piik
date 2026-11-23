@@ -25,20 +25,20 @@ describe("attachment original availability", () => {
   it("disables both original actions when a visible file has no holder", () => {
     const markup = renderCard(false);
     expect(markup.match(/<button\b[^>]* disabled=""/g)).toHaveLength(2);
-    expect(markup).toContain(t("zh", "channel.attachment.noOriginalSource"));
+    expect(markup).toContain(t("zh", "channel.attachment.sourceUnavailable"));
   });
 
   it.each([undefined, true])("leaves both actions available when availability is %s", availability => {
     const markup = renderCard(availability);
     expect(markup).not.toContain('disabled=""');
-    expect(markup).not.toContain(t("zh", "channel.attachment.noOriginalSource"));
+    expect(markup).not.toContain(t("zh", "channel.attachment.sourceUnavailable"));
   });
 
   it("keeps cancellation available after the last holder leaves an active transfer", () => {
     const markup = renderCard(false, true);
     expect(markup.match(/<button\b[^>]* disabled=""/g)).toHaveLength(1);
     expect(markup).toContain(t("zh", "channel.attachment.cancelDownload"));
-    expect(markup).not.toContain(t("zh", "channel.attachment.noOriginalSource"));
+    expect(markup).not.toContain(t("zh", "channel.attachment.sourceUnavailable"));
   });
 
   it.each([undefined, true])("labels the actionable retry with the filename when availability is %s", availability => {
@@ -51,25 +51,25 @@ describe("attachment original availability", () => {
   it("keeps an interruption visible while the original is unavailable", () => {
     const markup = renderCard(false, false, "file_transfer_interrupted");
     expect(markup).toContain(t("zh", "channel.attachment.transferInterrupted"));
-    expect(markup).toContain(t("zh", "channel.attachment.noOriginalSource"));
+    expect(markup).toContain(t("zh", "channel.attachment.sourceUnavailable"));
     expect(markup).not.toContain(t("zh", "common.retry"));
   });
 
   it("keeps a failed native save visible when the last holder leaves", () => {
     const markup = renderCard(false, false, "download_failed");
     expect(markup).toContain(t("zh", "channel.attachment.saveFailed"));
-    expect(markup).toContain(t("zh", "channel.attachment.noOriginalSource"));
+    expect(markup).toContain(t("zh", "channel.attachment.sourceUnavailable"));
   });
 
   it("keeps a failed transfer visible when the last holder leaves", () => {
     const markup = renderCard(false, false, "file_storage_full");
     expect(markup).toContain(t("zh", "channel.attachment.storageFull"));
-    expect(markup).toContain(t("zh", "channel.attachment.noOriginalSource"));
+    expect(markup).toContain(t("zh", "channel.attachment.sourceUnavailable"));
   });
 
   it("reports an expired saved file after the user opens its folder", () => {
     const markup = renderCard(false, false, "saved_copy_missing");
-    expect(markup).toContain(`${t("zh", "channel.attachment.savedCopyMissing")} ${t("zh", "channel.attachment.noOriginalSource")}`);
+    expect(markup).toContain(`${t("zh", "channel.attachment.savedCopyMissing")} ${t("zh", "channel.attachment.sourceUnavailable")}`);
     const availableMarkup = renderCard(true, false, "saved_copy_missing");
     expect(availableMarkup).toContain(t("zh", "channel.attachment.savedCopyMissing"));
     expect(availableMarkup).not.toContain('disabled=""');

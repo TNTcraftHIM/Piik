@@ -129,7 +129,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   }
   const isImage = file.mediaType.startsWith("image/");
   const imageDescription = !originalShown && inlineImage ? t("channel.attachment.thumbnail") : undefined;
-  const originalStatus = unavailable ? t("channel.attachment.noOriginalSource") : undefined;
+  const originalStatus = unavailable ? t("channel.attachment.sourceUnavailable") : undefined;
   const previewMessage = channelErrorPresentation(previewError, t, preview ? "channel.attachment.originalUnavailable" : "channel.attachment.previewFailed").message;
   const downloadMessage = channelErrorPresentation(download.error, t, "channel.attachment.downloadFailed").message;
   const progressLabel = progress ? t(progress.state === "waiting-source" ? "channel.attachment.waitingSource"

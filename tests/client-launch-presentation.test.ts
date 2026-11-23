@@ -87,7 +87,7 @@ describe("App presentation handoff authority", () => {
     { name: "both explicit domains replace saved choices", saved: ["zh", "dark"], fields: "copy,theme", selection: "en", theme: "light", result: ["en", "light"] },
   ])("$name", async ({ saved, fields, selection, theme, result }) => {
     const env = browser(saved);
-    env.page.location = new URL(`https://site.example/${fields ? `?piik-preferences=${fields}` : ""}#piik-client=1&piik-lang=en&piik-theme=light`);
+    env.page.location = new URL(`https://site.example/#piik-client=1&piik-lang=en&piik-theme=light${fields ? `&piik-preferences=${fields}` : ""}`);
     runInNewContext(firstPaint, { ...env.page, document: env.document, URLSearchParams, matchMedia: env.page.matchMedia });
     expect(env.document.documentElement.dataset.theme).toBe(theme);
     const copy = await import("../src/client/ui/copy");
@@ -139,7 +139,7 @@ describe("App presentation handoff authority", () => {
     expect(fragment.get("piik-lang")).toBe("zh");
     expect(fragment.has("piik-mode")).toBe(false);
     expect(fragment.get("piik-theme")).toBe("dark");
-    expect(target.searchParams.get("piik-client-port")).toBe("39730");
+    expect(fragment.get("piik-client-port")).toBe("39730");
     env.page.location = target;
     expect(takeClientLaunchBootstrap()?.explicit).toEqual(["copy", "theme"]);
     expect(env.page.location.search).toBe("?debug=1");
@@ -148,7 +148,7 @@ describe("App presentation handoff authority", () => {
 
   it.each(["0", "65536", "NaN", "39721.5"])("ignores invalid runtime ports: %s", async port => {
     const env = browser();
-    env.page.location = new URL(`https://site.example/?piik-client-port=${port}#piik-client=1`);
+    env.page.location = new URL(`https://site.example/#piik-client=1&piik-client-port=${port}`);
     const { takeClientLaunchBootstrap, clientRuntimePort, isClientActivated } = await import("../src/client/lib/app-launch");
     expect(takeClientLaunchBootstrap()).toBeNull();
     expect(isClientActivated()).toBe(true);
@@ -163,7 +163,7 @@ describe("App presentation handoff authority", () => {
       getItem: () => { throw new Error("blocked"); },
       setItem: () => { throw new Error("blocked"); },
     } });
-    env.page.location = new URL("https://site.example/?piik-client-port=49152#piik-client=1");
+    env.page.location = new URL("https://site.example/#piik-client=1&piik-client-port=49152");
     const { takeClientLaunchBootstrap, clientRuntimePort, isClientActivated } = await import("../src/client/lib/app-launch");
     takeClientLaunchBootstrap();
     expect(clientRuntimePort()).toBe(49152);

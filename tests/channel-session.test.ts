@@ -234,6 +234,29 @@ test("writer-confirmed moderation removes messages, quotations and transfers for
   } finally { reader.session.close(); moderator.session.close(); }
 });
 
+test("an empty latest history page confirms only the sequence visible when requested", async () => {
+  const { session, socket, peer } = await setup();
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.rooms[0].lastMessageSeq = 3;
+    socket.receive({ type: "state", state });
+    const loading = session.loadLatestHistory("first"), request = await peer.next();
+    state.channel.rooms[0].lastMessageSeq = 7;
+    socket.receive({ type: "state", state });
+    peer.page(request, [], false, null);
+    await loading;
+    expect(session.getSnapshot().historyByRoom.first.emptyThrough).toBe(3);
+    expect(session.getSnapshot().readByRoom.first).toBe(0);
+
+    await peer.history([message(5)], true);
+    const older = session.loadHistory("first"), previous = await peer.next();
+    expect(previous).toMatchObject({ type: "history", before: 5 });
+    peer.page(previous, [], false, null);
+    await older;
+    expect(session.getSnapshot().historyByRoom.first.emptyThrough).toBeUndefined();
+  } finally { session.close(); }
+});
+
 test("a history clear waiting for browse cannot apply its previous range to a new binding", async () => {
   const { session, socket, peer } = await setup();
   const send = vi.mocked((session as unknown as { conversation: ChannelConversation }).conversation.send);
@@ -1184,7 +1207,7 @@ test.each([false, true])("peer path changes do not reload the Domain conversatio
 test("site addresses and room invitations use the current Welcome origin without local bootstrap data", async () => {
   const { session, peer } = await setup();
   const state = session.getSnapshot().state!;
-  vi.stubGlobal("location", new URL("https://channel.test/__channel-preview?piik-client-port=39721#owner=local-owner&piik-client=1&piik-client-port=39721"));
+  vi.stubGlobal("location", new URL("https://channel.test/__channel-preview#owner=local-owner&piik-client=1&piik-client-port=39721"));
   try {
     for (const invitationOrigin of ["https://friends.example", undefined]) {
       session.reconnect();
@@ -1922,6 +1945,8 @@ test("mute and leave supersede a pending unmute without activating a late microp
     const opening = session.setMuted("first", false);
     const openingAborted = expect(opening).rejects.toMatchObject({ name: "AbortError" });
     expect(session.getSnapshot().pending.has("voice:first")).toBe(true);
+    await session.setDeafened("first", true);
+    expect(socket.sent.at(-1)).toMatchObject({ type: "voice", joined: true, muted: true, deafened: true });
     await session.setMuted("first", true);
     expect(session.getSnapshot().state?.voice[0].muted).toBe(true);
     await session.leaveVoice("first");
@@ -11197,7 +11222,7 @@ test("local unwatch removes only this endpoint's audience entry through recovery
   } finally { session.close(); }
 });
 
-test("local video leave clears its audience membership through recovery without removing remote viewers", async () => {
+test.each(["channel", "writer"])("local video leave clears its audience membership through %s recovery without removing remote viewers", async recovery => {
   const { session, socket } = await setup(1000, false);
   const { roomActivityPeople, watchAudience } = await import("../src/client/channel/presentation");
   const video = new WatchTestVideo();
@@ -11217,18 +11242,33 @@ test("local video leave clears its audience membership through recovery without 
     socket.receive({ type: "room_reply", roomId: "first", requestId: command.requestId, result: { type: "watch_ready", serverTime: 1000 } });
     await joining;
     state.watchSubscriptions = [{ id: activity.id, mode: "direct" }]; socket.receive({ type: "state", state });
-    socket.close(); await session.leaveWatch(activity.id);
+    if (recovery === "writer") {
+      const offline = structuredClone(state); offline.channel.rooms[0].available = false;
+      socket.receive({ type: "state", state: offline });
+      expect(session.getSnapshot().watchPlayers.get(activity.id)?.video).toBe(video);
+      const leaving = session.leaveWatch(activity.id);
+      const leave = socket.sent.findLast(command => command.type === "join_watch")!;
+      socket.receive({ type: "error", requestId: leave.requestId, code: "room_host_offline" });
+      await expect(leaving).rejects.toThrow("room_host_offline");
+    } else {
+      socket.close(); await session.leaveWatch(activity.id);
+    }
     const stopped = session.getSnapshot().state!;
     expect(stopped.watchSubscriptions).toEqual([]); expect(session.getSnapshot().watchPlayers.size).toBe(0);
     expect(stopped.watchActivities[0].viewerSessionIds).toEqual(["other-endpoint"]);
     expect(roomActivityPeople(stopped, "first").find(person => person.id === "self")?.viewing).toBeUndefined();
     expect(watchAudience(stopped, stopped.watchActivities[0]).map(person => person.userId)).toEqual(["other-viewer"]);
     expect(activity.viewerSessionIds).toEqual(["endpoint", "other-endpoint"]);
-    session.reconnect();
-    const resumed = ChannelSocket.current; await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    let resumed = socket;
+    if (recovery === "writer") {
+      socket.receive({ type: "state", state });
+      socket.receive({ type: "state", state });
+    } else {
+      session.reconnect(); resumed = ChannelSocket.current; await resumed.onopen?.();
+      resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    }
     expect(session.getSnapshot().state!.watchActivities[0].viewerSessionIds).toEqual(["other-endpoint"]);
-    expect(resumed.sent).toContainEqual({ type: "join_watch", roomId: "first", id: activity.id, mode: null });
+    expect(resumed.sent.filter(command => command.type === "join_watch" && !command.requestId)).toEqual([{ type: "join_watch", roomId: "first", id: activity.id, mode: null }]);
   } finally { session.close(); }
 });
 

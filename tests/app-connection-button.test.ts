@@ -7,6 +7,7 @@ import { createElement, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppConnectionButton } from "../src/client/components/living/AppConnectionButton";
+import type { AppNavigationIssue } from "../src/client/components/living/OpenInClient";
 import { AppReleaseNotice } from "../src/client/components/living/AppReleaseNotice";
 import { CaptureSourcePicker } from "../src/client/components/living/CaptureSourcePicker";
 import { ChannelShareControl } from "../src/client/channel/components/ChannelShareControl";
@@ -92,7 +93,7 @@ describe("shared App connection entry", () => {
     expect(url.origin + url.pathname).toBe("http://127.0.0.1:39721/client");
     expect(url.searchParams.get("bookmarks")).toBe("1");
     expect(url.searchParams.has("site")).toBe(false);
-    expect(url.searchParams.get("piik-preferences")).toBe("copy,theme");
+    expect(new URLSearchParams(url.hash.slice(1)).get("piik-preferences")).toBe("copy,theme");
     expect(Object.fromEntries(new URLSearchParams(url.hash.slice(1)))).toMatchObject({ site: "https://site.example", "piik-client": "1", "piik-lang": "en" });
   });
 
@@ -289,7 +290,8 @@ const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const site = "https://site.example";
 const approval = `http://127.0.0.1:39721/client?site=${encodeURIComponent(site)}`;
 
-function mount(activated = false, state: "idle" | "ready" = "idle", android = false, connected?: boolean, discovery?: typeof channelAppDiscovery, automatic = false, available = true) {
+function mount(activated = false, state: "idle" | "ready" = "idle", android = false, connected?: boolean, discovery?: typeof channelAppDiscovery,
+  automatic = false, available = true, navigationIssue: AppNavigationIssue | null = null) {
   const popup = { closed: false, close: vi.fn(() => { popup.closed = true; }) };
   const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site, assign: vi.fn() } });
   const document = Object.assign(new EventTarget(), { visibilityState: "visible" });
@@ -304,6 +306,9 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const help = { current: { hidePopover: vi.fn(), matches: vi.fn(() => false) } };
   const showHelp = vi.fn();
   const setState = vi.fn();
+  const setNavigationIssue = (update: (issue: AppNavigationIssue | null) => AppNavigationIssue | null) => {
+    navigationIssue = update(navigationIssue);
+  };
   const setBuild = vi.fn();
   const setManagement = vi.fn();
   const activateClient = vi.fn();
@@ -311,7 +316,7 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const operation = runInNewContext(executable, {
     automatic, automaticFailed: { current: false }, window, document, pending, healthCheck, help, showHelp, setState, setAutomaticHint: vi.fn(), setManagement, setBuild, activateClient, onConnected, AbortController, URL, URLSearchParams,
     wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
-    state, connected, available, isClientActivated: () => activated,
+    state, connected, available, ready: state === "ready" && connected !== false, setNavigationIssue, isClientActivated: () => activated,
     discovery: discovery ?? { health: native.discoverNativeHealth, connect: native.discoverNativeConnect,
       isIncompatible: (error: unknown) => error instanceof native.NativeCompatibilityError },
     watchClientActivation: (changed: () => void) => {
@@ -326,8 +331,20 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   }
   const activateElsewhere = () => { activated = true; window.dispatchEvent(new Event("activation")); };
   const openApproval = async () => { await operation.connect(); await operation.connect(); };
-  return { ...operation, openApproval, popup, window, document, native, pending, help, showHelp, setState, setBuild, setManagement, activateClient, activateElsewhere, onConnected, message };
+  return { ...operation, openApproval, popup, window, document, native, pending, help, showHelp, setState, setBuild, setManagement, activateClient, activateElsewhere, onConnected, message,
+    get navigationIssue() { return navigationIssue; } };
 }
+
+it.each([
+  ["unavailable", null],
+  ["incompatible", null],
+  ["unsupported", "unsupported"],
+  ["popup-blocked", "popup-blocked"],
+] as const)("resolves earlier navigation issue %s according to confirmed App readiness", (issue, expected) => {
+  const page = mount(false, "ready", false, true, undefined, false, true, issue);
+  try { expect(page.navigationIssue).toBe(expected); }
+  finally { page.cleanup(); }
+});
 
 describe("App connection approval", () => {
   afterEach(() => vi.unstubAllGlobals());

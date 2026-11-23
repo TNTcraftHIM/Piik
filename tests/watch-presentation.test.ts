@@ -225,9 +225,9 @@ describe("Webpage watch presentation", () => {
     [["watch_source_inspection_unavailable"], "watch.sourceAccessRequired", false],
     [["watch_media_unsupported", "watch_mp4_mse_unavailable"], "watch.playbackUnsupported", false],
     [["watch_page_unavailable", "watch_page_closed", "page_player_closed"], "watch.forward.sourceUnavailable", false],
-    [["watch_invalid_manifest", "watch_media_credentials_unavailable", "watch_media_unavailable", "watch_media_timeout", "watch_media_changed", "watch_media_truncated", "invalid_watch_range_response", "watch_resource_unavailable", "watch_source_unavailable", "watch_source_failed", "watch_source_changed", "watch_source_retired"], "watch.forward.sourceUnavailable", false],
+    [["watch_invalid_manifest", "watch_media_credentials_unavailable", "watch_media_unavailable", "watch_media_changed", "watch_media_truncated", "invalid_watch_range_response", "watch_resource_unavailable", "watch_source_unavailable", "watch_source_failed", "watch_source_changed", "watch_source_retired"], "watch.forward.sourceUnavailable", false],
     [["watch_source_busy", "watch_read_busy"], "watch.forward.busy", false],
-    [["watch_read_timeout"], "watch.forward.readTimeout", false],
+    [["watch_media_timeout", "watch_read_timeout"], "watch.forward.readTimeout", false],
     [["watch_source_already_active"], "watch.forward.active", false],
     [["watch_peer_requires_secure_context"], "watch.forward.secure", false],
     [["watch_peer_unavailable"], "watch.forward.failed", false],
@@ -384,6 +384,16 @@ describe("Webpage watch presentation", () => {
     const browser = render({ ...source, browserSource: true });
     expect(browser).toContain('aria-label="Watch"');
     expect(browser).not.toContain('aria-label="Open webpage and select video"');
+    const offline = { ...source, browserSource: true, available: false };
+    expect(render(offline)).toMatch(/<button[^>]*aria-label="Watch"[^>]*disabled/);
+    for (const owned of [true, false]) {
+      const label = owned ? "End watch together" : "Leave watch together";
+      const action = (pending: boolean) => render({ ...offline, owned, subscribed: !owned, pending })
+        .match(new RegExp('<button[^>]*aria-label="' + label + '"[^>]*>'))?.[0];
+      expect(action(false)).toBeDefined();
+      expect(action(false)).not.toContain("disabled");
+      expect(action(true)).toContain("disabled");
+    }
     const program = render({ ...source, onAppWatch: undefined, originalPageAvailable: false });
     expect(program).not.toContain("Connect Piik App");
     expect(program).not.toContain('aria-label="Open webpage and select video"');

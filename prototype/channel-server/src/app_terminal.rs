@@ -1,4 +1,5 @@
 //! Interactive terminal presentation. The App launcher remains the only service-state owner.
+use super::console::site_addresses;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
     terminal,
@@ -200,18 +201,6 @@ fn clean(text: &str) -> String {
         .map(|ch| if ch.is_control() { ' ' } else { ch })
         .collect()
 }
-fn display_address(value: &str) -> Option<String> {
-    let mut url = url::Url::parse(value).ok()?;
-    if !matches!(url.scheme(), "http" | "https")
-        || !url.username().is_empty()
-        || url.password().is_some()
-    {
-        return None;
-    }
-    url.set_query(None);
-    url.set_fragment(None);
-    Some(url.to_string())
-}
 fn render(state: &Value, notice: Option<&str>, error: Option<&str>, width: usize) -> String {
     let version = clean(state["version"].as_str().unwrap_or("development"));
     let revision = clean(state["revision"].as_str().unwrap_or("development"));
@@ -248,21 +237,20 @@ fn render(state: &Value, notice: Option<&str>, error: Option<&str>, width: usize
         lines.push("Launcher / 启动页".into());
         lines.push(format!("  http://127.0.0.1:{port}/client"));
     }
-    if let Some(target) = state["target"].as_str().and_then(display_address) {
-        lines.push("Site entry / 站点入口".into());
-        lines.push(format!("  {target}"));
-    }
-    let mut seen = std::collections::BTreeSet::new();
-    if let Some(owned) = state["ownedSites"].as_array() {
-        for value in owned
-            .iter()
-            .filter_map(Value::as_str)
-            .filter_map(display_address)
-        {
-            if seen.insert(value.clone()) {
-                lines.push(format!("Share address / 分享地址: {value}"));
-            }
-        }
+    if state["target"].is_string() {
+        // The launcher projects ownedSites as [local origin, invitation origin].
+        let invitation = state["ownedSites"].get(1).and_then(Value::as_str);
+        let configured_public = state["publicOrigin"].is_string();
+        lines.extend(
+            site_addresses(
+                None,
+                state["localSite"].as_str(),
+                invitation,
+                configured_public,
+            )
+            .into_iter()
+            .flatten(),
+        );
     }
     lines.push("─".repeat(width));
     lines.push("O + Enter  Open launcher / 打开启动页".into());
@@ -287,11 +275,14 @@ mod tests {
     #[test]
     fn view_uses_launcher_truth_without_exposing_private_entry() {
         let state = json!({"version":"v3.0.0-beta.test","revision":"a".repeat(40),"controlPort":39721,
-            "target":"http://127.0.0.1:8787/?piik-client-port=39721#owner=secret&piik-client=1",
+            "target":"http://127.0.0.1:8787/#owner=secret&piik-client=1&piik-client-port=39721",
+            "localSite":"http://127.0.0.1:8787",
             "ownedSites":["http://127.0.0.1:8787/","https://192.0.2.1:8787/"]});
         let view = render(&state, Some("System WebView unavailable"), None, 32);
         assert!(view.contains("Site ready"));
-        assert!(view.contains("192.0.2.1"));
+        assert!(view.contains("Local entry / 本机入口\n  http://127.0.0.1:8787/"));
+        assert!(view.contains("Invitation address / 邀请地址\n  https://192.0.2.1:8787/"));
+        assert_eq!(view.matches("http://127.0.0.1:8787/").count(), 1);
         assert!(view.contains("[aaaaaaaa]"));
         assert!(view.contains("S + Enter"));
         assert!(!view.contains("secret"));
@@ -317,6 +308,22 @@ mod tests {
         .contains("private raw error"));
     }
     #[test]
+    fn configured_address_is_shown_when_the_local_site_is_ready() {
+        let mut state = json!({
+            "localSite":"http://127.0.0.1:8787",
+            "ownedSites":["http://127.0.0.1:8787","https://fixture.invalid"],
+            "publicOrigin":"https://fixture.invalid/"
+        });
+        assert!(!render(&state, None, None, 32).contains("fixture.invalid"));
+        state["target"] = json!("http://127.0.0.1:8787/#owner=secret&piik-client-port=39721");
+        let view = render(&state, None, None, 32);
+        assert!(view
+            .contains("Configured public address / 已配置的公开地址\n  https://fixture.invalid/"));
+        assert!(!view.contains("Invitation address"));
+        assert!(!view.contains("secret"));
+    }
+
+    #[test]
     fn launcher_read_failure_preserves_build_address_and_actions() {
         let state = json!({"version":"3.0.0", "revision":"development", "controlPort":39721});
         let failed = render(&state, None, Some("Settings temporarily unavailable"), 20);
@@ -335,7 +342,10 @@ mod tests {
         assert_eq!(command(" D "), Some(Command::Diagnostics));
         assert_eq!(command("open a different site"), None);
         assert_eq!(clean("x\u{1b}[31m\ny"), "x [31m y");
-        assert_eq!(display_address("javascript:alert(1)"), None);
+        assert_eq!(
+            site_addresses(None, Some("javascript:alert(1)"), None, false),
+            [None, None]
+        );
     }
     #[test]
     fn diagnostics_are_an_explicit_export_without_a_second_enabled_state() {

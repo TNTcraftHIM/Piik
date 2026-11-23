@@ -67,11 +67,10 @@ it("selects the launched runtime over a faster resident App and never substitute
   };
   vi.stubGlobal("window", page);
   const { discoverChannelAppHealth, channelAppDiscovery } = await import("../src/client/channel/app-link");
-  const { takeClientLaunchBootstrap, clientRuntimePort } = await import("../src/client/lib/app-launch");
+  const { consumeClientLaunchFragment, takeClientLaunchBootstrap, clientRuntimePort } = await import("../src/client/lib/app-launch");
   // Both actual HTTP stubs are discoverable; the older one responds first.
   await expect(discoverChannelAppHealth()).resolves.toMatchObject({ port: old.port });
-  page.location.search = `?piik-client-port=${selected.port}`;
-  page.location.hash = "piik-client=1";
+  page.location.hash = `piik-client=1&piik-client-port=${selected.port}`;
   takeClientLaunchBootstrap();
   requestedPorts.length = 0;
   // Another local client can probe the same listening port during this assertion.
@@ -83,6 +82,10 @@ it("selects the launched runtime over a faster resident App and never substitute
   expect([...saved.keys()]).toEqual(["piik:client-launch:v1"]);
   expect([...tabSaved.values()]).toEqual([String(selected.port)]);
   takeClientLaunchBootstrap(); // Consuming an already-clean URL keeps this page's affinity.
+  expect(clientRuntimePort()).toBe(selected.port);
+  page.location.hash = `room=other&invite=fixture&piik-client=1&piik-client-port=${old.port}`;
+  consumeClientLaunchFragment();
+  expect(page.location.hash).toBe("#room=other&invite=fixture");
   expect(clientRuntimePort()).toBe(selected.port);
   await new Promise<void>(resolve => { selected.server.close(() => resolve()); selected.server.closeAllConnections(); });
   await expect(discoverChannelAppHealth()).resolves.toBeNull();
@@ -97,8 +100,7 @@ it("selects the launched runtime over a faster resident App and never substitute
   await expect(reloadedDiscovery.discoverChannelAppHealth()).resolves.toBeNull();
   expect(requestedPorts).not.toContain(old.port);
   // A new explicit launch replaces this tab's previous selection.
-  page.location.search = `?piik-client-port=${old.port}`;
-  page.location.hash = "piik-client=1";
+  page.location.hash = `piik-client=1&piik-client-port=${old.port}`;
   reloaded.takeClientLaunchBootstrap();
   expect(reloaded.clientRuntimePort()).toBe(old.port);
   expect([...tabSaved.values()]).toEqual([String(old.port)]);

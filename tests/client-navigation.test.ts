@@ -43,9 +43,10 @@ function mount(navigation: NonNullable<AppDiscovery["navigation"]> = vi.fn(async
   const open = vi.fn(() => popup);
   vi.stubGlobal("window", { open });
   const discovery = { navigation, health: vi.fn(), connect: vi.fn(), isIncompatible: () => false };
-  const render = () => { hooks.index = 0; return OpenInClient({ discovery, targetURL: invitation, active: true, disabled: false }); };
+  const onIssue = vi.fn();
+  const render = () => { hooks.index = 0; return OpenInClient({ discovery, targetURL: invitation, active: true, disabled: false, onIssue }); };
   buttons(render())[0]!.props.onClick();
-  return { popup, open, discovery, render };
+  return { popup, open, discovery, render, onIssue };
 }
 
 test("one click hands the original invitation to local confirmation without approving or connecting", async () => {
@@ -68,22 +69,20 @@ test("one click hands the original invitation to local confirmation without appr
   expect(rendered).toContain('"target":"_blank"');
 });
 
-test("missing native window closes the reserved tab and explains browser availability", async () => {
+test("missing native window closes the reserved tab and reports browser availability to the App panel", async () => {
   const page = mount(vi.fn(async () => ({ url: local, windowNavigation: false })));
   await settle();
   expect(page.popup.close).toHaveBeenCalledOnce();
   expect(page.popup.location.replace).not.toHaveBeenCalled();
-  const rendered = JSON.stringify(page.render());
-  expect(rendered).toContain("client.connect.navigationUnsupported");
-  expect(rendered).toContain('"topic":"appVersion"');
+  expect(page.onIssue).toHaveBeenLastCalledWith("unsupported");
 });
 
-test("an absent App closes the reserved tab and offers the matching App guide", async () => {
+test("an absent App closes the reserved tab and reports the failed navigation to the App panel", async () => {
   const page = mount(vi.fn(async () => null));
   await settle();
   expect(page.popup.close).toHaveBeenCalledOnce();
   expect(page.popup.location.replace).not.toHaveBeenCalled();
-  expect(JSON.stringify(page.render())).toContain('"topic":"appVersion"');
+  expect(page.onIssue).toHaveBeenLastCalledWith("unavailable");
 });
 
 test("dismissal cancels discovery, closes its tab and rejects a late result", async () => {

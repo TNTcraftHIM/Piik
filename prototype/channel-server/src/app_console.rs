@@ -23,11 +23,7 @@ impl Console {
     }
 
     fn text(&self, english: &str, chinese: &str) -> String {
-        match self.language {
-            Some("en") => english.into(),
-            Some("zh") => chinese.into(),
-            _ => format!("{english} / {chinese}"),
-        }
+        text(self.language, english, chinese)
     }
 
     fn paint(&self, code: u8, text: &str) -> String {
@@ -70,13 +66,22 @@ impl Console {
         eprintln!("\n {}", self.paint(34, &label));
     }
 
-    pub fn ready(&self, site: &str) {
+    pub fn ready(&self, local: &str, invitation: &str, configured_public: bool) {
         eprintln!(
-            "\n {}\n {}\n {}",
-            self.paint(32, &self.text("Site ready", "站点已就绪")),
-            self.text("Site address", "站点地址"),
-            self.paint(34, site)
+            "\n {}",
+            self.paint(32, &self.text("Site ready", "站点已就绪"))
         );
+        for address in site_addresses(
+            self.language,
+            Some(local),
+            Some(invitation),
+            configured_public,
+        )
+        .into_iter()
+        .flatten()
+        {
+            eprintln!("{address}");
+        }
     }
 
     pub fn failed(&self, port: u16) {
@@ -94,4 +99,46 @@ impl Console {
     pub fn stopped(&self) {
         eprintln!("\n {}", self.text("App stopped", "App 已退出"));
     }
+}
+
+fn text(language: Option<&str>, english: &str, chinese: &str) -> String {
+    match language {
+        Some("en") => english.into(),
+        Some("zh") => chinese.into(),
+        _ => format!("{english} / {chinese}"),
+    }
+}
+
+fn display_address(value: &str) -> Option<String> {
+    let mut url = url::Url::parse(value).ok()?;
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return None;
+    }
+    url.set_query(None);
+    url.set_fragment(None);
+    Some(url.to_string())
+}
+
+pub(super) fn site_addresses(
+    language: Option<&str>,
+    local: Option<&str>,
+    invitation: Option<&str>,
+    configured_public: bool,
+) -> [Option<String>; 2] {
+    let (invitation_english, invitation_chinese) = if configured_public {
+        ("Configured public address", "已配置的公开地址")
+    } else {
+        ("Invitation address", "邀请地址")
+    };
+    [
+        ("Local entry", "本机入口", local),
+        (invitation_english, invitation_chinese, invitation),
+    ]
+    .map(|(english, chinese, value)| {
+        let address = display_address(value?)?;
+        Some(format!("{}\n  {address}", text(language, english, chinese)))
+    })
 }

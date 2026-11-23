@@ -428,9 +428,9 @@ describe("App launcher state recovery", () => {
       .map(match => new URL(match[1]!.replaceAll("&amp;", "&")));
     expect(entries).toHaveLength(1);
     for (const entry of entries) {
-      expect(entry.searchParams.get("piik-client-port")).toBe("39729");
-      expect(entry.searchParams.get("piik-preferences")).toBe("theme");
       const fragment = new URLSearchParams(entry.hash.slice(1));
+      expect(fragment.get("piik-client-port")).toBe("39729");
+      expect(fragment.get("piik-preferences")).toBe("theme");
       expect(fragment.get("piik-client")).toBe("1");
       expect(fragment.get("piik-lang")).toBe("en");
       expect(fragment.get("piik-theme")).toBe("light");
@@ -647,7 +647,7 @@ it("enters the fresh App-owned startup result once with its current debug settin
     const destination = new URL(page.navigate.mock.calls[0]![0]);
     expect(destination.origin).toBe("http://127.0.0.1:45678");
     expect(destination.searchParams.get("debug")).toBe("1");
-    expect(destination.searchParams.get("piik-client-port")).toBe("39732");
+    expect(new URLSearchParams(destination.hash.slice(1)).get("piik-client-port")).toBe("39732");
     page.focus();
     await settle();
     expect(page.navigate).toHaveBeenCalledTimes(1);

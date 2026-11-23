@@ -307,6 +307,18 @@ impl Authority {
             }
             return effects;
         }
+        if let Command::Conversation { packet } = request.command {
+            match self.channel.relay_conversation(session_id, &packet) {
+                Ok((recipient, changed)) => {
+                    self.deliver(recipient, Event::Conversation { packet }, &mut effects);
+                    if changed {
+                        self.broadcast(None, &mut effects);
+                    }
+                }
+                Err(code) => Self::error(connection, request.request_id, code, &mut effects),
+            }
+            return effects;
+        }
         let context = RequestContext {
             connection,
             session_id,
@@ -331,24 +343,6 @@ impl Authority {
                             })
                     }) {
                     Ok(event) => effects.events.push((connection, event)),
-                    Err(code) => Self::error(connection, request.request_id, code, &mut effects),
-                }
-                return effects;
-            }
-            Command::Conversation { packet } => {
-                match self.channel.relay_conversation(session_id, packet) {
-                    Ok((recipient, changed)) => {
-                        self.deliver(
-                            recipient,
-                            Event::Conversation {
-                                packet: packet.clone(),
-                            },
-                            &mut effects,
-                        );
-                        if changed {
-                            self.broadcast(None, &mut effects);
-                        }
-                    }
                     Err(code) => Self::error(connection, request.request_id, code, &mut effects),
                 }
                 return effects;

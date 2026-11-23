@@ -6,6 +6,7 @@ const guideSections = {
   troubleshooting: ["troubleshooting", "", ""],
   site: ["troubleshooting", "the-page-opens-but-the-site-will-not-connect", "网页能打开但站点连接不上"],
   app: ["troubleshooting", "opening-app-and-joining-a-room", "打开-app-与加入房间"],
+  appConnection: ["troubleshooting", "the-page-cannot-connect-to-app", "网页连接不上-app"],
   appVersion: ["troubleshooting", "app-and-page-versions-are-incompatible", "app-与页面版本不兼容"],
   room: ["troubleshooting", "an-invitation-or-password-is-rejected", "邀请或密码被拒绝"],
   offline: ["troubleshooting", "chat-or-history-will-not-load", "聊天或历史记录加载不出来"],
@@ -47,8 +48,8 @@ export function diagnoseChannelFact(fact: ChannelFact): ChannelDiagnosis | null 
   if (fact.area === "app") {
     switch (fact.state) {
       case "approval": return { message: "client.connect.found", next: "client.connect.open", topic: "app" };
-      case "unavailable": return { message: "client.connect.unavailable", topic: "appVersion" };
-      case "incompatible": return { message: "native.incompatible", topic: "appVersion" };
+      case "unavailable": return { message: "client.connect.unavailable", topic: "appConnection" };
+      case "incompatible": return { message: "client.connect.incompatible", topic: "appVersion" };
       default: return null;
     }
   }
@@ -70,6 +71,8 @@ export function diagnoseChannelFact(fact: ChannelFact): ChannelDiagnosis | null 
     case "watch_media_access_denied": return { message: "watch.mediaAccessDenied", topic: "webpage" };
     case "watch_source_inspection_unavailable": return { message: "watch.sourceAccessRequired", topic: "webpage" };
     case "watch_media_unplayable": return { message: "watch.sourceUnplayable", topic: "webpage" };
+    case "watch_media_timeout":
+    case "watch_read_timeout": return { message: "watch.forward.readTimeout", topic: "webpage" };
     case "watch_page_closed":
     case "page_player_closed":
     case "watch_mpd_invalid":
@@ -80,7 +83,7 @@ export function diagnoseChannelFact(fact: ChannelFact): ChannelDiagnosis | null 
     case "unsupported_storage_version":
     case "unsupported_domain_checkpoint": return { message: "channel.error.unsupportedStorageVersion", topic: "storage" };
     default:
-      if (fact.code && /^watch_(?:invalid_manifest|page_unavailable|media_(?:unavailable|timeout|credentials_unavailable|changed|truncated)|resource_unavailable|source_(?:unavailable|failed|changed|retired))$/.test(fact.code))
+      if (fact.code && /^watch_(?:invalid_manifest|page_unavailable|media_(?:unavailable|credentials_unavailable|changed|truncated)|resource_unavailable|source_(?:unavailable|failed|changed|retired))$/.test(fact.code))
         return { message: "watch.forward.sourceUnavailable", topic: "webpage" };
       return null;
   }

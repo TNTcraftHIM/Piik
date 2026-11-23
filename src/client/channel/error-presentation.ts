@@ -99,8 +99,6 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("watch.forward.unsupported");
   if (error === "watch_source_busy" || error === "watch_read_busy")
     return display("watch.forward.busy");
-  if (error === "watch_read_timeout")
-    return display("watch.forward.readTimeout");
   if (error === "watch_source_already_active")
     return display("watch.forward.active");
   if (error === "watch_peer_unavailable") return display("watch.forward.failed");

@@ -86,7 +86,7 @@ export interface ChannelView {
   messagesByRoom: Record<string, ChannelMessage[]>;
   historyChangesByRoom: Record<string, RoomHistoryChanges>;
   forwardingLimit: number;
-  historyByRoom: Record<string, { hasMore: boolean; before?: number; atLatest: boolean }>;
+  historyByRoom: Record<string, { hasMore: boolean; before?: number; atLatest: boolean; emptyThrough?: number }>;
   readByRoom: Record<string, number>;
   streams: ReadonlyMap<string, MediaStream>;
   screenInputs: ReadonlyMap<string, readonly ChannelScreenInput[]>;
