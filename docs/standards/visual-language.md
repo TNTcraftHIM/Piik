@@ -395,7 +395,7 @@ selection tasks visually interchangeable.
 
 ## Cast And Objects
 
-The brand mascot keeps its own identity, separate from ordinary participants.
+The brand mascot is named **Piika**. It keeps its own identity, separate from ordinary participants.
 Participant characters should leave room for that distinctive presence.
 
 The App badge and favicons derive from [one SVG](../../public/favicon.svg):
