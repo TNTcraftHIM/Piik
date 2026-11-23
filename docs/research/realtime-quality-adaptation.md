@@ -67,7 +67,7 @@ replacing the Go transport. The unmatched field reports remain in [TODO](../todo
 
 ## 2.x Receiver Buffering And Source Gaps
 
-Reviewed 2026-11-17. Two separate synthetic controls distinguish late delivery
+Reviewed 2026-11-22. Three synthetic controls distinguish late delivery
 from absent source frames. The [media-quality contract](../standards/media-quality.md#capture-and-controls)
 owns automatic buffering and the optional receiver target; requested targets
 and actual delay remain different measurements.
@@ -108,11 +108,21 @@ that intervention was rarely active; the 500 ms arm also had an unexplained
 cadence gate, leaving no complete four-arm comparison. These observations do
 not establish a benefit from increasing sender delay.
 
-Waiting can accommodate late content but cannot supply absent source frames.
-An encoder stall that later delivers every frame with its original timeline is
-a different, unmeasured case. Neither control identifies the cause of reported
-periodic stalls or establishes physical-device capture, audio synchronization
-or cross-network acceptance.
+A third control on 92185fee used two simultaneous ViewerPeer receivers in
+Windows HeadlessChrome 152. The source sent numbered 320×180 pictures and a
+synthetic audio track. A transform held each sender's encoded video for one
+251 ms interval and released all eight frames in order with original RTP
+timestamps. Source submissions stayed at most 35 ms apart around the event.
+The maximum interval between presentations was 278 ms on automatic and 69 ms
+at the 300 ms receiver target. The receivers presented two and eight of the
+held timestamps respectively. Automatic recorded one 285 ms freeze. The
+300 ms target recorded zero and raised the stable submission-to-callback
+median from 18 to 279 ms. Both receivers reported zero loss and NACKs.
+
+This control isolates delayed availability of completed pictures. A physical
+encoder's behavior during a stall and the cause of the reported periodic
+stalls remain open. Audio sample counts advanced, but audible synchronization
+was outside the measurement.
 
 ## VP8 Cost And Hardware Boundary
 
