@@ -143,7 +143,7 @@ If the browser times out before showing Piik, check access to the Host's App:
    If the virtual adapter uses the **Public** profile, allow Piik on **Public**. If you moved Piik to a different folder,
    add the executable at its new path. The old rule only applies to the old path. Ask your friend to retry the invitation.
    If you use port-specific rules, allow Piik's UDP media traffic as well as the TCP web port.
-   A working webpage alone does not confirm that the media traffic is allowed.
+   Allowing only the web port can let visitors enter the room but leave them unable to watch.
 
 If App reports that a local port is unavailable, check the address in its error
 details. Close the program using that port normally, then retry startup. App

@@ -76,7 +76,9 @@ try {
     for (const [lang, locale] of [['en', 'en'], ['zh', 'zh-CN']]) {
       await run('open', preview.href);
       await run('wait', '#channel-guide-preview');
-      await run('click', `.lr-top .lr-lang button[aria-label="${lang === 'en' ? 'English' : '简体中文'}"]`);
+      await evaluate(`localStorage.setItem("piik:ui-lang", ${JSON.stringify(lang)})`);
+      await run('reload');
+      await run('wait', '#channel-guide-preview');
       if ((await evaluate('document.documentElement.dataset.theme')).result !== theme)
         await run('click', '.lr-top .lr-theme-toggle');
       await run('wait', '--fn', `document.querySelector('.c3-guide-title strong')?.textContent === ${JSON.stringify(lang === 'en' ? 'Friday with friends' : '周五小聚')}`);
