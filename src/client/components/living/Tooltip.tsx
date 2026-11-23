@@ -329,8 +329,14 @@ export function Tooltip({
     if (panelMounted) {
       // Native top layer escapes couch, table and source-list overflow without
       // a portal or a second set of trigger/interaction owners.
-      tip?.showPopover?.();
-      pickAlignRef.current();
+      // Restoring focus during native popover dismissal can open this tip.
+      const view = tip?.ownerDocument.defaultView;
+      if (!tip || !view) return;
+      const frame = view.requestAnimationFrame(() => {
+        tip.showPopover?.();
+        pickAlignRef.current();
+      });
+      return () => view.cancelAnimationFrame(frame);
     } else {
       tip?.hidePopover?.();
     }
