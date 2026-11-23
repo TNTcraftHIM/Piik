@@ -200,6 +200,8 @@ export const zhHant = {
   "screen.focusView": "聚焦畫面",
   "screen.focus": "聚焦",
   "screen.localPreview": "本機預覽",
+  "screen.decodeFailed": "瀏覽器無法解碼分享畫面。",
+  "screen.unplayable": "瀏覽器無法播放分享畫面。",
   "screen.deliveryRetry": "畫面傳輸失敗，正在重試。",
   "screen.pictureHelp": "畫面說明",
   "screen.pictureHelpViewer": "選擇「重新連線畫面」。如果仍然失敗，請試試其他網路。",

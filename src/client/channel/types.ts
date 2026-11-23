@@ -21,6 +21,7 @@ import type { BrowserCaptureSource } from "../media/quality";
 import type { loadCameraPreviews } from "../media/camera-previews";
 import type { CommentaryInput } from "../media/host-audio";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
+import type { ScreenPlaybackError } from "../media/viewer-playback";
 import type { ConnectionMetrics } from "../types";
 
 export interface ChannelMediaMetric {
@@ -213,7 +214,8 @@ export interface ChannelActions {
   watch(publicationId: string): Promise<void>;
   unwatch(publicationId: string): Promise<void>;
   retryPicture(publicationId: string): Promise<void>;
-  screenPresentation(flowId: string, stream: MediaStream, state: ScreenPresentation): void;
+  screenPresentation(flowId: string, stream: MediaStream, state: ScreenPresentation, playbackError?: ScreenPlaybackError): void;
+  screenPlaybackError(publicationId: string): ScreenPlaybackError | undefined;
   inputPolicy(publicationId: string, mode: RemoteControlMode, password?: string): Promise<void>;
   inputDecide(publicationId: string, requestId: string, allow: boolean): Promise<void>;
   inputSimultaneous(publicationId: string, enabled: boolean): Promise<void>;

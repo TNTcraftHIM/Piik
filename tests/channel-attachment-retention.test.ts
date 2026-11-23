@@ -15,6 +15,27 @@ const key = { roomId: "room", messageSeq: 1, attachmentId: attachment.id };
 const inlineImage = { data: btoa("GIF89a"), mediaType: "image/gif" as const, original: true, width: 1, height: 1 };
 const message: ChannelMessage = { id: "message", seq: 1, userId: "self", time: 1, text: "", attachments: [attachment] };
 
+test("retention cancels the source when permission is withdrawn while reading", async () => {
+  const { FileStore: ActualFileStore } = await vi.importActual<typeof import("../src/client/channel/file-store")>("../src/client/channel/file-store");
+  const store = new ActualFileStore({ domainId: "domain", userId: "self" });
+  const file = new File(["GIF89a"], attachment.name);
+  const cancel = vi.fn();
+  let bytesRead = 0;
+  vi.spyOn(file, "stream").mockReturnValue(new ReadableStream<Uint8Array<ArrayBuffer>>({
+    pull(controller) {
+      if (bytesRead === file.size) { controller.close(); return; }
+      controller.enqueue(Uint8Array.of(++bytesRead));
+    },
+    cancel,
+  }, { highWaterMark: 0 }));
+
+  const result = await store.retain({ key, attachment, file }, { maxRetainedBytes: 1024, maxRetainedFiles: 8 }, () => bytesRead === 0);
+  await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+  expect(bytesRead).toBeGreaterThan(0);
+  expect(bytesRead).toBeLessThan(file.size);
+  expect(result).toEqual({ file: null, evicted: [] });
+});
+
 function setup(command = async (_command: ChannelCommand) => {}) {
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ initializeRuntime: async () => {},
     attachment_limits: () => JSON.stringify({ maxFileBytes: 1024, maxAttachmentsPerMessage: 8, maxRetainedBytes: 1024, maxRetainedFiles: 8, maxInlineImageBytes: 65536, maxInlineImageEdge: 1280 }),

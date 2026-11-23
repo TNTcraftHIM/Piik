@@ -1524,20 +1524,6 @@ impl Channel {
                 }
             }
         }
-        let waiting = projection.requested_pairs();
-        if projection.delivery_frontiers.iter().any(|f| {
-            let ordinary = |id: &Uuid| projection.relay_session_ids.contains(id);
-            f.before.get(&f.source) != Some(&f.source) || f.before.len()+f.after.len() > MAX_SESSIONS
-                || !f.after.windows(2).all(|w| w[0]<w[1])
-                || f.before.iter().any(|(id,parent)| (*id != f.source && !ordinary(id)) || !f.before.contains_key(parent))
-                || f.after.iter().any(|id| f.before.contains_key(id) || (!ordinary(id) && !relay_scope.contains(id)))
-                || f.waiting.iter().any(|&id| f.after.binary_search(&id).is_err()
-                    || waiting.get(&(f.source.min(id),f.source.max(id))) != Some(&true))
-                || f.bridges.len() != (f.before.len()*f.after.len()).div_ceil(8)
-                || f.terminal_bridges.iter().any(|&(i,j)| i as usize >= f.before.len() || j as usize >= f.after.len())
-                || f.suffix.len() != (f.after.len()*f.after.len()).div_ceil(8)
-                || f.terminal.iter().any(|&(i,j)| i as usize >= f.after.len() || j as usize >= f.after.len() || !ordinary(&f.after[i as usize]))
-        }) { return Err("invalid_room_projection"); }
         let confirmed: BTreeSet<_> = self.transports.confirmed_pairs(&self.identity).collect();
         let mut watch_trees: BTreeMap<_, BTreeMap<_, _>> = BTreeMap::new();
         let mut file_trees = BTreeMap::new();
@@ -1909,6 +1895,22 @@ impl Channel {
                 };
                 current = flows[&input_id];
             }
+        }
+        if !projection.delivery_frontiers.is_empty() {
+            let waiting = projection.requested_pairs();
+            if projection.delivery_frontiers.iter().any(|f| {
+                let ordinary = |id: &Uuid| projection.relay_session_ids.contains(id);
+                f.before.get(&f.source) != Some(&f.source) || f.before.len()+f.after.len() > MAX_SESSIONS
+                    || !f.after.windows(2).all(|w| w[0]<w[1])
+                    || f.before.iter().any(|(id,parent)| (*id != f.source && !ordinary(id)) || !f.before.contains_key(parent))
+                    || f.after.iter().any(|id| f.before.contains_key(id) || (!ordinary(id) && !relay_scope.contains(id)))
+                    || f.waiting.iter().any(|&id| f.after.binary_search(&id).is_err()
+                        || waiting.get(&(f.source.min(id),f.source.max(id))) != Some(&true))
+                    || f.bridges.len() != (f.before.len()*f.after.len()).div_ceil(8)
+                    || f.terminal_bridges.iter().any(|&(i,j)| i as usize >= f.before.len() || j as usize >= f.after.len())
+                    || f.suffix.len() != (f.after.len()*f.after.len()).div_ceil(8)
+                    || f.terminal.iter().any(|&(i,j)| i as usize >= f.after.len() || j as usize >= f.after.len() || !ordinary(&f.after[i as usize]))
+            }) { return Err("invalid_room_projection"); }
         }
         let room = self.remote.get_mut(id).unwrap();
         let previous_scope = room.planning_sessions(self.service_endpoint, None);

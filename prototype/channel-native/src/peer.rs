@@ -2057,7 +2057,7 @@ impl Driver {
         let (pc, bandwidth) = Box::pin(self.transport.add(
             plan.id,
             prepared.map(|(socket, _)| socket),
-            plan.udp_preparation.is_none(),
+            plan.udp_preparation,
             self.events.clone(),
             overflow.clone(),
             state.clone(),
@@ -2976,7 +2976,7 @@ impl Driver {
                         } else {
                             None
                         };
-                    if self.server_udp.is_none() && origin.is_none() {
+                    if self.server_udp.is_none() && origin.is_none() && !p.pc.shares_ipv4() {
                         if let Some(mapping) = &p.mapping {
                             mapping.observe(&candidate);
                         } else {

@@ -14,7 +14,7 @@ use std::{
     net::SocketAddr,
     sync::{
         atomic::{AtomicBool, AtomicU8, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, Weak,
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -119,13 +119,14 @@ enum Command {
         Option<(discovery::Config, turn::Setup)>,
         oneshot::Sender<()>,
     ),
+    SharedMapped(Weak<UdpIo>, Option<Candidate>),
     TurnReady(Uuid, Uuid),
     Run(Uuid, Uuid, Action),
     Remove(Uuid, Uuid, oneshot::Sender<()>),
     Stop,
 }
 struct Datagram {
-    socket: usize,
+    socket: Weak<UdpIo>,
     owner: Option<(Uuid, Uuid)>,
     source: SocketAddr,
     destination: SocketAddr,
@@ -154,6 +155,7 @@ impl UdpIo {
     }
 }
 pub(crate) struct Runtime {
+    shared_v4: tokio::sync::Mutex<Weak<UdpIo>>,
     tx: mpsc::Sender<Command>,
     task: JoinHandle<()>,
     fixed: Option<Arc<ServerUdp>>,
@@ -164,6 +166,7 @@ pub(crate) struct Runtime {
 }
 #[derive(Clone)]
 pub(crate) struct Transport {
+    shared_v4: Option<Weak<UdpIo>>,
     pub(super) pair: Uuid,
     instance: Uuid,
     tx: mpsc::Sender<Command>,
@@ -430,8 +433,9 @@ pub(crate) struct Engine {
     #[cfg(not(target_os = "android"))]
     host_refresh: Option<HostRefresh>,
     nat64: Option<nat64::Bootstrap>,
+    shared_hosts: Vec<SocketAddr>,
     discovery_routes: HashMap<rtc_stun::message::TransactionId, discovery::Route>,
-    turn: HashMap<usize, turn::Endpoint>,
+    turn: HashMap<turn::Key, turn::Endpoint>,
     turn_setup: mpsc::Receiver<turn::Endpoint>,
     turn_setup_task: Option<JoinHandle<()>>,
     retired_turn: Vec<usize>,
@@ -460,10 +464,21 @@ pub(crate) struct Engine {
 
 impl Runtime {
     pub fn new(fixed: Option<Arc<ServerUdp>>) -> Self {
+        Self::with_mapping(fixed, super::mapping::Mapping::start)
+    }
+
+    pub(super) fn with_mapping(
+        fixed: Option<Arc<ServerUdp>>,
+        start_mapping: impl Fn(&Candidate, Transport) -> Option<super::mapping::Mapping>
+            + Send
+            + 'static,
+    ) -> Self {
         let (tx, mut commands) = mpsc::channel::<Command>(64);
         let fixed_run = fixed.clone();
         let task = tokio::spawn(async move {
             let (network, mut incoming) = mpsc::channel::<Datagram>(256);
+            let mut gateway: Option<super::mapping::Mapping> = None;
+            let mut mapped: Option<Candidate> = None;
             let mut sockets: Vec<Socket> = vec![];
             let mut engines: HashMap<Uuid, Box<Engine>> = HashMap::new();
             if let Some(fixed) = &fixed_run {
@@ -495,7 +510,30 @@ impl Runtime {
                     command=commands.recv()=> match command {
                         Some(Command::Add(id,mut engine,connectivity,done))=> {
                             for socket in &engine.sockets {
-                                if !sockets.iter().any(|s|Arc::ptr_eq(&s.socket,socket)) { add_reader(&mut sockets,socket.clone(),Some((id,engine.handle.instance)),network.clone()); }
+                                if !sockets.iter().any(|s|Arc::ptr_eq(&s.socket,socket)) {
+                                    let shared = engine.handle.shares(socket);
+                                    let owner = (!shared).then_some((id, engine.handle.instance));
+                                    add_reader(&mut sockets, socket.clone(), owner, network.clone());
+                                }
+                            }
+                            if engine.handle.shared_v4.is_some() {
+                                if gateway.as_ref().is_some_and(super::mapping::Mapping::finished) {
+                                    if let Some(mut retired) = gateway.take() { retired.close().await; }
+                                    mapped = None;
+                                }
+                                if let Some((config, _)) = &connectivity {
+                                    for base in config.bases.iter().filter(|b| engine.handle.shares(&b.socket)) {
+                                        let Ok(host) = Candidate::host(base.local, "udp") else { continue };
+                                        if let Some(mapping) = &gateway {
+                                            mapping.observe(&host);
+                                        } else {
+                                            gateway = start_mapping(&host, engine.handle.clone());
+                                        }
+                                    }
+                                }
+                                if let Some(candidate) = &mapped {
+                                    engine.admit_gateway(candidate.clone());
+                                }
                             }
                             engine.drain(); engines.insert(id,engine);
                             let engine=engines.get_mut(&id).unwrap();
@@ -505,12 +543,24 @@ impl Runtime {
                             }
                             let _=done.send(());
                         }
+                        Some(Command::SharedMapped(base,candidate)) => {
+                            if let Some(socket) = base.upgrade() {
+                                for engine in engines.values_mut().filter(|e| e.handle.shares(&socket)) {
+                                    mapped.clone_from(&candidate);
+                                    if let Some(candidate) = &candidate {
+                                        engine.admit_gateway(candidate.clone());
+                                        engine.drain();
+                                    }
+                                }
+                            }
+                        }
                         Some(Command::TurnReady(id,instance))=>if let Some(engine)=engines.get_mut(&id).filter(|e|e.handle.instance==instance) {
                             while let Ok(mut endpoint)=engine.turn_setup.try_recv() {
                                 if let Err(error)=endpoint.allocate(){eprintln!("Native TURN allocation: {error}");continue;}
-                                let key=Arc::as_ptr(&endpoint.socket) as usize;
-                                add_reader(&mut sockets,endpoint.socket.clone(),Some((id,instance)),network.clone());
-                                engine.turn.insert(key,endpoint);
+                                if let Some(socket)=endpoint.udp() {
+                                    add_reader(&mut sockets,socket.clone(),Some((id,instance)),network.clone());
+                                }
+                                engine.turn.insert(endpoint.key(),endpoint);
                             }
                             engine.drain();
                         },
@@ -519,8 +569,16 @@ impl Runtime {
                             if engines.get(&id).is_some_and(|e|e.handle.instance==instance){if let Some(mut engine)=engines.remove(&id){
                                 engine.close().await;
                             }}
-                            for socket in &mut sockets {if socket.owner==Some((id,instance)) {socket.task.abort();let _=(&mut socket.task).await;}}
-                            sockets.retain(|s|s.owner!=Some((id,instance)));let _=done.send(());
+                            let retire_shared = !engines.values().any(|e| e.handle.shared_v4.is_some());
+                            if retire_shared {
+                                if let Some(mut mapping) = gateway.take() { mapping.close().await; }
+                                mapped = None;
+                            }
+                            let removed = |s: &Socket| s.owner == Some((id,instance)) || (fixed_run.is_none() && s.owner.is_none() && retire_shared);
+                            for socket in sockets.iter_mut().filter(|s| removed(s)) {
+                                socket.task.abort(); let _ = (&mut socket.task).await;
+                            }
+                            sockets.retain(|s| !removed(s)); let _=done.send(());
                         }
                         Some(Command::Stop)|None=>break,
                     },
@@ -528,7 +586,7 @@ impl Runtime {
                         let mut relayed=false;
                         if let Some((id,instance))=packet.owner {
                             if let Some(engine)=engines.get_mut(&id).filter(|e|e.handle.instance==instance) {
-                                if let Some(endpoint)=engine.turn.get_mut(&packet.socket){endpoint.read(&packet);engine.drain();relayed=true;}
+                                if let Some(endpoint)=engine.turn.get_mut(&turn::Key::Udp(packet.socket.as_ptr() as usize)){endpoint.read(&packet);engine.drain();relayed=true;}
                             }
                         }
                         if relayed {continue;}
@@ -537,7 +595,7 @@ impl Runtime {
                         for (id,engine) in &mut engines {
                             let admitted = match owner {
                                 Some(pair) => pair == (*id, engine.handle.instance),
-                                None => !engine.events.local(),
+                                None => !engine.events.local() && engine.sockets.iter().any(|s| Arc::as_ptr(s) == packet.socket.as_ptr()),
                             };
                             if admitted && engine.receive(packet.at,packet.source,packet.destination,&packet.bytes) {
                                 engine.drain();break;
@@ -556,6 +614,9 @@ impl Runtime {
                     }
                 }
             }
+            if let Some(mut mapping) = gateway {
+                mapping.close().await;
+            }
             for engine in engines.values_mut() {
                 engine.close().await;
             }
@@ -571,6 +632,7 @@ impl Runtime {
         Self {
             tx,
             task,
+            shared_v4: Default::default(),
             fixed,
             #[cfg(not(target_os = "android"))]
             interfaces: tokio::sync::OnceCell::new(),
@@ -587,7 +649,7 @@ impl Runtime {
         &self,
         pair: Uuid,
         prepared: Option<std::net::UdpSocket>,
-        linear: bool,
+        preparation: Option<piik_channel_core::wire::UdpPreparation>,
         events: mpsc::Sender<Event>,
         overflow: Arc<AtomicBool>,
         state: Arc<AtomicU8>,
@@ -598,7 +660,7 @@ impl Runtime {
         self.add_engine(
             pair,
             prepared,
-            linear,
+            preparation,
             EventTarget::Peer(events),
             overflow,
             state,
@@ -625,7 +687,7 @@ impl Runtime {
             .add_engine(
                 Uuid::new_v4(),
                 None,
-                false,
+                None,
                 EventTarget::Local { tracks, ended },
                 Arc::new(AtomicBool::new(false)),
                 Arc::new(AtomicU8::new(PeerState::New as u8)),
@@ -694,7 +756,7 @@ impl Runtime {
         &self,
         pair: Uuid,
         prepared: Option<std::net::UdpSocket>,
-        linear: bool,
+        preparation: Option<piik_channel_core::wire::UdpPreparation>,
         events: EventTarget,
         overflow: Arc<AtomicBool>,
         state: Arc<AtomicU8>,
@@ -705,12 +767,9 @@ impl Runtime {
         let stats_origin = Instant::now();
         let using_prepared = prepared.is_some();
         let local_input = events.local();
-        let linear = linear && !local_input && self.fixed.is_none() && prepared.is_none();
-        let handle = Transport {
-            pair,
-            instance: Uuid::new_v4(),
-            tx: self.tx.clone(),
-        };
+        let linear =
+            preparation.is_none() && !local_input && self.fixed.is_none() && prepared.is_none();
+        let mut shared_v4 = None;
         let mut sockets = vec![];
         if local_input {
             sockets.push(Arc::new(UdpIo::new(UdpSocket::bind("127.0.0.1:0").await?)?));
@@ -738,11 +797,36 @@ impl Runtime {
                 }) {
                     continue;
                 }
+                if bind == "0.0.0.0:0"
+                    && preparation == Some(piik_channel_core::wire::UdpPreparation::Available)
+                    && !using_prepared
+                {
+                    let mut current = self.shared_v4.lock().await;
+                    let socket = match current.upgrade() {
+                        Some(socket) => socket,
+                        None => {
+                            let Ok(socket) = UdpSocket::bind(bind).await else {
+                                continue;
+                            };
+                            Arc::new(UdpIo::new(socket)?)
+                        }
+                    };
+                    *current = Arc::downgrade(&socket);
+                    shared_v4 = Some(current.clone());
+                    sockets.push(socket);
+                    continue;
+                }
                 if let Ok(socket) = UdpSocket::bind(bind).await {
                     sockets.push(Arc::new(UdpIo::new(socket)?));
                 }
             }
         }
+        let handle = Transport {
+            pair,
+            shared_v4,
+            instance: Uuid::new_v4(),
+            tx: self.tx.clone(),
+        };
         ensure!(!sockets.is_empty(), "no UDP socket");
         let mut config = Rtc::builder()
             .clear_codecs()
@@ -861,7 +945,9 @@ impl Runtime {
                 .clone()
                 .refresh_host_candidates(monitor, socket, seen)
         });
+        let shared_hosts = bases.iter().filter(|b| handle.shares(&b.socket)).map(|b| b.local).collect();
         let engine = Engine {
+            shared_hosts,
             udp_send_failures: udp_diagnostics::UdpSendFailures::default(),
             source_error: None,
             stats_origin,
@@ -980,7 +1066,7 @@ fn add_reader(
                     };
                     for bytes in buffer[..meta[0].len].chunks(meta[0].stride.max(1)) {
                         let packet = Datagram {
-                            socket: Arc::as_ptr(&reader) as usize,
+                            socket: Arc::downgrade(&reader),
                             owner,
                             source: meta[0].addr,
                             destination: SocketAddr::new(ip, local.port()),
@@ -1260,12 +1346,33 @@ impl Transport {
     pub async fn remote_description(&self) -> bool {
         self.call(|e| Ok(e.remote)).await.unwrap_or(false)
     }
+    pub(super) async fn clear_gateway_observation(&self) {
+        if let Some(base) = &self.shared_v4 {
+            let _ = self
+                .tx
+                .send(Command::SharedMapped(base.clone(), None))
+                .await;
+        }
+    }
+
+    fn shares(&self, socket: &Arc<UdpIo>) -> bool {
+        self.shared_v4
+            .as_ref()
+            .is_some_and(|base| base.as_ptr() == Arc::as_ptr(socket))
+    }
+    pub(super) fn shares_ipv4(&self) -> bool {
+        self.shared_v4.is_some()
+    }
     pub(super) async fn add_gateway_candidate(&self, candidate: Candidate) -> Result<()> {
+        if let Some(base) = &self.shared_v4 {
+            return self
+                .tx
+                .send(Command::SharedMapped(base.clone(), Some(candidate)))
+                .await
+                .map_err(|_| anyhow!("transport closed"));
+        }
         self.call(move |e| {
-            if let Some(candidate) = e.rtc.add_local_candidate(candidate).cloned() {
-                e.trace_pair(RtcPairEvent::GatewayCandidateAdmitted);
-                e.emit(Event::Candidate(e.handle.pair, candidate, None));
-            }
+            e.admit_gateway(candidate);
             Ok(())
         })
         .await
@@ -1763,6 +1870,13 @@ impl Engine {
     fn local_input_allows(&self, ip: std::net::IpAddr) -> bool {
         self.sockets.iter().any(|socket| socket.local_addr().is_ok_and(|a| a.ip() == ip))
     }
+    fn admit_gateway(&mut self, candidate: Candidate) {
+        if self.handle.shares_ipv4() && !self.shared_hosts.contains(&candidate.local()) { return; }
+        if let Some(candidate) = self.rtc.add_local_candidate(candidate).cloned() {
+            self.trace_pair(RtcPairEvent::GatewayCandidateAdmitted);
+            self.emit(Event::Candidate(self.handle.pair, candidate, None));
+        }
+    }
     fn receive(
         &mut self,
         at: Instant,
@@ -1885,7 +1999,9 @@ impl Engine {
                     }
                     endpoint.close();
                 }
-                self.retired_turn.push(key);
+                if let turn::Key::Udp(key) = key {
+                    self.retired_turn.push(key);
+                }
             }
         }
     }

@@ -63,6 +63,7 @@ pub(crate) async fn run(
         let mut samples = sink.stream();
         let mut input = source.sink();
         let mut access_units = Box::pin(access_units);
+        let mut parameters = super::super::decoder_sps::DecoderSps::default();
         let mut pending = None::<gst::Sample>;
         loop {
             tokio::select! {
@@ -103,6 +104,7 @@ pub(crate) async fn run(
                     let Some(frame) = frame else {
                         return Ok(());
                     };
+                    parameters.admit(&frame.bytes)?;
                     let mut buffer = gst::Buffer::from_mut_slice(frame.bytes.clone());
                     let writable = buffer.make_mut();
                     writable.set_pts(clock.timestamp(frame.presentation_time)?);

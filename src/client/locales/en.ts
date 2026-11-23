@@ -272,6 +272,8 @@ export const en: Record<CopyKey, string> = {
   "screen.focusView": "Focus view",
   "screen.focus": "Focus",
   "screen.localPreview": "Local preview",
+  "screen.decodeFailed": "This browser could not decode the shared picture.",
+  "screen.unplayable": "This browser could not play the shared picture.",
   "screen.deliveryRetry": "Picture delivery failed. Retrying.",
   "screen.pictureHelp": "Picture help",
   "screen.pictureHelpViewer": "Select Retry picture. If it still fails, try another network.",

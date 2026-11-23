@@ -289,6 +289,9 @@ mod frontier_wire {
         entries
             .into_iter()
             .map(|f| {
+                if f.after.len() > ids.len() || !f.after.windows(2).all(|w| w[0] < w[1]) {
+                    return Err(serde::de::Error::custom("invalid frontier columns"));
+                }
                 Ok(DeliveryFrontier {
                     source: lookup(f.source)?,
                     waiting: f
@@ -853,6 +856,10 @@ mod tests {
             terminal_bridges: [(0, 1)].into(),
         };
         let original = serde_json::to_value(Advice(vec![frontier])).unwrap();
+        let mut duplicate_column = original.clone();
+        let columns = duplicate_column[1][0]["after"].as_array_mut().unwrap();
+        columns.push(columns[1].clone());
+        assert!(serde_json::from_value::<Advice>(duplicate_column).is_err());
         let mut repeated = original.clone();
         for name in ["terminal", "terminal_bridges"] {
             let arcs = repeated[1][0][name].as_array_mut().unwrap();

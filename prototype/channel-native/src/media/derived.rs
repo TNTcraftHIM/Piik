@@ -568,4 +568,47 @@ pub(crate) mod tests {
         assert_eq!(healthy.recv().await.unwrap().bytes, vec![1]);
         Ok(())
     }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn decoder_sps_rejection_releases_only_derived_reader() -> Result<()> {
+        let epoch = Instant::now();
+        let baseline = Video::new(
+            SourceTime::local(epoch, SystemInstant::now(epoch)),
+            Default::default(),
+        );
+        let original = baseline.subscribe();
+        let mut decoding = Decoding::start(&baseline, VideoCodec::H264)?;
+        let frame = |bytes, millis| EncodedFrame {
+            bytes,
+            presentation_time: epoch + Duration::from_millis(millis),
+            keyframe: true,
+            vp8: None,
+        };
+        // A truncated small SPS takes the actual pre-MFT rejection path.
+        baseline.write(frame(vec![0, 0, 1, 0x67, 0x42], 0));
+        let result = tokio::time::timeout(Duration::from_secs(5), &mut decoding.task).await??;
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid decoder H264 SPS"));
+        assert!(decoding.format.borrow().is_none());
+        decoding.ended(&[], &baseline).await;
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(2), original.recv())
+                .await?
+                .unwrap()
+                .bytes,
+            [0, 0, 1, 0x67, 0x42]
+        );
+        baseline.write(frame(vec![1], 1));
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(2), original.recv())
+                .await?
+                .unwrap()
+                .bytes,
+            [1]
+        );
+        Ok(())
+    }
 }

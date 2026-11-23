@@ -1,5 +1,7 @@
-//! Pair-owned UDP TURN endpoints; rtc-turn owns authentication, framing and timers.
-use super::discovery::IceServerUrl;
+//! Pair-owned TURN endpoints; rtc-turn owns authentication, framing and timers.
+use super::discovery::{IceServerUrl, IceTransport};
+#[path = "turn_stream.rs"]
+mod stream;
 use super::*;
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use rtc_shared::{error::Error, TaggedBytesMut, TransportContext, TransportProtocol};
@@ -15,7 +17,7 @@ pub(super) struct Setup {
 }
 pub(super) async fn setup(handle: Transport, config: Setup) {
     let mut distinct = HashSet::new();
-    let mut jobs: FuturesUnordered<_> = config
+    let jobs: FuturesUnordered<_> = config
         .urls
         .into_iter()
         .filter(|url| url.is_turn)
@@ -23,6 +25,7 @@ pub(super) async fn setup(handle: Transport, config: Setup) {
             distinct.insert((
                 url.host.clone(),
                 url.port,
+                url.transport,
                 url.username.clone(),
                 url.password.clone(),
             ))
@@ -42,36 +45,44 @@ pub(super) async fn setup(handle: Transport, config: Setup) {
             Ok::<_, anyhow::Error>((url, addresses))
         })
         .collect();
+    // A stalled TLS handshake must not hold up another configured address.
+    let mut endpoints = jobs
+        .flat_map(|result| {
+            let addresses = match result {
+                Ok((url, addresses)) => addresses
+                    .into_iter()
+                    .map(|address| (url.clone(), address))
+                    .collect(),
+                Err(error) => {
+                    eprintln!("Native TURN resolution: {error}");
+                    Vec::new()
+                }
+            };
+            futures_util::stream::iter(addresses)
+        })
+        .map(|(url, address)| Endpoint::setup(url, address, handle.clone()))
+        .buffer_unordered(LIMIT);
     let mut installed = 0;
-    while let Some(result) = jobs.next().await {
-        let (url, addresses) = match result {
-            Ok(value) => value,
+    while let Some(result) = endpoints.next().await {
+        let endpoint = match result {
+            Ok(endpoint) => endpoint,
             Err(error) => {
-                eprintln!("Native TURN resolution: {error}");
+                eprintln!("Native TURN endpoint setup: {error}");
                 continue;
             }
         };
-        for server in addresses {
-            if installed >= LIMIT {
-                return;
-            }
-            match Endpoint::setup(url.clone(), server).await {
-                Ok(endpoint) => {
-                    if config.ready.send(endpoint).await.is_err() {
-                        return;
-                    }
-                    installed += 1;
-                    if handle
-                        .tx
-                        .send(Command::TurnReady(handle.pair, handle.instance))
-                        .await
-                        .is_err()
-                    {
-                        return;
-                    }
-                }
-                Err(error) => eprintln!("Native TURN endpoint setup: {error}"),
-            }
+        if config.ready.send(endpoint).await.is_err()
+            || handle
+                .tx
+                .send(Command::TurnReady(handle.pair, handle.instance))
+                .await
+                .is_err()
+        {
+            return;
+        }
+        installed += 1;
+        if installed == LIMIT {
+            return;
         }
     }
 }
@@ -85,8 +96,17 @@ pub(super) enum Change {
     Receive(SocketAddr, SocketAddr, Vec<u8>, Instant),
     Failed,
 }
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) enum Key {
+    Udp(usize),
+    Stream(Uuid),
+}
+enum Io {
+    Udp(Arc<UdpIo>),
+    Stream(stream::Stream),
+}
 pub(super) struct Endpoint {
-    pub socket: Arc<UdpIo>,
+    io: Io,
     local: SocketAddr,
     server: SocketAddr,
     client: Client,
@@ -96,19 +116,33 @@ pub(super) struct Endpoint {
     received_at: Instant,
 }
 impl Endpoint {
-    async fn setup(url: IceServerUrl, server: SocketAddr) -> Result<Self> {
+    async fn setup(url: IceServerUrl, server: SocketAddr, handle: Transport) -> Result<Self> {
         ensure!(
             !url.username.is_empty() && !url.password.is_empty(),
             "TURN credentials missing"
         );
-        let socket = UdpSocket::bind(if server.is_ipv4() {
-            "0.0.0.0:0"
+        let (io, local, protocol) = if url.transport == IceTransport::Udp {
+            let socket = UdpSocket::bind(if server.is_ipv4() {
+                "0.0.0.0:0"
+            } else {
+                "[::]:0"
+            })
+            .await?;
+            socket.connect(server).await?;
+            let local = socket.local_addr()?;
+            (
+                Io::Udp(Arc::new(UdpIo::new(socket)?)),
+                local,
+                TransportProtocol::UDP,
+            )
         } else {
-            "[::]:0"
-        })
-        .await?;
-        socket.connect(server).await?;
-        let local = socket.local_addr()?;
+            let (stream, local) = tokio::time::timeout(
+                Duration::from_secs(5),
+                stream::Stream::connect(&url, server, handle),
+            )
+            .await??;
+            (Io::Stream(stream), local, TransportProtocol::TCP)
+        };
         ensure!(!local.ip().is_unspecified(), "no concrete TURN route");
         // DNS has completed asynchronously. The public constructor only sees a
         // numeric server here, and cannot block the pump on hostname lookup.
@@ -116,7 +150,7 @@ impl Endpoint {
             ClientConfig {
                 turn_serv_addr: server.to_string(),
                 local_addr: local,
-                transport_protocol: TransportProtocol::UDP,
+                transport_protocol: protocol,
                 username: url.username,
                 password: url.password,
                 ..Default::default()
@@ -124,7 +158,7 @@ impl Endpoint {
             rtc_crypto::default_provider()?,
         )?;
         Ok(Self {
-            socket: Arc::new(UdpIo::new(socket)?),
+            io,
             local,
             server,
             client,
@@ -134,6 +168,18 @@ impl Endpoint {
             received_at: Instant::now(),
         })
     }
+    pub fn key(&self) -> Key {
+        match &self.io {
+            Io::Udp(socket) => Key::Udp(Arc::as_ptr(socket) as usize),
+            Io::Stream(stream) => Key::Stream(stream.id),
+        }
+    }
+    pub fn udp(&self) -> Option<&Arc<UdpIo>> {
+        match &self.io {
+            Io::Udp(socket) => Some(socket),
+            Io::Stream(_) => None,
+        }
+    }
     pub fn allocate(&mut self) -> Result<()> {
         self.client.allocate(Instant::now())?;
         Ok(())
@@ -142,16 +188,23 @@ impl Endpoint {
         if packet.source != self.server || packet.destination != self.local {
             return;
         }
-        self.received_at = packet.at;
+        self.read_message(packet.at, &packet.bytes);
+    }
+    fn read_message(&mut self, at: Instant, bytes: &[u8]) {
+        self.received_at = at;
         if let Err(error) = self.client.handle_read(TaggedBytesMut {
-            now: packet.at,
+            now: at,
             transport: TransportContext {
                 local_addr: self.local,
                 peer_addr: self.server,
                 ecn: None,
-                transport_protocol: TransportProtocol::UDP,
+                transport_protocol: if matches!(self.io, Io::Udp(_)) {
+                    TransportProtocol::UDP
+                } else {
+                    TransportProtocol::TCP
+                },
             },
-            message: packet.bytes.as_slice().into(),
+            message: bytes.into(),
         }) {
             eprintln!("Native TURN input: {error}");
         }
@@ -270,9 +323,19 @@ impl Endpoint {
         None
     }
     pub fn flush(&mut self) -> Result<()> {
+        if let Io::Stream(stream) = &self.io {
+            ensure!(!stream.closed(), "TURN stream closed");
+        }
         while let Some(packet) = self.client.poll_write() {
-            if let Err(error) = self.socket.state.try_send(
-                (&self.socket.socket).into(),
+            let socket = match &self.io {
+                Io::Stream(stream) => {
+                    stream.write(packet.message)?;
+                    continue;
+                }
+                Io::Udp(socket) => socket,
+            };
+            if let Err(error) = socket.state.try_send(
+                (&socket.socket).into(),
                 &noq_udp::Transmit {
                     destination: self.server,
                     ecn: None,

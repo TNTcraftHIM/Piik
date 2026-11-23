@@ -376,7 +376,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     setScreenTitle: async (id, title) => { if (ownedScreens.has(id)) setTitles(previous => ({ ...previous, [id]: title })); },
     inputPolicy: async () => sample.received(), inputDecide: async () => sample.received(), inputSimultaneous: async () => sample.received(),
     inputShortcut: async () => { throw new Error("No input device in this preview"); },
-    screenPresentation: () => {}, reconnect: sample.received, clearError: sample.received,
+    screenPresentation: () => {}, screenPlaybackError: () => undefined, reconnect: sample.received, clearError: sample.received,
     setVoiceMuted: () => sample.received(), setVoiceVolume: () => sample.received(),
     updateProfile: sample.channel.updateProfile, updateDomain: sample.channel.updateDomain,
     setRoomCreationPolicy: async policy => setRoomCreationPolicy(policy),

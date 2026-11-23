@@ -270,6 +270,8 @@ export const zh = {
   "screen.focusView": "聚焦画面",
   "screen.focus": "聚焦",
   "screen.localPreview": "本机预览",
+  "screen.decodeFailed": "浏览器无法解码分享画面。",
+  "screen.unplayable": "浏览器无法播放分享画面。",
   "screen.deliveryRetry": "画面传输失败，正在重试。",
   "screen.pictureHelp": "画面帮助",
   "screen.pictureHelpViewer": "点击“重新连接画面”。如果仍然失败，试试其他网络。",

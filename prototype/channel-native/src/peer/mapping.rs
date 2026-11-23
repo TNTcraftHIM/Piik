@@ -1,4 +1,4 @@
-//! Optional default-gateway mapping for one connection's actual IPv4 socket.
+//! Optional default-gateway mapping for an actual IPv4 socket.
 use super::{transport::Transport, MAX_ICE_CANDIDATES};
 use crate::diagnostics::{rtc_pair, RtcPairEvent};
 use netwatch::interfaces::HomeRouter;
@@ -29,6 +29,8 @@ impl Mapping {
             tokio::task::spawn_blocking(HomeRouter::new),
         ))
     }
+
+    pub(super) fn finished(&self) -> bool { self.watcher.is_finished() }
 
     pub(super) fn observe(&self, candidate: &Candidate) {
         if let Some(candidate) = eligible(candidate) {
@@ -136,7 +138,10 @@ async fn forward(
 ) {
     while addresses.changed().await.is_ok() {
         let mapped = *addresses.borrow_and_update();
-        let Some(mapped) = mapped else { continue };
+        let Some(mapped) = mapped else {
+            transport.clear_gateway_observation().await;
+            continue;
+        };
         let Ok(candidate) = Candidate::server_reflexive(mapped.into(), base.addr(), "udp") else {
             continue;
         };
@@ -154,6 +159,128 @@ mod tests {
     use std::{net::SocketAddr, time::Duration};
     use tokio::sync::oneshot;
     use uuid::Uuid;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn available_ipv4_shares_a_base_and_retires_the_last_gateway_publisher() -> Result<()> {
+        use crate::peer::server_udp::ServerUdp;
+        use crate::peer::tests::support::{exchange, open};
+        use piik_channel_core::wire::{PairInfo, UdpPreparation};
+
+        let (leases, mut started) = mpsc::unbounded_channel();
+        let previous: std::sync::Mutex<Option<watch::Sender<Option<SocketAddrV4>>>> = Default::default();
+        let runtime = Runtime::with_mapping(None, move |host, transport| {
+            let (updates, addresses) = watch::channel(None);
+            if let Some(previous) = previous.lock().unwrap().replace(updates.clone()) {
+                assert!(previous.is_closed(), "successor started before prior publisher retired");
+            }
+            let (candidates, _) = mpsc::channel(1);
+            leases.send((host.addr(), updates)).unwrap();
+            Some(Mapping {
+                client: Arc::new(OnceLock::new()),
+                candidates,
+                watcher: tokio::spawn(forward(host.clone(), addresses, transport)),
+            })
+        });
+        let (mut driver, mut events, _signals, _stop) = crate::peer::tests::driver();
+        std::mem::replace(&mut driver.transport, runtime)
+            .close()
+            .await;
+        let plan = || PairInfo {
+            id: Uuid::new_v4(),
+            peer_id: Uuid::new_v4(),
+            rooms: vec![],
+            incoming: vec![],
+            outgoing: vec![],
+            udp_preparation: Some(UdpPreparation::Available),
+            can_receive_video_layers: false,
+        };
+        let first = plan();
+        let second = plan();
+        driver.create_pair(&first, None).await?;
+        let (local, updates) = started.try_recv()?;
+        let published = SocketAddrV4::new(std::net::Ipv4Addr::LOCALHOST, local.port());
+        updates.send(Some(published))?;
+        async fn mapped(
+            events: &mut mpsc::Receiver<Event>,
+            pair: Uuid,
+            addr: SocketAddrV4,
+        ) -> Result<Candidate> {
+            tokio::time::timeout(Duration::from_secs(3), async {
+                while let Some(event) = events.recv().await {
+                    if let Event::Candidate(id, c, _) = event {
+                        if id == pair
+                            && c.addr() == SocketAddr::V4(addr)
+                            && c.kind() == CandidateKind::ServerReflexive
+                        {
+                            return Ok(c);
+                        }
+                    }
+                }
+                Err(anyhow!("candidate publisher closed"))
+            })
+            .await?
+        }
+        let mapped1 = mapped(&mut events, first.id, published).await?;
+        driver.create_pair(&second, None).await?;
+        let mapped2 = mapped(&mut events, second.id, published).await?;
+        ensure!(
+            mapped1.local() == local
+                && mapped2.local() == local
+                && mapped1.ufrag() != mapped2.ufrag()
+        );
+        ensure!(started.try_recv().is_err());
+        let a = driver.pairs[&first.id].pc.clone();
+        let b = driver.pairs[&second.id].pc.clone();
+        let remote = || -> Result<Runtime> {
+            Ok(Runtime::new(Some(ServerUdp::bind(&[(
+                SocketAddr::new(local.ip(), 0),
+                None,
+            )])?)))
+        };
+        let peer1 = remote()?;
+        let peer2 = remote()?;
+        let (r1, mut rx1) = endpoint(&peer1, first.id, None).await?;
+        let (r2, mut rx2) = endpoint(&peer2, second.id, None).await?;
+        let ((tx1, dc1), (tx2, dc2)) =
+            tokio::try_join!(open(&a, &r1, &mut rx1), open(&b, &r2, &mut rx2))?;
+        tokio::try_join!(exchange(&tx1, &dc1, "one"), exchange(&tx2, &dc2, "two"))?;
+        tokio::try_join!(
+            exchange(&dc1, &tx1, "one-return"),
+            exchange(&dc2, &tx2, "two-return")
+        )?;
+        let wildcard = SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, local.port());
+        ensure!(std::net::UdpSocket::bind(wildcard).is_err());
+        driver.retire_pair(first.id).await;
+        ensure!(updates.receiver_count() == 1 && a.connection_metrics().await.is_err());
+        ensure!(std::net::UdpSocket::bind(wildcard).is_err());
+        exchange(&tx2, &dc2, "survivor").await?;
+        exchange(&dc2, &tx2, "survivor-return").await?;
+        let changed = SocketAddrV4::new(std::net::Ipv4Addr::new(127, 0, 0, 2), local.port());
+        updates.send(Some(changed))?;
+        ensure!(mapped(&mut events, second.id, changed).await?.local() == local);
+        let mut successor = second.clone();
+        successor.id = Uuid::new_v4();
+        // The normal plan update joins the removed RTC before adding its successor.
+        driver.update(vec![successor.clone()], vec![], vec![]).await;
+        let (new_local, next_updates) = started.try_recv()?;
+        ensure!(updates.is_closed() && b.connection_metrics().await.is_err());
+        if new_local.port() != local.port() {
+            std::net::UdpSocket::bind(wildcard)?;
+        }
+        driver.update(vec![], vec![], vec![]).await;
+        ensure!(next_updates.is_closed() && started.try_recv().is_err());
+        std::net::UdpSocket::bind(SocketAddrV4::new(
+            std::net::Ipv4Addr::UNSPECIFIED,
+            new_local.port(),
+        ))?;
+        std::net::UdpSocket::bind(wildcard)?;
+        r1.close().await?;
+        r2.close().await?;
+        peer1.close().await;
+        peer2.close().await;
+        driver.transport.close().await;
+        Ok(())
+    }
 
     #[tokio::test]
     async fn unavailable_gateway_does_not_keep_a_mapping_service() -> Result<()> {

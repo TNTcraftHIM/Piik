@@ -422,13 +422,14 @@ export class ChannelMedia {
     return null;
   }
 
-  screenPresentation(flowId: string, stream: MediaStream, state: ScreenPresentation): void {
+  screenPresentation(flowId: string, stream: MediaStream, state: ScreenPresentation, onSelectedFailure?: (id: string) => void): void {
     for (const peer of this.peers.values()) {
       const flow = peer.plan.incoming.find(flow => flow.id === flowId);
       const input = peer.inputs.get(flowId);
       if (!flow || !input || input.stream !== stream || input.failed || !this.subscriptions.includes(flow.publicationId)
         || !this.ownsInput(peer, flowId, input)) continue;
       if (state === "failed") {
+        if (onSelectedFailure && this.selectedInput(flow.publicationId)?.input === input) onSelectedFailure(flow.publicationId);
         input.failed = true;
         input.release?.();
         this.reportInput(peer, flowId, input);

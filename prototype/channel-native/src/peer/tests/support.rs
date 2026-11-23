@@ -206,7 +206,7 @@ impl Fixture {
             .add(
                 pair,
                 None,
-                false,
+                Some(piik_channel_core::wire::UdpPreparation::Required),
                 self.remote_sender.clone(),
                 Arc::new(AtomicBool::new(false)),
                 Arc::new(AtomicU8::new(0)),
@@ -623,7 +623,7 @@ pub(in crate::peer) async fn endpoint(
         .add(
             pair,
             prepared,
-            false,
+            Some(piik_channel_core::wire::UdpPreparation::Required),
             events,
             Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicU8::new(0)),

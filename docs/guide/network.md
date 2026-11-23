@@ -25,10 +25,14 @@ firewall rules. A working web page does not establish that peer traffic is allow
 
 - Try a browser profile with default WebRTC settings, as described below.
 - If your group can use a shared virtual network, follow the [virtual LAN steps](#optional-a-virtual-lan).
-- On a managed network, ask the administrator about blocked UDP, or use another network.
+- On a managed network, ask the network administrator about blocked UDP, or use another network.
+- If the site runs on Piik Server, ask the site operator whether site forwarding is available.
+  A room manager can then enable **Allow site forwarding** under **Room settings → Connection**.
 
-Piik selects routes automatically. Use the connection options below when the
-current network blocks peer traffic.
+Piik selects routes automatically. The App's automatic **Public invite** uses
+Cloudflare Tunnel for the invitation page and signaling. Picture, voice and file
+content still need a working WebRTC route.
+[Cloudflare Tunnel routing](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/protocols/)
 
 ## Browser WebRTC restrictions
 
@@ -62,12 +66,12 @@ Only change equipment and settings you manage.
 <details>
 <summary>STUN discovery</summary>
 
-STUN discovers addresses that peer connections can try. It does not carry chat
-or file content. App and Server use the built-in public STUN choices; operators
-can configure `PIIK_CHANNEL_ICE_SERVERS` as described in the
-[runtime reference](../../prototype/channel-server/README.md#rooms-conversation-and-media).
-An HTTP reverse proxy does not forward STUN UDP. Replacing STUN cannot by itself
-remove a network's UDP restrictions.
+STUN discovers addresses that peer connections can try. In **Local network** mode,
+App supplies only its STUN address on the selected network. **Public invite** and
+standalone Server supply public STUN addresses by default.
+Changing STUN only changes address discovery. If the site operator already has a
+TURN service, they can check compatible builds and configuration in the
+[App and Server ICE configuration reference](../../prototype/channel-server/README.md#ice-server-configuration).
 
 Choose trusted services: they receive participants' public IP addresses. The
 [WebRTC connection guide](https://webrtc.org/getting-started/peer-connections)

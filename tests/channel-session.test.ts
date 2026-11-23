@@ -6773,11 +6773,14 @@ test("a selected screen reports only its current playback failure and keeps the 
       { type: "flow_state", pairId: "pair", flowId: "screen-flow", state: "decoded" },
     ]);
     sent.length = 0;
-    media.screenPresentation("screen-flow", previous, "failed");
+    const selectedFailure = vi.fn();
+    media.screenPresentation("screen-flow", previous, "failed", selectedFailure);
     media.screenPresentation("screen-flow", current, "prepared");
     expect(sent.some(command => command.type === "flow_state" && ["failed", "switch_ready"].includes(command.state))).toBe(false);
-    media.screenPresentation("screen-flow", current, "failed");
-    media.screenPresentation("screen-flow", current, "failed");
+    expect(selectedFailure).not.toHaveBeenCalled();
+    media.screenPresentation("screen-flow", current, "failed", selectedFailure);
+    media.screenPresentation("screen-flow", current, "failed", selectedFailure);
+    expect(selectedFailure.mock.calls).toEqual([["screen"]]);
     expect(sent.filter(command => command.type === "flow_state" && command.state === "failed")).toEqual([
       { type: "flow_state", pairId: "pair", flowId: "screen-flow", state: "failed" },
     ]);
@@ -12960,6 +12963,79 @@ async function retryPictureFixture() {
   await vi.waitFor(() => expect(session.getSnapshot().streams.has("two")).toBe(true));
   return { session, socket, state, pc, streams };
 }
+
+test.each(["replacement", "retry", "new source", "new binding", "unwatch", "close"] as const)(
+  "the selected screen error survives input retirement and clears on %s", async end => {
+    const { session, socket, state, pc, streams } = await retryPictureFixture();
+    const failed = streams[0], sibling = streams[1];
+    try {
+      session.screenPresentation("one-flow", failed, "failed", 3);
+      expect(session.getSnapshot().streams.has("one")).toBe(false);
+      expect(session.getSnapshot().streams.get("two")).toBe(sibling);
+      expect(session.screenPlaybackError("one")).toBe(3);
+      expect(session.screenPlaybackError("two")).toBeUndefined();
+
+      state.pairs[0].incoming = state.pairs[0].incoming.filter(flow => flow.id !== "one-flow");
+      socket.receive({ type: "state", state });
+      expect(session.screenPlaybackError("one")).toBe(3);
+      session.screenPresentation("one-flow", failed, "failed", 4);
+      expect(session.screenPlaybackError("one")).toBe(3);
+
+      if (end === "replacement") {
+        const next = remoteStream("replacement-one", [remoteTrack("video")]);
+        pc.receivers.push({ track: next.getVideoTracks()[0], getStats: async () => decodedReport(1) } as RTCRtpReceiver);
+        state.pairs[0].incoming.push({ id: "replacement-flow", publicationId: "one", selected: true, inputFlowId: null });
+        socket.receive({ type: "state", state });
+        const media = (session as unknown as { media: ChannelMedia }).media;
+        media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "replacement" },
+          tracks: [{ flowId: "replacement-flow", streamId: next.id }] });
+        await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("replacement"));
+        pc.ontrack?.({ streams: [next] });
+        await vi.waitFor(() => expect(session.getSnapshot().streams.get("one")).toBe(next));
+        session.screenPresentation("one-flow", failed, "failed", 4);
+        expect(session.getSnapshot().streams.get("one")).toBe(next);
+      } else if (end === "retry") {
+        const retry = session.retryPicture("one");
+        expect(session.screenPlaybackError("one")).toBeUndefined();
+        socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+        await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "one", enabled: true }));
+        socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+        await retry;
+      } else if (end === "unwatch") {
+        const stopping = session.unwatch("one");
+        socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+        await stopping;
+      } else if (end === "close") session.close();
+      else {
+        if (end === "new source" && state.publications[0].kind === "screen") state.publications[0].source = { kind: "camera", name: null };
+        if (end === "new binding") state.channel.rooms[0].delivery!.bindingId = "replacement-binding";
+        socket.receive({ type: "state", state });
+      }
+      expect(session.screenPlaybackError("one")).toBeUndefined();
+    } finally { session.close(); }
+  });
+
+test("discovering the App clears a watched publication's remote playback error when its source is local", async () => {
+  const { session, socket, state, streams } = await retryPictureFixture();
+  const localEndpoint = "z";
+  vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: localEndpoint, roomIds: [] });
+  try {
+    state.sessions.push({ id: localEndpoint, userId: session.getSnapshot().self!.id, online: true, signingKey: testSigningKey });
+    socket.receive({ type: "state", state });
+    session.screenPresentation("one-flow", streams[0], "failed", 3);
+    expect(session.screenPlaybackError("one")).toBe(3);
+
+    const activation = session.activateApp({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+      domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const app = ChannelSocket.current;
+    await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await activation;
+    await vi.waitFor(() => expect(session.getSnapshot().localScreens.has("one")).toBe(true));
+    expect(session.screenPlaybackError("one")).toBeUndefined();
+    session.screenPresentation("two-flow", streams[1], "failed", 4);
+    expect(session.screenPlaybackError("two")).toBeUndefined();
+  } finally { session.close(); }
+});
 
 test.each([false, true])("manual picture retry restores Browser viewing before App assistance (App exits: %s)", async exits => {
   const { session, socket, state } = await retryPictureFixture();

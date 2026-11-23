@@ -81,6 +81,7 @@ async fn source_ended_before_ready_fails_only_its_current_flow() -> Result<()> {
     let (commands, receiver) = mpsc::channel(1);
     drop(receiver); // Exercise Driver/Track queues without constructing a network engine.
     let pc = Transport {
+        shared_v4: None,
         pair,
         instance: Uuid::new_v4(),
         tx: commands,
@@ -307,6 +308,7 @@ async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()>
     let id = Uuid::new_v4();
     let instance = Uuid::new_v4();
     let pc = Transport {
+        shared_v4: None,
         pair: id,
         instance,
         tx: commands,

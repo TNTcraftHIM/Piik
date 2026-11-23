@@ -18,10 +18,10 @@ import { toggleVideoFullscreen, videoFullscreenState } from "../../components/li
 import { ViewerAudio, type ViewerAudioSnapshot, type VoicePlaybackContext } from "../../media/viewer-audio";
 import { observeDebugPlayback } from "../../lib/debug-webrtc";
 import { observeCompositedVideoFrame } from "../../media/video-frame-proof";
-import { playbackFailure } from "../../media/viewer-playback";
+import { elementPlaybackError, playbackFailure, type ScreenPlaybackError } from "../../media/viewer-playback";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
 import type { VideoFit, VideoRotation } from "../../media/video-geometry";
-import type { ChannelScreenInput, ScreenPresentation } from "../types";
+import type { ChannelActions, ChannelScreenInput } from "../types";
 import { watchSeekPosition } from "../watch-media";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
@@ -322,7 +322,7 @@ function ChannelVideoInput({ input, negotiatedFlowId, visible, interactive, labe
   input: ChannelScreenInput; negotiatedFlowId?: string; visible: boolean; interactive: boolean; label: string; fit: VideoFit;
   register(input: ChannelScreenInput, element: HTMLVideoElement | null): void;
   frame(input: ChannelScreenInput, element: HTMLVideoElement): void;
-  issue(input: ChannelScreenInput, element: HTMLVideoElement, error: unknown): void;
+  issue(input: ChannelScreenInput, element: HTMLVideoElement, error: unknown, playbackError?: ScreenPlaybackError): void;
   playing(input: ChannelScreenInput, paused: boolean): void;
   fullscreen(): void;
 }) {
@@ -350,7 +350,10 @@ function ChannelVideoInput({ input, negotiatedFlowId, visible, interactive, labe
   return <video ref={attach} playsInline muted inert={!interactive} style={{ objectFit: fit }} aria-label={visible ? label : undefined} aria-hidden={!visible}
     data-flow-id={input.flowId} data-selected={visible} data-composited={composited} data-switch-ready={input.switchReady}
     tabIndex={visible ? 0 : -1} onPlay={() => playing(input, false)} onPause={() => playing(input, true)}
-    onEnded={() => playing(input, true)} onError={event => issue(input, event.currentTarget, event.currentTarget.error)}
+    onEnded={() => playing(input, true)} onError={event => {
+      const element = event.currentTarget;
+      issue(input, element, element.error, elementPlaybackError(element.error));
+    }}
     onDoubleClick={visible ? fullscreen : undefined} onKeyDown={event => {
       if (visible && event.code === "Space") {
         event.preventDefault();
@@ -373,7 +376,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
   onRetryPicture?(): void; retryAvailable?: boolean;
   interaction?: RoomInteractionSession | null;
   theaterMode: boolean; onToggleTheater(): void;
-  onPresentation?: (flowId: string, stream: MediaStream, state: ScreenPresentation) => void;
+  onPresentation?: ChannelActions["screenPresentation"];
 }) {
   const thumbnail = presentation === "thumbnail", interactive = presentation === "full";
   const target = inputs?.find(input => input.selected) ?? { flowId: stream.id, stream, selected: true, switchReady: false, localDisplayKey: true };
@@ -425,13 +428,14 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
     consumer.composited = true;
     changeConsumer(value => value + 1);
   }, []);
-  const issue = useCallback((input: ChannelScreenInput, element: HTMLVideoElement, error: unknown) => {
+  const issue = useCallback((input: ChannelScreenInput, element: HTMLVideoElement, error: unknown, playbackError?: ScreenPlaybackError) => {
     const failure = playbackFailure(error);
     if (!failure || consumers.current.get(input.stream)?.element !== element) return;
     const state = current.current;
-    if (state.displayed.flowId === input.flowId && state.displayed.stream === input.stream) setBlocked(true);
+    const displayed = state.displayed.flowId === input.flowId && state.displayed.stream === input.stream;
+    if (displayed) setBlocked(true);
     if (failure === "playback-failed" && state.inputs?.some(value => value.flowId === input.flowId && value.stream === input.stream)) {
-      state.onPresentation?.(input.flowId, input.stream, "failed");
+      state.onPresentation?.(input.flowId, input.stream, "failed", displayed ? playbackError : undefined);
     }
   }, []);
   const playing = useCallback((input: ChannelScreenInput, value: boolean) => {

@@ -200,6 +200,8 @@ export const ja = {
   "screen.focusView": "フォーカス表示",
   "screen.focus": "フォーカス",
   "screen.localPreview": "ローカルプレビュー",
+  "screen.decodeFailed": "このブラウザーでは共有画面をデコードできませんでした。",
+  "screen.unplayable": "このブラウザーでは共有画面を再生できませんでした。",
   "screen.deliveryRetry": "映像の配信に失敗しました。再試行しています。",
   "screen.pictureHelp": "映像のヘルプ",
   "screen.pictureHelpViewer": "映像を再接続してください。解決しない場合は、別のネットワークをお試しください。",

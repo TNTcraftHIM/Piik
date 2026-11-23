@@ -212,8 +212,9 @@ Allow the fixed `PIIK_CHANNEL_UDP_PORT` through the host firewall and cloud
 security group. It defaults to the actual HTTP port; the deployment template
 selects 8787. Media UDP goes directly to this listener, not through the HTTP
 proxy or HTTP tunnel. Offering forwarding capability does not prove that this
-UDP listener is reachable from a particular viewer. The Server uses the configured public STUN services for discovery; this
-setup does not require hosting the old 2.x STUN listeners on UDP 3478/3479/3480.
+UDP listener is reachable from a particular viewer. By default, the Server uses
+public STUN services for discovery. This setup does not require hosting the old
+2.x STUN listeners on UDP 3478/3479/3480.
 
 When NAT or a UDP tunnel changes the reachable address, set
 `PIIK_CHANNEL_UDP_PUBLIC_ADDRESS` to its public IP and port, for example
@@ -620,10 +621,6 @@ participant forwards encoded Opus, VP8 and H264, and publishes App capture throu
 those same plans. Server-hosted rooms can carry media through their authorized Native endpoint; the same publication plan repairs failed direct paths.
 The 2.x-specific SFU-only and peer-only operator policies are not implemented.
 WebRTC owns ICE and congestion control.
-App and Server use the existing public STUN choices by default. Optional
-`PIIK_CHANNEL_ICE_SERVERS` replaces them with an ICE-server JSON array; `[]` disables
-STUN for isolated loopback checks. The local checks do not establish a public-NAT
-success rate or reliable background Browser service.
 
 A signaling interruption has one 20-second recovery window. A resumed endpoint
 retains its committed media and resumes unfinished negotiation on the same
@@ -632,6 +629,42 @@ stop, unwatch and leave take effect locally and are reconciled on reconnect.
 Browser source pause and local voice mute/deafen also apply during this window.
 Pausing an App-produced picture requires domain signaling; stopping its capture
 uses the separate App connection.
+
+### ICE server configuration
+
+**Local network** supplies only App's STUN listener on the selected network.
+**Public invite** and standalone Server use public STUN services by default.
+`PIIK_CHANNEL_ICE_SERVERS` replaces that list with an ICE-server JSON array.
+Use `[]` to disable configured ICE servers for isolated loopback checks.
+The site sends the configured URLs and credentials to Browser and Native
+endpoints when they join. Use participant credentials issued by your TURN service.
+The local checks do not establish a public-NAT success rate or reliable
+background Browser service.
+
+The following example is for source builds with Native TURN over TCP/TLS. If you
+already have a TURN service reachable from the network that blocks outbound UDP,
+set `PIIK_CHANNEL_ICE_SERVERS` to the JSON below. Set it in the desktop App's
+process environment before starting App in **Public invite** mode, or in the
+Server's service environment before restarting Server. Use the hostname, port
+and participant credentials from your TURN service, then have participants
+reconnect and retry from the affected network.
+
+```json
+[
+  {
+    "urls": ["turns:turn.example.com:443?transport=tcp"],
+    "username": "<TURN username>",
+    "credential": "<TURN password>"
+  }
+]
+```
+
+`turns:` with `transport=tcp` uses TLS over TCP from the client to the TURN
+listener. The certificate must be trusted and match the hostname. A plain TCP
+listener uses `turn:` with `transport=tcp`. The TURN service still allocates
+UDP relay addresses, which must be reachable from the other endpoint's selected
+route. See [TURN URI syntax](https://datatracker.ietf.org/doc/html/rfc7065#section-3)
+and [TURN transports](https://datatracker.ietf.org/doc/html/rfc8656#section-3.1).
 
 ## Saved data and files
 

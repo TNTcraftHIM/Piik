@@ -705,17 +705,20 @@ optional public IP/port mapping are separate facts. An FRP backend on loopback
 requires an explicit loopback bind; wildcard enumeration advertises real interfaces.
 Candidate availability is evaluated across the bound listeners: a family without
 an advertisable address does not invalidate another family's usable candidates.
-The service owns these sockets until its peer connections retire. App peers keep
-their exclusive sockets, gateway mapping and coordinated preparation; a shared
-Server listener does not advertise preparation capability.
+The service owns these sockets until its peer connections retire. Ordinary Native
+pairs marked `Available` share an IPv4 socket within their current endpoint
+runtime. Coordinated preparation and linear probes retain their exclusive
+sockets. A shared Server listener does not advertise preparation capability.
 
-Each Native pair may map its actual default-gateway IPv4 socket using the
+Native maps its actual default-gateway IPv4 socket using the
 [portmapper client](../../prototype/channel-native/README.md#rtc-dependency). Its
 background probe, protocol selection and renewal stay with that library;
 mapping does not delay ICE or replace IPv6 and STUN candidates. Mapped addresses
-use the existing candidate signaling. Pair retirement cancels address producers
-before waiting for unrelated delivery queues, then joins the address watcher
-and requests best-effort deactivation through the library's existing lifecycle.
+use the existing candidate signaling. Shared sockets have one mapping producer;
+each connection accepts only mappings for its admitted local address. The last
+socket user retires the reader and mapping. Exclusive pair retirement cancels its
+address producer before waiting for unrelated delivery queues. Both paths join
+the watcher and request best-effort deactivation through the library lifecycle.
 
 Prepare a replacement, prove it usable, commit, then release old work. The Channel wire exposes room topology as sessionIds and pairs. Each activity
 selects its parents, so RoomDelivery needs no shared nextHops. RoomDataState

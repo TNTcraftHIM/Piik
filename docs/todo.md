@@ -48,10 +48,6 @@ the feedback period; they do not delay that delivery.
   On Android, retire the selecting Activity when room admission fails before
   the system picker opens, including when its launch arrives after rejection
   and another selection is pending.
-- [ ] **Preserve explicit screen decode failures in local diagnostics.** The
-  current video element can report a decode error before its failed input is
-  removed. Carry that fact through the existing viewing owner into its recovery
-  presentation; retire it when the input or viewing intent changes.
 - [ ] **Member-video viewing on the reporting network.** Verify the authorized
   source with the updated App and Browser on that network. Record the selected
   player and sharing mode, then locate any remaining source-access or delivery failure.

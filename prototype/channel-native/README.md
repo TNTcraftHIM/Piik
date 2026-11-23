@@ -194,8 +194,10 @@ revision for `rtc-shared` keeps public error and marshal types under one identit
 The published 0.21.1 crates predate the repair, so Cargo patch entries still
 select this official revision until a release passes the consumer checks below.
 The other RTC helpers use published 0.21.1 crates for STUN, TURN and crypto.
-The existing `url` crate parses configured UDP STUN/TURN
-server addresses. Piik does not depend on the umbrella
+The existing `url` crate parses UDP STUN and TURN addresses. TURN also supports
+TCP and TLS over TCP, using the same trust sources as signaling and the
+`rtc-shared` TURN stream decoder. ICE advertises the allocated UDP relay
+address. Piik does not depend on the umbrella
 RTC engine; str0m owns negotiation and transport.
 
 The incoming-source adapter owns complete-AU ordering and first-packet metadata.
@@ -221,7 +223,7 @@ On desktop, interface address and IPv6 DAD changes reach the existing monitor.
 A connecting Native pair can then advertise a newly usable address on its
 original UDP socket until ICE selects its first path. Android takes an interface snapshot when creating the pair.
 
-The pair-owned mapping worker delegates synchronous gateway discovery to Tokio's
+The socket-owned mapping worker delegates synchronous gateway discovery to Tokio's
 blocking pool. When a gateway advertises NAT-PMP and explicitly reports that
 PCP mapping is unsupported, the worker can create a NAT-PMP lease and renew it
 if the gateway changes the external port. Both crates retain their upstream

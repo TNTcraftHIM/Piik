@@ -1,4 +1,5 @@
 import type { CopyKey } from "../locales";
+import type { ScreenPlaybackError } from "../media/viewer-playback";
 import type { AttachmentProgress } from "./attachments";
 import type { ChannelRoom } from "./protocol";
 
@@ -38,7 +39,7 @@ export interface ChannelDiagnosis {
 export type AppConnectionState = "idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible";
 type ChannelFact =
   | { area: "app"; state: AppConnectionState }
-  | { area: "screen"; paused: boolean; deliveryFailed?: boolean }
+  | { area: "screen"; paused: boolean; deliveryFailed?: boolean; playbackError?: ScreenPlaybackError }
   | { area: "room"; room: Pick<ChannelRoom, "available" | "authorized"> }
   | { area: "attachment"; state: AttachmentProgress["state"] }
   | { area: "error"; code: string | null | undefined };
@@ -53,8 +54,12 @@ export function diagnoseChannelFact(fact: ChannelFact): ChannelDiagnosis | null 
       default: return null;
     }
   }
-  if (fact.area === "screen") return !fact.paused && fact.deliveryFailed
-    ? { message: "diagnosis.noPicture", next: "screen.retryPicture", topic: "picture" } : null;
+  if (fact.area === "screen") {
+    if (fact.paused) return null;
+    const message = fact.playbackError === 3 ? "screen.decodeFailed" : fact.playbackError === 4 ? "screen.unplayable"
+      : fact.deliveryFailed ? "diagnosis.noPicture" : null;
+    return message ? { message, next: "screen.retryPicture", topic: "picture" } : null;
+  }
   if (fact.area === "room") {
     if (fact.room.available) return null; // Admission can still be requested until the owner explicitly refuses it.
     return { message: fact.room.authorized ? "channel.error.roomHostOffline" : "room.offline.access", topic: "offline" };

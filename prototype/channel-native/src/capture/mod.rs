@@ -36,6 +36,8 @@ mod cadence;
 mod converter;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod decoder;
+#[cfg(all(feature = "capture", any(target_os = "windows", target_os = "linux")))]
+mod decoder_sps;
 #[cfg(any(feature = "capture", test))]
 mod encode_usage;
 #[cfg(any(feature = "capture", test))]

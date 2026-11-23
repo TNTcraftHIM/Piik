@@ -84,7 +84,7 @@ export function useChannel(): ChannelController {
     sourceSelectionCommitting: session.sourceSelectionCommitting,
     browserCapturePreparation: session.browserCapturePreparation,
     cancelScreenSelection: session.cancelScreenSelection,
-    stopScreen: session.stopScreen, watch: session.watch, unwatch: session.unwatch, retryPicture: session.retryPicture, screenPresentation: session.screenPresentation,
+    stopScreen: session.stopScreen, watch: session.watch, unwatch: session.unwatch, retryPicture: session.retryPicture, screenPresentation: session.screenPresentation, screenPlaybackError: session.screenPlaybackError,
     inputPolicy: session.inputPolicy, inputDecide: session.inputDecide, inputSimultaneous: session.inputSimultaneous, inputShortcut: session.inputShortcut,
     joinVoice: session.joinVoice, leaveVoice: session.leaveVoice, setMuted: session.setMuted, canUnmute: session.canUnmute,
     voiceActivity: session.voiceActivity,

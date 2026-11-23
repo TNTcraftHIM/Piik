@@ -201,6 +201,8 @@ export const ko = {
   "screen.focusView": "집중 보기",
   "screen.focus": "집중",
   "screen.localPreview": "로컬 미리보기",
+  "screen.decodeFailed": "이 브라우저에서 공유 화면을 디코딩하지 못했어요.",
+  "screen.unplayable": "이 브라우저에서 공유 화면을 재생하지 못했어요.",
   "screen.deliveryRetry": "화면을 전송하지 못했어요. 다시 시도하고 있어요.",
   "screen.pictureHelp": "화면 도움말",
   "screen.pictureHelpViewer": "화면을 다시 연결해 보세요. 계속 실패하면 다른 네트워크를 사용해 보세요.",

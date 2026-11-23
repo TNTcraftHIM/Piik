@@ -19,7 +19,7 @@ import { RoomReadMarkers } from "./read-markers";
 import { historyProfileIds, mergeMessage, mergeMessages, readingWindow, redactReply } from "./message-history";
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
-import { messageRemoved, type ChannelActions, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type ScreenPresentation, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
+import { messageRemoved, type ChannelActions, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
 import { validBackupSequence, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
 import type { BackupHistoryImport } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
@@ -34,6 +34,7 @@ import { acquireMediaStream } from "../media/capture-stream";
 import { HostAudio, type CommentaryInput } from "../media/host-audio";
 import { readPreferredQuality, savePreferredQuality, screenVideoSettings, supportsCaptureProfile, type QualityProfile } from "../media/quality";
 import { audioInputConstraints } from "../media/audio-capture";
+import type { ScreenPlaybackError } from "../media/viewer-playback";
 import { browserCaptureDevices } from "../media/capture-devices";
 import { RoomInteractionSession, type RoomInteraction } from "../lib/room-interactions";
 import { MAX_CHAT_CODE_POINTS, isThrow } from "../../shared/room-interactions";
@@ -101,6 +102,7 @@ interface VoiceParticipation {
 }
 
 interface ScreenWatch {
+  playbackError?: ScreenPlaybackError;
   helperSessionId?: string;
   retry?: { controller: AbortController; available: () => boolean };
   query?: AbortController;
@@ -274,7 +276,13 @@ export class ChannelSession {
     send: (peer, frame) => this.media.sendInput(peer, frame),
     changed: inputChannels => this.patch({ inputChannels }),
   });
-  private media = new ChannelMedia(command => this.send(command), (streams, screenInputs) => this.patch({ streams, screenInputs }),
+  private media = new ChannelMedia(command => this.send(command), (streams, screenInputs) => {
+    for (const id of streams.keys()) {
+      const watch = this.watching.get(id);
+      if (watch) delete watch.playbackError;
+    }
+    this.patch({ streams, screenInputs });
+  },
     (peer, kind, data) => {
       if (kind === "chunk") {
         const bytes = data as Uint8Array;
@@ -344,7 +352,13 @@ export class ChannelSession {
     }
     return ids.flatMap(id => this.profileFresh(id) ? [this.view.profiles.get(id)!] : []);
   };
-  screenPresentation = (flowId: string, stream: MediaStream, state: ScreenPresentation): void => this.media.screenPresentation(flowId, stream, state);
+  screenPlaybackError = (id: string): ScreenPlaybackError | undefined => this.watching.get(id)?.playbackError;
+  screenPresentation: ChannelActions["screenPresentation"] = (flowId, stream, state, playbackError) => {
+    this.media.screenPresentation(flowId, stream, state, playbackError === undefined ? undefined : id => {
+      const watch = this.watching.get(id);
+      if (watch && !watch.retry && !this.view.localScreens.has(id)) watch.playbackError = playbackError;
+    });
+  };
   setQuality = (profile: QualityProfile): void => {
     if (!supportsCaptureProfile(profile)) throw new Error("capture_quality_unsupported");
     savePreferredQuality(profile);
@@ -363,6 +377,10 @@ export class ChannelSession {
     const localScreens = new Set(ownedScreens);
     for (const publication of (patch.state ?? this.view.state)?.publications ?? []) {
       if (publication.kind === "screen" && this.localNativeEndpoints.has(publication.sessionId)) localScreens.add(publication.id);
+    }
+    for (const id of localScreens) {
+      const watch = this.watching.get(id);
+      if (watch) delete watch.playbackError;
     }
     const remoteControls = new Map([...(patch.remoteControls ?? this.view.remoteControls)].filter(([id]) => ownedScreens.has(id)));
     this.view = { ...this.view, ...patch, watchPlayers: new Map(this.watchPlayers), pagePlayer: this.app?.pagePlayer ?? false, appConnected: this.app?.connected ?? false,
@@ -681,7 +699,17 @@ export class ChannelSession {
       }
     }
     for (const [id, watch] of this.watching) {
-      if (!state.publications.some(publication => publication.id === id) && (watch.query || !this.view.pending.has(`watch:${id}`))) this.retireWatch(id);
+      const publication = state.publications.find(value => value.id === id);
+      if (!publication && (watch.query || !this.view.pending.has(`watch:${id}`))) this.retireWatch(id);
+      if (watch.playbackError !== undefined) {
+        const before = this.view.state?.publications.find(value => value.id === id);
+        const room = state.channel.rooms.find(value => value.id === publication?.roomId);
+        if (!state.subscriptions.includes(id) || publication?.kind !== "screen" || before?.kind !== "screen"
+          || !room?.authorized || !room.available || room.delivery?.bindingId !== previousRooms?.find(value => value.id === room.id)?.delivery?.bindingId
+          || publication.sessionId !== before.sessionId || publication.source.kind !== before.source.kind || publication.source.name !== before.source.name) {
+          delete watch.playbackError;
+        }
+      }
     }
     for (const [id, candidate] of this.pendingWatchPlayers) {
       if (!state.watchActivities.some(activity => activity.id === id)
@@ -2327,6 +2355,10 @@ export class ChannelSession {
     const context = this.connectionContext(publication.roomId, publicationId);
     const controller = new AbortController();
     watch.retry = { controller, available: context.available };
+    if (watch.playbackError !== undefined) {
+      delete watch.playbackError;
+      this.patch({});
+    }
     const check = () => { controller.signal.throwIfAborted(); current(); context.current("publication"); };
     this.input.close(publicationId);
     let withdrawn = false;

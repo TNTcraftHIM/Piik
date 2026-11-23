@@ -90,18 +90,34 @@ export class FileStore {
     });
   }
 
-  async retain(entry: RetainedFile, limits: FileRetentionLimits, allowed?: () => boolean): Promise<{ file: File | null; evicted: ChannelFileKey[] }> {
+  async retain(entry: RetainedFile, limits: FileRetentionLimits, allowed: () => boolean = () => true): Promise<{ file: File | null; evicted: ChannelFileKey[] }> {
     if (entry.file.size > limits.maxRetainedBytes || limits.maxRetainedFiles < 1) return Promise.reject(new Error("file_retention_limit"));
+    if (!allowed()) return { file: null, evicted: [] };
     // IndexedDB can preserve a File's dependency on its backing path. Stream
     // cacheable bytes into an independent browser Blob before releasing that path.
     const source = entry.file;
-    const blob = await new Response(source.stream()).blob();
+    let cancelled = false;
+    const stream = source.stream().pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        if (!allowed()) {
+          cancelled = true;
+          controller.error(new DOMException("Cancelled", "AbortError"));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    }));
+    const blob = await new Response(stream).blob().catch(error => {
+      if (cancelled) return null;
+      throw error;
+    });
+    if (!blob) return { file: null, evicted: [] };
     const file = new File([blob], source.name, { type: source.type, lastModified: source.lastModified });
     const evicted = await this.transaction<ChannelFileKey[] | null>("files", "readwrite", (transaction, done) => {
       const store = transaction.objectStore("files");
       const request = store.getAll();
       request.onsuccess = () => {
-        if (allowed && !allowed()) { done(null); return; }
+        if (!allowed()) { done(null); return; }
         const rows = request.result as StoredFile[], key = fileKeyString(entry.key);
         const previous = rows.find(row => row.fileKeyString === key);
         const retained = rows.filter(row => row !== previous);

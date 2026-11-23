@@ -164,6 +164,15 @@ describe("Screen delivery result", () => {
     expect(failed).not.toContain("Connecting picture");
     expect(failed).toContain('aria-label="Stop watching Shared screen"');
 
+    for (const [playbackError, copy] of [[3, en["screen.decodeFailed"]], [4, en["screen.unplayable"]]] as const) {
+      const result = renderToStaticMarkup(createElement(ChannelStage, { ...props, onRetryPicture: vi.fn(),
+        sources: [{ ...source, awaitingRoute: true, deliveryFailed: false, playbackError }] }));
+      expect(result).toContain(copy);
+      expect(result).toContain('aria-label="Retry picture"');
+      expect(result).toContain('aria-label="Picture help"');
+      expect(result).not.toContain(en["screen.deliveryRetry"]);
+    }
+
     const stream = { id: "retained", getAudioTracks: () => [] } as unknown as MediaStream;
     const retained = renderToStaticMarkup(createElement(ChannelStage, { ...props, sources: [{ ...source, stream }] }));
     expect(retained).toContain("<video");

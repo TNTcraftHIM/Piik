@@ -18,11 +18,18 @@ pub(super) struct Base {
     pub socket: Arc<UdpIo>,
     pub local: SocketAddr,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(super) enum IceTransport {
+    Udp,
+    Tcp,
+    Tls,
+}
 #[derive(Clone)]
 pub(super) struct IceServerUrl {
     pub host: String,
     pub port: u16,
     pub is_turn: bool,
+    pub transport: IceTransport,
     pub username: String,
     pub password: String,
 }
@@ -45,33 +52,37 @@ impl IceServerUrl {
             _ => anyhow::bail!("unknown ICE URL scheme"),
         };
         let mut query = url.query_pairs();
-        let udp = if is_turn {
+        let transport = if is_turn {
             let transport = query.next();
             ensure!(query.next().is_none(), "invalid ICE URL query");
             match transport {
-                None => !secure,
+                None if secure => IceTransport::Tls,
+                None => IceTransport::Udp,
                 Some((key, value)) => {
                     ensure!(key == "transport", "invalid ICE URL query");
                     match value.as_ref() {
-                        "udp" => true,
-                        "tcp" => false,
+                        "udp" if secure => return Ok(None),
+                        "udp" => IceTransport::Udp,
+                        "tcp" if secure => IceTransport::Tls,
+                        "tcp" => IceTransport::Tcp,
                         _ => anyhow::bail!("invalid ICE URL transport"),
                     }
                 }
             }
         } else {
             ensure!(query.next().is_none(), "STUN URL must not contain a query");
-            !secure
+            if secure {
+                return Ok(None);
+            }
+            IceTransport::Udp
         };
-        if secure || !udp {
-            return Ok(None);
-        }
         Ok(Some(Self {
             host: host
                 .trim_start_matches('[')
                 .trim_end_matches(']')
                 .to_owned(),
-            port: url.port().unwrap_or(3478),
+            port: url.port().unwrap_or(if secure { 5349 } else { 3478 }),
+            transport,
             is_turn,
             username: server.username.clone(),
             password: server.credential.clone(),
@@ -79,7 +90,7 @@ impl IceServerUrl {
     }
 }
 pub(super) struct Config {
-    bases: Vec<Base>,
+    pub(super) bases: Vec<Base>,
     urls: Vec<IceServerUrl>,
     linear: Option<Mutex<linear::Linear>>,
 }
@@ -100,11 +111,11 @@ pub(super) fn urls(servers: &[IceServer]) -> Vec<IceServerUrl> {
         .filter_map(|(server, raw)| match IceServerUrl::parse(raw, server) {
             Ok(Some(url)) => Some(url),
             Ok(None) => {
-                eprintln!("Native transport: secure/TCP ICE URLs are unsupported");
+                eprintln!("Native transport: unsupported ICE server transport");
                 None
             }
             Err(error) => {
-                eprintln!("Native STUN URL rejected: {error}");
+                eprintln!("Native ICE URL rejected: {error}");
                 None
             }
         })
@@ -136,7 +147,7 @@ pub(super) fn route(engines: &mut HashMap<Uuid, Box<Engine>>, packet: &Datagram)
         let Some(route) = engine.discovery_routes.get(&message.transaction_id) else {
             continue;
         };
-        if route.socket != packet.socket
+        if route.socket != packet.socket.as_ptr() as usize
             || route.server != packet.source
             || route.local != packet.destination
         {
@@ -528,7 +539,7 @@ mod tests {
     }
 
     #[test]
-    fn udp_ice_urls_keep_endpoints_and_configured_credentials() -> Result<()> {
+    fn ice_urls_keep_endpoints_and_configured_credentials() -> Result<()> {
         let mut parsed = Vec::new();
         for (raw, is_turn, host, port) in [
             ("stun:localhost", false, "localhost", 3478),
@@ -546,6 +557,9 @@ mod tests {
             ),
             ("stun:localhost#fragment", false, "localhost", 3478),
             ("turn:localhost", true, "localhost", 3478),
+            ("turn:localhost?transport=tcp", true, "localhost", 3478),
+            ("turns:localhost", true, "localhost", 5349),
+            ("turns:localhost:443?transport=tcp", true, "localhost", 443),
             (
                 "turn:localhost:65535?transport=udp",
                 true,
@@ -588,7 +602,6 @@ mod tests {
         for (raw, unsupported) in [
             ("stuns:localhost", true),
             ("turns:localhost?transport=udp", true),
-            ("turn:localhost?transport=tcp", true),
             ("", false),
             ("stun:", false),
             ("stun://localhost", false),

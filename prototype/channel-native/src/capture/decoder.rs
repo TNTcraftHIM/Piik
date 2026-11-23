@@ -72,6 +72,7 @@ pub(super) fn device() -> Result<ID3D11Device> {
 }
 
 pub(crate) struct H264 {
+    parameters: super::decoder_sps::DecoderSps,
     transform: IMFTransform,
     _manager: IMFDXGIDeviceManager,
     device: ID3D11Device,
@@ -105,6 +106,7 @@ impl H264 {
             let codec: ICodecAPI = transform.cast()?;
             codec.SetValue(&CODECAPI_AVLowLatencyMode, &VARIANT::from(1u32))?;
             Ok(Self {
+                parameters: Default::default(),
                 transform,
                 _manager: manager,
                 device,
@@ -227,6 +229,7 @@ impl H264 {
         ) -> Result<()>,
     ) -> Result<()> {
         let bytes = &frame.bytes;
+        self.parameters.admit(bytes)?;
         let pts = (frame
             .presentation_time
             .duration_since(self.epoch)

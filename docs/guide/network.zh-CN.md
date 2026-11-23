@@ -23,9 +23,11 @@
 
 - 用默认 WebRTC 设置的浏览器对照，具体步骤见下节。
 - 朋友们能使用同一个组网工具时，可按[虚拟局域网步骤](#可选虚拟局域网)尝试。
-- 受管理的网络可请管理员检查 UDP 限制，或换用其他网络。
+- 受管理的网络可请网络管理员检查 UDP 限制，或换用其他网络。
+- 如果站点运行在 Piik Server 上，先问站点管理员是否提供站点转发。提供时，房间管理员可在 **房间设置 → 连接** 中开启 **允许站点转发**。
 
-线路由 Piik 自动选择。当前网络限制无法调整时，可以使用下方的连接方案。
+线路由 Piik 自动选择。App 的自动 **公网邀请** 通过 Cloudflare Tunnel 提供邀请网页和信令，画面、语音和文件内容仍需可用的 WebRTC 线路。
+[Cloudflare Tunnel 路由说明](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/protocols/)（英文）
 
 ## 浏览器限制了 WebRTC
 
@@ -54,10 +56,9 @@ Vivaldi 在 **设置 → 隐私和安全 → WebRTC IP 处理** 中提供 **广�
 <details>
 <summary>STUN 地址发现</summary>
 
-STUN 用于发现点对点连接可以尝试的地址，不承载聊天或文件内容。
-App 和 Server 默认使用内置公共 STUN；管理员可按
-[运行参考](../../prototype/channel-server/README.md#rooms-conversation-and-media)配置 `PIIK_CHANNEL_ICE_SERVERS`。
-HTTP 反向代理不能转发 STUN UDP，更换 STUN 本身也不能解除网络的 UDP 限制。
+STUN 用于发现点对点连接可以尝试的地址。App 的 **局域网使用** 模式只下发所选网络上的本地 STUN 地址。
+**公网邀请** 和独立 Server 默认下发公共 STUN 地址。
+更换 STUN 只影响地址发现。站点管理员已有 TURN 服务时，可查看适用构建与配置。[App 和 Server 的 ICE 配置参考](../../prototype/channel-server/README.md#ice-server-configuration)
 
 STUN 服务会收到参与者的公网 IP，请选择信任的服务。
 [WebRTC 连接说明](https://webrtc.org/getting-started/peer-connections)介绍了地址发现的作用（英文）。
