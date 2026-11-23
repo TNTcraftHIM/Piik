@@ -291,7 +291,7 @@ const site = "https://site.example";
 const approval = `http://127.0.0.1:39721/client?site=${encodeURIComponent(site)}`;
 
 function mount(activated = false, state: "idle" | "ready" = "idle", android = false, connected?: boolean, discovery?: typeof channelAppDiscovery,
-  automatic = false, available = true, navigationIssue: AppNavigationIssue | null = null) {
+  automatic = false, available = true, navigationIssue: AppNavigationIssue | null = null, connectedPort?: number) {
   const popup = { closed: false, close: vi.fn(() => { popup.closed = true; }) };
   const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site, assign: vi.fn() } });
   const document = Object.assign(new EventTarget(), { visibilityState: "visible" });
@@ -314,7 +314,7 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const activateClient = vi.fn();
   const onConnected = vi.fn();
   const operation = runInNewContext(executable, {
-    automatic, automaticFailed: { current: false }, window, document, pending, healthCheck, help, showHelp, setState, setAutomaticHint: vi.fn(), setManagement, setBuild, activateClient, onConnected, AbortController, URL, URLSearchParams,
+    automatic, automaticFailed: { current: false }, connectedPort, window, document, pending, healthCheck, help, showHelp, setState, setAutomaticHint: vi.fn(), setManagement, setBuild, activateClient, onConnected, AbortController, URL, URLSearchParams,
     wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
     state, connected, available, ready: state === "ready" && connected !== false, setNavigationIssue, isClientActivated: () => activated,
     discovery: discovery ?? { health: native.discoverNativeHealth, connect: native.discoverNativeConnect,
@@ -406,6 +406,54 @@ describe("App connection approval", () => {
     await expect(discovery.health()).resolves.toMatchObject({ port: NATIVE_CLIENT_PORT_START });
     domainProtocol = CHANNEL_PROTOCOL - 1;
     await expect(discovery.health()).rejects.toThrow("incompatible_protocol");
+  });
+
+  it("keeps approval and subsequent management refresh on the App the user approved", async () => {
+    const first = NATIVE_CLIENT_PORT_START;
+    let approved = false;
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL(site) });
+    vi.stubGlobal("navigator", { permissions: { query: async () => ({ state: "granted" }) } });
+    vi.stubGlobal("fetch", async (input: string) => {
+      const url = new URL(input), port = Number(url.port);
+      if (port !== first && port !== first + 1) throw new TypeError("No fixture App");
+      const identity = { service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port };
+      if (url.pathname === "/connect-discovery") return Response.json({ ...identity, connectURL: `http://127.0.0.1:${port}/client` });
+      if (!approved) return new Response(null, { status: 403 });
+      if (port === first) await settle();
+      return Response.json({ ...identity, token: "fixture-token" });
+    });
+    const page = mount(true, "idle", false, undefined, channelAppDiscovery);
+    try {
+      await page.openApproval();
+      expect(page.window.open).toHaveBeenCalledWith(approval, "_blank");
+      approved = true;
+      page.message();
+      await vi.waitFor(() => expect(page.onConnected).toHaveBeenCalledOnce());
+      expect(page.onConnected.mock.calls[0]![0].port).toBe(first);
+      const connectedPage = mount(true, "idle", false, true, channelAppDiscovery, false, true, null, first);
+      try {
+        await vi.waitFor(() => expect(connectedPage.setManagement).toHaveBeenCalled());
+        expect(connectedPage.setManagement).toHaveBeenLastCalledWith({ url: `http://127.0.0.1:${first}/client`, updateSupported: false });
+      } finally { connectedPage.cleanup(); }
+    } finally { page.cleanup(); }
+  });
+
+  it("upgrades passive discovery to one user request and ignores the retired result", async () => {
+    const page = mount();
+    let complete!: (url: string | null) => void;
+    page.native.discoverNativeConnect.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+    page.native.discoverNativeHealth.mockResolvedValue({});
+    const passive = page.connect(false, true);
+    const old = page.pending.current!;
+    await page.connect();
+    expect(page.native.discoverNativeConnect.mock.calls.map(([options]) => options.waitForPermission)).toEqual([false, true]);
+    expect(old.controller.signal.aborted).toBe(true);
+    old.cancel!();
+    complete(null);
+    await passive;
+    expect(page.setState).toHaveBeenLastCalledWith("ready");
+    expect(page.onConnected).toHaveBeenCalledOnce();
+    page.cleanup();
   });
 
   it("uses fresh authorized health instead of offering approval again", async () => {

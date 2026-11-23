@@ -3,9 +3,10 @@ import { Btn, SwitchItem } from "../../components/living/primitives";
 import { Tooltip } from "../../components/living/Tooltip";
 import { useCopy } from "../../ui/copy";
 import { useSurfaceDocument } from "../../ui/panel-window";
+import { isComposingOrAltGraph } from "../../ui/shortcut-key";
 import type { useVoiceShortcuts } from "../use-voice-shortcuts";
 import {
-  ignoresVoiceShortcutKey, matchesVoiceShortcut, voiceShortcutActions, voiceShortcutFromEvent, voiceShortcutLabel,
+  matchesVoiceShortcut, voiceShortcutActions, voiceShortcutFromEvent, voiceShortcutLabel,
   type VoiceShortcutAction,
 } from "../voice-shortcut-binding";
 
@@ -26,7 +27,7 @@ export function ChannelVoiceShortcutSettings({ open, bindings, mac, save, reset,
   }, [open, surface]);
 
   const record = (event: KeyboardEvent<HTMLSpanElement>, action: VoiceShortcutAction) => {
-    if (!open || recording !== action || event.key === "Tab" || ignoresVoiceShortcutKey(event.nativeEvent)) return;
+    if (!open || recording !== action || event.key === "Tab" || isComposingOrAltGraph(event.nativeEvent)) return;
     event.preventDefault();
     if (event.repeat || modifiers.has(event.key)) return;
     if (event.key === "Escape") { finish(); return; }

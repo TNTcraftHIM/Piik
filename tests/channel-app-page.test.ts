@@ -1,4 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { useVoiceShortcuts } from "../src/client/channel/use-voice-shortcuts";
 import { APP_PROTOCOL, ChannelApp, channelAppDiscovery } from "../src/client/channel/app-link";
 import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
 import { NATIVE_PAGE_METADATA_PREFIX_BYTES, NATIVE_PAGE_READ_BYTES, nativePageStateSchema } from "../src/client/native/wire";
@@ -19,10 +22,10 @@ class Socket {
   close() { this.readyState = 3; this.onclose?.(); }
 }
 afterEach(() => vi.unstubAllGlobals());
-async function setup() {
+async function setup(backgroundVoiceShortcuts = false) {
   vi.stubGlobal("WebSocket", Socket);
   const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
-    token: "test-token", port: 8793, pagePlayer: true }, "site", "user", "credential", "Me", () => {}, () => {});
+    token: "test-token", port: 8793, pagePlayer: true, backgroundVoiceShortcuts }, "site", "user", "credential", "Me", () => {}, () => {});
   const socket = Socket.current;
   socket.onopen?.(); socket.reply(null); await app.ready;
   return { app, socket };
@@ -52,6 +55,44 @@ test("background voice shortcuts accept small clock differences and discard dela
     socket.receive({ type: "voice_shortcut", action: "toggle_listening", activatedAtMs: now + 10_000 });
     expect(listener.mock.calls).toEqual([["microphone"], ["listening"]]);
   } finally { clock.mockRestore(); unsubscribe(); app.close(); }
+});
+
+test("native voice bindings yield to text and remote input in the focused page or PiP window", async () => {
+  const surface = () => {
+    const view = Object.assign(new EventTarget(), { HTMLIFrameElement: class {} });
+    const doc = Object.assign(new EventTarget(), { nodeType: 9, defaultView: view, hasFocus: () => !!doc.activeElement,
+      activeElement: null as { nodeType: number; closest(selector: string): boolean } | null });
+    return Object.assign(view, { document: doc });
+  };
+  const page = surface(), panel = surface();
+  const pip = Object.assign(new EventTarget(), { window: null as typeof panel | null });
+  Object.assign(page, { top: page, isSecureContext: true, documentPictureInPicture: pip });
+  vi.stubGlobal("window", page); vi.stubGlobal("document", page.document);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = Object.assign(new EventTarget(), { nodeType: 1, tagName: "DIV", ownerDocument: page.document });
+  const root = createRoot(container as unknown as HTMLElement);
+  const { app, socket } = await setup(true);
+  let shortcuts: ReturnType<typeof useVoiceShortcuts>;
+  function Dock() { shortcuts = useVoiceShortcuts("room", () => true, app.backgroundVoiceShortcuts); return null; }
+  const configured = async (bound: boolean) => {
+    const binding = (key: string) => bound ? expect.objectContaining({ key }) : null;
+    expect(socket.sent.at(-1)).toMatchObject({ type: "voice_shortcuts", enabled: true, microphone: binding("M"), listening: binding("D") });
+    await act(async () => socket.reply({ microphone: bound ? "registered" : "unbound", listening: bound ? "registered" : "unbound" }));
+  };
+  try {
+    await act(async () => root.render(createElement(Dock)));
+    await act(async () => shortcuts.background.enable(true));
+    await configured(true);
+    for (const [view, selector] of [[page, "textarea"], [panel, ".lr-remote-input-surface"]] as const) {
+      if (view === panel) { pip.window = panel; await act(async () => pip.dispatchEvent(new Event("enter"))); }
+      view.document.activeElement = { nodeType: 1, closest: selectors => selectors.split(", ").includes(selector) };
+      await act(async () => view.dispatchEvent(new Event("focus")));
+      await configured(false);
+      view.document.activeElement = null;
+      await act(async () => view.dispatchEvent(new Event("blur")));
+      await configured(true);
+    }
+  } finally { await act(async () => root.unmount()); app.close(); }
 });
 
 test("page readiness rechecks events delivered before an older read reply", async () => {

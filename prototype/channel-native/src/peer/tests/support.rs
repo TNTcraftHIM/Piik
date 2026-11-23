@@ -469,11 +469,11 @@ pub(in crate::peer) fn video_payloads(
             [
                 vec![0, 0, 0, 1],
                 sps(),
-                vec![0, 0, 0, 1, 0x68, 0x22, 0x33, 0, 0, 0, 1, 0x65],
+                vec![0, 0, 0, 1, 0x68, 0xce, 0x33, 0, 0, 0, 1, 0x65, 0xb8],
             ]
             .concat()
         } else {
-            vec![0, 0, 0, 1, 0x41]
+            vec![0, 0, 0, 1, 0x41, 0xe0]
         };
         let access_unit = [prefix, vec![0x55; 700], frame.to_be_bytes().to_vec()].concat();
         return Ok(H264Payloader::default().payload(1200, &access_unit.into())?);

@@ -231,7 +231,7 @@ pub(crate) struct H264 {
     pub video: Video,
     builder: AccessUnit<H264Packet>,
     sps: H264Sps,
-    parameters: [Vec<u8>; 2],
+    parameters: super::h264::ParameterSets,
     waiting: bool,
 }
 impl H264 {
@@ -255,51 +255,24 @@ impl H264 {
         self.builder.push(sequence, time, packet);
     }
     pub fn pop(&mut self) -> Result<Option<EncodedFrame>> {
-        while let Some(sample) = self.builder.pop()? {
-            ensure!(
-                sample.data.len() <= MAX_AU,
-                "H264 access unit exceeds Native media limit"
-            );
-            self.sps.access_unit(&sample.data)?;
-            let mut idr = false;
-            for nal in super::h264::nals(&sample.data).into_iter().flatten() {
-                match nal[0] & 0x1f {
-                    7 => self.parameters[0] = nal.to_vec(),
-                    8 => self.parameters[1] = nal.to_vec(),
-                    5 => idr = true,
-                    _ => {}
-                }
-            }
-            let keyframe = idr && self.parameters.iter().all(|p| !p.is_empty());
-            if sample.discontinuity && !keyframe {
+        while let Some(mut sample) = self.builder.pop()? {
+            use super::h264::Picture;
+            let picture = self.parameters.picture(&mut sample.data, &mut self.sps)?;
+            let missing = matches!(picture, Picture::MissingParameters);
+            let keyframe = matches!(picture, Picture::Independent(_));
+            if (sample.discontinuity || missing && !self.waiting) && !keyframe {
                 self.waiting = true;
                 self.video.request_keyframe();
             }
-            if self.waiting && !keyframe {
+            if matches!(picture, Picture::Configuration) || self.waiting && !keyframe {
                 continue;
             }
-            self.video.set_codec(
-                self.sps
-                    .codec()
-                    .ok_or_else(|| anyhow::anyhow!("H264 access unit has no admitted SPS"))?,
-            )?;
-            self.waiting = false;
-            let mut bytes = Vec::new();
-            // A Browser may send parameter sets before its IDR. Every independent
-            // handoff/decoder start needs the current sets with the same IDR.
-            if keyframe {
-                for p in &self.parameters {
-                    bytes.extend_from_slice(&[0, 0, 0, 1]);
-                    bytes.extend_from_slice(p);
-                }
+            if let Picture::Independent(codec) = picture {
+                self.video.set_codec(codec)?;
             }
-            bytes.extend_from_slice(&sample.data);
-            ensure!(
-                bytes.len() <= MAX_AU,
-                "H264 access unit exceeds Native media limit"
-            );
+            self.waiting = false;
             return Ok(Some(EncodedFrame {
-                bytes,
+                bytes: sample.data,
                 presentation_time: self.video.time().presentation(sample.timestamp),
                 keyframe,
                 vp8: None,
@@ -418,6 +391,47 @@ mod tests {
     use std::{sync::Mutex, time::Duration};
 
     #[test]
+    fn parameter_announcements_wait_for_the_picture_that_uses_them() -> Result<()> {
+        let mut input = H264::new(Instant::now(), 0, Default::default());
+        let mut send = |sequence: u16, bytes: &[u8]| {
+            let timestamp = u32::from(sequence) * 3000;
+            let packet = Packet {
+                header: Header {
+                    marker: true,
+                    timestamp,
+                    sequence_number: sequence,
+                    ..Default::default()
+                },
+                payload: bytes.to_vec().into(),
+            };
+            input.push(sequence.into(), timestamp.into(), packet);
+            input.pop()
+        };
+        let sps = [0x67, 0x42, 0xc0, 0x1f, 0xd9];
+        let pps0 = [0x68, 0xcb, 0x83, 0xcb, 0x20];
+        let pps1 = [0x68, 0x52, 0xe0, 0xf2, 0xc8];
+        let idr = [0x65, 0x88, 0x84];
+        let dependent = [0x41, 0x99, 0x0e, 0x13, 0xf8];
+        assert!(send(1, &sps)?.is_none());
+        assert!(send(2, &pps0)?.is_none());
+        assert!(send(3, &idr)?.unwrap().keyframe);
+        assert!(send(4, &pps1)?.is_none());
+        assert!(send(5, &idr)?.unwrap().keyframe);
+        let next = send(6, &dependent)?.expect("complete dependent picture");
+        assert!(!next.keyframe);
+        assert_eq!(
+            super::super::h264::nals(&next.bytes)?.collect::<Vec<_>>(),
+            [&sps[..], &pps1[..], &dependent[..]]
+        );
+        let repeated = send(7, &dependent)?.expect("same PPS remains active");
+        assert_eq!(
+            super::super::h264::nals(&repeated.bytes)?.collect::<Vec<_>>(),
+            [&dependent[..]]
+        );
+        Ok(())
+    }
+
+    #[test]
     fn completed_idr_after_loss_does_not_request_another_keyframe() -> Result<()> {
         for independent in [true, false] {
             let now = Instant::now();
@@ -427,8 +441,8 @@ mod tests {
             let mut sequence = 1;
             let key = [
                 vec![
-                    0, 0, 0, 1, 0x67, 0x42, 0xc0, 0x1e, 0x11, 0, 0, 0, 1, 0x68, 0x22, 0x33, 0, 0,
-                    0, 1, 0x65,
+                    0, 0, 0, 1, 0x67, 0x42, 0xc0, 0x1e, 0x80, 0, 0, 0, 1, 0x68, 0xce, 0x33, 0, 0,
+                    0, 1, 0x65, 0xb8,
                 ],
                 vec![0x44; 700],
             ]

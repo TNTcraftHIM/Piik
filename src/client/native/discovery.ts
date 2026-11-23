@@ -5,6 +5,7 @@ import type { AppReleaseIdentity } from "../lib/release-update";
 
 export interface AppDiscoveryOptions {
   waitForPermission?: boolean;
+  port?: number;
   signal?: AbortSignal;
 }
 
@@ -32,7 +33,7 @@ async function localPermission(): Promise<PermissionStatus | null> {
 /** One network deadline; each protocol adapter verifies the responding App's identity. */
 export async function discoverLocalApp<T>(
   path: "health" | "connect-discovery", read: (body: unknown, port: number) => T,
-  { waitForPermission = true, signal }: AppDiscoveryOptions,
+  { waitForPermission = true, signal, port }: AppDiscoveryOptions,
   isIncompatible: (error: unknown) => boolean,
 ): Promise<T | null> {
   if (signal?.aborted) return null;
@@ -52,7 +53,7 @@ export async function discoverLocalApp<T>(
   try {
     if (awaitingPermission) permission.addEventListener("change", permissionChanged);
     permissionChanged();
-    const selectedPort = clientRuntimePort();
+    const selectedPort = clientRuntimePort() ?? port ?? null;
     const ports = selectedPort === null ? Array.from({
       length: NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1,
     }, (_, index) => NATIVE_CLIENT_PORT_START + index) : [selectedPort];

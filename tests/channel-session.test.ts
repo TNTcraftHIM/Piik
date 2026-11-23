@@ -1746,7 +1746,7 @@ test("verified App approval connects while loopback permission stays prompt and 
     first.receive({ id: first.sent.at(-1)!.id, error: "site_unapproved" });
     await rejected;
     expect(pendingError).toBe("history_unavailable");
-    expect(session.getSnapshot()).toMatchObject({ appConnected: false, error: "history_unavailable" });
+    expect(session.getSnapshot()).toMatchObject({ appConnected: false, appPort: undefined, error: "history_unavailable" });
     expect(query).toHaveBeenCalledTimes(checks);
     expect(fetcher).toHaveBeenCalledTimes(reads);
 
@@ -1759,7 +1759,7 @@ test("verified App approval connects while loopback permission stays prompt and 
     await next.onopen?.();
     next.receive({ id: next.sent.at(-1)!.id, result: null });
     await connecting;
-    expect(session.getSnapshot()).toMatchObject({ appConnected: true, error: "history_unavailable" });
+    expect(session.getSnapshot()).toMatchObject({ appConnected: true, appPort: port, error: "history_unavailable" });
     expect(query).toHaveBeenCalledTimes(freshChecks);
     expect(fetcher).toHaveBeenCalledTimes(freshReads);
     expect(permission.state).toBe("prompt");
@@ -5455,6 +5455,25 @@ test("a fresh binding retires a pending browse before its late acknowledgement",
     expect(peer.sent).toHaveLength(1);
     expect(session.getSnapshot().messagesByRoom.first).toEqual([]);
     expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
+test("retrying an old confirmed send preserves the lower boundary of a partial latest window", async () => {
+  const { session, peer } = await setup();
+  try {
+    const controller = new AbortController();
+    const sending = session.sendMessage("first", message(1).text, [], controller.signal).catch(error => error);
+    const first = await peer.next();
+    controller.abort();
+    await sending;
+    await peer.history([message(101), message(102)], true);
+    const retry = session.sendMessage("first", message(1).text);
+    const request = await peer.next();
+    expect(request).toMatchObject({ nonce: first.type === "chat" && first.nonce });
+    peer.reply(request, { type: "confirmed", message: message(1), inserted: false });
+    await retry;
+    expect(session.getSnapshot().messagesByRoom.first.map(m => m.seq)).toEqual([101, 102]);
+    expect(session.getSnapshot().historyByRoom.first.before).toBe(101);
   } finally { session.close(); }
 });
 
@@ -10777,16 +10796,18 @@ test("Browser capture titles use original metadata and confirmed overrides witho
   } finally { session.close(); }
 });
 
-test("same-binding recovery confirms the historical window and removes messages deleted while offline", async () => {
-  const { session, socket, peer } = await setup(3);
+test("same-binding recovery confirms every page of the historical window and removes messages deleted while offline", async () => {
+  const { session, socket, peer } = await setup();
   try {
-    await peer.history([message(50), message(51), message(52)]);
-    const jump = session.loadMessage("first", 2);
-    peer.page(await peer.next(), [message(1), message(2)], false, 1);
-    await jump;
+    const rows = (start: number) => Array.from({ length: 50 }, (_, i) => message(start + i));
+    await peer.history(rows(1151), true);
+    const selected = session.loadMessage("first", 900);
+    peer.page(await peer.next(), rows(851), true, 1);
+    await selected;
+    await peer.history(rows(801), true, true);
     const marker = session.getSnapshot().readByRoom.first;
     const state = structuredClone(session.getSnapshot().state!);
-    state.channel.rooms[0].lastMessageSeq = 53;
+    state.channel.rooms[0].lastMessageSeq = 1200;
     socket.close(); session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
     resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
@@ -10794,21 +10815,25 @@ test("same-binding recovery confirms the historical window and removes messages 
     resumed.receive({ type: "ack", requestId: browse.requestId });
     await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.get("first")?.getSnapshot().ready).toBe(true));
     const refresh = await peer.next();
-    expect(refresh).toMatchObject({ type: "history", before: 3 });
-    peer.page(refresh, [message(2)], false, 2);
+    expect(refresh).toMatchObject({ type: "history", before: 901 });
+    peer.page(refresh, rows(851), true, 1);
+    const earlier = await peer.next();
+    expect(earlier).toMatchObject({ type: "history", before: 851 });
+    expect(session.getSnapshot().messagesByRoom.first[0].seq).toBe(801);
+    peer.page(earlier, rows(800).filter(m => m.seq !== 802).concat(message(850)), true, 1);
     await vi.waitFor(() => {
-      expect(session.getSnapshot().messagesByRoom.first.map(item => item.seq)).toEqual([2]);
-      expect(session.getSnapshot().historyChangesByRoom.first.deleted.has(1)).toBe(true);
+      expect(session.getSnapshot().messagesByRoom.first.map(item => item.seq)).toEqual([...rows(801), ...rows(851)].filter(m => m.seq !== 802).map(m => m.seq));
+      expect(session.getSnapshot().historyChangesByRoom.first.deleted.has(802)).toBe(true);
       expect(session.getSnapshot().pending.has("history:first")).toBe(false);
     });
-    peer.live(message(53));
-    expect(session.getSnapshot().messagesByRoom.first.map(item => item.seq)).toEqual([2]);
+    peer.live(message(1201));
+    expect(session.getSnapshot().messagesByRoom.first.at(-1)?.seq).toBe(900);
     expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(false);
     expect(session.getSnapshot().readByRoom.first).toBe(marker);
     const latest = session.loadLatestHistory("first");
-    peer.page(await peer.next(), [message(51), message(52), message(53)], true);
+    peer.page(await peer.next(), rows(1152), true);
     await latest;
-    expect(session.getSnapshot().messagesByRoom.first.map(value => value.seq)).toEqual([51, 52, 53]);
+    expect(session.getSnapshot().messagesByRoom.first).toEqual(rows(1152));
     expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(true);
   } finally { session.close(); }
 });

@@ -74,6 +74,7 @@ export interface ChannelView {
   voicePlaybackByUser: ReadonlyMap<string, { volume: number; muted: boolean }>;
   listeningVolume: number;
   appConnected: boolean;
+  appPort?: number;
   backgroundVoiceShortcuts?: BackgroundVoiceShortcuts;
   ownedScreens: ReadonlySet<string>;
   /** Local playback provenance, independent of this page's capture controls. */

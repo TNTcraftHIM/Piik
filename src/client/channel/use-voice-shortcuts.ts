@@ -1,10 +1,11 @@
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useState, useSyncExternalStore } from "react";
 import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preferences";
-import { useSurfaceDocument } from "../ui/panel-window";
+import { panelWindowAPI, useSurfaceDocument } from "../ui/panel-window";
+import { isComposingOrAltGraph } from "../ui/shortcut-key";
 import type { BackgroundVoiceShortcuts } from "./app-link";
 import { useBackgroundVoiceShortcuts } from "./use-background-voice-shortcuts";
 import {
-  ignoresVoiceShortcutKey, matchesVoiceShortcut, voiceShortcutActions, voiceShortcutDefaults,
+  matchesVoiceShortcut, voiceShortcutActions, voiceShortcutDefaults,
   voiceShortcutFromEvent, type VoiceShortcutAction, type VoiceShortcuts,
 } from "./voice-shortcut-binding";
 
@@ -15,6 +16,41 @@ function ownsKeyboard(target: EventTarget): boolean {
     || Boolean(element.closest("input, textarea, select, .lr-remote-input-surface, .lr-remote-keyboard, [data-voice-shortcut-recording]")));
 }
 
+function focusedInputOwnsKeyboard() {
+  return [document, panelWindowAPI(window)?.window?.document].some(owner =>
+    owner?.hasFocus() && owner.activeElement && ownsKeyboard(owner.activeElement));
+}
+
+// RegisterHotKey intercepts the chord before the focused editor or remote picture sees it.
+function observeInputFocus(changed: () => void) {
+  const api = panelWindowAPI(window);
+  let panel: Window | null = null;
+  const observe = (view: Window) => {
+    view.addEventListener("focus", changed, true);
+    view.addEventListener("blur", changed, true);
+  };
+  const forget = (view: Window) => {
+    view.removeEventListener("focus", changed, true);
+    view.removeEventListener("blur", changed, true);
+  };
+  const close = () => {
+    if (panel) { forget(panel); panel.removeEventListener("pagehide", close); panel = null; }
+    changed();
+  };
+  const attach = () => {
+    close();
+    panel = api?.window ?? null;
+    if (panel) { observe(panel); panel.addEventListener("pagehide", close); }
+    changed();
+  };
+  observe(window);
+  api?.addEventListener("enter", attach);
+  attach();
+  return () => { forget(window); api?.removeEventListener("enter", attach); close(); };
+}
+
+const idle = () => () => {};
+
 export function useVoiceShortcuts(roomId: string | undefined, toggle: (action: VoiceShortcutAction) => boolean, native?: BackgroundVoiceShortcuts) {
   const surface = useSurfaceDocument();
   const mac = typeof navigator !== "undefined" && navigator.platform.startsWith("Mac");
@@ -22,9 +58,9 @@ export function useVoiceShortcuts(roomId: string | undefined, toggle: (action: V
     ...voiceShortcutDefaults(mac), ...readRoomPreferences().voiceShortcuts,
   }));
   const [recording, setRecording] = useState<VoiceShortcutAction | null>(null);
-  const background = useBackgroundVoiceShortcuts(roomId ? native : undefined, bindings, roomId, Boolean(recording), action => {
-    const focused = surface?.hasFocus() ? surface : document.hasFocus() ? document : null;
-    if (!focused?.activeElement || !ownsKeyboard(focused.activeElement)) toggle(action);
+  const owned = useSyncExternalStore(native && roomId ? observeInputFocus : idle, focusedInputOwnsKeyboard, () => false);
+  const background = useBackgroundVoiceShortcuts(roomId ? native : undefined, bindings, roomId, Boolean(recording) || owned, action => {
+    if (!focusedInputOwnsKeyboard()) toggle(action);
   });
   const save = (next: Partial<VoiceShortcuts>) => {
     const updated = { ...bindings, ...next };
@@ -32,7 +68,7 @@ export function useVoiceShortcuts(roomId: string | undefined, toggle: (action: V
     setBindings(updated);
   };
   const onShortcut = useEffectEvent((event: KeyboardEvent) => {
-    if (recording || event.defaultPrevented || event.repeat || ignoresVoiceShortcutKey(event)) return;
+    if (recording || event.defaultPrevented || event.repeat || isComposingOrAltGraph(event)) return;
     if (event.composedPath().some(ownsKeyboard)) return;
     const binding = voiceShortcutFromEvent(event);
     if (!binding) return;

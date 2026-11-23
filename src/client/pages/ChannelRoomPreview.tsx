@@ -403,7 +403,6 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
         serviceRelay: { enabled: settings.allowServiceRelay ?? false, available: false },
         id, name: settings.name, picture: settings.picture ?? undefined, participantSessionIds: [sample.channel.sessionId!],
         delivery: { hostSessionId: sample.channel.sessionId!, bindingId: `sample-binding-${id}` } }]);
-      setSelected(id);
       return id;
     }, enterRoom: async () => sample.received(), revokeRoomAccess: async () => sample.received(),
     restoreDomainBackup: async () => { sample.received(); throw new Error("preview_storage_unavailable"); },
@@ -465,7 +464,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   </>;
   return <div className="c3-room-preview">
     <ChannelRoomPage channel={channel} layout={layout} offerLayout={offerLayout} onLayoutChange={changeLayout} selected={selected} onSelect={setSelected}
-      appControl={<AppConnectionButton discovery={previewAppDiscovery} connected={false} wakeURL={null} />} previewOptions={previewOptions} />
+      appControl={<AppConnectionButton discovery={previewAppDiscovery} connected={channel.appConnected} wakeURL={null} />} previewOptions={previewOptions} />
     <span className="visually-hidden" role="status">{sample.notice}</span>
   </div>;
 }

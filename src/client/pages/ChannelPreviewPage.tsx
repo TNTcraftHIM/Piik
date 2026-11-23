@@ -66,7 +66,7 @@ export function ChannelPreviewPage() {
   const onSelect = useCallback((id: string) => { rememberRoom(id); setSelected(id); }, []);
   const channel = useChannel();
   return <ChannelRoomPage channel={channel} selected={selected} onSelect={onSelect} layout={layout ?? "workspace"} offerLayout={layout === undefined} onLayoutChange={changeLayout}
-    appControl={<AppConnectionButton discovery={channelAppDiscovery} available={channel.connection === 'connected'} connected={channel.appConnected} targetURL={targetURL}
+    appControl={<AppConnectionButton discovery={channelAppDiscovery} available={channel.connection === 'connected'} connected={channel.appConnected} connectedPort={channel.appPort} targetURL={targetURL}
       onConnected={(health, signal) => channel.activateApp(health, signal)} />} />;
 }
 

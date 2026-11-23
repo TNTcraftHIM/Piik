@@ -271,6 +271,7 @@ export class ChannelApp {
   private pendingSources?: Promise<NativeCaptureSources>;
   private readonly roomHosting: NativeRoomHosting;
   private pages = new Map<string, AppPage>();
+  readonly port: number;
   readonly pagePlayer: boolean;
   readonly externalScreenInputAvailable: boolean;
   readonly backgroundVoiceShortcuts?: BackgroundVoiceShortcuts;
@@ -307,6 +308,7 @@ export class ChannelApp {
     onExternalInput: (event: NativeExternalInputState) => void = () => {},
     canReceiveVoiceShortcut: () => boolean = () => false) {
     const health = healthSchema.parse(verifiedHealth);
+    this.port = health.port;
     this.pagePlayer = health.pagePlayer === true;
     this.externalScreenInputAvailable = health.externalScreenInputAvailable === true;
     const voiceShortcutListeners = new Set<(action: VoiceShortcutAction) => void>();

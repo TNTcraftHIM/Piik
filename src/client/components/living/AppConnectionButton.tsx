@@ -24,6 +24,7 @@ interface AppConnectionProps {
   discovery?: AppDiscovery;
   /** A current control connection, supplied by its owning session. */
   connected?: boolean;
+  connectedPort?: number;
   /** The owning Site must be admitted before App control can start. */
   available?: boolean;
   targetURL?: string;
@@ -34,12 +35,13 @@ interface ConnectionAttempt {
   controller: AbortController;
   popup: Window | null;
   automatic: boolean;
+  passiveDiscovery: boolean;
   open?: () => void;
   recheck?: () => void;
   cancel?: () => void;
 }
 
-export function AppConnectionButton({ onConnected, discovery = channelAppDiscovery, connected, available = true, targetURL, wakeURL: launchTarget }: AppConnectionProps) {
+export function AppConnectionButton({ onConnected, discovery = channelAppDiscovery, connected, connectedPort, available = true, targetURL, wakeURL: launchTarget }: AppConnectionProps) {
   const { lang, t } = useCopy();
   const theme = useSyncExternalStore(subscribeTheme, currentTheme, currentTheme);
   const [state, setState] = useState<AppConnectionState>("idle");
@@ -91,7 +93,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       const native = discovery;
       if (current.signal.aborted) return;
       try {
-        const health = await native.health({ signal: current.signal, waitForPermission: false });
+        const health = await native.health({ signal: current.signal, waitForPermission: false, port: connectedPort });
         if (!current.signal.aborted && !pending.current) {
           rememberBuild(health);
           if (!connected) setState(health ? "ready" : "idle");
@@ -115,7 +117,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       healthCheck.current?.abort(); window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible); unwatch();
     };
-  }, [discovery, connected, available]);
+  }, [discovery, connected, connectedPort, available]);
 
   function showHelp(): void {
     if (trigger.current) help.current?.showPopover({ source: trigger.current });
@@ -131,7 +133,13 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
 
   async function connect(wake = false, automatic = false): Promise<void> {
     if (!available) return;
-    if (!automatic) setAutomaticHint(false);
+    if (!automatic) {
+      setAutomaticHint(false);
+      if (pending.current?.passiveDiscovery) {
+        pending.current.controller.abort();
+        pending.current = null;
+      }
+    }
     if (pending.current) {
       if (!automatic) {
         pending.current.automatic = false;
@@ -142,7 +150,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
     healthCheck.current?.abort();
     // Discovery and its browser permission prompt stay in the current tab.
     // A fresh click opens the real approval page without reserving a blank tab.
-    const attempt: ConnectionAttempt = { controller: new AbortController(), popup: null, automatic };
+    const attempt: ConnectionAttempt = { controller: new AbortController(), popup: null, automatic, passiveDiscovery: automatic };
     pending.current = attempt;
     if (!automatic) showHelp();
     const signal = attempt.controller.signal;
@@ -150,9 +158,9 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
     let approving = false;
     let waking = false;
     const verifyApproval = async (reported = false) => {
-      if (approving || signal.aborted) return;
+      if (!approval || approving || signal.aborted) return;
       approving = true;
-      const health = await native?.health({ signal, waitForPermission: Boolean(attempt.popup) }).catch(() => null);
+      const health = await native?.health({ signal, waitForPermission: Boolean(attempt.popup), port: Number(approval.port) }).catch(() => null);
       if (signal.aborted) return;
       approving = false;
       if (health) {
@@ -163,12 +171,12 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       else if (attempt.popup?.closed) finish("idle");
     };
     const onMessage = (event: MessageEvent) => {
-      if (!attempt.popup || event.source !== attempt.popup || !approvalOrigin || event.origin !== approvalOrigin ||
+      if (!attempt.popup || event.source !== attempt.popup || event.origin !== approval?.origin ||
           event.data?.type !== "piik-app-approved" || event.data.site !== window.location.origin) return;
       // A message or browser return asks us to verify App-owned permission.
       void verifyApproval(true);
     };
-    let approvalOrigin = "";
+    let approval: URL | undefined;
     const finish = (result: typeof state) => {
       window.removeEventListener("message", onMessage);
       window.removeEventListener("focus", onFocus);
@@ -228,12 +236,13 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
           throw error;
         });
         if (signal.aborted) return;
+        attempt.passiveDiscovery = false;
         rememberBuild(health);
         if (health) {
           await activate(health);
           return;
         }
-        approvalOrigin = new URL(url).origin;
+        approval = new URL(url);
         attempt.recheck = () => void verifyApproval();
         attempt.open = () => {
           if (signal.aborted || attempt.popup) return;

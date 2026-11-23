@@ -137,6 +137,12 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
     setFollowingLatest(following);
   }, []);
   const readingAnchor = useRef<{ scope: string; message: string; offset: number } | null>(null);
+  function rememberReadingAnchor(node: HTMLElement) {
+    const top = node.getBoundingClientRect().top;
+    const message = [...node.querySelectorAll<HTMLElement>("[data-message-id]")]
+      .find(element => element.getBoundingClientRect().bottom > top);
+    readingAnchor.current = message ? { scope: conversationScope, message: message.dataset.messageId!, offset: message.getBoundingClientRect().top - top } : null;
+  }
   const lastArrival = useRef<{ scope: string; seq: number; ready: boolean } | null>(null);
   useLayoutEffect(() => {
     const previous = lastArrival.current;
@@ -348,12 +354,16 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
   }, [conversationScope, setFollowing]);
   useLayoutEffect(() => { if (history?.atLatest) setFollowing(true); }, [history?.atLatest, setFollowing]);
   useLayoutEffect(() => {
+    if (loadingHistory && !hidden && !jump && !unreadLookup.current && !reading.current.following && !readingAnchor.current && log.current)
+      rememberReadingAnchor(log.current);
     const anchor = readingAnchor.current;
-    if (anchor?.scope === conversationScope && !loadingHistory && log.current) {
+    if (anchor && loadingHistory) return;
+    if (anchor?.scope === conversationScope && log.current) {
       const node = log.current;
       const message = [...node.querySelectorAll<HTMLElement>("[data-message-id]")]
         .find(element => element.dataset.messageId === anchor.message);
       if (message) node.scrollTop += message.getBoundingClientRect().top - node.getBoundingClientRect().top - anchor.offset;
+      reading.current.position = node.scrollTop;
       readingAnchor.current = null;
       return;
     }
@@ -473,13 +483,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
         {history?.hasMore && <div className="c3-history-more"><ChannelAction icon="arrowUp" quiet label={t("conversation.earlier")}
           busy={loadingHistory} disabled={!available} onClick={() => {
             cancelUnreadLookup();
-            const node = log.current;
-            if (node) {
-              const top = node.getBoundingClientRect().top;
-              const message = [...node.querySelectorAll<HTMLElement>("[data-message-id]")]
-                .find(element => element.getBoundingClientRect().bottom > top);
-              readingAnchor.current = message ? { scope: conversationScope, message: message.dataset.messageId!, offset: message.getBoundingClientRect().top - top } : null;
-            }
+            if (log.current) rememberReadingAnchor(log.current);
             const anchor = readingAnchor.current;
             setFollowing(false);
             void onHistory(roomId).catch(() => {

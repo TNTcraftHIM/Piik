@@ -61,10 +61,18 @@ interface RoomReading {
   interaction?: RoomInteractionSession;
 }
 
+interface HistoryRefresh {
+  from: number;
+  through: number;
+  latest: boolean;
+  before?: number;
+  window: ChannelMessage[];
+}
+
 interface PendingHistory {
   before?: number;
   replace: boolean;
-  refreshThrough?: number;
+  refresh?: HistoryRefresh;
   latestThrough?: number;
   entries: Map<number, { message?: ChannelMessage; snapshot?: MessageReactionSnapshot }>;
   // Rows adjoining the requested page, bounded in its direction of travel.
@@ -358,6 +366,7 @@ export class ChannelSession {
     }
     const remoteControls = new Map([...(patch.remoteControls ?? this.view.remoteControls)].filter(([id]) => ownedScreens.has(id)));
     this.view = { ...this.view, ...patch, watchPlayers: new Map(this.watchPlayers), pagePlayer: this.app?.pagePlayer ?? false, appConnected: this.app?.connected ?? false,
+      appPort: this.app?.connected ? this.app.port : undefined,
       backgroundVoiceShortcuts: this.app?.connected ? this.app.backgroundVoiceShortcuts : undefined,
       externalScreenInputAvailable: this.app?.connected === true && this.app.externalScreenInputAvailable, ownedScreens, localScreens, remoteControls };
     for (const listener of this.listeners) listener();
@@ -807,9 +816,9 @@ export class ChannelSession {
   }
 
   private async request(command: ChannelCommand, result?: (event: ChannelReply) => void, roomId = this.commandRoom(command), options: {
-    signal?: AbortSignal; replaceHistory?: boolean; refreshThrough?: number; bindingId?: string;
+    signal?: AbortSignal; replaceHistory?: boolean; refresh?: HistoryRefresh; bindingId?: string;
   } = {}): Promise<void> {
-    const { signal, replaceHistory = false, refreshThrough, bindingId } = options;
+    const { signal, replaceHistory = false, refresh, bindingId } = options;
     const reading = roomId ? this.readings.get(roomId) : undefined, socket = this.socket;
     const conversation = command.type === "chat" || command.type === "history" || command.type === "history_seek" || command.type === "react"
       || command.type === "delete_message" || command.type === "clear_history";
@@ -843,9 +852,9 @@ export class ChannelSession {
         }),
         ...(replyBinding ? { bindingId: replyBinding } : {}),
         ...(command.type === "history_seek" ? { seekAfter: command.after } : {}),
-        ...(command.type === "history" ? { history: { before: command.before, replace: replaceHistory, refreshThrough, entries: new Map(),
+        ...(command.type === "history" ? { history: { before: command.before, replace: replaceHistory, refresh, entries: new Map(),
           ...(command.before === undefined && { latestThrough: this.view.state?.channel.rooms.find(room => room.id === roomId)?.lastMessageSeq }),
-          window: command.before !== undefined && !replaceHistory ? this.view.messagesByRoom[command.roomId] ?? [] : [] } } : {}) });
+          window: refresh?.window ?? (command.before !== undefined && !replaceHistory ? this.view.messagesByRoom[command.roomId] ?? [] : []) } } : {}) });
       signal?.addEventListener("abort", abort, { once: true });
       if (conversation) void this.conversation.send(command, requestId, expectedBinding).catch(error => {
         if (!this.requests.delete(requestId)) return;
@@ -1012,28 +1021,42 @@ export class ChannelSession {
 
   private applyHistory(roomId: string, page: ChannelMessage[], result: Extract<ConversationReply["record"], { type: "history_end" }>,
     request: PendingHistory): void {
-    const { replace: jumping, refreshThrough } = request;
+    const { replace: jumping, refresh } = request;
     const state = this.view.state;
     if (!state?.channel.rooms.some(room => room.id === roomId && room.authorized)) return;
     const current = this.view.messagesByRoom[roomId] ?? [];
     const last = page.at(-1)?.seq ?? 0;
-    const latest = result.before === null;
-    if (refreshThrough !== undefined) {
+    const latest = refresh?.latest ?? (result.before === null);
+    if (refresh) {
       // Only this page's covered range can establish which cached messages were removed.
       const lower = result.hasMore ? page[0]?.seq ?? Infinity : 0;
+      const refreshThrough = request.before === undefined ? refresh.through : request.before - 1;
       const present = new Set(page.map(message => message.seq));
       const missing = current.filter(message => message.seq >= lower && message.seq <= refreshThrough && !present.has(message.seq));
       if (missing.length) this.applyHistoryRemovals(roomId, 0, missing.map(message => message.seq));
     }
-    const existing = latest ? request.window.filter(message => message.seq > last) : request.window;
+    const existing = result.before === null ? request.window.filter(message => message.seq > last) : request.window;
     const changes = this.view.historyChangesByRoom[roomId];
     const projected = page.filter(message => !messageRemoved(changes, message.seq))
       .map(message => mergeMessage(current.find(previous => previous.id === message.id), redactReply(message, changes)));
     // A jump requests the page ending at its target. A failed jump keeps the reader's current window.
-    if (jumping && refreshThrough === undefined && result.before !== null && projected.at(-1)?.seq !== result.before - 1) return;
-    const merged = mergeMessages([...existing, ...projected].filter(message => !messageRemoved(changes, message.seq)
+    if (jumping && !refresh && result.before !== null && projected.at(-1)?.seq !== result.before - 1) return;
+    const arrivals = refresh?.latest ? current.filter(message => message.seq > refresh.through) : [];
+    const merged = mergeMessages([...existing, ...projected, ...arrivals].filter(message => !messageRemoved(changes, message.seq)
+      && (!refresh || latest || message.seq >= refresh.from)
       && (result.oldestSeq === null || message.seq >= result.oldestSeq)).map(message => redactReply(message, changes)));
-    const messages = readingWindow(merged, state.channel.historyWindow, latest);
+    const messages = readingWindow(merged, state.channel.historyWindow, latest || !!refresh);
+    if (refresh) {
+      const first = page[0]?.seq;
+      // The writer may split the selected window over several record- or byte-limited pages.
+      refresh.before = result.hasMore && first !== undefined && first > refresh.from
+        && (request.before === undefined || first < request.before) && messages.length === merged.length
+        && messages.length < state.channel.historyWindow ? first : undefined;
+      if (refresh.before !== undefined) {
+        refresh.window = messages;
+        return;
+      }
+    }
     const atLatest = latest || (!jumping && (this.view.historyByRoom[roomId]?.atLatest ?? true)
       && messages.at(-1)?.id === current.at(-1)?.id);
     const oldestSeq = result.oldestSeq;
@@ -1042,7 +1065,7 @@ export class ChannelSession {
       || oldestSeq !== null && messages.length > 0 && messages[0].seq > oldestSeq);
     this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: messages },
       historyByRoom: { ...this.view.historyByRoom, [roomId]: { hasMore, before: messages[0]?.seq, atLatest,
-        ...(latest && request.latestThrough !== undefined && !result.hasMore && !page.length && { emptyThrough: request.latestThrough }) } } });
+        ...(latest && request.latestThrough !== undefined && !result.hasMore && !page.length && !messages.length && { emptyThrough: request.latestThrough }) } } });
     void this.loadProfiles(historyProfileIds(messages)).catch(() => {});
   }
 
@@ -1063,6 +1086,9 @@ export class ChannelSession {
       });
     }
     const history = this.view.historyByRoom[roomId];
+    const messages = this.view.messagesByRoom[roomId] ?? [];
+    // A replayed confirmation can finish a send for a message preceding this reading window.
+    if (!live && history?.hasMore && messages.length && message.seq < messages[0].seq) return;
     let projected: ChannelMessage = { ...message, reactions: { revision: 0, counts: {} } };
     for (const request of this.requests.values()) {
       const page = request.history;
@@ -1076,7 +1102,6 @@ export class ChannelSession {
       if (page.window.length < merged.length) page.clipped = true;
     }
     if (history?.atLatest === false) return;
-    const messages = this.view.messagesByRoom[roomId] ?? [];
     const merged = mergeMessages([...messages, projected]);
     const retained = readingWindow(merged, state.channel.historyWindow, true);
     this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: retained },
@@ -1355,13 +1380,24 @@ export class ChannelSession {
         this.retireReadings();
         this.syncRoomReading(current);
         if (this.roomId !== id || current.history || this.view.pending.has(`history:${id}`)) return;
-        const latestInWindow = this.view.messagesByRoom[id]?.at(-1)?.seq;
-        const before = this.view.historyByRoom[id]?.atLatest === false && latestInWindow !== undefined ? latestInWindow + 1 : undefined;
-        const refreshThrough = latestInWindow === undefined ? undefined : before === undefined ? room.lastMessageSeq : latestInWindow;
-        current.history = this.action(`history:${id}`, () =>
-          this.request({ type: "history", roomId: id, ...(before === undefined ? {} : { before }) }, undefined, id, { replaceHistory: before !== undefined, refreshThrough }).catch(error => {
+        const rows = this.view.messagesByRoom[id];
+        const latest = this.view.historyByRoom[id]?.atLatest !== false;
+        const refresh: HistoryRefresh | undefined = rows?.length ? { from: rows[0].seq,
+          through: latest ? Math.max(room.lastMessageSeq, rows.at(-1)!.seq) : rows.at(-1)!.seq, latest, window: [] } : undefined;
+        let before = !latest && refresh ? refresh.through + 1 : undefined;
+        current.history = this.action(`history:${id}`, async () => {
+          try {
+            do {
+              await this.request({ type: "history", roomId: id, ...(before === undefined ? {} : { before }) }, undefined, id,
+                { replaceHistory: before !== undefined, refresh, bindingId: current.bindingId });
+              before = refresh?.before;
+            } while (before !== undefined && this.roomId === id && this.readings.get(id) === current);
+            // An overlay can keep a reader alive after selection leaves this room.
+            if (before !== undefined) delete current.history;
+          } catch (error) {
             if (this.readings.get(id) === current && this.socket === current.socket) throw error;
-          }), true, { clearError: false });
+          }
+        }, true, { clearError: false });
         void current.history.catch(() => {});
       }, error => {
         if (this.readings.get(id) === current && this.socket === current.socket && this.view.connection === "connected") {

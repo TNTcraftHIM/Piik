@@ -6,7 +6,8 @@ import { windowAppearance } from "./window-appearance";
 export const SurfaceDocument = createContext<Document | null>(null);
 export const useSurfaceDocument = () => useContext(SurfaceDocument) ?? (typeof document === "undefined" ? null : document);
 
-type PictureInPicture = { requestWindow(options: { width: number; height: number; preferInitialWindowPlacement: boolean }): Promise<Window> };
+type PictureInPicture = EventTarget & { readonly window: Window | null;
+  requestWindow(options: { width: number; height: number; preferInitialWindowPlacement: boolean }): Promise<Window> };
 export const PANEL_SIZE = { width: 420, height: 560 };
 type PanelSize = { width: number; height: number };
 export function panelWindowAPI(view: Window | null) {

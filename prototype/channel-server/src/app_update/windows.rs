@@ -348,6 +348,7 @@ fn replace(plan: &Plan, workspace: &Path) -> Result<()> {
         let _ = start(plan);
         return Err(error).context("New process could not start; old App restored");
     }
+    let _ = fs::remove_file(workspace.join("package.zip"));
     // Creating the process is the boundary. Its subsequent exit is not permission
     // to downgrade code after it may have changed durable authority.
     Ok(())

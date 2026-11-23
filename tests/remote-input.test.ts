@@ -5,10 +5,12 @@ import { matchesRemoteShortcut, remoteInputStateSchema } from "../src/client/rem
 import { RemoteGamepad } from "../src/client/remote-control/gamepad";
 
 it("recognizes only the selected local release chord outside IME composition", () => {
-  const chord = { code: "F9", ctrlKey: true, altKey: true, metaKey: false, shiftKey: false, isComposing: false };
+  const chord = { code: "F9", ctrlKey: true, altKey: true, metaKey: false, shiftKey: false, isComposing: false,
+    keyCode: 0, getModifierState: () => false };
   expect(matchesRemoteShortcut(chord, 9)).toBe(true);
   expect(matchesRemoteShortcut(chord, 10)).toBe(false);
-  for (const changed of [{ ctrlKey: false }, { altKey: false }, { shiftKey: true }, { metaKey: true }, { isComposing: true }]) {
+  for (const changed of [{ ctrlKey: false }, { altKey: false }, { shiftKey: true }, { metaKey: true },
+    { isComposing: true }, { keyCode: 229 }, { getModifierState: () => true }]) {
     expect(matchesRemoteShortcut({ ...chord, ...changed }, 9)).toBe(false);
   }
 });

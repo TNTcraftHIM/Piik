@@ -19,10 +19,6 @@ export function voiceShortcutDefaults(mac: boolean): VoiceShortcuts {
   return { microphone: { ...modifiers, key: "M" }, listening: { ...modifiers, key: "D" } };
 }
 
-export function ignoresVoiceShortcutKey(event: KeyboardEvent): boolean {
-  return event.isComposing || event.keyCode === 229 || event.getModifierState("AltGraph");
-}
-
 export function voiceShortcutFromEvent(event: KeyboardEvent): VoiceShortcutBinding | null {
   // Use the logical letter so the binding follows the user's keyboard layout.
   const result = voiceShortcutBindingSchema.safeParse({
