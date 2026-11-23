@@ -20,6 +20,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   publication. Complete the v2.8.0 attachment uploads from the
   [original build](https://github.com/TNTcraftHIM/Piik/actions/runs/44881655913)
   after the manual tag synchronization. [Mirror operations](./operations/github.md#atomgit-download-mirror) owns setup.
+- [ ] **Public invitation timeout feedback (#557).** Verify the App timeout
+  title and fixed public address guide link in the maintenance candidate, then
+  confirm both in the published build.
+  [#557](https://github.com/TNTcraftHIM/Piik/issues/557)
 - [ ] **Windows H.264 output negotiation (#452).** Verify the format-change
   handling on the reporter's Intel device, including startup and bitrate changes.
   The App diagnostic identifies `MF_E_TRANSFORM_STREAM_CHANGE`; preserve the
@@ -61,11 +65,16 @@ own behavior; research and Git/PRs own evidence and completed history.
   [#499](https://github.com/TNTcraftHIM/Piik/issues/499) on niri/Wayland with
   GStreamer NVENC. The Browser report records capture ending before connection
   cleanup; obtain the native capture failure to distinguish the encoder and Portal.
+- [ ] **Linux Cinnamon/X11 capture without a ScreenCast portal backend (#552).**
+  Verify the App source picker and Browser sharing on the affected setup before
+  deciding the native capture support scope.
+  [#552](https://github.com/TNTcraftHIM/Piik/issues/552)
 - [ ] **Mouse input stops when Host Chrome is minimized (#502).** Follow
   [#502](https://github.com/TNTcraftHIM/Piik/issues/502) on the original Windows
   host. The supplied v2.5.2 reports retain the grant and receive authorized mouse
   events, but Windows `SendInput` rejects a button event and subsequent release
-  attempts. Capture whether local physical input also stops during the refusal
+  attempts. The reporter still loses control after returning to the desktop in
+  v2.8.0. Capture whether local physical input also stops during the refusal
   to identify its OS trigger. Later same-process reports clear the release
   backlog; the local controlled Chrome trial did not reproduce the failure.
 - [ ] **Return LiveKit to an upstream pin.** Follow
