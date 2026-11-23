@@ -3,9 +3,11 @@ package app
 import (
 	"io"
 	"io/fs"
+	"mime"
 	"net/http"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/TNTcraftHIM/Piik/internal/httpassets"
@@ -48,7 +50,7 @@ var staticContentTypes = map[string]string{
 var viteBundle = regexp.MustCompile(`^assets/[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8}\.(js|css)$`)
 
 // staticHandler serves embedded assets and falls back to index.html for SPA
-// routes. Missing files use the application's JSON 404 handler.
+// routes. A missing document uses the SPA's unavailable page with HTTP 404.
 func staticHandler(assets fs.FS, notFound http.Handler) http.Handler {
 	return httpassets.Compress(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		// API and health routes have already been handled by ServeHTTP.
@@ -93,13 +95,61 @@ func staticHandler(assets fs.FS, notFound http.Handler) http.Handler {
 			return
 		}
 		// Route-like paths use the SPA; files and .well-known requests do not.
-		if !looksLikeFile(cleaned) && !strings.Contains(cleaned, "/.well-known") {
-			if serve("index.html") {
+		if !strings.Contains(cleaned, "/.well-known") {
+			if !looksLikeFile(cleaned) && serve("index.html") {
+				return
+			}
+			writer.Header().Add("Vary", "Accept, Sec-Fetch-Mode")
+			if isDocumentNavigation(request) && serveMissingDocument(writer, request, assets) {
 				return
 			}
 		}
 		notFound.ServeHTTP(writer, request)
 	}))
+}
+
+func isDocumentNavigation(request *http.Request) bool {
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		return false
+	}
+	if mode := request.Header.Get("Sec-Fetch-Mode"); mode != "" && mode != "navigate" {
+		return false
+	}
+	for _, field := range request.Header.Values("Accept") {
+		for mediaRange := range strings.SplitSeq(field, ",") {
+			mediaType, parameters, err := mime.ParseMediaType(mediaRange)
+			if err != nil || mediaType != "text/html" {
+				continue
+			}
+			quality, explicit := parameters["q"]
+			if !explicit {
+				return true
+			}
+			if weight, err := strconv.ParseFloat(quality, 64); err == nil && weight > 0 && weight <= 1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func serveMissingDocument(writer http.ResponseWriter, request *http.Request, assets fs.FS) bool {
+	shell, err := fs.ReadFile(assets, "index.html")
+	if err != nil {
+		return false
+	}
+	// The SPA's existing route parser renders the unavailable or malformed-room view.
+	header := writer.Header()
+	header.Set("Content-Type", staticContentTypes[".html"])
+	header.Set("Content-Length", strconv.Itoa(len(shell)))
+	header.Set("Cache-Control", "no-store")
+	header.Set("X-Content-Type-Options", "nosniff")
+	header.Set("Referrer-Policy", "no-referrer")
+	writer.WriteHeader(http.StatusNotFound)
+	if request.Method == http.MethodGet {
+		_, _ = writer.Write(shell)
+	}
+	return true
 }
 
 // hasDotSegment excludes hidden assets, with the published .well-known exemption.
