@@ -1,8 +1,12 @@
 import { mountApp } from "./mount";
+import { PageNotFound } from "./components/living/StartupFailure";
 import "./channel/bootstrap";
 import "./ui/native-window";
 
 async function loadPage() {
+  if (document.querySelector('meta[name="piik-page"][content="not-found"]')) {
+    return PageNotFound;
+  }
   if (import.meta.env.DEV) {
     switch (location.pathname) {
       case "/__tooltip-preview": return (await import("./pages/TooltipPreviewPage")).TooltipPreviewPage;

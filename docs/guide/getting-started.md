@@ -115,7 +115,7 @@ working, while existing access and the room password remain.
    Check the address and select **Allow access** only for a site you trust.
    An approved site can host rooms, use local windows and screens, and control the App's webpage player,
    including reading and forwarding media available after you sign in.
-3. Return to the site. In a lightweight channel, a new room runs in App if connected when you create it, or in the browser page otherwise. In a hosted channel, the server manages the room and keeps it available after you leave. Check the hosting note on the creation form.
+3. Return to the site. In a lightweight channel, a new room runs in App if connected when you create it, or in the browser page otherwise. In a hosted channel, the server hosts the room and keeps it available after you leave. Check the hosting note on the creation form.
 4. In a room, **Start sharing** now also offers the App's supported sources.
 
 Connecting App adds supported device features. Existing rooms keep their host.

@@ -60,7 +60,7 @@ The site operator opens settings by selecting the site name above the room list.
 
 To preserve the original room, use **Records → Export full backup**. To restore
 it, choose **Restore full backup**, select the ZIP and confirm the replacement.
-In a Server-hosted room, its creator uses this room’s Records panel. The site owner can manage and remove rooms, and can export full backups of rooms they created. Other admitted members can export the chat text loaded on their page. The backup includes settings, full history and thumbnails. Select **Include file originals from this device** to add originals your browser can read locally.
+In a Server-hosted room, its creator uses this room’s Records panel. The site owner can remove rooms from the site. To read private room content, they need access to that room. They can export full backups of rooms they created. Other admitted members can export the chat text loaded on their page. The backup includes settings, full history and thumbnails. Select **Include file originals from this device** to add originals your browser can read locally.
 
 To give someone a copy, choose **Export room copy**, optionally including room
 information. They select **Create room → Load a room copy**, choose the new name
@@ -105,8 +105,8 @@ On a desktop, Enter sends and Shift+Enter adds a line. On a touchscreen, Return
 adds a line and **Send** sends the message. Ctrl+Enter or Command+Enter also sends.
 
 In a lightweight site, the room creator’s device saves messages and reactions.
-In a hosted site, the server saves them. Open the room to read its history while
-that device or server is online. Chat uses the site connection.
+In a hosted site, the server saves them. Reopen the room to read its history while
+its hosting page, App or Server is serving it. Chat uses the site connection.
 
 On an attachment card, select **Download** for a file or **Download original**
 for an image. Piik uses a readable local copy or receives the original from

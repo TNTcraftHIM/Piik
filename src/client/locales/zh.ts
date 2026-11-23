@@ -1058,6 +1058,8 @@ export const zh = {
   "gate.malformed": "房间号格式不正确",
   "gate.malformedHint": "请输入 1000 至 9999 的四位房间号",
   "gate.unavailableRoute": "无法访问",
+  "navigation.linkUnavailable": "链接不可用",
+  "navigation.askInvitation": "如需加入房间，请向房主索取新邀请。",
   "startup.failed": "页面未能加载",
   "startup.retry": "请刷新页面后重试。",
 

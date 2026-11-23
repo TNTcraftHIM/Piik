@@ -127,10 +127,64 @@ pub fn frontend(directory: &Path) -> anyhow::Result<Router> {
         .merge(bundle_routes(directory)?)
         .route("/", document(index.clone()))
         .route("/__channel-preview", document(index.clone()))
-        .route("/index.html", document(index))
+        .route("/index.html", document(index.clone()))
         .fallback_service(static_files(
             ServeDir::new(directory).append_index_html_on_directories(false),
-        )))
+        ))
+        .layer(middleware::map_response_with_state(index, missing_document)))
+}
+
+async fn missing_document(
+    axum::extract::State(index): axum::extract::State<PathBuf>,
+    method: axum::http::Method,
+    headers: axum::http::HeaderMap,
+    mut response: Response,
+) -> Response {
+    if response.status() != StatusCode::NOT_FOUND {
+        return response;
+    }
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    let accepts_html = headers
+        .get(header::ACCEPT)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value.split(',').any(|item| {
+                item.split(';')
+                    .next()
+                    .is_some_and(|media| media.trim().eq_ignore_ascii_case("text/html"))
+            })
+        });
+    let navigation = headers
+        .get("sec-fetch-mode")
+        .is_none_or(|mode| mode == "navigate");
+    if navigation
+        && accepts_html
+        && matches!(method, axum::http::Method::GET | axum::http::Method::HEAD)
+    {
+        if let Ok(shell) = tokio::fs::read_to_string(index).await {
+            // Only the Site router knows whether the original document exists.
+            let html = shell.replacen(
+                "<head>",
+                "<head><meta name=\"piik-page\" content=\"not-found\">",
+                1,
+            );
+            response.headers_mut().insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/html; charset=utf-8"),
+            );
+            response
+                .headers_mut()
+                .insert(header::CONTENT_LENGTH, html.len().into());
+            *response.body_mut() = if method == axum::http::Method::HEAD {
+                axum::body::Body::empty()
+            } else {
+                axum::body::Body::from(html)
+            };
+        }
+    }
+    response
 }
 
 pub(crate) fn bundle_routes<S: Clone + Send + Sync + 'static>(
@@ -267,11 +321,20 @@ mod tests {
         path: &str,
         headers: &str,
     ) -> (u16, BTreeMap<String, String>, Vec<u8>) {
+        request_with_method(address, "GET", path, headers).await
+    }
+
+    async fn request_with_method(
+        address: SocketAddr,
+        method: &str,
+        path: &str,
+        headers: &str,
+    ) -> (u16, BTreeMap<String, String>, Vec<u8>) {
         let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
         stream
             .write_all(
                 format!(
-                    "GET {path} HTTP/1.1\r\nHost: {address}\r\n{headers}Connection: close\r\n\r\n"
+                    "{method} {path} HTTP/1.1\r\nHost: {address}\r\n{headers}Connection: close\r\n\r\n"
                 )
                 .as_bytes(),
             )
@@ -441,7 +504,11 @@ mod tests {
         assert_eq!(newer.0, 200);
         assert!(newer.2.contains("new.js"));
         let cached_modified = newer.1.get("last-modified").unwrap().clone();
-        fs::write(&index, "<script src=\"/assets/old.js\"></script>").unwrap();
+        fs::write(
+            &index,
+            "<head><script src=\"/assets/old.js\"></script></head>",
+        )
+        .unwrap();
         fs::OpenOptions::new()
             .write(true)
             .open(&index)
@@ -470,7 +537,16 @@ mod tests {
             asset.1.get("last-modified").map(String::as_str),
         )
         .await;
-        let missing = request(address, "/assets/new.js", None).await;
+        let missing = request_bytes(
+            address,
+            "/assets/new.js",
+            "Accept: */*\r\nSec-Fetch-Mode: cors\r\n",
+        )
+        .await;
+        let document_headers =
+            "Accept: text/html; charset=utf-8,*/*\r\nSec-Fetch-Mode: navigate\r\n";
+        let navigation = request_bytes(address, "/assets/new.js", document_headers).await;
+        let head = request_with_method(address, "HEAD", "/assets/new.js", document_headers).await;
         let unknown_api = request(address, "/api/unknown", None).await;
         stop.send(()).unwrap();
         server.await.unwrap();
@@ -490,6 +566,14 @@ mod tests {
         );
         assert_eq!(asset_cached.0, 304);
         assert_eq!(missing.0, 404);
+        assert!(missing.2.is_empty());
+        assert_eq!(navigation.0, 404);
+        assert_eq!(navigation.1["cache-control"], "no-store");
+        assert_eq!(head.0, 404);
+        assert!(head.2.is_empty());
+        assert_eq!(head.1["content-length"], navigation.2.len().to_string());
+        let shell = String::from_utf8(navigation.2).unwrap();
+        assert!(shell.contains("content=\"not-found\"") && shell.contains("/assets/old.js"));
         assert_eq!(unknown_api.0, 404);
     }
 }

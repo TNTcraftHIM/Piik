@@ -154,11 +154,6 @@ the feedback period; they do not delay that delivery.
   verify an official release containing the repair.
   [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
   owns the temporary pin and removal procedure.
-- [ ] **Replace the official str0m Git pin with a published release.** When a
-  release includes the required NACK, bandwidth-estimation and SDP-mapping repairs
-  listed in Native dependency provenance, replace the immutable upstream pin
-  through the existing consumer checks and
-  [dependency provenance](../prototype/channel-native/README.md#rtc-dependency).
 - [ ] **Refresh the MPD script runtime.** Follow the supported QuickJS-NG update
   in [rquickjs #793](https://github.com/DelSkayn/rquickjs/pull/793), including
   allocation-failure cleanup fixes. Verify the parser and binding behavior before

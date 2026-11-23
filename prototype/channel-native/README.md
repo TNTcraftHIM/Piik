@@ -231,19 +231,12 @@ Return both dependencies to an upstream release once it covers the scheduling,
 interface notification and lease fixes. Regenerate the Native, Server and Android
 locks and verify IPv6 trickle, mapping lifecycle and package notices.
 
-Native uses str0m's public RTP/Sans-I/O interface, pinned to official
-[30189fda](https://github.com/algesten/str0m/commit/30189fda95d5d7b90d5eb7b19a54a6d9f4856e64).
-[PR #1134](https://github.com/algesten/str0m/pull/1134) suppresses duplicate NACK
-repairs within one round trip while permitting later repair. Resend history
-belongs to each cached packet and retires with cache eviction, buffer reset or
-SSRC reset. The pin also includes [#1137](https://github.com/algesten/str0m/pull/1137),
-which bounds loss-based estimates by acknowledged throughput and the minimum
-bitrate, and [#1154](https://github.com/algesten/str0m/pull/1154), which rejects
-conflicting SDP payload mappings without panicking or replacing locked parameters.
-Native, Server and Android retain this single upstream source until a published
-release includes the repairs. MIT/Apache-2.0 licensing and the
-[rust-crypto provider](https://github.com/algesten/str0m/tree/30189fda95d5d7b90d5eb7b19a54a6d9f4856e64/crypto/rust-crypto)
-remain unchanged.
+Native, Server and Android use the public RTP/Sans-I/O interface from the
+crates.io release of str0m 0.26.0 with the `rust-crypto` provider
+(MIT/Apache-2.0). The SDK suppresses duplicate NACK repairs within one round
+trip, bounds loss-based bandwidth estimates by acknowledged throughput and
+the minimum bitrate, and preserves locked SDP payload mappings when later
+mappings conflict. [str0m 0.26.0](https://crates.io/crates/str0m/0.26.0)
 
 The [Native consumer comparison](../../docs/research/network-lab.md#duplicate-nack-feedback)
 owns retransmission evidence for its recorded revisions. Selected Original
