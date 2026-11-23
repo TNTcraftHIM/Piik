@@ -126,7 +126,7 @@ temporary address, ask that site's administrator to check its service.
    If the virtual adapter uses the **Public** profile, allow Piik on **Public**. If you moved Piik to a different folder,
    add the executable at its new path. The old rule only applies to the old path. Ask your friend to retry the invitation.
    If you use port-specific rules, allow Piik's UDP media traffic as well as the TCP web port.
-   A working webpage alone does not confirm that the media traffic is allowed.
+   Allowing only the web port can let visitors enter the room but leave them unable to watch.
    [Microsoft firewall instructions](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/configure)
 2. If App reports **the local port is unavailable**, close the older Piik instance using it. If another app needs the port, launch Piik with `--port 9876` and send the new invitation. The web and local STUN ports must both be available.
 
