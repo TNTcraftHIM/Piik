@@ -114,7 +114,8 @@ public final class CapturePlatform implements CaptureRequest {
         .setSampleRate(48000).setChannelMask(AudioFormat.CHANNEL_IN_STEREO).build();
     AudioPlaybackCaptureConfiguration capture = new AudioPlaybackCaptureConfiguration.Builder(projection)
         .addMatchingUsage(AudioAttributes.USAGE_MEDIA).addMatchingUsage(AudioAttributes.USAGE_GAME)
-        .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN).build();
+        .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
+        .excludeUid(android.os.Process.myUid()).build();
     int buffer = Math.max(960 * 2 * 4 * 2, AudioRecord.getMinBufferSize(48000, AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_FLOAT));
     audio = new AudioRecord.Builder().setAudioFormat(format).setBufferSizeInBytes(buffer)
         .setAudioPlaybackCaptureConfig(capture).build();

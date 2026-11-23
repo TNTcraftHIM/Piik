@@ -1324,7 +1324,7 @@ export const zh = {
   "host.sourcePicker.display": "分享屏幕：{title}",
   "host.sourcePicker.system": "系统屏幕与窗口选择器",
   "host.sourcePicker.systemAction": "使用系统选择器选择屏幕或窗口",
-  "host.sourcePicker.audioHint": "窗口分享所选应用的声音。整屏的系统声音可能带上房间语音。",
+  "host.sourcePicker.audioHint": "窗口分享所选应用的声音。如果分享范围包含播放通话的应用，窗口或整屏分享都可能把通话传回来。",
   "host.sourcePicker.refresh": "刷新分享来源",
   "host.sourcePicker.loading": "正在查找分享来源",
   "host.join": "加入房间",

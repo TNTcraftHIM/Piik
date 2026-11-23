@@ -1326,7 +1326,7 @@ export const en: Record<CopyKey, string> = {
   "host.sourcePicker.display": "Share screen: {title}",
   "host.sourcePicker.system": "System screen or window picker",
   "host.sourcePicker.systemAction": "Choose a screen or window with the system picker",
-  "host.sourcePicker.audioHint": "A window shares that app’s sound. Full-screen system audio can include the room call.",
+  "host.sourcePicker.audioHint": "Window audio shares the selected app’s sound. Window or full-screen audio can include the call if it captures the app playing it.",
   "host.sourcePicker.refresh": "Refresh sharing sources",
   "host.sourcePicker.loading": "Finding sharing sources",
   "host.join": "Join a room",

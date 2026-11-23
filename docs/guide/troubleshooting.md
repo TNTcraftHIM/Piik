@@ -528,7 +528,9 @@ If a viewer hears their own voice coming back through the stream, keep room voic
 1. Ask the viewer to turn just that stream's playback volume to zero and speak. If the echo stops, turn the volume back up and continue to step 2. If it persists, check the microphones and monitoring settings below.
 2. Have the host temporarily turn off the source audio, labeled **System sound** for a full-screen share. If the echo stops while the host can still hear the viewer in the call, the share is capturing room voices.
 
-To keep both game audio and the conversation, select the game under **Apps / Windows** in the Windows App. For a full-screen share, use **Exclude application audio** and choose the window playing the call. If the game and the call use the same browser, share the game tab with tab audio. [Sharing sound settings](./sharing.md#exclude-a-voice-app-from-screen-audio)
+To keep both game audio and the conversation, select the game under **Apps / Windows** in the Windows App. For a full-screen share, use **Exclude application audio** and choose the window playing the call. In a desktop browser, share the game tab with tab audio and keep the call in a separate tab. Window or full-screen audio can pick up the call. [Sharing sound settings](./sharing.md#exclude-a-voice-app-from-screen-audio)
+
+On a phone, first turn off the **share microphone** and keep room voice on, so the microphone is not sent through both the stream and the call. If source audio is available and turning it off removes the echo, share only the picture; use another device for the call when you also need content sound. Headphones can reduce speaker sound picked up by a microphone, but cannot prevent system recording from capturing the call directly.
 
 If muting source sound leaves the echo audible, try turning off the host's **share microphone**, then have anyone using speakers switch to headphones. Check a virtual mixer's playback and monitoring outputs if one is in use.
 
