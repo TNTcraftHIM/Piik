@@ -114,6 +114,8 @@ Piik 在 QUIC（UDP）失败后会尝试 HTTP/2（TCP），请允许两者使用
 1. Windows 房主打开 **Windows 安全中心 → 防火墙和网络保护 → 允许应用通过防火墙**，
    选择实际运行的 `piik-app.exe`，允许它通过正在使用的网络类型。如果虚拟网卡属于 **公用网络**，就勾选 **公用**。
    如果换了 Piik 的存放目录，请添加新路径下的程序。旧规则只匹配旧路径。然后请朋友重新打开邀请。
+   如果手动按端口设置规则，除了网页使用的 TCP，还要允许 Piik 的 UDP 媒体通信。
+   只放行网页端口时，可能能进房却看不到画面。
    [Microsoft 防火墙说明](https://learn.microsoft.com/zh-cn/windows/security/operating-system-security/network-security/windows-firewall/configure)
 2. 若 App 提示 **本地端口不可用**，关闭占用端口的旧 Piik 实例。其他程序需要该端口时，用 `--port 9876` 启动 Piik，发送新邀请。网页和本地 STUN 端口都需可用。
 
