@@ -568,7 +568,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
         <Btn icon={!hasAudio || silent ? "speakerOff" : "speaker"} quiet
           title={!hasAudio ? "playback.noAudio" : silent ? "playback.unmute" : "playback.mute"}
           hint={!hasAudio ? "hint-no-audio" : silent ? "hint-unmute" : "hint-mute"}
-          disabled={!hasAudio} pressed={silent}
+          disabled={!hasAudio} tone={silent ? "on" : undefined}
           onClick={() => {
             if (audio.level === 0) output.current?.setLevel(1);
             output.current?.setMuted(!silent);

@@ -2451,6 +2451,90 @@ mod tests {
     }
 
     #[test]
+    fn paused_screen_releases_relay_capacity_for_another_screen() {
+        let id = Uuid::from_u128;
+        let (relay, publisher, first, second) = (id(2), id(3), id(10), id(20));
+        let reduction_at = 10;
+        let deadline = reduction_at + SCREEN_PREPARE_MS;
+        let pairs = confirmed_pairs(&[(3, 1), (1, 2), (2, 4), (2, 5), (2, 6)]);
+
+        for pause_before_reduction in [false, true] {
+            let (mut room, mut endpoints) = screen_room();
+            for value in [5, 6] {
+                let session = id(value);
+                let member = Member { user_id: session };
+                endpoints.insert(
+                    session,
+                    Endpoint {
+                        signing_key: [value as u8; 32],
+                        member,
+                        connected: true,
+                    },
+                );
+                room.browse(member, session, true).unwrap();
+            }
+            for flow in room.flows().collect::<Vec<_>>() {
+                room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
+                    .unwrap();
+            }
+            let relay_member = endpoints[&relay].member;
+            room.set_relay_capacity(relay_member, relay, Some(2)).unwrap();
+            room.subscribe(endpoints[&id(6)].member, id(6), first, true, None)
+                .unwrap();
+            room.reconcile_with_pairs(&endpoints, 2, &pairs);
+            assert!(room.flows().any(|flow| {
+                flow.publication_id == first && flow.sender == relay && flow.receiver == id(6)
+            }));
+
+            if pause_before_reduction {
+                room.set_paused(publisher, first, true).unwrap();
+            }
+            room.set_relay_capacity(relay_member, relay, Some(1)).unwrap();
+            room.reconcile_with_pairs(&endpoints, reduction_at, &pairs);
+            if !pause_before_reduction {
+                room.set_paused(publisher, first, true).unwrap();
+            }
+            assert_eq!(
+                room.next_route_deadline(),
+                Some(deadline),
+                "pause before reduction: {pause_before_reduction}"
+            );
+
+            room.publish(
+                endpoints[&id(1)].member,
+                id(1),
+                second,
+                Kind::Screen,
+                screen_settings(),
+                Some(crate::wire::ScreenSource::default()),
+            )
+            .unwrap();
+            room.subscribe(endpoints[&id(5)].member, id(5), second, true, None)
+                .unwrap();
+
+            let second_can_reach_viewer = |room: &RoomRuntime| {
+                room.flows().any(|flow| {
+                    flow.publication_id == second && flow.sender == relay && flow.receiver == id(5)
+                })
+            };
+            room.reconcile_with_pairs(&endpoints, deadline - 1, &pairs);
+            assert!(room.flows().any(|flow| {
+                flow.publication_id == first && flow.sender == relay && flow.receiver == id(4)
+            }));
+            assert!(!second_can_reach_viewer(&room));
+
+            room.reconcile_with_pairs(&endpoints, deadline, &pairs);
+            // Keep one downstream on the paused screen and make one slot available.
+            room.set_relay_capacity(relay_member, relay, Some(2)).unwrap();
+            room.reconcile_with_pairs(&endpoints, deadline + 1, &pairs);
+            assert!(
+                second_can_reach_viewer(&room),
+                "pause before reduction: {pause_before_reduction}"
+            );
+        }
+    }
+
+    #[test]
     fn refused_file_transit_reuses_confirmed_pair_with_zero_forwarding() {
         let id = Uuid::from_u128;
         let (fixture, endpoints) = screen_room();

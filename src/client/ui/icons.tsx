@@ -73,7 +73,7 @@ const PATHS = {
   linkOff: { body: (<><path pathLength={1} d="M10 13a5 5 0 0 0 7.54.54l1.1-1.1M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/><path pathLength={1} d="m3 3 18 18"/></>) },
   arrowRight: { phases: [0, 1], body: (<><path pathLength={1} d="M4 12h16"/><path pathLength={1} d="m13.5 5.5 6.5 6.5-6.5 6.5"/></>) },
   arrowLeft: { phases: [0, 1], body: (<><path pathLength={1} d="M20 12H4"/><path pathLength={1} d="m10.5 5.5-6.5 6.5 6.5 6.5"/></>) },
-  reply: { body: (<><path pathLength={1} d="m9 5-6 6 6 6M3 11h10a7 7 0 0 1 7 7v1"/></>) },
+  reply: { phases: [0, 1], body: (<><path pathLength={1} d="M20 19v-1a7 7 0 0 0-7-7H3"/><path pathLength={1} d="m9 5-6 6 6 6"/></>) },
   arrowUp: { phases: [0, 1], body: (<><path pathLength={1} d="M12 20V4"/><path pathLength={1} d="m5.5 10.5 6.5-6.5 6.5 6.5"/></>) },
   arrowDown: { phases: [0, 1], body: (<><path pathLength={1} d="M12 4v16"/><path pathLength={1} d="m5.5 13.5 6.5 6.5 6.5-6.5"/></>) },
   fileUp: { body: (<>{fileOutline}<path pathLength={1} d="M12 18v-7m-3 3 3-3 3 3"/></>) },

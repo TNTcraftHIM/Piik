@@ -23,6 +23,7 @@ import { AppSiteBookmarks } from "./AppSiteBookmarks";
 import type { SiteManagementProps } from "../components/living/SiteManagement";
 import { downloadBlob } from "../lib/download";
 import { openLauncherSite, publicSiteOrigin } from "../lib/site-address";
+import { diagnosisGuide } from "../channel/diagnosis";
 
 const localCertificateSchema = z.object({ origin: z.string().url(), sha256Fingerprint: z.string().regex(/^[A-Fa-f0-9]{64}$/) });
 const launcherStateSchema = z.object({
@@ -433,7 +434,12 @@ export function AppLauncherPage() {
             onClick={() => setPanel("launch")} />}
         >
             {panel !== "launch" && roomError}
-            {localCertificate && <LocalConnectionDetails certificate={localCertificate} />}
+            {localCertificate && <>
+              <LocalConnectionDetails certificate={localCertificate} />
+              <a href={diagnosisGuide("localAccess", lang).fallback} target="_blank" rel="noopener noreferrer">
+                {t("client.launch.localAccessHelp")}
+              </a>
+            </>}
             {serverState?.publicOrigin && <p className="lr-launcher-public-address">
               <span>{t("client.launch.publicAddress")}</span>{" "}
               <a href={serverState.publicOrigin} target="_blank" rel="noopener noreferrer">{serverState.publicOrigin}</a>

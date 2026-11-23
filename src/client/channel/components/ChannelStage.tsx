@@ -67,7 +67,7 @@ function SourceSound({ sound, title }: { sound: SourceAudioControl; title: strin
       <Btn icon={!sound.hasAudio || silent ? "speakerOff" : "speaker"} quiet size="dense"
         title={!sound.hasAudio ? "playback.noAudio" : !sound.available ? "host.shareVolume.unavailable"
           : silent ? "host.shareVolume.unmute" : "host.shareVolume.mute"}
-        disabled={!available || sound.busy && !(sound.canMute && !silent)} pressed={silent}
+        disabled={!available || sound.busy && !(sound.canMute && !silent)} tone={silent ? "on" : undefined}
         onClick={() => sound.onChange({ level: sound.level || 1, muted: !silent })} />
     </AudioVolumeMenu>
   </span>;

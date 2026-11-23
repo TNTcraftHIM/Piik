@@ -257,7 +257,9 @@ associated outgoing delivery and prompts the room to find another parent for
 affected viewers. Honor that withdrawal for the running activity. Voice and
 file uses have independent lifetimes. The physical pair can remain for another
 use or for standby. If a forwarding limit is lowered, release excess assignments
-through the existing handoff. Enforce withdrawals even when the affected
+through the existing handoff. Pausing a share retains its subscriptions and
+permitted routes; it does not extend the deadline for releasing excess assignments.
+Enforce withdrawals even when the affected
 recipient must wait for a new path.
 
 When the runtime needs to free physical connection resources, protect edges

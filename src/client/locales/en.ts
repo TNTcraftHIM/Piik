@@ -1004,6 +1004,7 @@ export const en: Record<CopyKey, string> = {
   "client.launch.sitePortHint": "Reuse this port after restart. Changing it changes the web address; App-hosted rooms remain saved, while browser identity and cache belong to the old address.",
   "client.launch.localHTTPS": "Local invitations use HTTPS. Confirm the local certificate on your first visit.",
   "client.launch.localDetails": "Local connection details",
+  "client.launch.localAccessHelp": "Friends can't connect?",
   "client.launch.certificate": "Certificate SHA-256 fingerprint",
   "client.launch.certificateHint": "When a friend first opens your local invitation, they can compare this fingerprint with the browser's certificate details.",
   "client.launch.copyCertificate": "Copy verification details",

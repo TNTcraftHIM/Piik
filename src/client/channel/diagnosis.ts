@@ -5,6 +5,7 @@ import type { ChannelRoom } from "./protocol";
 
 const guideSections = {
   troubleshooting: ["troubleshooting", "", ""],
+  localAccess: ["troubleshooting", "local-invitation-will-not-open", "本地邀请打不开"],
   site: ["troubleshooting", "the-page-opens-but-the-site-will-not-connect", "网页能打开但站点连接不上"],
   app: ["troubleshooting", "opening-app-and-joining-a-room", "打开-app-与加入房间"],
   appConnection: ["troubleshooting", "the-page-cannot-connect-to-app", "网页连接不上-app"],

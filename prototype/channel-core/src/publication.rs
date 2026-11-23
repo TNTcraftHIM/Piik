@@ -131,7 +131,10 @@ impl Publication {
         self.info.paused = paused;
         if paused {
             // A deliberate pause withdraws an unproved change, not the live tree.
-            self.operation = None;
+            match self.operation.as_mut().map(|op| &mut op.kind) {
+                Some(OperationKind::Reduce { legs, .. }) => legs.clear(),
+                _ => self.operation = None,
+            }
         }
     }
 
@@ -299,9 +302,6 @@ impl Publication {
         }
         self.plan.parents.retain(|child, _| needed.contains(child));
         self.reconcile_leases();
-        if self.info.paused {
-            return;
-        }
         if matches!(
             self.operation.as_ref().map(|operation| &operation.kind),
             Some(OperationKind::Reduce { .. })
@@ -316,6 +316,9 @@ impl Publication {
             self.prepare_reduction(
                 requested, connected, helpers, limits, neighbors, relays, now,
             );
+            return;
+        }
+        if self.info.paused {
             return;
         }
         if let Some(operation) = &self.operation {
@@ -463,6 +466,9 @@ impl Publication {
             return;
         };
         let candidate = |root| {
+            if self.info.paused {
+                return None;
+            }
             let mut eligible: BTreeSet<_> = neighbors
                 .get(&root)
                 .into_iter()

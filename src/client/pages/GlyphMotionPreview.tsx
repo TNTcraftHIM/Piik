@@ -17,7 +17,7 @@ const examples: { icon: GlyphName; zh: string; en: string }[] = [
   { icon: "speaker", zh: "声音：先扬声器，再声波", en: "Sound: speaker, then waves" },
   { icon: "speakerOff", zh: "静音：先扬声器，再关闭标记", en: "Muted: speaker, then off mark" },
   { icon: "refresh", zh: "重连：先旋转线，再两个箭头", en: "Refresh: arcs, then arrowheads" },
-  { icon: "reply", zh: "回复：保留一笔完成", en: "Reply: one continuous stroke" },
+  { icon: "reply", zh: "回复：先画回弯，再画箭头", en: "Reply: curved shaft, then arrowhead" },
   { icon: "screenFocus", zh: "聚焦：主画面后两张缩略图", en: "Focus: main picture, then thumbnails" },
   { icon: "screenGrid", zh: "平铺：四个同级画面同时显示", en: "Grid: equal pictures draw together" },
   { icon: "link", zh: "链接：两段同级链环同时显示", en: "Link: equal links draw together" },

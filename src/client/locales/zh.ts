@@ -998,6 +998,7 @@ export const zh = {
   "client.launch.lanAddress": "局域网邀请地址",
   "client.launch.chooseAddress": "选择地址",
   "client.launch.lanHint": "选择与朋友处于同一网络的地址。",
+  "client.launch.localAccessHelp": "朋友连不上？",
   "client.launch.sitePort": "站点端口",
   "client.launch.sitePortHint": "重启后沿用此端口。更改端口会改变网页地址；App 托管的房间保留，浏览器身份和缓存仍属于原地址。",
   "client.launch.localHTTPS": "局域网邀请使用本地 HTTPS；首次访问需确认本地证书。",

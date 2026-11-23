@@ -346,8 +346,12 @@ function WatchForwardSettings({ channel, activityId, disabled }: { channel: Chan
         {busy && <Btn icon="x" quiet title="common.cancel" cap="common.cancel" onClick={cancel} />}
       </> : <>
         {sources.choices.length > 0 && <><p>{t("watch.forward.choose")}</p><div className="lr-source-picker-list" data-text-list>
-          {sources.choices.map(choice => <CaptureSourceCard key={choice.id} title={choice.name || new URL(choice.displayURL).hostname} action={t("watch.forward.enableNamed", { name: choice.name || new URL(choice.displayURL).hostname })}
-            icon="play" hint="hint-source-picker" disabled={disabled || busy} onSelect={() => forward(choice.id)} />)}
+          {sources.choices.map(choice => {
+            const source = new URL(choice.displayURL), name = choice.name || source.host;
+            return <CaptureSourceCard key={choice.id} title={name} description={source.host + source.pathname}
+              action={t("watch.forward.enableNamed", { name })} icon="play" hint="hint-source-picker"
+              disabled={disabled || busy} onSelect={() => forward(choice.id)} />;
+          })}
         </div></>}
         <WatchIndexedTrackPicker choices={sources.indexed} onRetry={sources.retryIndexed} disabled={disabled} busy={busy}
           onConfirm={(videoId, audioId) => {
