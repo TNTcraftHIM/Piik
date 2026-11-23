@@ -223,6 +223,15 @@ impl CaptureCatalogKind {
     }
 }
 
+fn control_event_message(pages: &page::Connection, event: Value) -> Message {
+    if event["type"] == "page_closed" {
+        if let Some(page_id) = event["pageId"].as_str().and_then(|id| Uuid::parse_str(id).ok()) {
+            pages.close_page(page_id);
+        }
+    }
+    Message::Text(event.to_string().into())
+}
+
 fn control_reply(id: String, result: Result<Value>) -> Value {
     match result {
         Ok(value) => json!({"id":id,"result":value}),
@@ -1680,8 +1689,7 @@ async fn connection(
                         continue;
                     }
                     Some(event) = event_queue.recv() => {
-                        if event["type"] == "page_closed" { if let Some(id)=event["pageId"].as_str().and_then(|id|Uuid::parse_str(id).ok()){pages.stop_media(id);} }
-                        timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                        timeout(IO_TIMEOUT, writer.send(control_event_message(&pages, event))).await??;
                         continue;
                     }
                     Some((id, publication_id, room_id, cancel, authority)) = external_authorizations.next(), if !external_authorizations.is_empty() => {
@@ -2263,7 +2271,7 @@ async fn connection(
                                         };
                                         timeout(
                                             IO_TIMEOUT,
-                                            writer.send(Message::Text(event.to_string().into())),
+                                            writer.send(control_event_message(&pages, event)),
                                         )
                                         .await??;
                                     }

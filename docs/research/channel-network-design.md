@@ -169,7 +169,7 @@ owns current resource values and explicit capacity checks.
 The architecture is **Channel → Room → Activity / 频道 → 房间 → 业务**.
 One channel graph holds peer connections. Each room uses its authorized subgraph,
 and each source uses paths within that subgraph for its actual recipients.
-The [forwarding plan](./channel-forwarding-plan.md) defines grants, budgets and validation.
+The [forwarding plan](./channel-forwarding-plan.md) defines peer transport eligibility, grants, budgets and validation.
 
 ## Routing Foundation
 

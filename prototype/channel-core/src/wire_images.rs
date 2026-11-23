@@ -181,7 +181,7 @@ mod tests {
 
     fn welcome() -> Event {
         let mut core = Authority::new("owner".into(), vec![]).unwrap();
-        core.handle(Uuid::new_v4(), Request::parse(&json!({"type":"join","protocol":CHANNEL_PROTOCOL,"name":"Owner","ownerKey":"owner","signingKey":vec![1;32]}).to_string()).unwrap(), 0)
+        core.handle(Uuid::new_v4(), Request::parse(&json!({"type":"join","protocol":CHANNEL_PROTOCOL,"canUsePeerTransport":false,"name":"Owner","ownerKey":"owner","signingKey":vec![1;32]}).to_string()).unwrap(), 0)
             .events.into_iter().find_map(|(_, event)| matches!(event, Event::Welcome { .. }).then_some(event)).unwrap()
     }
 

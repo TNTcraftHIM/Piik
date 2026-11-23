@@ -431,6 +431,7 @@ async fn stored_room_commit_precedes_reply_and_stop_discards_queued_work() -> Re
         owner_key: None,
         session_id: None,
         signing_key: [1; 32],
+        can_use_peer_transport: true,
         can_prepare_udp: false,
         can_receive_video_layers: false,
     };

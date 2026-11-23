@@ -57,7 +57,7 @@ async function rooms() {
       socket.once("error", reject);
       socket.once("open", () => {
         const publicKey = generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" });
-        socket.send(JSON.stringify({ type: "join", protocol: CHANNEL_PROTOCOL, name: "Container check", ownerKey,
+        socket.send(JSON.stringify({ type: "join", protocol: CHANNEL_PROTOCOL, canUsePeerTransport: false, name: "Container check", ownerKey,
           signingKey: [...Buffer.from(publicKey.x, "base64url")] }));
       });
       socket.on("message", bytes => {

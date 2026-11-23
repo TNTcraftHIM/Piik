@@ -5,10 +5,11 @@ export async function currentSiteResponds(signal: AbortSignal): Promise<boolean>
       mode: "same-origin", credentials: "omit", redirect: "error", cache: "no-store", referrerPolicy: "no-referrer",
       signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]),
     });
-    if (response.status !== 200 || !response.body) return false;
+    if (!response.body) return false;
     const expected = new TextEncoder().encode("piik-channel-prototype"), reader = response.body.getReader();
     let offset = 0;
     try {
+      if (response.status !== 200) return false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) return offset === expected.length;

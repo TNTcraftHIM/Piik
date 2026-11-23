@@ -11,6 +11,7 @@ fn pair_repair_uses_only_an_acknowledged_room_scope() {
             applied_revision: 23,
             projection_floor: 23,
             scope_floor: 23,
+            read_floor: 23,
             replies: Default::default(),
             failed_pairs: Default::default(),
         };
@@ -100,6 +101,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
             channel
                 .join(
                     Admission {
+                        can_use_peer_transport: true,
                         can_prepare_udp: false,
                         can_receive_video_layers: false,
                         name: "Participant",
@@ -418,6 +420,7 @@ fn text_limits_match_browser_utf16_and_room_history() {
     let owner = channel
         .join(
             Admission {
+                can_use_peer_transport: true,
                 can_prepare_udp: false,
                 can_receive_video_layers: false,
                 name: "Owner",
@@ -510,6 +513,7 @@ fn consecutive_profile_and_domain_patches_merge_before_projection() {
     let owner = channel
         .join(
             Admission {
+                can_use_peer_transport: true,
                 can_prepare_udp: false,
                 can_receive_video_layers: false,
                 name: "Owner",

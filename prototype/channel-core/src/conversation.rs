@@ -798,6 +798,7 @@ mod room_tests {
                 host_session,
                 Endpoint {
                     member: owner,
+                    can_use_peer_transport: true,
                     connected: true,
                     signing_key: host_key.signing_key(),
                 },
@@ -806,6 +807,7 @@ mod room_tests {
                 sender,
                 Endpoint {
                     member: actor,
+                    can_use_peer_transport: true,
                     connected: true,
                     signing_key: sender_key.signing_key(),
                 },

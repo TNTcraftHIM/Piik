@@ -335,6 +335,7 @@ mod tests {
                 (
                     id,
                     Endpoint {
+                        can_use_peer_transport: true,
                         connected: true,
                         signing_key: [0; 32],
                         member: crate::identity::Member { user_id: id },

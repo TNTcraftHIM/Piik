@@ -67,7 +67,7 @@ async function connect(t, join = {}) {
     },
   };
   const signingKey = [...Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x, "base64url")];
-  socket.send(JSON.stringify({ type: "join", protocol: CHANNEL_PROTOCOL, name: "Protocol check", signingKey, ...join }));
+  socket.send(JSON.stringify({ type: "join", canUsePeerTransport: true, protocol: CHANNEL_PROTOCOL, name: "Protocol check", signingKey, ...join }));
   client.welcome = await wait(event => ["welcome", "error"].includes(event.type), "join result");
   return client;
 }

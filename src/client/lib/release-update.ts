@@ -58,6 +58,12 @@ function packageDownloadURL(release: PublishedRelease, assets: unknown, target?:
   return release.url;
 }
 
+export async function readReleaseMetadata(response: Response): Promise<unknown> {
+  if (response.ok) return response.json();
+  await response.body?.cancel();
+  return null;
+}
+
 export function parseReleaseMetadata(value: unknown, packageTarget?: string): PublishedRelease | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const release = value as Record<string, unknown>;
@@ -162,11 +168,7 @@ export async function checkReleaseUpdate(
           headers: source.mirror ? { Accept: "application/json" } :
             { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
         });
-        if (!response.ok) {
-          controller.abort();
-          break;
-        }
-        const data: unknown = await response.json();
+        const data = await readReleaseMetadata(response);
         if (!source.mirror || options.release) {
           latest = source.mirror ? parseMirrorReleaseMetadata(data, options.packageTarget) : parseReleaseMetadata(data, options.packageTarget);
           if (latest && (!options.release || latest.version === options.release.version && latest.revision === options.release.revision)) return releaseUpdateNotice(current, latest);

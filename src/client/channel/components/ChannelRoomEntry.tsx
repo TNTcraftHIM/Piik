@@ -4,6 +4,7 @@ import { useCopy } from "../../ui/copy";
 import type { ChannelRoom } from "../protocol";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelAction";
+import { ChannelSettingsError, useSettingsAction } from "./ChannelSettingsDialog";
 import { protectRoomComposition, useRoomFormFocus } from "./room-form-interaction";
 import "./channel-room-controls.css";
 
@@ -13,17 +14,20 @@ function RoomPasswordForm({ channel, roomId, available, hidden = false }: {
   const { t } = useCopy();
   const [password, setPassword] = useState("");
   const pending = channel.pending.has(`enter:${roomId}`);
+  const { error, run } = useSettingsAction();
   const restoreField = useRoomFormFocus(!available || pending);
   const canEnter = available && !pending && !!password;
   return <form hidden={hidden} onKeyDownCapture={protectRoomComposition} onSubmit={event => {
     event.preventDefault();
     if (!canEnter) return;
     const restore = restoreField(event.currentTarget);
-    void channel.enterRoom(roomId, password).then(() => setPassword(""), restore);
+    void run(() => channel.enterRoom(roomId, password), () => setPassword("")).then(restore);
   }}><input className="c3-input" type="password" maxLength={128} value={password} autoComplete="current-password"
     aria-label={t("room.entry.password")} disabled={!available || pending} onChange={event => setPassword(event.target.value)} />
     <ChannelAction icon="door" type="submit" primary label={t("room.entry.enter")}
-      busy={pending} disabled={!canEnter} /></form>;
+      busy={pending} disabled={!canEnter} />
+    <ChannelSettingsError error={error} />
+  </form>;
 }
 
 export function ChannelRoomEntry({ channel, room }: { channel: ChannelController; room: ChannelRoom }) {

@@ -166,7 +166,7 @@ describe("shared App connection entry", () => {
     const ownedScreens = new Set(["mine", "voice"]);
     const screenQuality = vi.fn(() => ({ applied: DEFAULT_QUALITY_SETTINGS, requested: DEFAULT_QUALITY_SETTINGS }));
     const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), browserCapturePreparation: () => undefined, nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined,
-      screenQuality, screenCodecMode: () => undefined, screenEncodingExecution: () => undefined,
+      screenQuality, screenCodec: () => undefined, screenEncodingExecution: () => undefined,
       sourceAudio: () => undefined, sourceMicrophone: () => undefined,
       ownedScreens, streams: new Map(), state: { channel: { rooms: [{ id: "room", name: "Friday" }] }, publications: [
         { id: "other-endpoint", roomId: "room", kind: "screen", userId: "self" },
@@ -210,7 +210,7 @@ describe("Native sharing capabilities", () => {
     expect(cancel).not.toContain("disabled");
   });
 
-  it("derives Native availability from retained capabilities and the source's codec mode", () => {
+  it("derives Native availability from the selected codec and applied source audio", async () => {
     setCopy({ lang: "en" });
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(), getUserMedia: vi.fn() } });
     const sources = { kind: "ready", codecs: ["h264"], softwareEncodingCodecs: ["h264"], processAudio: false, systemAudio: false,
@@ -219,7 +219,7 @@ describe("Native sharing capabilities", () => {
       videoCodecMode: "vp8", encodingExecution: "software", screenEncodingExecution: () => "software", browserCapturePreparation: () => undefined, nativeCaptureRequest: () => undefined,
       nativeCaptureSelection: (): ReturnType<ChannelController["nativeCaptureSelection"]> => undefined,
       externalInput: (): ReturnType<ChannelController["externalInput"]> => undefined,
-      screenQuality: () => undefined, screenCodecMode: () => "h264", sourceAudio: () => undefined, sourceMicrophone: () => undefined,
+      screenQuality: () => undefined, screenCodec: () => ({ mode: "auto", primary: "h264" }), sourceAudio: () => ({ sourceAudioAvailable: false, hasAudio: true }), sourceMicrophone: () => undefined,
       ownedScreens: new Set<string>(), streams: new Map(), state: { channel: { rooms: [{ id: "room", name: "Friday" }] }, publications: [] as { id: string; roomId: string; kind: "screen"; source: { kind: "screen" } }[], voice: [], watchActivities: [], watchSubscriptions: [] },
     };
     const render = (settings = false) => {
@@ -264,9 +264,21 @@ describe("Native sharing capabilities", () => {
     channel.externalInput = () => ({ state: "waiting", publicationId: "mine", endpoint: "http://localhost", token: "preview" });
     expect(render(true)).not.toContain('aria-label="Encoding method"');
     channel.externalInput = () => undefined;
-    expect(sharing).toContain('value="h264" aria-pressed="true"');
+    expect(sharing).toContain('value="auto" aria-pressed="true"');
     for (const mode of ["auto", "h264", "vp8"]) expect(sharing).toContain(`value="${mode}"`);
     expect(render()).toContain("data-native-source=");
+    sources.codecs = ["vp8"];
+    expect(render()).not.toContain("data-native-source=");
+
+    sources.systemAudio = true;
+    channel.nativeCaptureSelection = () => ({ current: true, target: { kind: "display", sourceId: "1", title: "Display" }, audio: true, showCaptureBorder: false });
+    const react = await vi.importActual<typeof import("react")>("react");
+    vi.mocked(useState).mockImplementation((initial?: unknown) => react.useState(initial === "picture" ? "sound" : initial));
+    try {
+      expect(render(true)).toContain(`aria-checked="false" aria-label="${t("en", "host.sourcePicker.systemAudio")}"`);
+      channel.sourceAudio = () => ({ sourceAudioAvailable: true, hasAudio: true });
+      expect(render(true)).toContain(`aria-checked="true" aria-label="${t("en", "host.sourcePicker.systemAudio")}"`);
+    } finally { vi.mocked(useState).mockImplementation(react.useState); }
   });
 });
 

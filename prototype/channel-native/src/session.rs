@@ -818,6 +818,7 @@ impl Session {
             if let Ok(Ok((mut socket, _))) = connection {
                 let join = Command::Join {
                     protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+                    can_use_peer_transport: true,
                     can_prepare_udp: self.config.server_udp.is_none(),
                     can_receive_video_layers: true,
                     name: self.config.name.clone(),

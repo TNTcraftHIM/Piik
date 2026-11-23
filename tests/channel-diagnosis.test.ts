@@ -3,6 +3,11 @@ import { diagnoseChannelFact } from "../src/client/channel/diagnosis";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 
 describe("diagnosis using the current operation", () => {
+  it("explains when an operation requires peer transport", () => {
+    expect(channelErrorPresentation("peer_transport_unavailable", key => key)).toEqual({
+      message: "channel.error.peerTransportUnavailable", connectionHelp: false,
+    });
+  });
   it("offers the local approval page when discovery succeeds, and asserts denied access only on an explicit refusal", () => {
     expect(diagnoseChannelFact({ area: "app", state: "approval" })).toMatchObject({ message: "client.connect.found", next: "client.connect.open" });
     expect(diagnoseChannelFact({ area: "app", state: "approving" })).toBeNull();

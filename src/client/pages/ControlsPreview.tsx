@@ -360,7 +360,7 @@ export function ControlsPreview() {
           onSave={async () => notify()} onRemove={async () => notify()} onOpen={notify}
           onApprove={async site => setLaunchSites(sites => [...sites, site])}
           onRevoke={async site => { setLaunchSites(sites => sites.filter(value => value !== site)); if (startupSite === site) setStartupSite(""); }}
-          onStartup={async site => setStartupSite(site)} />
+          onStartup={async (site, enabled) => setStartupSite(enabled ? site : "")} />
         <form className="lr-client-launch-panel" onSubmit={event => { event.preventDefault(); if (launchMode === "local") setLaunchReady(true); }}>
           <SiteStartControls mode={launchMode} onModeChange={setLaunchMode}
           target={launchReady ? "http://127.0.0.1:8787/" : undefined}

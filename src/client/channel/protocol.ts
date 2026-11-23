@@ -14,7 +14,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
 export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 44;
+export const CHANNEL_PROTOCOL = 45;
 export function isIncompatibleProtocol(code: string): boolean {
   return code === "incompatible_protocol" || code.endsWith(": incompatible_protocol");
 }
@@ -296,7 +296,7 @@ export type ChannelCommand =
   | { type: "join_watch"; roomId: string; id: string; mode: WatchMode | null }
   | { type: "set_watch_byte_source"; roomId: string; id: string; byteSource: WatchByteSource | null }
   | { type: "stop_watch"; roomId: string; id: string }
-  | { type: "join"; protocol: typeof CHANNEL_PROTOCOL; name: string; signingKey: number[]; credential?: string; ownerKey?: string; sessionId?: string }
+  | { type: "join"; protocol: typeof CHANNEL_PROTOCOL; canUsePeerTransport?: boolean; name: string; signingKey: number[]; credential?: string; ownerKey?: string; sessionId?: string }
   | { type: "conversation"; packet: SignedConversationPacket }
   | { type: "set_profile"; name?: string; avatar?: string | null }
   | ({ type: "update_domain" } & Partial<DomainSettings>)

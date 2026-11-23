@@ -69,7 +69,13 @@ export async function loadCameraPreviews(signal: AbortSignal,
     // the temporary input, then visit remaining cameras one at a time.
     let first: MediaStream | null = null;
     if (!devices.some(device => device.label)) {
-      first = await open("");
+      try {
+        first = await open("");
+      } catch (error) {
+        if (signal.aborted || !(error instanceof DOMException) || error.name !== "NotFoundError") throw error;
+        publish([]);
+        return;
+      }
       devices = await browserCameras();
       signal.throwIfAborted();
       const track = first.getVideoTracks()[0];

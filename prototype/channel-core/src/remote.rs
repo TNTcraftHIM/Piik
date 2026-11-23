@@ -17,6 +17,8 @@ pub(crate) struct Binding {
     // A failed link retires routes. A new binding or scope update also retires the previous participant set.
     pub projection_floor: u64,
     pub scope_floor: u64,
+    // Signed conversation needs a covering read policy after registration or possible revocation.
+    pub read_floor: u64,
     pub applied_revision: u64,
     pub replies: BTreeMap<u64, ReplyOwner>,
     pub failed_pairs: BTreeMap<(Uuid, Uuid), u64>,
@@ -354,6 +356,16 @@ impl RemoteRoom {
             return Err("room_busy");
         }
         binding.revision += 1;
+        match &action {
+            HostAction::Revoke { context, .. }
+            | HostAction::Command {
+                context,
+                command: crate::wire::Command::UpdateRoom { access: Some(RoomAccess::Private), .. },
+            } if endpoints[&context.session_id].member.user_id == self.summary.creator_id => {
+                binding.read_floor = binding.revision;
+            }
+            _ => {}
+        }
         if matches!(action, HostAction::RouteWake) {
             binding.invalidate_scope();
         }

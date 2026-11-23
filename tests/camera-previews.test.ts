@@ -65,6 +65,39 @@ test("permission bootstrap retains its first frame without reopening that camera
   expect(tracks.every(track => track.readyState === "ended")).toBe(true);
 });
 
+test("opening camera previews returns an empty list when no camera is available", async () => {
+  const { publish, getUserMedia, enumerateDevices } = setup({ permission: false });
+  enumerateDevices.mockResolvedValueOnce([{ kind: "videoinput", deviceId: "", label: "" }]);
+  getUserMedia.mockRejectedValueOnce(new DOMException("No camera", "NotFoundError"));
+  await loadCameraPreviews(new AbortController().signal, publish);
+  expect(publish.mock.calls).toEqual([[[]]]);
+  expect(getUserMedia).toHaveBeenCalledOnce();
+});
+
+test.each(["NotAllowedError", "NotReadableError"])("camera preview propagates %s from its first input", async name => {
+  const { publish, getUserMedia } = setup({ permission: false });
+  const error = new DOMException("Unable to open camera", name);
+  getUserMedia.mockRejectedValueOnce(error);
+  await expect(loadCameraPreviews(new AbortController().signal, publish)).rejects.toBe(error);
+  expect(publish).not.toHaveBeenCalled();
+});
+
+test("a retired camera enumeration cannot overwrite the refreshed list or open its devices", async () => {
+  const { devices, enumerateDevices, publish, getUserMedia } = setup();
+  let finishOldList!: (list: typeof devices) => void;
+  enumerateDevices.mockImplementationOnce(() => new Promise(resolve => { finishOldList = resolve; }));
+  const original = new AbortController();
+  const oldList = loadCameraPreviews(original.signal, publish);
+  const cancelled = expect(oldList).rejects.toMatchObject({ name: "AbortError" });
+  original.abort();
+  enumerateDevices.mockResolvedValueOnce([devices[1]!]);
+  await loadCameraPreviews(new AbortController().signal, publish);
+  finishOldList(devices);
+  await cancelled;
+  expect(getUserMedia).toHaveBeenCalledOnce();
+  expect(publish.mock.calls.map(([sources]) => sources.map(source => source.id))).toEqual([["rear"], ["rear"]]);
+});
+
 test("late permission results after cancellation are stopped and never published", async () => {
   const { getUserMedia, stream, tracks, publish } = setup({ permission: false });
   let grant!: (value: MediaStream) => void;

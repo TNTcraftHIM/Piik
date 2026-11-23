@@ -32,6 +32,10 @@ the feedback period; they do not delay that delivery.
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise)
   against actual readers, writers and stored samples. Keep API/Bot capabilities
   within existing actions and authority.
+- [ ] **Conversation during room permission changes.** Preserve immediate Read
+  revocation while giving an online requester a useful outcome if its already
+  committed reply arrives before the covering permission projection. Ordinary
+  route changes and unrelated participants leaving must not block that reply.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,

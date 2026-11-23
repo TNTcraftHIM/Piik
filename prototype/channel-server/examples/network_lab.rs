@@ -119,6 +119,7 @@ async fn participant() -> Result<()> {
             owner_key: None,
             session_id: None,
             signing_key: signer.signing_key(),
+            can_use_peer_transport: true,
             can_prepare_udp,
             can_receive_video_layers: true,
         },

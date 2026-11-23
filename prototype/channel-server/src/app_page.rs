@@ -644,14 +644,17 @@ impl Connection {
             Ok(serde_json::json!({"mimeType":result.mime_type,"totalSize":result.total_size,"bytesBase64":Base64::encode_string(&result.bytes)}))
         }.boxed())
     }
+    pub(super) fn close_page(&self, page_id: Uuid) {
+        self.stop_media(page_id);
+        for (page, cancel) in self.resource_reads.lock().unwrap().values() {
+            if *page == page_id {
+                cancel.abort();
+            }
+        }
+    }
     pub async fn request(&self, operation: Operation) -> Result<Value> {
         if let Operation::PageClose { page_id } = &operation {
-            self.stop_media(*page_id);
-            for (page, cancel) in self.resource_reads.lock().unwrap().values() {
-                if page == page_id {
-                    cancel.abort();
-                }
-            }
+            self.close_page(*page_id);
         }
         let Some(dispatch) = &self.dispatch else {
             bail!("page_player_unavailable")
@@ -1215,6 +1218,23 @@ mod tests {
             .unwrap();
         server.abort();
         let _ = server.await;
+    }
+
+    #[tokio::test]
+    async fn native_page_closed_retires_only_its_pending_reads() {
+        let (events, _) = mpsc::channel(8);
+        let connection = Arc::new(Connection::new(None, events));
+        let page = Uuid::new_v4();
+        let sibling = Uuid::new_v4();
+        let (_read, cancelled) = connection.begin_read(page, Uuid::new_v4()).unwrap();
+        let (_other, retained) = connection.begin_read(sibling, Uuid::new_v4()).unwrap();
+
+        let _ = super::super::control_event_message(
+            &connection,
+            json!({"type":"page_closed","pageId":page}),
+        );
+        assert!(Abortable::new(std::future::ready(()), cancelled).await.is_err());
+        assert!(Abortable::new(std::future::ready(()), retained).await.is_ok());
     }
 
     #[tokio::test]

@@ -225,7 +225,7 @@ function captureProbe(name) {
       if (options.video) throw new Error('This gate only substitutes microphone capture');
       return microphone();
     };
-    navigator.mediaDevices.getDisplayMedia = async () => {
+    navigator.mediaDevices.getDisplayMedia = async (options) => {
       const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 360;
       const ctx = canvas.getContext('2d'); let frame = 0;
       const timer = setInterval(() => {
@@ -235,7 +235,7 @@ function captureProbe(name) {
       const stream = canvas.captureStream(captureFramerate); captures.push(stream);
       const track = stream.getVideoTracks()[0], stop = track.stop.bind(track);
       track.stop = () => { clearInterval(timer); stop(); };
-      if (captureAudio) for (const audio of microphone(true).getAudioTracks()) stream.addTrack(audio);
+      if (captureAudio && options?.audio) for (const audio of microphone(true).getAudioTracks()) stream.addTrack(audio);
       return stream;
     };
     window.__channelProbe = { peers, sockets, captures, contexts, objectId,

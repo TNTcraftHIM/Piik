@@ -10,6 +10,7 @@ import { channelErrorPresentation } from "../src/client/channel/error-presentati
 import * as hosting from "../src/client/channel/hosting";
 import type { BackupHistoryRow } from "../prototype/channel-browser/src/hosting-contract";
 import { listeningVoicePublications } from "../src/client/channel/presentation";
+import { resolveVoiceDockControls } from "../src/client/channel/voice-dock-controls";
 import * as backupArchive from "../src/client/channel/backup-archive";
 import * as appLink from "../src/client/channel/app-link";
 import * as indexedSource from "../src/client/channel/watch-indexed-source";
@@ -814,6 +815,36 @@ test.each(["done", "error"])("only the current same-room invite follows a pendin
   } finally { session.close(); }
 });
 
+test("password submission leaves admission feedback with the room form", async () => {
+  const { session, socket } = await setup();
+  try {
+    const entering = session.enterRoom("first", "invalid");
+    const failure = expect(entering).rejects.toThrow("room_access_required");
+    const request = socket.sent.at(-1)!;
+    session.browse("second");
+    socket.receive({ type: "error", requestId: request.requestId, code: "room_access_required" });
+    await failure;
+    expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
+test("an old invitation rejection leaves the new room's admission feedback intact", async () => {
+  const { session, socket } = await setup(1000, false, "");
+  try {
+    location.hash = "room=first&invite=old-key";
+    const old = session.acceptInvitation();
+    const failure = expect(old).rejects.toThrow("room_access_required");
+    const first = socket.sent.at(-1)!;
+    location.hash = "room=second&invite=new-key";
+    const current = session.acceptInvitation();
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await current;
+    socket.receive({ type: "error", requestId: first.requestId, code: "room_access_required" });
+    await failure;
+    expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
 test("late room admission preserves a newer invitation fragment", async () => {
   const { session, socket } = await setup(1000, false, "");
   try {
@@ -1144,7 +1175,6 @@ test("room interactions reuse their original acknowledgement and user identity w
 });
 
 test.each(["unavailable", "rejected"])("%s peer construction keeps the site and conversation connected", async failure => {
-  const { session, socket, peer } = await setup();
   const error = new DOMException("Peer connection creation is disabled", "NotSupportedError");
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
   RoomPeerConnection.instances = [];
@@ -1155,6 +1185,8 @@ test.each(["unavailable", "rejected"])("%s peer construction keeps the site and 
       super();
     }
   });
+  const { session, socket, peer } = await setup();
+  expect(socket.sent[0]).toMatchObject({ type: "join", canUsePeerTransport: failure !== "unavailable" });
   try {
     const state = structuredClone(session.getSnapshot().state!);
     state.publications = [{ audience: [], id: "screen", roomId: "first", sessionId: "host", userId: "other", kind: "screen",
@@ -1937,8 +1969,10 @@ test("recovery mute stops only this room's retained voice immediately", async ()
       const publishing = socket.sent.at(-1)!;
       state.publications.push({ audience: [], ...(publishing.publication as { id: string; roomId: string; kind: "voice" }), sessionId: "endpoint", userId: "self", paused: false });
       socket.receive({ type: "state", state });
+      expect(session.getSnapshot().state?.voice.find(value => value.roomId === roomId)?.muted).toBe(true);
       socket.receive({ type: "ack", requestId: publishing.requestId });
       await joining;
+      expect(session.getSnapshot().state?.voice.find(value => value.roomId === roomId)?.muted).toBe(false);
     }
     expect(getUserMedia).toHaveBeenCalledOnce();
     expect(contexts).toHaveLength(1);
@@ -2006,9 +2040,16 @@ test("mute and leave supersede a pending unmute without activating a late microp
     const opening = session.setMuted("first", false);
     const openingAborted = expect(opening).rejects.toMatchObject({ name: "AbortError" });
     expect(session.getSnapshot().pending.has("voice:first")).toBe(true);
+    const controls = resolveVoiceDockControls({
+      ...session.getSnapshot(), voiceMicrophonePending: session.voiceMicrophonePending, canUnmute: session.canUnmute,
+      setMuted: session.setMuted, setDeafened: session.setDeafened,
+    }, "first");
+    expect(controls.activity?.muted).toBe(true);
+    expect(controls.microphonePending).toBe(true);
+    expect(controls.microphoneDisabled).toBe(false);
     await session.setDeafened("first", true);
     expect(socket.sent.at(-1)).toMatchObject({ type: "voice", joined: true, muted: true, deafened: true });
-    await session.setMuted("first", true);
+    expect(controls.toggle("microphone")).toBe(true);
     expect(session.getSnapshot().state?.voice[0].muted).toBe(true);
     await session.leaveVoice("first");
     expect(session.getSnapshot().state?.voice).toEqual([]);
@@ -2018,6 +2059,32 @@ test("mute and leave supersede a pending unmute without activating a late microp
     expect(raw.stop).toHaveBeenCalledOnce();
     expect(contexts[0].close).toHaveBeenCalledOnce();
     expect(socket.sent.at(-1)).toMatchObject({ type: "voice", joined: false });
+  } finally { session.close(); }
+});
+
+test.each(["join", "unmute"])("a rejected voice publication releases its room track once on %s", async entry => {
+  const { session, socket } = await setup();
+  const raw = remoteTrack("audio"), roomTrack = remoteTrack("audio");
+  const clones = [remoteStream("room-input", [roomTrack])];
+  const contexts = microphoneMixer(clones);
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: async () => remoteStream("raw", [raw]) } });
+  try {
+    const joining = session.joinVoice("first", entry === "unmute");
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "voice", joined: true }));
+    expect.soft(clones).toHaveLength(1);
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    if (entry === "unmute") await joining;
+    const failed = expect(entry === "join" ? joining : session.setMuted("first", false)).rejects.toThrow("room_access_required");
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "publish" }));
+    socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "room_access_required" });
+    if (entry === "join") {
+      await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "voice", joined: false }));
+      socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    }
+    await failed;
+    expect(roomTrack.stop).toHaveBeenCalledOnce();
+    expect(raw.stop).toHaveBeenCalledOnce();
+    expect(contexts[0].close).toHaveBeenCalledOnce();
   } finally { session.close(); }
 });
 
@@ -2397,8 +2464,8 @@ test("camera and display shares use independent picture publications and the sam
       videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]) });
     expect(secondId).not.toBe(firstId);
     session.setVideoCodecMode("vp8");
-    expect(session.screenCodecMode(firstId)).toBe("auto");
-    expect(session.screenCodecMode(secondId)).toBe("auto");
+    expect(session.screenCodec(firstId)?.mode).toBe("auto");
+    expect(session.screenCodec(secondId)?.mode).toBe("auto");
     expect(getUserMedia).toHaveBeenCalledWith({ audio: false, video: {
       resizeMode: { exact: "none" }, deviceId: { exact: "rear" }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 },
     } });
@@ -3975,7 +4042,8 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     app.receive({ type: "capture_audio_failed", publicationId });
     expect(session.getSnapshot().error).toBe("capture_audio_failed");
     app.receive({ type: "capture_audio_state", publicationId, state: { sourceAudio: false, microphone: disabledMicrophone } });
-    expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: false, available: false });
+    expect(session.sourceAudio(publicationId)).toMatchObject({ sourceAudioAvailable: false, hasAudio: false, available: false });
+    expect(session.nativeCaptureSelection("first")?.audio).toBe(true);
     expect(session.getSnapshot().appConnected).toBe(true);
     expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
     expect(session.getSnapshot().state?.publications).toEqual(published.publications);
@@ -3992,6 +4060,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     const audioTokens = new Set<string>();
     session.setEncodingExecution("auto"); // A changed draft applies only to the next share.
     expect(session.screenEncodingExecution(publicationId)).toBe("software");
+    expect(session.screenCodec(publicationId)?.primary).toBe("h264");
     // A selected source keeps its codec when the preview would now prefer VP8.
     vi.stubGlobal("RTCRtpReceiver", { getCapabilities: () => ({ codecs: [{ mimeType: "video/VP8", clockRate: 90000 }] }) });
     for (const { audio, exclusion } of [{ audio: false, exclusion: excluded }, { audio: true, exclusion: undefined },
@@ -4607,7 +4676,7 @@ test("arming OBS preserves the current capture controls until the external sourc
     app.receive({ id: app.sent.at(-1)!.id, result: { endpoint: "http://127.0.0.1:8793/whip/owned-input", token: "synthetic-input-token" } });
     await opening;
     expect(session.screenQuality(publicationId)).toEqual({ applied: profile, requested: profile });
-    expect(session.screenCodecMode(publicationId)).toBe("auto");
+    expect(session.screenCodec(publicationId)?.mode).toBe("auto");
     expect(session.screenEncodingExecution(publicationId)).toBe("auto");
     expect(session.sourceMicrophone(publicationId)).toMatchObject({ enabled: true, available: true });
     expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true, canMute: true, bitrate: 64_000 });
@@ -12424,6 +12493,48 @@ test('closing forwarding settings during direct preparation releases the reader 
     await cancelled;
     expect(stop).toHaveBeenCalledOnce();
     expect(dispose).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
+test("foreground recovery cannot withdraw a replacement watch byte source", async () => {
+  let completeRead!: (result: unknown) => void;
+  const delayed = new Promise<unknown>(resolve => { completeRead = resolve; });
+  const { session, page, socket, request } = await websiteSourceSelection(() => delayed);
+  const media = new AppPageMedia(page);
+  await media.opening;
+  const player = new WatchPlayer("first", true, media, () => {});
+  player.mode = "direct";
+  (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set("owned", player);
+  const stopReader = vi.spyOn(page, "stopMedia").mockResolvedValue();
+  const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" as const };
+  const state = session.getSnapshot().state!;
+  const project = (byteSource: typeof source | null) => socket.receive({ type: "state", state: { ...state, watchActivities: [{
+    id: "owned", roomId: "first", viewerSessionIds: [], sessionId: "endpoint", userId: "self", source: { kind: "website", url: page.url }, ...(byteSource && { byteSource }),
+    playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 },
+  }] } });
+  const acknowledge = (command: Record<string, unknown>, result: object = { type: "done" }) =>
+    socket.receive({ type: "room_reply", roomId: "first", requestId: command.requestId, result });
+  try {
+    project(source);
+    const foreground = session.resumeWatches();
+    acknowledge(socket.sent.findLast(command => command.type === "join_watch")!, { type: "watch_ready", serverTime: 1000 });
+    await vi.waitFor(() => expect(request.mock.calls.some(([command]) => command.type === "page_media_sources")).toBe(true));
+    const stopping = session.setWatchByteSource("owned", null);
+    acknowledge(socket.sent.at(-1)!);
+    project(null);
+    await stopping;
+    const next = { ...source, resourceId: crypto.randomUUID() };
+    vi.spyOn(page, "prepareMedia").mockResolvedValue(next);
+    const starting = session.setWatchByteSource("owned", crypto.randomUUID());
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ byteSource: next }));
+    acknowledge(socket.sent.at(-1)!);
+    project(next);
+    await starting;
+    completeRead({ choices: [], indexedCandidates: [], byteSource: null });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(socket.sent.filter(command => command.type === "set_watch_byte_source").map(command => command.byteSource)).toEqual([null, next]);
+    expect(stopReader).toHaveBeenCalledOnce();
+    await foreground;
   } finally { session.close(); }
 });
 

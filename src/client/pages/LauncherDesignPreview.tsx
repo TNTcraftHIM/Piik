@@ -68,7 +68,7 @@ export function LauncherDesignPreview() {
       <SiteManagement bookmarks={sites} sites={approved} startupSite={startupSite} ownedSites={[]} localSite={ready ? "http://127.0.0.1:8787" : undefined} busy={false}
         onApprove={async origin => setApproved(items => [...items, origin])}
         onRevoke={async origin => { setApproved(items => items.filter(item => item !== origin)); if (startupSite === origin) setStartupSite(""); }}
-        onStartup={async origin => setStartupSite(origin)}
+        onStartup={async (origin, enabled) => setStartupSite(enabled ? origin : "")}
         onSave={async draft => { if (sites.some(site => site.id !== draft.id && site.origin === draft.origin)) throw new Error("bookmark_exists"); setSites(items => draft.id ? items.map(item => item.id === draft.id ? { ...draft, id: draft.id! } : item) : [...items, { ...draft, id: crypto.randomUUID() }]); }} onRemove={async id => setSites(items => items.filter(item => item.id !== id))} onOpen={origin => { setDialog(undefined); openSite({ id: origin, name: origin, origin }); }} />
     </ChannelSettingsDialog>}
     {dialog === "host" && <ChannelSettingsDialog compact title={t("client.launch.room")} onClose={() => setDialog(undefined)}>

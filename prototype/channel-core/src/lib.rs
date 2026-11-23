@@ -241,7 +241,9 @@ impl Authority {
         service: Option<host::ServiceEndpoint>,
     ) -> Result<Effects, &'static str> {
         if service.is_some_and(|service| {
-            self.current_connection(service.session_id) != Some(service.connection_id)
+            self.channel.identity.sessions.get(&service.session_id).is_none_or(|session| {
+                !session.can_use_peer_transport || session.connection != Some(service.connection_id)
+            })
         }) {
             return Err("service_unavailable");
         }
@@ -643,6 +645,7 @@ impl Authority {
             owner_key,
             session_id,
             signing_key,
+            can_use_peer_transport,
             can_prepare_udp,
             can_receive_video_layers,
         } = request.command
@@ -664,6 +667,7 @@ impl Authority {
                 owner_key: owner_key.as_deref(),
                 resume: session_id.as_deref(),
                 signing_key,
+                can_use_peer_transport,
                 can_prepare_udp,
                 can_receive_video_layers,
             },
@@ -694,7 +698,7 @@ impl Authority {
                 if let Some(request_id) = request.request_id {
                     effects.events.push((connection, Event::Ack { request_id }));
                 }
-                self.sync_hosts(effects, false);
+                self.sync_hosts(effects, admitted.peer_transport_withdrawn);
                 self.broadcast(Some(admitted.session_id), effects);
             }
             Err(code) => {

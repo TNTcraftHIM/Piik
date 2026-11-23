@@ -12,6 +12,7 @@ export class PeerTubeMedia implements WatchMedia {
   private readonly listeners = new Set<(event: WatchMediaEvent) => void>();
   private readonly pending = new Map<number, (value: unknown, error?: Error) => void>();
   private nextId = 0;
+  private readonly readyQueryId = ++this.nextId;
   private mounted = false;
   private visible = false;
   private automatic = true;
@@ -91,12 +92,17 @@ export class PeerTubeMedia implements WatchMedia {
     let packet;
     try { packet = JSON.parse(event.data); } catch { return; }
     if (!packet || typeof packet !== "object") return;
+    if (!packet.method && packet.id === this.readyQueryId) {
+      if (!packet.error && packet.result === true) this.onReady();
+      return;
+    }
     if (!packet.method) { this.pending.get(packet.id)?.(packet.result, packet.error ? new Error("watch_media_failed") : undefined); return; }
     if (typeof packet.method !== "string" || !packet.method.startsWith(this.scope + "::")) return;
     const method = packet.method.slice(this.scope.length + 2), value = packet.params;
     if (method === "__ready" && value?.type === "publish-request") {
       this.send("__ready", { type: "publish-reply", publish: [] });
-      void this.call("isReady").then(ready => { if (ready === true) this.onReady(); }).catch(() => this.fail());
+      // The startup timer covers both the ready event and its query fallback.
+      if (!this.apiReady) this.send("isReady", undefined, this.readyQueryId);
     } else if (method === "ready" && value === true) this.onReady();
     else if (method === "playbackStatusUpdate" && Number.isFinite(value?.position)) {
       const duration = typeof value.duration === "string" && value.duration.trim() ? Number(value.duration) : value.duration;

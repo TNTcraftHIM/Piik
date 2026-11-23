@@ -24,6 +24,7 @@ function surface({ native = false, anchorTop = 600 } = {}) {
   const viewport = Object.assign(new EventTarget(), { width: 390, height: 844, offsetLeft: 0, offsetTop: 0 });
   const view = Object.assign(new EventTarget(), {
     visualViewport: viewport, innerWidth: 390, innerHeight: 844,
+    ResizeObserver: class { observe() {} disconnect() {} },
     getComputedStyle: () => ({ getPropertyValue: () => "58px" }),
     requestAnimationFrame: (callback: FrameRequestCallback) => { frame.set(++sequence, callback); return sequence; },
     cancelAnimationFrame: (id: number) => { frame.delete(id); },
@@ -42,7 +43,6 @@ function surface({ native = false, anchorTop = 600 } = {}) {
     matches: () => open, hidePopover,
   });
   Object.defineProperty(menu, "offsetHeight", { get: () => Math.min(700, parseFloat(style.maxHeight) || 700) });
-  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   useAnchoredPopover({ current: anchor as unknown as HTMLElement }, { current: menu as unknown as HTMLElement });
   const resize = (height: number) => {
     viewport.height = height;

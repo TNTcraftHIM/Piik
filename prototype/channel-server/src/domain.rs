@@ -929,7 +929,7 @@ mod tests {
         hub.request(
             connection,
             request(
-                json!({"type":"join","name":"Owner","ownerKey":"owner","signingKey":vec![0;32]}),
+                json!({"type":"join","canUsePeerTransport":false,"name":"Owner","ownerKey":"owner","signingKey":vec![0;32]}),
             ),
         );
         drain(&mut receiver);

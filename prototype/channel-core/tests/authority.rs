@@ -41,7 +41,7 @@ fn join(core: &mut Authority, connection: Uuid, owner: bool, now: u64) -> (Uuid,
         apply(
             core,
             connection,
-            json!({"type":"join", "ownerKey":owner.then_some("owner"), "name":"Friend"}),
+            json!({"type":"join", "canUsePeerTransport":true, "ownerKey":owner.then_some("owner"), "name":"Friend"}),
             now,
         ),
         connection,

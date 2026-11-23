@@ -21,6 +21,7 @@ async fn reader_preserves_rejection_and_malformed_frame_before_close() {
             owner_key: None,
             session_id: None,
             signing_key: [1; 32],
+            can_use_peer_transport: true,
             can_prepare_udp: false,
             can_receive_video_layers: false,
         };
@@ -93,6 +94,7 @@ async fn reader_keeps_invalid_utf8_on_carrier_recovery_path() {
         owner_key: None,
         session_id: None,
         signing_key: [1; 32],
+        can_use_peer_transport: true,
         can_prepare_udp: false,
         can_receive_video_layers: false,
     };
@@ -290,6 +292,7 @@ async fn stalled_handshake_releases_expired_session_before_late_join() {
                 request.command,
                 Command::Join {
                     session_id: None,
+                    can_use_peer_transport: true,
                     can_prepare_udp: true,
                     ..
                 }

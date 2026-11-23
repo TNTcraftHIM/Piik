@@ -29,6 +29,11 @@ stand in for coverage. Review-only work must not alter product sources.
 
 ## Trace Before Comparing
 
+For a repository-wide scan prompted by a confirmed defect, describe the
+violated rule and the transition that exposed it. Use both to find producers
+and consumers of the same fact, including adapters with different names.
+Group reachable matches by the boundary that decides the outcome.
+
 Follow a concrete producer through state/normalization, effects, consumers and
 cleanup. Establish the subject, asserted fact or requested outcome, authority,
 scope/generation, lifetime and user intent. Use a small comparison table only
@@ -43,7 +48,9 @@ Ask whether an apparent inconsistency is:
 
 Compare timing as well as steady appearance: initial state, update, replacement,
 failure/recovery and retirement. For async work, check A replaced by B before
-A's completion or cleanup. For presentation, check actual state against copy,
+A's completion or cleanup. If a view changes while an operation is pending,
+check both what the resource owner must still finish and which view may show
+the result. For presentation, check actual state against copy,
 icon, comic, mascot, motion and announcement, including simultaneous surfaces.
 Do not infer progress from decoration, availability from configured capability,
 or media readiness from signaling alone.
@@ -63,8 +70,11 @@ proposal into a mandatory rule merely by adding it to a table.
 
 Verify the changed producer-to-consumer boundary with existing previews, tests
 or bounded runtime checks. Check that the correction preserves justified
-differences and removes obsolete writers, mappings or timers. Stop broadening
-verification after relevant checks pass unless new evidence warrants it.
+differences and removes obsolete writers, mappings or timers. Exercise the
+interleaving that exposed a lifecycle defect. When behavior depends on a
+platform adapter, cite a check through that adapter or identify the unverified
+platform. Once the reachable matches are accounted for, continue with the next
+requested family.
 
 ## Deliver Useful Findings
 

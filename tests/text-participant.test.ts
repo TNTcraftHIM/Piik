@@ -201,7 +201,7 @@ test('text pagination, replies and mentions use signed Core commands and host co
       const command = JSON.parse(raw.toString());
       if (command.type === 'join') {
         room.dispatch(JSON.stringify({ now: 1, bindingId: binding, channelOwnerId: owner, hostSessionId: host, revision: 1,
-          endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true } }, action: { type: 'sync' } }));
+          endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true, canUsePeerTransport: false } }, action: { type: 'sync' } }));
         room.finish();
         socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
           selfProfile: { id: user }, state: { channel: { hostingMode: 'lightweight', rooms: [{ id: 'room', authorized: true, available: true, reading: true,
@@ -308,7 +308,7 @@ test('text retries keep one nonce across a lost confirmation and sign the curren
       if (command.type === 'join') {
         room?.free(); room = new rust.RoomHost(policy); binding = randomUUID();
         room.dispatch(JSON.stringify({ now: 1, bindingId: binding, channelOwnerId: owner, hostSessionId: host, revision: 1,
-          endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true } }, action: { type: 'sync' } }));
+          endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true, canUsePeerTransport: false } }, action: { type: 'sync' } }));
         room.finish();
         socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
           selfProfile: { id: user }, state: { channel: { hostingMode: 'lightweight', rooms: [{ id: 'room', authorized: true, available: true, reading: true,
@@ -409,7 +409,7 @@ test('text message reactions use advertised support and Core counted-history non
       const command = JSON.parse(raw.toString());
       if (command.type === 'join') {
         room.dispatch(JSON.stringify({ now: 1, bindingId: binding, channelOwnerId: owner, hostSessionId: host, revision: ++revision,
-          endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true } }, action: { type: 'sync' } }));
+          endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true, canUsePeerTransport: false } }, action: { type: 'sync' } }));
         room.finish();
         socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
           selfProfile: { id: user }, state: state() }));

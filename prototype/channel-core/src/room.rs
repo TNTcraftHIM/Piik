@@ -212,7 +212,7 @@ impl RoomRuntime {
         endpoints: &BTreeMap<Uuid, Endpoint>,
     ) -> crate::host::RoomProjection {
         let limits = self.relay_limits();
-        self.project(
+        let mut projection = self.project(
             endpoints
                 .iter()
                 .filter_map(|(session, endpoint)| {
@@ -222,7 +222,9 @@ impl RoomRuntime {
                     .map(|view| (*session, view))
                 })
                 .collect(),
-        )
+        );
+        projection.relay_session_ids.retain(|id| endpoints.get(id).is_some_and(|e| e.can_use_peer_transport));
+        projection
     }
 
     fn recipient(
@@ -945,7 +947,7 @@ impl RoomRuntime {
             let provider = endpoints
                 .get(&source.session_id)
                 .ok_or("watch_provider_unavailable")?;
-            if !provider.connected || provider.member.user_id != member.user_id {
+            if !provider.online_peer() || provider.member.user_id != member.user_id {
                 return Err("watch_provider_unavailable");
             }
             self.authorize(provider.member, RoomPermission::Read)?;
@@ -1221,7 +1223,7 @@ impl RoomRuntime {
         }
         let target = endpoints
             .get(&to_session)
-            .filter(|endpoint| endpoint.connected)
+            .filter(|endpoint| endpoint.online_peer())
             .ok_or("source_unavailable")?;
         if target.member.user_id != publication.user_id {
             return Err("forbidden");
@@ -1269,7 +1271,7 @@ impl RoomRuntime {
                     if endpoint.member.user_id != member.user_id {
                         return Err("forbidden");
                     }
-                    if !endpoint.connected {
+                    if !endpoint.online_peer() {
                         return Err("helper_unavailable");
                     }
                     self.authorize(endpoint.member, RoomPermission::Read)?;
@@ -1381,7 +1383,7 @@ impl RoomRuntime {
         self.transit_endpoint = self.transit_endpoint.filter(|service| {
             endpoints
                 .get(&service.session_id)
-                .is_some_and(|endpoint| endpoint.connected)
+                .is_some_and(Endpoint::online_peer)
         });
         let repair_due = self.repair_at.is_some_and(|deadline| deadline <= now);
         if repair_due {
@@ -1396,24 +1398,31 @@ impl RoomRuntime {
                     .then_some(*session)
             })
             .collect();
+        let peers: BTreeSet<_> = readable.iter().copied()
+            .filter(|id| endpoints[id].can_use_peer_transport).collect();
         self.watch_activities
             .retain(|_, a| readable.contains(&a.session_id));
         for activity in self.watch_activities.values_mut() {
             if activity
                 .byte_source
                 .as_ref()
-                .is_some_and(|source| !readable.contains(&source.session_id))
+                .is_some_and(|source| !peers.contains(&source.session_id))
             {
                 activity.byte_source = None;
             }
         }
         let service = self.selected_service().map(|service| service.session_id);
-        self.files.reconcile(&readable, service);
+        self.files.reconcile(&peers, service);
         self.publications
-            .retain(|_, publication| readable.contains(&publication.info.session_id));
+            .retain(|_, publication| peers.contains(&publication.info.session_id));
         self.activity
             .retain(|session, _| readable.contains(session));
         for (session, activity) in &mut self.activity {
+            if !peers.contains(session) {
+                activity.voice = None;
+                activity.watching.clear();
+                activity.watch_subscriptions.retain(|_, mode| *mode != crate::wire::WatchMode::Peer);
+            }
             if !endpoints
                 .get(session)
                 .is_some_and(|endpoint| endpoint.connected)
@@ -1429,7 +1438,7 @@ impl RoomRuntime {
                 .watching
                 .retain(|id, _| self.publications.contains_key(id));
             for helper in activity.watching.values_mut() {
-                if helper.is_some_and(|id| !readable.contains(&id)) {
+                if helper.is_some_and(|id| !peers.contains(&id)) {
                     *helper = None;
                 }
             }
@@ -1440,7 +1449,7 @@ impl RoomRuntime {
             .map(|session| (*session, self.subscriptions(*session)))
             .collect();
         let (mut new_relays, active) = self.relay_sessions();
-        let mut routable = readable.clone();
+        let mut routable = peers;
         if let Some(endpoint) = transit_endpoint {
             let session = endpoint.session_id;
             if service.is_none() && !active.contains(&session) && !self.reading(session) {
@@ -1750,6 +1759,7 @@ mod tests {
                         member: Member {
                             user_id: id(if value == 4 { 1 } else { value }),
                         },
+                        can_use_peer_transport: true,
                         connected: true,
                     },
                 )
@@ -1904,6 +1914,7 @@ mod tests {
             Endpoint {
                 signing_key: [5; 32],
                 member: viewer,
+                can_use_peer_transport: true,
                 connected: true,
             },
         );
@@ -2015,6 +2026,7 @@ mod tests {
                 Endpoint {
                     signing_key: [5; 32],
                     member: viewer,
+                    can_use_peer_transport: true,
                     connected: true,
                 },
             );
@@ -2102,6 +2114,7 @@ mod tests {
                 Endpoint {
                     signing_key: [5; 32],
                     member: viewer,
+                    can_use_peer_transport: true,
                     connected: true,
                 },
             );
@@ -2158,6 +2171,7 @@ mod tests {
             Endpoint {
                 signing_key: [5; 32],
                 member: viewer,
+                can_use_peer_transport: true,
                 connected: true,
             },
         );
@@ -2229,6 +2243,7 @@ mod tests {
             Endpoint {
                 signing_key: [5; 32],
                 member: viewer,
+                can_use_peer_transport: true,
                 connected: true,
             },
         );
@@ -2279,6 +2294,7 @@ mod tests {
                 reader,
                 Endpoint {
                     member,
+                    can_use_peer_transport: true,
                     connected: true,
                     signing_key: [1; 32],
                 },
@@ -2287,6 +2303,7 @@ mod tests {
                 holder,
                 Endpoint {
                     member: Member { user_id: holder },
+                    can_use_peer_transport: true,
                     connected: true,
                     signing_key: [2; 32],
                 },
@@ -2411,6 +2428,7 @@ mod tests {
                     Endpoint {
                         signing_key: [value as u8; 32],
                         member: Member { user_id: id(value) },
+                        can_use_peer_transport: true,
                         connected: true,
                     },
                 )
@@ -2468,6 +2486,7 @@ mod tests {
                     Endpoint {
                         signing_key: [value as u8; 32],
                         member,
+                        can_use_peer_transport: true,
                         connected: true,
                     },
                 );
@@ -2770,6 +2789,7 @@ mod tests {
                         user_id: id(number),
                     },
                     signing_key: [number as u8; 32],
+                    can_use_peer_transport: true,
                     connected: true,
                 },
             );
@@ -3031,6 +3051,7 @@ mod tests {
                     Endpoint {
                         signing_key: [value as u8; 32],
                         member: Member { user_id: id(value) },
+                        can_use_peer_transport: true,
                         connected: true,
                     },
                 )
@@ -3170,6 +3191,7 @@ mod tests {
                     Endpoint {
                         signing_key: [value as u8; 32],
                         member: Member { user_id: id(value) },
+                        can_use_peer_transport: true,
                         connected: true,
                     },
                 )
@@ -3874,6 +3896,7 @@ mod tests {
                         member: Member {
                             user_id: id(if value == 2 { 1 } else { value }),
                         },
+                        can_use_peer_transport: true,
                         connected: true,
                     },
                 )
@@ -4127,6 +4150,7 @@ mod tests {
                         id(n),
                         Endpoint {
                             member: crate::Member { user_id: id(n) },
+                            can_use_peer_transport: true,
                             connected: true,
                             signing_key: [0; 32],
                         },
@@ -5092,6 +5116,7 @@ mod tests {
                         session,
                         Endpoint {
                             member,
+                            can_use_peer_transport: true,
                             connected: true,
                             signing_key: [0; 32],
                         },

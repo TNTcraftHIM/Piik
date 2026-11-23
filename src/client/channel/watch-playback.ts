@@ -29,7 +29,6 @@ export class WatchPlayer {
   private offset: number | null = null;
   private playback: WatchPlayback | null = null;
   private alignedPlayback: WatchPlayback | null = null;
-  private retired = false;
   private prepared = false;
   private presented = false;
   get hasPresentedFrame(): boolean { return this.presented; }
@@ -41,7 +40,7 @@ export class WatchPlayer {
     return media.readyState < required || Boolean(video && video.videoWidth > 0 && !this.hasPresentedFrame);
   }
   presentFrame(): void {
-    if (this.retired || this.presented) return;
+    if (this.signal.aborted || this.presented) return;
     this.presented = true; this.changed();
   }
   private lifetime = new AbortController();
@@ -76,23 +75,23 @@ export class WatchPlayer {
       } else if (event === "playing" || event === "pause" || event === "ended") this.ownerWaiting = false;
       if (["waiting", "play", "playing", "pause", "seeked", "ratechange", "ended"].includes(event))
         void this.publish(event === "playing").catch(() => {
-          if (!this.retired) { this.error = "watch_update_failed"; this.changed(); }
+          if (!this.signal.aborted) { this.error = "watch_update_failed"; this.changed(); }
         });
     });
     this.timer = setInterval(() => { void this.align(); }, 1000);
   }
   async ready(signal: AbortSignal = this.lifetime.signal): Promise<void> {
     await this.media.ready(signal);
-    if (this.retired) throw new DOMException("Cancelled", "AbortError");
+    if (this.signal.aborted) throw new DOMException("Cancelled", "AbortError");
     this.prepared = true;
     await this.align(true);
   }
   private async mediaError(): Promise<void> {
-    if (this.retired) return;
+    if (this.signal.aborted) return;
     await this.media.read().then(() => this.failMedia(), error => this.failMedia(error));
   }
   private failMedia(error?: unknown): void {
-    if (this.retired) return;
+    if (this.signal.aborted) return;
     const failure = mediaFailure(error);
     if (this.failure === failure) return;
     this.error = failure;
@@ -128,12 +127,12 @@ export class WatchPlayer {
   async sample(): Promise<WatchPlayback> {
     if (this.offset === null) throw new Error("watch_clock_unavailable");
     const start = performance.now(), state = await this.media.read(), end = performance.now();
-    if (this.retired) throw new Error("watch_retired");
+    if (this.signal.aborted) throw new Error("watch_retired");
     this.observe(state);
     return { timeline: state.live ? "program" : "media", position: state.position, paused: state.paused || this.ownerWaiting || state.ended, rate: state.rate, anchorTime: Math.round((start + end) / 2 + this.offset) };
   }
   private observe(state: WatchMediaState): void {
-    if (this.retired) return;
+    if (this.signal.aborted) return;
     const previous = this.localState;
     const changed = !previous
       || Object.entries(state).some(([key, value]) => key !== "buffered" && previous[key as keyof WatchMediaState] !== value)
@@ -161,12 +160,12 @@ export class WatchPlayer {
       if (!force && previous && previous.position === playback.position && previous.paused === playback.paused && previous.rate === playback.rate) return;
       await this.publishPlayback?.(playback);
       this.lastPublished = playback;
-      if (!this.retired && this.error === "watch_update_failed") { this.error = null; this.changed(); }
+      if (!this.signal.aborted && this.error === "watch_update_failed") { this.error = null; this.changed(); }
     });
   }
   private align(force = false, explicit = false): Promise<boolean> {
     // Viewers can align from metadata; creators still prove readiness before publication.
-    if (this.retired || this.owner && !this.prepared || !this.owner && (!this.playback || this.offset === null)) return Promise.resolve(false);
+    if (this.signal.aborted || this.owner && !this.prepared || !this.owner && (!this.playback || this.offset === null)) return Promise.resolve(false);
     this.alignmentRequest = {
       force: force || this.alignmentRequest?.force || false,
       explicit: explicit || this.alignmentRequest?.explicit || false,
@@ -174,7 +173,7 @@ export class WatchPlayer {
     if (this.alignment) return this.alignment;
     let aligned = true;
     const operation = this.serialize(async () => {
-      while (this.alignmentRequest && !this.retired) {
+      while (this.alignmentRequest && !this.signal.aborted) {
         const requested = this.alignmentRequest;
         this.alignmentRequest = null;
         try { aligned = await this.alignCurrent(requested.force, requested.explicit); }
@@ -201,7 +200,7 @@ export class WatchPlayer {
         void this.publish(true).catch(error => this.failMedia(error));
       return true;
     }
-    if (this.retired || state.readyState < 1 || !this.playback || this.offset === null) return false;
+    if (this.signal.aborted || state.readyState < 1 || !this.playback || this.offset === null) return false;
     const playback = this.playback;
     if (playback.timeline !== (state.live ? "program" : "media")) throw new Error("watch_timeline_changed");
     const position = watchPosition(playback, performance.now() + this.offset);
@@ -257,12 +256,12 @@ export class WatchPlayer {
       if (this.error === "watch_live_position_unavailable" && patch.position !== undefined) this.error = null;
       if (this.media.seekEvents === false && Object.keys(patch).length) this.observe(await this.media.read());
     } catch (error) {
-      if (!this.retired) {
+      if (!this.signal.aborted) {
         if (error instanceof Error && (error.name === "NotAllowedError" || error.message === "watch_autoplay_blocked")) this.blocked = true;
         else { this.failMedia(error); return; }
       }
     }
-    if (!this.retired) this.changed();
+    if (!this.signal.aborted) this.changed();
   }
   patch(value: WatchMediaPatch): Promise<void> { return this.serialize(() => this.apply(value)); }
   play(): Promise<void> { return this.patch({ paused: false }); }
@@ -272,13 +271,12 @@ export class WatchPlayer {
     else if (this.blocked) { this.blocked = false; this.changed(); }
   }
   serialize(operation: () => Promise<void>): Promise<void> {
-    const result = this.operations.then(() => { if (!this.retired) return operation(); });
+    const result = this.operations.then(() => { if (!this.signal.aborted) return operation(); });
     this.operations = result.catch(() => {});
     return result;
   }
   close(): void {
-    if (this.retired) return;
-    this.retired = true;
+    if (this.signal.aborted) return;
     this.alignmentRequest = null;
     this.lifetime.abort();
     this.publishPlayback = null;

@@ -433,3 +433,28 @@ fn at_the_physical_limit_a_private_screen_waits_until_a_slot_is_released() {
         );
     }
 }
+
+#[test]
+fn text_participant_can_read_without_spending_a_peer_slot() {
+    let mut net = RoomNetwork::new();
+    let [source, viewer, text] = [(); 3].map(|_| Uuid::new_v4());
+    let source_id = join(&mut net, source, "Source");
+    let viewer_id = join(&mut net, viewer, "Viewer");
+    let room = net.create(source, RoomAccess::Public, false);
+    read_room(&mut net, viewer, &room, true);
+    let direct = confirm(&mut net, [(source, source_id), (viewer, viewer_id)]);
+    // Same join capabilities and browse payload as the shipped Node SDK.
+    command(&mut net, text, json!({"type":"join","name":"Reader","canUsePeerTransport":false}));
+    let lobby = net.state(text).pairs.len();
+    read_room(&mut net, text, &room, true);
+    let browsing = net.state(text).pairs.len();
+    let picture = screen(&mut net, source, &room);
+    subscribe(&mut net, viewer, picture, true);
+    let (pair_id, flow) = screen_input(&net, viewer, source_id, picture).unwrap();
+    assert_eq!(pair_id, direct);
+    command(&mut net, viewer, json!({"type":"flow_state","pairId":direct,"flowId":flow.id,"state":"decoded"}));
+    let during_screen = net.state(text).pairs.len();
+    command(&mut net, viewer, json!({"type":"link_state","pairId":direct,"state":"failed"}));
+    let after_direct_failure = net.state(text).pairs.len();
+    assert_eq!([lobby, browsing, during_screen, after_direct_failure], [0; 4]);
+}

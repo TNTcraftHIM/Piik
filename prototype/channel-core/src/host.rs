@@ -630,6 +630,14 @@ impl RoomRuntime {
             history: None,
             policy_changed: false,
         };
+        let needs_peer = matches!(&command,
+            Command::Publish { .. } | Command::Subscribe { enabled: true, .. }
+            | Command::Voice { joined: true, .. } | Command::FileOffer { available: true, .. }
+            | Command::FileReceive { enabled: true, .. }
+            | Command::JoinWatch { mode: Some(crate::wire::WatchMode::Peer), .. });
+        if needs_peer && !endpoints.get(&session).is_some_and(Endpoint::online_peer) {
+            return Err("peer_transport_unavailable");
+        }
         match command {
             Command::Browse {
                 active,
@@ -887,6 +895,7 @@ mod tests {
                     Endpoint {
                         member: Member { user_id: session },
                         signing_key: [0; 32],
+                        can_use_peer_transport: true,
                         connected: true,
                     },
                 )
@@ -1020,6 +1029,7 @@ mod tests {
                     session,
                     Endpoint {
                         member,
+                        can_use_peer_transport: true,
                         connected: true,
                         signing_key: key.signing_key(),
                     },
@@ -1263,6 +1273,7 @@ mod tests {
         let endpoint = |member| Endpoint {
             signing_key: [1; 32],
             member,
+            can_use_peer_transport: true,
             connected: true,
         };
         for (revision, session, password) in [(1, browser, Some("secret")), (2, native, None)] {
@@ -1362,6 +1373,7 @@ mod tests {
                     Endpoint {
                         signing_key: [1; 32],
                         member: owner,
+                        can_use_peer_transport: true,
                         connected: true,
                     },
                 )]),

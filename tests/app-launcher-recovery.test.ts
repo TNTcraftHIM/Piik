@@ -73,7 +73,7 @@ let modeInitializer: string | undefined;
 function collect(node: ts.Node): void {
   if (ts.isCallExpression(node) && node.expression.getText(source) === "useEffect"
     && node.arguments[1]?.getText(source).includes("approvalCurrent")) approvalEffect = node.arguments[0]!.getText(source);
-  if (ts.isJsxExpression(node) && node.expression?.getText(source).startsWith("approvalCurrent && siteError?.setting"))
+  if (ts.isJsxExpression(node) && node.expression?.getText(source).startsWith("approvalCurrent && siteError?.startupEnabled"))
     startupRecoveryControl = node.expression.getText(source);
   if (ts.isVariableDeclaration(node) && node.name.getText(source) === "[mode, setMode]"
     && node.initializer && ts.isCallExpression(node.initializer)) modeInitializer = node.initializer.arguments[0]?.getText(source);
@@ -209,7 +209,7 @@ describe("App launcher state recovery", () => {
       await expect(page.changeSite(site, "site", true)).resolves.toBe(false);
       expect(page.state.Sites).toContain(site);
       expect(page.state.StartupSite).toBe("");
-      expect(page.state.SiteError).toMatchObject({ site, setting: "startup-site", message: "client.connect.startupSaveFailed" });
+      expect(page.state.SiteError).toMatchObject({ site, startupEnabled: true, message: "client.connect.startupSaveFailed" });
       page.notifyApproval(site, postMessage);
       expect(postMessage).not.toHaveBeenCalled();
       const controls = page.startupRecovery(site).props.children;
@@ -486,7 +486,7 @@ describe("App launcher state recovery", () => {
       ok: savedStartup, status: savedStartup ? 200 : 503 });
     await approval;
     expect(page.state).toMatchObject({ Sites: [...saved.sites, nextSite], SiteBusy: false,
-      StartupSite: savedStartup ? nextSite : "", SiteError: savedStartup ? undefined : { site: nextSite, setting: "startup-site", message: "client.connect.startupSaveFailed" } });
+      StartupSite: savedStartup ? nextSite : "", SiteError: savedStartup ? undefined : { site: nextSite, startupEnabled: true, message: "client.connect.startupSaveFailed" } });
     page.cleanup();
   });
 
@@ -629,7 +629,7 @@ it("keeps committed approval when the startup preference body stalls", async () 
     expect(page.state).toMatchObject({ Sites: approved.sites, StartupSite: "", SiteBusy: true });
     page.expireRequest();
     await expect(approval).resolves.toBe(false);
-    expect(page.state).toMatchObject({ Sites: approved.sites, StartupSite: "", SiteBusy: false, SiteError: { site: "https://next.example", setting: "startup-site", message: "client.connect.startupSaveFailed" } });
+    expect(page.state).toMatchObject({ Sites: approved.sites, StartupSite: "", SiteBusy: false, SiteError: { site: "https://next.example", startupEnabled: true, message: "client.connect.startupSaveFailed" } });
     page.cleanup();
   });
 
@@ -815,4 +815,36 @@ it("offers website reset independently of App approval only when the Native capa
   const resetLabel = /Reset website permissions|\u91cd\u7f6e\u7f51\u9875\u6743\u9650/;
   expect(render()).not.toMatch(resetLabel);
   expect(render(async () => {})).toMatch(resetLabel);
+});
+
+it("retries disabling startup for the selected site and keeps a list action with the list", async () => {
+  const local = "http://127.0.0.1:8787";
+  const fetcher = vi.fn(async () => response({ ...saved, sites: [local],
+    startupSite: "https://public.example", startupMode: "link" }));
+  const page = mount(fetcher);
+  try {
+    await settle();
+    fetcher.mockRejectedValueOnce(new Error("Save failed"));
+    expect(await page.changeSite(local, "startup-site", false, false)).toBe(false);
+    expect(page.state.SiteError).toMatchObject({ site: local });
+    page.startupRecovery(local).props.children[0]!.props.onClick();
+    await vi.waitFor(() => expect(page.state.SiteBusy).toBe(false));
+    expect(fetcher).toHaveBeenLastCalledWith("/api/client-launcher/startup-site",
+      expect.objectContaining({ body: JSON.stringify({ site: "" }) }));
+    fetcher.mockRejectedValueOnce(new Error("Save failed"));
+    await expect(page.manageSite("", "startup-site", false)).rejects.toThrow();
+    expect(page.state.SiteError).toMatchObject({ site: null });
+  } finally { page.cleanup(); }
+});
+
+it("keeps the owned startup control available from a bookmarked invitation with no device grant", () => {
+  const origin = "https://public.example";
+  vi.mocked(useState).mockReturnValueOnce([{ origin, draft: { origin, name: "Public" } }, vi.fn()]);
+  const html = renderToStaticMarkup(createElement(SiteManagement, {
+    bookmarks: [{ id: "public", name: "Public", origin }], sites: [], startupSite: origin,
+    ownedStartup: "link", ownedSites: ["http://127.0.0.1:8787", origin], busy: false,
+    async onSave() {}, async onRemove() {}, async onApprove() {}, async onRevoke() {}, async onStartup() {}, onOpen() {},
+  }));
+  expect(html).toContain(t(currentLang(), "client.sites.notAllowed"));
+  expect(html).toMatch(/type="checkbox"[^>]*checked/);
 });

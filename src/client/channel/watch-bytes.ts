@@ -16,7 +16,7 @@ interface Pending {
   resolve(value: WatchByteResult): void; reject(error: Error): void; sent(): void; cleanup(): void;
 }
 interface Runtime { delivery: WatchDelivery; module: Awaited<ReturnType<typeof loadRoomHosting>>; lifetime: AbortController }
-const sameSource = (a: WatchByteSource, b: WatchByteSource | undefined) => a.sessionId === b?.sessionId && a.resourceId === b.resourceId && a.format === b.format;
+export const sameWatchByteSource = (a: WatchByteSource, b: WatchByteSource | null | undefined) => a.sessionId === b?.sessionId && a.resourceId === b.resourceId && a.format === b.format;
 
 /** Browser I/O for the shared Core range protocol on the existing room channels. */
 export class WatchBytes {
@@ -52,7 +52,7 @@ export class WatchBytes {
   }
   private start(runtime: Runtime, id: string, pending: Pending): void {
     const plan = this.plans.find(value => value.roomId === pending.key.roomId && value.activityId === pending.key.activityId);
-    if (plan && !sameSource(plan.source, pending.source)) { this.finish(id, new Error("watch_source_changed")); return; }
+    if (plan && !sameWatchByteSource(plan.source, pending.source)) { this.finish(id, new Error("watch_source_changed")); return; }
     if (!plan?.receiving) return;
     if (plan.source.sessionId !== this.sessionId && plan.upstream === null) return;
     pending.started = true;
@@ -120,7 +120,7 @@ export class WatchBytes {
         const roomGranted = () => this.roomPeers.some(([peer, rooms]) => peer === effect.peer && rooms.includes(key.roomId));
         const terminalAllowed = () => this.current(runtime) && roomGranted();
         const allowed = () => current() && roomGranted() && this.plans.some(plan => plan.activityId === key.activityId && plan.roomId === key.roomId
-          && sameSource(plan.source, source) && (plan.upstream === effect.peer || plan.downstream.includes(effect.peer)));
+          && sameWatchByteSource(plan.source, source) && (plan.upstream === effect.peer || plan.downstream.includes(effect.peer)));
         const data = effect.type === "send_chunk" ? Uint8Array.from(effect.frame)
           : this.controlFrame(runtime, effect.control);
         void this.send(effect.peer, effect.type === "send_chunk" ? "chunk" : "control", data, terminal ? terminalAllowed : allowed)

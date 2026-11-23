@@ -188,7 +188,7 @@ finally { $timer.Dispose(); $font.Dispose(); $replacement.Dispose(); $form.Dispo
     const replacement = (await action(1, 'nativeSources()')).sources.find(source => source.title === `${title} replacement`);
     assert(replacement, 'the replacement is another window owned by this fixture');
     await action(1, `startNativeScreen(${JSON.stringify(room)}, ${JSON.stringify(replacement)}, false)`);
-    assert.equal(await action(1, `screenCodecMode(${JSON.stringify(manualId)})`), 'vp8');
+    assert.equal(await action(1, `screenCodec(${JSON.stringify(manualId)}).mode`), 'vp8');
     const replacementRtp = await codecProgressing(manualId, 'vp8', {width:320,height:180});
     const acknowledgements = await evaluate(1, 'window.__previewCodecs.acknowledgements');
     assert.deepEqual(acknowledgements.slice(-2), [{mode:'vp8',codec:'vp8'},{mode:'vp8',codec:'vp8'}]);

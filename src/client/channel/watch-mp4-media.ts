@@ -53,7 +53,6 @@ export class WatchMp4Media {
   private released = new Map<number, number>();
   private appends: Append[] = [];
   private appendBytes = 0;
-  private closed = false;
   private seek = () => {
     const time = this.video.currentTime;
     for (let i = 0; i < this.video.buffered.length; i++)
@@ -95,7 +94,7 @@ export class WatchMp4Media {
   }
 
   private metadata(info: Movie): void {
-    if (this.closed || !this.parser || !this.mediaSource) return;
+    if (this.lifetime.signal.aborted || !this.parser || !this.mediaSource) return;
     this.tracks = [info.videoTracks[0], info.audioTracks[0]].filter((track): track is Track => !!track);
     const mime = `video/mp4; codecs="${this.tracks.map(track => track.codec).join(",")}"`;
     if (!this.tracks.length || !MediaSource.isTypeSupported(mime)) { this.fail(new Error("watch_mp4_mse_unavailable")); return; }
@@ -238,7 +237,7 @@ export class WatchMp4Media {
   }
 
   private fail(reason: unknown): void {
-    if (this.closed) return;
+    if (this.lifetime.signal.aborted) return;
     const error = reason instanceof Error ? reason : new Error("watch_media_failed");
     const opening = this.opening; this.opening = null; opening?.reject(error);
     this.close();
@@ -246,8 +245,8 @@ export class WatchMp4Media {
   }
 
   close(): void {
-    if (this.closed) return;
-    this.closed = true; this.operation.abort(); this.lifetime.abort();
+    if (this.lifetime.signal.aborted) return;
+    this.lifetime.abort();
     this.signal.removeEventListener("abort", this.retire);
     this.opening?.reject(new DOMException("Cancelled", "AbortError")); this.opening = null;
     this.video.removeEventListener("seeking", this.seek); this.video.removeEventListener("error", this.mediaError);

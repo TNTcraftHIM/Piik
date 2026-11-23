@@ -66,7 +66,7 @@ export function useAnchoredPopover(
       frame = view.requestAnimationFrame(place);
     };
     reposition.current = schedule;
-    const observer = new ResizeObserver(schedule);
+    const observer = new view.ResizeObserver(schedule);
     // The trigger can leave a scrollport while it is still inside the viewport.
     const visibility = closeWhenAnchorClipped ? new view.IntersectionObserver(entries => {
       if (!entries.at(-1)?.isIntersecting && menu.matches(":popover-open")) menu.hidePopover();

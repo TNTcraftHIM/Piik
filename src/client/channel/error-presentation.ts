@@ -27,6 +27,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
   if (error === "file_offer_failed") return display("channel.attachment.fileOfferFailed");
   if (error === "preview_only")
     return display("channel.error.previewOnly");
+  if (error === "peer_transport_unavailable") return display("channel.error.peerTransportUnavailable");
   if (error === "webassembly_unavailable")
     return display("channel.error.webassemblyUnavailable");
   if (error === "room_runtime_unavailable")

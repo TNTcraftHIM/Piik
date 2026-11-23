@@ -141,7 +141,7 @@ export function Tooltip({
     };
     measure();
     // A clipped label can change its focus wrapper; measure outside resize delivery.
-    const observer = new ResizeObserver(() => {
+    const observer = new view.ResizeObserver(() => {
       view.cancelAnimationFrame(frame);
       frame = view.requestAnimationFrame(measure);
     });
@@ -368,7 +368,7 @@ export function Tooltip({
     // A parent popover places itself after opening, and movable panels update
     // their inset without scrolling the page. Follow that owner's final layout.
     const surface = wrapRef.current?.closest<HTMLElement>("[popover]");
-    const observer = new ResizeObserver(schedulePick);
+    const observer = new view.ResizeObserver(schedulePick);
     for (const element of [wrapRef.current, wrapRef.current?.firstElementChild, tipRef.current, surface]) if (element) observer.observe(element);
     const containsControls = (node: Node) => node instanceof view.Element
       && (node.matches(CONTROL_GROUP_SELECTOR) || node.querySelector(CONTROL_GROUP_SELECTOR) !== null);

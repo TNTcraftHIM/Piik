@@ -92,7 +92,7 @@ export function AppLauncherPage() {
     ? `${build.version} (${build.revision.slice(0, 7)})` : build?.version;
   const [bookmarksOnly] = useState(() => new URLSearchParams(location.search).has("bookmarks") || new URLSearchParams(location.hash.slice(1)).has("open"));
   const [siteBusy, setSiteBusy] = useState(false);
-  const [siteError, setSiteError] = useState<SiteManagementProps["accessError"] & { setting?: "startup-site" }>();
+  const [siteError, setSiteError] = useState<SiteManagementProps["accessError"] & { startupEnabled?: boolean }>();
   const [panel, setPanel] = useState<"launch">();
   // Background reads cannot replace a newer command's result or optimistic state.
   const stateChanges = useRef({ revision: 0, pending: 0 });
@@ -275,9 +275,9 @@ export function AppLauncherPage() {
     } finally { finish(); }
   }
 
-  async function changeSite(nextSite: string, setting: "site" | "startup-site" | "website-permissions" = "site", starAfterApproval = false, allowed = true): Promise<boolean> {
+  async function changeSite(nextSite: string, setting: "site" | "startup-site" | "website-permissions" = "site", starAfterApproval = false, enabled = true): Promise<boolean> {
     if (siteBusy) return false;
-    const errorSite = nextSite || startupSite || null;
+    const errorSite = nextSite || null;
     const finish = beginStateChange();
     setSiteBusy(true);
     setSiteError(undefined);
@@ -288,7 +288,7 @@ export function AppLauncherPage() {
       savingStartup = setting === "startup-site";
       const response = await fetch(`/api/client-launcher/${setting}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ site: nextSite, ...(setting === "site" ? { allowed } : {}) }),
+        body: JSON.stringify({ site: setting === "startup-site" && !enabled ? "" : nextSite, ...(setting === "site" ? { allowed: enabled } : {}) }),
         signal: controller.signal,
       });
       const result = launcherStateSchema.pick({ sites: true, startupSite: true, startupMode: true, ownedSites: true, localSite: true }).safeParse(await response.json().catch(() => null));
@@ -306,7 +306,7 @@ export function AppLauncherPage() {
       return await save(setting) && (!starAfterApproval || await save("startup-site"));
     } catch {
       setSiteError({ site: errorSite, message: t(savingStartup ? "client.connect.startupSaveFailed" : "client.connect.saveFailed"),
-        ...(savingStartup ? { setting: "startup-site" as const } : {}) });
+        ...(savingStartup ? { startupEnabled: enabled } : {}) });
       return false;
     } finally { clearTimeout(timer); finish(); setSiteBusy(false); }
   }
@@ -315,14 +315,14 @@ export function AppLauncherPage() {
     await changeSite(site, "site", openOnApproval);
   }
 
-  async function manageSite(site: string, setting: "site" | "startup-site" | "website-permissions", allowed = true): Promise<void> {
-    if (!await changeSite(site, setting, false, allowed)) throw new Error("Could not save App settings");
+  async function manageSite(site: string, setting: "site" | "startup-site" | "website-permissions", enabled = true): Promise<void> {
+    if (!await changeSite(site, setting, false, enabled)) throw new Error("Could not save App settings");
   }
   const siteManagement = {
     sites, startupSite, ownedStartup: startupMode, ownedSites, localSite, busy: siteBusy, accessError: siteError,
     onApprove: (site: string) => manageSite(site, "site"),
     onRevoke: (site: string) => manageSite(site, "site", false),
-    onStartup: (site: string) => manageSite(site, "startup-site"),
+    onStartup: (site: string, enabled: boolean) => manageSite(site, "startup-site", enabled),
     onResetWebsitePermissions: serverState?.websitePermissionReset ? (site: string) => manageSite(site, "website-permissions") : undefined,
   };
 
@@ -406,15 +406,15 @@ export function AppLauncherPage() {
               <input type="checkbox" disabled={siteBusy}
                 checked={approvalCurrent ? openSiteOnStart : openOnApproval}
                 onChange={event => approvalCurrent
-                  ? void changeSite(event.target.checked ? requestedSite : "", "startup-site")
+                  ? void changeSite(requestedSite, "startup-site", false, event.target.checked)
                   : setOpenOnApproval(event.target.checked)} />
               <Glyph name="play" size={18} />
               <span>{t("client.connect.openOnStart")}</span>
             </label>}
             <div className="lr-client-approval-actions">
-              {approvalCurrent && siteError?.setting === "startup-site" && siteError.site === requestedSite && <>
+              {approvalCurrent && siteError?.startupEnabled !== undefined && siteError.site === requestedSite && <>
                 <Btn icon="refresh" title="common.retry" cap="common.retry" busy={siteBusy} disabled={siteBusy}
-                  onClick={() => void changeSite(requestedSite, "startup-site")} />
+                  onClick={() => void changeSite(requestedSite, "startup-site", false, siteError.startupEnabled)} />
                 <Btn icon="arrowRight" title="client.connect.continue" cap="client.connect.continue" tone="primary" disabled={siteBusy}
                   onClick={() => setSiteError(undefined)} />
               </>}

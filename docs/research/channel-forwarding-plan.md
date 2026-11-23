@@ -8,6 +8,11 @@ records implementation coverage. [Channel and room authority](./server-hosting-p
 
 ## Route planning procedure
 
+Only sessions that advertise peer transport on their current Join enter physical
+discovery, standby and room forwarding. A capable reader remains eligible under
+the room's existing routing limits. A session that resumes without peer transport
+releases its RTC work and keeps its room access and conversation.
+
 A change in demand, a connection or available capacity wakes the channel's
 connection scheduler and affected room planners. The channel admits physical
 attempts; each room selects delivery paths on confirmed pairs using current

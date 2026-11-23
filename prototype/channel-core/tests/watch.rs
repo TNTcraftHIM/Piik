@@ -411,7 +411,10 @@ fn start_retry_preserves_later_forwarding_settings_after_initial_provider_retire
 
 #[test]
 fn watch_byte_source_and_mode_cross_the_real_room_projection() {
-    let (mut net, owner, viewer, room) = setup();
+    let (mut net, _writer, viewer, room) = setup();
+    // The browser controls the watch over signaling. Its native sibling serves the bytes.
+    let owner = Uuid::new_v4();
+    net.command(owner, json!({"type":"join","name":"Browser","ownerKey":"owner","canUsePeerTransport":false}));
     let provider = Uuid::new_v4();
     let provider_session = net
         .command(
@@ -430,6 +433,7 @@ fn watch_byte_source_and_mode_cross_the_real_room_projection() {
     let set_source = json!({"type":"set_watch_byte_source","roomId":room,"id":activity,"byteSource":{"sessionId":provider_session,"resourceId":Uuid::new_v4(),"format":"file"},"requestId":"source"});
     error(net.command(viewer, set_source.clone()), "not_watch_owner");
     net.command(owner, set_source);
+    assert!(net.state(owner).pairs.is_empty());
     assert_eq!(
         net.state(viewer).watch_activities[0]
             .byte_source

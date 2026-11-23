@@ -224,7 +224,7 @@ async fn capture_scope_survives_host_signaling_recovery_but_not_retired_authorit
     let admitted = send(
         &mut core,
         host_connection,
-        json!({"type":"join","ownerKey":"owner","name":"Host"}),
+        json!({"type":"join","canUsePeerTransport":false,"ownerKey":"owner","name":"Host"}),
         0,
     );
     let (host_session, credential, owner) = admitted
@@ -243,7 +243,7 @@ async fn capture_scope_survives_host_signaling_recovery_but_not_retired_authorit
     let admitted = send(
         &mut core,
         native_connection,
-        json!({"type":"join","name":"Native"}),
+        json!({"type":"join","canUsePeerTransport":true,"name":"Native"}),
         1,
     );
     let native_user = admitted
@@ -347,7 +347,7 @@ async fn capture_scope_survives_host_signaling_recovery_but_not_retired_authorit
     let resumed = send(
         &mut core,
         resumed_connection,
-        json!({"type":"join","credential":credential,"sessionId":host_session,"name":"Host"}),
+        json!({"type":"join","canUsePeerTransport":false,"credential":credential,"sessionId":host_session,"name":"Host"}),
         200,
     );
     assert!(resumed.events.iter().any(|(_, event)| matches!(event, CoreEvent::Welcome { session_id, .. } if *session_id == host_session)));

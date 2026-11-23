@@ -40,6 +40,7 @@ impl RoomNetwork {
     pub fn command_at(&mut self, connection: Uuid, mut value: Value, now: u64) -> Effects {
         if value["type"] == "join" && value.get("protocol").is_none() {
             value["protocol"] = json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
+            value.as_object_mut().unwrap().entry("canUsePeerTransport").or_insert(json!(true));
         }
         if value["type"] == "join" && value.get("signingKey").is_none() {
             value["signingKey"] = json!(piik_channel_core::conversation::SessionSigner::from_seed(

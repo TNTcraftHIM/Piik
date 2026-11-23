@@ -127,13 +127,15 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     : settingsLabel;
   const currentCamera = sharing ? channel.streams.get(sharing.id)?.getVideoTracks()
     .find(track => track.readyState === "live")?.getSettings().deviceId : undefined;
-  const codecMode = (sharing ? channel.screenCodecMode(sharing.id) : undefined) ?? channel.videoCodecMode;
+  const activeCodec = sharing ? channel.screenCodec(sharing.id) : undefined;
+  const codecMode = activeCodec?.mode ?? channel.videoCodecMode;
+  const sourceCodec = activeCodec?.primary ?? codecMode;
   const encodingExecution = (sharing ? channel.screenEncodingExecution(sharing.id) : undefined) ?? channel.encodingExecution;
   const canChooseExecution = sources.kind === "ready" && sources.softwareEncodingCodecs.includes("h264")
-    && (codecMode === "auto" || codecMode === "h264")
+    && (sourceCodec === "auto" || sourceCodec === "h264")
     && (sharing ? !!selectedNative?.current && !externalInput : sources.sources.length > 0 && !externalInput);
   const pickerSources: NativeSourceList = !appConnected && sources.kind === "ready" ? { kind: "unavailable" } : sources.kind === "ready" &&
-    !(codecMode === "auto" ? sources.codecs.length > 0 : sources.codecs.includes(codecMode))
+    !(sourceCodec === "auto" ? sources.codecs.length > 0 : sources.codecs.includes(sourceCodec))
     ? { kind: "unsupported" } : sources;
   const screenQuality = sharing ? channel.screenQuality(sharing.id) : undefined;
   const quality = screenQuality?.requested ?? channel.quality;
@@ -143,6 +145,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   };
   const qualityPending = !!sharing && channel.pending.has(`quality:${sharing.id}`);
   const sourceAudio = sharing ? channel.sourceAudio(sharing.id) : undefined;
+  const systemAudioActive = sourceAudio?.sourceAudioAvailable === true;
   const canChoosePreference = sources.kind === "ready" && sources.videoAdaptation
     || !selectedNative?.current && (!appConnected || !!sharing);
   const microphone = sharing ? channel.sourceMicrophone(sharing.id) : undefined;
@@ -271,8 +274,8 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         audio={<>
           {sharing && selectedNative?.current && selectedNative.target.kind === "display" && sources.kind === "ready" && sources.systemAudio &&
             <div className="lr-door-group lr-source-audio-settings">
-              <SwitchItem checked={selectedNative.audio} label={t("host.sourcePicker.systemAudio")}
-                hint={selectedNative.audio ? "hint-stop-audio" : "hint-share-audio"}
+              <SwitchItem checked={systemAudioActive} label={t("host.sourcePicker.systemAudio")}
+                hint={systemAudioActive ? "hint-stop-audio" : "hint-share-audio"}
                 disabled={disabled || busy || qualityPending || microphonePending || sharing.paused}
                 onChange={audio => { void startNativeScreen(roomId, selectedNative.target, audio, selectedNative.excludeAudio, selectedNative.showCaptureBorder).catch(() => {}); }} />
               {sources.processAudioExclusion && <LiveAudioExclusion initialSources={sources.sources} load={loadAudioApplications} value={selectedNative.excludeAudio}

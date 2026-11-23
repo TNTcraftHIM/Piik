@@ -48,8 +48,8 @@ window.runBrowserRoomCheck = async () => {
   const peerSession = crypto.randomUUID(), peerMember = { ...owner, userId: crypto.randomUUID() };
   let bindingId = crypto.randomUUID();
   let revision = 0;
-  const endpoints = { [session]: { member: owner, connected: true, signingKey },
-    [peerSession]: { member: peerMember, connected: true, signingKey: peerSigningKey } };
+  const endpoints = { [session]: { member: owner, connected: true, canUsePeerTransport: true, signingKey },
+    [peerSession]: { member: peerMember, connected: true, canUsePeerTransport: true, signingKey: peerSigningKey } };
   const policy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Browser-owned room", icon: "future-room_7", creatorId: owner.userId,
     access: "public", hidden: false });
   let host = await BrowserRoomHost.open(database, policy);
@@ -459,7 +459,7 @@ window.runBrowserRoomCheck = async () => {
     try {
       const guestSession = crypto.randomUUID();
       const output = await privateHost.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision,
-        endpoints: { ...endpoints, [guestSession]: { member: { ...owner, userId: crypto.randomUUID() }, connected: true, signingKey: peerSigningKey } },
+        endpoints: { ...endpoints, [guestSession]: { member: { ...owner, userId: crypto.randomUUID() }, connected: true, canUsePeerTransport: true, signingKey: peerSigningKey } },
         action: { type: "command", context: { connection, sessionId: guestSession, requestId: "hidden", now: Date.now() },
           command: { type: "browse", roomId: privateHost.roomId, active: true } },
       }) as Output;
@@ -473,7 +473,7 @@ window.runBrowserRoomCheck = async () => {
           "repeated invitation reads preserve the committed key");
       }
       const guest = { ...owner, userId: crypto.randomUUID() };
-      const guestEndpoints = { ...endpoints, [guestSession]: { member: guest, connected: true, signingKey: peerSigningKey } };
+      const guestEndpoints = { ...endpoints, [guestSession]: { member: guest, connected: true, canUsePeerTransport: true, signingKey: peerSigningKey } };
       const granted = await privateHost.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints,
         action: { type: "command", context: { connection, sessionId: guestSession, requestId: null, now: Date.now() },
           command: { type: "enter_room", roomId: privateHost.roomId, inviteKey: invitation.reply!.result.key } },

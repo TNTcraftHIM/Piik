@@ -33,6 +33,7 @@ fn input(owner: Uuid, actor: Uuid, action: impl FnOnce(RequestContext) -> HostAc
                     Endpoint {
                         signing_key: SessionSigner::from_seed([1; 32]).signing_key(),
                         member: Member { user_id: session },
+                        can_use_peer_transport: true,
                         connected: true,
                     },
                 )

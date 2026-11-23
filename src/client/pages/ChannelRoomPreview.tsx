@@ -355,9 +355,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     loadHistory: async () => sample.received(), loadLatestHistory: async () => sample.received(),
     historyByRoom: Object.fromEntries(state.channel.rooms.map(room => [room.id, { hasMore: false, atLatest: true }])),
     roomTopology: async (roomId, publicationId) => sampleRoomTopology(state, roomId, publicationId),
-    screenQuality: () => ({ requested: sample.channel.quality, applied: sample.channel.quality }), screenCodecMode: () => sample.channel.videoCodecMode,
+    screenQuality: () => ({ requested: sample.channel.quality, applied: sample.channel.quality }), screenCodec: () => ({ mode: sample.channel.videoCodecMode }),
     sourceAudio: id => ownedScreens.has(id) ? { level: 1, muted: false, bitrate: sample.channel.quality.maxAudioBitrate ?? 128_000,
-      ...sourceSounds[id], hasAudio: true, available: true, canMute: true } : undefined,
+      ...sourceSounds[id], sourceAudioAvailable: true, hasAudio: true, available: true, canMute: true } : undefined,
     sourceMicrophone: () => undefined,
     setSourceAudio: async (id, settings) => {
       setSourceSounds(previous => ({ ...previous, [id]: { level: 1, muted: false, ...previous[id], ...settings } }));

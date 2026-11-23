@@ -144,6 +144,16 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
             piik_channel_core::conversation::ReceivedConversation::Command(received) if received == address
         ));
         let replies = network.conversation(&room, &forwarded).replies().unwrap();
+        // Hold the covering HostInput after the writer commits. The person
+        // leaving is neither the writer nor the still-connected chat sender.
+        let covering = (!retry).then(|| {
+            let leaver = Uuid::new_v4();
+            join(&mut network, leaver);
+            let leave = piik_channel_core::wire::Request::parse(r#"{"type":"leave"}"#).unwrap();
+            let effects = network.authority.handle(leaver, leave, 101);
+            assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::HostInput { .. })));
+            effects
+        });
         for reply in replies {
             let returned = signer.sign(owner_session, &reply).unwrap();
             let returned = relay(&mut network, owner, reader, &returned);
@@ -158,6 +168,9 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
                 }
                 assert_eq!(message.seq, 1);
             }
+        }
+        if let Some(covering) = covering {
+            network.deliver(covering);
         }
     }
     assert!(confirmed.is_some());
@@ -239,10 +252,47 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
         .find(|session| session.id == reader_session)
         .unwrap()
         .user_id;
-    network.command(
-        owner,
-        json!({"type":"revoke_room_access","roomId":room,"userId":reader_user}),
-    );
+    let private_reply = signer.sign(owner_session, &replies[0]).unwrap();
+    // Resuming the same binding must verify its current read policy before
+    // relaying private history from a preceding turn.
+    let summary = piik_channel_core::host::RoomSummary::from_policy(&network.policy(&room));
+    let register = piik_channel_core::wire::Request::parse(
+        &json!({"type":"host_register","room":summary,"resumeBinding":address.binding_id}).to_string(),
+    ).unwrap();
+    let resume = network.authority.handle(owner, register, 108);
+    rejected(&mut network, owner, &private_reply, "room_access_required");
+    network.deliver(resume);
+    relay(&mut network, owner, reader, &private_reply);
+
+    // A policy command that fails still produces a covering read projection.
+    let owner_user = network.policy(&room).creator_id;
+    let own_revoke = network.command(owner, json!({"type":"revoke_room_access","roomId":room,"userId":owner_user}));
+    assert!(own_revoke.events.iter().any(|(_, event)| matches!(event,
+        Event::RoomReply { result: piik_channel_core::host::RoomResult::Error { code }, .. } if code == "forbidden")));
+    relay(&mut network, owner, reader, &private_reply);
+    let revoke = piik_channel_core::wire::Request::parse(
+        &json!({"type":"revoke_room_access","roomId":room,"userId":reader_user}).to_string(),
+    ).unwrap();
+    let revoke = network.authority.handle(owner, revoke, 110);
+    let input = revoke.events.into_iter().find_map(|(_, event)| match event {
+        Event::HostInput { input, .. } => Some(input),
+        _ => None,
+    }).unwrap();
+    let revoked = network.host_turn(&room, input);
+    assert!(!revoked.projection.views[&reader_session].authorized);
+
+    // An unrelated later input supersedes this projection while the durable
+    // removal of the reader's grant already took effect at the room writer.
+    let leave = piik_channel_core::wire::Request::parse(r#"{"type":"leave"}"#).unwrap();
+    let cover = network.authority.handle(outsider, leave, 111);
+    let output = piik_channel_core::wire::Request::parse(
+        &json!({"type":"host_output","roomId":room,"output":revoked}).to_string(),
+    ).unwrap();
+    let stale = network.authority.handle(owner, output, 112);
+    assert!(!stale.events.iter().any(|(_, event)| matches!(event, Event::Error { .. })));
+    rejected(&mut network, owner, &private_reply, "room_access_required");
+    network.deliver(cover);
+    rejected(&mut network, owner, &private_reply, "room_access_required");
     rejected(&mut network, reader, &packet, "room_access_required");
     network.command(
         reader,

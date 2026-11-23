@@ -75,6 +75,7 @@ impl CoreBurst {
                         owner_key: None,
                         session_id: None,
                         signing_key: [i as u8; 32],
+                        can_use_peer_transport: true,
                         can_prepare_udp: false,
                         can_receive_video_layers: true,
                     },
@@ -280,6 +281,7 @@ fn join(credential: Option<String>, session_id: Option<String>, owner: bool) -> 
         owner_key: owner.then(|| "owned-composition-owner".into()),
         session_id,
         signing_key: [1; 32],
+        can_use_peer_transport: true,
         can_prepare_udp: false,
         can_receive_video_layers: true,
     }

@@ -4000,7 +4000,7 @@ fn confirmed_business_pairs_follow_room_scope_sockets_and_flow_leases() {
     );
     let resumed = Uuid::new_v4();
     let effects = network.authority.handle(resumed, Request::parse(&json!({
-        "type":"join", "protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
+        "type":"join", "canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
         "name":"Returning viewer","credential":credential,"sessionId":b,
         "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1;32]).signing_key()
     }).to_string()).unwrap(), 101);
@@ -5649,4 +5649,56 @@ fn watch_uses_an_alternate_while_a_file_keeps_the_relays_only_slot() {
     command(&mut net,source,json!({"type":"set_watch_byte_source","roomId":room,"id":watch,"byteSource":replacement}));
     let late=net.command(relay,refuse);
     assert!(late.events.iter().any(|(_,event)| matches!(event, Event::RoomReply { result:piik_channel_core::host::RoomResult::Error{code}, .. } if code=="unassigned_watch_branch")));
+}
+
+#[test]
+fn resuming_without_peer_transport_retires_media_and_file_routes_but_keeps_room_reading() {
+    let mut net = RoomNetwork::new();
+    let [owner, old, resumed] = [(); 3].map(|_| Uuid::new_v4());
+    let (owner_id, _) = join(&mut net, owner, None);
+    let (participant, credential) = join(&mut net, old, None);
+    let room = net.create(owner, RoomAccess::Public, false);
+    for socket in [owner, old] {
+        browse(&mut net, socket, &room, true);
+    }
+    let link = pair(&net, old, owner_id).id;
+    connect(&mut net, [owner, old], link);
+    let picture = publish(&mut net, old, &room, "screen");
+    subscribe_screen(&mut net, owner, picture);
+    voice(&mut net, old, &room, true);
+    let (seq, file) = offer_file(&mut net, old, &room, "sample.bin");
+    command(&mut net, owner, json!({"type":"file_receive","roomId":room,
+        "messageSeq":seq,"attachmentId":file.id,"enabled":true}));
+    assert!(pair(&net, owner, participant).rooms.contains(&room));
+    assert!(net.state(owner).files.iter().any(|plan| plan.upstream == Some(participant)));
+    // The writer has already performed this operation against the previous endpoints.
+    let request = |value: Value| piik_channel_core::wire::Request::parse(&value.to_string()).unwrap();
+    let browse_turn = net.authority.handle(owner, request(json!({"type":"browse","roomId":room,
+        "active":true,"requestId":"pending-browse"})), 100);
+    let input = browse_turn.events.into_iter().find_map(|(_, event)| match event {
+        Event::HostInput { input, .. } => Some(input),
+        _ => None,
+    }).unwrap();
+    let old_output = net.host_turn(&room, input);
+    assert!(old_output.projection.relay_session_ids.contains(&participant));
+    let sync = net.authority.handle(resumed, request(json!({"type":"join","name":"Same reader",
+        "credential":credential,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"sessionId":participant,
+        "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1;32]).signing_key()})), 101);
+    let pending = net.authority.handle(owner, request(json!({"type":"host_output","roomId":room,"output":old_output})), 101);
+    assert!(!pending.events.iter().any(|(_, event)| matches!(event, Event::Error { .. } | Event::RoomReply { .. })));
+    net.deliver(pending);
+    let effects = net.deliver(sync);
+    assert_eq!(effects.events.iter().filter(|(socket, event)| *socket == owner && matches!(event,
+        Event::RoomReply {request_id: Some(id), result: piik_channel_core::host::RoomResult::Done, ..} if id == "pending-browse")).count(), 1);
+    assert!(effects.events.iter().any(|(socket, event)| *socket == resumed
+        && matches!(event, Event::Welcome {session_id, state, ..} if *session_id == participant && state.pairs.is_empty())));
+    for socket in [resumed, owner] {
+        let state = net.state(socket);
+        assert!(state.pairs.is_empty());
+        assert!(state.publications.iter().all(|p| p.session_id != participant));
+        assert!(state.voice.iter().all(|v| v.session_id != participant));
+        assert!(state.files.iter().all(|f| f.upstream.is_none() && f.downstream.is_empty() && f.source_id.is_none()));
+        assert!(state.channel.rooms.iter().any(|r| r.id == room && r.authorized && r.reading));
+    }
+    assert!(net.peer_request(resumed, &room, ConversationCommand::History { before: None }).result.is_ok());
 }

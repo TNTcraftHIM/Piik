@@ -10,7 +10,7 @@ test("Browser WASM saves room consent, keeps Read separate and derives fresh ser
   expect(policy.allowServiceRelay).toBe(false);
   policy.grants.push(viewerUser);
   const host = new rust.RoomHost(JSON.stringify(policy));
-  const endpoints = Object.fromEntries([[owner, ownerUser], [viewer, viewerUser], [service, operatorUser]].map(([session, user]) => [session, { member: { userId: user }, connected: true, signingKey: Array(32).fill(0) }]));
+  const endpoints = Object.fromEntries([[owner, ownerUser], [viewer, viewerUser], [service, operatorUser]].map(([session, user]) => [session, { member: { userId: user }, connected: true, canUsePeerTransport: true, signingKey: Array(32).fill(0) }]));
   let revision = 0;
   let serviceEndpoint: { sessionId: string; connectionId: string } | null = { sessionId: service, connectionId: serviceSocket };
   let confirmedPairs: string[][] = [];
@@ -63,7 +63,7 @@ test("public Read does not retain pure site forwarding after the saved preferenc
   const policy = JSON.parse(rust.create_room_policy(JSON.stringify({ id: "public-transit", creatorId: owner, ...settings })));
   const host = new rust.RoomHost(JSON.stringify(policy));
   const endpoints = Object.fromEntries([owner, viewer, service].map(session => [session,
-    { member: { userId: session }, connected: true, signingKey: Array(32).fill(0) }]));
+    { member: { userId: session }, connected: true, canUsePeerTransport: true, signingKey: Array(32).fill(0) }]));
   let revision = 0;
   const context = (sessionId: string) => ({ connection: sessionId, sessionId, requestId: crypto.randomUUID(), now: 100 });
   let confirmedPairs: string[][] = [];

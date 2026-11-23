@@ -663,7 +663,7 @@ impl Channel {
         let mut plan = DiscoveryPlan::default();
         let online = endpoints
             .iter()
-            .filter_map(|(&id, endpoint)| endpoint.connected.then_some(id))
+            .filter_map(|(&id, endpoint)| endpoint.online_peer().then_some(id))
             .collect();
         discovery.standby(&online, &discovery.confirmed, Interest::Channel, &mut plan);
         for room in self
@@ -677,7 +677,7 @@ impl Channel {
             let requested = projection.requested_pairs();
             let mut demand: BTreeSet<_> = requested.keys().copied().collect();
             let mut scope = room.planning_sessions(self.service_endpoint, None);
-            scope.retain(|id| endpoints.get(id).is_some_and(|endpoint| endpoint.connected));
+            scope.retain(|id| online.contains(id));
             // While the host acknowledges a failed pair, only carry existing uses
             // from that projection. Other invalidations wait for fresh room grants.
             if let Some(binding) = room
@@ -775,7 +775,7 @@ impl Channel {
                         let room = self.remote.get(id)?;
                         Some((
                             room.projection.as_ref()?,
-                            room.planning_sessions(service, None),
+                            room.planning_sessions(service, None).intersection(&online).copied().collect(),
                         ))
                     },
                 )
@@ -819,6 +819,7 @@ mod tests {
                     Admission {
                         name,
                         signing_key: [0; 32],
+                        can_use_peer_transport: true,
                         can_prepare_udp: false,
                         can_receive_video_layers: false,
                         credential: None,
@@ -1301,6 +1302,7 @@ mod tests {
                 revision: 1,
                 projection_floor: 1,
                 scope_floor: 1,
+                read_floor: 1,
                 applied_revision: 1,
                 replies: Default::default(),
                 failed_pairs: Default::default(),

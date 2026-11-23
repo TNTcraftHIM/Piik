@@ -175,10 +175,12 @@ impl TransportBook {
         self.pairs
             .iter()
             .filter_map(|(&key @ (a, b), pair)| {
-                let sockets = [
-                    identity.sessions.get(&a)?.connection,
-                    identity.sessions.get(&b)?.connection,
-                ];
+                let first = identity.sessions.get(&a)?;
+                let second = identity.sessions.get(&b)?;
+                if !first.can_use_peer_transport || !second.can_use_peer_transport {
+                    return None;
+                }
+                let sockets = [first.connection, second.connection];
                 (pair.was_confirmed && (sockets.contains(&None) || sockets != pair.confirmed_by))
                     .then_some(key)
             })
@@ -1310,6 +1312,7 @@ mod tests {
                     connection: Some(socket),
                     disconnected_at: None,
                     signing_key: [0; 32],
+                    can_use_peer_transport: true,
                     can_prepare_udp: false,
                     can_receive_video_layers: false,
                 },

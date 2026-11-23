@@ -51,6 +51,7 @@ impl Endpoint {
 
     fn request(&self, hub: &mut Hub, mut command: Value) {
         if command["type"] == "join" {
+            command["canUsePeerTransport"] = json!(true);
             command["protocol"] = json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
             command["signingKey"] = json!(
                 piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key()
@@ -309,7 +310,7 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
     assert_eq!(saved["icon"], icon);
     assert!(saved.get("access").is_none());
     assert!(saved.get("passwordHash").is_none());
-    let join=Request::parse(&json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
+    let join=Request::parse(&json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
         "name":"Visitor","signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1;32]).signing_key()}).to_string()).unwrap();
     assert!(restored
         .handle(Uuid::new_v4(), join, 1)
@@ -928,6 +929,7 @@ async fn state_when(socket: &mut Socket, predicate: impl Fn(&Snapshot) -> bool) 
 async fn send_request(socket: &mut Socket, mut value: Value) {
     value["requestId"] = json!(Uuid::new_v4().to_string());
     if value["type"] == "join" {
+        value["canUsePeerTransport"] = json!(true);
         value["protocol"] = json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
         value["signingKey"] =
             json!(piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key());

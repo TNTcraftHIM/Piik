@@ -20,7 +20,7 @@ import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserCaptureSource } from "../media/quality";
 import type { loadCameraPreviews } from "../media/camera-previews";
 import type { CommentaryInput } from "../media/host-audio";
-import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
+import type { BrowserVideoCodec, BrowserVideoCodecMode } from "../webrtc/video-codec";
 import type { ScreenPlaybackError } from "../media/viewer-playback";
 import type { ConnectionMetrics } from "../types";
 
@@ -150,12 +150,12 @@ export interface ChannelActions {
   setEncodingExecution(mode: EncodingExecution): void;
   screenEncodingExecution(publicationId: string): EncodingExecution | undefined;
   screenQuality(publicationId: string): { applied: QualityProfile; requested: QualityProfile } | undefined;
-  screenCodecMode(publicationId: string): BrowserVideoCodecMode | undefined;
+  screenCodec(publicationId: string): { mode: BrowserVideoCodecMode; primary?: BrowserVideoCodec } | undefined;
   setScreenQuality(publicationId: string, profile: QualityProfile): Promise<void>;
   setScreenPaused(publicationId: string, paused: boolean): Promise<void>;
   setScreenDirectLimit(publicationId: string, limit: number | null): Promise<void>;
   setScreenTitle(publicationId: string, title: string | null): Promise<void>;
-  sourceAudio(publicationId: string): { level: number; muted: boolean; bitrate: number; hasAudio: boolean; available: boolean; canMute: boolean } | undefined;
+  sourceAudio(publicationId: string): { level: number; muted: boolean; bitrate: number; sourceAudioAvailable: boolean; hasAudio: boolean; available: boolean; canMute: boolean } | undefined;
   setSourceAudio(publicationId: string, settings: { bitrate?: number; level?: number; muted?: boolean }): Promise<void>;
   sourceMicrophone(publicationId: string): SourceMicrophoneConfiguration & { browser: boolean; canDisable: boolean; available: boolean; requested: SourceMicrophoneConfiguration } | undefined;
   setSourceMicrophone(publicationId: string, settings: SourceMicrophoneSettings): Promise<void>;
@@ -225,6 +225,7 @@ export interface ChannelActions {
   leaveVoice(roomId: string): Promise<void>;
   setMuted(roomId: string, muted: boolean): Promise<void>;
   canUnmute(roomId: string): boolean;
+  voiceMicrophonePending(roomId: string): boolean;
   /** Post-gain linear levels keyed by the speaking endpoint/session, never its relay. */
   voiceActivity(roomId: string, localOnly?: boolean): Promise<ReadonlyMap<string, number>>;
   setDeafened(roomId: string, deafened: boolean): Promise<void>;

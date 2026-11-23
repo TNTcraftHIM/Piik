@@ -91,3 +91,35 @@ test("closing pending commands rejects with AbortError and retires their replies
   expect(events).toEqual(["visibility-resumed","closed"]);
   expect(vi.getTimerCount()).toBe(0);
 });
+test.each(["event", "reply", "silent"] as const)("PeerTube handshake uses its startup deadline with %s", async result => {
+  const { media, frame, packet } = fixture();
+  vi.stubGlobal("fetch", async () => metadata());
+  const events: string[] = [];
+  media.listen(event => events.push(event));
+  media.presentation.setVisible(true);
+  await vi.advanceTimersByTimeAsync(0);
+  const scope = new URL(frame.src).searchParams.get("scope");
+  packet({ method: scope + "::__ready", params: { type: "publish-request" } });
+  const query = frame.contentWindow.postMessage.mock.calls.map(([raw]) => JSON.parse(raw))
+    .find(request => request.method === scope + "::isReady");
+  expect(query).toBeDefined();
+  frame.contentWindow.postMessage.mockImplementation((raw: string) => {
+    const request = JSON.parse(raw);
+    if (request.method === scope + "::getPlaybackRates") packet({ id: request.id, result: [1] });
+  });
+  if (result === "event") packet({ method: scope + "::ready", params: true });
+  await vi.advanceTimersByTimeAsync(6000);
+  expect(frame.remove).not.toHaveBeenCalled();
+  if (result === "reply") packet({ id: query.id, result: true });
+  await vi.advanceTimersByTimeAsync(14000);
+  if (result === "silent") {
+    expect(events).toContain("error");
+    expect(frame.remove).toHaveBeenCalledOnce();
+  } else {
+    expect(events).toContain("loadedmetadata");
+    expect(events).not.toContain("error");
+    expect(frame.remove).not.toHaveBeenCalled();
+  }
+  media.close();
+  expect(vi.getTimerCount()).toBe(0);
+});

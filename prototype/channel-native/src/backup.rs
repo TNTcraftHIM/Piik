@@ -650,7 +650,7 @@ mod tests {
         let mut identities = Vec::new();
         for index in 0..200 {
             let connection = Uuid::new_v4();
-            let request = serde_json::json!({"type":"join","protocol":CHANNEL_PROTOCOL,"name":format!("Friend {index}"),"ownerKey":(index==0).then_some("owner"),"signingKey":vec![1;32]});
+            let request = serde_json::json!({"type":"join","protocol":CHANNEL_PROTOCOL,"canUsePeerTransport":false,"name":format!("Friend {index}"),"ownerKey":(index==0).then_some("owner"),"signingKey":vec![1;32]});
             let effects =
                 authority.handle(connection, Request::parse(&request.to_string()).unwrap(), 0);
             let (credential, _) = effects

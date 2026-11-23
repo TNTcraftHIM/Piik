@@ -22,7 +22,7 @@ export interface SiteManagementProps {
   onRemove(id: string): Promise<void>;
   onApprove(origin: string): Promise<void>;
   onRevoke(origin: string): Promise<void>;
-  onStartup(origin: string): Promise<void>;
+  onStartup(origin: string, enabled: boolean): Promise<void>;
   onResetWebsitePermissions?(origin: string): Promise<void>;
   onOpen(origin: string): void;
 }
@@ -109,7 +109,7 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
       </section>}
       {approved && selected && <section className="lr-site-section">
         <h4><Glyph name="play" size={18} /><span>{t("client.sites.startup")}</span></h4>
-        <label className="lr-client-approval-startup"><input type="checkbox" checked={opensOnStart(selected)} disabled={busy} onChange={() => accessAction(onStartup(opensOnStart(selected) ? "" : selected))} /><Glyph name="play" size={18} /><span>{t("client.connect.openOnStart")}</span></label>
+        <label className="lr-client-approval-startup"><input type="checkbox" checked={opensOnStart(selected)} disabled={busy} onChange={() => accessAction(onStartup(selected, !opensOnStart(selected)))} /><Glyph name="play" size={18} /><span>{t("client.connect.openOnStart")}</span></label>
       </section>}
     </> : <>
       <header className="lr-site-list-header"><p>{t("client.sites.hint")}</p><span data-site-add><Btn id={`${id}-add`} icon="plus" size="compact" title="client.bookmarks.add" cap="client.bookmarks.add" disabled={busy} onClick={() => edit()} /></span></header>
@@ -123,7 +123,7 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
         </li>;
       })}</ul> : <p className="lr-site-empty">{t("client.sites.empty")}</p>}
     </>}
-    {ownedStartup && !(selected && ownedSites.includes(selected)) && <div className="lr-site-owned-startup lr-site-section"><label className="lr-client-approval-startup"><input type="checkbox" checked disabled={busy} onChange={() => accessAction(onStartup(""))} /><Glyph name="play" size={18} /><span>{t("client.connect.openOwnedOnStart", { mode: t(ownedStartup === "local" ? "client.launch.local" : "client.launch.link") })}</span></label></div>}
+    {ownedStartup && !(approved && selected && ownedSites.includes(selected)) && <div className="lr-site-owned-startup lr-site-section"><label className="lr-client-approval-startup"><input type="checkbox" checked disabled={busy} onChange={() => accessAction(onStartup("", false))} /><Glyph name="play" size={18} /><span>{t("client.connect.openOwnedOnStart", { mode: t(ownedStartup === "local" ? "client.launch.local" : "client.launch.link") })}</span></label></div>}
     {accessError && (accessError.site === selected || accessError.site === null && ownedStartup) &&
       <Pill icon="alert" tone="bad" comic="signal-failed" alert label={accessError.message} />}
   </section>;

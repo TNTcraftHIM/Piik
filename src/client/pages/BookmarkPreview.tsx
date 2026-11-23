@@ -28,7 +28,7 @@ export function BookmarkPreview() {
     <SiteManagement bookmarks={bookmarks} sites={approved} startupSite={startupSite} ownedSites={[]} busy={busy} accessError={accessError} currentOrigin="https://current.example" onOpen={setOpened}
       onApprove={async origin => { checkAccess(origin); setApproved(current => [...current, origin]); }}
       onRevoke={async origin => { checkAccess(origin); setApproved(current => current.filter(site => site !== origin)); if (startupSite === origin) setStartupSite(""); }}
-      onStartup={async origin => { checkAccess(origin); setStartupSite(origin); }}
+      onStartup={async (origin, enabled) => { checkAccess(origin); setStartupSite(enabled ? origin : ""); }}
       onSave={async draft => { if (fail) throw new Error("preview_failure"); if (bookmarks.some(site => site.id !== draft.id && site.origin === draft.origin)) throw new Error("bookmark_exists"); setBookmarks(current => draft.id
         ? current.map(site => site.id === draft.id ? { ...draft, id: draft.id! } : site)
         : [...current, { ...draft, id: crypto.randomUUID() }]); }}

@@ -413,6 +413,7 @@ mod tests {
                 local,
                 Endpoint {
                     member: owner,
+                    can_use_peer_transport: true,
                     connected: true,
                     signing_key: host_key.signing_key(),
                 },
@@ -421,6 +422,7 @@ mod tests {
                 sender,
                 Endpoint {
                     member: actor,
+                    can_use_peer_transport: true,
                     connected: true,
                     signing_key: actor_key.signing_key(),
                 },
@@ -429,6 +431,7 @@ mod tests {
                 other,
                 Endpoint {
                     member: outsider,
+                    can_use_peer_transport: true,
                     connected: true,
                     signing_key: actor_key.signing_key(),
                 },

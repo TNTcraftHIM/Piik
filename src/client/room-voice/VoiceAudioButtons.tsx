@@ -4,9 +4,10 @@ import { MicrophoneLevel } from "./MicrophoneLevel";
 
 type ButtonState = Pick<ComponentProps<typeof Btn>, "disabled" | "busy" | "quiet" | "hint" | "hintText" | "keyShortcuts" | "onClick">;
 
-export function VoiceMicrophoneButton({ active, level, ...button }: ButtonState & { active: boolean; level?: number }) {
-  return <Btn {...button} icon={active ? "microphone" : "microphoneOff"} title="host.device.microphone"
-    size="compact" draw="voice-microphone" pressed={active}
+export function VoiceMicrophoneButton({ active, level, cancelPending, ...button }: ButtonState & { active: boolean; level?: number; cancelPending?: boolean }) {
+  return <Btn {...button} icon={active ? "microphone" : "microphoneOff"}
+    title={cancelPending ? "voice.cancelMicrophoneRequest" : "host.device.microphone"} textTooltip={cancelPending !== undefined}
+    busy={cancelPending || button.busy} size="compact" draw="voice-microphone" pressed={cancelPending ? undefined : active}
     iconOverlay={active && !button.busy && level !== undefined && <MicrophoneLevel level={level} />} />;
 }
 

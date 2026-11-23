@@ -230,7 +230,7 @@ test.each(['hosted', 'lightweight'] as const)('Node room creation respects %s wr
   const creation = client.createRoom(settings);
   if (hostingMode === 'lightweight') {
     await expect(creation).rejects.toThrow('room_writer_required');
-    expect(socket.sent.map(command => command.type)).toEqual(['join']);
+    expect(socket.sent).toEqual([expect.objectContaining({ type: 'join', canUsePeerTransport: false })]);
   } else {
     const request = socket.sent.at(-1)!;
     expect(request).toMatchObject({ type: 'create_room', room: { ...settings, id: 'new', creatorId: userId, hasPassword: false } });

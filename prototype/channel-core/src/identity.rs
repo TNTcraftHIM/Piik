@@ -72,6 +72,7 @@ pub struct Session {
     pub connection: Option<Uuid>,
     pub disconnected_at: Option<u64>,
     pub signing_key: [u8; 32],
+    pub can_use_peer_transport: bool,
     pub can_prepare_udp: bool,
     pub can_receive_video_layers: bool,
 }
@@ -86,6 +87,7 @@ pub struct Identity {
 
 pub struct Admission<'a> {
     pub signing_key: [u8; 32],
+    pub can_use_peer_transport: bool,
     pub can_prepare_udp: bool,
     pub can_receive_video_layers: bool,
     pub credential: Option<&'a str>,
@@ -99,6 +101,7 @@ pub struct Admitted {
     pub session_id: Uuid,
     pub credential: String,
     pub replaced_connection: Option<Uuid>,
+    pub peer_transport_withdrawn: bool,
 }
 
 /// The authenticated user of an endpoint; room rights follow room ownership.
@@ -114,6 +117,13 @@ pub struct Endpoint {
     pub signing_key: [u8; 32],
     pub member: Member,
     pub connected: bool,
+    pub can_use_peer_transport: bool,
+}
+
+impl Endpoint {
+    pub fn online_peer(&self) -> bool {
+        self.connected && self.can_use_peer_transport
+    }
 }
 
 impl Identity {
@@ -194,6 +204,7 @@ impl Identity {
                         member: self.member(session.user_id).expect("admitted session"),
                         signing_key: session.signing_key,
                         connected: session.connection.is_some(),
+                        can_use_peer_transport: session.can_use_peer_transport,
                     },
                 )
             })
@@ -300,10 +311,13 @@ impl Identity {
             connection: None,
             disconnected_at: None,
             signing_key: input.signing_key,
+            can_use_peer_transport: input.can_use_peer_transport,
             can_prepare_udp: input.can_prepare_udp,
             can_receive_video_layers: input.can_receive_video_layers,
         });
         session.signing_key = input.signing_key;
+        let peer_transport_withdrawn = session.can_use_peer_transport && !input.can_use_peer_transport;
+        session.can_use_peer_transport = input.can_use_peer_transport;
         session.can_prepare_udp = input.can_prepare_udp;
         session.can_receive_video_layers = input.can_receive_video_layers;
         let replaced_connection = session.connection.replace(connection);
@@ -312,6 +326,7 @@ impl Identity {
             session_id,
             credential,
             replaced_connection,
+            peer_transport_withdrawn,
         })
     }
 
@@ -431,6 +446,7 @@ mod tests {
     ) -> Admission<'a> {
         Admission {
             signing_key: [1; 32],
+            can_use_peer_transport: true,
             can_prepare_udp: false,
             can_receive_video_layers: false,
             owner_key: key,

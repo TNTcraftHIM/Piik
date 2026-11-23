@@ -97,6 +97,7 @@ async fn join(origin: &str, owner: bool) -> (Socket, Value) {
     let mut join = json!({
         "type": "join",
         "protocol": CHANNEL_PROTOCOL,
+        "canUsePeerTransport": false,
         "name": "Room policy check",
         "signingKey": SessionSigner::from_seed([if owner { 1 } else { 2 }; 32]).signing_key()
     });

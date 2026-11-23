@@ -73,7 +73,7 @@ try {
         });
       }
       const signingKey = Array.from(new Uint8Array(await crypto.subtle.exportKey('raw', (await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify'])).publicKey)));
-      const welcome = await request({ type: 'join', name, credential, signingKey, protocol: CHANNEL_PROTOCOL }, 'welcome');
+      const welcome = await request({ type: 'join', canUsePeerTransport: false, name, credential, signingKey, protocol: CHANNEL_PROTOCOL }, 'welcome');
       return { socket, request, welcome };
     }
     const offline = [];

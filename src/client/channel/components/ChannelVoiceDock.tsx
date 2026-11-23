@@ -26,7 +26,7 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
 }) {
   const { t } = useCopy();
   const state = channel.state;
-  const { joined, activity, microphoneDisabled, toggle } = resolveVoiceDockControls(channel, selected);
+  const { joined, activity, microphoneDisabled, microphonePending, toggle } = resolveVoiceDockControls(channel, selected);
   const shortcuts = useVoiceShortcuts(activity?.roomId, toggle,
     channel.connection === "connected" ? channel.backgroundVoiceShortcuts : undefined);
   const roomId = activity?.roomId ?? "";
@@ -92,8 +92,8 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
     </SurfaceDocument.Provider>, overlay.target)}
     <div className="c3-voice-controls">
       <AudioVolumeMenu volume={channel.voiceInput.volume} onVolume={channel.setInputVolume} label="host.microphone.volume">
-        <VoiceMicrophoneButton active={!muted} level={levels.get(channel.sessionId ?? "")} disabled={microphoneDisabled} quiet
-          keyShortcuts={voiceShortcutAria(shortcuts.bindings.microphone)} onClick={() => toggle("microphone")} />
+        <VoiceMicrophoneButton active={!muted} level={levels.get(channel.sessionId ?? "")} disabled={microphoneDisabled}
+          cancelPending={microphonePending} quiet keyShortcuts={voiceShortcutAria(shortcuts.bindings.microphone)} onClick={() => toggle("microphone")} />
       </AudioVolumeMenu>
       <AudioVolumeMenu volume={channel.listeningVolume} onVolume={channel.setListeningVolume} label="voice.listeningVolume">
         <VoiceListeningButton deafened={deafened} quiet

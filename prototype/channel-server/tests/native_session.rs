@@ -192,7 +192,7 @@ async fn committed_domain_restore_reports_native_restart_failure_without_rolling
     replacement.handle(
         Uuid::new_v4(),
         Request::parse(
-            &json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
+            &json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
             "name":"Restored owner","ownerKey":"restored-owner","signingKey":vec![7u8;32]})
             .to_string(),
         )
@@ -227,7 +227,7 @@ async fn committed_domain_restore_reports_native_restart_failure_without_rolling
         .headers_mut()
         .insert("Origin", origin.parse().unwrap());
     let (mut page, _) = tokio_tungstenite::connect_async(upgrade).await.unwrap();
-    page.send(Message::Text(json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"name":"Owner","ownerKey":"old-owner","signingKey":vec![7u8;32]}).to_string().into())).await.unwrap();
+    page.send(Message::Text(json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"name":"Owner","ownerKey":"old-owner","signingKey":vec![7u8;32]}).to_string().into())).await.unwrap();
     let credential = tokio::time::timeout(Duration::from_secs(10), async {
         let mut credential = None;
         loop {
@@ -672,7 +672,7 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
     let guest = Uuid::new_v4();
     let signer = piik_channel_core::conversation::SessionSigner::from_seed([9; 32]);
     domain.command(guest, json!({
-        "type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL, "name": "Observer", "signingKey": signer.signing_key()
+        "type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL, "name": "Observer", "signingKey": signer.signing_key()
     })).await;
     domain
         .command(guest, json!({"type":"browse","roomId":"one","active":true}))
@@ -986,7 +986,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let mut authority = Authority::new("owner".into(), vec![]).unwrap();
     let (channel, user) = authority.identity();
     let browser = Uuid::new_v4();
-    let admitted = authority.handle(browser, Request::parse(&json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"ownerKey":"owner","name":"Owner", "signingKey":SessionSigner::from_seed([1;32]).signing_key()}).to_string()).unwrap(), 100);
+    let admitted = authority.handle(browser, Request::parse(&json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"ownerKey":"owner","name":"Owner", "signingKey":SessionSigner::from_seed([1;32]).signing_key()}).to_string()).unwrap(), 100);
     let (credential, browser_session) = admitted
         .events
         .into_iter()
@@ -999,7 +999,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
             _ => None,
         })
         .unwrap();
-    let guest = authority.handle(Uuid::new_v4(), Request::parse(&json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"name":"Guest", "signingKey":SessionSigner::from_seed([2;32]).signing_key()}).to_string()).unwrap(), 100);
+    let guest = authority.handle(Uuid::new_v4(), Request::parse(&json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"name":"Guest", "signingKey":SessionSigner::from_seed([2;32]).signing_key()}).to_string()).unwrap(), 100);
     let guest_credential = guest
         .events
         .into_iter()
@@ -1999,7 +1999,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
         let (mut guest, _) = connect_async(upgrade).await.unwrap();
         guest
             .send(Message::Text(
-                json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"name":"LAN guest",
+                json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"name":"LAN guest",
             "signingKey":SessionSigner::from_seed([31;32]).signing_key()})
                 .to_string()
                 .into(),
@@ -2101,7 +2101,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
                 .headers_mut()
                 .insert("Origin", origin.parse().unwrap());
             let (mut admin, _) = connect_async(request).await.unwrap();
-            admin.send(Message::Text(json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"ownerKey":owner,"name":"Owner", "signingKey":SessionSigner::from_seed([32;32]).signing_key()}).to_string().into())).await.unwrap();
+            admin.send(Message::Text(json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"ownerKey":owner,"name":"Owner", "signingKey":SessionSigner::from_seed([32;32]).signing_key()}).to_string().into())).await.unwrap();
             let admitted: Value =
                 serde_json::from_str(&admin.next().await.unwrap().unwrap().into_text().unwrap())
                     .unwrap();
@@ -2432,7 +2432,7 @@ async fn app_external_origin_is_exact_and_owned_startup_restores_it() {
             .headers_mut()
             .insert("Origin", public.parse().unwrap());
         let (mut viewer, _) = connect_async(request).await.unwrap();
-        viewer.send(Message::Text(json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"name":"External viewer","signingKey":SessionSigner::from_seed([54;32]).signing_key()}).to_string().into())).await.unwrap();
+        viewer.send(Message::Text(json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"name":"External viewer","signingKey":SessionSigner::from_seed([54;32]).signing_key()}).to_string().into())).await.unwrap();
         let welcome: Value =
             serde_json::from_str(&viewer.next().await.unwrap().unwrap().into_text().unwrap())
                 .unwrap();
@@ -2520,7 +2520,7 @@ async fn app_relay_capacity_confirms_the_native_endpoint_without_changing_the_br
     let mut authority = Authority::new("owner".into(), vec![]).unwrap();
     let (channel, user) = authority.identity();
     let browser = Uuid::new_v4();
-    let admitted=authority.handle(browser,Request::parse(&json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"ownerKey":"owner","name":"Owner","signingKey":SessionSigner::from_seed([1;32]).signing_key()}).to_string()).unwrap(),100);
+    let admitted=authority.handle(browser,Request::parse(&json!({"type":"join","canUsePeerTransport":true,"protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"ownerKey":"owner","name":"Owner","signingKey":SessionSigner::from_seed([1;32]).signing_key()}).to_string()).unwrap(),100);
     let (credential, browser_session) = admitted
         .events
         .into_iter()

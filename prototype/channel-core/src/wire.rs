@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 44;
+pub const CHANNEL_PROTOCOL: u8 = 45;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -23,6 +23,8 @@ pub enum Command {
         owner_key: Option<String>,
         session_id: Option<String>,
         signing_key: [u8; 32],
+        #[serde(default)]
+        can_use_peer_transport: bool,
         #[serde(default)]
         can_prepare_udp: bool,
         #[serde(default)]

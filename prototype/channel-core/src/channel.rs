@@ -57,7 +57,7 @@ pub struct Outcome {
 
 fn screen_helper_pair(viewer: Uuid, helper: Uuid, endpoints: &BTreeMap<Uuid, crate::Endpoint>) -> bool {
     viewer != helper && endpoints.get(&viewer).zip(endpoints.get(&helper)).is_some_and(|(v, h)| {
-        h.member == v.member
+        h.member == v.member && h.can_use_peer_transport && v.can_use_peer_transport
     })
 }
 
@@ -481,10 +481,11 @@ impl Channel {
                             .watch_bytes
                             .iter()
                             .any(|plan| plan.receiving || plan.source.session_id == *session);
-                    if view.transit_endpoint.is_some() || (view.authorized && ordinary) {
+                    if endpoints[session].can_use_peer_transport && (view.transit_endpoint.is_some() || (view.authorized && ordinary)) {
                         routable_sessions.insert(*session);
                     }
                 }
+                projection.relay_session_ids.retain(|id| routable_sessions.contains(id));
                 let readable_sessions: BTreeSet<_> = projection
                     .views
                     .iter()
@@ -847,6 +848,7 @@ impl Channel {
                 revision: 0,
                 projection_floor: 0,
                 scope_floor: 0,
+                read_floor: 0,
                 applied_revision: 0,
                 replies: BTreeMap::new(),
                 failed_pairs: BTreeMap::new(),
@@ -873,6 +875,7 @@ impl Channel {
             .as_mut()
             .unwrap();
         binding.invalidate_scope();
+        binding.read_floor = binding.revision;
         self.reconcile();
         Ok((events, replies))
     }
@@ -1092,7 +1095,7 @@ impl Channel {
         let view = room
             .snapshot(member, participant, true)
             .ok_or("room_access_required")?;
-        if !view.room.authorized || binding.applied_revision < binding.projection_floor {
+        if !view.room.authorized || binding.applied_revision < binding.read_floor {
             return Err("room_access_required");
         }
         let mut changed = false;
@@ -1463,7 +1466,8 @@ impl Channel {
         if projection.relay_session_ids.len() > MAX_SESSIONS
             || !projection.relay_session_ids.is_subset(&relay_scope)
             || projection.relay_session_ids.iter().any(|id| {
-                projection.views.get(id).is_some_and(|view| view.relay_override == Some(0))
+                !endpoints.get(id).is_some_and(|e| e.can_use_peer_transport)
+                    || projection.views.get(id).is_some_and(|view| view.relay_override == Some(0))
                     || (self.hosting_mode == HostingMode::Hosted && *id == binding.session && Some(*id) != service)
             })
         {
@@ -1517,7 +1521,7 @@ impl Channel {
                     })
                 });
                 if !endpoints.get(&source.session_id).is_some_and(|endpoint| {
-                    endpoint.member.user_id == activity.user_id && (endpoint.connected || retained)
+                    endpoint.can_use_peer_transport && endpoint.member.user_id == activity.user_id && (endpoint.connected || retained)
                 }) || !projection
                     .views
                     .get(&source.session_id)
