@@ -2,7 +2,7 @@ import { mountBrands } from './assets/brand.js';
 import { initialLanguage, rememberLanguage } from './assets/language.js';
 import { createTextCycle } from '../src/client/ui/text-rotation.ts';
 import { applyTheme, currentTheme, currentThemePreference, initTheme, subscribeTheme } from '../src/client/ui/theme.ts';
-import { DEFAULT_RELEASE_API_URL, parseReleaseMetadata } from '../src/client/lib/release-update.ts';
+import { DEFAULT_RELEASE_API_URL, parseReleaseMetadata, readReleaseMetadata } from '../src/client/lib/release-update.ts';
 import { splitReleaseHeadline } from '../scripts/release-headline.mjs';
 mountBrands();
 const architecturePickers = document.querySelectorAll('.download-architecture');
@@ -27,7 +27,7 @@ if (releaseLabel) {
   void fetch(DEFAULT_RELEASE_API_URL, {
     credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error',
     signal: controller.signal, headers: { Accept: 'application/vnd.github+json' },
-  }).then(response => response.ok ? response.json() : null)
+  }).then(readReleaseMetadata)
     .then(metadata => {
       const release = parseReleaseMetadata(metadata);
       if (!release?.publishedAt) return;
