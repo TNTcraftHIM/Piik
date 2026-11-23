@@ -29,12 +29,14 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const report = (framesDecoded: number) => [{ id: "video", framesDecoded }];
+
 describe("decoded frame proof observer", () => {
   it("accepts the first cumulative frame on a fresh exact transport", async () => {
     const readFramesDecoded = vi
-      .fn<() => Promise<number | null>>()
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(1);
+      .fn<() => Promise<ReturnType<typeof report>>>()
+      .mockResolvedValueOnce(report(0))
+      .mockResolvedValueOnce(report(1));
     const onProof = vi.fn(() => true);
 
     observeDecodedFrameProof({
@@ -53,7 +55,7 @@ describe("decoded frame proof observer", () => {
     const onProof = vi.fn(() => true);
 
     observeDecodedFrameProof({
-      readFramesDecoded: async () => values.shift() ?? 8,
+      readFramesDecoded: async () => report(values.shift() ?? 8),
       owns: () => true,
       requireProgress: true,
       onProof,
@@ -64,8 +66,40 @@ describe("decoded frame proof observer", () => {
     expect(onProof).toHaveBeenCalledOnce();
   });
 
+  it("proves a new SSRC after the first receiver snapshot without counting a formerly missing field", async () => {
+    const old = { id: "old", framesDecoded: 100 };
+    const samples = [
+      [old, { id: "unknown", framesDecoded: null }],
+      [old, { id: "unknown", framesDecoded: 50 }],
+      [{ id: "new", framesDecoded: 1 }],
+    ];
+    const onProof = vi.fn(() => true);
+    observeDecodedFrameProof({
+      owns: () => true,
+      requireProgress: true,
+      readFramesDecoded: async () => samples.shift() ?? [],
+      onProof,
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(onProof).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(onProof).toHaveBeenCalledOnce();
+  });
+
+  it("accepts the first decoded frame after an empty receiver snapshot", async () => {
+    const onProof = vi.fn(() => true);
+    observeDecodedFrameProof({
+      owns: () => true,
+      requireProgress: true,
+      readFramesDecoded: vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce(report(1)),
+      onProof,
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(onProof).toHaveBeenCalledOnce();
+  });
+
   it("serializes reads and ignores an in-flight result after ownership ends", async () => {
-    const first = deferred<number | null>();
+    const first = deferred<ReturnType<typeof report>>();
     let owned = true;
     const readFramesDecoded = vi.fn(() => first.promise);
     const onProof = vi.fn(() => true);
@@ -79,7 +113,7 @@ describe("decoded frame proof observer", () => {
     expect(readFramesDecoded).toHaveBeenCalledOnce();
     owned = false;
     stop();
-    first.resolve(3);
+    first.resolve(report(3));
     await Promise.resolve();
     await vi.runAllTimersAsync();
 

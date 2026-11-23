@@ -89,7 +89,7 @@ export class ChannelTransport {
   private pausedEncodings = new WeakMap<RTCRtpSender, boolean[]>();
   private stableSenders: Map<RTCRtpSender, MediaStreamTrack | null> | null = null;
   private remoteIds = new Map<string, string>();
-  private frameBaselines = new Map<string, ReadonlyMap<string, number> | null>();
+  private frameBaselines = new Map<string, ReadonlyMap<string, number | null> | null>();
   private receiving = new Map<string, MediaStream>();
   private applyingRemote = false;
   private ignoreOffer = false;
@@ -875,7 +875,7 @@ export class ChannelTransport {
     return !this.applyingRemote && this.remoteIds.get(stream.id) === flowId && this.receiving.get(stream.id) === stream;
   }
 
-  frameBaseline(flowId: string): ReadonlyMap<string, number> | null {
+  frameBaseline(flowId: string): ReadonlyMap<string, number | null> | null {
     return this.frameBaselines.get(flowId) ?? null;
   }
 
@@ -895,12 +895,10 @@ export class ChannelTransport {
         const flows = new Set(remoteIds.values());
         const added = [...flows].filter(id => !this.frameBaselines.has(id));
         if (added.length) {
-          let baseline: ReadonlyMap<string, number> | null = null;
+          let baseline: ReadonlyMap<string, number | null> | null = null;
           try {
             const samples = decodedVideoFrameSamples(await this.pc.getStats());
-            if (samples.every(sample => sample.framesDecoded !== null)) {
-              baseline = new Map(samples.map(sample => [sample.id, sample.framesDecoded!]));
-            }
+            baseline = new Map(samples.map(({ id, framesDecoded }) => [id, framesDecoded]));
           } catch { /* An unknown baseline requires observed progress, not transport failure. */ }
           if (this.closed) return;
           for (const id of added) this.frameBaselines.set(id, baseline);

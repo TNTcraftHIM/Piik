@@ -1,4 +1,4 @@
-import sampleThumbnail from "/favicon.png?url&inline";
+import sampleThumbnail from "../../../public/favicon.png?url&inline";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { z } from "zod";
 import { ChannelConversation } from "../channel/components/ChannelConversation";

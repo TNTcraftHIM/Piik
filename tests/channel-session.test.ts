@@ -6795,6 +6795,38 @@ test.each([
   } finally { media.reset(); session.close(); }
 });
 
+test.each(["pre-SDP baseline", "receiver baseline"])("multiple receiver rows prove new frames from the %s", async mode => {
+  const fixture = await screenFixture();
+  const { media, session, pc, sent } = fixture;
+  vi.useFakeTimers();
+  const video = remoteTrack("video"), stream = remoteStream("multiple-ssrcs", [video]);
+  const report = (...rows: Array<[string, number?]>) => new Map(rows.map(([id, framesDecoded]) =>
+    [id, { id, type: "inbound-rtp", kind: "video", framesDecoded }],
+  )) as unknown as RTCStatsReport;
+  let frames = 0;
+  let unknown: number | undefined;
+  if (mode === "pre-SDP baseline") pc.getStats.mockResolvedValue(report(["old", 100], ["video", 0], ["unknown"]));
+  else pc.getStats.mockRejectedValue(new Error("stats unavailable"));
+  pc.receivers = [{ track: video, getStats: async () => report(
+    ...(frames === 0 ? [["old", 100] as [string, number]] : []),
+    ["video", frames], ["unknown", unknown], ["empty", 0],
+  ) } as RTCRtpReceiver];
+  try {
+    await receiveScreen(fixture, stream);
+    await vi.advanceTimersByTimeAsync(100);
+    const decoded = () => sent.filter(command => command.type === "flow_state" && command.state === "decoded");
+    expect(decoded()).toEqual([]);
+    unknown = 50;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(decoded()).toEqual([]);
+    frames++;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(decoded()).toEqual([
+      { type: "flow_state", flowId: "screen-flow", pairId: "pair", state: "decoded" },
+    ]);
+  } finally { media.reset(); session.close(); }
+});
+
 test("an inactive Native carrier reused by a new flow cannot reuse its old decoded-frame proof", async () => {
   const fixture = await screenFixture();
   const { media, session, state, pc, sent } = fixture;

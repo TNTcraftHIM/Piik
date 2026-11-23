@@ -372,12 +372,8 @@ export class ChannelMedia {
     input.stopProof = observeDecodedFrameProof({
       owns: owned,
       requireProgress: baseline === null || previous?.receiver === receiver,
-      readFramesDecoded: async () => {
-        const samples = decodedVideoFrameSamples(await receiver.getStats());
-        const sample = samples.length === 1 ? samples[0] : undefined;
-        if (!sample || sample.framesDecoded === null) return null;
-        return baseline === null ? sample.framesDecoded : Math.max(0, sample.framesDecoded - (baseline.get(sample.id) ?? 0));
-      },
+      baseline,
+      readFramesDecoded: async () => decodedVideoFrameSamples(await receiver.getStats()),
       onProof: ready,
     });
   }
