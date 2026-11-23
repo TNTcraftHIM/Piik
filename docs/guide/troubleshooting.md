@@ -159,6 +159,37 @@ compare before and after on your virtual LAN:
 
 </details>
 
+#### Android cannot open a virtual LAN invitation
+
+1. In Android settings, search for **VPN** and check which app is connected.
+   If another VPN, proxy or ad blocker is using the VPN connection,
+   disconnect it so your virtual LAN app can connect.
+2. If the virtual LAN app has per-app settings, make sure your browser
+   uses its VPN. If the browser is on the exclusion list, remove it.
+3. Reconnect to the same virtual LAN and open the full invitation directly
+   in your browser. If the page only opens sometimes, wait for the virtual
+   LAN to reconnect after switching networks or reconnecting the app, then
+   reload the original invitation. If you see a certificate warning,
+   [verify the local certificate with the host](#local-https-certificate-warning).
+
+If you join the room and see an active share but the picture won't play,
+check whether the virtual LAN carries UDP between devices. You can also
+switch between Wi-Fi and mobile data, wait for the virtual LAN to
+reconnect, and join again.
+[Check browser WebRTC settings](./network.md#browser-webrtc-restrictions) ·
+[“No media route available”](./no-media-route.md)
+
+<details>
+<summary>Advanced · Android VPN connection blocking</summary>
+
+**Block connections without VPN** blocks traffic outside the VPN,
+including traffic from excluded apps and local network traffic that bypasses
+the VPN. If your virtual LAN app confirms that the connection you are testing
+bypasses its VPN, you can briefly turn the setting off on a personal device
+to compare, then restore it. [Android VPN settings](https://developer.android.com/develop/connectivity/vpn#blocked-connections)
+
+</details>
+
 ### Local HTTPS certificate warning
 
 For a local invitation, confirm the address with the Host through your usual chat. Compare the certificate fingerprints using the steps below before continuing. If you prefer a public link, ask the Host for a current **Public invite**. If a public address also shows a warning, tell the site administrator and wait for them to fix it.
