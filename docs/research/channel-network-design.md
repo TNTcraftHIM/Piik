@@ -494,7 +494,9 @@ viewers while preserving healthy branches. Each webpage or linked App sets
 its contribution to other people's traffic in the channel's forwarding settings.
 [Publication and contribution limits](./channel-forwarding-plan.md#contribution-budget)
 
-Each screen capacity change uses one bounded transition at its publication owner. Screen replacement retains forwarding,
+A change to the room default or a screen publisher's direct limit uses one bounded
+transition for each affected screen. Only branches the sender still authorizes
+can carry media during that transition. Screen replacement retains forwarding,
 decoded and presentation proof. Other activities select their own admitted
 parents when demand, capacity or confirmed connectivity changes.
 

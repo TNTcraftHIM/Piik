@@ -193,7 +193,10 @@ and shared screens (including source audio). Auto (`-1`) uses the fanout
 assigned by the room planner within its existing limits. Off (`0`) withdraws
 third-party business forwarding. A positive value limits distinct downstream peers
 for **each kind**. The baseline accounts for the peers of a Browser page or
-App runtime across the rooms it serves.
+App runtime across the rooms it serves. When the user lowers this limit, the
+runtime immediately stops excess forwarding for each kind. Off stops all
+third-party forwarding immediately. Affected rooms seek a new path for their
+waiting receivers.
 Changes are sent through the existing room capacity command for each current
 binding. A rejected update can be retried on the next projection; reconnecting
 does not preserve an unconfirmed write. This contribution cap does not limit
@@ -256,11 +259,9 @@ releases that subscription. Explicitly ending screen assistance withdraws the
 associated outgoing delivery and prompts the room to find another parent for
 affected viewers. Honor that withdrawal for the running activity. Voice and
 file uses have independent lifetimes. The physical pair can remain for another
-use or for standby. If a forwarding limit is lowered, release excess assignments
-through the existing handoff. Pausing a share retains its subscriptions and
-permitted routes; it does not extend the deadline for releasing excess assignments.
-Enforce withdrawals even when the affected
-recipient must wait for a new path.
+use or for standby. When the room default or a share’s direct limit reduces
+screen fanout, the publication can keep authorized branches during its bounded
+handoff. Pausing retains subscriptions and the original handoff deadline.
 
 When the runtime needs to free physical connection resources, protect edges
 carrying active business, then those useful to the current rooms, then other

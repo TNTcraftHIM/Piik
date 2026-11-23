@@ -4,7 +4,6 @@ import { CHAT_OVERLAY_LIMITS } from "../../lib/room-preferences";
 import { useCopy } from "../../ui/copy";
 import { Btn, SwitchItem } from "./primitives";
 import { participantColor } from "./participant-color";
-import { Tooltip } from "./Tooltip";
 import "./room-chat-overlay.css";
 import { useSurfaceDocument } from "../../ui/panel-window";
 
@@ -37,12 +36,12 @@ export function RoomChatOverlaySettings({ session }: { session: RoomInteractionS
           {label}
           <output htmlFor={`${id}-${property}`}>{percent}%</output>
         </label>
-        <Tooltip kind="hint-chat-settings" text={property === "speed" ? t("interaction.overlay.speedHint") : label}>
-          <input id={`${id}-${property}`} type="range" min={CHAT_OVERLAY_LIMITS[property][0] * 100}
-            max={CHAT_OVERLAY_LIMITS[property][1] * 100} step={10} value={percent}
-            aria-label={label} aria-valuetext={`${percent}%`}
-            onChange={event => session.setOverlayAppearance({ [property]: Number(event.target.value) / 100 })} />
-        </Tooltip>
+        <input id={`${id}-${property}`} type="range" min={CHAT_OVERLAY_LIMITS[property][0] * 100}
+          max={CHAT_OVERLAY_LIMITS[property][1] * 100} step={10} value={percent}
+          aria-label={label} aria-valuetext={`${percent}%`}
+          aria-describedby={property === "speed" ? id + "-speed-hint" : undefined}
+          onChange={event => session.setOverlayAppearance({ [property]: Number(event.target.value) / 100 })} />
+        {property === "speed" && <p id={id + "-speed-hint"}>{t("interaction.overlay.speedHint")}</p>}
       </div>;
     })}
     <div className="lr-chat-color-setting">

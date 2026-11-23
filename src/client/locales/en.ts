@@ -93,7 +93,7 @@ export const en: Record<CopyKey, string> = {
   "room.relay.webpage": "This webpage",
   "room.relay.app": "Connected App",
   "channel.forwarding.title": "Forwarding for others",
-  "channel.forwarding.note": "Counts people separately for screens, voice and files across all rooms. Your own shares have their own direct connection limits.",
+  "channel.forwarding.note": "Counts forwarding connections separately for screens, voice and files across all rooms. Your own shares have their own direct connection limits.",
   "channel.forwarding.auto": "Auto",
   "channel.forwarding.off": "Off",
   "channel.forwarding.people": "Up to {count}",
