@@ -54,8 +54,7 @@ func TestRelayInputKeepsRecoveryAndEmitsACompleteQuietFrame(t *testing.T) {
 		t.Fatal(err)
 	}
 	frame, err = input.frame([]byte{0, 0, 0, 1, 0x65, 0x88, 0x84})
-	if err != nil || !frame.KeyFrame || !bytes.Contains(frame.Data, configuration[:4+len(input.sps)]) ||
-		!bytes.Contains(frame.Data, input.pps) {
+	if err != nil || !frame.KeyFrame || !bytes.HasPrefix(frame.Data, configuration) {
 		t.Fatal("H264 IDR lost preceding decoder configuration")
 	}
 }
@@ -242,8 +241,53 @@ func TestRelayInputRejectsUnsafeH264Configuration(t *testing.T) {
 		t.Fatal(err)
 	}
 	frame, err := input.frame(data)
-	if err != nil || frame.Width != 160 || frame.Height != 90 {
-		t.Fatalf("valid cropped SPS was rejected: %dx%d, %v", frame.Width, frame.Height, err)
+	if err != nil || len(frame.Data) != 0 {
+		t.Fatalf("configuration produced a picture or error: %+v, %v", frame, err)
+	}
+}
+
+func TestRelayH264UsesTheSliceParameterChain(t *testing.T) {
+	// x264 Constrained Baseline parameter sets and slice headers from 320x180
+	// and 640x360 streams. PPS1 can also be redefined against the original SPS.
+	const sps0 = "6742c01fd901419f9f011000000300100000030020f1832480"
+	const pps0 = "68cb83cb20"
+	const idr0 = "658884057c"
+	const sps1 = "6742c01f5640280bfe5c044000000300400000030083c60c92"
+	const pps1 = "6848b83cb2"
+	const idr1 = "658841015f"
+	const newPPS1 = "6852e0f2c8"
+	const delta1 = "41990e13f8"
+	au := func(nals ...string) []byte {
+		t.Helper()
+		var data []byte
+		for _, nal := range nals {
+			unit, err := hex.DecodeString("00000001" + nal)
+			if err != nil {
+				t.Fatal(err)
+			}
+			data = append(data, unit...)
+		}
+		return data
+	}
+	requests := 0
+	input := relayVideoInput{codec: "h264", onPacketDropped: func() { requests++ }}
+	check := func(data, want []byte, key bool, width, height uint32) {
+		t.Helper()
+		frame, err := input.frame(data)
+		if err != nil || !bytes.Equal(frame.Data, want) || frame.KeyFrame != key || frame.Width != width || frame.Height != height {
+			t.Fatalf("got %x, key=%t %dx%d, err=%v; want %x, key=%t %dx%d", frame.Data, frame.KeyFrame, frame.Width, frame.Height, err, want, key, width, height)
+		}
+	}
+	check(au(sps1, pps1, idr0), nil, false, 0, 0)
+	check(au(sps0, pps0), nil, false, 0, 0)
+	check(au(idr0, idr1), nil, false, 0, 0)
+	check(au(sps1, pps1, idr0), au(sps1, pps1, sps0, pps0, idr0), true, 320, 180)
+	check(au(idr1), au(sps1, pps1, idr1), true, 640, 360)
+	check(au(newPPS1), nil, false, 0, 0)
+	check(au(delta1), au(sps0, newPPS1, delta1), false, 320, 180)
+	check(au(delta1), au(delta1), false, 320, 180)
+	if requests != 2 {
+		t.Fatalf("recovery requests = %d, want 2", requests)
 	}
 }
 
@@ -279,9 +323,9 @@ func TestRelayH264AllocationBounds(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			width, height, err := relayH264Size(data)
-			if (err == nil) != (test.width != 0) || width != test.width || height != test.height {
-				t.Fatalf("picture = %dx%d, %v; want %dx%d", width, height, err, test.width, test.height)
+			sps, err := parseRelaySPS(data)
+			if (err == nil) != (test.width != 0) || err == nil && (sps.width != test.width || sps.height != test.height) {
+				t.Fatalf("SPS = %+v, %v; want %dx%d", sps, err, test.width, test.height)
 			}
 		})
 	}
@@ -296,9 +340,9 @@ func FuzzRelayH264Size(f *testing.F) {
 		f.Add(data)
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
-		width, height, err := relayH264Size(data)
-		if err == nil && !nativecapture.ValidVideoSize(width, height) {
-			t.Fatalf("unbounded picture accepted: %dx%d", width, height)
+		sps, err := parseRelaySPS(data)
+		if err == nil && !nativecapture.ValidVideoSize(sps.width, sps.height) {
+			t.Fatalf("unbounded picture accepted: %dx%d", sps.width, sps.height)
 		}
 	})
 }
