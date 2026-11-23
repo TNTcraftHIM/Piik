@@ -1,8 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { nextViewerMediaBinding, playbackFailure, prepareViewerPlayback } from "../src/client/media/viewer-playback.ts";
+import { mediaElementPlaybackFailed, nextViewerMediaBinding, playbackFailure, prepareViewerPlayback } from "../src/client/media/viewer-playback.ts";
 
 describe("Viewer playback binding", () => {
+  it("recognizes decoding and unsupported media from the active element", () => {
+    expect(mediaElementPlaybackFailed({ code: 3 })).toBe(true);
+    expect(mediaElementPlaybackFailed({ code: 4 })).toBe(true);
+    expect(mediaElementPlaybackFailed({ code: 1 })).toBe(false);
+    expect(mediaElementPlaybackFailed({ code: 2 })).toBe(false);
+    expect(mediaElementPlaybackFailed(null)).toBe(false);
+  });
+
   it("distinguishes canceled playback from autoplay denial and actual failures", () => {
     expect(playbackFailure(new DOMException("Paused", "AbortError"))).toBeNull();
     expect(playbackFailure({ name: "AbortError" })).toBeNull();

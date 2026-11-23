@@ -104,7 +104,7 @@ import {
   type ViewerPresentationAction,
   type ViewerRouteKind,
 } from "../media/viewer-presentation";
-import { nextViewerMediaBinding, playbackFailure, prepareViewerPlayback, type RemoteMediaBinding } from "../media/viewer-playback";
+import { mediaElementPlaybackFailed, nextViewerMediaBinding, playbackFailure, prepareViewerPlayback, type RemoteMediaBinding } from "../media/viewer-playback";
 import { observeCompositedVideoFrame } from "../media/video-frame-proof";
 import { exactPeerSignalOwner } from "../media/route-transition";
 import { ViewerSfuRoute } from "../media/viewer-sfu-route";
@@ -453,7 +453,11 @@ export function ViewerPage({
         if (!mediaBindingIsCurrent(binding) || !failure) {
           return;
         }
-        invalidatePresentedMedia();
+        if (failure === "autoplay-blocked") {
+          invalidatePresentedMedia();
+        } else {
+          invalidateQualityPresentation();
+        }
         dispatchPresentation({
           type: failure,
           generation: binding.generation,
@@ -2336,6 +2340,16 @@ export function ViewerPage({
               }}
               onPause={invalidateQualityPresentation}
               onEnded={invalidateQualityPresentation}
+              onError={({ currentTarget: video }) => {
+                const binding = remoteMediaRef.current;
+                if (!binding || video.srcObject !== binding.stream || !mediaElementPlaybackFailed(video.error)) return;
+                invalidateQualityPresentation();
+                dispatchPresentation({
+                  type: "playback-failed",
+                  generation: binding.generation,
+                  revision: binding.boundAtRevision,
+                });
+              }}
             />
             <PlaybackControls
               overlayAction={<RoomChatToggle session={interactionSession} />}

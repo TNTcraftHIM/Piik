@@ -344,7 +344,8 @@ export function reduceViewerPresentation(
     case "autoplay-blocked":
       if (
         !state.media ||
-        state.media.generation !== action.generation
+        state.media.generation !== action.generation ||
+        state.playbackFailedGeneration === action.generation
       ) {
         return state;
       }
@@ -367,7 +368,17 @@ export function reduceViewerPresentation(
       ) {
         return state;
       }
-      return { ...state, playbackFailedGeneration: action.generation };
+      return {
+        ...state,
+        media: {
+          ...state.media,
+          proofEpoch: state.media.proofEpoch + 1,
+          framePresented: false,
+        },
+        retainedFrame: state.retainedFrame || state.media.framePresented,
+        autoplayBlockedGeneration: null,
+        playbackFailedGeneration: action.generation,
+      };
     case "media-cleared":
       return {
         ...state,
