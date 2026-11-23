@@ -67,10 +67,21 @@ replacing the Go transport. The unmatched field reports remain in [TODO](../todo
 
 ## 2.x Receiver Buffering And Source Gaps
 
-Reviewed 2026-11-22. Three synthetic controls distinguish late delivery
+Reviewed 2026-11-23. Synthetic controls distinguish late delivery
 from absent source frames. The [media-quality contract](../standards/media-quality.md#capture-and-controls)
 owns automatic buffering and the optional receiver target; requested targets
 and actual delay remain different measurements.
+
+On November 23, Windows HeadlessChrome 156 ran one fresh connection per target
+with the 2.x receiver setting from `4b42514b` and synthetic 320×180 video.
+The local UDP path held packets for 200 ms every three seconds and released
+them in order. The three event windows had maximum presentation intervals of
+195/229/202 ms on automatic and 62/77/63 ms at 300 ms. Automatic recorded
+three freezes totaling 643 ms. The 300 ms arm recorded one 311 ms freeze
+before the first intervention and zero in the event windows. Neither arm
+recorded loss, NACKs or retransmissions during those windows. Per-window
+median capture-to-presentation delays estimated by Chrome were 30–35 ms
+on automatic and 303–308 ms at 300 ms.
 
 The November 16 network control used the e25bd009 production Source,
 RelayDerivation, Windows helper and LiveKit/Pion path. Those media owners and
@@ -85,7 +96,9 @@ packet delay and three 200 ms interruptions. With sender budget fixed at 200 ms:
 | Automatic | 402.6 ms | 106.2 ms | 3 / 1.075 s |
 | 300 ms | 145.9 ms | 331.1 ms | 0 / 0 s |
 
-Both arms decoded 1338 frames, and the interruption windows recorded NACK/RTX.
+Recalculation of the three original interruption windows found one freeze per
+window on automatic and zero at 300 ms. Both arms recorded NACKs and received
+retransmissions in every window and decoded 1338 frames over the full run.
 This supports smoother presentation at about 225 ms additional delay in that
 control, without proving each repair arrived in time. Derived QP, bitrate and
 lost-packet identities differed; it does not establish a sharpness improvement.
@@ -108,7 +121,7 @@ that intervention was rarely active; the 500 ms arm also had an unexplained
 cadence gate, leaving no complete four-arm comparison. These observations do
 not establish a benefit from increasing sender delay.
 
-A third control on 92185fee used two simultaneous ViewerPeer receivers in
+A separate control on 92185fee used two simultaneous ViewerPeer receivers in
 Windows HeadlessChrome 152. The source sent numbered 320×180 pictures and a
 synthetic audio track. A transform held each sender's encoded video for one
 251 ms interval and released all eight frames in order with original RTP
