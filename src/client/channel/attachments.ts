@@ -634,8 +634,9 @@ export class ChannelAttachments {
               failedResponses.add(request);
               this.cancelChunks?.(peer, request);
             }
+            const code = errorOf(error).message;
             this.invoke(runtime, () => runtime.delivery.peer_failed(JSON.stringify(key), peer,
-              effect.type === "send_control" ? effect.control.requestId : effect.requestId, errorOf(error).message));
+              effect.type === "send_control" ? effect.control.requestId : effect.requestId, code === "data_channel_busy" ? "file_transfer_busy" : code));
           });
       } else if (effect.type === "read") {
         const id = fileKeyString(key), source = this.sources.get(id);

@@ -1,6 +1,6 @@
 //! HTTP boundary tests for current Host admission; no GUI or real identities.
 use super::*;
-use crate::app::{sites, update, whip, Config, Host, Permission, Registry};
+use crate::app::{host_task, sites, update, whip, Config, Host, Permission, Registry};
 use axum::{
     routing::{get, put},
     Router,
@@ -49,10 +49,10 @@ impl Fixture {
             commands: commands.clone(),
             ready: admitted,
             stop: stopped.clone(),
-            task: tokio::spawn(async move {
+            task: host_task(tokio::spawn(async move {
                 let _ = stopping.wait_for(|value| *value).await;
                 Ok(())
-            }),
+            })),
         };
         let app = Arc::new(App {
             config: Config {
@@ -216,7 +216,7 @@ async fn concurrent_descriptions_follow_current_admission_without_recreating_the
         assert_eq!(registry.hosts.len(), 1);
         let host = registry.hosts.values().next().unwrap();
         assert!(host.commands.same_channel(&fixture.commands));
-        assert!(!host.task.is_finished());
+        assert!(!host.finished());
         assert!(!*host.stop.borrow());
     }
     fixture.finish().await;
@@ -240,8 +240,7 @@ async fn cancelled_http_wait_releases_only_itself_and_owner_retirement_releases_
         .values()
         .next()
         .unwrap()
-        .task
-        .is_finished());
+        .finished());
     fixture.stopped.send_replace(true);
     let reply = response(sibling).await;
     assert!(reply.starts_with("HTTP/1.1 503"), "{reply}");

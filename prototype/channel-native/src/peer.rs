@@ -209,7 +209,7 @@ pub(crate) enum PeerState {
 pub struct NativePeers {
     cancel: watch::Sender<bool>,
     input: mpsc::Sender<Input>,
-    task: JoinHandle<()>,
+    task: JoinHandle<Result<()>>,
 }
 pub enum NativeEvent {
     Command(Command),
@@ -790,6 +790,7 @@ struct Driver {
     admitted: HashSet<Uuid>,
     pairs: HashMap<Uuid, Pair>,
     retiring_pair: Option<JoinHandle<()>>,
+    retirement_failed: mpsc::Sender<tokio::task::JoinError>,
     preparings: HashMap<Uuid, preparation::Pending>,
     publications: HashMap<Uuid, PublicationInfo>,
     sources: HashMap<Uuid, Source>,
@@ -839,6 +840,7 @@ impl NativePeers {
         let (events, mut event_rx) = mpsc::channel(1024);
         let (ready_sources, mut ready_rx) = mpsc::channel(256);
         let bandwidth_changed = Arc::new(Notify::new());
+        let (retirement_failed, mut failure) = mpsc::channel(1);
         let task = tokio::spawn(async move {
             let transport = transport::Runtime::new(server_udp.clone());
             let mut d = Driver {
@@ -854,6 +856,7 @@ impl NativePeers {
                 admitted: HashSet::new(),
                 pairs: HashMap::new(),
                 retiring_pair: None,
+                retirement_failed,
                 preparings: HashMap::new(),
                 publications: HashMap::new(),
                 sources: HashMap::new(),
@@ -886,10 +889,10 @@ impl NativePeers {
                 Bandwidth,
                 Tick,
             }
-            loop {
+            let result = loop {
                 let turn = tokio::select! {
-                    _=cancelled.changed()=>break,
-                    request=inputs.recv()=>match request {Some(request)=>Turn::Input(request),None=>break},
+                    _=cancelled.changed()=>break Ok(()),
+                    request=inputs.recv()=>match request {Some(request)=>Turn::Input(request),None=>break Ok(())},
                     Some(event)=event_rx.recv()=>Turn::Event(event),
                     Some(source)=ready_rx.recv()=>Turn::SourceReady(source),
                     Some((id, result))=preparation::next(&mut d.preparings)=>Turn::Prepared(d.preparings.remove(&id), result),
@@ -1052,35 +1055,16 @@ impl NativePeers {
                         d.request_pending_keyframes();
                     }
                 };
-                tokio::select! {_=cancelled.changed()=>break,_=work=>{}}
-            }
-            d.inputs.close();
-            for (_, pending) in d.preparings.drain() {
-                pending.close().await;
-            }
-            #[cfg(feature = "capture")]
-            {
-                #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-                for (_, mut producer) in d.derived.drain() {
-                    producer.stop().await;
+                tokio::select! {
+                    biased;
+                    Some(error) = failure.recv() => break Err(error),
+                    _ = cancelled.changed() => break Ok(()),
+                    _ = work => {}
                 }
-                for capture in d.local_producers.values() {
-                    capture.producer.stop();
-                }
-                for (_, mut capture) in d.local_producers.drain() {
-                    capture.producer.close().await;
-                }
-                for (_, (_, mut audio)) in d.capture_audio.drain() {
-                    audio.close().await;
-                }
-            }
-            d.finish_pair_retirement().await;
-            for (_, pair) in d.pairs.drain() {
-                close_pair(pair).await;
-            }
-            d.files.close().await;
-            d.watches.close().await;
-            d.transport.close().await;
+            };
+            result
+                .and(d.close().await)
+                .context("pair retirement task failed")
         });
         Self {
             cancel,
@@ -1235,8 +1219,9 @@ impl NativePeers {
     }
     pub async fn close(&mut self) -> Result<()> {
         let _ = self.cancel.send(true);
-        (&mut self.task).await?;
-        Ok(())
+        (&mut self.task).await?.inspect_err(|error| {
+            eprintln!("Native peer driver stopped: {error:#}");
+        })
     }
 }
 pub(crate) fn codec() -> RtpCodec {
@@ -1249,6 +1234,37 @@ pub(crate) fn codec() -> RtpCodec {
 }
 
 impl Driver {
+    async fn close(mut self) -> Result<(), tokio::task::JoinError> {
+        self.inputs.close();
+        for (_, pending) in self.preparings.drain() {
+            pending.close().await;
+        }
+        #[cfg(feature = "capture")]
+        {
+            #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+            for (_, mut producer) in self.derived.drain() {
+                producer.stop().await;
+            }
+            for capture in self.local_producers.values() {
+                capture.producer.stop();
+            }
+            for (_, mut capture) in self.local_producers.drain() {
+                capture.producer.close().await;
+            }
+            for (_, (_, mut audio)) in self.capture_audio.drain() {
+                audio.close().await;
+            }
+        }
+        let result = self.finish_pair_retirement().await;
+        for (_, pair) in self.pairs.drain() {
+            close_pair(pair).await;
+        }
+        self.files.close().await;
+        self.watches.close().await;
+        self.transport.close().await;
+        result
+    }
+
     async fn connection_metrics(
         &self,
         room: &str,
@@ -2714,11 +2730,13 @@ impl Driver {
             .await;
         }
     }
-    async fn finish_pair_retirement(&mut self) {
+    async fn finish_pair_retirement(&mut self) -> Result<(), tokio::task::JoinError> {
         if let Some(retiring) = self.retiring_pair.as_mut() {
-            retiring.await.expect("pair retirement task failed");
+            let result = retiring.await;
             self.retiring_pair = None;
+            return result;
         }
+        Ok(())
     }
     async fn retire_pair(&mut self, id: Uuid) -> bool {
         if let Some(pending) = self.preparings.remove(&id) {
@@ -2740,7 +2758,11 @@ impl Driver {
         self.relay.retain(&self.sources.keys().copied().collect());
         self.files.detach(peer).await;
         self.watches.detach(peer).await;
-        self.finish_pair_retirement().await;
+        if let Err(error) = self.finish_pair_retirement().await {
+            // The driver drops this turn before acknowledging the request and closes its siblings.
+            let _ = self.retirement_failed.send(error).await;
+            std::future::pending::<()>().await;
+        }
         released
     }
     async fn fail(&mut self, id: Uuid) {
@@ -3794,6 +3816,8 @@ fn close_pair(mut pair: Pair) -> impl std::future::Future<Output = ()> {
 
 mod bandwidth;
 mod input;
+#[cfg(test)]
+pub(crate) use input::tests::share_pause_projection;
 mod mapping;
 mod preparation;
 pub mod server_udp;

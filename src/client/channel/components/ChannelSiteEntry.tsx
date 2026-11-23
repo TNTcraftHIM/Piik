@@ -45,13 +45,15 @@ export function ChannelSiteEntry({ channel, failure }: {
   const unknownFailure = !channel.error || channel.error === "disconnected" || channel.error === "session_expired";
   const checkSite = unknownFailure && (retried || channel.connection === "closed");
   const showConnectionHelp = checkSite || (!connecting && failure.connectionHelp);
+  const showFailure = !connecting || channel.error === "session_expired";
   const title = connecting ? t("channel.siteEntry.connecting") : t("channel.siteEntry.connectionFailed");
   return <main className="c3-locked-room c3-site-entry" aria-labelledby="c3-site-entry-title">
     {connecting ? <BrandLoader /> : <Glyph name="signal" size={46} />}
     <h1 id="c3-site-entry-title">{title}</h1>
     <p className="c3-site-entry-address">{location.host}</p>
+    {showFailure && failure.message && <p role="alert">{failure.message}</p>}
     {connecting ? <span role="status" className="visually-hidden">{title}</span>
-        : <>{failure.message && <p role="alert">{failure.message}</p>}
+        : <>
           <ChannelAction icon="refresh" label={identityRejected ? t("channel.siteEntry.retrySavedIdentity") : t("channel.siteEntry.reconnect")} onClick={channel.reconnect} />
           {identityRejected && <>
             <ChannelAction icon="plus" label={t("channel.siteEntry.joinWithANewIdentity")} onClick={channel.joinAsNewIdentity} />

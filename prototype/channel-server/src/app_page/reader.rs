@@ -81,25 +81,20 @@ impl Resource {
 }
 pub struct OriginReader {
     pub root: Uuid,
-    context: MediaContext,
+    pub(super) context: MediaContext,
     stopped: watch::Receiver<bool>,
     client: reqwest::Client,
     resources: Mutex<BTreeMap<Uuid, Resource>>,
 }
 impl OriginReader {
     pub async fn read_metadata(
-        context: MediaContext,
-        stopped: watch::Receiver<bool>,
+        &self,
         offset: u64,
         length: u32,
     ) -> Result<ReadResult> {
-        ensure!(context.format == Format::File, "watch_resource_unavailable");
-        ensure!(
-            context.size.is_some_and(|size| offset < size),
-            "invalid_watch_range"
-        );
-        let reader = Self::new(context, stopped)?;
-        reader.read(reader.root, offset, length).await
+        ensure!(self.context.format == Format::File, "watch_resource_unavailable");
+        ensure!(self.context.size.is_some_and(|size| offset < size), "invalid_watch_range");
+        self.read(self.root, offset, length).await
     }
 
     pub async fn prepare(
@@ -107,31 +102,35 @@ impl OriginReader {
         stopped: watch::Receiver<bool>,
     ) -> Result<Arc<Self>> {
         let reader = Self::new(context, stopped)?;
-        let root = reader.root;
+        reader.prove_root().await?;
+        Ok(reader)
+    }
+    pub(super) async fn prove_root(&self) -> Result<()> {
+        let root = self.root;
         // Prove the root before replacing an active source lease.
-        reader
+        self
             .read(
                 root,
                 0,
-                if reader.context.format == Format::Hls {
+                if self.context.format == Format::Hls {
                     WATCH_WINDOW_BYTES as u32
                 } else {
                     1
                 },
             )
             .await?;
-        if reader.context.format == Format::File {
-            let size = reader
+        if self.context.format == Format::File {
+            let size = self
                 .context
                 .size
                 .ok_or_else(|| anyhow!("watch_media_size_unavailable"))?;
             if size > 1 {
-                reader.read(root, 1, 1).await?;
+                self.read(root, 1, 1).await?;
             }
         }
-        Ok(reader)
+        Ok(())
     }
-    fn new(context: MediaContext, stopped: watch::Receiver<bool>) -> Result<Arc<Self>> {
+    pub(super) fn new(context: MediaContext, stopped: watch::Receiver<bool>) -> Result<Arc<Self>> {
         let root = Uuid::new_v4();
         let url = url::Url::parse(&context.url)?;
         let resource = match context.format {
@@ -1159,7 +1158,7 @@ mod tests {
         ] {
             let (ctx, _page, _) = context(format!("{base}/{path}"), Format::File, Some(128));
             assert_eq!(
-                OriginReader::read_metadata(ctx, stopped.clone(), 10, 16)
+                OriginReader::new(ctx, stopped.clone()).unwrap().read_metadata(10, 16)
                     .await
                     .unwrap_err()
                     .to_string(),
@@ -1171,17 +1170,22 @@ mod tests {
     #[tokio::test]
     async fn failed_metadata_http_does_not_disclose_a_source_grant() {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        // A bound, non-listening socket reserves the port and refuses connections.
+        let socket = tokio::net::TcpSocket::new_v4().unwrap();
+        socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
         let url = format!(
             "http://{}/media?grant=private",
-            listener.local_addr().unwrap()
+            socket.local_addr().unwrap()
         );
-        drop(listener);
         let (ctx, _page, _) = context(url.clone(), Format::File, Some(1000));
         let (_stop, stopped) = watch::channel(false);
-        let error = OriginReader::read_metadata(ctx, stopped, 0, 16)
+        let mut reader = OriginReader::new(ctx, stopped).unwrap();
+        Arc::get_mut(&mut reader).unwrap().client =
+            reqwest::Client::builder().no_proxy().build().unwrap();
+        let error = reader.read_metadata(0, 16)
             .await
             .unwrap_err();
+        drop(socket);
         assert_eq!(error.to_string(), "watch_media_unavailable");
         assert!(error.downcast_ref::<reqwest::Error>().unwrap().is_connect());
         assert!(!format!("{error:?}").contains(&url));
@@ -1207,7 +1211,7 @@ mod tests {
         let (_stop, stopped) = watch::channel(false);
         let started = Instant::now();
         let result = tokio::time::timeout(Duration::from_secs(19),
-            OriginReader::read_metadata(context, stopped, 0, 3)).await;
+            OriginReader::new(context, stopped).unwrap().read_metadata(0, 3)).await;
         server.abort(); let _ = server.await;
         println!("progressing HTTP range completed after {:?}", started.elapsed());
         assert_eq!(result.unwrap().unwrap().bytes, vec![0, 1, 2]);
@@ -1277,7 +1281,7 @@ mod tests {
         let (base, server) = fixture().await;
         let (ctx, _page, _) = context(format!("{base}/big"), Format::File, Some(200 * 1024 * 1024));
         let (_stop, stopped) = watch::channel(false);
-        let result = OriginReader::read_metadata(ctx, stopped, 65536, 65536)
+        let result = OriginReader::new(ctx, stopped).unwrap().read_metadata(65536, 65536)
             .await
             .unwrap();
         assert_eq!(result.total_size, Some(200 * 1024 * 1024));

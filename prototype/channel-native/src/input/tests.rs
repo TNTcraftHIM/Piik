@@ -474,6 +474,131 @@ fn focus_suspend_releases_and_resume_retains_grant_but_target_loss_retires() {
     assert!(state.get("grant").is_none());
 }
 
+#[tokio::test]
+async fn share_pause_releases_input_and_only_fresh_consent_resumes() {
+    let (desktop, recording) = desktop();
+    let (sibling, _sibling_replies, sibling_view) = source(&desktop);
+    let (source, mut replies, view) = source(&desktop);
+    let mut pause = crate::peer::share_pause_projection(&source, &sibling);
+    sibling.set_mode(Mode::Ask).unwrap();
+    let mut other = Client::new(&sibling);
+    other.send(&sibling, json!({"type":"request","intent":Uuid::new_v4()}));
+    source.set_mode(Mode::Ask).unwrap();
+    let mut active = Client::new(&source);
+    let old = active.approve(&source, &mut replies);
+    active.send(&source, json!({"type":"button","button":0,"down":true,"grant":old}));
+    active.send(&source, json!({"type":"key","code":"ShiftLeft","down":true,"grant":old}));
+    let mut waiting = Client::new(&source);
+    let intent = Uuid::new_v4();
+    waiting.send(&source, json!({"type":"request","intent":intent}));
+    let permission = source.configure(Mode::Room, None, None, |_| async { Ok(()) }).unwrap();
+
+    let pending_moves = [0.25, 0.75].map(|x| active.packet(json!({
+        "type":"move", "x":x, "y":0.5, "grant":old
+    })));
+    pause(true);
+    let released = recording.lock().unwrap().events.clone();
+    assert_eq!(released.len(), 4);
+    source.receive(active.id, active.flow, &pending_moves[0]).unwrap();
+    assert_eq!(recording.lock().unwrap().events, released);
+    assert!(permission.await.is_err());
+    assert_eq!(view.borrow().mode, Mode::Ask);
+    assert!(view.borrow().requests.is_empty());
+    assert!(source.decide(waiting.id, intent, true).is_err());
+    assert_eq!(active.state(&mut replies)["state"], "unavailable");
+    pause(true);
+    waiting.send(&source, json!({"type":"request","intent":Uuid::new_v4()}));
+    assert!(view.borrow().requests.is_empty());
+    pause(false);
+    assert_eq!(active.state(&mut replies)["state"], "ready");
+    source.receive(active.id, active.flow, &pending_moves[1]).unwrap();
+    assert_eq!(recording.lock().unwrap().events, released);
+    assert!(view.borrow().requests.is_empty());
+    assert_eq!(sibling_view.borrow().requests.len(), 1);
+    for held in [Held::Button(0), Held::Key(keyboard::scan("ShiftLeft").unwrap())] {
+        assert!(released.contains(&Action::Held(held, true)));
+        assert!(released.contains(&Action::Held(held, false)));
+    }
+    let fresh = active.approve(&source, &mut replies);
+    assert_ne!(fresh, old);
+    source.retire_capture();
+    pause(false);
+    assert!(source.set_mode(Mode::Room).is_err());
+}
+
+#[tokio::test(start_paused = true)]
+async fn desktop_ticks_follow_sources_and_pending_releases() {
+    use std::{
+        future::{poll_fn, Future},
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+    use tokio::{task::yield_now, time::sleep};
+
+    let (desktop, recording) = desktop();
+    let driver_polls = Arc::new(AtomicUsize::new(0));
+    let driver = tokio::spawn({
+        let desktop = desktop.clone();
+        let driver_polls = driver_polls.clone();
+        async move {
+            let mut timer = None;
+            loop {
+                let tick = desktop.tick_when_needed(&mut timer);
+                tokio::pin!(tick);
+                poll_fn(|cx| {
+                    driver_polls.fetch_add(1, Ordering::Relaxed);
+                    tick.as_mut().poll(cx)
+                })
+                .await;
+            }
+        }
+    });
+    yield_now().await;
+    let idle_polls = driver_polls.load(Ordering::Relaxed);
+    assert!(idle_polls > 0);
+    sleep(Duration::from_secs(1)).await;
+    assert_eq!(driver_polls.load(Ordering::Relaxed), idle_polls);
+
+    let (source, mut replies, _) = source(&desktop);
+    source.set_mode(Mode::Ask).unwrap();
+    let mut client = Client::new(&source);
+    let grant = client.approve(&source, &mut replies);
+    recording.lock().unwrap().suspended = true;
+    sleep(Duration::from_millis(110)).await;
+    let state = client.state(&mut replies);
+    assert_eq!(state["state"], "suspended");
+    assert_eq!(state["grant"], grant);
+
+    recording.lock().unwrap().suspended = false;
+    sleep(Duration::from_millis(100)).await;
+    assert_eq!(client.state(&mut replies)["state"], "active");
+    client.send(
+        &source,
+        json!({"type":"key","code":"KeyA","down":true,"grant":grant}),
+    );
+
+    recording.lock().unwrap().fail_release = true;
+    source.close();
+    assert!(desktop.0.lock().unwrap().sources.is_empty());
+    assert_eq!(recording.lock().unwrap().events.len(), 2);
+    sleep(Duration::from_millis(100)).await;
+    assert_eq!(recording.lock().unwrap().events.len(), 3);
+
+    recording.lock().unwrap().fail_release = false;
+    sleep(Duration::from_millis(100)).await;
+    assert!(desktop.0.lock().unwrap().releases.is_empty());
+    let idle_polls = driver_polls.load(Ordering::Relaxed);
+    sleep(Duration::from_secs(1)).await;
+    assert_eq!(driver_polls.load(Ordering::Relaxed), idle_polls);
+    let release = Action::Held(Held::Key(keyboard::scan("KeyA").unwrap()), false);
+    assert_eq!(
+        recording.lock().unwrap().events[1..],
+        [release.clone(), release.clone(), release]
+    );
+
+    driver.abort();
+    assert!(driver.await.unwrap_err().is_cancelled());
+}
+
 #[test]
 fn os_failure_keeps_permission_and_only_failed_releases_are_retried() {
     let (d, r) = desktop();

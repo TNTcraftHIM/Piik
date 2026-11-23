@@ -3,11 +3,8 @@
 export function androidAppIntent(action: unknown, userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent): string | null {
   // A connected App can name its installed package without frontend version rules.
   if (typeof action === "string" && /^intent:\/\/media(?:\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})?#Intent;scheme=piik;package=[A-Za-z0-9_.]+;end$/.test(action)) return action;
-  if (action !== "piik://app" && action !== "piik://media") return null;
-  // A connected App supplies its own media action. Android tablets can report
-  // a desktop UA; only an unconnected cold wake needs the browser OS hint.
-  if (action === "piik://app" && !/Android/i.test(userAgent)) return null;
-  return `intent://${action.slice("piik://".length)}#Intent;scheme=piik;package=tv.piik.android.channel3;end`;
+  if (action !== "piik://app" || !/Android/i.test(userAgent)) return null;
+  return "intent://app#Intent;scheme=piik;package=tv.piik.android.channel3;end";
 }
 
 // Called only after the pending picker request has been sent. A browser may

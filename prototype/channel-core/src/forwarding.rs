@@ -108,7 +108,7 @@ impl ForwardingBudget {
         let mut requested = BTreeSet::new();
         for pair in &snapshot.pairs {
             for flow in &pair.outgoing {
-                if flow.input_flow_id.is_some() {
+                if flow.input_flow_id.is_some() && !flow.presentation {
                     if let Some(kind) = kinds.get(&flow.publication_id) {
                         requested.insert((*kind, pair.peer_id));
                     }
@@ -161,7 +161,7 @@ impl ForwardingBudget {
         let mut refused = BTreeSet::new();
         for pair in &mut snapshot.pairs {
             pair.outgoing.retain(|flow| {
-                let allowed = flow.input_flow_id.is_none()
+                let allowed = flow.input_flow_id.is_none() || flow.presentation
                     || kinds
                         .get(&flow.publication_id)
                         .is_some_and(|kind| admitted.contains(&(*kind, pair.peer_id)));
@@ -303,12 +303,14 @@ mod tests {
             id: id(5),
             publication_id: id(4),
             input_flow_id: None,
+            presentation: false,
             selected: true,
         };
         let relay = FlowBinding {
             id: id(6),
             publication_id: id(3),
             input_flow_id: Some(id(7)),
+            presentation: false,
             selected: false,
         };
         raw.pairs.push(PairInfo {

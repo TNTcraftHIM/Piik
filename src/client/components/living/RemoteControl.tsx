@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import type { InputTransport } from "../../remote-control/input-route";
-import { RemoteInputSession, type RemoteInputState, type RemoteInputEvent } from "../../remote-control/input-session";
+import { RemoteInputSession, type RemoteInputState, type RemoteInputEvent, type RemoteInputInterruption } from "../../remote-control/input-session";
 import { RemoteTouchpad } from "../../remote-control/touchpad";
 import { RemoteViewport } from "../../remote-control/viewport";
 import { RemoteGamepad } from "../../remote-control/gamepad";
@@ -31,7 +31,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
 }) {
   const { t } = useCopy();
   const [state, setState] = useState<RemoteInputState | null>(null);
-  const [interrupted, setInterrupted] = useState(false);
+  const [interruption, setInterruption] = useState<RemoteInputInterruption | null>(null);
   const [locked, setLocked] = useState(false);
   const [lockFailed, setLockFailed] = useState(false);
   const [presentation, setPresentation] = useState<"playing" | "paused" | "external">("paused");
@@ -57,6 +57,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const cursor = useRef<HTMLDivElement | null>(null);
   const touchpad = useRef<RemoteTouchpad | null>(null);
   const mouseButtons = useRef(new Set<number>());
+  const physicalKeys = useRef(new Set<string>());
   const viewport = useRef<RemoteViewport | null>(null);
   const canControl = available && presentation === "playing";
   const active = state?.state === "active" && canControl && channel?.readyState === "open";
@@ -66,6 +67,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const reset = useCallback(() => {
     gamepad.current?.clearVirtualSticks();
     stickMouse.current?.stop();
+    physicalKeys.current.clear();
     mouseButtons.current.clear(); touchpad.current?.reset(); session.current?.input({ type: "reset" });
   }, []);
   useEffect(() => {
@@ -93,7 +95,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     setState(null);
     setPasswordOpen(false); setPassword("");
     if (!channel) return;
-    const current = new RemoteInputSession(channel, setState, () => setInterrupted(true));
+    const current = new RemoteInputSession(channel, setState, setInterruption);
     session.current = current;
     return () => {
       current.dispose(); session.current = null;
@@ -204,6 +206,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     document.addEventListener("pointerlockchange", lockChanged);
     return () => {
       mouseButtons.current.clear();
+      physicalKeys.current.clear();
       element?.removeEventListener("wheel", wheel);
       window.removeEventListener("mouseup", mouseUp, true);
       window.removeEventListener("blur", reset);
@@ -237,14 +240,16 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
 
   const setAttention = useContext(PlaybackControlsAttention);
   const attention = passwordOpen || state?.state === "pending" ? "decision"
-    : interrupted || state?.reason || state?.inputFailed || state?.state === "failed" || state?.state === "suspended" ? "feedback" : null;
+    : interruption || state?.reason || state?.inputFailed || state?.state === "failed" || state?.state === "suspended" ? "feedback" : null;
   useEffect(() => {
     setAttention?.(attention);
     return () => setAttention?.(null);
   }, [attention, setAttention]);
 
-  const endedNotice = interrupted && <Pill icon="mouse" label={t("remote.ended")} comic="hint-remote-stop"
-    onDismiss={() => setInterrupted(false)} />;
+  const endedNotice = interruption && <Pill icon="mouse"
+    label={t(interruption === "control-ended" ? "remote.ended" :
+      interruption === "request-not-approved" ? "remote.notApproved" : "remote.requestEnded")}
+    comic="hint-remote-stop" onDismiss={() => setInterruption(null)} />;
   if (!channel || channel.readyState !== "open" || !state || state.mode === "off") return endedNotice;
   const point = (clientX: number, clientY: number) => {
     const video = videoRef.current;
@@ -254,7 +259,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const holding = controlled || requesting;
   const buttonTitle = holding ? controlled ? "remote.stop" : "remote.cancel" : "remote.request";
   const requestControl = () => {
-    setInterrupted(false);
+    setInterruption(null);
     if (holding) { release(); return; }
     if (state.mode === "password") {
       release(); setPasswordOpen(true);
@@ -374,9 +379,15 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
         onBlur={reset}
         onKeyDown={event => {
           event.preventDefault(); event.stopPropagation();
-          if (!event.nativeEvent.isComposing) input({ type: "key", code: event.code, down: true });
+          // Focus can return to the picture while a local key is still held.
+          if (event.nativeEvent.isComposing || (event.repeat && !physicalKeys.current.has(event.code))) return;
+          physicalKeys.current.add(event.code);
+          input({ type: "key", code: event.code, down: true });
         }}
-        onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }}>
+        onKeyUp={event => {
+          event.preventDefault(); event.stopPropagation();
+          if (physicalKeys.current.delete(event.code)) input({ type: "key", code: event.code, down: false });
+        }}>
         {active && touchPointer && <RemoteMouse key={state.grant} pointer={touchPointer} positionRef={cursor}
           readStickPositions={readStickPositions} onStickPositionChange={onStickPositionChange}
           pointAt={point} touchMode={touchMode} virtualSticksEnabled={virtualSticksEnabled}

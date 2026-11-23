@@ -1,5 +1,5 @@
 //! Compose explicitly selected indexed files; GPAC in the shared Web owns MP4 parsing.
-use super::{reader::OriginReader, Format, MediaContext, SAFE_INTEGER};
+use super::{reader::OriginReader, Format, SAFE_INTEGER};
 use anyhow::{anyhow, bail, ensure, Result};
 use base64ct::{Base64, Encoding};
 use piik_channel_native::watch::{ReadResult, Reader};
@@ -96,8 +96,8 @@ pub struct IndexedReader {
 }
 impl IndexedReader {
     pub async fn prepare(
-        video: (TrackRecipe, MediaContext),
-        audio: Option<(TrackRecipe, MediaContext)>,
+        video: (TrackRecipe, Arc<OriginReader>),
+        audio: Option<(TrackRecipe, Arc<OriginReader>)>,
         stopped: watch::Receiver<bool>,
     ) -> Result<Arc<Self>> {
         ensure!(
@@ -109,7 +109,7 @@ impl IndexedReader {
         let mut reader = Self {
             root: Uuid::new_v4(),
             resources: BTreeMap::new(),
-            retired: video.1.retired.clone(),
+            retired: video.1.context.retired.clone(),
             stopped,
         };
         let (video_playlist, video_bandwidth, video_codec) =
@@ -161,14 +161,14 @@ impl IndexedReader {
     async fn add_track(
         &mut self,
         recipe: TrackRecipe,
-        context: MediaContext,
+        origin: Arc<OriginReader>,
     ) -> Result<(Uuid, u64, String)> {
         let init = recipe.validate()?;
         ensure!(
-            context.format == Format::File && context.size == Some(recipe.total_size),
+            origin.context.format == Format::File && origin.context.size == Some(recipe.total_size),
             "watch_media_changed"
         );
-        let origin = OriginReader::prepare(context, self.stopped.clone()).await?;
+        origin.prove_root().await?;
         // Prove a media Range, not only the file prefix, before publishing this graph.
         origin.read(origin.root, recipe.media_offset, 1).await?;
         let file = origin.root;

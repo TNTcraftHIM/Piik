@@ -146,8 +146,10 @@
   pointer-events: none;
   transform: translateY(4px);
 }
-.c3-mini-player > .lr-playback-reveal { right: 50%; bottom: 0; translate: 50% 0; border-radius: 10px 10px 0 0; border-bottom: 0; }
-.c3-mini-player[data-controls-hidden="true"] > .lr-playback-reveal { display: grid; place-items: center; }
+.c3-mini-player[data-controls-hidden="true"]:not([data-thumbnail]):has(> .lr-remote-input-surface:not(.is-suspended)) > .lr-playback-reveal {
+  display: grid;
+  place-items: center;
+}
 /* Shared remote panels occupy the drawer row, below the picture and its tools. */
 .c3-video.c3-mini-player:has(.lr-remote-keyboard, .lr-remote-password) { display: grid; grid-template: minmax(120px, 1fr) auto auto / minmax(0, 1fr); flex: 1 0 auto; }
 .c3-mini-player:has(.lr-remote-keyboard, .lr-remote-password) > :is(video, .lr-remote-input-surface, .c3-mini-message, .lr-playback-reveal) { grid-area: 1 / 1 / 3 / 2; }

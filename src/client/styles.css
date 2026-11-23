@@ -1301,7 +1301,8 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   stroke-dasharray: 6 7;
   animation: lr-flow 1.1s linear infinite;
 }
-.lr-route-edge.is-presentation:not(.is-pending) { stroke: var(--muted); stroke-dasharray: 2 5; }
+.lr-route-edge.is-presentation { stroke-dasharray: 2 5; }
+.lr-route-edge.is-presentation:not(.is-pending) { stroke: var(--muted); }
 .lr-route-node {
   transition: opacity var(--motion-feedback) ease;
 }

@@ -92,14 +92,14 @@ async fn mpd_catalog_replacement_rejects_stale_choices_without_retiring_active_r
                         assert_eq!(choice_id, choice_b);
                         "b"
                     };
-                    let _ = reply.send(Ok(MediaContext {
+                    let _ = reply.send(Ok((MediaContext {
                         url: format!("{origin}/{directory}/manifest.mpd"),
                         request: None,
                         format: Format::Dash,
                         size: None,
                         retired: retired.clone(),
                         cookies: Arc::new(|_| Box::pin(async { Ok(None) })),
-                    }));
+                    }, Default::default())));
                 }
                 Command::Retire { .. } => {}
                 _ => panic!("unexpected native command"),

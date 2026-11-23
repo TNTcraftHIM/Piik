@@ -209,6 +209,28 @@ impl Identity {
         }
     }
 
+    fn owner_credential(&self) -> String {
+        let mut mac = Hmac::<Sha256>::new_from_slice(self.owner_key.as_bytes())
+            .expect("HMAC accepts any key length");
+        mac.update(self.owner_id.as_bytes());
+        mac.finalize()
+            .into_bytes()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+
+    pub fn admission_changes_user(&self, credential: Option<&str>, owner_key: Option<&str>) -> bool {
+        if let Some(key) = owner_key {
+            return key == self.owner_key
+                && self.users.get(&self.owner_id).is_none_or(|user| {
+                    user.credential != digest(&self.owner_credential())
+                });
+        }
+        // A supplied personal credential must already belong to a stored user.
+        credential.is_none()
+    }
+
     pub fn admit(
         &mut self,
         input: Admission<'_>,
@@ -255,14 +277,7 @@ impl Identity {
             return Err("channel_full");
         }
         let credential = if owner {
-            let mut mac = Hmac::<Sha256>::new_from_slice(self.owner_key.as_bytes())
-                .expect("HMAC accepts any key length");
-            mac.update(self.owner_id.as_bytes());
-            mac.finalize()
-                .into_bytes()
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>()
+            self.owner_credential()
         } else if existing.is_some() {
             input.credential.unwrap().to_owned()
         } else {
@@ -423,6 +438,22 @@ mod tests {
             resume,
             name: "Friend",
         }
+    }
+
+    #[test]
+    fn owner_admission_only_saves_a_new_or_changed_personal_credential() {
+        let mut identity = Identity::new("owner".into());
+        assert!(identity.admission_changes_user(None, Some("owner")));
+        let owner = identity.admit(input(Some("owner"), None, None), Uuid::new_v4(), 0).unwrap();
+        assert!(!identity.admission_changes_user(None, Some("owner")));
+
+        let mut restored = identity.export_users();
+        restored[0].credential = digest("former credential");
+        identity.restore_users(identity.owner_id, restored).unwrap();
+        assert!(identity.admission_changes_user(None, Some("owner")));
+        identity.admit(input(Some("owner"), None, None), Uuid::new_v4(), 1).unwrap();
+        assert_eq!(identity.user_for_credential(&owner.credential), Some(identity.owner_id));
+        assert!(!identity.admission_changes_user(None, Some("owner")));
     }
 
     #[test]

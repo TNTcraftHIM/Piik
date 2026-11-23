@@ -9,24 +9,24 @@ describe("Android App foreground actions", () => {
   )?.[1];
   if (!applicationId) throw new Error("Android applicationId is missing");
   const android = "Mozilla/5.0 (Linux; Android 16) Chrome/150 Mobile";
+  const media = "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end";
   it.each([true, false, undefined])("hands off only while the original gesture is active: %s", isActive => {
     const assign = vi.fn();
     vi.stubGlobal("navigator", { userAgent: android, userActivation: isActive === undefined ? undefined : { isActive } });
     vi.stubGlobal("window", { location: { assign } });
     activateNativePicker(undefined);
     expect(assign).not.toHaveBeenCalled();
-    activateNativePicker("piik://media");
+    activateNativePicker(media);
     expect(assign).toHaveBeenCalledTimes(isActive ? 1 : 0);
     if (isActive) {
-      expect(assign).toHaveBeenCalledWith(`intent://media#Intent;scheme=piik;package=${applicationId};end`);
+      expect(assign).toHaveBeenCalledWith(media);
       assign.mockImplementation(() => { throw new DOMException("Blocked", "SecurityError"); });
-      expect(() => activateNativePicker("piik://media")).not.toThrow();
+      expect(() => activateNativePicker(media)).not.toThrow();
     }
   });
   it("allows only fixed Piik actions in its explicit Android package", () => {
     expect(androidAppIntent("piik://app", android)).toBe(`intent://app#Intent;scheme=piik;package=${applicationId};end`);
-    expect(androidAppIntent("piik://media", android)).toBe(`intent://media#Intent;scheme=piik;package=${applicationId};end`);
-    for (const action of [undefined, null, "https://piik.tv", "piik://media?approve=true", "piik://media#token=secret",
+    for (const action of [undefined, null, "https://piik.tv", "piik://media", "piik://media?approve=true", "piik://media#token=secret",
       "piik://user@media", "piik://media/start", "intent://media#Intent;package=other;end"]) {
       expect(androidAppIntent(action, android)).toBeNull();
     }
@@ -39,18 +39,9 @@ describe("Android App foreground actions", () => {
     const assign = vi.fn();
     vi.stubGlobal("navigator", { userAgent: desktop, userActivation: { isActive: true } });
     vi.stubGlobal("window", { location: { assign } });
-    activateNativePicker("piik://media");
-    expect(assign).toHaveBeenCalledWith(`intent://media#Intent;scheme=piik;package=${applicationId};end`);
+    activateNativePicker(media);
+    expect(assign).toHaveBeenCalledWith(media);
     expect(androidAppIntent("piik://app", desktop)).toBeNull();
-  });
-
-  it("uses a connected App's complete package-specific media capability", () => {
-    const activation = "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end";
-    const assign = vi.fn();
-    vi.stubGlobal("navigator", { userAgent: "desktop", userActivation: { isActive: true } });
-    vi.stubGlobal("window", { location: { assign } });
-    activateNativePicker(activation);
-    expect(assign).toHaveBeenCalledWith(activation);
-    expect(androidAppIntent(activation.replace(";end", ";S.extra=value;end"))).toBeNull();
+    expect(androidAppIntent(media.replace(";end", ";S.extra=value;end"))).toBeNull();
   });
 });

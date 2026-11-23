@@ -178,7 +178,7 @@ export interface ChannelActions {
   updateProfile(profile: { name?: string; avatar?: string | null }): Promise<void>;
   updateDomain(settings: Partial<DomainSettings>, reportError?: boolean): Promise<void>;
   setRoomCreationPolicy(policy: RoomCreationPolicy, reportError?: boolean): Promise<void>;
-  exportDomainBackup(): Promise<Blob>;
+  exportDomainBackup(signal?: AbortSignal): Promise<Blob>;
   restoreDomainBackup(archive: Blob): Promise<DomainSettings>;
   createRoom(settings: RoomSettings, reportError?: boolean): Promise<string>;
   updateRoom(roomId: string, settings: Partial<RoomSettings>, reportError?: boolean): Promise<void>;
@@ -188,8 +188,8 @@ export interface ChannelActions {
   appRelayCapacity(signal?: AbortSignal): Promise<NativeRelayCapacity>;
   setAppRelayOverride(current: NativeRelayCapacity, capacity: number | null, reportError?: boolean): Promise<NativeRelayCapacity>;
   roomBackupAvailable(roomId: string): Promise<boolean>;
-  exportRoomBackup(roomId: string, includeFiles?: boolean): Promise<Blob>;
-  exportRoomCopy(roomId: string, includeRoomInfo: boolean, includeFiles?: boolean): Promise<Blob>;
+  exportRoomBackup(roomId: string, includeFiles?: boolean, signal?: AbortSignal): Promise<Blob>;
+  exportRoomCopy(roomId: string, includeRoomInfo: boolean, includeFiles?: boolean, signal?: AbortSignal): Promise<Blob>;
   inspectRoomCopy(archive: Blob): Promise<{ settings: Partial<RoomCopyInfo>; retainedFileCount: number }>;
   importRoomCopy(archive: Blob, settings: RoomSettings): Promise<{ roomId: string; cached: boolean }>;
   restoreRoomBackup(archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }>;
@@ -199,7 +199,7 @@ export interface ChannelActions {
   revokeRoomAccess(roomId: string, userId: string, reportError?: boolean): Promise<void>;
   startScreen(roomId: string, source?: BrowserCaptureSource, deviceId?: string): Promise<void>;
   cameraPreviews: typeof loadCameraPreviews;
-  nativeSources(): Promise<NativeCaptureSources>;
+  nativeSources(signal?: AbortSignal): Promise<NativeCaptureSources>;
   externalInput(roomId: string): (NativeExternalInput & { publicationId: string }) | undefined;
   startExternalScreen(roomId: string): Promise<void>;
   cancelExternalScreen(roomId: string): Promise<void>;

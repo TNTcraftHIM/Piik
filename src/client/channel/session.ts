@@ -17,6 +17,7 @@ import { ChannelConversation } from "./conversation";
 import { selectedRoom } from "./navigation";
 import { RoomReadMarkers } from "./read-markers";
 import { historyProfileIds, mergeMessage, mergeMessages, readingWindow, redactReply } from "./message-history";
+import { userProfile } from "./presentation";
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
 import { messageRemoved, type ChannelActions, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
@@ -757,7 +758,16 @@ export class ChannelSession {
       const bindingId = state.channel.rooms.find(room => room.id === id)?.delivery?.bindingId;
       if (!canRead(id) || (bindingId && bindingId !== attempt.bindingId)) this.outgoingMessages.delete(id);
     }
-    this.patch({ state: visible, self: this.view.profiles.get(userId ?? "") ?? (this.view.self?.id === userId ? this.view.self : null), readByRoom,
+    let invalidated: Map<string, ChannelUser> | undefined;
+    for (const summary of state.users) {
+      const cached = this.view.profiles.get(summary.id);
+      if (cached && cached.version !== summary.version) {
+        invalidated ??= new Map(this.view.profiles);
+        invalidated.delete(summary.id);
+      }
+    }
+    const profiles = invalidated ?? this.view.profiles;
+    this.patch({ state: visible, profiles, self: userId ? userProfile(state, profiles, userId) ?? null : null, readByRoom,
       siteURL: this.siteURL(),
       voicePlaybackByUser: sameChannel ? new Map([...this.view.voicePlaybackByUser].filter(([id]) => state.users.some(user => user.id === id))) : new Map(),
       messagesByRoom: Object.fromEntries(Object.entries(this.view.messagesByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
@@ -1814,25 +1824,25 @@ export class ChannelSession {
     if (state.channel.hostingMode === "hosted") {
       if (!this.credential) throw new Error("room_host_unavailable");
       const native = new NativeRoomHosting("/prototype/channel/rooms", { Authorization: `Bearer ${this.credential}` });
-      return { current, native: { snapshot: () => native.snapshot(roomId), restore: (blob: Blob) => native.restore(blob, roomId) } };
+      return { current, native: { snapshot: (signal?: AbortSignal) => native.snapshot(roomId, signal), restore: (blob: Blob) => native.restore(blob, roomId) } };
     }
     const hosted = this.hostedRooms.get(roomId);
     if (hosted && delivery.hostSessionId === this.view.sessionId && hosted.bindingId === delivery.bindingId) {
-      return { current, snapshot: () => hosted.host.snapshot() };
+      return { current, snapshot: (signal?: AbortSignal) => hosted.host.snapshot(signal) };
     }
     const app = this.app?.connected ? this.app : undefined;
     if (app) {
       const description = await app.describeHosting().catch(() => undefined); current();
       if (description && this.app === app && app.connected && description.sessionId === delivery.hostSessionId && description.roomIds.includes(roomId)) {
         return { current: () => { current(); if (this.app !== app || !app.connected) throw new Error("app_disconnected"); },
-          native: { snapshot: () => app.snapshotRoom(roomId), restore: (blob: Blob) => app.restoreRoom(blob) } };
+          native: { snapshot: (signal?: AbortSignal) => app.snapshotRoom(roomId, signal), restore: (blob: Blob) => app.restoreRoom(blob) } };
       }
     }
     if (state.channel.ownerId === self.id && this.credential) {
       const native = new NativeRoomHosting("/prototype/channel/rooms", { Authorization: `Bearer ${this.credential}` }, "/prototype/channel/hosting");
       const description = await native.describe().catch(() => undefined); current();
       if (description && description.sessionId === delivery.hostSessionId && description.roomIds.includes(roomId)) {
-        return { current, native: { snapshot: () => native.snapshot(roomId), restore: (blob: Blob) => native.restore(blob) } };
+        return { current, native: { snapshot: (signal?: AbortSignal) => native.snapshot(roomId, signal), restore: (blob: Blob) => native.restore(blob) } };
       }
     }
     throw new Error("room_host_unavailable");
@@ -1842,7 +1852,7 @@ export class ChannelSession {
     try { await this.backupOwner(roomId); return true; } catch { return false; }
   };
 
-  private async writeRoomSnapshot(snapshot: BrowserRoomSnapshot, metadata: Exclude<BackupMetadata, { kind: "domain" }>, retained: RetainedFile[], check: () => void): Promise<Blob> {
+  private async writeRoomSnapshot(snapshot: BrowserRoomSnapshot, metadata: Exclude<BackupMetadata, { kind: "domain" }>, retained: RetainedFile[], check: () => void, signal: AbortSignal): Promise<Blob> {
     const files = new Map<string, File>(), inventory: RetainedBackupFile[] = [];
     const authors = new Set<string>();
     const readAuthors = async () => {
@@ -1869,7 +1879,7 @@ export class ChannelSession {
     }
     await readAuthors();
     const archive = await writeBackup({ ...metadata, retainedFiles: inventory }, snapshot.rows,
-      async entry => { check(); return files.get(entry.attachment.sha256.toLowerCase())!; });
+      async entry => { check(); return files.get(entry.attachment.sha256.toLowerCase())!; }, signal);
     check(); return archive;
   }
 
@@ -1877,33 +1887,40 @@ export class ChannelSession {
     return this.action("room-backup", () => this.action(roomId ? `room:${roomId}` : "create-room", work, false), false);
   }
 
-  exportRoomBackup = (roomId: string, includeFiles = true): Promise<Blob> => this.roomArchiveAction(roomId, () => this.exportRoomArchive(roomId, includeFiles));
+  exportRoomBackup = (roomId: string, includeFiles = true, signal?: AbortSignal): Promise<Blob> => this.roomArchiveAction(roomId, () => this.exportRoomArchive(roomId, includeFiles, signal));
 
-  exportRoomCopy = (roomId: string, includeRoomInfo: boolean, includeFiles = true): Promise<Blob> =>
-    this.roomArchiveAction(roomId, () => this.exportRoomArchive(roomId, includeFiles, { includeRoomInfo }));
+  exportRoomCopy = (roomId: string, includeRoomInfo: boolean, includeFiles = true, signal?: AbortSignal): Promise<Blob> =>
+    this.roomArchiveAction(roomId, () => this.exportRoomArchive(roomId, includeFiles, signal, { includeRoomInfo }));
 
-  private async exportRoomArchive(roomId: string, includeFiles: boolean, copy?: { includeRoomInfo: boolean }): Promise<Blob> {
-    const owner = await this.backupOwner(roomId), retained = includeFiles ? await this.attachments.retained(roomId) : []; owner.current();
+  private async exportRoomArchive(roomId: string, includeFiles: boolean, surface?: AbortSignal, copy?: { includeRoomInfo: boolean }): Promise<Blob> {
+    const owner = await this.backupOwner(roomId);
+    const lifetime = new AbortController();
+    const signal = surface ? AbortSignal.any([surface, lifetime.signal]) : lifetime.signal;
+    const current = () => { signal.throwIfAborted(); owner.current(); };
+    const unsubscribe = this.subscribe(() => { try { owner.current(); } catch (error) { lifetime.abort(error); } });
     let snapshot: BrowserRoomSnapshot | undefined;
     try {
+      current();
+      const retained = includeFiles ? await this.attachments.retained(roomId) : [];
+      current();
       let metadata: Extract<BackupMetadata, { kind: "room" }>;
       if (owner.native) {
-        const archive = await owner.native.snapshot(); owner.current();
+        const archive = await owner.native.snapshot(signal); current();
         if (!retained.length && !copy) return archive;
         let stage: BrowserRoomStage | undefined;
         try {
           const value = await readBackup(archive, {
             metadata: async value => {
-              owner.current();
+              current();
               if (value.kind !== "room" || value.policy.id !== roomId || value.domainId !== this.view.state!.channel.id) throw new Error("invalid_backup");
               stage = await (await loadRoomHosting()).BrowserRoomHost.stage(roomDatabaseName(value.domainId, this.view.self!.id), JSON.stringify(value.policy));
-            }, row: row => stage!.append(row), content() {},
+            }, row: row => { current(); return stage!.append(row); }, content() {},
           });
           if (value.kind !== "room") throw new Error("invalid_backup");
           snapshot = stage; metadata = value;
         } catch (error) { await stage?.close(); throw error; }
       } else {
-        snapshot = await owner.snapshot!(); owner.current();
+        snapshot = await owner.snapshot!(signal); current();
         metadata = { kind: "room", version: 3, domainId: this.view.state!.channel.id,
           policy: JSON.parse(snapshot.policy), retainedFiles: [] };
       }
@@ -1911,11 +1928,11 @@ export class ChannelSession {
         const { name, icon, picture, voiceBitrate, relayCapacity } = metadata.policy;
         return await this.writeRoomSnapshot(snapshot!, { kind: "room_copy", version: 2,
           roomInfo: copy.includeRoomInfo ? { name, icon, picture, voiceBitrate, relayCapacity } : undefined,
-          authors: {}, retainedFiles: [] }, retained, owner.current);
+          authors: {}, retainedFiles: [] }, retained, current, signal);
       }
       if (metadata.policy.creatorId === this.view.self!.id && this.credential) metadata.ownCredential = { userId: this.view.self!.id, credential: this.credential };
-      return await this.writeRoomSnapshot(snapshot!, metadata, retained, owner.current);
-    } finally { await snapshot?.close(); }
+      return await this.writeRoomSnapshot(snapshot!, metadata, retained, current, signal);
+    } finally { unsubscribe(); await snapshot?.close(); }
   }
 
   private waitForState(ready: () => boolean): Promise<void> {
@@ -1992,8 +2009,10 @@ export class ChannelSession {
     return { current, native: new NativeDomainHosting({ Authorization: `Bearer ${this.credential}` }) };
   }
 
-  exportDomainBackup = (): Promise<Blob> => this.action("domain-backup", async () => {
-    const owner = this.domainBackupOwner(), archive = await owner.native.snapshot(); owner.current();
+  exportDomainBackup = (surface?: AbortSignal): Promise<Blob> => this.action("domain-backup", async () => {
+    const owner = this.domainBackupOwner(), lifetime = this.captureLifetime.signal;
+    const signal = surface ? AbortSignal.any([surface, lifetime]) : lifetime;
+    const archive = await owner.native.snapshot(signal); signal.throwIfAborted(); owner.current();
     return archive;
   }, false);
 
@@ -3154,9 +3173,10 @@ export class ChannelSession {
   cameraPreviews = (signal: AbortSignal, publish: (sources: CameraPreview[]) => void): Promise<void> =>
     loadCameraPreviews(signal, publish, [...this.local.values()].find(capture => capture.camera
       && capture.stream.getVideoTracks().some(track => track.readyState === "live"))?.stream);
-  nativeSources = async (): Promise<NativeCaptureSources> => {
+  nativeSources = async (signal?: AbortSignal): Promise<NativeCaptureSources> => {
+    signal?.throwIfAborted();
     const app = await this.connectApp();
-    const sources = await app.sources();
+    const sources = await app.sources(signal);
     if (this.app !== app || !app.connected || this.closed) throw new Error("app_context_changed");
     if (this.view.encodingExecution === "software" && !sources.softwareEncodingCodecs.length)
       this.patch({ encodingExecution: "auto" });

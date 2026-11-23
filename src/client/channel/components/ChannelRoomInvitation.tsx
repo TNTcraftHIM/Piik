@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { Btn } from "../../components/living/primitives";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useLayerHistory } from "../../ui/layer-history";
@@ -44,7 +44,9 @@ function RoomInvitation({ channel, room, onClose, onManageAccess }: {
   const available = channel.connection === "connected" && room.available;
   const busy = channel.pending.has(`invite:${room.id}`);
   const { getRoomInvite } = channel;
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // The active writer may have committed the replacement before the action replies.
+    if (busy) return;
     let current = true;
     setInvitation({ state: "loading" });
     if (room.access === "private" && room.canManage && available) {
@@ -52,17 +54,17 @@ function RoomInvitation({ channel, room, onClose, onManageAccess }: {
         () => { if (current) setInvitation({ state: "failed" }); });
     }
     return () => { current = false; };
-  }, [room.id, room.access, room.canManage, available, room.delivery?.bindingId, getRoomInvite, retry]);
+  }, [room.id, room.access, room.canManage, available, room.delivery?.bindingId, channel.siteURL, busy, getRoomInvite, retry]);
   const roomURL = channel.siteURL ? new URL(channel.siteURL) : null;
   if (roomURL) roomURL.hash = new URLSearchParams({ room: room.id }).toString();
   const passwordLink = room.access === "private" && room.hasPassword && !includeInvite;
   const invite = room.access === "public" || passwordLink ? roomURL?.href ?? ""
-    : room.canManage && available && invitation.state === "available" ? invitation.url : "";
+    : room.canManage && available && !busy && invitation.state === "available" ? invitation.url : "";
   const { message } = channelErrorPresentation(error, t);
   const generate = (reset = false) => <ChannelAction icon="link" label={reset ? t("invite.room.confirmReset")
     : t("invite.room.generate")} hint="hint-rotate-invite" danger={reset}
     busy={busy} disabled={!available || busy || invitation.state === "loading"}
-    onClick={() => { void run(() => channel.createRoomInvite(room.id, false), url => setInvitation({ state: "available", url })); }} />;
+    onClick={() => { void run(() => channel.createRoomInvite(room.id, false)); }} />;
   return <>
     <header><strong>{room.name}</strong><ChannelAction icon="x" iconOnly quiet label={t("room.action.close")} onClick={onClose} /></header>
     <p>{room.access === "public" ? t("invite.room.publicNote")

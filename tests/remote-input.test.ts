@@ -247,7 +247,8 @@ it("maps only visible picture pixels when playback has letterboxing", () => {
 
 it("ends a pending request when its source becomes unavailable, even before the request reaches the Host", () => {
   const channel = new Channel();
-  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
+  const interrupted = vi.fn();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {}, interrupted);
   channel.receive({ platform: "windows", mode: "ask", state: "ready" });
   session.request();
   // Source pause/off can be announced before the Host has seen this intent.
@@ -258,6 +259,30 @@ it("ends a pending request when its source becomes unavailable, even before the 
   session.request();
   channel.receive({ platform: "windows", mode: "off", state: "unavailable", intent: "a".repeat(32) });
   expect(session.state?.mode).toBe("off");
+  expect(interrupted.mock.calls).toEqual([["request-ended"], ["request-ended"]]);
+  session.dispose();
+});
+
+it("distinguishes an unapproved request from a granted control that ends", () => {
+  const channel = new Channel();
+  const interrupted = vi.fn();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {}, interrupted);
+  const ready = { platform: "windows", mode: "ask", state: "ready" };
+  channel.receive(ready);
+  session.request();
+  const first = channel.sent.at(-1)?.intent;
+  channel.receive({ ...ready, intent: first });
+  expect(interrupted.mock.calls).toEqual([["request-not-approved"]]);
+
+  session.request();
+  const second = channel.sent.at(-1)?.intent;
+  channel.receive({ ...ready, state: "active", intent: second, grant: "a".repeat(64) });
+  channel.receive({ ...ready, intent: second });
+  expect(interrupted.mock.calls).toEqual([["request-not-approved"], ["control-ended"]]);
+
+  session.request();
+  channel.close();
+  expect(interrupted.mock.calls).toEqual([["request-not-approved"], ["control-ended"], ["request-ended"]]);
   session.dispose();
 });
 

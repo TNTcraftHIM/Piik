@@ -167,7 +167,12 @@ impl FileDelivery {
             .cloned()
             .collect::<Vec<_>>()
         {
-            effects.extend(self.fail(&key, "attachment_unavailable"));
+            // The room withdraws each endpoint's plan independently. A former
+            // supplier cannot terminate readers moving to another source.
+            for range in self.files.get_mut(&key).unwrap().ranges.values_mut() {
+                range.consumers.clear();
+            }
+            effects.extend(self.fail_local(&key, "attachment_unavailable"));
             self.files.remove(&key);
             if self
                 .cached

@@ -104,7 +104,7 @@ impl SourceTime {
         }
     }
 }
-fn signed_nanos(at: Instant, anchor: Instant) -> i128 {
+pub(super) fn signed_nanos(at: Instant, anchor: Instant) -> i128 {
     if at >= anchor {
         at.duration_since(anchor).as_nanos() as i128
     } else {

@@ -481,7 +481,7 @@ impl Pages {
                 indexed,
                 reply,
             } => {
-                let result = (|| -> Result<page::MediaContext> {
+                let result = (|| -> Result<(page::MediaContext, page::IndexedFile)> {
                     let page = self
                         .pages
                         .values()
@@ -500,7 +500,7 @@ impl Pages {
                         .sources(selected.frame, &selected.source.resource);
                     let choice = view
                         .media
-                        .borrow()
+                        .borrow_mut()
                         .choice(choice_id, indexed)
                         .ok_or_else(|| anyhow!("watch_resource_unavailable"))?;
                     let document = view.document.ok_or_else(|| anyhow!("page_player_closed"))?;
@@ -524,14 +524,14 @@ impl Pages {
                         })
                     });
                     let retired = view.media.borrow().retired.subscribe();
-                    Ok(page::MediaContext {
+                    Ok((page::MediaContext {
                         url: choice.source_url().to_owned(),
                         request: choice.request,
                         format: choice.format,
                         size: choice.size,
                         retired,
                         cookies,
-                    })
+                    }, choice.file.unwrap_or_default()))
                 })();
                 let _ = reply.send(result.map_err(|e| e.to_string()));
                 return;

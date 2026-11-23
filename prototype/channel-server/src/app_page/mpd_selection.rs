@@ -56,7 +56,7 @@ impl Connection {
                     indexed: false,
                     reply,
                 }))?;
-                let context = result.await?.map_err(anyhow::Error::msg)?;
+                let (context, _) = result.await?.map_err(anyhow::Error::msg)?;
                 ensure!(context.format == Format::Dash, "watch_mpd_unsupported");
                 let retired = context.retired.clone();
                 let (reader, snapshot) =

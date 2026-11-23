@@ -16,6 +16,10 @@ the feedback period; they do not delay that delivery.
 
 ### Active work
 
+- [ ] **Virtual LAN invitations time out.** Investigate intermittent page access
+  and media failures reported on Android across several browsers in 2.x.
+  Correlate the selected virtual address, effective firewall rules and incoming
+  requests before attributing the failure to page loading or media routing.
 - [ ] **Original webpage closes when a viewer joins.** On the reporting Windows
   setup, correlate the stop reason with the activity, selected page and App
   control connection. [Original-page controls](./verification-status.md#current-evidence)

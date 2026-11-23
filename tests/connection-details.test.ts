@@ -25,6 +25,15 @@ describe("progressive connection details", () => {
     expect(summarizeConnectionMetrics(samples, "receive")).toMatchObject({ bitrateKbps: 210, rttMs: 40, packetLossPercent: 100 * 20 / 1100 });
   });
 
+  it("requires a bitrate from every stream before reporting the total", () => {
+    const paused = { connectionId: "same-peer", metrics: { ...EMPTY_METRICS, bitrateKbps: 0 } };
+    const active = { connectionId: "same-peer", metrics: { ...EMPTY_METRICS, bitrateKbps: 80 } };
+    const unmeasured = { connectionId: "same-peer", metrics: EMPTY_METRICS };
+    expect(summarizeConnectionMetrics([active, unmeasured], "send").bitrateKbps).toBeNull();
+    expect(summarizeConnectionMetrics([active, paused], "send").bitrateKbps).toBe(80);
+    expect(summarizeConnectionMetrics([paused], "send").bitrateKbps).toBe(0);
+  });
+
   it("keeps many physical connections within four media and direction summaries", () => {
     const rows = (["video", "audio"] as const).flatMap(media => (["receive", "send"] as const).flatMap(direction =>
       [1, 2, 3].map(index => ({ key: `${media}/${direction}/${index}`, media, direction, label: `Peer ${index}`,

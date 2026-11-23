@@ -356,6 +356,13 @@ fn assisted_viewing_projects_new_transit_and_keeps_the_local_transport_through_c
         local.incoming[0].input_flow_id,
         Some(upstream.incoming[0].id)
     );
+    let mut helper_state = network.state(native).clone();
+    let user = helper_state.sessions.iter().find(|s| s.id == helper).unwrap().user_id;
+    let reports = piik_channel_core::forwarding::ForwardingBudget::default()
+        .apply(Some(0), user, &mut helper_state);
+    assert!(reports.is_empty(), "the local display must survive forwarding Off");
+    assert!(helper_state.pairs.iter().any(|pair| pair.peer_id == viewing_session
+        && pair.outgoing.iter().any(|flow| flow.id == local.incoming[0].id)));
     let preparing = topology(&mut network, viewer, &room, Some(screen));
     let edges = &preparing.screen.as_ref().unwrap().edges;
     assert!(edges.iter().any(

@@ -86,6 +86,7 @@ rusty-opus = { version = "=1.0.2", optional = true }
 
 # Temporary upstream H264 parser fix: webrtc-rs/rtc#308; removal in README.md.
 [patch.crates-io]
+rtc-turn = { path = "../../native/third_party/rtc-turn" }
 rtc-rtp = { git = "https://github.com/webrtc-rs/rtc", rev = "81fde93b46f8fb1c1a191415558fa3574e48d5c7" }
 # The parser's public errors and marshal traits share this unchanged crate.
 rtc-shared = { git = "https://github.com/webrtc-rs/rtc", rev = "81fde93b46f8fb1c1a191415558fa3574e48d5c7" }

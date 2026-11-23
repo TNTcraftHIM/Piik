@@ -64,7 +64,8 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   const transferProgress = () => client.progress(key);
   const download = useSyncExternalStore(client.subscribe, downloadStatus, downloadStatus);
   const savedCopy = useSyncExternalStore(client.subscribe, savedStatus, savedStatus);
-  const unavailable = useSyncExternalStore(client.subscribe, originalStatusSnapshot, originalStatusSnapshot) === false;
+  const availability = useSyncExternalStore(client.subscribe, originalStatusSnapshot, originalStatusSnapshot);
+  const unavailable = availability === false;
   const [revealing, setRevealing] = useState(false);
   const progress = useSyncExternalStore(client.subscribe, transferProgress, transferProgress);
   const [preview, setPreview] = useState<string | null>(null);
@@ -131,7 +132,8 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   const imageDescription = !originalShown && inlineImage ? t("channel.attachment.thumbnail") : undefined;
   const originalStatus = unavailable ? t("channel.attachment.sourceUnavailable") : undefined;
   const previewMessage = channelErrorPresentation(previewError, t, preview ? "channel.attachment.originalUnavailable" : "channel.attachment.previewFailed").message;
-  const downloadMessage = channelErrorPresentation(download.error, t, "channel.attachment.downloadFailed").message;
+  const downloadError = availability === true && download.error === "file_source_unavailable" ? null : download.error;
+  const downloadMessage = channelErrorPresentation(downloadError, t, "channel.attachment.downloadFailed").message;
   const progressLabel = progress ? t(progress.state === "waiting-source" ? "channel.attachment.waitingSource"
     : progress.state === "waiting" ? "channel.attachment.waitingData" : progress.state === "connecting" ? "channel.attachment.connecting" : progress.state === "finishing"
     ? "channel.attachment.finishing" : "channel.attachment.receiving")
@@ -142,8 +144,8 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   const savePending = isNativeSavePending(download.outcome);
   const saved = savedCopy || download.outcome === "saved";
   const canReveal = savedCopy && typeof (downloadSurface.current?.ownerDocument ?? surfaceDocument)?.defaultView?.piikRevealDownload === "function";
-  const canRetryDownload = !unavailable && download.error &&
-    !["file_offer_failed", "reveal_saved_copy_failed", "saved_copy_missing"].includes(download.error);
+  const canRetryDownload = !unavailable && downloadError &&
+    !["file_offer_failed", "reveal_saved_copy_failed", "saved_copy_missing"].includes(downloadError);
   const downloadLabel = download.busy ? t("channel.attachment.cancelDownload")
     : savePending ? t(saving ? "channel.attachment.saving" : "channel.attachment.downloadRequested")
     : canReveal ? t("channel.attachment.revealSaved")
@@ -151,7 +153,8 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
     : t(isImage ? "channel.attachment.downloadOriginal" : "channel.attachment.download");
   const imageLabel = t(previewBusy ? "channel.attachment.cancelImageLoading" : "channel.attachment.viewImage");
   const saveLabel = t("channel.attachment.saving");
-  const originalNotice = !imageOpen && !download.busy && !previewBusy && !savePending ? originalStatus : undefined;
+  const originalNotice = !imageOpen && !download.busy && !previewBusy && !savePending && (isImage || !canReveal)
+    ? originalStatus : undefined;
   const cardStatus = [...new Set([downloadMessage, !imageOpen ? previewMessage : undefined, originalNotice].filter(Boolean))].join(" ");
   return <div className="c3-attachment" ref={downloadSurface}>
     <div className="c3-attachment-file"><Glyph name={saved ? "check" : "fileDown"} size={21} />

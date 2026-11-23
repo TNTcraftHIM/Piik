@@ -44,7 +44,9 @@
 .c3-room-order-controls > [draggable]:active { cursor: grabbing; }
 .c3-room-list-item[data-drop] { outline: 2px solid var(--ink); outline-offset: -2px; }
 @media (any-pointer: coarse) {
-  .c3-room-order-controls > button { min-width: 44px; min-height: 44px; }
+  .c3-room-list-item { --room-disclosure-width: var(--control-compact-size); }
+  .c3-room-list-item .c3-room-manage .lr-btn { --button-size: var(--control-compact-size); }
+  .c3-room-order-controls > button { min-width: var(--control-compact-size); min-height: var(--control-compact-size); }
 }
 .c3-room-participants-label { display: block; margin-block: 4px; font-size: 11px; color: var(--muted); }
 .c3-room-participants .c3-user { padding: 4px 0; }

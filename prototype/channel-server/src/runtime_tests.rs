@@ -1565,7 +1565,7 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
         .lock()
         .unwrap()
         .authority
-        .changes_metadata(&Request::parse(&query.to_string()).unwrap()));
+        .changes_metadata(Uuid::nil(), &Request::parse(&query.to_string()).unwrap()));
     admin
         .send(Message::Text(query.to_string().into()))
         .await

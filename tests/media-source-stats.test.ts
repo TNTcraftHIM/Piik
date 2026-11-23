@@ -25,16 +25,16 @@ function report(timestamp = 1_000, trackIdentifier = "video-track") {
 describe("sender source statistics", () => {
   it("keeps a publication's RTP layers and source sound separate from other media on the same PC", () => {
     const previous = new Map<string, StatsAccumulator>();
-    const sample = (timestamp: number, high = true) => {
+    const sample = (timestamp: number, rids = ["q", "h"], sound = "sound", soundBytes = timestamp * 16) => {
       const records = [
         { id: "source", type: "media-source", kind: "video", trackIdentifier: "screen" },
         { id: "other-source", type: "media-source", kind: "video", trackIdentifier: "other" },
         { id: "sound-source", type: "media-source", kind: "audio", trackIdentifier: "sound" },
         { id: "voice-source", type: "media-source", kind: "audio", trackIdentifier: "voice" },
-        { id: "q", type: "outbound-rtp", kind: "video", mediaSourceId: "source", rid: "q", bytesSent: timestamp * 10, framesEncoded: timestamp / 100 },
-        ...(high ? [{ id: "h", type: "outbound-rtp", kind: "video", mediaSourceId: "source", rid: "h", bytesSent: timestamp * 30, framesEncoded: timestamp / 100 }] : []),
+        ...rids.map(rid => ({ id: rid, type: "outbound-rtp", kind: "video", mediaSourceId: "source", rid,
+          bytesSent: timestamp * (rid === "q" ? 10 : 30), framesEncoded: timestamp / 100 })),
         { id: "other", type: "outbound-rtp", kind: "video", mediaSourceId: "other-source", bytesSent: timestamp * 1000 },
-        { id: "sound", type: "outbound-rtp", kind: "audio", mediaSourceId: "sound-source", bytesSent: timestamp * 16 },
+        { id: sound, type: "outbound-rtp", kind: "audio", mediaSourceId: "sound-source", bytesSent: soundBytes },
         { id: "voice", type: "outbound-rtp", kind: "audio", mediaSourceId: "voice-source", bytesSent: timestamp * 6 },
       ];
       const report = new Map(records.map(record => [record.id, { ...record, timestamp }])) as unknown as RTCStatsReport;
@@ -45,8 +45,13 @@ describe("sender source statistics", () => {
       { bitrateKbps: 80, intervalFramesEncoded: 10, audioBitrateKbps: 128 },
       { bitrateKbps: 240, intervalFramesEncoded: 10, audioBitrateKbps: null },
     ]);
-    expect(sample(3000, false)).toMatchObject([{ rtpStatsId: "q", bitrateKbps: 80, audioBitrateKbps: 128 }]);
-    expect([...previous.keys()]).toEqual(["q"]);
+    expect(sample(3000, ["h"])).toMatchObject([{ rtpStatsId: "h", bitrateKbps: 240, audioBitrateKbps: 128 }]);
+    expect(new Set(previous.keys())).toEqual(new Set(["h", "sound"]));
+    expect(sample(4000, [], "sound", 80_000)).toEqual([]);
+    expect(sample(6000, ["h"])).toMatchObject([{ bitrateKbps: null, audioBitrateKbps: 64 }]);
+    expect(sample(7000, ["h"], "new-sound")).toMatchObject([{ bitrateKbps: 240, audioBitrateKbps: null }]);
+    expect(new Set(previous.keys())).toEqual(new Set(["h", "new-sound"]));
+    expect(sample(8000, ["h"], "new-sound")[0]?.audioBitrateKbps).toBe(128);
   });
   it("reads the sole same-kind source without mediaSourceId and resets on replacement", () => {
     const previous = createStatsAccumulator();

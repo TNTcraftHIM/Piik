@@ -26,7 +26,7 @@ use std::{
     time::{Duration, Instant},
 };
 use subtle::ConstantTimeEq;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, watch, Notify};
 use uuid::Uuid;
 
 const MAX_CONTROLLERS: usize = 20;
@@ -137,6 +137,7 @@ impl Desktop {
             sources: BTreeMap::new(),
             owner: None,
             releases: BTreeMap::new(),
+            tick_wake: Arc::new(Notify::new()),
             gamepad,
         }));
         Self(
@@ -173,11 +174,14 @@ impl Desktop {
             #[cfg(target_os = "macos")]
             let next = macos::Shortcut::new(key)?;
             *current = Some(next);
-            for source in self.0.lock().unwrap().sources.values() {
+            let executor = self.0.lock().unwrap();
+            for source in executor.sources.values() {
                 source
                     .view
                     .send_modify(|view| view.stop_shortcut = Some(key));
             }
+            #[cfg(target_os = "macos")]
+            executor.tick_wake.notify_one();
             Ok(())
         }
         #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -259,12 +263,13 @@ impl Desktop {
                 password: [0; 32],
                 password_retry: None,
                 simultaneous: false,
-                available: true,
+                availability: Availability::Active,
                 controllers,
                 replies,
                 view,
             },
         );
+        executor.tick_wake.notify_one();
         Ok((
             Source(Arc::new(SourceHandle {
                 desktop: self.clone(),
@@ -276,8 +281,40 @@ impl Desktop {
         ))
     }
 
-    /// The App owns one 100 ms observation/cleanup tick across its sites and sources.
-    pub fn tick(&self) {
+    /// Wait for and perform one input observation and release retry tick.
+    pub async fn tick_when_needed(&self, timer: &mut Option<tokio::time::Interval>) {
+        let wake = self.0.lock().unwrap().tick_wake.clone();
+        let period = Duration::from_millis(100);
+        loop {
+            if self.needs_tick() {
+                let tick = timer.get_or_insert_with(|| {
+                    tokio::time::interval_at(tokio::time::Instant::now() + period, period)
+                });
+                tokio::select! {
+                    _ = wake.notified() => {}
+                    _ = tick.tick() => {
+                        self.tick();
+                        return;
+                    }
+                }
+            } else {
+                *timer = None;
+                wake.notified().await;
+            }
+        }
+    }
+
+    fn needs_tick(&self) -> bool {
+        // macOS observes a registered stop chord by polling its key state.
+        #[cfg(target_os = "macos")]
+        if self.1.lock().unwrap().is_some() {
+            return true;
+        }
+        let executor = self.0.lock().unwrap();
+        !executor.sources.is_empty() || !executor.releases.is_empty()
+    }
+
+    fn tick(&self) {
         #[cfg(target_os = "macos")]
         if self
             .1
@@ -321,6 +358,8 @@ impl Desktop {
         }
         #[cfg(any(target_os = "windows", target_os = "macos"))]
         self.1.lock().unwrap().take();
+        #[cfg(target_os = "macos")]
+        self.0.lock().unwrap().tick_wake.notify_one();
         #[cfg(all(feature = "capture", target_os = "linux"))]
         self.1.close();
     }
@@ -394,6 +433,29 @@ impl Source {
         });
     }
 
+    pub(crate) fn set_share_paused(&self, paused: bool) {
+        let next = if paused {
+            Availability::Paused
+        } else {
+            Availability::Active
+        };
+        let mut executor = self.0.desktop.0.lock().unwrap();
+        let Some(current) = executor.sources.get(&self.0.video) else {
+            return;
+        };
+        if current.availability == next || current.availability == Availability::Retired {
+            return;
+        }
+        let _ = executor.with_source(self.0.video, None, |executor, source| {
+            source.availability = next;
+            if paused {
+                source.cancel_permission();
+                executor.revoke_all(source);
+            }
+            Ok(())
+        });
+    }
+
     /// Source consent ends at replacement; its still-registered encrypted route does not.
     pub fn replace(
         &self,
@@ -427,6 +489,10 @@ impl Source {
         let (request, registration) = AbortHandle::new_pair();
         let mut changed_password = None;
         self.run(|_, source| {
+            ensure!(
+                source.availability == Availability::Active || mode == Mode::Off,
+                "input_source_unavailable"
+            );
             if password.is_some() || source.mode != mode {
                 changed_password = Some(policy_password(mode, password.as_deref().unwrap_or(""))?);
             }
@@ -492,7 +558,10 @@ impl Source {
     ) -> Result<()> {
         self.run(|e, source| {
             ensure!(!request.is_aborted(), "input_authorization_cancelled");
-            ensure!(source.available, "input_source_unavailable");
+            ensure!(
+                source.availability == Availability::Active,
+                "input_source_unavailable"
+            );
             e.revoke_all(source);
             source.endpoint = Endpoint::Portal(endpoint);
             Ok(())
@@ -750,8 +819,16 @@ struct Executor {
     owner: Option<Uuid>,
     /// Only failed releases survive their grant; never replay presses or motion.
     releases: BTreeMap<Held, Endpoint>,
+    tick_wake: Arc<Notify>,
     gamepad: Option<gamepad::Backend>,
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Availability {
+    Active,
+    Paused,
+    Retired,
+}
+
 struct SourceState {
     publication: Uuid,
     target: Target,
@@ -761,7 +838,7 @@ struct SourceState {
     password: [u8; 32],
     password_retry: Option<Instant>,
     simultaneous: bool,
-    available: bool,
+    availability: Availability,
     controllers: BTreeMap<Uuid, Controller>,
     replies: mpsc::Sender<Reply>,
     view: watch::Sender<SourceView>,
@@ -836,7 +913,7 @@ impl Executor {
         password: [u8; 32],
     ) -> Result<()> {
         ensure!(
-            source.available || mode == Mode::Off,
+            source.availability == Availability::Active || mode == Mode::Off,
             "input_source_unavailable"
         );
         if mode != Mode::Off {
@@ -890,7 +967,9 @@ impl Executor {
     }
 
     fn close(&mut self, video: Uuid) {
-        let _ = self.retire_source(video);
+        if self.retire_source(video).is_some() {
+            self.tick_wake.notify_one();
+        }
     }
 
     fn retire_source(&mut self, video: Uuid) -> Option<SourceState> {
@@ -902,7 +981,7 @@ impl Executor {
 
     fn retire_capture(&mut self, video: Uuid, source: &mut SourceState) {
         source.cancel_permission();
-        source.available = false;
+        source.availability = Availability::Retired;
         self.revoke_all(source);
         source.endpoint = Endpoint::default();
         if self.owner == Some(video) {
@@ -981,7 +1060,7 @@ impl Executor {
                 None
             }
             TargetState::Lost => {
-                source.available = false;
+                source.availability = Availability::Retired;
                 self.revoke_all(source);
                 None
             }
@@ -990,7 +1069,7 @@ impl Executor {
 
     fn grant(&mut self, video: Uuid, source: &mut SourceState, c: &mut Controller) -> Result<()> {
         ensure!(
-            source.available && source.mode != Mode::Off,
+            source.availability == Availability::Active && source.mode != Mode::Off,
             "input_source_unavailable"
         );
         if self.owner.is_some_and(|owner| owner != video)
@@ -1013,7 +1092,7 @@ impl Executor {
             TargetState::Ready(_) => c.suspended = false,
             TargetState::Suspended => c.suspended = true,
             TargetState::Lost => {
-                source.available = false;
+                source.availability = Availability::Retired;
                 self.release(source, c);
                 self.revoke_all(source);
             }
@@ -1036,7 +1115,7 @@ impl Executor {
                 }
             }
             Command::Request { intent, password } => {
-                if !source.available || source.mode == Mode::Off {
+                if source.availability != Availability::Active || source.mode == Mode::Off {
                     return Ok(());
                 }
                 if c.intent == Some(intent) {
@@ -1067,7 +1146,8 @@ impl Executor {
                 }
             }
             Command::Input { grant, event } => {
-                if c.grant.as_deref() != Some(&grant) || !source.available {
+                if c.grant.as_deref() != Some(&grant) || source.availability != Availability::Active
+                {
                     return Ok(());
                 }
                 self.retry_releases();
@@ -1102,7 +1182,7 @@ impl Executor {
                         return Ok(());
                     }
                     TargetState::Lost => {
-                        source.available = false;
+                        source.availability = Availability::Retired;
                         self.release(source, c);
                         self.revoke_all(source);
                         return Ok(());
@@ -1217,7 +1297,7 @@ impl Executor {
             }
             let response = response.filter(|(controller, _)| *controller == id);
             let state = RemoteState {
-                state: if !source.available || source.mode == Mode::Off {
+                state: if source.availability != Availability::Active || source.mode == Mode::Off {
                     "unavailable"
                 } else if c.grant.is_some() {
                     if c.suspended {

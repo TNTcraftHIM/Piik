@@ -156,10 +156,7 @@ export class AppPage implements AppPagePort {
     const preparing = AbortSignal.any([this.lifetime.signal, signal]);
     preparing.throwIfAborted();
     const selected = nativePageMpdSelectionSchema.parse(selection);
-    const command = { type: "page_media_prepare_mpd", pageId: this.id, ...selected };
-    const bytes = new TextEncoder().encode(JSON.stringify({ ...command, id: "00000000-0000-4000-8000-000000000000" })).byteLength;
-    if (bytes > APP_REQUEST_BYTES) throw new Error("watch_resource_limit");
-    const value = await this.request(command, preparing);
+    const value = await this.request({ type: "page_media_prepare_mpd", pageId: this.id, ...selected }, preparing);
     preparing.throwIfAborted();
     return watchByteSourceSchema.extend({ format: z.literal("dash") }).parse(value);
   }
@@ -269,7 +266,7 @@ export class ChannelApp {
   private processAudioExclusion = false;
   private captureCodecs: NativeCaptureSources["codecs"] = [];
   private previewTail: Promise<void> = Promise.resolve();
-  private pendingSources?: Promise<NativeCaptureSources>;
+  private pendingSources?: { reading: AbortController; result: Promise<NativeCaptureSources>; readers: number };
   private readonly roomHosting: NativeRoomHosting;
   private pages = new Map<string, AppPage>();
   readonly port: number;
@@ -528,22 +525,44 @@ export class ChannelApp {
     await this.ready;
     return this.roomHosting.describe(signal ? AbortSignal.any([signal, this.lifetime.signal]) : this.lifetime.signal);
   }
-  async snapshotRoom(roomId: string): Promise<Blob> { await this.ready; return this.roomHosting.snapshot(roomId); }
+  async snapshotRoom(roomId: string, signal?: AbortSignal): Promise<Blob> { await this.ready; return this.roomHosting.snapshot(roomId, signal); }
   async restoreRoom(archive: Blob): Promise<RoomSummary> { await this.ready; return this.roomHosting.restore(archive); }
 
-  sources(): Promise<NativeCaptureSources> {
-    // The App serves one outstanding targets request per control socket.
-    return this.pendingSources ??= this.readSources().finally(() => { this.pendingSources = undefined; });
+  async sources(signal?: AbortSignal): Promise<NativeCaptureSources> {
+    signal?.throwIfAborted();
+    // Share the socket read while at least one caller still needs its result.
+    if (!this.pendingSources) {
+      const reading = new AbortController();
+      const result = this.readSources(reading).finally(() => {
+        if (this.pendingSources?.reading === reading) this.pendingSources = undefined;
+      });
+      this.pendingSources = { reading, result, readers: 0 };
+    }
+    const pending = this.pendingSources;
+    pending.readers++;
+    const abort = () => {
+      if (--pending.readers === 0 && this.pendingSources === pending) {
+        this.pendingSources = undefined;
+        pending.reading.abort(new Error("request_cancelled"));
+      }
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      return await pending.result;
+    } finally {
+      signal?.removeEventListener("abort", abort);
+      signal?.throwIfAborted();
+    }
   }
 
-  private async readSources(): Promise<NativeCaptureSources> {
+  private async readSources(reading: AbortController): Promise<NativeCaptureSources> {
     await this.ready;
     // Bound this Web read; the system's capture permission prompt belongs to the App.
-    const reading = new AbortController();
     const timer = setTimeout(() => reading.abort(new Error("app_request_timeout")), SOURCE_LIST_TIMEOUT_MS);
     const complete = debugOperation("native", "capture-targets");
     try {
       const result = await this.request({ type: "targets" }, undefined, reading.signal);
+      reading.signal.throwIfAborted();
       const sources = captureSourcesSchema.parse(result);
       this.activationURL = sources.activationURL;
       this.processAudioExclusion = sources.processAudioExclusion;

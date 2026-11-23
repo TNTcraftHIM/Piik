@@ -139,11 +139,9 @@ If the browser times out before showing Piik, check access to the Host's App:
    friends can reach and send the full invitation link. Both devices need a
    reachable LAN or the same virtual LAN; guest Wi-Fi may isolate them.
 2. On the Windows host, open **Windows Security → Firewall & network protection →
-   Allow an app through firewall**. Check the currently running `piik-app.exe`
-   and allow the network type in use. A virtual adapter may be classified as
-   **Public**; advanced rules can restrict access to that adapter and subnet.
-3. After extracting an update to another folder, update any firewall rule that
-   points to the old file. Add the current App manually if needed; keep the firewall on.
+   Allow an app through firewall**. Select the `piik-app.exe` you are running and allow it on the network type in use.
+   If the virtual adapter uses the **Public** profile, allow Piik on **Public**. If you moved Piik to a different folder,
+   add the executable at its new path. The old rule only applies to the old path. Ask your friend to retry the invitation.
 
 If App reports that a local port is unavailable, check the address in its error
 details. Close the program using that port normally, then retry startup. App
@@ -151,9 +149,39 @@ keeps its saved local site address so browser data remains accessible; changing
 only the invitation URL does not move the service.
 
 Changing permissions may require an administrator; see
-[Microsoft's instructions](https://support.microsoft.com/en-us/windows/security/firewall/risks-of-allowing-apps-through-windows-firewall).
+[Microsoft's instructions](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/configure).
 If the page opens but video does not connect, continue with
 [media connection checks](#when-video-will-not-connect).
+
+#### Android cannot open a virtual LAN invitation
+
+1. In Android settings, search for **VPN** and check which app is connected.
+   If another VPN, proxy or ad blocker is using the VPN connection,
+   disconnect it so your virtual LAN app can connect.
+2. If the virtual LAN app has per-app settings, make sure your browser
+   uses its VPN. If the browser is on the exclusion list, remove it.
+3. Reconnect to the same virtual LAN and open the full invitation directly
+   in your browser. If the page only opens sometimes, wait for the virtual
+   LAN to reconnect after switching networks or reconnecting the app, then
+   reload the original invitation. If you see a certificate warning,
+   [verify the local certificate with the host](#local-https-certificate-warning).
+
+If you join the room and see an active share but the picture won't play,
+check whether the virtual LAN carries UDP between devices. You can also
+switch between Wi-Fi and mobile data, wait for the virtual LAN to
+reconnect, and join again.
+[Check browser WebRTC settings](./network.md#browser-webrtc-restrictions)
+
+<details>
+<summary>Advanced · Android VPN connection blocking</summary>
+
+**Block connections without VPN** blocks traffic outside the VPN,
+including traffic from excluded apps and local network traffic that bypasses
+the VPN. If your virtual LAN app confirms that the connection you are testing
+bypasses its VPN, you can briefly turn the setting off on a personal device
+to compare, then restore it. [Android VPN settings](https://developer.android.com/develop/connectivity/vpn#blocked-connections)
+
+</details>
 
 ### Local HTTPS certificate warning
 
@@ -348,6 +376,8 @@ with the codec comparison. If both codecs fail, also check
 1. **Viewer.** If the picture says **Waiting for a video route**, ask the person sharing to check their preview. If the affected picture shows **Retry picture**, select it. If the preview works but you still have no picture, try another network such as a phone hotspot.
 2. **Person sharing.** Check that the preview for that share is playing. If the preview is blank, check the selected window or screen.
 3. **Site operator and room manager.** The site operator makes the forwarding service available. A room manager opens **Room settings → Connection** and enables **Allow site forwarding** for that room. Once both are in place, Piik can use the service automatically when the route needs it.
+
+If you joined on Android over a virtual LAN, [check which VPN your browser uses](#android-cannot-open-a-virtual-lan-invitation).
 
 If the preview plays and the picture still fails to connect, see [advanced network checks](./network.md).
 

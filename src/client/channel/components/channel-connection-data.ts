@@ -6,7 +6,6 @@ import type { CopyKey } from "../../ui/copy";
 import { EMPTY_METRICS } from "../../types";
 
 type Translate = (key: CopyKey, vars?: Record<string, string>) => string;
-type ChannelConnectionDetail = ConnectionDetail & { selectedDisplayReceiver?: string };
 
 function hopRoute(topology: ChannelTopology, from: string, to: string): "p2p" | "sfu" {
   return from === topology.transitSession || to === topology.transitSession ? "sfu" : "p2p";
@@ -71,7 +70,7 @@ export function channelConnectionGraph(state: ChannelSnapshot, roomId: string, s
 }
 
 export function channelConnectionRows(state: ChannelSnapshot, sessionId: string,
-  topology: ChannelTopology | null, samples: readonly ChannelConnectionSample[], t: Translate): ChannelConnectionDetail[] {
+  topology: ChannelTopology | null, samples: readonly ChannelConnectionSample[], t: Translate): ConnectionDetail[] {
   return samples.flatMap(sample => {
     const publication = state.publications.find(publication => publication.id === sample.publicationId);
     if (!publication) return [];
@@ -103,7 +102,6 @@ export function channelConnectionRows(state: ChannelSnapshot, sessionId: string,
     return [{ key: `${sample.ownerSessionId}/${sample.flowId}/${sample.metrics.rtpStatsId}`, connectionId: sample.connectionId,
       media: publication.kind === "voice" ? "audio" : "video", direction: sample.direction,
       route: topology && !localDisplay ? hopRoute(topology, from, to) : undefined, label, metrics,
-      selectedDisplayReceiver: localDisplay?.selected ? localDisplay.receiver : undefined,
       detailOnly: publication.kind === "screen" && !topology?.screen || !!localDisplay || !sample.selected || undefined }];
   });
 }

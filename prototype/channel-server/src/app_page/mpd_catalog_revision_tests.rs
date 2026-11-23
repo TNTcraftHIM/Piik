@@ -133,7 +133,7 @@ async fn same_manifest_url_new_revision_preserves_each_selected_resource_query_a
                     assert_eq!(choice_id, choice);
                     let version = context_version.version.load(Ordering::SeqCst);
                     let cookie = format!("OwnedRevision={version}");
-                    let _ = reply.send(Ok(MediaContext {
+                    let _ = reply.send(Ok((MediaContext {
                         url: url.clone(),
                         request: None,
                         format: Format::Dash,
@@ -143,7 +143,7 @@ async fn same_manifest_url_new_revision_preserves_each_selected_resource_query_a
                             let cookie = cookie.clone();
                             Box::pin(async move { Ok(Some(cookie)) })
                         }),
-                    }));
+                    }, Default::default())));
                 }
                 Command::Retire { .. } => {}
                 _ => panic!("unexpected native command"),

@@ -241,20 +241,15 @@ export class BrowserRoomHost implements HostedRoom {
     try {
       db = await openDatabase(databaseName);
       let saved: RoomRecord | undefined;
-      let lastSeq = 0;
-      await transaction(db, ["rooms", "messages"], room ? "readwrite" : "readonly", (tx, abort) => {
+      await transaction(db, ["rooms"], room ? "readwrite" : "readonly", (tx, abort) => {
         const rooms = tx.objectStore("rooms");
         read(rooms.get(id), value => {
           saved = value;
           if (!saved && room) rooms.add({ id, policy: room.policy() });
         }, abort);
-        read(tx.objectStore("messages").openCursor(IDBKeyRange.bound([id], [id, Infinity]), "prev"), cursor => {
-          lastSeq = cursor?.value.seq ?? 0;
-        }, abort);
       }, () => {});
       if (saved) { const previous = room; room = savedRoom(saved, id); previous?.free(); }
       if (!room) throw new Error("room_not_found");
-      room.seed_history(BigInt(lastSeq));
       const host = new BrowserRoomHost(db, room);
       host.storedBindingId = saved?.bindingId;
       return host;
@@ -266,7 +261,7 @@ export class BrowserRoomHost implements HostedRoom {
   currentReaders(): Promise<string[]> { return this.enqueue(() => JSON.parse(this.room.current_readers())); }
 
   /** Capture persisted policy and complete history at one IndexedDB commit. */
-  snapshot(): Promise<BrowserRoomSnapshot> {
+  snapshot(signal?: AbortSignal): Promise<BrowserRoomSnapshot> {
     return this.enqueue(async () => {
       const db = await openDatabase(this.db.name);
       let snapshot: RoomBackup | undefined;
@@ -283,7 +278,7 @@ export class BrowserRoomHost implements HostedRoom {
               cursor.continue();
             }, abort);
           }, abort);
-        }, () => {});
+        }, () => {}, signal);
         return snapshot!;
       } catch (error) { db.close(); throw error; }
     });

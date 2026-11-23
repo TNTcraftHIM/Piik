@@ -66,7 +66,7 @@ impl Hub {
         {
             return None;
         }
-        let metadata = self.authority.changes_metadata(&request);
+        let metadata = self.authority.changes_metadata(connection, &request);
         // A host has already committed its room policy. The domain's directory
         // is a projection of that authority, not a second writer that may undo it.
         let room_projection = matches!(&request.command,

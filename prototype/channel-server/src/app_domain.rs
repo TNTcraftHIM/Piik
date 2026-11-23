@@ -334,17 +334,18 @@ async fn run(
     {
         let mut registry = app.registry.lock().await;
         // A successful retry can change how the same auto-started site is hosted.
-        if matches!(
-            registry
-                .sites
-                .startup()
-                .map_err(|error| Failure::new("configuration", error))?,
-            StartupIntent::Owned(_)
-        ) {
-            registry
-                .sites
-                .set_startup(&StartupIntent::Owned(request.clone()))
-                .map_err(|error| Failure::new("configuration", error))?;
+        let configured = registry.sites.startup().and_then(|startup| {
+            if matches!(startup, StartupIntent::Owned(_)) {
+                registry.sites.set_startup(&StartupIntent::Owned(request.clone()))?;
+            }
+            Ok(())
+        });
+        if let Err(error) = configured {
+            drop(registry);
+            if let Some(tunnel) = tunnel.take() {
+                let _ = tunnel.close().await;
+            }
+            return Err(Failure::new("configuration", error));
         }
         registry.local = Some(super::LocalSite {
             origin: origin.clone(),

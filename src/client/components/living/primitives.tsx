@@ -135,7 +135,7 @@ export function Btn({
           : wrapped
             ? (event) => {
                 onClick?.();
-                if (hasPopup !== "dialog") blurAfterPointerClick(event);
+                if (!popoverTarget && hasPopup !== "dialog") blurAfterPointerClick(event);
               }
             : onClick
       }

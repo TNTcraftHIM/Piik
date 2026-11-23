@@ -68,6 +68,7 @@ impl Fixture {
             admitted: HashSet::new(),
             pairs: HashMap::new(),
             retiring_pair: None,
+            retirement_failed: mpsc::channel(1).0,
             preparings: HashMap::new(),
             publications: HashMap::new(),
             sources: HashMap::new(),
@@ -157,6 +158,7 @@ impl Fixture {
                     id: flow,
                     publication_id: f.publication.id,
                     input_flow_id: None,
+                    presentation: false,
                     selected,
                 }],
                 outgoing: vec![],
@@ -174,12 +176,14 @@ impl Fixture {
                     id: old_output,
                     publication_id: f.publication.id,
                     input_flow_id: Some(first_input),
+                    presentation: false,
                     selected: true,
                 },
                 FlowBinding {
                     id: warm_output,
                     publication_id: f.publication.id,
                     input_flow_id: Some(second_input),
+                    presentation: false,
                     selected: false,
                 },
             ],
@@ -423,15 +427,8 @@ impl Fixture {
             )
             .await
     }
-    pub(in crate::peer) async fn close(mut self) {
-        self.driver.inputs.close();
-        self.driver.finish_pair_retirement().await;
-        for (_, pair) in self.driver.pairs.drain() {
-            close_pair(pair).await;
-        }
-        self.driver.files.close().await;
-        self.driver.watches.close().await;
-        self.driver.transport.close().await;
+    pub(in crate::peer) async fn close(self) {
+        self.driver.close().await.unwrap();
         for runtime in self.runtimes {
             runtime.close().await;
         }

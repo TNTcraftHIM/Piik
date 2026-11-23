@@ -185,18 +185,19 @@ function verifiedContent(module: Runtime, descriptor: ChannelAttachment) {
 }
 
 /** The caller supplies a stable snapshot; no live storage or file authority is changed here. */
-export function writeBackup(metadata: Exclude<BackupMetadata, { kind: "domain" }>, rows: AsyncIterable<BackupHistoryRow>, open?: (file: RetainedBackupFile) => Promise<Blob>): Promise<Blob> {
-  return writeArchive(metadata, rows, open).catch(backupFailure);
+export function writeBackup(metadata: Exclude<BackupMetadata, { kind: "domain" }>, rows: AsyncIterable<BackupHistoryRow>, open?: (file: RetainedBackupFile) => Promise<Blob>, signal?: AbortSignal): Promise<Blob> {
+  return writeArchive(metadata, rows, open, signal).catch(backupFailure);
 }
 
-async function writeArchive(metadata: Exclude<BackupMetadata, { kind: "domain" }>, rows: AsyncIterable<BackupHistoryRow>, open?: (file: RetainedBackupFile) => Promise<Blob>): Promise<Blob> {
+async function writeArchive(metadata: Exclude<BackupMetadata, { kind: "domain" }>, rows: AsyncIterable<BackupHistoryRow>, open?: (file: RetainedBackupFile) => Promise<Blob>, signal?: AbortSignal): Promise<Blob> {
   const [module, zip] = await Promise.all([runtime(), import("@zip.js/zip.js/lib/zip-core-native.js")]);
   const canonical = module.backup_metadata(JSON.stringify(metadata));
   metadata = JSON.parse(canonical) as typeof metadata;
   const limit = module.backup_record_bytes();
   const manifestBytes = encoder.encode(canonical);
   if (manifestBytes.length > limit) throw new Error("backup_record_too_large");
-  const writer = new zip.ZipWriter(new zip.BlobWriter("application/zip"), zipOptions);
+  const output = new zip.BlobWriter("application/zip");
+  const writer = new zip.ZipWriter(output, { ...zipOptions, signal });
   try {
     await writer.add(manifest, new zip.Uint8ArrayReader(manifestBytes));
     const importer = new module.BackupHistoryImport(canonical);
@@ -204,22 +205,23 @@ async function writeArchive(metadata: Exclude<BackupMetadata, { kind: "domain" }
     try {
       await writer.add(history, new ReadableStream<Uint8Array>({ async pull(controller) {
         const next = await iterator.next();
+        signal?.throwIfAborted();
         if (next.done) { importer.finish(); controller.close(); }
         else {
           const bytes = encoder.encode(`${importer.accept(JSON.stringify(next.value))}\n`);
           if (bytes.length > limit + 1) throw new Error("backup_record_too_large");
           controller.enqueue(bytes);
         }
-      }, async cancel() { await iterator.return?.(); } }));
+      } }));
     } finally { importer.free(); await iterator.return?.(); }
     for (const [hash, retained] of inventory(metadata)) {
       if (!open) throw new Error("backup_content_mismatch");
       const blob = await open(retained);
       if (blob.size !== retained.attachment.size) throw new Error("backup_content_mismatch");
       const check = verifiedContent(module, retained.attachment);
-      try { await writer.add(`content/${hash}`, blob.stream().pipeThrough(check.stream)); }
+      try { await writer.add(`content/${hash}`, blob.stream().pipeThrough(check.stream, { signal })); }
       finally { check.free(); }
     }
     return await writer.close();
-  } catch (error) { await writer.close().catch(() => {}); throw error; }
+  } catch (error) { await output.writable.abort(error).catch(() => {}); throw error; }
 }

@@ -52,7 +52,7 @@ async fn owner(
         .hosts
         .get(&(site, domain, user))
         .filter(|host| {
-            host.credential == credential && !host.task.is_finished() && !*host.stop.borrow()
+            host.credential == credential && !host.finished() && !*host.stop.borrow()
         })
         .ok_or_else(forbidden)?;
     Ok(Owner {

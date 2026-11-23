@@ -193,7 +193,16 @@ dependency definitions are identical to the former bug-fix fork. Using the same
 revision for `rtc-shared` keeps public error and marshal types under one identity.
 The published 0.21.1 crates predate the repair, so Cargo patch entries still
 select this official revision until a release passes the consumer checks below.
-The other RTC helpers use published 0.21.1 crates for STUN, TURN and crypto.
+STUN and crypto use the published 0.21.1 crates. The three workspace roots
+take rtc-turn 0.21.1 from native/third_party/rtc-turn, based on the published
+archive (SHA-256 c53078a0696df5a3a5e4947bc550c5e903b59803b252f1d39062d637ebd3d17e)
+at [upstream commit 2a732df5](https://github.com/webrtc-rs/rtc/tree/2a732df55ca4bcf26b80914fa0f570cfaf74cfcb/rtc-turn).
+The retained MIT and Apache-2.0 notices accompany the source. The local
+change retries a Refresh challenged by a stale nonce once, preserving the
+requested lifetime and using a new signed transaction. When an official
+release passes the Refresh nonce-rotation regression and the Piik relay
+check, remove the local crate and override from all three roots and update
+their lockfiles.
 The existing `url` crate parses UDP STUN and TURN addresses. TURN also supports
 TCP and TLS over TCP, using the same trust sources as signaling and the
 `rtc-shared` TURN stream decoder. ICE advertises the allocated UDP relay
@@ -207,7 +216,7 @@ owns compatible derivation and forwarding-only reception within the
 [network design](../../docs/research/channel-network-design.md).
 
 Cargo's patches belong to each workspace root. All three consuming manifests and
-lockfiles carry the same official Git revision. Upstream MIT/Apache-2.0 licensing
+lockfiles carry the same official Git revision for rtc-rtp and rtc-shared. Upstream MIT/Apache-2.0 licensing
 is retained; no build-time source patch or
 registry-cache edit is used. When an upstream release provides the parser repair,
 update the three roots and locks, run the existing media interoperability and

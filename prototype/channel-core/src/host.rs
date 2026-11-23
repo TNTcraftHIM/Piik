@@ -812,7 +812,7 @@ impl RoomRuntime {
 
 struct Pending {
     before: RoomRuntime,
-    input: HostInput,
+    action: HostAction,
     reply: Option<RoomReply>,
     history: bool,
 }
@@ -1772,16 +1772,6 @@ impl RoomHost {
             .map(|authority| std::mem::take(&mut authority.reaction_nonces))
             .unwrap_or_default();
         reaction_nonces.retain(|session, _| input.endpoints.contains_key(session));
-        self.authority = Some(RoomAuthority {
-            now: input.now,
-            confirmed_pairs: input.confirmed_pairs.clone(),
-            channel_owner_id: input.channel_owner_id,
-            binding_id: input.binding_id,
-            host_session_id: input.host_session_id,
-            revision: input.revision,
-            endpoints: input.endpoints.clone(),
-            reaction_nonces,
-        });
         self.room
             .set_writer(input.host_session_id, input.hosting_mode);
         self.room
@@ -1903,9 +1893,19 @@ impl RoomHost {
         }
         self.room
             .reconcile_with_pairs(&input.endpoints, input.now, &input.confirmed_pairs);
+        self.authority = Some(RoomAuthority {
+            now: input.now,
+            confirmed_pairs: input.confirmed_pairs,
+            channel_owner_id: input.channel_owner_id,
+            binding_id: input.binding_id,
+            host_session_id: input.host_session_id,
+            revision: input.revision,
+            endpoints: input.endpoints,
+            reaction_nonces,
+        });
         self.pending = Some(Pending {
             before,
-            input,
+            action: input.action,
             reply,
             history: work.history.is_some(),
         });
@@ -1927,7 +1927,7 @@ impl RoomHost {
             else {
                 return Err("invalid_file_operation");
             };
-            let HostAction::Command { context, command } = &pending.input.action else {
+            let HostAction::Command { context, command } = &pending.action else {
                 return Err("invalid_file_operation");
             };
             let result = match command {
@@ -1957,30 +1957,33 @@ impl RoomHost {
             if let Err(code) = result {
                 pending.reply.as_mut().unwrap().result = RoomResult::Error { code: code.into() };
             }
+            let authority = self.authority.as_ref().expect("dispatched room input");
             self.room.reconcile_with_pairs(
-                &pending.input.endpoints,
-                pending.input.now,
-                &pending.input.confirmed_pairs,
+                &authority.endpoints,
+                authority.now,
+                &authority.confirmed_pairs,
             );
         }
-        Ok(self.output(pending))
+        Ok(self.output(pending.reply))
     }
 
     pub fn abort(&mut self, code: String) -> Result<HostOutput, &'static str> {
         let mut pending = self.pending.take().ok_or("no_room_operation")?;
-        self.room = pending.before.clone();
+        self.room = pending.before;
         if let Some(reply) = &mut pending.reply {
             reply.result = RoomResult::Error { code };
         }
-        Ok(self.output(pending))
+        Ok(self.output(pending.reply))
     }
 
-    fn output(&self, pending: Pending) -> HostOutput {
+    fn output(&self, reply: Option<RoomReply>) -> HostOutput {
+        let authority = self.authority.as_ref().expect("dispatched room input");
         HostOutput {
-            binding_id: pending.input.binding_id,
-            revision: pending.input.revision,
-            projection: self.room.projection(&pending.input.endpoints),
-            reply: pending.reply,
-        }.within_domain_frame()
+            binding_id: authority.binding_id,
+            revision: authority.revision,
+            projection: self.room.projection(&authority.endpoints),
+            reply,
+        }
+        .within_domain_frame()
     }
 }

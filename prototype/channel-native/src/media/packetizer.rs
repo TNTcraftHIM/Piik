@@ -29,9 +29,9 @@ pub(crate) struct Packetizer {
     ssrc: u32,
     clock_rate: u32,
     time: SourceTime,
-    previous_ticks: u64,
+    previous_ticks: i128,
     source: Option<Video>,
-    offset: u64,
+    offset: i128,
     report: SourceReport,
 }
 impl Packetizer {
@@ -76,12 +76,9 @@ impl Packetizer {
         })
     }
 
-    fn source_ticks(&self, presentation_time: Instant) -> u64 {
-        (presentation_time
-            .saturating_duration_since(self.time.epoch)
-            .as_nanos()
-            * self.clock_rate as u128
-            / 1_000_000_000) as u64
+    fn source_ticks(&self, presentation_time: Instant) -> i128 {
+        super::clock::signed_nanos(presentation_time, self.time.epoch) * i128::from(self.clock_rate)
+            / 1_000_000_000
     }
 
     pub fn packetize_source(
@@ -95,7 +92,7 @@ impl Packetizer {
             .is_none_or(|current| !current.same(video))
         {
             self.offset = if self.source.is_some() {
-                (self.previous_ticks + 1).saturating_sub(self.source_ticks(frame.presentation_time))
+                (self.previous_ticks + 1 - self.source_ticks(frame.presentation_time)).max(0)
             } else {
                 0
             };
@@ -130,7 +127,12 @@ impl Packetizer {
         presentation_time: Instant,
         sample_position: u64,
     ) -> Result<Vec<Packet>> {
-        self.packetize_ticks(&bytes.into(), presentation_time, None, sample_position)
+        self.packetize_ticks(
+            &bytes.into(),
+            presentation_time,
+            None,
+            i128::from(sample_position),
+        )
     }
 
     fn packetize_ticks(
@@ -138,14 +140,14 @@ impl Packetizer {
         bytes: &Bytes,
         presentation_time: Instant,
         metadata: Option<Vp8FrameMetadata>,
-        ticks: u64,
+        ticks: i128,
     ) -> Result<Vec<Packet>> {
         ensure!(!bytes.is_empty(), "source produced an empty encoded frame");
         let keyframe = bytes[0] & 1 == 0;
         // Advance before packetizing: irregular capture intervals and dropped raw
         // frames must not move the RTP clock onto the encoder's delivery cadence.
         self.inner
-            .skip_samples(ticks.wrapping_sub(self.previous_ticks) as u32);
+            .skip_samples((ticks - self.previous_ticks) as u32);
         self.previous_ticks = ticks;
         let mut packets = self.inner.packetize(Instant::now(), bytes, 0)?;
         if let Some(vp8) = &mut self.vp8 {
@@ -174,6 +176,50 @@ mod tests {
     use super::*;
     use rtc_shared::time::SystemInstant;
     use std::time::Duration;
+
+    #[test]
+    fn early_layer_switch_preserves_frames_before_the_reference_epoch() -> Result<()> {
+        let epoch = Instant::now();
+        let time = SourceTime::local(epoch, SystemInstant::now(epoch));
+        let reference = Video::new(time.clone(), Default::default());
+        let early = Video::new(time.clone(), Default::default());
+        let mut sender = Packetizer::new(
+            &RtpCodec::h264([0x42, 0xe0, 0x1f]),
+            96,
+            42,
+            time,
+            Default::default(),
+        )?;
+        let mut previous = None;
+        let mut intervals = Vec::new();
+        for (video, at) in [
+            (&reference, epoch),
+            (&early, epoch - Duration::from_micros(33_334)),
+            (&early, epoch - Duration::from_micros(16_667)),
+            (&early, epoch),
+            (&early, epoch + Duration::from_millis(100)),
+            // Resume on the same feed after a full 32-bit RTP clock cycle.
+            (&early, epoch + Duration::from_millis(50_000_100)),
+            (&early, epoch + Duration::from_millis(50_000_120)),
+        ] {
+            let frame = Arc::new(EncodedFrame {
+                bytes: vec![0x65, 42, 0x80],
+                presentation_time: at,
+                keyframe: true,
+                vp8: None,
+            });
+            let timestamp = sender.packetize_source(video, &frame)?[0].header.timestamp;
+            if let Some(last) = previous {
+                intervals.push(timestamp.wrapping_sub(last));
+            }
+            previous = Some(timestamp);
+        }
+        assert_eq!(
+            intervals,
+            [1, 1500, 1500, 9000, 4_500_000_000u64 as u32, 1800]
+        );
+        Ok(())
+    }
 
     #[test]
     fn h264_packets_and_cached_parameter_sets_share_the_encoded_frame() -> Result<()> {

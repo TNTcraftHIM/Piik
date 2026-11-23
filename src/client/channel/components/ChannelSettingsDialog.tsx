@@ -101,23 +101,23 @@ export function ChannelSettingsError({ error }: { error: string | null }) {
   return message && <p className="c3-settings-error" role="alert">{message}</p>;
 }
 
-export type SettingsAction = <T>(work: () => Promise<T>, onSuccess?: (value: T) => void) => Promise<void>;
+export type SettingsAction = <T>(work: (signal: AbortSignal) => Promise<T>, onSuccess?: (value: T) => void) => Promise<void>;
 
 /** Pending stays in Session; only this open surface receives its action result. */
 export function useSettingsAction(open = true): { error: string | null; run: SettingsAction } {
   const [error, setError] = useState<string | null>(null);
-  const lifetime = useRef<object | null>(null);
+  const lifetime = useRef<AbortController | null>(null);
   useLayoutEffect(() => {
-    lifetime.current = open ? {} : null;
+    lifetime.current = open ? new AbortController() : null;
     setError(null);
-    return () => { lifetime.current = null; };
+    return () => { lifetime.current?.abort(); lifetime.current = null; };
   }, [open]);
   const run: SettingsAction = useCallback(async (work, onSuccess) => {
     const current = lifetime.current;
     if (!current) return;
     setError(null);
     try {
-      const result = await work();
+      const result = await work(current.signal);
       if (lifetime.current === current) onSuccess?.(result);
     } catch (error) {
       if (lifetime.current !== current || (error instanceof DOMException && error.name === "AbortError")) return;

@@ -21,6 +21,7 @@ button:focus-visible { outline: 2px solid var(--action); outline-offset: 3px; }
 .permission-request { display: grid; grid-template-columns: 36px minmax(0, 1fr); align-content: start; align-items: start; gap: 16px; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
 .permission-request h2 { margin: 0 0 8px; font-size: 22px; line-height: 1.35; }
 .permission-origin { overflow-wrap: anywhere; user-select: text; }
+.permission-scope { margin: 6px 0 0; font-size: 13px; }
 .permission-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; flex: none; }
 .permission-actions .lr-btn { min-width: 96px; }
 .permission-glyph { width: 36px; height: 36px; margin-top: 2px; }
@@ -35,7 +36,11 @@ button:focus-visible { outline: 2px solid var(--action); outline-offset: 3px; }
   <div class="c3-settings-panels permission-body">
     <div class="permission-request">
       <svg class="permission-glyph" viewBox="0 0 24 24" aria-hidden="true"></svg>
-      <div><h2 id="permission-title"></h2><div id="permission-origin" class="permission-origin" dir="ltr"></div></div>
+      <div>
+        <h2 id="permission-title"></h2>
+        <div id="permission-origin" class="permission-origin" dir="ltr"></div>
+        <p id="permission-scope" class="permission-scope" hidden></p>
+      </div>
     </div>
     <footer class="permission-actions">
       <button id="deny" class="lr-btn is-compact" type="button" autofocus></button>
@@ -49,6 +54,11 @@ const request = window.piikPermission;
 const close = document.getElementById('close');
 const deny = document.getElementById('deny');
 const allow = document.getElementById('allow');
+const scope = document.getElementById('permission-scope');
+if (!request.filename) {
+  scope.hidden = false;
+  document.querySelector('dialog').setAttribute('aria-describedby', 'permission-origin permission-scope');
+}
 for (const [selector, icon] of [['#close svg', 'close'], ['.permission-glyph', request.filename ? 'folder' : request.camera ? 'camera' : 'microphone']]) {
   for (const geometry of controls.icons[icon]) {
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -63,6 +73,7 @@ window.updateAppearance = (theme, language) => {
   document.documentElement.lang = language;
   const copy = controls.labels[language];
   document.getElementById('permission-title').textContent = request.filename ? copy.revealQuestion : request.camera ? copy.camera : copy.microphone;
+  if (!request.filename) scope.textContent = controls.permissionScope[language] ?? controls.permissionScope.en;
   close.title = copy.permissionClose;
   close.setAttribute('aria-label', copy.permissionClose);
   deny.textContent = request.filename ? copy.permissionClose : copy.deny;

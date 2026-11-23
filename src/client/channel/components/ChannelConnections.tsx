@@ -42,7 +42,7 @@ export function ChannelConnectionReport({ state, roomId, sessionId, topology, me
     {graph && <RouteGraph {...graph} label={topology?.screen ? undefined : t("connection.room")}
       emptyLabel={t(topology?.screen ? "connection.noScreenPath" : "connection.noRoomLinks")} />}
     {!!graph?.edges.length && <p className="c3-connection-note">{t(topology?.screen ? "connection.pathLegend" : "connection.roomLinkLegend")}</p>}
-    {rows.some(row => row.selectedDisplayReceiver === sessionId)
+    {hasSelectedLocalDisplay(topology, sessionId)
       && <p className="c3-connection-note">{t("connection.localDisplayHint")}</p>}
     {metrics.some(sample => sample.ownerSessionId !== sessionId && sample.media === "video")
       && <p className="c3-connection-note">{t("connection.appMetricScope")}</p>}

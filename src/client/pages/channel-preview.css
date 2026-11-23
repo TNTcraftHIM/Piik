@@ -164,6 +164,10 @@
 .c3-shell[data-view="share"] .c3-pane-navigation { display: inline-flex; }
 @media (any-pointer: coarse) {
   .c3-person-actions .lr-btn, .c3-identity .c3-profile-editor .lr-btn { --button-size: var(--control-compact-size); }
+  :is(.c3-room-participants, .c3-people-panel) .c3-participant-status {
+    min-width: var(--control-compact-size);
+    min-height: var(--control-compact-size);
+  }
 }
 @container channel-shell (max-width: 1100px) {
   .c3-room-heading { gap: 8px; padding: 12px; }
@@ -238,6 +242,7 @@
   .c3-room-presence { grid-column: 2 / 4; }
   & > .c3-sidebar { display: none; }
   &[data-pane="rooms"] > .c3-sidebar { display: flex; }
+  &[data-pane="rooms"] #c3-rooms-trigger { display: none; }
   &:is([data-pane="rooms"], [data-pane="people"], [data-pane="chat"]) .c3-main-body { visibility: hidden; }
   .c3-pane-back, .c3-pane-navigation { display: inline-flex; flex: none; }
   .c3-sidebar, .c3-people-panel, .c3-chat-panel { border-inline: 0; }

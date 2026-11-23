@@ -4,6 +4,7 @@ import { useCopy } from "../../ui/copy";
 import type { ChannelRoom } from "../protocol";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelAction";
+import { protectRoomComposition, useRoomFormFocus } from "./room-form-interaction";
 import "./channel-room-controls.css";
 
 function RoomPasswordForm({ channel, roomId, available, hidden = false }: {
@@ -12,14 +13,17 @@ function RoomPasswordForm({ channel, roomId, available, hidden = false }: {
   const { t } = useCopy();
   const [password, setPassword] = useState("");
   const pending = channel.pending.has(`enter:${roomId}`);
-  return <form hidden={hidden} onSubmit={event => {
+  const restoreField = useRoomFormFocus(!available || pending);
+  const canEnter = available && !pending && !!password;
+  return <form hidden={hidden} onKeyDownCapture={protectRoomComposition} onSubmit={event => {
     event.preventDefault();
-    if (!available || pending || !password) return;
-    void channel.enterRoom(roomId, password).then(() => setPassword("")).catch(() => {});
+    if (!canEnter) return;
+    const restore = restoreField(event.currentTarget);
+    void channel.enterRoom(roomId, password).then(() => setPassword(""), restore);
   }}><input className="c3-input" type="password" maxLength={128} value={password} autoComplete="current-password"
     aria-label={t("room.entry.password")} disabled={!available || pending} onChange={event => setPassword(event.target.value)} />
     <ChannelAction icon="door" type="submit" primary label={t("room.entry.enter")}
-      busy={pending} disabled={!password || !available} /></form>;
+      busy={pending} disabled={!canEnter} /></form>;
 }
 
 export function ChannelRoomEntry({ channel, room }: { channel: ChannelController; room: ChannelRoom }) {
@@ -28,7 +32,8 @@ export function ChannelRoomEntry({ channel, room }: { channel: ChannelController
     <h3>{t("room.entry.privateTitle")}</h3>
     <p>{!room.available ? t("room.offline.access") : room.hasPassword ? t("room.entry.passwordNote")
       : t("room.entry.invitationNote")}</p>
-    {room.hasPassword && <RoomPasswordForm channel={channel} roomId={room.id} available={channel.connection === "connected" && room.available} />}
+    {room.hasPassword && <RoomPasswordForm channel={channel} roomId={room.id} available={channel.connection === "connected" && room.available}
+      hidden={!room.available} />}
   </section>;
 }
 

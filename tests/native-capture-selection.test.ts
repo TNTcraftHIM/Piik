@@ -107,6 +107,21 @@ describe("native capture source selection", () => {
     expect(html).not.toContain('data-camera-source=');
   });
 
+  it("keeps the system chooser's error and retry visible after refresh fails", () => {
+    setCopy({ lang: "en" });
+    const nativeSources = { kind: "failed" as const, sources: [{ kind: "picker" as const, sourceId: "1", title: "Choose on device" }] };
+    const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources, initialTab: "picker",
+      onBrowser() {}, onNative() {}, onCamera() {}, onPreview: async () => null, onRefresh() {}, onCancel() {},
+    }));
+    expect(html).toMatch(/data-source-tab="picker"[^>]*aria-selected="true"/);
+    expect(html).toContain(t("en", "host.sourcePicker.failed"));
+    const refresh = html.match(/<button\b[^>]*aria-label="Refresh sharing sources"[^>]*>/)?.[0];
+    expect(refresh).toBeDefined();
+    expect(refresh).not.toContain("disabled");
+    expect(html).not.toContain(t("en", "host.sourcePicker.systemAction"));
+  });
+
   it("shows the existing no-source result when neither Browser API nor App capture is available", () => {
     setCopy({ lang: "en" });
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {

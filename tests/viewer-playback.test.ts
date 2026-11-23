@@ -38,6 +38,24 @@ describe("Viewer playback binding", () => {
 });
 
 describe("Playback audio controls", () => {
+  it("retires local share settings when the room hides its retained screen", () => {
+    const source: ChannelStageProps["sources"][number] = {
+      kind: "screen", id: "screen", userId: "self", name: "Me", roomName: "Room",
+      source: { kind: "screen", name: "Own screen" }, title: null, owned: true, audience: [], subscribed: true,
+      localSource: true, paused: false, stream: {} as MediaStream, shareControls: createElement("button", { id: "share-settings" }),
+    };
+    const render = (hidden: boolean) => renderToStaticMarkup(createElement(ChannelStage, {
+      theaterMode: [false, vi.fn()], sources: [{ ...source, hidden }], focusedId: null, canSubscribe: true,
+      onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
+      onInputPolicy: vi.fn(), onInputDecide: vi.fn(), onInputSimultaneous: vi.fn(), onInputShortcut: vi.fn(),
+    }));
+    expect(render(false)).toContain('id="share-settings"');
+    const background = render(true);
+    expect(background).not.toContain('id="share-settings"');
+    expect(background).toContain('data-publication-id="screen"');
+    expect(background).toContain("<video");
+  });
+
   it("keeps source sound in publishing controls and allows immediate mute while capture is busy", () => {
     setCopy({ lang: "zh" });
     const stream = { id: "mixed", getAudioTracks: () => [{ kind: "audio", readyState: "live" }] } as unknown as MediaStream;

@@ -1002,6 +1002,8 @@ pub struct FlowBinding {
     pub publication_id: Uuid,
     pub input_flow_id: Option<Uuid>,
     pub selected: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub presentation: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]

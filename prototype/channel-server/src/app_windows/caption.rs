@@ -16,6 +16,7 @@ pub(super) struct Caption {
     pub(super) view: WebView,
     appearance: RefCell<Appearance>,
     title: RefCell<String>,
+    panel: Cell<bool>,
 }
 
 #[derive(Default)]
@@ -92,6 +93,7 @@ impl Caption {
             view,
             appearance: RefCell::default(),
             title: RefCell::new(String::new()),
+            panel: Cell::new(false),
         })
     }
 
@@ -105,7 +107,15 @@ impl Caption {
         let _ = self.view.evaluate_script(&script);
     }
 
+    pub(super) fn set_panel(&self) {
+        self.panel.set(true);
+        let _ = self.view.evaluate_script("window.usePanelSurface()");
+    }
+
     pub(super) fn ready(&self, theme: &Theme, language: Language) {
+        if self.panel.get() {
+            self.set_panel();
+        }
         let script = self.appearance.borrow_mut().ready(theme, language);
         let _ = self.view.evaluate_script(&script);
         let title = self.title.borrow().clone();

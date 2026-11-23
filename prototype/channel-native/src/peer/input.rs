@@ -64,6 +64,14 @@ impl Inputs {
             Some(previous) => previous.replace(video, target)?,
             None => desktop.source(publication, video, target)?,
         };
+        if let Some(publication) = self.snapshot.borrow().as_ref().and_then(|state| {
+            state
+                .publications
+                .iter()
+                .find(|p| p.id == publication && p.session_id == self.local)
+        }) {
+            source.set_share_paused(publication.paused);
+        }
         for registration in self
             .registrations
             .iter()
@@ -145,16 +153,18 @@ impl Inputs {
         }
         let state = self.snapshot.borrow();
         self.sources.retain(|publication, source| {
-            let current = state.as_ref().is_some_and(|state| {
+            if let Some(current) = state.as_ref().and_then(|state| {
                 state
                     .publications
                     .iter()
-                    .any(|p| p.id == *publication && p.session_id == self.local)
-            });
-            if !current {
+                    .find(|p| p.id == *publication && p.session_id == self.local)
+            }) {
+                source.set_share_paused(current.paused);
+                true
+            } else {
                 source.close();
+                false
             }
-            current
         });
     }
 
@@ -341,7 +351,7 @@ struct Packet {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use piik_channel_core::wire::*;
 
@@ -414,6 +424,7 @@ mod tests {
                         id: id(5),
                         publication_id: id(4),
                         input_flow_id: None,
+                        presentation: false,
                         selected: true,
                     }],
                 },
@@ -428,6 +439,7 @@ mod tests {
                         id: id(6),
                         publication_id: id(4),
                         input_flow_id: Some(id(5)),
+                        presentation: false,
                         selected: true,
                     }],
                 },
@@ -445,6 +457,26 @@ mod tests {
             ),
             closed: None,
             ready: None,
+        }
+    }
+
+    pub(crate) fn share_pause_projection(
+        source: &InputSource,
+        sibling: &InputSource,
+    ) -> impl FnMut(bool) {
+        let mut state = state();
+        let local = state.publications[0].session_id;
+        state.publications[0].id = source.publication();
+        let mut other = state.publications[0].clone();
+        other.id = sibling.publication();
+        state.publications.push(other);
+        let (snapshot, current) = watch::channel(Some(state));
+        let mut input = Inputs::new(local, current, None);
+        input.sources.insert(source.publication(), source.clone());
+        input.sources.insert(sibling.publication(), sibling.clone());
+        move |paused| {
+            snapshot.send_modify(|s| s.as_mut().unwrap().publications[0].paused = paused);
+            input.reconcile();
         }
     }
 
@@ -516,15 +548,14 @@ mod tests {
             input.registrations(vec![registration.clone()]).is_empty(),
             "unchanged registration has no retry loop"
         );
+        source.set_mode(crate::input::Mode::Room).unwrap();
         for paused in [true, false] {
             snapshot.send_modify(|state| state.as_mut().unwrap().publications[0].paused = paused);
             input.reconcile();
             assert!(input.sources.contains_key(&id(4)));
             assert!(input.registrations(vec![registration.clone()]).is_empty());
-            assert!(
-                source.set_mode(crate::input::Mode::Off).is_ok(),
-                "pause retired the input source"
-            );
+            assert_eq!(view.borrow().mode, crate::input::Mode::Room);
+            assert_eq!(source.set_mode(crate::input::Mode::Room).is_ok(), !paused);
         }
         snapshot.send_modify(|state| {
             let screen = state.as_mut().unwrap().publications[0]

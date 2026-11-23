@@ -454,6 +454,7 @@ pub(super) fn driver() -> (
             admitted: HashSet::new(),
             pairs: HashMap::new(),
             retiring_pair: None,
+            retirement_failed: mpsc::channel(1).0,
             preparings: HashMap::new(),
             publications: HashMap::new(),
             sources: HashMap::new(),

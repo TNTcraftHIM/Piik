@@ -242,6 +242,7 @@ impl TransportBook {
                     publication_id: flow.publication_id,
                     input_flow_id: flow.input_flow_id,
                     selected: flow.selected,
+                    presentation: flow.presentation,
                 },
             );
         }
@@ -681,7 +682,7 @@ impl TransportBook {
                 selected: binding.selected,
                 proof: None,
                 presented: None,
-                presentation: false,
+                presentation: binding.presentation,
             })
         })
     }

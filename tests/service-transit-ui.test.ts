@@ -12,7 +12,7 @@ test.each(["zh", "en"] as const)("service permission reflects the manager's conf
   const channel = { pending: new Set() } as unknown as ChannelController;
   const room = { id: "room", available: true, canManage: true, authorized: true } as ChannelRoom;
   const render = (overrides: Partial<ChannelRoom>) => renderToStaticMarkup(createElement(ServiceTransit, {
-    channel, room: { ...room, ...overrides }, disabled: false, run: async work => { await work(); },
+    channel, room: { ...room, ...overrides }, disabled: false, run: async work => { await work(new AbortController().signal); },
   }));
   expect(render({})).toBe("");
   const standby = { enabled: true, available: false };

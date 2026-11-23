@@ -22,6 +22,7 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
   const icon = iconDraft ?? current?.icon ?? "couch";
   const [open, setOpen] = useState(false), [imageBusy, setImageBusy] = useState(false);
   const [task, setTask] = useState<"site" | "rooms" | "backup">("site");
+  const [submittedForm, setSubmittedForm] = useState<"site" | "rooms">();
   const [policyDraft, setPolicyDraft] = useState<RoomCreationPolicy | null>(null);
   const { error, run } = useSettingsAction(open);
   const busy = channel.pending.has("domain"), backupBusy = channel.pending.has("domain-backup");
@@ -43,7 +44,7 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
   if (!owner) return null;
   return <>
     <Tooltip overflow={{ text: current?.name ?? title, selector: ".lr-cap" }} disabled={open}>
-      <Btn icon="chevron" size="dense" quiet title={{ text: title }} cap={{ text: current?.name ?? title }} expanded={open} disabled={disabled}
+      <Btn icon="chevron" size="dense" quiet title={{ text: title }} cap={{ text: current?.name ?? title }} expanded={open}
         iconOverlay={<ChannelIdentityMark icon={current?.icon ?? "couch"} size={22} />}
         onClick={() => { resetDraft(); setTask("site"); setOpen(true); }} />
     </Tooltip>
@@ -58,20 +59,23 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
               event.preventDefault();
               if (disabled || imageBusy || !name.trim()) return;
               if (nameDraft === undefined && iconDraft === undefined) { close(); return; }
+              setSubmittedForm("site");
               void run(() => channel.updateDomain({ name: nameDraft?.trim(), icon: iconDraft }, false), close);
             }}>
               <ChannelIdentityFields name={name} icon={icon} label={t("channel.siteSettings.siteName")} disabled={disabled}
                 onName={setName} onIcon={setIcon} imageBusy={imageBusy} onImageBusyChange={setImageBusy} />
               <div className="c3-form-actions">
                 <ChannelAction icon="x" quiet label={t("channel.siteSettings.cancel")} onClick={close} />
-                <ChannelAction icon="check" primary type="submit" label={t("channel.siteSettings.save")} busy={busy} disabled={disabled || imageBusy || !name.trim()} />
+                <ChannelAction icon="check" primary type="submit" label={t("channel.siteSettings.save")} busy={busy && submittedForm === "site"} disabled={disabled || imageBusy || !name.trim()} />
               </div>
             </form>
           </section>
           <section id={`${id}-rooms`} role="tabpanel" aria-labelledby={`${id}-rooms-tab`} hidden={task !== "rooms"}>
             <form className="c3-room-form" onSubmit={event => {
               event.preventDefault();
-              if (!disabled && policy !== current?.roomCreationPolicy) void run(() => channel.setRoomCreationPolicy(policy, false), close);
+              if (disabled || policy === current?.roomCreationPolicy) return;
+              setSubmittedForm("rooms");
+              void run(() => channel.setRoomCreationPolicy(policy, false), close);
             }}>
               <fieldset className="c3-site-creation-options" disabled={disabled}>
                 <legend>{t("channel.siteSettings.guestCreation")}</legend>
@@ -83,7 +87,7 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
               <p>{t(`channel.siteSettings.creationNote.${policy}`)}</p>
               <div className="c3-form-actions">
                 <ChannelAction icon="x" quiet label={t("channel.siteSettings.cancel")} onClick={close} />
-                <ChannelAction icon="check" primary type="submit" label={t("channel.siteSettings.save")} busy={busy}
+                <ChannelAction icon="check" primary type="submit" label={t("channel.siteSettings.save")} busy={busy && submittedForm === "rooms"}
                   disabled={disabled || policy === current?.roomCreationPolicy} />
               </div>
             </form>

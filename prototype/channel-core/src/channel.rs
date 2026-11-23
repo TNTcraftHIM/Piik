@@ -591,7 +591,10 @@ impl Channel {
                     view.failed_subscriptions
                         .retain(|id| view.subscriptions.contains(id));
                 }
-                projection.flows.retain(|flow| {
+                projection.flows.retain_mut(|flow| {
+                    flow.presentation = projection.views.get(&flow.receiver)
+                        .and_then(|view| view.screen_helpers.get(&flow.publication_id))
+                        == Some(&flow.sender);
                     [flow.sender, flow.receiver]
                         .into_iter()
                         .all(|s| routable_sessions.contains(&s))

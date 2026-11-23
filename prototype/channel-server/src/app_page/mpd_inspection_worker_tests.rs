@@ -93,14 +93,14 @@ async fn public_inspect_cancel_retires_actual_parser_worker_twice_before_reusing
         Some(Arc::new(move |command| {
             match command {
                 Command::Media { reply, .. } => {
-                    let _ = reply.send(Ok(MediaContext {
+                    let _ = reply.send(Ok((MediaContext {
                         url: format!("{origin}/worker-retirement.mpd"),
                         request: None,
                         format: Format::Dash,
                         size: None,
                         retired: retired.clone(),
                         cookies: Arc::new(|_| Box::pin(async { Ok(None) })),
-                    }));
+                    }, Default::default())));
                 }
                 Command::Retire { .. } => {}
                 _ => panic!("unexpected command"),

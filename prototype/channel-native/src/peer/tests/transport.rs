@@ -118,6 +118,7 @@ async fn source_ended_before_ready_fails_only_its_current_flow() -> Result<()> {
             id: Uuid::new_v4(),
             publication_id: publication,
             input_flow_id: None,
+            presentation: false,
             selected: true,
         }
     });
@@ -297,14 +298,18 @@ async fn source_ended_before_ready_fails_only_its_current_flow() -> Result<()> {
     result
 }
 
-#[tokio::test]
-async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()> {
-    use crate::peer::{tests::driver, Pair, Reader};
-    use std::future::Future;
-
-    let (mut driver, _events, _commands, _stop) = driver();
+async fn install_retirement_pair(
+    driver: &mut crate::peer::Driver,
+) -> (
+    Uuid,
+    Uuid,
+    mpsc::Receiver<Command>,
+    tokio::task::AbortHandle,
+    oneshot::Receiver<()>,
+) {
+    use crate::peer::{Pair, Reader};
     // Use the real Transport command boundary without binding any UDP socket.
-    let (commands, mut requests) = mpsc::channel(8);
+    let (commands, requests) = mpsc::channel(8);
     let id = Uuid::new_v4();
     let instance = Uuid::new_v4();
     let pc = Transport {
@@ -336,7 +341,7 @@ async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()>
         std::future::pending::<()>().await;
     });
     let observer = reader.abort_handle();
-    running.await?;
+    running.await.unwrap();
     driver.pairs.insert(
         id,
         Pair {
@@ -387,6 +392,17 @@ async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()>
             overflow: Arc::new(AtomicBool::new(false)),
         },
     );
+    (id, instance, requests, observer, dropped)
+}
+
+#[tokio::test]
+async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()> {
+    use crate::peer::tests::driver;
+    use std::future::Future;
+
+    let (mut driver, _events, _commands, _stop) = driver();
+    let (id, instance, mut requests, observer, dropped) =
+        install_retirement_pair(&mut driver).await;
     let mut retirement = Box::pin(driver.retire_pair(id));
     let done = tokio::select! {
         result = &mut retirement => panic!("retirement completed before transport removal: {result}"),
@@ -408,7 +424,7 @@ async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()>
             .await
     );
     done.send(()).unwrap();
-    shutdown.await;
+    shutdown.await?;
     assert!(
         observer.is_finished(),
         "Driver shutdown must join the removed Pair reader"
@@ -417,6 +433,44 @@ async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()>
     driver.files.close().await;
     driver.watches.close().await;
     driver.transport.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn failed_pair_retirement_reports_child_panic_after_sibling_closes() -> Result<()> {
+    use crate::peer::{tests::driver, NativePeers};
+
+    let (mut driver, _events, _commands, cancel) = driver();
+    let (id, instance, mut requests, reader, dropped) = install_retirement_pair(&mut driver).await;
+    let child = tokio::spawn(async { panic!("synthetic retirement failure") });
+    let child_id = child.id();
+    driver.retiring_pair = Some(child);
+    let mut peers = NativePeers {
+        cancel,
+        input: mpsc::channel(1).0,
+        task: tokio::spawn(async move { Ok(driver.close().await?) }),
+    };
+    let close = peers.close();
+    tokio::pin!(close);
+    let done = tokio::select! {
+        result = &mut close => panic!("closed before sibling transport: {result:?}"),
+        Some(Command::Remove(pair, generation, done)) = requests.recv() => {
+            assert_eq!((pair, generation), (id, instance));
+            done
+        }
+    };
+    dropped.await?;
+    done.send(()).unwrap();
+    let error = close
+        .await
+        .unwrap_err()
+        .downcast::<tokio::task::JoinError>()?;
+    assert_eq!(error.id(), child_id);
+    assert_eq!(
+        error.into_panic().downcast_ref::<&str>(),
+        Some(&"synthetic retirement failure")
+    );
+    assert!(reader.is_finished());
     Ok(())
 }
 

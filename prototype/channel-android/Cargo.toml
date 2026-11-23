@@ -22,5 +22,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync", "net"] }
 
 # Workspace-root patch; match Native/Server and the Native README removal criteria.
 [patch.crates-io]
+rtc-turn = { path = "../../native/third_party/rtc-turn" }
 rtc-rtp = { git = "https://github.com/webrtc-rs/rtc", rev = "81fde93b46f8fb1c1a191415558fa3574e48d5c7" }
 rtc-shared = { git = "https://github.com/webrtc-rs/rtc", rev = "81fde93b46f8fb1c1a191415558fa3574e48d5c7" }

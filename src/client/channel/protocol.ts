@@ -110,6 +110,7 @@ export const watchBytePlanSchema = z.object({ roomId: id, activityId: z.uuid(), 
 export type WatchBytePlan = z.infer<typeof watchBytePlanSchema>;
 export const watchActivitySchema = z.object({ id, roomId: id, userId: id, sessionId: id, source: watchSourceSchema, playback: watchPlaybackSchema, viewerSessionIds: z.array(id).max(CHANNEL_SESSION_LIMIT), byteSource: watchByteSourceSchema.optional() }).strict();
 export type WatchActivity = z.infer<typeof watchActivitySchema>;
+const flowBindingSchema = z.object({ id, publicationId: id, selected: z.boolean(), inputFlowId: id.nullable(), presentation: z.boolean().optional() });
 export const snapshotSchema = z.object({
   channel: z.object({
     id, name: identityNameSchema, icon: identityIconSchema, ownerId: id.nullable(), rooms: z.array(roomSchema).max(CHANNEL_ROOM_LIMIT), historyWindow: z.number().int().positive(), userCount: z.number().int().nonnegative(),
@@ -126,7 +127,7 @@ export const snapshotSchema = z.object({
   watchBytes: z.array(watchBytePlanSchema),
   failedSubscriptions: z.array(id),
   files: z.array(filePlanSchema),
-  pairs: z.array(z.object({ id, peerId: id, canReceiveVideoLayers: z.boolean().default(false), rooms: z.array(id), outgoing: z.array(z.object({ id, publicationId: id, selected: z.boolean(), inputFlowId: id.nullable() })), incoming: z.array(z.object({ id, publicationId: id, selected: z.boolean(), inputFlowId: id.nullable() })) })).max(CHANNEL_SESSION_LIMIT - 1),
+  pairs: z.array(z.object({ id, peerId: id, canReceiveVideoLayers: z.boolean().default(false), rooms: z.array(id), outgoing: z.array(flowBindingSchema), incoming: z.array(flowBindingSchema) })).max(CHANNEL_SESSION_LIMIT - 1),
   iceServers: z.array(z.object({ urls: z.union([z.string(), z.array(z.string())]), username: z.string().optional(), credential: z.string().optional() })),
 });
 const udpAddressSchema = z.ipv4().refine(address => {

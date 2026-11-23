@@ -18,7 +18,7 @@ export function RoomRestoreResult({ message, unconfirmed = false, onClose }: {
 
 /** File selection and confirmation are shared by backup consumers; the caller owns storage. */
 export function BackupControls({ disabled, busy, onExport, onRestore, replacing = true, available = true, kind = "room", run: dialogRun, onClose, onRecovery }: {
-  run?: SettingsAction; onRecovery?: (recovery: RoomRestoreRecovery) => void; onClose?: () => void; disabled?: boolean; busy: boolean; available?: boolean; onExport?: () => Promise<Blob>;
+  run?: SettingsAction; onRecovery?: (recovery: RoomRestoreRecovery) => void; onClose?: () => void; disabled?: boolean; busy: boolean; available?: boolean; onExport?: (signal: AbortSignal) => Promise<Blob>;
   onRestore(file: File): Promise<{ cached: boolean } | void>; replacing?: boolean; kind?: "room" | "domain";
 }) {
   const { t } = useCopy();
@@ -29,10 +29,10 @@ export function BackupControls({ disabled, busy, onExport, onRestore, replacing 
   const local = useSettingsAction(!dialogRun);
   const run = dialogRun ?? local.run;
   const [active, setActive] = useState<"export" | "restore" | null>(null);
-  const perform = <T,>(operation: "export" | "restore", work: () => Promise<T>, onSuccess?: (result: T) => void) => {
+  const perform = <T,>(operation: "export" | "restore", work: (signal: AbortSignal) => Promise<T>, onSuccess?: (result: T) => void) => {
     setMessage(""); setActive(operation);
-    void run(async () => {
-      try { return { result: await work() }; }
+    void run(async signal => {
+      try { return { result: await work(signal) }; }
       catch (error) {
         const result = operation === "restore" ? roomRestoreRecovery(error) : null;
         if (result) {
@@ -53,8 +53,8 @@ export function BackupControls({ disabled, busy, onExport, onRestore, replacing 
     <p>{t(kind === "domain" ? "channel.backupControls.siteScopeNote" : "channel.backupControls.roomScopeNote")}</p>
     {available && !file && <div className="c3-backup-actions">
       {onExport && <ChannelAction icon="save" quiet label={kind === "room" ? t("channel.backupControls.exportFullBackup") : t("channel.backupControls.exportBackup")} busy={active === "export"} disabled={disabled || busy || !!active}
-        onClick={() => { perform("export", async () => {
-          downloadBlob(await onExport(), `piik-${kind === "domain" ? "site" : "room"}-backup.zip`);
+        onClick={() => { perform("export", onExport, blob => {
+          downloadBlob(blob, `piik-${kind === "domain" ? "site" : "room"}-backup.zip`);
         }); }} />}
       <ChannelAction icon="refresh" quiet label={kind === "room" ? t("channel.backupControls.restoreFullBackup") : t("channel.backupControls.restoreBackup")}
         disabled={disabled || busy || !!active} onClick={() => input.current?.click()} />

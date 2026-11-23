@@ -24,7 +24,7 @@ const MAX_METADATA_BYTES: u64 = 1024 * 1024;
 const SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 pub type Cookies = Arc<dyn Fn(String) -> BoxFuture<'static, Result<Option<String>>> + Send + Sync>;
 /// Request facts belong to one successful WebView response and never enter room data.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ObservedRequestContext {
     pub url: url::Url,
     pub referer: Option<reqwest::header::HeaderValue>,
@@ -39,6 +39,23 @@ pub struct MediaContext {
     pub cookies: Cookies,
 }
 
+/// The selected WebView choice owns the file reader across inspection and admission.
+#[derive(Clone, Default)]
+pub struct IndexedFile(Arc<Mutex<Option<Arc<reader::OriginReader>>>>);
+impl IndexedFile {
+    fn open(&self, context: MediaContext) -> Result<Arc<reader::OriginReader>> {
+        ensure!(context.format == Format::File, "watch_resource_unavailable");
+        let mut file = self.0.lock().unwrap();
+        if let Some(reader) = file.as_ref() {
+            return Ok(reader.clone());
+        }
+        let retired = context.retired.clone();
+        let reader = reader::OriginReader::new(context, retired)?;
+        *file = Some(reader.clone());
+        Ok(reader)
+    }
+}
+
 pub type Dispatcher = Arc<dyn Fn(Command) -> bool + Send + Sync>;
 pub enum Command {
     Media {
@@ -46,7 +63,7 @@ pub enum Command {
         page_id: Uuid,
         choice_id: Uuid,
         indexed: bool,
-        reply: oneshot::Sender<Result<MediaContext, String>>,
+        reply: oneshot::Sender<Result<(MediaContext, IndexedFile), String>>,
     },
     Cookies {
         owner: Uuid,
@@ -417,7 +434,7 @@ impl Connection {
                         )
                     }
                     MediaSelection::Direct(choice) => {
-                        let context = resolve(choice, false).await?;
+                        let (context, _) = resolve(choice, false).await?;
                         ensure!(
                             context.format != Format::Dash,
                             "watch_mpd_selection_required"
@@ -428,13 +445,14 @@ impl Connection {
                         (reader.root, format, reader, retired)
                     }
                     MediaSelection::Indexed { video, audio } => {
-                        let video_context = resolve(video.choice_id, true).await?;
+                        let (video_context, file) = resolve(video.choice_id, true).await?;
                         let retired = video_context.retired.clone();
+                        let video_reader = file.open(video_context)?;
                         let audio = if let Some(recipe) = audio {
-                            let context = resolve(recipe.choice_id, true).await?;
-                            Some((recipe, context))
+                            let (context, file) = resolve(recipe.choice_id, true).await?;
+                            Some((recipe, file.open(context)?))
                         } else { None };
-                        let reader = indexed::IndexedReader::prepare((video, video_context), audio, cancel.subscribe()).await?;
+                        let reader = indexed::IndexedReader::prepare((video, video_reader), audio, cancel.subscribe()).await?;
                         (reader.root, Format::Hls, reader, retired)
                     }
                 };
@@ -615,10 +633,9 @@ impl Connection {
                 ensure_dispatch(dispatch(Command::Media {
                     owner: connection.owner, page_id, choice_id, indexed: true, reply,
                 }))?;
-                let context = tokio::time::timeout(Duration::from_secs(5), result).await
+                let (context, file) = tokio::time::timeout(Duration::from_secs(5), result).await
                     .map_err(|_| anyhow!("page_player_timeout"))??.map_err(anyhow::Error::msg)?;
-                let (_stop, stopped) = watch::channel(false);
-                reader::OriginReader::read_metadata(context, stopped, offset, length).await
+                file.open(context)?.read_metadata(offset, length).await
             }, cancelled).await.map_err(|_| anyhow!("watch_read_cancelled"))??;
             Ok(serde_json::json!({"mimeType":result.mime_type,"totalSize":result.total_size,"bytesBase64":Base64::encode_string(&result.bytes)}))
         }.boxed())
@@ -693,8 +710,8 @@ mod tests {
         let (_page_alive, retired) = watch::channel(false);
         let dispatch = Arc::new(move |command| {
             if let Command::Media { reply, .. } = command {
-                let _ = reply.send(Ok(MediaContext { request: None, url: url.clone(), format: Format::File,
-                    size: Some(4), retired: retired.clone(), cookies: Arc::new(|_| Box::pin(async { Ok(None) })) }));
+                let _ = reply.send(Ok((MediaContext { request: None, url: url.clone(), format: Format::File,
+                    size: Some(4), retired: retired.clone(), cookies: Arc::new(|_| Box::pin(async { Ok(None) })) }, Default::default())));
             }
             true
         });
@@ -752,8 +769,8 @@ mod tests {
         let (_page_retire, page_retired) = watch::channel(false);
         let dispatch = Arc::new(move |command| {
             if let Command::Media { reply, .. } = command {
-                let _ = reply.send(Ok(MediaContext { request: None, url: url.clone(), format: Format::File,
-                    size: Some(4), retired: page_retired.clone(), cookies: Arc::new(|_| Box::pin(async { Ok(None) })) }));
+                let _ = reply.send(Ok((MediaContext { request: None, url: url.clone(), format: Format::File,
+                    size: Some(4), retired: page_retired.clone(), cookies: Arc::new(|_| Box::pin(async { Ok(None) })) }, Default::default())));
             }
             true
         });
@@ -1004,14 +1021,14 @@ mod tests {
                     ..
                 } = command
                 {
-                    let _ = reply.send(Ok(MediaContext {
+                    let _ = reply.send(Ok((MediaContext {
                         url: url.clone(),
                         request: None,
                         format: Format::File,
                         size: Some(1000),
                         retired: retired.clone(),
                         cookies: Arc::new(|_| Box::pin(async { Ok(None) })),
-                    }));
+                    }, Default::default())));
                 }
                 true
             })),
@@ -1140,14 +1157,14 @@ mod tests {
         let connection = Arc::new(Connection::new(
             Some(Arc::new(move |command| {
                 if let Command::Media { reply, .. } = command {
-                    let _ = reply.send(Ok(MediaContext {
+                    let _ = reply.send(Ok((MediaContext {
                         url: url.clone(),
                         request: None,
                         format: Format::File,
                         size: Some(64),
                         retired: retired.clone(),
                         cookies: Arc::new(|_| Box::pin(async { Ok(None) })),
-                    }));
+                    }, Default::default())));
                 }
                 true
             })),
@@ -1379,3 +1396,7 @@ fn ensure_not_cancelled(cancel: &watch::Sender<bool>) -> Result<()> {
 #[cfg(test)]
 #[path = "app_page/mpd_selection_tests.rs"]
 mod mpd_selection_tests;
+
+#[cfg(test)]
+#[path = "app_page/indexed_file_tests.rs"]
+mod indexed_file_tests;

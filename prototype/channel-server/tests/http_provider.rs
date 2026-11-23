@@ -71,7 +71,7 @@ async fn app_startup_precedes_first_page_http_client() -> Result<()> {
     let (_retire, retired) = watch::channel(false);
     let dispatch: page::Dispatcher = Arc::new(move |command| {
         if let page::Command::Media { reply, .. } = command {
-            let _ = reply.send(Ok(page::MediaContext {
+            let _ = reply.send(Ok((page::MediaContext {
                 // Exercise both ordinary and observed-request clients, with no credentials.
                 request: Some(Arc::new(page::ObservedRequestContext {
                     url: url.parse().unwrap(),
@@ -83,7 +83,7 @@ async fn app_startup_precedes_first_page_http_client() -> Result<()> {
                 size: Some(2),
                 retired: retired.clone(),
                 cookies: Arc::new(|_| Box::pin(async { Ok(None) })),
-            }));
+            }, Default::default())));
         }
         true
     });

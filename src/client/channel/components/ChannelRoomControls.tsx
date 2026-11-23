@@ -17,6 +17,7 @@ import { BackupControls, RoomRestoreResult } from "./BackupControls";
 import { roomRestoreRecovery, type RoomRestoreRecovery } from "../hosting-api";
 import { messageAuthorName, userProfile } from "../presentation";
 import { fileSize, type AttachmentLimits } from "../attachments";
+import { protectRoomComposition, useRoomFormFocus } from "./room-form-interaction";
 
 export function RoomChatExport({ messages, users }: { messages: readonly ChannelMessage[]; users: readonly Pick<ChannelUser, "id" | "name">[] }) {
   const { t } = useCopy();
@@ -71,11 +72,15 @@ export function RoomForm({ room, value, onChange, roomHost, inviteOnly, disabled
   const { name, icon, access, hidden, password, removePassword, relayCapacity } = value;
   const change = onChange;
   const [imageBusy, setImageBusy] = useState(false);
-  return <form className="c3-room-form" onSubmit={event => {
+  const restoreField = useRoomFormFocus(disabled || busy);
+  const canSave = !!name.trim() && !disabled && !busy && !imageBusy;
+  return <form className="c3-room-form" onKeyDownCapture={protectRoomComposition} onSubmit={event => {
     event.preventDefault();
-    if (!name.trim() || disabled || imageBusy) return;
-    void onSave();
-  }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>
+    if (!canSave) return;
+    const restore = restoreField(event.currentTarget);
+    // A successful save closes or replaces this form.
+    void onSave().then(restore);
+  }}>
     {roomHost && <p>{roomHost === "server" ? t("room.create.serverHostedNote")
       : roomHost === "app" ? t("room.create.appHostedNote") : t("room.create.browserHostedNote")}</p>}
     <ChannelIdentityFields name={name} icon={icon} label={t("room.settings.name")}
@@ -110,7 +115,7 @@ export function RoomForm({ room, value, onChange, roomHost, inviteOnly, disabled
       disabled={disabled} onChange={relayCapacity => change({ relayCapacity })} /></details>
     <div className="c3-form-actions"><ChannelAction icon="x" quiet label={t("room.action.cancel")} onClick={onCancel} />
       <ChannelAction icon={room ? "check" : "plus"} label={room ? t("room.action.save") : createLabel ?? t("room.action.create")}
-        primary type="submit" disabled={disabled || imageBusy || !name.trim()} busy={busy} /></div>
+        primary type="submit" disabled={!canSave} busy={busy} /></div>
   </form>;
 }
 
@@ -218,7 +223,7 @@ function RoomCopyExport({ channel, roomId, includeFiles, disabled, busy, run }: 
       onChange={event => setIncludeRoomInfo(event.target.checked)} />
       {t("room.copy.includeSettings")}</label>
     <ChannelAction icon="save" quiet label={t("room.copy.export")} disabled={disabled || busy} busy={exporting}
-      onClick={() => { setExporting(true); void run(async () => downloadBlob(await channel.exportRoomCopy(roomId, includeRoomInfo, includeFiles), "piik-room-copy.zip"))
+      onClick={() => { setExporting(true); void run(signal => channel.exportRoomCopy(roomId, includeRoomInfo, includeFiles, signal), blob => downloadBlob(blob, "piik-room-copy.zip"))
         .finally(() => setExporting(false)); }} />
   </section>;
 }
@@ -334,7 +339,7 @@ function RoomSettings({ channel, room, onClose }: {
           {room.canManage && backupAvailable && <h3>{t("room.backup.title")}</h3>}
           {room.canManage && backupAvailable && inviteOnly && <p>{t("room.backup.inviteOnlyNote")}</p>}
           {room.canManage && <BackupControls onClose={onClose} run={run} available={backupAvailable} disabled={!available || busy || removing || !backupAvailable}
-            busy={backupBusy} onExport={() => channel.exportRoomBackup(room.id, includeFiles)} onRestore={async file => {
+            busy={backupBusy} onExport={signal => channel.exportRoomBackup(room.id, includeFiles, signal)} onRestore={async file => {
               try {
                 const result = await channel.restoreRoomBackup(file, room.id);
                 setDraft({});

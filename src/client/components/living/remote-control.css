@@ -275,11 +275,7 @@
 }
 .lr-remote-direction[data-touch-only] .lr-remote-stick {
   background: transparent;
-  border-color: transparent;
   box-shadow: none;
-}
-.lr-remote-direction[data-touch-only]:is(:not([data-docked]), :has(> button:active)) .lr-remote-stick {
-  border-color: color-mix(in srgb, currentColor 52%, transparent);
 }
 .lr-remote-direction[data-touch-only] .lr-remote-stick > span { display: none; }
 .lr-remote-direction[data-touch-only] .lr-remote-stick > i {

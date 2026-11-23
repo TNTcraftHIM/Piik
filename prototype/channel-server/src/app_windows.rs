@@ -1067,6 +1067,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             Event::UserEvent(ServiceEvent::PopupPresentation(id, message)) => {
                 if let Some(size) = message.panel_size() {
                     if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == id) {
+                        child.caption.set_panel();
                         if child.panel_geometry.get().is_some() { return; }
                         child.window.set_always_on_top(true);
                         child.window.set_inner_size(caption::window_size(size, &controls));

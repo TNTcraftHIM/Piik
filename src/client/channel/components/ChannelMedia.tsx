@@ -99,7 +99,6 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const videoRef = useMemo(() => ({ current: player.video }), [player]);
   const snapshot = () => player.mediaState;
   const mediaState = useSyncExternalStore(player.subscribeMedia, snapshot, snapshot);
-  const controlsId = useId();
   const surface = player.presentation, embedded = surface.kind === "embed";
   const pageId = surface.kind === "external" && nativeStage && presentation === "full" && !player.error &&
     typeof window !== "undefined" && window.piikMountWatchPage && player.media.page?.selectedCandidateId ? player.media.page.id : undefined;
@@ -250,8 +249,8 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       </>}
     </div></div>
       : player.blocked && <div className="c3-mini-message"><Btn icon="play" title="watch.resume" cap="watch.resume" onClick={onResume} /></div>}
-    {hasControls && <div ref={controls} id={controlsId} className={`c3-mini-controls c3-watch-controls lr-media-toolbar lr-media-controls${showTimeline ? "" : " lr-media-overlay"}`} role="group" aria-label={t("playback.controls")}>
-      {showTimeline && <div className="c3-watch-timeline lr-media-overlay">
+    {hasControls && <div ref={controls} className={`c3-mini-controls c3-watch-controls lr-media-toolbar lr-media-controls${showTimeline ? "" : " lr-media-overlay"}`} role="group" aria-label={t("playback.controls")}>
+      {showTimeline && <div className={`c3-watch-timeline${owned ? "" : " lr-media-overlay"}`}>
         {owned ? <input type="range" min={seekStart} max={seekEnd} step="0.1" value={position}
           aria-label={t("watch.seek")} disabled={disabled}
           aria-valuetext={timeLabel} onPointerDown={() => { draggingSeek.current = true; }}
@@ -307,7 +306,6 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
         </div>}
       </div>
     </div>}
-    {hasControls && !embedded && <PlaybackControlsReveal controls={controls} controlsId={controlsId} hidden={visibility.hidden} />}
   </div>;
 }
 
@@ -585,7 +583,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
       <span className="c3-mini-space" />
       <RoomChatToggle session={interaction} quiet />
       {!owned && <PlaybackControlsAttention.Provider value={visibility.setAttention}>
-        <RemoteControl channel={input ?? null} videoRef={playbackRef} available={interactive && ready && displayed.flowId === target.flowId}
+        <RemoteControl channel={input ?? null} videoRef={playbackRef} available={interactive && ready && !sourcePaused && displayed.flowId === target.flowId}
         pictureFit={pictureFit} pictureRotation={pictureRotation} touchMode={remoteTouchMode}
         readStickPositions={readStickPositions} onStickPositionChange={(side, position) => {
           saveRoomPreferences({ stickPositions: { ...readStickPositions(), [side]: position } });

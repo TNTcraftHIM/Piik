@@ -19,6 +19,7 @@ use wry::{WebView, WebViewExtWindows};
 #[derive(Clone)]
 pub struct Choice {
     pub request: Option<std::sync::Arc<page::ObservedRequestContext>>,
+    pub file: Option<page::IndexedFile>,
     pub id: Uuid,
     pub url: String,
     pub format: Format,
@@ -241,16 +242,18 @@ impl Media {
             }
             direct_count += usize::from(direct);
             indexed_count += usize::from(indexed);
-            let id = self
-                .choices
-                .values()
-                .find(|choice| choice.url == url)
-                .map(|choice| choice.id)
-                .unwrap_or_else(Uuid::new_v4);
             let request = self.response(&url).and_then(|fact| fact.3);
+            let previous = self.choices.values().find(|choice| {
+                choice.url == url && (choice.file.is_none() || (choice.format == format
+                    && choice.size == size && choice.request == request))
+            });
+            let (id, file) = previous
+                .map(|choice| (choice.id, choice.file.clone()))
+                .unwrap_or_else(|| (Uuid::new_v4(), None));
             self.choices.insert(
                 id,
                 Choice {
+                    file,
                     id,
                     url,
                     format,
@@ -290,23 +293,32 @@ impl Media {
             "indexedCandidates": self.choices.values().filter(|choice| choice.indexed).map(|c|json!({"id":c.id,"name":name(c),"hostname":hostname(c),"mimeType":c.mime_type,"totalSize":c.size})).collect::<Vec<_>>()
         })
     }
-    pub fn choice(&self, id: Uuid, indexed: bool) -> Option<Choice> {
-        self.choices
-            .get(&id)
+    pub fn choice(&mut self, id: Uuid, indexed: bool) -> Option<Choice> {
+        let choice = self.choices
+            .get_mut(&id)
             .filter(|choice| {
                 if indexed {
                     choice.indexed
                 } else {
                     choice.direct
                 }
-            })
-            .cloned()
+            })?;
+        if indexed {
+            choice.file.get_or_insert_with(Default::default);
+        }
+        Some(choice.clone())
     }
 }
 
-fn response_format(mime: &str) -> Option<Format> {
+fn response_format(mime: &str, uri: &str) -> Option<Format> {
     if mime == "application/dash+xml" {
         return Some(Format::Dash);
+    }
+    // RFC 8216 also identifies playlists by their URL path.
+    if matches!(mime, "" | "application/octet-stream")
+        && url::Url::parse(uri).is_ok_and(|url| url.path().ends_with(".m3u8"))
+    {
+        return Some(Format::Hls);
     }
     if matches!(
         mime,
@@ -424,6 +436,14 @@ mod tests {
         assert!(!value.to_string().contains("grant=private"));
         assert!(!value.to_string().contains("Owned browser"));
         assert_eq!(choice.size, Some(1000));
+        media.sources(frame, alias);
+        assert!(media.choice(id, true).is_some());
+        let mut changed = (*request).clone();
+        changed.user_agent = Some("Updated browser".parse().unwrap());
+        media.observe_response(final_url.into(), (
+            Format::File, Some(1000), "video/mp4".into(), Some(std::sync::Arc::new(changed)),
+        ));
+        assert!(media.choice(id, true).is_none());
         media.observe_response(alias.into(), direct);
         let restored = media.sources(frame, alias);
         let id = Uuid::parse_str(restored["choices"][0]["id"].as_str().unwrap()).unwrap();
@@ -453,7 +473,7 @@ mod tests {
             media.observe_response(
                 url.into(),
                 (
-                    response_format(mime).unwrap(),
+                    response_format(mime, url).unwrap(),
                     Some(28295780),
                     mime.into(),
                     None,
@@ -495,12 +515,39 @@ mod tests {
             "",
             "application/octet-streamish",
         ] {
-            assert!(response_format(mime).is_none());
+            assert!(response_format(mime, first).is_none());
         }
         assert_eq!(
-            response_format("application/vnd.apple.mpegurl"),
+            response_format("application/vnd.apple.mpegurl", first),
             Some(Format::Hls)
         );
+    }
+
+    #[test]
+    fn generic_or_untyped_playlist_path_is_an_hls_choice_for_a_blob_player() {
+        let mut media = Media::default();
+        let frame = Uuid::new_v4();
+        let uri = "https://media.test/movie.m3u8?v=1";
+        media.frame(frame, vec![], vec![uri.into()]);
+        for mime in ["application/octet-stream", ""] {
+            let format = response_format(mime, uri).unwrap();
+            media.observe_response(uri.into(), (format, Some(116), mime.into(), None));
+            let sources = media.sources(frame, "blob:owned");
+            assert_eq!(sources["choices"][0]["format"], "hls");
+            assert!(sources["indexedCandidates"].as_array().unwrap().is_empty());
+        }
+        let mp4 = "https://media.test/movie.mp4?next=.m3u8";
+        assert_eq!(
+            response_format("application/octet-stream", mp4),
+            Some(Format::File)
+        );
+        assert_eq!(response_format("", "https://media.test/MOVIE.M3U8"), None);
+        assert_eq!(response_format("video/mp4", uri), Some(Format::File));
+        assert_eq!(
+            response_format("application/dash+xml", uri),
+            Some(Format::Dash)
+        );
+        assert_eq!(response_format("text/html", uri), None);
     }
 
     #[test]
@@ -797,7 +844,7 @@ pub fn observe(
                     if mime.len() > 256 {
                         return Ok(());
                     }
-                    let Some(format) = response_format(&mime) else {
+                    let Some(format) = response_format(&mime, &uri) else {
                         return Ok(());
                     };
                     let size = if status == 206 {

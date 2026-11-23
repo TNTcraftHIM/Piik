@@ -37,7 +37,7 @@ use axum::{
     Json, Router,
 };
 use futures_util::{
-    future::{AbortHandle, Abortable, Aborted, BoxFuture},
+    future::{AbortHandle, Abortable, Aborted, BoxFuture, Shared},
     stream::FuturesUnordered,
     FutureExt, SinkExt, StreamExt,
 };
@@ -127,7 +127,14 @@ struct Host {
     commands: mpsc::Sender<HostCommand>,
     ready: watch::Receiver<Option<Result<(), String>>>,
     stop: watch::Sender<bool>,
-    task: JoinHandle<Result<()>>,
+    task: HostTask,
+}
+type HostTask = Shared<BoxFuture<'static, ()>>;
+
+impl Host {
+    fn finished(&self) -> bool {
+        self.task.clone().now_or_never().is_some()
+    }
 }
 type HostKey = (String, Uuid, Uuid);
 struct LocalSite {
@@ -143,11 +150,6 @@ struct Registry {
     local: Option<LocalSite>,
 }
 impl Registry {
-    async fn join_host(&mut self, key: &HostKey) {
-        wait_host(&mut self.hosts.get_mut(key).unwrap().task).await;
-        self.hosts.remove(key);
-    }
-
     fn permission(&self, site: &str) -> Option<&Arc<Permission>> {
         self.local
             .as_ref()
@@ -278,24 +280,22 @@ impl App {
         mpsc::Sender<HostCommand>,
         watch::Receiver<Option<Result<(), String>>>,
     )> {
-        let mut registry = self.registry.lock().await;
-        if *self.closing.borrow() {
-            bail!("hosting_unavailable");
-        }
-        if !registry
-            .permission(site)
-            .is_some_and(|current| Arc::ptr_eq(current, permission))
-        {
-            bail!("site_not_approved");
-        }
         let key = (site.to_owned(), channel, user);
-        if registry
-            .hosts
-            .get(&key)
-            .is_some_and(|host| host.task.is_finished() || *host.stop.borrow())
-        {
-            registry.join_host(&key).await;
-        }
+        let mut registry = loop {
+            let registry = self.registry.lock().await;
+            if *self.closing.borrow() {
+                bail!("hosting_unavailable");
+            }
+            if !registry.permission(site).is_some_and(|current| Arc::ptr_eq(current, permission)) {
+                bail!("site_not_approved");
+            }
+            let Some(host) = registry.hosts.get(&key).filter(|host| host.finished() || *host.stop.borrow()) else {
+                break registry;
+            };
+            let task = host.task.clone();
+            drop(registry);
+            self.join_host(&key, task).await;
+        };
         if let Some(host) = registry.hosts.get(&key) {
             if host.credential != credential {
                 bail!("owner_mismatch");
@@ -343,13 +343,22 @@ impl App {
                     commands,
                     ready: admitted,
                     stop,
-                    task,
+                    task: host_task(task),
                 },
             );
         }
         let host = registry.hosts.get(&key).unwrap();
         Ok((host.commands.clone(), host.ready.clone()))
     }
+    async fn join_host(&self, key: &HostKey, task: HostTask) {
+        // The registry keeps its join owner if this HTTP request disconnects.
+        task.clone().await;
+        let mut registry = self.registry.lock().await;
+        if registry.hosts.get(key).is_some_and(|host| host.task.ptr_eq(&task)) {
+            registry.hosts.remove(key);
+        }
+    }
+
     async fn shutdown(&self) {
         self.closing.send_replace(true);
         let hosts = {
@@ -374,16 +383,18 @@ async fn stop_hosts(hosts: Vec<Host>) {
     for host in &hosts {
         host.stop.send_replace(true);
     }
-    for mut host in hosts {
-        wait_host(&mut host.task).await;
+    for host in hosts {
+        host.task.await;
     }
 }
-async fn wait_host(task: &mut JoinHandle<Result<()>>) {
-    match task.await {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) => eprintln!("App hosting ended: {error}"),
-        Err(error) => eprintln!("App hosting task ended: {error}"),
-    }
+fn host_task(task: JoinHandle<Result<()>>) -> HostTask {
+    async move {
+        match task.await {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => eprintln!("App hosting ended: {error}"),
+            Err(error) => eprintln!("App hosting task ended: {error}"),
+        }
+    }.boxed().shared()
 }
 
 /// Choose the same bounded discovery ports for each native App shell.
@@ -540,7 +551,7 @@ pub async fn serve(
     crate::web::serve_http(listener, router, async move {
         tokio::pin!(stop);
         let mut closing = app.closing.subscribe();
-        let mut tick = tokio::time::interval(Duration::from_millis(100));
+        let mut desktop_timer = None;
         let mut refresh = tokio::time::interval(Duration::from_secs(1));
         loop {
             if *closing.borrow() {
@@ -549,7 +560,7 @@ pub async fn serve(
             tokio::select! {
                 _ = &mut stop => break,
                 _ = closing.changed() => break,
-                _ = tick.tick() => app.desktop.tick(),
+                _ = app.desktop.tick_when_needed(&mut desktop_timer) => {}
                 state = async { refresh.tick().await; launcher_view(&app).await }, if terminal.is_some() => {
                     terminal.as_mut().unwrap().show(state, false);
                 }
@@ -1095,18 +1106,18 @@ async fn approve(State(app): State<Arc<App>>, Json(change): Json<Approval>) -> A
         if let Some(permission) = registry.approvals.remove(&site) {
             permission.revoked.send_replace(true);
         }
-        let keys: Vec<_> = registry
-            .hosts
-            .keys()
-            .filter(|(origin, ..)| origin == &site)
-            .cloned()
+        let stopping: Vec<_> = registry.hosts.iter()
+            .filter(|((origin, ..), _)| origin == &site)
+            .map(|(key, host)| {
+                host.stop.send_replace(true);
+                (key.clone(), host.task.clone())
+            })
             .collect();
-        for key in &keys {
-            registry.hosts[key].stop.send_replace(true);
+        drop(registry);
+        for (key, task) in stopping {
+            app.join_host(&key, task).await;
         }
-        for key in keys {
-            registry.join_host(&key).await;
-        }
+        registry = app.registry.lock().await;
     }
     Ok(Json(
         launcher_state(&registry, app.port).map_err(operation_failure)?,
@@ -3068,10 +3079,10 @@ mod lifecycle_tests {
             commands: commands.clone(),
             ready: admitted,
             stop: stop.clone(),
-            task: tokio::spawn(async move {
+            task: host_task(tokio::spawn(async move {
                 let _ = stopped.changed().await;
                 Ok(())
-            }),
+            })),
         };
         let mut other_stopped = stop.subscribe();
         let other_host = Host {
@@ -3079,10 +3090,10 @@ mod lifecycle_tests {
             commands: commands.clone(),
             ready: watch::channel(Some(Ok(()))).1,
             stop: stop.clone(),
-            task: tokio::spawn(async move {
+            task: host_task(tokio::spawn(async move {
                 let _ = other_stopped.changed().await;
                 Ok(())
-            }),
+            })),
         };
         let app = Arc::new(App {
             config: Config {
@@ -3485,19 +3496,19 @@ mod lifecycle_tests {
             commands,
             ready: watch::channel(Some(Ok(()))).1,
             stop,
-            task,
+            task: host_task(task),
         };
         let (_retire, retired) = watch::channel(false);
         let dispatch: page::Dispatcher = Arc::new(move |command| {
             if let page::Command::Media { reply, .. } = command {
-                let _ = reply.send(Ok(page::MediaContext {
+                let _ = reply.send(Ok((page::MediaContext {
                     url: media_url.clone(),
                     request: None,
                     format: page::Format::File,
                     size: Some(131072),
                     retired: retired.clone(),
                     cookies: Arc::new(|_| Box::pin(async { Ok(None) })),
-                }));
+                }, Default::default())));
             }
             true
         });
@@ -3678,7 +3689,7 @@ mod lifecycle_tests {
         {
             let registry = app.registry.lock().await;
             assert_eq!(registry.hosts.len(), 1);
-            assert!(!registry.hosts.values().next().unwrap().task.is_finished());
+            assert!(!registry.hosts.values().next().unwrap().finished());
         }
         app.registry.lock().await.hosts.values().for_each(|h| {
             h.stop.send_replace(true);
@@ -4216,10 +4227,10 @@ mod lifecycle_tests {
                         commands,
                         ready: watch::channel(Some(Ok(()))).1,
                         stop: stop.clone(),
-                        task: tokio::spawn(async move {
+                        task: host_task(tokio::spawn(async move {
                             let _ = stopped.changed().await;
                             Ok(())
-                        }),
+                        })),
                     },
                 );
                 registry.permission(&local).unwrap().clone()
@@ -4496,22 +4507,22 @@ mod lifecycle_tests {
             commands: first_commands,
             ready: watch::channel(Some(Ok(()))).1,
             stop: first_stop,
-            task: tokio::spawn(async move {
+            task: host_task(tokio::spawn(async move {
                 let _ = first_stopped.changed().await;
                 Ok(())
-            }),
+            })),
         };
         let second = Host {
             credential: "credential".into(),
             commands: second_commands,
             ready: watch::channel(Some(Ok(()))).1,
             stop: second_stop,
-            task: tokio::spawn(async move {
+            task: host_task(tokio::spawn(async move {
                 let _ = second_stopped.changed().await;
                 let _ = wait_release.await;
                 let _ = finished.send(());
                 Ok(())
-            }),
+            })),
         };
         let app = Arc::new(App {
             config: Config {
@@ -4584,6 +4595,14 @@ mod lifecycle_tests {
                     .is_none(),
                 "the first completed host is removed before waiting for its sibling"
             );
+            // The active revoke still owns its join, while unrelated launcher reads can proceed.
+            let mut independent = TcpStream::connect(address).await.unwrap();
+            independent.write_all(format!(
+                "GET /api/client-launcher HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n"
+            ).as_bytes()).await.unwrap();
+            let mut state = String::new();
+            timeout(IO_TIMEOUT, independent.read_to_string(&mut state)).await.unwrap().unwrap();
+            assert!(state.starts_with("HTTP/1.1 200"));
             drop(client);
             assert!(
                 timeout(IO_TIMEOUT, dropped).await.unwrap().is_err(),

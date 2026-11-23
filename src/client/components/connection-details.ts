@@ -20,9 +20,10 @@ export function summarizeConnectionMetrics(samples: readonly ConnectionMetricSam
   const packetSamples = metrics.filter(metric => metric.intervalPacketsReceived !== null && metric.intervalPacketsLost !== null);
   const resolutions = [...new Set(metrics.map(metric => metric.resolution).filter((value): value is string => value !== null))]
     .sort((a, b) => a.split("x").reduce((area, value) => area * Number(value), 1) - b.split("x").reduce((area, value) => area * Number(value), 1));
+  const bitrates = numbers(metrics.map(metric => metric.bitrateKbps));
   const frames = numbers(metrics.map(metric => metric.framesPerSecond));
   return {
-    bitrateKbps: sum(numbers(metrics.map(metric => metric.bitrateKbps))),
+    bitrateKbps: bitrates.length === metrics.length ? sum(bitrates) : null,
     rttMs: mean([...rtts.values()]),
     jitterMs: mean(numbers(metrics.map(metric => metric.jitterMs))),
     packetLossPercent: metrics.length === 1 ? metrics[0]!.packetLossPercent

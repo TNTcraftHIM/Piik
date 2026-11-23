@@ -1,5 +1,21 @@
 .lr-site-bookmark-manager { display: grid; gap: 0; width: 100%; max-width: 620px; max-height: none; margin: 0 auto 32px; }
-html[data-piik-native-window="system"] .lr-site-bookmark-manager { grid-template-rows: auto minmax(0, 1fr) auto; }
+.lr-site-bookmark-body { display: contents; }
+html[data-piik-native-window="system"] .lr-app > main:has(> .lr-site-bookmark-manager) {
+  height: 100dvh;
+  flex: none;
+}
+html[data-piik-native-window="system"] .lr-app > main > .lr-site-bookmark-manager {
+  grid-template-rows: auto minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+html[data-piik-native-window="system"] .lr-site-bookmark-body {
+  display: block;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+html[data-piik-native-window="system"] .lr-site-bookmark-body > .c3-settings-panels { overflow: visible; }
 .lr-site-bookmark-entry { padding-top: 20px; border-top: 1px solid var(--line); }
 .lr-site-bookmark-open { display: flex; align-items: end; gap: 10px; }
 .lr-site-bookmark-open > label { display: grid; gap: 8px; min-width: 0; flex: 1; font-size: 13px; }

@@ -533,18 +533,24 @@ export function collectTrackConnectionMetrics(
   selector: StatsMediaSelector,
   connection?: RTCPeerConnection,
 ): ConnectionMetrics[] {
-  const records = mediaRecords(report, direction, selector, selector.kind ?? "video");
+  const kind = selector.kind ?? "video";
+  const records = mediaRecords(report, direction, selector, kind);
+  const audio = companionAudioRecord(report, direction, selector.audioTrackIdentifier ?? null);
   const current = new Set(records.map(record => record.id));
+  if (audio) current.add(audio.id);
   for (const id of previous.keys()) if (!current.has(id)) previous.delete(id);
-  return records.map((record, index) => {
-    let accumulator = previous.get(record.id);
-    if (!accumulator) previous.set(record.id, accumulator = createStatsAccumulator());
-    return collectConnectionMetricsFromReport(report, direction, accumulator, {
-      ...selector, rtpStatsId: record.id,
-      // Source sound belongs to the publication, not separately to every RID.
-      audioTrackIdentifier: index === 0 ? selector.audioTrackIdentifier ?? null : null,
-    }, connection);
-  });
+
+  // Sample the source sound once even when no video RTP row can display it.
+  const audioMetrics = audio ? collectAudioMetrics(report, direction,
+    rtpAccumulator(previous, audio), audio, kind === "video" ? records[0] ?? null : null) : undefined;
+  return records.map((record, index) => collectMediaMetrics(report, direction,
+    rtpAccumulator(previous, record), kind, record, connection, index === 0 ? audioMetrics : undefined));
+}
+
+function rtpAccumulator(previous: Map<string, StatsAccumulator>, record: StatsRecord): StatsAccumulator {
+  let accumulator = previous.get(record.id);
+  if (!accumulator) previous.set(record.id, accumulator = createStatsAccumulator());
+  return accumulator;
 }
 
 export function collectConnectionMetricsFromReport(
@@ -556,6 +562,20 @@ export function collectConnectionMetricsFromReport(
 ): ConnectionMetrics {
   const kind = selector?.kind ?? "video";
   const media = mediaRecord(report, direction, selector, kind);
+  const audio = companionAudioRecord(report, direction, selector?.audioTrackIdentifier);
+  const audioMetrics = collectAudioMetrics(report, direction, previous, audio, kind === "video" ? media : null);
+  return collectMediaMetrics(report, direction, previous, kind, media, connection, audioMetrics);
+}
+
+function collectMediaMetrics(
+  report: RTCStatsReport,
+  direction: "send" | "receive",
+  previous: StatsAccumulator,
+  kind: "audio" | "video",
+  media: StatsRecord | null,
+  connection: RTCPeerConnection | undefined,
+  audioMetrics?: ReturnType<typeof collectAudioMetrics>,
+): ConnectionMetrics {
   const transport = transportRecord(report, media);
   let pair = selectedCandidatePair(report, transport);
   let localCandidate = getRecord(
@@ -814,17 +834,108 @@ export function collectConnectionMetricsFromReport(
   const codecEvidence = deriveCodecEvidence(linkedCodec);
   const mediaSource =
     direction === "send" ? mediaSourceRecord(report, media) : null;
-  const audio =
-    selector?.audioTrackIdentifier === null
-      ? null
-      : mediaRecord(
-          report,
-          direction,
-          selector?.audioTrackIdentifier === undefined
-            ? null
-            : { trackIdentifier: selector.audioTrackIdentifier },
-          "audio",
-        );
+  const width = numberValue(media, "frameWidth");
+  const height = numberValue(media, "frameHeight");
+  const iceProtocol =
+    stringValue(localCandidate, "protocol") ??
+    stringValue(remoteCandidate, "protocol");
+  return {
+    ...EMPTY_METRICS,
+    sampleTimestampMs: timestamp,
+    sampleWindowMs,
+    rtpStatsId: mediaId,
+    rtpSsrc: ssrc,
+    rtpMid: stringValue(media, "mid"),
+    rtpRid: stringValue(media, "rid"),
+    trackIdentifier,
+    selectedCandidatePairId: pair?.id ?? null,
+    path,
+    natTraversalPath,
+    iceProtocol,
+    localCandidateType: localType,
+    remoteCandidateType: remoteType,
+    localCandidateAddress: candidateAddressValue(localCandidate),
+    localCandidatePort: candidatePortValue(localCandidate),
+    remoteCandidateAddress: candidateAddressValue(remoteCandidate),
+    remoteCandidatePort: candidatePortValue(remoteCandidate),
+    rttMs:
+      numberValue(pair, "currentRoundTripTime") !== null
+        ? numberValue(pair, "currentRoundTripTime")! * 1_000
+        : numberValue(remoteInbound, "roundTripTime") !== null
+          ? numberValue(remoteInbound, "roundTripTime")! * 1_000
+          : null,
+    bitrateKbps,
+    availableOutgoingKbps:
+      numberValue(pair, "availableOutgoingBitrate") !== null
+        ? numberValue(pair, "availableOutgoingBitrate")! / 1_000
+        : null,
+    mediaSourceFramesPerSecond: numberValue(mediaSource, "framesPerSecond"),
+    framesPerSecond: numberValue(media, "framesPerSecond") ?? derivedFps,
+    frameWidth: width,
+    frameHeight: height,
+    resolution: width !== null && height !== null ? `${width}x${height}` : null,
+    packetsLost,
+    intervalPacketsSent,
+    intervalPacketsReceived,
+    intervalPacketsLost,
+    packetLossPercent:
+      direction === "send"
+        ? senderPacketLossPercent
+        : packetLossPercentFromDeltas(
+            lossPacketsReceivedDelta,
+            intervalPacketsLost,
+          ),
+    jitterMs:
+      numberValue(direction === "send" ? remoteInbound : media, "jitter") !== null
+        ? numberValue(direction === "send" ? remoteInbound : media, "jitter")! *
+          1_000
+        : null,
+    framesDropped,
+    intervalFramesDecoded,
+    intervalFramesDropped,
+    intervalFreezeCount,
+    intervalFreezeDurationMs:
+      freezeDurationDelta === null ? null : freezeDurationDelta * 1_000,
+    intervalPauseCount,
+    intervalPauseDurationMs:
+      pauseDurationDelta === null ? null : pauseDurationDelta * 1_000,
+    intervalRetransmittedPackets,
+    intervalRetransmittedBytes,
+    codec: codecEvidence.codec,
+    codecProfile: codecEvidence.profile,
+    codecParameters: codecEvidence.parameters,
+    videoJitterBufferDelayMs,
+    ...audioMetrics,
+    scalabilityMode:
+      direction === "send" ? scalabilityModeValue(media) : null,
+    encoderImplementation: stringValue(media, "encoderImplementation"),
+    powerEfficientEncoder: booleanValue(media, "powerEfficientEncoder"),
+    intervalFramesEncoded,
+    intervalEncodeTimeMs:
+      encodeTimeDelta === null ? null : encodeTimeDelta * 1_000,
+    intervalEncodeMs,
+    intervalDecodeMs,
+    qualityLimitationReason,
+    nativeEdgeQualityState: currentNativeEdgeQualityState,
+  };
+}
+
+function companionAudioRecord(
+  report: RTCStatsReport,
+  direction: "send" | "receive",
+  trackIdentifier: string | null | undefined,
+): StatsRecord | null {
+  return trackIdentifier === null ? null : mediaRecord(report, direction,
+    trackIdentifier === undefined ? null : { trackIdentifier }, "audio");
+}
+
+function collectAudioMetrics(
+  report: RTCStatsReport,
+  direction: "send" | "receive",
+  previous: StatsAccumulator,
+  audio: StatsRecord | null,
+  video: StatsRecord | null,
+) {
   const audioTransport = transportRecord(report, audio);
   const audioRemoteInbound =
     direction === "send"
@@ -916,7 +1027,7 @@ export function collectConnectionMetricsFromReport(
     direction === "receive" && audioSampleWindowMs !== null,
   );
   const videoEstimatedPlayoutTimestamp = numberValue(
-    media,
+    video,
     "estimatedPlayoutTimestamp",
   );
   const audioEstimatedPlayoutTimestamp = numberValue(
@@ -924,7 +1035,6 @@ export function collectConnectionMetricsFromReport(
     "estimatedPlayoutTimestamp",
   );
   const audioVideoPlayoutDeltaMs =
-    kind === "video" &&
     direction === "receive" &&
     videoEstimatedPlayoutTimestamp !== null &&
     audioEstimatedPlayoutTimestamp !== null
@@ -952,76 +1062,7 @@ export function collectConnectionMetricsFromReport(
     audioTransport,
     "audio",
   );
-  const width = numberValue(media, "frameWidth");
-  const height = numberValue(media, "frameHeight");
-  const iceProtocol =
-    stringValue(localCandidate, "protocol") ??
-    stringValue(remoteCandidate, "protocol");
   return {
-    ...EMPTY_METRICS,
-    sampleTimestampMs: timestamp,
-    sampleWindowMs,
-    rtpStatsId: mediaId,
-    rtpSsrc: ssrc,
-    rtpMid: stringValue(media, "mid"),
-    rtpRid: stringValue(media, "rid"),
-    trackIdentifier,
-    selectedCandidatePairId: pair?.id ?? null,
-    path,
-    natTraversalPath,
-    iceProtocol,
-    localCandidateType: localType,
-    remoteCandidateType: remoteType,
-    localCandidateAddress: candidateAddressValue(localCandidate),
-    localCandidatePort: candidatePortValue(localCandidate),
-    remoteCandidateAddress: candidateAddressValue(remoteCandidate),
-    remoteCandidatePort: candidatePortValue(remoteCandidate),
-    rttMs:
-      numberValue(pair, "currentRoundTripTime") !== null
-        ? numberValue(pair, "currentRoundTripTime")! * 1_000
-        : numberValue(remoteInbound, "roundTripTime") !== null
-          ? numberValue(remoteInbound, "roundTripTime")! * 1_000
-          : null,
-    bitrateKbps,
-    availableOutgoingKbps:
-      numberValue(pair, "availableOutgoingBitrate") !== null
-        ? numberValue(pair, "availableOutgoingBitrate")! / 1_000
-        : null,
-    mediaSourceFramesPerSecond: numberValue(mediaSource, "framesPerSecond"),
-    framesPerSecond: numberValue(media, "framesPerSecond") ?? derivedFps,
-    frameWidth: width,
-    frameHeight: height,
-    resolution: width !== null && height !== null ? `${width}x${height}` : null,
-    packetsLost,
-    intervalPacketsSent,
-    intervalPacketsReceived,
-    intervalPacketsLost,
-    packetLossPercent:
-      direction === "send"
-        ? senderPacketLossPercent
-        : packetLossPercentFromDeltas(
-            lossPacketsReceivedDelta,
-            intervalPacketsLost,
-          ),
-    jitterMs:
-      numberValue(direction === "send" ? remoteInbound : media, "jitter") !== null
-        ? numberValue(direction === "send" ? remoteInbound : media, "jitter")! *
-          1_000
-        : null,
-    framesDropped,
-    intervalFramesDecoded,
-    intervalFramesDropped,
-    intervalFreezeCount,
-    intervalFreezeDurationMs:
-      freezeDurationDelta === null ? null : freezeDurationDelta * 1_000,
-    intervalPauseCount,
-    intervalPauseDurationMs:
-      pauseDurationDelta === null ? null : pauseDurationDelta * 1_000,
-    intervalRetransmittedPackets,
-    intervalRetransmittedBytes,
-    codec: codecEvidence.codec,
-    codecProfile: codecEvidence.profile,
-    codecParameters: codecEvidence.parameters,
     audioBitrateKbps,
     audioPacketLossPercent: direction === "send" ? audioSenderPacketLossPercent
       : packetLossPercentFromDeltas(audioPacketsReceivedDelta, audioPacketsLostDelta),
@@ -1030,7 +1071,6 @@ export function collectConnectionMetricsFromReport(
         ? numberValue(audioLossSource, "jitter")! * 1_000
         : null,
     audioVideoPlayoutDeltaMs,
-    videoJitterBufferDelayMs,
     audioJitterBufferDelayMs,
     audioConcealedSamplesPercent: percentOfInterval(
       intervalAudioConcealedSamples,
@@ -1041,16 +1081,5 @@ export function collectConnectionMetricsFromReport(
     audioCodecClockRate: positiveIntegerValue(linkedAudioCodec, "clockRate"),
     audioCodecChannels: positiveIntegerValue(linkedAudioCodec, "channels"),
     audioCodecParameters: audioCodecParameters(linkedAudioCodec),
-    scalabilityMode:
-      direction === "send" ? scalabilityModeValue(media) : null,
-    encoderImplementation: stringValue(media, "encoderImplementation"),
-    powerEfficientEncoder: booleanValue(media, "powerEfficientEncoder"),
-    intervalFramesEncoded,
-    intervalEncodeTimeMs:
-      encodeTimeDelta === null ? null : encodeTimeDelta * 1_000,
-    intervalEncodeMs,
-    intervalDecodeMs,
-    qualityLimitationReason,
-    nativeEdgeQualityState: currentNativeEdgeQualityState,
   };
 }

@@ -388,6 +388,31 @@ test("profile versions refresh names and clear avatars while a new Welcome reset
   } finally { session.close(); }
 });
 
+test("losing the live summary cannot revive a superseded offline author profile", async () => {
+  const { session, socket } = await setup(1000, false);
+  socket.autoProfiles = false;
+  try {
+    const base = structuredClone(session.getSnapshot().state!);
+    const friend = { id: "friend", name: "Before", version: profileVersion };
+    base.channel.userCount++;
+    const state = { ...base, users: [...base.users, friend], sessions: [...base.sessions, { ...base.sessions[0], id: "friend-endpoint", userId: friend.id }] };
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "profiles", requestId: socket.sent.at(-1)!.requestId, profiles: [{ ...friend, avatar: "data:image/png;base64,YWJj" }], total: 1, nextCursor: null });
+    await session.loadProfiles([friend.id]);
+
+    const current = { ...friend, name: "After", version: "1".repeat(64) };
+    vi.useFakeTimers();
+    socket.receive({ type: "state", state: { ...state, users: [...base.users, current] } });
+    socket.receive({ type: "state", state: base });
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(session.getSnapshot().profiles.has(friend.id)).toBe(false);
+
+    const reading = session.loadProfiles([friend.id]);
+    socket.receive({ type: "profiles", requestId: socket.sent.at(-1)!.requestId, profiles: [{ ...current, avatar: null }], total: 1, nextCursor: null });
+    expect(await reading).toEqual([{ ...current, avatar: null }]);
+  } finally { session.close(); }
+});
+
 test("profile directory abort ignores its late full-avatar reply and uses the content read deadline", async () => {
   const { session, socket } = await setup(1000, false); socket.autoProfiles = false; vi.useFakeTimers();
   try {
@@ -594,8 +619,11 @@ test("profile changes use the authenticated identity and only project confirmed 
     state.users[0] = { ...state.users[0], name: "New name", version: "1".repeat(64) };
     socket.profiles.set("self", { ...state.users[0], avatar });
     socket.receive({ type: "state", state });
+    const pendingProfile = session.getSnapshot();
     socket.receive({ type: "ack", requestId: request.requestId });
     await saving;
+    expect(pendingProfile.self).toMatchObject({ name: "New name", avatar: null });
+    expect(pendingProfile.profiles.has("self")).toBe(false);
     await vi.waitFor(() => expect(session.getSnapshot().self?.avatar).toBe(avatar));
     expect(session.getSnapshot().self).toMatchObject({ name: "New name", avatar });
     const clearing = session.updateProfile({ name: "New name", avatar: null });
@@ -2469,6 +2497,42 @@ test("Native capability catalog retains known choices without echoing future des
   } finally { session.close(); }
 });
 
+test("a reopened source list survives the retired reader's deadline", async () => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  const { session } = await setup();
+  const app = await startFixtureApp(session);
+  try {
+    await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    vi.useFakeTimers();
+    const reader = new AbortController();
+    const retired = session.nativeSources(reader.signal).catch(error => error);
+    await vi.advanceTimersByTimeAsync(7_900);
+    const first = app.sent.at(-1)!;
+    expect(first.type).toBe("targets");
+    reader.abort();
+    const secondReader = new AbortController();
+    const next = session.nativeSources(secondReader.signal).catch(error => error);
+    let failure: string | undefined;
+    const continuing = session.nativeSources().catch(error => { failure = error.message; });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(failure).toBeUndefined();
+    const second = app.sent.at(-1)!;
+    expect(second.id).not.toBe(first.id);
+    secondReader.abort();
+    app.receive({ id: first.id, error: "request_cancelled" });
+    const catalog = { sources: [], codecs: ["h264"], softwareEncodingCodecs: [], videoAdaptation: false,
+      processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false };
+    app.receive({ id: second.id, result: catalog });
+    await expect(continuing).resolves.toEqual(catalog);
+    expect(await next).toMatchObject({ name: "AbortError" });
+    expect(await retired).toMatchObject({ name: "AbortError" });
+    expect(app.sent.filter(command => command.type === "targets")).toHaveLength(2);
+    expect(session.getSnapshot().appConnected).toBe(true);
+  } finally { session.close(); }
+});
+
 test("a silent source request times out and a late reply cannot replace its refresh", async () => {
   const completed = vi.fn();
   const operation = vi.spyOn(browserDiagnostics, "debugOperation").mockReturnValue(completed);
@@ -4019,7 +4083,7 @@ test.each([
     const target = { kind: "picker" as const, sourceId: "1", title: "System picker" };
     const sources = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
-    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs: ["h264"], softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false, activationURL: "piik://media" } });
+    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs: ["h264"], softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false, activationURL: "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end" } });
     await sources;
     const nativeSessionId = crypto.randomUUID(), oldCaptureId = crypto.randomUUID(), captureId = crypto.randomUUID();
     const starting = session.startNativeScreen("first", target);
@@ -12892,7 +12956,7 @@ test("review capability downgrade retains active Native source and resets a diff
   vi.spyOn(session, "watch").mockResolvedValue();
   const target = { kind: "display" as const, sourceId: "1", title: "Owned display" };
   const strong = { sources: [target], codecs: ["h264", "vp8"], softwareEncodingCodecs: ["h264"], videoAdaptation: true,
-    processAudio: true, processAudioExclusion: true, systemAudio: true, captureBorderControl: true, activationURL: "piik://media" };
+    processAudio: true, processAudioExclusion: true, systemAudio: true, captureBorderControl: true, activationURL: "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end" };
   const weak = { sources: [{ kind: "picker" as const, sourceId: "0", title: "Screen or app" }], codecs: ["h264"], softwareEncodingCodecs: [], videoAdaptation: true,
     processAudio: false, processAudioExclusion: false, systemAudio: true, captureBorderControl: false };
   const list = async (socket: ChannelSocket, catalog: unknown) => {
@@ -12942,7 +13006,7 @@ test("review pending Native picker disconnect retires only that attempt and a ne
   vi.spyOn(appLink,"discoverChannelAppHealth").mockResolvedValue({service:"piik-channel-app",protocol:appLink.APP_PROTOCOL,domainProtocol:CHANNEL_PROTOCOL,port:8793,token:"approved"});
   const {session}=await setup();const app = await startFixtureApp(session);vi.spyOn(session,"watch").mockResolvedValue();
   const target={kind:"picker" as const,sourceId:"0",title:"System picker"};
-  const catalog={sources:[target],codecs:["h264"],softwareEncodingCodecs:[],videoAdaptation:true,processAudio:false,processAudioExclusion:false,systemAudio:true,captureBorderControl:false,activationURL:"piik://media"};
+  const catalog={sources:[target],codecs:["h264"],softwareEncodingCodecs:[],videoAdaptation:true,processAudio:false,processAudioExclusion:false,systemAudio:true,captureBorderControl:false,activationURL:"intent://media#Intent;scheme=piik;package=tv.piik.android.test;end"};
   async function connect(socket:ChannelSocket){await socket.onopen?.();socket.receive({id:socket.sent.at(-1)!.id,result:null});await vi.waitFor(()=>expect(session.getSnapshot().appConnected).toBe(true));}
   try {await connect(app);const listing=session.nativeSources();await vi.waitFor(()=>expect(app.sent.at(-1)?.type).toBe("targets"));app.receive({id:app.sent.at(-1)!.id,result:catalog});await listing;
     const pending=session.startNativeScreen("first",target).catch(e=>e);await vi.waitFor(()=>expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
@@ -14496,5 +14560,102 @@ test("hosted room archives use the room creator credential independently of App 
       await expect(session.exportRoomBackup("first", false)).rejects.toThrow("room_host_unavailable");
     }
     expect(fetch).toHaveBeenCalledTimes(2);
+  } finally { session.close(); }
+});
+
+test("a full upstream control queue preserves an admitted sibling file range", async () => {
+  const { session, media, pc } = await setupRoomMedia();
+  const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeRuntime: async () => {} } as never);
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
+  const [holder, relay, fast, slow] = Array.from({ length: 4 }, () => crypto.randomUUID());
+  const key = { roomId: "first", messageSeq: 1, attachmentId: crypto.randomUUID() };
+  const attachment = { id: key.attachmentId, name: "ranges.bin", size: 65537, mediaType: "application/octet-stream" as const, sha256: "0".repeat(64) };
+  const plan = { ...key, authorId: holder, sourceId: holder, attachment, receiving: false, upstream: holder, downstream: [fast, slow] };
+  const replies: { peer: string; kind: string; data: string | Uint8Array }[] = [];
+  const files = new ChannelAttachments(async () => {}, async (peer, kind, data, allowed, request) => {
+    if (peer === holder) return media.sendData("z", kind, data, allowed, request);
+    if (allowed()) replies.push({ peer, kind, data });
+  });
+  const source = new rust.FileDelivery(holder);
+  const pull = (peer: string, offset: number) => files.data(peer, "control", JSON.stringify({ type: "pull", key, offset, requestId: crypto.randomUUID() }));
+  try {
+    pc.connected();
+    const control = pc.channels[0]; control.open();
+    files.update(relay, { domainId: "test", userId: relay }, [plan], [{ id: "first", available: true, authorized: true }] as never,
+      [holder, fast, slow].map(peerId => ({ peerId, rooms: ["first"] })));
+    source.update(JSON.stringify([{ ...plan, upstream: null, downstream: [relay] }]), JSON.stringify([[relay, ["first"]]]), 0n);
+    pull(fast, 65536);
+    await vi.waitFor(() => expect(control.send).toHaveBeenCalledTimes(1));
+    const [read] = JSON.parse(source.control(relay, control.send.mock.calls[0][0], 0n));
+    control.bufferedAmount = 65536;
+    const pending = Array.from({ length: rust.data_queue_frames(false) }, () => media.sendData("z", "control", "{}"));
+    pull(slow, 0);
+    await vi.waitFor(() => expect(replies.some(reply => reply.peer === slow)).toBe(true));
+    control.bufferedAmount = 0;
+    control.dispatchEvent(new Event("bufferedamountlow"));
+    await Promise.all(pending);
+    const [chunk] = JSON.parse(source.read_result(JSON.stringify(key), 65536n, read.requestId, Uint8Array.of(42)));
+    files.data(holder, "chunk", Uint8Array.from(chunk.frame));
+    await vi.waitFor(() => expect(replies.map(reply => [reply.peer, reply.kind])).toEqual([[slow, "control"], [fast, "chunk"]]));
+    expect(JSON.parse(replies[0].data as string).code).toBe("file_transfer_busy");
+  } finally { files.reset(); source.free(); media.reset(); session.close(); }
+});
+
+
+test("two blocked file requests leave the pair's control and screen input writable", async () => {
+  const { media, pc, session } = await screenFixture();
+  try {
+    for (const channel of pc.channels) channel.open();
+    const bulk = pc.channels.find(channel => channel.label === "piik-file")!;
+    const control = pc.channels.find(channel => channel.label === "piik-room")!;
+    const input = pc.channels.find(channel => channel.label === "piik-input")!;
+    bulk.bufferedAmount = 65536;
+    const first = media.sendData("z", "chunk", Uint8Array.of(1), undefined, "first-file");
+    const second = media.sendData("z", "chunk", Uint8Array.of(2), undefined, "second-file");
+    await media.sendData("z", "control", "room");
+    expect(media.sendInput("z", "screen-input")).toBe(true);
+    expect(input.send).toHaveBeenCalledWith("screen-input");
+    expect(control.send).toHaveBeenCalledWith("room");
+    expect(bulk.send).not.toHaveBeenCalled();
+    media.cancelChunks("z", "first-file");
+    bulk.bufferedAmount = 0;
+    bulk.dispatchEvent(new Event("bufferedamountlow"));
+    await Promise.all([first, second]);
+    expect(bulk.send.mock.calls).toEqual([[Uint8Array.of(2)]]);
+  } finally { media.reset(); session.close(); }
+});
+
+test.each(["surface", "session"])("export retires the ZIP reader when its %s closes", async owner => {
+  const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const { readFile } = await import("node:fs/promises");
+  await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  const { session, snapshot, row } = await setupRoomBackup();
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ ...core, initializeRuntime: async () => {} } as never);
+  vi.spyOn(session.attachments, "retained").mockResolvedValue([]);
+  const surface = new AbortController();
+  const author = crypto.randomUUID();
+  let pass = 0, encoded = 0, retired = 0;
+  Object.defineProperty(snapshot, "rows", { get() {
+    const writing = ++pass === 2;
+    return (async function* () {
+      try {
+        for (let seq = 1; seq <= 96; seq++) {
+          if (writing && ++encoded === 8) {
+            if (owner === "surface") surface.abort();
+            else session.close();
+          }
+          yield { ...row, seq, id: crypto.randomUUID(), nonce: String(seq), text: "x".repeat(512),
+            userId: author, archivedAuthorName: "Fixture" };
+        }
+      } finally { if (writing) retired++; }
+    })();
+  } });
+  try {
+    const result = await session.exportRoomCopy("first", false, false, surface.signal).then(() => "completed", () => "rejected");
+    expect(result).toBe("rejected");
+    expect(encoded).toBeLessThan(96);
+    expect(retired).toBe(1);
+    expect(snapshot.close).toHaveBeenCalledOnce();
   } finally { session.close(); }
 });

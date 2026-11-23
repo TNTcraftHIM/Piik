@@ -807,3 +807,33 @@ fn busy_upstream_range_preserves_a_siblings_download() {
     assert_eq!(network.complete, vec![id(4)]);
     assert_eq!(network.sinks[&id(4)], network.bytes);
 }
+
+#[test]
+fn retired_holder_leaves_readers_for_their_new_room_plan() {
+    let mut network = Network::new();
+    network.update(1, 1, None, &[3, 4], false);
+    network.hold_read = Some(id(1));
+    for reader in [3, 4] {
+        network.update(reader, 1, Some(1), &[], true);
+        network.start(reader);
+    }
+    network.run();
+    assert_eq!(network.pending_reads.len(), 1);
+    let retired = network
+        .nodes
+        .get_mut(&id(1))
+        .unwrap()
+        .update(vec![], room_peers(), 1);
+    network.push(id(1), retired);
+    network.run();
+    assert!(network.failed.is_empty(), "{:?}", network.failed);
+    for (node, key, offset, request, length) in std::mem::take(&mut network.pending_reads) {
+        network.read(node, key, offset, request, length);
+    }
+    network.update(5, 5, None, &[3, 4], false);
+    for reader in [3, 4] {
+        network.update(reader, 5, Some(5), &[], true);
+    }
+    network.run();
+    assert_eq!(network.complete, [id(3), id(4)]);
+}

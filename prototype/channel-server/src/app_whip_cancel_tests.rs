@@ -64,10 +64,10 @@ async fn native_and_external_cancellation_keep_the_other_preparation_owner() -> 
         commands,
         ready: watch::channel(Some(Ok(()))).1,
         stop,
-        task: tokio::spawn(async move {
+        task: host_task(tokio::spawn(async move {
             let _ = stopped.wait_for(|stopped| *stopped).await;
             Ok(())
-        }),
+        })),
     };
     let mut sites = sites::Sites::open(directory.path())?;
     let permission = Arc::new(Permission::new(sites.approve(&site, true, false)?));

@@ -103,10 +103,10 @@ impl StoredRoomHost {
         {
             return Err("backup_room_mismatch".into());
         }
+        let mut host = RoomHost::new(policy.clone());
+        host.seed_history(backup.store.last_message_seq(&policy.id)?)?;
         self.store.replace_from(&backup.store)?;
-        self.host = RoomHost::new(policy.clone());
-        self.host
-            .seed_history(self.store.last_message_seq(&policy.id)?)?;
+        self.host = host;
         Ok(())
     }
 

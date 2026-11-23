@@ -319,6 +319,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
                     id: Uuid::new_v4(),
                     publication_id: source.id,
                     input_flow_id: Some(Uuid::new_v4()),
+                    presentation: false,
                     selected: true,
                 })
                 .collect(),
@@ -330,6 +331,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
                     id: Uuid::new_v4(),
                     publication_id: source.id,
                     input_flow_id: Some(Uuid::new_v4()),
+                    presentation: false,
                     selected: true,
                 })
                 .collect(),

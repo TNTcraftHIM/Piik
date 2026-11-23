@@ -33,7 +33,7 @@
 .c3-locked-room { display: grid; place-content: center; justify-items: center; gap: 14px; padding: 28px; min-width: 0; text-align: center; }
 .c3-locked-room > svg { color: var(--muted); }
 .c3-locked-room h3 { font-size: 20px; }
-.c3-locked-room form { display: flex; gap: 8px; flex-wrap: wrap; max-width: 400px; justify-content: center; }
+.c3-locked-room form:not([hidden]) { display: flex; gap: 8px; flex-wrap: wrap; max-width: 400px; justify-content: center; }
 .c3-locked-room form .c3-input { flex: 1 1 150px; }
 .c3-site-entry { flex: 1; overflow: auto; }
 .c3-site-entry h1 { margin: 0; font-size: 24px; }

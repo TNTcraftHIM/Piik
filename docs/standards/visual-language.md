@@ -663,8 +663,9 @@ the primary surface. One visibility owner coordinates the complete controls and
 keeps them visible during focus, dragging or an open control menu. Pause and end
 state do not by themselves require permanent obstruction; pointer movement,
 keyboard focus and touch reveal must remain reliable. Grants, pause and source
-changes do not move the bar or resize the picture. Remote input retains its
-local bezel pull. This follows [content-first guidance](https://github.com/GoogleChrome/modern-web-guidance/blob/4dd968349e54ca45a05dd5c818fb035c9054b022/skills/modern-web-guidance/guides/user-experience/content-first-noise-reduction.md)
+changes do not move the bar or resize the picture. An idle picture is clear of
+controls. While active remote input owns picture gestures, a small local handle
+at the lower edge reveals the controls. This follows [content-first guidance](https://github.com/GoogleChrome/modern-web-guidance/blob/4dd968349e54ca45a05dd5c818fb035c9054b022/skills/modern-web-guidance/guides/user-experience/content-first-noise-reduction.md)
 and [container-based layout](https://github.com/GoogleChrome/modern-web-guidance/blob/4dd968349e54ca45a05dd5c818fb035c9054b022/skills/modern-web-guidance/guides/css/size-aware-styling.md).
 Playback settings own on-screen chat appearance and connection preferences;
 chat settings own records, and voice settings own microphone processing.

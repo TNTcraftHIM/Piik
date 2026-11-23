@@ -2,8 +2,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, it, vi } from "vitest";
 import { ChannelSiteEntry } from "../src/client/channel/components/ChannelSiteEntry";
+import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 import { currentSiteResponds } from "../src/client/channel/site-health";
-import { setCopy } from "../src/client/ui/copy";
+import { setCopy, t } from "../src/client/ui/copy";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -16,6 +17,18 @@ it("offers the site check and the matching 3.0 guide after a failed first connec
   }));
   expect(html).toContain("<details");
   expect(html).toContain("troubleshooting.md#the-page-opens-but-the-site-will-not-connect");
+});
+
+it.each(["connecting", "reconnecting"] as const)("shows the previous session timeout during %s", connection => {
+  setCopy({ lang: "en" });
+  vi.stubGlobal("location", new URL("https://site.invalid"));
+  const error = "session_expired";
+  const html = renderToStaticMarkup(createElement(ChannelSiteEntry, {
+    channel: { connection, error, reconnect: vi.fn(), joinAsNewIdentity: vi.fn() },
+    failure: channelErrorPresentation(error, (key, vars) => t("en", key, vars)),
+  }));
+  expect(html).toContain(`role="alert">${t("en", "channel.error.sessionExpired")}</p>`);
+  expect(html).toContain(`role="status" class="visually-hidden">${t("en", "channel.siteEntry.connecting")}</span>`);
 });
 
 it("checks only the current origin and recognizes the Domain response", async () => {

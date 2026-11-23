@@ -20,8 +20,8 @@ export class NativeRoomHosting {
     return descriptionSchema.parse(await (await hostingRequest(this.descriptionURL, this.authorization, undefined, signal)).json());
   }
 
-  async snapshot(roomId: string): Promise<Blob> {
-    return (await hostingRequest(`${this.roomsURL}/${encodeURIComponent(roomId)}/backup`, this.authorization)).blob();
+  async snapshot(roomId: string, signal?: AbortSignal): Promise<Blob> {
+    return (await hostingRequest(`${this.roomsURL}/${encodeURIComponent(roomId)}/backup`, this.authorization, undefined, signal)).blob();
   }
 
   async restore(archive: Blob, roomId?: string): Promise<RoomSummary> {
@@ -69,8 +69,8 @@ export class NativeRoomHosting {
 export class NativeDomainHosting {
   constructor(private readonly authorization: HeadersInit) {}
 
-  async snapshot(): Promise<Blob> {
-    return (await hostingRequest("/prototype/channel/backup", this.authorization)).blob();
+  async snapshot(signal?: AbortSignal): Promise<Blob> {
+    return (await hostingRequest("/prototype/channel/backup", this.authorization, undefined, signal)).blob();
   }
 
   async restore(archive: Blob): Promise<string> {

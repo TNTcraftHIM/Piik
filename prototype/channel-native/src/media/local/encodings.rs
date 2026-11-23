@@ -2,7 +2,10 @@
 use super::*;
 use crate::{
     capture::Encoding,
-    media::encodings::{stop, Encodings},
+    media::{
+        encodings::{stop, Encodings},
+        video::Layers,
+    },
 };
 use futures_util::{future::Aborted, StreamExt};
 use std::sync::Arc;
@@ -94,17 +97,36 @@ async fn prepare(
     }
 }
 
+fn install_lower(
+    encodings: &mut Encodings,
+    layers: &Layers,
+    low: &Video,
+    candidate: Result<Encoding>,
+) {
+    match candidate {
+        Ok(encoding) => {
+            layers.insert("q".into(), low.clone());
+            encodings.supplied(encoding, low.clone());
+        }
+        Err(error) => {
+            layers.remove("q");
+            eprintln!("Native lower source encoding unavailable: {error:#}");
+            log::warn!(target: "piik.encoder", "Lower source encoding unavailable: {error:#}");
+        }
+    }
+}
+
 async fn report_failure(
     events: &mpsc::Sender<Event>,
     capture: &VideoControl,
     publication_id: Uuid,
     source: Uuid,
     video: Video,
-    layers: Option<&crate::media::video::Layers>,
+    layers: &Layers,
 ) -> Result<()> {
     // SourceReady and failure events have separate queues. Retire the shared
     // inventory here even when the Driver has not registered SourceReady yet.
-    let retired_supply = layers.filter(|layers| layers.retire(&video)).cloned();
+    let retired_supply = layers.retire(&video).then(|| layers.clone());
     tokio::select! {
         biased;
         _ = capture.stopped() => Ok(()),
@@ -155,23 +177,13 @@ pub(super) async fn run(
         encoding = Some(prepared.encoding);
         let frame = prepared.first;
         let low = Video::new(time.clone(), changed.clone());
-        let layers = match capture.encode(settings.lower_layer(), codec) {
-            Ok(encoding) => {
-                let supply = crate::media::video::Layers::new(vec!["q".into(), "h".into()]);
-                supply.insert("q".into(), low.clone());
-                supply.insert("h".into(), frames.clone());
-                encodings.supplied(encoding, low.clone());
-                Some(supply)
-            }
-            Err(error) => {
-                eprintln!("Native lower source encoding unavailable: {error:#}");
-                log::warn!(target: "piik.encoder", "Lower source encoding unavailable: {error:#}");
-                None
-            }
-        };
+        // Keep the declared RIDs when the lower encoder is unavailable.
+        let layers = Layers::new(vec!["q".into(), "h".into()]);
+        layers.insert("h".into(), frames.clone());
+        install_lower(encodings, &layers, &low, capture.encode(settings.lower_layer(), codec));
         let source = Source {
             id: source_id, publication_id, origin: SourceOrigin::Local, kind: MediaKind::Video,
-            layers: layers.clone(),
+            layers: Some(layers.clone()),
             feed: SourceFeed::Video(frames.clone()),
         };
         tokio::select! {
@@ -225,20 +237,8 @@ pub(super) async fn run(
                     ended = Ok(());
                     settings = request.settings;
                     encodings.baseline(prepared.encoding, frames.clone(), frames.requests());
-                    if let Some(layers) = &layers {
-                        layers.insert("h".into(), frames.clone());
-                        match capture.encode(settings.lower_layer(), codec) {
-                            Ok(encoding) => {
-                                layers.insert("q".into(), low.clone());
-                                encodings.supplied(encoding, low.clone());
-                            }
-                            Err(error) => {
-                                layers.remove("q");
-                                eprintln!("Native lower source encoding unavailable: {error:#}");
-                                log::warn!(target: "piik.encoder", "Lower source encoding unavailable: {error:#}");
-                            }
-                        }
-                    }
+                    layers.insert("h".into(), frames.clone());
+                    install_lower(encodings, &layers, &low, capture.encode(settings.lower_layer(), codec));
                     control.video_settings.send_replace(settings);
                     let failed = encodings.reconcile(&next, None, |bitrate| {
                         capture.encode(Settings { bitrate, ..settings }, codec)
@@ -247,7 +247,7 @@ pub(super) async fn run(
                     bandwidth_changed.notify_one();
                     for (video, result) in failed {
                         ended = result;
-                        report_failure(&events, &control.video, publication_id, source_id, video, layers.as_ref()).await?;
+                        report_failure(&events, &control.video, publication_id, source_id, video, &layers).await?;
                     }
                     let _ = request.result.send(Ok(()));
                 },
@@ -259,14 +259,14 @@ pub(super) async fn run(
                     }).await;
                     for (video, result) in failed {
                         ended = result;
-                        report_failure(&events, &control.video, publication_id, source_id, video, layers.as_ref()).await?;
+                        report_failure(&events, &control.video, publication_id, source_id, video, &layers).await?;
                     }
                 },
                 _ = changed.notified() => {},
                 Some((video, result)) = encodings.pumps.next(), if !encodings.pumps.is_empty() => {
                     if let Some(result) = encodings.retired_or_failed(&video, result) {
                         ended = result;
-                        report_failure(&events, &control.video, publication_id, source_id, video, layers.as_ref()).await?;
+                        report_failure(&events, &control.video, publication_id, source_id, video, &layers).await?;
                     }
                 }
             }
@@ -323,6 +323,60 @@ pub(super) async fn run(
 mod tests {
     use super::*;
     use crate::capture::{DegradationPreference, FrameTiming, Frames};
+
+    #[tokio::test]
+    async fn failed_initial_lower_allocation_keeps_a_recoverable_rid() -> Result<()> {
+        let now = Instant::now();
+        let time = SourceTime::local(now, SystemInstant::now(now));
+        let changed = Arc::new(Notify::new());
+        let high = Video::new(time.clone(), changed.clone());
+        let low = Video::new(time.clone(), changed.clone());
+        let layers = Layers::new(vec!["q".into(), "h".into()]);
+        layers.insert("h".into(), high.clone());
+        let mut encodings = Encodings::new(time.clone(), changed.clone(), VideoCodec::Vp8);
+        install_lower(&mut encodings, &layers, &low, Err(anyhow!("encoder busy")));
+
+        let old_inventory = layers.snapshot();
+        assert_eq!(old_inventory[0].0, "q");
+        assert!(old_inventory[0].1.is_none());
+        assert!(old_inventory[1].1.as_ref().unwrap().same(&high));
+        let incumbent = crate::media::video::Input::new(time, changed);
+        let frame = crate::EncodedFrame {
+            bytes: vec![1],
+            presentation_time: now + Duration::from_millis(1),
+            keyframe: true,
+            vp8: None,
+        };
+        install_lower(
+            &mut encodings,
+            &layers,
+            &low,
+            Ok(Encoding::with_test_frame(frame)),
+        );
+        let new_inventory = layers.snapshot();
+        assert_eq!(new_inventory[0].0, old_inventory[0].0);
+        assert!(new_inventory[0].1.as_ref().unwrap().same(&low));
+        layers.supply(
+            &[("q".into(), incumbent.clone())],
+            crate::media::video::EncodingDemand::Original,
+            now,
+        )?;
+        let newcomer = low.subscribe();
+        tokio::time::timeout(Duration::from_secs(1), async {
+            tokio::select! {
+                result = async {
+                    let a = incumbent.recv().await.unwrap();
+                    let b = newcomer.recv().await.unwrap();
+                    assert!(a.keyframe);
+                    assert!(b.keyframe);
+                } => result,
+                _ = encodings.pumps.next() => panic!("supplied encoder ended before delivery"),
+            }
+        })
+        .await?;
+        encodings.stop().await;
+        Ok(())
+    }
 
     #[tokio::test]
     async fn replacement_first_au_preserves_the_live_profile() -> Result<()> {

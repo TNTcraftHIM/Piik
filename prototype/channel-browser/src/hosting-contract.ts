@@ -27,6 +27,6 @@ export interface HostedRoom {
   dispatch(input: unknown): Promise<unknown>;
   dispatchPeer(packet: SignedConversationPacket, now: number, signal?: AbortSignal, publish?: (output: unknown) => void): Promise<ConversationReply[]>;
   currentReaders(): string[] | Promise<string[]>;
-  snapshot(): Promise<BrowserRoomSnapshot>;
+  snapshot(signal?: AbortSignal): Promise<BrowserRoomSnapshot>;
   close(): Promise<void>;
 }

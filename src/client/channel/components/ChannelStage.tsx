@@ -389,7 +389,7 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
                       title={{ text: t("screen.focusNamed", { title }) }} onClick={() => onFocus(source.id)} /></Tooltip>}
                   {source.owned && <div className="c3-monitor-publishing" role="group"
                     aria-label={t("screen.sharingControls", { title })}>
-                    {source.shareControls}
+                    {!source.hidden && source.shareControls}
                     {source.sourceAudio && <SourceSound sound={source.sourceAudio} title={title} />}
                     {microphone && <VoiceMicrophoneButton active={microphone.enabled}
                       quiet busy={microphone.busy && !(microphone.enabled && microphone.canDisable)}
@@ -486,7 +486,7 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
           text={t("screen.focusNamed", { title: source.title })}><Btn icon="screenFocus" quiet size="dense"
           title={{ text: t("screen.focusNamed", { title: source.title }) }} onClick={() => onFocus(source.id)} /></Tooltip>}
         {source.owned ? <div className="c3-monitor-publishing" role="group" aria-label={t("screen.sharingControls", { title: source.title })}>
-          {source.shareControls}
+          {!source.hidden && source.shareControls}
           <span className="c3-monitor-close"><Btn icon="stop" tone="danger" size="dense"
             title="watch.stop" busy={source.pending} disabled={source.pending} onClick={source.onStop} /></span>
         </div> :

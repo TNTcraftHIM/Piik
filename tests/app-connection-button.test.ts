@@ -27,6 +27,14 @@ vi.mock("react", async importOriginal => {
 describe("shared App connection entry", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it("keeps the current App connection ready during site recovery", () => {
+    setCopy({ lang: "en" });
+    const html = renderToStaticMarkup(createElement(AppConnectionButton, { connected: true, available: false }));
+    expect(html).toContain("lr-app-connect is-ready");
+    expect(html).toContain(`aria-label="${t("en", "client.connect.manage")}"`);
+    expect(html).not.toContain('aria-busy="true"');
+  });
+
   it("keeps reopened approval guidance pending without failure or retry", () => {
     setCopy({ lang: "en" });
     vi.mocked(useState).mockReturnValueOnce(["approving", vi.fn()]).mockReturnValueOnce([true, vi.fn()]);

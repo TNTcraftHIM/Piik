@@ -184,7 +184,7 @@ impl Authority {
 
     /// Host history/activity never rewrites the domain checkpoint. Only public
     /// directory changes and completed domain admission belong in that store.
-    pub fn changes_metadata(&self, request: &Request) -> bool {
+    pub fn changes_metadata(&self, connection: Uuid, request: &Request) -> bool {
         match &request.command {
             Command::HostRegister { room, .. } => self
                 .channel
@@ -200,9 +200,18 @@ impl Authority {
                         matches!(reply.result, RoomResult::Deleted { data_removed: true })
                     })
             }
-            Command::Join { .. }
-            | Command::SetProfile { .. }
-            | Command::UpdateDomain { .. }
+            Command::Join { credential, owner_key, .. } => self.channel.identity
+                .admission_changes_user(credential.as_deref(), owner_key.as_deref()),
+            Command::SetProfile { name, avatar } => {
+                let identity = &self.channel.identity;
+                identity.session_for_connection(connection)
+                    .and_then(|id| identity.users.get(&identity.sessions[&id].user_id))
+                    .is_some_and(|user| {
+                        name.as_ref().is_some_and(|name| name.trim() != user.name)
+                            || avatar.as_ref().is_some_and(|avatar| avatar != &user.avatar)
+                    })
+            }
+            Command::UpdateDomain { .. }
             | Command::SetRoomCreationPolicy { .. }
             | Command::AdmitRoom { .. }
             | Command::DeleteRoom { .. } => true,

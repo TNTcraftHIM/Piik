@@ -202,6 +202,8 @@ separate control password. Viewer identity and requests reuse authenticated room
 membership; grants and encrypted input stay bound to the current route and source.
 Changing the source, stopping sharing, authorization loss or route retirement
 releases the corresponding grants and held input. Reconnection requires a new grant.
+Pausing the share releases held input and clears grants and pending requests.
+Resuming accepts fresh requests under the same authorization mode.
 Preparing a source replacement preserves the current source's authorization;
 failed preparation or cancellation does not retire a still-active source.
 An individual input execution failure drops that operation and preserves the

@@ -406,7 +406,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       <div className="c3-personal"><div ref={voiceSlot} className="c3-room-slot" />
         {self && <div className="c3-identity"><PawnSvg centered color={participantColor(self.id)} identity={self.id} avatar={self.avatar ?? undefined} />
           <div><strong>{self.name}</strong><small>{t("channel.previewPage.yourName")}</small></div>
-          <ChannelProfileEditor key={self.id} name={self.name} avatar={self.avatar} color={participantColor(self.id)} disabled={!connected || self.version !== state?.users.find(user => user.id === self.id)?.version}
+          <ChannelProfileEditor key={self.id} name={self.name} avatar={self.avatar} color={participantColor(self.id)} disabled={!connected} profileReady={channel.profiles.has(self.id)}
             busy={busy("profile")} onSave={channel.updateProfile} />
         </div>}
       </div>
@@ -440,8 +440,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         {state && !connected && <div className="c3-notice" role="status"><Glyph name="signal" size={20} /><span className="c3-notice-message">{connectionLabel}</span>
           {connection === "closed" && <Btn icon="refresh" title="common.retry" cap="common.retry" hint="hint-reconnect" size="compact" onClick={channel.reconnect} />}
         </div>}
-        {room && !room.available && <div className="c3-notice" role="status"><Glyph name="couch" size={20} />
-          <span className="c3-notice-message">{t(room.authorized ? (channel.messagesByRoom[room.id]?.length ? "room.offline.retained" : "room.offline.empty") : "room.offline.access")}</span></div>}
+        {room?.authorized && !room.available && <div className="c3-notice" role="status"><Glyph name="couch" size={20} />
+          <span className="c3-notice-message">{t(channel.messagesByRoom[room.id]?.length ? "room.offline.retained" : "room.offline.empty")}</span></div>}
         {otherScreens.length > 0 && <div className="c3-other-activities" aria-label={t("channel.previewPage.ongoingScreens")}>
           {otherScreens.map(source => {
             const watch = "playback" in source;

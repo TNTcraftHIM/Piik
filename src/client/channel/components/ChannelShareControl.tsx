@@ -101,7 +101,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const panel = useRef<HTMLDivElement>(null);
   const settingsTrigger = useRef<HTMLSpanElement>(null);
   const settingsPanel = useRef<HTMLDivElement>(null);
-  const request = useRef<object | null>(null);
+  const request = useRef<AbortController | null>(null);
   const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   useLayerHistory(panel, open);
@@ -147,7 +147,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const microphoneSettings = microphone?.requested ?? microphone;
   const microphonePending = !!sharing && channel.pending.has(`source-microphone:${sharing.id}`);
   const { sourceMicrophones } = channel;
-  const loadAudioApplications = useCallback(async () => (await nativeSources()).sources, [nativeSources]);
+  const loadAudioApplications = useCallback(async (signal: AbortSignal) => (await nativeSources(signal)).sources, [nativeSources]);
   const sharingId = sharing?.id;
   const loadMicrophones = useCallback((signal?: AbortSignal) => sharingId ? sourceMicrophones(sharingId, signal) : Promise.resolve([]), [sharingId, sourceMicrophones]);
   const roomMicrophone = channel.state?.voice.some(voice => voice.sessionId === channel.sessionId && !voice.muted);
@@ -166,29 +166,30 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   useAnchoredPopover(settingsTrigger, settingsPanel, { maxHeight: 640, preferredHeight: 640, minVisibleHeight: 240 });
   const close = useCallback(() => { panel.current?.hidePopover(); settingsPanel.current?.hidePopover(); }, []);
   const refresh = useCallback(() => {
-    const current = request.current = {};
+    request.current?.abort();
+    const current = request.current = new AbortController();
     if (!appConnected) { setSources({ kind: "browser" }); return; }
     setSources(previous => ({ kind: "loading", appDetected: true,
-      ...(previous.kind === "ready" || previous.kind === "loading"
-        ? { sources: previous.sources } : {}) }));
-    void nativeSources().then(result => {
-      if (request.current === current) setSources({ kind: "ready", ...result });
+      sources: "sources" in previous ? previous.sources : undefined }));
+    void nativeSources(current.signal).then(result => {
+      if (!current.signal.aborted) setSources({ kind: "ready", ...result });
     }, error => {
-      if (request.current !== current) return;
+      if (current.signal.aborted) return;
       if (error instanceof DOMException && error.name === "AbortError") {
         setSources({ kind: "unavailable" });
         return;
       }
       const code = error instanceof Error ? error.message : "";
-      setSources(code === "app_disconnected" || code === "app_context_changed"
-        ? { kind: "unavailable" } : { kind: "failed", error: code });
+      setSources(previous => code === "app_disconnected" || code === "app_context_changed"
+        ? { kind: "unavailable" }
+        : { kind: "failed", error: code, sources: "sources" in previous ? previous.sources : undefined });
     });
   }, [appConnected, nativeSources]);
   const settingsNeedSources = settingsOpen && !watching && externalInput?.state !== "live"
     && (!sharing || selectedNative?.current === true);
   useEffect(() => {
     if (open || settingsNeedSources) refresh();
-    return () => { request.current = null; };
+    return () => { request.current?.abort(); };
   }, [open, settingsNeedSources, refresh]);
   useLayoutEffect(() => { close(); }, [roomId, publicationId, disabled, close]);
   useEffect(() => { setExternalOpen(false); }, [roomId]);

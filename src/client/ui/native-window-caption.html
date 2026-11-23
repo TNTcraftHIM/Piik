@@ -10,6 +10,7 @@ __PIIK_MODAL_BACKDROP__
 html, body { margin: 0; height: 100%; overflow: hidden; }
 body { background: var(--wall); color: var(--ink); font: 12px system-ui; display: flex; align-items: center; user-select: none; }
 body[data-standalone] { app-region: drag; }
+body[data-panel] { background: var(--paper); }
 .title { display: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-inline: 16px 8px; font-weight: 600; }
 body[data-standalone] .title { display: block; flex: 1; }
 /* The integrated caption already sits above the workspace's dialog backdrop. */
@@ -63,6 +64,7 @@ window.updateAppearance = (theme, lang, material) => {
   render();
 };
 window.updateMaximized = value => { maximized = value; render(); };
+window.usePanelSurface = () => { document.body.dataset.panel = ''; };
 window.updateTitle = value => { document.querySelector('.title').textContent = value; };
 render();
 window.ipc.postMessage('ready');

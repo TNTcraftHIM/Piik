@@ -124,7 +124,9 @@ export function AppSiteBookmarks({ windowNavigation, entryURL, closeOnOpen = fal
       open: site => choose(site.origin), manage: () => setManaging(true), invitationForm })
       : <section className="c3-settings-dialog lr-site-bookmark-manager" data-app-shell aria-labelledby="site-bookmarks-title">
         <header className="c3-settings-dialog-heading"><h2 id="site-bookmarks-title">{t("client.sites.title")}</h2></header>
-        {editor}<div className="c3-settings-panels lr-site-bookmark-entry">{invitationForm}</div>
+        <div className="lr-site-bookmark-body">
+          {editor}<div className="c3-settings-panels lr-site-bookmark-entry">{invitationForm}</div>
+        </div>
       </section>}
     {render && managing && <ChannelSettingsDialog title={t("client.sites.title")} closeDisabled={busy} onClose={() => setManaging(false)}>{editor}</ChannelSettingsDialog>}
     {pending && <ChannelSettingsDialog compact closeDisabled={opening} title={t(windowNavigation ? "client.bookmarks.switchTitle" : "client.connect.openSite")} onClose={cancelNavigation}>

@@ -182,6 +182,7 @@ async fn complete_h264_au_reaches_two_children_on_retained_pairs() -> Result<()>
             id: child_flow,
             publication_id: f.publication.id,
             input_flow_id: input,
+            presentation: false,
             selected: true,
         }],
     });

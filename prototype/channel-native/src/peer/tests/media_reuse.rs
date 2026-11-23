@@ -79,6 +79,7 @@ async fn polite_collision_reoffers_a_reused_sender_without_losing_its_live_conne
         id,
         publication_id: publication.id,
         input_flow_id: None,
+        presentation: false,
         selected: true,
     };
     let plan = PairInfo {

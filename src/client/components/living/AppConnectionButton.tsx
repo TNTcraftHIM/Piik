@@ -44,7 +44,8 @@ interface ConnectionAttempt {
 export function AppConnectionButton({ onConnected, discovery = channelAppDiscovery, connected, connectedPort, available = true, targetURL, wakeURL: launchTarget }: AppConnectionProps) {
   const { lang, t } = useCopy();
   const theme = useSyncExternalStore(subscribeTheme, currentTheme, currentTheme);
-  const [state, setState] = useState<AppConnectionState>("idle");
+  const [attemptState, setState] = useState<AppConnectionState>("idle");
+  const state = connected ? "ready" : attemptState;
   const wakeURL = launchTarget === undefined ? androidAppIntent("piik://app") : launchTarget;
   const [helpOpen, setHelpOpen] = useState(false);
   const helpId = useId();

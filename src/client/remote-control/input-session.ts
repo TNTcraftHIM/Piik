@@ -15,6 +15,7 @@ export type RemoteInputEvent =
   | { type: "reset" };
 
 type PointerInput = Extract<RemoteInputEvent, { type: "move" | "relative" }>;
+export type RemoteInputInterruption = "request-not-approved" | "request-ended" | "control-ended";
 
 // Owns input intent and its exact Host grant. DOM capture and media routing
 // consume this session; neither can revive an old approval after cancellation.
@@ -28,7 +29,7 @@ export class RemoteInputSession {
   private wheelFraction = 0;
 
   constructor(private readonly channel: InputTransport, private readonly changed: (state: RemoteInputState | null) => void,
-    private readonly interrupted?: () => void) {
+    private readonly interrupted?: (interruption: RemoteInputInterruption) => void) {
     channel.addEventListener("message", this.message);
     channel.addEventListener("close", this.closed);
     this.send({ type: "sync" });
@@ -79,17 +80,26 @@ export class RemoteInputSession {
     }
     if (state.state !== "pending" && state.state !== "active" && state.state !== "suspended") {
       this.intent = null;
-      if (requested && !state.reason && state.state !== "failed") this.interrupted?.();
+      if (requested && !state.reason && state.state !== "failed") this.reportInterruption(state);
     }
     if (state.state === "failed") debugEvent("remote-input", "host-failed", { previousState: this.state?.state, mode: state.mode });
     this.set(state);
   };
 
   private readonly closed = (): void => {
-    if (this.intent !== null) this.interrupted?.();
+    if (this.intent !== null) this.reportInterruption();
     this.intent = null;
     this.set(null);
   };
+
+  private reportInterruption(next?: RemoteInputState): void {
+    if (this.state?.state === "active" || this.state?.state === "suspended") {
+      this.interrupted?.("control-ended");
+    } else if (this.state?.state === "pending") {
+      const awaitingApproval = this.state.mode === "ask" && next?.mode === "ask" && next.state === "ready";
+      this.interrupted?.(awaitingApproval ? "request-not-approved" : "request-ended");
+    }
+  }
 
   private send(event: object): boolean {
     if (this.disposed || this.channel.readyState !== "open") return false;
