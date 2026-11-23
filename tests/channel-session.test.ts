@@ -100,7 +100,7 @@ async function startFixtureApp(session: ChannelSession) {
   return ChannelSocket.current;
 }
 
-async function setup(window = 1000, read = true, hash = "room=first", readyInteractions = true, roomIds = ["first", "second"], storage: "saved" | "throws" | "ignores-write" = "saved") {
+async function setup(window = 1000, read = true, hash = "room=first", readyInteractions = true, roomIds = ["first", "second"], storage: "saved" | "throws" | "ignores-write" = "saved", Session = ChannelSession) {
   vi.stubGlobal("location", new URL(`https://channel.test/__channel-preview${hash ? `#${hash}` : ""}`));
   const values = new Map<string, string>();
   vi.stubGlobal("localStorage", { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => {
@@ -108,7 +108,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
     if (storage === "saved") values.set(key, value);
   } });
   vi.stubGlobal("WebSocket", ChannelSocket);
-  const session = new ChannelSession();
+  const session = new Session();
   type PeerRequest = Extract<ChannelCommand, { type: "chat" | "history" | "history_seek" | "delete_message" | "clear_history" }> & { requestId: string };
   type InteractionRequest = Extract<ChannelCommand, { type: "interaction_ready" | "react" }> & { requestId: string };
   const sent: PeerRequest[] = [], pending: PeerRequest[] = [];
@@ -14689,5 +14689,58 @@ test.each(["surface", "session"])("export retires the ZIP reader when its %s clo
     expect(encoded).toBeLessThan(96);
     expect(retired).toBe(1);
     expect(snapshot.close).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test.each([false, true])("exports flow reports and plan retirement only with Browser debug enabled (%s)", async enabled => {
+  vi.resetModules();
+  vi.stubGlobal("window", Object.assign(new EventTarget(), {
+    location: new URL(enabled ? "https://channel.test/?debug=1" : "https://channel.test/"),
+    setTimeout, clearTimeout,
+  }));
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  vi.stubGlobal("document", { body: { append: vi.fn() }, createElement: (tag: string) => new RoomAudio(tag.toUpperCase()) });
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  const { ChannelSession: DebugSession } = await import("../src/client/channel/session");
+  const { ChannelConversation: DebugConversation } = await import("../src/client/channel/conversation");
+  vi.spyOn(DebugConversation.prototype, "initialize").mockResolvedValue(testSigningKey);
+  const { exportBrowserDebug } = await import("../src/client/lib/debug");
+  const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const { readFile } = await import("node:fs/promises");
+  await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  const { session, socket } = await setup(1000, false, "room=first", true, ["first"], "saved", DebugSession);
+  const [pairId, flowId, publicationId] = Array.from({ length: 3 }, () => crypto.randomUUID());
+  const source = "source";
+  const state = { ...session.getSnapshot().state!, subscriptions: [publicationId],
+    publications: [{ audience: [], id: publicationId, roomId: "first", sessionId: source, userId: "self", kind: "screen" as const,
+      source: { kind: "screen" as const, name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }],
+    pairs: [{ id: pairId, peerId: source, canReceiveVideoLayers: false, rooms: ["first"], outgoing: [],
+      incoming: [{ id: flowId, publicationId, selected: true, inputFlowId: null }] }],
+  };
+  try {
+    socket.receive({ type: "state", state });
+    const pc = RoomPeerConnection.instances.at(-1)!;
+    pc.connected();
+    const video = remoteTrack("video"), stream = remoteStream("private-stream", [video]);
+    pc.receivers = [{ track: video, getStats: async () => decodedReport(1) } as RTCRtpReceiver];
+    socket.receive({ type: "signal", pairId, fromSessionId: source, payload: { exchangeId: crypto.randomUUID(),
+      description: { type: "offer", sdp: "private-sdp" }, tracks: [{ flowId, streamId: stream.id }] } });
+    await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("private-sdp"));
+    pc.ontrack?.({ streams: [stream] });
+    const reports = () => socket.sent.filter(command => command.type === "flow_state");
+    await vi.waitFor(() => expect(reports()).toHaveLength(1));
+    Object.defineProperty(video, "readyState", { value: "ended" });
+    video.dispatchEvent(new Event("ended"));
+    expect(reports().map(command => command.state)).toEqual(["decoded", "failed"]);
+    socket.receive({ type: "state", state: { ...state, pairs: [] } });
+    expect(pc.close).toHaveBeenCalledOnce();
+    const { events } = JSON.parse(await exportBrowserDebug());
+    const flowEvents = events.filter((event: { event: string }) => event.event === "flow-state-sent" || event.event === "flow-assignment-removed")
+      .map(({ event, details }: { event: string; details: unknown }) => ({ event, details }));
+    expect(flowEvents).toEqual(enabled ? [
+      { event: "flow-state-sent", details: { pairId, flowId, state: "decoded" } },
+      { event: "flow-state-sent", details: { pairId, flowId, state: "failed" } },
+      { event: "flow-assignment-removed", details: { pairId, flowId, direction: "incoming" } },
+    ] : []);
   } finally { session.close(); }
 });

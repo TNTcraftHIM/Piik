@@ -19,7 +19,8 @@ state; automatic publication follows the product-change boundary below.
 | SQLite schema, App config format, Browser storage-key format | Their storage/parser owners | Change with the actual stored representation; preserve accepted authority across a compatible upgrade |
 | Portable backup format | Core backup metadata and the archive adapters | Change when the exported archive representation changes; a new backup format does not imply resetting an unchanged live database |
 | Release descriptor schema | Packager and descriptor readers | Describes metadata format, not the product release |
-| Room authorization generation, share/route/publication/media generations, connection IDs | Current authority and resource owners | Runtime identity/freshness only; never reset or align them with release numbers |
+| Room policy and grants | Persisted room authority | Preserve accepted authority across compatible upgrades |
+| Share/route/publication/media generations, connection IDs and flow leases | Current resource owners | Follow the lifetime of the resource independently of releases |
 
 Current numeric values are in source and [status](../status.md#accepted-release-contract).
 Keep those internal values at the first public release: resetting schema or
@@ -144,9 +145,8 @@ those policies does not require another count-specific capability flag.
 Representation acceptance still requires local operation/resource admission;
 it is not a promise that every same-major peer can produce a new media format.
 
-Native discovery distinguishes an incompatible Piik App from an absent App and
-reports protocol numbers to local diagnostics; the source picker offers update/
-refresh guidance and Browser operation. Do not reload, reinstall or interrupt
+Native discovery distinguishes an incompatible Piik App from an absent App. The source picker
+offers update/refresh guidance and Browser operation. Do not reload, reinstall or interrupt
 an active share just because an unrelated product/build label changed.
 
 ## Release And Recovery

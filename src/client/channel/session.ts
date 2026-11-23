@@ -841,7 +841,12 @@ export class ChannelSession {
   }
 
   private write(command: ChannelCommand & { requestId?: string }): void {
-    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(command));
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    this.socket.send(JSON.stringify(command));
+    if (command.type === "flow_state") {
+      const { pairId, flowId, state } = command;
+      debugEvent("channel", "flow-state-sent", { pairId, flowId, state });
+    }
   }
 
   private send(command: ChannelCommand): void {

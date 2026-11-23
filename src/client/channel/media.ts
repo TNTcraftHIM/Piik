@@ -9,6 +9,7 @@ import { applyCaptureProfile, screenAudioBitrate, type QualityProfile } from "..
 import { automaticVideoCodecPreference, VP8_ONLY_VIDEO_CODEC, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
 import { preferredVideoCodecForTrack } from "../webrtc/video-codec-preflight";
 import { BrowserEncodingPool } from "../media/browser-encoding-pool";
+import { browserDebugEnabled, debugEvent } from "../lib/debug";
 
 interface Peer {
   plan: ChannelPair;
@@ -171,6 +172,7 @@ export class ChannelMedia {
     for (const [id, peer] of this.peers) {
       if (!plans.has(id)) {
         this.peers.delete(id);
+        this.recordRemovedAssignments(peer.plan);
         released = this.closePeer(peer) || released;
       }
     }
@@ -223,7 +225,10 @@ export class ChannelMedia {
         }
         peer = { plan, transport, inputs: new Map(), roomDataReady: new Set() };
         this.peers.set(plan.id, peer);
-      } else peer.plan = plan;
+      } else {
+        this.recordRemovedAssignments(peer.plan, plan);
+        peer.plan = plan;
+      }
       for (const room of peer.roomDataReady) if (!plan.rooms.includes(room)) peer.roomDataReady.delete(room);
       try {
         peer.transport.setRooms(plan.rooms);
@@ -685,6 +690,17 @@ export class ChannelMedia {
     }));
     return { samples: samples.flatMap(result => result.status === "fulfilled" ? result.value : []),
       unavailable: samples.some(result => result.status === "rejected") };
+  }
+
+  private recordRemovedAssignments(previous: ChannelPair, next?: ChannelPair): void {
+    if (!browserDebugEnabled) return;
+    for (const direction of ["incoming", "outgoing"] as const) {
+      for (const flow of previous[direction]) {
+        if (!next?.[direction].some(current => current.id === flow.id)) {
+          debugEvent("channel", "flow-assignment-removed", { pairId: previous.id, flowId: flow.id, direction });
+        }
+      }
+    }
   }
 
   private closePeer(peer: Peer): boolean {
