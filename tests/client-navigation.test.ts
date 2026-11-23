@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
-import type { ReactElement } from "react";
+import type { ComponentProps, ReactElement } from "react";
 import { OpenInClient } from "../src/client/components/living/OpenInClient";
+import { Btn } from "../src/client/components/living/primitives";
 import { clientNavigationTarget, useClientNavigationTarget } from "../src/client/channel/client-navigation";
 import { APP_PROTOCOL, channelAppDiscovery } from "../src/client/channel/app-link";
 import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
@@ -32,11 +33,13 @@ const invitation = `${site}#room=private&invite=original-secret`;
 const local = `http://127.0.0.1:${NATIVE_CLIENT_PORT_START}/client`;
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 
-function buttons(node: unknown): ReactElement<{ onClick: () => void }>[] {
+type ButtonProps = Pick<ComponentProps<typeof Btn>, "onClick" | "disabled">;
+
+function buttons(node: unknown): ReactElement<ButtonProps>[] {
   if (Array.isArray(node)) return node.flatMap(buttons);
   if (!node || typeof node !== "object" || !("props" in node)) return [];
-  const element = node as ReactElement<{ children?: unknown; onClick: () => void }>;
-  return [...(element.type === "button" ? [element] : []), ...buttons(element.props.children)];
+  const element = node as ReactElement<ButtonProps & { children?: unknown }>;
+  return [...(element.type === Btn ? [element] : []), ...buttons(element.props.children)];
 }
 function mount(navigation: NonNullable<AppDiscovery["navigation"]> = vi.fn(async (_signal?: AbortSignal) => ({ url: local, windowNavigation: true }))) {
   const popup = { opener: {}, closed: false, close: vi.fn(), location: { replace: vi.fn() } };
@@ -45,7 +48,9 @@ function mount(navigation: NonNullable<AppDiscovery["navigation"]> = vi.fn(async
   const discovery = { navigation, health: vi.fn(), connect: vi.fn(), isIncompatible: () => false };
   const onIssue = vi.fn();
   const render = () => { hooks.index = 0; return OpenInClient({ discovery, targetURL: invitation, active: true, disabled: false, onIssue }); };
-  buttons(render())[0]!.props.onClick();
+  const button = buttons(render())[0]!;
+  expect(button.props.disabled).toBe(false);
+  button.props.onClick!();
   return { popup, open, discovery, render, onIssue };
 }
 
@@ -89,6 +94,7 @@ test("dismissal cancels discovery, closes its tab and rejects a late result", as
   let resolve!: (value: { url: string; windowNavigation: boolean }) => void;
   const discovery = vi.fn((_signal?: AbortSignal) => new Promise<{ url: string; windowNavigation: boolean }>(done => { resolve = done; }));
   const page = mount(discovery);
+  expect(buttons(page.render())[0]!.props.disabled).toBe(true);
   hooks.cleanups.splice(0).forEach(cleanup => cleanup());
   expect(discovery.mock.calls[0]![0]!.aborted).toBe(true);
   expect(page.popup.close).toHaveBeenCalledOnce();

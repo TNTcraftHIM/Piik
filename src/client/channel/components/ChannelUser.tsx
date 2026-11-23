@@ -61,7 +61,7 @@ export function ChannelUser({ id, name, avatar, self, owner, online, roomActivit
   const previewLabel = t("channel.user.viewAvatar", { name });
   const listen = self ? undefined : voicePlayback;
   const { volume, muted } = listen?.voicePlaybackByUser.get(id) ?? { volume: 1, muted: false };
-  const pawn = <PawnSvg color={participantColor(id)} identity={id} avatar={avatar} host={owner} voice={roomActivity?.voice} collaboration={collaboration} />;
+  const pawn = <PawnSvg centered color={participantColor(id)} identity={id} avatar={avatar} host={owner} voice={roomActivity?.voice} collaboration={collaboration} />;
   return <div className={`c3-user${online ? "" : " is-offline"}`} data-user-id={id}>
     <div className="c3-person">
       {avatar ? <Tooltip text={previewLabel}><button type="button" className="c3-avatar-preview" aria-haspopup="dialog"

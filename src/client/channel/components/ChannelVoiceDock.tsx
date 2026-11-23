@@ -74,7 +74,7 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
       </div>
       <div className="c3-speaking-overlay-people">
         {speaking.slice(0, 4).map(user => <div key={user.id}>
-          <PawnSvg color={participantColor(user.id)} identity={user.id}
+          <PawnSvg centered color={participantColor(user.id)} identity={user.id}
             avatar={profileAvatar(user, channel.profiles.get(user.id)) ?? undefined} voice={appearances?.get(user.id)} />
           <span title={user.name}>{user.name}</span>
         </div>)}

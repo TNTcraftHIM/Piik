@@ -151,8 +151,9 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const sharingId = sharing?.id;
   const loadMicrophones = useCallback((signal?: AbortSignal) => sharingId ? sourceMicrophones(sharingId, signal) : Promise.resolve([]), [sharingId, sourceMicrophones]);
   const roomMicrophone = channel.state?.voice.some(voice => voice.sessionId === channel.sessionId && !voice.muted);
-  const busy = channel.pending.has(`screen:${roomId}`) || !!sharing && channel.pending.has(`source-audio:${sharing.id}`);
-  const cancellable = !!captureRequest || channel.pending.has(`screen:${roomId}`) && !channel.sourceSelectionCommitting(roomId);
+  const sourcePending = channel.pending.has(`screen:${roomId}`);
+  const busy = sourcePending || !!sharing && channel.pending.has(`source-audio:${sharing.id}`);
+  const cancellable = !!captureRequest || sourcePending && !channel.sourceSelectionCommitting(roomId);
   const preparation = channel.browserCapturePreparation(roomId);
   const directLimit = settingsOpen && sharing?.kind === "screen" ? <ScreenDirectLimit key={sharing.id} sharing={sharing} channel={channel}
     roomLimit={room?.relayCapacity ?? DEFAULT_RELAY_CAPACITY} disabled={disabled || busy} /> : undefined;
@@ -208,7 +209,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
             onClick={() => activateNativePicker(captureRequest.activationURL)} />
         </span> : <Btn icon={sharing || watching ? "switchSource" : "cast"} title={{ text: sourceTitle }} cap={compact ? undefined : { text: label }} size="compact" tone={sharing || watching ? undefined : "primary"} quiet={compact}
         hint={sharing || watching ? "hint-switch-source" : "hint-share-start"}
-        disabled={disabled || busy || qualityPending || microphonePending} busy={busy || qualityPending} expanded={open}
+        disabled={disabled || busy || qualityPending || microphonePending} busy={sourcePending} expanded={open}
         hasPopup="dialog" controls={id} popoverTarget={id} />}
       {cancellable && <Btn icon="x" title={preparation ? "host.capture.cancelPreparation" : "common.cancel"}
         cap={preparation ? "host.capture.cancelPreparation" : "common.cancel"} size="compact" quiet

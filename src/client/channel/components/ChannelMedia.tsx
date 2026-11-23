@@ -11,7 +11,7 @@ import type { RoomInteractionSession } from "../../lib/room-interactions";
 import { debugEvent } from "../../lib/debug";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useVideoRotation } from "../../components/living/use-video-rotation";
-import { usePlaybackControlsVisibility } from "../../components/living/use-playback-controls-visibility";
+import { PlaybackControlsAttention, usePlaybackControlsVisibility } from "../../components/living/use-playback-controls-visibility";
 import { useHostPreviewPlayback } from "../../components/living/use-host-preview-playback";
 import { usePictureInPicture } from "../../components/living/use-picture-in-picture";
 import { toggleVideoFullscreen, videoFullscreenState } from "../../components/living/video-fullscreen";
@@ -580,11 +580,13 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
       </>}
       <span className="c3-mini-space" />
       <RoomChatToggle session={interaction} quiet />
-      {!owned && <RemoteControl channel={input ?? null} videoRef={playbackRef} available={interactive && ready && displayed.flowId === target.flowId}
+      {!owned && <PlaybackControlsAttention.Provider value={visibility.setAttention}>
+        <RemoteControl channel={input ?? null} videoRef={playbackRef} available={interactive && ready && displayed.flowId === target.flowId}
         pictureFit={pictureFit} pictureRotation={pictureRotation} touchMode={remoteTouchMode}
         readStickPositions={readStickPositions} onStickPositionChange={(side, position) => {
           saveRoomPreferences({ stickPositions: { ...readStickPositions(), [side]: position } });
-        }} />}
+        }} />
+      </PlaybackControlsAttention.Provider>}
       <span ref={pictureTrigger} className="lr-playback-more"><Btn icon="sliders" quiet title="playback.more" hint="hint-advanced"
         popoverTarget={pictureId} controls={pictureId} expanded={pictureOpen} /></span>
       <div ref={panel => {

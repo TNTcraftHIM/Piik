@@ -65,7 +65,7 @@ export function ChannelMentionSuggestions({ id, users, activeIndex, onActiveInde
         role="option" aria-selected={index === activeIndex} tabIndex={-1}
         onPointerDown={event => event.preventDefault()} onPointerMove={() => onActiveIndex(index)}
         onClick={() => onSelect(user)}>
-        <PawnSvg color={participantColor(user.id)} avatar={user.avatar ?? undefined} />
+        <PawnSvg centered color={participantColor(user.id)} avatar={user.avatar ?? undefined} />
         <span>{user.name}</span>
       </button>)}
     </div>

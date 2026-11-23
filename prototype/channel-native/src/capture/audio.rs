@@ -486,6 +486,14 @@ fn capture_active(control: &AudioControl, process: Option<&OwnedHandle>) -> Resu
     Ok(true)
 }
 
+fn capture_event(client: &AudioClient) -> Result<OwnedHandle> {
+    // Own the event before registration, which can fail if the endpoint disappears.
+    let raw = unsafe { CreateEventW(None, false, false, None)? };
+    let event = unsafe { OwnedHandle::from_raw_handle(raw.0) };
+    unsafe { client.as_iaudioclient().SetEventHandle(raw)? };
+    Ok(event)
+}
+
 fn run_capture(
     input: Input,
     control: &AudioControl,
@@ -512,7 +520,7 @@ fn run_capture(
             (None, initialize(device.get_iaudioclient()?)?)
         }
     };
-    let event = client.set_get_eventhandle()?;
+    let event = capture_event(&client)?;
     // wasapi 0.26's slice reader dereferences the buffer even when SILENT is set.
     // GetBuffer's flags and timestamp belong to the original buffer, so handle it here.
     let capture: IAudioCaptureClient = unsafe { client.as_iaudioclient().GetService()? };
@@ -521,7 +529,7 @@ fn run_capture(
     if let Some(process) = &process {
         handles.push(HANDLE(process.as_raw_handle()));
     }
-    handles.push(event.as_handle());
+    handles.push(HANDLE(event.as_raw_handle()));
     if !capture_active(control, process.as_ref())? {
         return Ok(());
     }
@@ -613,7 +621,7 @@ mod tests {
     fn default_render_interface_provides_event_driven_loopback() -> Result<()> {
         let _com = Com::start()?;
         let client = client(None)?;
-        let _event = client.set_get_eventhandle()?;
+        let _event = capture_event(&client)?;
         let _capture: IAudioCaptureClient = unsafe { client.as_iaudioclient().GetService()? };
         Ok(())
     }

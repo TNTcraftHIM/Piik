@@ -245,7 +245,10 @@ the feedback period; they do not delay that delivery.
   and cameras. Investigate the observed WebView renderer exit during room
   navigation. Exercise macOS Quit, Dock/Finder return, permissions, physical
   capture, sound and input. Verify Linux hardware encoding and physical sound,
-  and complete the remaining Linux distribution OBS checks.
+  and complete the remaining Linux distribution OBS checks. Verify the App
+  source picker and Browser sharing on Cinnamon/X11 without a ScreenCast portal
+  backend before deciding the native capture support scope.
+  [#552](https://github.com/TNTcraftHIM/Piik/issues/552) ·
   [Device evidence](./verification-status.md#device-evidence-boundary) ·
   [Local OBS coverage](./research/room-interactions.md#local-obs-input)
 - [ ] **Enhanced microphone suppression on physical devices (#518).** Compare

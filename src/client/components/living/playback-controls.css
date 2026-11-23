@@ -35,8 +35,7 @@
 .lr-playback-reveal-arrow { rotate: 180deg; }
 .lr-tv:has(> .lr-tv-screen > .lr-playback.is-hidden) > .lr-tv-chin > .lr-playback-reveal,
 .lr-tv-screen:has(> .lr-playback.is-hidden) > .lr-playback-reveal { display: grid; place-items: center; }
-.lr-tv:has(.lr-remote-password, .lr-playback :is(.lr-remote-feedback, [popover]:popover-open, [popover].\:popover-open)) .lr-playback-reveal { display: none; }
-.lr-tv-screen:has(> .lr-remote-password) > .lr-playback { opacity: 1; transform: none; pointer-events: auto; }
+.lr-tv:has(.lr-playback :is([popover]:popover-open, [popover].\:popover-open)) .lr-playback-reveal { display: none; }
 .lr-tv-screen:has(> .lr-playback) > .lr-tv-overlay { grid-area: 1 / 1 / 2 / 2; }
 /* Dim the whole picture, including behind the bar; only the message reserves it. */
 .lr-tv-screen:has(> .lr-playback)::after { grid-area: 1 / 1 / 3 / 2; }

@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { createContext, useEffect, useRef, useState, type RefObject } from "react";
 import { PLAYER_CONTROLS_IDLE_MS } from "../../ui/control-timing";
+
+type ControlsAttention = "decision" | "feedback" | null;
+export const PlaybackControlsAttention = createContext<((value: ControlsAttention) => void) | null>(null);
 
 export function usePlaybackControlsVisibility(
   videoRef: RefObject<HTMLVideoElement | null>,
@@ -7,6 +10,8 @@ export function usePlaybackControlsVisibility(
   keepVisible: boolean,
 ) {
   const [hidden, setHidden] = useState(false);
+  const [attention, setAttention] = useState<ControlsAttention>(null);
+  const pinned = keepVisible || attention === "decision";
   const pointerType = useRef("");
 
   useEffect(() => {
@@ -32,7 +37,7 @@ export function usePlaybackControlsVisibility(
     // only interaction with playback itself should pin its controls open.
     const owns = (target: EventTarget | null) => target === video ||
       ownsControls(target);
-    const held = () => keepVisible || pressed || hoveringControls ||
+    const held = () => pinned || pressed || hoveringControls ||
       (owns(document.activeElement) && document.activeElement?.matches(":focus-visible")) ||
       controlAreas.some(area => area.querySelector(":popover-open") !== null);
     const scheduleHide = () => {
@@ -114,7 +119,7 @@ export function usePlaybackControlsVisibility(
       clearIdle();
       listeners.abort();
     };
-  }, [videoRef, controlsRef, keepVisible]);
+  }, [videoRef, controlsRef, pinned, attention]);
 
-  return { hidden: keepVisible ? false : hidden };
+  return { hidden: pinned ? false : hidden, setAttention };
 }

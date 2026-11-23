@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { AppDiscovery } from "../../native/discovery";
 import { clientNavigationURL } from "../../channel/client-navigation";
-import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
+import { Btn, Cap } from "./primitives";
 
 interface NavigationAttempt { controller: AbortController; popup: Window }
 export type AppNavigationIssue = "unsupported" | "popup-blocked" | "unavailable" | "incompatible";
@@ -12,7 +12,6 @@ export function OpenInClient({ discovery, targetURL, active, disabled, onIssue }
   discovery: AppDiscovery; targetURL: string; active: boolean; disabled: boolean;
   onIssue: (issue: AppNavigationIssue | null) => void;
 }) {
-  const { t } = useCopy();
   const [busy, setBusy] = useState(false);
   const [managementURL, setManagementURL] = useState<string>();
   const pending = useRef<NavigationAttempt | null>(null);
@@ -57,10 +56,10 @@ export function OpenInClient({ discovery, targetURL, active, disabled, onIssue }
     }
   }
 
-  const content = <><Glyph name={busy ? "loader" : "window"} size={16} className={busy ? "lr-spin" : undefined} />
-    <span>{t("client.connect.openInClient")}</span></>;
   return <div className="lr-app-connect-actions">
-    {managementURL && !disabled ? <a className="lr-btn" href={clientNavigationURL(managementURL, targetURL)} target="_blank" rel="noopener noreferrer">{content}</a>
-      : <button type="button" className="lr-btn" disabled={disabled || busy} aria-busy={busy || undefined} onClick={() => void open()}>{content}</button>}
+    {managementURL && !disabled ? <a className="lr-btn" href={clientNavigationURL(managementURL, targetURL)} target="_blank" rel="noopener noreferrer">
+      <Glyph name="window" size={19} /><Cap k="client.connect.openInClient" />
+    </a> : <Btn icon="window" title="client.connect.openInClient" cap="client.connect.openInClient"
+      disabled={disabled || busy} busy={busy} onClick={() => void open()} />}
   </div>;
 }

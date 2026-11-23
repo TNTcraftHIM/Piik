@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
@@ -15,6 +15,7 @@ import { RemoteMouse, placeRemotePointer, remotePointerRoom } from "./RemoteMous
 import { Btn, Pill } from "./primitives";
 import { videoFullscreenState, type FullscreenVideo } from "./video-fullscreen";
 import { picturePoint, pictureRect, rotatePicturePoint, rotatePictureDelta, videoRotation, type VideoFit, type VideoRotation } from "../../media/video-geometry";
+import { PlaybackControlsAttention } from "./use-playback-controls-visibility";
 import "./remote-control.css";
 
 // The video keeps its existing media owner. This temporary surface handles
@@ -233,6 +234,14 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     owners.forEach(owner => owner.addEventListener("keydown", stop, true));
     return () => owners.forEach(owner => owner.removeEventListener("keydown", stop, true));
   }, [controlled, keyboardDocument, release, releaseKey]);
+
+  const setAttention = useContext(PlaybackControlsAttention);
+  const attention = passwordOpen || state?.state === "pending" ? "decision"
+    : interrupted || state?.reason || state?.inputFailed || state?.state === "failed" || state?.state === "suspended" ? "feedback" : null;
+  useEffect(() => {
+    setAttention?.(attention);
+    return () => setAttention?.(null);
+  }, [attention, setAttention]);
 
   const endedNotice = interrupted && <Pill icon="mouse" label={t("remote.ended")} comic="hint-remote-stop"
     onDismiss={() => setInterrupted(false)} />;

@@ -404,7 +404,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         </div>
       </aside>
       <div className="c3-personal"><div ref={voiceSlot} className="c3-room-slot" />
-        {self && <div className="c3-identity"><PawnSvg color={participantColor(self.id)} identity={self.id} avatar={self.avatar ?? undefined} />
+        {self && <div className="c3-identity"><PawnSvg centered color={participantColor(self.id)} identity={self.id} avatar={self.avatar ?? undefined} />
           <div><strong>{self.name}</strong><small>{t("channel.previewPage.yourName")}</small></div>
           <ChannelProfileEditor key={self.id} name={self.name} avatar={self.avatar} color={participantColor(self.id)} disabled={!connected || self.version !== state?.users.find(user => user.id === self.id)?.version}
             busy={busy("profile")} onSave={channel.updateProfile} />

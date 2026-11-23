@@ -60,9 +60,9 @@ export function PawnAppearancePreview({ guides, onGuides }: {
       </section>
       <section className="cp-pawn-avatar-sidebar">
         <h4>{en ? "Voice list · 24 × 32" : "语音列表 · 24 × 32"}</h4>
-        <div><PawnSvg color={participantColor(SAMPLE_ID)} identity={SAMPLE_ID} avatar={avatar} voice={{ microphone: true }} />
+        <div><PawnSvg centered color={participantColor(SAMPLE_ID)} identity={SAMPLE_ID} avatar={avatar} voice={{ microphone: true }} />
           <span>{en ? "Clover" : "小叶"}</span></div>
-        <div><PawnSvg color={participantColor("avatar-preview-friend")} identity="avatar-preview-friend" avatar={avatar} voice={{ microphone: false }} collaboration />
+        <div><PawnSvg centered color={participantColor("avatar-preview-friend")} identity="avatar-preview-friend" avatar={avatar} voice={{ microphone: false }} collaboration />
           <span>{en ? "Amu" : "阿沐"}</span></div>
       </section>
       <section className="cp-pawn-avatar-chat">

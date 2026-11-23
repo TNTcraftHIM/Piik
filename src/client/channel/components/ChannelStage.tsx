@@ -365,7 +365,7 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
             <footer>
               <div className="c3-monitor-source-row" data-tooltip-controls>
                 <div className="c3-monitor-source-info">
-                  <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
+                  <PawnSvg centered color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
                   <div className="c3-monitor-source">
                     <Tooltip overflow={{ text: title, selector: "strong" }}><strong>{title}</strong></Tooltip>
                     <Tooltip overflow={{ text: sourceDetail, selector: "small" }}><small>
@@ -424,7 +424,7 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
         {available.map(source => <div key={source.id} className="c3-monitor-offer" data-source-id={source.id}
           role="group" aria-label={`${stageTitle(source, t)} / ${source.name} / ${source.roomName}`}>
           <div className="c3-monitor-offer-identity">
-            <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
+            <PawnSvg centered color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
             <div><strong>{stageTitle(source, t)}</strong><small>{source.name}<span aria-hidden="true"> / </span>{source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}{source.paused ? ` / ${t("host.paused")}` : ""}</small></div>
           </div>
           {source.kind === "watch" ? <SourceAudience people={source.audience} joined /> : <SourceAudience people={source.audience} />}
@@ -472,7 +472,7 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
         : <><BrandLoader /><span>{t("watch.waiting")}</span></>}</div>}
     <footer><div className="c3-monitor-source-row" data-tooltip-controls>
       <div className="c3-monitor-source-info">
-        <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
+        <PawnSvg centered color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
         <div className="c3-monitor-source"><Tooltip overflow={{ text: source.title, selector: "strong" }}><strong>{source.title}</strong></Tooltip>
           <small>{source.name}<span aria-hidden="true"> / </span><button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button></small>
         </div>

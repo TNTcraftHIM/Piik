@@ -813,6 +813,7 @@ impl Runtime {
                 .map(|address| address.addr())
                 .find(|address| address.is_ipv4())
         });
+        let mut has_ipv6 = false;
         let mut bases = Vec::new();
         let mut linear_base = None;
         for socket in &sockets {
@@ -830,6 +831,7 @@ impl Runtime {
                 let Some(candidate) = rtc.add_local_candidate(candidate).cloned() else {
                     continue;
                 };
+                has_ipv6 |= address.is_ipv6() && !address.ip().is_loopback();
                 if linear
                     && address.is_ipv4()
                     && (linear_base.is_none() || Some(address.ip()) == default_ipv4)
@@ -848,9 +850,6 @@ impl Runtime {
         let (bandwidth, rx) = watch::channel(Estimate::Startup(300_000.0));
         let urls = discovery::urls(ice);
         let (turn_ready, turn_setup) = mpsc::channel(super::MAX_ICE_CANDIDATES);
-        let has_ipv6 = bases
-            .iter()
-            .any(|base| base.local.is_ipv6() && !base.local.ip().is_loopback());
         #[cfg(not(target_os = "android"))]
         let can_refresh_ipv6 = refresh.is_some();
         #[cfg(target_os = "android")]

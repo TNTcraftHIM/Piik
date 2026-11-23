@@ -9,7 +9,7 @@ import { PlaybackWindowControls } from "./PlaybackWindowControls";
 import { PlaybackPictureControls, PlaybackSettings, type PlaybackSettingsProps } from "./PlaybackSettings";
 import { Tooltip } from "./Tooltip";
 import { useAnchoredPopover } from "./use-anchored-popover";
-import { usePlaybackControlsVisibility } from "./use-playback-controls-visibility";
+import { PlaybackControlsAttention, usePlaybackControlsVisibility } from "./use-playback-controls-visibility";
 import { usePictureInPicture } from "./use-picture-in-picture";
 import { bindPlaybackGestures } from "./playback-gestures";
 import { useVideoRotation } from "./use-video-rotation";
@@ -148,7 +148,9 @@ export function PlaybackControls({
       audioRef.current?.setLevel(level);
       audioRef.current?.setMuted(false);
     }} onToggleTheater={onToggleTheater} onReconnect={onReconnect}
-    reconnectAvailable={reconnectAvailable} overlayAction={overlayAction} overlaySettings={overlaySettings} remoteActions={remoteActions} settings={settings} />;
+    reconnectAvailable={reconnectAvailable} overlayAction={overlayAction} overlaySettings={overlaySettings} remoteActions={
+      <PlaybackControlsAttention.Provider value={visibility.setAttention}>{remoteActions}</PlaybackControlsAttention.Provider>
+    } settings={settings} />;
 }
 
 // The film shares the rendered controls; the component above alone owns media effects.
