@@ -532,7 +532,7 @@ export const ja: Partial<Record<CopyKey, string>> = {
   "host.switching": "選択中",
   "host.stop": "共有を停止",
   "host.noAudio": "ソースの音声は共有していません",
-  "host.noBrowserAudioDetail": "iPhone や iPad の Safari ではゲームや動画の映像だけが共有されます。自分の声を加えるにはマイクの共有をオンにしてください。",
+  "host.noBrowserAudioDetail": "ブラウザーから共有元の音声が提供されませんでした。説明にはルーム通話またはマイク共有を使えます。",
   "host.localPreviewPaused": "ローカルプレビューは一時停止中です。共有は継続します",
   "host.preview": "ローカルプレビュー",
   "host.previewAutoPause": "プレビューを自動で一時停止",
