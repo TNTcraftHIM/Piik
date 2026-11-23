@@ -411,7 +411,7 @@ The App uses the platform's local application-data directory under `Piik/channel
 `PIIK_CHANNEL_APP_DATA_DIR` selects isolated development data. One process owns
 that directory. `PIIK_CHANNEL_APP_PORT` may select a loopback port instead of the
 normal discovery range; a launch URL can supply the non-secret `piik-client-port`
-fragment parameter. `PIIK_CHANNEL_APP_WEB_DIR` selects the built frontend and
+query parameter. `PIIK_CHANNEL_APP_WEB_DIR` selects the built frontend and
 `PIIK_CHANNEL_APP_NO_BROWSER=1` suppresses browser opening for automated checks.
 
 ## Local OBS input

@@ -47,7 +47,7 @@ it("discovers the room App independently of v10 media control and checks health 
 });
 
 it("uses an explicit non-secret App port outside the default scan range", async () => {
-  const page = { setTimeout, clearTimeout, location: new URL("https://channel.example/#piik-client=1&piik-client-port=48995"),
+  const page = { setTimeout, clearTimeout, location: new URL("https://channel.example/?piik-client-port=48995#piik-client=1"),
     history: { state: null, replaceState: vi.fn() } };
   vi.stubGlobal("window", page);
   const bootstrap = await import("../src/client/lib/app-launch");

@@ -93,7 +93,7 @@ describe("shared App connection entry", () => {
     expect(url.origin + url.pathname).toBe("http://127.0.0.1:39721/client");
     expect(url.searchParams.get("bookmarks")).toBe("1");
     expect(url.searchParams.has("site")).toBe(false);
-    expect(new URLSearchParams(url.hash.slice(1)).get("piik-preferences")).toBe("copy,theme");
+    expect(url.searchParams.get("piik-preferences")).toBe("copy,theme");
     expect(Object.fromEntries(new URLSearchParams(url.hash.slice(1)))).toMatchObject({ site: "https://site.example", "piik-client": "1", "piik-lang": "en" });
   });
 

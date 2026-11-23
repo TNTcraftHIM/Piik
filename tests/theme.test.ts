@@ -88,20 +88,20 @@ describe("theme preference", () => {
     const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
     const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
     expect(script).toBeTruthy();
-    for (const [fragment, expected] of [
-      ["piik-client=1&piik-theme=light", "dark"],
-      ["piik-client=1&piik-theme=system", "dark"],
-      ["piik-client=1&piik-theme=light&piik-preferences=theme", "light"],
-      ["piik-client=1&piik-theme=system&piik-preferences=theme", "light"],
-      ["piik-client=1&piik-theme=light&piik-preferences=copy", "dark"],
-      ["piik-theme=light&piik-preferences=theme", "dark"],
-      ["piik-client=1&piik-theme=invalid&piik-preferences=theme", "dark"],
+    for (const [fragment, search, expected] of [
+      ["piik-client=1&piik-theme=light", "", "dark"],
+      ["piik-client=1&piik-theme=system", "", "dark"],
+      ["piik-client=1&piik-theme=light", "?piik-preferences=theme", "light"],
+      ["piik-client=1&piik-theme=system", "?piik-preferences=theme", "light"],
+      ["piik-client=1&piik-theme=light", "?piik-preferences=copy", "dark"],
+      ["piik-theme=light", "?piik-preferences=theme", "dark"],
+      ["piik-client=1&piik-theme=invalid", "?piik-preferences=theme", "dark"],
     ]) {
       const dataset: Record<string, string> = {};
       runInNewContext(script!, {
         document: { documentElement: { dataset } },
         matchMedia: () => ({ matches: false }),
-        location: { hash: `#${fragment}` },
+        location: { hash: `#${fragment}`, search },
         localStorage: { getItem: () => "dark" },
         URLSearchParams,
       });

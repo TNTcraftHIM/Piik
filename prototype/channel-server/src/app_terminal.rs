@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn view_uses_launcher_truth_without_exposing_private_entry() {
         let state = json!({"version":"v3.0.0-beta.test","revision":"a".repeat(40),"controlPort":39721,
-            "target":"http://127.0.0.1:8787/#owner=secret&piik-client=1&piik-client-port=39721",
+            "target":"http://127.0.0.1:8787/?piik-client-port=39721#owner=secret&piik-client=1",
             "localSite":"http://127.0.0.1:8787",
             "ownedSites":["http://127.0.0.1:8787/","https://192.0.2.1:8787/"]});
         let view = render(&state, Some("System WebView unavailable"), None, 32);
@@ -315,7 +315,7 @@ mod tests {
             "publicOrigin":"https://fixture.invalid/"
         });
         assert!(!render(&state, None, None, 32).contains("fixture.invalid"));
-        state["target"] = json!("http://127.0.0.1:8787/#owner=secret&piik-client-port=39721");
+        state["target"] = json!("http://127.0.0.1:8787/?piik-client-port=39721#owner=secret&piik-client=1");
         let view = render(&state, None, None, 32);
         assert!(view
             .contains("Configured public address / 已配置的公开地址\n  https://fixture.invalid/"));

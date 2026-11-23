@@ -64,50 +64,51 @@ export interface ClientLaunchPresentation {
 export function clientLaunchURL(target: string, presentation: ClientLaunchPresentation, debug?: boolean, controlPort?: number): string {
   const url = new URL(target);
   const params = new URLSearchParams(url.hash.slice(1));
-  if (controlPort !== undefined) params.set("piik-client-port", String(controlPort));
+  if (controlPort !== undefined) url.searchParams.set("piik-client-port", String(controlPort));
   params.set("piik-client", "1");
   params.set("piik-lang", presentation.lang);
   params.set("piik-theme", presentation.theme ?? "system");
-  params.delete("piik-preferences");
+  url.searchParams.delete("piik-preferences");
   if (presentation.explicit?.length) {
-    params.set("piik-preferences", presentation.explicit.join(","));
+    url.searchParams.set("piik-preferences", presentation.explicit.join(","));
   }
   url.hash = params.toString();
   return withBrowserDebug(url.toString(), debug);
 }
 
-/** Launch metadata initializes a new document. Remove it before room-only navigation reads the fragment. */
-export function consumeClientLaunchFragment(): URLSearchParams {
-  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  const keys = ["piik-client", "piik-lang", "piik-theme", "piik-preferences", "piik-client-port"] as const;
-  if (keys.some(key => params.has(key))) {
-    const room = new URLSearchParams(params);
-    for (const key of keys) room.delete(key);
-    const remaining = room.toString();
-    window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search +
-      (remaining ? `#${remaining}` : ""));
-  }
-  return params;
-}
-
 export function takeClientLaunchBootstrap(): Partial<ClientLaunchPresentation> | null {
-  const params = consumeClientLaunchFragment();
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const keys = ["piik-client", "piik-lang", "piik-theme"] as const;
+  const query = new URLSearchParams(window.location.search);
+  const present = keys.some((key) => params.has(key)) || query.has("piik-preferences") || query.has("piik-client-port");
   const launchedFromFragment = params.get("piik-client") === "1";
   if (launchedFromFragment) {
     clientActivatedInPage = true;
-    clientPortInPage = parseClientRuntimePort(params.get("piik-client-port"));
+    clientPortInPage = parseClientRuntimePort(query.get("piik-client-port"));
     if (clientPortInPage !== null) writeSessionValue(CLIENT_RUNTIME_STORAGE_KEY, String(clientPortInPage));
     else try { window.sessionStorage.removeItem(CLIENT_RUNTIME_STORAGE_KEY); } catch { /* Storage is optional. */ }
     try { window.localStorage.setItem(CLIENT_LAUNCH_STORAGE_KEY, "1"); } catch { /* Storage is optional. */ }
   }
   const lang = params.get("piik-lang");
   const theme = params.get("piik-theme");
-  const preferenceFields = params.get("piik-preferences")?.split(",") ?? [];
+  const preferenceFields = query.get("piik-preferences")?.split(",") ?? [];
   const presentation: Partial<ClientLaunchPresentation> = {
     ...(isLang(lang) ? { lang } : {}),
     ...(theme === "light" || theme === "dark" || theme === "system"
       ? { theme: theme === "system" ? null : theme } : {}),
   };
+  if (present) {
+    for (const key of keys) params.delete(key);
+    query.delete("piik-preferences");
+    query.delete("piik-client-port");
+    const search = query.toString();
+    const remaining = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${search ? `?${search}` : ""}${remaining ? `#${remaining}` : ""}`,
+    );
+  }
   return launchedFromFragment && Object.keys(presentation).length > 0
     ? {
         ...presentation,

@@ -308,6 +308,41 @@ struct WorkspaceOrigins {
     local_room: Option<url::Origin>,
 }
 impl WorkspaceOrigins {
+    // The launcher adds presentation and App affinity for a fresh document. Only
+    // a room destination in the current verified workspace can keep that document.
+    fn room_navigation(&self, current: &str, target: &str) -> Option<url::Url> {
+        let mut current = url::Url::parse(current).ok()?;
+        let target = url::Url::parse(target).ok()?;
+        let route_query = |key: &str| !matches!(key, "piik-client-port" | "piik-preferences");
+        if self.opening.is_some()
+            || self.site.as_ref() != Some(&current.origin())
+            || current.origin() != target.origin()
+            || current.path() != target.path()
+            || !current.query_pairs().filter(|(key, _)| route_query(key))
+                .eq(target.query_pairs().filter(|(key, _)| route_query(key)))
+        {
+            return None;
+        }
+        let mut fragment = url::form_urlencoded::Serializer::new(String::new());
+        let mut room = false;
+        for (key, value) in url::form_urlencoded::parse(target.fragment()?.as_bytes()) {
+            match key.as_ref() {
+                "room" if !value.is_empty() => {
+                    room = true;
+                    fragment.append_pair(&key, &value);
+                }
+                "invite" => { fragment.append_pair(&key, &value); }
+                "piik-client" | "piik-lang" | "piik-theme" => {}
+                _ => return None,
+            }
+        }
+        if !room {
+            return None;
+        }
+        current.set_fragment(Some(&fragment.finish()));
+        Some(current)
+    }
+
     fn overlay_document(&self, address: &str) -> bool {
         url::Url::parse(address).is_ok_and(|url| {
             let origin = Some(url.origin());
@@ -332,6 +367,33 @@ impl WorkspaceOrigins {
         }
         false
     }
+}
+
+#[cfg(test)]
+#[test]
+fn workspace_room_navigation_ignores_launch_metadata_but_preserves_routing() {
+    let current = "https://site.example/view?layout=screen&label=two+words#room=one";
+    let mut origins = WorkspaceOrigins {
+        site: Some(url::Url::parse(current).unwrap().origin()),
+        ..WorkspaceOrigins::default()
+    };
+    let target = "https://site.example/view?layout=screen&label=two%20words&piik-client-port=19883&piik-preferences=theme#room=two&invite=key&piik-client=1&piik-theme=dark";
+    assert_eq!(
+        origins.room_navigation(current, target).unwrap().as_str(),
+        "https://site.example/view?layout=screen&label=two+words#room=two&invite=key"
+    );
+    for target in [
+        target.replace("site.example", "elsewhere.example"),
+        target.replace("/view?", "/other?"),
+        target.replace("layout=screen", "layout=room"),
+        target.replace("#room=two", "&layout=room#room=two"),
+        target.replace("room=two", "owner=key"),
+        target.replace("piik-theme=dark", "owner=key"),
+    ] {
+        assert!(origins.room_navigation(current, &target).is_none());
+    }
+    origins.opening = origins.site.take();
+    assert!(origins.room_navigation(current, target).is_none());
 }
 
 fn workspace_navigation(view: &WebView, origins: Rc<RefCell<WorkspaceOrigins>>) -> Result<()> {
@@ -935,16 +997,26 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             }
             Event::UserEvent(ServiceEvent::Navigate(url, local)) => {
                 if let Some(main) = &window {
-                    let origin = url::Url::parse(&url).ok().map(|u| u.origin());
-                    main.origins.borrow_mut().local_room = local.then(|| origin.clone()).flatten();
-                    main.origins.borrow_mut().opening = origin;
-                    match main.content.load_url(&url) {
+                    let current = main.content.url().ok();
+                    let room = current.as_ref().and_then(|current| {
+                        main.origins.borrow().room_navigation(current, &url)
+                    });
+                    let result = if let Some(room) = &room {
+                        if current.as_deref() == Some(room.as_str()) { Ok(()) }
+                        else { main.content.load_url(room.as_str()) }
+                    } else {
+                        let origin = url::Url::parse(&url).ok().map(|u| u.origin());
+                        main.origins.borrow_mut().local_room = local.then(|| origin.clone()).flatten();
+                        main.origins.borrow_mut().opening = origin;
+                        main.content.load_url(&url)
+                    };
+                    match result {
                         Ok(()) => {
                             main.window.set_minimized(false);
                             main.window.set_focus();
                         }
                         Err(error) => {
-                            main.origins.borrow_mut().opening.take();
+                            if room.is_none() { main.origins.borrow_mut().opening.take(); }
                             eprintln!("Open site in Piik: {error:#}");
                         }
                     }

@@ -320,9 +320,9 @@ async fn run(
     };
     let mut ready = Ready::new(
         format!(
-            "{origin}/#owner={}&piik-client=1&piik-client-port={}",
-            domain.owner_key(),
-            app.port
+            "{origin}/?piik-client-port={}#owner={}&piik-client=1",
+            app.port,
+            domain.owner_key()
         ),
         https.as_ref(),
     );
@@ -413,7 +413,7 @@ async fn run(
                 drop(registry);
                 if result.is_ok() {
                     ready.target = format!(
-                        "{origin}/#owner={}&piik-client=1&piik-client-port={}", domain.owner_key(), app.port
+                        "{origin}/?piik-client-port={}#owner={}&piik-client=1", app.port, domain.owner_key()
                     );
                     progress.send_replace(Progress::Ready(ready.clone()));
                 } else {

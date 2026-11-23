@@ -1207,7 +1207,7 @@ test.each([false, true])("peer path changes do not reload the Domain conversatio
 test("site addresses and room invitations use the current Welcome origin without local bootstrap data", async () => {
   const { session, peer } = await setup();
   const state = session.getSnapshot().state!;
-  vi.stubGlobal("location", new URL("https://channel.test/__channel-preview#owner=local-owner&piik-client=1&piik-client-port=39721"));
+  vi.stubGlobal("location", new URL("https://channel.test/__channel-preview?piik-client-port=39721#owner=local-owner&piik-client=1&piik-client-port=39721"));
   try {
     for (const invitationOrigin of ["https://friends.example", undefined]) {
       session.reconnect();
