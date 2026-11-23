@@ -6,7 +6,7 @@ all-device acceptance or full HDR support.
 
 ## Playback Buffering
 
-Reviewed 2026-11-15. Browser receivers default to WebRTC's adaptive buffer;
+Reviewed 2026-11-23. Browser receivers default to WebRTC's adaptive buffer;
 Piik does not default to a zero-delay target. The standard
 [`jitterBufferTarget`](https://www.w3.org/TR/webrtc/#dom-rtcrtpreceiver-jitterbuffertarget)
 requests a preferred total buffer duration, not extra delay or a quality level.
@@ -50,6 +50,12 @@ burst-surrounding window added a freeze, and both recorded NACKs and retransmiss
 Whole-window resolution changes confound the freeze totals, so they cannot
 establish the burst's benefit or the cause of transient blur.
 This 10 fps control is not a reproduction of a user's reported 2% loss.
+
+The [2.x receiver controls](https://github.com/TNTcraftHIM/Piik/blob/61655832c7e10dd396e5a29a2b91caedf80765b1/docs/research/realtime-quality-adaptation.md#2x-receiver-buffering-and-source-gaps)
+separately measure periodic packet lateness, retransmission and source-frame gaps.
+They show smoother delivery with a 300 ms request at additional viewing delay,
+while missing source pictures remain missing. Their recorded versions and
+environments bound those results.
 
 The implemented setting follows the [screen-delivery owner](./channel-network-design.md#screen-demand-uses-reachable-paths).
 Real-room checks exercised the shared control on screen video/source audio,
