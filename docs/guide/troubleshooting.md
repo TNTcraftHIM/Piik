@@ -293,6 +293,7 @@ The source picker distinguishes these outcomes:
 | Cannot connect to Piik App | Confirm the App is running and this site is approved. Close idle pages using the App if it reports a busy request, then retry. |
 | App and page versions are incompatible | [Update Piik App and reload the page](#app-and-page-versions-are-incompatible). |
 | Piik App capture is currently unavailable | Check the App diagnostics for capture or encoder availability. Review your encoding setting or use browser capture. |
+| Piik App timed out | Wait a moment, then select **Refresh sharing sources** in the source picker. |
 | Could not read the screen and window list | Refresh to retry. If it keeps failing, collect both the App and browser reports. |
 | No sources available | Check the other source tabs. On Windows, a window or display may still be available in the other tab. |
 
@@ -344,7 +345,7 @@ with the codec comparison. If both codecs fail, also check
 
 ### When video will not connect
 
-1. **Viewer.** If you can enter and chat but the share stays on the connection screen, select **Retry picture** on the affected picture. If it still fails, try another network such as a phone hotspot.
+1. **Viewer.** If the picture says **Waiting for a video route**, ask the person sharing to check their preview. If the affected picture shows **Retry picture**, select it. If the preview works but you still have no picture, try another network such as a phone hotspot.
 2. **Person sharing.** Check that the preview for that share is playing. If the preview is blank, check the selected window or screen.
 3. **Site operator and room manager.** The site operator makes the forwarding service available. A room manager opens **Room settings → Connection** and enables **Allow site forwarding** for that room. Once both are in place, Piik can use the service automatically when the route needs it.
 

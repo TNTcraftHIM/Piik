@@ -1,6 +1,6 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::{
-    fs,
+    fs, io,
     os::windows::{
         fs::{MetadataExt, OpenOptionsExt},
         io::AsRawHandle,
@@ -19,9 +19,8 @@ use windows::Win32::{
 const MAX_DEVICE_RECEIPTS: i64 = 4096;
 const RECEIPT_SCHEMA: i64 = 1;
 
-fn schema(db: &Connection) -> Option<i64> {
+fn schema(db: &Connection) -> rusqlite::Result<i64> {
     db.pragma_query_value(None, "user_version", |row| row.get(0))
-        .ok()
 }
 
 pub(crate) struct ReceiptBook(PathBuf);
@@ -33,11 +32,11 @@ impl ReceiptBook {
         self.0.join("download-receipts.sqlite")
     }
     pub(super) fn remember(&self, origin: &str, path: &Path) -> Option<Uuid> {
-        let (created, modified, size, identity) = stamp(path)?;
+        let (created, modified, size, identity) = stamp(path).ok()??;
         fs::create_dir_all(&self.0).ok()?;
         let mut db = Connection::open(self.db()).ok()?;
         let tx = db.transaction().ok()?;
-        let version = schema(&tx)?;
+        let version = schema(&tx).ok()?;
         if version == 0 {
             // Existing rows have no file ID. They expire through the usual lookup.
             let exists: bool = tx.query_row(
@@ -84,35 +83,45 @@ impl ReceiptBook {
         tx.commit().ok()?;
         Some(token)
     }
-    pub(crate) fn resolve(&self, origin: &str, token: Uuid) -> Option<PathBuf> {
-        let db = Connection::open_with_flags(self.db(), rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .ok()?;
+    pub(crate) fn resolve(&self, origin: &str, token: Uuid) -> anyhow::Result<Option<PathBuf>> {
+        let store = self.db();
+        let db =
+            match Connection::open_with_flags(&store, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY) {
+                Err(_) if matches!(store.try_exists(), Ok(false)) => return Ok(None),
+                result => result?,
+            };
         if schema(&db)? != RECEIPT_SCHEMA {
-            return None;
+            return Ok(None);
         }
-        let (path, created, modified, size, identity): (String, i64, i64, i64, Vec<u8>) = db
+        let entry = db
             .query_row(
-                "SELECT path, created, modified, size, identity FROM receipts WHERE token = ? AND origin = ?",
+                "SELECT path, created, modified, size, identity FROM receipts WHERE token = ? AND origin = ? AND identity IS NOT NULL",
                 params![token.to_string(), origin],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+                |r| Ok((r.get::<_, String>(0)?, (r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))),
             )
-            .ok()?;
+            .optional()?;
+        let Some((path, expected)) = entry else {
+            return Ok(None);
+        };
         let path = PathBuf::from(path);
-        (stamp(&path)? == (created, modified, size, identity)).then_some(path)
+        Ok((stamp(&path)? == Some(expected)).then_some(path))
     }
 }
-fn stamp(path: &Path) -> Option<(i64, i64, i64, Vec<u8>)> {
+fn stamp(path: &Path) -> io::Result<Option<(i64, i64, i64, Vec<u8>)>> {
     if !path.is_absolute() {
-        return None;
+        return Ok(None);
     }
-    let file = fs::OpenOptions::new()
+    let file = match fs::OpenOptions::new()
         .access_mode(FILE_READ_ATTRIBUTES.0)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT.0)
         .open(path)
-        .ok()?;
-    let m = file.metadata().ok()?;
+    {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        result => result?,
+    };
+    let m = file.metadata()?;
     if !m.is_file() || m.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0 {
-        return None;
+        return Ok(None);
     }
     let mut info = FILE_ID_INFO::default();
     // The handle remains open while Windows fills the complete FILE_ID_INFO structure.
@@ -123,22 +132,21 @@ fn stamp(path: &Path) -> Option<(i64, i64, i64, Vec<u8>)> {
             (&raw mut info).cast(),
             size_of::<FILE_ID_INFO>() as u32,
         )
-    }
-    .ok()?;
+    }?;
     if info.FileId.Identifier == [0; 16] {
-        return None;
+        return Ok(None);
     }
     let identity = [
         info.VolumeSerialNumber.to_le_bytes().as_slice(),
         info.FileId.Identifier.as_slice(),
     ]
     .concat();
-    Some((
+    Ok(Some((
         m.creation_time() as i64,
         m.last_write_time() as i64,
         m.file_size() as i64,
         identity,
-    ))
+    )))
 }
 
 #[cfg(test)]
@@ -163,17 +171,20 @@ mod tests {
             ],
         )
         .unwrap();
-        assert!(book.resolve("https://test.invalid", old).is_none());
+        assert!(book.resolve("https://test.invalid", old).unwrap().is_none());
         let fresh = book.remember("https://test.invalid", &path).unwrap();
         assert_eq!(
-            book.resolve("https://test.invalid", fresh),
+            book.resolve("https://test.invalid", fresh).unwrap(),
             Some(path.clone())
         );
-        assert!(book.resolve("https://test.invalid", old).is_none());
+        assert!(book.resolve("https://test.invalid", old).unwrap().is_none());
         db.pragma_update(None, "user_version", 2).unwrap();
         drop(db);
         let before = fs::read(book.db()).unwrap();
-        assert!(book.resolve("https://test.invalid", fresh).is_none());
+        assert!(book
+            .resolve("https://test.invalid", fresh)
+            .unwrap()
+            .is_none());
         assert!(book.remember("https://test.invalid", &path).is_none());
         assert_eq!(fs::read(book.db()).unwrap(), before);
     }
@@ -222,6 +233,9 @@ mod tests {
                 after.file_size()
             )
         );
-        assert!(book.resolve("https://test.invalid", token).is_none());
+        assert!(book
+            .resolve("https://test.invalid", token)
+            .unwrap()
+            .is_none());
     }
 }

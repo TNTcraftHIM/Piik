@@ -33,6 +33,14 @@ struct State {
     last_qpc: Option<i64>,
 }
 impl State {
+    fn terminal_work(&self, stopped: bool) -> Option<Work> {
+        if stopped {
+            Some(Work::Stop)
+        } else {
+            // The reader drains the old pipe until join. Only begin_child clears this marker.
+            self.restart.map(Work::Restart)
+        }
+    }
     fn begin_child(&mut self) {
         self.credit = None;
         self.read_sent = false;
@@ -404,10 +412,8 @@ async fn child(
                 changed.as_mut().enable();
                 let work = {
                     let mut s = writer_shared.state.lock().unwrap();
-                    if writer_shared.stopped() {
-                        Work::Stop
-                    } else if let Some(reason) = s.restart.take() {
-                        Work::Restart(reason)
+                    if let Some(terminal) = s.terminal_work(writer_shared.stopped()) {
+                        terminal
                     } else if let Some(bitrate) = s.bitrate.filter(|b| *b != settings.bitrate) {
                         settings.bitrate = bitrate;
                         Work::Command(Command::Bitrate { bitrate })
@@ -697,6 +703,19 @@ mod tests {
         let first = encoding.shared.state.lock().unwrap().frame.take().unwrap();
         assert_eq!(first.presentation_time, clock.instant(clock.qpc));
 
+        let removed = windows::Win32::Graphics::Dxgi::DXGI_ERROR_DEVICE_REMOVED;
+        encoding.shared.device_lost(removed);
+        assert!(matches!(
+            encoding.shared.state.lock().unwrap().terminal_work(false),
+            Some(Work::Restart(reason)) if reason == removed
+        ));
+        // A final AU may already be buffered when the writer exits.
+        deliver(clock.qpc + 2, false);
+        {
+            let state = encoding.shared.state.lock().unwrap();
+            assert!(state.frame.is_none());
+            assert_eq!(state.last_qpc, Some(clock.qpc));
+        }
         encoding.shared.state.lock().unwrap().begin_child();
         for (qpc, keyframe) in [(clock.qpc, true), (clock.qpc + 1, false)] {
             deliver(qpc, keyframe);

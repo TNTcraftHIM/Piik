@@ -22,7 +22,7 @@
 .c3-watch-volume { display: none; padding-block-end: 6px; border-block-end: 1px solid var(--control-edge); }
 .c3-watch-player[data-thumbnail] .c3-watch-volume { display: grid; }
 .c3-watch-volume > input { margin: 0; }
-.c3-watch-inline-volume { display: flex; width: clamp(44px, 13cqi, 72px); }
+.c3-watch-inline-volume { display: flex; width: clamp(var(--control-compact-size), 13cqi, calc(2 * var(--control-dense-size))); }
 .c3-watch-inline-volume input { width: 100%; min-width: 0; height: 28px; margin: 0; accent-color: var(--action); cursor: pointer; }
 .c3-watch-wide-windows { display: none; }
 .c3-watch-settings-window { display: grid; gap: 4px; padding-block-start: 8px; border-block-start: 1px solid var(--control-edge); }
@@ -109,14 +109,14 @@
 .c3-mini-controls .lr-playback-window::before { display: none; }
 @container (max-width: 360px) {
   .c3-mini-controls { --mini-controls-inset: 4px; gap: 2px; padding: 3px; }
-  /* Keep the time readable beside shared playback and local mute. */
-  .c3-watch-inline-volume { display: none; }
-  .c3-watch-volume { display: grid; }
 }
 @container (max-width: 280px) {
   .c3-mini-controls { --mini-controls-inset: 2px; width: calc(100% - 2 * var(--mini-controls-inset)); gap: 0; padding: 2px; }
   .c3-mini-controls .c3-mini-space { display: none; }
   .c3-watch-actions > .lr-media-overlay { column-gap: 0; }
+  /* Leave room for the shared timeline readout and direct actions at tile minimum. */
+  .c3-watch-inline-volume { display: none; }
+  .c3-watch-volume { display: grid; }
 }
 .c3-mini-player[data-thumbnail] .c3-mini-controls { width: fit-content; }
 .c3-mini-player[data-thumbnail] .c3-mini-controls .lr-btn:not(:where(.c3-mini-controls [popover] *)) { --button-size: var(--control-dense-size); }
@@ -124,8 +124,8 @@
 .c3-watch-controls:has(.c3-watch-timeline) { width: calc(100% - 2 * var(--mini-controls-inset)); row-gap: 4px; padding: 0; background: none; border: 0; box-shadow: none; }
 .c3-watch-timeline { padding-inline: clamp(5px, 1.5cqi, 10px); }
 .c3-watch-timeline, .c3-watch-actions > .lr-media-overlay { border-radius: var(--c3-inset-radius); }
-.c3-watch-actions > .lr-media-overlay { padding-inline: clamp(2px, 1cqi, 4px); }
-.c3-watch-timeline + .c3-watch-actions { column-gap: clamp(3px, 0.8cqi, 8px); }
+.c3-watch-actions > .lr-media-overlay { padding-inline: clamp(2px, 0.8cqi, 4px); }
+.c3-watch-timeline + .c3-watch-actions { column-gap: clamp(2px, 0.8cqi, 8px); }
 .c3-watch-receiving .lr-btn:has(> .lr-cap) { width: fit-content; min-height: var(--control-compact-size); padding-inline: 8px; }
 @media (pointer: coarse) {
   .c3-watch-controls .lr-btn:not(:where(.c3-watch-controls [popover] *)) { --button-size: clamp(28px, 11.5cqi, var(--control-compact-size)); }

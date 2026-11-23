@@ -280,15 +280,18 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
     setUnreadLookupError(null);
     setJump(previous => previous?.id ? null : previous);
   }, []);
+  // Reply jumps need the displayed window without replacing every row callback.
+  const committedMessages = useRef(messages);
+  useLayoutEffect(() => { committedMessages.current = messages; }, [messages]);
   const showMessage = useCallback(async (seq: number) => {
     cancelUnreadLookup();
     setJumpFailed(false); readingAnchor.current = null; setFollowing(false);
     const request = { scope: conversationScope, seq };
     jumpRequest.current = request; setJump(request);
-    if (messages.some(message => message.seq === seq)) return;
+    if (committedMessages.current.some(message => message.seq === seq)) return;
     try { if (!onMessage) throw new Error("unavailable"); await onMessage(roomId, seq); }
     catch { if (jumpRequest.current === request) { setJump(null); setJumpFailed(true); } }
-  }, [cancelUnreadLookup, conversationScope, messages, onMessage, roomId, setFollowing]);
+  }, [cancelUnreadLookup, conversationScope, onMessage, roomId, setFollowing]);
   async function jumpToUnread() {
     const target = messages.find(message => message.id === unreadMessage);
     if (target) { await showMessage(target.seq); return; }
@@ -606,50 +609,49 @@ const MessageHistory = memo(function MessageHistory({ roomId, messages, users, p
 }) {
   const { lang, t } = useCopy();
   const formats = useMemo(() => messageDateFormats(lang, timeZone), [lang, timeZone]);
-  const messageDates = useMemo(() => {
-    let previous: Date | undefined;
-    return messages.map(message => {
-      const date = new Date(message.time);
-      const newDay = !previous || !sameCalendarDay(date, previous);
-      previous = date;
-      return { newDay, divider: newDay ? formats.divider(date) : undefined,
-        clock: formats.clock(date, today), tooltip: formats.tooltip(date), iso: date.toISOString() };
-    });
-  }, [messages, formats, today]);
   const displayUsers = useMemo(() =>
     [...new Map([...profiles.values(), ...users].map(user => [user.id, user])).values()], [profiles, users]);
   let authorMessageId = "";
+  let previousDate: Date | undefined;
   return messages.map((message, index) => {
     const previous = messages[index - 1];
-    const dates = messageDates[index];
-    const { newDay } = dates;
+    const date = new Date(message.time);
+    const newDay = !previousDate || !sameCalendarDay(date, previousDate);
+    previousDate = date;
     const elapsed = previous ? message.time - previous.time : 0;
     const newMessages = message.id === unreadMessage;
     const grouped = !!previous && !newDay && !newMessages && !message.reply && previous.userId === message.userId && elapsed >= 0 && elapsed < 120_000;
     if (!grouped) authorMessageId = message.id;
     const author = profiles.get(message.userId), summary = users.find(user => user.id === message.userId);
     const name = messageAuthorName(message, displayUsers, t("conversation.user"));
-    const mentionUser = canMention ? displayUsers.find(user => user.id === message.userId) : undefined;
+    const mentionName = canMention ? displayUsers.find(user => user.id === message.userId)?.name : undefined;
+    const reply = message.reply;
+    const replyName = reply && (reply.archivedAuthorName ?? displayUsers.find(user => user.id === reply.userId)?.name);
+    // Only rendered mention marks need the live user directory.
     return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name} authorMessageId={authorMessageId}
       avatar={(!summary || summary.version === author?.version ? author?.avatar : null) ?? undefined}
-      users={displayUsers} selfUserId={selfUserId} unread={newMessages} onMessage={onMessage}
-      onReply={() => onReply({ seq: message.seq, messageId: message.id, notify: true, name, text: message.text || t("conversation.attachment") })}
-      onDelete={onDelete && (canModerate || message.userId === selfUserId) ? () => onDelete(message) : undefined}
+      mentionUsers={message.mentions?.length ? displayUsers : undefined} replyName={replyName} selfUserId={selfUserId} unread={newMessages} onMessage={onMessage}
+      onReply={onReply}
+      onDelete={canModerate || message.userId === selfUserId ? onDelete : undefined}
       deleting={pending?.has(`delete-message:${roomId}:${message.id}`)}
-      onMention={mentionUser ? () => onMention(mentionUser) : undefined}
-      dates={dates}
+      mentionName={mentionName} onMention={onMention}
+      newDay={newDay} formats={formats} today={today}
       attachments={attachments} available={available} interaction={interaction} effectsEnabled={effectsEnabled} />;
   });
 });
 
-function MessageRow({ roomId, message, grouped, name, avatar, dates, attachments, available, interaction, authorMessageId, effectsEnabled, users, selfUserId, unread, onReply, onMessage, onMention, onDelete, deleting }: {
-  roomId: string; message: ChannelMessage; grouped: boolean; name: string; avatar?: string; dates: { divider?: string; clock: string; tooltip: string; iso: string };
+const noMentionUsers: readonly ChannelUserSummary[] = [];
+
+const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, avatar, newDay, formats, today, attachments, available, interaction, authorMessageId, effectsEnabled, mentionUsers = noMentionUsers, replyName, selfUserId, unread, onReply, onMessage, mentionName, onMention, onDelete, deleting }: {
+  roomId: string; message: ChannelMessage; grouped: boolean; name: string; avatar?: string;
+  newDay: boolean; formats: ReturnType<typeof messageDateFormats>; today: Date;
   attachments: ChannelAttachments; available: boolean; interaction: RoomInteractionSession | null;
   authorMessageId: string; effectsEnabled: boolean;
-  users: ChannelUserSummary[]; unread: boolean; onReply(): void; onMessage?(seq: number): void;
+  mentionUsers?: readonly ChannelUserSummary[]; replyName?: string; unread: boolean; onReply(reply: NonNullable<Draft["reply"]>): void; onMessage?(seq: number): void;
   selfUserId?: string | null;
-  onMention?: () => void;
-  onDelete?: () => void;
+  mentionName?: string;
+  onMention(user: Pick<ChannelUser, "id" | "name">): void;
+  onDelete?(message: ChannelMessage): void;
   deleting?: boolean;
 }) {
   const { t } = useCopy();
@@ -658,32 +660,36 @@ function MessageRow({ roomId, message, grouped, name, avatar, dates, attachments
   const row = useRef<HTMLElement>(null);
   const effectAnchor = useCallback(() => row.current?.closest(".c3-message-content")
     ?.querySelector(`[data-message-id="${CSS.escape(authorMessageId)}"] > .lr-person`) ?? null, [authorMessageId]);
+  const date = new Date(message.time);
+  const iso = date.toISOString(), tooltip = formats.tooltip(date);
   return <>
-    {dates.divider && <div className="c3-message-date"><time dateTime={dates.iso}>{dates.divider}</time></div>}
+    {newDay && <div className="c3-message-date"><time dateTime={iso}>{formats.divider(date)}</time></div>}
     {unread && <div className="c3-message-date c3-unread-divider">{t("conversation.newMessages")}</div>}
     <article ref={row} tabIndex={0} className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}${mentioned ? " is-mentioned" : ""}`} data-message-id={message.id} data-message-seq={message.seq}>
     {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} avatar={avatar} />}
     <div className="c3-message-body"><div className={grouped ? "visually-hidden" : "c3-message-meta"}><strong>{name}</strong>
-      <time dateTime={dates.iso} title={dates.tooltip} aria-label={dates.tooltip}>{dates.clock}</time>
+      <time dateTime={iso} title={tooltip} aria-label={tooltip}>{formats.clock(date, today)}</time>
     </div><div className="c3-message-content-body">
     {message.reply && <button type="button" className="c3-message-reference" disabled={!onMessage} onClick={() => onMessage?.(message.reply!.seq)}>
-      <Glyph name="reply" size={14} /><strong>{message.reply.archivedAuthorName ?? users.find(user => user.id === message.reply!.userId)?.name ?? t("conversation.user")}</strong>
+      <Glyph name="reply" size={14} /><strong>{replyName ?? t("conversation.user")}</strong>
       <span>{message.reply.text || t("conversation.attachment")}</span></button>}
-    {message.text && <ChannelMessageContent message={message} users={users} selfUserId={selfUserId} />}
+    {message.text && <ChannelMessageContent message={message} users={mentionUsers} selfUserId={selfUserId} />}
     {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments}
       inlineImage={message.inlineImages?.[file.id]} />)}
     <ChannelContentReactions reactions={message.reactions} session={interaction} target={{ messageSeq: message.seq, messageId: message.id }} disabled={!available}
       effectAnchor={effectAnchor} effectsEnabled={effectsEnabled} actions={<>
       <Tooltip text={t("conversation.mention", { name })}><button type="button" className="lr-btn is-compact is-quiet c3-mention-author" aria-label={t("conversation.mention", { name })}
-        disabled={!onMention} onClick={onMention}>@</button></Tooltip>
+        disabled={mentionName === undefined} onClick={() => { if (mentionName !== undefined) onMention({ id: message.userId, name: mentionName }); }}>@</button></Tooltip>
       <ChannelAction icon="reply" iconOnly quiet textTooltip
       label={!available ? t("conversation.replyUnavailable") : t("conversation.reply")}
-      disabled={!available} onClick={onReply} />
+      disabled={!available} onClick={() => onReply({
+        seq: message.seq, messageId: message.id, notify: true, name, text: message.text || t("conversation.attachment"),
+      })} />
       {onDelete && <ChannelAction icon="x" iconOnly quiet danger textTooltip label={t("conversation.deleteMessage")}
         disabled={!available} busy={deleting} onClick={() => {
-          if (row.current?.ownerDocument.defaultView?.confirm(t("conversation.confirmDeleteMessage"))) onDelete();
+          if (row.current?.ownerDocument.defaultView?.confirm(t("conversation.confirmDeleteMessage"))) onDelete(message);
         }} />}</>} />
     </div></div>
     </article>
   </>;
-}
+});

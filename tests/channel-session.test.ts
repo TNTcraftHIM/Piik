@@ -12936,6 +12936,46 @@ async function retryPictureFixture() {
   return { session, socket, state, pc, streams };
 }
 
+test.each([false, true])("manual picture retry restores Browser viewing before App assistance (App exits: %s)", async exits => {
+  const { session, socket, state } = await retryPictureFixture();
+  const helper = crypto.randomUUID();
+  vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helper, roomIds: [] });
+  try {
+    state.sessions.push({ id: helper, userId: session.getSnapshot().self!.id, online: true, signingKey: testSigningKey });
+    socket.receive({ type: "state", state });
+    const activation = session.activateApp({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+      domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const app = ChannelSocket.current;
+    await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await activation;
+    const attachments = () => socket.sent.filter(command => command.type === "subscribe" && command.helperSessionId === helper);
+    await vi.waitFor(() => expect(attachments()).toHaveLength(2));
+    for (const command of attachments()) socket.receive({ type: "ack", requestId: command.requestId });
+
+    const retry = session.retryPicture("one").then(() => "restored", error => error.message);
+    const off = socket.sent.at(-1)!;
+    expect(off).toMatchObject({ type: "subscribe", publicationId: "one", enabled: false });
+    if (exits) {
+      app.close();
+      state.sessions = state.sessions.filter(endpoint => endpoint.id !== helper);
+    }
+    state.subscriptions = ["two", "voice"]; socket.receive({ type: "state", state });
+    socket.receive({ type: "ack", requestId: off.requestId });
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "one", enabled: true }));
+    const on = socket.sent.at(-1)!;
+    if (exits && on.helperSessionId) socket.receive({ type: "error", requestId: on.requestId, code: "helper_unavailable" });
+    else socket.receive({ type: "ack", requestId: on.requestId });
+    expect(await retry).toBe("restored");
+    expect(on).not.toHaveProperty("helperSessionId");
+    if (!exits) {
+      await vi.waitFor(() => expect(attachments()).toHaveLength(3));
+      const restored = attachments().at(-1)!;
+      expect(restored).toMatchObject({ publicationId: "one", enabled: true, helperSessionId: helper });
+      socket.receive({ type: "ack", requestId: restored.requestId });
+    }
+  } finally { session.close(); }
+});
+
 test("manual picture retry withdraws one selected flow while sibling picture, voice and the shared carrier remain", async () => {
   const { session, socket, state, pc, streams } = await retryPictureFixture();
   try {

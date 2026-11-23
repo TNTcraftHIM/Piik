@@ -54,13 +54,22 @@ impl Confirmation {
         if !result.current(main) {
             return None;
         }
-        if let Some(path) = main.receipts.resolve(&result.origin, receipt) {
-            result.filename = path.file_name()?.to_string_lossy().into_owned();
-            Some(result)
-        } else {
-            result.report(main, "unavailable");
-            None
+        match result.path(main) {
+            Ok(path) => {
+                result.filename = path.file_name()?.to_string_lossy().into_owned();
+                Some(result)
+            }
+            Err(status) => {
+                result.report(main, status);
+                None
+            }
         }
+    }
+    fn path(&self, main: &MainWindow) -> Result<std::path::PathBuf, &'static str> {
+        main.receipts
+            .resolve(&self.origin, self.receipt)
+            .map_err(|_| "failed")?
+            .ok_or("unavailable")
     }
     pub(super) fn current(&self, main: &MainWindow) -> bool {
         main.document.get() == self.generation
@@ -79,10 +88,10 @@ impl Confirmation {
         let result = if !allowed {
             "cancelled"
         } else {
-            match main.receipts.resolve(&self.origin, self.receipt) {
-                Some(path) if select_file(&path) => "revealed",
-                Some(_) => "failed",
-                None => "unavailable",
+            match self.path(main) {
+                Ok(path) if select_file(&path) => "revealed",
+                Ok(_) => "failed",
+                Err(status) => status,
             }
         };
         self.report(main, result);

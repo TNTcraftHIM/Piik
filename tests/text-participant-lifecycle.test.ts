@@ -20,6 +20,27 @@ vi.mock('ws', async () => {
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
+test.each([
+  [CHANNEL_PROTOCOL - 1, { message: 'incompatible_protocol' }],
+  [CHANNEL_PROTOCOL, { name: 'ZodError' }],
+])('rejects a broken Welcome for protocol %s before issuing credentials', async (protocol, expected) => {
+  const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
+  const client = new TextParticipant({ url: 'ws://fixture.invalid', origin: 'http://fixture.invalid', name: 'Fixture' });
+  const credential = vi.fn();
+  client.on('credential', credential);
+  const connected = client.connect(), socket = boundary.socket;
+  socket.readyState = 1; socket.emit('open');
+  socket.emit('message', Buffer.from(JSON.stringify({ type: 'welcome', protocol, credential: 'fixture' })));
+  try {
+    await expect(connected).rejects.toMatchObject(expected);
+    expect(credential).not.toHaveBeenCalled();
+    expect(socket.terminate).toHaveBeenCalledOnce();
+  } finally {
+    socket.readyState = 3; socket.emit('close');
+    await client.stop();
+  }
+});
+
 test.each(['welcome', 'admission', 'browse'] as const)('stop fences the pending %s continuation before it can subscribe or announce ready', async phase => {
   const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
   vi.useFakeTimers();

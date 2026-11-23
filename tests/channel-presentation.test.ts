@@ -80,7 +80,8 @@ it("projects joined watch people independently of transport and deduplicates the
 it("labels a person's picture by its current delivery stage", () => {
   for (const [viewing, label] of [["preparing", "screen.connectingPicture"], ["active", "screen.pictureReceived"], ["failed", "screen.pictureFailed"]] as const) {
     const html = renderToStaticMarkup(createElement(ChannelActivityIndicators, { viewing }));
-    expect(html).toContain(`aria-label="${say(label)}" data-viewing="${viewing}"`);
+    expect(html).toContain(`<button type="button" class="c3-participant-status" aria-label="${say(label)}"`);
+    expect(html).toContain(`data-viewing="${viewing}"`);
   }
 });
 
@@ -161,7 +162,11 @@ it("shows each person's room activity across endpoints and keeps chat presence i
     const owner = rows.find(row => row.startsWith('self"'));
     const member = rows.find(row => row.startsWith('route"'));
     expect(owner).toContain('<small>' + say("channel.user.roomOwner") + '</small>');
-    expect(owner?.match(/role="img"/g)).toHaveLength(4);
+    expect(owner?.match(/<button[^>]*class="c3-participant-status"/g)).toHaveLength(1);
+    const ownerStatus = owner?.match(/class="c3-participant-status" aria-label="([^"]+)"/)?.[1];
+    for (const key of ["voice.microphoneInactive", "voice.listeningPaused", "channel.roomParticipants.sharing", "screen.pictureReceived", "channel.roomParticipants.sendingFiles"] as const) {
+      expect(ownerStatus).toContain(say(key));
+    }
     expect(member).not.toContain(say("channel.user.roomOwner"));
     expect(member).toContain(say("channel.roomParticipants.receivingFiles"));
   }

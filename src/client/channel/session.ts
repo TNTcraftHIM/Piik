@@ -2298,7 +2298,9 @@ export class ChannelSession {
       await this.request({ type: "subscribe", publicationId, enabled: false }, undefined, publication.roomId, { signal: controller.signal });
       withdrawn = true;
       check();
-      await this.request({ type: "subscribe", publicationId, enabled: true, helperSessionId: watch.helperSessionId }, undefined, publication.roomId, { signal: controller.signal });
+      // Withdrawal also retired the previous helper. Restore Browser viewing first.
+      watch.helperSessionId = undefined;
+      await this.request({ type: "subscribe", publicationId, enabled: true }, undefined, publication.roomId, { signal: controller.signal });
       check();
     } catch (error) {
       controller.signal.throwIfAborted();

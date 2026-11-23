@@ -19,6 +19,7 @@
 .c3-couch-browse.is-next { right: calc(var(--control-compact-size) / -2); }
 /* Presence keeps the same people and reaction anchors; scenery yields to work. */
 @container channel-shell (max-height: 680px) {
+  .c3-room-presence .c3-couch-scene:has(.c3-participant-status) { height: 68px; }
   .c3-room-presence .c3-couch-scene { height: 58px; }
   .c3-room-presence .c3-couch-bench { display: none; }
   .c3-room-presence :is(.c3-couch-guests, .c3-couch-people > .c3-couch-seat) { padding-block: 0; }

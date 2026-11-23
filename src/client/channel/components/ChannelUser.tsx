@@ -26,28 +26,41 @@ export function personVoiceLabel(voice: PawnVoice, { t, lang }: Copy) {
   return joinSentences(lang, parts);
 }
 
-function ActivityBadge({ icon, label, viewing, status }: { icon: GlyphName; label: string; viewing?: ParticipantViewing; status?: GlyphName }) {
-  return <Tooltip text={label}><span role="img" aria-label={label} data-viewing={viewing}>
-    <Glyph name={icon} size={14} />
-    {status && <Glyph name={status} size={10} />}
-  </span></Tooltip>;
+interface ActivityBadge {
+  icon: GlyphName;
+  label: string;
+  viewing?: ParticipantViewing;
+  status?: GlyphName;
 }
 
 export function ChannelActivityIndicators({ voice, sharing, viewing, sendingFiles, receivingFiles }: PersonActivity) {
   const copy = useCopy();
   const { t } = copy;
+  const badges: ActivityBadge[] = [];
+  if (voice) badges.push({
+    icon: voice.deafened ? "headphonesOff" : voice.microphone ? "microphone" : "microphoneOff",
+    label: personVoiceLabel(voice, copy),
+  });
+  if (sharing) badges.push({ icon: "cast", label: t("channel.roomParticipants.sharing") });
+  if (viewing) {
+    const appearance = viewingAppearance[viewing];
+    const status = viewing === "preparing" || viewing === "failed" ? appearance.icon : undefined;
+    badges.push({ icon: status ? "eye" : appearance.icon, label: participantViewingLabel(viewing, t), viewing, status });
+  }
   const file = sendingFiles && receivingFiles ? fileBadges.both : sendingFiles ? fileBadges.sending : receivingFiles ? fileBadges.receiving : undefined;
-  if (!voice && !sharing && !viewing && !file) return null;
-  const viewingStatus = viewing === "preparing" || viewing === "failed" ? viewingAppearance[viewing].icon : undefined;
-  const viewingLabel = viewing && participantViewingLabel(viewing, t);
-  return <span className="c3-participant-activity">
-    {voice && <ActivityBadge icon={voice.deafened ? "headphonesOff" : voice.microphone ? "microphone" : "microphoneOff"}
-      label={personVoiceLabel(voice, copy)} />}
-    {sharing && <ActivityBadge icon="cast" label={t("channel.roomParticipants.sharing")} />}
-    {viewing && viewingLabel && <ActivityBadge icon={viewingStatus ? "eye" : viewingAppearance[viewing].icon} status={viewingStatus}
-      label={viewingLabel} viewing={viewing} />}
-    {file && <ActivityBadge icon={file.icon} label={t(file.label)} />}
-  </span>;
+  if (file) badges.push({ icon: file.icon, label: t(file.label) });
+  if (!badges.length) return null;
+  const labels = badges.map(badge => badge.label);
+  return <Tooltip toggleOnClick text={labels.join("\n")}>
+    <button type="button" className="c3-participant-status" aria-label={joinSentences(copy.lang, labels)}>
+      <span className="c3-participant-activity" aria-hidden="true">
+        {badges.map(({ icon, viewing, status }) => <span key={icon} data-viewing={viewing}>
+          <Glyph name={icon} size={14} />
+          {status && <Glyph name={status} size={10} />}
+        </span>)}
+      </span>
+    </button>
+  </Tooltip>;
 }
 
 export function ChannelUser({ id, name, avatar, self, owner, online, roomActivity, collaboration, activity, voicePlayback, onPreviewAvatar }: {

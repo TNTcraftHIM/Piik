@@ -30,6 +30,12 @@ the feedback period; they do not delay that delivery.
   coverage, connection attempts, idle cost and disruption. Repeat the
   [file and voice recovery control](./research/network-lab.md#file-forwarding-during-a-room-call)
   on a shared physical uplink before tuning fanout and retry/standby budgets.
+- [ ] **Recover through a missing business-path connection.** A confirmed
+  physical graph can remain connected while directed forwarding refusals leave
+  a delivery without a path. Let the room identify eligible missing connections
+  across its reachable paths, including an intermediate hop; keep admission,
+  cooldown and confirmed-pair reuse with the channel. Verify concurrent media
+  continuity and total projection cost before changing the private contract.
 - [ ] **Public Demo room acceptance.** Verify invite-only discovery and entry
   on the deployed public Demo. [Local package control](./verification-status.md#current-evidence)
 - [ ] **Physical camera orientation.** Check portrait capture on a phone through
@@ -45,6 +51,13 @@ the feedback period; they do not delay that delivery.
   capture the failed source request's elapsed time and outcome. If App control
   disconnects during webpage selection, capture its first close diagnostic to
   distinguish a control failure from a picker timeout or enumeration failure.
+  On Android, retire the selecting Activity when room admission fails before
+  the system picker opens, including when its launch arrives after rejection
+  and another selection is pending.
+- [ ] **Preserve explicit screen decode failures in local diagnostics.** The
+  current video element can report a decode error before its failed input is
+  removed. Carry that fact through the existing viewing owner into its recovery
+  presentation; retire it when the input or viewing intent changes.
 - [ ] **Member-video viewing on the reporting network.** Verify the authorized
   source with the updated App and Browser on that network. Record the selected
   player and sharing mode, then locate any remaining source-access or delivery failure.

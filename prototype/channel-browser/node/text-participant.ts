@@ -30,13 +30,16 @@ const conversationStateSchema = z.object({
 const textWelcomeSchema = channelWelcomeSchema.extend({ state: conversationStateSchema,
   selfProfile: channelWelcomeSchema.shape.selfProfile.pick({ id: true }) });
 const textStateSchema = z.object({ type: z.literal('state'), state: conversationStateSchema });
-const eventTypeSchema = z.object({ type: z.string() });
+const eventHeaderSchema = z.object({ type: z.string(), protocol: z.unknown().optional() });
 type TextEvent = ChannelEvent | z.infer<typeof textWelcomeSchema> | z.infer<typeof textStateSchema>;
 
 function decodeTextEvent(raw: unknown, wireBytes: number): TextEvent | undefined {
   if (wireBytes > CHANNEL_EVENT_BYTES) throw new Error('Channel event exceeds frame limit');
-  switch (eventTypeSchema.parse(raw).type) {
-    case 'welcome': return textWelcomeSchema.parse(raw);
+  const header = eventHeaderSchema.parse(raw);
+  switch (header.type) {
+    case 'welcome':
+      if (header.protocol !== CHANNEL_PROTOCOL) throw new Error('incompatible_protocol');
+      return textWelcomeSchema.parse(raw);
     case 'state': return textStateSchema.parse(raw);
     case 'conversation': case 'room_created': case 'room_reply': case 'ack': case 'error': return eventSchema.parse(raw);
     // This participant neither installs media nor hosts rooms.

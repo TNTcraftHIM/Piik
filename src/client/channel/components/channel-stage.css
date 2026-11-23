@@ -55,7 +55,7 @@
 /* Keep publication controls available alongside the picture. */
 .c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) { border-radius: var(--c3-media-radius) var(--c3-media-radius) 0 0; }
 .c3-monitor-source-row { display: flex; flex-wrap: wrap; padding: 3px 6px; gap: 2px 6px; }
-.c3-monitor-source-info { display: grid; grid-template-columns: 20px minmax(5ch, 1fr) minmax(0, auto); flex: 1 1 128px; align-items: center; gap: 2px; min-width: 0; }
+.c3-monitor-source-info { display: grid; grid-template-columns: 20px minmax(5ch, 1fr) auto; flex: 1 1 min-content; align-items: center; gap: 2px; min-width: 0; }
 .c3-monitor-social { display: flex; align-items: center; gap: 2px; min-width: 0; }
 
 .c3-monitor-social > .c3-message-reactions { flex: 1; min-width: 0; flex-wrap: nowrap; }
@@ -64,7 +64,7 @@
 .c3-monitor-source-row .c3-message-reaction-counts > button, .c3-monitor-source-row .c3-message-action { flex: none; }
 @container (max-width: 360px) {
   .c3-monitor-layout > .lr-toggle button > span { display: none; }
-  .c3-monitor-source-info { grid-template-columns: minmax(5ch, 1fr) minmax(0, auto); }
+  .c3-monitor-source-info { grid-template-columns: minmax(5ch, 1fr) auto; }
   .c3-monitor-source-info > svg { display: none; }
 }
 

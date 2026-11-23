@@ -11,6 +11,21 @@ const render = (activity: Activity) => renderToStaticMarkup(createElement(Channe
 const glyph = (name: GlyphName) => renderToStaticMarkup(createElement(Glyph, { name, size: 14 }));
 afterEach(() => setCopy({ lang: "en" }));
 
+function activityButtonGlyphs(html: string, label: string) {
+  const tooltipIds = [...html.matchAll(/<[^>]+ role="tooltip"[^>]*>/g)]
+    .map(([tooltip]) => tooltip.match(/ id="([^"]+)"/)?.[1]);
+  const buttons = [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/gs)].filter(([, attributes]) => {
+    const id = attributes.match(/ aria-controls="([^"]+)"/)?.[1];
+    return id !== undefined && tooltipIds.includes(id);
+  });
+  expect(buttons).toHaveLength(1);
+  const [, attributes, content] = buttons[0];
+  expect(attributes.match(/ aria-label="([^"]+)"/)?.[1]).toBe(label);
+  expect(attributes).toContain('aria-expanded="false"');
+  expect(attributes).not.toMatch(/\bdisabled\b| tabindex="-/);
+  return content.match(/<svg\b.*?<\/svg>/gs) ?? [];
+}
+
 test("idle people have no activity badge or empty group", () => {
   expect(render({ sharing: false, sendingFiles: false, receivingFiles: false })).toBe("");
 });
@@ -22,10 +37,7 @@ test.each([
 ])("file activity identifies $label with one direction-qualified document glyph", ({ label, icon, ...activity }) => {
   setCopy({ lang: "en" });
   const html = render(activity);
-  expect(html).toContain(`role="img" aria-label="${label}"`);
-  expect(html.match(/role="img"/g)).toHaveLength(1);
-  expect(html).toContain(glyph(icon));
-  expect(html).not.toMatch(/<button|role="button"|tabindex=/);
+  expect(activityButtonGlyphs(html, label)).toEqual([glyph(icon)]);
 });
 
 test.each([
@@ -36,8 +48,7 @@ test.each([
 ])("voice badge states $label without claiming speech or changing local listening", ({ microphone, deafened, label, icon }) => {
   setCopy({ lang: "en" });
   const html = render({ voice: { microphone, deafened } });
-  expect(html).toContain(`role="img" aria-label="${label}"`);
-  expect(html).toContain(glyph(icon));
+  expect(activityButtonGlyphs(html, label)).toEqual([glyph(icon)]);
   expect(html).not.toContain("Speaking");
   expect(html).not.toContain("--voice-level");
 });
@@ -51,12 +62,12 @@ test("an offline person's row retains simultaneous activities and local playback
   };
   const html = renderToStaticMarkup(createElement(ChannelUser, person));
   expect(html).toContain('class="c3-user is-offline"');
-  expect(html.match(/role="img"/g)).toHaveLength(4);
-  for (const label of ["Joined voice; Microphone off", "Sharing", "Connecting picture", "Sending and receiving files"])
-    expect(html).toContain(`aria-label="${label}"`);
+  const label = "Joined voice; Microphone off; Sharing; Connecting picture; Sending and receiving files";
+  expect(activityButtonGlyphs(html, label)).toEqual([
+    glyph("microphoneOff"), glyph("cast"), glyph("eye"),
+    renderToStaticMarkup(createElement(Glyph, { name: "loader", size: 10 })), glyph("fileTransfer"),
+  ]);
   expect(html).toContain('data-viewing="preparing"');
-  expect(html).toContain(glyph("eye"));
-  expect(html).toContain(renderToStaticMarkup(createElement(Glyph, { name: "loader", size: 10 })));
   expect(html).not.toContain("Picture received");
   expect(html).not.toContain("Watching;");
   expect(html).toContain('aria-pressed="false"');
@@ -85,10 +96,8 @@ test("compact couch keeps its pawn voice appearance without duplicating the voic
   }));
   expect(html).toContain('class="lr-person-headset"');
   expect(html).toContain('data-voice="" data-deafened="true" data-microphone="true"');
-  expect(html.match(/role="img"/g)).toHaveLength(3);
-  expect(html).toContain('aria-label="Sharing"');
-  expect(html).toContain('aria-label="Picture received"');
-  expect(html).toContain('aria-label="Sending and receiving files"');
-  expect(html).not.toContain('aria-label="Joined voice');
+  expect(activityButtonGlyphs(html, "Sharing; Picture received; Sending and receiving files")).toEqual([
+    glyph("cast"), glyph("eye"), glyph("fileTransfer"),
+  ]);
   expect(html).toContain('<span class="visually-hidden">Joined voice; Microphone on; Listening paused</span>');
 });
