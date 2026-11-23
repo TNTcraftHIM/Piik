@@ -121,7 +121,11 @@ temporary address, ask that site's administrator to check its service.
 <details>
 <summary>Advanced Host checks · Firewall and ports</summary>
 
-1. On Windows, open **Windows Security → Firewall & network protection → Allow an app through firewall**. Allow the current `piik-app.exe` on the network type in use. Update the rule if you extracted App to a new folder. Virtual adapters may use the **Public** profile. Advanced rules can limit access to the adapter and subnet. [Microsoft firewall instructions](https://support.microsoft.com/en-us/windows/security/firewall/risks-of-allowing-apps-through-windows-firewall)
+1. On the Windows host, open **Windows Security → Firewall & network protection →
+   Allow an app through firewall**. Select the `piik-app.exe` you are running and allow it on the network type in use.
+   If the virtual adapter uses the **Public** profile, allow Piik on **Public**. If you moved Piik to a different folder,
+   add the executable at its new path. The old rule only applies to the old path. Ask your friend to retry the invitation.
+   [Microsoft firewall instructions](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/configure)
 2. If App reports **the local port is unavailable**, close the older Piik instance using it. If another app needs the port, launch Piik with `--port 9876` and send the new invitation. The web and local STUN ports must both be available.
 
 </details>
