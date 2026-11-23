@@ -60,15 +60,18 @@ const executable = ts.transpileModule(`${rememberBuild}\n${connect}\nconst clean
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const site = "https://site.example";
 const approval = `http://127.0.0.1:39721/client?site=${encodeURIComponent(site)}`;
+const controlPort = 39722;
+const selectedApp = { url: new URL(approval), port: controlPort };
 
 function mount(activated = false, state: "idle" | "ready" = "idle", android = false, automatic = false) {
   const popup = { closed: false, close: vi.fn(() => { popup.closed = true; }) };
   const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site, assign: vi.fn() } });
   const document = Object.assign(new EventTarget(), { visibilityState: "visible" });
   const native = {
-    discoverNativeConnect: vi.fn(async (_options: { signal: AbortSignal; waitForPermission?: boolean }): Promise<string | null> => approval),
-    discoverNativeHealth: vi.fn(async (options: { signal: AbortSignal; waitForPermission?: boolean }): Promise<object | null> =>
-      options.waitForPermission === false && !activated ? null : {}),
+    discoverNativeConnect: vi.fn(async (_options: { signal: AbortSignal; waitForPermission?: boolean }): Promise<{ url: URL; port: number } | null> =>
+      selectedApp),
+    discoverNativeHealth: vi.fn(async (options: { signal: AbortSignal; waitForPermission?: boolean; port?: number }): Promise<object | null> =>
+      options.waitForPermission === false && !activated ? null : { port: controlPort }),
     NativeCompatibilityError: class extends Error {},
   };
   const pending = { current: null as { controller: AbortController; cancel?: () => void } | null };
@@ -164,14 +167,14 @@ describe("App connection approval", () => {
 
   it("keeps permission discovery in the original tab and opens only on a later click", async () => {
     const page = mount();
-    let complete!: (url: string) => void;
+    let complete!: (selection: typeof selectedApp) => void;
     page.native.discoverNativeConnect.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
     const connecting = page.connect();
     await settle();
     expect(page.setState).toHaveBeenLastCalledWith("busy");
     expect(page.showHelp).toHaveBeenCalledOnce();
     expect(page.window.open).not.toHaveBeenCalled();
-    complete(approval);
+    complete(selectedApp);
     await connecting;
     expect(page.setState).toHaveBeenLastCalledWith("approval");
     expect(page.window.open).not.toHaveBeenCalled();
@@ -185,7 +188,7 @@ describe("App connection approval", () => {
 
   it("cancels dismissed discovery and ignores its late result before a retry", async () => {
     const page = mount();
-    let complete!: (url: string) => void;
+    let complete!: (selection: typeof selectedApp) => void;
     page.native.discoverNativeConnect.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
     const connecting = page.connect();
     await settle();
@@ -195,7 +198,7 @@ describe("App connection approval", () => {
     expect(page.pending.current).toBeNull();
     expect(page.setState).toHaveBeenLastCalledWith("idle");
     await page.connect();
-    complete(approval);
+    complete(selectedApp);
     await connecting;
     expect(page.setState).toHaveBeenLastCalledWith("approval");
     expect(page.pending.current).not.toBe(first);
@@ -227,7 +230,7 @@ describe("App connection approval", () => {
     page.native.discoverNativeHealth.mockResolvedValue(build);
     page.window.dispatchEvent(new Event("focus"));
     await settle();
-    expect(page.native.discoverNativeHealth).toHaveBeenLastCalledWith({ signal: expect.any(AbortSignal), waitForPermission: false });
+    expect(page.native.discoverNativeHealth).toHaveBeenLastCalledWith({ signal: expect.any(AbortSignal), waitForPermission: false, port: controlPort });
     expect(page.setBuild).toHaveBeenLastCalledWith(build);
     expect(page.pending.current).not.toBeNull();
     expect(page.onConnected).not.toHaveBeenCalled();
@@ -334,12 +337,12 @@ describe("App connection approval", () => {
 
   it("never opens an approval page when discovery completes after unmount", async () => {
     const page = mount();
-    let complete!: (url: string) => void;
+    let complete!: (selection: typeof selectedApp) => void;
     page.native.discoverNativeConnect.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
     const connecting = page.connect();
     await settle();
     page.cleanup();
-    complete(approval);
+    complete(selectedApp);
     await connecting;
     expect(page.window.open).not.toHaveBeenCalled();
     expect(page.activateClient).not.toHaveBeenCalled();
@@ -422,6 +425,40 @@ describe("App connection approval", () => {
 
 
 describe("initial App discovery", () => {
+  it("replaces a pending passive discovery with the explicit permission request", async () => {
+    const page = mount(false, "idle", false, true);
+    let finishPassive!: (value: null) => void;
+    page.native.discoverNativeConnect.mockImplementationOnce(() => new Promise(resolve => { finishPassive = resolve; }));
+    try {
+      await settle();
+      const passive = page.native.discoverNativeConnect.mock.calls[0]![0];
+      await page.connect();
+      expect(passive.signal.aborted).toBe(true);
+      expect(page.native.discoverNativeConnect.mock.calls.map(([options]) => options.waitForPermission)).toEqual([false, true]);
+      finishPassive(null);
+      await settle();
+      expect(page.setState).toHaveBeenLastCalledWith("approval");
+    } finally { page.cleanup(); }
+  });
+
+  it("checks and activates the discovered control port across launcher approval", async () => {
+    const page = mount();
+    page.native.discoverNativeHealth.mockImplementation(async options => {
+      if (options.port !== controlPort) return { port: 39723 };
+      return options.waitForPermission === false ? null : { port: controlPort };
+    });
+    try {
+      await page.openApproval();
+      expect(page.window.open).toHaveBeenCalledWith(approval, "_blank");
+      expect(page.onConnected).not.toHaveBeenCalled();
+      page.message();
+      await settle();
+      expect(page.native.discoverNativeHealth.mock.calls.map(([options]) => options.port)).toEqual([controlPort, controlPort]);
+      expect(page.activateClient).toHaveBeenCalledWith(controlPort);
+      expect(page.onConnected).toHaveBeenCalledOnce();
+    } finally { page.cleanup(); }
+  });
+
   it("keeps automatic permission passive and waits only for an explicit connection", async () => {
     const page = mount(false, "idle", false, true);
     page.native.discoverNativeConnect.mockResolvedValue(null);

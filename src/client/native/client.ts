@@ -54,6 +54,7 @@ const REQUEST_TIMEOUT_MS = 8_000;
 interface NativeDiscoveryOptions {
   waitForPermission?: boolean;
   signal?: AbortSignal;
+  port?: number;
 }
 
 export function isLoopbackPage(): boolean {
@@ -130,22 +131,22 @@ export async function discoverNativeHealth(
 }
 
 /** A local approval address is not permission to use native media. */
-export async function discoverNativeConnect(options: NativeDiscoveryOptions = {}): Promise<string | null> {
+export async function discoverNativeConnect(options: NativeDiscoveryOptions = {}): Promise<{ url: URL; port: number } | null> {
   return discoverNative("connect-discovery", body => {
-    const { connectURL } = nativeConnectSchema.parse(body);
+    const { connectURL, port } = nativeConnectSchema.parse(body);
     const url = new URL(connectURL);
     if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.port ||
         url.username || url.password || url.pathname !== "/client" || url.search || url.hash) {
       throw new Error("Invalid local App approval address");
     }
     url.searchParams.set("site", window.location.origin);
-    return url.toString();
+    return { url, port };
   }, options);
 }
 
 async function discoverNative<T>(
   path: "health" | "connect-discovery", read: (body: unknown) => T,
-  { waitForPermission = true, signal }: NativeDiscoveryOptions,
+  { waitForPermission = true, signal, port }: NativeDiscoveryOptions,
 ): Promise<T | null> {
   if (signal?.aborted) return null;
   const permission = await localPermission();
@@ -166,7 +167,7 @@ async function discoverNative<T>(
     if (awaitingPermission) permission.addEventListener("change", permissionChanged);
     permissionChanged();
     // An explicit launch stays with its App even when another approved App is faster.
-    const selectedPort = clientRuntimePort();
+    const selectedPort = port ?? clientRuntimePort();
     const ports = selectedPort === null ? Array.from({
       length: NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1,
     }, (_, index) => NATIVE_CLIENT_PORT_START + index) : [selectedPort];

@@ -71,7 +71,7 @@ describe("native App private wire", () => {
     });
     vi.stubGlobal("fetch", fetcher);
     await expect(discoverNativeHealth({ waitForPermission: false })).resolves.toMatchObject({ port: health.port });
-    await expect(discoverNativeConnect()).resolves.toContain("http://127.0.0.1:54321/client?");
+    await expect(discoverNativeConnect()).resolves.toMatchObject({ port: health.port, url: expect.any(URL) });
     await notifyNativePresentation("en", new AbortController().signal);
     const preference = await AppQualityPreference.connect(new AbortController().signal);
     await expect(preference!.read()).resolves.toEqual(DEFAULT_QUALITY_SETTINGS);
@@ -127,7 +127,7 @@ describe("native App private wire", () => {
     await expect(discoverNativeConnect({ waitForPermission: false })).resolves.toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
     if (state === "prompt") {
-      await expect(discoverNativeConnect({ waitForPermission: true })).resolves.toContain("127.0.0.1:54321/client?");
+      await expect(discoverNativeConnect({ waitForPermission: true })).resolves.toMatchObject({ port: health.port, url: expect.any(URL) });
       expect(fetcher).toHaveBeenCalled();
     }
   });
@@ -140,7 +140,9 @@ describe("native App private wire", () => {
       ? new Response(JSON.stringify({ ...health, connectURL: "http://127.0.0.1:54321/client" }))
       : new Response(null, { status: 404 }));
     vi.stubGlobal("fetch", fetcher);
-    await expect(discoverNativeConnect()).resolves.toBe("http://127.0.0.1:54321/client?site=https%3A%2F%2Fpiik.example");
+    await expect(discoverNativeConnect()).resolves.toEqual({ port: health.port,
+      url: new URL("http://127.0.0.1:54321/client?site=https%3A%2F%2Fpiik.example"),
+    });
     expect(fetcher.mock.calls.every(([url]) => url.endsWith("/connect-discovery"))).toBe(true);
     expect(socket).not.toHaveBeenCalled();
   });
