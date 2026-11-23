@@ -136,6 +136,134 @@ fn input(pair: &PairInfo, publication: Uuid) -> Option<FlowBinding> {
 }
 
 #[test]
+fn refused_file_crosses_two_confirmed_sides_and_wakes_its_room() {
+    let mut net = RoomNetwork::new();
+    let mut nodes: Vec<_> = (0..6)
+        .map(|i| {
+            let socket = Uuid::new_v4();
+            (join(&mut net, socket, &format!("peer{i}")), socket)
+        })
+        .collect();
+    nodes.sort();
+    let room = net.create(nodes[0].1, RoomAccess::Public, false);
+    for &(_, socket) in &nodes {
+        command(
+            &mut net,
+            socket,
+            json!({"type":"browse","roomId":room,"active":true}),
+        );
+    }
+    let mut confirmed = std::collections::BTreeSet::new();
+    for _ in 0..6 {
+        let (a, b, id) = (0..6)
+            .find_map(|a| {
+                let b = (a + 1) % 6;
+                let p = net
+                    .state(nodes[a].1)
+                    .pairs
+                    .iter()
+                    .find(|p| p.peer_id == nodes[b].0)?;
+                (!confirmed.contains(&p.id)).then_some((a, b, p.id))
+            })
+            .expect("next ring standby");
+        for side in [a, b] {
+            link_connected(&mut net, nodes[side].1, id);
+        }
+        confirmed.insert(id);
+    }
+    let screen = publish_screen(&mut net, nodes[0].1, &room);
+    command(&mut net, nodes[1].1, subscribe(screen, true));
+    let voice = Uuid::new_v4();
+    for side in [4, 3] {
+        command(
+            &mut net,
+            nodes[side].1,
+            json!({"type":"voice","roomId":room,"joined":true,"muted":side==3,"deafened":false}),
+        );
+    }
+    command(
+        &mut net,
+        nodes[4].1,
+        json!({"type":"publish","publication":{"id":voice,"roomId":room,"kind":"voice"}}),
+    );
+    let healthy = [(0, 1, screen), (4, 3, voice)].map(|(from, to, pub_id)| {
+        let leg = pair(&net, nodes[to].1, nodes[from].0);
+        (from, to, pub_id, leg.id, input(leg, pub_id).unwrap().id)
+    });
+    for &(_, to, _, pair_id, flow_id) in &healthy {
+        command(
+            &mut net,
+            nodes[to].1,
+            json!({"type":"flow_state","pairId":pair_id,"flowId":flow_id,"state":"decoded"}),
+        );
+    }
+    let file = offer_file(&mut net, nodes[0].1, &room);
+    command(&mut net, nodes[3].1, file_receive(&room, file, true));
+    for _ in 0..2 {
+        let parent = net.state(nodes[3].1).files[0]
+            .upstream
+            .expect("next confirmed route");
+        let (from, to) = if parent == nodes[2].0 {
+            (2, 3)
+        } else {
+            assert_eq!(parent, nodes[4].0);
+            (5, 4)
+        };
+        command(
+            &mut net,
+            nodes[from].1,
+            json!({"type":"byte_branch_refused","roomId":room,
+            "target":{"kind":"file","messageSeq":file.0,"attachmentId":file.1,"sourceId":nodes[0].0},
+            "downstreamId":nodes[to].0}),
+        );
+    }
+    // Only the middle missing link can connect. Refusals keep their direction and owner.
+    let mut failed = std::collections::BTreeSet::new();
+    for _ in 0..16 {
+        assert!(net.state(nodes[3].1).files[0].upstream.is_none());
+        let (a, b, id) = (0..6)
+            .find_map(|a| {
+                net.state(nodes[a].1)
+                    .pairs
+                    .iter()
+                    .find(|p| !confirmed.contains(&p.id) && !failed.contains(&p.id))
+                    .map(|p| {
+                        (
+                            a,
+                            nodes.iter().position(|v| v.0 == p.peer_id).unwrap(),
+                            p.id,
+                        )
+                    })
+            })
+            .expect("room should have a physical candidate");
+        if (a.min(b), a.max(b)) == (1, 4) {
+            link_connected(&mut net, nodes[a].1, id);
+            assert!(net.state(nodes[3].1).files[0].upstream.is_none());
+            link_connected(&mut net, nodes[b].1, id);
+            assert_eq!(net.state(nodes[3].1).files[0].upstream, Some(nodes[4].0));
+            assert_eq!(net.state(nodes[4].1).files[0].upstream, Some(nodes[1].0));
+            assert_eq!(net.state(nodes[1].1).files[0].upstream, Some(nodes[0].0));
+            for (from, to, pub_id, pair_id, flow_id) in healthy {
+                let leg = pair(&net, nodes[to].1, nodes[from].0);
+                assert_eq!(leg.id, pair_id);
+                assert_eq!(
+                    input(leg, pub_id).filter(|f| f.selected).unwrap().id,
+                    flow_id
+                );
+            }
+            return;
+        }
+        command(
+            &mut net,
+            nodes[a].1,
+            json!({"type":"link_state","pairId":id,"state":"failed"}),
+        );
+        failed.insert(id);
+    }
+    panic!("exhausted useful physical edges");
+}
+
+#[test]
 fn first_screen_subscription_prepares_after_link_confirmation() {
     let mut net = RoomNetwork::new();
     let [owner, receiver] = [(); 2].map(|_| Uuid::new_v4());

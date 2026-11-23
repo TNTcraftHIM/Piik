@@ -30,12 +30,6 @@ the feedback period; they do not delay that delivery.
   coverage, connection attempts, idle cost and disruption. Repeat the
   [file and voice recovery control](./research/network-lab.md#file-forwarding-during-a-room-call)
   on a shared physical uplink before tuning fanout and retry/standby budgets.
-- [ ] **Recover through a missing business-path connection.** A confirmed
-  physical graph can remain connected while directed forwarding refusals leave
-  a delivery without a path. Let the room identify eligible missing connections
-  across its reachable paths, including an intermediate hop; keep admission,
-  cooldown and confirmed-pair reuse with the channel. Verify concurrent media
-  continuity and total projection cost before changing the private contract.
 - [ ] **Public Demo room acceptance.** Verify invite-only discovery and entry
   on the deployed public Demo. [Local package control](./verification-status.md#current-evidence)
 - [ ] **Physical camera orientation.** Check portrait capture on a phone through

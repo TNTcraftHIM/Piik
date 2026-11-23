@@ -206,6 +206,23 @@ impl Publication {
         })
     }
 
+    pub(crate) fn collect_frontiers(
+        &self,
+        receivers: &BTreeSet<Uuid>,
+        neighbors: &BTreeMap<Uuid, BTreeSet<Uuid>>,
+        relays: &BTreeSet<Uuid>,
+        helpers: &BTreeMap<Uuid, Uuid>,
+        limits: &RelayLimits,
+        frontiers: &mut Vec<crate::host::DeliveryFrontier>,
+    ) {
+        let upstreams = receivers
+            .iter()
+            .map(|id| helpers.get(id).copied().unwrap_or(*id))
+            .collect();
+        self.plan
+            .delivery_frontiers(&upstreams, neighbors, relays, helpers, limits, frontiers);
+    }
+
     pub fn reconcile(
         &mut self,
         requested: &BTreeSet<Uuid>,

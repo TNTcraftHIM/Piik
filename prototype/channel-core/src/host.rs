@@ -177,6 +177,9 @@ pub struct RoomReply {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomProjection {
+    /// Search results for currently undelivered activities. Each prefix edge appears once per tree.
+    #[serde(with = "frontier_wire", default, skip_serializing_if = "Vec::is_empty")]
+    pub delivery_frontiers: Vec<DeliveryFrontier>,
     pub relay_session_ids: BTreeSet<Uuid>,
     pub allow_service_relay: bool,
     pub watch_activities: Vec<crate::wire::WatchActivity>,
@@ -195,6 +198,196 @@ pub struct RoomProjection {
     pub voice: Vec<VoiceInfo>,
     pub views: BTreeMap<Uuid, RoomRecipient>,
     pub flows: Vec<Flow>,
+}
+
+#[derive(Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeliveryFrontier {
+    pub source: Uuid,
+    pub waiting: BTreeSet<Uuid>,
+    pub before: BTreeMap<Uuid, Uuid>,
+    pub after: Vec<Uuid>,
+    pub suffix: Vec<u8>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub terminal: BTreeSet<(u8, u8)>,
+    pub bridges: Vec<u8>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub terminal_bridges: BTreeSet<(u8, u8)>,
+}
+
+mod frontier_wire {
+    use super::*;
+    // Endpoint IDs are common across activities in this projection. The table also
+    // covers a selected service when it has no ordinary authorized recipient view.
+    #[derive(Deserialize, Serialize)]
+    struct Indexed {
+        source: u8,
+        waiting: Vec<u8>,
+        before: Vec<(u8, u8)>,
+        after: Vec<u8>,
+        suffix: Vec<u8>,
+        bridges: Vec<u8>,
+        #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+        terminal: BTreeSet<(u8, u8)>,
+        #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+        terminal_bridges: BTreeSet<(u8, u8)>,
+    }
+    pub fn serialize<S: serde::Serializer>(
+        frontiers: &[DeliveryFrontier],
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        let ids = frontiers
+            .iter()
+            .flat_map(|f| f.before.keys().chain(&f.after))
+            .copied()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        if ids.len() > crate::identity::MAX_SESSIONS {
+            return Err(serde::ser::Error::custom("too many frontier endpoints"));
+        }
+        let index = |id: &Uuid| {
+            ids.binary_search(id)
+                .map(|i| i as u8)
+                .map_err(|_| serde::ser::Error::custom("unknown frontier endpoint"))
+        };
+        let mut entries = Vec::new();
+        for f in frontiers {
+            entries.push(Indexed {
+                source: index(&f.source)?,
+                waiting: f
+                    .waiting
+                    .iter()
+                    .map(index)
+                    .collect::<Result<_, S::Error>>()?,
+                before: f
+                    .before
+                    .iter()
+                    .map(|(a, b)| Ok((index(a)?, index(b)?)))
+                    .collect::<Result<_, S::Error>>()?,
+                after: f.after.iter().map(index).collect::<Result<_, S::Error>>()?,
+                suffix: f.suffix.clone(),
+                bridges: f.bridges.clone(),
+                terminal: f.terminal.clone(),
+                terminal_bridges: f.terminal_bridges.clone(),
+            });
+        }
+        (ids, entries).serialize(serializer)
+    }
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Vec<DeliveryFrontier>, D::Error> {
+        let (ids, entries) = <(Vec<Uuid>, Vec<Indexed>)>::deserialize(deserializer)?;
+        if ids.len() > crate::identity::MAX_SESSIONS || !ids.windows(2).all(|w| w[0] < w[1]) {
+            return Err(serde::de::Error::custom("invalid frontier endpoints"));
+        }
+        let lookup = |i: u8| {
+            ids.get(i as usize)
+                .copied()
+                .ok_or_else(|| serde::de::Error::custom("unknown frontier endpoint"))
+        };
+        entries
+            .into_iter()
+            .map(|f| {
+                Ok(DeliveryFrontier {
+                    source: lookup(f.source)?,
+                    waiting: f
+                        .waiting
+                        .into_iter()
+                        .map(lookup)
+                        .collect::<Result<_, D::Error>>()?,
+                    before: f
+                        .before
+                        .into_iter()
+                        .map(|(a, b)| Ok((lookup(a)?, lookup(b)?)))
+                        .collect::<Result<_, D::Error>>()?,
+                    after: f
+                        .after
+                        .into_iter()
+                        .map(lookup)
+                        .collect::<Result<_, D::Error>>()?,
+                    suffix: f.suffix,
+                    bridges: f.bridges,
+                    terminal: f.terminal,
+                    terminal_bridges: f.terminal_bridges,
+                })
+            })
+            .collect()
+    }
+}
+
+impl DeliveryFrontier {
+    pub(crate) fn tail(
+        &self,
+        receiver: Uuid,
+        confirmed: impl Fn(Uuid, Uuid) -> bool,
+    ) -> BTreeMap<Uuid, Uuid> {
+        let mut incoming = vec![Vec::new(); self.after.len()];
+        for (byte, &bits) in self.suffix.iter().enumerate() {
+            let mut rest = bits;
+            while rest != 0 {
+                let index = byte * 8 + rest.trailing_zeros() as usize;
+                rest &= rest - 1;
+                let (i, j) = (index / self.after.len(), index % self.after.len());
+                if i < self.after.len() && confirmed(self.after[i], self.after[j]) {
+                    incoming[j].push(i);
+                }
+            }
+        }
+        for &(i, j) in &self.terminal {
+            if self.after[j as usize] == receiver && confirmed(self.after[i as usize], receiver) {
+                incoming[j as usize].push(i as usize);
+            }
+        }
+        let Ok(index) = self.after.binary_search(&receiver) else {
+            return BTreeMap::new();
+        };
+        let mut queue = std::collections::VecDeque::from([index]);
+        let mut parents = BTreeMap::from([(receiver, receiver)]);
+        while let Some(at) = queue.pop_front() {
+            for &i in &incoming[at] {
+                if let std::collections::btree_map::Entry::Vacant(slot) =
+                    parents.entry(self.after[i])
+                {
+                    slot.insert(self.after[at]);
+                    queue.push_back(i);
+                }
+            }
+        }
+        parents
+    }
+    fn crossing(&self, row: usize, column: usize) -> Option<bool> {
+        let bit = row * self.after.len() + column;
+        if self.bridges[bit / 8] & (1 << (bit % 8)) != 0 {
+            Some(false)
+        } else {
+            self.terminal_bridges
+                .contains(&(row as u8, column as u8))
+                .then_some(true)
+        }
+    }
+
+    pub(crate) fn crossings(&self) -> impl Iterator<Item = (Uuid, Uuid, bool)> + '_ {
+        self.before.keys().enumerate().flat_map(move |(i, &from)| {
+            self.after
+                .iter()
+                .enumerate()
+                .filter_map(move |(j, &to)| self.crossing(i, j).map(|leaf| (from, to, leaf)))
+        })
+    }
+
+    pub(crate) fn live_crossing(&self, from: Uuid, to: Uuid) -> Option<(Uuid, Uuid, bool)> {
+        let row = self.before.keys().position(|&v| v == from)?;
+        let column = self.after.binary_search(&to).ok()?;
+        self.crossing(row, column).map(|leaf| (from, to, leaf))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn candidates(&self, target: Uuid) -> impl Iterator<Item = (Uuid, Uuid)> + '_ {
+        self.crossings().filter_map(move |(from, to, terminal)| {
+            (!terminal || to == target).then_some((from, to))
+        })
+    }
 }
 
 impl RoomProjection {
@@ -359,6 +552,51 @@ pub struct HostOutput {
     pub revision: u64,
     pub projection: RoomProjection,
     pub reply: Option<RoomReply>,
+}
+
+impl HostOutput {
+    /// Preserve the complete authority reply. Discovery advice may use only the bytes
+    /// that remain in the actual Domain command carrying it.
+    pub(crate) fn within_domain_frame(self) -> Self {
+        if self.projection.delivery_frontiers.is_empty() {
+            return self;
+        }
+        let mut frame = crate::wire::Command::HostOutput {
+            room_id: self.projection.summary.id.clone(),
+            output: self,
+        };
+        fn fits(frame: &crate::wire::Command) -> bool {
+            serde_json::to_vec(frame)
+                .is_ok_and(|bytes| bytes.len() <= crate::wire::CHANNEL_MESSAGE_BYTES)
+        }
+        fn hints(frame: &mut crate::wire::Command) -> &mut Vec<DeliveryFrontier> {
+            let crate::wire::Command::HostOutput { output, .. } = frame else {
+                unreachable!()
+            };
+            &mut output.projection.delivery_frontiers
+        }
+        if !fits(&frame) {
+            let all = std::mem::take(hints(&mut frame));
+            // A previously oversized authority reply retains its original behavior.
+            if fits(&frame) {
+                let (mut low, mut high) = (0, all.len() - 1);
+                while low < high {
+                    let count = (low + high).div_ceil(2);
+                    *hints(&mut frame) = all[..count].to_vec();
+                    if fits(&frame) {
+                        low = count;
+                    } else {
+                        high = count - 1;
+                    }
+                }
+                *hints(&mut frame) = all.into_iter().take(low).collect();
+            }
+        }
+        let crate::wire::Command::HostOutput { output, .. } = frame else {
+            unreachable!()
+        };
+        output
+    }
 }
 
 #[derive(Serialize)]
@@ -597,6 +835,37 @@ pub struct RoomHost {
 mod tests {
     use super::*;
     use crate::wire::Request;
+
+    #[test]
+    fn terminal_edges_round_trip_once_per_directed_pair() {
+        #[derive(Serialize, Deserialize)]
+        struct Advice(#[serde(with = "frontier_wire")] Vec<DeliveryFrontier>);
+
+        let [source, relay, viewer] = [1, 2, 3].map(Uuid::from_u128);
+        let frontier = DeliveryFrontier {
+            source,
+            waiting: [viewer].into(),
+            before: [(source, source)].into(),
+            after: vec![relay, viewer],
+            suffix: vec![0],
+            bridges: vec![0],
+            terminal: [(0, 1)].into(),
+            terminal_bridges: [(0, 1)].into(),
+        };
+        let original = serde_json::to_value(Advice(vec![frontier])).unwrap();
+        let mut repeated = original.clone();
+        for name in ["terminal", "terminal_bridges"] {
+            let arcs = repeated[1][0][name].as_array_mut().unwrap();
+            arcs.push(arcs[0].clone());
+        }
+        let decoded: Advice = serde_json::from_value(repeated).unwrap();
+        let result = &decoded.0[0];
+        assert_eq!(result.terminal.len(), 1);
+        assert_eq!(result.terminal_bridges.len(), 1);
+        assert_eq!(result.tail(viewer, |_, _| true)[&relay], viewer);
+        assert_eq!(result.candidates(viewer).collect::<Vec<_>>(), [(source, viewer)]);
+        assert_eq!(serde_json::to_value(decoded).unwrap(), original);
+    }
 
     #[test]
     fn hosted_writer_sync_plans_cold_file_and_voice_between_participants() {
@@ -1705,6 +1974,6 @@ impl RoomHost {
             revision: pending.input.revision,
             projection: self.room.projection(&pending.input.endpoints),
             reply: pending.reply,
-        }
+        }.within_domain_frame()
     }
 }

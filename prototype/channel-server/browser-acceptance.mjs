@@ -1257,8 +1257,18 @@ async function roomsAndFiles() {
   await browser(0, "find", "role", "button", "click", "--name", "Download", "--exact");
   const downloaded = await until("receiver saves notes.txt", () => readFile(join(temporary, "downloads", "notes.txt")).catch(() => undefined), Boolean);
   assert.deepEqual(downloaded, original);
+  await until("receiver releases the completed transfer sink", () => evaluate(0,
+    `${hook}.session.attachments.sinks.size`), count => count === 0);
+  const cachedDigest = await evaluate(0, `(async () => {
+    const retained = await ${hook}.session.attachments.store.list([${JSON.stringify(room.id)}]);
+    const notes = retained.find(entry => entry.attachment.name === 'notes.txt');
+    const digest = await crypto.subtle.digest('SHA-256', await notes.file.arrayBuffer());
+    return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  })()`);
+  const expectedDigest = createHash("sha256").update(original).digest("hex");
+  assert.equal(cachedDigest, expectedDigest, "IndexedDB retains readable bytes after OPFS cleanup");
   await writeFile(join(output, "peer-room-file-result.json"), JSON.stringify({
-    bytes: downloaded.length, sha256: createHash("sha256").update(downloaded).digest("hex"),
+    bytes: downloaded.length, sha256: expectedDigest, cachedDigest,
   }, null, 2));
   await until("completed transfer retires file activity", () => view(0),
     value => value.state.channel.rooms.find(entry => entry.id === room.id)?.fileActivity.length === 0);

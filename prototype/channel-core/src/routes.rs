@@ -350,11 +350,7 @@ impl Plan {
             }
             for &child in screen.neighbors.get(&parent).into_iter().flatten() {
                 if self.parents.contains_key(&child)
-                    || self
-                        .failed_parents
-                        .get(&child)
-                        .is_some_and(|failed| failed.contains(&parent))
-                    || !self.admitted_output(parent, child, helpers, limits)
+                    || !self.allowed_branch(parent, child, helpers, limits)
                     || !visited.insert(child)
                 {
                     continue;
@@ -372,6 +368,153 @@ impl Plan {
             }
         }
         false
+    }
+
+    pub(crate) fn delivery_frontiers(
+        &self,
+        receivers: &BTreeSet<Uuid>,
+        neighbors: &BTreeMap<Uuid, BTreeSet<Uuid>>,
+        relays: &BTreeSet<Uuid>,
+        helpers: &BTreeMap<Uuid, Uuid>,
+        limits: &RelayLimits,
+        frontiers: &mut Vec<crate::host::DeliveryFrontier>,
+    ) {
+        if neighbors.is_empty() {
+            return;
+        }
+        // With an empty incumbent tree, one available output per sender suffices for
+        // any simple confirmed path. Ordinary channel gap repair already serves that case.
+        if self.parents.is_empty()
+            && self.failed_parents.is_empty()
+            && helpers.is_empty()
+            && limits.get(self.source, self.source) > 0
+            && relays.iter().all(|&id| {
+                id == self.source
+                    || limits.get(id, self.source) > limits.shared.get(&id).map_or(0, BTreeSet::len)
+            })
+        {
+            return;
+        }
+        let mut waiting: BTreeSet<_> = receivers
+            .iter()
+            .copied()
+            .filter(|id| *id != self.source && !self.parents.contains_key(id))
+            .collect();
+        if waiting.is_empty() {
+            return;
+        }
+        let allowed = |from: Uuid, to: Uuid| {
+            from != to
+                && to != self.source
+                && (from == self.source || relays.contains(&from))
+                && self.parents.get(&to).is_none_or(|owner| *owner == from)
+                && self.allowed_branch(from, to, helpers, limits)
+        };
+        let mut before = BTreeMap::from([(self.source, self.source)]);
+        let mut queue = VecDeque::from([self.source]);
+        while let Some(at) = queue.pop_front() {
+            for &next in neighbors.get(&at).into_iter().flatten() {
+                if allowed(at, next) {
+                    waiting.remove(&next);
+                    if relays.contains(&next)
+                        && helpers.get(&next) != Some(&at)
+                        && !before.contains_key(&next)
+                    {
+                        before.insert(next, at);
+                        queue.push_back(next);
+                    }
+                }
+            }
+        }
+        if waiting.is_empty() {
+            return;
+        }
+        // The room's parents are a single tree for all receivers. Describe its reachable
+        // prefix once. Each remaining confirmed arc is represented by two compact indices.
+        let mut outside = waiting.clone();
+        outside.extend(relays.iter().filter(|id| !before.contains_key(id)).copied());
+        let after: Vec<_> = outside.into_iter().collect();
+        let mut suffix = vec![0u8; (after.len() * after.len()).div_ceil(8)];
+        let mut terminal = BTreeSet::new();
+        for (i, &from) in after.iter().enumerate() {
+            for &to in neighbors.get(&from).into_iter().flatten() {
+                let Ok(j) = after.binary_search(&to) else {
+                    continue;
+                };
+                if allowed(from, to) {
+                    let arc = (i as u8, j as u8);
+                    if helpers.get(&to) == Some(&from) {
+                        terminal.insert(arc);
+                    } else {
+                        let bit = i * after.len() + j;
+                        suffix[bit / 8] |= 1 << (bit % 8);
+                    }
+                }
+            }
+        }
+        let mut bridges = vec![0u8; (before.len() * after.len()).div_ceil(8)];
+        let mut terminal_bridges = BTreeSet::new();
+        for (i, &from) in before.keys().enumerate() {
+            for (j, &to) in after.iter().enumerate() {
+                if allowed(from, to)
+                    && !neighbors
+                        .get(&from)
+                        .is_some_and(|peers| peers.contains(&to))
+                {
+                    let bit = i * after.len() + j;
+                    if helpers.get(&to) == Some(&from) {
+                        terminal_bridges.insert((i as u8, j as u8));
+                    } else {
+                        bridges[bit / 8] |= 1 << (bit % 8);
+                    }
+                }
+            }
+        }
+        if bridges.iter().any(|&b| b != 0) || !terminal_bridges.is_empty() {
+            let frontier = crate::host::DeliveryFrontier {
+                source: self.source,
+                waiting,
+                before,
+                after,
+                suffix,
+                terminal,
+                bridges,
+                terminal_bridges,
+            };
+            if !frontiers.contains(&frontier) {
+                frontiers.push(frontier);
+            }
+        }
+    }
+
+    pub(crate) fn byte_frontiers(
+        source: Uuid,
+        receivers: &BTreeSet<Uuid>,
+        parents: &BTreeMap<Uuid, Uuid>,
+        refused: &BTreeSet<(Uuid, Uuid)>,
+        unavailable: &BTreeSet<(Uuid, Uuid)>,
+        neighbors: &BTreeMap<Uuid, BTreeSet<Uuid>>,
+        relays: &BTreeSet<Uuid>,
+        limits: &RelayLimits,
+        frontiers: &mut Vec<crate::host::DeliveryFrontier>,
+    ) {
+        let mut plan = Self::new(source);
+        plan.parents.clone_from(parents);
+        for &(sender, receiver) in refused {
+            plan.reject_parent(receiver, sender);
+        }
+        for &(a, b) in unavailable {
+            plan.reject_parent(a, b);
+            plan.reject_parent(b, a);
+        }
+        plan.delivery_frontiers(
+            receivers,
+            neighbors,
+            relays,
+            &BTreeMap::new(),
+            limits,
+            frontiers,
+        );
     }
 
     pub(crate) fn candidate_parent(
@@ -430,6 +573,20 @@ impl Plan {
                     && helpers.get(child) != Some(&parent)
             })
             .count()
+    }
+
+    fn allowed_branch(
+        &self,
+        parent: Uuid,
+        child: Uuid,
+        helpers: &BTreeMap<Uuid, Uuid>,
+        limits: &RelayLimits,
+    ) -> bool {
+        !self
+            .failed_parents
+            .get(&child)
+            .is_some_and(|refused| refused.contains(&parent))
+            && self.admitted_output(parent, child, helpers, limits)
     }
 
     fn admitted_output(
@@ -711,6 +868,42 @@ impl Plan {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn room_frontiers_can_propose_a_missing_middle_or_first_hop() {
+        let id = Uuid::from_u128;
+        let mut plan = Plan::new(id(1));
+        plan.reject_parent(id(4), id(5));
+        plan.reject_parent(id(3), id(2));
+        let mut links = confirmed_neighbors(&[(1, 2), (2, 3), (3, 4), (4, 5), (1, 5)]);
+        let relays = set(&[1, 2, 3, 4, 5]);
+        let receivers = set(&[4]);
+        let mut out = Vec::new();
+        plan.delivery_frontiers(
+            &receivers,
+            &links,
+            &relays,
+            &Default::default(),
+            &Default::default(),
+            &mut out,
+        );
+        let choices: BTreeSet<_> = out[0].candidates(id(4)).collect();
+        assert!(choices.contains(&(id(5), id(3))) && choices.contains(&(id(1), id(3))));
+        assert_eq!(out[0].before.get(&id(5)), Some(&id(1)));
+        assert_eq!(out[0].tail(id(4), |_, _| true).get(&id(3)), Some(&id(4)));
+        links.entry(id(5)).or_default().insert(id(3));
+        links.entry(id(3)).or_default().insert(id(5));
+        let parents = plan.activity_parents(
+            &receivers,
+            &links,
+            &relays,
+            &Default::default(),
+            &Default::default(),
+            &[],
+        );
+        assert_eq!(parents.get(&id(4)), Some(&id(3)));
+        assert_eq!(parents.get(&id(3)), Some(&id(5)));
+    }
 
     #[test]
     fn activity_parents_keep_live_inputs_without_extending_an_unconfirmed_prefix() {

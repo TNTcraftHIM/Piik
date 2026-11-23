@@ -152,6 +152,17 @@ and low-link information identify useful sparse links. Business repair can try
 other eligible pairs outside that window. The room publishes eligible forwarding
 sessions in RoomProjection.relaySessionIds. Discovery uses this set directly.
 
+If forwarding grants or capacity refusals leave an activity without a directed
+path, the room supplies eligible missing connections between its usable source
+and recipient paths. These paths are shared across the activity's waiting
+receivers. The channel applies its current connection budget and cooldown to
+ordered alternatives, stopping when one is admitted. Both endpoint confirmations
+are required; the channel retains the completed path until the room grants its
+payload use. Room output includes only the optional discovery advice that fits
+the existing command-size limit. Other demands retain ordinary discovery.
+[Room path search](../../prototype/channel-core/src/routes.rs) ·
+[Connection admission](../../prototype/channel-core/src/channel/discovery.rs)
+
 ### Payloads
 
 | Content | Cost basis | Delivery requirement |

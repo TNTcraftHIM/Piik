@@ -92,6 +92,11 @@ export class FileStore {
 
   async retain(entry: RetainedFile, limits: FileRetentionLimits, allowed?: () => boolean): Promise<{ file: File | null; evicted: ChannelFileKey[] }> {
     if (entry.file.size > limits.maxRetainedBytes || limits.maxRetainedFiles < 1) return Promise.reject(new Error("file_retention_limit"));
+    // IndexedDB can preserve a File's dependency on its backing path. Stream
+    // cacheable bytes into an independent browser Blob before releasing that path.
+    const source = entry.file;
+    const blob = await new Response(source.stream()).blob();
+    const file = new File([blob], source.name, { type: source.type, lastModified: source.lastModified });
     const evicted = await this.transaction<ChannelFileKey[] | null>("files", "readwrite", (transaction, done) => {
       const store = transaction.objectStore("files");
       const request = store.getAll();
@@ -106,18 +111,11 @@ export class FileStore {
           const oldest = retained.shift()!;
           store.delete(oldest.id!); bytes -= oldest.file.size; evicted.push(oldest.key);
         }
-        const put = store.put({ ...entry, fileKeyString: key, ...(previous ? { id: previous.id } : {}) } satisfies StoredFile);
+        const put = store.put({ ...entry, file, fileKeyString: key, ...(previous ? { id: previous.id } : {}) } satisfies StoredFile);
         put.onsuccess = () => done(evicted);
       };
     });
-    if (!evicted) return { file: null, evicted: [] };
-    // A GET inside the write transaction can still return the original OPFS
-    // snapshot. Reopen after commit to read the independent IndexedDB value.
-    const file = await this.transaction<File | null>("files", "readonly", (transaction, done) => {
-      const request = transaction.objectStore("files").index("key").get(fileKeyString(entry.key));
-      request.onsuccess = () => done((request.result as StoredFile | undefined)?.file ?? null);
-    });
-    return { file, evicted };
+    return evicted ? { file, evicted } : { file: null, evicted: [] };
   }
 
   remove(key: ChannelFileKey, { forgetReceipt = false } = {}): Promise<void> {

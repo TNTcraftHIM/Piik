@@ -185,6 +185,7 @@ impl TransportBook {
             .collect()
     }
 
+    #[cfg(test)]
     pub(crate) fn reconcile_with_standby(
         &mut self,
         flows: impl IntoIterator<Item = Flow>,
@@ -195,6 +196,31 @@ impl TransportBook {
         recovering: &BTreeSet<(Uuid, Uuid)>,
         now: u64,
         degree_limit: impl Fn(Uuid) -> usize,
+    ) {
+        self.reconcile_with_fallback(
+            flows,
+            room_grants,
+            interests,
+            completions,
+            required_retries,
+            recovering,
+            now,
+            degree_limit,
+            |_, _| {},
+        );
+    }
+
+    pub(crate) fn reconcile_with_fallback(
+        &mut self,
+        flows: impl IntoIterator<Item = Flow>,
+        room_grants: impl IntoIterator<Item = ((Uuid, Uuid), String)>,
+        interests: &BTreeMap<DiscoveryEdge, Interest>,
+        completions: &[(DiscoveryEdge, BTreeSet<(Uuid, Uuid)>)],
+        required_retries: &BTreeSet<DiscoveryEdge>,
+        recovering: &BTreeSet<(Uuid, Uuid)>,
+        now: u64,
+        degree_limit: impl Fn(Uuid) -> usize,
+        alternatives: impl FnOnce(&mut Self, &mut BTreeSet<PairKey>),
     ) {
         let mut needed = BTreeMap::<_, Directions>::new();
         for flow in flows {
@@ -341,7 +367,13 @@ impl TransportBook {
         }
         // Requests enter in pair order. Keep that order within ties.
         candidates.sort_by_key(|&(rank, retry, _, _)| (rank, retry));
+        let mut alternatives = Some(alternatives);
         for (rank, _, edge, interest) in candidates {
+            if rank > DiscoveryRank::Completion {
+                if let Some(complete) = alternatives.take() {
+                    complete(self, &mut protected);
+                }
+            }
             if self.has_pair(edge.endpoints) {
                 continue;
             }
@@ -374,6 +406,9 @@ impl TransportBook {
                 }
             }
         }
+        if let Some(complete) = alternatives {
+            complete(self, &mut protected);
+        }
     }
 
     fn start_discovery(&mut self, edge: &DiscoveryEdge, now: u64) {
@@ -388,6 +423,77 @@ impl TransportBook {
                     .is_some_and(|failure| failure.was_confirmed),
             },
         );
+    }
+
+    pub(crate) fn try_completion(
+        &mut self,
+        edge: &DiscoveryEdge,
+        prefix: &BTreeSet<PairKey>,
+        protected: &mut BTreeSet<PairKey>,
+        now: u64,
+        degree_limit: &impl Fn(Uuid) -> usize,
+    ) -> bool {
+        if let Some(deadline) = self.retry_after(edge).filter(|&deadline| deadline > now) {
+            self.next_required_retry = Some(
+                self.next_required_retry
+                    .map_or(deadline, |old| old.min(deadline)),
+            );
+            return false;
+        }
+        if !self.pending(edge) {
+            if self.has_pair(edge.endpoints) {
+                return false;
+            }
+            let mut reserved = protected.clone();
+            reserved.extend(prefix);
+            let rank = if self.previously_confirmed(edge) {
+                DiscoveryRank::Restoration
+            } else {
+                DiscoveryRank::Completion
+            };
+            if !self.admit(
+                edge.endpoints,
+                Interest::Activity,
+                Directions::default(),
+                Some((rank, true)),
+                &reserved,
+                degree_limit,
+            ) {
+                return false;
+            }
+            self.start_discovery(edge, now);
+        }
+        if let Some(pair) = self.pairs.get_mut(&edge.endpoints) {
+            pair.interest = pair.interest.max(Interest::Activity);
+        }
+        protected.insert(edge.endpoints);
+        protected.extend(prefix);
+        true
+    }
+
+    pub(crate) fn only_pending_completions(&self, protected: &BTreeSet<PairKey>) -> bool {
+        self.discovery.len() == CHANNEL_ATTEMPT_LIMIT
+            && self.discovery.keys().all(|key| protected.contains(key))
+    }
+
+    pub(crate) fn finish_completions(
+        &mut self,
+        temporary: &BTreeSet<PairKey>,
+        protected: &BTreeSet<PairKey>,
+    ) {
+        for &key in temporary {
+            if protected.contains(&key) {
+                if let Some(pair) = self.pairs.get_mut(&key) {
+                    pair.interest = pair.interest.max(Interest::Activity);
+                }
+            } else if self
+                .pairs
+                .get(&key)
+                .is_some_and(|p| p.interest == Interest::Recovering && !p.flows.has_lease())
+            {
+                self.release(key);
+            }
+        }
     }
 
     // A service can lose its larger allowance while its room leases are still live.

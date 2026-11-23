@@ -58,6 +58,7 @@ pub struct RoomRuntime {
     watch_activities: BTreeMap<Uuid, Watch>,
     writer: Option<(Uuid, crate::wire::HostingMode)>,
     transit_endpoint: Option<crate::host::ServiceEndpoint>,
+    delivery_frontiers: Vec<crate::host::DeliveryFrontier>,
     repair_at: Option<u64>,
     failed_data_pairs: BTreeSet<(Uuid, Uuid)>,
     files: crate::file_room::FileRoom,
@@ -108,6 +109,7 @@ impl RoomRuntime {
             watch_activities: BTreeMap::new(),
             writer: None,
             transit_endpoint: None,
+            delivery_frontiers: Vec::new(),
             repair_at: None,
             failed_data_pairs: BTreeSet::new(),
             files: Default::default(),
@@ -123,6 +125,7 @@ impl RoomRuntime {
     }
 
     pub(crate) fn reset_routes(&mut self) {
+        self.delivery_frontiers.clear();
         self.transit_endpoint = None;
         self.repair_at = None;
         self.failed_data_pairs.clear();
@@ -315,7 +318,8 @@ impl RoomRuntime {
 
     fn project(&self, views: BTreeMap<Uuid, RoomRecipient>) -> crate::host::RoomProjection {
         let (relay_session_ids, _) = self.relay_sessions();
-        crate::host::RoomProjection {
+        let mut projection = crate::host::RoomProjection {
+            delivery_frontiers: Vec::new(),
             relay_session_ids,
             allow_service_relay: self.policy.allow_service_relay,
             watch_activities: self
@@ -398,7 +402,15 @@ impl RoomRuntime {
             views,
             next_route_deadline: self.next_route_deadline(),
             flows: self.flows().collect(),
+        };
+        if !self.delivery_frontiers.is_empty() {
+            let waiting = projection.requested_pairs();
+            for mut frontier in self.delivery_frontiers.iter().cloned() {
+                frontier.waiting.retain(|&id| waiting.get(&(frontier.source.min(id),frontier.source.max(id))) == Some(&true));
+                if !frontier.waiting.is_empty() { projection.delivery_frontiers.push(frontier); }
+            }
         }
+        projection
     }
 
     pub(crate) fn set_default_relay_capacity(&mut self, capacity: u8) {
@@ -1446,6 +1458,7 @@ impl RoomRuntime {
                 (endpoint.connected && routable.contains(session)).then_some(*session)
             })
             .collect();
+        self.delivery_frontiers.clear();
         let limits = self.relay_limits();
         let mut neighbors = BTreeMap::<Uuid, BTreeSet<Uuid>>::new();
         for &(a, b) in confirmed_pairs {
@@ -1473,6 +1486,7 @@ impl RoomRuntime {
         }
         self.files
             .route(endpoints, &byte_neighbors, &new_relays, &limits);
+        self.files.collect_frontiers(endpoints, &byte_neighbors, &new_relays, &limits, &self.failed_data_pairs, &mut self.delivery_frontiers);
         let mut waiting_bytes = self.files.waiting();
         for (id, watch) in &mut self.watch_activities {
             let receivers: BTreeSet<_> = self
@@ -1501,6 +1515,10 @@ impl RoomRuntime {
                     )
                 })
                 .unwrap_or_default();
+            if let Some(source) = &watch.byte_source {
+                crate::routes::Plan::byte_frontiers(source.session_id, &receivers, &watch.parents,
+                    &watch.refused, &self.failed_data_pairs, &byte_neighbors, &new_relays, &limits, &mut self.delivery_frontiers);
+            }
             waiting_bytes |= watch.byte_source.as_ref().is_some_and(|source| {
                 receivers
                     .iter()
@@ -1570,6 +1588,10 @@ impl RoomRuntime {
                 &neighbors,
                 now,
             );
+            if !publication.info.paused {
+                publication.collect_frontiers(&subscribers, &neighbors, &new_relays, &helpers,
+                    &screen_limits, &mut self.delivery_frontiers);
+            }
             publication.bound_screen_preparation(&screen_limits, &helpers);
             if publication.info.kind == Kind::Screen {
                 for flow in publication.relay_flows(&helpers) {

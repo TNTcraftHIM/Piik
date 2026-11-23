@@ -615,6 +615,9 @@ A user needs an authorized path for the activity, not a direct connection to
 every other user. Joining or repairing a tree uses mature ICE/STUN handling and
 the existing bounded retry principles. Reuse reachable participants as relays;
 do not add an all-pairs probe, full mesh or periodic topology rebalance.
+The room can propose a missing connection across an activity's directed paths
+even when the physical graph is connected. The channel owns its admission and
+retention under the [forwarding procedure](./channel-forwarding-plan.md#version-boundary).
 With unchanged authority and demand, an exhausted required path becomes eligible
 again after the room's five-second repair cooldown. The existing room wake-up
 schedules missing paths while retaining healthy branches, their failed-shortcut

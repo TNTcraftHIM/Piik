@@ -254,6 +254,35 @@ impl FileRoom {
             }
         }
     }
+    pub(crate) fn collect_frontiers(
+        &self,
+        endpoints: &BTreeMap<Uuid, Endpoint>,
+        neighbors: &BTreeMap<Uuid, BTreeSet<Uuid>>,
+        relays: &BTreeSet<Uuid>,
+        limits: &RelayLimits,
+        unavailable: &BTreeSet<(Uuid, Uuid)>,
+        frontiers: &mut Vec<crate::host::DeliveryFrontier>,
+    ) {
+        for file in self.files.values() {
+            let Some((source, endpoint)) = file.source.and_then(|s| Some((s, endpoints.get(&s)?)))
+            else {
+                continue;
+            };
+            let mut limits = limits.clone();
+            limits.source_direct_limit = Some(file.source_limit(source, endpoint, &limits));
+            crate::routes::Plan::byte_frontiers(
+                source,
+                &file.receivers,
+                &file.parents,
+                &file.refused,
+                unavailable,
+                neighbors,
+                relays,
+                &limits,
+                frontiers,
+            );
+        }
+    }
     pub fn plans(&self, room_id: &str, session: Uuid) -> Vec<FilePlan> {
         self.files
             .iter()
