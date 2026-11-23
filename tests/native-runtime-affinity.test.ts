@@ -14,16 +14,15 @@ afterEach(async () => {
   vi.resetModules();
 });
 
-async function runtime(delay: number, capabilities: { pagePlayer?: boolean; externalScreenInputAvailable?: boolean } = {}) {
+async function runtime(capabilities: { pagePlayer?: boolean; externalScreenInputAvailable?: boolean }, respondAfter?: Promise<void>) {
   for (let port = NATIVE_CLIENT_PORT_END; port >= NATIVE_CLIENT_PORT_START; port--) {
-    const server = createServer((request, response) => {
-      setTimeout(() => {
-        response.setHeader("Content-Type", "application/json");
-        response.end(JSON.stringify({ protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, service: "piik-channel-app",
-          port, token: "fixture-token", ...(request.url === "/health" ? capabilities : {}),
-          ...(request.url === "/connect-discovery" ? { connectURL: `http://127.0.0.1:${port}/client` } : {}),
-        }));
-      }, delay);
+    const server = createServer(async (request, response) => {
+      await respondAfter;
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, service: "piik-channel-app",
+        port, token: "fixture-token", ...(request.url === "/health" ? capabilities : {}),
+        ...(request.url === "/connect-discovery" ? { connectURL: `http://127.0.0.1:${port}/client` } : {}),
+      }));
     });
     try {
       await new Promise<void>((resolve, reject) => {
@@ -40,8 +39,10 @@ async function runtime(delay: number, capabilities: { pagePlayer?: boolean; exte
 }
 
 it("selects the launched runtime over a faster resident App and never substitutes it after exit", async () => {
-  const old = await runtime(0, { externalScreenInputAvailable: false });
-  const selected = await runtime(30, { pagePlayer: false, externalScreenInputAvailable: true });
+  let allowSelectedResponse!: () => void;
+  const selectedResponse = new Promise<void>(resolve => { allowSelectedResponse = resolve; });
+  const old = await runtime({ externalScreenInputAvailable: false });
+  const selected = await runtime({ pagePlayer: false, externalScreenInputAvailable: true }, selectedResponse);
   const fetchHTTP = globalThis.fetch;
   const requestedPorts: number[] = [];
   // Keep the real HTTP fixtures independent of Apps already running locally.
@@ -68,8 +69,10 @@ it("selects the launched runtime over a faster resident App and never substitute
   vi.stubGlobal("window", page);
   const { discoverChannelAppHealth, channelAppDiscovery } = await import("../src/client/channel/app-link");
   const { takeClientLaunchBootstrap, clientRuntimePort } = await import("../src/client/lib/app-launch");
-  // Both actual HTTP stubs are discoverable; the older one responds first.
-  await expect(discoverChannelAppHealth()).resolves.toMatchObject({ port: old.port });
+  // Let the resident App answer the unbound scan before releasing the launched App.
+  const residentHealth = await discoverChannelAppHealth().finally(allowSelectedResponse);
+  expect(residentHealth).toMatchObject({ port: old.port });
+  expect(requestedPorts).toContain(selected.port);
   page.location.search = `?piik-client-port=${selected.port}`;
   page.location.hash = "piik-client=1";
   takeClientLaunchBootstrap();

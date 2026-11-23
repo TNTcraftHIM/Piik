@@ -51,6 +51,21 @@ function clone(source: Track, onEnded = vi.fn()) {
 }
 
 describe("sender display-frame ownership", () => {
+  it("cancels the processor when a sender retires during initial capture constraints", async () => {
+    const p = platform(), source = new Track(), input = new Track(), ended = vi.fn();
+    let finish!: () => void;
+    input.applyConstraints.mockImplementationOnce(() => new Promise<undefined>(resolve => { finish = () => resolve(undefined); }));
+    source.clone.mockReturnValue(input);
+    const track = clone(source, ended);
+    try {
+      stopSenderVideoTrack(track);
+      await flush();
+      expect(p.cancel).toHaveBeenCalledOnce();
+      expect(source.readyState).toBe("live");
+    } finally { finish(); await flush(); }
+    expect(p.write).not.toHaveBeenCalled();
+    expect(ended).not.toHaveBeenCalled();
+  });
   it("cancels a quiet input on retirement without stopping the shared source", async () => {
     const p = platform(), source = new Track();
     source.enabled = false;

@@ -27,7 +27,7 @@ public final class CapturePlatform implements CaptureRequest {
   private final DisplayManager.DisplayListener resize = new DisplayManager.DisplayListener() {
     public void onDisplayAdded(int id) {}
     public void onDisplayRemoved(int id) {}
-    public void onDisplayChanged(int id) { if (Build.VERSION.SDK_INT < 34) screenSize(); }
+    public void onDisplayChanged(int id) { screenSize(); }
   };
 
   final String captureId;
@@ -36,7 +36,7 @@ public final class CapturePlatform implements CaptureRequest {
     this.captureId = captureId;
     this.context = context.getApplicationContext();
     this.audioRequested = audioRequested;
-    screenSize();
+    if (Build.VERSION.SDK_INT >= 34) screenSize();
     texture.setOnFrameAvailableListener(ignored -> {
       synchronized (this) { if (!closed) { frame = true; notifyAll(); } }
     }, AppRuntimeService.main);
@@ -89,10 +89,13 @@ public final class CapturePlatform implements CaptureRequest {
     while (!closed && projection == null) wait();
     check();
     if (closed) return;
+    if (Build.VERSION.SDK_INT < 34) {
+      context.getSystemService(DisplayManager.class).registerDisplayListener(resize, AppRuntimeService.main);
+      screenSize();
+    }
     display = projection.createVirtualDisplay("Piik", width, height, density,
         DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, surface, null, AppRuntimeService.main);
     if (display == null) throw new IllegalStateException("VirtualDisplay unavailable");
-    context.getSystemService(DisplayManager.class).registerDisplayListener(resize, AppRuntimeService.main);
   }
   /** One coalesced OS notification; Rust owns the latest immutable image. */
   public synchronized long nextFrame() throws InterruptedException {

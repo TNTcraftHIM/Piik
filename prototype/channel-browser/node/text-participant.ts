@@ -334,7 +334,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
         this.complete(event.requestId);
       return;
     }
-    if (event.type !== 'conversation' || !this.state || !this.sessionId)
+    if (event.type !== 'conversation' || !this.state || !this.sessionId || this.socket?.readyState !== WebSocket.OPEN)
       return;
     const reply = JSON.parse(verify_conversation(JSON.stringify(event.packet), this.sessionId, JSON.stringify(this.state))) as ConversationAddress | ConversationReply;
     if (reply.roomId !== this.roomId || !('record' in reply))

@@ -224,6 +224,7 @@ export const en: Record<CopyKey, string> = {
   "conversation.preparingAttachments": "Preparing files",
   "conversation.cancelAttachmentPreparation": "Cancel file preparation",
   "channel.attachment.storageFull": "Not enough space on this device. Free up some space, then try downloading again.",
+  "channel.attachment.storageUnavailable": "Browser storage is unavailable. Check this site’s storage settings or try another browser.",
   "conversation.sendFailed": "Previous message couldn't be confirmed.",
   "conversation.preparationCancelled": "Attachment preparation was cancelled.",
   "conversation.retryPrevious": "Retry previous message",

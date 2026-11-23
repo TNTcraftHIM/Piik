@@ -112,6 +112,27 @@ pub(crate) fn rtc_pair(pair: Uuid, event: RtcPairEvent) {
     RECORDER.rtc_pair(pair, event);
 }
 
+/// Record one terminal App control or page lifetime event.
+pub fn app_retired(owner: Uuid, page: Option<Uuid>, reason: &'static str) {
+    let mut state = RECORDER.0.lock().unwrap();
+    let Some(buffer) = state.buffer.as_mut() else {
+        return;
+    };
+    let event = if page.is_some() {
+        "page_retired"
+    } else {
+        "control_retired"
+    };
+    let message = serde_json::json!({"event": event, "ownerId": owner, "pageId": page, "reason": reason});
+    buffer.push(
+        &Record::builder()
+            .level(log::Level::Info)
+            .args(format_args!("{message}"))
+            .build(),
+        "piik.app",
+    );
+}
+
 /// The selected sound scope is useful even when capture succeeds without an error.
 #[cfg(all(feature = "capture", windows))]
 pub(crate) fn system_audio_source(process: Option<(u32, bool)>) {

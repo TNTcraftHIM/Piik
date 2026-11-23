@@ -9,7 +9,7 @@ import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
 import type { ChannelController } from "../types";
 import { profileAvatar, roomVoicePeople } from "../presentation";
 import { ChannelVoiceSettings } from "./ChannelVoiceSettings";
-import { useCallback, useContext, useEffect, useId } from "react";
+import { useCallback, useContext, useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../../lib/room-interactions";
@@ -114,11 +114,13 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
 function VoiceOverlayChatSettings({ session }: { session: RoomInteractionSession }) {
   const { t } = useCopy();
   const id = useId();
+  const [open, setOpen] = useState(false);
   return <>
     <Btn id={id + "-trigger"} icon="danmaku" size="compact" quiet textTooltip title="playback.overlay"
-      hasPopup="dialog" popoverTarget={id} controls={id} />
+      hasPopup="dialog" popoverTarget={id} controls={id} expanded={open} />
     <div id={id} className="lr-anchored-card c3-speaking-overlay-settings" popover="auto"
-      role="dialog" aria-labelledby={id + "-title"}>
+      role="dialog" aria-labelledby={id + "-title"}
+      onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
       <div className="c3-speaking-overlay-settings-header">
         <strong id={id + "-title"}>{t("playback.overlay")}</strong>
         <RoomChatToggle session={session} size="compact" quiet />

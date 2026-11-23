@@ -222,6 +222,7 @@ export const zh = {
   "conversation.preparingAttachments": "正在准备文件",
   "conversation.cancelAttachmentPreparation": "取消文件准备",
   "channel.attachment.storageFull": "此设备的存储空间不足。请清理一些空间后重试下载。",
+  "channel.attachment.storageUnavailable": "浏览器存储不可用。请检查本站点的存储设置，或换一个浏览器重试。",
   "conversation.sendFailed": "上一条消息未获确认。",
   "conversation.preparationCancelled": "已取消附件准备。",
   "conversation.retryPrevious": "重试上一条",

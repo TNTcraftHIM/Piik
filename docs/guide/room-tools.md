@@ -180,8 +180,8 @@ owns platform requirements.
 
 - **Source sound** comes from the shared tab, application or screen and follows
   the picture's playback controls.
-- **Include my microphone** adds commentary to your picture. Its viewers hear
-  you without joining room voice; it ends when that share stops.
+- [**Microphone commentary**](./sharing.md#include-your-microphone) follows your
+  picture. Viewers hear it without joining room voice. It ends when the share stops.
 - **Room voice** is a separate conversation with its own membership and listening controls.
 
 Enabling commentary and room voice together can send your voice twice. Keep

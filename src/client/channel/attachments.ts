@@ -48,8 +48,9 @@ const idle: Download["status"] = { busy: false, error: null };
 const cacheRoom = (scope: FileScope, roomId: string) => JSON.stringify([scope.domainId, scope.userId, roomId]);
 const sameContent = (a: ChannelAttachment, b: ChannelAttachment) => a.size === b.size && a.sha256.toLowerCase() === b.sha256.toLowerCase();
 const errorOf = (error: unknown) => error instanceof Error ? error : new Error(String(error));
-function throwStorageError(error: unknown): never {
+function throwStorageError(error: unknown, fallback?: string): never {
   if (error instanceof DOMException && error.name === "QuotaExceededError") throw new Error("file_storage_full");
+  if (fallback) throw new Error(fallback, { cause: error });
   throw error;
 }
 const aborted = () => new DOMException("Cancelled", "AbortError");
@@ -593,7 +594,7 @@ export class ChannelAttachments {
     const storage = this.transferStorage ??= openTransferStorage();
     const { directory } = await storage.catch(error => {
       if (this.transferStorage === storage) this.transferStorage = undefined;
-      return throwStorageError(error);
+      return throwStorageError(error, "file_storage_unavailable");
     });
     runtime.lifetime.signal.throwIfAborted();
     const name = crypto.randomUUID(), file = await directory.getFileHandle(name, { create: true }).catch(throwStorageError);

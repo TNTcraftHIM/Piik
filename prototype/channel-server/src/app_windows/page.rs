@@ -193,6 +193,9 @@ impl Page {
     fn emit(&self, value: Value) {
         self.events.send(value);
     }
+    fn record_retirement(&self, reason: &'static str) {
+        piik_channel_native::diagnostics::app_retired(self.owner, Some(self.id), reason);
+    }
     fn candidates(&self) {
         let views = self.views.borrow();
         let Some(url) = views
@@ -265,7 +268,15 @@ impl Pages {
         }
     }
     pub fn clear(&mut self) {
+        for page in self.pages.values() {
+            page.record_retirement("app_shutdown");
+        }
         self.pages.clear();
+    }
+    fn retire_page(&mut self, key: Uuid, reason: &'static str) {
+        if let Some(page) = self.pages.remove(&key) {
+            page.record_retirement(reason);
+        }
     }
     pub fn mount(
         &mut self,
@@ -387,7 +398,7 @@ impl Pages {
         if page.views.borrow().len() == 1
             || (page.selected.is_some() && page.selected_view() == view)
         {
-            self.pages.remove(&key);
+            self.retire_page(key, "window_closed");
         } else {
             page.candidates
                 .retain(|_, candidate| candidate.view != view);
@@ -410,7 +421,7 @@ impl Pages {
         };
         let page = self.pages.get_mut(&key).unwrap();
         if page.selected.is_some() && page.selected_view() == view {
-            self.pages.remove(&key);
+            self.retire_page(key, "selected_view_navigated");
         } else {
             let mut views = page.views.borrow_mut();
             let current = views.get_mut(&view).unwrap();
@@ -587,7 +598,13 @@ impl Pages {
         } = command
         else {
             if let Command::Retire { owner } = command {
-                self.pages.retain(|_, page| page.owner != owner);
+                self.pages.retain(|_, page| {
+                    if page.owner != owner {
+                        return true;
+                    }
+                    page.record_retirement("control_retired");
+                    false
+                });
             }
             return;
         };
@@ -620,7 +637,7 @@ impl Pages {
             .map(|(key, _)| *key);
         if matches!(operation, Operation::PageClose { .. }) {
             if let Some(key) = key {
-                self.pages.remove(&key);
+                self.retire_page(key, "page_close_requested");
             }
             let _ = reply.send(Ok(Value::Null));
             return;
@@ -706,6 +723,8 @@ impl Pages {
     fn publish(&mut self, page: Page, reply: Reply) {
         if reply.send(Ok(json!({"pageId":page.id}))).is_ok() {
             self.pages.insert(page.root, page);
+        } else {
+            page.record_retirement("prepare_cancelled");
         }
     }
     fn prepare(
@@ -814,7 +833,7 @@ impl Pages {
                     .selected
                     .is_some_and(|id| !page.candidates.contains_key(&id))
                 {
-                    self.pages.remove(&key);
+                    self.retire_page(key, "selected_frame_removed");
                 } else {
                     page.candidates();
                 }
@@ -835,7 +854,7 @@ impl Pages {
                     candidates,
                     &removed,
                 ) {
-                    self.pages.remove(&key);
+                    self.retire_page(key, "selected_candidate_changed");
                     return;
                 }
                 page.candidates();
@@ -860,7 +879,7 @@ impl Pages {
                 if candidate.source.resource.is_empty() {
                     candidate.source.resource = resource;
                 } else if candidate.source.resource != resource {
-                    self.pages.remove(&key);
+                    self.retire_page(key, "selected_resource_changed");
                     return;
                 }
                 page.emit(json!({"type":"page_sample","pageId":page.id,"event":event}));

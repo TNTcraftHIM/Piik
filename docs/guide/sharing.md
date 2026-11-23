@@ -92,9 +92,9 @@ sources. Clear the field and save to use the current source name again.
 
 ### Include your microphone
 
-During a share, enable **Share settings → Sound → Include my microphone** to
-add commentary to the picture. Select its input, volume and voice processing
-there. The microphone starts off for each new share and ends when it stops.
+During a share, open **Share settings → Sound** and turn on
+**Microphone or virtual audio input** to add commentary to the picture.
+Select the input, volume and voice processing there. The microphone starts off for each new share and ends when it stops.
 
 Viewers hear commentary through the picture without joining room voice.
 [Room voice](./room-tools.md#room-voice) remains independent. Enabling both can
@@ -108,7 +108,8 @@ separately as commentary or room-voice input.
 
 OBS Virtual Camera supplies video. To include OBS audio, follow the
 [OBS audio-routing guide](https://obsproject.com/kb/video-call-streaming-tutorial/),
-then select that input under **Share settings → Sound → Include my microphone**.
+then turn on **Microphone or virtual audio input** under **Share settings → Sound**
+and select that device.
 Its sound travels with the picture. Turn off voice processing for music or
 virtual audio that has already been processed.
 

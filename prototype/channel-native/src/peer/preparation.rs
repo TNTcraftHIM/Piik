@@ -709,6 +709,7 @@ async fn binding(socket: &UdpSocket, remote: SocketAddr) -> Result<SocketAddrV4>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::Context;
 
     #[tokio::test]
     async fn preparation_dns_fallback_does_not_wait_for_failed_or_stalled_authorities() -> Result<()>
@@ -1391,7 +1392,13 @@ mod tests {
         let mut bytes = [0; 1024];
         let ready = loop {
             tokio::select! {
-                event = hard_events.recv() => break event,
+                event = hard_events.recv() => {
+                    if event.is_none() {
+                        hard.await?.context("pool stopped before Ready")?;
+                        bail!("pool finished before Ready");
+                    }
+                    break event;
+                }
                 received = easy_socket.recv_from(&mut bytes) => {
                     let (_, SocketAddr::V4(peer)) = received? else { unreachable!() };
                     sources.insert(peer);

@@ -1184,12 +1184,7 @@ async fn upgrade(
             if *closing.borrow() || *revoked.borrow() {
                 return;
             }
-            tokio::select! {
-                biased;
-                _ = closing.changed() => {},
-                _ = revoked.changed() => {},
-                _ = connection(socket, &app, &site, &permission) => {},
-            }
+            connection(socket, &app, &site, &permission, &mut closing, &mut revoked).await;
         })
 }
 #[derive(Deserialize)]
@@ -1595,29 +1590,36 @@ async fn connection(
     app: &App,
     site: &str,
     permission: &Arc<Permission>,
-) -> Result<()> {
+    closing: &mut watch::Receiver<bool>,
+    revoked: &mut watch::Receiver<bool>,
+) {
     let (mut writer, mut reader) = socket.split();
-    let result = {
+    let close_socket = {
         let (incoming, mut queue) = mpsc::channel(64);
         let reading = async move {
             loop {
                 match reader.next().await {
-                    Some(Ok(Message::Text(text))) => incoming
-                        .try_send(text)
-                        .map_err(|_| anyhow!("App request queue full"))?,
+                    Some(Ok(Message::Text(text))) => match incoming.try_send(text) {
+                        Ok(()) => {}
+                        Err(mpsc::error::TrySendError::Full(_)) => return "request_queue_full",
+                        Err(mpsc::error::TrySendError::Closed(_)) => return "request_queue_closed",
+                    },
                     Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
-                    _ => return Ok::<_, anyhow::Error>(()),
+                    Some(Ok(Message::Close(_))) => return "peer_close",
+                    Some(Ok(Message::Binary(_))) => return "unexpected_binary",
+                    Some(Err(_)) => return "read_error",
+                    None => return "read_eof",
                 }
             }
         };
+        let (control_events, mut event_queue) = mpsc::channel(64);
+        let pages = Arc::new(page::Connection::for_site(
+            app.config.page_player.clone(),
+            control_events.clone(),
+            site.to_owned(),
+        ));
         let processing = async {
             let mut voice_shortcuts = app.voice_shortcuts.connect();
-            let (control_events, mut event_queue) = mpsc::channel(64);
-            let pages = Arc::new(page::Connection::for_site(
-                app.config.page_player.clone(),
-                control_events.clone(),
-                site.to_owned(),
-            ));
             let mut host: Option<mpsc::Sender<HostCommand>> = None;
             let mut captures: BTreeMap<Uuid, Capture> = BTreeMap::new();
             let mut capture_starts: FuturesUnordered<
@@ -1672,7 +1674,7 @@ async fn connection(
             loop {
                 captures.retain(|_, capture| capture.pending.is_some() || capture.active.is_some());
                 let message = tokio::select! {
-                    _ = pages.overflowed() => return Err(anyhow!("page_player_event_queue_full")),
+                    _ = pages.overflowed() => return Ok::<_, anyhow::Error>("page_event_queue_full"),
                     event = voice_shortcuts.next() => {
                         timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                         continue;
@@ -1847,11 +1849,14 @@ async fn connection(
                             Some(commands) => commands.closed().await,
                             None => std::future::pending().await,
                         }
-                    } => break,
+                    } => return Ok("host_queue_closed"),
                     message = async {
                         if host.is_some() { Ok(queue.recv().await) }
                         else { timeout(IO_TIMEOUT, queue.recv()).await }
-                    } => message?,
+                    } => match message {
+                        Ok(message) => message,
+                        Err(_) => return Ok("hello_timeout"),
+                    },
                     Some((publication_id, capture_id, error)) = audio_errors.next(), if !audio_errors.is_empty() => {
                         let error: Option<String> = error;
                         if error.is_some() && captures.get(&publication_id).and_then(Capture::lease).is_some_and(|lease| lease.id == capture_id) {
@@ -2021,7 +2026,7 @@ async fn connection(
                         continue;
                     }
                 };
-                let Some(text) = message else { break };
+                let Some(text) = message else { return Ok("request_queue_closed") };
                 let value: Value = serde_json::from_str(&text)?;
                 let id = value
                     .get("id")
@@ -2837,20 +2842,40 @@ async fn connection(
                 )
                 .await??;
             }
-            Ok(())
         };
         tokio::pin!(reading, processing);
-        tokio::select! {
+        let (reason, close_socket) = tokio::select! {
             biased;
-            result = &mut reading => result,
-            result = &mut processing => result,
-        }
+            _ = closing.changed() => ("app_shutdown", false),
+            _ = revoked.changed() => ("permission_revoked", false),
+            reason = &mut reading => (reason, true),
+            result = &mut processing => (result.unwrap_or_else(control_error_reason), true),
+        };
+        piik_channel_native::diagnostics::app_retired(pages.owner(), None, reason);
+        close_socket
     };
     // Dropping the processor first stops every page-owned capture, including
     // while a Native request is awaiting admission or a room-host response.
-    let _ = timeout(IO_TIMEOUT, writer.close()).await;
-    result
+    if close_socket {
+        tokio::select! {
+            biased;
+            _ = closing.changed() => {},
+            _ = revoked.changed() => {},
+            _ = timeout(IO_TIMEOUT, writer.close()) => {},
+        }
+    }
 }
+
+fn control_error_reason(error: anyhow::Error) -> &'static str {
+    if error.is::<axum::Error>() {
+        "write_error"
+    } else if error.is::<tokio::time::error::Elapsed>() {
+        "write_timeout"
+    } else {
+        "request_processing_failed"
+    }
+}
+
 async fn next_input_state(
     publication: Uuid,
     producer: Uuid,

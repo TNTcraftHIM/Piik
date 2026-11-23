@@ -508,7 +508,7 @@ device before restarting screen sharing.
 
 ### Cannot hear someone speaking
 
-For speech added through **Include my microphone**, check the picture's
+For [microphone commentary](./sharing.md#include-your-microphone), check the picture's
 [source sound](#picture-but-no-source-sound) and the sharer's **Share settings → Sound**.
 For room voice, follow these steps:
 

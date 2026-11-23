@@ -82,17 +82,22 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   useEffect(() => {
     if (observing) return client.observe({ roomId, messageSeq, attachmentId: file.id });
   }, [observing, client, roomId, messageSeq, file.id]);
-  const [originalShown, setOriginalShown] = useState(false);
+  const [originalUrl, setOriginalUrl] = useState<string | null>(null);
+  const dialogUrl = originalUrl ?? preview;
+  const originalShown = !!originalUrl || inlineImage?.original === true;
   const resource = useRef<{ request: AbortController; url: string | null } | null>(null);
   useEffect(() => {
     const current = { request: new AbortController(), url: null as string | null };
     resource.current = current;
-    setPreview(null); setPreviewBusy(false); setPreviewError(null); setImageOpen(false); setOriginalShown(inlineImage?.original ?? false);
+    setPreview(null); setPreviewBusy(false); setPreviewError(null); setImageOpen(false); setOriginalUrl(null);
     if (inlineImage !== undefined && file.mediaType.startsWith("image/")) {
       try { current.url = URL.createObjectURL(inlineImageFile(inlineImage, file.name)); setPreview(current.url); }
       catch { setPreviewError("image_decode_failed"); }
     }
-    return () => { current.request.abort(); if (current.url) URL.revokeObjectURL(current.url); };
+    return () => {
+      current.request.abort();
+      if (current.url) URL.revokeObjectURL(current.url);
+    };
   }, [roomId, messageSeq, file.id, client, inlineImage?.data, inlineImage?.mediaType, inlineImage?.original]);
   async function showImage() {
     const current = resource.current;
@@ -117,15 +122,15 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
         throw error;
       } finally { request.signal.removeEventListener("abort", discard); }
       if (request.signal.aborted) return;
-      if (current.url) URL.revokeObjectURL(current.url);
-      current.url = candidate; setPreview(current.url);
-      setOriginalShown(true);
+      request.signal.addEventListener("abort", () => URL.revokeObjectURL(candidate), { once: true });
+      setOriginalUrl(candidate); setImageOpen(true);
     } catch (error) { if (!request.signal.aborted) setPreviewError(error instanceof Error ? error.message : "image_load_failed"); }
     finally { if (!request.signal.aborted) setPreviewBusy(false); }
   }
   function cancelPreview() {
     resource.current?.request.abort();
     if (resource.current) resource.current.request = new AbortController();
+    setOriginalUrl(null);
     setPreviewBusy(false);
   }
   const isImage = file.mediaType.startsWith("image/");
@@ -191,14 +196,13 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
       width={inlineImage?.width} height={inlineImage?.height} onError={() => {
       const current = resource.current;
       if (!current || current.url !== preview) return;
-      cancelPreview();
       URL.revokeObjectURL(current.url); current.url = null;
-      setPreview(null); setPreviewError("image_decode_failed"); setImageOpen(false);
+      setPreview(null); setPreviewError("image_decode_failed"); if (!originalUrl) setImageOpen(false);
     }} /></button>}
-    {imageOpen && preview && <ChannelImageDialog src={preview} name={file.name} description={previewBusy ? undefined : imageStatus}
+    {imageOpen && dialogUrl && <ChannelImageDialog src={dialogUrl} name={file.name} description={previewBusy ? undefined : imageStatus}
       progress={previewBusy ? <TransferProgress label={progressLabel} accessibleLabel={labelForFile(progressLabel)} bytes={progressBytes} /> : undefined}
       original={!originalShown ? { busy: previewBusy, disabled: unavailable, onLoad: () => { void showImage(); }, onCancel: cancelPreview } : undefined}
-      onClose={() => { if (previewBusy) cancelPreview(); setImageOpen(false); }} />}
+      onClose={() => { cancelPreview(); setImageOpen(false); }} />}
     {cardStatus && <small role="status">{cardStatus}</small>}
   </div>;
 }

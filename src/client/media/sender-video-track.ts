@@ -1,4 +1,5 @@
 import { debugError } from "../lib/debug";
+import { waitForConnectionOperation } from "../webrtc/connection-operation";
 
 type FrameTrack = MediaStreamTrack & { writable: WritableStream<VideoFrame> };
 type FrameAPIs = {
@@ -40,7 +41,7 @@ export function cloneSenderVideoTrack(
   track.contentHint = input.contentHint;
   track.enabled = source.enabled;
   inputs.set(track, { track: input, abort });
-  void applySenderCaptureConstraints(track, input.getConstraints())
+  void waitForConnectionOperation(abort.signal, () => applySenderCaptureConstraints(track, input.getConstraints()))
     .then(() => frames.pipeTo(track.writable, { signal: abort.signal }))
     .catch((error) => {
       if (!abort.signal.aborted) debugError("capture", "sender-frame-isolation-failed", error);

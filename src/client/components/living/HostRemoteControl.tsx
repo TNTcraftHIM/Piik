@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState, type ComponentProps, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
+import { diagnosisGuide } from "../../channel/diagnosis";
 import type { RemoteControlRequest, RemoteStopShortcut } from "../../native/wire";
 import type { RemoteControlMode, RemoteInputPlatform } from "../../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
-import { useProjectLink } from "../../lib/use-project-link";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Btn, SwitchItem } from "./primitives";
@@ -34,9 +34,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
   const { t, lang } = useCopy();
   const id = useId();
   const [open, setOpen] = useState(false);
-  const gamepadAnchor = lang === "zh" ? "手柄" : "gamepads";
-  const gamepadGuide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}remote-control.html#${gamepadAnchor}`,
-    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/remote-control${lang === "zh" ? ".zh-CN" : ""}.md#${gamepadAnchor}`, open && mode !== "off" && gamepad !== undefined);
+  const gamepadGuide = diagnosisGuide("gamepad", lang).fallback;
   const [surfaceDocument, setSurfaceDocument] = useState<Document | null>(null);
   const detached = Boolean(surfaceDocument && surfaceDocument !== document);
   const [draft, setDraft] = useState(() => mode === "off" ? readRoomPreferences().remoteControlMode : mode);

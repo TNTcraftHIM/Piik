@@ -20,6 +20,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
   if (error === "room_limit") return display("channel.error.roomLimit");
   if (error === "file_transfer_interrupted") return display("channel.attachment.transferInterrupted");
   if (error === "file_storage_full") return display("channel.attachment.storageFull");
+  if (error === "file_storage_unavailable") return display("channel.attachment.storageUnavailable");
   if (error === "saved_copy_missing") return display("channel.attachment.savedCopyMissing");
   if (error === "reveal_saved_copy_failed") return display("channel.attachment.revealSavedFailed");
   if (error === "download_failed") return display("channel.attachment.saveFailed");

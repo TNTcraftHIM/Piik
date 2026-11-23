@@ -15,6 +15,7 @@ const guideSections = {
   picture: ["troubleshooting", "when-video-will-not-connect", "画面连接不上"],
   capture: ["troubleshooting", "app-windows-or-screens-are-missing", "app-找不到窗口或屏幕"],
   webpage: ["sharing", "watch-a-webpage-video-together", "一起看网页视频"],
+  gamepad: ["remote-control", "gamepads", "手柄"],
   attachment: ["troubleshooting", "an-attachment-will-not-open-or-download", "附件打不开或下载不了"],
   storage: ["troubleshooting", "the-beta-app-reports-unsupportedstorageversion", "内测-app-提示-unsupportedstorageversion"],
 } as const;

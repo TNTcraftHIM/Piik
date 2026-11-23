@@ -334,6 +334,10 @@ impl Connection {
             resource_reads: Mutex::new(BTreeMap::new()),
         }
     }
+    pub(super) fn owner(&self) -> Uuid {
+        self.owner
+    }
+
     pub fn media_source(&self, page: Uuid) -> Option<piik_channel_core::wire::WatchByteSource> {
         self.media
             .lock()

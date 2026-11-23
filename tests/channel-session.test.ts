@@ -7672,6 +7672,30 @@ test("source tracks replace serially on the existing physical pair, senders and 
   } finally { media.reset(); session.close(); }
 });
 
+test.each(["replacement", "slot reuse"])("reports a video clone that ended before %s attached it", async mode => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const outgoingFailed = vi.fn();
+  const transport = new ChannelTransport({ polite: true, iceServers: [], send() {}, receive() {},
+    connected() {}, roomData() {}, failed() {}, outgoingFailed });
+  const first = remoteTrack("video"), next = remoteTrack("video");
+  const outputs = (track: MediaStreamTrack) => new Map([["flow", { kind: "screen" as const, stream: remoteStream(track.id, [track]) }]]);
+  try {
+    transport.setOutgoing(outputs(first));
+    const sender = RoomPeerConnection.instances[0].senders[0], previous = sender.track;
+    if (mode === "slot reuse") transport.setOutgoing(new Map());
+    vi.spyOn(sender, "replaceTrack").mockImplementationOnce(async track => {
+      Object.assign(track!, { readyState: "ended" });
+      sender.track = track;
+    });
+    transport.setOutgoing(outputs(next));
+    await vi.waitFor(() => expect(outgoingFailed).toHaveBeenCalledWith("flow"));
+    expect(previous.stop).toHaveBeenCalled();
+    expect(next.stop).not.toHaveBeenCalled();
+    expect(first.stop).not.toHaveBeenCalled();
+  } finally { transport.close(); }
+});
+
 test("a superseded source replacement failure cannot retire the latest source on the same flow", async () => {
   const { session, media, state, sent, pc } = await setupRoomMedia();
   const oldVideo = remoteTrack("video"), oldAudio = remoteTrack("audio");
@@ -11846,7 +11870,7 @@ test('MPD whole-track selection stays private until explicit confirmation and us
     const stop = socket.sent.findLast(command => command.type === 'stop_watch')!;
     expect(stop.id).toBe(start.id);
     expect(diagnostic.mock.calls.filter(([, event]) => event === 'watch-owner-retired')).toEqual([
-      ['channel', 'watch-owner-retired', { activityId: start.id, reason: 'provider-session-ended' }],
+      ['channel', 'watch-owner-retired', { activityId: start.id, reason: 'provider-session-ended', pageId: page.id }],
     ]);
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: stop.requestId, result: { type: 'done' } });
   } finally { session.close(); }
@@ -14772,5 +14796,34 @@ test.each([false, true])("exports flow reports and plan retirement only with Bro
       { event: "flow-state-sent", details: { pairId, flowId, state: "failed" } },
       { event: "flow-assignment-removed", details: { pairId, flowId, direction: "incoming" } },
     ] : []);
+  } finally { session.close(); }
+});
+
+test.each(["ack", "error"] as const)("a retired publish %s cannot admit or remove the pending replacement", async reply => {
+  const { session, socket } = await setup();
+  const id = crypto.randomUUID();
+  const first = remoteTrack("video"), second = remoteTrack("video");
+  try {
+    const a = session.publish("screen", "first", remoteStream("A", [first]), { publicationId: id });
+    const retired = socket.sent.at(-1)!.requestId;
+    const stopping = session.stopScreen(id);
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await stopping;
+    expect(first.stop).toHaveBeenCalledOnce();
+
+    const b = session.publish("screen", "first", remoteStream("B", [second]), { publicationId: id });
+    const replacement = socket.sent.at(-1)!.requestId;
+    const stale = expect(a).rejects.toThrow(reply === "ack" ? "Capture cancelled" : "permission_denied");
+    const commands = socket.sent.length;
+    socket.receive(reply === "ack" ? { type: "ack", requestId: retired }
+      : { type: "error", requestId: retired, code: "permission_denied" });
+    await stale;
+    socket.receive({ type: "state", state: structuredClone(session.getSnapshot().state!) });
+    expect(socket.sent.slice(commands).some(cmd => cmd.type === "unpublish")).toBe(false);
+    expect(second.stop).not.toHaveBeenCalled();
+    socket.receive({ type: "ack", requestId: replacement });
+    await expect(b).resolves.toBe(id);
+    socket.receive({ type: "state", state: structuredClone(session.getSnapshot().state!) });
+    expect(second.stop).toHaveBeenCalledOnce();
   } finally { session.close(); }
 });

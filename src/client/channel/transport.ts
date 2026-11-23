@@ -542,12 +542,13 @@ export class ChannelTransport {
       const pooled = binding.pooled;
       binding.pooled = undefined;
       binding.source = source;
+      retained = true;
       pooled?.dispose();
+      if (isolated && next.readyState === "ended") throw new Error("Replacement video track ended");
       this.attachPool(id, owner, binding);
       if (source.kind === "video" && owner.profile) await this.applyVideoProfile(id, owner, binding, owner.profile);
       if (!this.ownsSender(id, owner, binding)) return;
       this.commitSenderTrack(binding.sender);
-      retained = true;
     } finally {
       if (isolated) {
         if (!retained) stopSenderVideoTrack(next);
@@ -632,6 +633,7 @@ export class ChannelTransport {
           try {
             await waitForConnectionOperation(active.lifetime.signal, () => active.sender.replaceTrack(track));
             if (!this.ownsSender(id, owner, active)) return;
+            if (video && track.readyState === "ended") throw new Error("Replacement video track ended");
             this.commitSenderTrack(active.sender);
             this.attachPool(id, owner, active);
             active.encoded?.setPaused(owner.paused);
