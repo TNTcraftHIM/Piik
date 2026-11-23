@@ -1316,7 +1316,7 @@ export const zhHant = {
   "connection.noRoomLinks": "暫時沒有點對點連線。房間操作透過站點信令進行。",
   "connection.roomLinkLegend": "實線表示已確認的點對點連線，虛線表示正在建立的連線。",
   "connection.noScreenPath": "此分享暫無畫面傳輸路徑。",
-  "connection.pathLegend": "實線：已就緒。流動虛線：建立或切換中。靜態虛線：本機顯示。",
+  "connection.pathLegend": "實線表示鏈路已就緒，長虛線表示鏈路正在建立或切換，短虛線表示本機顯示。",
   "connection.loading": "正在讀取連線詳細資訊…",
   "connection.unavailable": "暫時無法讀取連線詳細資訊。",
   "host.details.show": "顯示連線詳細資訊",

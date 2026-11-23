@@ -541,16 +541,20 @@ describe("RouteGraph", () => {
     expect(html).not.toMatch(/NaN|undefined/);
   });
 
-  it("retains the explicit SFU rail and pending child without widening the panel", () => {
+  it("shares the solid SFU rail only between ready branches without widening the panel", () => {
     const nodes = [{ id: "host", label: "Host", host: true }, { id: "sfu", label: "SFU", kind: "sfu" as const },
-      { id: "a", label: "A" }, { id: "b", label: "B" }];
-    const edges = [{ from: "host", to: "sfu", selected: true, ready: true, route: "sfu" as const },
-      { from: "sfu", to: "a", selected: true, ready: true, route: "sfu" as const },
-      { from: "sfu", to: "b", selected: true, ready: false, route: "sfu" as const }];
-    const html = renderToStaticMarkup(createElement(RouteGraph, { nodes, rootId: "host", edges }));
+      { id: "a", label: "A" }, { id: "b", label: "B" }, { id: "c", label: "C" }];
+    const edges: RouteGraphEdge[] = [{ from: "host", to: "sfu", selected: true, ready: true, route: "sfu" },
+      ...["a", "b", "c"].map(to => ({ from: "sfu", to, selected: true, ready: false, route: "sfu" as const }))];
+    const render = () => renderToStaticMarkup(createElement(RouteGraph, { nodes, rootId: "host", edges }));
+    const pending = render();
+    expect(pending.match(/class="lr-route-edge is-sfu"/g)).toHaveLength(1);
+    expect(pending.match(/class="lr-route-edge is-sfu is-pending"/g)).toHaveLength(3);
+    edges[1].ready = edges[2].ready = true;
+    const html = render();
     expect(html).toContain('viewBox="0 0 640 ');
     expect(html.match(/class="lr-route-sfu"/g)).toHaveLength(1);
-    expect(html.match(/class="lr-route-edge is-sfu"/g)).toHaveLength(4);
-    expect(html).toContain('class="lr-route-edge is-sfu is-pending"');
+    expect(html.match(/class="lr-route-edge is-sfu"/g)).toHaveLength(5);
+    expect(html.match(/d="M [^"]+ Q [^"]+" class="lr-route-edge is-sfu is-pending"/g)).toHaveLength(1);
   });
 });

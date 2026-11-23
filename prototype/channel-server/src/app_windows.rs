@@ -161,7 +161,7 @@ enum ServiceEvent {
     Navigate(String, bool),
     OverlayAvailable(String, u64),
     VoiceOverlay(popup::Overlay, String, u64),
-    ContentLoading(String),
+    ContentLoading(WindowId, String),
     Mount(watch_mount::Request, String, u64),
     Finished,
     PopupClosed(WindowId),
@@ -440,6 +440,8 @@ impl PopupWindow {
         let presentation = events.clone();
         let title_events = events.clone();
         let load_events = events.clone();
+        let document = Rc::new(std::cell::Cell::new(0u64));
+        let loading_document = document.clone();
         let token = uuid::Uuid::new_v4();
         let mut builder = WebViewBuilder::new();
         if overlay_document.is_some() {
@@ -456,8 +458,11 @@ impl PopupWindow {
             .with_initialization_script(SYSTEM_PRESENTATION)
             .with_initialization_script(download::SCRIPT)
             .with_document_title_changed_handler(move |title| { let _ = title_events.send_event(ServiceEvent::PopupTitle(id, title)); })
-            .with_on_page_load_handler(move |event, _| {
-                if matches!(event, PageLoadEvent::Finished) {
+            .with_on_page_load_handler(move |event, url| {
+                if matches!(event, PageLoadEvent::Started) {
+                    loading_document.set(loading_document.get().wrapping_add(1));
+                    let _ = load_events.send_event(ServiceEvent::ContentLoading(id, url));
+                } else {
                     let _ = load_events.send_event(ServiceEvent::PopupLoaded(id));
                 }
             })
@@ -477,7 +482,7 @@ impl PopupWindow {
         let caption = caption::Caption::new(&window, &webview, events.clone(), controls, true)?;
         caption.title("Piik");
         caption.layout(&window, &webview, controls);
-        permissions(&webview, id, pending, events.clone())?;
+        permissions(&webview, id, document, pending, events.clone())?;
         let closed = events.clone();
         // The WebView closes its container; this adapter retires the top-level window.
         unsafe {
@@ -574,6 +579,7 @@ impl MainWindow {
                 .build(target)?,
         );
         set_minimum_client_size(&window);
+        let id = window.id();
         let popup_controls = *controls;
         let popup_target = target.clone();
         let popup_events = events.clone();
@@ -595,7 +601,7 @@ impl MainWindow {
                 // Wry maps Started to top-level ContentLoading, after cancellation is resolved.
                 if matches!(event, PageLoadEvent::Started) {
                     loading_document.set(loading_document.get().wrapping_add(1));
-                    let _ = load_events.send_event(ServiceEvent::ContentLoading(url));
+                    let _ = load_events.send_event(ServiceEvent::ContentLoading(id, url));
                 } else {
                     let _ = load_events.send_event(ServiceEvent::OverlayAvailable(url, loading_document.get()));
                 }
@@ -642,12 +648,11 @@ impl MainWindow {
             .with_bounds(wry::Rect { position: LogicalPosition::new(0.0, 0.0).into(), size: window.inner_size().into() })
             .build_as_child(window.as_ref())?;
         let download_events = events.clone();
-        let id = window.id();
         workspace_navigation(&content, origins.clone())?;
         download::install(&content, Some(Rc::new(move |url, status| {
             let _ = download_events.send_event(ServiceEvent::Download(id, url, status));
         })), Some(receipts.clone()))?;
-        permissions(&content, window.id(), pending, events.clone())?;
+        permissions(&content, id, document.clone(), pending, events.clone())?;
         let fullscreen_events = events.clone();
         unsafe {
             content.webview().add_ContainsFullScreenElementChanged(
@@ -837,22 +842,32 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             Event::UserEvent(ServiceEvent::Mount(request, source, generation)) => {
                 if let Some(main) = &window { request.apply(main, &mut pages, &source, generation); }
             }
-            Event::UserEvent(ServiceEvent::ContentLoading(url)) => {
-                pages.release_mounts();
-                popups.borrow_mut().retain(|child| child.panel_geometry.get().is_none());
-                if let Some(main) = &window {
+            Event::UserEvent(ServiceEvent::ContentLoading(id, url)) => {
+                if prompt.as_ref().is_some_and(Prompt::media_is_stale) {
+                    prompt.take();
+                }
+                permission::retire_pending(&pending, |request| !request.is_current());
+                if let Some(main) = window.as_ref().filter(|main| main.window.id() == id) {
+                    pages.release_mounts();
                     if prompt.as_ref().is_some_and(|dialog| dialog.stale(main)) { prompt.take(); }
                     let origin = url::Url::parse(&url).ok().map(|page| page.origin());
                     let mut origins = main.origins.borrow_mut();
-                    if origins.opening.is_some() && origins.opening == origin {
+                    let switch_site = origins.opening.is_some() && origins.opening == origin;
+                    if switch_site {
                         origins.site = origins.opening.take();
-                        prompt.take();
-                        pending.borrow_mut().clear();
-                        popups.borrow_mut().clear();
                         slot = None;
                         main.window.set_fullscreen(None);
                         main.position_caption(&controls, None);
                     }
+                    drop(origins);
+                    let retires = |id| popups.borrow().iter().any(|child| {
+                        child.window.id() == id && (switch_site || child.panel_geometry.get().is_some())
+                    });
+                    if prompt.as_ref().is_some_and(|dialog| retires(dialog.owner())) {
+                        prompt.take();
+                    }
+                    permission::retire_pending(&pending, |request| retires(request.owner));
+                    popups.borrow_mut().retain(|child| !switch_site && child.panel_geometry.get().is_none());
                     main.caption.content_loading();
                 }
             }
@@ -944,6 +959,9 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 }
             }
             Event::UserEvent(ServiceEvent::PermissionReady(id)) => {
+                if prompt.as_ref().is_some_and(Prompt::media_is_stale) {
+                    prompt.take();
+                }
                 if let Some(prompt) = prompt.as_ref().filter(|prompt| prompt.id() == id) {
                     prompt.update_appearance(&theme, language);
                     prompt.show();
@@ -1111,9 +1129,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                     {
                         prompt.take();
                     }
-                    pending
-                        .borrow_mut()
-                        .retain(|request| request.owner != window_id);
+                    permission::retire_pending(&pending, |request| request.owner == window_id);
                     popups
                         .borrow_mut()
                         .retain(|child| child.window.id() != window_id);
@@ -1137,6 +1153,9 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 let Some(request) = pending.borrow_mut().pop_front() else {
                     break;
                 };
+                if !request.is_current() {
+                    continue;
+                }
                 let owner = window
                     .as_ref()
                     .filter(|main| main.window.id() == request.owner)

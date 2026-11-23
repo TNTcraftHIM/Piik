@@ -1485,7 +1485,7 @@ export const en: Record<CopyKey, string> = {
   "connection.noRoomLinks": "No peer links yet. Room actions use site signaling.",
   "connection.roomLinkLegend": "Solid lines show confirmed peer links. Dashed lines show links that are connecting.",
   "connection.noScreenPath": "This share has no picture delivery path.",
-  "connection.pathLegend": "Solid: ready. Moving dashes: establishing or switching. Static dashes: local display.",
+  "connection.pathLegend": "Solid lines show ready paths, long dashes show paths being established or switched, and short dashes show local display.",
   "connection.loading": "Reading connection details…",
   "connection.unavailable": "Connection details are temporarily unavailable.",
   "connection.topologyUnavailable": "The room path could not be read. This panel will retry while it stays open.",

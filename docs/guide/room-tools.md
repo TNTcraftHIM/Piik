@@ -107,17 +107,18 @@ adds a line and **Send** sends the message. Ctrl+Enter or Command+Enter also sen
 In a lightweight site, the room creator’s device saves messages and reactions.
 In a hosted site, the server saves them. Open the room to read its history while
 that device or server is online. Chat uses the site connection.
-Chat keeps a still thumbnail with the message when one is available. Select
-it to enlarge it, then choose **View original** for the full resolution or
-animation. If the card has no thumbnail, choose **View image** to load the
-original. **Download original** saves the full file. If the card says **No one is currently
-offering the original**, you can still open its thumbnail. Download becomes
-available again when someone with a copy returns. In the desktop App you can
-also open the folder holding a copy you already saved.
 
-Images and other files load on demand from a readable local copy or someone
-offering the original in the room. Selecting a user's profile picture also opens the image viewer;
-Escape or its close button returns to the room.
+On an attachment card, select **Download** for a file or **Download original**
+for an image. Piik uses a readable local copy or receives the original from
+someone offering it in the room. Where supported, the desktop App offers
+**Reveal in folder** after saving the file.
+
+Select an image thumbnail to enlarge it, then choose **View original** for the
+full resolution or animation. With no thumbnail, choose **View image** to load
+the original. If the original is unavailable, you can still open an existing
+thumbnail. Ask the sender to come online or send the file again.
+Selecting a user's profile picture also opens the image viewer. Press Escape
+or select the close button to return to the room.
 
 Selecting a person in the room opens their interaction menu. Expressions and
 thrown props are live effects; they are not saved as message reactions.
@@ -146,8 +147,8 @@ browser's site storage and are not sent to the room.
 2. Use the persistent voice controls to mute your microphone, pause listening
    or **Leave voice**. **Voice settings** selects the input and noise/echo processing.
 
-![Example room conversation with joined voice controls below it: microphone, listening, settings and leave.](../assets/guide/channel-room.en.png#gh-light-mode-only)
-![Example room conversation with joined voice controls below it: microphone, listening, settings and leave.](../assets/guide/channel-room.en.dark.png#gh-dark-mode-only)
+![Room chat with an image thumbnail and joined voice controls below the conversation.](../assets/guide/channel-room.en.png#gh-light-mode-only)
+![Room chat with an image thumbnail and joined voice controls below the conversation.](../assets/guide/channel-room.en.dark.png#gh-dark-mode-only)
 
 Hover over a microphone, headphones or a person's speaker to adjust its volume;
 on a touchscreen, press and hold. Muting a person changes only what you hear.

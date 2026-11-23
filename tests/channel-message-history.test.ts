@@ -17,8 +17,11 @@ test("history tracks live profiles for each retained page and excludes archived 
     .toEqual(["reader"]);
 });
 
-test("history byte limits use the replacement row when its text changes", () => {
-  const first = message(1), last = message(2);
+test("history byte limits count image data and use the replacement row when its text changes", () => {
+  const preview = { mediaType: "image/png" as const, original: false, width: 1, height: 1 };
+  const first = message(1), last = { ...message(2), inlineImages: {
+    a: { ...preview, data: "Aa9+/w==" }, b: { ...preview, data: '🌙"\\\n' },
+  } };
   const size = (row: ChannelMessage) => new TextEncoder().encode(JSON.stringify(row)).length;
   const budget = 4 * 1024 * 1024;
   const full = { ...last, text: "a".repeat(budget - size(first) - size(last)) };

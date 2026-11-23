@@ -6,6 +6,7 @@ import type { CopyKey } from "../../ui/copy";
 import { EMPTY_METRICS } from "../../types";
 
 type Translate = (key: CopyKey, vars?: Record<string, string>) => string;
+type ChannelConnectionDetail = ConnectionDetail & { selectedDisplayReceiver?: string };
 
 function hopRoute(topology: ChannelTopology, from: string, to: string): "p2p" | "sfu" {
   return from === topology.transitSession || to === topology.transitSession ? "sfu" : "p2p";
@@ -70,7 +71,7 @@ export function channelConnectionGraph(state: ChannelSnapshot, roomId: string, s
 }
 
 export function channelConnectionRows(state: ChannelSnapshot, sessionId: string,
-  topology: ChannelTopology | null, samples: readonly ChannelConnectionSample[], t: Translate): ConnectionDetail[] {
+  topology: ChannelTopology | null, samples: readonly ChannelConnectionSample[], t: Translate): ChannelConnectionDetail[] {
   return samples.flatMap(sample => {
     const publication = state.publications.find(publication => publication.id === sample.publicationId);
     if (!publication) return [];
@@ -89,8 +90,9 @@ export function channelConnectionRows(state: ChannelSnapshot, sessionId: string,
       audioPacketLossPercent: sourceSound.metrics.audioPacketLossPercent, audioJitterMs: sourceSound.metrics.audioJitterMs } : sample.metrics;
     const from = sample.direction === "send" ? sample.ownerSessionId : sample.peerId;
     const to = sample.direction === "send" ? sample.peerId : sample.ownerSessionId;
-    const localDisplay = topology?.screen?.publicationId === sample.publicationId && topology.screen.edges.some(edge =>
-      edge.presentation && edge.sender === from && edge.receiver === to);
+    const localDisplay = topology?.screen?.publicationId === sample.publicationId
+      ? topology.screen.edges.find(edge => edge.presentation && edge.sender === from && edge.receiver === to)
+      : undefined;
     const source = connectionSessionName(state, publication.sessionId, t);
     const peer = sample.peerId === topology?.transitSession ? t("connection.siteForwarding") : connectionSessionName(state, sample.peerId, t);
     const label = localDisplay ? t("connection.localDisplay")
@@ -101,6 +103,7 @@ export function channelConnectionRows(state: ChannelSnapshot, sessionId: string,
     return [{ key: `${sample.ownerSessionId}/${sample.flowId}/${sample.metrics.rtpStatsId}`, connectionId: sample.connectionId,
       media: publication.kind === "voice" ? "audio" : "video", direction: sample.direction,
       route: topology && !localDisplay ? hopRoute(topology, from, to) : undefined, label, metrics,
-      detailOnly: publication.kind === "screen" && !topology?.screen || localDisplay || !sample.selected || undefined }];
+      selectedDisplayReceiver: localDisplay?.selected ? localDisplay.receiver : undefined,
+      detailOnly: publication.kind === "screen" && !topology?.screen || !!localDisplay || !sample.selected || undefined }];
   });
 }

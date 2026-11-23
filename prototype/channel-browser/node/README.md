@@ -97,6 +97,9 @@ try {
 - `confirmed` and a resolved `chat()` carry the Host-confirmed message.
   `deleteOwnMessage()` takes a confirmed message authored by the caller and
   waits for the signed deletion receipt.
+- `react(seq, messageId, reaction)` returns the nonce, confirmed message counts
+  in `snapshot.counts` and a message-targeted event. A repeated nonce yields
+  the count snapshot with a null event.
 - `failure` reports a connection failure after Welcome. Command failures
   reject their own promises. `disconnected` signals socket retirement.
   `reconnect()` explicitly resumes the same instance's identity and room

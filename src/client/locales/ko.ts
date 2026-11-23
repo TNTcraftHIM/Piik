@@ -1331,7 +1331,7 @@ export const ko = {
   "connection.noRoomLinks": "아직 피어 연결이 없어요. 방 조작에는 사이트 시그널링을 사용해요.",
   "connection.roomLinkLegend": "실선은 확인된 피어 연결이고 점선은 연결 중인 경로예요.",
   "connection.noScreenPath": "이 공유에는 화면 전송 경로가 없어요.",
-  "connection.pathLegend": "실선: 준비 완료. 움직이는 점선: 연결 또는 전환 중. 고정 점선: 로컬 표시.",
+  "connection.pathLegend": "실선은 준비된 경로, 긴 파선은 연결 또는 전환 중인 경로, 짧은 파선은 로컬 표시를 뜻해요.",
   "connection.loading": "연결 정보 읽는 중…",
   "connection.unavailable": "일시적으로 연결 정보를 확인할 수 없어요.",
   "host.details.show": "연결 정보 표시",

@@ -31,7 +31,7 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
   useLayoutEffect(() => {
     if (menu.current?.matches(":popover-open")) menu.current.hidePopover();
   }, [session, targetId]);
-  useAnchoredPopover(trigger, menu, { side: "above", align: "center", enabled: open });
+  useAnchoredPopover(trigger, menu, { side: "above", align: "center", enabled: open, closeWhenAnchorClipped: "messageSeq" in target });
   const canSend = !!state?.canSend && !disabled;
   const send = (reaction: typeof REACTION_IDS[number]) => { if (canSend) session?.send({ kind: "reaction", reaction }, target); };
   const counts = REACTION_IDS.filter(reaction => (reactions?.counts[reaction] ?? 0) > 0).map(reaction => {

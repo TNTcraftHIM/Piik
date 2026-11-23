@@ -25,7 +25,19 @@ const messageBytes = new WeakMap<ChannelMessage, number>();
 function encodedSize(message: ChannelMessage): number {
   let size = messageBytes.get(message);
   if (size === undefined) {
-    size = textEncoder.encode(JSON.stringify(message)).length;
+    let measured = message;
+    let imageBytes = 0;
+    if (message.inlineImages) {
+      const inlineImages = { ...message.inlineImages };
+      for (const [id, image] of Object.entries(inlineImages)) {
+        // Base64 contributes one UTF-8 byte per character and needs no JSON escaping.
+        if (/[^A-Za-z0-9+/=]/u.test(image.data)) continue;
+        imageBytes += image.data.length;
+        inlineImages[id] = { ...image, data: "" };
+      }
+      measured = { ...message, inlineImages };
+    }
+    size = textEncoder.encode(JSON.stringify(measured)).length + imageBytes;
     messageBytes.set(message, size);
   }
   return size;

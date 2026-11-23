@@ -92,14 +92,21 @@ pub(super) fn reset(
 
 pub(super) struct Permission {
     pub(super) owner: WindowId,
+    document: Rc<Cell<u64>>,
+    generation: u64,
     args: ICoreWebView2PermissionRequestedEventArgs3,
     deferral: Option<ICoreWebView2Deferral>,
     origin: String,
     camera: bool,
 }
 impl Permission {
+    pub(super) fn is_current(&self) -> bool {
+        self.document.get() == self.generation
+    }
+
     fn complete(&mut self, allowed: bool) {
         if let Some(deferral) = self.deferral.take() {
+            let allowed = allowed && self.is_current();
             // SAFETY: Requests and decisions remain on the WebView UI thread.
             unsafe {
                 // Only an explicit Allow becomes an origin/kind grant. Cancellation and
@@ -130,7 +137,10 @@ impl Permission {
     fn answer(&mut self, allowed: bool, pending: &PendingPermissions) {
         // Detach the batch before completing COM deferrals: a retry is a new request.
         let batch = take_matching(&mut pending.borrow_mut(), |next| {
-            next.owner == self.owner && next.origin == self.origin && next.camera == self.camera
+            next.owner == self.owner
+                && next.generation == self.generation
+                && next.origin == self.origin
+                && next.camera == self.camera
         });
         self.complete(allowed);
         for mut request in batch {
@@ -141,9 +151,15 @@ impl Permission {
 
 pub(super) type PendingPermissions = Rc<RefCell<VecDeque<Permission>>>;
 
+pub(super) fn retire_pending(pending: &PendingPermissions, retire: impl Fn(&Permission) -> bool) {
+    let retired = take_matching(&mut pending.borrow_mut(), retire);
+    drop(retired);
+}
+
 pub(super) fn permissions(
     webview: &WebView,
     owner: WindowId,
+    document: Rc<Cell<u64>>,
     pending: PendingPermissions,
     events: EventLoopProxy<ServiceEvent>,
 ) -> Result<()> {
@@ -178,6 +194,8 @@ pub(super) fn permissions(
                 };
                 pending.borrow_mut().push_back(Permission {
                     owner,
+                    document: document.clone(),
+                    generation: document.get(),
                     args: args.clone(),
                     deferral: Some(args.GetDeferral()?),
                     origin,
@@ -306,6 +324,10 @@ impl Prompt {
 
     pub(super) fn stale(&self, main: &super::MainWindow) -> bool {
         matches!(&self.request, Action::Reveal(request) if !request.current(main))
+    }
+
+    pub(super) fn media_is_stale(&self) -> bool {
+        matches!(&self.request, Action::Media(request) if !request.is_current())
     }
     pub(super) fn answer(
         mut self,

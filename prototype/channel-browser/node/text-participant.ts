@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { z } from 'zod';
+import type { MessageReactionSnapshot, ReactionEvent, ReactionTarget } from '../../../src/client/channel/protocol';
 import init, { history_page_size, SessionSigner, verify_conversation } from '../pkg/piik_channel_browser.js';
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, roomSchema, roomSummarySchema, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationAddress, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary } from '../../../src/client/channel/protocol';
 await init({ module_or_path: readFileSync(new URL('../pkg/piik_channel_browser_bg.wasm', import.meta.url)) });
@@ -12,7 +13,12 @@ type ConversationCommand = Extract<ChannelCommand, {
 }>;
 export type TextHistoryPage = Pick<Extract<ConversationReply['record'], { type: 'history_end' }>,
   'hasMore' | 'oldestSeq' | 'before'> & { messages: ChannelMessage[] };
-export type TextReactionResult = Extract<ConversationReply['record'], { type: 'reaction' }>;
+export type TextReactionResult = {
+  type: 'reaction';
+  nonce: number;
+  snapshot: MessageReactionSnapshot & { type: 'message' };
+  event: (ReactionEvent & { target: Extract<ReactionTarget, { type: 'message' }> }) | null;
+};
 
 const conversationRoomSchema = roomSchema.pick({ id: true, authorized: true, available: true, reading: true })
   .extend({ delivery: roomSchema.shape.delivery.unwrap().pick({ hostSessionId: true, bindingId: true }).optional() });
@@ -337,6 +343,11 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     if (record.type === 'error') {
       if (pending && pending.expects !== 'ack' && pending.expects !== 'room_created')
         this.complete(reply.requestId, undefined, Error(record.code));
+      return;
+    }
+    if (record.type === 'reaction' && pending?.expects === 'reaction' &&
+      (record.snapshot?.type !== 'message' || (record.event && record.event.target.type !== 'message'))) {
+      this.complete(reply.requestId, undefined, new Error('invalid_response'));
       return;
     }
     if (record.type === pending?.expects && (record.type === 'interaction_ready' || record.type === 'reaction' || record.type === 'message_deleted'))

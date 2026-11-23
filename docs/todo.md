@@ -16,9 +16,9 @@ the feedback period; they do not delay that delivery.
 
 ### Active work
 
-- [ ] **Original-webpage sharing ends when a viewer joins.** Verify the reported
-  exit with the updated Windows App. Correlate its stop reason with the activity,
-  App control connection and selected page lifetime.
+- [ ] **Original webpage closes when a viewer joins.** On the reporting Windows
+  setup, correlate the stop reason with the activity, selected page and App
+  control connection. [Original-page controls](./verification-status.md#current-evidence)
 - [ ] **Freeze the first public 3.0 contract.** Confirm the
   [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise)
@@ -41,15 +41,14 @@ the feedback period; they do not delay that delivery.
   establish that their Native endpoints participated in the media route.
 - [ ] **beta.33 Browser window selection stalls.** Reproduce manual selection
   of another Chrome window on the reporting machine, including window audio.
-- [ ] **Intermittent App source-list failure.** Obtain the failing platform and
-  opt-in source-request diagnostic with its elapsed time and outcome.
-  Distinguish Web response timeout from platform enumeration failure; cancelling
-  the picker must not let its late result change a replacement selection.
-- [ ] **beta.33 authenticated webpage sharing.** Reproduce the reported VIP
-  video failure after the sharer has started and the viewer receives no picture.
-  Use the user's authorized source. Distinguish page playback,
-  source discovery, original-byte access and receiver delivery; ordinary-video
-  acceptance does not establish this path.
+- [ ] **App source selection fails or disconnects.** On the reporting platform,
+  capture the failed source request's elapsed time and outcome. If App control
+  disconnects during webpage selection, capture its first close diagnostic to
+  distinguish a control failure from a picker timeout or enumeration failure.
+- [ ] **Member-video viewing on the reporting network.** Verify the authorized
+  source with the updated App and Browser on that network. Record the selected
+  player and sharing mode, then locate any remaining source-access or delivery failure.
+  [Member-video controls](./verification-status.md#current-evidence)
 - [ ] **beta.33 shared-screen blur and brief stalls.** Correlate capture,
   encoder input/output, requested/applied quality, selected route and receiver
   cadence during an actual episode before attributing it to conservative probing.
@@ -67,11 +66,6 @@ the feedback period; they do not delay that delivery.
   the Intel setup reported in [#452](https://github.com/TNTcraftHIM/Piik/issues/452).
   Retain the hardware and software encoder's frame, bitrate and retirement
   contracts; injected notifications are separate from driver-generated changes.
-- [ ] **Current webpage-source and playback package acceptance.** Verify source
-  selection, player association, provider hide/restore and independent viewer
-  playback on the reported accessible websites in matching Windows App and Web
-  packages. Check explicit audio selection when a source exposes multiple AAC
-  candidates. [Controlled playback evidence](./verification-status.md#current-evidence)
 - [ ] **2.x periodic brief picture stalls.** With a particular Host or Viewer,
   normally clear playback pauses for less than half a second every few seconds
   or tens of seconds, skips several frames and sometimes briefly blurs. A roughly
@@ -79,10 +73,6 @@ the feedback period; they do not delay that delivery.
   sender, relay and receiver timing, frame dimensions and repair counters before
   attributing this to loss, codec adaptation or changing sender latency. Keep
   optional receive buffering separate from identifying this report's cause.
-- [ ] **App connection during webpage selection.** Capture the first control
-  connection failure during the reported intermittent App disconnection. Use the
-  opt-in control-close diagnostic to distinguish transport closure, handshake,
-  invalid events and consumer failures before changing recovery behavior.
 - [ ] **Whole-system sound in beta.29.** The reporter hears normal sound in
   beta.25, but beta.29 needs any process excluded before sound reaches viewers.
   Compare default-endpoint packets and queue/output progress with process
@@ -236,12 +226,16 @@ the feedback period; they do not delay that delivery.
   embedded-player coverage toward VideoTogether's playback coverage. Verify
   source-issued media grants, supported commercial live sources, target Browsers
   and cross-network delivery. Trace observed responses through frame association
-  before extending discovery. Retry girigirilove when the original player is
+  before extending discovery. Verify provider restoration in the matching App
+  and explicit audio selection on a real page with multiple AAC tracks.
+  Retry girigirilove when the original player is
   accessible. Explain the trusted-site scope and local website login before use.
   [Playback and authority boundaries](./research/channel-network-design.md#synchronized-video-sources) ·
   [Website evidence](./verification-status.md#current-evidence)
-- [ ] **3.0 Native platform acceptance.** Verify physical Android capture and
-  media-path recovery, and the Windows WebView entry with physical microphones
+- [ ] **3.0 Native platform acceptance.** Complete same-room Windows/Android
+  admission, two-way chat, Android image preview and live audio/video on the
+  matched packages. Verify physical Android capture and media-path recovery,
+  and the Windows WebView entry with physical microphones
   and cameras. Investigate the observed WebView renderer exit during room
   navigation. Exercise macOS Quit, Dock/Finder return, permissions, physical
   capture, sound and input. Verify Linux hardware encoding and physical sound,

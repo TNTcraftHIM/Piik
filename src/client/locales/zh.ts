@@ -1483,7 +1483,7 @@ export const zh = {
   "connection.noRoomLinks": "暂时没有点对点连接。房间操作通过站点信令进行。",
   "connection.roomLinkLegend": "实线表示已确认的点对点连接，虚线表示正在建立的连接。",
   "connection.noScreenPath": "此分享暂无画面传输路径。",
-  "connection.pathLegend": "实线：已就绪。流动虚线：建立或切换中。静态虚线：本机显示。",
+  "connection.pathLegend": "实线表示链路已就绪，长虚线表示链路正在建立或切换，短虚线表示本机显示。",
   "connection.loading": "正在读取连接详情…",
   "connection.unavailable": "暂时无法读取连接详情。",
   "connection.topologyUnavailable": "未能读取房间线路。保持此面板打开会自动重试。",

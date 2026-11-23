@@ -208,7 +208,9 @@ export class WatchPlayer {
     if (!explicit && this.media.playbackAvailable?.() === false) return false;
     force = explicit || force && this.alignedPlayback !== playback;
     const buffered = state.buffered?.some(([start, end]) => start <= target && target < end);
-    const displaced = Math.abs(state.position - target) > (this.media.seekTolerance ?? (force ? 0.12 : 0.35));
+    // A paused anchor identifies a fixed position, including one keyboard seek step.
+    const displaced = force && playback.paused ? state.position !== target
+      : Math.abs(state.position - target) > (this.media.seekTolerance ?? (force ? 0.12 : 0.35));
     // An iframe can report a shared seek one observation after dispatch.
     if (!force && displaced && this.media.seekEvents === false && previous && (state.readyState >= HAVE_FUTURE_DATA && previous.readyState >= HAVE_FUTURE_DATA || state.paused && previous.paused)
       && Math.abs(state.position - (previous.position + (previous.paused ? 0 : (now - previousAt) / 1000 * previous.rate))) > (this.media.seekTolerance ?? 0.35)) {

@@ -1316,7 +1316,7 @@ export const ja = {
   "connection.noRoomLinks": "ピア接続はまだありません。ルームの操作にはサイトとのシグナリングを使います。",
   "connection.roomLinkLegend": "実線は確認済みのピア接続、破線は確立中の接続です。",
   "connection.noScreenPath": "この共有には映像の配信経路がありません。",
-  "connection.pathLegend": "実線：準備完了。動く破線：接続または切り替え中。静止した破線：ローカル表示。",
+  "connection.pathLegend": "実線は準備ができた経路、長い破線は確立中または切り替え中の経路、短い破線はローカル表示です。",
   "connection.loading": "接続の詳細を読み込み中…",
   "connection.unavailable": "接続の詳細を一時的に利用できません。",
   "host.details.show": "接続の詳細を表示",

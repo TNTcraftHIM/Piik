@@ -31,7 +31,6 @@ export function ChannelConnectionReport({ state, roomId, sessionId, topology, me
   const { t } = useCopy();
   const graph = topology ? channelConnectionGraph(state, roomId, sessionId, topology, t) : null;
   const rows = channelConnectionRows(state, sessionId, topology, metrics, t);
-  const displayOnly = hasSelectedLocalDisplay(topology, sessionId);
   return <div className="c3-connection-report">
     {!!graph?.endpointGroups.length && <details className="c3-connection-identities c3-settings-details">
       <summary>{t("connection.samePersonEndpoints")}</summary>
@@ -43,7 +42,8 @@ export function ChannelConnectionReport({ state, roomId, sessionId, topology, me
     {graph && <RouteGraph {...graph} label={topology?.screen ? undefined : t("connection.room")}
       emptyLabel={t(topology?.screen ? "connection.noScreenPath" : "connection.noRoomLinks")} />}
     {!!graph?.edges.length && <p className="c3-connection-note">{t(topology?.screen ? "connection.pathLegend" : "connection.roomLinkLegend")}</p>}
-    {displayOnly && <p className="c3-connection-note">{t("connection.localDisplayHint")}</p>}
+    {rows.some(row => row.selectedDisplayReceiver === sessionId)
+      && <p className="c3-connection-note">{t("connection.localDisplayHint")}</p>}
     {metrics.some(sample => sample.ownerSessionId !== sessionId && sample.media === "video")
       && <p className="c3-connection-note">{t("connection.appMetricScope")}</p>}
     <ConnectionDetails rows={rows} />

@@ -46,7 +46,8 @@ site, not the entry for this test version.
    archive and open `piik-app.exe`; on Android, install the supplied APK and
    open Piik. Keep the desktop package's files together.
 2. On Windows the launcher opens in the Piik window by default. You can also use the system browser.
-   Choose a mode below and select **Open Piik**. Your first visit opens the room overview. Select the Piik mark to return to it later.
+   Under **Start Piik on this device**, select **Set up and start**. Choose a mode below and select **Open Piik**.
+   Your first visit opens the room overview. Select the Piik mark to return to it later.
 3. If the site lets you create rooms, select **Create your first room** on an empty site. You can rename **Living room**. If the form offers a choice, select **Public** or **Private**. Check the hosting note,
    then select **Create room** to enter it. Later, use **Create room** in the
    room list (**Rooms** on a narrow screen) to open the same form.
@@ -65,7 +66,7 @@ site, not the entry for this test version.
   **Existing address** uses [your own HTTPS proxy](#use-an-existing-public-address).
 
 Local invitations use HTTPS. After starting **Local network**, return to the
-App launcher and expand **Local connection details** below **Open Piik** to
+App launcher and expand **Local connection details** below **Continue** to
 read the address and certificate fingerprint. Compare it with the browser's
 certificate before accepting its first warning; see the
 [certificate steps](./troubleshooting.md#local-https-certificate-warning).
@@ -109,8 +110,11 @@ working, while existing access and the room password remain.
 ### Use App with an existing site
 
 1. Keep the 3.0 App running and open your group's **3.0** site.
-2. Select **App → Open App page**. Allow local-network access if your browser
-   asks. Check the site's address on the local page, then select **Allow access**.
+2. Select **App** in the top right. Allow local-network access if your browser asks.
+   If **Open App page** appears, select it to open the local approval page.
+   Check the address and select **Allow access** only for a site you trust.
+   An approved site can host rooms, use local windows and screens, and control the App's webpage player,
+   including reading and forwarding media available after you sign in.
 3. Return to the site. In a lightweight channel, a new room runs in App if connected when you create it, or in the browser page otherwise. In a hosted channel, the server manages the room and keeps it available after you leave. Check the hosting note on the creation form.
 4. In a room, **Start sharing** now also offers the App's supported sources.
 

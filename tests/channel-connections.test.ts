@@ -171,6 +171,10 @@ describe("channel connection presentation", () => {
     const html = renderToStaticMarkup(createElement(ChannelConnectionReport, fixture));
     expect(html).toContain(say("connection.localDisplayHint"));
     expect(html).toContain(`← Nori (App) · ${say("connection.localDisplay")}`);
+    const voiceMetrics = fixture.metrics.filter(sample => sample.media === "audio");
+    const voiceOnly = renderToStaticMarkup(createElement(ChannelConnectionReport, { ...fixture, metrics: voiceMetrics }));
+    expect(voiceOnly).toContain('data-media="audio"');
+    expect(voiceOnly).not.toContain(say("connection.localDisplayHint"));
     fixture.topology.screen!.edges.find(edge => edge.presentation)!.selected = false;
     expect(renderToStaticMarkup(createElement(ChannelConnectionReport, fixture))).not.toContain(say("connection.localDisplayHint"));
   });
@@ -208,6 +212,7 @@ describe("channel connection presentation", () => {
     expect(graph.endpointGroups.map(group => group.userId)).toEqual(["self-user", "friend-user"]);
     expect(graph.nodes.filter(node => node.kind === "endpoint")).toHaveLength(4);
     expect(graph.nodes.find(node => node.id === "friend-app")).toMatchObject({ label: "Kiki", endpointKind: "app" });
+    expect(renderToStaticMarkup(createElement(ChannelConnectionReport, fixture))).not.toContain(say("connection.localDisplayHint"));
     fixture.state.users.find(user => user.id === "friend-user")!.name = "Nori";
     fixture.topology.screen!.edges = fixture.topology.screen!.edges.map(edge => ({ ...edge, presentation: false }));
     const untyped = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);

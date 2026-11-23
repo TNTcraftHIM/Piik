@@ -442,6 +442,8 @@ test('text message reactions use advertised support and Core counted-history non
     expect(reactPackets).toHaveLength(0);
     advertise = true;
     const first = await client.react(1, message.id, 'heart');
+    expect(first.snapshot.messageId).toBe(message.id);
+    expect(first.event?.target.messageId).toBe(message.id);
     expect(first).toMatchObject({ type: 'reaction', nonce: 1, event: { senderUserId: user, reaction: 'heart' },
       snapshot: { type: 'message', messageSeq: 1, revision: 1, counts: { heart: 1 } } });
     expect(process(reactPackets[0])[0].record).toMatchObject({ nonce: 1, event: null, snapshot: { revision: 1, counts: { heart: 1 } } });

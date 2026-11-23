@@ -175,7 +175,7 @@ decision and any persistence of the original send.
 
 ```ts
 const result = await participant.react(confirmed.seq, confirmed.id, 'heart');
-if (result.snapshot?.type === 'message') consumeCounts(result.snapshot.counts);
+consumeCounts(result.snapshot.counts);
 ```
 
 Each call first asks the current room Host for `interaction_ready.reactionIds`.

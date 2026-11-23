@@ -494,6 +494,10 @@ test("a paused aligned viewer observes three idle ticks without writes or UI not
     player.calibrate(0, 0, 0);
     player.update({ timeline: "media", position: 12, rate: 1, paused: true, anchorTime: 0 });
     await vi.advanceTimersByTimeAsync(0);
+    player.update({ timeline: "media", position: 12.1, rate: 1, paused: true, anchorTime: 1 });
+    await player.serialize(async () => {});
+    expect(patch).toHaveBeenCalledExactlyOnceWith({ position: 12.1 });
+    state.position = 12.1;
     patch.mockClear(); changed.mockClear(); read.mockClear();
     await vi.advanceTimersByTimeAsync(3000);
     expect([read.mock.calls.length, patch.mock.calls.length, changed.mock.calls.length]).toEqual([3, 0, 0]);

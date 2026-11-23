@@ -6,9 +6,10 @@ import { surfaceViewport } from "../../ui/window-appearance";
 // menu beside its anchor, within the document displaying it.
 export function useAnchoredPopover(
   trigger: RefObject<HTMLElement | null>, panel: RefObject<HTMLElement | null>,
-  { side = "below", align = "end", maxHeight = Infinity, preferredHeight, minVisibleHeight = Infinity, enabled = true }: {
+  { side = "below", align = "end", maxHeight = Infinity, preferredHeight, minVisibleHeight = Infinity, enabled = true,
+    closeWhenAnchorClipped = false }: {
     side?: "above" | "below"; align?: "start" | "end" | "center";
-    maxHeight?: number; preferredHeight?: number; minVisibleHeight?: number; enabled?: boolean;
+    maxHeight?: number; preferredHeight?: number; minVisibleHeight?: number; enabled?: boolean; closeWhenAnchorClipped?: boolean;
   } = {},
 ) {
   const ownerDocument = useSurfaceDocument();
@@ -37,7 +38,7 @@ export function useAnchoredPopover(
         || rect.right < bounds.left || rect.left > bounds.right;
       // A keyboard can cover the anchor while its popover still owns input.
       // Keep that editing surface placed in view; a removed trigger still closes it.
-      if (!anchor.getClientRects().length || (anchorOutside && !menu.contains(menu.ownerDocument.activeElement))) {
+      if (!anchor.getClientRects().length || (anchorOutside && (closeWhenAnchorClipped || !menu.contains(menu.ownerDocument.activeElement)))) {
         menu.hidePopover();
         return;
       }
@@ -66,13 +67,21 @@ export function useAnchoredPopover(
     };
     reposition.current = schedule;
     const observer = new ResizeObserver(schedule);
+    // The trigger can leave a scrollport while it is still inside the viewport.
+    const visibility = closeWhenAnchorClipped ? new view.IntersectionObserver(entries => {
+      if (!entries.at(-1)?.isIntersecting && menu.matches(":popover-open")) menu.hidePopover();
+    }) : null;
     const toggled = () => {
       observer.disconnect();
+      visibility?.disconnect();
       view.cancelAnimationFrame(frame);
       if (!menu.matches(":popover-open")) return;
       place(); observer.observe(menu);
       const anchor = trigger.current;
-      if (anchor) observer.observe(anchor);
+      if (anchor) {
+        observer.observe(anchor);
+        visibility?.observe(anchor);
+      }
       const parentPopover = anchor?.closest("[popover]");
       if (parentPopover) observer.observe(parentPopover);
     };
@@ -87,6 +96,7 @@ export function useAnchoredPopover(
     return () => {
       reposition.current = null;
       observer.disconnect();
+      visibility?.disconnect();
       view.cancelAnimationFrame(frame);
       menu.removeEventListener("beforetoggle", schedule);
       menu.removeEventListener("toggle", toggled);
@@ -95,5 +105,5 @@ export function useAnchoredPopover(
       viewport?.removeEventListener("resize", schedule);
       viewport?.removeEventListener("scroll", schedule);
     };
-  }, [trigger, panel, side, align, maxHeight, preferredHeight, minVisibleHeight, enabled, ownerDocument]);
+  }, [trigger, panel, side, align, maxHeight, preferredHeight, minVisibleHeight, enabled, closeWhenAnchorClipped, ownerDocument]);
 }

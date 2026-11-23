@@ -120,9 +120,9 @@ export const RouteGraph = memo(function RouteGraph({ nodes, rootId, edges, selec
     const x = dx / length, y = dy / length;
     return `M ${first.x + from * x} ${first.y + from * y} L ${second.x - to * x} ${second.y - to * y}`;
   };
-  // Only an explicit SFU node and its selected SFU edges use the existing rail.
+  // The solid rail only joins media paths that are ready.
   const rails = new Map(nodes.filter(node => node.kind === "sfu").flatMap(node => {
-    const children = edges.filter(edge => edge.from === node.id && edge.selected && edge.route === "sfu" && points.has(edge.to));
+    const children = edges.filter(edge => edge.from === node.id && edge.selected && edge.ready && edge.route === "sfu" && points.has(edge.to));
     if (undirected || outline || children.length < 2) return [];
     const point = points.get(node.id)!;
     return [[node.id, { x: point.x + fittedGap * .45, edges: children,
