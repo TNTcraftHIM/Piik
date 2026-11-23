@@ -266,9 +266,12 @@ export function createResourceWatchMedia(source: { resourceId: string; format: W
   return new HTMLVideoMedia({ resourceId: source.resourceId, read, hlsDeadlineOwner }, source.format, timeline);
 }
 
+/** Response budget for an individual local-player probe or iframe command. */
+export const WATCH_MEDIA_RESPONSE_MS = 5_000;
+
 async function detectWatchFormat(url: string, signal: AbortSignal): Promise<WatchFormat | "unknown"> {
   const timeout = new AbortController();
-  const timer = setTimeout(() => timeout.abort(), 5000);
+  const timer = setTimeout(() => timeout.abort(), WATCH_MEDIA_RESPONSE_MS);
   try {
     const response = await fetch(url, { signal: AbortSignal.any([signal, timeout.signal]) });
     const reader = response.body?.getReader();
@@ -290,7 +293,7 @@ async function detectWatchFormat(url: string, signal: AbortSignal): Promise<Watc
 
 /** Native HLS has no cross-player date API: an explicit ended media playlist proves VOD. */
 async function requireNativeHlsVod(url: string, signal: AbortSignal): Promise<void> {
-  const reading = AbortSignal.any([signal, AbortSignal.timeout(5000)]);
+  const reading = AbortSignal.any([signal, AbortSignal.timeout(WATCH_MEDIA_RESPONSE_MS)]);
   const response = await fetch(url, { signal: reading });
   const reader = response.body?.getReader();
   const limit = 1024 * 1024, bytes = new Uint8Array(limit);

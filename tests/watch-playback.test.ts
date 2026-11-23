@@ -503,3 +503,23 @@ test("a paused aligned viewer observes three idle ticks without writes or UI not
     expect([read.mock.calls.length, patch.mock.calls.length, changed.mock.calls.length]).toEqual([3, 0, 0]);
   } finally { player.close(); }
 });
+
+test("a persistent decoder failure publishes one room change until the player retires", async () => {
+  vi.useFakeTimers();
+  const video = new Video(), changed = vi.fn();
+  vi.stubGlobal("document", { createElement: () => video });
+  const player = new WatchPlayer("room", false, new HTMLVideoMedia("https://media.test/file.mp4", "file"), changed);
+  try {
+    video.readyState = 4;
+    player.calibrate(1000, 0, 0);
+    player.update({ timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 });
+    await player.ready();
+    changed.mockClear();
+    Object.assign(video, { error: { code: 3 } });
+    video.dispatchEvent(new Event("error"));
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(player.error).toBe("watch_media_decode_failed");
+    expect(changed).toHaveBeenCalledTimes(1);
+  } finally { player.close(); }
+  expect(vi.getTimerCount()).toBe(0);
+});

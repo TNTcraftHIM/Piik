@@ -118,6 +118,8 @@ export function CaptureSourcePicker({
   const activeTab = tabs.includes(preferredTab) && tabAvailable(preferredTab)
     ? preferredTab : tabs.find(tabAvailable) ?? tabs[0];
   const nativeTab = activeTab === "window" || activeTab === "display" || activeTab === "picker";
+  const retryNativeTab = nativeSources.kind === "unavailable" &&
+    (requestedTab === "window" || requestedTab === "display" || requestedTab === "picker");
   useEffect(() => { bodyRef.current?.scrollTo({ top: 0 }); }, [activeTab]);
   const browserCapture = activeTab === "browser";
   const cameraSources = useCameraSources(activeTab === "camera" && !!onCamera, activeCameraVideo, loadCameras);
@@ -205,7 +207,7 @@ export function CaptureSourcePicker({
             <span className="lr-source-picker-copy">
               <strong>{t("host.sourcePicker.title")}</strong>
             </span>
-          {activeTab === "camera" || nativeSources.kind !== "browser" ? <Btn
+          {activeTab === "camera" || nativeTab || retryNativeTab ? <Btn
             icon="refresh" size="dense" className="lr-source-picker-refresh" title={{ text: refreshLabel }}
             disabled={refreshing} busy={refreshing} onClick={activeTab === "camera" ? cameraSources.refresh : onRefresh}
             hint="hint-refresh-sources" hintTone={refreshing ? "busy" : undefined}

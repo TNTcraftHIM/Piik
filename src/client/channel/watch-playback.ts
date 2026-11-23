@@ -93,7 +93,9 @@ export class WatchPlayer {
   }
   private failMedia(error?: unknown): void {
     if (this.retired) return;
-    this.error = mediaFailure(error);
+    const failure = mediaFailure(error);
+    if (this.failure === failure) return;
+    this.error = failure;
     this.changed();
   }
   private listening?: Pick<HTMLVideoElement, "volume" | "muted">;

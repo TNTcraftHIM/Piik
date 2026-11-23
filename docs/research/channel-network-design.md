@@ -325,8 +325,12 @@ resuming forwarding reuses that resource. Ending the activity or closing its
 provider page retires both. Original-page playback remains a separate explicit
 choice when a source cannot be prepared in Piik.
 
-Supported YouTube video links can use the official embedded player in the shared
-Web UI. A visible candidate must play before the sharer confirms it; its existing
+The shared Web UI can use the official embedded player for supported YouTube links
+and single public on-demand videos on peertube.tv. Each participant checks PeerTube's
+public video metadata before opening the player. The room carries its canonical embed
+URL in the existing website source. Older Web clients can show the activity and offer
+their existing App webpage workflow.
+A visible candidate must play before the sharer confirms it. Its existing
 player then moves into the stage. Room authority confirms the activity before
 presentation completes, so a later display failure does not restore an earlier
 activity. Personal volume and source access remain with each player's platform

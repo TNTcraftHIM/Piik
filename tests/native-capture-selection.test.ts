@@ -230,6 +230,25 @@ describe("native capture source selection", () => {
     expect(html).not.toMatch(/class="lr-source-picker-close"[^>]*disabled=""/);
   });
 
+  it("shows source refresh on its own tab and retains retry after native sources disappear", () => {
+    const props = {
+      onBrowser: () => {}, onCamera: () => {}, onNative: () => {}, onExternalInput: () => {},
+      onPreview: async () => null, onRefresh: () => {}, onCancel: () => {},
+    };
+    const nativeSources = { kind: "failed" } as const;
+    for (const initialTab of ["browser", "external"] as const) {
+      expect(renderToStaticMarkup(createElement(CaptureSourcePicker, { ...props, nativeSources, initialTab })))
+        .not.toContain("lr-source-picker-refresh");
+    }
+    for (const initialTab of ["window", "display", "camera"] as const) {
+      expect(renderToStaticMarkup(createElement(CaptureSourcePicker, { ...props, nativeSources, initialTab })))
+        .toContain("lr-source-picker-refresh");
+    }
+    expect(renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      ...props, nativeSources: { kind: "unavailable" }, initialTab: "window",
+    }))).toContain("lr-source-picker-refresh");
+  });
+
   it.each([false, true])("keeps system audio independent of application exclusion (%s)", processAudioExclusion => {
     setCopy({ lang: "en" });
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {

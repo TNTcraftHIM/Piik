@@ -1,6 +1,3 @@
-import type { WatchSource } from "./protocol";
-import type { WatchPlayer } from "./watch-playback";
-
 /** Only a single, explicitly selected video is a portable website source. */
 export function youtubeVideoId(raw: string): string | null {
   try {
@@ -35,25 +32,9 @@ export function youtubeStartSeconds(raw: string): number | undefined {
 }
 
 export function youtubeEmbedURL(id: string): string { return `https://www.youtube.com/embed/${id}`; }
-export function originalWatchURL(source: { kind: string; url: string }): string {
-  const id = youtubeSourceId(source);
-  return id ? `https://www.youtube.com/watch?v=${id}` : source.url;
-}
-
-/** Prepared players must retain their browsing context when moving into the stage. */
-export function canMoveYouTubePlayer(): boolean {
-  return typeof document !== "undefined" && "moveBefore" in document.documentElement;
-}
 
 /** A Native-selected /watch page does not establish its selected video's identity. */
 export function youtubeSourceId(source: { kind: string; url: string }): string | null {
   const id = source.kind === "website" ? youtubeVideoId(source.url) : null;
   return id && source.url === youtubeEmbedURL(id) ? id : null;
-}
-
-export function canWatchInBrowser(source: WatchSource, current?: Pick<WatchPlayer, "presentation" | "mode">): boolean {
-  if (source.kind === "media" || source.mediaUrl) return true;
-  if (!youtubeSourceId(source)) return false;
-  const replacingPage = current?.presentation.kind === "external" && current.mode === "direct";
-  return !replacingPage || canMoveYouTubePlayer();
 }

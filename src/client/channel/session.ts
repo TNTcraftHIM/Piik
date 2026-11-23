@@ -1,7 +1,9 @@
 import { RoomCreationInterrupted } from "./room-creation";
 import { YouTubeMedia } from "./watch-youtube-media";
+import { PeerTubeMedia } from "./watch-peertube-media";
+import { canMoveWatchEmbed, canWatchInBrowser, originalWatchURL, sharedWatchEmbed, watchEmbed } from "./watch-embed-source";
 import { PageSuppliedMedia, preparePageSuppliedWatchMedia, preparePortableWatchMedia, observeWatchSources, directForwardMediaURL, type WatchMediaSources } from "./watch-page-media";
-import { canMoveYouTubePlayer, canWatchInBrowser, youtubeVideoId, youtubeStartSeconds, youtubeSourceId, originalWatchURL } from "./watch-youtube-source";
+import { youtubeStartSeconds } from "./watch-youtube-source";
 import { indexedMediaSelection } from "./watch-indexed-source";
 import { WatchBytes } from "./watch-bytes";
 import { directWatchFormat } from "../../shared/watch-format";
@@ -103,7 +105,7 @@ interface SourceSelection {
   watchCandidate?: { player: WatchPlayer; stopping: boolean };
   browserCaptureGranted?: boolean;
   page?: AppPage;
-  embed?: YouTubeMedia;
+  embed?: WatchMedia & { readonly sourceURL: string };
   watchSources?: { candidateId: string } & WatchMediaSources;
   discovery?: ReturnType<typeof observeWatchSources>;
 }
@@ -117,7 +119,7 @@ interface ScreenShare {
   codec?: BrowserVideoCodecPreference;
   volume: { level: number; muted: boolean };
   microphone: CommentaryInput;
-  requestedMicrophone?: SourceMicrophoneConfiguration;
+  requestedMicrophone?: { settings: SourceMicrophoneConfiguration; started?: Promise<void> };
   microphoneChange?: Promise<void>;
   audioChange?: Promise<void>;
   requestedProfile?: QualityProfile;
@@ -403,6 +405,7 @@ export class ChannelSession {
     const popout = this.conversationPopout;
     const foreground = !document.hidden || (popout?.roomId === roomId && !popout.document.hidden && popout.document.hasFocus());
     if (event.payload.kind === "chat") {
+      if (event.messageSeq !== undefined && event.messageSeq <= (this.view.readByRoom[roomId] ?? 0)) return;
       if (!foreground && event.sender.peerId !== self) this.feedbackAudio.play("message");
       return;
     }
@@ -2594,11 +2597,12 @@ export class ChannelSession {
   }
   watchEmbed = (roomId: string): WatchMedia | undefined => this.sourceSelections.get(roomId)?.embed;
   prepareWatchEmbed = (roomId: string, rawURL: string, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
-    if (!canMoveYouTubePlayer()) throw new Error("watch_media_unsupported");
-    const id = youtubeVideoId(rawURL);
-    if (!id) throw new Error("invalid_watch_url");
+    if (!canMoveWatchEmbed()) throw new Error("watch_media_unsupported");
+    const embed = watchEmbed(rawURL);
+    if (!embed) throw new Error("invalid_watch_url");
     const selection = this.selectSource(roomId);
-    selection.embed = new YouTubeMedia(id, youtubeStartSeconds(rawURL));
+    selection.embed = embed.provider === "youtube"
+      ? new YouTubeMedia(embed.id, youtubeStartSeconds(rawURL)) : new PeerTubeMedia(embed.id);
     this.patch({});
   }, reportError);
   confirmWatchEmbed = (roomId: string, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
@@ -2940,10 +2944,11 @@ export class ChannelSession {
       await this.joinWatchMedia(id, new HTMLVideoMedia(url, activity.source.kind === "media" ? directWatchFormat(new URL(url)) : undefined, activity.playback.timeline));
       return;
     }
-    const embed = youtubeSourceId(activity.source);
+    const embed = sharedWatchEmbed(activity.source);
     if (!embed) throw new Error("watch_page_required");
     if (!canWatchInBrowser(activity.source, current)) throw new Error("watch_media_unsupported");
-    await this.joinWatchMedia(id, new YouTubeMedia(embed, undefined, true));
+    await this.joinWatchMedia(id, embed.provider === "youtube"
+      ? new YouTubeMedia(embed.id, undefined, true) : new PeerTubeMedia(embed.id, true));
   });
   private async joinWatchMedia(id: string, media: WatchMedia, mode: WatchMode = "direct"): Promise<void> {
     const activity = this.view.state?.watchActivities.find(value => value.id === id);
@@ -3177,7 +3182,7 @@ export class ChannelSession {
       : this.app?.sourceMicrophone(publicationId) ?? { enabled: false, deviceId: "", volume: 1 };
     return { ...actual, browser, canDisable: browser ? !!local.audio : !!this.app?.hasSourceAudioControl(publicationId),
       available: browser ? !!local.audio?.commentaryAvailable : !!this.app?.hasSourceAudioControl(publicationId),
-      requested: share.requestedMicrophone ?? actual };
+      requested: share.requestedMicrophone?.settings ?? actual };
   };
 
   sourceMicrophones = (publicationId: string, signal?: AbortSignal) => this.local.get(publicationId)?.kind === "screen"
@@ -3193,15 +3198,15 @@ export class ChannelSession {
     if (share.microphoneChange && !share.requestedMicrophone && !stopping) return share.microphoneChange;
     const next = { ...actual.requested, ...settings };
     if (!Number.isFinite(next.volume) || next.volume < 0 || next.volume > 2) return Promise.reject(new Error("invalid_audio_settings"));
-    share.requestedMicrophone = next;
+    const request: NonNullable<ScreenShare["requestedMicrophone"]> = { settings: next };
+    share.requestedMicrophone = request;
+    const applyNative = ({ enabled, deviceId, volume }: SourceMicrophoneConfiguration) =>
+      app!.setSourceMicrophone(publicationId, owner![0], { enabled, deviceId, volume });
     if (stopping && local?.audio) void local.audio.setMicrophone(false, share.microphone);
     else if (stopping && share.microphoneChange && app) {
-      // The existing Native microphone owner cancels its own pending input on off.
-      void app.setSourceMicrophone(publicationId, owner![0], { enabled: false, deviceId: next.deviceId, volume: next.volume })
-        .catch(error => {
-          if (this.screenShares.get(owner![0]) === share && this.app === app)
-            this.patch({ error: error instanceof Error ? error.message : "microphone_unavailable" });
-        });
+      // Start immediately to cancel Native preparation. The loop awaits this same request.
+      request.started = applyNative(next);
+      void request.started.catch(() => {});
     }
     this.patch({});
     if (share.microphoneChange) return share.microphoneChange;
@@ -3209,8 +3214,9 @@ export class ChannelSession {
       && (local ? this.local.get(publicationId) === local : this.app === app && !!app?.screens.has(publicationId));
     share.microphoneChange = this.action(`source-microphone:${publicationId}`, async () => {
       do {
-        const wanted = share.requestedMicrophone;
-        if (!wanted) throw new DOMException("Capture cancelled", "AbortError");
+        const requested = share.requestedMicrophone;
+        if (!requested) throw new DOMException("Capture cancelled", "AbortError");
+        const wanted = requested.settings;
         try {
           if (local?.kind === "screen" && local.audio) {
             const input = { deviceId: wanted.deviceId, volume: wanted.volume,
@@ -3224,17 +3230,15 @@ export class ChannelSession {
             if (!current()) throw new DOMException("Capture cancelled", "AbortError");
             share.microphone = input;
           } else {
-            await app!.setSourceMicrophone(publicationId, owner![0], {
-              enabled: wanted.enabled, deviceId: wanted.deviceId, volume: wanted.volume,
-            });
+            await (requested.started ?? applyNative(wanted));
             if (!current()) throw new DOMException("Capture cancelled", "AbortError");
           }
         } catch (error) {
-          if (current() && share.requestedMicrophone && wanted !== share.requestedMicrophone) continue;
+          if (current() && share.requestedMicrophone && requested !== share.requestedMicrophone) continue;
           throw error;
         }
         this.patch({});
-        if (wanted === share.requestedMicrophone) return;
+        if (requested === share.requestedMicrophone) return;
       } while (current());
       throw new DOMException("Capture cancelled", "AbortError");
     }).finally(() => { share.microphoneChange = undefined; share.requestedMicrophone = undefined; this.patch({}); });

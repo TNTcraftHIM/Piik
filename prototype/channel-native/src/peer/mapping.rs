@@ -6,6 +6,7 @@ use portmapper::Client;
 use std::{
     net::{IpAddr, SocketAddrV4},
     num::NonZeroU16,
+    sync::{Arc, OnceLock},
 };
 use str0m::{net::Protocol, Candidate, CandidateKind};
 use tokio::{
@@ -14,7 +15,7 @@ use tokio::{
 };
 
 pub(super) struct Mapping {
-    client: Client,
+    client: Arc<OnceLock<Client>>,
     candidates: mpsc::Sender<Candidate>,
     watcher: JoinHandle<()>,
 }
@@ -45,14 +46,15 @@ impl Mapping {
         candidates
             .try_send(base)
             .expect("new mapping candidate queue is empty");
-        let client = Client::default();
-        let worker = client.clone();
+        let client = Arc::new(OnceLock::new());
+        let worker = Arc::clone(&client);
         let watcher = tokio::spawn(async move {
             let Some(base) = select_base(lookup, pending).await else {
                 return;
             };
             let port =
                 NonZeroU16::new(base.addr().port()).expect("eligible host candidate has a port");
+            let worker = worker.get_or_init(Client::default);
             let addresses = worker.watch_external_address();
             if let Ok(Ok(probe)) = worker.probe().await {
                 rtc_pair(
@@ -81,8 +83,10 @@ impl Mapping {
     pub(super) async fn close(&mut self) {
         self.cancel();
         let _ = (&mut self.watcher).await;
-        // The published client exposes best-effort deactivation, not a release ack.
-        self.client.deactivate();
+        if let Some(client) = self.client.get() {
+            // The SDK deactivates the mapping on a best-effort basis.
+            client.deactivate();
+        }
     }
 }
 
@@ -152,6 +156,25 @@ mod tests {
     use uuid::Uuid;
 
     #[tokio::test]
+    async fn unavailable_gateway_does_not_keep_a_mapping_service() -> Result<()> {
+        let socket = std::net::UdpSocket::bind("127.0.0.1:0")?;
+        let base = Candidate::host(socket.local_addr()?, "udp")?;
+        let runtime = Runtime::new(None);
+        let (transport, _events) = endpoint(&runtime, Uuid::new_v4(), Some(socket)).await?;
+        let tasks = tokio::runtime::Handle::current().metrics();
+        let before = tasks.num_alive_tasks();
+        let mut mapping =
+            Mapping::with_lookup(base, transport.clone(), tokio::spawn(async { None }));
+        (&mut mapping.watcher).await?;
+        ensure!(mapping.candidates.is_closed());
+        ensure!(tasks.num_alive_tasks() == before);
+        drop(mapping);
+        transport.close().await?;
+        runtime.close().await;
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn blocked_file_detach_retires_only_its_gateway_publisher() -> Result<()> {
         let (mut driver, mut events, _commands, _stop) = crate::peer::tests::driver();
         let id = Uuid::new_v4();
@@ -180,7 +203,7 @@ mod tests {
         let (candidates, _pending) = mpsc::channel(1);
         let base = Candidate::host("127.0.0.1:41002".parse()?, "udp")?;
         driver.pairs.get_mut(&id).unwrap().mapping = Some(Mapping {
-            client: Client::default(),
+            client: Arc::new(OnceLock::from(Client::default())),
             candidates,
             watcher: tokio::spawn(forward(base, addresses, retired.clone())),
         });
@@ -279,6 +302,7 @@ mod tests {
         waiting.await?;
         mapping.close().await;
         ensure!(mapping.watcher.is_finished() && mapping.candidates.is_closed());
+        ensure!(mapping.client.get().is_none());
         transport.close().await?;
         runtime.close().await;
         while results.try_recv().is_ok() {}
@@ -288,6 +312,7 @@ mod tests {
         );
         release.send(())?;
         complete.await?;
+        ensure!(mapping.client.get().is_none());
         ensure!(
             results.recv().await.is_none(),
             "late lookup published after retirement"

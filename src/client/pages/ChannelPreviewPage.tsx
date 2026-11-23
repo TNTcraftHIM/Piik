@@ -1,4 +1,4 @@
-import { canWatchInBrowser } from "../channel/watch-youtube-source";
+import { canWatchInBrowser } from "../channel/watch-embed-source";
 import { roomAvailabilityGroups, useRoomOrder } from "../channel/room-order";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { HeaderControls, LedStrip } from "../components/living/Header";

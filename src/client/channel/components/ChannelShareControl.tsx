@@ -1,5 +1,5 @@
 import { WatchEmbedPreview } from "./WatchEmbedPreview";
-import { canMoveYouTubePlayer, youtubeVideoId } from "../watch-youtube-source";
+import { canMoveWatchEmbed, watchEmbed } from "../watch-embed-source";
 import { directWatchFormat } from "../../../shared/watch-format";
 import { WatchIndexedTrackPicker, WatchMpdSourcePicker } from "./WatchIndexedTrackPicker";
 import { indexedMediaSelection } from "../watch-indexed-source";
@@ -378,12 +378,12 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   const { error, run } = useSettingsAction();
   const page = channel.watchPage(roomId, activityId);
   const embed = !activityId ? channel.watchEmbed(roomId) : undefined;
-  const youtube = canMoveYouTubePlayer() && !!youtubeVideoId(url.trim());
+  const portableEmbed = canMoveWatchEmbed() && !!watchEmbed(url.trim());
   const mediaURL = URL.canParse(url.trim()) ? new URL(url.trim()) : null;
   const validURL = mediaURL !== null && watchSourceSchema.safeParse({ kind: "media", url: mediaURL.href }).success;
   const directFile = validURL && directWatchFormat(mediaURL) !== undefined;
   const appPageAvailable = channel.appConnected && channel.pagePlayer;
-  const openPage = appPageAvailable && !youtube && !directFile;
+  const openPage = appPageAvailable && !portableEmbed && !directFile;
   const pageSources = !activityId ? page?.watchSources : undefined;
   const allChoicesOriginFirst = !!pageSources?.choices.length && pageSources.choices.every(directForwardMediaURL);
   const pageSourcesHeading = useRef<HTMLHeadingElement>(null);
@@ -474,17 +474,17 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
     </div> : activityId ? <div className="c3-settings-panels c3-external-input"><p role="status">{busy ? t("watch.openingPage") : t("watch.pageUnavailable")}</p>
       {busy && <BrandLoader />}<Btn icon="x" quiet title="common.cancel" cap="common.cancel" onClick={close} /></div> : <form className="c3-settings-panels c3-external-input" onSubmit={event => {
       event.preventDefault();
-      if (!busy && validURL) void run(() => youtube ? channel.prepareWatchEmbed(roomId, url.trim(), false)
-        : openPage ? channel.prepareWatchPage(roomId, url.trim(), undefined, false) : channel.startWatch(roomId, url.trim(), false), youtube || openPage ? undefined : onClose);
+      if (!busy && validURL) void run(() => portableEmbed ? channel.prepareWatchEmbed(roomId, url.trim(), false)
+        : openPage ? channel.prepareWatchPage(roomId, url.trim(), undefined, false) : channel.startWatch(roomId, url.trim(), false), portableEmbed || openPage ? undefined : onClose);
     }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>
-      <p>{t(youtube ? "watch.embedHelp" : openPage ? "watch.pageHelp" : "watch.urlHelp")}</p>
+      <p>{t(portableEmbed ? "watch.embedHelp" : openPage ? "watch.pageHelp" : "watch.urlHelp")}</p>
       <label className="c3-external-input-field">{t("watch.url")}<span className="lr-input">
         <input type="url" required maxLength={MAX_WATCH_URL_LENGTH} value={url} placeholder="https://example.com/video.mp4" disabled={busy}
           onChange={event => setURL(event.target.value)} autoComplete="off" />
       </span></label>
-      {!channel.pagePlayer && !youtube && !directFile && <p>{t(channel.appConnected ? "watch.pageUnsupported" : "watch.connectApp")}</p>}
-      <div className="c3-share-title-actions"><Btn type="submit" icon={openPage ? "globe" : "play"} tone="primary" title={youtube ? "watch.start" : openPage ? "watch.openPage" : "watch.directStart"} cap={youtube ? "watch.start" : openPage ? "watch.openPage" : "watch.directStart"} busy={busy} disabled={busy || !validURL} />
-        {appPageAvailable && !youtube && <Btn icon={openPage ? "play" : "globe"} quiet
+      {!channel.pagePlayer && !portableEmbed && !directFile && <p>{t(channel.appConnected ? "watch.pageUnsupported" : "watch.connectApp")}</p>}
+      <div className="c3-share-title-actions"><Btn type="submit" icon={openPage ? "globe" : "play"} tone="primary" title={portableEmbed ? "watch.start" : openPage ? "watch.openPage" : "watch.directStart"} cap={portableEmbed ? "watch.start" : openPage ? "watch.openPage" : "watch.directStart"} busy={busy} disabled={busy || !validURL} />
+        {appPageAvailable && !portableEmbed && <Btn icon={openPage ? "play" : "globe"} quiet
           title={openPage ? "watch.directStart" : "watch.openPage"} cap={openPage ? "watch.directStart" : "watch.openPage"} disabled={busy || !validURL}
           onClick={() => { if (openPage) void run(() => channel.startWatch(roomId, url.trim(), false), onClose);
             else void run(() => channel.prepareWatchPage(roomId, url.trim(), undefined, false)); }} />}
