@@ -923,7 +923,7 @@ async function lifecycle(roomId) {
 
   await browser(0, "set", "viewport", "390", "844");
   await evaluate(0, `(async () => {
-    (await import('/src/client/ui/copy.ts')).setCopy({lang:'zh',vis:false});
+    (await import('/src/client/ui/copy.ts')).setCopy({lang:'zh'});
     (await import('/src/client/ui/theme.ts')).applyTheme('light');
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   })()`);
@@ -1005,9 +1005,9 @@ async function identityControls(serverRoom) {
   await browser(0, "screenshot", join(output, "identity-desktop.png"));
   await browser(0, "press", "Escape");
   await browser(0, "set", "viewport", "390", "844");
-  for (const [lang, theme, vis] of [["en", "light", false], ["zh", "dark", false], ["en", "dark", true]]) {
+  for (const [lang, theme] of [["en", "light"], ["zh", "dark"], ["en", "dark"]]) {
     await evaluate(0, `(async () => {
-      (await import('/src/client/ui/copy.ts')).setCopy({lang:${JSON.stringify(lang)},vis:${vis}});
+      (await import('/src/client/ui/copy.ts')).setCopy({lang:${JSON.stringify(lang)}});
       (await import('/src/client/ui/theme.ts')).applyTheme(${JSON.stringify(theme)});
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); return true;
     })()`);
@@ -1017,10 +1017,10 @@ async function identityControls(serverRoom) {
     const bounds = await evaluate(0, `(() => { const form = document.querySelector('.c3-room-form').getBoundingClientRect();
       return {left:form.left, right:form.right, width:innerWidth, scroll:document.documentElement.scrollWidth}; })()`);
     assert(bounds.left >= 0 && bounds.right <= bounds.width && bounds.scroll <= bounds.width, JSON.stringify(bounds));
-    await browser(0, "screenshot", join(output, `identity-${lang}-${theme}-${vis ? "visual" : "text"}.png`));
+    await browser(0, "screenshot", join(output, `identity-${lang}-${theme}.png`));
     await browser(0, "press", "Escape");
   }
-  await evaluate(0, `(async () => { (await import('/src/client/ui/copy.ts')).setCopy({lang:'en',vis:false}); return true; })()`);
+  await evaluate(0, `(async () => { (await import('/src/client/ui/copy.ts')).setCopy({lang:'en'}); return true; })()`);
   await roomSettings(0, room.id);
   await browser(0, "click", ".c3-identity-appearance > summary");
   await browser(0, "find", "role", "button", "click", "--name", "Remove", "--exact");
@@ -1611,7 +1611,7 @@ try {
   await browser(layoutIndex, "set", "viewport", "390", "844");
   for (const lang of ["zh", "en"]) for (const theme of ["light", "dark"]) {
     await evaluate(layoutIndex, `(async () => {
-      (await import('/src/client/ui/copy.ts')).setCopy({lang:${JSON.stringify(lang)},vis:false});
+      (await import('/src/client/ui/copy.ts')).setCopy({lang:${JSON.stringify(lang)}});
       (await import('/src/client/ui/theme.ts')).applyTheme(${JSON.stringify(theme)});
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       return true;

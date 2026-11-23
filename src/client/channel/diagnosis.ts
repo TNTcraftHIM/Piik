@@ -1,7 +1,5 @@
 import type { CopyKey } from "../locales";
 import type { ScreenPlaybackError } from "../media/viewer-playback";
-import type { AttachmentProgress } from "./attachments";
-import type { ChannelRoom } from "./protocol";
 
 const guideSections = {
   troubleshooting: ["troubleshooting", "", ""],
@@ -11,6 +9,7 @@ const guideSections = {
   appConnection: ["troubleshooting", "the-page-cannot-connect-to-app", "网页连接不上-app"],
   appVersion: ["troubleshooting", "app-and-page-versions-are-incompatible", "app-与页面版本不兼容"],
   room: ["troubleshooting", "an-invitation-or-password-is-rejected", "邀请或密码被拒绝"],
+  manageRoom: ["room-tools", "manage-a-room", "管理房间"],
   offline: ["troubleshooting", "chat-or-history-will-not-load", "聊天或历史记录加载不出来"],
   picture: ["troubleshooting", "when-video-will-not-connect", "画面连接不上"],
   capture: ["troubleshooting", "app-windows-or-screens-are-missing", "app-找不到窗口或屏幕"],
@@ -42,8 +41,6 @@ export type AppConnectionState = "idle" | "waking" | "busy" | "approval" | "appr
 type ChannelFact =
   | { area: "app"; state: AppConnectionState }
   | { area: "screen"; paused: boolean; deliveryFailed?: boolean; playbackError?: ScreenPlaybackError }
-  | { area: "room"; room: Pick<ChannelRoom, "available" | "authorized"> }
-  | { area: "attachment"; state: AttachmentProgress["state"] }
   | { area: "error"; code: string | null | undefined };
 
 /** Read the current operation or selected subscription. A peer transport event alone never diagnoses it. */
@@ -62,14 +59,11 @@ export function diagnoseChannelFact(fact: ChannelFact): ChannelDiagnosis | null 
       : fact.deliveryFailed ? "diagnosis.noPicture" : null;
     return message ? { message, next: "screen.retryPicture", topic: "picture" } : null;
   }
-  if (fact.area === "room") {
-    if (fact.room.available) return null; // Admission can still be requested until the owner explicitly refuses it.
-    return { message: fact.room.authorized ? "channel.error.roomHostOffline" : "room.offline.access", topic: "offline" };
-  }
-  if (fact.area === "attachment") return fact.state === "waiting-source"
-    ? { message: "channel.attachment.waitingSource", topic: "attachment" } : null;
 
   switch (fact.code) {
+    case "app_disconnected":
+    case "app_context_changed": return { message: "channel.error.appDisconnected", topic: "appConnection" };
+    case "app_request_timeout": return { message: "native.fail.requestTimeout", topic: "appConnection" };
     case "site_not_approved": return { message: "client.sites.notAllowed", next: "client.sites.allow", topic: "app" };
     case "room_host_offline": return { message: "channel.error.roomHostOffline", topic: "offline" };
     case "room_access_required":

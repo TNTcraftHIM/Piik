@@ -53,7 +53,6 @@ export function independentEgress(selected) {
 // DEV entry, capture replacement, protocol interception or transport mutation.
 function installObserver() {
   localStorage.setItem("piik:ui-lang", "en");
-  localStorage.setItem("piik:ui-mode", "text");
   const seen = [];
   let session;
   const find = () => {

@@ -21,7 +21,6 @@ async function until(label, sample, predicate, timeout = 20_000) {
 function captureProbe(name) {
   return `(() => {
     localStorage.setItem('piik:ui-lang', 'en');
-    localStorage.setItem('piik:ui-mode', 'text');
     const peers = [], sockets = [], captures = [], contexts = [], protocol = [], channels = [], warnings = [], flowStates = [], audioSources = [], qualitySamples = [], restoredVideo = [], trackEvents = [], flowFailures = [], playbackEvents = [];
     const objectIds = new WeakMap();
     const objectId = value => {

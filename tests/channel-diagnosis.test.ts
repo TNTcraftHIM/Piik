@@ -11,9 +11,7 @@ describe("diagnosis using the current operation", () => {
     expect(diagnoseChannelFact({ area: "app", state: "incompatible" })).toMatchObject({ message: "client.connect.incompatible", topic: "appVersion" });
   });
 
-  it("keeps room availability, admission and the selected picture's retry separate", () => {
-    expect(diagnoseChannelFact({ area: "room", room: { available: false, authorized: false } })?.message).toBe("room.offline.access");
-    expect(diagnoseChannelFact({ area: "room", room: { available: true, authorized: false } })).toBeNull();
+  it("keeps admission and the selected picture's retry separate", () => {
     expect(diagnoseChannelFact({ area: "error", code: "room_access_required" })?.topic).toBe("room");
     expect(diagnoseChannelFact({ area: "error", code: "ice_failed" })).toBeNull();
     expect(diagnoseChannelFact({ area: "screen", paused: false, deliveryFailed: true })?.message).toBe("diagnosis.noPicture");
@@ -21,14 +19,12 @@ describe("diagnosis using the current operation", () => {
     expect(diagnoseChannelFact({ area: "screen", paused: false, deliveryFailed: false })).toBeNull();
   });
 
-  it("keeps source permissions, failed reads, attachment waits and incompatible storage tied to their own operations", () => {
+  it("keeps source permissions, failed reads and incompatible storage tied to their own operations", () => {
     expect(diagnoseChannelFact({ area: "error", code: "watch_media_access_denied" })?.message).toBe("watch.mediaAccessDenied");
     for (const code of ["watch_media_timeout", "watch_read_timeout"]) {
       expect(diagnoseChannelFact({ area: "error", code })).toMatchObject({ message: "watch.forward.readTimeout", topic: "webpage" });
     }
     expect(diagnoseChannelFact({ area: "error", code: "capture_targets_failed" })?.topic).toBe("capture");
-    expect(diagnoseChannelFact({ area: "attachment", state: "waiting-source" })?.topic).toBe("attachment");
-    expect(diagnoseChannelFact({ area: "attachment", state: "connecting" })).toBeNull();
     expect(diagnoseChannelFact({ area: "error", code: "unsupported_storage_version" })?.topic).toBe("storage");
     expect(diagnoseChannelFact({ area: "error", code: "unsupported_backup_version" })).toBeNull();
   });

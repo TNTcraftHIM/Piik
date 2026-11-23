@@ -234,6 +234,33 @@ test("writer-confirmed moderation removes messages, quotations and transfers for
   } finally { reader.session.close(); moderator.session.close(); }
 });
 
+test("confirmed clear through the predecessor of the retained page closes earlier history", async () => {
+  const { session, peer } = await setup();
+  try {
+    const rows = Array.from({ length: 50 }, (_, i) => message(i + 2));
+    await peer.history(rows, true);
+    const before = session.getSnapshot().historyByRoom.first;
+    expect(before).toMatchObject({ before: 2, hasMore: true });
+    peer.reply({ type: "clear_history", roomId: "first", throughSeq: 1, requestId: "moderation" },
+      { type: "history_cleared", throughSeq: 1 });
+    expect(session.getSnapshot().messagesByRoom.first.map(row => row.seq)).toEqual(rows.map(row => row.seq));
+    expect(session.getSnapshot().historyByRoom.first.hasMore).toBe(false);
+  } finally { session.close(); }
+});
+
+test("an older page in flight observes the confirmed clear at the retained predecessor", async () => {
+  const { session, peer } = await setup();
+  try {
+    await peer.history(Array.from({ length: 50 }, (_, i) => message(i + 52)), true);
+    const reading = session.loadHistory("first"), request = await peer.next();
+    peer.reply({ type: "clear_history", roomId: "first", throughSeq: 1, requestId: "moderation" },
+      { type: "history_cleared", throughSeq: 1 });
+    peer.page(request, Array.from({ length: 50 }, (_, i) => message(i + 2)), true);
+    await reading;
+    expect(session.getSnapshot().historyByRoom.first).toMatchObject({ before: 2, hasMore: false });
+  } finally { session.close(); }
+});
+
 test("an empty latest history page confirms only the sequence visible when requested", async () => {
   const { session, socket, peer } = await setup();
   try {

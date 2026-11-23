@@ -162,7 +162,10 @@ export async function checkReleaseUpdate(
           headers: source.mirror ? { Accept: "application/json" } :
             { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
         });
-        if (!response.ok) break;
+        if (!response.ok) {
+          controller.abort();
+          break;
+        }
         const data: unknown = await response.json();
         if (!source.mirror || options.release) {
           latest = source.mirror ? parseMirrorReleaseMetadata(data, options.packageTarget) : parseReleaseMetadata(data, options.packageTarget);

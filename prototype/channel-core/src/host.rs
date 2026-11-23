@@ -1662,22 +1662,16 @@ impl RoomHost {
             }
             _ => None,
         };
-        let projection_update = removed_files
+        let update_projection = removed_files
             .as_ref()
-            .is_some_and(|participants| !participants.is_empty())
-            .then(|| {
-                self.room.reconcile_with_pairs(
-                    &authority.endpoints,
-                    authority.now,
-                    &authority.confirmed_pairs,
-                );
-                HostOutput {
-                    binding_id: authority.binding_id,
-                    revision: authority.revision,
-                    projection: self.room.projection(&authority.endpoints),
-                    reply: None,
-                }
-            });
+            .is_some_and(|participants| !participants.is_empty());
+        if update_projection {
+            self.room.reconcile_with_pairs(
+                &authority.endpoints,
+                authority.now,
+                &authority.confirmed_pairs,
+            );
+        }
         let committed = match &mut result {
             Ok(ConversationResult::History(HistoryResult::Reacted(confirmation))) => confirmation
                 .event
@@ -1704,7 +1698,7 @@ impl RoomHost {
         Ok(crate::conversation::ConversationOutcome {
             address,
             result,
-            projection_update,
+            projection_update: update_projection.then(|| self.output(None)),
             removal_recipients: removed_files.map_or_else(Vec::new, |participants| {
                 self.readers_and_file_participants(&participants)
             }),

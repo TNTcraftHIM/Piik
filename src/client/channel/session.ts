@@ -1022,7 +1022,7 @@ export class ChannelSession {
       historyChangesByRoom: { ...this.view.historyChangesByRoom, [roomId]: changes },
       messagesByRoom: { ...this.view.messagesByRoom, [roomId]: messages },
       ...(history && { historyByRoom: { ...this.view.historyByRoom, [roomId]: { ...history,
-        hasMore: history.hasMore && (history.before ?? 0) > clearedThrough,
+        hasMore: history.hasMore && (history.before ?? 0) > clearedThrough + 1,
         before: messages[0]?.seq ?? history.before } } }),
     });
     this.attachments.removeMessages(roomId, removed);
@@ -1102,7 +1102,7 @@ export class ChannelSession {
     const atLatest = latest || (!jumping && (this.view.historyByRoom[roomId]?.atLatest ?? true)
       && messages.at(-1)?.id === current.at(-1)?.id);
     const oldestSeq = result.oldestSeq;
-    const canReadEarlier = !changes?.clearedThrough || (result.before ?? messages[0]?.seq ?? 0) > changes.clearedThrough + 1;
+    const canReadEarlier = !changes?.clearedThrough || (messages[0]?.seq ?? result.before ?? 0) > changes.clearedThrough + 1;
     const hasMore = canReadEarlier && (result.hasMore || (latest && request.clipped === true)
       || oldestSeq !== null && messages.length > 0 && messages[0].seq > oldestSeq);
     this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: messages },

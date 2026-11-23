@@ -10,8 +10,9 @@ import { MAX_RELAY_CAPACITY } from "../protocol";
 import { RoomCreationInterrupted, roomCreationPolicyFor, roomDraft, roomSettings, roomSettingsPatch, type RoomDraft } from "../room-creation";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelAction";
-import { ChannelSettingsDialog, ChannelSettingsTabs, useSettingsAction, type SettingsAction } from "./ChannelSettingsDialog";
+import { ChannelSettingsDialog, ChannelSettingsError, ChannelSettingsTabs, useSettingsAction, type SettingsAction } from "./ChannelSettingsDialog";
 import { ChannelIdentityFields } from "./ChannelIdentity";
+import { ChannelDiagnosisHelp } from "./ChannelDiagnosisHelp";
 import "./channel-room-controls.css";
 import { BackupControls, RoomRestoreResult } from "./BackupControls";
 import { roomRestoreRecovery, type RoomRestoreRecovery } from "../hosting-api";
@@ -227,6 +228,23 @@ function RoomCopyExport({ channel, roomId, includeFiles, disabled, busy, run }: 
   </section>;
 }
 
+function RoomMemberAccess({ channel, roomId, userId, disabled }: {
+  channel: ChannelController; roomId: string; userId: string; disabled: boolean;
+}) {
+  const { t } = useCopy();
+  const { error, run } = useSettingsAction();
+  return <div className="c3-room-member">
+    <div className="c3-room-member-action">
+      <span>{userProfile(channel.state, channel.profiles, userId)?.name ?? t("room.common.user")}</span>
+      <ChannelAction icon="x" quiet iconOnly danger label={t("room.settings.revokeAccess")} hint="hint-close"
+        busy={channel.pending.has(`revoke:${roomId}:${userId}`)} disabled={disabled}
+        onClick={() => { void run(() => channel.revokeRoomAccess(roomId, userId, false)); }} />
+    </div>
+    <ChannelSettingsError error={error} />
+    {error && <ChannelDiagnosisHelp diagnosis={{ topic: "manageRoom" }} />}
+  </div>;
+}
+
 function RoomSettings({ channel, room, onClose }: {
   channel: ChannelController; room: ChannelRoom; onClose(): void;
 }) {
@@ -288,11 +306,8 @@ function RoomSettings({ channel, room, onClose }: {
             }} />
           {room.access === "private" && members.length > 0 && <details className="c3-room-members">
             <summary>{t("room.settings.members")}</summary>
-            {members.map(userId =>
-              <div key={userId}><span>{userProfile(channel.state, channel.profiles, userId)?.name ?? t("room.common.user")}</span>
-                <ChannelAction icon="x" quiet iconOnly danger label={t("room.settings.revokeAccess")} hint="hint-close"
-                  busy={channel.pending.has(`revoke:${room.id}:${userId}`)} disabled={!available || working}
-                  onClick={() => { void run(() => channel.revokeRoomAccess(room.id, userId, false)); }} /></div>)}
+            {members.map(userId => <RoomMemberAccess key={userId}
+              channel={channel} roomId={room.id} userId={userId} disabled={!available || working} />)}
             {membersError && <p role="status">{t("room.settings.profilesFailed")}</p>}
           </details>}
           <section className="c3-room-removal">

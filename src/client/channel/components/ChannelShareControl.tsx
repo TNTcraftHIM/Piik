@@ -21,6 +21,8 @@ import { directForwardMediaURL, type WatchMediaSources } from "../watch-page-med
 import { screenTitle } from "../presentation";
 import { useLayerHistory } from "../../ui/layer-history";
 import { channelErrorPresentation } from "../error-presentation";
+import { diagnoseChannelFact } from "../diagnosis";
+import { ChannelDiagnosisHelp } from "./ChannelDiagnosisHelp";
 import { ChannelSettingsDialog, ChannelSettingsError, useSettingsAction } from "./ChannelSettingsDialog";
 import { ChannelExternalInput } from "./ChannelExternalInput";
 import { ChannelAction } from "./ChannelAction";
@@ -408,16 +410,19 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   }, [!!page, !!pageSources]);
   const committing = !activityId && channel.sourceSelectionCommitting(roomId);
   const busy = committing || channel.pending.has(activityId ? `watch-video:${activityId}` : `screen:${roomId}`);
+  const prepareExistingWatch = () => { void run(() => channel.prepareWatchPage(roomId, initialURL, activityId, false)); };
   useEffect(() => {
-    if (activityId) void run(() => channel.prepareWatchPage(roomId, initialURL, activityId, false));
+    if (activityId) prepareExistingWatch();
   }, [roomId, activityId]);
+  const failure = error ?? pageSources?.error ?? null;
+  const help = diagnoseChannelFact({ area: "error", code: failure });
   const close = () => {
     if (!activityId && channel.sourceSelectionCommitting(roomId)) return;
     if (activityId) channel.cancelWatchPage(activityId);
     else if (busy || page || embed) void channel.cancelScreenSelection(roomId).catch(() => {});
     onClose();
   };
-  return <ChannelSettingsDialog compact className="c3-watch-source-dialog" title={t("watch.start")} error={error ?? pageSources?.error ?? null} onClose={close} closeDisabled={committing}>
+  return <ChannelSettingsDialog compact className="c3-watch-source-dialog" title={t("watch.start")} error={failure} onClose={close} closeDisabled={committing}>
     {embed ? <WatchEmbedPreview media={embed} busy={busy}
       onConfirm={() => { void run(() => channel.confirmWatchEmbed(roomId, false), onClose); }} onCancel={close}
       onOriginalPage={appPageAvailable ? () => { void run(async () => {
@@ -486,7 +491,10 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
         <Btn icon="x" quiet size="compact" title="common.cancel" cap="common.cancel" disabled={committing} onClick={close} />
       </div>
     </div> : activityId ? <div className="c3-settings-panels c3-external-input"><p role="status">{busy ? t("watch.openingPage") : t("watch.pageUnavailable")}</p>
-      {busy && <BrandLoader />}<Btn icon="x" quiet title="common.cancel" cap="common.cancel" onClick={close} /></div> : <form className="c3-settings-panels c3-external-input" onSubmit={event => {
+      <div className="c3-share-title-actions">
+        {busy ? <BrandLoader /> : <Btn icon="refresh" title="common.retry" cap="common.retry" onClick={prepareExistingWatch} />}
+        <Btn icon="x" quiet title="common.cancel" cap="common.cancel" onClick={close} />
+      </div></div> : <form className="c3-settings-panels c3-external-input" onSubmit={event => {
       event.preventDefault();
       if (!busy && validURL) void run(() => portableEmbed ? channel.prepareWatchEmbed(roomId, url.trim(), false)
         : openPage ? channel.prepareWatchPage(roomId, url.trim(), undefined, false) : channel.startWatch(roomId, url.trim(), false), portableEmbed || openPage ? undefined : onClose);
@@ -504,5 +512,6 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
             else void run(() => channel.prepareWatchPage(roomId, url.trim(), undefined, false)); }} />}
         <Btn icon="x" quiet title="common.cancel" cap="common.cancel" disabled={committing} onClick={close} /></div>
     </form>}
+    {help && <ChannelDiagnosisHelp diagnosis={help} />}
   </ChannelSettingsDialog>;
 }
