@@ -349,7 +349,7 @@ function WatchForwardSettings({ channel, activityId, disabled }: { channel: Chan
           {sources.choices.map(choice => <CaptureSourceCard key={choice.id} title={choice.name || new URL(choice.displayURL).hostname} action={t("watch.forward.enableNamed", { name: choice.name || new URL(choice.displayURL).hostname })}
             icon="play" hint="hint-source-picker" disabled={disabled || busy} onSelect={() => forward(choice.id)} />)}
         </div></>}
-        <WatchIndexedTrackPicker choices={sources.indexed} disabled={disabled} busy={busy}
+        <WatchIndexedTrackPicker choices={sources.indexed} onRetry={sources.retryIndexed} disabled={disabled} busy={busy}
           onConfirm={(videoId, audioId) => {
             const video = sources.indexed.find(value => value.candidate.id === videoId)?.inspection;
             const audio = audioId ? sources.indexed.find(value => value.candidate.id === audioId)?.inspection : undefined;
@@ -439,7 +439,7 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
             </div>;
           })}
         </div></>}
-        <WatchIndexedTrackPicker choices={pageSources.indexed} busy={busy} mainPlayback
+        <WatchIndexedTrackPicker choices={pageSources.indexed} onRetry={pageSources.retryIndexed} busy={busy} mainPlayback
           onConfirm={(videoId, audioId) => { void run(() => channel.selectWatchIndexedSource(roomId, videoId, audioId, false), onClose); }} />
         {pageSources.mpd.length > 0 && <WatchMpdSourcePicker choices={pageSources.mpd} busy={busy} mainPlayback
           onInspect={(choiceId, signal) => run(() => channel.inspectWatchMpdSource(roomId, choiceId, signal))}

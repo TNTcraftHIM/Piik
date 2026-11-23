@@ -326,7 +326,7 @@ export function CaptureSourcePicker({
               cameraSources.cancel();
               onCamera?.(id);
             }} /> : <>
-          <div className="lr-source-picker-list">
+          <div className="lr-source-picker-list" data-tooltip-controls>
             {browserCapture ? (
               <button
                 type="button"
@@ -369,7 +369,7 @@ export function CaptureSourcePicker({
           </div>
           </>}
 
-          {activeTab === "external" && onExternalInput && <div className="lr-source-picker-list"><Tooltip kind="hint-source-picker"
+          {activeTab === "external" && onExternalInput && <div className="lr-source-picker-list" data-tooltip-controls><Tooltip kind="hint-source-picker"
             text={t("host.sourcePicker.externalHint")} className="lr-source-option-hint"><button type="button" className="lr-source-option is-action"
             aria-label={t("host.sourcePicker.externalAction")} disabled={selectionDisabled} onClick={onExternalInput}>
             <span className="lr-source-option-icon" aria-hidden="true"><Glyph name="cast" size={23} /></span>

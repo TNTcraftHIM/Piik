@@ -94,7 +94,8 @@ try {
 - `live` delivers new verified room messages. `history(before?)` reads a
   bounded retained page. Use the first message's sequence for the preceding
   page when `hasMore` is true.
-- `confirmed` and a resolved `chat()` carry the Host-confirmed message.
+- `confirmed` reports the Host's receipt for this participant's send, including
+  a retained receipt returned on retry. `chat()` resolves to the same message.
   `deleteOwnMessage()` takes a confirmed message authored by the caller and
   waits for the signed deletion receipt.
 - `react(seq, messageId, reaction)` returns the nonce, confirmed message counts

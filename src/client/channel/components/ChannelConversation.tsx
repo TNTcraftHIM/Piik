@@ -7,7 +7,7 @@ import { useCopy } from "../../ui/copy";
 import { MAX_MESSAGE_CODE_POINTS, type ChannelMessage, type ChannelUser, type ChannelUserSummary } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
 import { ChannelSettingsError } from "./ChannelSettingsDialog";
-import { firstUnreadMessageId, messageAuthorName, messageDateFormats, sameCalendarDay } from "../presentation";
+import { firstUnreadMessageId, messageAuthorName, messageDateFormats, profileAvatar, sameCalendarDay } from "../presentation";
 import { ChannelAttachment } from "./ChannelAttachment";
 import { ChannelMessageContent } from "./ChannelMessageContent";
 import { type AttachmentLimits, type DraftFile, type ChannelAttachments, fileSize } from "../attachments";
@@ -633,7 +633,7 @@ const MessageHistory = memo(function MessageHistory({ roomId, messages, users, p
     const replyName = reply && (reply.archivedAuthorName ?? displayUsers.find(user => user.id === reply.userId)?.name);
     // Only rendered mention marks need the live user directory.
     return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name} authorMessageId={authorMessageId}
-      avatar={(!summary || summary.version === author?.version ? author?.avatar : null) ?? undefined}
+      avatar={(summary ? profileAvatar(summary, author) : author?.avatar) ?? undefined}
       mentionUsers={message.mentions?.length ? displayUsers : undefined} replyName={replyName} selfUserId={selfUserId} unread={newMessages} onMessage={onMessage}
       onReply={onReply}
       onDelete={canModerate || message.userId === selfUserId ? onDelete : undefined}

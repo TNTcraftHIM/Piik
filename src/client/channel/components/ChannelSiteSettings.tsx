@@ -95,14 +95,9 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
           </section>
           <section id={`${id}-backup`} role="tabpanel" aria-labelledby={`${id}-backup-tab`} hidden={task !== "backup"}>
             <h3>{t("channel.siteSettings.siteBackup")}</h3>
-            <BackupControls run={run} kind="domain" busy={backupBusy} disabled={unavailable || busy}
-              onExport={channel.exportDomainBackup} onRestore={async file => {
-                try { await channel.restoreDomainBackup(file); resetDraft(); }
-                catch (error) {
-                  if (error instanceof Error && error.message === "domain_restored_connection_failed") resetDraft();
-                  throw error;
-                }
-              }} />
+            <BackupControls kind="domain" busy={backupBusy} disabled={unavailable || busy}
+              onExport={channel.exportDomainBackup} onRestore={async file => { await channel.restoreDomainBackup(file); }}
+              onRestoreCommitted={resetDraft} />
           </section>
         </div>
       </div>

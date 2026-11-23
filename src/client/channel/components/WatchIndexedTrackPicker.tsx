@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useCopy } from "../../ui/copy";
+import { ChannelAction } from "./ChannelAction";
 import { Btn } from "../../components/living/primitives";
 import { Glyph } from "../../ui/icons";
 import { CaptureSourceCard } from "../../components/living/CaptureSourceCard";
@@ -18,7 +19,8 @@ export function resolveWatchTrack<T extends { id: string }>(choices: readonly T[
 }
 
 /** Only a unique usable track is a default; metadata never guesses a pairing. */
-export function WatchIndexedTrackPicker({ choices, disabled, busy, mainPlayback, onConfirm }: {
+export function WatchIndexedTrackPicker({ choices, disabled, busy, mainPlayback, onConfirm, onRetry }: {
+  onRetry?: () => Promise<void>;
   choices: readonly WatchIndexedChoice[]; disabled?: boolean; busy?: boolean; mainPlayback?: boolean;
   onConfirm(videoId: string, audioId?: string): void;
 }) {
@@ -32,7 +34,7 @@ export function WatchIndexedTrackPicker({ choices, disabled, busy, mainPlayback,
         value?.language && value.language !== "und" ? value.language : undefined,
         value?.channels ? t("watch.forward.channels", { count: String(value.channels) }) : undefined,
         value?.codec, value ? formatMediaTime(value.duration) : undefined].filter(Boolean).join(" · ") };
-  })} disabled={disabled} busy={busy} mainPlayback={mainPlayback} onConfirm={onConfirm} />;
+  })} disabled={disabled} busy={busy} mainPlayback={mainPlayback} onConfirm={onConfirm} onRetry={onRetry} />;
 }
 
 export function WatchMpdSourcePicker({ choices, onInspect, onConfirm, ...props }: {
@@ -77,12 +79,14 @@ function WatchMpdTrackPicker({ choice, onConfirm, ...props }: {
   </section>;
 }
 
-function WatchTrackPicker({ choices, disabled, busy, mainPlayback, onConfirm }: {
+function WatchTrackPicker({ choices, disabled, busy, mainPlayback, onConfirm, onRetry }: {
+  onRetry?: () => Promise<void>;
   choices: readonly TrackChoice[]; disabled?: boolean; busy?: boolean; mainPlayback?: boolean;
   onConfirm(videoId: string, audioId?: string): void;
 }) {
   const { t } = useCopy();
   const id = useId();
+  const [retrying, setRetrying] = useState<(() => Promise<void>) | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
   const [audioId, setAudioId] = useState<string | null>(null);
   if (!choices.length) return null;
@@ -113,7 +117,14 @@ function WatchTrackPicker({ choices, disabled, busy, mainPlayback, onConfirm }: 
       <h3 id={`${id}-audio`}><Glyph name="speaker" size={18} /> {t("host.settings.sound")}</h3>
       {audioChoice}
     </section>
-    {unavailable.length > 0 && <p role="status">{t("watch.forward.trackUnavailable")}</p>}
+    {unavailable.length > 0 && <div className="lr-embedded-actions">
+      <p role="status">{t("watch.forward.trackUnavailable")}</p>
+      {onRetry && <ChannelAction icon="refresh" label={t("common.retry")} disabled={disabled || busy} busy={retrying === onRetry}
+        onClick={() => {
+          setRetrying(() => onRetry);
+          void onRetry().finally(() => setRetrying(active => active === onRetry ? null : active));
+        }} />}
+    </div>}
     <Btn icon="share" tone="primary" title="watch.forward.confirmTracks" cap="watch.forward.confirmTracks" busy={busy}
       disabled={disabled || busy || !selectedVideo || !videoOnly && !selectedAudio}
       onClick={() => { if (selectedVideo) onConfirm(selectedVideo.id, selectedAudio?.id); }} />

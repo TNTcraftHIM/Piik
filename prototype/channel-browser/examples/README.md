@@ -105,8 +105,8 @@ returns `room_writer_required` because creation needs a Browser or App writer.
 
 ```ts
 const participant = new TextParticipant({ url, origin, name: 'Build notices', credential });
-await participant.connect();
 try {
+  await participant.connect();
   const room = await participant.createRoom({ name: 'Build notices', icon: 'couch', access: 'public', hidden: false });
   await participant.browse(room.id);
   const message = await participant.chat('Build started');

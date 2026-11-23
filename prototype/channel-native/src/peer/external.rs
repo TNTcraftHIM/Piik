@@ -741,4 +741,122 @@ mod tests {
         result??;
         Ok(())
     }
+    #[tokio::test]
+    async fn source_stop_before_and_after_selection() -> Result<()> {
+        for early in [true, false] {
+            let (mut driver, _events, mut commands, _stop) = crate::peer::tests::driver();
+            let publication = Uuid::new_v4();
+            let old = Uuid::new_v4();
+            let candidate = Uuid::new_v4();
+            driver.inputs = input::Inputs::new(
+                driver.session,
+                watch::channel(None).1,
+                Some(crate::input::lifecycle_fixture_desktop()),
+            );
+            let (old_source, _) = driver
+                .inputs
+                .source(
+                    publication,
+                    old,
+                    crate::capture::Target {
+                        kind: crate::capture::TargetKind::Display,
+                        source_id: "fixture".into(),
+                        title: "synthetic lifecycle target".into(),
+                        pid: 0,
+                        creation_time: None,
+                    },
+                )?
+                .unwrap();
+            old_source.set_mode(crate::input::Mode::Ask)?;
+            let scope = CaptureScope {
+                publication_id: publication,
+                room_id: "fixture".into(),
+                binding_id: Uuid::new_v4(),
+            };
+            let candidate_control = ExternalControl(watch::channel(None).0, Default::default());
+            for (id, selected, control) in [
+                (
+                    old,
+                    true,
+                    ExternalControl(watch::channel(None).0, Default::default()),
+                ),
+                (candidate, false, candidate_control.clone()),
+            ] {
+                driver.local_producers.insert(
+                    id,
+                    PreparedSource {
+                        scope: scope.clone(),
+                        selected,
+                        prepared: vec![],
+                        ended: oneshot::channel().0,
+                        producer: LocalProducer::External(Producer {
+                            control,
+                            video: id,
+                            audio: None,
+                            task: None,
+                            joining: None,
+                        }),
+                    },
+                );
+            }
+            driver.publications.insert(
+                publication,
+                PublicationInfo {
+                    id: publication,
+                    room_id: scope.room_id.clone(),
+                    session_id: driver.session,
+                    user_id: Uuid::new_v4(),
+                    kind: piik_channel_core::wire::Kind::Screen,
+                    paused: false,
+                    audience: vec![],
+                    video_settings: None,
+                    screen: None,
+                },
+            );
+            let (started, waiting) = oneshot::channel();
+            let (release, blocked) = std::sync::mpsc::channel();
+            let (finished, completed) = oneshot::channel();
+            let audio =
+                crate::media::local::tests::controlled_audio_retirement(started, blocked, finished);
+            driver.capture_audio.insert(publication, (scope, audio));
+            if early {
+                candidate_control.stop();
+                assert_eq!(
+                    driver
+                        .commit_capture(candidate)
+                        .await
+                        .err()
+                        .unwrap()
+                        .to_string(),
+                    "capture_unavailable"
+                );
+                assert!(driver.local_producers[&old].selected);
+                old_source.set_mode(crate::input::Mode::Ask)?;
+                assert!(driver.capture_audio.contains_key(&publication));
+                release.send(())?;
+            } else {
+                {
+                    let commit = driver.commit_capture(candidate);
+                    tokio::pin!(commit);
+                    tokio::select! {
+                        ready = waiting => ready?,
+                        _ = &mut commit => anyhow::bail!("commit did not await the audio owner"),
+                    }
+                    candidate_control.stop();
+                    release.send(())?;
+                    commit.await?;
+                };
+                assert!(driver.local_producers[&candidate].selected);
+                assert!(!driver.local_producers[&old].selected);
+                assert!(old_source.set_mode(crate::input::Mode::Ask).is_err());
+                driver.capture_ended(publication, candidate).await;
+                assert!(
+                    matches!(commands.try_recv(), Ok(NativeEvent::CaptureEnded { publication_id, .. }) if publication_id == publication)
+                );
+            }
+            driver.close().await?;
+            completed.await?;
+        }
+        Ok(())
+    }
 }

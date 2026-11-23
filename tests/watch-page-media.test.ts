@@ -83,3 +83,40 @@ test('leaving while preparing main playback keeps the original page playing', as
   expect(pausePage).not.toHaveBeenCalled();
   expect(video.src).toBe('');
 });
+
+test('failed source checks retry on request while automatic discovery keeps their cache', async () => {
+  const { default: initializeCore } = await import('../prototype/channel-browser/pkg/piik_channel_browser');
+  await initializeCore({ module_or_path: readFileSync('prototype/channel-browser/pkg/piik_channel_browser_bg.wasm') });
+  const bytes = Uint8Array.from(readFileSync(new URL('./fixtures/indexed-av1.mp4', import.meta.url)));
+  const working = { id: crypto.randomUUID(), name: 'Working track', hostname: 'source.test', totalSize: bytes.length, mimeType: 'video/mp4' };
+  const failed = { ...working, id: crypto.randomUUID(), name: 'Failed track' };
+  const publish = vi.fn();
+  const page = new AppPage(crypto.randomUUID(), 'https://source.test/player', async () => ({
+    choices: [], indexedCandidates: [working, failed], mpdCandidates: [], byteSource: null,
+  }), vi.fn(), vi.fn());
+  let failedReads = 0, pending: AbortSignal | undefined;
+  const read = vi.spyOn(page, 'readMediaMetadata').mockImplementation(async (id, offset, length, signal) => {
+    if (id === working.id) return { totalSize: bytes.length, bytes: bytes.subarray(offset, offset + length), mimeType: 'video/mp4' };
+    if (++failedReads === 1) throw new Error('watch_media_unavailable');
+    pending = signal;
+    return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+  });
+  const observer = observeWatchSources(page, new AbortController().signal, publish);
+  try {
+    const first = await observer.ready;
+    expect(first.indexed[0].error).toBeUndefined();
+    expect(first.indexed[0].inspection).toBeDefined();
+    expect(first.indexed[1].error).toBe('watch_media_unavailable');
+    const successfulReads = read.mock.calls.filter(([id]) => id === working.id).length;
+    page.receive({ type: 'page_media_changed', pageId: page.id });
+    await vi.waitFor(() => expect(publish).toHaveBeenCalledTimes(2));
+    expect(failedReads).toBe(1);
+    const retry = first.retryIndexed!();
+    await vi.waitFor(() => expect(pending).toBeDefined());
+    expect(read.mock.calls.filter(([id]) => id === working.id)).toHaveLength(successfulReads);
+    page.close();
+    await retry;
+    expect(pending!.aborted).toBe(true);
+    expect(publish).toHaveBeenCalledTimes(2);
+  } finally { observer.unsubscribe(); page.close(); }
+});

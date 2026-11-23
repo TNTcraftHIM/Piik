@@ -55,6 +55,11 @@ fn desktop() -> (Desktop, Arc<Mutex<Recording>>) {
     (Desktop::with_sink(Box::new(Recorder(r.clone()))), r)
 }
 
+#[cfg(feature = "capture")]
+pub(crate) fn lifecycle_fixture_desktop() -> Desktop {
+    desktop().0
+}
+
 #[cfg(target_os = "windows")]
 #[test]
 fn partial_unicode_cleanup_survives_source_retirement() {

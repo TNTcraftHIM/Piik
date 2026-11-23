@@ -7,7 +7,7 @@ import { watchSourceSchema, type WatchByteSource, type WatchFormat, type WatchTi
 
 export interface WatchIndexedChoice { candidate: NativePageIndexedCandidate; inspection?: IndexedTrackInspection; error?: string }
 export interface WatchMpdChoice { candidate: NativePageMpdCandidate; catalog?: NativePageMpdCatalog; error?: string }
-export interface WatchMediaSources { choices: readonly NativePageMediaChoice[]; indexed: readonly WatchIndexedChoice[]; mpd: readonly WatchMpdChoice[]; error?: string }
+export interface WatchMediaSources { choices: readonly NativePageMediaChoice[]; indexed: readonly WatchIndexedChoice[]; mpd: readonly WatchMpdChoice[]; error?: string; retryIndexed?: () => Promise<void> }
 
 export function directForwardMediaURL(choice: NativePageMediaChoice): string | undefined {
   if ((choice.format === "file" || choice.format === "hls") && watchSourceSchema.safeParse({ kind: "media", url: choice.displayURL }).success) return choice.displayURL;
@@ -48,7 +48,7 @@ export function observeWatchSources(page: AppPage, lifetime: AbortSignal, publis
           checking.throwIfAborted();
           const mpd = mpdCandidates.map(candidate => ({ ...current.mpd.find(value => value.candidate.id === candidate.id), candidate }));
           checking.throwIfAborted();
-          current = { choices, indexed, mpd };
+          current = { choices, indexed, mpd, retryIndexed: indexed.some(choice => choice.error) ? retryIndexed : undefined };
         } catch (error) {
           signal.throwIfAborted();
           if (dirty) continue;
@@ -62,6 +62,13 @@ export function observeWatchSources(page: AppPage, lifetime: AbortSignal, publis
       if (dirty && !signal.aborted) void refresh().catch(() => {});
     });
     return running;
+  };
+  const retryIndexed = async () => {
+    if (signal.aborted || !current.retryIndexed) return;
+    current = { ...current, indexed: current.indexed.filter(choice => !choice.error), retryIndexed: undefined };
+    dirty = true;
+    inspecting?.abort();
+    await refresh().catch(() => {});
   };
   const unlisten = page.listenMediaSources(() => {
     dirty = true;

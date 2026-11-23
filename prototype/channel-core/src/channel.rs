@@ -1348,7 +1348,7 @@ impl Channel {
         id: &str,
         session: Uuid,
         connection: Uuid,
-        output: &HostOutput,
+        output: HostOutput,
     ) -> Result<HostAcceptance, &'static str> {
         let room = self.remote.get(id).ok_or("room_unavailable")?;
         let binding = room.binding.as_ref().ok_or("stale_room_host")?;
@@ -1413,7 +1413,7 @@ impl Channel {
         let projection_applied = output.revision >= binding.projection_floor;
         let room = &self.remote[id];
         if !projection_applied {
-            return Ok(self.finish_host_output(id, output, false));
+            return Ok(self.finish_host_output(id, output.revision, output.reply, false));
         }
         let projection = &output.projection;
         self.check_room_policy(&projection.summary)?;
@@ -1921,7 +1921,7 @@ impl Channel {
         binding.projection_floor = output.revision;
         binding.applied_revision = output.revision;
         room.summary = projection.summary.clone();
-        let mut next = projection.clone();
+        let mut next = output.projection;
         if let Some(previous) = &room.projection {
             next.last_message_seq = next.last_message_seq.max(previous.last_message_seq);
         }
@@ -1950,7 +1950,7 @@ impl Channel {
             invalidated |= room.failed_pair(first, second);
         }
         self.reconcile();
-        let mut accepted = self.finish_host_output(id, output, true);
+        let mut accepted = self.finish_host_output(id, output.revision, output.reply, true);
         // A room output can grant access to an already confirmed pair in another room.
         // A suspended planning scope likewise becomes visible on its covering output.
         let current_scope = self.remote[id].planning_sessions(self.service_endpoint, None);
@@ -1968,16 +1968,17 @@ impl Channel {
     fn finish_host_output(
         &mut self,
         id: &str,
-        output: &HostOutput,
+        revision: u64,
+        reply: Option<RoomReply>,
         projection_applied: bool,
     ) -> HostAcceptance {
         let binding = self.remote.get_mut(id).unwrap().binding.as_mut().unwrap();
         if let Some(ReplyOwner::Request { completion, .. }) =
-            binding.replies.get_mut(&output.revision)
+            binding.replies.get_mut(&revision)
         {
-            *completion = Some(output.reply.as_ref().unwrap().result.clone());
+            *completion = Some(reply.unwrap().result);
         } else {
-            binding.replies.remove(&output.revision);
+            binding.replies.remove(&revision);
         }
         let ready: Vec<_> = binding
             .replies

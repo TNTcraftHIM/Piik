@@ -748,7 +748,7 @@ impl Authority {
     ) -> Result<(), &'static str> {
         let accepted = self
             .channel
-            .accept_host(room_id, session, connection, &output)?;
+            .accept_host(room_id, session, connection, output)?;
         if let Some(actor) = accepted.deleted_by {
             for (room, reply) in self.channel.remove_room(room_id, actor) {
                 self.room_reply(&room, reply, effects);

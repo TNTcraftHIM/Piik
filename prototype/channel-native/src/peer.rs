@@ -1722,10 +1722,6 @@ impl Driver {
                     .control
                     .commit_system(&input)
                     .await?;
-                anyhow::ensure!(
-                    !details.producer.control.is_stopped() && !input.is_stopped(),
-                    "capture_unavailable"
-                );
                 details.producer.replace_system_audio(input);
                 let prepared = std::mem::take(&mut capture.prepared);
                 for source in prepared {
@@ -1762,9 +1758,6 @@ impl Driver {
                 (target.screen_source(), input)
             } else {
                 self.inputs.end_source(publication);
-                if self.capture_audio.contains_key(&publication) {
-                    self.retire_capture_audio(publication).await;
-                }
                 (
                     piik_channel_core::wire::ScreenSource {
                         name: Some("OBS".into()),
@@ -1773,7 +1766,6 @@ impl Driver {
                     None,
                 )
             };
-            anyhow::ensure!(self.capture_current(id, false), "capture_unavailable");
             for (old, capture) in &mut self.local_producers {
                 if *old != id && capture.scope.publication_id == publication && capture.selected {
                     capture.selected = false;
@@ -1786,7 +1778,12 @@ impl Driver {
             self.relay.retain(&self.sources.keys().copied().collect());
             let capture = self.local_producers.get_mut(&id).unwrap();
             capture.selected = true;
+            let external = capture.producer.capture().is_none();
             let prepared = std::mem::take(&mut capture.prepared);
+            // The new source is selected before waiting for the predecessor's cleanup.
+            if external && self.capture_audio.contains_key(&publication) {
+                self.retire_capture_audio(publication).await;
+            }
             for source in prepared {
                 self.source_ready(source).await;
             }

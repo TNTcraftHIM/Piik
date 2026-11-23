@@ -104,7 +104,7 @@ export function ChannelSettingsError({ error }: { error: string | null }) {
 export type SettingsAction = <T>(work: (signal: AbortSignal) => Promise<T>, onSuccess?: (value: T) => void) => Promise<void>;
 
 /** Pending stays in Session; only this open surface receives its action result. */
-export function useSettingsAction(open = true): { error: string | null; run: SettingsAction } {
+export function useSettingsAction(open = true): { error: string | null; run: SettingsAction; clearError(): void } {
   const [error, setError] = useState<string | null>(null);
   const lifetime = useRef<AbortController | null>(null);
   useLayoutEffect(() => {
@@ -125,5 +125,5 @@ export function useSettingsAction(open = true): { error: string | null; run: Set
       else setError(error instanceof Error ? error.message : "operation_failed");
     }
   }, []);
-  return { error, run };
+  return { error, run, clearError: () => setError(null) };
 }

@@ -1373,6 +1373,8 @@ enum SourceKind {
     External,
 }
 struct PendingCapture {
+    // A submitted switch keeps its host result even if the source ends first.
+    committing: bool,
     kind: SourceKind,
     request: AbortHandle,
     lease: Option<SourceLease>,
@@ -1447,6 +1449,7 @@ impl Capture {
         }
         let (request, registration) = AbortHandle::new_pair();
         self.pending = Some(PendingCapture {
+            committing: false,
             kind,
             request: request.clone(),
             lease: None,
@@ -1515,6 +1518,30 @@ fn external_input_event(
         });
     }
     event
+}
+
+fn retire_external(
+    captures: &mut BTreeMap<Uuid, Capture>,
+    page: &mut whip::Page,
+    publication: Uuid,
+    generation: Uuid,
+    ended: Result<(), String>,
+) -> Option<Value> {
+    let resource = page.resources.remove(&generation)?;
+    let capture = captures.get_mut(&publication)?;
+    if !capture.retire_producer(generation)
+        || !page.permits.get(&publication).is_some_and(|permit| permit.id == resource.permit)
+    {
+        return None;
+    }
+    let retired = ended.as_ref().err().is_some_and(|error| error == "room_unavailable");
+    if retired {
+        page.remove(publication);
+    }
+    Some(external_format_event(
+        capture.external_event(publication, false, retired, ended.as_ref().err().map(String::as_str)),
+        resource.control.unsupported_video_format(),
+    ))
 }
 
 fn cancel_external_input(
@@ -1807,13 +1834,10 @@ async fn connection(
                         continue;
                     }
                     Some((publication_id, generation, ended)) = external_ends.next(), if !external_ends.is_empty() => {
-                        let Some(resource) = external_page.resources.remove(&generation) else { continue; };
-                        let Some(capture) = captures.get_mut(&publication_id) else { continue; };
-                        if !capture.retire_producer(generation) { continue; }
-                        if external_page.permits.get(&publication_id).is_some_and(|p| p.id == resource.permit) {
-                            let retired = ended.as_ref().err().is_some_and(|error| error == "room_unavailable");
-                            if retired { external_page.remove(publication_id); }
-                            let event = external_format_event(capture.external_event(publication_id, false, retired, ended.as_ref().err().map(String::as_str)), resource.control.unsupported_video_format());
+                        if captures.get_mut(&publication_id).and_then(|capture| capture.pending_for(generation)).is_some_and(|pending| pending.committing) {
+                            continue;
+                        }
+                        if let Some(event) = retire_external(&mut captures, &mut external_page, publication_id, generation, ended) {
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                         }
                         continue;
@@ -1901,6 +1925,12 @@ async fn connection(
                     Some((id, publication_id, request, result)) = capture_starts.next(), if !capture_starts.is_empty() => {
                         let request: AbortHandle = request;
                         let result: Result<CaptureResult> = result;
+                        let ended = (!request.is_aborted()).then(|| {
+                            let pending = captures.get(&publication_id)?.pending.as_ref()?;
+                            if !pending.committing || pending.kind != SourceKind::External { return None; }
+                            let generation = pending.producer?;
+                            Some((generation, external_page.resources.get(&generation)?.ended.peek()?.clone()))
+                        }).flatten();
                         let mut initial_input = None;
                         let mut initial_audio = None;
                         let result = if request.is_aborted() {
@@ -1964,8 +1994,8 @@ async fn connection(
                                 if !request.is_aborted() {
                                     if let Some(capture) = captures.get_mut(&publication_id) {
                                         let external = capture.pending.as_ref().is_some_and(|pending| pending.kind == SourceKind::External);
-                                        capture.pending = None;
-                                        if external && external_page.permits.contains_key(&publication_id) {
+                                        if ended.is_none() { capture.pending = None; }
+                                        if external && ended.is_none() && external_page.permits.contains_key(&publication_id) {
                                             let event = capture.external_event(publication_id, false, false, Some("external_input_failed"));
                                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                                         }
@@ -1975,6 +2005,11 @@ async fn connection(
                             }
                         };
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
+                        if let Some((generation, ended)) = ended {
+                            if let Some(event) = retire_external(&mut captures, &mut external_page, publication_id, generation, ended) {
+                                timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                            }
+                        }
                         if let Some(state) = initial_input {
                             let event = json!({"type":"input_state","publicationId":publication_id,"state":state});
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
@@ -2450,6 +2485,7 @@ async fn connection(
                                     let (cancel, registration) = AbortHandle::new_pair();
                                     let kind = capture.pending.as_ref().unwrap().kind;
                                     capture.pending = Some(PendingCapture {
+                                        committing: true,
                                         kind,
                                         request: cancel.clone(),
                                         lease: None,
@@ -2473,6 +2509,12 @@ async fn connection(
                                 } else {
                                     Err(anyhow!("hello_required"))
                                 }
+                            }
+                            Operation::CancelCapture { publication_id } | Operation::CancelExternalInput { publication_id }
+                                if captures.get(&publication_id).and_then(|capture| capture.pending.as_ref())
+                                    .is_some_and(|pending| pending.committing) =>
+                            {
+                                Err(anyhow!("capture_pending"))
                             }
                             Operation::CancelExternalInput { publication_id } => {
                                 if let Some(event) = cancel_external_input(
@@ -2544,7 +2586,13 @@ async fn connection(
                                     )
                                     .await??;
                                 }
-                                drop(captures.remove(&publication_id));
+                                if let Some(capture) = captures.remove(&publication_id) {
+                                    if let Some(generation) = capture.pending.as_ref().filter(|p| p.committing).and_then(|p| p.producer) {
+                                        if external_page.resources.get(&generation).is_some_and(|resource| resource.ended.peek().is_some()) {
+                                            external_page.resources.remove(&generation);
+                                        }
+                                    }
+                                }
                                 Ok(Value::Null)
                             }
                             Operation::CaptureAudioSettings {
@@ -2952,7 +3000,6 @@ async fn commit_capture(
         .await
         .map_err(|_| anyhow!("hosting_unavailable"))?
         .map_err(anyhow::Error::msg)?;
-    anyhow::ensure!(!lease.is_stopped(), "capture_cancelled");
     if let SourceLease::Capture(lease) = &mut lease {
         lease.remote = input.remote;
         lease.input_state = input.state;

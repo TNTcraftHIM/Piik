@@ -189,12 +189,11 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", initialInte
           }, result => { if (result) { onCreated(result.roomId); if (result.cached) onClose(); else setCompleted("uncached"); } }).finally(() => setCreating(false)); }} />
         {!serverHosted && <details className="c3-settings-details"><summary>{t("room.backup.restore")}</summary>
           {inviteOnly && <p>{t("room.backup.inviteOnlyNote")}</p>}
-          <BackupControls onClose={onClose} run={run} disabled={!connected || busy} busy={backupBusy} replacing={false}
-            onRecovery={setCompleted} onRestore={async file => {
-              const result = await channel.restoreRoomBackup(file);
+          <BackupControls onClose={onClose} disabled={!connected || busy} busy={backupBusy} replacing={false}
+            onRecovery={setCompleted} onRestore={file => channel.restoreRoomBackup(file)} onRestored={result => {
+              if (!result) return;
               onCreated(result.roomId);
               if (result.cached) onClose(); else setCompleted("restored-uncached");
-              return result;
             }} />
         </details>}
         </>}
@@ -338,17 +337,9 @@ function RoomSettings({ channel, room, onClose }: {
             disabled={!available || busy || removing} busy={backupBusy} />}
           {room.canManage && backupAvailable && <h3>{t("room.backup.title")}</h3>}
           {room.canManage && backupAvailable && inviteOnly && <p>{t("room.backup.inviteOnlyNote")}</p>}
-          {room.canManage && <BackupControls onClose={onClose} run={run} available={backupAvailable} disabled={!available || busy || removing || !backupAvailable}
-            busy={backupBusy} onExport={signal => channel.exportRoomBackup(room.id, includeFiles, signal)} onRestore={async file => {
-              try {
-                const result = await channel.restoreRoomBackup(file, room.id);
-                setDraft({});
-                return result;
-              } catch (error) {
-                if (error instanceof Error && error.message === "room_restored_connection_failed") setDraft({});
-                throw error;
-              }
-            }} />}
+          {room.canManage && <BackupControls onClose={onClose} available={backupAvailable} disabled={!available || busy || removing || !backupAvailable}
+            busy={backupBusy} onExport={signal => channel.exportRoomBackup(room.id, includeFiles, signal)}
+            onRestore={file => channel.restoreRoomBackup(file, room.id)} onRestoreCommitted={() => setDraft({})} />}
         </section>}
       </div>
     </div>
