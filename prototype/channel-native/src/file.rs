@@ -326,6 +326,10 @@ impl Files {
                                     ))
                                     .is_err()
                                 {
+                                    link.senders.bulk.cancel(&key, offset, request_id);
+                                    effects.retain(|effect| !matches!(effect,
+                                        FileEffect::SendChunk { peer: p, key: k, offset: o, request_id: id, .. }
+                                            if (*p, k, *o, *id) == (peer, &key, offset, request_id)));
                                     effects.extend(core.peer_failed(
                                         &key,
                                         peer,

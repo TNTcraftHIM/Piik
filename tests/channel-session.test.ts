@@ -7969,7 +7969,7 @@ test.each([true, false])("File Cancel requires the recipient's room grant (revok
   } finally { abort.abort(); files.reset(); media.reset(); session.close(); }
 });
 
-test("cancelled file responses release bulk slots before open and under backpressure", async () => {
+test("cancelled and failed file responses retire queued chunks under backpressure", async () => {
   const { session, media, pc } = await setupRoomMedia(false, "zz");
   const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeRuntime: async () => {} } as never);
@@ -8014,6 +8014,29 @@ test("cancelled file responses release bulk slots before open and under backpres
     await vi.waitFor(() => expect(send.mock.calls.length).toBe((Math.floor(capacity / count) + 3) * count));
     bulk.bufferedAmount = 0; bulk.dispatchEvent(new Event("bufferedamountlow"));
     expect(bulk.send.mock.calls.map(([data]) => header(data).requestId)).toEqual(Array(count * 2).fill(fresh));
+    for (const failure of ["send", "closing"]) {
+      send.mockClear(); bulk.send.mockClear(); control.send.mockClear();
+      bulk.bufferedAmount = 65536;
+      const failed = crypto.randomUUID();
+      frame("pull", failed);
+      if (failure === "send") frame("pull", fresh);
+      await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(failure === "send" ? count * 2 : count));
+      const queued = send.mock.results.map(result => result.value);
+      if (failure === "send") {
+        bulk.send.mockImplementationOnce(() => { throw new DOMException("buffer full", "OperationError"); });
+        bulk.bufferedAmount = 0;
+        bulk.dispatchEvent(new Event("bufferedamountlow"));
+      } else {
+        bulk.readyState = "closing";
+        bulk.dispatchEvent(new Event("closing"));
+      }
+      await Promise.allSettled(queued);
+      expect(control.send.mock.calls.map(([data]) => JSON.parse(data))).toEqual([
+        expect.objectContaining({ type: "error", requestId: failed }),
+      ]);
+      const attempts = bulk.send.mock.calls.map(([data]) => header(data).requestId);
+      expect(attempts).toEqual(failure === "send" ? [failed, ...Array(count).fill(fresh)] : []);
+    }
     expect(pc.close).not.toHaveBeenCalled();
   } finally { files.reset(); media.reset(); session.close(); }
 });

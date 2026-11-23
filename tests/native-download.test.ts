@@ -308,3 +308,51 @@ test("system save progress follows verified content and retires with its own ret
   expect(files.status(key).outcome).toBe("cancelled");
   files.reset();
 });
+
+test("a cancelled repeat save preserves the first confirmed receipt while IndexedDB is opening", async () => {
+  const f = fixture(), files = new ChannelAttachments(async () => {}, async () => {});
+  const key = { roomId: "room", messageSeq: 1, attachmentId: "item" };
+  const file = { id: key.attachmentId, name: "mine.txt", size: 4, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
+  const receipt = "a2ba9eea-8aa4-4ce9-97f2-3ff030242412";
+  const reveal = vi.fn().mockResolvedValue("revealed");
+  Object.assign(f.view, { piikRevealDownload: reveal });
+  vi.spyOn(FileStore.prototype, "receipts").mockResolvedValue([]);
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
+  vi.spyOn(files, "content").mockResolvedValue(new File(["mine"], file.name));
+  let canPersist!: () => boolean;
+  let commit!: (ok: boolean) => void;
+  vi.spyOn(FileStore.prototype, "saveReceipt").mockImplementation((_entry, allowed) => {
+    canPersist = allowed;
+    return new Promise(resolve => { commit = resolve; });
+  });
+  try {
+    files.update("session", {domainId: "domain", userId: "reader"}, [], [{id: key.roomId, authorized: true}] as ChannelRoom[], []);
+    await files.download(key, file);
+    f.report(f.clicked[0].href, {status: "saved", receipt});
+    await files.download(key, file);
+    f.report(f.clicked[1].href, "cancelled");
+    const allowed = canPersist();
+    commit(allowed);
+    await Promise.resolve();
+    expect(files.status(key).outcome).toBe("cancelled");
+    expect(allowed).toBe(true);
+    expect(files.hasSavedCopy(key, file)).toBe(true);
+    await files.revealSavedCopy(key, file, {ownerDocument: f.document} as Element);
+    expect(reveal).toHaveBeenCalledWith(receipt);
+
+    const second = "b2ba9eea-8aa4-4ce9-97f2-3ff030242412";
+    let finishOld!: (result: "unavailable") => void;
+    reveal.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }));
+    const locating = files.revealSavedCopy(key, file, {ownerDocument: f.document} as Element);
+    const firstCanPersist = canPersist;
+    await files.download(key, file);
+    f.report(f.clicked[2].href, {status: "saved", receipt: second});
+    finishOld("unavailable");
+    await locating;
+    expect(firstCanPersist()).toBe(false);
+    expect(canPersist()).toBe(true);
+    commit(true);
+    await files.revealSavedCopy(key, file, {ownerDocument: f.document} as Element);
+    expect(reveal).toHaveBeenLastCalledWith(second);
+  } finally { files.reset(); }
+});

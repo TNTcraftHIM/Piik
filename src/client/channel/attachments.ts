@@ -494,17 +494,14 @@ export class ChannelAttachments {
     download.promise = this.content(key, attachment, download.controller.signal, inlineImage).then(file => {
       download.controller.signal.throwIfAborted();
       const rememberSaved = store && scope ? (receipt: string) => {
-        const allowed = () => {
-          const clear = this.cacheClears.get(cacheRoom(scope, key.roomId));
-          return this.store === store && this.downloads.get(id) === download && !download.controller.signal.aborted
-            && !this.messageRemoved(key) && this.rooms.some(room => room.id === key.roomId && room.authorized)
-            && !clear?.pending && clear?.revision === cacheRevision;
-        };
+        const clear = this.cacheClears.get(cacheRoom(scope, key.roomId));
+        if (this.store !== store || this.downloads.get(id) !== download || download.controller.signal.aborted
+          || this.messageRemoved(key) || !this.rooms.some(room => room.id === key.roomId && room.authorized)
+          || clear?.pending || clear?.revision !== cacheRevision) return;
         const entry = { key, sha256: attachment.sha256.toLowerCase(), receipt };
-        void store.saveReceipt(entry, allowed).then(saved => {
-          if (!saved || !allowed()) return;
-          this.savedReceipts.set(id, entry); this.changed();
-        }).catch(() => {});
+        this.savedReceipts.set(id, entry);
+        void store.saveReceipt(entry, () => this.savedReceipts.get(id) === entry
+          && this.cacheClears.get(cacheRoom(scope, key.roomId)) === clear).catch(() => {});
       } : undefined;
       downloadBlob(file, attachment.name, { document: surface?.ownerDocument, signal: download.controller.signal, rememberSaved, outcome: outcome => {
         if (this.downloads.get(id) !== download) return;
@@ -612,10 +609,11 @@ export class ChannelAttachments {
     }
   }
   private effects(runtime: Runtime, effects: Effect[]): void {
+    const failedResponses = new Set<string>();
     for (const effect of effects) {
       const key = "key" in effect ? effect.key : effect.control.key;
       const request = effect.type === "send_chunk" || effect.type === "cancel_chunks"
-        ? JSON.stringify([key.roomId, key.messageSeq, key.attachmentId, effect.offset, effect.requestId]) : undefined;
+        ? JSON.stringify([effect.peer, key.roomId, key.messageSeq, key.attachmentId, effect.offset, effect.requestId]) : undefined;
       if (effect.type === "cancel_chunks") {
         this.cancelChunks?.(effect.peer, request!);
       } else if (effect.type === "send_control" || effect.type === "send_chunk") {
@@ -623,14 +621,19 @@ export class ChannelAttachments {
         const terminal = isError || (effect.type === "send_control" && effect.control.type === "cancel");
         const kind = effect.type === "send_control" ? "control" : "chunk";
         const data = effect.type === "send_control" ? JSON.stringify(effect.control) : new Uint8Array(effect.frame);
-        const allowed = () => this.current(runtime)
+        const allowed = () => this.current(runtime) && (request === undefined || !failedResponses.has(request))
           && this.rooms.some(room => room.id === key.roomId && room.authorized && room.available)
           && this.roomPeers.some(([id, rooms]) => id === peer && rooms.includes(key.roomId))
           && (terminal || !this.messageRemoved(key) && this.plans.some(plan => plan.roomId === key.roomId && plan.messageSeq === key.messageSeq
             && plan.attachment.id === key.attachmentId && (plan.upstream === peer || plan.downstream.includes(peer))));
         void this.sendData(peer, kind, data, allowed, request)
           .catch(error => {
-            if (terminal) return;
+            if (terminal || !this.current(runtime)) return;
+            if (request !== undefined) {
+              if (failedResponses.has(request)) return;
+              failedResponses.add(request);
+              this.cancelChunks?.(peer, request);
+            }
             this.invoke(runtime, () => runtime.delivery.peer_failed(JSON.stringify(key), peer,
               effect.type === "send_control" ? effect.control.requestId : effect.requestId, errorOf(error).message));
           });

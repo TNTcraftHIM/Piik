@@ -527,7 +527,8 @@ test("a platform save follows its participant across room views and ignores resu
     reports[1].outcome?.("saved");
     await vi.waitFor(() => expect(files.hasSavedCopy(key, attachment)).toBe(true));
     expect(files.status(key)).toMatchObject({ outcome: "saved", error: null });
-    await expect(saveReceipt.mock.results[0]?.value).resolves.toBe(false);
+    expect(saveReceipt).toHaveBeenCalledOnce();
+    expect(saveReceipt.mock.calls[0]?.[0].receipt).toBe("new");
   } finally { files.reset(); }
 });
 
