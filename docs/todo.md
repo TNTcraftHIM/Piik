@@ -20,6 +20,10 @@ the feedback period; they do not delay that delivery.
   and media failures reported on Android across several browsers in 2.x.
   Correlate the selected virtual address, effective firewall rules and incoming
   requests before attributing the failure to page loading or media routing.
+- [ ] **Intermittent App-to-Browser virtual LAN video.** After initial playback
+  is reachable, correlate the reported roughly 22-second connection replacement
+  cycle with receiver frame counters and the first flow-retirement event.
+  Host capture and encoding continue during the observed cycle.
 - [ ] **Original webpage closes when a viewer joins.** On the reporting Windows
   setup, correlate the stop reason with the activity, selected page and App
   control connection. [Original-page controls](./verification-status.md#current-evidence)
