@@ -202,7 +202,7 @@ export function Tooltip({
     const surface = wrap.closest<HTMLElement>("[popover], :fullscreen");
     const insideSurface = (element: HTMLElement | null) => element && (!surface || surface.contains(element)) ? element : null;
     // A wrapped control row remains one working area, including on narrow screens.
-    const controlBar = insideSurface(wrap.closest<HTMLElement>(".lr-media-toolbar, .lr-source-picker-options"));
+    const controlBar = insideSurface(wrap.closest<HTMLElement>(".lr-media-toolbar, .lr-source-picker-options, [data-tooltip-controls]"));
     const playback = Boolean(controlBar?.closest(".lr-playback"));
     const avoid = controlBar?.getBoundingClientRect() ?? rect;
     const screen = insideSurface(wrap.closest<HTMLElement>(".lr-tv-screen"));
@@ -264,7 +264,7 @@ export function Tooltip({
     // Viewport fit comes first; within it, keep guidance off neighbouring
     // media controls. Reserve auto-hidden bars too: entering the player can
     // reveal them while this guidance is still open.
-    const controls = [...(surface ?? wrap.ownerDocument).querySelectorAll<HTMLElement>(".lr-media-toolbar")]
+    const controls = [...(surface ?? wrap.ownerDocument).querySelectorAll<HTMLElement>(".lr-media-toolbar, [data-tooltip-controls]")]
       .filter(element => !element.contains(wrap) && element.getClientRects().length)
       .map(element => element.getBoundingClientRect());
     const boundedLeft = (left: number) => Math.max(x + EDGE_MARGIN, Math.min(left, right - width - EDGE_MARGIN));

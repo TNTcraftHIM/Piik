@@ -141,7 +141,7 @@ export function Btn({
           : wrapped
             ? (event) => {
                 onClick?.();
-                blurAfterPointerClick(event);
+                if (!popoverTarget) blurAfterPointerClick(event);
               }
             : onClick
       }

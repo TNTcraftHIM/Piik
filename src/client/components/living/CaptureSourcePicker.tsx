@@ -364,7 +364,7 @@ export function CaptureSourcePicker({
               cameraSources.cancel();
               onCamera?.(id);
             }} /> : <>
-          <div className="lr-source-picker-list">
+          <div className="lr-source-picker-list" data-tooltip-controls>
             {browserCapture ? (
               <button
                 type="button"
