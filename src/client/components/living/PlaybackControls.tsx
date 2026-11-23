@@ -2,7 +2,6 @@ import { useEffect, useId, useRef, useState, type RefObject, type ReactNode } fr
 import { createPortal } from "react-dom";
 import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio";
 import { useCopy } from "../../ui/copy";
-import { Glyph } from "../../ui/icons";
 import { debugError } from "../../lib/debug";
 import { useGuideLink } from "../../lib/use-project-link";
 import { Btn } from "./primitives";
@@ -198,9 +197,7 @@ export function PlaybackControlsView({
   </>;
   const reveal = <button type="button" className="lr-playback-reveal" aria-label={t("playback.showControls")}
     aria-controls={controlsId} aria-expanded={!visibility?.hidden}
-    onClick={() => barRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true })}>
-    <Glyph name="chevron" size={18} className="lr-playback-reveal-arrow" />
-  </button>;
+    onClick={() => barRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true })} />;
 
   return <>
     <div id={controlsId} ref={barRef} className={`lr-playback lr-media-toolbar lr-media-controls${visibility?.hidden ? " is-hidden" : ""}`}

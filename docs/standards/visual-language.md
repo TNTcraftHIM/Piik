@@ -356,7 +356,9 @@ and window actions. Picture fit and rotation move to the same attached settings
 at that width, reusing their controls rather than duplicating visible actions.
 The playback surface is lightly translucent over the picture. One visibility
 owner hides the complete surface. Grants, pause and source changes do not move
-the bar or resize the picture. Remote input retains its local bezel pull.
+the bar or resize the picture. An idle picture stays clear of controls. While
+active remote input owns picture gestures, a small local handle at the lower
+edge reveals the controls.
 Playback settings own on-screen chat appearance and connection preferences;
 chat settings own records, and voice settings own microphone processing.
 Viewer settings prefer space below the picture without resizing it. Use equal-width
