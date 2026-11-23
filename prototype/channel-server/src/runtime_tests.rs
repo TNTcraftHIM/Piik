@@ -115,17 +115,29 @@ fn domain_keys_belong_to_its_data_and_old_checkpoints_remain_untouched() {
             .iter()
             .any(|event| event["type"] == "error"));
     }
-    let mut store = storage::Storage::open(&folder.join("channel.sqlite")).unwrap();
-    store.save(&old_checkpoint).unwrap();
-    drop(store);
-    assert!(open("saved-owner")
-        .err()
+    let path = folder.join("channel.sqlite");
+    let mut checkpoint = storage::Storage::open_existing(&path)
         .unwrap()
-        .to_string()
-        .contains("unsupported_domain_checkpoint"));
-    let store = storage::Storage::open(&folder.join("channel.sqlite")).unwrap();
-    assert_eq!(store.load().unwrap().unwrap(), old_checkpoint);
-    drop(store);
+        .load()
+        .unwrap()
+        .unwrap();
+    checkpoint["state"]["hostedRooms"]["studio"] = json!({
+        "id":"studio","name":"Studio","icon":"data:image/png;base64,iVBORw0KGgo=",
+        "creatorId":identity.1,"access":"private","hidden":true,"hasPassword":false
+    });
+    for unsupported in [old_checkpoint, checkpoint] {
+        storage::Storage::open_existing(&path)
+            .unwrap()
+            .save(&unsupported)
+            .unwrap();
+        let original = std::fs::read(&path).unwrap();
+        assert!(open("saved-owner")
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("unsupported_domain_checkpoint"));
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+    }
     std::fs::remove_dir_all(folder).unwrap();
 }
 

@@ -1996,7 +1996,7 @@ test("mute and leave supersede a pending unmute without activating a late microp
 
 test("voice rooms share one microphone gain graph and release it after the last consumer", async () => {
   const preferences = new Map<string, string>();
-  preferences.set("piik:room-preferences:v1", JSON.stringify({ voiceInput: { deviceId: "saved-device", volume: .7, voiceProcessing: false }, voiceListeningVolume: 1.2 }));
+  preferences.set("piik:room-preferences:v1", JSON.stringify({ voiceInput: { deviceId: "saved-device", volume: .7, voiceProcessing: false, strongerSuppression: true }, voiceListeningVolume: 1.2 }));
   vi.stubGlobal("window", { localStorage: { getItem: (key: string) => preferences.get(key) ?? null,
     setItem: (key: string, value: string) => preferences.set(key, value) } });
   const { session, socket } = await setup();
@@ -2032,6 +2032,14 @@ test("voice rooms share one microphone gain graph and release it after the last 
     expect(JSON.parse(preferences.get("piik:room-preferences:v1")!)).toMatchObject({
       voiceInput: { deviceId: "saved-device", volume: 1.6, voiceProcessing: false }, voiceListeningVolume: 1.8,
     });
+    // Clearing inactive suppression remembers the choice without replacing the running microphone.
+    getUserMedia.mockRejectedValue(new Error("unexpected recapture"));
+    await session.configureVoiceInput({ strongerSuppression: false });
+    expect(getUserMedia).toHaveBeenCalledOnce();
+    expect(contexts[0].createMediaStreamSource).toHaveBeenCalledOnce();
+    expect(contexts[0].createMediaStreamSource.mock.results[0].value.disconnect).not.toHaveBeenCalled();
+    expect(raw.stop).not.toHaveBeenCalled();
+    expect(JSON.parse(preferences.get("piik:room-preferences:v1")!).voiceInput.strongerSuppression).toBe(false);
     const commands = socket.sent.length;
     const replacement = remoteTrack("audio");
     getUserMedia.mockResolvedValueOnce(remoteStream("replacement", [replacement]));
@@ -2044,7 +2052,7 @@ test("voice rooms share one microphone gain graph and release it after the last 
     expect(raw.stop).toHaveBeenCalledOnce();
     expect(replacement.stop).not.toHaveBeenCalled();
     expect(socket.sent).toHaveLength(commands); // No replacement publication, join or route command.
-    expect(session.getSnapshot().voiceInput).toEqual({ deviceId: "next-device", volume: 1.6, voiceProcessing: true });
+    expect(session.getSnapshot().voiceInput).toEqual({ deviceId: "next-device", volume: 1.6, voiceProcessing: true, strongerSuppression: false });
     expect(JSON.parse(preferences.get("piik:room-preferences:v1")!).voiceInput).toEqual(session.getSnapshot().voiceInput);
     getUserMedia.mockRejectedValueOnce(new DOMException("Microphone declined", "NotAllowedError"));
     await expect(session.configureVoiceInput({ deviceId: "denied-device" })).rejects.toThrow("voice_microphone_permission_denied");
@@ -12116,7 +12124,8 @@ test('late clear tracks update the current selection and settings without rechec
     const confirming = session.selectWatchIndexedSource('first', video.candidate.id, audio.candidate.id);
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
     expect(prepare).toHaveBeenCalledOnce();
-    expect(discover).toHaveBeenCalledTimes(2); // Confirmation retired selection discovery before Native preparation.
+    expect(discover).toHaveBeenCalledTimes(3); // Preparation still belongs to the open selection.
+    expect(inspect).toHaveBeenCalledTimes(3); // Unchanged tracks keep their existing inspection.
     const start = socket.sent.findLast(command => command.type === 'start_watch')!;
     expect(start.byteSource).toEqual(byteSource);
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });

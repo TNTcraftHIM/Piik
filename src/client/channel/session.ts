@@ -2796,7 +2796,6 @@ export class ChannelSession {
     selection.controller.signal.throwIfAborted();
     const choice = choiceId === null ? undefined : watchSources.choices.find(value => value.id === choiceId);
     if (choiceId !== null && !choice) throw new Error("watch_page_unavailable");
-    selection.discovery?.unsubscribe();
     if (choice) await this.commitPortableWatch(roomId, page, selection, choice.displayURL, choice.format);
     else await this.commitWatch(roomId, { kind: "website", url: page.url }, new AppPageMedia(page), selection);
   }, reportError);
@@ -2809,7 +2808,6 @@ export class ChannelSession {
     const selection = this.sourceSelections.get(roomId), page = selection?.page;
     const choice = selection?.watchSources?.choices.find(value => value.id === choiceId);
     if (!selection || !page || !choice) throw new Error("watch_page_unavailable");
-    selection.discovery?.unsubscribe();
     const source = await page.prepareMedia(choiceId, selection.controller.signal);
     const mediaUrl = source.format === choice.format ? directForwardMediaURL(choice) : undefined;
     await this.commitPageSuppliedWatch(roomId, page, selection, source, mediaUrl);
@@ -2821,7 +2819,6 @@ export class ChannelSession {
     const video = sources.indexed.find(value => value.candidate.id === videoId)?.inspection;
     const audio = audioId ? sources.indexed.find(value => value.candidate.id === audioId)?.inspection : undefined;
     if (!video || audioId && !audio) throw new Error("watch_indexed_unsupported");
-    selection.discovery?.unsubscribe();
     const byteSource = await page.prepareIndexedMedia(indexedMediaSelection(video, audio), selection.controller.signal);
     await this.commitPageSuppliedWatch(roomId, page, selection, byteSource);
   }, reportError);
@@ -2843,7 +2840,6 @@ export class ChannelSession {
   selectWatchMpdSource = (roomId: string, selected: NativePageMpdSelection, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const selection = this.sourceSelections.get(roomId), page = selection?.page;
     if (!selection || !page || !selection.watchSources?.mpd.some(choice => choice.catalog?.sourceId === selected.sourceId)) throw new Error("watch_page_unavailable");
-    selection.discovery?.unsubscribe();
     const byteSource = await page.prepareMpdMedia(selected, selection.controller.signal);
     await this.commitPageSuppliedWatch(roomId, page, selection, byteSource);
   }, reportError);
@@ -3656,14 +3652,17 @@ export class ChannelSession {
     const signal = this.captureLifetime.signal;
     if (this.microphoneRequest) await this.microphoneRequest.promise;
     signal.throwIfAborted();
-    const voiceInput = { ...this.view.voiceInput, ...settings };
+    const previous = this.view.voiceInput;
+    const voiceInput = { ...previous, ...settings };
+    const enhanced = Boolean(voiceInput.voiceProcessing && voiceInput.strongerSuppression);
     const input = this.microphone;
-    if (input) {
+    if (input && (voiceInput.deviceId !== previous.deviceId || voiceInput.voiceProcessing !== previous.voiceProcessing
+      || enhanced !== Boolean(previous.voiceProcessing && previous.strongerSuppression))) {
       let captured: MediaStream | undefined = await this.captureVoiceMicrophone(voiceInput, input.signal);
       try {
         signal.throwIfAborted();
         if (this.microphone !== input) throw new DOMException("Microphone capture cancelled", "AbortError");
-        await input.configure(captured, Boolean(voiceInput.voiceProcessing && voiceInput.strongerSuppression));
+        await input.configure(captured, enhanced);
         captured = undefined;
       } finally { captured?.getTracks().forEach(track => track.stop()); }
     }

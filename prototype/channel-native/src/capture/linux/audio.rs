@@ -285,7 +285,7 @@ async fn run(
     frames: mpsc::Sender<AudioFrame>,
     ready: &mut Option<oneshot::Sender<Result<()>>>,
 ) -> Result<()> {
-    let pipeline = Pipeline(gst::Pipeline::new());
+    let pipeline = Pipeline(gst::Pipeline::with_name("audio-capture"));
     let clock = Clock::new();
     clock.pipeline(&pipeline.0);
     let mut source = gst::ElementFactory::make("pulsesrc");

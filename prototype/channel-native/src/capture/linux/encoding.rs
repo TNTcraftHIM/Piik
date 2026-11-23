@@ -419,7 +419,7 @@ impl Codec {
             encoder.set_property_from_str("tune", "zerolatency");
             encoder.set_property_from_str("speed-preset", "ultrafast");
         }
-        let pipeline = Pipeline(gst::Pipeline::new());
+        let pipeline = Pipeline(gst::Pipeline::with_name("video-encoding"));
         clock.pipeline(&pipeline.0);
         let input = gst_app::AppSrc::builder()
             .is_live(true)

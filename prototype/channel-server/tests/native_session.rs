@@ -1559,15 +1559,6 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         .unwrap()
         .unwrap()
         .unwrap();
-    {
-        let mut store = piik_channel_core::storage::Storage::open_existing(&path).unwrap();
-        let mut checkpoint = store.load().unwrap().unwrap();
-        assert_eq!(checkpoint.as_object_mut().unwrap().remove("picture"), Some(json!(ROOM_PICTURE)));
-        // A previously released room file stores an upload directly in the icon slot.
-        checkpoint["icon"] = json!(ROOM_PICTURE);
-        store.save(&checkpoint).unwrap();
-    }
-
     // A new process/session restores the same committed policy without activities.
     let app_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = app_listener.local_addr().unwrap();

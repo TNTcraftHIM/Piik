@@ -89,7 +89,8 @@
         if (observed && observed === video.currentSrc) {
           try { const source = new URL(observed); if (['http:', 'https:'].includes(source.protocol) && !source.username && !source.password) url = source.href; } catch {}
         }
-        return { media, resource: observed, revision: entry.revision, title: (video.getAttribute('aria-label') || video.title || document.title || location.hostname).slice(0, 256), url,
+        const title = video.getAttribute('aria-label') || video.title || document.title || location.hostname;
+        return { media, resource: observed, revision: entry.revision, title: title.match(/^.{0,256}/su)[0].toWellFormed(), url,
           duration: Number.isFinite(video.duration) ? video.duration : null };
       }) });
     }, 80);

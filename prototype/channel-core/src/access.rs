@@ -16,37 +16,14 @@ pub enum RoomPermission {
 
 /// The room host retains its picture alongside the public decorative key.
 #[derive(Clone, Default, Deserialize, Serialize)]
-#[serde(try_from = "SavedAppearance")]
 pub struct RoomAppearance {
     pub icon: RoomIcon,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "crate::wire::avatar",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub picture: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct SavedAppearance {
-    icon: String,
-    #[serde(default, deserialize_with = "crate::wire::avatar")]
-    picture: Option<String>,
-}
-
-impl TryFrom<SavedAppearance> for RoomAppearance {
-    type Error = &'static str;
-
-    fn try_from(saved: SavedAppearance) -> Result<Self, Self::Error> {
-        // Older room-owned saves used the icon slot for the uploaded picture.
-        if saved.icon.starts_with("data:") && saved.picture.is_none() && identity_image(&saved.icon)
-        {
-            return Ok(Self {
-                icon: RoomIcon::default(),
-                picture: Some(saved.icon),
-            });
-        }
-        Ok(Self {
-            icon: saved.icon.try_into()?,
-            picture: saved.picture,
-        })
-    }
 }
 
 impl RoomAppearance {

@@ -17,7 +17,7 @@ pub(crate) async fn run(
     let result = async {
         let clock = frames.clock();
         let control = frames.control();
-        let pipeline = Pipeline(gst::Pipeline::new());
+        let pipeline = Pipeline(gst::Pipeline::with_name("video-decoding"));
         clock.pipeline(&pipeline.0);
         let caps = gst::Caps::builder("video/x-h264")
             .field("stream-format", "byte-stream")

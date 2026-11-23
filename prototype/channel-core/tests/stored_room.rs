@@ -567,11 +567,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         .unwrap()
         .remove("picture");
     old_archive["policy"]["icon"] = json!(ROOM_PICTURE);
-    let normalized = serde_json::from_value::<Metadata>(old_archive).unwrap();
-    normalized.validate().unwrap();
-    let normalized = serde_json::to_value(normalized).unwrap();
-    assert_eq!(normalized["policy"]["icon"], "couch");
-    assert_eq!(normalized["policy"]["picture"], ROOM_PICTURE);
+    assert!(serde_json::from_value::<Metadata>(old_archive).is_err());
     serde_json::from_value::<Metadata>(manifest)
         .unwrap()
         .validate()
@@ -606,10 +602,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
             .unwrap()
             .remove("picture");
         legacy["roomInfo"]["icon"] = json!(ROOM_PICTURE);
-        let normalized =
-            serde_json::to_value(serde_json::from_value::<Metadata>(legacy).unwrap()).unwrap();
-        assert_eq!(normalized["roomInfo"]["icon"], "couch");
-        assert_eq!(normalized["roomInfo"]["picture"], ROOM_PICTURE);
+        assert!(serde_json::from_value::<Metadata>(legacy).is_err());
         for field in [
             "policy",
             "ownCredential",

@@ -72,7 +72,9 @@ define_class!(
                 }
             }
             if let Some(url) = entry.url.get() {
-                if let Err(error) = webbrowser::open(url) {
+                // Dock/Finder returns to the launcher of the running App.
+                let launcher = url.strip_suffix("?start=1").unwrap_or(url);
+                if let Err(error) = webbrowser::open(launcher) {
                     eprintln!("Open the App address in your browser: {error}");
                 }
             }

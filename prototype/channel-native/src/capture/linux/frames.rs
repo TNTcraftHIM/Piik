@@ -139,6 +139,9 @@ impl Frames {
         codec: crate::capture::VideoCodec,
     ) -> Result<super::Encoding> {
         anyhow::ensure!(codec.supported(), "capture_codec_unsupported");
+        if let State::Stopped(error) = &*self.control.0.borrow() {
+            return Err(anyhow!("{}", error.as_deref().unwrap_or("capture stopped")));
+        }
         super::Encoding::start(self.clone(), settings)
     }
     pub fn finish(&self, error: Option<String>) {

@@ -134,9 +134,7 @@ impl Capture {
         })
     }
     pub fn encode(&self, settings: Settings, codec: VideoCodec) -> Result<Encoding> {
-        ensure!(codec.supported(), "capture_codec_unsupported");
-        ensure!(!self.frames.control().is_stopped(), "capture stopped");
-        Encoding::start(self.frames.clone(), settings)
+        self.frames.encode(settings, codec)
     }
     pub fn control(&self) -> Control {
         self.control.clone()
@@ -236,7 +234,7 @@ impl Video {
             .drop(true)
             .wait_on_eos(false)
             .build();
-        let pipeline = Pipeline(gst::Pipeline::new());
+        let pipeline = Pipeline(gst::Pipeline::with_name("screen-capture"));
         frames.clock().pipeline(&pipeline.0);
         pipeline.0.add_many([&source, sink.upcast_ref()])?;
         source.link(&sink)?;

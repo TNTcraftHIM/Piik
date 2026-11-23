@@ -53,7 +53,13 @@ fn message_error(message: &gst::MessageRef) -> Option<anyhow::Error> {
             error.error(),
             error.debug().unwrap_or_default(),
         )),
-        gst::MessageView::Eos(_) => Some(anyhow::anyhow!("capture stream ended")),
+        gst::MessageView::Eos(_) => Some(anyhow::anyhow!(
+            "{} reached end of stream",
+            message
+                .src()
+                .map(|src| src.name())
+                .unwrap_or_else(|| "GStreamer pipeline".into())
+        )),
         _ => None,
     }
 }

@@ -170,7 +170,7 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", initialInte
           <ChannelAction icon="arrowUp" quiet label={t("room.copy.load")}
             disabled={!connected || busy || backupBusy || inspecting} busy={inspecting} onClick={() => input.current?.click()} />
           {copy && <><p>{copy.file.name}</p><p>{t("room.copy.retainedFileCount", { count: String(copy.retainedFileCount) })}</p><p>{t("room.copy.loadNote")}</p>
-            <ChannelAction icon="x" quiet label={t("room.copy.remove")} disabled={busy || backupBusy} onClick={() => setCopy(null)} /></>}
+            <ChannelAction icon="x" quiet label={t("room.copy.remove")} disabled={busy || backupBusy || inspecting} onClick={() => setCopy(null)} /></>}
         </section>
         <RoomForm value={draft} onChange={fields => setDraft(previous => ({ ...previous, ...fields }))} roomHost={roomHost} inviteOnly={inviteOnly}
           disabled={!connected || busy || inspecting || (copy !== null && backupBusy)} busy={creating}

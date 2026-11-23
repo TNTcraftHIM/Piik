@@ -314,3 +314,12 @@ test("continuous mutations deliver candidate addition and retirement before page
     expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ kind: "removed" });
   } finally { vi.useRealTimers(); }
 });
+
+test("candidate titles keep a supplementary character at the Native scalar limit", () => {
+  const bridge = candidateBridge(), first = ownedVideo(0), next = ownedVideo(1);
+  const prefix = "a".repeat(255), face = String.fromCodePoint(0x1f3ac);
+  next.title = prefix + face + " episode";
+  bridge.setVideos([first, next]);
+  const { candidates } = JSON.parse(bridge.bodies.at(-1)!);
+  expect(candidates.map((candidate: { title: string }) => candidate.title)).toEqual([first.title, prefix + face]);
+});

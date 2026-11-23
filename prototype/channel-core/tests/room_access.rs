@@ -462,10 +462,6 @@ fn room_picture_only_reaches_an_admitted_reader_while_the_room_is_online() {
     let summary = &archive["state"]["hostedRooms"][&id];
     assert_eq!(summary["icon"], "star");
     assert!(summary.get("picture").is_none());
-    let mut legacy = serde_json::to_value(metadata).unwrap();
-    legacy["state"]["hostedRooms"][&id]["icon"] = json!(picture);
-    let metadata: piik_channel_core::backup::DomainMetadata =
-        serde_json::from_value(legacy).unwrap();
     let mut reopened = RoomNetwork::new();
     reopened.authority = metadata.into_authority(vec![]).unwrap();
     admit(
@@ -474,7 +470,7 @@ fn room_picture_only_reaches_an_admitted_reader_while_the_room_is_online() {
         json!({"type":"join","name":"Writer","credential":writer_key}),
     );
     let offline = row(&reopened, writer);
-    assert_eq!(offline["icon"], "couch");
+    assert_eq!(offline["icon"], "star");
     assert_eq!(offline["available"], false);
     assert!(offline.get("picture").is_none());
     assert!(!serde_json::to_string(&reopened.authority.export_backup())
