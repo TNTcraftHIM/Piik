@@ -209,6 +209,17 @@ export type ChannelFilePlan = z.infer<typeof filePlanSchema>;
 export type ChannelUser = z.infer<typeof userSchema>;
 export type ChannelUserSummary = z.infer<typeof userSummarySchema>;
 export type ChannelRoom = z.infer<typeof roomSchema>;
+
+export function requireConversationDelivery(
+  room: Pick<ChannelRoom, "authorized" | "available" | "delivery"> | undefined,
+): NonNullable<ChannelRoom["delivery"]> {
+  if (!room) throw new Error("room_unavailable");
+  if (!room.authorized) throw new Error("room_access_required");
+  if (!room.available) throw new Error("room_host_offline");
+  if (!room.delivery) throw new Error("room_unavailable");
+  return room.delivery;
+}
+
 export type RoomSummary = z.infer<typeof roomSummarySchema>;
 export type ChannelPair = ChannelSnapshot["pairs"][number];
 export type ChannelSignal = z.infer<typeof signalSchema>;

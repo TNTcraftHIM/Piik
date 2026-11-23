@@ -5745,6 +5745,36 @@ test.each(["timeout", "cancel"])("same draft retries its prepared attachment aft
   } finally { session.close(); }
 });
 
+test("discarding an unconfirmed attachment send gives the same draft a new nonce only for its binding", async () => {
+  const { session, peer } = await setup();
+  const file = new File(["synthetic note"], "note.txt"), id = crypto.randomUUID();
+  const files = [{ id, file }];
+  const describe = vi.spyOn(session.attachments, "describe").mockResolvedValue([{ id, file,
+    attachment: { id, name: file.name, size: file.size, mediaType: "application/octet-stream", sha256: "a".repeat(64) },
+  }]);
+  const sendUnconfirmed = async () => {
+    const rejected = expect(session.sendMessage("first", "same text", files)).rejects.toThrow("request_timeout");
+    const command = await peer.next();
+    peer.reply(command, { type: "error", code: "request_timeout" });
+    await rejected;
+    if (command.type !== "chat") throw new Error("expected chat");
+    return command;
+  };
+  try {
+    const first = await sendUnconfirmed();
+    session.discardMessageRetry("first", "different-binding");
+    const retry = await sendUnconfirmed();
+    expect(retry).toEqual({ ...first, requestId: retry.requestId });
+    expect(describe).toHaveBeenCalledTimes(1);
+
+    session.discardMessageRetry("first", "binding");
+    const next = await sendUnconfirmed();
+    expect(next.nonce).not.toBe(first.nonce);
+    expect(next).toEqual({ ...first, nonce: next.nonce, requestId: next.requestId });
+    expect(describe).toHaveBeenCalledTimes(2);
+  } finally { session.close(); }
+});
+
 test.each(["revoked access", "changed binding", "closed session"] as const)("%s retires a file preparation before its late result can retain a send", async changed => {
   const { session, socket, peer } = await setup();
   const file = new File(["synthetic note"], "note.txt"), id = crypto.randomUUID();

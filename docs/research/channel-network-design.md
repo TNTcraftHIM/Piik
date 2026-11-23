@@ -948,11 +948,12 @@ and limits.
 Decoded FPS and codec rate metadata are startup hints, not source admission
 limits. Decoded input uses only an explicit per-encoding max-FPS restriction;
 the nominal format hint cannot add another cap. Local capture also applies the
-requested FPS ceiling. Both retain original timestamps and the shared capture
-rate. Workers observe the admitted cadence before FrameDropper. Linux refreshes
-encoder caps from that observation, using raw/requested startup hints until
-available: x264's variable-rate
-buffering would otherwise delay a static source's first picture. Windows MF keeps
+requested FPS ceiling. Both use original input timestamps for admission, and
+workers observe the admitted cadence before FrameDropper. The media standard
+owns [output presentation time](../standards/media-quality.md#framework-owned-adaptation).
+Linux refreshes encoder caps from that observation and uses raw or requested
+startup hints until it has a cadence sample. This avoids the first-frame delay
+that x264's variable-rate buffering can introduce on a static source. Windows MF keeps
 configured media-type FPS and applies [Chromium's bitrate compensation](https://chromium.googlesource.com/chromium/src/+/6ffa76bb4156526eb14d582183f2bd725e3cd262/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc#119)
 to the driver property; transport/FrameDropper retain the logical budget. FPS-only
 changes use cadence admission rather than restarting the MFT. Neither a nonzero

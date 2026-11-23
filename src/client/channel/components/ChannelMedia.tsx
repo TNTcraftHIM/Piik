@@ -111,6 +111,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const audioAvailable = player.media.audioAvailable?.() !== false;
   const [htmlMedia, setMedia] = useState({ position: 0, duration: 0, volume: 1, muted: false, rate: 1 });
   const live = mediaState?.live;
+  const ended = live ? !live.active : player.video?.ended ?? mediaState?.ended;
   const media = player.video && !live ? htmlMedia : { position: mediaState?.position ?? 0, duration: mediaState?.duration ?? 0,
     rate: mediaState?.rate ?? 1, volume: htmlMedia.volume, muted: htmlMedia.muted };
   const silent = media.muted || media.volume === 0;
@@ -268,7 +269,8 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
           {owned && <Btn icon={ownerPaused ? "play" : "pause"} quiet size="dense"
             title={ownerPaused ? "watch.play" : "watch.pause"} disabled={disabled} onClick={() => onPlayback({ paused: !ownerPaused })} />}
           {!thumbnail && <div className="c3-watch-position" data-seeking={seekPreview !== null || undefined}>
-            {live && (!live.active || !seekAvailable) && <span className="c3-watch-status">{t(live.active ? "watch.live" : "watch.liveEnded")}</span>}
+            {ended && <span className="c3-watch-status" role="status">{t("watch.ended")}</span>}
+            {live?.active && !seekAvailable && <span className="c3-watch-status">{t("watch.live")}</span>}
             {(!live || seekAvailable) && <span className="c3-watch-time" title={timeLabel}>{timeLabel}</span>}
           </div>}
           {owned && livePosition !== null && <Btn icon="arrowRight" quiet size="dense" title="watch.goLive" textTooltip

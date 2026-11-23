@@ -294,6 +294,10 @@ the existing encoder or dormant-output owner without recreating the connection.
 Native outputs share one source presentation timeline across encoder groups,
 dormancy and capture replacement. Capture and refresh timestamps express elapsed
 source time; encoder completion and pipe arrival do not establish another clock.
+Raw capture time still owns frame admission and cadence. A local refresh uses
+the capture clock; a subsequently published capture update keeps its new pixels
+and advances presentation only as far as the next distinct RTP tick when needed.
+Decoded-source frames retain their original source time.
 Internal RTP copies reuse the original ingress's accepted remote-to-local clock
 mapping. Only that ingress estimates network delay; outgoing sender reports
 project the source timeline onto the media core's local clock at emission.

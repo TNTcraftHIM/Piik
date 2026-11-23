@@ -267,6 +267,9 @@ The compact Windows App voice overlay uses the same external window and
 represents the selected voice activity. In pinned mode it passes pointer input
 through to applications beneath it. Its controls in Piik own adjustment and
 dismissal, and closing the window preserves voice participation.
+Its optional chat overlay uses the selected voice room's interaction session.
+Chat visibility and appearance share one entry in the overlay's editing mode;
+pinned mode remains display-only.
 
 Keep the focus filmstrip compact and left aligned, with bounded thumbnail widths.
 Grid cards keep equal visual weight and column widths, centering an incomplete

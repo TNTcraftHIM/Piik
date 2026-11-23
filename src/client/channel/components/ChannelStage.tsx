@@ -20,7 +20,7 @@ import { Btn, Cap } from "../../components/living/primitives";
 import { Tooltip } from "../../components/living/Tooltip";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { ChannelUser } from "./ChannelUser";
-import { participantViewingLabel, screenTitle, type ScreenAudiencePerson, type AudiencePerson } from "../presentation";
+import { participantViewingLabel, screenTitle, viewingAppearance, type ScreenAudiencePerson, type AudiencePerson } from "../presentation";
 import type { MessageReactions } from "../protocol";
 import { ChannelContentReactions } from "./ChannelContentReactions";
 import { BrandLoader } from "../../components/living/BrandMark";
@@ -160,7 +160,7 @@ export function SourceAudience({ people, joined = false }: { people: readonly Sc
   useAnchoredPopover(trigger, panel, { side: "above", align: "end", maxHeight: 360 });
   const count = joined ? people.length : people.filter(person => "state" in person && person.state === "active").length;
   return <span ref={trigger} className="c3-screen-audience">
-    <Btn icon="eye" iconOverlay={<span aria-hidden="true">{count}</span>} quiet size="dense" expanded={open} controls={id} popoverTarget={id}
+    <Btn icon={joined ? viewingAppearance.joined.icon : "eye"} iconOverlay={<span aria-hidden="true">{count}</span>} quiet size="dense" expanded={open} controls={id} popoverTarget={id}
       title={{ text: t(joined ? "watch.viewersCount" : "screen.viewersCount", { count: String(count) }) }} />
     <div id={id} ref={panel} popover="auto" role="dialog" aria-label={t(joined ? "watch.joined" : "screen.viewers")}
       className="lr-anchored-card c3-screen-audience-panel" onToggle={event => {

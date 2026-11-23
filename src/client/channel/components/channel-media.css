@@ -55,6 +55,12 @@
     margin-block-end: 10px;
   }
 }
+.c3-video.c3-watch-player:not([data-diagnosis], [data-external], [data-failed]):has(> .c3-mini-message):has(> .c3-watch-controls > .c3-watch-timeline) {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  > .c3-mini-message { position: relative; inset: auto; padding: 4px 8px; }
+  > .c3-watch-controls { position: relative; inset: auto; margin-block-end: 10px; }
+}
 .c3-watch-timeline { display: grid; align-items: center; min-height: 18px; }
 .c3-watch-timeline :is(input, progress) { min-width: 0; width: 100%; margin: 0; accent-color: var(--action); }
 .c3-watch-timeline input { height: 28px; cursor: pointer; touch-action: pan-y; }

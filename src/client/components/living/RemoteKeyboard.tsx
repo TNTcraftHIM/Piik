@@ -79,11 +79,11 @@ export function RemoteKeyboard({ input, close, mouseControl, inputSurface, touch
     const hidden = () => { if (owner.hidden) reset(); };
     reset();
     owner.defaultView?.addEventListener("blur", reset);
-    if (picture?.ownerDocument === owner) picture.addEventListener("blur", reset);
+    if (picture?.ownerDocument === owner) picture.addEventListener("focusout", reset);
     owner.addEventListener("visibilitychange", hidden);
     return () => {
       owner.defaultView?.removeEventListener("blur", reset);
-      picture?.removeEventListener("blur", reset);
+      picture?.removeEventListener("focusout", reset);
       owner.removeEventListener("visibilitychange", hidden);
       presses.reset();
     };

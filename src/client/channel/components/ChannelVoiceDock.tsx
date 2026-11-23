@@ -9,8 +9,11 @@ import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
 import type { ChannelController } from "../types";
 import { profileAvatar, roomVoicePeople } from "../presentation";
 import { ChannelVoiceSettings } from "./ChannelVoiceSettings";
-import { useCallback, useContext, useEffect } from "react";
+import { useCallback, useContext, useEffect, useId } from "react";
 import { createPortal } from "react-dom";
+import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../../components/living/RoomChatOverlay";
+import type { RoomInteractionSession } from "../../lib/room-interactions";
+import { SurfaceDocument } from "../../ui/panel-window";
 import { VoiceOverlay } from "./voice-overlay";
 import { useVoiceLevels } from "../../room-voice/use-voice-levels";
 import { resolveVoiceDockControls } from "../voice-dock-controls";
@@ -34,6 +37,7 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
   useEffect(() => { if (!activity && overlay?.target) overlay.close(); }, [activity, overlay]);
   if (!activity || !state) return null;
   const nameOfRoom = (id: string) => state.channel.rooms.find(room => room.id === id)?.name ?? id;
+  const interaction = channel.interactionsByRoom.get(roomId) ?? null;
   const roomName = nameOfRoom(roomId);
   const multipleRooms = joined.length > 1;
   const { muted, deafened } = activity;
@@ -60,26 +64,32 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
       </div>
       <ChannelVoiceSettings channel={channel} roomId={roomId} available={available} shortcuts={shortcuts} />
     </div>
-    {overlay?.target && createPortal(<div className="c3-speaking-overlay">
-      <div className="c3-speaking-overlay-header">
-        <strong title={roomName}>{roomName}</strong>
-        <span role="img" aria-label={t(muted ? "voice.microphoneInactive" : "voice.microphoneActive")}>
-          <Glyph name={muted ? "microphoneOff" : "microphone"} size={16} />
-        </span>
-        <span role="img" aria-label={t(deafened ? "voice.listeningPaused" : "voice.listeningActive")}>
-          <Glyph name={deafened ? "headphonesOff" : "headphones"} size={16} />
-        </span>
-        {speaking.length > 4 && <small>+{speaking.length - 4}</small>}
-        {overlay.mode === "editing" && <Btn icon="check" size="compact" quiet title="channel.voiceDock.pinOverlay" onClick={overlay.edit} />}
+    {overlay?.target && createPortal(<SurfaceDocument.Provider value={overlay.target.ownerDocument}>
+      <div className="c3-speaking-overlay">
+        <div className="c3-speaking-overlay-header">
+          <strong title={roomName}>{roomName}</strong>
+          <span role="img" aria-label={t(muted ? "voice.microphoneInactive" : "voice.microphoneActive")}>
+            <Glyph name={muted ? "microphoneOff" : "microphone"} size={16} />
+          </span>
+          <span role="img" aria-label={t(deafened ? "voice.listeningPaused" : "voice.listeningActive")}>
+            <Glyph name={deafened ? "headphonesOff" : "headphones"} size={16} />
+          </span>
+          {speaking.length > 4 && <small>+{speaking.length - 4}</small>}
+          {overlay.mode === "editing" && interaction && <VoiceOverlayChatSettings key={interaction.key} session={interaction} />}
+          {overlay.mode === "editing" && <Btn icon="check" size="compact" quiet title="channel.voiceDock.pinOverlay" onClick={overlay.edit} />}
+        </div>
+        <div className="c3-speaking-overlay-people">
+          {speaking.slice(0, 4).map(user => <div key={user.id}>
+            <PawnSvg centered color={participantColor(user.id)} identity={user.id}
+              avatar={profileAvatar(user, channel.profiles.get(user.id)) ?? undefined} voice={appearances?.get(user.id)} />
+            <span title={user.name}>{user.name}</span>
+          </div>)}
+        </div>
+        <div className="c3-speaking-overlay-chat">
+          <RoomChatOverlay session={interaction} visible />
+        </div>
       </div>
-      <div className="c3-speaking-overlay-people">
-        {speaking.slice(0, 4).map(user => <div key={user.id}>
-          <PawnSvg centered color={participantColor(user.id)} identity={user.id}
-            avatar={profileAvatar(user, channel.profiles.get(user.id)) ?? undefined} voice={appearances?.get(user.id)} />
-          <span title={user.name}>{user.name}</span>
-        </div>)}
-      </div>
-    </div>, overlay.target)}
+    </SurfaceDocument.Provider>, overlay.target)}
     <div className="c3-voice-controls">
       <AudioVolumeMenu volume={channel.voiceInput.volume} onVolume={channel.setInputVolume} label="host.microphone.volume">
         <VoiceMicrophoneButton active={!muted} level={levels.get(channel.sessionId ?? "")} disabled={microphoneDisabled} quiet
@@ -99,4 +109,21 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
         onClick={() => run(channel.leaveVoice(roomId))} />
     </div>
   </section>;
+}
+
+function VoiceOverlayChatSettings({ session }: { session: RoomInteractionSession }) {
+  const { t } = useCopy();
+  const id = useId();
+  return <>
+    <Btn id={id + "-trigger"} icon="danmaku" size="compact" quiet textTooltip title="playback.overlay"
+      hasPopup="dialog" popoverTarget={id} controls={id} />
+    <div id={id} className="lr-anchored-card c3-speaking-overlay-settings" popover="auto"
+      role="dialog" aria-labelledby={id + "-title"}>
+      <div className="c3-speaking-overlay-settings-header">
+        <strong id={id + "-title"}>{t("playback.overlay")}</strong>
+        <RoomChatToggle session={session} size="compact" quiet />
+      </div>
+      <RoomChatOverlaySettings session={session} />
+    </div>
+  </>;
 }

@@ -88,8 +88,9 @@ function ChatFlight({ message, now, colorBySender }: {
     "--chat-person-color": colorBySender ? participantColor(message.sender.peerId) : undefined,
     animationDuration: `${message.durationMs}ms` } as CSSProperties} onAnimationStart={event => {
       // Mounting or returning from reduced motion uses the remaining lifetime.
+      const ownerWindow = event.currentTarget.ownerDocument.defaultView;
       for (const animation of event.currentTarget.getAnimations()) {
-        if (animation instanceof CSSAnimation && animation.animationName === "lr-chat-flight") {
+        if (ownerWindow && animation instanceof ownerWindow.CSSAnimation && animation.animationName === "lr-chat-flight") {
           animation.currentTime = Math.min(message.durationMs, Math.max(0, message.durationMs - (message.expiresAt - now())));
         }
       }

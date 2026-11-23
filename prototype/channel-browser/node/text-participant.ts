@@ -6,7 +6,7 @@ import WebSocket from 'ws';
 import { z } from 'zod';
 import type { MessageReactionSnapshot, ReactionEvent, ReactionTarget } from '../../../src/client/channel/protocol';
 import init, { history_page_size, SessionSigner, verify_conversation } from '../pkg/piik_channel_browser.js';
-import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, roomSchema, roomSummarySchema, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationAddress, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary } from '../../../src/client/channel/protocol';
+import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, requireConversationDelivery, roomSchema, roomSummarySchema, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationAddress, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary } from '../../../src/client/channel/protocol';
 await init({ module_or_path: readFileSync(new URL('../pkg/piik_channel_browser_bg.wasm', import.meta.url)) });
 type ConversationCommand = Extract<ChannelCommand, {
   type: 'chat' | 'history' | 'interaction_ready' | 'react' | 'delete_message';
@@ -230,9 +230,9 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
   }
 
   private conversation(command: ConversationCommand, expects: ConversationResult) {
-    const delivery = this.state?.channel.rooms.find(room => room.id === command.roomId)?.delivery;
-    if (!delivery || !this.sessionId)
-      return Promise.reject(new Error('room_host_offline'));
+    this.checkSocket(this.socket);
+    if (!this.state || !this.sessionId) throw new Error('disconnected');
+    const delivery = requireConversationDelivery(this.state.channel.rooms.find(room => room.id === command.roomId));
     const requestId = randomUUID(), { roomId, ...body } = command;
     const packet = JSON.parse(this.signer.sign(this.sessionId, JSON.stringify({ roomId, bindingId: delivery.bindingId,
       sender: this.sessionId, recipient: delivery.hostSessionId, requestId, command: body })));
@@ -267,10 +267,8 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       Extract<ConversationReply['record'], { type: 'interaction_ready' }>;
     this.checkSocket(socket);
     if (this.sessionId !== session) throw new Error('disconnected');
-    const room = this.state?.channel.rooms.find(room => room.id === roomId);
-    if (!room?.authorized) throw new Error('room_access_required');
-    if (!room.available) throw new Error('room_host_offline');
-    if (room.delivery?.bindingId !== binding) throw new Error('room_host_changed');
+    const delivery = requireConversationDelivery(this.state?.channel.rooms.find(room => room.id === roomId));
+    if (delivery.bindingId !== binding) throw new Error('room_host_changed');
     if (!supported.reactionIds.includes(reaction)) throw new Error('unsupported_reaction');
     return await this.conversation({ type: 'react', roomId, reaction,
       target: { type: 'message', messageSeq, messageId }, nonce: ++this.reactionNonce }, 'reaction') as TextReactionResult;

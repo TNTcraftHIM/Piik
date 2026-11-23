@@ -342,7 +342,10 @@ describe("Webpage watch presentation", () => {
       expect(render({ mediaState: { readyState: 4 } })).toContain("Preparing video");
       expect(render({ video: { readyState: 4, videoWidth: 640, parentElement: null } })).toContain("Preparing video");
       expect(render({ video: { readyState: 4, videoWidth: 640, parentElement: null }, hasPresentedFrame: true })).not.toContain("Preparing video");
-      expect(render({ video: { readyState: 4, parentElement: null } })).not.toContain("Preparing video");
+      expect(render({ video: { readyState: 4, videoWidth: 0, parentElement: null } })).not.toContain("Preparing video");
+      const frame = { video: { readyState: 2, videoWidth: 640, paused: true, parentElement: null }, hasPresentedFrame: true };
+      expect(render(frame)).not.toContain('role="status">Ended<');
+      expect(render({ ...frame, video: { ...frame.video, ended: true } })).toContain('role="status">Ended<');
       expect(render({ blocked: true })).not.toContain("Preparing video");
       expect(render({ error: "watch_media_failed" })).not.toContain("Preparing video");
     } finally { vi.unstubAllGlobals(); }

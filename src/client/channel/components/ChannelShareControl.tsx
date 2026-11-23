@@ -130,7 +130,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const canChooseExecution = sources.kind === "ready" && sources.softwareEncodingCodecs.includes("h264")
     && (codecMode === "auto" || codecMode === "h264")
     && (sharing ? !!selectedNative?.current && !externalInput : sources.sources.length > 0 && !externalInput);
-  const pickerSources: NativeSourceList = !appConnected ? { kind: "browser" } : sources.kind === "ready" &&
+  const pickerSources: NativeSourceList = !appConnected && sources.kind === "ready" ? { kind: "unavailable" } : sources.kind === "ready" &&
     !(codecMode === "auto" ? sources.codecs.length > 0 : sources.codecs.includes(codecMode))
     ? { kind: "unsupported" } : sources;
   const screenQuality = sharing ? channel.screenQuality(sharing.id) : undefined;
@@ -168,7 +168,6 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const refresh = useCallback(() => {
     request.current?.abort();
     const current = request.current = new AbortController();
-    if (!appConnected) { setSources({ kind: "browser" }); return; }
     setSources(previous => ({ kind: "loading", appDetected: true,
       sources: "sources" in previous ? previous.sources : undefined }));
     void nativeSources(current.signal).then(result => {
@@ -183,14 +182,24 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
       setSources(previous => code === "app_disconnected" || code === "app_context_changed"
         ? { kind: "unavailable" }
         : { kind: "failed", error: code, sources: "sources" in previous ? previous.sources : undefined });
+    }).finally(() => {
+      if (request.current === current) request.current = null;
     });
-  }, [appConnected, nativeSources]);
+  }, [nativeSources]);
   const settingsNeedSources = settingsOpen && !watching && externalInput?.state !== "live"
     && (!sharing || selectedNative?.current === true);
   useEffect(() => {
-    if (open || settingsNeedSources) refresh();
-    return () => { request.current?.abort(); };
+    return () => { request.current?.abort(); request.current = null; };
   }, [open, settingsNeedSources, refresh]);
+  useEffect(() => {
+    if (appConnected && (open || settingsNeedSources) && !request.current) refresh();
+    if (!appConnected && !request.current) {
+      setSources(previous => {
+        if (previous.kind === "browser" || (open && previous.kind === "unavailable")) return previous;
+        return open ? { kind: "unavailable" } : { kind: "browser" };
+      });
+    }
+  }, [open, settingsNeedSources, appConnected, refresh]);
   useLayoutEffect(() => { close(); }, [roomId, publicationId, disabled, close]);
   useEffect(() => { setExternalOpen(false); }, [roomId]);
   useEffect(() => {

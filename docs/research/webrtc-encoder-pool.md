@@ -192,6 +192,16 @@ Software benefit requires comparing complete input-to-AU delivery under the same
 contention, including its GPU readback and CPU work. These controls leave the
 explicit Software choice and typed E_FAIL recovery unchanged.
 
+On 2026-11-23, a synthetic D3D control exercised the Windows parent and
+worker IPC with hardware and software H.264 in local-capture and
+decoded-source timing. After access-unit backpressure cleared, the first
+requested IDR carried the newest available texture at its original timestamp.
+Independent decoding confirmed that a static local refresh preserved the
+current image and that a capture timestamped before the refresh still reached
+the output when published afterward. With decoded-source timing, a request
+after the last frame had been submitted waited for a new texture and produced
+an IDR at its original timestamp. All four runs joined the worker.
+
 ## Pinned Baseline
 
 The initial review used Chrome 152.0.7977.82. Its [DEPS][chromium-deps] pins libwebrtc

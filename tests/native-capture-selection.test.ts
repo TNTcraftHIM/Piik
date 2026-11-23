@@ -220,7 +220,7 @@ describe("native capture source selection", () => {
         expect(nativeTab).not.toContain('data-source-tab="display"');
         expect(nativeTab).toMatch(/data-source-tab="browser"[^>]*aria-selected="true"/);
       }
-      if (kind === "unavailable") expect(nativeTab).not.toContain('role="status"');
+      if (kind === "unavailable") expect(nativeTab.replaceAll("&#x27;", "'")).toContain(t(lang, "channel.error.appDisconnected"));
       else expect(nativeTab.replaceAll("&#x27;", "'")).toContain(t(lang, `host.sourcePicker.${kind}`));
       expect(nativeTab).not.toContain(t(lang, "host.sourcePicker.empty"));
       expect(nativeTab).not.toMatch(/class="lr-source-picker-refresh"[^>]*disabled=""/);

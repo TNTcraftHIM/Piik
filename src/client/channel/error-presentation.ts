@@ -17,6 +17,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
   if (diagnosis) return display(diagnosis.message);
   if (error === "room_busy" || error === "capture_pending") return display("channel.error.busy");
   if (error === "room_creation_restricted") return display("channel.error.roomCreationRestricted");
+  if (error === "room_limit") return display("channel.error.roomLimit");
   if (error === "file_transfer_interrupted") return display("channel.attachment.transferInterrupted");
   if (error === "file_storage_full") return display("channel.attachment.storageFull");
   if (error === "saved_copy_missing") return display("channel.attachment.savedCopyMissing");

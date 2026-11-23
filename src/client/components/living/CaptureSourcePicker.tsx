@@ -375,6 +375,7 @@ export function CaptureSourcePicker({
             <span className="lr-source-option-icon" aria-hidden="true"><Glyph name="cast" size={23} /></span>
             <span className="lr-source-option-copy"><strong>{t("host.sourcePicker.externalAction")}</strong><small>{t("host.sourcePicker.externalHint")}</small></span>
           </button></Tooltip></div>}
+          {retryNativeTab && <p className="lr-source-picker-status" role="status">{t("channel.error.appDisconnected")}</p>}
           {nativeTab && nativeSources.kind === "loading" ? (
             <span className="lr-source-picker-status" role="status" aria-label={t("host.sourcePicker.loading")}>
               <Glyph name="refresh" className="lr-spin" size={18} />{t("host.sourcePicker.loading")}

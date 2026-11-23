@@ -107,6 +107,45 @@ test("signed conversation uses Domain delivery without peers and still fences si
   } finally { owner.close(); reader.close(); }
 });
 
+test("signed Web sends distinguish access, reachability and a cancelled reader", async () => {
+  const state = conversationState("host", "reader", "binding", "domain");
+  const [room] = state.channel.rooms;
+  const sign = vi.fn(), send = vi.fn(), pending = vi.fn(() => true);
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
+    createSessionSigner: async () => ({ signing_key: () => new Uint8Array(32), sign, free: vi.fn() }),
+  } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const conversation = new ChannelConversation({ context: () => ({ sessionId: "reader", state, connected: true }),
+    host: () => undefined, pending, send, file: vi.fn(), reply: vi.fn() });
+  const history = { type: "history", roomId: room.id } as const;
+
+  try {
+    await conversation.initialize();
+
+    state.channel.rooms = [{ ...room, reading: false }];
+    pending.mockReturnValueOnce(false);
+    await expect(conversation.send(history, "left-room", room.delivery!.bindingId)).rejects.toMatchObject({ name: "AbortError" });
+
+    state.channel.rooms = [{ ...room, access: "private", authorized: false, delivery: undefined }];
+    await expect(conversation.send(history, "revoked")).rejects.toThrow(/^room_access_required$/);
+
+    state.channel.rooms = [{ ...room, available: false }];
+    await expect(conversation.send(history, "offline")).rejects.toThrow(/^room_host_offline$/);
+
+    state.channel.rooms = [room];
+    await expect(conversation.send(history, "rebound", "previous-binding")).rejects.toThrow(/^room_unavailable$/);
+
+    state.channel.rooms = [{ ...room, delivery: undefined }];
+    await expect(conversation.send(history, "no-delivery")).rejects.toThrow(/^room_unavailable$/);
+
+    state.channel.rooms = [];
+    await expect(conversation.send(history, "hidden")).rejects.toThrow(/^room_unavailable$/);
+    await expect(conversation.send({ ...history, roomId: "unknown" }, "unknown")).rejects.toThrow(/^room_unavailable$/);
+
+    expect(sign).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  } finally { conversation.close(); }
+});
+
 test("retiring a room during a conversation commit does not read or broadcast from its released host", async () => {
   const state = conversationState("host", "source", "binding", "domain");
   const record: ConversationReply["record"] = { type: "reaction", nonce: 1,

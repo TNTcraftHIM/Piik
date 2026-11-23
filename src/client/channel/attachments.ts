@@ -34,6 +34,13 @@ export function isNativeSavePending(outcome?: DownloadOutcome): boolean {
   return outcome === "requested" || outcome === "started";
 }
 
+export function attachmentDownloadDocument(surface?: Document | null): Document | undefined {
+  // The App's room document owns download callbacks and receipts across panel movement.
+  if (typeof document !== "undefined" && document.defaultView?.piikNativeDownloads === true
+    && typeof document.defaultView.piikRevealDownload === "function") return document;
+  return surface ?? undefined;
+}
+
 interface Download { key: ChannelFileKey; controller: AbortController; promise: Promise<void>; status: { busy: boolean; error: string | null; outcome?: DownloadOutcome; saveProgress?: DownloadProgress } }
 interface Source { key: ChannelFileKey; attachment: ChannelAttachment; file: File; status: typeof idle; storage: "original" | "retained" | "session-cache"; offer?: Promise<void> }
 interface CacheClear { revision: number; pending?: Promise<void> }
@@ -96,7 +103,7 @@ export class ChannelAttachments {
   }
   async revealSavedCopy(key: ChannelFileKey, attachment: ChannelAttachment, surface: Element): Promise<void> {
     const id = fileKeyString(key), entry = this.savedReceipts.get(id), store = this.store;
-    const view = surface.ownerDocument.defaultView;
+    const view = attachmentDownloadDocument(surface.ownerDocument)?.defaultView;
     if (!entry || !store || !this.hasSavedCopy(key, attachment) || !view?.piikRevealDownload) return;
     const previous = this.downloads.get(id);
     const result = await view.piikRevealDownload(entry.receipt);
@@ -503,7 +510,7 @@ export class ChannelAttachments {
         void store.saveReceipt(entry, () => this.savedReceipts.get(id) === entry
           && this.cacheClears.get(cacheRoom(scope, key.roomId)) === clear).catch(() => {});
       } : undefined;
-      downloadBlob(file, attachment.name, { document: surface?.ownerDocument, signal: download.controller.signal, rememberSaved, outcome: outcome => {
+      downloadBlob(file, attachment.name, { document: attachmentDownloadDocument(surface?.ownerDocument), signal: download.controller.signal, rememberSaved, outcome: outcome => {
         if (this.downloads.get(id) !== download) return;
         download.status = { busy: false, error: outcome === "failed" ? "download_failed" : null, outcome,
           saveProgress: outcome === "started" ? download.status.saveProgress : undefined };

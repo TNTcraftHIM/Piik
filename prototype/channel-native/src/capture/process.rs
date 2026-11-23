@@ -271,7 +271,7 @@ enum Work {
     Stop,
     Restart(HRESULT),
     Command(Command),
-    Frame(RawFrame),
+    Frame(RawFrame, bool),
     Wait,
 }
 async fn supervise(
@@ -417,8 +417,6 @@ async fn child(
                     } else if let Some(bitrate) = s.bitrate.filter(|b| *b != settings.bitrate) {
                         settings.bitrate = bitrate;
                         Work::Command(Command::Bitrate { bitrate })
-                    } else if std::mem::take(&mut s.keyframe) {
-                        Work::Command(Command::Keyframe)
                     } else if s.read && !s.read_sent {
                         s.read_sent = true;
                         Work::Command(Command::Read)
@@ -430,7 +428,13 @@ async fn child(
                             .cloned()
                         {
                             s.credit = None;
-                            Work::Frame(raw)
+                            Work::Frame(raw, std::mem::take(&mut s.keyframe))
+                        } else if s.keyframe && after.is_some() {
+                            // The child asks after the frame it has. Only the parent
+                            // can tell whether capture has a newer frame to refresh.
+                            s.keyframe = false;
+                            s.credit = None;
+                            Work::Command(Command::RefreshLatest)
                         } else {
                             Work::Wait
                         }
@@ -448,11 +452,11 @@ async fn child(
                         return Err(windows::core::Error::from_hresult(reason).into())
                     }
                     Work::Command(command) => worker::write_json(&mut input, &command).await?,
-                    Work::Frame(raw) => {
+                    Work::Frame(raw, keyframe) => {
                         let device = unsafe { raw.texture.GetDevice()? };
                         let frame = gpu::send(raw, process as _)
                             .map_err(|error| gpu::failure(error, &device))?;
-                        worker::write_json(&mut input, &Command::Frame { frame }).await?;
+                        worker::write_json(&mut input, &Command::Frame { frame, keyframe }).await?;
                     }
                     Work::Wait => {
                         changed.await;

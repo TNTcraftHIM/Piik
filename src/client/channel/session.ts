@@ -1546,6 +1546,10 @@ export class ChannelSession {
     }
     return roomId;
   };
+  discardMessageRetry = (roomId: string, bindingId?: string): void => {
+    const attempt = this.outgoingMessages.get(roomId);
+    if (attempt && attempt.bindingId === bindingId) this.outgoingMessages.delete(roomId);
+  };
   sendMessage = (roomId: string, text: string, files: DraftFile[] = [], signal?: AbortSignal, options: ChatOptions = {}, preparation?: ChatAttachmentPreparation): Promise<void> => this.action(`chat:${roomId}`, async () => {
     signal?.throwIfAborted();
     if (files.length && !this.view.state?.channel.rooms.find(room => room.id === roomId)?.capabilities.attachments) throw new Error("attachments_unavailable");

@@ -1,4 +1,7 @@
-.c3-speaking-overlay { display: grid; gap: 6px; padding: 8px; }
+.c3-speaking-overlay { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 6px; padding: 8px; height: 100%; }
+.c3-speaking-overlay-chat { position: relative; min-height: 0; }
+.lr-anchored-card.c3-speaking-overlay-settings { inset: 8px; width: auto; max-height: calc(100dvh - 16px); padding: 10px 12px; }
+.c3-speaking-overlay-settings-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .c3-speaking-overlay-header, .c3-speaking-overlay-people > div { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .c3-speaking-overlay-header { min-height: 28px; }
 .c3-speaking-overlay-header > strong { flex: 1; }

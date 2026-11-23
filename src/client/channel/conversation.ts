@@ -1,7 +1,7 @@
 import { loadRoomHosting } from "./hosting";
 import type { HostedRoom } from "../../../prototype/channel-browser/src/hosting-contract";
 import type { SessionSigner } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
-import type { ChannelCommand, ChannelSnapshot, ConversationAddress, ConversationReply, SignedConversationPacket } from "./protocol";
+import { requireConversationDelivery, type ChannelCommand, type ChannelSnapshot, type ConversationAddress, type ConversationReply, type SignedConversationPacket } from "./protocol";
 
 type Runtime = Awaited<ReturnType<typeof loadRoomHosting>>;
 
@@ -54,8 +54,8 @@ export class ChannelConversation {
     if (bindingId && !this.options.pending?.(requestId, bindingId)) throw new DOMException("Request cancelled", "AbortError");
     const { state, sessionId, connected } = this.options.context();
     if (!connected || !sessionId) throw new Error("disconnected");
-    const delivery = state?.channel.rooms.find(room => room.id === command.roomId)?.delivery;
-    if (!delivery || (bindingId && delivery.bindingId !== bindingId)) throw new Error("room_host_offline");
+    const delivery = requireConversationDelivery(state?.channel.rooms.find(room => room.id === command.roomId));
+    if (bindingId && delivery.bindingId !== bindingId) throw new Error("room_unavailable");
     const { roomId, ...body } = command;
     const packet: SignedConversationPacket = JSON.parse(signer.sign(sessionId, JSON.stringify({
       roomId, bindingId: delivery.bindingId, sender: sessionId, recipient: delivery.hostSessionId, requestId, command: body,

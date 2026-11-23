@@ -31,3 +31,7 @@
 @media (prefers-reduced-motion: reduce) {
   .c3-couch-guests { scroll-behavior: auto; }
 }
+
+/* Cancel idle sampling for fully clipped seats. The existing animationstart
+   handler realigns the pawn to wall time when its motion returns. */
+.c3-couch-seat[data-pawn-clipped] :is(.lr-person-body, .lr-person-eyes) { animation-name: none; }

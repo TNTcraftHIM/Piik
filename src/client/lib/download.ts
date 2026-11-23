@@ -1,4 +1,4 @@
-export type DownloadOutcome = "requested" | "dispatched" | "started" | "saved" | "cancelled" | "failed";
+export type DownloadOutcome = "requested" | "dispatched" | "unconfirmed" | "started" | "saved" | "cancelled" | "failed";
 export interface DownloadProgress { received: number; total: number | null }
 declare global {
   interface Window {
@@ -32,7 +32,7 @@ export function downloadBlob(blob: Blob, filename: string, options: DownloadOpti
   };
   const retire = () => {
     close();
-    options.outcome?.("dispatched");
+    options.outcome?.("unconfirmed");
   };
   const result = (event: Event) => {
     const detail: unknown = (event as CustomEvent).detail;

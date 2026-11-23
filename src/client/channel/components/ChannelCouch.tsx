@@ -79,7 +79,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
     setTarget(null);
     guests.current?.scrollBy({ left: direction * guestWidth });
   }
-  function seat(person: ChannelCouchPerson) {
+  function seat(person: ChannelCouchPerson, clipped = false) {
     const active = target?.userId === person.userId;
     const action = t(person.userId === selfUserId ? "interaction.express" : "interaction.withPerson", { name: person.name });
     const voice = person.voice && personVoiceLabel(person.voice, copy);
@@ -91,7 +91,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
     const pawnClass = `lr-pawn${person.userId === selfUserId ? " is-you" : ""}${session ? "" : " is-static"}`;
     const overflow = { text: person.name, selector: ".lr-pawn-name" };
     const hint = session ? { kind: "hint-reaction-picker" as const, text: voice ? `${action}\n${voice}` : action, overflow } : { text: voice, overflow };
-    return <span key={person.userId} className="c3-couch-seat" data-room-peer={person.userId}>
+    return <span key={person.userId} className="c3-couch-seat" data-room-peer={person.userId} data-pawn-clipped={clipped || undefined}>
       <Tooltip {...hint} disabled={active}>
         {session ? <button type="button" className={pawnClass} aria-label={action} aria-description={voice}
           aria-expanded={active} aria-controls={pickerId}
@@ -115,7 +115,8 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
               const anchor = target.trigger.getBoundingClientRect();
               if (anchor.right <= viewport.left || anchor.left >= viewport.right) setTarget(null);
             }
-          }}>{others.map(seat)}</div>
+          }}>{others.map((person, index) => seat(person, overflow
+            && ((index + 1) * seatWidth <= offset || index * seatWidth >= offset + guestWidth)))}</div>
           {self && seat(self)}
         </div>
         {overflow && <>

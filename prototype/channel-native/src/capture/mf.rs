@@ -6,7 +6,7 @@ use super::{
     frame_dropper::FrameDropper,
     frames::RawFrame,
     mf_common::{media_type, normalize_level_1b, Com},
-    output::Shared,
+    output::{Presentation, Shared},
     qp, CaptureClock, FrameTiming, Settings, VideoCodec,
 };
 use crate::EncodedFrame;
@@ -324,7 +324,7 @@ impl Encoder {
         let mut discontinuity = false;
         let mut last_capture = None;
         let mut origin: Option<i64> = None;
-        let mut last_pts = -1;
+        let mut presentation = Presentation::default();
         let started = Instant::now();
         let mut rate_control_fps = current.fps;
         let mut last_rate_update_ms = 0;
@@ -365,23 +365,12 @@ impl Encoder {
                                 }
                                 super::FrameTiming::Source => {
                                     last_capture != Some(raw.qpc)
-                                        && origin.is_none_or(|first| raw.qpc - first > last_pts)
+                                        && presentation.last_qpc().is_none_or(|last| raw.qpc > last)
                                         && (state.force_keyframe
                                             || frame_limit.is_none_or(|_| cadence.accept(raw.qpc)))
                                 }
                             } {
                                 let frame = raw.clone();
-                                let (next, deferred) = shared.defer_force(
-                                    state,
-                                    clock,
-                                    timing,
-                                    frame.qpc,
-                                    origin.map(|first| first + last_pts),
-                                )?;
-                                state = next;
-                                if deferred {
-                                    continue;
-                                }
                                 let force = std::mem::take(&mut state.force_keyframe);
                                 break Work::Frame(frame, force);
                             }
@@ -494,20 +483,6 @@ impl Encoder {
                     }
                     let repeated = last_capture == Some(frame.qpc);
                     last_capture = Some(frame.qpc);
-                    let mut qpc = frame.qpc;
-                    if timing == super::FrameTiming::Capture
-                        && (repeated
-                            || (force && origin.is_some_and(|first| qpc - first <= last_pts)))
-                    {
-                        qpc = clock.now()?;
-                    }
-                    let first = *origin.get_or_insert(qpc);
-                    let pts = qpc - first;
-                    // A WGC frame already in flight when a static IDR was requested
-                    // may precede its presentation time; raw frames are replaceable.
-                    if pts <= last_pts {
-                        continue;
-                    }
                     // Cadence has already admitted this raw frame. A skipped
                     // candidate still counts as input, never as encoded output.
                     if !repeated {
@@ -530,6 +505,8 @@ impl Encoder {
                             }
                         }
                     }
+                    let qpc = presentation.next_qpc(clock, timing, frame.qpc)?;
+                    let pts = qpc - *origin.get_or_insert(qpc);
                     let texture = converter.convert(&frame.texture, frame.color_space)?;
                     let duration = (10_000_000.0 / admission_rate.fps.unwrap_or(current.fps as f32))
                         .round()
@@ -537,7 +514,7 @@ impl Encoder {
                     encoder.input(&texture, pts, duration, force, discontinuity)?;
                     discontinuity = false;
                     need_input -= 1;
-                    last_pts = pts;
+                    presentation.submitted(frame.qpc, qpc);
                 }
             }
         }

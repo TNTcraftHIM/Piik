@@ -1,6 +1,14 @@
 import { expect, test } from "vitest";
+import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 import { roomCreationPolicySchema } from "../src/client/channel/protocol";
 import { roomCreationPolicyFor, roomDraft, roomSettings, roomSettingsPatch } from "../src/client/channel/room-creation";
+
+test("room capacity points to recovery from both room creation entries", () => {
+  expect(channelErrorPresentation("room_limit", key => key)).toEqual({
+    message: "channel.error.roomLimit",
+    connectionHelp: false,
+  });
+});
 
 test.each(roomCreationPolicySchema.options)("the %s policy applies only to guests", roomCreationPolicy => {
   const channel = { ownerId: "owner", roomCreationPolicy };

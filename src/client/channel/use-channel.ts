@@ -62,7 +62,7 @@ export function useChannel(): ChannelController {
     sourceMicrophone: session.sourceMicrophone, setSourceMicrophone: session.setSourceMicrophone,
     sourceMicrophones: session.sourceMicrophones,
     activateApp: session.activateApp,
-    browse: session.browse, sendMessage: session.sendMessage, updateProfile: session.updateProfile, updateDomain: session.updateDomain, setRoomCreationPolicy: session.setRoomCreationPolicy,
+    browse: session.browse, sendMessage: session.sendMessage, discardMessageRetry: session.discardMessageRetry, updateProfile: session.updateProfile, updateDomain: session.updateDomain, setRoomCreationPolicy: session.setRoomCreationPolicy,
     markRead: session.markRead, loadMessage: session.loadMessage, findUnreadMessage: session.findUnreadMessage,
     deleteMessage: session.deleteMessage, purgeRoomHistory: session.purgeRoomHistory,
     clearLocalRoomCache: session.clearLocalRoomCache,

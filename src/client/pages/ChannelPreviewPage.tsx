@@ -565,7 +565,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             historyChanges={channel.historyChangesByRoom[roomId]}
             onBack={!roomToolOpen && !sidebarsInline && visibleScreens.length > 0 ? () => setMobilePane("room") : undefined}
             interaction={channel.interactionsByRoom.get(roomId) ?? null}
-            onSend={channel.sendMessage} floating={roomToolOpen} hidden={conversationHidden} /></>}
+            onSend={channel.sendMessage} onDiscardSend={channel.discardMessageRetry} floating={roomToolOpen} hidden={conversationHidden} /></>}
           voice={<><section className="c3-voice-entry" aria-label={t("channel.previewPage.voiceInThisRoom")}>
             {(layout !== "quick" || roomToolOpen) && joinVoice && <><div><small>{t("channel.previewPage.currentRoom")}</small><strong>{room?.name}</strong></div>{joinVoice}</>}
           </section><ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={selectRoom} /></>} />

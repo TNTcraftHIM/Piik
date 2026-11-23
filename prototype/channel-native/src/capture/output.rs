@@ -7,9 +7,8 @@ use crate::EncodedFrame;
 use anyhow::{anyhow, ensure, Result};
 use std::{
     collections::VecDeque,
-    sync::{Arc, Condvar, Mutex, MutexGuard},
+    sync::{Arc, Condvar, Mutex},
     thread,
-    time::Duration,
 };
 use tokio::sync::Notify;
 
@@ -45,37 +44,22 @@ impl Shared {
     pub fn wake(&self) {
         self.changed.notify_all();
     }
-    /// A WGC timestamp can slightly lead current QPC. Keep a forced repeat
-    /// pending until real capture time advances, without inventing its PTS.
-    pub fn defer_force<'a>(
-        &self,
-        state: MutexGuard<'a, State>,
-        clock: CaptureClock,
-        timing: FrameTiming,
-        qpc: i64,
-        last: Option<i64>,
-    ) -> Result<(MutexGuard<'a, State>, bool)> {
-        if state.force_keyframe && timing == FrameTiming::Capture {
-            if let Some(last) = last.filter(|last| qpc <= *last) {
-                let now = clock.now()?;
-                if now <= last {
-                    let wait = Duration::from_nanos((last - now + 1) as u64 * 100);
-                    return Ok((self.changed.wait_timeout(state, wait).unwrap().0, true));
-                }
-            }
-        }
-        Ok((state, false))
-    }
-    pub fn input(&self, frame: RawFrame) -> bool {
+    pub fn input(&self, frame: Option<RawFrame>, keyframe: bool) -> Result<()> {
         let mut state = self.state.lock().unwrap();
         if state.stop {
-            return false;
+            return Err(EncodingStopped.into());
         }
-        state.latest = Some(frame);
+        ensure!(state.raw_requested, "unsolicited encoding input");
+        if let Some(frame) = frame {
+            state.latest = Some(frame);
+        } else {
+            ensure!(keyframe && state.latest.is_some(), "no frame to refresh");
+        }
+        state.force_keyframe |= keyframe;
         state.raw_requested = false;
         drop(state);
         self.wake();
-        true
+        Ok(())
     }
     pub fn request_frame(&self, state: &mut State) {
         if !state.raw_requested {
@@ -113,22 +97,46 @@ impl Shared {
     }
 }
 
+/// Tracks submitted pixels and their presentation time independently of raw admission.
+#[derive(Default)]
+pub(super) struct Presentation {
+    last: Option<(i64, i64)>,
+}
+impl Presentation {
+    pub fn last_qpc(&self) -> Option<i64> {
+        self.last.map(|(_, qpc)| qpc)
+    }
+
+    pub fn next_qpc(&self, clock: CaptureClock, timing: FrameTiming, capture: i64) -> Result<i64> {
+        if timing == FrameTiming::Source {
+            return Ok(capture);
+        }
+        let Some((last_capture, last_qpc)) = self.last else {
+            return Ok(capture);
+        };
+        // A static refresh advances to the current clock. WGC may publish a real
+        // update captured before that refresh. Keep its pixels and advance the
+        // presentation clock by at least one 90 kHz RTP tick (in 100 ns units).
+        let qpc = if capture == last_capture {
+            clock.now()?
+        } else {
+            capture
+        };
+        const RTP_TICK: i64 = (10_000_000 + 90_000 - 1) / 90_000;
+        Ok(qpc.max(last_qpc + RTP_TICK))
+    }
+
+    pub fn submitted(&mut self, capture: i64, qpc: i64) {
+        self.last = Some((capture, qpc));
+    }
+}
+
 #[derive(Clone)]
 pub struct EncodingControl(Arc<Shared>);
 impl EncodingControl {
     /// Request cancellation; the Encoding owner joins the worker with stop().
     pub fn stop(&self) {
         self.0.stop(None);
-    }
-    pub fn force_keyframe(&self) -> Result<()> {
-        let mut state = self.0.state.lock().unwrap();
-        if state.stop {
-            return Err(EncodingStopped.into());
-        }
-        state.force_keyframe = true;
-        drop(state);
-        self.0.wake();
-        Ok(())
     }
     pub fn set_bitrate(&self, bitrate: u32) -> Result<()> {
         ensure!(bitrate > 0, "bitrate must be positive");

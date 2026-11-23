@@ -6,7 +6,7 @@ use super::{
     frame_dropper::FrameDropper,
     frames::RawFrame,
     mf_software,
-    output::Shared,
+    output::{Presentation, Shared},
     qp, vp8, CaptureClock, FrameTiming, Settings, VideoCodec,
 };
 use anyhow::Result;
@@ -109,7 +109,7 @@ pub(super) fn run(
     let mut converter = Converter::new(&device, current)?;
     let mut staging = None;
     let mut last_capture = None;
-    let mut last_pts = None;
+    let mut presentation = Presentation::default();
     let started = Instant::now();
     let mut policy = QualityPolicy::new(codec, settings.degradation_preference, 0);
     let requested_max = (timing == FrameTiming::Capture).then_some(settings.fps);
@@ -142,19 +142,13 @@ pub(super) fn run(
                         }
                         FrameTiming::Source => {
                             last_capture != Some(raw.qpc)
-                                && last_pts.is_none_or(|last| raw.qpc > last)
+                                && presentation.last_qpc().is_none_or(|last| raw.qpc > last)
                                 && (state.force_keyframe
                                     || frame_limit.is_none_or(|_| cadence.accept(raw.qpc)))
                         }
                     };
                     if accept {
                         let frame = raw.clone();
-                        let (next, deferred) =
-                            shared.defer_force(state, clock, timing, frame.qpc, last_pts)?;
-                        state = next;
-                        if deferred {
-                            continue;
-                        }
                         break Work::Frame(frame, mem::take(&mut state.force_keyframe));
                     }
                 }
@@ -174,16 +168,6 @@ pub(super) fn run(
         };
         let repeated = last_capture == Some(frame.qpc);
         last_capture = Some(frame.qpc);
-        let qpc = if timing == FrameTiming::Capture
-            && (repeated || (force && last_pts.is_some_and(|last| frame.qpc <= last)))
-        {
-            clock.now()?
-        } else {
-            frame.qpc
-        };
-        if last_pts.is_some_and(|last| qpc <= last) {
-            continue;
-        }
         policy.tick(
             started.elapsed().as_millis() as u64,
             Input {
@@ -196,8 +180,8 @@ pub(super) fn run(
             frame_limit = next_limit;
             usage.target_frame_rate(frame_limit.unwrap_or(30));
             cadence = Cadence::new(frame_limit.unwrap_or(settings.fps));
-            if frame_limit.is_some() {
-                cadence.accept(qpc);
+            if frame_limit.is_some() && !repeated {
+                cadence.accept(frame.qpc);
             }
             admission_rate = AdmissionRate::default();
         }
@@ -228,6 +212,7 @@ pub(super) fn run(
             staging = None;
             force = true;
         }
+        let qpc = presentation.next_qpc(clock, timing, frame.qpc)?;
         let texture = converter.convert(&frame.texture, frame.color_space)?;
         if staging.is_none() {
             let mut desc = D3D11_TEXTURE2D_DESC::default();
@@ -274,7 +259,7 @@ pub(super) fn run(
             context.Unmap(staging, 0);
             unit?
         };
-        last_pts = Some(qpc);
+        presentation.submitted(frame.qpc, qpc);
         if let Some(unit) = unit {
             policy.report_encoded(unit.qp, started.elapsed().as_micros() as u64);
             dropper.fill(unit.bytes.len(), !unit.keyframe);

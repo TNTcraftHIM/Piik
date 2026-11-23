@@ -67,7 +67,9 @@ export function ChannelRoomTool({ title, voiceRoomName, caption, home, surface, 
     const child = readyDocument?.defaultView;
     if (mode !== "editing" || !child) return;
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.isComposing && presentation("pinned")) event.preventDefault();
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing ||
+        child.document.querySelector('[popover="auto"]:popover-open, dialog:modal')) return;
+      if (presentation("pinned")) event.preventDefault();
     };
     child.addEventListener("keydown", escape, true);
     return () => child.removeEventListener("keydown", escape, true);

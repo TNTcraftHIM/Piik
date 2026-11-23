@@ -63,7 +63,7 @@ export class WatchPlayer {
       if (event === "error") void this.mediaError();
       if (event === "playing") { this.blocked = false; this.changed(); }
       if (event === "blocked") { this.blocked = true; this.changed(); }
-      if (event === "audiotracks" || event === "waiting" || event === "loadeddata") this.changed();
+      if (["audiotracks", "waiting", "loadeddata", "pause", "ended"].includes(event)) this.changed();
       if (event === "loadedmetadata") void this.align(true);
       if (event === "visibility-resumed" && !owner) {
         this.alignedPlayback = null;

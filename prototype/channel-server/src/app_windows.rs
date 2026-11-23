@@ -518,7 +518,7 @@ impl PopupWindow {
             }
             let size = self.window.inner_size().to_logical::<f64>(self.window.scale_factor());
             self.panel_geometry.set(Some((size, maximized)));
-            self.window.set_inner_size(caption::window_size(LogicalSize::new(304., 136.), controls));
+            self.window.set_inner_size(caption::window_size(LogicalSize::new(304., 216.), controls));
         }
         self.window.set_always_on_top(true);
         if matches!(mode, popup::Mode::Editing) {

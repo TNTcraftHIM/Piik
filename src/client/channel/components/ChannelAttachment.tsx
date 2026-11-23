@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Glyph } from "../../ui/icons";
 import { joinItems, useCopy } from "../../ui/copy";
 import type { ChannelAttachment as Attachment, ImageRendition } from "../protocol";
-import { type ChannelAttachments, fileSize, isNativeSavePending } from "../attachments";
+import { attachmentDownloadDocument, type ChannelAttachments, fileSize, isNativeSavePending } from "../attachments";
 import { inlineImageFile } from "../image-preview";
 import { ChannelAction } from "./ChannelAction";
 import { Tooltip } from "../../components/living/Tooltip";
@@ -143,7 +143,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   const saving = download.outcome === "started", savedBytes = download.saveProgress;
   const savePending = isNativeSavePending(download.outcome);
   const saved = savedCopy || download.outcome === "saved";
-  const canReveal = savedCopy && typeof (downloadSurface.current?.ownerDocument ?? surfaceDocument)?.defaultView?.piikRevealDownload === "function";
+  const canReveal = savedCopy && typeof attachmentDownloadDocument(surfaceDocument)?.defaultView?.piikRevealDownload === "function";
   const canRetryDownload = !unavailable && downloadError &&
     !["file_offer_failed", "reveal_saved_copy_failed", "saved_copy_missing"].includes(downloadError);
   const downloadLabel = download.busy ? t("channel.attachment.cancelDownload")
@@ -153,6 +153,10 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
     : t(isImage ? "channel.attachment.downloadOriginal" : "channel.attachment.download");
   const imageLabel = t(previewBusy ? "channel.attachment.cancelImageLoading" : "channel.attachment.viewImage");
   const saveLabel = t("channel.attachment.saving");
+  const downloadNotice = download.outcome === "requested" ? t("channel.attachment.downloadRequested")
+    : download.outcome === "dispatched" ? t("channel.attachment.downloadSent")
+    : download.outcome === "unconfirmed" ? t("channel.attachment.downloadUnconfirmed")
+    : download.outcome === "cancelled" ? t("channel.attachment.downloadCancelled") : undefined;
   const originalNotice = !imageOpen && !download.busy && !previewBusy && !savePending && (isImage || !canReveal)
     ? originalStatus : undefined;
   const cardStatus = [...new Set([downloadMessage, !imageOpen ? previewMessage : undefined, originalNotice].filter(Boolean))].join(" ");
@@ -177,9 +181,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
     {(download.busy || (previewBusy && !imageOpen)) && <TransferProgress label={progressLabel} accessibleLabel={labelForFile(progressLabel)} bytes={progressBytes} />}
     {saving && <TransferProgress label={saveLabel} accessibleLabel={labelForFile(saveLabel)} bytes={savedBytes} />}
     {!download.busy && !savePending && saved && <small className="c3-attachment-saved" role="status">{t("channel.attachment.saved")}</small>}
-    {!download.busy && (download.outcome === "requested" || download.outcome === "dispatched") && <small role="status">{t(download.outcome === "requested"
-      ? "channel.attachment.downloadRequested" : "channel.attachment.downloadSent")}</small>}
-    {download.outcome === "cancelled" && <small role="status">{t("channel.attachment.downloadCancelled")}</small>}
+    {!download.busy && downloadNotice && <small role="status">{downloadNotice}</small>}
     {isImage && !preview && <ChannelAction icon={previewBusy ? "x" : "eye"} quiet
       disabled={unavailable && !previewBusy}
       label={imageLabel} accessibleLabel={labelForFile(imageLabel)}

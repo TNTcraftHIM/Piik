@@ -104,14 +104,31 @@ test.each(['revoked', 'rebound'] as const)('a %s room retires signed requests wh
   await vi.advanceTimersByTimeAsync(0);
   expect(observed).not.toHaveBeenCalled();
 
-  if (change === 'revoked') room.authorized = false;
-  else room.delivery.bindingId = randomUUID();
-  receive({ type: 'state', state });
+  const changedRoom = change === 'revoked'
+    ? { ...room, authorized: false, delivery: undefined }
+    : { ...room, delivery: { ...room.delivery, bindingId: randomUUID() } };
+  receive({ type: 'state', state: { ...state, channel: { ...state.channel, rooms: [changedRoom] } } });
   await vi.advanceTimersByTimeAsync(0);
   expect(observed).toHaveBeenCalledExactlyOnceWith('room_unavailable');
   if (change === 'revoked') {
     receive({ type: 'error', code: 'room_access_required', requestId: browseId });
     await expect(browse).rejects.toThrow('room_access_required');
+
+    const sent = socket.sent.length;
+    // The writer remains online while the listed room withholds delivery.
+    await expect(client.history()).rejects.toThrow(/^room_access_required$/);
+    await expect(client.chat('private')).rejects.toThrow(/^room_access_required$/);
+
+    // A hidden room is absent from this viewer's snapshot even while the host stays online.
+    receive({ type: 'state', state: { ...state, channel: { ...state.channel, rooms: [] } } });
+    await expect(client.history()).rejects.toThrow(/^room_unavailable$/);
+    await expect(client.chat('private')).rejects.toThrow(/^room_unavailable$/);
+
+    // A known reader can still see an authorized room during a host interruption.
+    receive({ type: 'state', state: { ...state, channel: { ...state.channel, rooms: [{ ...room, available: false, delivery: undefined }] } } });
+    await expect(client.history()).rejects.toThrow(/^room_host_offline$/);
+    await expect(client.chat('offline')).rejects.toThrow(/^room_host_offline$/);
+    expect(socket.sent).toHaveLength(sent);
   } else {
     receive({ type: 'ack', requestId: browseId });
     await browse;

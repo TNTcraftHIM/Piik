@@ -51,7 +51,7 @@ test.each([false, true])("page retirement releases observation (started=%s)", st
   f.view.dispatchEvent(new Event("pagehide"));
   expect(f.anchors).toEqual([]);
   f.report(url, "saved");
-  expect(outcome.mock.calls.flat()).toEqual(started ? ["requested", "started", "dispatched"] : ["requested", "dispatched"]);
+  expect(outcome.mock.calls.flat()).toEqual(started ? ["requested", "started", "unconfirmed"] : ["requested", "unconfirmed"]);
   const next = fixture(true, "https://next.test", false), unexpected = vi.fn();
   const link = next.document.createElement("a"); link.href = url;
   link.addEventListener("piik-native-download", unexpected); next.document.body.append(link);
@@ -217,7 +217,7 @@ test("same-named saves keep their results across room switches, retries, and his
   } finally { files.reset(); }
 });
 
-test("a missing saved copy cannot release a pending native save from another surface", async () => {
+test("closing a panel or revealing an obsolete receipt cannot release the room's active App save", async () => {
   const home = fixture(), panel = fixture(true, "https://owned.test", false);
   const files = new ChannelAttachments(async () => {}, async () => {});
   const file = { id: "owned", name: "owned.txt", size: 5, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
@@ -234,8 +234,8 @@ test("a missing saved copy cannot release a pending native save from another sur
   try {
     files.update("session", { domainId: "domain", userId: "reader" }, [], [{ id: key.roomId, authorized: true }] as ChannelRoom[], []);
     await vi.waitFor(() => expect(files.hasSavedCopy(key, file)).toBe(true));
-    const locating = files.revealSavedCopy(key, file, { ownerDocument: home.document } as Element);
     const surface = { ownerDocument: panel.document } as Element;
+    const locating = files.revealSavedCopy(key, file, surface);
     const saving = files.download(key, file, undefined, surface);
     await saving;
     expect(files.status(key).outcome).toBe("requested");
@@ -246,11 +246,16 @@ test("a missing saved copy cannot release a pending native save from another sur
     expect(files.hasSavedCopy(key, file)).toBe(false);
     expect(files.status(key)).toMatchObject({ outcome: "requested", error: null });
     expect(files.download(key, file, undefined, surface)).toBe(saving);
-    expect(panel.clicked).toHaveLength(1);
+    expect(home.clicked).toHaveLength(1);
+    expect(panel.clicked).toHaveLength(0);
 
-    panel.report(panel.clicked[0].href, "started");
-    panel.report(panel.clicked[0].href, "saved");
+    const url = home.clicked[0].href;
+    home.report(url, { status: "progress", received: 3, total: 5 });
+    panel.view.dispatchEvent(new Event("pagehide"));
+    expect(files.status(key)).toMatchObject({ outcome: "started", saveProgress: { received: 3, total: 5 } });
+    home.report(url, { status: "saved", receipt });
     expect(files.status(key)).toMatchObject({ outcome: "saved", error: null });
+    expect(files.hasSavedCopy(key, file)).toBe(true);
   } finally { files.reset(); }
 });
 

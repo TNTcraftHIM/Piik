@@ -21,12 +21,13 @@ pub(super) enum Command {
     },
     Frame {
         frame: gpu::Frame,
+        keyframe: bool,
     },
     Read,
     Bitrate {
         bitrate: u32,
     },
-    Keyframe,
+    RefreshLatest,
     Stop,
 }
 #[derive(Serialize, Deserialize)]
@@ -154,21 +155,19 @@ async fn encode(
             tokio::select! {
                 biased;
                 command = receiver.recv() => match command {
-                    Some(Command::Frame { frame }) => {
+                    Some(Command::Frame { frame, keyframe }) => {
                         if gpu.is_none() {
                             gpu = Some(gpu::Receiver::new(&frame)?);
                         }
                         let frame = gpu.as_ref().unwrap().receive(frame)?;
-                        if !encoding.shared.input(frame) {
-                            return Err(output::EncodingStopped.into());
-                        }
+                        encoding.shared.input(Some(frame), keyframe)?;
                     }
                     Some(Command::Read) => {
                         ensure!(!read, "duplicate AU Read");
                         read = true;
                     }
                     Some(Command::Bitrate { bitrate }) => control.set_bitrate(bitrate)?,
-                    Some(Command::Keyframe) => control.force_keyframe()?,
+                    Some(Command::RefreshLatest) => encoding.shared.input(None, true)?,
                     Some(Command::Stop) | None => break,
                     _ => bail!("duplicate encoding Start"),
                 },
