@@ -5,7 +5,7 @@ import { WatchIndexedTrackPicker, WatchMpdSourcePicker } from "./WatchIndexedTra
 import { indexedMediaSelection } from "../watch-indexed-source";
 import type { NativePageIndexedSelection, NativePageMpdSelection } from "../../native/wire";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { CaptureSourcePicker, type NativeSourceList } from "../../components/living/CaptureSourcePicker";
+import { CaptureSourcePicker, RenderEndpointSelect, type NativeSourceList } from "../../components/living/CaptureSourcePicker";
 import { Btn, SwitchItem } from "../../components/living/primitives";
 import { LiveAudioExclusion } from "../../components/living/AudioExclusionSelect";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
@@ -277,10 +277,13 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
               <SwitchItem checked={systemAudioActive} label={t("host.sourcePicker.systemAudio")}
                 hint={systemAudioActive ? "hint-stop-audio" : "hint-share-audio"}
                 disabled={disabled || busy || qualityPending || microphonePending || sharing.paused}
-                onChange={audio => { void startNativeScreen(roomId, selectedNative.target, audio, selectedNative.excludeAudio, selectedNative.showCaptureBorder).catch(() => {}); }} />
-              {sources.processAudioExclusion && <LiveAudioExclusion initialSources={sources.sources} load={loadAudioApplications} value={selectedNative.excludeAudio}
+                onChange={audio => { void startNativeScreen(roomId, { ...selectedNative, audio }).catch(() => {}); }} />
+              {!selectedNative.excludeAudio && sources.renderEndpoints !== undefined && <RenderEndpointSelect onRefresh={refresh} devices={sources.renderEndpoints} value={selectedNative.renderEndpointId}
                 disabled={!selectedNative.audio || disabled || busy || qualityPending || microphonePending || sharing.paused}
-                onChange={excludeAudio => { void startNativeScreen(roomId, selectedNative.target, true, excludeAudio, selectedNative.showCaptureBorder).catch(() => {}); }} />}
+                onChange={id => { void startNativeScreen(roomId, { ...selectedNative, audio: true, excludeAudio: undefined, renderEndpointId: id }).catch(() => {}); }} />}
+              {!selectedNative.renderEndpointId && sources.processAudioExclusion && <LiveAudioExclusion initialSources={sources.sources} load={loadAudioApplications} value={selectedNative.excludeAudio}
+                disabled={!selectedNative.audio || disabled || busy || qualityPending || microphonePending || sharing.paused}
+                onChange={excludeAudio => { void startNativeScreen(roomId, { ...selectedNative, audio: true, excludeAudio, renderEndpointId: undefined }).catch(() => {}); }} />}
             </div>}
           {sharing && microphone && microphoneSettings && <ShareMicrophoneSettings available={microphone.available}
             canDisable={microphone.canDisable}
@@ -304,7 +307,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
       {open && <CaptureSourcePicker roomName={roomName} nativeSources={pickerSources} browserSupported={browserSupported} cameraSupported={cameraSupported}
         loadCameras={channel.cameraPreviews} initialCamera={currentCamera}
         initialTab="window" selectionDisabled={disabled || busy || qualityPending || microphonePending}
-        initialAudio={selectedNative?.audio} initialExcludeAudio={selectedNative?.excludeAudio} initialShowCaptureBorder={selectedNative?.showCaptureBorder}
+        initialAudio={selectedNative?.audio} initialRenderEndpointId={selectedNative?.renderEndpointId} initialExcludeAudio={selectedNative?.excludeAudio} initialShowCaptureBorder={selectedNative?.showCaptureBorder}
         onBrowser={() => start(() => startScreen(roomId))}
         onWatch={() => { close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true }); onWatch(); }}
         onCamera={deviceId => start(() => startScreen(roomId, "camera", deviceId))}
@@ -313,7 +316,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
           if (externalInput) setExternalOpen(true);
           else void channel.startExternalScreen(roomId).then(() => setExternalOpen(true)).catch(() => {});
         } : undefined}
-        onNative={(target, audio, border, excludeAudio) => start(() => startNativeScreen(roomId, target, audio, excludeAudio, border))}
+        onNative={selection => start(() => startNativeScreen(roomId, selection))}
         onPreview={channel.nativePreview} onRefresh={refresh} nativeFailureMessage={sources.kind === "failed" && sources.error
           ? channelErrorPresentation(sources.error, t, "host.sourcePicker.failed").message ?? undefined : undefined} onCancel={() => {
           close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true });

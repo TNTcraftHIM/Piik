@@ -79,7 +79,7 @@ mod windows;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod worker;
 #[cfg(all(feature = "capture", target_os = "windows"))]
-pub use audio::{audio_capabilities, microphones, AudioCapture, AudioControl};
+pub use audio::{audio_capabilities, microphones, render_endpoints, AudioCapture, AudioControl};
 #[cfg(all(feature = "capture", target_os = "windows"))]
 pub(crate) use decoder::Decoder;
 #[cfg(all(feature = "capture", target_os = "windows"))]
@@ -140,13 +140,13 @@ pub struct AudioCapabilities {
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct MicrophoneDevice {
+pub struct AudioDevice {
     pub id: String,
     pub label: String,
 }
 
 #[cfg(not(feature = "capture"))]
-pub fn microphones() -> anyhow::Result<Vec<MicrophoneDevice>> {
+pub fn microphones() -> anyhow::Result<Vec<AudioDevice>> {
     anyhow::bail!("microphone_unavailable")
 }
 

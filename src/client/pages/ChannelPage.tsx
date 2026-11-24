@@ -26,6 +26,7 @@ import { ChannelJoinVoice } from "../channel/components/ChannelJoinVoice";
 import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
 import { ChannelPeople } from "../channel/components/ChannelPeople";
 import { ChannelProfileEditor } from "../channel/components/ChannelProfileEditor";
+import { PlaybackDeviceSelect } from "../channel/components/PlaybackDeviceSelect";
 import { ChannelFeedbackSounds } from "../channel/components/ChannelFeedbackSounds";
 import { ChannelForwardingSettings } from "../channel/components/ChannelForwardingSettings";
 import { ChannelInterfaceControl, ChannelInterfaceSuggestion } from "../channel/components/ChannelInterfaceControl";
@@ -363,6 +364,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       </div><div className="lr-top c3-global-tools">
         <HeaderControls appControl={appControl} personalControls={<>
           {onLayoutChange && <ChannelInterfaceControl value={layout} onChange={onLayoutChange} />}
+          <PlaybackDeviceSelect />
           <ChannelFeedbackSounds channel={channel} />
           <ChannelForwardingSettings channel={channel} />
           {previewOptions}

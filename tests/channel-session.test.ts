@@ -2539,7 +2539,7 @@ test.each([
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
     app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs, softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false } });
     await listing;
-    const selecting = session.startNativeScreen("first", target).catch(error => error);
+    const selecting = session.startNativeScreen("first", { target, audio: false, showCaptureBorder: false }).catch(error => error);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     expect(app.sent.at(-1)?.codecMode).toBe(expected);
     const publicationId = app.sent.at(-1)!.publicationId as string;
@@ -2590,7 +2590,7 @@ test("Native capability catalog retains known choices without echoing future des
     await expect(list({ ...catalog, sources: [{ kind: "future-source" }], codecs: ["future-codec"],
       softwareEncodingCodecs: ["future-codec"] })).resolves.toEqual({ ...catalog, sources: [], codecs: [], softwareEncodingCodecs: [] });
     await list(catalog);
-    const selecting = session.startNativeScreen("first", choices.sources[0]!).catch(error => error);
+    const selecting = session.startNativeScreen("first", { target: choices.sources[0]!, audio: false, showCaptureBorder: false }).catch(error => error);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     expect(app.sent.at(-1)?.target).toEqual(target);
     expect(app.sent.at(-1)?.codecMode).not.toBe("future-codec");
@@ -3224,7 +3224,7 @@ test.each(["transfer", "commit", "stop"] as const)("Native selection retains its
       if (command.type === "transfer_source") transferred(command);
       if (command.type === "subscribe" || command.type === "unpublish") queueMicrotask(() => socket.receive({ type: "ack", requestId: command.requestId }));
     });
-    const starting = session.startNativeScreen("first", { kind: "display", sourceId: "1", title: "Fixture" })
+    const starting = session.startNativeScreen("first", { target: { kind: "display", sourceId: "1", title: "Fixture" }, audio: false, showCaptureBorder: false })
       .then(() => "native-started", error => error.name);
     const prepare = await prepareReady;
     app.receive({ id: prepare.id, result: { captureId, sessionId: nativeSessionId, codec: "vp8" } });
@@ -3283,7 +3283,7 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
     socket.receive({ type: "state", state });
     session.setEncodingExecution("software");
     expect(session.screenEncodingExecution(publication.id)).toBe("auto");
-    const cancelled = session.startNativeScreen("first", target);
+    const cancelled = session.startNativeScreen("first", { target, audio: false, showCaptureBorder: false });
     const cancelledResult = expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
     const prepare = await appCommand("prepare_capture");
     const cancel = session.cancelScreenSelection("first");
@@ -3293,7 +3293,7 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
     expect(old.stop).not.toHaveBeenCalled();
     expect(app.sent.some(command => command.type === "stop_capture")).toBe(false);
 
-    const native = session.startNativeScreen("first", target, true);
+    const native = session.startNativeScreen("first", { target, audio: true, showCaptureBorder: false });
     const nativePrepare = await appCommand("prepare_capture");
     expect(nativePrepare).toMatchObject({ publicationId: publication.id, roomId: "first", target, audio: true, encodingExecution: "auto" });
     expect(app.sent.at(-1)?.codecMode).toBe("vp8");
@@ -3391,7 +3391,7 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
     const oldShortcut = session.inputShortcut(publication.id, 10);
     const oldShortcutCommand = app.sent.at(-1)!;
     const retiredShortcut = expect(oldShortcut).rejects.toMatchObject({ name: "AbortError" });
-    const nativeAgain = session.startNativeScreen("first", target);
+    const nativeAgain = session.startNativeScreen("first", { target, audio: false, showCaptureBorder: false });
     expect(await appCommand("prepare_capture")).toMatchObject({ publicationId: publication.id });
     expect(session.sourceAudio(publication.id)?.canMute).toBe(true);
     expect(app.sent.at(-1)?.codecMode).toBe("vp8");
@@ -3806,10 +3806,11 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     await Promise.resolve();
     expect(app.sent.filter(command => command.type === "preview")).toHaveLength(1);
     session.setEncodingExecution("software");
-    const starting = session.startNativeScreen("first", target, true, excluded, true);
+    const starting = session.startNativeScreen("first", { target, audio: true, showCaptureBorder: true, excludeAudio: excluded });
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const publicationId = app.sent.at(-1)!.publicationId as string;
     expect(app.sent.at(-1)).toMatchObject({ type: "prepare_capture", publicationId, roomId: "first", target, audio: true, excludeAudio: excluded, showCaptureBorder: true, encodingExecution: "software" });
+    expect(app.sent.at(-1)).not.toHaveProperty("renderEndpointId");
     expect(session.nativeCaptureSelection("first")).toBeUndefined();
     expect(session.nativeCaptureRequest("first")).toBeUndefined();
     const captureId = crypto.randomUUID(), nativeSessionId = crypto.randomUUID();
@@ -3841,7 +3842,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true });
     for (const error of ["capture_cancelled", "capture_failed"]) {
       const previousRequest = app.sent.at(-1)?.id;
-      const replacement = session.startNativeScreen("first", target, false).catch(error => error);
+      const replacement = session.startNativeScreen("first", { target, audio: false, showCaptureBorder: false }).catch(error => error);
       await vi.waitFor(() => expect(app.sent.at(-1)?.id).not.toBe(previousRequest));
       expect(app.sent.at(-1)?.type).toBe("prepare_capture");
       expect(session.nativeCaptureSelection("first")).toEqual({ target, audio: true, excludeAudio: excluded, showCaptureBorder: true, current: true });
@@ -4063,21 +4064,38 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     const routeCommands = [...socket.sent];
     const volumeChange = session.setSourceAudio(publicationId, { level: .7, bitrate: 96_000 });
     app.receive({ id: app.sent.at(-1)!.id, result: null }); await volumeChange;
+    const endpoint = "fixture-render-device";
+    const oldRequest = app.sent.at(-1)?.id;
+    const listingEndpoints = session.nativeSources();
+    await vi.waitFor(() => expect(app.sent.at(-1)?.id).not.toBe(oldRequest));
+    app.receive({ id: app.sent.at(-1)!.id, result: { ...sources, renderEndpoints: [{ id: endpoint, label: "Fixture output" }] } });
+    await listingEndpoints;
     const audioTokens = new Set<string>();
     session.setEncodingExecution("auto"); // A changed draft applies only to the next share.
     expect(session.screenEncodingExecution(publicationId)).toBe("software");
     expect(session.screenCodec(publicationId)?.primary).toBe("h264");
     // A selected source keeps its codec when the preview would now prefer VP8.
     vi.stubGlobal("RTCRtpReceiver", { getCapabilities: () => ({ codecs: [{ mimeType: "video/VP8", clockRate: 90000 }] }) });
-    for (const { audio, exclusion } of [{ audio: false, exclusion: excluded }, { audio: true, exclusion: undefined },
-      { audio: true, exclusion: excluded }, { audio: false, exclusion: excluded }]) {
+    const changes = [
+      { audio: false },
+      { audio: true, excludeAudio: undefined, renderEndpointId: endpoint },
+      { audio: false },
+      { audio: true },
+      { audio: true, excludeAudio: excluded, renderEndpointId: undefined },
+      { audio: false },
+    ];
+    for (const change of changes) {
       const previous = session.nativeCaptureSelection("first")!;
-      const changing = session.startNativeScreen("first", previous.target, audio, exclusion, previous.showCaptureBorder);
+      const next = { ...previous, ...change };
+      const { audio, excludeAudio: exclusion, renderEndpointId } = next;
+      const changing = session.startNativeScreen("first", next);
       await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
       expect(app.sent.at(-1)).toMatchObject({ publicationId, audio, target, showCaptureBorder: true,
         audioSettings: { bitrate: 96_000, gain: .7 } });
       expect(app.sent.at(-1)?.codecMode).toBe("h264");
       expect(app.sent.at(-1)?.encodingExecution).toBe("software");
+      if (audio && renderEndpointId) expect(app.sent.at(-1)?.renderEndpointId).toBe(endpoint);
+      else expect(app.sent.at(-1)).not.toHaveProperty("renderEndpointId");
       if (audio && exclusion) expect(app.sent.at(-1)?.excludeAudio).toEqual(exclusion);
       else expect(app.sent.at(-1)).not.toHaveProperty("excludeAudio");
       expect(session.nativeCaptureSelection("first")).toEqual(previous);
@@ -4089,12 +4107,12 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
       app.receive({ id: app.sent.at(-1)!.id, result: null });
       app.receive({ type: "capture_audio_state", publicationId, state: { sourceAudio: audio, microphone: disabledMicrophone } });
       await changing;
-      expect(session.nativeCaptureSelection("first")).toEqual({ target, audio, excludeAudio: exclusion, showCaptureBorder: true, current: true });
+      expect(session.nativeCaptureSelection("first")).toEqual({ target, audio, excludeAudio: exclusion, renderEndpointId, showCaptureBorder: true, current: true });
       expect(session.getSnapshot().remoteControls.get(publicationId)).toEqual(heldInput);
       expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: audio, available: audio });
       expect(socket.sent).toEqual(routeCommands);
     }
-    expect(audioTokens.size).toBe(4);
+    expect(audioTokens.size).toBe(changes.length);
     app.receive({ type: "input_state", publicationId, state: { ...remote, requests: [] } });
     expect(session.getSnapshot().remoteControls.get(publicationId)?.requests).toEqual([]);
 
@@ -4134,7 +4152,7 @@ test.each(["before-subscribe", "awaiting-ack", "helper-awaiting-ack"])("committe
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
-    const starting = session.startNativeScreen("first", { kind: "picker", sourceId: "", title: "System picker" }).catch(error => error);
+    const starting = session.startNativeScreen("first", { target: { kind: "picker", sourceId: "", title: "System picker" }, audio: false, showCaptureBorder: false }).catch(error => error);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const publicationId = app.sent.at(-1)!.publicationId as string;
     app.receive({ id: app.sent.at(-1)!.id, result: { captureId: crypto.randomUUID(), sessionId: nativeSessionId, codec: "h264" } });
@@ -4196,7 +4214,7 @@ test.each([
     app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs: ["h264"], softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false, activationURL: "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end" } });
     await sources;
     const nativeSessionId = crypto.randomUUID(), oldCaptureId = crypto.randomUUID(), captureId = crypto.randomUUID();
-    const starting = session.startNativeScreen("first", target);
+    const starting = session.startNativeScreen("first", { target, audio: false, showCaptureBorder: false });
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const publicationId = app.sent.at(-1)!.publicationId as string;
     app.receive({ id: app.sent.at(-1)!.id, result: { captureId: oldCaptureId, sessionId: nativeSessionId, codec: "h264" } });
@@ -4210,7 +4228,7 @@ test.each([
       kind: "screen" as const, source: { kind: "screen" as const, name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }], subscriptions: [publicationId] };
     socket.receive({ type: "state", state: published });
 
-    const replacing = session.startNativeScreen("first", target).catch(error => error);
+    const replacing = session.startNativeScreen("first", { target, audio: false, showCaptureBorder: false }).catch(error => error);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const prepare = app.sent.at(-1)!;
     socket.receive({ type: "state", state: empty });
@@ -4327,7 +4345,7 @@ test.each(["native", "obs"] as const)("committed %s capture retires only its roo
     const captureId = crypto.randomUUID(), sessionId = crypto.randomUUID();
     let starting: Promise<unknown> | undefined;
     if (source === "native") {
-      starting = session.startNativeScreen("first", { kind: "display", sourceId: "1", title: "Display" }).catch(error => error);
+      starting = session.startNativeScreen("first", { target: { kind: "display", sourceId: "1", title: "Display" }, audio: false, showCaptureBorder: false }).catch(error => error);
       const prepare = await command(app, "prepare_capture");
       app.receive({ id: prepare.id, result: { captureId, sessionId, codec: "h264" } });
     } else {
@@ -4362,7 +4380,7 @@ test("stopping committed Native capture retires its pending automatic preview er
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
     const target = { kind: "display" as const, sourceId: "1", title: "Test display" };
-    const starting = session.startNativeScreen("first", target).catch(error => error);
+    const starting = session.startNativeScreen("first", { target, audio: false, showCaptureBorder: false }).catch(error => error);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const publicationId = app.sent.at(-1)!.publicationId as string;
     const captureId = crypto.randomUUID();
@@ -4403,12 +4421,12 @@ test("pending Native capture stays page-owned through same-page stop and close",
     app.receive({ id: app.sent.at(-1)!.id, result: sources });
     await capabilities;
     const rejectedExclusion = { kind: "window" as const, sourceId: "2", title: "Unavailable exclusion", pid: 42, creationTime: "1234" };
-    await expect(session.startNativeScreen("first", target, true, rejectedExclusion)).rejects.toThrow("audio exclusion unavailable");
+    await expect(session.startNativeScreen("first", { target, audio: true, showCaptureBorder: false, excludeAudio: rejectedExclusion })).rejects.toThrow("audio exclusion unavailable");
     expect(app.sent.some(command => command.type === "prepare_capture")).toBe(false);
     const activate = vi.spyOn(nativeActivation, "activateNativePicker").mockImplementation(() => {
       expect(app.sent.at(-1)?.type).toBe("prepare_capture");
     });
-    const starting = session.startNativeScreen("first", target).catch(error => error);
+    const starting = session.startNativeScreen("first", { target, audio: false, showCaptureBorder: false }).catch(error => error);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const request = app.sent.at(-1)!;
     const publicationId = request.publicationId as string;
@@ -4435,7 +4453,7 @@ test("pending Native capture stays page-owned through same-page stop and close",
     expect(session.getSnapshot().error).toBeNull();
     expect(socket.sent.some(command => command.type === "subscribe")).toBe(false);
 
-    const failed = session.startNativeScreen("first", target).catch(error => error);
+    const failed = session.startNativeScreen("first", { target, audio: false, showCaptureBorder: false }).catch(error => error);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const refusedRequest = app.sent.at(-1)!;
     app.receive({ id: refusedRequest.id, error: "room_unavailable" });
@@ -4444,7 +4462,7 @@ test("pending Native capture stays page-owned through same-page stop and close",
     expect(app.sent.at(-1)).toBe(refusedRequest);
     expect(session.nativeCaptureRequest("first")).toBeUndefined();
 
-    const closing = session.startNativeScreen("first", target).catch(error => error);
+    const closing = session.startNativeScreen("first", { target, audio: false, showCaptureBorder: false }).catch(error => error);
     await vi.waitFor(() => expect(app.sent.at(-1)?.id).not.toBe(refusedRequest.id));
     const successor = app.sent.at(-1)!;
     expect(successor.type).toBe("prepare_capture");
@@ -4534,7 +4552,7 @@ test.each(["browser", "camera", "native"] as const)("waiting OBS can switch to %
     }
     if (source === "native") {
       const target = { kind: "display" as const, sourceId: "1", title: "Replacement" };
-      const starting = session.startNativeScreen("first", target);
+      const starting = session.startNativeScreen("first", { target, audio: false, showCaptureBorder: false });
       const result = starting.catch(error => error);
       const preparing = await command("prepare_capture");
       app.receive({ id: preparing.id, result: { captureId: crypto.randomUUID(), sessionId: crypto.randomUUID(), codec: "h264" } });
@@ -4641,7 +4659,7 @@ test.each([false, true])("next capture uses current preferences with an OBS perm
     }
     const permission = session.externalInput("first");
     session.setQuality(next); session.setVideoCodecMode("h264"); session.setEncodingExecution("software");
-    capture = session.startNativeScreen("first", { kind: "display", sourceId: "1", title: "Owned capture" });
+    capture = session.startNativeScreen("first", { target: { kind: "display", sourceId: "1", title: "Owned capture" }, audio: false, showCaptureBorder: false });
     void capture.catch(() => {});
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     expect(app.sent.at(-1)).toMatchObject({
@@ -4666,7 +4684,7 @@ test("arming OBS preserves the current capture controls until the external sourc
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
     const profile = { ...QUALITY_PROFILES["720p30"], maxAudioBitrate: 64_000 };
     session.setQuality(profile);
-    const starting = session.startNativeScreen("first", { kind: "display", sourceId: "1", title: "Owned capture" });
+    const starting = session.startNativeScreen("first", { target: { kind: "display", sourceId: "1", title: "Owned capture" }, audio: false, showCaptureBorder: false });
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const request = app.sent.at(-1)!, publicationId = request.publicationId as string;
     const sessionId = crypto.randomUUID(), original = crypto.randomUUID();
@@ -13266,7 +13284,7 @@ test("review capability downgrade retains active Native source and resets a diff
     await rejection;
     expect(session.getSnapshot().externalScreenInputAvailable).toBe(true);
     await expect(list(app, strong)).resolves.toEqual(strong); session.setEncodingExecution("software");
-    const starting = session.startNativeScreen("first", target);
+    const starting = session.startNativeScreen("first", { target, audio: false, showCaptureBorder: false });
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture")); const publicationId=app.sent.at(-1)!.publicationId;
     app.receive({id:app.sent.at(-1)!.id,result:{captureId:crypto.randomUUID(),sessionId:crypto.randomUUID(),codec:"h264"}});
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("commit_capture")); app.receive({id:app.sent.at(-1)!.id,result:null}); await starting;
@@ -13283,7 +13301,7 @@ test("review capability downgrade retains active Native source and resets a diff
     await next.onopen?.(); next.receive({id:next.sent.at(-1)!.id,result:null}); await connecting;
     expect(session.getSnapshot().pagePlayer).toBe(false); expect(session.getSnapshot().externalScreenInputAvailable).toBe(false);
     await expect(list(next,weak)).resolves.toEqual(weak);
-    const selecting=session.startNativeScreen("first",weak.sources[0]!).catch(e=>e);
+    const selecting=session.startNativeScreen("first",{ target: weak.sources[0]!, audio: false, showCaptureBorder: false }).catch(e=>e);
     await vi.waitFor(()=>expect(next.sent.at(-1)?.type).toBe("prepare_capture"));
     expect(next.sent.at(-1)?.encodingExecution).toBe("auto");
     expect(session.nativeCaptureRequest("first")).toBeUndefined(); // Old App's activation URL did not leak.
@@ -13300,7 +13318,7 @@ test("review pending Native picker disconnect retires only that attempt and a ne
   const catalog={sources:[target],codecs:["h264"],softwareEncodingCodecs:[],videoAdaptation:true,processAudio:false,processAudioExclusion:false,systemAudio:true,captureBorderControl:false,activationURL:"intent://media#Intent;scheme=piik;package=tv.piik.android.test;end"};
   async function connect(socket:ChannelSocket){await socket.onopen?.();socket.receive({id:socket.sent.at(-1)!.id,result:null});await vi.waitFor(()=>expect(session.getSnapshot().appConnected).toBe(true));}
   try {await connect(app);const listing=session.nativeSources();await vi.waitFor(()=>expect(app.sent.at(-1)?.type).toBe("targets"));app.receive({id:app.sent.at(-1)!.id,result:catalog});await listing;
-    const pending=session.startNativeScreen("first",target).catch(e=>e);await vi.waitFor(()=>expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
+    const pending=session.startNativeScreen("first",{ target, audio: false, showCaptureBorder: false }).catch(e=>e);await vi.waitFor(()=>expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const captureId = crypto.randomUUID();
     app.receive({ type: "picker_ready", requestId: app.sent.at(-1)!.id, captureId });
     expect(session.nativeCaptureRequest("first")?.activationURL).toContain(`media/${captureId}#Intent`);app.close();expect(await pending).toMatchObject({message:"app_disconnected"});
@@ -13308,7 +13326,7 @@ test("review pending Native picker disconnect retires only that attempt and a ne
     await vi.waitFor(()=>expect(session.getSnapshot().pending.has("screen:first")).toBe(false));session.clearError();
     const reconnect=session.activateApp();await vi.waitFor(()=>expect(ChannelSocket.current).not.toBe(app));const next=ChannelSocket.current;await connect(next);await reconnect;
     const listing2=session.nativeSources();await vi.waitFor(()=>expect(next.sent.at(-1)?.type).toBe("targets"));next.receive({id:next.sent.at(-1)!.id,result:catalog});await listing2;
-    const retry=session.startNativeScreen("first",target);await vi.waitFor(()=>expect(next.sent.at(-1)?.type).toBe("prepare_capture"));next.receive({id:next.sent.at(-1)!.id,result:{captureId:crypto.randomUUID(),sessionId:crypto.randomUUID(),codec:"h264"}});
+    const retry=session.startNativeScreen("first",{ target, audio: false, showCaptureBorder: false });await vi.waitFor(()=>expect(next.sent.at(-1)?.type).toBe("prepare_capture"));next.receive({id:next.sent.at(-1)!.id,result:{captureId:crypto.randomUUID(),sessionId:crypto.randomUUID(),codec:"h264"}});
     await vi.waitFor(()=>expect(next.sent.at(-1)?.type).toBe("commit_capture"));next.receive({id:next.sent.at(-1)!.id,result:null});await retry;
     expect(session.nativeCaptureSelection("first")).toMatchObject({target,current:true});expect(session.getSnapshot().error).toBeNull();
   } finally{session.close();}
@@ -14064,11 +14082,11 @@ test("cancelling an armed OBS B retains the exact active Native capture A", asyn
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
-    const sharing = session.startNativeScreen("first", {
+    const sharing = session.startNativeScreen("first", { target: {
       kind: "display",
       sourceId: "owned-display",
       title: "Owned A",
-    });
+    }, audio: false, showCaptureBorder: false });
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const request = app.sent.at(-1)!,
       publicationId = request.publicationId as string,
@@ -14275,7 +14293,7 @@ test.each(["cancel screen", "reject then OBS ready", "OBS ready then reject"] as
     });
     await opening;
     const original = session.externalInput("first");
-    const selecting = session.startNativeScreen("first", { kind: "display", sourceId: "owned-native-B", title: "Owned Native B" });
+    const selecting = session.startNativeScreen("first", { target: { kind: "display", sourceId: "owned-native-B", title: "Owned Native B" }, audio: false, showCaptureBorder: false });
     const rejected = expect(selecting).rejects.toMatchObject(order === "cancel screen" ? { name: "AbortError" } : { message: "capture_pending" });
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const preparing = app.sent.at(-1)!;
@@ -14331,7 +14349,7 @@ test("explicit OBS input cancellation leaves a different Native screen preparati
     });
     await opening;
     const target = { kind: "display" as const, sourceId: "owned-native-B", title: "Owned Native B" },
-      selecting = session.startNativeScreen("first", target);
+      selecting = session.startNativeScreen("first", { target, audio: false, showCaptureBorder: false });
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const preparing = app.sent.at(-1)!;
     const cancelling = session.cancelExternalScreen("first");

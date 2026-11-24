@@ -386,6 +386,7 @@ pub struct PrepareCapture {
     pub audio: bool,
     pub show_capture_border: bool,
     pub exclude_audio: Option<Target>,
+    pub render_endpoint_id: Option<String>,
     pub replaces: Option<Uuid>,
     pub result: oneshot::Sender<Result<CaptureLease, String>>,
 }
@@ -1885,6 +1886,7 @@ impl Session {
                 request.encoding_execution,
                 request.audio,
                 request.exclude_audio,
+                request.render_endpoint_id,
                 request.show_capture_border,
             ),
             &mut live.commands,

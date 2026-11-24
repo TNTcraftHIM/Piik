@@ -1,3 +1,4 @@
+import type { NativeCaptureSelection } from "../native/capture-selection";
 import type { WatchMediaSources } from "./watch-page-media";
 import type { NativePageCandidate, NativePageIndexedSelection, NativePageMpdCatalog, NativePageMpdSelection } from "../native/wire";
 import type { WatchMedia } from "./watch-media";
@@ -207,8 +208,8 @@ export interface ChannelActions {
   cancelExternalScreen(roomId: string): Promise<void>;
   nativePreview(target: NativeCaptureTarget, signal?: AbortSignal): Promise<string | null>;
   nativeCaptureRequest(roomId: string): NativeCaptureRequest | undefined;
-  nativeCaptureSelection(roomId: string): { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget; showCaptureBorder: boolean; current: boolean } | undefined;
-  startNativeScreen(roomId: string, target: NativeCaptureTarget, audio?: boolean, excludeAudio?: NativeCaptureTarget, showCaptureBorder?: boolean): Promise<void>;
+  nativeCaptureSelection(roomId: string): (NativeCaptureSelection & { current: boolean }) | undefined;
+  startNativeScreen(roomId: string, selection: NativeCaptureSelection): Promise<void>;
   sourceSelectionCommitting(roomId: string): boolean;
   browserCapturePreparation(roomId: string): "picker" | "preparing" | undefined;
   cancelScreenSelection(roomId: string): Promise<void>;

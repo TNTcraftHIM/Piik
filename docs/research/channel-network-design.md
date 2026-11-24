@@ -1036,6 +1036,19 @@ work. Platform setup and license/dependency details belong to the
 
 ### Input And Sound Boundaries
 
+Playback output belongs to the current page. Piik-owned media elements and
+audio contexts share one device selection; embedded website players and
+independent webpage windows retain system output. Device changes use the
+[Audio Output Devices API](https://www.w3.org/TR/audio-output/) and preserve
+the previous choice if an active output refuses the change. Retired outputs
+cannot change a later selection.
+
+Windows whole-system capture can follow the default render endpoint or bind an
+explicit endpoint under the existing capture lease. Explicit endpoint capture
+and process exclusion are alternative scopes. An unavailable selected endpoint
+ends only source sound; it does not capture another device or stop the picture
+and microphone. Local playback-device selection does not change capture scope.
+
 Linux input adds a [RemoteDesktop Portal session](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html)
 beside capture. Commit requires the selected monitor, EIS devices and first image;
 cancellation closes the candidate and preserves the share. Close a pending

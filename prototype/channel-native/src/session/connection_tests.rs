@@ -368,6 +368,7 @@ async fn unsupported_software_execution_rejects_before_room_or_capture_effects()
                     audio: true,
                     show_capture_border: false,
                     exclude_audio: None,
+                    render_endpoint_id: None,
                     replaces: None,
                     result,
                 },

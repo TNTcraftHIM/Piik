@@ -75,8 +75,8 @@ test("retiring OBS permission preserves a replacement Native capture preparation
   try {
     const publicationId = crypto.randomUUID();
     await arm(app, socket, publicationId);
-    const preparing = app.prepareCapture(publicationId, "room", { kind: "display", sourceId: "1", title: "Display" },
-      false, DEFAULT_QUALITY_SETTINGS, "h264", "auto");
+    const preparing = app.prepareCapture(publicationId, "room", { target: { kind: "display", sourceId: "1", title: "Display" },
+      audio: false, showCaptureBorder: false, profile: DEFAULT_QUALITY_SETTINGS, codecMode: "h264", encodingExecution: "auto" });
     const captureId = crypto.randomUUID();
     socket.reply({ captureId, sessionId: crypto.randomUUID(), codec: "h264" });
     await preparing;
@@ -93,8 +93,8 @@ test.each(["zh", "en"] as const)("OBS actual format reaches one %s alert and cle
   const { app, socket } = await setup();
   try {
     const independent = crypto.randomUUID();
-    const preparing = app.prepareCapture(independent, "other", { kind: "display", sourceId: "1", title: "Display" },
-      false, DEFAULT_QUALITY_SETTINGS, "h264", "auto");
+    const preparing = app.prepareCapture(independent, "other", { target: { kind: "display", sourceId: "1", title: "Display" },
+      audio: false, showCaptureBorder: false, profile: DEFAULT_QUALITY_SETTINGS, codecMode: "h264", encodingExecution: "auto" });
     const captureId = crypto.randomUUID();
     socket.reply({ captureId, sessionId: crypto.randomUUID(), codec: "h264" }); await preparing;
     const committing = app.commitCapture(independent, captureId); socket.reply(null); await committing;

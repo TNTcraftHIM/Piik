@@ -993,6 +993,7 @@ fn projection_capture(result: oneshot::Sender<Result<CaptureLease, String>>) -> 
         audio: false,
         show_capture_border: false,
         exclude_audio: None,
+        render_endpoint_id: None,
         replaces: None,
         result,
     }

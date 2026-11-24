@@ -1,12 +1,12 @@
 //! AVAudioEngine owns the selected input and AVAudioConverter owns resampling.
 use super::{checked, AudioControl, AudioFrame, Clock, Pcm};
-use crate::capture::MicrophoneDevice;
+use crate::capture::AudioDevice;
 use anyhow::{anyhow, ensure, Context as _, Result};
 use cidre::{arc, at, av, blocks, cf, cm, core_audio, define_obj_type, ns, objc};
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 
-pub fn microphones() -> Result<Vec<MicrophoneDevice>> {
+pub fn microphones() -> Result<Vec<AudioDevice>> {
     checked(core_audio::System::devices())?
         .into_iter()
         .filter_map(|device| {
@@ -19,7 +19,7 @@ pub fn microphones() -> Result<Vec<MicrophoneDevice>> {
                 return None;
             }
             Some((|| {
-                Ok(MicrophoneDevice {
+                Ok(AudioDevice {
                     id: checked(device.uid())?.to_string(),
                     label: checked(device.name())?.to_string(),
                 })

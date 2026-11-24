@@ -1,7 +1,7 @@
 import { SwitchItem } from "./primitives";
 import { useCopy } from "../../ui/copy";
 import type { CaptureDevice } from "../../media/capture-devices";
-import { MicrophoneDeviceSelect } from "./MicrophoneDeviceSelect";
+import { AudioDevicePicker } from "./AudioDeviceSelect";
 import { AudioVolumeControl } from "./AudioVolumeControl";
 
 export function MicrophoneSettings({ enabled, disabled, volume, onVolume, deviceId, onDevice, loadDevices, voiceProcessing, onVoiceProcessing, host, browser = true, sharing = false }: {
@@ -13,7 +13,7 @@ export function MicrophoneSettings({ enabled, disabled, volume, onVolume, device
 }) {
   const { t } = useCopy();
   return <div className="lr-door-group lr-audio-settings" role="group" aria-label={t("host.microphone.settings")}>
-      <MicrophoneDeviceSelect value={deviceId} load={loadDevices}
+      <AudioDevicePicker value={deviceId} load={loadDevices}
         label={sharing ? "host.commentary.device" : "voice.input.device"}
         onChange={onDevice} disabled={disabled} revision={enabled} browser={browser} />
       <AudioVolumeControl volume={volume} onVolume={onVolume} disabled={disabled}

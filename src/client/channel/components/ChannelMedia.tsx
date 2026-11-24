@@ -289,6 +289,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
               onRate: rate => onPlayback({ rate }) } : undefined}>
             {settingsOriginal && <Btn icon="window" quiet title="watch.openPage" cap="watch.openPage" size="compact"
               disabled={disabled || receiving?.disabled || receiving?.pending} onClick={settingsOriginal} />}
+            {(surface.kind === "embed" || surface.kind === "external") && <small>{t("voice.output.external")}</small>}
             {audioTracks.length > 0 && <label className="c3-watch-audio"><span>{t("watch.audioTrack")}</span>
               <select className="lr-select" aria-label={t("watch.audioTrack")} value={audioTracks.find(track => track.selected)?.id ?? ""} disabled={audioTracks.length === 1}
                 onChange={event => player.media.selectAudioTrack?.(Number(event.target.value))}>

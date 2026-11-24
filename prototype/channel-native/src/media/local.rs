@@ -169,6 +169,7 @@ impl Producer {
         audio_control: AudioControl,
         audio: bool,
         exclude_audio: Option<Target>,
+        render_endpoint_id: Option<String>,
         show_capture_border: bool,
         ready_sources: mpsc::Sender<SourceReady>,
         events: mpsc::Sender<Event>,
@@ -209,9 +210,13 @@ impl Producer {
         let video_control = capture.control();
         let input = if audio {
             #[cfg(target_os = "windows")]
-            let input = AudioCapture::start_with_exclusion(target, exclude_audio.clone());
+            let input = AudioCapture::start_with_exclusion(
+                target,
+                exclude_audio.clone(),
+                render_endpoint_id.clone(),
+            );
             #[cfg(not(target_os = "windows"))]
-            let input = if exclude_audio.is_some() {
+            let input = if exclude_audio.is_some() || render_endpoint_id.is_some() {
                 Err(anyhow!("audio exclusion unavailable"))
             } else {
                 capture.audio(target)
@@ -230,7 +235,7 @@ impl Producer {
             let (failed, received) = oneshot::channel();
             let _ = failed.send(error.clone());
             warning = Some(received);
-            if exclude_audio.is_some() {
+            if exclude_audio.is_some() || render_endpoint_id.is_some() {
                 let (failed, received) = oneshot::channel();
                 let _ = failed.send(Err(anyhow!(error)));
                 audio_ready = received;
@@ -315,18 +320,19 @@ impl Producer {
         target: Target,
         enabled: bool,
         exclude: Option<Target>,
+        render_endpoint_id: Option<String>,
         mixer: &AudioControl,
     ) -> Result<(
         AudioLeaseControl,
         oneshot::Receiver<Result<()>>,
         Option<oneshot::Receiver<String>>,
     )> {
-        if exclude.is_some() {
+        if exclude.is_some() || render_endpoint_id.is_some() {
             mixer.stop_system().await?;
         }
         anyhow::ensure!(!self.control.is_stopped(), "capture_unavailable");
         let capture = enabled
-            .then(|| AudioCapture::start_with_exclusion(target, exclude))
+            .then(|| AudioCapture::start_with_exclusion(target, exclude, render_endpoint_id))
             .transpose()?;
         mixer.prepare_system(capture).await
     }

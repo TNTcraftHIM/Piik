@@ -1,6 +1,6 @@
 //! System-output sound, independent of Portal selection and video failure.
 use super::{message_error, Clock, Pipeline};
-use crate::capture::{AudioCapabilities, AudioFrame, MicrophoneDevice, Target};
+use crate::capture::{AudioCapabilities, AudioDevice, AudioFrame, Target};
 use anyhow::{anyhow, ensure, Context as _, Result};
 use futures_util::StreamExt;
 use gst::prelude::*;
@@ -18,7 +18,7 @@ pub fn audio_capabilities() -> AudioCapabilities {
     }
 }
 
-pub fn microphones() -> Result<Vec<MicrophoneDevice>> {
+pub fn microphones() -> Result<Vec<AudioDevice>> {
     gst::init()?;
     let monitor = gst::DeviceMonitor::new();
     monitor
@@ -41,7 +41,7 @@ pub fn microphones() -> Result<Vec<MicrophoneDevice>> {
             let id = source
                 .property::<Option<String>>("device")
                 .filter(|id| !id.is_empty())?;
-            Some(MicrophoneDevice {
+            Some(AudioDevice {
                 id,
                 label: device.display_name().to_string(),
             })

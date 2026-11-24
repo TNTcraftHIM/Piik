@@ -1,3 +1,4 @@
+import type { NativeCaptureSelection } from "../native/capture-selection";
 import { RoomCreationInterrupted } from "./room-creation";
 import { YouTubeMedia } from "./watch-youtube-media";
 import { PeerTubeMedia } from "./watch-peertube-media";
@@ -135,7 +136,7 @@ interface ScreenShare {
   audioChange?: Promise<void>;
   requestedProfile?: QualityProfile;
   qualityChange?: Promise<void>;
-  native?: { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget; showCaptureBorder: boolean };
+  native?: NativeCaptureSelection;
 }
 
 async function waitForDisplaySurface(track: MediaStreamTrack, signal: AbortSignal): Promise<void> {
@@ -3500,10 +3501,10 @@ export class ChannelSession {
     }).finally(() => { share.audioChange = undefined; this.patch({}); });
     return share.audioChange;
   };
-  startNativeScreen = (roomId: string, target: NativeCaptureTarget, audio = false, excludeAudio?: NativeCaptureTarget, showCaptureBorder = false): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  startNativeScreen = (roomId: string, { target, audio, excludeAudio, showCaptureBorder, renderEndpointId }: NativeCaptureSelection): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const { share, selection, current } = this.selectScreen(roomId);
     const signal = selection.controller.signal;
-    const native = { target, audio, excludeAudio: target.kind === "display" ? excludeAudio : undefined, showCaptureBorder };
+    const native = { target, audio, renderEndpointId, excludeAudio: target.kind === "display" ? excludeAudio : undefined, showCaptureBorder };
     let app: ChannelApp | undefined;
     let ownsPreparation = false;
     try {
@@ -3511,8 +3512,10 @@ export class ChannelSession {
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       const codecMode = share.codec?.primary ?? (share.codecMode === "auto"
         && app.supportsCaptureCodec("vp8") && !supportsH264Receive() ? "vp8" : share.codecMode);
-      const preparing = app.prepareCapture(share.id, roomId, target, audio, share.profile, codecMode, share.encodingExecution,
-        audio ? native.excludeAudio : undefined, share.volume.muted ? 0 : share.volume.level, showCaptureBorder);
+      const preparing = app.prepareCapture(share.id, roomId, {
+        ...native, excludeAudio: audio ? native.excludeAudio : undefined, renderEndpointId: audio ? renderEndpointId : undefined,
+        profile: share.profile, codecMode, encodingExecution: share.encodingExecution, gain: share.volume.muted ? 0 : share.volume.level,
+      });
       this.patch({});
       const prepared = await preparing;
       ownsPreparation = true;

@@ -6,7 +6,7 @@ mod graphics;
 mod platform;
 mod source;
 
-use crate::capture::{AudioCapabilities, MicrophoneDevice, Target, TargetKind};
+use crate::capture::{AudioCapabilities, AudioDevice, Target, TargetKind};
 use anyhow::Result;
 pub use audio::{AudioCapture, AudioControl};
 pub use encoding::{Encoding, EncodingControl};
@@ -33,7 +33,7 @@ pub(super) fn activation_url() -> Result<String> {
     platform::activation_url()
 }
 
-pub fn microphones() -> Result<Vec<MicrophoneDevice>> {
+pub fn microphones() -> Result<Vec<AudioDevice>> {
     platform::Platform::microphone(String::new())?.with(|env, object| {
         let list = env
             .call_method(

@@ -1253,6 +1253,7 @@ enum Operation {
         audio: bool,
         #[serde(default)]
         exclude_audio: Option<Target>,
+        render_endpoint_id: Option<String>,
         #[serde(default)]
         show_capture_border: bool,
     },
@@ -2433,6 +2434,7 @@ async fn connection(
                                 audio_settings,
                                 audio,
                                 exclude_audio,
+                                render_endpoint_id,
                                 show_capture_border,
                             } => match &host {
                                 Some(commands) => {
@@ -2457,6 +2459,7 @@ async fn connection(
                                                             encoding_execution,
                                                             audio,
                                                             exclude_audio,
+                                                            render_endpoint_id,
                                                             show_capture_border,
                                                             replaces,
                                                             picker_events.as_ref().map(|events| (events, request.id.as_str())),
@@ -2941,6 +2944,10 @@ async fn capture_targets() -> Result<Value> {
             };
             let audio = piik_channel_native::capture::audio_capabilities();
             let mut result = json!({"sources": sources, "codecs": codecs, "softwareEncodingCodecs": piik_channel_native::capture::software_video_codecs()?, "processAudio": audio.process_audio, "processAudioExclusion": audio.process_audio_exclusion, "systemAudio": audio.system_audio, "captureBorderControl": piik_channel_native::capture::capture_border_control(), "videoAdaptation": piik_channel_native::capture::supports_video_adaptation()});
+            #[cfg(target_os = "windows")]
+            {
+                result["renderEndpoints"] = json!(piik_channel_native::capture::render_endpoints().ok());
+            }
             if let Some(activation) = piik_channel_native::capture::activation_url()? {
                 result["activationURL"] = json!(activation);
             }
@@ -2965,6 +2972,7 @@ async fn prepare_capture(
     encoding_execution: EncodingExecution,
     audio: bool,
     exclude_audio: Option<Target>,
+    render_endpoint_id: Option<String>,
     show_capture_border: bool,
     replaces: Option<Uuid>,
     picker: Option<(&mpsc::Sender<Value>, &str)>,
@@ -2984,6 +2992,7 @@ async fn prepare_capture(
             encoding_execution,
             audio,
             exclude_audio,
+            render_endpoint_id,
             show_capture_border,
             replaces,
             result,
@@ -4926,6 +4935,7 @@ mod tests {
             audio_settings,
             audio,
             exclude_audio,
+            render_endpoint_id,
             show_capture_border,
         } = request.operation
         else {
@@ -4951,6 +4961,7 @@ mod tests {
             encoding_execution,
             audio,
             exclude_audio,
+            render_endpoint_id,
             show_capture_border,
             None,
             Some((&picker_events, "selected-profile")),
@@ -4994,6 +5005,7 @@ mod tests {
             VideoCodecMode::H264,
             EncodingExecution::Auto,
             false,
+            None,
             None,
             false,
             None,
