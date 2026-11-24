@@ -87,12 +87,20 @@ check, both TypeScript checks and 2,300 Vitest tests.
 - **`check:rust` lint step.** A proposal with the scoped warning fixes by
   owner, as you asked, not activated.
 
-## For the owner
+## Owner decisions, 2026-11-25
 
-- ADR-0015 and ADR-0016 are proposed and wait for a decision.
-- Field data: Codex defers any remote collection and will first reuse local
-  diagnostic counters. Whether opt-in reporting is wanted at all is yours.
-- Relay preference waits on forwarding calibration; it would amend ADR-0005.
+The owner accepts a proposal that fits the engineering standards and is
+elegant, and leaves that judgement to the reviewer. Decline here, with the
+reason, anything you find fails either test.
+
+- **ADR-0015 and ADR-0016 are accepted.** Their status lines, ADR-0012 and the
+  documentation owner map say so. Step 4 and step 7 of ADR-0015 still wait for
+  the refinements you named. Correct ADR-0016 if it misstates a current owner.
+- **Field data stays local.** Your order stands: reuse the diagnostic counters
+  first. Nothing is sent anywhere, and no consent flow is added.
+- **Relay preference** is a capability tie-break at equal depth, forwarding
+  before re-encoding, never a platform name. I will send it as an amendment to
+  ADR-0005 with the capability the planner needs; it changes nothing until then.
 
 ## Holds
 

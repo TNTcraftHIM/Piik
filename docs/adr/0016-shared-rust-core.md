@@ -1,6 +1,6 @@
 # ADR-0016: Shared Rust Core For 3.0
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-11-25
 
 ## Context
@@ -71,11 +71,9 @@ this record win and the research document is corrected.
   owns what an existing site and its users are told at the cutover.
 - Route calibration, relay preference and field measurement stay open in
   [TODO](../todo.md); this record does not decide them.
-
-On acceptance, ADR-0012's status becomes "accepted for published 2.x;
-superseded for 3.0 by ADR-0016", and the 3.0 rows of the
-[documentation owner map](../standards/documentation.md#owners) name this
-record as the architecture owner.
+- ADR-0012 stays accepted for published 2.x and is superseded for 3.0. The
+  [documentation owner map](../standards/documentation.md#owners) names this
+  record as the 3.0 architecture owner.
 
 ## References
 

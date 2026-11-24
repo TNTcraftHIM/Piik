@@ -1,6 +1,7 @@
 # ADR-0015: Browser Session Lifetime Owners
 
-- Status: proposed
+- Status: accepted on 2026-11-25; steps 4 and 7 start after the refinements
+  named under Consequences
 - Date: 2026-11-24
 
 ## Context
