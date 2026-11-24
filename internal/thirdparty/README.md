@@ -104,6 +104,16 @@ capacity. Once an upstream revision supports this input and passes those
 checks, remove the replacement directive and its replacement checksums. The
 separate local send-side estimator corrections retain their own removal gate.
 
+## Pion ICE send consent
+
+The root module uses the MIT-licensed
+[backport `cea533fd`](https://github.com/TNTcraftHIM/pion-ice/commit/cea533fd3ec331aa67212a291a1b81cf12c989ff),
+based on Pion ICE v4.4.9. It applies
+[Pion #894](https://github.com/pion/ice/pull/894) to expire send consent without
+an authenticated response and to handle explicit revocation. Remove the
+replacement and its two checksums once an official compatible release passes
+the expiry, healthy delivery and consumer controls.
+
 ## Pion H.264 Profile Matching
 
 Until [upstream #3668](https://github.com/pion/webrtc/pull/3668) is available,

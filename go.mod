@@ -140,3 +140,6 @@ replace github.com/livekit/livekit-server => github.com/TNTcraftHIM/livekit v1.1
 
 // Equivalent H.264 profiles pending upstream #3668; see internal/thirdparty/README.md.
 replace github.com/pion/webrtc/v4 => github.com/TNTcraftHIM/pion-webrtc/v4 v4.0.0-20261121123358-02e42c553795
+
+// Upstream consent fix backported to ICE v4; provenance: internal/thirdparty/README.md.
+replace github.com/pion/ice/v4 => github.com/TNTcraftHIM/pion-ice/v4 v4.4.10-0.20261124140727-cea533fd3ec3
