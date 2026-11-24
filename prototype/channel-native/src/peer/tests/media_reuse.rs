@@ -737,14 +737,61 @@ async fn repeated_media_leases_keep_sibling_av_and_use_fresh_rtp() -> Result<()>
                     && fixture.output(binding.id, MediaKind::Video).1 == stream,
                 "new flow split its audio/video or stole the sibling stream"
             );
-            fixture
+            let observed = fixture
                 .until(|f| {
                     f.observed(&stream, MediaKind::Audio)
                         .is_some_and(|packet| packet.1 != previous_audio.1)
                         && f.observed(&stream, MediaKind::Video)
                             .is_some_and(|packet| packet.1 != previous_video.1)
                 })
-                .await
+                .await;
+            if observed.is_err() {
+                eprintln!("REUSE cycle={cycle} previous_audio={previous_audio:?} previous_video={previous_video:?}");
+                for (id, packets) in &fixture.packets {
+                    eprintln!("REUSE history={id} len={} last_ssrc={:?}", packets.len(), packets.last().map(|p| p.header.ssrc));
+                }
+                let snapshot = async {
+                    for flow in [binding.id, sibling] {
+                        for kind in [MediaKind::Audio, MediaKind::Video] {
+                            let Some(output) = fixture.driver.pairs.get(&sink).and_then(|pair| pair.outputs.get(&(flow, kind))) else {
+                                eprintln!("REUSE flow={flow} kind={kind:?} output=None");
+                                continue;
+                            };
+                            let (id, stream) = (output.id, &output.stream);
+                            let carrier = pc.call(move |e| {
+                                let mid = e.outputs.get(&id).and_then(|out| out.mid);
+                                let ssrc = mid.and_then(|m| e.rtc.direct_api().stream_tx_by_mid(m, None).map(|tx| *tx.ssrc()));
+                                Ok((mid, ssrc))
+                            }).await;
+                            let mid = carrier.as_ref().ok().and_then(|(mid, _)| *mid);
+                            let rx = fixture.remote[&sink].call(move |e| {
+                                Ok(mid.map(|mid| (
+                                    e.remote_media.get(&mid).cloned(),
+                                    e.rtc.media(mid).map(|m| m.direction()),
+                                    e.tracks.get(&mid).map(|t| (t.track.id.clone(), t.track.first_ssrc)),
+                                )))
+                            }).await;
+                            eprintln!("REUSE flow={flow} kind={kind:?} output={id} stream={stream} carrier={carrier:?} rx={rx:?} observed={:?}", fixture.observed(&stream, kind));
+                        }
+                    }
+                    for (side, endpoint) in [("sender", &pc), ("receiver", &fixture.remote[&sink])] {
+                        let metrics = match endpoint.connection_metrics().await {
+                            Ok(metrics) => metrics,
+                            Err(error) => {
+                                eprintln!("REUSE side={side} metrics unavailable: {error}");
+                                continue;
+                            }
+                        };
+                        for row in metrics.streams {
+                            eprintln!("REUSE side={side} stream={} kind={:?} counters={:?}", row.stream, row.media, row.counters);
+                        }
+                    }
+                };
+                if tokio::time::timeout(Duration::from_secs(2), snapshot).await.is_err() {
+                    eprintln!("REUSE endpoint snapshot timed out");
+                }
+            }
+            observed
                 .with_context(|| format!("cycle {cycle}: reused stream emits fresh audio/video SSRCs"))?;
             previous_audio = fixture.observed(&stream, MediaKind::Audio).unwrap();
             previous_video = fixture.observed(&stream, MediaKind::Video).unwrap();

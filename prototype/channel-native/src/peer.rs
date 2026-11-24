@@ -557,6 +557,10 @@ impl Drop for CaptureLease {
     }
 }
 enum Input {
+    #[cfg(test)]
+    BlockOutput(Command, oneshot::Sender<()>),
+    #[cfg(all(test, feature = "capture"))]
+    InstallCaptureFixture(CaptureScope, bool, oneshot::Sender<()>),
     RegisterWatchReader(
         Uuid,
         Arc<dyn crate::watch::Reader>,
@@ -946,6 +950,30 @@ impl NativePeers {
                             d.resync().await;
                             let _ = done.send(Ok(()));
                         }
+                        #[cfg(test)]
+                        Turn::Input(Input::BlockOutput(command, blocked)) => {
+                            let mut send = std::pin::pin!(d.send(command));
+                            std::future::poll_fn(|cx| {
+                                assert!(std::future::Future::poll(send.as_mut(), cx).is_pending());
+                                std::task::Poll::Ready(())
+                            }).await;
+                            let _ = blocked.send(());
+                            send.await;
+                        }
+                        #[cfg(all(test, feature = "capture"))]
+                        Turn::Input(Input::InstallCaptureFixture(scope, audio_only, installed)) => {
+                            if audio_only {
+                                let audio = crate::media::local::tests::active_audio_fixture();
+                                d.capture_audio.insert(scope.publication_id, (scope, audio));
+                            } else {
+                                let id = Uuid::new_v4();
+                                d.local_producers.insert(id, PreparedSource {
+                                    scope, selected: true, prepared: vec![], ended: oneshot::channel().0,
+                                    producer: LocalProducer::External(external::Producer::fixture(id)),
+                                });
+                            }
+                            let _ = installed.send(());
+                        }
                         Turn::Input(Input::Captures(done)) => {
                             #[cfg(feature = "capture")]
                             let publications = d
@@ -1209,6 +1237,18 @@ impl NativePeers {
             .send(Input::CaptureCurrent(id, selected, tx))
             .await?;
         Ok(rx.await?)
+    }
+    #[cfg(test)]
+    pub(crate) async fn block_output_for_test(&self, command: Command) -> Result<()> {
+        let (ready, blocked) = oneshot::channel();
+        self.input.send(Input::BlockOutput(command, ready)).await?;
+        Ok(blocked.await?)
+    }
+    #[cfg(all(test, feature = "capture"))]
+    pub(crate) async fn install_capture_fixture(&self, scope: CaptureScope, audio_only: bool) -> Result<()> {
+        let (installed, ready) = oneshot::channel();
+        self.input.send(Input::InstallCaptureFixture(scope, audio_only, installed)).await?;
+        Ok(ready.await?)
     }
     pub async fn capture_publications(&self) -> Result<Vec<Uuid>> {
         let (tx, rx) = oneshot::channel();
@@ -1540,21 +1580,9 @@ impl Driver {
         let publication = scope.publication_id;
         self.cancelled_audio().await;
         self.check_local_preparation(&scope, replaces)?;
-        anyhow::ensure!(
-            exclude_audio
-                .as_ref()
-                .is_none_or(|excluded| cfg!(target_os = "windows")
-                    && audio
-                    && target.kind == crate::capture::TargetKind::Display
-                    && excluded.kind == crate::capture::TargetKind::Window),
-            "audio exclusion unavailable"
-        );
-        anyhow::ensure!(
-            render_endpoint_id.as_ref().is_none_or(|id| cfg!(target_os = "windows") && audio
-                && target.kind == crate::capture::TargetKind::Display && exclude_audio.is_none()
-                && !id.is_empty() && id.len() <= 1024),
-            "render endpoint unavailable"
-        );
+        let audio = crate::capture::AudioScope::from_request(
+            &target, audio, exclude_audio, render_endpoint_id,
+        )?;
         if self
             .capture_audio
             .get(&publication)
@@ -1609,7 +1637,7 @@ impl Driver {
                 .unwrap();
             let (control, ready, audio_error) = capture
                 .producer
-                .prepare_audio(target, audio, exclude_audio, render_endpoint_id, &mixer)
+                .prepare_audio(target, audio, &mixer)
                 .await?;
             let id = Uuid::new_v4();
             capture.pending_audio = Some((id, control.clone()));
@@ -1631,10 +1659,10 @@ impl Driver {
                 mixer,
             });
         }
-        if exclude_audio.is_some() || render_endpoint_id.is_some() {
+        let audio_required = audio.required();
+        if audio_required {
             mixer.stop_system().await?;
         }
-        let audio_required = exclude_audio.is_some() || render_endpoint_id.is_some();
         let (producer, ready, audio_error, required_audio) = crate::media::local::Producer::start(
             publication,
             target.clone(),
@@ -1643,8 +1671,6 @@ impl Driver {
             execution,
             mixer.clone(),
             audio,
-            exclude_audio,
-            render_endpoint_id,
             show_capture_border,
             self.ready_sources.clone(),
             self.events.clone(),

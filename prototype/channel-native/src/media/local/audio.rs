@@ -99,7 +99,13 @@ impl Preparing {
 impl Control {
     #[cfg(test)]
     pub fn fixture() -> (Self, AudioLeaseControl) {
-        let (requests, _) = mpsc::channel(1);
+        let (control, lease, _) = Self::fixture_with_receiver();
+        (control, lease)
+    }
+
+    #[cfg(test)]
+    pub(super) fn fixture_with_receiver() -> (Self, AudioLeaseControl, impl Send) {
+        let (requests, receiver) = mpsc::channel(1);
         let (settings, _) = watch::channel(SourceAudioSettings::default());
         (
             Self {
@@ -113,6 +119,7 @@ impl Control {
                 capture: None,
                 cancelled: watch::channel(false).0,
             },
+            receiver,
         )
     }
     pub fn same(&self, other: &watch::Receiver<bool>) -> bool {

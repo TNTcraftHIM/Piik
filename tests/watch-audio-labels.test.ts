@@ -9,7 +9,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 test("personal HLS choices follow local capability for both roles and use distinct localized labels", () => {
   vi.stubGlobal("document", { fullscreenEnabled: false, documentElement: { lang: "en" } });
-  const video = { readyState: 4, videoWidth: 320, parentElement: null };
+  const video = { ownerDocument: document, readyState: 4, videoWidth: 320, parentElement: null };
   const tracks = [{ id: 0, name: "Original", language: "en", channels: "2", selected: true },
     { id: 1, name: "原声", language: "zh", channels: "2", selected: false },
     { id: 2, name: "Commentary", language: "en", channels: "2", selected: false }];

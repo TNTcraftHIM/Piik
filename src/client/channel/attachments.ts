@@ -137,7 +137,12 @@ export class ChannelAttachments {
     const runtime = this.module().then(module => {
       lifetime.signal.throwIfAborted();
       const runtime = { module, delivery: new module.FileDelivery(session), lifetime };
-      this.invoke(runtime, () => this.project(runtime));
+      try {
+        this.invoke(runtime, () => this.project(runtime));
+      } catch (error) {
+        runtime.delivery.free();
+        throw error;
+      }
       return runtime;
     });
     // A failed load is not a runtime; the next demand loads again.

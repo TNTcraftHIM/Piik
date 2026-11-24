@@ -1,5 +1,12 @@
 import { useEffect, useState, type RefObject } from "react";
 
+const retainedPictures = new WeakSet<HTMLVideoElement>();
+
+export function retainPictureInPicture(video: HTMLVideoElement): () => void {
+  retainedPictures.add(video);
+  return () => { retainedPictures.delete(video); };
+}
+
 type PictureVideo = HTMLVideoElement & {
   webkitPresentationMode?: string;
   webkitSupportsPresentationMode?: (mode: string) => boolean;
@@ -11,8 +18,8 @@ export function isPictureInPicture(video: PictureVideo): boolean {
 }
 
 export async function leavePictureInPicture(video: PictureVideo): Promise<void> {
-  if (document.pictureInPictureElement === video) {
-    await document.exitPictureInPicture();
+  if (video.ownerDocument.pictureInPictureElement === video) {
+    await video.ownerDocument.exitPictureInPicture();
   } else if (video.webkitPresentationMode === "picture-in-picture") {
     video.webkitSetPresentationMode?.("inline");
   }
@@ -29,7 +36,7 @@ export function usePictureInPicture(videoRef: RefObject<HTMLVideoElement | null>
     if (!video) return;
     const sync = () => {
       setSupported(Boolean(
-        (document.pictureInPictureEnabled && video.requestPictureInPicture) ||
+        (video.ownerDocument.pictureInPictureEnabled && video.requestPictureInPicture) ||
         (video.webkitSetPresentationMode && video.webkitSupportsPresentationMode?.("picture-in-picture")),
       ));
       setActive(isPictureInPicture(video));
@@ -40,7 +47,7 @@ export function usePictureInPicture(videoRef: RefObject<HTMLVideoElement | null>
     sync();
     return () => {
       events.forEach((event) => video.removeEventListener(event, sync));
-      void leavePictureInPicture(video).catch(() => undefined);
+      if (!retainedPictures.has(video)) void leavePictureInPicture(video).catch(() => undefined);
     };
   }, [videoRef]);
 
@@ -52,13 +59,13 @@ export function usePictureInPicture(videoRef: RefObject<HTMLVideoElement | null>
       if (isPictureInPicture(video)) {
         await leavePictureInPicture(video);
       } else {
-        if (document.pictureInPictureEnabled && video.requestPictureInPicture) {
+        if (video.ownerDocument.pictureInPictureEnabled && video.requestPictureInPicture) {
           await video.requestPictureInPicture();
         } else if (video.webkitSupportsPresentationMode?.("picture-in-picture")) {
           video.webkitSetPresentationMode?.("picture-in-picture");
         }
         // Request first: entering needs the click's transient user activation.
-        if (document.fullscreenElement === video.parentElement) await document.exitFullscreen();
+        if (video.ownerDocument.fullscreenElement === video.parentElement) await video.ownerDocument.exitFullscreen();
       }
     } catch {
       // An OS/user-policy rejection affects this action, never media recovery.

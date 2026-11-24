@@ -201,41 +201,67 @@ impl RoomTurns {
     }
 }
 
-async fn process_peer(
+async fn collect_peer_event(
     event: NativeEvent,
     pairs: &BTreeSet<Uuid>,
     room: &mut RoomTurns,
-    peers: &NativePeers,
+    ended: &mut BTreeSet<Uuid>,
     socket: &mut Writer<'_>,
 ) -> Result<()> {
     match event {
         NativeEvent::Command(command) if current(pairs, &command) => {
             write(socket, &command, None).await?
         }
-        NativeEvent::CaptureEnded {
-            publication_id,
-            error,
-            ..
-        } => {
+        NativeEvent::CaptureEnded { publication_id, error } => {
             if let Some(error) = error {
                 eprintln!("Native capture ended: {error}");
             }
-            let owned = room.snapshot.borrow().as_ref().is_some_and(|state| {
-                state
-                    .publications
-                    .iter()
-                    .any(|p| p.id == publication_id && p.session_id == room.local)
-            });
-            if owned
-                && !peers
-                    .capture_publications()
-                    .await?
-                    .contains(&publication_id)
-            {
-                write(socket, &Command::Unpublish { publication_id, successor_watch_id: None }, None).await?;
+            if room.snapshot.borrow().as_ref().is_some_and(|state| {
+                state.publications.iter().any(|p| p.id == publication_id && p.session_id == room.local)
+            }) {
+                ended.insert(publication_id);
             }
         }
         _ => {}
+    }
+    Ok(())
+}
+
+async fn process_peer(
+    event: NativeEvent,
+    commands: &mut mpsc::Receiver<NativeEvent>,
+    pairs: &BTreeSet<Uuid>,
+    room: &mut RoomTurns,
+    peers: &NativePeers,
+    socket: &mut Writer<'_>,
+) -> Result<()> {
+    let mut ended = BTreeSet::new();
+    collect_peer_event(event, pairs, room, &mut ended, socket).await?;
+    while !ended.is_empty() {
+        let batch = std::mem::take(&mut ended);
+        // Check ends received during this query in the next batch. The actor
+        // may have answered before emitting those notifications.
+        let query = peers.capture_publications();
+        tokio::pin!(query);
+        let captures = loop {
+            tokio::select! {
+                result = &mut query => break result?,
+                event = commands.recv() => {
+                    let event = event.ok_or_else(|| anyhow!("native_peer_stopped"))?;
+                    collect_peer_event(event, pairs, room, &mut ended, socket).await?;
+                }
+            }
+        };
+        for publication_id in batch {
+            if !captures.contains(&publication_id) {
+                write(
+                    socket,
+                    &Command::Unpublish { publication_id, successor_watch_id: None },
+                    None,
+                )
+                .await?;
+            }
+        }
     }
     Ok(())
 }
@@ -1006,7 +1032,7 @@ impl Session {
                         command = next_command(&mut self.live), if admitted => {
                             let command = command.ok_or_else(|| anyhow!("native_peer_stopped"))?;
                             if let Some(live) = &mut self.live {
-                                process_peer(command, &live.pairs, &mut live.room, &live.peers, socket).await?;
+                                process_peer(command, &mut live.commands, &live.pairs, &mut live.room, &live.peers, socket).await?;
                             }
                         },
                         message = incoming.recv() => {
@@ -2952,7 +2978,7 @@ async fn await_peer<T>(
             result = &mut turn => return result,
             command = commands.recv() => {
                 let command = command.ok_or_else(|| anyhow!("native_peer_stopped"))?;
-                process_peer(command, pairs, room, peers, socket).await?;
+                process_peer(command, commands, pairs, room, peers, socket).await?;
             },
         }
     }

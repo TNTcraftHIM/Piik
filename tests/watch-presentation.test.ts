@@ -77,7 +77,7 @@ describe("Webpage watch presentation", () => {
     setCopy({ lang: "en" });
     const render = (owned: boolean, available: boolean, error: string | null = null) => withWatchDocument(() =>
       renderToStaticMarkup(createElement(ChannelWatchVideo, {
-        player: { presentation: { kind }, video: kind === "video" ? {} : null, media: {}, error } as unknown as WatchPlayer,
+        player: { presentation: { kind }, video: kind === "video" ? { ownerDocument: document } : null, media: {}, error } as unknown as WatchPlayer,
         owned, paused: false, label: "Source", presentation: "full", disabled: false, website: true,
         originalPageAvailable: available, onAppWatch: vi.fn(), onFocusWindow: vi.fn(), theaterMode: false,
         onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(),
@@ -98,7 +98,7 @@ describe("Webpage watch presentation", () => {
   it.each(["video", "external"])("allows the sharer to pause a buffering %s after the room clock stops", kind => {
     setCopy({ lang: "en" });
     watchButtonClicks.clear();
-    const video = kind === "video" ? { paused: false } : null;
+    const video = kind === "video" ? { get ownerDocument() { return document; }, paused: false } : null;
     const player = { video, presentation: { kind, ...(video && { element: video }) }, media: {},
       mediaState: { paused: false, position: 12, duration: 120, rate: 1 }, error: null } as unknown as WatchPlayer;
     const onPlayback = vi.fn();
@@ -335,6 +335,7 @@ describe("Webpage watch presentation", () => {
     try {
       const render = (patch = {}) => {
         const player = { video: { readyState: 0, parentElement: null }, media: {}, mediaState: null, blocked: false, error: null, ...patch };
+        Object.assign(player.video, { ownerDocument: document });
         return renderToStaticMarkup(createElement(ChannelWatchVideo, {
           player: Object.setPrototypeOf({ ...player, presentation: { kind: "video", element: player.video } }, WatchPlayer.prototype) as WatchPlayer,
           owned: false, paused: true, label: "Preparing", presentation: "full", disabled: false,
@@ -447,7 +448,7 @@ it("keeps return-to-source reachable for a healthy main player only while it ret
   setCopy({ lang: "en" });
   vi.stubGlobal("document", { fullscreenEnabled: false });
   try {
-    const video = { readyState: 4, parentElement: null };
+    const video = { ownerDocument: document, readyState: 4, parentElement: null };
     const render = (owned: boolean, page?: object) => renderToStaticMarkup(createElement(ChannelWatchVideo, {
       player: { video, presentation: { kind: "video", element: video }, media: { page }, mediaState: {readyState:4}, blocked: false, error: null } as unknown as WatchPlayer,
       owned, paused: true, label: "Prepared source", presentation: "full", disabled: false, website: true, originalPageAvailable: true,

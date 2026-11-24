@@ -1599,3 +1599,78 @@ async fn room_file_failures_keep_the_sibling_on_the_same_session() -> Result<()>
     drop(locked);
     session.release().await
 }
+
+#[tokio::test]
+async fn capture_ended_drains_saturated_native_driver() -> Result<()> {
+    let (mut session, mut socket, mut remote, mut state) = capture_projection_session().await;
+    let live = session.live.as_mut().unwrap();
+    let publication = Uuid::new_v4();
+    state.publications.push(piik_channel_core::wire::PublicationInfo {
+        id: publication, session_id: live.session, user_id: state.sessions[0].user_id,
+        room_id: "target".into(), kind: Kind::Screen, paused: false,
+        audience: vec![], video_settings: None, screen: None,
+    });
+    live.room.snapshot.send_replace(Some(state));
+    live.peers.close().await?;
+    let (output, events) = mpsc::channel(64);
+    live.commands = events;
+    live.peers = NativePeers::new(live.session, vec![], output.clone());
+    for _ in 0..64 {
+        // A stale pair command still consumes a bounded output slot.
+        output.try_send(NativeEvent::Command(Command::Unpublish {
+            publication_id: Uuid::new_v4(), successor_watch_id: None,
+        }))?;
+    }
+    let result = time::timeout(Duration::from_secs(2), async {
+        live.peers.block_output_for_test(Command::Unpublish {
+            publication_id: Uuid::new_v4(), successor_watch_id: None,
+        }).await?;
+        process_peer(
+            NativeEvent::CaptureEnded { publication_id: publication, error: None },
+            &mut live.commands, &live.pairs, &mut live.room, &live.peers, &mut socket,
+        ).await?;
+        let message = remote.next().await.ok_or_else(|| anyhow!("missing unpublish"))??.into_text()?;
+        let value: serde_json::Value = serde_json::from_str(&message)?;
+        assert_eq!(value["publicationId"], publication.to_string());
+        Ok::<_, anyhow::Error>(())
+    }).await;
+    live.peers.close().await?;
+    result?
+}
+
+#[cfg(feature = "capture")]
+#[tokio::test]
+async fn capture_ended_preserves_replacement_and_audio_only() -> Result<()> {
+    let (mut session, mut socket, mut remote, mut state) = capture_projection_session().await;
+    let live = session.live.as_mut().unwrap();
+    let video = Uuid::new_v4();
+    let audio = Uuid::new_v4();
+    let ended = Uuid::new_v4();
+    for id in [video, audio, ended] {
+        state.publications.push(piik_channel_core::wire::PublicationInfo {
+            id, session_id: live.session, user_id: state.sessions[0].user_id,
+            room_id: "target".into(), kind: Kind::Screen, paused: false,
+            audience: vec![], video_settings: None, screen: None,
+        });
+    }
+    live.room.snapshot.send_replace(Some(state));
+    for (publication_id, audio_only) in [(video, false), (audio, true)] {
+        live.peers.install_capture_fixture(CaptureScope {
+            publication_id, room_id: "target".into(), binding_id: Uuid::new_v4(),
+        }, audio_only).await?;
+    }
+    let result = time::timeout(Duration::from_secs(2), async {
+        for publication_id in [video, audio, ended] {
+            process_peer(
+                NativeEvent::CaptureEnded { publication_id, error: None },
+                &mut live.commands, &live.pairs, &mut live.room, &live.peers, &mut socket,
+            ).await?;
+        }
+        let message = remote.next().await.ok_or_else(|| anyhow!("missing unpublish"))??.into_text()?;
+        let value: serde_json::Value = serde_json::from_str(&message)?;
+        assert_eq!(value["publicationId"], ended.to_string());
+        Ok::<_, anyhow::Error>(())
+    }).await;
+    live.peers.close().await?;
+    result?
+}

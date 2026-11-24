@@ -3,12 +3,13 @@ const targets = new Map<Sink, () => void>();
 const events = new EventTarget();
 let selected = "";
 let requested: { id: string } | undefined;
-let failed = false;
+const failedTargets = new Set<Sink>();
+let changeFailed = false;
 let pending = Promise.resolve();
 
 export const playbackOutput = {
   get selected() { return selected; },
-  get failed() { return failed; },
+  get failed() { return changeFailed || failedTargets.size > 0; },
   subscribe(listener: () => void) {
     events.addEventListener("change", listener);
     return () => events.removeEventListener("change", listener);
@@ -18,15 +19,20 @@ export const playbackOutput = {
     let resolve!: () => void;
     const ready = new Promise<void>(done => { resolve = done; });
     let waiting = !!sink.setSinkId && !!(selected || requested?.id);
-    const applied = () => { waiting = false; resolve(); };
-    const detach = Object.assign(() => { targets.delete(sink); resolve(); }, { ready, getWaiting: () => waiting });
+    const applied = () => { waiting = false; failedTargets.delete(sink); resolve(); };
+    const detach = Object.assign(() => {
+      targets.delete(sink);
+      const wasFailed = failedTargets.has(sink);
+      applied();
+      if (wasFailed) events.dispatchEvent(new Event("change"));
+    }, { ready, getWaiting: () => waiting, getFailed: () => failedTargets.has(sink) });
     if (!waiting) resolve();
     if (!sink.setSinkId) return detach;
     targets.set(sink, applied);
     pending = pending.then(async () => {
       if (selected && targets.has(sink)) await sink.setSinkId!(selected);
       applied();
-    }).catch(() => { if (!targets.has(sink)) return; failed = true; events.dispatchEvent(new Event("change")); });
+    }).catch(() => { if (!targets.has(sink)) return; failedTargets.add(sink); events.dispatchEvent(new Event("change")); });
     return detach;
   },
   choose(id: string) {
@@ -45,10 +51,10 @@ export const playbackOutput = {
         }
         for (const sink of changed) targets.get(sink)?.();
         selected = id;
-        failed = false;
+        changeFailed = false;
       } catch (error) {
         await Promise.allSettled(changed.filter(sink => targets.has(sink)).map(sink => sink.setSinkId!(selected)));
-        failed = true;
+        changeFailed = true;
         throw error;
       } finally {
         if (requested === request) requested = undefined;

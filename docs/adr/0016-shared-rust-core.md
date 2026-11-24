@@ -1,6 +1,6 @@
 # ADR-0016: Shared Rust Core For 3.0
 
-- Status: accepted
+- Status: accepted for 3.0
 - Date: 2026-11-25
 
 ## Context
@@ -17,21 +17,21 @@ admission, ordering and routing rules must run in all three. Writing them once
 per runtime would let the three diverge, which is the cost ADR-0010 and
 ADR-0012 each accepted a larger runtime to avoid.
 
-The isolated 3.0 line already implements the decision below. No record states
-it, and ADR-0012 still reads as the accepted backend.
+The isolated 3.0 line implements this shared-core architecture.
 
 ## Decision
 
 1. One Rust crate, [`channel-core`](../../prototype/channel-core/src), owns
    domain admission, room authority, signed conversation and history rules,
-   activity and publication plans, and transport leases. It owns no sockets,
-   clocks, locks, timers or queues: callers pass connection identities and the
-   time, complete its storage effects and deliver its events.
+   activity and publication plans, and transport leases. Callers supply connection
+   identity and time and deliver events. The domain rules are separate from the
+   optional SQLite persistence implementation packaged in the same crate.
 2. Three adapters execute that crate and own their local resources:
    [Browser](../../prototype/channel-browser) through WASM with IndexedDB,
    [Native](../../prototype/channel-native) with SQLite and the RTC SDK, and
    [Server](../../prototype/channel-server) for domain HTTP and WebSocket I/O,
-   which also composes the App. An adapter does not make an authority decision.
+   which also composes the App. Adapters bind runtime identities, invoke the
+   shared rules for their role and execute the resulting effects.
 3. The hierarchy is Channel, Room, Activity. A channel owns identities, the room
    directory and signaling. Each available room has exactly one writer, which
    commits history before it confirms. Each activity selects its own delivery
@@ -42,7 +42,7 @@ it, and ADR-0012 still reads as the accepted backend.
 5. Media stays automatic and peer-to-peer first. ICE, DTLS, SRTP, SCTP and
    congestion control belong to Browser WebRTC and the Native RTC SDK. Native
    forwards encoded media; a Browser that relays decodes and encodes again.
-6. For 3.0 this supersedes ADR-0012 and the Go, LiveKit and Pion runtime.
+6. For 3.0 this replaces the backend architecture selected by ADR-0012.
    Published 2.x keeps its own records on `main` until the cutover that
    [versioning](../standards/versioning.md) defines.
 
@@ -54,8 +54,9 @@ state the architecture. The [network](../research/channel-network-design.md),
 [forwarding](../research/channel-forwarding-plan.md) and
 [hosting](../research/server-hosting-plan.md) documents describe the running
 prototype and its target designs, with their measurements and dates. Source
-schemas own exact wire and storage shapes. When these disagree, the code and
-this record win and the research document is corrected.
+schemas own exact wire and storage shapes. The latest explicit user decision and
+the accepted design for the applicable version govern intended behavior. Code and
+measurements establish current behavior. Track unresolved design conflicts in TODO.
 
 ## Consequences
 
@@ -71,9 +72,9 @@ this record win and the research document is corrected.
   owns what an existing site and its users are told at the cutover.
 - Route calibration, relay preference and field measurement stay open in
   [TODO](../todo.md); this record does not decide them.
-- ADR-0012 stays accepted for published 2.x and is superseded for 3.0. The
-  [documentation owner map](../standards/documentation.md#owners) names this
-  record as the 3.0 architecture owner.
+
+The [documentation owner map](../standards/documentation.md#owners) distinguishes
+this architecture decision from detailed domain models and measured behavior.
 
 ## References
 

@@ -3,8 +3,7 @@
 This accepted decision records the published 2.x backend. Its [source snapshot](https://github.com/TNTcraftHIM/Piik/tree/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal) remains public; the [current Rust source map](../standards/engineering.md#module-map) identifies
 the private 3.x owners.
 
-- Status: accepted for published 2.x; superseded for 3.0 by
-  [ADR-0016](./0016-shared-rust-core.md)
+- Status: accepted for published 2.x; superseded for 3.0 by [ADR-0016](./0016-shared-rust-core.md)
 - Date: 2026-09-06
 
 ## Context

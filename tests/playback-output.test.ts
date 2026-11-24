@@ -41,19 +41,26 @@ it("keeps healthy outputs on the chosen device when a retiring output rejects la
   await playbackOutput.choose("");
 });
 
-it("recovers a rejected initial output on default selection while other outputs become ready", async () => {
+it.each(["reselect", "close"])("clears one failed initial output on %s while keeping healthy outputs ready", async action => {
   await playbackOutput.choose("headphones");
   const refused = playbackOutput.attach({ setSinkId: async (id: string) => {
-    if (id) throw Error("unavailable");
+    if (id === "headphones") throw Error("unavailable");
   } } as unknown as HTMLMediaElement);
   const healthy = playbackOutput.attach({ setSinkId: async () => {} } as unknown as HTMLMediaElement);
   try {
     await healthy.ready;
     expect(refused.getWaiting()).toBe(true);
     expect(playbackOutput.failed).toBe(true);
-    await playbackOutput.choose("");
+    expect(refused.getFailed()).toBe(true);
+    expect(healthy.getWaiting()).toBe(false);
+    expect(healthy.getFailed()).toBe(false);
+    if (action === "reselect") await playbackOutput.choose("alternate");
+    else refused();
     await refused.ready;
     expect(refused.getWaiting()).toBe(false);
+    expect(refused.getFailed()).toBe(false);
+    expect(healthy.getWaiting()).toBe(false);
+    expect(playbackOutput.selected).toBe(action === "reselect" ? "alternate" : "headphones");
     expect(playbackOutput.failed).toBe(false);
   } finally { refused(); healthy(); await playbackOutput.choose(""); }
 });

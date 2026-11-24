@@ -15398,6 +15398,19 @@ test.each(["forward", "original"] as const)("caption Host replaces %s through ex
     expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: "page_select", candidateId: otherId,
       ...(mode === "forward" ? { resourceId: bytes.resourceId } : { originalPage: true }) }), expect.any(AbortSignal));
     expect(page.selectedCandidateId).toBe(otherId);
+    socket.receive({ type: "state", state: { ...session.getSnapshot().state!, watchActivities: [{
+      id: start.id, roomId: "first", sessionId: "endpoint", userId: "self", viewerSessionIds: [],
+      source: start.source, playback: start.playback, ...(start.byteSource ? { byteSource: start.byteSource } : {}),
+    }] } });
+    next.receive({ type: "page_share_requested", pageId: next.id });
+    const stopping = session.stopWatch(start.id as string, "media-closed");
+    const stop = socket.sent.findLast(command => command.type === "stop_watch")!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: stop.requestId, result: { type: "done" } });
+    await stopping;
+    expect(dispose).not.toHaveBeenCalled();
+    expect(session.watchPage("first")?.pageId).toBe(next.id);
+    await session.cancelScreenSelection("first");
+    expect(dispose).toHaveBeenCalledOnce();
   } finally { session.close(); }
 });
 

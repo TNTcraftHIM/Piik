@@ -13,7 +13,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 test("only a known silent source hides local volume for either role; unknown page or file audio preserves it", () => {
   setCopy({ lang: "en" }); vi.stubGlobal("document", { fullscreenEnabled: false });
-  const video = { readyState: 4, videoWidth: 320, parentElement: null };
+  const video = { ownerDocument: document, readyState: 4, videoWidth: 320, parentElement: null };
   const render = (availability: boolean | undefined, owned: boolean) => {
     const player = { video, presentation: { kind: "video", element: video }, media: { audioAvailable: () => availability },
       mediaState: { readyState: 4 }, waitingForPicture: false, error: null } as unknown as WatchPlayer;

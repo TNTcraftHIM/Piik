@@ -1,3 +1,5 @@
+import { playbackOutput } from "../../media/playback-output";
+import { PlaybackDeviceSelect } from "./PlaybackDeviceSelect";
 import { useWatchPageSlot } from "./use-watch-page-slot";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
 import { Btn } from "../../components/living/primitives";
@@ -108,6 +110,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     track.channels ? t("watch.forward.channels", { count: track.channels }) : undefined].filter(Boolean).join(" · ") }));
   const localSeek = player.blockedReason === "local-seek";
   const resumeLabel = localSeek ? "watch.resync" : "watch.resume";
+  const outputFailed = useSyncExternalStore(playbackOutput.subscribe, () => Boolean(player.media.outputFailed), () => false);
   const waiting = player.waitingForPicture && !player.error && !player.blocked;
   const ownerPaused = player.video?.paused ?? mediaState?.paused ?? paused;
   const audioAvailable = player.media.audioAvailable?.() !== false;
@@ -211,11 +214,13 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     return () => { for (const name of events) video.removeEventListener(name, sync); document.removeEventListener("fullscreenchange", sync); };
   }, [player]);
   return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-native-page={pageId ? true : undefined} data-external={surface.kind === "external" || undefined} data-embed={embedded || undefined} data-failed={!!player.error || undefined}
-    data-diagnosis={showDiagnosis ? true : undefined}
+    data-diagnosis={showDiagnosis || outputFailed && waiting && !thumbnail ? true : undefined}
     data-standalone={!embedded && (!player.video || !!player.error && player.error !== "watch_update_failed") || undefined} data-thumbnail={!embedded && presentation === "thumbnail" || undefined}
     data-controls-hidden={!embedded && visibility.hidden} inert={presentation === "background"}>
-    {surface.kind !== "external" && waiting && <div className="c3-mini-message" role="status">
-      <span className="c3-frame-wait"><BrandMark size={thumbnail ? 24 : 32} motion="loop" />{t("watch.waiting")}</span>
+    {surface.kind !== "external" && waiting && <div className="c3-mini-message">
+      {outputFailed ? <div className="c3-frame-wait c3-watch-result c3-watch-output">
+        {thumbnail ? <span role="status">{t("voice.output.failed")}</span> : <PlaybackDeviceSelect />}
+      </div> : <span className="c3-frame-wait" role="status"><BrandMark size={thumbnail ? 24 : 32} motion="loop" />{t("watch.waiting")}</span>}
     </div>}
     {pageId && <div ref={native.slot} className="c3-watch-native-slot" />}
     {surface.kind === "external" && thumbnail && !player.error && !player.blocked && <div className="c3-watch-page-thumbnail">

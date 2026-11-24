@@ -285,6 +285,14 @@ Explicitly closing the window or losing room access ends this local selection.
 Browsing another room preserves it. A confirmed successor reuses that window;
 an unrelated later share does not automatically acquire its audience.
 
+With standard video picture-in-picture, Stage retains the window while the old
+player releases its media. It follows an authorized successor after subscription
+and video readiness, including in a separate same-origin window. A retained
+waiting card keeps an empty picture-in-picture window; dismissing that card,
+closing picture-in-picture or losing room access ends it. The page card supplies
+the waiting message. Native video picture-in-picture itself remains blank until
+the next video is ready.
+
 When a confirmed successor has no Browser-playable source, its viewer retains
 ordinary participation while choosing a player or awaiting an offered source.
 A previously selected peer route, or the sole playable route on a Browser-only

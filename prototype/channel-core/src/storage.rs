@@ -806,7 +806,7 @@ mod tests {
         let mut store = Storage::open(Path::new(":memory:")).unwrap();
         let steps: Vec<Value> =
             serde_json::from_str(include_str!("../tests/fixtures/moderated-history.json")).unwrap();
-        let mut original = String::new();
+        let mut message_ids = std::collections::BTreeMap::<String, String>::new();
         let summary = |message: &ChatMessage| {
             let mut row = json!({ "seq": message.seq });
             if let Some(reply) = &message.reply {
@@ -817,16 +817,22 @@ mod tests {
         for step in steps {
             let mut request = step["request"].clone();
             request["roomId"] = json!("room");
-            let request =
-                serde_json::from_str(&request.to_string().replace("$original", &original)).unwrap();
+            let mut request = request.to_string();
+            for (placeholder, id) in &message_ids {
+                request = request.replace(placeholder.as_str(), id.as_str());
+            }
+            let request = serde_json::from_str(&request).unwrap();
             let actual = match store.history(&request) {
                 Ok(HistoryResult::Sent(sent)) => {
                     let message = sent.message.message;
-                    if message.seq == 1 {
-                        original = message.id.to_string();
+                    let placeholder = format!("${}", message.seq);
+                    if let Some(previous) = message_ids.insert(placeholder, message.id.to_string()) {
+                        assert_eq!(previous, message.id.to_string());
                     }
                     let mut result = summary(&message);
                     result["type"] = json!("sent");
+                    result["inserted"] = json!(sent.inserted);
+                    result["text"] = json!(message.text);
                     result
                 }
                 Ok(HistoryResult::Page { messages, .. }) => json!({
