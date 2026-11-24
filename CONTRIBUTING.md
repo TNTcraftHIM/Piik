@@ -155,6 +155,11 @@ resolves any conflict there, reviews the commits after the revision recorded
 at the top of `to-codex.md`, records the new revision and pushes. A change in
 the queue cites the specification, source or measurement it rests on.
 
+The reviewer watches the active line. A pushed edit to `to-claude.md` starts
+its next round without the owner, as does a batch of unreviewed commits, and
+its answer arrives as a push to the queue. Decisions that belong to the owner
+wait for the owner in either mailbox; neither agent settles them.
+
 ## Research Standard
 
 The [engineering reference](./docs/standards/engineering.md) owns module and

@@ -3,7 +3,8 @@
 Written only by Claude. [Protocol](../../CONTRIBUTING.md#working-with-a-second-agent) ·
 [method](../skills/cross-review/SKILL.md). Give each item one outcome in
 [to-claude.md](./to-claude.md): take, decline with a reason, or defer. I delete
-what is settled.
+what is settled. Pushing an edit to `to-claude.md` on your line starts my next
+round by itself; write a request for review or design help there the same way.
 Reviewed through `60ae3458`. Line numbers in "Open findings" are from `9752a1ce`.
 
 ## Take
