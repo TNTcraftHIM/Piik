@@ -95,7 +95,8 @@ export function AppLauncherPage() {
   const [siteError, setSiteError] = useState<SiteManagementProps["accessError"] & { startupEnabled?: boolean }>();
   const [panel, setPanel] = useState<"launch">();
   // Background reads cannot replace a newer command's result or optimistic state.
-  const stateChanges = useRef({ revision: 0, pending: 0 });
+  const stateRead = useRef<AbortController | null>(null);
+  const pendingStateChanges = useRef(0);
   const requestedSite = new URLSearchParams(window.location.search).get("site");
   const validSite = requestedSite && (() => {
     try {
@@ -115,28 +116,24 @@ export function AppLauncherPage() {
   }, [approvalCurrent, requestedSite, siteBusy, siteError]);
 
   useEffect(() => {
-    let current = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let restoredSettings = false;
     let enterOnReady = new URLSearchParams(window.location.search).get("start") === "1";
-    let reading = false;
     const readState = () => {
-      if (reading || !current) return;
+      if (stateRead.current && !stateRead.current.signal.aborted) return;
       clearTimeout(timer);
-      if (stateChanges.current.pending) {
+      if (pendingStateChanges.current) {
         timer = setTimeout(readState, 750);
         return;
       }
-      reading = true;
-      const revision = stateChanges.current.revision;
-      const fresh = () => current && revision === stateChanges.current.revision && !stateChanges.current.pending;
-      void fetch("/api/client-launcher", { cache: "no-store" })
+      const read = stateRead.current = new AbortController();
+      void fetch("/api/client-launcher", { cache: "no-store", signal: read.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error();
         return launcherStateSchema.parse(await response.json());
       })
       .then((state) => {
-        if (!fresh()) return;
+        if (read.signal.aborted) return;
         if (!restoredSettings) {
           setLanAddress(state.lan?.selected);
           if (state.startupMode) setMode(state.startupMode === "external" ? "link" : state.startupMode);
@@ -157,29 +154,34 @@ export function AppLauncherPage() {
         if (state.starting) timer = setTimeout(() => void readState(), 750);
       })
       .catch(() => {
-        if (!fresh()) return;
+        if (read.signal.aborted) return;
         setError({ kind: "load" });
         setLaunching(false);
         setLoading(false);
       }).finally(() => {
-        reading = false;
-        if (current && !fresh()) timer = setTimeout(readState, 750);
+        if (stateRead.current !== read) return;
+        stateRead.current = null;
+        if (read.signal.aborted) {
+          clearTimeout(timer);
+          timer = setTimeout(readState, 750);
+        }
       });
     };
     void readState();
     const refresh = () => { void readState(); };
     window.addEventListener("focus", refresh);
     return () => {
-      current = false;
+      stateRead.current?.abort();
+      stateRead.current = null;
       clearTimeout(timer);
       window.removeEventListener("focus", refresh);
     };
   }, [reload]);
 
   function beginStateChange(): () => void {
-    stateChanges.current.revision++;
-    stateChanges.current.pending++;
-    return () => { stateChanges.current.pending--; };
+    pendingStateChanges.current++;
+    stateRead.current?.abort();
+    return () => { pendingStateChanges.current--; };
   }
 
   async function enableDebug(): Promise<void> {
