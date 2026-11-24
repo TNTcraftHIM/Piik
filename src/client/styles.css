@@ -926,7 +926,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 
 /* ---------- buttons & chips ---------- */
 
-.lr-app-connect.is-ready > svg { color: var(--live); }
+.lr-app-connect.is-ready > svg { color: var(--live-ink); }
 .lr-app-connect.is-ready[data-update] > svg { color: var(--primary); }
 .lr-anchored-card {
   position: fixed; inset: auto; margin: 0; padding: 16px;
@@ -1541,7 +1541,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 }
 .lr-client-approval-origin > svg { flex: none; }
 .lr-client-approval-origin > strong { flex: 1; min-width: 0; font-weight: 650; }
-.lr-client-approval-origin > .lr-client-approval-check { color: var(--live); }
+.lr-client-approval-origin > .lr-client-approval-check { color: var(--live-ink); }
 .lr-client-approval-startup { display: flex; align-items: center; gap: 8px; min-height: 40px; font-size: 13px; line-height: 1.5; cursor: pointer; }
 .lr-client-approval-startup input { width: 18px; height: 18px; margin: 0 2px 0 0; flex: none; accent-color: var(--action); }
 .lr-client-approval-startup > svg { flex: none; }
