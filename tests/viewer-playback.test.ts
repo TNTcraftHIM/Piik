@@ -108,9 +108,9 @@ describe("Local source playback", () => {
     { owned: true, localSource: true },
     { owned: false, localSource: false },
   ])("keeps native sound controls scoped to local capture ($owned/$localSource)", ({ owned, localSource }) => {
-    const view = new EventTarget();
+    const view = Object.assign(new EventTarget(), { piikNativeActive: true });
     const owner = Object.assign(new EventTarget(), {
-      defaultView: view, visibilityState: "hidden", hasFocus: () => false,
+      defaultView: view, visibilityState: "visible", hasFocus: () => true,
       pictureInPictureElement: null as unknown,
     });
     const video = Object.assign(new EventTarget(), {
@@ -124,12 +124,24 @@ describe("Local source playback", () => {
       video.muted = false;
       video.dispatchEvent(new Event("volumechange"));
       expect(video.muted).toBe(localSource);
+      expect(video.pause).toHaveBeenCalledTimes(0);
+      view.piikNativeActive = false;
+      view.dispatchEvent(new Event("piik-window-activity"));
       expect(video.pause).toHaveBeenCalledTimes(owned ? 1 : 0);
+      view.piikNativeActive = true;
+      view.dispatchEvent(new Event("piik-window-activity"));
+      expect(video.play).toHaveBeenCalledTimes(owned ? 1 : 0);
+      owner.visibilityState = "hidden";
+      owner.dispatchEvent(new Event("visibilitychange"));
+      expect(video.pause).toHaveBeenCalledTimes(owned ? 2 : 0);
 
       // Native PiP keeps an owned preview playing while its page is hidden.
       owner.pictureInPictureElement = video;
       video.dispatchEvent(new Event("enterpictureinpicture"));
-      expect(video.play).toHaveBeenCalledTimes(owned ? 1 : 0);
+      view.piikNativeActive = false;
+      view.dispatchEvent(new Event("piik-window-activity"));
+      expect(video.play).toHaveBeenCalledTimes(owned ? 2 : 0);
+      expect(video.paused).toBe(false);
       video.muted = false;
       video.dispatchEvent(new Event("volumechange"));
       expect(video.muted).toBe(localSource);

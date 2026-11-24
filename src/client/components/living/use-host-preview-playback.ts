@@ -1,3 +1,4 @@
+import { isDocumentActive } from "../../ui/document-active";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { isPictureInPicture } from "./use-picture-in-picture";
 
@@ -43,7 +44,7 @@ export function useHostPreviewPlayback(
     if (!view) return;
     let policyPause = false;
     const syncPlayback = () => {
-      const shouldPause = shouldPauseLocalPreview(ownerDocument.visibilityState, ownerDocument.hasFocus(), isPictureInPicture(video), autoPause);
+      const shouldPause = shouldPauseLocalPreview(ownerDocument.visibilityState, isDocumentActive(ownerDocument), isPictureInPicture(video), autoPause);
       setSuspended(shouldPause);
       if (shouldPause || pausedByUser.current) {
         if (!video.paused) {
@@ -66,6 +67,7 @@ export function useHostPreviewPlayback(
     video.addEventListener("pause", paused);
     video.addEventListener("play", played);
     ownerDocument.addEventListener("visibilitychange", syncPlayback);
+    if (autoPause) view.addEventListener("piik-window-activity", syncPlayback);
     view.addEventListener("blur", syncPlayback);
     view.addEventListener("focus", syncPlayback);
     const pictureEvents = ["enterpictureinpicture", "leavepictureinpicture", "webkitpresentationmodechanged"];
@@ -75,6 +77,7 @@ export function useHostPreviewPlayback(
       video.removeEventListener("pause", paused);
       video.removeEventListener("play", played);
       ownerDocument.removeEventListener("visibilitychange", syncPlayback);
+      if (autoPause) view.removeEventListener("piik-window-activity", syncPlayback);
       view.removeEventListener("blur", syncPlayback);
       view.removeEventListener("focus", syncPlayback);
       pictureEvents.forEach(event => video.removeEventListener(event, syncPlayback));
