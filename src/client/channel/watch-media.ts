@@ -336,7 +336,7 @@ async function requireNativeHlsVod(url: string, signal: AbortSignal): Promise<vo
 export interface AppPagePort {
   readonly id?: string;
   readonly selectedCandidateId?: string;
-  read(): Promise<WatchMediaState>;
+  read(candidateId?: string): Promise<WatchMediaState>;
   patch(value: WatchMediaPatch): Promise<void>;
   listen(changed: (event: WatchMediaEvent) => void): () => void;
   focus(): Promise<void>;
@@ -349,20 +349,20 @@ export class AppPageMedia implements WatchMedia {
   private lifetime = new AbortController();
   private listeners = new Set<(event: WatchMediaEvent) => void>();
   private unlisten?: () => void;
-  constructor(page: AppPagePort | ((signal: AbortSignal) => Promise<AppPagePort>)) {
+  constructor(page: AppPagePort | ((signal: AbortSignal) => Promise<AppPagePort>), private candidateId?: string, private release?: () => void) {
     this.opening = Promise.resolve().then(() => typeof page === "function" ? page(this.lifetime.signal) : page).then(value => {
-      if (this.lifetime.signal.aborted) { value.close(); throw new DOMException("Cancelled", "AbortError"); }
+      if (this.lifetime.signal.aborted) { if (this.release) this.release(); else value.close(); throw new DOMException("Cancelled", "AbortError"); }
       this.page = value;
       this.unlisten = value.listen(event => { for (const listener of this.listeners) listener(event); });
       return value;
     });
     void this.opening.catch(() => {});
   }
-  async read(): Promise<WatchMediaState> { return (await this.opening).read(); }
+  async read(): Promise<WatchMediaState> { return (await this.opening).read(this.candidateId); }
   async patch(value: WatchMediaPatch): Promise<void> { await (await this.opening).patch(value); }
   ready(signal: AbortSignal): Promise<void> { return waitForWatchMedia(this, signal); }
   listen(changed: (event: WatchMediaEvent) => void): () => void { this.listeners.add(changed); return () => this.listeners.delete(changed); }
-  close(): void { this.lifetime.abort(); this.unlisten?.(); this.listeners.clear(); this.page?.close(); }
+  close(): void { if (this.lifetime.signal.aborted) return; this.lifetime.abort(); this.unlisten?.(); this.listeners.clear(); if (this.release) this.release(); else this.page?.close(); }
 }
 
 /** Explicit sharer seeks land on available content without changing received anchors. */

@@ -21,6 +21,7 @@ impl Connection {
     pub fn inspect_mpd(
         self: &Arc<Self>,
         page: Uuid,
+        candidate_id: Option<Uuid>,
         choice: Uuid,
         read_id: Uuid,
     ) -> Result<BoxFuture<'static, Result<Value>>> {
@@ -28,10 +29,11 @@ impl Connection {
         {
             let mut media = self.media.lock().unwrap();
             ensure!(
-                media.len() < 64 || media.contains_key(&page),
+                media.len() < MAX_MEDIA_SLOTS || media.contains_key(&(page, candidate_id)),
                 "page_player_limit"
             );
-            let slot = media.entry(page).or_default();
+            ensure!(candidate_id.is_none() || !media.keys().any(|(p,c)| *p == page && c.is_some() && *c != candidate_id), "watch_source_busy");
+            let slot = media.entry((page, candidate_id)).or_default();
             ensure!(slot.inspection.is_none(), "watch_read_busy");
             slot.inspection = Some(read_id);
         }
@@ -51,7 +53,7 @@ impl Connection {
                 let (reply, result) = oneshot::channel();
                 ensure_dispatch(dispatch(Command::Media {
                     owner: connection.owner,
-                    page_id: page,
+                    page_id: page, candidate_id,
                     choice_id: choice,
                     indexed: false,
                     reply,
@@ -78,7 +80,7 @@ impl Connection {
                 ensure!(!*retired.borrow(), "watch_source_retired");
                 let mut media = connection.media.lock().unwrap();
                 let slot = media
-                    .get_mut(&page)
+                    .get_mut(&(page, candidate_id))
                     .ok_or_else(|| anyhow!("watch_source_retired"))?;
                 ensure!(slot.inspection == Some(read_id), "watch_source_retired");
                 slot.mpd = Some(Arc::new(MpdCatalog {
@@ -101,6 +103,7 @@ impl Connection {
     pub fn prepare_mpd_media(
         self: &Arc<Self>,
         page: Uuid,
+        candidate_id: Option<Uuid>,
         source: Uuid,
         video: Uuid,
         audio: Option<Uuid>,
@@ -110,7 +113,7 @@ impl Connection {
             .media
             .lock()
             .unwrap()
-            .get(&page)
+            .get(&(page, candidate_id))
             .and_then(|slot| slot.mpd.clone())
             .ok_or_else(|| anyhow!("watch_source_changed"))?;
         ensure!(catalog.snapshot.source_id == source, "watch_source_changed");
@@ -134,6 +137,6 @@ impl Connection {
             );
         }
         let selected = std::iter::once(video).chain(audio).collect();
-        self.prepare_selection(page, MediaSelection::Mpd { catalog, selected }, host)
+        self.prepare_selection(page, candidate_id, MediaSelection::Mpd { catalog, selected }, host)
     }
 }

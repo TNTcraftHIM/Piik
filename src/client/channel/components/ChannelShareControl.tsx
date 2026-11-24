@@ -407,14 +407,6 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   const appPageAvailable = channel.appConnected && channel.pagePlayer;
   const openPage = appPageAvailable && !portableEmbed && !directFile;
   const pageSources = !activityId ? page?.watchSources : undefined;
-  const pickerPageId = pageSources || activityId ? undefined : page?.pageId;
-  useEffect(() => {
-    if (!pickerPageId || !window.piikMountWatchPage || !window.ipc) return;
-    const ipc = window.ipc;
-    const setPicker = (open: boolean) => ipc.postMessage(JSON.stringify({ kind: "watchSharePicker", pageId: pickerPageId, open }));
-    setPicker(true);
-    return () => setPicker(false);
-  }, [pickerPageId]);
   const allChoicesOriginFirst = !!pageSources?.choices.length && pageSources.choices.every(directForwardMediaURL);
   const pageSourcesHeading = useRef<HTMLHeadingElement>(null);
   const pageInstruction = useRef<HTMLParagraphElement>(null);
@@ -436,7 +428,7 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
     else if (busy || page || embed) void channel.cancelScreenSelection(roomId).catch(() => {});
     onClose();
   };
-  return <ChannelSettingsDialog compact className="c3-watch-source-dialog" title={t("watch.start")} error={failure} onClose={close} closeDisabled={committing}>
+  return <ChannelSettingsDialog compact className="c3-watch-source-dialog" title={t("watch.start")} caption={channel.state?.channel.rooms.find(room => room.id === roomId && room.authorized)?.name} error={failure} onClose={close} closeDisabled={committing}>
     {embed ? <WatchEmbedPreview media={embed} busy={busy}
       onConfirm={() => { void run(() => channel.confirmWatchEmbed(roomId, false), onClose); }} onCancel={close}
       onOriginalPage={appPageAvailable ? () => { void run(async () => {

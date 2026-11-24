@@ -52,6 +52,10 @@ pub struct Media {
     observed: VecDeque<(String, ResponseFact)>,
     redirects: VecDeque<(String, String)>,
     frames: BTreeMap<Uuid, Frame>,
+    pending: Option<(Uuid, Projection)>,
+    active: Projection,
+}
+pub struct Projection {
     choices: BTreeMap<Uuid, Choice>,
     // Last requested projection; Page remains the authority for the selected frame.
     observation: Option<(Uuid, String, Value)>,
@@ -63,18 +67,54 @@ impl Default for Media {
             observed: VecDeque::new(),
             redirects: VecDeque::new(),
             frames: BTreeMap::new(),
+            pending: None,
+            active: Projection::default(),
+        }
+    }
+}
+impl Default for Projection {
+    fn default() -> Self {
+        Self {
             choices: BTreeMap::new(),
             observation: None,
             retired: watch::channel(false).0,
         }
     }
 }
-impl Drop for Media {
+impl Drop for Projection {
     fn drop(&mut self) {
         self.retired.send_replace(true);
     }
 }
+impl std::ops::Deref for Media {
+    type Target = Projection;
+    fn deref(&self) -> &Projection { &self.active }
+}
+impl std::ops::DerefMut for Media {
+    fn deref_mut(&mut self) -> &mut Projection { &mut self.active }
+}
 impl Media {
+    pub fn candidate_sources(&mut self, id: Uuid, frame: Uuid, current: &str) -> Value {
+        let mut projection = self.pending.take().filter(|(key, _)| *key == id)
+            .map(|(_, projection)| projection).unwrap_or_default();
+        std::mem::swap(&mut self.active, &mut projection);
+        let result = self.sources(frame, current);
+        std::mem::swap(&mut self.active, &mut projection);
+        self.pending = Some((id, projection));
+        result
+    }
+    pub fn cancel_candidate(&mut self, id: Uuid) {
+        if self.pending.as_ref().is_some_and(|(key, _)| *key == id) { self.pending = None; }
+    }
+    pub fn commit_candidate(&mut self, id: Uuid) {
+        if self.pending.as_ref().is_some_and(|(key, _)| *key == id) {
+            self.active = self.pending.take().unwrap().1;
+        }
+    }
+    pub fn candidate_choice(&mut self, id: Uuid, choice: Uuid, indexed: bool) -> Option<(Choice, watch::Receiver<bool>)> {
+        let (_, projection) = self.pending.as_mut().filter(|(key, _)| *key == id)?;
+        Some((projection.choice(choice, indexed)?, projection.retired.subscribe()))
+    }
     pub fn reset(&mut self) {
         self.retired.send_replace(true);
         *self = Self::default();
@@ -103,6 +143,9 @@ impl Media {
         self.match_frames()
     }
     pub fn remove_frame(&mut self, id: Uuid) {
+        if self.pending.as_ref().and_then(|(_, p)| p.observation.as_ref()).is_some_and(|(frame, _, _)| {
+            *frame == id || self.frames.get(frame).is_some_and(|state| state.ancestors.contains(&id))
+        }) { self.pending = None; }
         if self.observation.as_ref().is_some_and(|(frame, _, _)| {
             *frame == id
                 || self
@@ -180,10 +223,16 @@ impl Media {
             frame.pending = unmatched;
         }
         self.frames = frames;
+        let pending = self.pending.as_mut().and_then(|(id, projection)| {
+            projection.observation.take().map(|observation| (*id, observation))
+        });
+        let changed = pending.is_some_and(|(id, (frame, current, previous))| {
+            self.candidate_sources(id, frame, &current) != previous
+        });
         let Some((frame, current, previous)) = self.observation.take() else {
-            return false;
+            return changed;
         };
-        self.sources(frame, &current) != previous
+        self.sources(frame, &current) != previous || changed
     }
     fn response<'a>(&'a self, mut url: &'a str) -> Option<ResponseFact> {
         // Join observed response facts; HTTP redirects themselves remain owned by reqwest.
@@ -293,6 +342,8 @@ impl Media {
             "indexedCandidates": self.choices.values().filter(|choice| choice.indexed).map(|c|json!({"id":c.id,"name":name(c),"hostname":hostname(c),"mimeType":c.mime_type,"totalSize":c.size})).collect::<Vec<_>>()
         })
     }
+}
+impl Projection {
     pub fn choice(&mut self, id: Uuid, indexed: bool) -> Option<Choice> {
         let choice = self.choices
             .get_mut(&id)
@@ -361,8 +412,19 @@ mod tests {
         let old_id = Uuid::parse_str(before["mpdCandidates"][0]["id"].as_str().unwrap()).unwrap();
         let old_reader = media.retired.subscribe();
 
-        media.clear_selection();
-
+        let candidate = Uuid::new_v4();
+        let preview = media.candidate_sources(candidate, second, "blob:second");
+        let id = Uuid::parse_str(preview["mpdCandidates"][0]["id"].as_str().unwrap()).unwrap();
+        let (_, cancelled) = media.candidate_choice(candidate, id, false).unwrap();
+        media.cancel_candidate(candidate);
+        assert!(*cancelled.borrow());
+        assert!(!*old_reader.borrow());
+        assert_eq!(media.choice(old_id, false).unwrap().url, first_url);
+        let preview = media.candidate_sources(candidate, second, "blob:second");
+        let id = Uuid::parse_str(preview["mpdCandidates"][0]["id"].as_str().unwrap()).unwrap();
+        let (_, next_reader) = media.candidate_choice(candidate, id, false).unwrap();
+        media.commit_candidate(candidate);
+        assert!(!*next_reader.borrow());
         assert!(*old_reader.borrow());
         assert!(!*media.retired.borrow());
         assert!(media.choice(old_id, false).is_none());

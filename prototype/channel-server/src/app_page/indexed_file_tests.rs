@@ -88,7 +88,7 @@ async fn indexed_file_keeps_the_inspected_version_through_registration_and_playb
     let page = Uuid::new_v4();
     let metadata = |offset| {
         connection
-            .read_metadata(page, choice, Uuid::new_v4(), offset, 2)
+            .read_metadata(page, None, choice, Uuid::new_v4(), offset, 2)
             .unwrap()
     };
     let recipe = indexed::TrackRecipe {
@@ -103,7 +103,7 @@ async fn indexed_file_keeps_the_inspected_version_through_registration_and_playb
     let (host, mut commands) = mpsc::channel(4);
     let prepare = || {
         connection
-            .prepare_indexed_media(page, recipe.clone(), None, host.clone())
+            .prepare_indexed_media(page, None, recipe.clone(), None, host.clone())
             .unwrap()
     };
     assert_eq!(metadata(0).await.unwrap()["bytesBase64"], "Kio=");

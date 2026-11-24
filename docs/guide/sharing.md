@@ -64,6 +64,9 @@ Direct links can point to video files, supported HLS streams or static DASH (`.m
 
 **Sync video on its webpage** syncs playback of the selected video only. If the website reloads media in that player, synchronization continues. Forwarding the replacement requires selecting its source again. To show the rest of the page, choose **Browser → Share a screen** and share the browser tab.
 
+In the App's webpage window, **Share…** reopens source selection for that page.
+Choose the next video and its sharing method. Cancelling leaves the current share running.
+
 If you're already watching a shared webpage video in the Windows App, open **Playback settings → Open webpage and select video** to use the website's player. The current video keeps playing while you choose. Select the player to switch, or close the chooser to keep watching in Piik. When the source supports direct playback, use **Playback settings → Play directly from website** to return to Piik's player. If a player preview opens, press Play in it to switch.
 
 When viewers play directly from the site, each device loads the video independently. To switch episodes, the sharer selects **Switch source** and viewers join the new activity.

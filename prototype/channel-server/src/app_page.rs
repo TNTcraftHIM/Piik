@@ -19,6 +19,8 @@ pub mod indexed;
 mod reader;
 use piik_channel_core::watch_delivery::WATCH_WINDOW_BYTES;
 pub use piik_channel_core::wire::WatchFormat as Format;
+pub(crate) const MAX_PAGES: usize = 64;
+const MAX_MEDIA_SLOTS: usize = MAX_PAGES * 2;
 const MAX_MEDIA_READS: usize = 4;
 const MAX_METADATA_BYTES: u64 = 1024 * 1024;
 const SAFE_INTEGER: u64 = 9_007_199_254_740_991;
@@ -59,6 +61,7 @@ impl IndexedFile {
 pub type Dispatcher = Arc<dyn Fn(Command) -> bool + Send + Sync>;
 pub enum Command {
     Media {
+        candidate_id: Option<Uuid>,
         owner: Uuid,
         page_id: Uuid,
         choice_id: Uuid,
@@ -99,9 +102,12 @@ pub enum Operation {
         candidate_id: Uuid,
         #[serde(default)]
         original_page: bool,
+        resource_id: Option<Uuid>,
     },
     PageRead {
         page_id: Uuid,
+        #[serde(default)]
+        candidate_id: Option<Uuid>,
     },
     PagePatch {
         page_id: Uuid,
@@ -118,18 +124,22 @@ pub enum Operation {
     },
     PageMediaSources {
         page_id: Uuid,
+        candidate_id: Option<Uuid>,
     },
     PageMediaPrepare {
         page_id: Uuid,
+        candidate_id: Option<Uuid>,
         choice_id: Uuid,
     },
     PageMediaPrepareIndexed {
         page_id: Uuid,
+        candidate_id: Option<Uuid>,
         video: indexed::TrackRecipe,
         audio: Option<indexed::TrackRecipe>,
     },
     PageMediaPrepareMpd {
         page_id: Uuid,
+        candidate_id: Option<Uuid>,
         source_id: Uuid,
         video_id: Uuid,
         audio_id: Option<Uuid>,
@@ -137,6 +147,7 @@ pub enum Operation {
     PageMediaResource(ResourceRequest),
     PageMediaStop {
         page_id: Uuid,
+        candidate_id: Option<Uuid>,
     },
 }
 #[derive(Clone, Debug, Deserialize)]
@@ -149,11 +160,13 @@ pub enum Operation {
 pub enum ResourceRequest {
     InspectMpd {
         page_id: Uuid,
+        candidate_id: Option<Uuid>,
         choice_id: Uuid,
         read_id: Uuid,
     },
     ReadMetadata {
         page_id: Uuid,
+        candidate_id: Option<Uuid>,
         choice_id: Uuid,
         read_id: Uuid,
         offset: u64,
@@ -291,7 +304,7 @@ pub struct Connection {
     dispatch: Option<Dispatcher>,
     events: Events,
     overflow: watch::Receiver<bool>,
-    media: Mutex<BTreeMap<Uuid, MediaSlot>>,
+    media: Mutex<BTreeMap<(Uuid, Option<Uuid>), MediaSlot>>,
     media_reads: Arc<tokio::sync::Semaphore>,
     resource_reads: Mutex<BTreeMap<Uuid, (Uuid, AbortHandle)>>,
 }
@@ -303,16 +316,16 @@ struct ResourceRead {
 }
 impl Drop for ResourceRead {
     fn drop(&mut self) {
-        self.connection
-            .resource_reads
-            .lock()
-            .unwrap()
-            .remove(&self.id);
-        if let Some(slot) = self.connection.media.lock().unwrap().get_mut(&self.page_id) {
-            if slot.inspection == Some(self.id) {
-                slot.inspection = None;
+        let mut media = self.connection.media.lock().unwrap();
+        media.retain(|(page, _), slot| {
+            if *page != self.page_id || slot.inspection != Some(self.id) {
+                return true;
             }
-        }
+            slot.inspection = None;
+            slot.active.is_some() || slot.pending.is_some() || slot.mpd.is_some()
+        });
+        drop(media);
+        self.connection.resource_reads.lock().unwrap().remove(&self.id);
     }
 }
 impl Connection {
@@ -341,10 +354,14 @@ impl Connection {
     }
 
     pub fn media_source(&self, page: Uuid) -> Option<piik_channel_core::wire::WatchByteSource> {
+        self.scoped_source(page, None)
+    }
+    pub fn cancel_candidate(&self, page: Uuid, candidate: Uuid) { self.media.lock().unwrap().remove(&(page, Some(candidate))); }
+    pub fn scoped_source(&self, page: Uuid, candidate: Option<Uuid>) -> Option<piik_channel_core::wire::WatchByteSource> {
         self.media
             .lock()
             .unwrap()
-            .get(&page)
+            .get(&(page, candidate))
             .and_then(|slot| slot.active.as_ref())
             .filter(|active| !*active.cancel.borrow() && !*active.retired.borrow() && !*active.provider_retired.borrow())
             .map(|active| active.source.clone())
@@ -352,11 +369,11 @@ impl Connection {
     fn retire_media(&self, page: Uuid, root: Uuid) {
         let removed = {
             let mut sources = self.media.lock().unwrap();
-            let Some(slot) = sources.get_mut(&page) else { return };
+            let Some((&key, slot)) = sources.iter_mut().find(|((p, _), slot)| *p == page && slot.active.as_ref().is_some_and(|a| a.source.resource_id == root)) else { return };
             if !slot.active.as_ref().is_some_and(|active| active.source.resource_id == root) { return; }
             let removed = slot.active.take();
             if slot.pending.is_none() && slot.mpd.is_none() && slot.inspection.is_none() {
-                sources.remove(&page);
+                sources.remove(&key);
             }
             removed
         };
@@ -364,28 +381,31 @@ impl Connection {
         self.events.send(serde_json::json!({"type":"page_media_changed","pageId":page}));
     }
     pub fn stop_media(&self, page: Uuid) {
-        self.media.lock().unwrap().remove(&page);
+        self.media.lock().unwrap().remove(&(page, None));
     }
     pub fn prepare_indexed_media(
         self: &Arc<Self>,
         page: Uuid,
+        candidate_id: Option<Uuid>,
         video: indexed::TrackRecipe,
         audio: Option<indexed::TrackRecipe>,
         host: mpsc::Sender<HostCommand>,
     ) -> Result<BoxFuture<'static, Result<Value>>> {
-        self.prepare_selection(page, MediaSelection::Indexed { video, audio }, host)
+        self.prepare_selection(page, candidate_id, MediaSelection::Indexed { video, audio }, host)
     }
     pub fn prepare_media(
         self: &Arc<Self>,
         page: Uuid,
+        candidate_id: Option<Uuid>,
         choice: Uuid,
         host: mpsc::Sender<HostCommand>,
     ) -> Result<BoxFuture<'static, Result<Value>>> {
-        self.prepare_selection(page, MediaSelection::Direct(choice), host)
+        self.prepare_selection(page, candidate_id, MediaSelection::Direct(choice), host)
     }
     fn prepare_selection(
         self: &Arc<Self>,
         page: Uuid,
+        candidate_id: Option<Uuid>,
         selection: MediaSelection,
         host: mpsc::Sender<HostCommand>,
     ) -> Result<BoxFuture<'static, Result<Value>>> {
@@ -399,13 +419,15 @@ impl Connection {
             MediaSelection::Mpd { catalog, .. } => Some(catalog.snapshot.source_id),
             _ => None,
         };
+        let key = (page, candidate_id);
         let generation = Uuid::new_v4();
         {
             let mut sources = self.media.lock().unwrap();
-            if sources.len() >= 64 && !sources.contains_key(&page) {
+            if candidate_id.is_some() && sources.keys().any(|(p, c)| *p == page && c.is_some() && *c != candidate_id) { bail!("watch_source_busy"); }
+            if sources.len() >= MAX_MEDIA_SLOTS && !sources.contains_key(&key) {
                 bail!("page_player_limit");
             }
-            let slot = sources.entry(page).or_default();
+            let slot = sources.entry(key).or_default();
             if slot.pending.is_some() || slot.active.is_some() {
                 bail!("watch_source_busy");
             }
@@ -418,7 +440,7 @@ impl Connection {
                 let owner = connection.owner;
                 let resolve = |choice_id, indexed| async move {
                     let (reply, result) = oneshot::channel();
-                    ensure_dispatch(dispatch(Command::Media { owner, page_id: page, choice_id, indexed, reply }))?;
+                    ensure_dispatch(dispatch(Command::Media { owner, page_id: page, candidate_id, choice_id, indexed, reply }))?;
                     result.await?.map_err(anyhow::Error::msg)
                 };
                 let (root, format, reader, retired): (
@@ -498,7 +520,7 @@ impl Connection {
                         "watch_source_retired"
                     );
                     let slot = sources
-                        .get_mut(&page)
+                        .get_mut(&key)
                         .ok_or_else(|| anyhow!("watch_source_retired"))?;
                     anyhow::ensure!(
                         slot.pending
@@ -525,7 +547,7 @@ impl Connection {
             };
             if result.is_err() {
                 let mut sources = connection.media.lock().unwrap();
-                if let Some(slot) = sources.get_mut(&page) {
+                if let Some(slot) = sources.get_mut(&key) {
                     if slot.pending.as_ref().is_some_and(|(id, _)| *id == generation) { slot.pending = None; }
                 }
                 sources.retain(|_, slot| {
@@ -558,8 +580,7 @@ impl Connection {
         let reader = {
             let pages = self.media.lock().unwrap();
             let active = pages
-                .get(&page_id)
-                .and_then(|slot| slot.active.as_ref())
+                .iter().filter(|((p, _), _)| *p == page_id).filter_map(|(_, slot)| slot.active.as_ref()).find(|a| a.source.resource_id == source_id)
                 .filter(|active| {
                     !*active.cancel.borrow()
                         && !*active.retired.borrow()
@@ -616,6 +637,7 @@ impl Connection {
     pub fn read_metadata(
         self: &Arc<Self>,
         page_id: Uuid,
+        candidate_id: Option<Uuid>,
         choice_id: Uuid,
         read_id: Uuid,
         offset: u64,
@@ -637,7 +659,7 @@ impl Connection {
                 let dispatch = connection.dispatch.as_ref().ok_or_else(|| anyhow!("page_player_unavailable"))?;
                 let (reply, result) = oneshot::channel();
                 ensure_dispatch(dispatch(Command::Media {
-                    owner: connection.owner, page_id, choice_id, indexed: true, reply,
+                    owner: connection.owner, page_id, candidate_id, choice_id, indexed: true, reply,
                 }))?;
                 let (context, file) = tokio::time::timeout(Duration::from_secs(5), result).await
                     .map_err(|_| anyhow!("page_player_timeout"))??.map_err(anyhow::Error::msg)?;
@@ -647,7 +669,7 @@ impl Connection {
         }.boxed())
     }
     pub(super) fn close_page(&self, page_id: Uuid) {
-        self.stop_media(page_id);
+        self.media.lock().unwrap().retain(|(page, _), _| *page != page_id);
         for (page, cancel) in self.resource_reads.lock().unwrap().values() {
             if *page == page_id {
                 cancel.abort();
@@ -669,6 +691,13 @@ impl Connection {
         if let Operation::PagePatch { patch, .. } = &operation {
             patch.validate()?;
         }
+        let commit = match &operation {
+            Operation::PageSelect { page_id, candidate_id, resource_id: Some(root), .. } => {
+                ensure!(self.scoped_source(*page_id, Some(*candidate_id)).is_some_and(|s| s.resource_id == *root), "watch_source_retired");
+                Some((*page_id, *candidate_id, *root))
+            }
+            _ => None,
+        };
         let (reply, mut result) = oneshot::channel();
         if !dispatch(Command::Request {
             owner: self.owner,
@@ -686,7 +715,15 @@ impl Connection {
                 result.try_recv().map_err(|_| anyhow!("page_player_timeout"))?
             }
         };
-        response.map_err(anyhow::Error::msg)
+        let value = response.map_err(anyhow::Error::msg)?;
+        if let Some((page, candidate, root)) = commit {
+            let mut slots = self.media.lock().unwrap();
+            let key = (page, Some(candidate));
+            ensure!(slots.get(&key).and_then(|slot| slot.active.as_ref()).is_some_and(|reader| reader.source.resource_id == root), "watch_source_retired");
+            let ready = slots.remove(&key).ok_or_else(|| anyhow!("watch_source_retired"))?;
+            slots.insert((page, None), ready);
+        }
+        Ok(value)
     }
 }
 impl Drop for Connection {
@@ -731,7 +768,7 @@ mod tests {
         let session = Uuid::new_v4();
         let mut peers = NativePeers::new(session, vec![], events);
         let page = Uuid::new_v4();
-        let mut preparing = connection.prepare_media(page, Uuid::new_v4(), host).unwrap();
+        let mut preparing = connection.prepare_media(page, None, Uuid::new_v4(), host).unwrap();
         let command = tokio::select! {
             command = commands.recv() => command.unwrap(),
             result = preparing.as_mut() => panic!("prepare completed before registration: {result:?}"),
@@ -790,7 +827,7 @@ mod tests {
         let (peer_events, _peer_queue) = mpsc::channel(8);
         let old_session = Uuid::new_v4();
         let mut peers = NativePeers::new(old_session, vec![], peer_events);
-        let prepare = connection.prepare_media(page, Uuid::new_v4(), host.clone()).unwrap();
+        let prepare = connection.prepare_media(page, None, Uuid::new_v4(), host.clone()).unwrap();
         let register = async {
             let Some(HostCommand::RegisterWatchReader { resource_id, reader, result }) = commands.recv().await else { panic!("register expected") };
             let retired = peers.register_watch_reader(resource_id, reader).await.unwrap();
@@ -816,7 +853,7 @@ mod tests {
         assert_eq!(event["type"], "page_media_changed");
         assert_eq!(event["pageId"], page.to_string());
         assert_eq!(waiting.await.unwrap().unwrap_err().to_string(), "watch_source_retired");
-        assert!(connection.media.lock().unwrap().get(&page).is_none());
+        assert!(connection.media.lock().unwrap().get(&(page, None)).is_none());
         assert!(connection.read_resource(page, old.resource_id, old.resource_id, Uuid::new_v4(), 0, 1).is_err());
         let Some(HostCommand::RevokeWatchReader { resource_id }) = commands.recv().await else { panic!("revoke expected") };
         assert_eq!(resource_id, old.resource_id);
@@ -825,7 +862,7 @@ mod tests {
         let new_session = Uuid::new_v4();
         let (events, _queue) = mpsc::channel(8);
         let mut next = NativePeers::new(new_session, vec![], events);
-        let prepare = connection.prepare_media(page, Uuid::new_v4(), host.clone()).unwrap();
+        let prepare = connection.prepare_media(page, None, Uuid::new_v4(), host.clone()).unwrap();
         let register = async {
             let Some(HostCommand::RegisterWatchReader { resource_id, reader, result }) = commands.recv().await else { panic!("new register expected") };
             let retired = next.register_watch_reader(resource_id, reader).await.unwrap();
@@ -842,6 +879,74 @@ mod tests {
         next.close().await.unwrap();
         server.abort();
         let _ = server.await;
+    }
+
+    #[tokio::test]
+    async fn failed_candidate_mpd_inspection_releases_the_only_candidate_slot() {
+        let (events, _) = mpsc::channel(1);
+        let connection = Arc::new(Connection::new(None, events));
+        let page = Uuid::new_v4();
+        for _ in 0..2 {
+            let inspection = connection.inspect_mpd(page, Some(Uuid::new_v4()), Uuid::new_v4(), Uuid::new_v4())
+                .expect("the previous failed inspection released its slot");
+            assert_eq!(inspection.await.unwrap_err().to_string(), "page_player_unavailable");
+        }
+    }
+
+    fn staged_reader(root: Uuid) -> MediaSlot {
+        use piik_channel_native::watch::{Reader, ReadResult};
+        struct Fixture;
+        impl Reader for Fixture {
+            fn read(&self, _: Uuid, _: u64, _: u32) -> BoxFuture<'_, Result<ReadResult>> {
+                Box::pin(async { unreachable!() })
+            }
+        }
+        MediaSlot {
+            active: Some(Registration {
+                reader: Arc::new(Fixture),
+                source: piik_channel_core::wire::WatchByteSource { session_id: Uuid::new_v4(), resource_id: root, format: Format::File },
+                retired: watch::channel(false).1,
+                cancel: watch::channel(false).0,
+                provider_retired: watch::channel(false).1,
+            }),
+            pending: None, mpd: None, inspection: None,
+        }
+    }
+
+    #[test]
+    fn candidate_lifetime_stop_and_close() {
+        let connection = Connection::new(None, mpsc::channel(4).0);
+        let page = Uuid::new_v4();
+        let candidate = Uuid::new_v4();
+        let root = Uuid::new_v4();
+        connection.media.lock().unwrap().insert((page, None), staged_reader(Uuid::new_v4()));
+        connection.media.lock().unwrap().insert((page, Some(candidate)), staged_reader(root));
+        connection.stop_media(page);
+        assert!(connection.media_source(page).is_none());
+        assert_eq!(connection.scoped_source(page, Some(candidate)).unwrap().resource_id, root);
+        connection.media.lock().unwrap().insert((page, None), staged_reader(Uuid::new_v4()));
+        connection.close_page(page);
+        assert!(connection.media_source(page).is_none());
+        assert!(connection.scoped_source(page, Some(candidate)).is_none());
+    }
+
+    #[tokio::test]
+    async fn candidate_lifetime_late_select_preserves_new_resource() {
+        let (commands, mut queue) = mpsc::unbounded_channel();
+        let connection = Arc::new(Connection::new(Some(Arc::new(move |cmd| commands.send(cmd).is_ok())), mpsc::channel(4).0));
+        let page = Uuid::new_v4();
+        let candidate = Uuid::new_v4();
+        let root = Uuid::new_v4();
+        let next = Uuid::new_v4();
+        connection.media.lock().unwrap().insert((page, Some(candidate)), staged_reader(root));
+        let owner = connection.clone();
+        let selecting = tokio::spawn(async move { owner.request(Operation::PageSelect { page_id: page, candidate_id: candidate, original_page: false, resource_id: Some(root) }).await });
+        let Some(Command::Request { reply, .. }) = queue.recv().await else { panic!("missing select"); };
+        connection.media.lock().unwrap().insert((page, Some(candidate)), staged_reader(next));
+        reply.send(Ok(Value::Null)).unwrap();
+        assert_eq!(selecting.await.unwrap().unwrap_err().to_string(), "watch_source_retired");
+        assert!(connection.media_source(page).is_none());
+        assert_eq!(connection.scoped_source(page, Some(candidate)).unwrap().resource_id, next);
     }
 
     #[tokio::test]
@@ -889,7 +994,7 @@ mod tests {
         });
         let (_retire, retired) = watch::channel(false);
         connection.media.lock().unwrap().insert(
-            page,
+            (page, None),
             MediaSlot {
                 inspection: None,
                 mpd: None,
@@ -908,7 +1013,7 @@ mod tests {
             },
         );
         assert!(Arc::ptr_eq(
-            &connection.media.lock().unwrap()[&page]
+            &connection.media.lock().unwrap()[&(page, None)]
                 .active
                 .as_ref()
                 .unwrap()
@@ -1048,7 +1153,7 @@ mod tests {
             let connection = connection.clone();
             reads.push(tokio::spawn(async move {
                 connection
-                    .read_metadata(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), 0, 16)
+                    .read_metadata(Uuid::new_v4(), None, Uuid::new_v4(), Uuid::new_v4(), 0, 16)
                     .unwrap()
                     .await
             }));
@@ -1061,7 +1166,7 @@ mod tests {
         }
         assert_eq!(
             connection
-                .read_metadata(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), 0, 16)
+                .read_metadata(Uuid::new_v4(), None, Uuid::new_v4(), Uuid::new_v4(), 0, 16)
                 .err()
                 .unwrap()
                 .to_string(),
@@ -1082,7 +1187,7 @@ mod tests {
         assert_eq!(connection.media_reads.available_permits(), 4);
         assert_eq!(
             connection
-                .read_metadata(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), 0, 16)
+                .read_metadata(Uuid::new_v4(), None, Uuid::new_v4(), Uuid::new_v4(), 0, 16)
                 .unwrap()
                 .await
                 .unwrap_err()
@@ -1182,7 +1287,7 @@ mod tests {
         let page = Uuid::new_v4();
         let choice = Uuid::new_v4();
         let id = Uuid::new_v4();
-        let reading = tokio::spawn(connection.read_metadata(page, choice, id, 0, 16).unwrap());
+        let reading = tokio::spawn(connection.read_metadata(page, None, choice, id, 0, 16).unwrap());
         assert_eq!(requests.recv().await, Some(0));
         connection.cancel_resource(page, id);
         assert_eq!(
@@ -1196,7 +1301,7 @@ mod tests {
         assert_eq!(connection.media_reads.available_permits(), MAX_MEDIA_READS);
         assert!(connection.resource_reads.lock().unwrap().is_empty());
         let result = connection
-            .read_metadata(page, choice, Uuid::new_v4(), 16, 16)
+            .read_metadata(page, None, choice, Uuid::new_v4(), 16, 16)
             .unwrap()
             .await
             .unwrap();
@@ -1206,7 +1311,7 @@ mod tests {
             vec![42; 16]
         );
         let error = connection
-            .read_metadata(page, choice, Uuid::new_v4(), 32, 16)
+            .read_metadata(page, None, choice, Uuid::new_v4(), 32, 16)
             .unwrap()
             .await
             .unwrap_err();
@@ -1214,7 +1319,7 @@ mod tests {
         assert_eq!(connection.media_reads.available_permits(), MAX_MEDIA_READS);
         assert!(connection.resource_reads.lock().unwrap().is_empty());
         connection
-            .read_metadata(page, choice, Uuid::new_v4(), 16, 16)
+            .read_metadata(page, None, choice, Uuid::new_v4(), 16, 16)
             .unwrap()
             .await
             .unwrap();
@@ -1259,7 +1364,7 @@ mod tests {
         ));
         let page = Uuid::new_v4();
         let mut reading = connection
-            .read_metadata(page, Uuid::new_v4(), Uuid::new_v4(), 0, 16)
+            .read_metadata(page, None, Uuid::new_v4(), Uuid::new_v4(), 0, 16)
             .unwrap();
         assert!(futures_util::poll!(reading.as_mut()).is_pending());
         connection
@@ -1293,7 +1398,7 @@ mod tests {
             assert_eq!(
                 connection
                     .read_metadata(
-                        Uuid::new_v4(),
+                        Uuid::new_v4(), None,
                         Uuid::new_v4(),
                         Uuid::new_v4(),
                         offset,
@@ -1319,6 +1424,7 @@ mod tests {
         );
         let request = connection.request(Operation::PageRead {
             page_id: Uuid::new_v4(),
+            candidate_id: None,
         });
         let answer = async {
             let Command::Request { owner, reply, .. } = commands.recv().await.unwrap() else {

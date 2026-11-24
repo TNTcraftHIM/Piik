@@ -910,7 +910,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             Event::UserEvent(ServiceEvent::ShareWatchPage(id)) => {
                 if let Some(main) = &window {
                     let site = main.content.url().ok().and_then(|url| reveal::origin(&url));
-                    if site.is_some_and(|site| pages.can_share(id, &site, main.document.get())) {
+                    if site.is_some_and(|site| pages.request_share_picker(id, &site, main.document.get())) {
                         main.window.set_minimized(false);
                         main.window.set_focus();
                     }

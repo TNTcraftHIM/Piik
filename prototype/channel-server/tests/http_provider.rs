@@ -112,7 +112,7 @@ async fn app_startup_precedes_first_page_http_client() -> Result<()> {
     });
     let page_id = Uuid::new_v4();
     let prepared = connection
-        .prepare_media(page_id, Uuid::new_v4(), commands)?
+        .prepare_media(page_id, None, Uuid::new_v4(), commands)?
         .await?;
     let root = prepared["resourceId"].as_str().unwrap().parse()?;
     let read = connection

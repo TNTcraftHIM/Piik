@@ -171,21 +171,21 @@ async fn same_manifest_url_new_revision_preserves_each_selected_resource_query_a
         }
     });
     let a = connection
-        .inspect_mpd(page, choice, Uuid::new_v4())?
+        .inspect_mpd(page, None, choice, Uuid::new_v4())?
         .await?;
     let (source_a, video_a, audio_a) = selection(&a);
     connection
-        .prepare_mpd_media(page, source_a, video_a, Some(audio_a), host.clone())?
+        .prepare_mpd_media(page, None, source_a, video_a, Some(audio_a), host.clone())?
         .await?;
     let ids_a = admitted_ids(&connection, page, source_a).await?;
     facts.version.store(1, Ordering::SeqCst);
     let b = connection
-        .inspect_mpd(candidate_page, choice, Uuid::new_v4())?
+        .inspect_mpd(candidate_page, None, choice, Uuid::new_v4())?
         .await?;
     let (source_b, video_b, audio_b) = selection(&b);
     assert_ne!(source_a, source_b);
     assert!(
-        matches!(connection.prepare_mpd_media(candidate_page, source_b, video_a, Some(audio_b), host.clone()), Err(e) if e.to_string() == "watch_source_changed")
+        matches!(connection.prepare_mpd_media(candidate_page, None, source_b, video_a, Some(audio_b), host.clone()), Err(e) if e.to_string() == "watch_source_changed")
     );
     // Old active grant reads its captured revision even after same-URL inspection returned a new body.
     for resource in &ids_a {
@@ -199,7 +199,7 @@ async fn same_manifest_url_new_revision_preserves_each_selected_resource_query_a
     }
     connection
         .prepare_mpd_media(
-            candidate_page,
+            candidate_page, None,
             source_b,
             video_b,
             Some(audio_b),

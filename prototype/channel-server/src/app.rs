@@ -2138,11 +2138,11 @@ async fn connection(
                                 }
                             }
                             Operation::Page(page::Operation::PageMediaPrepare {
-                                page_id,
+                                page_id, candidate_id,
                                 choice_id,
                             }) => {
                                 if let Some(host) = &host {
-                                    match pages.prepare_media(page_id, choice_id, host.clone()) {
+                                    match pages.prepare_media(page_id, candidate_id, choice_id, host.clone()) {
                                         Ok(work) => {
                                             operations.push(async move {match work.await {Ok(value)=>json!({"id":request.id,"result":value}),Err(error)=>json!({"id":request.id,"error":error.to_string()})}}.boxed());
                                             continue;
@@ -2153,9 +2153,9 @@ async fn connection(
                                     Err(anyhow!("hello_required"))
                                 }
                             }
-                            Operation::Page(page::Operation::PageMediaPrepareIndexed { page_id, video, audio }) => {
+                            Operation::Page(page::Operation::PageMediaPrepareIndexed { page_id, candidate_id, video, audio }) => {
                                 if let Some(host) = &host {
-                                    match pages.prepare_indexed_media(page_id, video, audio, host.clone()) {
+                                    match pages.prepare_indexed_media(page_id, candidate_id, video, audio, host.clone()) {
                                         Ok(work) => {
                                             operations.push(async move {match work.await {Ok(value)=>json!({"id":request.id,"result":value}),Err(error)=>json!({"id":request.id,"error":error.to_string()})}}.boxed());
                                             continue;
@@ -2165,14 +2165,14 @@ async fn connection(
                                 } else { Err(anyhow!("hello_required")) }
                             }
                             Operation::Page(page::Operation::PageMediaPrepareMpd {
-                                page_id,
+                                page_id, candidate_id,
                                 source_id,
                                 video_id,
                                 audio_id,
                             }) => {
                                 if let Some(host) = &host {
                                     match pages.prepare_mpd_media(
-                                        page_id,
+                                        page_id, candidate_id,
                                         source_id,
                                         video_id,
                                         audio_id,
@@ -2201,10 +2201,10 @@ async fn connection(
                                 } else {
                                     match resource {
                                         page::ResourceRequest::InspectMpd {
-                                            page_id,
+                                            page_id, candidate_id,
                                             choice_id,
                                             read_id,
-                                        } => match pages.inspect_mpd(page_id, choice_id, read_id) {
+                                        } => match pages.inspect_mpd(page_id, candidate_id, choice_id, read_id) {
                                             Ok(work) => {
                                                 operations.push(
                                                     async move {
@@ -2218,8 +2218,8 @@ async fn connection(
                                             }
                                             Err(error) => Err(error),
                                         },
-                                        page::ResourceRequest::ReadMetadata { page_id, choice_id, read_id, offset, length } => {
-                                            match pages.read_metadata(page_id, choice_id, read_id, offset, length) {
+                                        page::ResourceRequest::ReadMetadata { page_id, candidate_id, choice_id, read_id, offset, length } => {
+                                            match pages.read_metadata(page_id, candidate_id, choice_id, read_id, offset, length) {
                                                 Ok(work) => {
                                                     operations.push(async move { match work.await {
                                                         Ok(result) => json!({"id":request.id,"result":result}),
@@ -2266,8 +2266,8 @@ async fn connection(
                                     }
                                 }
                             }
-                            Operation::Page(page::Operation::PageMediaStop { page_id }) => {
-                                pages.stop_media(page_id);
+                            Operation::Page(page::Operation::PageMediaStop { page_id, candidate_id }) => {
+                                if let Some(candidate) = candidate_id { pages.cancel_candidate(page_id, candidate); pages.request(page::Operation::PageMediaStop { page_id, candidate_id }).await?; } else { pages.stop_media(page_id); }
                                 Ok(Value::Null)
                             }
                             Operation::Page(operation) => {
@@ -2275,17 +2275,17 @@ async fn connection(
                                     Err(anyhow!("hello_required"))
                                 } else {
                                     let source_page =
-                                        if let page::Operation::PageMediaSources { page_id } =
+                                        if let page::Operation::PageMediaSources { page_id, candidate_id } =
                                             &operation
                                         {
-                                            Some(*page_id)
+                                            Some((*page_id, *candidate_id))
                                         } else {
                                             None
                                         };
                                     let mut result = pages.request(operation).await;
                                     if let (Some(page), Ok(value)) = (source_page, &mut result) {
                                         value["byteSource"] =
-                                            serde_json::to_value(pages.media_source(page))?;
+                                            serde_json::to_value(pages.scoped_source(page.0, page.1))?;
                                     }
                                     // Selection facts (including the current top-level URL) precede confirmation.
                                     for _ in 0..event_queue.len() {

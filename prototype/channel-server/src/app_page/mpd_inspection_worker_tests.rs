@@ -127,7 +127,7 @@ async fn public_inspect_cancel_retires_actual_parser_worker_twice_before_reusing
         probe.checks.store(0, Ordering::SeqCst);
         *probe.released.0.lock().unwrap() = false;
         let id = Uuid::new_v4();
-        let waiting = tokio::spawn(connection.inspect_mpd(page, Uuid::new_v4(), id)?);
+        let waiting = tokio::spawn(connection.inspect_mpd(page, None, Uuid::new_v4(), id)?);
         // Existing fixture deadline bounds an observation, not product cancellation.
         assert!(matches!(
             tokio::time::timeout(Duration::from_secs(1), receive.recv()).await?,
@@ -145,10 +145,7 @@ async fn public_inspect_cancel_retires_actual_parser_worker_twice_before_reusing
             .media
             .lock()
             .unwrap()
-            .get(&page)
-            .unwrap()
-            .inspection
-            .is_none());
+            .get(&(page, None)).is_none());
         *probe.released.0.lock().unwrap() = true;
         probe.released.1.notify_all();
         assert!(matches!(
@@ -159,7 +156,7 @@ async fn public_inspect_cancel_retires_actual_parser_worker_twice_before_reusing
     }
     drop(installed);
     let next = connection
-        .inspect_mpd(page, Uuid::new_v4(), Uuid::new_v4())?
+        .inspect_mpd(page, None, Uuid::new_v4(), Uuid::new_v4())?
         .await?;
     assert!(!next["tracks"].as_array().unwrap().is_empty());
     assert_eq!(probe.active.load(Ordering::SeqCst), 0);

@@ -107,6 +107,7 @@ struct Pending {
     reply: Reply,
     frame: Uuid,
     selecting: bool,
+    promote: Option<Uuid>,
     patch: bool,
 }
 struct Popup {
@@ -214,9 +215,9 @@ impl Page {
         }
         self.emit(json!({"type":"page_candidates","pageId":self.id,"url":url,"candidates":self.candidates.iter().map(|(id,c)|json!({"id":id,"title":c.source.title,"url":c.source.url,"duration":c.source.duration})).collect::<Vec<_>>()}));
     }
-    fn request(&mut self, selecting: bool, patch: Option<page::Patch>, reply: Reply) {
+    fn request(&mut self, candidate_id: Option<Uuid>, selecting: bool, patch: Option<page::Patch>, reply: Reply) {
         self.pending.retain(|_, pending| !pending.reply.is_closed());
-        let Some(candidate) = self.selected.and_then(|id| self.candidates.get(&id)) else {
+        let Some(candidate) = candidate_id.or(self.selected).and_then(|id| self.candidates.get(&id)) else {
             let _ = reply.send(Err("page_candidate_unavailable".into()));
             return;
         };
@@ -243,6 +244,7 @@ impl Page {
                         reply,
                         frame: candidate.frame,
                         selecting,
+                        promote: candidate_id.filter(|_| selecting),
                         patch: patch.is_some(),
                     },
                 );
@@ -333,11 +335,16 @@ impl Pages {
         }
     }
 
-    pub fn can_share(&self, id: WindowId, site: &str, document: u64) -> bool {
+    pub fn request_share_picker(&self, id: WindowId, site: &str, document: u64) -> bool {
         self.pages.values().any(|page| {
-            page.origin == site && page.picker_document == Some(document)
-                && page.views.borrow().iter().any(|(key, view)| view.window.id() == id
-                    && page.candidates.values().any(|candidate| candidate.view == *key))
+            if page.origin != site || page.picker_document != Some(document) { return false; }
+            page.views.borrow().iter().any(|(key, view)| {
+                if view.window.id() != id || !page.candidates.values().any(|candidate| candidate.view == *key) {
+                    return false;
+                }
+                page.emit(json!({"type":"page_share_requested","pageId":page.id}));
+                true
+            })
         })
     }
 
@@ -510,6 +517,7 @@ impl Pages {
     ) {
         match command {
             Command::Media {
+                candidate_id,
                 owner,
                 page_id,
                 choice_id,
@@ -522,22 +530,22 @@ impl Pages {
                         .values()
                         .find(|p| p.owner == owner && p.id == page_id)
                         .ok_or_else(|| anyhow!("page_player_closed"))?;
-                    let selected = page
-                        .selected
+                    let selected = candidate_id.or(page.selected)
                         .and_then(|id| page.candidates.get(&id))
                         .ok_or_else(|| anyhow!("page_candidate_unavailable"))?;
                     let views = page.views.borrow();
                     let view = views
                         .get(&selected.view)
                         .ok_or_else(|| anyhow!("page_player_closed"))?;
-                    view.media
-                        .borrow_mut()
-                        .sources(selected.frame, &selected.source.resource);
-                    let choice = view
-                        .media
-                        .borrow_mut()
-                        .choice(choice_id, indexed)
-                        .ok_or_else(|| anyhow!("watch_resource_unavailable"))?;
+                    let (choice, retired) = {
+                        let mut media = view.media.borrow_mut();
+                        if let Some(id) = candidate_id {
+                            media.candidate_choice(id, choice_id, indexed)
+                        } else {
+                            media.sources(selected.frame, &selected.source.resource);
+                            media.choice(choice_id, indexed).map(|choice| (choice, media.retired.subscribe()))
+                        }
+                    }.ok_or_else(|| anyhow!("watch_resource_unavailable"))?;
                     let document = view.document.ok_or_else(|| anyhow!("page_player_closed"))?;
                     let events = events.clone();
                     let cookies: page::Cookies = std::sync::Arc::new(move |url| {
@@ -558,7 +566,6 @@ impl Pages {
                             result.await?.map_err(anyhow::Error::msg)
                         })
                     });
-                    let retired = view.media.borrow().retired.subscribe();
                     Ok((page::MediaContext {
                         url: choice.source_url().to_owned(),
                         request: choice.request,
@@ -646,12 +653,12 @@ impl Pages {
         }
         let id = match &operation {
             Operation::PageSelect { page_id, .. }
-            | Operation::PageRead { page_id }
+            | Operation::PageRead { page_id, .. }
             | Operation::PagePatch { page_id, .. }
             | Operation::PageFocus { page_id }
             | Operation::PageHide { page_id }
             | Operation::PageClose { page_id }
-            | Operation::PageMediaSources { page_id } => *page_id,
+            | Operation::PageMediaSources { page_id, .. } | Operation::PageMediaStop { page_id, .. } => *page_id,
             _ => unreachable!(),
         };
         let key = self
@@ -671,22 +678,28 @@ impl Pages {
             return;
         };
         match operation {
-            Operation::PageMediaSources { .. } => {
-                let result = page
-                    .selected
+            Operation::PageMediaStop { candidate_id: Some(id), .. } => {
+                for view in page.views.borrow().values() { view.media.borrow_mut().cancel_candidate(id); }
+                let _ = reply.send(Ok(Value::Null));
+            }
+            Operation::PageMediaSources { candidate_id, .. } => {
+                let result = candidate_id.or(page.selected)
                     .and_then(|id| page.candidates.get(&id))
                     .map(|c| {
-                        page.views.borrow()[&c.view]
-                            .media
-                            .borrow_mut()
-                            .sources(c.frame, &c.source.resource)
+                        let views = page.views.borrow();
+                        let mut media = views[&c.view].media.borrow_mut();
+                        match candidate_id { Some(id) => media.candidate_sources(id, c.frame, &c.source.resource), None => media.sources(c.frame, &c.source.resource) }
                     })
                     .ok_or_else(|| "page_candidate_unavailable".into());
                 let _ = reply.send(result);
             }
-            Operation::PageSelect { candidate_id, original_page, .. } => {
+            Operation::PageSelect { candidate_id, original_page, resource_id, .. } => {
                 if !page.candidates.contains_key(&candidate_id) {
                     let _ = reply.send(Err("page_candidate_unavailable".into()));
+                    return;
+                }
+                if resource_id.is_some() {
+                    page.request(Some(candidate_id), true, None, reply);
                     return;
                 }
                 if page.selected.is_some_and(|id| id != candidate_id) {
@@ -708,10 +721,10 @@ impl Pages {
                 page.selected = Some(candidate_id);
                 page.original_page = original_page;
                 page.candidates();
-                page.request(true, None, reply);
+                page.request(None, true, None, reply);
             }
-            Operation::PageRead { .. } => page.request(false, None, reply),
-            Operation::PagePatch { patch, .. } => page.request(false, Some(patch), reply),
+            Operation::PageRead { candidate_id, .. } => page.request(candidate_id, false, None, reply),
+            Operation::PagePatch { patch, .. } => page.request(None, false, Some(patch), reply),
             Operation::PageHide { .. } => {
                 let views = page.views.borrow();
                 let view = page
@@ -771,7 +784,7 @@ impl Pages {
         {
             bail!("page_player_exists");
         }
-        if self.pages.len() >= 64 {
+        if self.pages.len() >= page::MAX_PAGES {
             bail!("page_player_limit");
         }
         let key = Uuid::new_v4();
@@ -964,7 +977,25 @@ impl Pages {
                             }
                         })
                 };
-                if result.is_err() && pending.selecting {
+                let result = result.and_then(|value| {
+                    if let Some(id) = pending.promote {
+                        let candidate = page.candidates.get(&id).ok_or_else(|| anyhow!("page_candidate_unavailable"))?;
+                        let new_view = candidate.view;
+                        let old_view = page.selected_view();
+                        if page.selected != Some(id) {
+                            let mut views = page.views.borrow_mut();
+                            let old = views.get_mut(&old_view).ok_or_else(|| anyhow!("page_player_closed"))?;
+                            old.release_mount()?;
+                            old.media.borrow_mut().clear_selection();
+                        }
+                        page.views.borrow()[&new_view].media.borrow_mut().commit_candidate(id);
+                        page.selected = Some(id);
+                        page.original_page = false;
+                        page.candidates();
+                    }
+                    Ok(value)
+                });
+                if result.is_err() && pending.selecting && pending.promote.is_none() {
                     page.selected = None;
                 }
                 let _ = pending

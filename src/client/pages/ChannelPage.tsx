@@ -93,6 +93,15 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     window.addEventListener("hashchange", navigate);
     return () => window.removeEventListener("hashchange", navigate);
   }, [selectRoom]);
+  useEffect(() => {
+    const open = (event: Event) => {
+      const roomId = (event as CustomEvent<string>).detail;
+      selectRoom(roomId);
+      setWatchRoomId(roomId);
+    };
+    window.addEventListener("piik-watch-source-picker", open);
+    return () => window.removeEventListener("piik-watch-source-picker", open);
+  }, [selectRoom]);
   useEffect(() => { preparingShare.current = null; }, [selected]);
   useEffect(() => { if (pickerRoom && pickerRoom !== selected) setPickerRoom(null); }, [selected, pickerRoom]);
   useEffect(() => {

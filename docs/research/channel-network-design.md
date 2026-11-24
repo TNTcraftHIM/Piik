@@ -341,6 +341,14 @@ resuming forwarding reuses that resource. Ending the activity or closing its
 provider page retires both. Original-page playback remains a separate explicit
 choice when a source cannot be prepared in Piik.
 
+An active Host webpage keeps its share action in the window caption. Reopening
+the selector borrows that document and its current player; it does not reload
+the URL. The page retains one active media selection and at most one candidate.
+Candidate discovery, metadata and prepared readers remain separate until room
+confirmation. Cancellation releases only that candidate. Committing the exact
+candidate resource replaces the active selection and retires its previous reader.
+Closing the page retires both selections and their pending reads.
+
 The shared Web UI can use the official embedded player for supported YouTube links
 and single public on-demand videos on peertube.tv. Each participant checks PeerTube's
 public video metadata before opening the player. The room carries its canonical embed

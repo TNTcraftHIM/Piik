@@ -12219,7 +12219,7 @@ test('MPD whole-track selection stays private until explicit confirmation and us
     expect(session.watchPage('first')?.watchSources?.mpd).toEqual([{ candidate, catalog }]);
     const confirming = session.selectWatchMpdSource('first', selected);
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
-    expect(prepare).toHaveBeenCalledWith(selected, expect.any(AbortSignal));
+    expect(prepare).toHaveBeenCalledWith(selected, expect.any(AbortSignal), undefined);
     const start = socket.sent.findLast(command => command.type === 'start_watch')!;
     expect(start.source).toEqual({ kind: 'website', url: page.url }); expect(start.byteSource).toEqual(source);
     expect(socket.sent.filter(command => command.type === 'start_watch')).toHaveLength(1);
@@ -12650,7 +12650,7 @@ test('replaced audio metadata cancels only its obsolete inspection and prepares 
     release(); await Promise.resolve();
     expect(session.watchPage('first')?.watchSources?.indexed.some(choice => choice.candidate.id === oldAudio.candidate.id)).toBe(false);
     await session.selectWatchIndexedSource('first', video.candidate.id, nextAudio.candidate.id);
-    expect(prepare).toHaveBeenCalledWith({ video: video.recipe, audio: nextAudio.recipe }, expect.any(AbortSignal));
+    expect(prepare).toHaveBeenCalledWith({ video: video.recipe, audio: nextAudio.recipe }, expect.any(AbortSignal), undefined);
     expect(commit.mock.calls[0]?.[2]).toBeInstanceOf(PageSuppliedMedia);
     expect(dispose).not.toHaveBeenCalled();
   } finally { unlisten(); await session.cancelScreenSelection('first'); session.close(); }
@@ -13295,7 +13295,7 @@ test('explicit file forwarding publishes the selected direct URL and retains the
     const forwarding = session.selectWatchForwardSource('first', choice.id, false);
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
     const start = socket.sent.findLast(command => command.type === 'start_watch')!;
-    expect(prepare).toHaveBeenCalledWith(choice.id, expect.any(AbortSignal));
+    expect(prepare).toHaveBeenCalledWith(choice.id, expect.any(AbortSignal), undefined);
     expect(start.source).toEqual({ kind: 'website', url: page.url, mediaUrl: choice.displayURL });
     expect(start.byteSource).toEqual(byteSource);
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
@@ -15315,7 +15315,7 @@ test.each(['direct', 'fallback'] as const)('late original-page confirmation afte
 test.each(["forward", "original"] as const)("caption Host replaces %s through explicit opposite mode", async prior => {
   localProviderVideo();
   const choice = { id: crypto.randomUUID(), displayURL: "https://fixture.test/new.mp4", name: "New", format: "file" as const };
-  const { session, socket, page, candidateId, commit, request } = await websiteSourceSelection(async () => ({ choices: [choice], indexedCandidates: [], byteSource: null }));
+  const { session, socket, page, candidateId, commit, dispose, request } = await websiteSourceSelection(async () => ({ choices: [choice], indexedCandidates: [], byteSource: null }));
   const bytes = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" as const };
   commit.mockRestore();
   async function select(mode: "forward" | "original", current: appLink.AppPage, id: string) {
@@ -15343,17 +15343,75 @@ test.each(["forward", "original"] as const)("caption Host replaces %s through ex
       id: old.id, roomId: "first", sessionId: "endpoint", userId: "self", viewerSessionIds: [],
       source: old.source, playback: old.playback, ...(old.byteSource ? { byteSource: old.byteSource } : {}),
     }] } });
-    const next = new appLink.AppPage(crypto.randomUUID(), "https://video.test/second", request, vi.fn(), vi.fn());
-    const app = (session as unknown as { app: appLink.ChannelApp }).app;
-    vi.mocked(app.preparePage).mockResolvedValueOnce(next);
-    await session.prepareWatchPage("first", next.url);
-    next.receive({ type: "page_candidates", pageId: next.id, url: next.url, candidates: [{ id: candidateId, title: "Next", url: null, duration: 60 }] });
+    vi.stubGlobal("window", new EventTarget());
+    const opened = vi.fn();
+    window.addEventListener("piik-watch-source-picker", opened);
+    const next = page;
+    next.receive({ type: "page_share_requested", pageId: next.id });
+    expect(opened).toHaveBeenCalledOnce();
+    await session.cancelScreenSelection("first");
+    expect(dispose).not.toHaveBeenCalled();
+    next.receive({ type: "page_share_requested", pageId: next.id });
+    expect(opened).toHaveBeenCalledTimes(2);
     expect(session.watchPage("first")?.pageId).toBe(next.id);
     expect(session.watchPage("first", old.id as string)?.pageId).toBeUndefined();
-    const replacement = select(prior === "original" ? "forward" : "original", next, candidateId);
-    const start = await confirm(2);
+    const otherId = crypto.randomUUID();
+    next.receive({ type: "page_candidates", pageId: next.id, url: page.url, candidates: [
+      { id: candidateId, title: "A", url: null, duration: 60 }, { id: otherId, title: "B", url: null, duration: 60 },
+    ] });
+    expect(page.selectedCandidateId).toBe(candidateId);
+    expect(await session.selectWatchPage("first", otherId, undefined, false, "choose-source")).toBe(false);
+    expect(page.selectedCandidateId).toBe(candidateId);
+    await session.cancelScreenSelection("first");
+    expect(dispose).not.toHaveBeenCalled();
+    next.receive({ type: "page_share_requested", pageId: next.id });
+    await page.patch({ position: 5 });
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: "page_patch", patch: { position: 5 } }), expect.any(AbortSignal));
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: "page_media_stop", candidateId: otherId }), expect.any(AbortSignal));
+    expect(request.mock.calls.some(([cmd]) => cmd.type === "page_media_stop" && !("candidateId" in cmd))).toBe(false);
+    const manager = session as unknown as { sourceSelections: Map<string, { candidateId?: string }>; finishSourceSelection(room: string, selection: { candidateId?: string }): void };
+    const stale = manager.sourceSelections.get("first")!;
+    await session.selectWatchPage("first", otherId, undefined, false, "choose-source");
+    await session.cancelScreenSelection("first");
+    next.receive({ type: "page_share_requested", pageId: next.id });
+    await session.selectWatchPage("first", otherId, undefined, false, "choose-source");
+    const stops = () => request.mock.calls.filter(([cmd]) => cmd.type === "page_media_stop").length;
+    const stopped = stops();
+    manager.finishSourceSelection("first", stale);
+    expect(stops()).toBe(stopped);
+    expect(manager.sourceSelections.get("first")?.candidateId).toBe(otherId);
+    const mode = prior === "forward" ? "original" : "forward";
+    const denied = select(mode, next, otherId);
+    const failure = expect(denied).rejects.toThrow();
+    await vi.waitFor(() => expect(socket.sent.filter(c => c.type === "start_watch")).toHaveLength(2));
+    expect(page.selectedCandidateId).toBe(candidateId);
+    const attempt = socket.sent.findLast(c => c.type === "start_watch")!;
+    socket.receive({ type: "error", requestId: attempt.requestId, code: "permission_denied" });
+    await failure;
+    expect(dispose).not.toHaveBeenCalled();
+    expect(page.selectedCandidateId).toBe(candidateId);
+    next.receive({ type: "page_share_requested", pageId: next.id });
+    const replacement = select(mode, next, otherId);
+    const start = await confirm(3);
     await replacement;
     expect(start.replaceId).toBe(old.id);
-    expect(start.byteSource).toEqual(prior === "original" ? bytes : undefined);
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: "page_select", candidateId: otherId,
+      ...(mode === "forward" ? { resourceId: bytes.resourceId } : { originalPage: true }) }), expect.any(AbortSignal));
+    expect(page.selectedCandidateId).toBe(otherId);
   } finally { session.close(); }
+});
+
+test("page owner and borrowed player each release their page at most once", () => {
+  const dispose = vi.fn();
+  const page = new appLink.AppPage(crypto.randomUUID(), "https://fixture.test", vi.fn(), dispose, vi.fn());
+  const releaseFirst = page.hold();
+  const releaseSecond = page.hold();
+  page.close();
+  page.close();
+  releaseFirst();
+  releaseFirst();
+  expect(dispose).not.toHaveBeenCalled();
+  releaseSecond();
+  releaseSecond();
+  expect(dispose).toHaveBeenCalledOnce();
 });

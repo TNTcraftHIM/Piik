@@ -94,6 +94,7 @@ export const nativePageEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("page_media_changed"), pageId: z.uuid() }).strict(),
   z.object({ type: z.literal("page_candidates"), pageId: z.uuid(), url: nativePageURLSchema, candidates: z.array(nativePageCandidateSchema).max(64) }),
   z.object({ type: z.literal("page_sample"), pageId: z.uuid(), event: z.enum(["loadedmetadata", "loadeddata", "play", "playing", "pause", "seeked", "ratechange", "ended", "waiting", "error"]) }).strict(),
+  z.object({ type: z.literal("page_share_requested"), pageId: z.uuid() }).strict(),
   z.object({ type: z.literal("page_closed"), pageId: z.uuid() }).strict(),
   z.object({ type: z.literal("page_blocked"), pageId: z.uuid() }).strict(),
 ]);

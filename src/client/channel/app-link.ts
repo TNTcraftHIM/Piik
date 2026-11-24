@@ -121,44 +121,57 @@ export class AppPage implements AppPagePort {
     return this.request({ type, pageId: this.id, ...values }, this.lifetime.signal);
   }
   async prepare(): Promise<void> { z.object({ pageId: z.literal(this.id) }).strict().parse(await this.command("page_prepare", { url: this.url })); }
+  private owners = 1;
+  private ownerReleased = false;
+  hold(): () => void {
+    this.lifetime.signal.throwIfAborted();
+    this.owners++;
+    let released = false;
+    return () => { if (!released) { released = true; this.releaseOwner(); } };
+  }
+  onSharePicker?: () => void;
+  enableSharePicker(): void {
+    if (typeof window !== "undefined" && window.piikMountWatchPage)
+      window.ipc?.postMessage(JSON.stringify({ kind: "watchSharePicker", pageId: this.id, open: true }));
+  }
   selectedCandidateId?: string;
-  async select(candidateId: string, originalPage = false): Promise<void> {
-    nativePageStateSchema.parse(await this.command("page_select", { candidateId, ...(originalPage && { originalPage }) }));
+  async select(candidateId: string, originalPage = false, resourceId?: string): Promise<void> {
+    nativePageStateSchema.parse(await this.command("page_select", { candidateId, ...(resourceId && { resourceId }), ...(originalPage && { originalPage }) }));
     this.selectedCandidateId = candidateId;
     this.changed();
   }
-  async read(): Promise<WatchMediaState> { return nativePageStateSchema.parse(await this.command("page_read")); }
+  async read(candidateId?: string): Promise<WatchMediaState> { return nativePageStateSchema.parse(await this.command("page_read", candidateId ? { candidateId } : {})); }
   async patch(patch: WatchMediaPatch): Promise<void> { await this.command("page_patch", { patch }); }
   async focus(): Promise<void> { await this.command("page_focus"); }
   async hide(): Promise<void> { await this.command("page_hide"); }
-  async mediaSources(): Promise<{ choices: NativePageMediaChoice[]; indexedCandidates: NativePageIndexedCandidate[]; mpdCandidates: NativePageMpdCandidate[]; byteSource: WatchByteSource | null }> {
+  async mediaSources(candidateId?: string): Promise<{ choices: NativePageMediaChoice[]; indexedCandidates: NativePageIndexedCandidate[]; mpdCandidates: NativePageMpdCandidate[]; byteSource: WatchByteSource | null }> {
     return z.object({ choices: z.array(nativePageMediaChoiceSchema).max(32), indexedCandidates: z.array(nativePageIndexedCandidateSchema).max(32),
-      mpdCandidates: z.array(nativePageMpdCandidateSchema).max(32), byteSource: watchByteSourceSchema.nullable() }).strict().parse(await this.command("page_media_sources"));
+      mpdCandidates: z.array(nativePageMpdCandidateSchema).max(32), byteSource: watchByteSourceSchema.nullable() }).strict().parse(await this.command("page_media_sources", { candidateId }));
   }
-  async readMediaMetadata(choiceId: string, offset: number, length: number, signal: AbortSignal): Promise<{ mimeType: string; totalSize: number; bytes: Uint8Array }> {
+  async readMediaMetadata(choiceId: string, offset: number, length: number, signal: AbortSignal, candidateId?: string): Promise<{ mimeType: string; totalSize: number; bytes: Uint8Array }> {
     const range = nativePageMetadataReadSchema.parse({ choiceId, offset, length });
-    const value = await this.mediaRead("read_metadata", range, signal);
+    const value = await this.mediaRead("read_metadata", { ...range, candidateId }, signal);
     const result = nativePageMetadataResultSchema.parse(value);
     const bytes = Uint8Array.from(atob(result.bytesBase64), value => value.charCodeAt(0));
     if (bytes.length !== Math.min(length, Math.max(0, result.totalSize - offset))) throw new Error("invalid_app_response");
     return { mimeType: result.mimeType, totalSize: result.totalSize, bytes };
   }
-  async prepareMedia(choiceId: string, signal: AbortSignal): Promise<WatchByteSource> {
+  async prepareMedia(choiceId: string, signal: AbortSignal, candidateId?: string): Promise<WatchByteSource> {
     const preparing = AbortSignal.any([this.lifetime.signal, signal]);
     preparing.throwIfAborted();
-    const value = await this.request({ type: "page_media_prepare", pageId: this.id, choiceId }, preparing);
+    const value = await this.request({ type: "page_media_prepare", pageId: this.id, choiceId, candidateId }, preparing);
     preparing.throwIfAborted();
     return watchByteSourceSchema.parse(value);
   }
-  async inspectMpd(choiceId: string, signal: AbortSignal): Promise<NativePageMpdCatalog> {
+  async inspectMpd(choiceId: string, signal: AbortSignal, candidateId?: string): Promise<NativePageMpdCatalog> {
     const choice = z.object({ choiceId: z.uuid() }).strict().parse({ choiceId });
-    return nativePageMpdCatalogSchema.parse(await this.mediaRead("inspect_mpd", choice, signal));
+    return nativePageMpdCatalogSchema.parse(await this.mediaRead("inspect_mpd", { ...choice, candidateId }, signal));
   }
-  async prepareMpdMedia(selection: NativePageMpdSelection, signal: AbortSignal): Promise<WatchByteSource> {
+  async prepareMpdMedia(selection: NativePageMpdSelection, signal: AbortSignal, candidateId?: string): Promise<WatchByteSource> {
     const preparing = AbortSignal.any([this.lifetime.signal, signal]);
     preparing.throwIfAborted();
     const selected = nativePageMpdSelectionSchema.parse(selection);
-    const value = await this.request({ type: "page_media_prepare_mpd", pageId: this.id, ...selected }, preparing);
+    const value = await this.request({ type: "page_media_prepare_mpd", pageId: this.id, candidateId, ...selected }, preparing);
     preparing.throwIfAborted();
     return watchByteSourceSchema.extend({ format: z.literal("dash") }).parse(value);
   }
@@ -186,10 +199,10 @@ export class AppPage implements AppPagePort {
       return value;
     } finally { reading.removeEventListener("abort", cancel); }
   }
-  async prepareIndexedMedia(selection: NativePageIndexedSelection, signal: AbortSignal): Promise<WatchByteSource> {
+  async prepareIndexedMedia(selection: NativePageIndexedSelection, signal: AbortSignal, candidateId?: string): Promise<WatchByteSource> {
     const preparing = AbortSignal.any([this.lifetime.signal, signal]);
     preparing.throwIfAborted();
-    const command = { type: "page_media_prepare_indexed", pageId: this.id, ...nativePageIndexedSelectionSchema.parse(selection) };
+    const command = { type: "page_media_prepare_indexed", pageId: this.id, candidateId, ...nativePageIndexedSelectionSchema.parse(selection) };
     // AppLink appends a UUID request id; measure that complete envelope before sending.
     const bytes = new TextEncoder().encode(JSON.stringify({ ...command, id: "00000000-0000-4000-8000-000000000000" })).byteLength;
     if (bytes > APP_REQUEST_BYTES) throw new Error("watch_resource_limit");
@@ -197,16 +210,23 @@ export class AppPage implements AppPagePort {
     preparing.throwIfAborted();
     return watchByteSourceSchema.extend({ format: z.literal("hls") }).parse(value);
   }
-  async stopMedia(): Promise<void> { await this.command("page_media_stop"); }
+  async stopMedia(candidateId?: string): Promise<void> { await this.command("page_media_stop", { candidateId }); }
   listen(changed: (event: WatchMediaEvent) => void): () => void { this.listeners.add(changed); return () => this.listeners.delete(changed); }
   listenMediaSources(changed: () => void): () => void { this.sourceListeners.add(changed); return () => this.sourceListeners.delete(changed); }
   receive(event: z.infer<typeof nativePageEventSchema>): void {
-    if (event.type === "page_closed") { this.close(); return; }
+    if (event.type === "page_share_requested") { this.onSharePicker?.(); return; }
+    if (event.type === "page_closed") { this.retire(); return; }
     if (event.type === "page_media_changed") { for (const listener of this.sourceListeners) listener(); return; }
     if (event.type === "page_candidates") { this.url = event.url; this.candidates = event.candidates; this.changed(); return; }
     for (const listener of this.listeners) listener(event.type === "page_blocked" ? "blocked" : event.event);
   }
   close(): void {
+    if (!this.ownerReleased) { this.ownerReleased = true; this.releaseOwner(); }
+  }
+  private releaseOwner(): void {
+    if (--this.owners === 0) this.retire();
+  }
+  retire(): void {
     if (this.lifetime.signal.aborted) return;
     this.lifetime.abort(new Error("watch_page_closed"));
     this.dispose();
@@ -789,7 +809,7 @@ export class ChannelApp {
     this.prepared.clear();
     this.socket.onclose = null;
     this.socket.close();
-    for (const page of this.pages.values()) page.close();
+    for (const page of this.pages.values()) page.retire();
     this.rejectReady(error);
     for (const request of this.requests.values()) request.reject(error);
     this.requests.clear();

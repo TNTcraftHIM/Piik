@@ -137,14 +137,14 @@ async fn mpd_catalog_replacement_rejects_stale_choices_without_retiring_active_r
         }
     });
     let a = connection
-        .inspect_mpd(page, choice_a, Uuid::new_v4())?
+        .inspect_mpd(page, None, choice_a, Uuid::new_v4())?
         .await?;
     if let Ok(path) = std::env::var("PIIK_MPD_CATALOG_EXPORT") {
         std::fs::write(path, serde_json::to_vec_pretty(&a)?)?;
     }
     let (source_a, video_a, audio_a) = selection(&a);
     connection
-        .prepare_mpd_media(page, source_a, video_a, Some(audio_a), host.clone())?
+        .prepare_mpd_media(page, None, source_a, video_a, Some(audio_a), host.clone())?
         .await?;
     assert_eq!(connection.media_source(page).unwrap().resource_id, source_a);
     let before = connection
@@ -153,16 +153,16 @@ async fn mpd_catalog_replacement_rejects_stale_choices_without_retiring_active_r
     let manifest = Base64::decode_vec(before["bytesBase64"].as_str().unwrap()).unwrap();
     assert!(!manifest.is_empty());
     let b = connection
-        .inspect_mpd(page, choice_b, Uuid::new_v4())?
+        .inspect_mpd(page, None, choice_b, Uuid::new_v4())?
         .await?;
     let (source_b, video_b, audio_b) = selection(&b);
     assert_ne!(source_a, source_b);
     assert_ne!(video_a, video_b);
     assert!(
-        matches!(connection.prepare_mpd_media(page, source_a, video_a, Some(audio_a), host.clone()), Err(e) if e.to_string() == "watch_source_changed")
+        matches!(connection.prepare_mpd_media(page, None, source_a, video_a, Some(audio_a), host.clone()), Err(e) if e.to_string() == "watch_source_changed")
     );
     assert!(
-        matches!(connection.prepare_mpd_media(page, source_b, video_a, Some(audio_b), host.clone()), Err(e) if e.to_string() == "watch_source_changed")
+        matches!(connection.prepare_mpd_media(page, None, source_b, video_a, Some(audio_b), host.clone()), Err(e) if e.to_string() == "watch_source_changed")
     );
     assert_eq!(registrations.load(Ordering::SeqCst), 1);
     let still_a = connection
@@ -170,21 +170,21 @@ async fn mpd_catalog_replacement_rejects_stale_choices_without_retiring_active_r
         .await?;
     assert_eq!(still_a["bytesBase64"], before["bytesBase64"]);
     assert!(
-        matches!(connection.prepare_mpd_media(page, source_b, video_b, Some(audio_b), host.clone()), Err(e) if e.to_string() == "watch_source_busy")
+        matches!(connection.prepare_mpd_media(page, None, source_b, video_b, Some(audio_b), host.clone()), Err(e) if e.to_string() == "watch_source_busy")
     );
     assert_eq!(connection.media_source(page).unwrap().resource_id, source_a);
-    // A replacement is prepared on its real candidate Page, never by overwriting an active Page.
+    // Both players live inside the same document.
     let candidate = connection
-        .inspect_mpd(candidate_page, choice_b, Uuid::new_v4())?
+        .inspect_mpd(page, Some(candidate_page), choice_b, Uuid::new_v4())?
         .await?;
     let (candidate_source, candidate_video, candidate_audio) = selection(&candidate);
     assert_ne!(candidate_source, source_b);
     assert!(
-        matches!(connection.prepare_mpd_media(candidate_page, source_b, video_b, Some(audio_b), host.clone()), Err(e) if e.to_string() == "watch_source_changed")
+        matches!(connection.prepare_mpd_media(page, Some(candidate_page), source_b, video_b, Some(audio_b), host.clone()), Err(e) if e.to_string() == "watch_source_changed")
     );
     let failed = connection
         .prepare_mpd_media(
-            candidate_page,
+            page, Some(candidate_page),
             candidate_source,
             candidate_video,
             Some(candidate_audio),
@@ -193,7 +193,7 @@ async fn mpd_catalog_replacement_rejects_stale_choices_without_retiring_active_r
         .await
         .unwrap_err();
     assert_eq!(failed.to_string(), "hosting_unavailable");
-    assert!(connection.media_source(candidate_page).is_none());
+    assert!(connection.scoped_source(page, Some(candidate_page)).is_none());
     assert_eq!(connection.media_source(page).unwrap().resource_id, source_a);
     let after_failure = connection
         .read_resource(page, source_a, source_a, Uuid::new_v4(), 0, 65536)?
@@ -206,7 +206,7 @@ async fn mpd_catalog_replacement_rejects_stale_choices_without_retiring_active_r
     );
     // The failed selection included audio. Retrying with video alone retires its omitted child.
     use piik_channel_native::watch::Reader;
-    let candidate_reader = connection.media.lock().unwrap()[&candidate_page]
+    let candidate_reader = connection.media.lock().unwrap()[&(page, Some(candidate_page))]
         .mpd
         .as_ref()
         .unwrap()
@@ -226,7 +226,7 @@ async fn mpd_catalog_replacement_rejects_stale_choices_without_retiring_active_r
     assert_eq!(failed_children.len(), 2);
     connection
         .prepare_mpd_media(
-            candidate_page,
+            page, Some(candidate_page),
             candidate_source,
             candidate_video,
             None,
@@ -247,7 +247,7 @@ async fn mpd_catalog_replacement_rejects_stale_choices_without_retiring_active_r
         assert_eq!(
             connection
                 .read_resource(
-                    candidate_page,
+                    page,
                     candidate_source,
                     *child,
                     Uuid::new_v4(),
@@ -262,7 +262,8 @@ async fn mpd_catalog_replacement_rejects_stale_choices_without_retiring_active_r
     }
     assert_eq!(connection.media_reads.available_permits(), MAX_MEDIA_READS);
     assert!(connection.resource_reads.lock().unwrap().is_empty());
-    connection.stop_media(candidate_page);
+    connection.cancel_candidate(page, candidate_page);
+    assert_eq!(connection.media_source(page).unwrap().resource_id, source_a);
     connection.stop_media(page);
     assert!(connection.media_source(page).is_none());
     assert!(
@@ -295,7 +296,7 @@ async fn mpd_inspection_cancel_uses_existing_read_owner_and_releases_pending_con
     ));
     let page = Uuid::new_v4();
     let read_id = Uuid::new_v4();
-    let work = connection.inspect_mpd(page, Uuid::new_v4(), read_id)?;
+    let work = connection.inspect_mpd(page, None, Uuid::new_v4(), read_id)?;
     let waiting = tokio::spawn(work);
     tokio::time::timeout(Duration::from_secs(1), async {
         while held.lock().unwrap().is_none() {
@@ -315,10 +316,7 @@ async fn mpd_inspection_cancel_uses_existing_read_owner_and_releases_pending_con
         .media
         .lock()
         .unwrap()
-        .get(&page)
-        .unwrap()
-        .inspection
-        .is_none());
+        .get(&(page, None)).is_none());
     Ok(())
 }
 
