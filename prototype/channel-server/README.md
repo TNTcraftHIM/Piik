@@ -863,8 +863,10 @@ and verifies bidirectional voice through a non-listening relay, DataChannel fail
 recovery and independent cross-room media leases. Generated captures
 replace only the system picker, not business state, routing or peer connections.
 The Rust runtime checks cover room storage, restart, failed writes and orderly
-shutdown. The Browser runner accepts `CHANNEL_EXECUTABLE` to test a separate build while an older
-preview remains running; otherwise they use the normal debug executable.
+shutdown. The Browser runner accepts `CHANNEL_EXECUTABLE` to select a Server
+artifact. On Windows it copies the default Cargo build into its temporary run
+directory before launch. When selecting a custom Cargo build through
+`CHANNEL_EXECUTABLE`, pass `--built-server` to use the same isolated copy.
 
 `--protocol` runs the WebSocket check with its own temporary service. Against
 an already running isolated instance, use

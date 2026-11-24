@@ -6,6 +6,7 @@ import { createServer } from "node:net";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, relative, resolve } from "node:path";
+import { acceptanceServerExecutable } from "./acceptance-server-executable.mjs";
 import { freeUdpPort } from "./acceptance-udp-port.mjs";
 
 async function freePort() {
@@ -17,7 +18,8 @@ async function freePort() {
 }
 const corePort = await freePort(), uiPort = await freePort();
 const origin = `http://127.0.0.1:${uiPort}`;
-const protocolOnly = process.argv.includes("--protocol");
+const args = process.argv.slice(2);
+const protocolOnly = args.includes("--protocol");
 const directory = await mkdtemp(join(tmpdir(), "piik-room-host-check-"));
 const env = { ...process.env, PIIK_CHANNEL_PORT: String(corePort), PIIK_CHANNEL_UI_PORT: String(uiPort),
   PIIK_CHANNEL_WEB_DIR: resolve(process.env.PIIK_CHANNEL_WEB_DIR ?? "build/channel-web"),
@@ -56,7 +58,8 @@ async function ready(process, url) {
   throw new Error(`Acceptance service did not become ready: ${process.output()}`);
 }
 try {
-  const core = start(resolve(process.env.CHANNEL_EXECUTABLE ?? `prototype/channel-server/target/debug/piik-channel-prototype${process.platform === "win32" ? ".exe" : ""}`), [],
+  env.CHANNEL_EXECUTABLE = await acceptanceServerExecutable(directory, args.includes("--built-server"));
+  const core = start(env.CHANNEL_EXECUTABLE, [],
     { PIIK_CHANNEL_UDP_PORT: String(await freeUdpPort()) });
   await ready(core, `http://127.0.0.1:${corePort}/healthz`);
   if (!protocolOnly) {
@@ -64,7 +67,7 @@ try {
     await ready(web, origin);
   }
   const check = spawn(process.execPath, protocolOnly ? ["--import", "tsx", "--test", "prototype/channel-server/check.mjs"]
-    : ["prototype/channel-server/browser-acceptance.mjs", ...process.argv.slice(2)], {
+    : ["prototype/channel-server/browser-acceptance.mjs", ...args.filter(arg => arg !== "--built-server")], {
     env, windowsHide: true, stdio: "inherit", timeout: 300_000,
   });
   children.push(check);

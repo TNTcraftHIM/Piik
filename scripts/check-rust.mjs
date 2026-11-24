@@ -47,5 +47,5 @@ env.PIIK_CHANNEL_WEB_DIR = env.PIIK_CHANNEL_WEB_DIR
   ? verifyCheckoutWeb(root, env.PIIK_CHANNEL_WEB_DIR)
   : buildChannelWeb(root, { version: "development", revision: "development", cargoTarget: target });
 run(process.execPath, ["node_modules/typescript/bin/tsc", "-p", "prototype/channel-browser/tsconfig.json"]);
-run(process.execPath, ["prototype/channel-server/run-browser-check.mjs", "--protocol"]);
+run(process.execPath, ["prototype/channel-server/run-browser-check.mjs", "--protocol", "--built-server"]);
 process.stdout.write("Rust, Web/WASM and protocol checks passed (capture disabled).\n");
