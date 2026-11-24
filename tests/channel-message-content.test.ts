@@ -25,6 +25,12 @@ test("HTML and images stay literal, unsafe links never become navigation and cod
   expect(html).toContain("Copy code");
 });
 
+test("a link with a missing host keeps its label without creating a dead navigation target", () => {
+  const html = render("[Room guide](https://)");
+  expect(html).toContain("Room guide");
+  expect(html).not.toContain("href=");
+});
+
 test("only confirmed UTF-16 ranges become identity mentions, while code and destinations remain literal", () => {
   const text = "😀 **@Bo** and @Fake\n\n`@Bo`\n\n```\n@Bo\n```\n\n[link](https://example.org/@Bo)";
   const starts = [...text.matchAll(/@Bo/g)].map(match => match.index);
