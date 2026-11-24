@@ -3,22 +3,14 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
-import { createSocket } from "node:dgram";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, relative, resolve } from "node:path";
+import { freeUdpPort } from "./acceptance-udp-port.mjs";
 
 async function freePort() {
   const socket = createServer();
   await new Promise(resolve => socket.listen(0, "127.0.0.1", resolve));
-  const port = socket.address().port;
-  await new Promise(resolve => socket.close(resolve));
-  return port;
-}
-// Windows reserves port ranges per protocol, so UDP allocates the Server's UDP port.
-async function freeUdpPort() {
-  const socket = createSocket("udp4");
-  await new Promise(resolve => socket.bind(0, "127.0.0.1", resolve));
   const port = socket.address().port;
   await new Promise(resolve => socket.close(resolve));
   return port;

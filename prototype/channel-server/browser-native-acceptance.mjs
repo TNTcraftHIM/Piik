@@ -8,6 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import { tsImport } from "tsx/esm/api";
+import { freeUdpPort } from "./acceptance-udp-port.mjs";
 import { nativePreviews } from "./browser-preview-acceptance.mjs";
 
 const { CHANNEL_PROTOCOL } = await tsImport("../../src/client/channel/protocol.ts", import.meta.url);
@@ -478,7 +479,8 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     const otherOwner = randomUUID();
     otherServer = spawn(resolve(process.env.CHANNEL_EXECUTABLE ??
       `prototype/channel-server/target/debug/piik-channel-prototype${process.platform === "win32" ? ".exe" : ""}`), [], {
-      env: { ...process.env, PIIK_CHANNEL_PORT: String(otherCorePort), PIIK_CHANNEL_WEB_ORIGIN: otherOrigin,
+      env: { ...process.env, PIIK_CHANNEL_PORT: String(otherCorePort), PIIK_CHANNEL_UDP_PORT: String(await freeUdpPort()),
+        PIIK_CHANNEL_WEB_ORIGIN: otherOrigin,
         PIIK_CHANNEL_WEB_DIR: assets, PIIK_CHANNEL_DATA_DIR: join(directory, "other-domain"),
         PIIK_CHANNEL_OWNER_KEY: otherOwner },
       windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
