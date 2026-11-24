@@ -149,7 +149,8 @@ the native sources supported by your device.
   **App-hosted room** continues while App runs; a **Browser-hosted room** is
   unavailable while its hosting page is closed. Switching rooms or collapsing
   sidebars keeps your other room activities running.
-- Closing the App launcher page leaves App running. Stopping App ends the
+- Closing the App launcher tab in a browser leaves App running. Closing the
+  Windows App's main window stops App. Stopping App ends the
   activities it runs and makes its hosted rooms unavailable across all its
   connected sites. Reopen App to host those rooms again.
 - Confirmed chat history belongs to the room's host. Refreshing reloads history

@@ -185,15 +185,11 @@ export function RemoteKeyboard({ input, close, mouseControl, inputSurface, touch
         {modifiersKeys.slice(0, 3).map(modifier)}{key(["␣", "Space"])}{key(["↵", "Enter"])}
       </div>
       {navigation}
-      <Tooltip kind="hint-key-combination" className="lr-remote-combine-hint" text={t("remote.combinationHelp")}>
-      <label className="lr-remote-combine-keys"><input type="checkbox" checked={combineKeys}
-        aria-label={t("remote.combinationMode")}
-        onChange={event => {
-          reset(); setCombineKeys(event.target.checked);
-          saveRoomPreferences({ combineKeys: event.target.checked });
+      <SwitchItem label={t("remote.combinationMode")} checked={combineKeys}
+        note={t("remote.combinationHelp")} hint="hint-key-combination" onChange={checked => {
+          reset(); setCombineKeys(checked);
+          saveRoomPreferences({ combineKeys: checked });
         }} />
-        {t("remote.combinationMode")}</label>
-      </Tooltip>
       <p>{t(combineKeys ? "remote.combinationHelp" : "remote.keyboardHelp")}</p>
     </> : <>
       <form className="lr-remote-text-entry" onSubmit={event => {

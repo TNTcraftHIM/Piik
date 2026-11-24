@@ -135,9 +135,7 @@
   .lr-remote-feedback > span { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 
-.lr-comic-tip-wrap.lr-remote-combine-hint { display: flex; justify-content: center; }
-.lr-remote-combine-keys { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 10px; font-size: 12px; cursor: pointer; }
-.lr-remote-combine-keys input { width: 16px; height: 16px; margin: 0; accent-color: var(--action); }
+.lr-remote-keyboard [role="tabpanel"] > .lr-switch-item { display: flex; justify-content: center; margin-top: 10px; }
 .lr-remote-mouse { --mouse-offset-x: 24px; --mouse-offset-y: 28px; --mouse-shell-width: 96px; --mouse-shell-height: 100px; position: absolute; inset: 0; z-index: 1; pointer-events: none; }
 .lr-remote-touch-cursor { position: absolute; left: var(--remote-x, 50%); top: var(--remote-y, 50%); z-index: 2; width: 22px; height: 28px; pointer-events: none; filter: drop-shadow(0 1px 2px var(--surface-shade)); }
 .lr-remote-touch-cursor path { fill: var(--piik-dark-ink); stroke: var(--piik-dark-wall); stroke-width: 1.5; stroke-linejoin: round; }

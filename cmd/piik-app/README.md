@@ -5,9 +5,8 @@ downloads and the online Demo still use 2.x; use the [2.6.0 App reference](https
 
 English · [简体中文](./README.zh-CN.md) · [Getting started](../../docs/guide/getting-started.md)
 
-Piik App opens its controls in your browser. It can run your group's site,
-host rooms while their pages are closed, and provide the picture and sound
-capture available on your device.
+Piik App can run your group's site, host rooms while their pages are closed,
+and provide the picture and sound capture available on your device.
 
 ## Run A Package
 
@@ -22,8 +21,11 @@ Use the matching platform package supplied for this test:
   coverage are in the [Native reference](../../prototype/channel-native/README.md)
   and [verification status](../../docs/verification-status.md).
 
-The launcher opens in the system browser. If it does not, open the **App launcher**
-address printed in the terminal. Keep the App running while using its services.
+Windows opens the launcher in the Piik window; Android, Linux and macOS use the
+system browser. On Windows, run `.\piik-app.exe --browser` to use the browser.
+Piik also uses it if the system WebView is unavailable. If the desktop browser
+does not open, open the **App launcher** address printed in the terminal.
+Keep the App running while using its services.
 For a blocked Mac build, follow the [Mac opening steps](../../docs/guide/troubleshooting.md#macos-blocks-first-launch).
 
 ## Modes
@@ -32,7 +34,7 @@ Choose **Local network** or **Public invite**, then **Open Piik**. This starts
 one site containing your rooms. Anyone opening its address can create a room;
 a private room needs its own invitation or password.
 
-The launcher's mode preference stays in this browser. An App-owned startup
+The launcher's mode preference stays in the current interface. An App-owned startup
 choice also saves the mode in App and starts it on the next run. Returning to
 an already running site keeps its current mode. To choose another mode, first
 clear **Open my site when App starts** if enabled, finish your activities, then
@@ -92,30 +94,32 @@ You can also use **Open a site** in the launcher to enter and approve an address
 Approval applies to that exact site address. Another address or browser may need
 its own connection step. Room admission and remote-control consent remain separate.
 
-In the approved-site list:
+Open **Bookmarks** in the launcher. Use **Open** beside a site to visit it, or
+**Manage** to change its separate settings:
 
-- Select a site to open it.
-- Star an external site to open its fixed address when App starts. Starring
-  the current App-owned site saves its Local network or Public invite mode;
+- **Bookmark** saves the site's address and optional name for later visits.
+- **Open this site when App starts** opens an external site's fixed address.
+  For the current App-owned site, it saves the Local network or Public invite mode;
   App starts that mode and opens its new ready address. The launcher names
   this choice **Open my site when App starts (mode)**. Clear it to return to
   the launcher on the next start; the current site keeps running.
-- Remove approval to stop that site's App hosting and control connections.
+- **Revoke App access** stops that site's App hosting and control connections.
   Saved rooms remain and other sites continue. Reapprove the same site and use
   the same domain account to reopen its rooms.
 
 ## Return To App Or Stop It
 
 From a connected page, **App → Open App page** returns to the local controls.
-On desktop, you can also reopen the launcher address in the terminal; on Android,
+With a terminal entry, you can also reopen the launcher address printed there; on Android,
 open Piik or its running notification. Returning to the launcher keeps the domain running.
 
 Closing a page stops its personal voice, shares, watches and control permission.
 App-hosted rooms continue; Browser-hosted rooms need their hosting page.
 Switching rooms within a page keeps its other activities running.
 
-To stop App, use **Ctrl+C** in its terminal. On macOS, the App's **Quit** action
-requests normal shutdown; on Android, use the running notification's stop action.
+To stop App on Windows, close its main window. With a terminal entry, use
+**Ctrl+C**. On macOS, use the App's **Quit** action; on Android, use the running
+notification's stop action.
 This ends App hosting, captures and the temporary public entry. Saved rooms and
 confirmed history remain for the next start. Do not delete data to close a room.
 
