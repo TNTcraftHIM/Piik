@@ -269,3 +269,45 @@ test("a lightweight room cancellation round-trips on the current channel protoco
   assert.equal((await owner.request({ type: "browse", roomId: existing.id, active: true })).type, "ack");
   assert.equal((await owner.request({ type: "leave" })).type, "ack");
 });
+
+test("Node text participant updates its own saved profile", { timeout: 20_000 }, async t => {
+  const { TextParticipant } = await import("../channel-browser/node/text-participant.ts");
+  const reader = await connect(t, { name: "Profile reader" });
+  assert.equal(reader.welcome.type, "welcome");
+  const bot = new TextParticipant({ url: endpoint, origin, name: "Initial name" });
+  t.after(() => bot.stop());
+  const avatar = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+  await bot.connect();
+  const { userId } = bot.summary();
+  const getProfile = async () => {
+    const reply = await reader.request({ type: "profiles", ids: [userId] });
+    assert.equal(reply.type, "profiles");
+    assert.equal(reply.profiles[0]?.id, userId);
+    return reply.profiles[0];
+  };
+  const initial = await getProfile();
+  assert.equal(initial.name, "Initial name");
+
+  await bot.setProfile({ name: "Piika", avatar });
+  const updated = await getProfile();
+  assert.equal(updated.name, "Piika");
+  assert.equal(updated.avatar, avatar);
+  assert.notEqual(updated.version, initial.version);
+
+  await bot.setProfile({ name: "Piika Support" });
+  const renamed = await getProfile();
+  assert.equal(renamed.name, "Piika Support");
+  assert.equal(renamed.avatar, avatar);
+  await assert.rejects(bot.setProfile({ name: "Rejected change", avatar: "invalid" }), /invalid_request/);
+  assert.deepEqual(await getProfile(), renamed);
+
+  await bot.reconnect();
+  assert.equal(bot.summary().userId, userId);
+  assert.deepEqual(await getProfile(), renamed);
+
+  await bot.setProfile({ avatar: null });
+  const cleared = await getProfile();
+  assert.equal(cleared.name, renamed.name);
+  assert.equal(cleared.avatar, null);
+  assert.notEqual(cleared.version, renamed.version);
+});

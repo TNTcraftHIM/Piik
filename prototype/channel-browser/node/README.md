@@ -87,6 +87,25 @@ try {
 }
 ```
 
+## Update the participant profile
+
+After connecting, call `setProfile()` to update your display name or avatar
+on this site. The constructor's `name` initializes a new identity.
+When restoring an existing credential, the site keeps the saved profile.
+
+```js
+import { readFile } from 'node:fs/promises';
+
+const png = await readFile('support-avatar.png');
+await bot.setProfile({ name: 'Piika', avatar: `data:image/png;base64,${png.toString('base64')}` });
+await bot.setProfile({ name: 'Piika Support' }); // Keep the avatar.
+await bot.setProfile({ avatar: null }); // Clear the avatar.
+```
+
+Omitted fields keep their saved values. The promise resolves after the site's
+acknowledgement and rejects if the site rejects the update.
+Avatars use PNG or WebP data URLs. The complete URL can contain at most 24 KiB.
+
 ## Events and commands
 
 - `ready` follows successful room Browse. With no `roomId`, `connect()`

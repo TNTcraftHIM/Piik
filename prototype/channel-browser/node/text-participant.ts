@@ -167,6 +167,11 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       allowServiceRelay: settings.allowServiceRelay }, 'room_created') as RoomSummary;
   }
 
+  async setProfile({ name, avatar }: { name?: string; avatar?: string | null }): Promise<void> {
+    this.checkSocket(this.socket);
+    await this.request({ type: 'set_profile', name, avatar });
+  }
+
   async browse(roomId: string): Promise<void> {
     const socket = this.socket;
     this.checkSocket(socket);
