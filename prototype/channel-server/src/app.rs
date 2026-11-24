@@ -557,7 +557,14 @@ pub async fn serve(
         }
     } else { None };
     let mut report: Option<BoxFuture<'static, Result<PathBuf>>> = None;
-    crate::web::serve_http(listener, router, async move {
+    let shutdown_app = app.clone();
+    let shutdown = async move {
+        shutdown_app.desktop.revoke();
+        shutdown_app.shutdown().await;
+    }
+    .shared();
+    let stop_shutdown = shutdown.clone();
+    let result = crate::web::serve_http(listener, router, async move {
         tokio::pin!(stop);
         let mut closing = app.closing.subscribe();
         let mut desktop_timer = None;
@@ -652,10 +659,11 @@ pub async fn serve(
             }
         }
         terminal.take();
-        app.desktop.revoke();
-        app.shutdown().await;
+        stop_shutdown.await;
     })
-    .await?;
+    .await;
+    shutdown.await;
+    result?;
     drop(owner);
     console.stopped();
     Ok(())
