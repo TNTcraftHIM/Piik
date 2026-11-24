@@ -34,7 +34,8 @@ export function windowsCaptureEnvironment(repositoryRoot, outputDirectory = join
   const port = JSON.parse(readFileSync(join(source, "ports", "libvpx", "vcpkg.json"), "utf8"));
   if (port.version !== WINDOWS_LIBVPX_VERSION || port["port-version"] !== 3) throw new Error("Windows libvpx port identity changed.");
   const vcpkg = join(source, "vcpkg.exe");
-  if (!existsSync(vcpkg)) run(process.env.ComSpec ?? "cmd.exe", ["/d", "/c", "bootstrap-vcpkg.bat", "-disableMetrics"]);
+  // By path: cmd does not search the current directory when NoDefaultCurrentDirectoryInExePath is set.
+  if (!existsSync(vcpkg)) run(process.env.ComSpec ?? "cmd.exe", ["/d", "/c", join(source, "bootstrap-vcpkg.bat"), "-disableMetrics"]);
   if (!existsSync(join(installed, "lib", "vpx.lib"))) {
     process.stderr.write("Building pinned standalone libvpx for Windows capture (two jobs).\n");
     run(vcpkg, ["install", `libvpx[realtime]:${TRIPLET}`, "--classic", "--disable-metrics"]);
