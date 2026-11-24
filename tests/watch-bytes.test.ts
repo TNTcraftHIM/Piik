@@ -170,3 +170,10 @@ test.each(["response", "source failure", "cancel"] as const)("HLS waits beyond t
     expect(vi.getTimerCount()).toBe(0);
   } finally { media.close(); bytes.reset(); }
 });
+test("initial projection failure releases the allocated delivery", async () => {
+  const { bytes, delivery } = setup();
+  vi.spyOn(delivery, "update").mockImplementationOnce(() => { throw new Error("projection"); });
+  await expect(bytes.read(roomId, activityId, source, source.resourceId, 0, 1, new AbortController().signal)).rejects.toThrow("projection");
+  expect(delivery.free).toHaveBeenCalledTimes(1);
+  bytes.reset();
+});

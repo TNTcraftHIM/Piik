@@ -35,7 +35,12 @@ export class WatchBytes {
       await module.initializeRuntime();
       lifetime.signal.throwIfAborted();
       const runtime = { module, delivery: new module.WatchDelivery(sessionId), lifetime };
-      this.effects(runtime, runtime.delivery.update(JSON.stringify(this.plans), JSON.stringify(this.roomPeers)));
+      try {
+        this.effects(runtime, runtime.delivery.update(JSON.stringify(this.plans), JSON.stringify(this.roomPeers)));
+      } catch (error) {
+        runtime.delivery.free();
+        throw error;
+      }
       return runtime;
     });
     // A failed load is not a runtime; the next demand loads again.
