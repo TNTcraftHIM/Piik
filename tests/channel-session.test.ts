@@ -2628,6 +2628,7 @@ test("a reopened source list survives the retired reader's deadline", async () =
     const second = app.sent.at(-1)!;
     expect(second.id).not.toBe(first.id);
     secondReader.abort();
+    expect(await Promise.race([next, vi.advanceTimersByTimeAsync(0)])).toMatchObject({ name: 'AbortError' });
     app.receive({ id: first.id, error: "request_cancelled" });
     const catalog = { sources: [], codecs: ["h264"], softwareEncodingCodecs: [], videoAdaptation: false,
       processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false };

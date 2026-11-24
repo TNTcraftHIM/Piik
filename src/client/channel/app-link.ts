@@ -563,19 +563,18 @@ export class ChannelApp {
     }
     const pending = this.pendingSources;
     pending.readers++;
-    const abort = () => {
-      if (--pending.readers === 0 && this.pendingSources === pending) {
-        this.pendingSources = undefined;
-        pending.reading.abort(new Error("request_cancelled"));
-      }
-    };
-    signal?.addEventListener("abort", abort, { once: true });
-    try {
-      return await pending.result;
-    } finally {
-      signal?.removeEventListener("abort", abort);
-      signal?.throwIfAborted();
-    }
+    if (!signal) return pending.result;
+    return new Promise<NativeCaptureSources>((resolve, reject) => {
+      const abort = () => {
+        if (--pending.readers === 0 && this.pendingSources === pending) {
+          this.pendingSources = undefined;
+          pending.reading.abort(new Error("request_cancelled"));
+        }
+        reject(signal.reason);
+      };
+      signal.addEventListener("abort", abort, { once: true });
+      pending.result.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+    });
   }
 
   private async readSources(reading: AbortController): Promise<NativeCaptureSources> {
