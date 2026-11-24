@@ -1,3 +1,4 @@
+import { isDocumentActive } from "../ui/document-active";
 import { useEffect, useEffectEvent, useState, useSyncExternalStore } from "react";
 import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preferences";
 import { panelWindowAPI, useSurfaceDocument } from "../ui/panel-window";
@@ -18,7 +19,7 @@ function ownsKeyboard(target: EventTarget): boolean {
 
 function focusedInputOwnsKeyboard() {
   return [document, panelWindowAPI(window)?.window?.document].some(owner =>
-    owner?.hasFocus() && owner.activeElement && ownsKeyboard(owner.activeElement));
+    owner && isDocumentActive(owner) && owner.activeElement && ownsKeyboard(owner.activeElement));
 }
 
 // RegisterHotKey intercepts the chord before the focused editor or remote picture sees it.
@@ -26,10 +27,12 @@ function observeInputFocus(changed: () => void) {
   const api = panelWindowAPI(window);
   let panel: Window | null = null;
   const observe = (view: Window) => {
+    view.addEventListener("piik-window-activity", changed);
     view.addEventListener("focus", changed, true);
     view.addEventListener("blur", changed, true);
   };
   const forget = (view: Window) => {
+    view.removeEventListener("piik-window-activity", changed);
     view.removeEventListener("focus", changed, true);
     view.removeEventListener("blur", changed, true);
   };

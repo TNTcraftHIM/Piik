@@ -26,11 +26,6 @@ the feedback period; they do not delay that delivery.
   cannot carry video must report waiting or rejection, rather than silently
   disabling the input. Preserve required selected delivery and SDK congestion
   control; verify local encoding and opaque Server relays separately.
-- [ ] **Windows foreground and read intent.** A different foreground window
-  can leave WebView reporting document focus. In beta.53 this suppresses message
-  cues and advances the read cursor while the App is covered. Project the native
-  window's activation through the shared document-activity owner; verify both
-  consumers with a real foreground-window transition.
 - [ ] **Audio device acceptance.** Verify physical output selection, unplugging
   and recovery across shared players. Keep failures actionable without silently
   changing the selected device. Room microphones, source audio inputs and

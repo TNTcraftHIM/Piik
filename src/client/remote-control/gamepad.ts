@@ -1,3 +1,4 @@
+import { isDocumentActive } from "../ui/document-active";
 import type { RemoteInputEvent } from "./input-session";
 import type { RemoteGamepadReport } from "./protocol";
 
@@ -36,6 +37,7 @@ export class RemoteGamepad {
     private readonly owner: Window = window,
     private readonly page: Document = document,
     private readonly physicalInput = true) {
+    owner.addEventListener("piik-window-activity", this.visibility);
     owner.addEventListener("blur", this.pause);
     owner.addEventListener("focus", this.resume);
     if (physicalInput) owner.addEventListener("gamepaddisconnected", this.disconnected);
@@ -57,7 +59,7 @@ export class RemoteGamepad {
   }
 
   private setStick(index: 0 | 2, x: number, y: number): void {
-    if (this.disposed || this.connected || this.page.hidden || !this.page.hasFocus()) return;
+    if (this.disposed || this.connected || !isDocumentActive(this.page)) return;
     this.touchAxes[index] = x;
     this.touchAxes[index + 1] = y;
     if (this.touchAxes.every(axis => axis === 0)) {
@@ -78,10 +80,10 @@ export class RemoteGamepad {
     this.input({ type: "gamepad-reset" }); this.setConnected(false);
   };
   private readonly resume = (): void => {
-    if (!this.disposed && !this.page.hidden && this.page.hasFocus() && this.frame === null)
+    if (!this.disposed && isDocumentActive(this.page) && this.frame === null)
       this.frame = this.owner.requestAnimationFrame(this.poll);
   };
-  private readonly visibility = (): void => { if (this.page.hidden) this.pause(); else this.resume(); };
+  private readonly visibility = (): void => { if (!isDocumentActive(this.page)) this.pause(); else this.resume(); };
   private readonly disconnected = (event: GamepadEvent): void => {
     if (event.gamepad.index === this.index) {
       this.pause(); this.input({ type: "gamepad-stop" }); this.index = null; this.resume();
@@ -89,7 +91,7 @@ export class RemoteGamepad {
   };
   private readonly poll = (time: number): void => {
     this.frame = null;
-    if (this.disposed || this.page.hidden || !this.page.hasFocus()) { this.pause(); return; }
+    if (this.disposed || !isDocumentActive(this.page)) { this.pause(); return; }
     let pad: Gamepad | undefined;
     if (this.physicalInput) {
       try {
@@ -116,6 +118,7 @@ export class RemoteGamepad {
   dispose(): void {
     this.disposed = true; this.pause();
     this.input({ type: "gamepad-stop" }); this.index = null;
+    this.owner.removeEventListener("piik-window-activity", this.visibility);
     this.owner.removeEventListener("blur", this.pause);
     this.owner.removeEventListener("focus", this.resume);
     if (this.physicalInput) this.owner.removeEventListener("gamepaddisconnected", this.disconnected);

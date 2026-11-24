@@ -56,7 +56,7 @@ zip = { version = "=9.2.1", default-features = false, features = ["deflate-flate
 wry = { version = "=0.57.2", default-features = false, features = ["os-webview"], optional = true }
 tao = { version = "=0.37.2", default-features = false, features = ["rwh_06"], optional = true }
 webview2-com = { version = "=0.39.1", optional = true }
-windows = { version = "=0.62.2", optional = true, features = ["Win32_Storage_FileSystem"] }
+windows = { version = "=0.62.2", optional = true, features = ["Win32_Storage_FileSystem", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 windows-core = { version = "=0.62.2", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]

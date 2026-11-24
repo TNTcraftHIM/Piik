@@ -186,6 +186,13 @@ The [App reference](../../prototype/channel-server/README.md#local-app-link) own
 the window entry and explicit Browser alternative. Integrated-package acceptance
 remains separate from the earlier proof above.
 
+The Windows shell projects foreground activation for each main or conversation
+window into that window's document. WebView document focus alone does not prove
+that the native window is active. The shared document-activity predicate combines
+this fact with visibility and document focus for read markers, message feedback,
+keyboard ownership and attended remote input. Ordinary Browsers use their own
+document focus; media visibility remains separate from foreground activity.
+
 Client site navigation follows the [accepted single-site model](#client-site-navigation).
 Bookmarks, device approval and startup preferences remain separate, as documented
 in the [App reference](../../prototype/channel-server/README.md#local-app-link).

@@ -223,9 +223,18 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
       // A visible detached keyboard is still an attended input surface.
       if (owners.every(owner => owner.hidden || owner.defaultView?.closed)) release();
     };
-    owners.forEach(owner => owner.addEventListener("visibilitychange", hidden));
+    const activity = (event: Event) => {
+      if ((event.currentTarget as Window).piikNativeActive === false) reset();
+    };
+    owners.forEach(owner => {
+      owner.addEventListener("visibilitychange", hidden);
+      owner.defaultView?.addEventListener("piik-window-activity", activity);
+    });
     hidden();
-    return () => owners.forEach(owner => owner.removeEventListener("visibilitychange", hidden));
+    return () => owners.forEach(owner => {
+      owner.removeEventListener("visibilitychange", hidden);
+      owner.defaultView?.removeEventListener("piik-window-activity", activity);
+    });
   }, [controlled, keyboardDocument, release, reset]);
   useEffect(() => {
     if (!controlled) return;

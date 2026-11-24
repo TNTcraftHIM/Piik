@@ -1,3 +1,4 @@
+import { isDocumentActive } from "../../ui/document-active";
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
@@ -260,7 +261,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
   function readVisible() {
     const node = log.current, doc = node?.ownerDocument;
     if (!hidden && !unreadLookup.current && !unreadLookupBusy && !jump?.id && roomId && available && !loadingHistory && history?.atLatest && node?.getClientRects().length
-      && doc?.visibilityState === "visible" && doc.hasFocus() && !doc.querySelector("dialog:modal") && doc.defaultView?.getComputedStyle(node).visibility === "visible"
+      && doc && isDocumentActive(doc) && !doc.querySelector("dialog:modal") && doc.defaultView?.getComputedStyle(node).visibility === "visible"
       && (!doc.fullscreenElement || doc.fullscreenElement.contains(node)) && node.scrollHeight - node.scrollTop - node.clientHeight < 4) {
       const seq = messages.at(-1)?.seq ?? history.emptyThrough;
       if (seq !== undefined) onRead?.(roomId, seq);
@@ -272,12 +273,14 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
     doc?.addEventListener("fullscreenchange", readVisible);
     doc?.addEventListener("visibilitychange", readVisible);
     doc?.addEventListener("close", readVisible, true);
+    view?.addEventListener("piik-window-activity", readVisible);
     view?.addEventListener("focus", readVisible, true);
     return () => {
       if (frame !== undefined) view?.cancelAnimationFrame(frame);
       doc?.removeEventListener("fullscreenchange", readVisible);
       doc?.removeEventListener("visibilitychange", readVisible);
       doc?.removeEventListener("close", readVisible, true);
+      view?.removeEventListener("piik-window-activity", readVisible);
       view?.removeEventListener("focus", readVisible, true);
     };
   }, [conversationScope, messages, hidden, available, loadingHistory, history?.atLatest, history?.emptyThrough, lastMessageSeq, unreadLookupBusy, jump?.id, surfaceDocument, onRead]);

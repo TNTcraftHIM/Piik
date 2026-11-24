@@ -34,6 +34,29 @@ test("releasing one virtual gamepad stick preserves the other stick", () => {
   pad.dispose();
 });
 
+test("native deactivation clears held virtual input while DOM focus stays true", () => {
+  const clock = animationClock();
+  const owner = Object.assign(new EventTarget(), clock, { navigator: {}, piikNativeActive: true }) as unknown as Window;
+  const page = Object.assign(new EventTarget(), { defaultView: owner, hidden: false, hasFocus: () => true }) as unknown as Document;
+  const events: RemoteInputEvent[] = [];
+  const pad = new RemoteGamepad(event => events.push(event), () => {}, owner, page);
+  pad.setLeftStick(1, 0);
+  clock.advance(100);
+  owner.piikNativeActive = false;
+  owner.dispatchEvent(new Event("piik-window-activity"));
+  expect(events.map(event => event.type)).toEqual(["gamepad", "gamepad-reset"]);
+  pad.setRightStick(0, 1);
+  clock.advance(120);
+  owner.piikNativeActive = true;
+  owner.dispatchEvent(new Event("piik-window-activity"));
+  clock.advance(140);
+  expect(events).toHaveLength(2);
+  pad.setRightStick(0, 1);
+  clock.advance(160);
+  expect(events.at(-1)).toMatchObject({ type: "gamepad", gamepad: { leftX: 0, rightY: 32767 } });
+  pad.dispose();
+});
+
 test("mouse movement uses elapsed time and stops on neutral", () => {
   function moveForOneSecond(interval: number) {
     const clock = animationClock();

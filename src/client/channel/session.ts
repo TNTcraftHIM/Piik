@@ -1,3 +1,4 @@
+import { isDocumentActive } from "../ui/document-active";
 import type { NativeCaptureSelection } from "../native/capture-selection";
 import { RoomCreationInterrupted } from "./room-creation";
 import { YouTubeMedia } from "./watch-youtube-media";
@@ -420,10 +421,10 @@ export class ChannelSession {
     const self = this.view.self?.id;
     if (this.closed || !self || !this.view.feedbackSound.enabled) return;
     const popout = this.conversationPopout;
-    const popoutFocused = popout?.roomId === roomId && !popout.document.hidden && popout.document.hasFocus();
+    const popoutFocused = popout?.roomId === roomId && isDocumentActive(popout.document);
     if (event.payload.kind === "chat") {
       if (event.messageSeq !== undefined && event.messageSeq <= (this.view.readByRoom[roomId] ?? 0)) return;
-      if (!popoutFocused && (document.hidden || !document.hasFocus()) && event.sender.peerId !== self) this.feedbackAudio.play("message");
+      if (!popoutFocused && !isDocumentActive(document) && event.sender.peerId !== self) this.feedbackAudio.play("message");
       return;
     }
     if ((document.hidden && !popoutFocused) || !isThrow(event.payload.reaction)) return;

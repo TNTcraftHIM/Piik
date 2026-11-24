@@ -1,4 +1,5 @@
 //! Windows owns presentation; the existing HTTP App owns all room and capture work.
+mod activity;
 mod console;
 mod caption;
 mod reveal;
@@ -161,6 +162,7 @@ enum ServiceEvent {
     Navigate(String, bool),
     OverlayAvailable(String, u64),
     VoiceOverlay(popup::Overlay, String, u64),
+    Activity(WindowId),
     ContentLoading(WindowId, String),
     Mount(watch_mount::Request, String, u64),
     Finished,
@@ -457,6 +459,7 @@ impl PopupWindow {
                 }
             })
             .with_initialization_script(SYSTEM_PRESENTATION)
+            .with_initialization_script_for_main_only("window.piikNativeActive = false;", true)
             .with_initialization_script(download::SCRIPT)
             .with_document_title_changed_handler(move |title| { let _ = title_events.send_event(ServiceEvent::PopupTitle(id, title)); })
             .with_on_page_load_handler(move |event, url| {
@@ -480,6 +483,7 @@ impl PopupWindow {
         download::install(&webview, Some(Rc::new(move |url, status| {
             let _ = download_events.send_event(ServiceEvent::Download(id, url, status));
         })), None)?;
+        activity::install(&window, events.clone())?;
         let caption = caption::Caption::new(&window, &webview, events.clone(), controls, true)?;
         caption.title("Piik");
         caption.layout(&window, &webview, controls);
@@ -597,6 +601,7 @@ impl MainWindow {
             .with_initialization_script(CAPABILITY)
             .with_initialization_script(reveal::SCRIPT)
             .with_initialization_script_for_main_only(watch_mount::SCRIPT, true)
+            .with_initialization_script_for_main_only("window.piikNativeActive = false;", true)
             .with_initialization_script(download::SCRIPT)
             .with_on_page_load_handler(move |event, url| {
                 // Wry maps Started to top-level ContentLoading, after cancellation is resolved.
@@ -672,6 +677,7 @@ impl MainWindow {
             )?;
         }
 
+        activity::install(&window, events.clone())?;
         let caption = caption::Caption::new(&window, &content, events, controls, false)?;
         let result = Self {
             receipts, document, origins,
@@ -842,6 +848,13 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             }
             Event::UserEvent(ServiceEvent::Mount(request, source, generation)) => {
                 if let Some(main) = &window { request.apply(main, &mut pages, &source, generation); }
+            }
+            Event::UserEvent(ServiceEvent::Activity(id)) => {
+                if let Some(main) = window.as_ref().filter(|main| main.window.id() == id) {
+                    activity::sync(&main.window, &main.content);
+                } else if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == id) {
+                    activity::sync(&child.window, &child.content);
+                }
             }
             Event::UserEvent(ServiceEvent::ContentLoading(id, url)) => {
                 if prompt.as_ref().is_some_and(Prompt::media_is_stale) {
@@ -1052,6 +1065,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             }
             Event::UserEvent(ServiceEvent::OverlayAvailable(address, generation)) => {
                 if let Some(main) = &window {
+                    activity::sync(&main.window, &main.content);
                     if generation == main.document.get() && main.origins.borrow().overlay_document(&address)
                         && main.content.url().ok().is_some_and(|url| main.origins.borrow().overlay_document(&url))
                     {
@@ -1095,6 +1109,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             }
             Event::UserEvent(ServiceEvent::PopupLoaded(id)) => {
                 if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == id) {
+                    activity::sync(&child.window, &child.content);
                     child.follow_main_appearance(launcher_url.as_ref(), &theme, language);
                 }
             }
