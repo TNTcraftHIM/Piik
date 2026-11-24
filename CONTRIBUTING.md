@@ -56,6 +56,9 @@ do not maintain a separate thanks list or manufacture empty credit commits.
 This is the default for an ordinary scoped implementation or bug fix.
 
 1. Start a new phase from clean, current canonical `main`; continue scoped work in that phase's existing worktree. Preserve unrelated user work.
+   Temporary source preparation must stop on failure. Before checkout or edits,
+   verify the intended directory and Git root, then use that explicit working
+   directory; a failed directory change must not redirect work into the caller's checkout.
 2. Inspect the affected code, current owner, and reachable evidence. Use the
    repository's existing tools, commands and workflow; introduce another only
    when the requested result needs it. Research primary sources when the issue
