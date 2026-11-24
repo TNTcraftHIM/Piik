@@ -17,14 +17,15 @@ button:focus-visible { outline: 2px solid var(--action); outline-offset: 3px; }
 .c3-settings-dialog-heading .lr-btn { flex: none; }
 .permission-brand { display: flex; align-items: center; gap: 8px; font-size: 16px; letter-spacing: -.03em; }
 .permission-brand > svg { width: 28px; height: 28px; }
-.permission-body { display: flex; flex-direction: column; flex: 1; gap: 16px; overflow: visible; }
-.permission-request { display: grid; grid-template-columns: 36px minmax(0, 1fr); align-content: start; align-items: start; gap: 16px; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+.permission-body { display: flex; flex-direction: column; flex: 1; gap: 16px; }
+.permission-request { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; flex: none; }
+.permission-request > div { flex: 1 1 10em; min-width: 0; overflow-wrap: anywhere; }
 .permission-request h2 { margin: 0 0 8px; font-size: 22px; line-height: 1.35; }
 .permission-origin { overflow-wrap: anywhere; user-select: text; }
 .permission-scope { margin: 6px 0 0; font-size: 13px; }
-.permission-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; flex: none; }
+.permission-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; flex: none; margin-top: auto; }
 .permission-actions .lr-btn { min-width: 96px; }
-.permission-glyph { width: 36px; height: 36px; margin-top: 2px; }
+.permission-glyph { flex: none; width: 36px; height: 36px; margin-top: 2px; }
 .permission-glyph, #close svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 #close svg { width: 18px; height: 18px; }
 </style>
@@ -43,7 +44,7 @@ button:focus-visible { outline: 2px solid var(--action); outline-offset: 3px; }
       </div>
     </div>
     <footer class="permission-actions">
-      <button id="deny" class="lr-btn is-compact" type="button" autofocus></button>
+      <button id="deny" class="lr-btn is-compact" type="button"></button>
       <button id="allow" class="lr-btn is-primary is-compact" type="button"></button>
     </footer>
   </div>
@@ -86,7 +87,7 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape') { event.preventDefault(); answer(false); }
 });
 window.updateAppearance(request.theme, request.language);
-deny.focus();
+deny.focus({ preventScroll: true });
 window.ipc.postMessage('ready');
 </script>
 </html>
