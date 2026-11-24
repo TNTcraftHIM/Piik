@@ -1030,7 +1030,7 @@ or animation rules inside an individual scene.
 | Meaning | Token / code tone | Panel and symbol |
 | --- | --- | --- |
 | Explanation, preference, ordinary action, intentional closure or unknown state | Neutral ink / `off` | Neutral panels; illustrate the action/object without a success stamp |
-| Confirmed completion or delivered media | Green `--live` / `live` | Neutral before, green result; check or completed object |
+| Confirmed completion or delivered media | Green `--live-ink` for text/status icons, `--live` for artwork / `live` | Neutral before, green result; check or completed object |
 | Still usable with a limitation, unavailable optional capability, or intentional media pause | Amber `--warn` / `warn` | Neutral before, amber result; limit, pause, lock or unavailable mark on the affected part |
 | Confirmed failed or blocked action | Red `--danger` / `bad` | Neutral before, red result; cross, broken path or other explicit failure mark |
 | Work in progress or awaiting an action/frame | Blue `--busy` / `busy` | Neutral before, blue current/result panel; connection, progress or play symbol |

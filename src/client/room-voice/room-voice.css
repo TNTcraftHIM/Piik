@@ -2,7 +2,7 @@
 .lr-voice-settings { display: grid; align-content: start; gap: 16px; }
 .lr-voice-panel-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
 .lr-voice-member-mic { --control-icon-size: 20px; position: relative; display: inline-flex; flex: none; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: default; transition: color var(--motion-feedback) ease; }
-.lr-voice-member-mic[data-speaking] { color: var(--live); }
+.lr-voice-member-mic[data-speaking] { color: var(--live-ink); }
 .lr-voice-hint { display: flex; align-items: flex-start; gap: 6px; margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .lr-voice-hint > svg, .lr-voice-control-error > svg { flex: none; margin-top: 2px; }
 .lr-voice-member { display: flex; align-items: center; gap: 10px; padding-block: 12px; border-bottom: 1px solid var(--control-edge); }

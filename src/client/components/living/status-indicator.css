@@ -15,7 +15,7 @@ button.lr-status-indicator {
   background: transparent;
   cursor: pointer;
 }
-.lr-status-indicator[data-tone="live"] { --status-colour: var(--live); }
+.lr-status-indicator[data-tone="live"] { --status-colour: var(--live-ink); }
 .lr-status-indicator[data-tone="busy"] { --status-colour: var(--busy); }
 .lr-status-indicator[data-tone="warn"] { --status-colour: var(--warn); }
 .lr-status-indicator[data-tone="bad"] { --status-colour: var(--danger); }
