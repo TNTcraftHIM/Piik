@@ -22,6 +22,13 @@ For a bug, trace where the incorrect fact or action first arises and check
 sibling callers of that owner. Correct that boundary instead of adding a guard
 to each symptom. A shared guard is useful only if it restores the real contract.
 
+Before adding a flag, option or extra check to an existing owner, read that
+owner's recent fixes (`git log -n 20 -- <file>`). If the same transition was
+repaired before, or the new parameter only tells the owner who is calling, the
+owner holds more than one lifetime. Give that lifetime
+[its own owner](../../../docs/standards/engineering.md#implementation-rules)
+instead of guarding it again.
+
 For UI, inspect the existing interaction and visual primitives before adding a
 control, panel, status or animation. A reused component must still have the
 right meaning, placement and lifecycle; reuse alone does not establish design
