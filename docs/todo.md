@@ -17,9 +17,7 @@ own behavior; research and Git/PRs own evidence and completed history.
   to identify the failing transition before changing capture or service lifetime.
 - [ ] **Release mirror platform integration.** Verify a supported way to create
   the platform's Release tag or trigger its immediate synchronization during
-  publication. Complete the v2.8.0 attachment uploads from the
-  [original build](https://github.com/TNTcraftHIM/Piik/actions/runs/44881655913)
-  after the manual tag synchronization. [Mirror operations](./operations/github.md#atomgit-download-mirror) owns setup.
+  publication. [Mirror operations](./operations/github.md#atomgit-download-mirror) owns setup.
 - [ ] **Public invitation timeout feedback (#557).** Verify the App timeout
   title and fixed public address guide link in the maintenance candidate, then
   confirm both in the published build.
