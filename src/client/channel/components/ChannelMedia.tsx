@@ -122,7 +122,6 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const livePosition = live?.active ? live.syncPosition : null;
   const thumbnail = presentation === "thumbnail";
   const showTimeline = !embedded && !thumbnail && seekAvailable;
-  const seekOverlay = showTimeline ? " lr-media-overlay" : "";
   const [seekPreview, setSeekPreview] = useState<number | null>(null);
   const draggingSeek = useRef(false);
   const position = Math.max(seekStart, Math.min(seekPreview ?? media.position, seekEnd || 1));
@@ -252,8 +251,8 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       </>}
     </div></div>
       : player.blocked && <div className="c3-mini-message"><Btn icon={localSeek ? "refresh" : "play"} title={resumeLabel} cap={resumeLabel} onClick={onResume} /></div>}
-    {hasControls && <div ref={controls} className={`c3-mini-controls c3-watch-controls lr-media-toolbar lr-media-controls${showTimeline ? "" : " lr-media-overlay"}`} role="group" aria-label={t("playback.controls")}>
-      {showTimeline && <div className={`c3-watch-timeline${owned ? "" : " lr-media-overlay"}`}>
+    {hasControls && <div ref={controls} className={`c3-mini-controls c3-watch-controls lr-media-toolbar lr-media-controls lr-media-overlay`} role="group" aria-label={t("playback.controls")}>
+      {showTimeline && <div className="c3-watch-timeline">
         {owned ? <input type="range" min={seekStart} max={seekEnd} step="0.1" value={position}
           aria-label={t("watch.seek")} disabled={disabled}
           aria-valuetext={timeLabel} onPointerDown={() => { draggingSeek.current = true; }}
@@ -267,18 +266,18 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
           : <progress max={seekEnd - seekStart} value={position - seekStart} aria-label={t("watch.following")} />}
       </div>}
       <div className="c3-watch-actions">
-        {!embedded && <div className={`c3-watch-shared${seekOverlay}`} role="group" aria-label={t(owned ? "watch.sharedControls" : "watch.following")}>
+        {!embedded && <div className="c3-watch-shared" role="group" aria-label={t(owned ? "watch.sharedControls" : "watch.following")}>
           {owned && <Btn icon={ownerPaused ? "play" : "pause"} quiet size="dense"
             title={ownerPaused ? "watch.play" : "watch.pause"} disabled={disabled} onClick={() => onPlayback({ paused: !ownerPaused })} />}
           {!thumbnail && <div className="c3-watch-position" data-seeking={seekPreview !== null || undefined}>
             {ended && <span className="c3-watch-status" role="status">{t("watch.ended")}</span>}
             {live?.active && !seekAvailable && <span className="c3-watch-status">{t("watch.live")}</span>}
-            {(!live || seekAvailable) && <span className="c3-watch-time" title={timeLabel}>{timeLabel}</span>}
+            {(!live || seekAvailable) && <span className="c3-watch-time" title={timeLabel}>{live ? timeLabel : <><strong>{formatMediaTime(position)}</strong>{` / ${formatMediaTime(media.duration || Number.NaN)}`}</>}</span>}
           </div>}
           {owned && livePosition !== null && <Btn icon="arrowRight" quiet size="dense" title="watch.goLive" textTooltip
             disabled={disabled} onClick={() => onPlayback({ position: livePosition, paused: false })} />}
         </div>}
-        {localControls && <div className={`c3-watch-local${seekOverlay}`}>
+        {localControls && <div className="c3-watch-local">
           {localVolume &&
             <Btn icon={silent ? "speakerOff" : "speaker"} quiet size="dense" title={silent ? "playback.unmute" : "playback.mute"}
               onClick={() => { const video = player.video; if (!video) return; if (video.volume === 0) video.volume = 1; video.muted = !silent; }} />}

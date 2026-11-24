@@ -467,7 +467,7 @@ test("accepted history resolves offline author, reply and mention IDs through th
 });
 
 test("confirmed room events own personal feedback across text, attachments and throw targets", async () => {
-  const document = Object.assign(new EventTarget(), { hidden: true });
+  const document = Object.assign(new EventTarget(), { hidden: true, hasFocus: (): boolean => true });
   vi.stubGlobal("document", document);
   const play = vi.spyOn(FeedbackAudio.prototype, "play").mockImplementation(() => {});
   const configure = vi.spyOn(FeedbackAudio.prototype, "configure").mockImplementation(() => {});
@@ -517,43 +517,48 @@ test("confirmed room events own personal feedback across text, attachments and t
     expect(play).toHaveBeenCalledTimes(3);
 
     document.hidden = false;
+    document.hasFocus = () => false;
     peer.live(fresh(94));
+    expect(play).toHaveBeenLastCalledWith("message");
+    expect(play).toHaveBeenCalledTimes(4);
+    document.hasFocus = () => true;
+    peer.live(fresh(95));
     const reaction = (id: string, senderUserId: string, target: import("../src/client/channel/protocol").ReactionTarget, reaction = "tomato") => {
       peer.reply(peer.interactions[0], { type: "reaction", nonce: 1, snapshot: null,
         event: { id, senderUserId, target, reaction, occurredAt: Date.now() } });
     };
     reaction("self-person", "self-user-1234", { type: "person", userId: "friend-user-1234" });
-    expect(play.mock.calls.length, "self-person").toBe(4);
+    expect(play.mock.calls.length, "self-person").toBe(5);
     reaction("self-person", "self-user-1234", { type: "person", userId: "friend-user-1234" });
     reaction("to-person", "friend-user-1234", { type: "person", userId: "self-user-1234" });
-    expect(play.mock.calls.length, "to-person").toBe(5);
+    expect(play.mock.calls.length, "to-person").toBe(6);
     reaction("to-message", "friend-user-1234", { type: "message", messageSeq: 90, messageId: message(90).id }, "poop");
-    expect(play.mock.calls.length, "to-message").toBe(6);
+    expect(play.mock.calls.length, "to-message").toBe(7);
     reaction("to-screen", "friend-user-1234", { type: "publication", publicationId: "own-screen" });
-    expect(play.mock.calls.length, "to-screen").toBe(7);
+    expect(play.mock.calls.length, "to-screen").toBe(8);
     reaction("self-message", "self-user-1234", { type: "message", messageSeq: 91, messageId: message(91).id });
-    expect(play.mock.calls.length, "self-message").toBe(8);
+    expect(play.mock.calls.length, "self-message").toBe(9);
     reaction("self-screen", "self-user-1234", { type: "publication", publicationId: "own-screen" }, "poop");
-    expect(play.mock.calls.length, "self-screen").toBe(9);
-    expect(play.mock.calls.map(([cue]) => cue)).toEqual(["message", "message", "message", ...Array(6).fill("throw")]);
+    expect(play.mock.calls.length, "self-screen").toBe(10);
+    expect(play.mock.calls.map(([cue]) => cue)).toEqual(["message", "message", "message", "message", ...Array(6).fill("throw")]);
     reaction("emoji", "friend-user-1234", { type: "person", userId: "self-user-1234" }, "heart");
     reaction("bystander", "friend-user-1234", { type: "person", userId: "bystander" });
     reaction("other-message", "friend-user-1234", { type: "message", messageSeq: 91, messageId: message(91).id });
     reaction("unknown-screen", "friend-user-1234", { type: "publication", publicationId: "other-screen" });
     document.hidden = true;
     reaction("hidden-throw", "friend-user-1234", { type: "person", userId: "self-user-1234" });
-    expect(play).toHaveBeenCalledTimes(9);
+    expect(play).toHaveBeenCalledTimes(10);
     session.setConversationPopout("first", popout);
     reaction("popout-throw", "friend-user-1234", { type: "person", userId: "self-user-1234" });
-    expect(play).toHaveBeenCalledTimes(10);
+    expect(play).toHaveBeenCalledTimes(11);
     expect(play).toHaveBeenLastCalledWith("throw");
     session.setFeedbackSound({ enabled: false });
     peer.live(fresh(93));
-    expect(play).toHaveBeenCalledTimes(10);
+    expect(play).toHaveBeenCalledTimes(11);
   } finally { session.close(); }
   expect(close).toHaveBeenCalledOnce();
   peer.live(fresh(94));
-  expect(play).toHaveBeenCalledTimes(10);
+  expect(play).toHaveBeenCalledTimes(11);
 });
 
 function stubFeedbackAudio() {
@@ -12517,6 +12522,35 @@ test('closing forwarding settings during direct preparation releases the reader 
     await cancelled;
     expect(stop).toHaveBeenCalledOnce();
     expect(dispose).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
+test.each(["before activation", "before publication", "after publication"])("a native page source change %s withdraws the retired grant", async timing => {
+  let active: unknown = null;
+  const { session, page, socket } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: active }));
+  const media = new AppPageMedia(page);
+  await media.opening;
+  const player = new WatchPlayer("first", true, media, () => {});
+  const owner = session as unknown as { watchPlayers: Map<string, WatchPlayer>; activateWatchOwner(id: string, player: WatchPlayer): void };
+  owner.watchPlayers.set("owned", player);
+  const state = session.getSnapshot().state!;
+  const activity = {
+    id: "owned", roomId: "first", viewerSessionIds: [], sessionId: "endpoint", userId: "self",
+    source: { kind: "website", url: page.url }, playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 },
+    byteSource: { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" },
+  };
+  try {
+    const publish = () => socket.receive({ type: "state", state: { ...state, watchActivities: [activity] } });
+    const revoke = () => { active = null; page.receive({ type: "page_media_changed", pageId: page.id }); };
+    active = activity.byteSource;
+    if (timing !== "before publication") publish();
+    if (timing === "before activation") revoke();
+    owner.activateWatchOwner("owned", player);
+    if (timing !== "before activation") revoke();
+    if (timing === "before publication") publish();
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "set_watch_byte_source", id: "owned", byteSource: null }));
+    socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.at(-1)!.requestId, result: { type: "done" } });
+    expect(owner.watchPlayers.get("owned")).toBe(player);
   } finally { session.close(); }
 });
 

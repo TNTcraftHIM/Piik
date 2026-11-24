@@ -435,13 +435,13 @@ export class ChannelSession {
     const self = this.view.self?.id;
     if (this.closed || !self || !this.view.feedbackSound.enabled) return;
     const popout = this.conversationPopout;
-    const foreground = !document.hidden || (popout?.roomId === roomId && !popout.document.hidden && popout.document.hasFocus());
+    const popoutFocused = popout?.roomId === roomId && !popout.document.hidden && popout.document.hasFocus();
     if (event.payload.kind === "chat") {
       if (event.messageSeq !== undefined && event.messageSeq <= (this.view.readByRoom[roomId] ?? 0)) return;
-      if (!foreground && event.sender.peerId !== self) this.feedbackAudio.play("message");
+      if (!popoutFocused && (document.hidden || !document.hasFocus()) && event.sender.peerId !== self) this.feedbackAudio.play("message");
       return;
     }
-    if (!foreground || !isThrow(event.payload.reaction)) return;
+    if ((document.hidden && !popoutFocused) || !isThrow(event.payload.reaction)) return;
     const target = event.contentTarget;
     const recipient = target ? "messageSeq" in target
       ? this.view.messagesByRoom[roomId]?.find(message => message.seq === target.messageSeq && message.id === target.messageId)?.userId
@@ -3156,6 +3156,24 @@ export class ChannelSession {
     });
   };
   private activateWatchOwner(id: string, player: WatchPlayer): void {
+    const page = player.media.page;
+    if (page instanceof AppPage) {
+      const reconcile = () => {
+        if (this.watchPlayers.get(id) === player && this.view.connection === "connected")
+          void this.reconcileWatchBytes(id, player).catch(() => {});
+      };
+      const release = page.listenMediaSources(reconcile);
+      let previous: WatchByteSource | undefined;
+      const publicationChanged = () => {
+        const declared = this.view.state?.watchActivities.find(activity => activity.id === id)?.byteSource;
+        if (previous === declared || (previous && sameWatchByteSource(previous, declared))) return;
+        previous = declared;
+        if (declared) reconcile();
+      };
+      const unsubscribe = this.subscribe(publicationChanged);
+      player.signal.addEventListener("abort", () => { release(); unsubscribe(); }, { once: true });
+      publicationChanged();
+    }
     player.activate(async playback => {
       if (this.watchPlayers.get(id) === player && this.view.connection === "connected")
         await this.request({ type: "update_watch", roomId: player.roomId, id, playback }, undefined, player.roomId);

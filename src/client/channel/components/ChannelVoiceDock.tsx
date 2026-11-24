@@ -18,7 +18,7 @@ import { VoiceOverlay } from "./voice-overlay";
 import { useVoiceLevels } from "../../room-voice/use-voice-levels";
 import { resolveVoiceDockControls } from "../voice-dock-controls";
 import { useVoiceShortcuts } from "../use-voice-shortcuts";
-import { voiceShortcutAria } from "../voice-shortcut-binding";
+import { voiceShortcutAria, voiceShortcutLabel } from "../voice-shortcut-binding";
 
 /** One persistent control surface for this endpoint's independently joined rooms. */
 export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
@@ -41,6 +41,7 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
   const roomName = nameOfRoom(roomId);
   const multipleRooms = joined.length > 1;
   const { muted, deafened } = activity;
+  const { microphone, listening } = shortcuts.bindings;
   const available = channel.connection === "connected" && !!state.channel.rooms.find(room => room.id === roomId)?.available;
   const appearances = overlay?.target ? roomVoicePeople(state, roomId, levels) : null;
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
@@ -93,11 +94,12 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
     <div className="c3-voice-controls">
       <AudioVolumeMenu volume={channel.voiceInput.volume} onVolume={channel.setInputVolume} label="host.microphone.volume">
         <VoiceMicrophoneButton active={!muted} level={levels.get(channel.sessionId ?? "")} disabled={microphoneDisabled}
-          cancelPending={microphonePending} quiet keyShortcuts={voiceShortcutAria(shortcuts.bindings.microphone)} onClick={() => toggle("microphone")} />
+          cancelPending={microphonePending} quiet keyShortcuts={microphoneDisabled ? undefined : voiceShortcutAria(microphone)}
+          shortcutLabel={!microphoneDisabled && microphone ? voiceShortcutLabel(microphone, shortcuts.mac) : undefined} onClick={() => toggle("microphone")} />
       </AudioVolumeMenu>
       <AudioVolumeMenu volume={channel.listeningVolume} onVolume={channel.setListeningVolume} label="voice.listeningVolume">
         <VoiceListeningButton deafened={deafened} quiet
-          keyShortcuts={voiceShortcutAria(shortcuts.bindings.listening)} onClick={() => toggle("listening")} />
+          keyShortcuts={voiceShortcutAria(listening)} shortcutLabel={listening ? voiceShortcutLabel(listening, shortcuts.mac) : undefined} onClick={() => toggle("listening")} />
       </AudioVolumeMenu>
       {overlay && <>
         <Btn icon={overlay.mode === "editing" ? "check" : "pip"} size="compact" quiet textTooltip

@@ -30,6 +30,7 @@ export function ChannelVoiceSettings({ channel, roomId, available, shortcuts }: 
     </span>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={t("voice.settings")} className="lr-anchored-card c3-voice-settings"
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
+      <ChannelVoiceShortcutSettings open={open} {...shortcuts} />
       <strong>{t("voice.settings.sharedMicrophone")}</strong>
       {open && <MicrophoneSettings host={false} enabled={enabled} disabled={!available || busy}
         loadDevices={channel.microphones} deviceId={channel.voiceInput.deviceId} onDevice={deviceId => configure({ deviceId })}
@@ -43,7 +44,6 @@ export function ChannelVoiceSettings({ channel, roomId, available, shortcuts }: 
       {room?.canManage && <AudioBitrateControl purpose="voice" value={room.voiceBitrate} max={MAX_AUDIO_SEND_BITRATE}
         disabled={!available || channel.pending.has(`room:${roomId}`)}
         onChange={bitrate => { void channel.setRoomVoiceBitrate(roomId, bitrate).catch(() => {}); }} />}
-      <ChannelVoiceShortcutSettings open={open} {...shortcuts} />
     </div>
   </>;
 }

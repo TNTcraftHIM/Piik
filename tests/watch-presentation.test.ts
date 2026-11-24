@@ -33,6 +33,10 @@ function withWatchDocument(render: () => string): string {
   try { return render(); } finally { vi.unstubAllGlobals(); }
 }
 
+function watchTimeReadout(html: string): string | undefined {
+  return html.match(/<span class="c3-watch-time"[^>]*>(.*?)<\/span>/)?.[1].replace(/<[^>]+>/g, "");
+}
+
 describe("Webpage watch presentation", () => {
   it("reserves a native slot only for a full stage with a local page and shell bridge", () => {
     const render = (pageId?: string, nativeStage = true, selected = true) => renderToStaticMarkup(createElement(ChannelWatchVideo, {
@@ -121,7 +125,7 @@ describe("Webpage watch presentation", () => {
     const owner = render(true), viewer = render(false);
     expect(owner).toContain('aria-label="Playback progress for everyone"');
     expect(owner).toContain('aria-valuetext="0:12 / 2:00"');
-    expect(viewer).toContain('>0:12 / 2:00<');
+    expect(watchTimeReadout(viewer)).toBe("0:12 / 2:00");
     expect(owner).toMatch(/popover="auto"[\s\S]*<select[^>]*aria-label="Playback speed for everyone"/);
     expect(viewer).toMatch(/<progress[^>]*max="120"[^>]*value="12"/);
     expect(viewer).not.toContain('type="range"');
@@ -367,7 +371,7 @@ describe("Webpage watch presentation", () => {
     expect(html).toContain(`role="group" aria-label="${t("en", "playback.controls")}"`);
     expect(html.includes('aria-label="Playback for everyone"')).toBe(owned);
     expect(html.includes('aria-label="Playback progress for everyone"')).toBe(owned);
-    expect(html).toContain('>0:42 / 4:00<');
+    expect(watchTimeReadout(html)).toBe("0:42 / 4:00");
     if (owned) expect(html).toMatch(/<input[^>]*type="range"[^>]*max="240"/);
     else {
       expect(html).toMatch(/<progress[^>]*max="240"[^>]*value="42"/);

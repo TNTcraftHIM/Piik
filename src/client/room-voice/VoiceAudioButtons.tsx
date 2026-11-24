@@ -2,7 +2,7 @@ import type { ComponentProps } from "react";
 import { Btn } from "../components/living/primitives";
 import { MicrophoneLevel } from "./MicrophoneLevel";
 
-type ButtonState = Pick<ComponentProps<typeof Btn>, "disabled" | "busy" | "quiet" | "hint" | "hintText" | "keyShortcuts" | "onClick">;
+type ButtonState = Pick<ComponentProps<typeof Btn>, "disabled" | "busy" | "quiet" | "hint" | "hintText" | "keyShortcuts" | "shortcutLabel" | "onClick">;
 
 export function VoiceMicrophoneButton({ active, level, cancelPending, ...button }: ButtonState & { active: boolean; level?: number; cancelPending?: boolean }) {
   return <Btn {...button} icon={active ? "microphone" : "microphoneOff"}
@@ -13,5 +13,5 @@ export function VoiceMicrophoneButton({ active, level, cancelPending, ...button 
 
 export function VoiceListeningButton({ deafened, ...button }: ButtonState & { deafened: boolean }) {
   return <Btn {...button} icon={deafened ? "headphonesOff" : "headphones"} title="voice.listening"
-    size="compact" draw="voice-listening" pressed={!deafened} />;
+    textTooltip={Boolean(button.shortcutLabel)} size="compact" draw="voice-listening" pressed={!deafened} />;
 }

@@ -57,6 +57,7 @@ export function Btn({
   expanded,
   hasPopup,
   keyShortcuts,
+  shortcutLabel,
   controls,
   popoverTarget,
   onClick,
@@ -89,6 +90,7 @@ export function Btn({
   controls?: string;
   popoverTarget?: string;
   keyShortcuts?: string;
+  shortcutLabel?: string;
   onClick?: () => void;
   type?: "button" | "submit";
   /** Shared hint comic with its localized caption. */
@@ -153,7 +155,7 @@ export function Btn({
   );
   return hint ? (
     <Tooltip kind={hint} disabled={expanded} tone={hintTone} motion={hintMotion} place={hintPlace} align={hintAlign} text={hintText ? t(hintText, hintVars) : label}>{button}</Tooltip>
-  ) : textTooltip ? <Tooltip text={label} disabled={expanded}>{button}</Tooltip> : (
+  ) : textTooltip ? <Tooltip text={shortcutLabel ? label + " · " + shortcutLabel : label} disabled={expanded}>{button}</Tooltip> : (
     button
   );
 }
