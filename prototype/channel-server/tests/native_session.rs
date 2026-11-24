@@ -1042,7 +1042,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let (status, discovery) = app_http(address, "GET", "/connect-discovery", None, None).await;
     assert_eq!(status, 200);
     assert_eq!(discovery["service"], "piik-channel-app");
-    assert_eq!(discovery["protocol"], 24);
+    assert_eq!(discovery["protocol"], 25);
     assert_eq!(
         discovery["domainProtocol"],
         piik_channel_core::wire::CHANNEL_PROTOCOL

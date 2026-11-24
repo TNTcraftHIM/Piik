@@ -11904,7 +11904,9 @@ test.each(['original-page', 'choose-source'] as const)('selecting a child webpag
     } else {
       expect(session.watchPage('first')).toMatchObject({ url: 'https://video.test/video/child', watchSources: { candidateId, choices: [], indexed: [] } });
       expect(commit).not.toHaveBeenCalled();
-      await session.selectWatchBrowserSource('first', null);
+      const fallback = session.selectWatchBrowserSource('first', null);
+      confirm(ready);
+      await fallback;
     }
     expect(commit.mock.calls[0]?.[1]).toEqual({ kind: 'website', url: 'https://video.test/video/child' });
   } finally { session.close(); }
@@ -12117,7 +12119,7 @@ test.each([true, false])('a rejected webpage candidate keeps the live page with 
     expect(request.mock.calls.some(([command]) => command.type === 'page_media_sources')).toBe(false);
 
     await expect(session.selectWatchPage('first', secondId)).resolves.toBe(false);
-    expect(select).toHaveBeenLastCalledWith(secondId);
+    expect(select).toHaveBeenLastCalledWith(secondId, false);
     expect(session.getSnapshot().error).toBeNull();
     expect(session.watchPage('first')?.watchSources).toMatchObject({ candidateId: secondId, choices: [], indexed: [] });
     expect(dispose).not.toHaveBeenCalled();
@@ -14994,5 +14996,29 @@ test.each(["ack", "error"] as const)("a retired publish %s cannot admit or remov
     await expect(b).resolves.toBe(id);
     socket.receive({ type: "state", state: structuredClone(session.getSnapshot().state!) });
     expect(second.stop).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test.each(['direct', 'fallback'] as const)('late original-page confirmation after cancellation preserves another room in %s mode', async mode => {
+  const { session, page, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
+  const disposeNext = vi.fn();
+  const next = new appLink.AppPage(crypto.randomUUID(), 'https://video.test/new', async () => ({}), disposeNext, () => {});
+  const app = (session as unknown as { app: appLink.ChannelApp }).app;
+  try {
+    if (mode === 'fallback') await session.selectWatchPage('first', candidateId);
+    let confirm!: () => void;
+    vi.spyOn(page, 'select').mockImplementationOnce(() => new Promise<void>(resolve => { confirm = resolve; }));
+    const pending = mode === 'direct' ? session.selectWatchPage('first', candidateId, undefined, false, 'original-page')
+      : session.selectWatchBrowserSource('first', null, false);
+    await session.cancelScreenSelection('first');
+    session.browse('second');
+    vi.mocked(app.preparePage).mockResolvedValueOnce(next);
+    await session.prepareWatchPage('second', next.url);
+    confirm();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(commit).not.toHaveBeenCalled();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(disposeNext).not.toHaveBeenCalled();
+    expect(session.watchPage('second')?.url).toBe(next.url);
   } finally { session.close(); }
 });

@@ -20,7 +20,7 @@ import { debugEvent, debugOperation } from "../lib/debug";
 import { nativeVoiceShortcutEventSchema, nativeVoiceShortcutsReportSchema, type NativeVoiceShortcutsReport } from "../native/wire";
 import type { VoiceShortcutAction, VoiceShortcuts } from "./voice-shortcut-binding";
 
-export const APP_PROTOCOL = 24;
+export const APP_PROTOCOL = 25;
 const APP_REQUEST_BYTES = 256 * 1024;
 const SOURCE_LIST_TIMEOUT_MS = 8_000;
 const SHORTCUT_ACTION_MAX_AGE_MS = 1_000;
@@ -120,8 +120,8 @@ export class AppPage implements AppPagePort {
   }
   async prepare(): Promise<void> { z.object({ pageId: z.literal(this.id) }).strict().parse(await this.command("page_prepare", { url: this.url })); }
   selectedCandidateId?: string;
-  async select(candidateId: string): Promise<void> {
-    nativePageStateSchema.parse(await this.command("page_select", { candidateId }));
+  async select(candidateId: string, originalPage = false): Promise<void> {
+    nativePageStateSchema.parse(await this.command("page_select", { candidateId, ...(originalPage && { originalPage }) }));
     this.selectedCandidateId = candidateId;
     this.changed();
   }

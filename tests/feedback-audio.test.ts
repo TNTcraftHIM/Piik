@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { FeedbackAudio } from "../src/client/channel/feedback-audio";
+import { validateCustomFeedbackClip } from "../src/client/channel/feedback-clip";
 
 class OscillatorBoundary {
   type = "sine";
@@ -38,6 +39,12 @@ class AudioBoundary {
 }
 
 afterEach(() => { AudioBoundary.instances = []; vi.unstubAllGlobals(); });
+
+test("an unreadable feedback sound reports that the selected file could not be opened", async () => {
+  const file = new File(["audio"], "clip.wav");
+  Object.defineProperty(file, "arrayBuffer", { value: async () => { throw new DOMException("", "NotReadableError"); } });
+  await expect(validateCustomFeedbackClip(file)).rejects.toThrow("feedback_clip_invalid");
+});
 
 test("feedback requires activation, bounds active sound and releases mute/close resources", async () => {
   const document = new EventTarget();

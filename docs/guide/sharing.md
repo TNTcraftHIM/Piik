@@ -58,7 +58,7 @@ In a 3.0 test room, select **Start sharing → Browser → Watch together** and 
 
 Direct links can point to video files, supported HLS streams or static DASH (`.mpd`) streams without DRM.
 
-**Sync video on its webpage** syncs playback of the selected video only. To show the rest of the page, choose **Browser → Share a screen** and share the browser tab.
+**Sync video on its webpage** syncs playback of the selected video only. If the website reloads media in that player, synchronization continues. Forwarding the replacement requires selecting its source again. To show the rest of the page, choose **Browser → Share a screen** and share the browser tab.
 
 If you're already watching a shared webpage video in the Windows App, open **Playback settings → Open webpage and select video** to use the website's player. The current video keeps playing while you choose. Select the player to switch, or close the chooser to keep watching in Piik. When the source supports direct playback, use **Playback settings → Play directly from website** to return to Piik's player. If a player preview opens, press Play in it to switch.
 
@@ -129,6 +129,7 @@ Other applications or mixers can still carry that sound. If your voice remains
 audible after muting the Piik microphone, turn off source sound to check whether
 it comes through a mixer's playback or monitoring. Share just the application's
 audio or use a different playback device when exclusion is unavailable.
+If viewers hear their own voices, [check where the echo comes from](./troubleshooting.md#echo-or-unwanted-application-audio).
 
 ## Playback controls
 

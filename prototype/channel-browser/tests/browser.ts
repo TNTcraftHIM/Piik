@@ -556,6 +556,17 @@ window.runBrowserRoomCheck = async () => {
 
     const controller = new AbortController();
     const originalAdd = IDBObjectStore.prototype.add;
+    // A duplicate primary key lets IndexedDB itself abort the transaction.
+    IDBObjectStore.prototype.add = function (...args) {
+      const request = originalAdd.apply(this, args);
+      if (this.name === "messages") originalAdd.apply(this, args);
+      return request;
+    };
+    try {
+      const replies = await host.dispatchPeer(peerPacket({ type: "chat", text: "Failed write", nonce: "cancelled", attachments: [] }), Date.now());
+      check(replies.length === 1 && replies[0].record.type === "error" && replies[0].record.code === "storage_failed",
+        "a database write failure returns the stable storage error without confirmation");
+    } finally { IDBObjectStore.prototype.add = originalAdd; }
     let insertSucceeded = false;
     IDBObjectStore.prototype.add = function (...args) {
       const request = originalAdd.apply(this, args);
@@ -931,7 +942,7 @@ window.runBrowserRoomCheck = async () => {
     });
     for (const nonce of ["closed", "closed-again"]) {
       const replies = await host.dispatchPeer(peerPacket({ type: "chat", text: "Closed", nonce, attachments: [] }), Date.now());
-      check(replies[0]?.record.type === "error" && replies[0].record.code.includes("transaction"), "closed DB aborts shared pending peer operation");
+      check(replies[0]?.record.type === "error" && replies[0].record.code === "storage_failed", "closed DB aborts shared pending peer operation");
     }
     return { passed: true, actualWasm: true, actualIndexedDB: true, serializedOrder: true, originalConfirmation: true,
       reopen: true, abortAfterInsertSuccess: insertSucceeded, abortConfirmed: false, unavailableSourceRejected: true, missingAttachmentRejected: true,

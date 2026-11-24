@@ -97,6 +97,8 @@ pub enum Operation {
     PageSelect {
         page_id: Uuid,
         candidate_id: Uuid,
+        #[serde(default)]
+        original_page: bool,
     },
     PageRead {
         page_id: Uuid,

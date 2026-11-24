@@ -51,6 +51,10 @@ type ConversationWork = { type: "history"; value: HistoryRequest } | { type: "im
 type ConversationResult = { type: "history"; value: HistoryResult } | { type: "immediate"; value: ConversationReply["record"] };
 
 const failure = (error: unknown): Error => error instanceof Error ? error : new Error(String(error));
+function roomErrorCode(error: unknown): string {
+  if (error instanceof DOMException) return error.name === "AbortError" ? error.name : "storage_failed";
+  return failure(error).message || "storage_failed";
+}
 function read<T>(request: IDBRequest<T>, receive: (value: T) => void, abort: (error: Error) => void): void {
   request.onsuccess = () => { try { receive(request.result); } catch (error) { abort(failure(error)); } };
 }
@@ -216,12 +220,10 @@ export class BrowserRoomHost implements HostedRoom {
   static async storedRoomIds(databaseName: string): Promise<string[]> {
     const db = await openDatabase(databaseName);
     try {
-      return await new Promise((resolve, reject) => {
-        const tx = db.transaction("rooms", "readonly");
-        const request = tx.objectStore("rooms").getAllKeys();
-        tx.oncomplete = () => resolve(request.result.filter((key): key is string => typeof key === "string"));
-        tx.onabort = () => reject(tx.error ?? new Error("storage_failed"));
-      });
+      let request: IDBRequest<IDBValidKey[]>;
+      return await transaction(db, ["rooms"], "readonly", tx => {
+        request = tx.objectStore("rooms").getAllKeys();
+      }, () => request.result.filter((key): key is string => typeof key === "string"));
     } finally { db.close(); }
   }
 
@@ -382,8 +384,7 @@ export class BrowserRoomHost implements HostedRoom {
         }, () => {}, signal);
         return JSON.parse(this.room.finish(result && JSON.stringify(result)));
       } catch (error) {
-        const cause = failure(error);
-        return JSON.parse(this.room.abort(cause.name === "AbortError" ? cause.name : cause.message));
+        return JSON.parse(this.room.abort(roomErrorCode(error)));
       }
     });
   }
@@ -403,8 +404,7 @@ export class BrowserRoomHost implements HostedRoom {
           result = { Ok: work.Ok };
         } else result = { Ok: { type: "history", value: await this.executeHistory(work.Ok.value, null, signal) } };
       } catch (error) {
-        const cause = failure(error);
-        result = { Err: cause.name === "AbortError" ? cause.name : cause.message };
+        result = { Err: roomErrorCode(error) };
       }
       const outcome: { replies: ConversationReply[]; projectionUpdate: unknown } = JSON.parse(
         this.room.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)));

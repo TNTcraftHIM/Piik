@@ -2760,7 +2760,7 @@ export class ChannelSession {
       const candidate = page?.candidates.find(value => value.id === candidateId);
       if (!selection || !page || !candidate) throw new Error("watch_page_unavailable");
       selection.discovery?.unsubscribe();
-      await page.select(candidateId);
+      await page.select(candidateId, mode === "original-page");
       selection.controller.signal.throwIfAborted();
       const selected = page.candidates.find(value => value.id === candidateId);
       if (!selected) throw new Error("watch_page_unavailable");
@@ -2800,7 +2800,11 @@ export class ChannelSession {
     const choice = choiceId === null ? undefined : watchSources.choices.find(value => value.id === choiceId);
     if (choiceId !== null && !choice) throw new Error("watch_page_unavailable");
     if (choice) await this.commitPortableWatch(roomId, page, selection, choice.displayURL, choice.format);
-    else await this.commitWatch(roomId, { kind: "website", url: page.url }, new AppPageMedia(page), selection);
+    else {
+      await page.select(watchSources.candidateId, true);
+      selection.controller.signal.throwIfAborted();
+      await this.commitWatch(roomId, { kind: "website", url: page.url }, new AppPageMedia(page), selection);
+    }
   }, reportError);
   private async commitPortableWatch(roomId: string, page: AppPage, selection: SourceSelection, url: string, format?: WatchFormat): Promise<void> {
     const media = await preparePortableWatchMedia(page, url, selection.controller.signal, format);
@@ -2961,7 +2965,7 @@ export class ChannelSession {
       const page = media?.page;
       if (!player || !(page instanceof AppPage) || !page.candidates.some(value => value.id === candidateId)) throw new Error("watch_page_unavailable");
       try {
-        await page.select(candidateId);
+        await page.select(candidateId, true);
         await player.ready();
         await this.joinWatchAndSyncClock(id, player, "direct");
         const activity = this.view.state?.watchActivities.find(activity => activity.id === id);

@@ -61,6 +61,7 @@ enum PageEvent {
     Sample {
         media: Uuid,
         resource: String,
+        revision: u64,
         event: MediaEvent,
     },
     Reply {
@@ -182,6 +183,7 @@ struct Page {
     events: page::Events,
     candidates: BTreeMap<Uuid, Candidate>,
     selected: Option<Uuid>,
+    original_page: bool,
     pending: BTreeMap<Uuid, Pending>,
 }
 impl Page {
@@ -219,7 +221,7 @@ impl Page {
         }
         let request = Uuid::new_v4();
         let command = json!({"bridge":"piik-page-command","kind":if patch.is_some(){"patch"}else{"read"},
-            "frame":candidate.frame,"media":candidate.source.media,"revision":candidate.source.revision,"request":request,"patch":patch});
+            "originalPage":self.original_page,"frame":candidate.frame,"media":candidate.source.media,"revision":candidate.source.revision,"request":request,"patch":patch});
         match self
             .views
             .borrow()
@@ -660,7 +662,7 @@ impl Pages {
                     .ok_or_else(|| "page_candidate_unavailable".into());
                 let _ = reply.send(result);
             }
-            Operation::PageSelect { candidate_id, .. } => {
+            Operation::PageSelect { candidate_id, original_page, .. } => {
                 if !page.candidates.contains_key(&candidate_id) {
                     let _ = reply.send(Err("page_candidate_unavailable".into()));
                     return;
@@ -682,6 +684,7 @@ impl Pages {
                         .clear_selection();
                 }
                 page.selected = Some(candidate_id);
+                page.original_page = original_page;
                 page.candidates();
                 page.request(true, None, reply);
             }
@@ -769,6 +772,7 @@ impl Pages {
             events: outgoing,
             candidates: BTreeMap::new(),
             selected: None,
+            original_page: false,
             pending: BTreeMap::new(),
         })
     }
@@ -845,6 +849,18 @@ impl Pages {
                 if candidates.len() > 64 || removed.len() > 64 {
                     return;
                 }
+                if let Some(selected) = page.selected.and_then(|id| page.candidates.get_mut(&id))
+                    .filter(|c| c.view == view_key && c.frame == message.frame)
+                {
+                    if let Some(next) = candidates.iter().find(|c| c.media == selected.source.media && c.resource.len() <= 4096) {
+                        if !selected.source.observe_resource(next.revision, &next.resource, page.original_page, || {
+                            page.views.borrow()[&view_key].media.borrow_mut().clear_selection();
+                        }) {
+                            self.retire_page(key, "selected_candidate_changed");
+                            return;
+                        }
+                    }
+                }
                 if !update_candidates(
                     &mut page.candidates,
                     page.selected,
@@ -862,6 +878,7 @@ impl Pages {
             PageEvent::Sample {
                 media,
                 resource,
+                revision,
                 event,
             } => {
                 let Some(candidate) = page
@@ -876,9 +893,9 @@ impl Pages {
                 if resource.len() > 4096 {
                     return;
                 }
-                if candidate.source.resource.is_empty() {
-                    candidate.source.resource = resource;
-                } else if candidate.source.resource != resource {
+                if !candidate.source.observe_resource(revision, &resource, page.original_page, || {
+                    page.views.borrow()[&view_key].media.borrow_mut().clear_selection();
+                }) {
                     self.retire_page(key, "selected_resource_changed");
                     return;
                 }
@@ -933,6 +950,24 @@ impl Pages {
             }
             PageEvent::Document => {}
         }
+    }
+}
+
+impl ReportedCandidate {
+    fn observe_resource(&mut self, revision: u64, resource: &str, original_page: bool, revoke: impl FnOnce()) -> bool {
+        if self.revision == revision && self.resource == resource {
+            return true;
+        }
+        if self.revision != revision || !self.resource.is_empty() {
+            if !original_page {
+                return false;
+            }
+            revoke();
+        }
+        self.revision = revision;
+        self.resource.clear();
+        self.resource.push_str(resource);
+        true
     }
 }
 
@@ -1417,6 +1452,17 @@ mod candidate_tests {
             &[media[0]]
         ));
         assert!(!candidates.contains_key(&selected)); // false takes the existing Page drop/reader-retirement path.
+    }
+    #[test]
+    fn repeated_resource_observations_revoke_once() {
+        let mut source = report(Uuid::new_v4(), "A");
+        let mut revoked = 0;
+        for (revision, resource) in [(1, ""), (1, ""), (1, "B"), (1, "B")] {
+            assert!(source.observe_resource(revision, resource, true, || revoked += 1));
+        }
+        assert_eq!(revoked, 1);
+        assert_eq!(source.resource, "B");
+        assert!(!source.observe_resource(2, "C", false, || panic!("provider retires its page")));
     }
     #[test]
     fn same_media_resource_replacement_retires_selected_but_sibling_update_does_not() {

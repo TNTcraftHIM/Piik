@@ -23,9 +23,12 @@ export function checkFeedbackDuration(buffer: AudioBuffer): void {
 /** Validate local bytes before the preference owner replaces either sound slot. */
 export async function validateCustomFeedbackClip(file: File): Promise<FeedbackClip> {
   if (!file.size || file.size > FEEDBACK_CLIP_MAX_BYTES) throw new Error("feedback_clip_too_large");
-  const bytes = await file.arrayBuffer();
+  let bytes: ArrayBuffer;
   let decoded: AudioBuffer;
-  try { decoded = await new OfflineAudioContext(1, 1, 48_000).decodeAudioData(bytes.slice(0)); }
+  try {
+    bytes = await file.arrayBuffer();
+    decoded = await new OfflineAudioContext(1, 1, 48_000).decodeAudioData(bytes.slice(0));
+  }
   catch { throw new Error("feedback_clip_invalid"); }
   checkFeedbackDuration(decoded);
   return { name: file.name.slice(0, 128) || "Audio", data: btoa(Array.from(new Uint8Array(bytes), byte => String.fromCharCode(byte)).join("")) };

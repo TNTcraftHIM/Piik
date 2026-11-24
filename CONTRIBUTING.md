@@ -171,6 +171,11 @@ it does not publish changes or approve a dependency update.
 
 ## Verification Entrypoints
 
+For user activation, focus and history checks, operate the visible control with
+browser pointer, touch or keyboard input. Exercise Back through the tested
+browser or device's control, following its
+[history navigation behavior](https://chromium.googlesource.com/chromium/src/+/main/docs/history_manipulation_intervention.md).
+
 Every retained test must be collected by a documented verification entry point.
 Confirm runner inclusion when adding or moving a test; a file's presence alone
 does not establish coverage.

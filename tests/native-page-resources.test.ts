@@ -98,6 +98,16 @@ test("same element changes its resource without changing identity, and removing 
   expect(JSON.parse(bridge.bodies.at(-1)!)).toMatchObject({ candidates: [], removed: [id] });
 });
 
+test("original page seeks its selected element after a Blob resource replacement", async () => {
+  const bridge = candidateBridge(), video = ownedVideo(0);
+  bridge.setVideos([video]);
+  const { frame, candidates: [{ media, revision }] } = JSON.parse(bridge.bodies.at(-1)!);
+  video.currentSrc = "blob:https://owned.test/replacement";
+  await bridge.message({ data: { bridge: "piik-page-command", frame, media, revision, originalPage: true,
+    kind: "patch", request: webcrypto.randomUUID(), patch: { position: 12 } } });
+  expect(video.currentTime).toBe(12);
+});
+
 test.each(["currentSrc", "src", "source"])("rebuilding the sole player of the same resource keeps its commands on the replacement (%s)", async declaration => {
   const bridge = candidateBridge(), first = ownedVideo(0);
   const next = { ...ownedVideo(0), currentSrc: declaration === "currentSrc" ? first.currentSrc : "", src: first.currentSrc,

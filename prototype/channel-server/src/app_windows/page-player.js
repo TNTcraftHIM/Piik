@@ -66,7 +66,7 @@
   const resource = entry => {
     const value = identity(entry.video) ?? '';
     if (value !== entry.identity) {
-      // The first source binds an empty selection. Later replacements retire its commands.
+      // The first source binds an empty selection. Later replacements retire resource-bound commands.
       if (entry.identity) entry.revision++;
       entry.identity = value;
       // Native correlates ordinary URLs with responses. Keep objects and oversized URLs local.
@@ -124,7 +124,7 @@
       for (const event of ['loadedmetadata', 'loadeddata', 'play', 'playing', 'pause', 'seeked', 'ratechange', 'ended', 'waiting', 'error']) {
         video.addEventListener(event, () => {
           if (!video.isConnected) return;
-          send({ kind: 'sample', media, resource: resource(entry), event });
+          send({ kind: 'sample', media, resource: resource(entry), revision: entry.revision, event });
           if (event === 'loadedmetadata' || event === 'loadeddata') report();
         }, { signal: lifetime.signal });
       }
@@ -148,7 +148,7 @@
     if (command.frame !== frame) return;
     const entry = elements.get(command.media), video = entry?.video;
     if (video?.isConnected) resource(entry);
-    if (!video?.isConnected || entry.revision !== command.revision) {
+    if (!video?.isConnected || !command.originalPage && entry.revision !== command.revision) {
       send({ kind: 'reply', request: command.request, error: 'page_player_closed' });
       return;
     }
@@ -159,13 +159,14 @@
         if (value.rate !== undefined) video.playbackRate = value.rate;
         if (value.paused !== undefined) {
           entry.playRequest = command.request;
+          const playRevision = entry.revision;
           if (value.paused) video.pause();
           else void video.play().catch(error => {
             if (!video.isConnected || entry.video !== video || entry.playRequest !== command.request || error?.name === 'AbortError') return;
             const observed = resource(entry);
-            if (entry.revision !== command.revision) return;
+            if (entry.revision !== playRevision) return;
             if (error?.name === 'NotAllowedError') send({ kind: 'blocked', media: command.media });
-            else send({ kind: 'sample', media: command.media, resource: observed, event: 'error' });
+            else send({ kind: 'sample', media: command.media, resource: observed, revision: entry.revision, event: 'error' });
           });
         }
       }
