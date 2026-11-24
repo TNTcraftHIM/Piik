@@ -114,6 +114,9 @@ and [status](https://github.com/TNTcraftHIM/Piik/blob/main/docs/status.md).
 - Preserve user work. Branch, truth-checkpoint, PR, release, recovery, and
   cleanup rules are owned by [CONTRIBUTING.md](./CONTRIBUTING.md); do not mirror
   that workflow here.
+- When a second agent reviews this line, read its
+  [mailbox](./CONTRIBUTING.md#working-with-a-second-agent) before substantial
+  work and write only your own.
 
 ## Engineering Defaults
 

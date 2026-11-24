@@ -110,6 +110,33 @@ For owner-managed manual deletion, collect permitted retired artifacts in
 workflow. Targets of a policy-rejected cleanup stay in place and go in that path
 index; do not substitute a move for the rejected deletion.
 
+## Working With A Second Agent
+
+The implementing agent owns the active line, currently `feat/channel-prototype`
+for isolated 3.0. A reviewing agent keeps `refactor/claude-review` as a short
+patch queue on top of that line. Neither agent commits to the other's branch,
+and the project owner decides what merges.
+
+- **One behaviour per commit.** A queue commit carries one change, its
+  regression check and, in its body, the structural reason. The implementer
+  takes it by merge or cherry-pick, or declines it with a reason.
+- **One writer per mailbox.** Mailboxes are named for their reader. Only the
+  reviewer writes [`to-codex.md`](./.agents/handoff/to-codex.md) and only the
+  implementer writes [`to-claude.md`](./.agents/handoff/to-claude.md), so
+  synchronizing never conflicts. Read the one addressed to you before
+  substantial work.
+- **A queue, not a log.** A mailbox holds what its reader still has to take or
+  decide: pending commits, open findings with file and line, questions and
+  holds. Its writer deletes an item once it is merged, declined or moved to
+  [TODO](./docs/todo.md). Commits own what changed and why, standards and skills
+  own lessons, and Git owns history.
+- **Holds.** While one agent restructures a file, its mailbox names the file,
+  the reason and the commit that ends the hold. Until then the other agent
+  limits its changes there to behaviour fixes.
+- **Staying current.** The reviewer merges the active line into the queue
+  before adding to it and never rewrites pushed history. A finding names the
+  revision it was verified against; recheck it before acting on a later one.
+
 ## Research Standard
 
 The [engineering reference](./docs/standards/engineering.md) owns module and

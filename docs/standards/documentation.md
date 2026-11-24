@@ -13,6 +13,7 @@ verification procedures stay in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 | Universal constraints and navigation | `AGENTS.md` | Short mandatory boundaries and links; no procedure manual |
 | Reusable agent methods | `.agents/skills/*/SKILL.md` | Task triggers and methods under project constraints; link to domain rules and delivery rather than repeat them |
 | Branches, review, validation, PRs, releases and cleanup | `CONTRIBUTING.md` | Executable workflow |
+| Review in flight between agents | `.agents/handoff/` | One mailbox per reader, each with one writer: pending commits, open findings, questions and holds; items leave when absorbed |
 | Module boundaries, interface discipline and ablation | [Engineering](./engineering.md) | Module, contract, lifecycle and source navigation; shared coding rules |
 | Names, terminology and voice | [Naming and copy](./naming.md) | Product/tool names, role labels and Chinese/English writing conventions |
 | Translation contributions | [Translation guide](../guide/translating.md) and its Chinese counterpart | Catalog editing, new-language registration and translation review |
@@ -138,7 +139,8 @@ it applies. Keep useful, non-obvious decisions in its body. Link to existing
 owners for details; add supporting files only when a real workflow needs them.
 Do not create nested instruction files merely to split a short document, copy
 the same rules into multiple tool formats, or require every installed skill on
-every turn. Relevant instructions remain applicable without repeated loading.
+every turn. `CLAUDE.md` only imports `AGENTS.md` for a tool that does not read
+it natively. Relevant instructions remain applicable without repeated loading.
 
 When changing instructions, check actual task behavior: would a scoped layout
 fix trigger unrelated network gates, a review silently authorize edits, or a
