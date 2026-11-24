@@ -263,8 +263,8 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
 - A parent observes its children. Whoever spawns a task or process learns of its
   exit by any cause, including a panic, without relying on the child to report
   it. A mandatory child's exit ends the parent. An optional child's exit, or a
-  consumer's failure to attach, retires only itself. A release that must happen
-  on every exit lives in a drop guard, not at the end of the normal path.
+  consumer's failure to attach, retires only itself. Use a drop guard for
+  unconditional synchronous release; own asynchronous shutdown until it completes.
 - Retirement is ordered and bounded. Dependants retire first, so a transport
   needed for shutdown outlives the stop request. Replacing an exclusive resource
   awaits its predecessor's retirement, shared by repeated callers; a shared

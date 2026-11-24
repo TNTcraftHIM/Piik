@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-22
+Last reviewed: 2026-11-24
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -16,15 +16,25 @@ the feedback period; they do not delay that delivery.
 
 ### Active work
 
-- [ ] **Audio device selection.** Provide explicit playback-device selection
-  through supported output APIs and shared playback owners. Distinguish room
-  microphones, source audio inputs and system-output capture; keep device
-  changes local to the intended audio path.
+- [ ] **Browser session ownership.** Refine [ADR-0015](./adr/0015-browser-session-lifetime-owners.md)
+  around binding-scoped history and operation-local feedback. Agree the first
+  RoomReader test and file handoff before extracting it; retain request
+  correlation and local playback choices at their existing owners.
+- [ ] **Peer event backpressure.** Reproduce a full peer-event queue while
+  `CaptureEnded` handling awaits `capture_publications` on that same actor.
+  Preserve replacement validation while keeping the event consumer live.
+- [ ] **Native task exit observation.** Route track-reader termination through
+  its pair owner, including panic, and surface non-cancellation join failures.
+  Evaluate task grouping at that boundary before replacing existing cancellation.
+- [ ] **Audio device acceptance.** Verify physical output selection, unplugging
+  and recovery across shared players. Keep failures actionable without silently
+  changing the selected device. Room microphones, source audio inputs and
+  system-output capture retain their separate scopes.
 - [ ] **Webpage source selection and watching continuity.** Reduce the steps
   to choose and replace a webpage video. Keep existing viewers' surfaces during
   replacement or temporary source absence, release old media and permissions,
-  and end retained viewing on explicit exit. Define replacement ownership
-  before changing the activity contract.
+  and end retained viewing on explicit exit. Complete matching-package checks
+  for same-page candidates and reconnection across consecutive source replacements.
 - [ ] **Native video picture-in-picture during source replacement.** Keep the
   selected presentation window while retiring the old media and authorizing its
   successor. Complete failure, cancellation and normal-unmount checks before
@@ -49,7 +59,9 @@ the feedback period; they do not delay that delivery.
   [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise)
   against actual readers, writers and stored samples. Keep API/Bot capabilities
-  within existing actions and authority.
+  within existing actions and authority. Record the adopted Rust/shared-core
+  architecture in a short ADR; keep current model ownership distinct from dated
+  research evidence and explicitly scope the replaced 2.x decisions.
 - [ ] **Conversation during room permission changes.** Preserve immediate Read
   revocation while giving an online requester a useful outcome if its already
   committed reply arrives before the covering permission projection. Ordinary
@@ -60,6 +72,9 @@ the feedback period; they do not delay that delivery.
   coverage, connection attempts, idle cost and disruption. Repeat the
   [file and voice recovery control](./research/network-lab.md#file-forwarding-during-a-room-call)
   on a shared physical uplink before tuning fanout and retry/standby budgets.
+  Reuse local diagnostics for aggregate candidate outcomes, first frame and hops.
+  Compare capability-based relay ties and grandparent standby reuse before
+  changing either policy; any remotely collected telemetry needs its own decision.
 - [ ] **Public Demo room acceptance.** Verify invite-only discovery and entry
   on the deployed public Demo. [Local package control](./verification-status.md#current-evidence)
 - [ ] **Physical camera orientation.** Check portrait capture on a phone through
@@ -205,6 +220,17 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **Native capture scope type.** At the next capture-boundary change,
+  normalize ordinary, endpoint-selected and process-excluding audio into one
+  internal scope. Preserve the current wire inputs and explicit selection errors.
+- [ ] **Physical keyframe acceptance.** Check Android codec initialization,
+  requested keyframes and rebuilding with the longer interval. Extend the
+  Windows hardware control beyond the tested NVIDIA encoder and short sequence.
+- [ ] **Native media test scheduling.** Reproduce the reported reused-output
+  and warm-switch failures with phase-specific errors before changing deadlines.
+- [ ] **Rust formatting and diagnostics.** At an agreed file handoff, apply a
+  separate mechanical format pass and review actionable Clippy findings by owner.
+  Keep style-only changes separate from behavior fixes and new lint gates.
 - [ ] **Whole-page collaboration.** Choose the intended co-browsing flow before
   extending synchronized playback. Evaluate a shared page with explicitly
   granted page-scoped input and each site's own collaborative links. Reuse the
@@ -245,10 +271,10 @@ the feedback period; they do not delay that delivery.
   AV1/HEVC product integration remains a separate decision. Review the
   [codec interoperability proposal](./research/webrtc-encoder-pool.md#proposed-codec-interoperability-boundary)
   before extending codec or conversion implementations.
-- [ ] **Native send-consent lifetime.** Integrate the SDK's RFC 7675 correction
-  and verify actual Native output with Chrome and WebView in both negotiation
-  roles. Preserve permitted paths during ICE restart and reject retired
-  credentials independently of candidate viability.
+- [ ] **Native send-consent lifetime.** Complete the Windows WebView control of
+  the integrated SDK's RFC 7675 correction in both negotiation roles. Preserve
+  permitted paths during ICE restart and reject retired credentials independently
+  of candidate viability. Reuse the completed Native/Chrome controls.
   Keep transport consent and Piik route recovery with their existing owners.
 - [ ] **Shared-link website coverage.** Extend actual website and official
   embedded-player coverage toward VideoTogether's playback coverage. Verify
@@ -318,6 +344,11 @@ the feedback period; they do not delay that delivery.
 - **Native H264 scene-change latency.** Revisit an encoder or SDK improvement
   that reduces coded-frame bursts while preserving quality and live recovery.
   [Encoder assessment](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)
+- **Keyframe request spacing.** Measure repeated receiver requests against
+  existing output deduplication before adding a minimum interval that could delay recovery.
+- **Server TCP media candidates.** Verify pinned SDK framing, Browser
+  interoperability and integration with the existing pair owner before proposing
+  a transport option. A TCP protocol enum alone does not establish support.
 - **Virtual gamepads beyond Windows.** Verify Linux desktop permissions and
   physical game recognition. macOS virtual HID needs an entitled App and SDK/runtime
   checks. [Co-play assessment](./research/room-interactions.md#remote-co-play)
