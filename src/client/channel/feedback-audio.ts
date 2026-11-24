@@ -1,3 +1,4 @@
+import { playbackOutput } from "../media/playback-output";
 import { checkFeedbackDuration, feedbackClipBytes, type FeedbackClip } from "./feedback-clip";
 
 export type FeedbackCue = "message" | "throw";
@@ -31,6 +32,7 @@ export function scheduleFeedbackCue(context: BaseAudioContext, cue: FeedbackCue,
 /** One page owns activation and one short cue; suspended events are never queued. */
 export class FeedbackAudio {
   private context: AudioContext | null = null;
+  private detach?: () => void;
   private gain: GainNode | null = null;
   private activation: AbortController | null = null;
   private active: { cue: FeedbackCue; stop: () => void } | null = null;
@@ -77,12 +79,13 @@ export class FeedbackAudio {
     try {
       const context = this.context ??= new AudioContext();
       if (!this.gain) {
+        this.detach = playbackOutput.attach(context);
         this.gain = context.createGain(); this.gain.gain.value = this.volume;
         this.gain.connect(context.destination);
         context.onstatechange = () => {
           if (this.context !== context) return;
           if (context.state !== "running") { this.previewRequest = null; this.active?.stop(); this.active = null; }
-          if (context.state === "closed") { this.gain?.disconnect(); this.gain = null; this.context = null; this.decoded.clear(); }
+          if (context.state === "closed") { this.detach?.(); this.gain?.disconnect(); this.gain = null; this.context = null; this.decoded.clear(); }
           this.armActivation();
         };
       }
@@ -149,6 +152,7 @@ export class FeedbackAudio {
     this.activation?.abort(); this.activation = null;
     this.active?.stop(); this.active = null;
     this.gain?.disconnect(); this.gain = null;
+    this.detach?.();
     const context = this.context; this.context = null;
     this.decoded.clear();
     if (context) void context.close().catch(() => {});

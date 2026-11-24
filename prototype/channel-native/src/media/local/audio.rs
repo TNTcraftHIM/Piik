@@ -1190,7 +1190,7 @@ mod tests {
 
             unready_lease.stop();
             let (replacement_system, replacement_pcm, replacement_joined) =
-                AudioCapture::fixture(true)?;
+                AudioCapture::fixture_with_completion(true, || anyhow::bail!("selected render endpoint unavailable"))?;
             let replacement_control = replacement_system.control();
             let (replacement_lease, ready_system, replacement_warning) =
                 control.prepare_system(Some(replacement_system)).await?;
@@ -1242,7 +1242,7 @@ mod tests {
             replacement_control.stop();
             drop(replacement_pcm);
             replacement_joined.await?;
-            assert_eq!(replacement_warning.unwrap().await?, "audio input ended");
+            assert_eq!(replacement_warning.unwrap().await?, "selected render endpoint unavailable");
             let mut state = control.state.clone();
             state.wait_for(|state| !state.source_audio).await?;
             let mut report = Vec::new();
@@ -1250,9 +1250,17 @@ mod tests {
             let mut report = zip::ZipArchive::new(std::io::Cursor::new(report))?;
             let mut recorded = String::new();
             std::io::Read::read_to_string(&mut report.by_name("events.ndjson")?, &mut recorded)?;
-            assert!(recorded.contains("Native audio input ended: audio input ended"));
+            assert!(recorded.contains("Native audio input ended: selected render endpoint unavailable"));
             assert!(control.state.borrow().microphone.enabled);
             assert!(!mic_control.is_stopped());
+            mic_pcm.send(frame(epoch, 180, [0.2, 0.4])).await?;
+            loop {
+                let packet = received.recv().await.unwrap();
+                assert_eq!(packet.header.ssrc, first_ssrc);
+                if packet.header.timestamp.wrapping_sub(first_timestamp) == 8640 { break; }
+            }
+            assert_eq!(*control.source.borrow(), Some(id));
+            assert!(ended.try_recv().is_err());
             let (quiet, _quiet_pcm, quiet_joined) = AudioCapture::fixture(true)?;
             let (quiet_lease, ready_system, _) = control.prepare_system(Some(quiet)).await?;
             ready_system.await??;

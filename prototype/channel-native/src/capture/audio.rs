@@ -1,5 +1,5 @@
 //! Event-driven WASAPI loopback. This worker owns PCM only, not its video's lifetime.
-use super::{AudioCapabilities, AudioFrame, CaptureClock, MicrophoneDevice, Target, TargetKind};
+use super::{AudioCapabilities, AudioDevice, AudioFrame, CaptureClock, Target, TargetKind};
 use anyhow::{anyhow, ensure, Context as _, Result};
 use std::{
     os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
@@ -48,6 +48,7 @@ pub struct AudioCapture {
 }
 enum Input {
     System(Target, bool),
+    RenderEndpoint(String),
     Microphone(String),
 }
 impl AudioCapture {
@@ -61,6 +62,14 @@ impl AudioCapture {
     pub(crate) fn fixture_with_teardown(
         ready_now: bool,
         teardown: impl FnOnce() + Send + 'static,
+    ) -> Result<(Self, mpsc::Sender<AudioFrame>, oneshot::Receiver<()>)> {
+        Self::fixture_with_completion(ready_now, move || { teardown(); Ok(()) })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fixture_with_completion(
+        ready_now: bool,
+        completion_result: impl FnOnce() -> Result<()> + Send + 'static,
     ) -> Result<(Self, mpsc::Sender<AudioFrame>, oneshot::Receiver<()>)> {
         let event = unsafe { CreateEventW(None, true, false, None)? };
         let control = AudioControl(Arc::new(unsafe { OwnedHandle::from_raw_handle(event.0) }));
@@ -80,8 +89,7 @@ impl AudioCapture {
             if let Some(ready) = ready {
                 let _ = ready.send(Err(anyhow!("candidate cancelled")));
             }
-            teardown();
-            let _ = complete.send(Ok(()));
+            let _ = complete.send(completion_result());
             let _ = joined.send(());
         });
         Ok((
@@ -97,9 +105,13 @@ impl AudioCapture {
         ))
     }
     pub fn start(target: Target) -> Result<Self> {
-        Self::start_with_exclusion(target, None)
+        Self::start_with_exclusion(target, None, None)
     }
-    pub(crate) fn start_with_exclusion(target: Target, exclude: Option<Target>) -> Result<Self> {
+    pub(crate) fn start_with_exclusion(
+        target: Target,
+        exclude: Option<Target>,
+        render_endpoint_id: Option<String>,
+    ) -> Result<Self> {
         ensure!(
             exclude
                 .as_ref()
@@ -107,6 +119,13 @@ impl AudioCapture {
                     && excluded.kind == TargetKind::Window),
             "audio exclusion requires a display and a window process"
         );
+        if let Some(id) = render_endpoint_id {
+            ensure!(
+                target.kind == TargetKind::Display && exclude.is_none(),
+                "conflicting audio source"
+            );
+            return Self::spawn(Input::RenderEndpoint(id));
+        }
         let include_tree = exclude.is_none();
         let target = exclude.unwrap_or(target);
         Self::spawn(Input::System(target, include_tree))
@@ -257,14 +276,22 @@ fn initialize(mut client: AudioClient) -> Result<AudioClient> {
     Ok(client)
 }
 
-pub fn microphones() -> Result<Vec<MicrophoneDevice>> {
+pub fn microphones() -> Result<Vec<AudioDevice>> {
+    devices(Direction::Capture)
+}
+
+pub fn render_endpoints() -> Result<Vec<AudioDevice>> {
+    devices(Direction::Render)
+}
+
+fn devices(direction: Direction) -> Result<Vec<AudioDevice>> {
     let _com = Com::start()?;
     DeviceEnumerator::new()?
-        .get_device_collection(&Direction::Capture)?
+        .get_device_collection(&direction)?
         .into_iter()
         .map(|device| {
             let device = device?;
-            Ok(MicrophoneDevice {
+            Ok(AudioDevice {
                 id: device.get_id()?,
                 label: device.get_friendlyname()?,
             })
@@ -393,6 +420,7 @@ fn run(
         }
         Input::System(_, true) => "process-include",
         Input::System(_, false) => "process-exclude",
+        Input::RenderEndpoint(_) => "selected-endpoint",
         Input::Microphone(_) => "microphone",
     };
     let mut counts = CaptureCounts::enabled();
@@ -502,6 +530,7 @@ fn run_capture(
     counts: &mut Option<CaptureCounts>,
 ) -> Result<()> {
     let _com = Com::start()?;
+    let pinned = matches!(&input, Input::RenderEndpoint(_));
     let (process, client) = match input {
         Input::System(target, include_tree) => {
             let process = process(&target)?;
@@ -509,6 +538,16 @@ fn run_capture(
             let client = client(scope)?;
             crate::diagnostics::system_audio_source(scope);
             (process, client)
+        }
+        Input::RenderEndpoint(id) => {
+            let device = DeviceEnumerator::new()?
+                .get_device(&id)
+                .context("selected render endpoint unavailable")?;
+            ensure!(
+                device.get_direction() == Direction::Render,
+                "selected endpoint is not a render device"
+            );
+            (None, initialize(device.get_iaudioclient()?)?)
         }
         Input::Microphone(id) => {
             let devices = DeviceEnumerator::new()?;
@@ -520,6 +559,19 @@ fn run_capture(
             (None, initialize(device.get_iaudioclient()?)?)
         }
     };
+    let disconnected = if pinned {
+        let raw = unsafe { CreateEventW(None, true, false, None)? };
+        let signal = AudioControl(Arc::new(unsafe { OwnedHandle::from_raw_handle(raw.0) }));
+        let worker_signal = signal.clone();
+        let mut callbacks = wasapi::EventCallbacks::new();
+        callbacks.set_disconnected_callback(move |_| worker_signal.stop());
+        let registration = client
+            .get_audiosessioncontrol()?
+            .register_session_notification(callbacks)?;
+        Some((signal, registration))
+    } else {
+        None
+    };
     let event = capture_event(&client)?;
     // wasapi 0.26's slice reader dereferences the buffer even when SILENT is set.
     // GetBuffer's flags and timestamp belong to the original buffer, so handle it here.
@@ -528,6 +580,9 @@ fn run_capture(
     let mut handles = vec![control.handle()];
     if let Some(process) = &process {
         handles.push(HANDLE(process.as_raw_handle()));
+    }
+    if let Some((signal, _)) = &disconnected {
+        handles.push(signal.handle());
     }
     handles.push(HANDLE(event.as_raw_handle()));
     if !capture_active(control, process.as_ref())? {
@@ -549,6 +604,12 @@ fn run_capture(
             }
             if signaled == WAIT_OBJECT_0 {
                 return Ok(());
+            }
+            if disconnected
+                .as_ref()
+                .is_some_and(|(signal, _)| signal.is_stopped())
+            {
+                anyhow::bail!("selected render endpoint unavailable");
             }
             ensure!(
                 signaled.0 == WAIT_OBJECT_0.0 + handles.len() as u32 - 1,
@@ -594,6 +655,21 @@ fn run_capture(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn missing_pinned_output_reports_failure_without_opening_default() -> Result<()> {
+        let mut capture = AudioCapture::spawn(Input::RenderEndpoint(
+            "piik-fixture-missing-endpoint".into(),
+        ))?;
+        assert!(capture
+            .ready()
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("selected render endpoint unavailable"));
+        assert!(capture.recv().await.unwrap().is_err());
+        Ok(())
+    }
 
     #[test]
     fn packet_drain_observes_process_exit_and_explicit_stop() -> Result<()> {

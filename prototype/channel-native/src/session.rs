@@ -232,7 +232,7 @@ async fn process_peer(
                     .await?
                     .contains(&publication_id)
             {
-                write(socket, &Command::Unpublish { publication_id }, None).await?;
+                write(socket, &Command::Unpublish { publication_id, successor_watch_id: None }, None).await?;
             }
         }
         _ => {}
@@ -386,6 +386,7 @@ pub struct PrepareCapture {
     pub audio: bool,
     pub show_capture_border: bool,
     pub exclude_audio: Option<Target>,
+    pub render_endpoint_id: Option<String>,
     pub replaces: Option<Uuid>,
     pub result: oneshot::Sender<Result<CaptureLease, String>>,
 }
@@ -418,6 +419,7 @@ pub struct PauseCapture {
     pub result: oneshot::Sender<Result<(), String>>,
 }
 pub enum CaptureEdit {
+    Stop { successor_watch_id: Uuid },
     Title(Option<String>),
     DirectLimit(Option<u8>),
 }
@@ -1885,6 +1887,7 @@ impl Session {
                 request.encoding_execution,
                 request.audio,
                 request.exclude_audio,
+                request.render_endpoint_id,
                 request.show_capture_border,
             ),
             &mut live.commands,
@@ -2065,6 +2068,7 @@ impl Session {
         }
         let publication_id = request.scope.publication_id;
         let command = match &request.edit {
+            CaptureEdit::Stop { successor_watch_id } => Command::Unpublish { publication_id, successor_watch_id: Some(*successor_watch_id) },
             CaptureEdit::Title(title) => Command::SetTitle {
                 publication_id,
                 title: title.clone(),
@@ -2746,6 +2750,7 @@ impl Session {
                     write(
                         socket,
                         &Command::Unpublish {
+                            successor_watch_id: None,
                             publication_id: publication.id,
                         },
                         None,

@@ -589,6 +589,7 @@ enum Input {
         crate::capture::EncodingExecution,
         bool,
         Option<crate::capture::Target>,
+        Option<String>,
         bool,
         oneshot::Sender<Result<CaptureLease>>,
     ),
@@ -973,6 +974,7 @@ impl NativePeers {
                             execution,
                             audio,
                             exclude_audio,
+                            render_endpoint_id,
                             show_capture_border,
                             done,
                         )) => {
@@ -986,6 +988,7 @@ impl NativePeers {
                                     execution,
                                     audio,
                                     exclude_audio,
+                                    render_endpoint_id,
                                     show_capture_border,
                                 )
                                 .await,
@@ -1133,6 +1136,7 @@ impl NativePeers {
         execution: crate::capture::EncodingExecution,
         audio: bool,
         exclude_audio: Option<crate::capture::Target>,
+        render_endpoint_id: Option<String>,
         show_capture_border: bool,
     ) -> Result<CaptureLease> {
         execution.validate()?;
@@ -1149,6 +1153,7 @@ impl NativePeers {
                     execution,
                     audio,
                     exclude_audio,
+                    render_endpoint_id,
                     show_capture_border,
                     tx,
                 ))
@@ -1166,6 +1171,7 @@ impl NativePeers {
                 execution,
                 audio,
                 exclude_audio,
+                render_endpoint_id,
                 show_capture_border,
             );
             anyhow::bail!("capture_unavailable")
@@ -1528,6 +1534,7 @@ impl Driver {
         execution: crate::capture::EncodingExecution,
         audio: bool,
         exclude_audio: Option<crate::capture::Target>,
+        render_endpoint_id: Option<String>,
         show_capture_border: bool,
     ) -> Result<CaptureLease> {
         let publication = scope.publication_id;
@@ -1541,6 +1548,12 @@ impl Driver {
                     && target.kind == crate::capture::TargetKind::Display
                     && excluded.kind == crate::capture::TargetKind::Window),
             "audio exclusion unavailable"
+        );
+        anyhow::ensure!(
+            render_endpoint_id.as_ref().is_none_or(|id| cfg!(target_os = "windows") && audio
+                && target.kind == crate::capture::TargetKind::Display && exclude_audio.is_none()
+                && !id.is_empty() && id.len() <= 1024),
+            "render endpoint unavailable"
         );
         if self
             .capture_audio
@@ -1596,7 +1609,7 @@ impl Driver {
                 .unwrap();
             let (control, ready, audio_error) = capture
                 .producer
-                .prepare_audio(target, audio, exclude_audio, &mixer)
+                .prepare_audio(target, audio, exclude_audio, render_endpoint_id, &mixer)
                 .await?;
             let id = Uuid::new_v4();
             capture.pending_audio = Some((id, control.clone()));
@@ -1618,10 +1631,10 @@ impl Driver {
                 mixer,
             });
         }
-        if exclude_audio.is_some() {
+        if exclude_audio.is_some() || render_endpoint_id.is_some() {
             mixer.stop_system().await?;
         }
-        let audio_required = exclude_audio.is_some();
+        let audio_required = exclude_audio.is_some() || render_endpoint_id.is_some();
         let (producer, ready, audio_error, required_audio) = crate::media::local::Producer::start(
             publication,
             target.clone(),
@@ -1631,6 +1644,7 @@ impl Driver {
             mixer.clone(),
             audio,
             exclude_audio,
+            render_endpoint_id,
             show_capture_border,
             self.ready_sources.clone(),
             self.events.clone(),

@@ -307,7 +307,7 @@ export function ControlsPreview() {
           onExternalInput={sourceState === "ready" || sourceState === "refreshing" || sourceState === "empty"
             ? () => { setSourceOpen(false); notify(); } : undefined}
           loadCameras={previewCameras}
-          onNative={(target, _audio, showBorder) => {
+          onNative={({ target, showCaptureBorder: showBorder }) => {
             setShowCaptureBorder(showBorder); setSourceOpen(false);
             setNativePermissionPreview(target.kind === "picker");
             if (target.kind !== "picker") notify();

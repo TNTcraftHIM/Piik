@@ -17,6 +17,7 @@ pub(super) struct Caption {
     appearance: RefCell<Appearance>,
     title: RefCell<String>,
     panel: Cell<bool>,
+    share_picker: Cell<bool>,
 }
 
 #[derive(Default)]
@@ -74,6 +75,7 @@ impl Caption {
             .with_ipc_handler(move |request| {
                 let event = match request.body().as_str() {
                     "bookmarks" if !standalone => ServiceEvent::OpenBookmarks(id),
+                    "share" if standalone => ServiceEvent::ShareWatchPage(id),
                     "ready" => ServiceEvent::CaptionReady(id),
                     "minimize" => ServiceEvent::Caption(id, WindowAction::Minimize),
                     "maximize" => ServiceEvent::Caption(id, WindowAction::Maximize),
@@ -94,6 +96,7 @@ impl Caption {
             appearance: RefCell::default(),
             title: RefCell::new(String::new()),
             panel: Cell::new(false),
+            share_picker: Cell::new(false),
         })
     }
 
@@ -112,7 +115,14 @@ impl Caption {
         let _ = self.view.evaluate_script("window.usePanelSurface()");
     }
 
+    pub(super) fn share_picker(&self, enabled: bool) {
+        if self.share_picker.replace(enabled) != enabled {
+            let _ = self.view.evaluate_script(&format!("window.sharePicker({enabled})"));
+        }
+    }
+
     pub(super) fn ready(&self, theme: &Theme, language: Language) {
+        let _ = self.view.evaluate_script(&format!("window.sharePicker({})", self.share_picker.get()));
         if self.panel.get() {
             self.set_panel();
         }

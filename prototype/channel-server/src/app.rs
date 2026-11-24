@@ -69,7 +69,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 25;
+const PROTOCOL: u8 = 26;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -1253,6 +1253,7 @@ enum Operation {
         audio: bool,
         #[serde(default)]
         exclude_audio: Option<Target>,
+        render_endpoint_id: Option<String>,
         #[serde(default)]
         show_capture_border: bool,
     },
@@ -1299,6 +1300,8 @@ enum Operation {
     },
     StopCapture {
         publication_id: Uuid,
+        capture_id: Option<Uuid>,
+        successor_watch_id: Option<Uuid>,
     },
     InputPolicy {
         publication_id: Uuid,
@@ -1639,6 +1642,7 @@ async fn connection(
             let mut input_states = FuturesUnordered::new();
             let mut audio_states = FuturesUnordered::new();
             let mut operations = FuturesUnordered::new();
+            let mut capture_stops = FuturesUnordered::new();
             let mut opening: Option<BoxFuture<'static, Value>> = None;
             let mut metrics: Option<BoxFuture<'static, Value>> = None;
             let mut targets = None;
@@ -1917,6 +1921,25 @@ async fn connection(
                     }
                     response = async { metrics.as_mut().expect("metrics pending").await }, if metrics.is_some() => {
                         metrics = None;
+                        timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
+                        continue;
+                    }
+                    Some((id, publication_id, capture_id, result)) = capture_stops.next(), if !capture_stops.is_empty() => {
+                        let result: Result<()> = result;
+                        let result = result.and_then(|()| {
+                            let capture = captures.get_mut(&publication_id).ok_or_else(|| anyhow!("capture_unavailable"))?;
+                            anyhow::ensure!(capture.active.as_ref().is_some_and(|lease| lease.id() == capture_id), "capture_unavailable");
+                            capture.active = None;
+                            if capture.pending.is_none() {
+                                captures.remove(&publication_id);
+                                external_page.remove(publication_id);
+                            }
+                            Ok(())
+                        });
+                        let response = match result {
+                            Ok(()) => json!({"id":id,"result":null}),
+                            Err(error) => json!({"id":id,"error":error.to_string()}),
+                        };
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         continue;
                     }
@@ -2433,6 +2456,7 @@ async fn connection(
                                 audio_settings,
                                 audio,
                                 exclude_audio,
+                                render_endpoint_id,
                                 show_capture_border,
                             } => match &host {
                                 Some(commands) => {
@@ -2457,6 +2481,7 @@ async fn connection(
                                                             encoding_execution,
                                                             audio,
                                                             exclude_audio,
+                                                            render_endpoint_id,
                                                             show_capture_border,
                                                             replaces,
                                                             picker_events.as_ref().map(|events| (events, request.id.as_str())),
@@ -2584,7 +2609,21 @@ async fn connection(
                                     Err(anyhow!("capture_unavailable"))
                                 }
                             }
-                            Operation::StopCapture { publication_id } => {
+                            Operation::StopCapture { publication_id, capture_id: Some(capture_id), successor_watch_id: Some(successor_watch_id) } => {
+                                if let Some((commands, lease)) = host.as_ref().zip(captures.get(&publication_id).and_then(Capture::source))
+                                    .filter(|(_, lease)| lease.id() == capture_id) {
+                                    let commands = commands.clone();
+                                    let scope = lease.scope().clone();
+                                    let producer = lease.producer_id();
+                                    capture_stops.push(async move {
+                                        let result = edit_capture(&commands, scope, producer, CaptureEdit::Stop { successor_watch_id }).await;
+                                        (request.id, publication_id, capture_id, result)
+                                    }.boxed());
+                                    continue;
+                                }
+                                Err(anyhow!("capture_unavailable"))
+                            }
+                            Operation::StopCapture { publication_id, capture_id: None, successor_watch_id: None } => {
                                 if external_page.remove(publication_id) {
                                     let event = external_input_event(
                                         publication_id,
@@ -2608,6 +2647,7 @@ async fn connection(
                                 }
                                 Ok(Value::Null)
                             }
+                            Operation::StopCapture { .. } => Err(anyhow!("invalid_request")),
                             Operation::CaptureAudioSettings {
                                 publication_id,
                                 settings,
@@ -2941,6 +2981,10 @@ async fn capture_targets() -> Result<Value> {
             };
             let audio = piik_channel_native::capture::audio_capabilities();
             let mut result = json!({"sources": sources, "codecs": codecs, "softwareEncodingCodecs": piik_channel_native::capture::software_video_codecs()?, "processAudio": audio.process_audio, "processAudioExclusion": audio.process_audio_exclusion, "systemAudio": audio.system_audio, "captureBorderControl": piik_channel_native::capture::capture_border_control(), "videoAdaptation": piik_channel_native::capture::supports_video_adaptation()});
+            #[cfg(target_os = "windows")]
+            {
+                result["renderEndpoints"] = json!(piik_channel_native::capture::render_endpoints().ok());
+            }
             if let Some(activation) = piik_channel_native::capture::activation_url()? {
                 result["activationURL"] = json!(activation);
             }
@@ -2965,6 +3009,7 @@ async fn prepare_capture(
     encoding_execution: EncodingExecution,
     audio: bool,
     exclude_audio: Option<Target>,
+    render_endpoint_id: Option<String>,
     show_capture_border: bool,
     replaces: Option<Uuid>,
     picker: Option<(&mpsc::Sender<Value>, &str)>,
@@ -2984,6 +3029,7 @@ async fn prepare_capture(
             encoding_execution,
             audio,
             exclude_audio,
+            render_endpoint_id,
             show_capture_border,
             replaces,
             result,
@@ -4926,6 +4972,7 @@ mod tests {
             audio_settings,
             audio,
             exclude_audio,
+            render_endpoint_id,
             show_capture_border,
         } = request.operation
         else {
@@ -4951,6 +4998,7 @@ mod tests {
             encoding_execution,
             audio,
             exclude_audio,
+            render_endpoint_id,
             show_capture_border,
             None,
             Some((&picker_events, "selected-profile")),
@@ -4994,6 +5042,7 @@ mod tests {
             VideoCodecMode::H264,
             EncodingExecution::Auto,
             false,
+            None,
             None,
             false,
             None,

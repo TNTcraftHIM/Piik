@@ -1,3 +1,4 @@
+import type { NativeCaptureSelection } from "../native/capture-selection";
 import { CHANNEL_PROTOCOL, isIncompatibleProtocol, MAX_RELAY_CAPACITY, watchByteSourceSchema, type WatchByteSource, type RoomSummary } from "./protocol";
 import { unsupportedVideoFormatSchema, type UnsupportedVideoFormat, nativePageEventSchema, nativePageStateSchema, nativePageMediaChoiceSchema, nativePageIndexedCandidateSchema,
   nativePageMetadataReadSchema, nativePageMetadataResultSchema, nativePageIndexedSelectionSchema,
@@ -20,7 +21,7 @@ import { debugEvent, debugOperation } from "../lib/debug";
 import { nativeVoiceShortcutEventSchema, nativeVoiceShortcutsReportSchema, type NativeVoiceShortcutsReport } from "../native/wire";
 import type { VoiceShortcutAction, VoiceShortcuts } from "./voice-shortcut-binding";
 
-export const APP_PROTOCOL = 25;
+export const APP_PROTOCOL = 26;
 const APP_REQUEST_BYTES = 256 * 1024;
 const SOURCE_LIST_TIMEOUT_MS = 8_000;
 const SHORTCUT_ACTION_MAX_AGE_MS = 1_000;
@@ -73,6 +74,7 @@ const captureSourcesSchema = z.object({ sources: z.array(z.looseObject({ kind: z
   codecs: advertisedCodecs,
   softwareEncodingCodecs: advertisedCodecs,
   videoAdaptation: z.boolean(),
+  renderEndpoints: z.array(z.object({ id: z.string(), label: z.string() })).nullish(),
   processAudio: z.boolean(), processAudioExclusion: z.boolean(), systemAudio: z.boolean(), captureBorderControl: z.boolean(), activationURL: z.string().url().max(512).optional() });
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
 export type NativeCaptureRequest = { publicationId: string; activationURL: string };
@@ -263,6 +265,7 @@ export class ChannelApp {
   private audioStates = new Map<string, z.infer<typeof audioStateSchema>>();
   private prepared = new Map<string, { requestId: string } | "external">();
   private activationURL?: string;
+  private renderEndpoints?: { id: string }[];
   private processAudioExclusion = false;
   private captureCodecs: NativeCaptureSources["codecs"] = [];
   private previewTail: Promise<void> = Promise.resolve();
@@ -565,6 +568,7 @@ export class ChannelApp {
       reading.signal.throwIfAborted();
       const sources = captureSourcesSchema.parse(result);
       this.activationURL = sources.activationURL;
+      this.renderEndpoints = sources.renderEndpoints ?? undefined;
       this.processAudioExclusion = sources.processAudioExclusion;
       this.captureCodecs = sources.codecs;
       complete("ready");
@@ -598,17 +602,20 @@ export class ChannelApp {
     return preview;
   }
 
-  async prepareCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio: boolean, profile: QualityProfile, codecMode: BrowserVideoCodecMode, encodingExecution: EncodingExecution, excludeAudio?: NativeCaptureTarget, gain = 1, showCaptureBorder = false): Promise<PreparedNativeCapture> {
+  async prepareCapture(publicationId: string, roomId: string, {
+    target, audio, showCaptureBorder, excludeAudio, renderEndpointId, profile, codecMode, encodingExecution, gain = 1,
+  }: NativeCaptureSelection & { profile: QualityProfile; codecMode: BrowserVideoCodecMode; encodingExecution: EncodingExecution; gain?: number }): Promise<PreparedNativeCapture> {
     const settings = { width: profile.resolution.width, height: profile.resolution.height,
       fps: profile.maxFramerate, bitrate: profile.maxBitrate, degradationPreference: profile.degradationPreference };
     if (!this.connected) throw new Error("app_disconnected");
+    if (renderEndpointId !== undefined && (!audio || target.kind !== "display" || excludeAudio || !this.renderEndpoints?.some(device => device.id === renderEndpointId))) throw new Error("render endpoint unavailable");
     if (excludeAudio && (!audio || target.kind !== "display" || excludeAudio.kind !== "window" || !this.processAudioExclusion)) throw new Error("audio exclusion unavailable");
     const preparation = { requestId: crypto.randomUUID() };
     this.prepared.set(publicationId, preparation);
     let reply: unknown;
     try {
       reply = await this.request({ type: "prepare_capture", publicationId, roomId, target, audio, settings, codecMode, encodingExecution, showCaptureBorder,
-        audioSettings: { bitrate: profile.maxAudioBitrate ?? 128_000, gain }, ...(excludeAudio ? { excludeAudio } : {}) }, preparation.requestId);
+        audioSettings: { bitrate: profile.maxAudioBitrate ?? 128_000, gain }, ...(excludeAudio ? { excludeAudio } : {}), renderEndpointId }, preparation.requestId);
     } catch (error) {
       // A rejected prepare owns no lease. Another source may still be preparing.
       if (this.prepared.get(publicationId) === preparation) this.prepared.delete(publicationId);
@@ -731,7 +738,17 @@ export class ChannelApp {
     if (this.connected) await this.request({ type: prepared === "external" ? "cancel_external_input" : "cancel_capture", publicationId });
   }
 
-  async stopCapture(publicationId: string): Promise<void> {
+  async stopCapture(publicationId: string, successorWatchId?: string): Promise<void> {
+    if (successorWatchId) {
+      const captureId = this.captures.get(publicationId)?.id;
+      if (!captureId) throw new Error("capture_unavailable");
+      await this.request({ type: "stop_capture", publicationId, captureId, successorWatchId });
+      if (this.captures.get(publicationId)?.id !== captureId) throw new DOMException("Capture replaced", "AbortError");
+      this.captures.delete(publicationId);
+      if (!this.prepared.has(publicationId)) this.externalInputs.delete(publicationId);
+      this.audioStates.delete(publicationId);
+      return;
+    }
     const active = this.captures.delete(publicationId);
     const external = this.externalInputs.delete(publicationId);
     this.audioStates.delete(publicationId);

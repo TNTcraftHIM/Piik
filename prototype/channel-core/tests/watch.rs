@@ -283,6 +283,10 @@ fn replacing_watch_validates_before_retiring_source_and_viewers() {
     );
     assert_eq!(net.state(viewer).watch_activities[0].id, old);
     replacement["source"]["mediaUrl"] = json!("https://example.com/next.mp4");
+    replacement["replaceId"] = json!(Uuid::new_v4());
+    error(net.command(owner, replacement.clone()), "watch_identity_conflict");
+    assert_eq!(net.state(viewer).watch_subscriptions[0].id, old);
+    replacement["replaceId"] = json!(old);
     let expected_source = replacement["source"].clone();
     let mut conflict = replacement.clone();
     conflict["id"] = json!(old);
@@ -294,6 +298,7 @@ fn replacing_watch_validates_before_retiring_source_and_viewers() {
     );
     assert!(net.state(viewer).watch_subscriptions.is_empty());
     assert_eq!(net.state(viewer).watch_activities.len(), 1);
+    assert_eq!(net.state(viewer).watch_activities[0].replace_id, Some(old));
     assert_eq!(net.state(viewer).watch_activities[0].id, next);
     net.command(owner, json!({"type":"stop_watch","roomId":room,"id":old}));
     assert_eq!(net.state(viewer).watch_activities[0].id, next);
@@ -850,4 +855,83 @@ fn watch_audience_is_room_private_and_revoke_removes_viewer_only() {
             .participant_session_ids,
         vec![net.state(owner).watch_activities[0].session_id]
     );
+}
+
+#[test]
+fn confirmed_exit_links_once_to_an_existing_source_in_the_same_room() {
+    let (mut net, owner, viewer, room) = setup();
+    let old = Uuid::new_v4();
+    let screen = Uuid::new_v4();
+    let next = Uuid::new_v4();
+    let stop = json!({"type":"stop_watch","roomId":room,"id":old,"successorScreenId":screen});
+    let unpublish = json!({"type":"unpublish","publicationId":screen,"successorWatchId":next});
+    net.command(owner, start(&room, old));
+    net.command(viewer, json!({"type":"join_watch","roomId":room,"id":old,"mode":"direct"}));
+    error(net.command(owner, stop.clone()), "publication_unavailable");
+    assert_eq!(net.state(viewer).watch_subscriptions[0].id, old);
+    net.command(owner, json!({"type":"publish","publication":{"id":screen,"roomId":room,"kind":"screen","source":{"kind":"screen","name":"Desktop"}}}));
+    error(net.command(viewer, stop.clone()), "publication_unavailable");
+    net.command(owner, stop);
+    assert!(net.state(viewer).watch_subscriptions.is_empty());
+    assert_eq!(net.state(viewer).publications[0].screen.as_ref().unwrap().replace_watch_id, Some(old));
+    net.command(viewer, json!({"type":"subscribe","publicationId":screen,"enabled":true}));
+    assert!(net.state(viewer).subscriptions.contains(&screen));
+    assert_eq!(net.state(viewer).publications[0].screen.as_ref().unwrap().replace_watch_id, None);
+    net.command(owner, start(&room, next));
+    error(net.command(viewer, unpublish.clone()), "watch_identity_conflict");
+    net.command(owner, unpublish);
+    assert!(net.state(viewer).subscriptions.is_empty());
+    assert!(net.state(viewer).publications.is_empty());
+    assert!(net.state(viewer).watch_subscriptions.is_empty());
+    assert_eq!(net.state(viewer).watch_activities[0].replace_screen_id, Some(screen));
+}
+
+#[test]
+fn queued_joins_and_batched_retirements_preserve_both_windows() {
+    use piik_channel_core::wire::Request;
+    let (mut net, owner, viewer, room) = setup();
+    let second = Uuid::new_v4();
+    let bystander = Uuid::new_v4();
+    net.command(second, json!({"type":"join","name":"Second"}));
+    net.command(bystander, json!({"type":"join","name":"Bystander"}));
+    let sources = [(owner, Uuid::new_v4(), Uuid::new_v4()), (second, Uuid::new_v4(), Uuid::new_v4())];
+    for (publisher, watch, screen) in sources {
+        net.command(publisher, start(&room, watch));
+        net.command(publisher, json!({"type":"publish","publication":{"id":screen,"roomId":room,"kind":"screen","source":{"kind":"screen","name":"Desktop"}}}));
+    }
+    let mut outputs = Vec::new();
+    let mut delay = |net: &mut RoomNetwork, sender, command: Value| {
+        let effects = net.authority.handle(sender, Request::parse(&command.to_string()).unwrap(), 120);
+        for (host, event) in effects.events {
+            if let Event::HostInput { room_id, input } = event {
+                let output = net.host_turn(&room_id, input);
+                outputs.push((host, json!({"type":"host_output","roomId":room_id,"output":output})));
+            }
+        }
+    };
+    for (_, watch, _) in sources {
+        delay(&mut net, viewer, json!({"type":"join_watch","id":watch,"roomId":room,"mode":"direct"}));
+    }
+    for (publisher, watch, screen) in sources {
+        delay(&mut net, publisher, json!({"type":"stop_watch","id":watch,"roomId":room,"successorScreenId":screen}));
+    }
+    // Changing the participant scope requires a covering revision before either stop reply is delivered.
+    delay(&mut net, bystander, json!({"type":"leave"}));
+    assert!(outputs.len() >= 5);
+    let mut marked = Vec::new();
+    for (host, output) in outputs {
+        let effects = net.command(host, output);
+        for (target, event) in effects.events {
+            if let Event::State { state } = event {
+                let markers: Vec<_> = state.publications.iter().filter_map(|p| Some((p.id, p.screen.as_ref()?.replace_watch_id?))).collect();
+                if !markers.is_empty() {
+                    assert_eq!(target, viewer);
+                    marked.push(markers);
+                }
+            }
+        }
+    }
+    assert_eq!(marked.len(), 1);
+    assert_eq!(marked[0].len(), 2);
+    for (_, watch, screen) in sources { assert!(marked[0].contains(&(screen,watch))); }
 }

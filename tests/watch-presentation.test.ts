@@ -194,8 +194,8 @@ describe("Webpage watch presentation", () => {
     expect(html).toMatch(/type="button"[^>]*aria-label="Play direct video URL"[^>]*disabled=""/);
   });
 
-  it.each([[undefined, true, true], ["watch", true, false], [undefined, false, false]] as const)(
-    "shows playback source selection for an eligible creator candidate (%s, %s)",
+  it.each([[undefined, true, true], ["watch", true, false], [undefined, false, true]] as const)(
+    "offers source discovery for creator candidates and player selection for viewers (%s, %s)",
     (activityId, hasURL, expected) => {
       setCopy({ lang: "en" });
       const channel = { pending: new Set(), sourceSelectionCommitting: () => false, watchEmbed: () => undefined,

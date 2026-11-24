@@ -1,3 +1,4 @@
+import type { NativeCaptureSelection } from "../../native/capture-selection";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import type { NativeCaptureTarget } from "../../native/wire";
@@ -9,6 +10,7 @@ import { navigateTabs } from "../../ui/tab-navigation";
 import { Tooltip } from "./Tooltip";
 import { HintComic } from "./hints";
 import { Btn, Pill } from "./primitives";
+import { AudioDeviceSelect } from "./AudioDeviceSelect";
 import { CameraSources, useCameraSources } from "./CameraSources";
 import { CaptureSourceCard } from "./CaptureSourceCard";
 import { WrappingSegmentedControl } from "./WrappingSegmentedControl";
@@ -38,9 +40,19 @@ export type NativeSourceList =
       sources: NativeCaptureTarget[];
       processAudio: boolean;
       systemAudio: boolean;
+      renderEndpoints?: { id: string; label: string }[] | null;
       processAudioExclusion?: boolean;
       captureBorderControl?: boolean;
     };
+
+export function RenderEndpointSelect({ devices, value, disabled, onChange, onRefresh }: {
+  devices: { id: string; label: string }[] | null; value?: string; disabled?: boolean;
+  onChange: (id?: string) => void; onRefresh: () => void;
+}) {
+  return <AudioDeviceSelect output label="host.sourcePicker.renderEndpoint" value={value ?? ""}
+    list={{ status: devices === null ? "failed" : "ready", devices: devices ?? [] }}
+    disabled={disabled} onChange={id => onChange(id || undefined)} onRefresh={onRefresh} />;
+}
 
 export function nativeAppDetected(sources: NativeSourceList | null): boolean {
   return sources?.kind === "loading" ? sources.appDetected === true
@@ -68,6 +80,7 @@ export function CaptureSourcePicker({
   initialAudio = true,
   initialShowCaptureBorder = false,
   initialExcludeAudio,
+  initialRenderEndpointId,
   audioLocked = false,
   selectionDisabled = false,
 }: {
@@ -79,7 +92,7 @@ export function CaptureSourcePicker({
   initialCamera?: string;
   activeCameraVideo?: HTMLVideoElement | null;
   loadCameras?: typeof loadCameraPreviews;
-  onNative: (target: NativeCaptureTarget, audio: boolean, showCaptureBorder: boolean, excludeAudio?: NativeCaptureTarget) => void;
+  onNative: (selection: NativeCaptureSelection) => void;
   onExternalInput?: () => void;
   onPreview: (
     target: NativeCaptureTarget,
@@ -93,6 +106,7 @@ export function CaptureSourcePicker({
   initialTab?: SourceTab;
   initialAudio?: boolean;
   initialShowCaptureBorder?: boolean;
+  initialRenderEndpointId?: string;
   initialExcludeAudio?: NativeCaptureTarget;
   audioLocked?: boolean;
   selectionDisabled?: boolean;
@@ -104,6 +118,7 @@ export function CaptureSourcePicker({
   const [tab, setTab] = useState<SourceTab | null>(null);
   const [shareAudio, setShareAudio] = useState(initialAudio);
   const [showCaptureBorder, setShowCaptureBorder] = useState(initialShowCaptureBorder);
+  const [renderEndpointId, setRenderEndpointId] = useState(initialRenderEndpointId);
   const [excludeAudio, setExcludeAudio] = useState(initialExcludeAudio);
   const appDetected = nativeAppDetected(nativeSources);
   // Retained targets classify tabs during refresh and failure. Only ready targets are selectable.
@@ -309,7 +324,9 @@ export function CaptureSourcePicker({
                   </Tooltip>
                 </div>
               ) : null}
-              {activeTab === "display" && shareAudio && anyNativeAudio && (canExcludeAudio || excludeAudio) ? (
+              {activeTab === "display" && shareAudio && !excludeAudio && nativeSources.kind === "ready" && nativeSources.renderEndpoints !== undefined &&
+                <RenderEndpointSelect onRefresh={onRefresh} devices={nativeSources.renderEndpoints} value={renderEndpointId} disabled={selectionDisabled} onChange={setRenderEndpointId} />}
+              {activeTab === "display" && shareAudio && anyNativeAudio && !renderEndpointId && (canExcludeAudio || excludeAudio) ? (
                 <details className="lr-source-exclusion" onToggle={event => {
                   if (event.currentTarget.open) event.currentTarget.scrollIntoView({ block: "nearest" });
                 }}>
@@ -364,8 +381,9 @@ export function CaptureSourcePicker({
                     }
                     onPreview={onPreview}
                     onSelect={() =>
-                      onNative(target, shareAudio && supportsAudio(target),
-                        supportsCaptureBorder && showCaptureBorder, target.kind === "display" ? excludeAudio : undefined)
+                      onNative({ target, audio: shareAudio && supportsAudio(target), showCaptureBorder: supportsCaptureBorder && showCaptureBorder,
+                        excludeAudio: target.kind === "display" ? excludeAudio : undefined,
+                        renderEndpointId: target.kind === "display" ? renderEndpointId : undefined })
                     }
                   />
                 ))

@@ -184,6 +184,7 @@ struct Page {
     candidates: BTreeMap<Uuid, Candidate>,
     selected: Option<Uuid>,
     original_page: bool,
+    picker_document: Option<u64>,
     pending: BTreeMap<Uuid, Pending>,
 }
 impl Page {
@@ -207,6 +208,10 @@ impl Page {
         else {
             return;
         };
+        for (key, view) in views.iter() {
+            let enabled = self.picker_document.is_some() && self.candidates.values().any(|candidate| candidate.view == *key);
+            view.caption.share_picker(enabled);
+        }
         self.emit(json!({"type":"page_candidates","pageId":self.id,"url":url,"candidates":self.candidates.iter().map(|(id,c)|json!({"id":id,"title":c.source.title,"url":c.source.url,"duration":c.source.duration})).collect::<Vec<_>>()}));
     }
     fn request(&mut self, selecting: bool, patch: Option<page::Patch>, reply: Reply) {
@@ -321,9 +326,26 @@ impl Pages {
         }
     }
 
+    pub fn share_picker(&mut self, id: Uuid, site: &str, document: Option<u64>) {
+        if let Some(page) = self.pages.values_mut().find(|page| page.id == id && page.origin == site) {
+            page.picker_document = document;
+            page.candidates();
+        }
+    }
+
+    pub fn can_share(&self, id: WindowId, site: &str, document: u64) -> bool {
+        self.pages.values().any(|page| {
+            page.origin == site && page.picker_document == Some(document)
+                && page.views.borrow().iter().any(|(key, view)| view.window.id() == id
+                    && page.candidates.values().any(|candidate| candidate.view == *key))
+        })
+    }
+
     pub fn release_mounts(&mut self) {
-        for page in self.pages.values() {
+        for page in self.pages.values_mut() {
+            page.picker_document = None;
             for view in page.views.borrow_mut().values_mut() {
+                view.caption.share_picker(false);
                 let _ = view.release_mount();
             }
         }
@@ -773,6 +795,7 @@ impl Pages {
             candidates: BTreeMap::new(),
             selected: None,
             original_page: false,
+            picker_document: None,
             pending: BTreeMap::new(),
         })
     }

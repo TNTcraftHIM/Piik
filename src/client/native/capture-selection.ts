@@ -1,5 +1,13 @@
 import type { NativeCaptureTarget } from "./wire";
 
+export interface NativeCaptureSelection {
+  target: NativeCaptureTarget;
+  audio: boolean;
+  showCaptureBorder: boolean;
+  excludeAudio?: NativeCaptureTarget;
+  renderEndpointId?: string;
+}
+
 export function nativeCaptureTargetKey(target: NativeCaptureTarget): string {
   return target.kind === "window"
     ? `window:${target.sourceId}:${target.pid}:${target.creationTime}`

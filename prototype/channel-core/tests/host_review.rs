@@ -264,7 +264,7 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
         initial.projection.publications.push(piik_channel_core::wire::PublicationInfo {
             id: publication, room_id: room_id.into(), session_id: publisher_session,
             user_id: publisher_user, kind: Kind::Screen, paused: false,
-            screen: Some(piik_channel_core::wire::ScreenInfo { direct_limit: None, source: Default::default(), title: None }),
+            screen: Some(piik_channel_core::wire::ScreenInfo { replace_watch_id: None, direct_limit: None, source: Default::default(), title: None }),
             video_settings: Some(serde_json::from_value(serde_json::json!({"ceiling":{"resolution":{"width":640,"height":360},"maxFramerate":30,"maxBitrate":1000000},"degradationPreference":"balanced"})).unwrap()),
             audience: vec![piik_channel_core::wire::PublicationAudience { session_id: reader_session, state: piik_channel_core::wire::AudienceState::Failed }],
         });

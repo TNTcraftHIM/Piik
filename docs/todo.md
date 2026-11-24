@@ -20,26 +20,18 @@ the feedback period; they do not delay that delivery.
   through supported output APIs and shared playback owners. Distinguish room
   microphones, source audio inputs and system-output capture; keep device
   changes local to the intended audio path.
-- [ ] **Message sounds in an unfocused window.** Verify beta.51 feedback where
-  message cues are silent while throw sounds work, including a visible but
-  unfocused main window and a focused conversation popout.
-- [ ] **Voice shortcut discovery.** Make the existing microphone and listening
-  shortcuts easy to find and configure, with the same activity target for page
-  and global keyboard input.
 - [ ] **Webpage source selection and watching continuity.** Reduce the steps
   to choose and replace a webpage video. Keep existing viewers' surfaces during
   replacement or temporary source absence, release old media and permissions,
   and end retained viewing on explicit exit. Define replacement ownership
   before changing the activity contract.
-- [ ] **Playback control hierarchy.** Make progress, elapsed time and volume
-  immediately legible in screen and webpage playback, retaining shared controls
-  and usable narrow and touch layouts.
+- [ ] **Native video picture-in-picture during source replacement.** Keep the
+  selected presentation window while retiring the old media and authorizing its
+  successor. Complete failure, cancellation and normal-unmount checks before
+  adopting a stable display-element handoff.
 - [ ] **Webpage viewer readiness.** Reproduce reports of a loading viewer shown
   as already watching, including Native original-page playback. Keep membership
   distinct from proved playable media in the viewer surface and participant list.
-- [ ] **Direct webpage delivery clarity.** Verify original-site playback and
-  explicit receipt from the sharer's App on the same source. Make the selected
-  route and upload responsibility clear without adding a competing route setting.
 - [ ] **Virtual LAN invitations time out.** Investigate intermittent page access
   and media failures reported on Android across several browsers in 2.x.
   Correlate the selected virtual address, effective firewall rules and incoming

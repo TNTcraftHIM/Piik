@@ -100,6 +100,7 @@ async fn source_ended_before_ready_fails_only_its_current_flow() -> Result<()> {
             publication,
             PublicationInfo {
                 screen: (kind == Kind::Screen).then(|| piik_channel_core::wire::ScreenInfo {
+                    replace_watch_id: None,
                     direct_limit: None,
                     source: Default::default(),
                     title: None,

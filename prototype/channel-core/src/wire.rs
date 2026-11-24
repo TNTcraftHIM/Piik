@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 45;
+pub const CHANNEL_PROTOCOL: u8 = 46;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -178,6 +178,8 @@ pub enum Command {
         user_id: Uuid,
     },
     StartWatch {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        replace_id: Option<Uuid>,
         room_id: String,
         id: Uuid,
         source: WatchSource,
@@ -201,6 +203,8 @@ pub enum Command {
         mode: Option<WatchMode>,
     },
     StopWatch {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        successor_screen_id: Option<Uuid>,
         room_id: String,
         id: Uuid,
     },
@@ -208,6 +212,8 @@ pub enum Command {
         publication: PublicationInput,
     },
     Unpublish {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        successor_watch_id: Option<Uuid>,
         publication_id: Uuid,
     },
     SetScreenDirectLimit {
@@ -1167,6 +1173,8 @@ pub enum Event {
 #[serde(rename_all = "camelCase")]
 pub struct ScreenInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replace_watch_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub direct_limit: Option<u8>,
     pub source: ScreenSource,
     pub title: Option<String>,
@@ -1216,6 +1224,10 @@ impl WatchPlayback {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WatchActivity {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replace_screen_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replace_id: Option<Uuid>,
     pub id: Uuid,
     pub room_id: String,
     pub user_id: Uuid,

@@ -993,6 +993,7 @@ fn projection_capture(result: oneshot::Sender<Result<CaptureLease, String>>) -> 
         audio: false,
         show_capture_border: false,
         exclude_audio: None,
+        render_endpoint_id: None,
         replaces: None,
         result,
     }
@@ -1415,7 +1416,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
             state.publications = requests
                 .iter()
                 .map(|(id, _, _)| piik_channel_core::wire::PublicationInfo {
-                    screen: Some(piik_channel_core::wire::ScreenInfo { direct_limit: None, source: Default::default(), title: None }),
+                    screen: Some(piik_channel_core::wire::ScreenInfo { replace_watch_id: None, direct_limit: None, source: Default::default(), title: None }),
                     id: *id,
                     room_id: if *id == requests[0].0 {
                         "affected"

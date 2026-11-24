@@ -1,3 +1,4 @@
+import { playbackOutput } from "../media/playback-output";
 import type Hls from "hls.js";
 import type { WatchByteSource, WatchTimeline, WatchFormat } from "./protocol";
 import { canReadWatchResources, limitWatchReads, openWatchResource, type WatchByteReader, type WatchResourceLease } from "./watch-resource";
@@ -90,6 +91,7 @@ interface WatchResourceSource {
 
 export class HTMLVideoMedia implements WatchMedia {
   readonly video = document.createElement("video");
+  private readonly detachOutput = playbackOutput.attach(this.video);
   readonly presentation = { kind: "video" as const, element: this.video };
   private lifetime = new AbortController();
   private setup: Promise<void>;
@@ -251,6 +253,7 @@ export class HTMLVideoMedia implements WatchMedia {
   }
   private dispose(): void {
     if (this.lifetime.signal.aborted) return;
+    this.detachOutput();
     this.lifetime.abort(); this.hls?.destroy(); this.mp4?.close(); this.dash?.close(); this.resource?.close();
     this.video.pause(); this.video.removeAttribute("src"); this.video.load(); this.video.remove();
   }

@@ -267,11 +267,27 @@ viewer timelines retain their existing paths.
 
 Preparing another source preserves the current one. Cancellation during
 preparation releases only the candidate; submitting the prepared source commits
-the replacement. A new synchronized-video activity atomically replaces the same
-sharer's previous activity in that room, ending its subscriptions. Viewers choose
-whether to join the new source. Cross-kind replacement stops the previous screen
-or synchronized video after the new source is confirmed. Explicitly stopping an
-activity also prevents a pending confirmation from restoring its player.
+the replacement. The sharer identifies the prior activity when switching sources.
+The room validates the replacement and captures the old source's subscribed
+viewers when it commits retirement. Those viewers receive the handoff through
+the existing ordered response path and join the new source with ordinary room
+authorization. Old byte grants, media and input permission are not transferred.
+Native capture retirement uses the App's current capture lease and releases it
+after room confirmation; a refusal preserves that capture. Ordinary stop remains
+immediate and prevents a pending confirmation from restoring the player.
+
+A viewer's selected stage window can outlive its media. When a source stops,
+the window retains its title and sharer while playback resources retire.
+Explicitly closing the window or losing room access ends this local selection.
+Browsing another room preserves it. A confirmed successor reuses that window;
+an unrelated later share does not automatically acquire its audience.
+
+When a confirmed successor has no Browser-playable source, its viewer retains
+ordinary participation while choosing a player or awaiting an offered source.
+A previously selected peer route, or the sole playable route on a Browser-only
+endpoint, can resume when the sharer offers a new byte source. Failure of an
+available direct URL still leaves the receiving-method choice to the viewer.
+Leaving or losing room access retires the waiting intent.
 
 For explicit MP4, WebM and Ogg video links the Browser's own player verifies
 playability. HLS uses a supported playlist player and its timeline checks.
@@ -1035,6 +1051,19 @@ work. Platform setup and license/dependency details belong to the
 [Native reference](../../prototype/channel-native/README.md) and [Android shell](../../mobile/README.md).
 
 ### Input And Sound Boundaries
+
+Playback output belongs to the current page. Piik-owned media elements and
+audio contexts share one device selection; embedded website players and
+independent webpage windows retain system output. Device changes use the
+[Audio Output Devices API](https://www.w3.org/TR/audio-output/) and preserve
+the previous choice if an active output refuses the change. Retired outputs
+cannot change a later selection.
+
+Windows whole-system capture can follow the default render endpoint or bind an
+explicit endpoint under the existing capture lease. Explicit endpoint capture
+and process exclusion are alternative scopes. An unavailable selected endpoint
+ends only source sound; it does not capture another device or stop the picture
+and microphone. Local playback-device selection does not change capture scope.
 
 Linux input adds a [RemoteDesktop Portal session](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html)
 beside capture. Commit requires the selected monitor, EIS devices and first image;

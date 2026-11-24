@@ -1,3 +1,4 @@
+import { playbackOutput } from "./playback-output";
 import { debugTrack } from "../lib/debug-webrtc";
 import { debugEvent, registerDebugCollector } from "../lib/debug";
 
@@ -11,15 +12,20 @@ export interface ViewerAudioSnapshot {
 export class VoicePlaybackContext {
   private context: AudioContext | null = null;
   private outputs = 0;
+  private detach?: () => void;
 
   acquire(): AudioContext {
-    this.context ??= new AudioContext();
+    if (!this.context) {
+      this.context = new AudioContext();
+      this.detach = playbackOutput.attach(this.context);
+    }
     this.outputs++;
     return this.context;
   }
 
   release(): void {
     if (--this.outputs === 0) {
+      this.detach?.();
       void this.context!.close().catch(() => {});
       this.context = null;
     }
@@ -35,6 +41,8 @@ export class ViewerAudio {
   private source: MediaStreamAudioSourceNode | null = null;
   private track: MediaStreamTrack | null = null;
   private disposed = false;
+  private detachElement: () => void;
+  private detachContext?: () => void;
   private nativeVolume: number;
   private nativeMuted: boolean;
   private readonly releaseDebug: () => void;
@@ -45,6 +53,7 @@ export class ViewerAudio {
     private readonly voiceContext?: VoicePlaybackContext,
     private readonly maxLevel = 2,
   ) {
+    this.detachElement = playbackOutput.attach(video);
     this.level = video.volume;
     this.muted = video.muted;
     this.nativeVolume = video.volume;
@@ -94,6 +103,7 @@ export class ViewerAudio {
     if (this.level !== 1 && this.boostAvailable && !this.context) {
       try {
         this.context = this.voiceContext?.acquire() ?? new AudioContext();
+        if (!this.voiceContext) this.detachContext = playbackOutput.attach(this.context);
         this.gain = this.context.createGain();
         this.gain.gain.value = 0;
         this.gain.connect(this.context.destination);
@@ -140,6 +150,7 @@ export class ViewerAudio {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.detachElement();
     this.releaseDebug();
     this.video.removeEventListener("play", this.onPlay);
     this.video.removeEventListener("volumechange", this.onNativeVolume);
@@ -212,6 +223,7 @@ export class ViewerAudio {
     this.gain = null;
     const context = this.context;
     this.context = null;
+    this.detachContext?.();
     if (context) {
       context.removeEventListener("statechange", this.sync);
       if (this.voiceContext) this.voiceContext.release();

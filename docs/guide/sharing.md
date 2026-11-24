@@ -32,6 +32,10 @@ keeps existing shares, watched pictures and voice running, including playback so
 The main area shows only the selected room's pictures. The activity strip lists
 pictures in other rooms: **Return** opens their room, while **Stop watching** or
 **Stop sharing** ends only the selected activity.
+
+Switching sources keeps existing viewers' picture tiles in the room while they
+connect to the replacement. If a share ends, its tile remains until the viewer
+closes it. A separately started share still appears as a new source to choose.
 Hiding a picture releases its remote control; return to that room and request control again when needed.
 
 Send the site address or a public-room link for ordinary access. Private rooms
@@ -115,6 +119,12 @@ virtual audio that has already been processed.
 
 ## Exclude a voice app from screen audio
 
+In the Windows App, **Screens → System sound → Share sound from** selects a
+playback device to capture. **System default** follows Windows. Selecting a
+specific device shares only its sound; if that device disconnects, picture and
+microphone sharing continue. Use **System default** to choose an application
+to exclude instead.
+
 When a connected Windows App offers audio exclusion, **Screens → System sound**
 can exclude a selected application's process tree. **Apps / Windows** instead
 captures the selected application's sound where supported.
@@ -132,6 +142,13 @@ audio or use a different playback device when exclusion is unavailable.
 If viewers hear their own voices, [check where the echo comes from](./troubleshooting.md#echo-or-unwanted-application-audio).
 
 ## Playback controls
+
+**More options → Playback device** selects where Piik plays videos, room voice
+and notification sounds on the current page. Embedded website players and
+separate webpage windows use the system playback device.
+If only the default device appears, allow microphone access for this page and
+refresh the device list. Browsers can restrict device discovery until permission
+is granted.
 
 ### Watch and arrange pictures
 
