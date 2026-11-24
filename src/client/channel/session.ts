@@ -112,6 +112,8 @@ interface ScreenWatch {
 }
 
 interface SourceSelection {
+  replaceWatchId?: string;
+  replaceScreenId?: string;
   controller: AbortController;
   committing: boolean;
   watchCandidate?: { player: WatchPlayer; stopping: boolean };
@@ -704,6 +706,17 @@ export class ChannelSession {
         if (local.audio) setMediaPaused(local.audio.sourceStream, paused);
       }
     }
+    const previousState = this.view.state;
+    const followingWatch = (oldId: string | undefined, roomId: string) => !!oldId && this.watchPlayers.has(oldId)
+      && previousState?.watchSubscriptions.some(sub => sub.id === oldId)
+      && previousState.watchActivities.some(old => old.id === oldId && old.roomId === roomId);
+    const followingScreen = (oldId: string | undefined, roomId: string) => !!oldId && this.watching.has(oldId)
+      && previousState?.subscriptions.includes(oldId)
+      && previousState.publications.some(old => old.kind === "screen" && old.id === oldId && old.roomId === roomId);
+    const canFollow = (roomId: string) => state.channel.rooms.some(room => room.id === roomId && room.authorized && room.available);
+    const nextWatches = state.watchActivities.filter(next => canFollow(next.roomId)
+      && (followingWatch(next.replaceId, next.roomId) || followingScreen(next.replaceScreenId, next.roomId)));
+    const nextScreens = state.publications.filter(next => next.kind === "screen" && canFollow(next.roomId) && followingWatch(next.replaceWatchId, next.roomId));
     for (const [id, watch] of this.watching) {
       const publication = state.publications.find(value => value.id === id);
       if (!publication && (watch.query || !this.view.pending.has(`watch:${id}`))) this.retireWatch(id);
@@ -779,6 +792,8 @@ export class ChannelSession {
         && canRead(publication.roomId) && !freshBindings.has(publication.roomId)))),
       historyByRoom: Object.fromEntries(Object.entries(this.view.historyByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
     });
+    for (const next of nextWatches) void this.joinWatch(next.id).catch(() => {});
+    for (const next of nextScreens) void this.watch(next.id, next.roomId).catch(() => {});
     const historyProfiles = Object.values(this.view.messagesByRoom).flatMap(historyProfileIds);
     void this.loadProfiles([...state.users.map(user => user.id), ...historyProfiles]).catch(() => {});
     if (refreshHelper) void this.syncAppWatching(true);
@@ -2450,7 +2465,9 @@ export class ChannelSession {
   private selectSource(roomId: string): SourceSelection {
     const previous = this.sourceSelections.get(roomId);
     if (previous) this.finishSourceSelection(roomId, previous);
-    const selection: SourceSelection = { controller: new AbortController(), committing: false };
+    const replaceWatchId = [...this.watchPlayers].find(([, player]) => player.roomId === roomId && player.owner && player.mode)?.[0];
+    const replaceScreenId = this.screenShares.get(roomId)?.id;
+    const selection: SourceSelection = { replaceWatchId, replaceScreenId, controller: new AbortController(), committing: false };
     this.sourceSelections.set(roomId, selection);
     return selection;
   }
@@ -2641,7 +2658,7 @@ export class ChannelSession {
         const mixer = audio; audio = undefined;
         await this.publish("screen", roomId, stream, { audio: mixer, profile: share.profile, codec, camera: source === "camera", source: metadata, publicationId: share.id });
       }
-      await this.stopRoomWatch(roomId);
+      await this.finishScreenSelection(roomId, share.id);
       if (app?.externalInput(share.id)) {
         const stopping = app.stopCapture(share.id);
         this.retireWatch(share.id);
@@ -2752,7 +2769,7 @@ export class ChannelSession {
       return page instanceof AppPage ? { url: page.url, candidates: page.candidates, activityId } : undefined;
     }
     const selection = this.sourceSelections.get(roomId), page = selection?.page;
-    return page ? { url: page.url, candidates: page.candidates, watchSources: selection?.watchSources } : undefined;
+    return page ? { pageId: page.id, url: page.url, candidates: page.candidates, watchSources: selection?.watchSources } : undefined;
   };
   selectWatchPage = async (roomId: string, candidateId: string, activityId?: string, reportError = true, mode?: "choose-source" | "original-page"): Promise<boolean> => {
     if (activityId) { await this.selectWatchingPage(activityId, candidateId, reportError); return true; }
@@ -3003,20 +3020,22 @@ export class ChannelSession {
       this.patch({});
       const start = performance.now();
       startSocket = this.socket;
-      await this.request({ type: "start_watch", roomId, id, source, ...(byteSource ? { byteSource } : {}),
+      await this.request({ type: "start_watch", roomId, id, source, ...(selection.replaceWatchId ? { replaceId: selection.replaceWatchId } : {}), ...(byteSource ? { byteSource } : {}),
         playback: { timeline: initial.live ? "program" : "media", position: initial.position, paused: true, rate: initial.rate, anchorTime: 0 } }, event => {
         if (event.type === "room_reply" && event.result.type === "watch_ready" && typeof event.result.serverTime === "number")
           player.calibrate(event.result.serverTime, start);
       }, roomId);
       if (!current() || this.watchPlayers.get(id) !== player) throw new DOMException("Cancelled", "AbortError");
+      const screen = this.screenShares.get(roomId);
+      if (screen && screen.id === selection.replaceScreenId && (this.local.has(screen.id) || this.app?.screens.has(screen.id))) {
+        await this.stopScreen(screen.id, id);
+      }
       committed = true;
       player.mode = "direct";
       delete selection.watchCandidate;
       if (media instanceof PageSuppliedMedia) void media.page.hide().catch(() => {});
       this.activateWatchOwner(id, player);
       this.patch({});
-      const screen = this.screenShares.get(roomId);
-      if (screen && (this.local.has(screen.id) || this.app?.screens.has(screen.id))) await this.stopScreen(screen.id);
       if (media.presentation?.kind === "video") await player.play();
       else await player.publish(true);
       this.browseRooms();
@@ -3136,13 +3155,27 @@ export class ChannelSession {
     this.browseRooms();
     if (this.view.connection === "connected") await this.request({ type: "stop_watch", roomId: player.roomId, id }, undefined, player.roomId);
   };
-  private async stopRoomWatch(roomId: string): Promise<void> {
-    for (const [id, player] of this.watchPlayers) if (player.owner && player.roomId === roomId) await this.stopWatch(id, "screen-replacement");
+  private async finishScreenSelection(roomId: string, screenId: string): Promise<void> {
+    const watchId = this.sourceSelections.get(roomId)?.replaceWatchId;
+    if (watchId) {
+      const selection = this.sourceSelections.get(roomId);
+      const local = this.local.get(screenId);
+      const captureId = this.app?.captureId(screenId);
+      try {
+        await this.request({ type: "stop_watch", roomId, id: watchId, successorScreenId: screenId }, undefined, roomId);
+      } catch (error) {
+        if (this.sourceSelections.get(roomId) === selection && (local ? this.local.get(screenId) === local
+          : captureId && this.app?.captureId(screenId) === captureId)) await this.stopScreen(screenId);
+        throw error;
+      }
+      this.retireWatchPlayer(watchId, "screen-replacement");
+      this.refreshActivity();
+    }
   }
 
   private async previewCommittedCapture(roomId: string, id: string, current: () => boolean, signal: AbortSignal): Promise<void> {
     // Room confirmation replaces the shared video even if the local preview fails.
-    const retirement = this.stopRoomWatch(roomId);
+    const retirement = this.finishScreenSelection(roomId, id);
     const preview = this.watching.has(id) ? undefined : this.watch(id, roomId, signal);
     const results = await Promise.allSettled([retirement, preview]);
     if (!current()) throw new DOMException("Capture stopped", "AbortError");
@@ -3584,14 +3617,28 @@ export class ChannelSession {
       await this.action(`pause:${publicationId}`, () => this.app!.setCapturePaused(publicationId, paused));
     } else throw new Error("not_publication_owner");
   };
-  stopScreen = (publicationId: string): Promise<void> => this.action(`stop:${publicationId}`, async () => {
+  stopScreen = (publicationId: string, successorWatchId?: string): Promise<void> => this.action(`stop:${publicationId}`, async () => {
+    if (successorWatchId) {
+      const local = this.local.get(publicationId);
+      if (local) {
+        await this.request({ type: "unpublish", publicationId, successorWatchId }, undefined, local.roomId);
+        if (this.local.get(publicationId) !== local) throw new DOMException("Capture replaced", "AbortError");
+        this.retireCapture(publicationId);
+      } else {
+        if (!this.app) throw new Error("capture_unavailable");
+        await this.app.stopCapture(publicationId, successorWatchId);
+      }
+    }
     for (const [roomId, share] of this.screenShares) if (share.id === publicationId) {
       const selection = this.sourceSelections.get(roomId);
       if (selection && !selection.committing) this.finishSourceSelection(roomId, selection);
       this.screenShares.delete(roomId);
     }
     // stop_capture also retires a pending Native candidate for a Browser incumbent.
-    await Promise.all([this.app?.stopCapture(publicationId), this.retireScreenPublication(publicationId)]);
+    if (successorWatchId) {
+      this.retireWatch(publicationId);
+      this.refreshActivity();
+    } else await Promise.all([this.app?.stopCapture(publicationId), this.retireScreenPublication(publicationId)]);
   });
 
   private async retireScreenPublication(publicationId: string): Promise<void> {

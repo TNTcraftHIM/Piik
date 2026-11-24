@@ -407,6 +407,14 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   const appPageAvailable = channel.appConnected && channel.pagePlayer;
   const openPage = appPageAvailable && !portableEmbed && !directFile;
   const pageSources = !activityId ? page?.watchSources : undefined;
+  const pickerPageId = pageSources || activityId ? undefined : page?.pageId;
+  useEffect(() => {
+    if (!pickerPageId || !window.piikMountWatchPage || !window.ipc) return;
+    const ipc = window.ipc;
+    const setPicker = (open: boolean) => ipc.postMessage(JSON.stringify({ kind: "watchSharePicker", pageId: pickerPageId, open }));
+    setPicker(true);
+    return () => setPicker(false);
+  }, [pickerPageId]);
   const allChoicesOriginFirst = !!pageSources?.choices.length && pageSources.choices.every(directForwardMediaURL);
   const pageSourcesHeading = useRef<HTMLHeadingElement>(null);
   const pageInstruction = useRef<HTMLParagraphElement>(null);
@@ -478,14 +486,12 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
           {page.candidates.map((candidate, index) => {
             const name = candidate.title || t("watch.videoNumber", { number: String(index + 1) });
             return <div key={candidate.id} className="c3-watch-source-choice" role="group" aria-label={name}>
-              <CaptureSourceCard title={name} action={t("watch.selectVideoNamed", { name: candidate.title || String(index + 1) })}
+              <CaptureSourceCard title={name} action={activityId ? t("watch.selectVideoNamed", { name: candidate.title || String(index + 1) }) : t("watch.browserSource.title")}
                 icon="play" disabled={busy}
-                onSelect={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, activityId, false), committed => { if (committed) onClose(); }); }} />
+                onSelect={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, activityId, false, activityId ? undefined : "choose-source"), committed => { if (committed) onClose(); }); }} />
               {!activityId && <div className="c3-share-title-actions lr-embedded-actions">
                 <Btn icon="globe" quiet size="compact" title="watch.browserSource.skip" cap="watch.browserSource.skip" disabled={busy}
                   onClick={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, undefined, false, "original-page"), onClose); }} />
-                {candidate.url && <Btn icon="sliders" quiet size="compact" title="watch.browserSource.title" cap="watch.browserSource.title" disabled={busy}
-                  onClick={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, undefined, false, "choose-source")); }} />}
               </div>}
             </div>;
           })}

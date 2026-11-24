@@ -215,6 +215,7 @@ export const ja = {
   "screen.returnToGrid": "グリッドに戻る",
   "screen.sharingControls": "共有の操作：{title}",
   "screen.stopSharing": "{title}の共有を停止",
+  "screen.shareEnded": "{name} はこの共有を終了しました",
   "screen.stopWatching": "{title}の視聴を停止",
   "screen.availableScreens": "利用可能な画面",
   "screen.availableToWatch": "視聴可能",

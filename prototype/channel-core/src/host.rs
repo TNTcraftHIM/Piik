@@ -146,6 +146,7 @@ pub struct HostInput {
     rename_all_fields = "camelCase"
 )]
 pub enum RoomResult {
+    SourceRetired { viewers: Vec<Uuid> },
     WatchReady {
         server_time: u64,
     },
@@ -740,6 +741,7 @@ impl RoomRuntime {
             }
             Command::StartWatch {
                 id,
+                replace_id,
                 source,
                 playback,
                 byte_source,
@@ -748,6 +750,7 @@ impl RoomRuntime {
                 member,
                 session,
                 id,
+                replace_id,
                 source,
                 playback,
                 byte_source,
@@ -760,7 +763,15 @@ impl RoomRuntime {
                 id, byte_source, ..
             } => self.set_watch_byte_source(member, session, id, byte_source, endpoints)?,
             Command::JoinWatch { id, mode, .. } => self.join_watch(member, session, id, mode)?,
-            Command::StopWatch { id, .. } => self.stop_watch(member, session, id)?,
+            Command::StopWatch { id, successor_screen_id, .. } => {
+                if let Some(next) = successor_screen_id {
+                    if !self.publication(next).is_some_and(|p| p.kind == crate::wire::Kind::Screen && p.user_id == member.user_id) {
+                        return Err("publication_unavailable");
+                    }
+                    op.result = RoomResult::SourceRetired { viewers: self.source_viewers(id, true) };
+                }
+                self.stop_watch(member, session, id)?;
+            }
             Command::Publish { publication } => self.publish(
                 member,
                 session,
@@ -769,7 +780,14 @@ impl RoomRuntime {
                 publication.video_settings,
                 publication.source,
             )?,
-            Command::Unpublish { publication_id } => {
+            Command::Unpublish { publication_id, successor_watch_id } => {
+                if let Some(next) = successor_watch_id {
+                    self.authorize(member, crate::RoomPermission::Read)?;
+                    if self.watch_user(next) != Some(member.user_id) || !self.publication(publication_id).is_some_and(|p| p.kind == crate::wire::Kind::Screen) {
+                        return Err("watch_identity_conflict");
+                    }
+                    op.result = RoomResult::SourceRetired { viewers: self.source_viewers(publication_id, false) };
+                }
                 self.unpublish(session, publication_id)?;
             }
             Command::SetScreenDirectLimit {

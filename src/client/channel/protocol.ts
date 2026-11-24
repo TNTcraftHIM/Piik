@@ -14,7 +14,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
 export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 45;
+export const CHANNEL_PROTOCOL = 46;
 export function isIncompatibleProtocol(code: string): boolean {
   return code === "incompatible_protocol" || code.endsWith(": incompatible_protocol");
 }
@@ -62,7 +62,7 @@ const publicationBaseSchema = z.object({
   audience: z.array(z.object({ sessionId: id, state: z.enum(["preparing", "active", "failed"]) })).max(CHANNEL_SESSION_LIMIT),
 });
 export const publicationSchema = z.discriminatedUnion("kind", [
-  publicationBaseSchema.extend({ kind: z.literal("screen"), directLimit: z.number().int().min(1).max(MAX_RELAY_CAPACITY).optional(), videoSettings: videoSettingsSchema.optional(), source: screenSourceSchema, title: identityNameSchema.nullable() }),
+  publicationBaseSchema.extend({ kind: z.literal("screen"), replaceWatchId: id.optional(), directLimit: z.number().int().min(1).max(MAX_RELAY_CAPACITY).optional(), videoSettings: videoSettingsSchema.optional(), source: screenSourceSchema, title: identityNameSchema.nullable() }),
   publicationBaseSchema.extend({ kind: z.literal("voice"), directLimit: z.never().optional(), videoSettings: z.never().optional(), source: z.never().optional(), title: z.never().optional(), audience: z.array(z.never()).max(0) }),
 ]);
 export const attachmentSchema = z.object({
@@ -108,7 +108,7 @@ export type WatchByteSource = z.infer<typeof watchByteSourceSchema>;
 export type WatchMode = "direct" | "peer";
 export const watchBytePlanSchema = z.object({ roomId: id, activityId: z.uuid(), source: watchByteSourceSchema, upstream: z.uuid().nullable(), downstream: z.array(z.uuid()), receiving: z.boolean() }).strict();
 export type WatchBytePlan = z.infer<typeof watchBytePlanSchema>;
-export const watchActivitySchema = z.object({ id, roomId: id, userId: id, sessionId: id, source: watchSourceSchema, playback: watchPlaybackSchema, viewerSessionIds: z.array(id).max(CHANNEL_SESSION_LIMIT), byteSource: watchByteSourceSchema.optional() }).strict();
+export const watchActivitySchema = z.object({ id, replaceId: id.optional(), replaceScreenId: id.optional(), roomId: id, userId: id, sessionId: id, source: watchSourceSchema, playback: watchPlaybackSchema, viewerSessionIds: z.array(id).max(CHANNEL_SESSION_LIMIT), byteSource: watchByteSourceSchema.optional() }).strict();
 export type WatchActivity = z.infer<typeof watchActivitySchema>;
 const flowBindingSchema = z.object({ id, publicationId: id, selected: z.boolean(), inputFlowId: id.nullable(), presentation: z.boolean().optional() });
 export const snapshotSchema = z.object({
@@ -291,11 +291,11 @@ export interface RoomSettings extends DomainSettings {
   allowServiceRelay?: boolean;
 }
 export type ChannelCommand =
-  | { type: "start_watch"; roomId: string; id: string; source: WatchSource; playback: WatchPlayback; byteSource?: WatchByteSource }
+  | { type: "start_watch"; replaceId?: string; roomId: string; id: string; source: WatchSource; playback: WatchPlayback; byteSource?: WatchByteSource }
   | { type: "update_watch"; roomId: string; id: string; playback: WatchPlayback }
   | { type: "join_watch"; roomId: string; id: string; mode: WatchMode | null }
   | { type: "set_watch_byte_source"; roomId: string; id: string; byteSource: WatchByteSource | null }
-  | { type: "stop_watch"; roomId: string; id: string }
+  | { type: "stop_watch"; successorScreenId?: string; roomId: string; id: string }
   | { type: "join"; protocol: typeof CHANNEL_PROTOCOL; canUsePeerTransport?: boolean; name: string; signingKey: number[]; credential?: string; ownerKey?: string; sessionId?: string }
   | { type: "conversation"; packet: SignedConversationPacket }
   | { type: "set_profile"; name?: string; avatar?: string | null }
@@ -335,7 +335,7 @@ export type ChannelCommand =
   | { type: "publish"; publication: { id: string; roomId: string; kind: "screen" | "voice"; videoSettings?: VideoSettings; source?: ScreenSource } }
   | { type: "set_screen_direct_limit"; publicationId: string; limit: number | null }
   | { type: "set_title"; publicationId: string; title: string | null }
-  | { type: "unpublish"; publicationId: string }
+  | { type: "unpublish"; successorWatchId?: string; publicationId: string }
   | { type: "set_paused"; publicationId: string; paused: boolean }
   | { type: "transfer_source"; publicationId: string; toSessionId: string }
   | { type: "subscribe"; publicationId: string; enabled: boolean; helperSessionId?: string }

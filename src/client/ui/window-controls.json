@@ -17,6 +17,7 @@
   },
   "labels": {
     "en": {
+      "share": "Share…",
       "bookmarks": "Saved sites",
       "revealQuestion": "Show the downloaded file in File Explorer?",
       "reveal": "Show file",
@@ -32,6 +33,7 @@
       "permissionClose": "Cancel"
     },
     "zh": {
+      "share": "分享…",
       "bookmarks": "收藏的站点",
       "revealQuestion": "在文件资源管理器中显示下载的文件？",
       "reveal": "显示文件",
@@ -47,6 +49,7 @@
       "permissionClose": "取消"
     },
     "zh-Hant": {
+      "share": "分享…",
       "bookmarks": "收藏的站點",
       "revealQuestion": "在檔案總管中顯示下載的檔案？",
       "reveal": "顯示檔案",
@@ -62,6 +65,7 @@
       "permissionClose": "取消"
     },
     "ja": {
+      "share": "共有…",
       "bookmarks": "保存したサイト",
       "revealQuestion": "ダウンロードしたファイルをエクスプローラーに表示しますか？",
       "reveal": "ファイルを表示",
@@ -77,6 +81,7 @@
       "permissionClose": "キャンセル"
     },
     "ko": {
+      "share": "공유…",
       "bookmarks": "저장된 사이트",
       "revealQuestion": "다운로드한 파일을 파일 탐색기에 표시할까요?",
       "reveal": "파일 표시",

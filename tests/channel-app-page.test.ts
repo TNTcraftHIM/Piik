@@ -22,10 +22,10 @@ class Socket {
   close() { this.readyState = 3; this.onclose?.(); }
 }
 afterEach(() => vi.unstubAllGlobals());
-async function setup(backgroundVoiceShortcuts = false) {
+async function setup(backgroundVoiceShortcuts = false, receiveVoiceShortcuts = false) {
   vi.stubGlobal("WebSocket", Socket);
   const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
-    token: "test-token", port: 8793, pagePlayer: true, backgroundVoiceShortcuts }, "site", "user", "credential", "Me", () => {}, () => {});
+    token: "test-token", port: 8793, pagePlayer: true, backgroundVoiceShortcuts }, "site", "user", "credential", "Me", () => {}, () => {}, undefined, undefined, undefined, () => receiveVoiceShortcuts);
   const socket = Socket.current;
   socket.onopen?.(); socket.reply(null); await app.ready;
   return { app, socket };
@@ -92,6 +92,71 @@ test("native voice bindings yield to text and remote input in the focused page o
       await act(async () => view.dispatchEvent(new Event("blur")));
       await configured(true);
     }
+  } finally { await act(async () => root.unmount()); app.close(); }
+});
+
+test("native voice registration owns pending and active chords across dock targets", async () => {
+  const surface = () => {
+    const view = Object.assign(new EventTarget(), { HTMLIFrameElement: class {} });
+    const doc = Object.assign(new EventTarget(), { nodeType: 9, defaultView: view, hasFocus: () => !!doc.activeElement,
+      activeElement: null as { nodeType: number; closest(selector: string): boolean } | null });
+    return Object.assign(view, { document: doc });
+  };
+  const page = surface(), panel = surface();
+  const pip = Object.assign(new EventTarget(), { window: null as typeof panel | null });
+  Object.assign(page, { top: page, isSecureContext: true, documentPictureInPicture: pip });
+  vi.stubGlobal("window", page); vi.stubGlobal("document", page.document);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = Object.assign(new EventTarget(), { nodeType: 1, tagName: "DIV", ownerDocument: page.document });
+  const root = createRoot(container as unknown as HTMLElement);
+  const { app, socket } = await setup(true, true);
+  let shortcuts: ReturnType<typeof useVoiceShortcuts>;
+  const toggles = vi.fn();
+  function Dock({ room }: { room: string }) {
+    shortcuts = useVoiceShortcuts(room, action => { toggles(room, action); return true; }, app.backgroundVoiceShortcuts);
+    return null;
+  }
+  const configured = async (bound: boolean) => {
+    const binding = (key: string) => bound ? expect.objectContaining({ key }) : null;
+    expect(socket.sent.at(-1)).toMatchObject({ type: "voice_shortcuts", enabled: true, microphone: binding("M"), listening: binding("D") });
+    await act(async () => socket.reply({ microphone: bound ? "registered" : "unbound", listening: bound ? "registered" : "unbound" }));
+  };
+  const keydown = () => {
+    const event = Object.assign(new Event("keydown", { cancelable: true }), {
+      key: "M", ctrlKey: true, shiftKey: true, altKey: false, metaKey: false, getModifierState: () => false,
+    });
+    page.document.dispatchEvent(event);
+  };
+  const native = () => socket.receive({ type: "voice_shortcut", action: "toggle_microphone", activatedAtMs: Date.now() });
+  try {
+    await act(async () => root.render(createElement(Dock, { room: "first" })));
+    await act(async () => shortcuts.background.enable(true));
+    keydown();
+    await configured(true);
+    native();
+    keydown();
+    expect(toggles.mock.calls).toEqual([["first", "microphone"]]);
+
+    await act(async () => root.render(createElement(Dock, { room: "second" })));
+    keydown();
+    native();
+    await configured(true);
+    native();
+    keydown();
+    expect(toggles.mock.calls).toEqual([["first", "microphone"], ["second", "microphone"]]);
+
+    page.document.activeElement = { nodeType: 1, closest: selectors => selectors.includes("input") };
+    await act(async () => page.dispatchEvent(new Event("focus")));
+    native();
+    expect(toggles).toHaveBeenCalledTimes(2);
+    await configured(false);
+    page.document.activeElement = null;
+    await act(async () => page.dispatchEvent(new Event("blur")));
+    await act(async () => socket.reply({ microphone: "unavailable", listening: "registered" }));
+    keydown();
+    native();
+    expect(toggles.mock.calls.at(-1)).toEqual(["second", "microphone"]);
+    expect(toggles).toHaveBeenCalledTimes(3);
   } finally { await act(async () => root.unmount()); app.close(); }
 });
 

@@ -176,6 +176,7 @@ enum ServiceEvent {
     Fullscreen(bool),
     Caption(WindowId, WindowAction),
     CaptionReady(WindowId),
+    ShareWatchPage(WindowId),
     OpenBookmarks(WindowId),
     PopupTitle(WindowId, String),
     Content(ContentMessage),
@@ -905,6 +906,15 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 } else if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == id) {
                     caption::apply(&child.window, &action);
                 } else { pages.window_action(id, &action); }
+            }
+            Event::UserEvent(ServiceEvent::ShareWatchPage(id)) => {
+                if let Some(main) = &window {
+                    let site = main.content.url().ok().and_then(|url| reveal::origin(&url));
+                    if site.is_some_and(|site| pages.can_share(id, &site, main.document.get())) {
+                        main.window.set_minimized(false);
+                        main.window.set_focus();
+                    }
+                }
             }
             Event::UserEvent(ServiceEvent::CaptionReady(id)) => {
                 if let Some(main) = window.as_ref().filter(|main| main.window.id() == id) { main.caption.ready(&theme, language); }

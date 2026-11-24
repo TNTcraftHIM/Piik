@@ -125,11 +125,15 @@ export interface WatchStageSource {
   onRoom(): void; onJoin(): void; onLeave(): void; onStop(): void; onResume(): void;
   onPlayback(patch: Partial<Pick<import("../protocol").WatchPlayback, "paused" | "position" | "rate">>): void;
 }
-export type ChannelStageSource = ScreenStageSource | WatchStageSource;
-const stageTitle = (source: ChannelStageSource, t: Copy["t"]) => source.kind === "watch" ? source.title : screenTitle(source, t);
+export interface WaitingStageSource {
+  kind: "waiting"; id: string; userId: string; name: string; title: string; roomName: string; avatar?: string;
+  hidden?: boolean; onClose(): void;
+}
+export type ChannelStageSource = ScreenStageSource | WatchStageSource | WaitingStageSource;
+const stageTitle = (source: ChannelStageSource, t: Copy["t"]) => source.kind === "screen" ? screenTitle(source, t) : source.title;
 
 function SourceOfferAction({ source, disabled, onWatch }: {
-  source: ChannelStageSource; disabled: boolean; onWatch(id: string): void;
+  source: ScreenStageSource | WatchStageSource; disabled: boolean; onWatch(id: string): void;
 }) {
   const { t } = useCopy();
   let join = () => onWatch(source.id);
@@ -209,9 +213,9 @@ function SourceControl({ source, onInputPolicy, onInputDecide, onInputSimultaneo
 export function ChannelStage({ theaterMode: [theater, setTheater], buffering, sources, focusedId, canSubscribe, onFocus: onChangeFocus, onWatch, onUnwatch, onRetryPicture, onPause, onStop, onPresentation,
   onInputPolicy, onInputDecide, onInputSimultaneous, onInputShortcut }: ChannelStageProps) {
   const { lang, t } = useCopy();
-  const retained = sources.filter(source => source.owned || source.subscribed);
+  const retained = sources.filter(source => source.kind === "waiting" || source.owned || source.subscribed);
   const active = retained.filter(source => !source.hidden);
-  const available = sources.filter(source => !source.hidden && !source.owned && !source.subscribed);
+  const available = sources.filter((source): source is ScreenStageSource | WatchStageSource => source.kind !== "waiting" && !source.hidden && !source.owned && !source.subscribed);
   const focused = active.find(source => source.id === focusedId);
   const automaticEmbed = (focused?.kind === "watch" && focused.player?.presentation.kind === "embed" ? focused
     : active.find(source => source.kind === "watch" && source.player?.presentation.kind === "embed"))?.id;
@@ -287,7 +291,7 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
       tiles.querySelector<HTMLElement>(".c3-monitor-tile.is-focused")?.focus({ preventScroll: true });
     }
   }, [focused?.id]);
-  const hasFocusedMedia = focused?.kind === "watch" ? !!focused.player?.video : !!focused?.stream;
+  const hasFocusedMedia = focused?.kind === "watch" ? !!focused.player?.video : focused?.kind === "screen" && !!focused.stream;
   useEffect(() => { if (!hasFocusedMedia) setTheater(false); }, [focused?.id, hasFocusedMedia, setTheater]);
   if (!sources.length) return null;
 
@@ -329,12 +333,13 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
           if (source.kind === "watch") return <WatchStageTile key={source.id} source={source} thumbnail={thumbnail} focused={isFocused} automaticPlayback={source.id === automaticEmbed}
             focusable={focusable} centeredStart={centeredStart} onFocus={onFocus} theaterMode={theater && isFocused}
             onToggleTheater={() => { onFocus(source.id); setTheater(!theater); }} />;
-          const microphone = source.sourceMicrophone;
-          const sourceDetail = `${source.name} / ${source.roomName}${source.localSource ? ` / ${t("screen.localPreview")}` : ""}`;
-          const title = screenTitle(source, t);
-          const playbackFailed = source.playbackError !== undefined;
-          const failed = !source.paused && (playbackFailed || source.deliveryFailed);
-          const diagnosis = diagnoseChannelFact({ area: "screen", paused: source.paused,
+          const waiting = source.kind === "waiting";
+          const microphone = !waiting && source.sourceMicrophone;
+          const sourceDetail = `${source.name} / ${source.roomName}${!waiting && source.localSource ? ` / ${t("screen.localPreview")}` : ""}`;
+          const title = stageTitle(source, t);
+          const playbackFailed = !waiting && source.playbackError !== undefined;
+          const failed = !waiting && !source.paused && (playbackFailed || source.deliveryFailed);
+          const diagnosis = !waiting && diagnoseChannelFact({ area: "screen", paused: source.paused,
             deliveryFailed: source.deliveryFailed, playbackError: source.playbackError });
           return <article key={source.id} hidden={source.hidden} inert={source.hidden} tabIndex={isFocused ? -1 : undefined} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
             style={centeredStart ? { gridColumn: `${centeredStart} / span 2` } : undefined}
@@ -344,7 +349,7 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
               if (!focusable || (event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) return;
               onFocus(source.id);
             }}>
-            {source.stream ? <ChannelVideo buffering={buffering} stream={source.stream} owned={source.owned} localSource={source.localSource} sourcePaused={source.paused}
+            {waiting ? <div className="c3-monitor-wait"><Glyph name="tv" size={24} /><span role="status">{t("screen.shareEnded", { name: source.name })}</span></div> : source.stream ? <ChannelVideo buffering={buffering} stream={source.stream} owned={source.owned} localSource={source.localSource} sourcePaused={source.paused}
               onRetryPicture={onRetryPicture ? () => onRetryPicture(source.id) : undefined} retryAvailable={canSubscribe && !source.pending}
               presentation={source.hidden ? "background" : thumbnail ? "thumbnail" : "full"} inputs={source.inputs} onPresentation={onPresentation} input={source.input}
               interaction={source.interaction}
@@ -372,22 +377,22 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
                   <div className="c3-monitor-source">
                     <Tooltip overflow={{ text: title, selector: "strong" }}><strong>{title}</strong></Tooltip>
                     <Tooltip overflow={{ text: sourceDetail, selector: "small" }}><small>
-                      <span>{source.localSource ? t("screen.localPreview") : source.name}</span><span aria-hidden="true"> / </span>
-                      {source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}
+                      <span>{!waiting && source.localSource ? t("screen.localPreview") : source.name}</span><span aria-hidden="true"> / </span>
+                      {!waiting && source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}
                     </small></Tooltip>
                   </div>
-                  <div className="c3-monitor-social">
+                  {!waiting && <div className="c3-monitor-social">
                     <ChannelContentReactions reactions={source.reactions} session={source.interaction ?? null}
                       target={{ publicationId: source.id }} disabled={source.available === false} effectsEnabled={!source.hidden}
                       effectAnchor={() => grid.current?.querySelector(`[data-publication-id="${CSS.escape(source.id)}"] .c3-monitor-source-info > .lr-person`) ?? null} />
                     <SourceAudience people={source.audience} />
-                  </div>
+                  </div>}
                 </div>
                 <div className="c3-monitor-tile-actions">
                   {active.length > 1 && !isFocused && <Tooltip className="c3-monitor-layout-action" kind="hint-screen-focus"
                     text={t("screen.focusNamed", { title })}><Btn icon="screenFocus" quiet size="dense"
                       title={{ text: t("screen.focusNamed", { title }) }} onClick={() => onFocus(source.id)} /></Tooltip>}
-                  {source.owned && <div className="c3-monitor-publishing" role="group"
+                  {!waiting && source.owned && <div className="c3-monitor-publishing" role="group"
                     aria-label={t("screen.sharingControls", { title })}>
                     {!source.hidden && source.shareControls}
                     {source.sourceAudio && <SourceSound sound={source.sourceAudio} title={title} />}
@@ -409,9 +414,9 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
                       title={{ text: t("screen.stopSharing", { title }) }}
                       hint="hint-share-stop" busy={source.pending} disabled={source.pending} onClick={() => onStop(source.id)} /></span>
                   </div>}
-                  {!source.owned && <span className="c3-monitor-close"><Btn icon="x" quiet size="dense"
+                  {(waiting || !source.owned) && <span className="c3-monitor-close"><Btn icon="x" quiet size="dense"
                     title={{ text: t("screen.stopWatching", { title }) }}
-                    hint="hint-close" busy={source.pending} disabled={source.pending} onClick={() => onUnwatch(source.id)} /></span>}
+                    hint="hint-close" busy={!waiting && source.pending} disabled={!waiting && source.pending} onClick={waiting ? source.onClose : () => onUnwatch(source.id)} /></span>}
                 </div>
               </div>
             </footer>

@@ -38,6 +38,7 @@ struct FileObservation {
 
 #[derive(Clone)]
 struct Watch {
+    replace_id: Option<Uuid>,
     refused: BTreeSet<(Uuid, Uuid)>,
     parents: BTreeMap<Uuid, Uuid>,
     user_id: Uuid,
@@ -328,6 +329,8 @@ impl RoomRuntime {
                 .watch_activities
                 .iter()
                 .map(|(id, activity)| crate::wire::WatchActivity {
+                    replace_id: activity.replace_id,
+                    replace_screen_id: None,
                     id: *id,
                     room_id: self.policy.id.clone(),
                     user_id: activity.user_id,
@@ -853,6 +856,7 @@ impl RoomRuntime {
         member: Member,
         session: Uuid,
         id: Uuid,
+        replace_id: Option<Uuid>,
         source: crate::wire::WatchSource,
         playback: crate::wire::WatchPlayback,
         byte_source: Option<crate::wire::WatchByteSource>,
@@ -863,6 +867,7 @@ impl RoomRuntime {
         playback.validate()?;
         if let Some(current) = self.watch_activities.get(&id) {
             if current.session_id != session
+                || current.replace_id != replace_id
                 || current.source != source
                 || current.playback.timeline != playback.timeline
             {
@@ -872,16 +877,20 @@ impl RoomRuntime {
             return Ok(());
         }
         self.validate_watch_byte_source(member, byte_source.as_ref(), endpoints)?;
-        if let Some(previous) = self
+        let previous = self
             .watch_activities
             .iter()
-            .find_map(|(id, activity)| (activity.session_id == session).then_some(*id))
-        {
+            .find_map(|(id, activity)| (activity.session_id == session).then_some(*id));
+        if replace_id.is_some() && replace_id != previous {
+            return Err("watch_identity_conflict");
+        }
+        if let Some(previous) = previous {
             self.stop_watch(member, session, previous)?;
         }
         self.watch_activities.insert(
             id,
             Watch {
+                replace_id,
                 refused: BTreeSet::new(),
                 parents: BTreeMap::new(),
                 user_id: member.user_id,
@@ -893,6 +902,17 @@ impl RoomRuntime {
         );
         Ok(())
     }
+    pub(crate) fn source_viewers(&self, id: Uuid, watch: bool) -> Vec<Uuid> {
+        self.activity.iter().filter_map(|(viewer, activity)| {
+            let subscribed = if watch { activity.watch_subscriptions.contains_key(&id) } else { activity.watching.contains_key(&id) };
+            subscribed.then_some(*viewer)
+        }).collect()
+    }
+
+    pub(crate) fn watch_user(&self, id: Uuid) -> Option<Uuid> {
+        self.watch_activities.get(&id).map(|watch| watch.user_id)
+    }
+
     pub(crate) fn update_watch(
         &mut self,
         member: Member,
@@ -1107,6 +1127,7 @@ impl RoomRuntime {
                 Publication::new(PublicationInfo {
                     screen: if kind == Kind::Screen {
                         Some(crate::wire::ScreenInfo {
+                            replace_watch_id: None,
                             direct_limit: None,
                             source: source.ok_or("invalid_screen_source")?,
                             title: None,
@@ -1136,6 +1157,7 @@ impl RoomRuntime {
             return Err("not_publication_owner");
         }
         self.publications.remove(&id);
+        for activity in self.activity.values_mut() { activity.watching.remove(&id); }
         Ok(true)
     }
 
@@ -1783,6 +1805,7 @@ mod tests {
             owner,
             id(1),
             id(10),
+            None,
             WatchSource::Media {
                 url: "https://example.com/movie.mp4".into(),
             },
@@ -3404,6 +3427,7 @@ mod tests {
             };
             let mut picture = Publication::new(PublicationInfo {
                 screen: Some(crate::wire::ScreenInfo {
+                    replace_watch_id: None,
                     direct_limit: None,
                     source: Default::default(),
                     title: None,
@@ -3549,7 +3573,7 @@ mod tests {
             room.set_voice(endpoints[&session].member, session, true, false, false).unwrap();
         }
         room.publish(owner, source, voice, Kind::Voice, None, None).unwrap();
-        room.start_watch(owner, source, watch,
+        room.start_watch(owner, source, watch, None,
             WatchSource::Media { url: "https://example.com/movie.mp4".into() },
             WatchPlayback { timeline: WatchTimeline::Media, position: 0., paused: true, rate: 1., anchor_time: 0 },
             Some(WatchByteSource { session_id: source, resource_id: id(11), format: WatchFormat::File }),

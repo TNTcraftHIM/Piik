@@ -122,7 +122,7 @@ export interface ChannelActions {
   confirmWatchEmbed(roomId: string, reportError?: boolean): Promise<void>;
   watchEmbed(roomId: string): WatchMedia | undefined;
   prepareWatchPage(roomId: string, url: string, activityId?: string, reportError?: boolean): Promise<void>;
-  watchPage(roomId: string, activityId?: string): { url: string; candidates: readonly NativePageCandidate[]; activityId?: string; watchSources?: WatchMediaSources } | undefined;
+  watchPage(roomId: string, activityId?: string): { pageId?: string; url: string; candidates: readonly NativePageCandidate[]; activityId?: string; watchSources?: WatchMediaSources } | undefined;
   selectWatchPage(roomId: string, candidateId: string, activityId?: string, reportError?: boolean, mode?: "choose-source" | "original-page"): Promise<boolean>;
   selectWatchBrowserSource(roomId: string, choiceId: string | null, reportError?: boolean): Promise<void>;
   focusWatch(id: string): Promise<void>;
@@ -213,7 +213,7 @@ export interface ChannelActions {
   sourceSelectionCommitting(roomId: string): boolean;
   browserCapturePreparation(roomId: string): "picker" | "preparing" | undefined;
   cancelScreenSelection(roomId: string): Promise<void>;
-  stopScreen(publicationId: string): Promise<void>;
+  stopScreen(publicationId: string, successorWatchId?: string): Promise<void>;
   watch(publicationId: string): Promise<void>;
   unwatch(publicationId: string): Promise<void>;
   retryPicture(publicationId: string): Promise<void>;

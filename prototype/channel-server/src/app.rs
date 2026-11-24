@@ -69,7 +69,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 25;
+const PROTOCOL: u8 = 26;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -1300,6 +1300,8 @@ enum Operation {
     },
     StopCapture {
         publication_id: Uuid,
+        capture_id: Option<Uuid>,
+        successor_watch_id: Option<Uuid>,
     },
     InputPolicy {
         publication_id: Uuid,
@@ -1640,6 +1642,7 @@ async fn connection(
             let mut input_states = FuturesUnordered::new();
             let mut audio_states = FuturesUnordered::new();
             let mut operations = FuturesUnordered::new();
+            let mut capture_stops = FuturesUnordered::new();
             let mut opening: Option<BoxFuture<'static, Value>> = None;
             let mut metrics: Option<BoxFuture<'static, Value>> = None;
             let mut targets = None;
@@ -1918,6 +1921,25 @@ async fn connection(
                     }
                     response = async { metrics.as_mut().expect("metrics pending").await }, if metrics.is_some() => {
                         metrics = None;
+                        timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
+                        continue;
+                    }
+                    Some((id, publication_id, capture_id, result)) = capture_stops.next(), if !capture_stops.is_empty() => {
+                        let result: Result<()> = result;
+                        let result = result.and_then(|()| {
+                            let capture = captures.get_mut(&publication_id).ok_or_else(|| anyhow!("capture_unavailable"))?;
+                            anyhow::ensure!(capture.active.as_ref().is_some_and(|lease| lease.id() == capture_id), "capture_unavailable");
+                            capture.active = None;
+                            if capture.pending.is_none() {
+                                captures.remove(&publication_id);
+                                external_page.remove(publication_id);
+                            }
+                            Ok(())
+                        });
+                        let response = match result {
+                            Ok(()) => json!({"id":id,"result":null}),
+                            Err(error) => json!({"id":id,"error":error.to_string()}),
+                        };
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         continue;
                     }
@@ -2587,7 +2609,21 @@ async fn connection(
                                     Err(anyhow!("capture_unavailable"))
                                 }
                             }
-                            Operation::StopCapture { publication_id } => {
+                            Operation::StopCapture { publication_id, capture_id: Some(capture_id), successor_watch_id: Some(successor_watch_id) } => {
+                                if let Some((commands, lease)) = host.as_ref().zip(captures.get(&publication_id).and_then(Capture::source))
+                                    .filter(|(_, lease)| lease.id() == capture_id) {
+                                    let commands = commands.clone();
+                                    let scope = lease.scope().clone();
+                                    let producer = lease.producer_id();
+                                    capture_stops.push(async move {
+                                        let result = edit_capture(&commands, scope, producer, CaptureEdit::Stop { successor_watch_id }).await;
+                                        (request.id, publication_id, capture_id, result)
+                                    }.boxed());
+                                    continue;
+                                }
+                                Err(anyhow!("capture_unavailable"))
+                            }
+                            Operation::StopCapture { publication_id, capture_id: None, successor_watch_id: None } => {
                                 if external_page.remove(publication_id) {
                                     let event = external_input_event(
                                         publication_id,
@@ -2611,6 +2647,7 @@ async fn connection(
                                 }
                                 Ok(Value::Null)
                             }
+                            Operation::StopCapture { .. } => Err(anyhow!("invalid_request")),
                             Operation::CaptureAudioSettings {
                                 publication_id,
                                 settings,

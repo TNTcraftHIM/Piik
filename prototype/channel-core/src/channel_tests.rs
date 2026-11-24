@@ -155,6 +155,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
         .flat_map(|session| {
             [Kind::Screen, Kind::Voice].map(|kind| PublicationInfo {
                 screen: (kind == Kind::Screen).then(|| crate::wire::ScreenInfo {
+                    replace_watch_id: None,
                     direct_limit: None,
                     source: Default::default(),
                     title: None,

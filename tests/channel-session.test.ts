@@ -4316,7 +4316,7 @@ test.each(["track ended", "explicit stop"] as const)("a synchronized video loadi
   } finally { session.close(); }
 });
 
-test.each(["native", "obs"] as const)("committed %s capture retires only its room video when automatic preview fails", async source => {
+test.each(["native", "obs", "refused"] as const)("committed %s capture retires only its room video when automatic preview fails", async source => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
     domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup(1000, false);
@@ -4360,7 +4360,17 @@ test.each(["native", "obs"] as const)("committed %s capture retires only its roo
     const preview = await command(socket, "subscribe");
     socket.receive({ type: "error", requestId: preview.requestId, code: "room_unavailable" });
     const stop = await command(socket, "stop_watch");
-    expect(stop).toMatchObject({ id: activities.get("first"), roomId: "first" });
+    expect(stop).toMatchObject({ successorScreenId: commit.publicationId, id: activities.get("first"), roomId: "first" });
+    if (source === "refused") {
+      socket.receive({ type: "error", requestId: stop.requestId, code: "watch_identity_conflict" });
+      const rollback = await command(app, "stop_capture");
+      expect(rollback.publicationId).toBe(commit.publicationId);
+      app.receive({ id: rollback.id, result: null });
+      await vi.waitFor(() => expect(session.getSnapshot().pending.has("screen:first")).toBe(false));
+      expect(session.getSnapshot().ownedScreens.has(commit.publicationId as string)).toBe(false);
+      expect(session.getSnapshot().watchPlayers.has(activities.get("first")!)).toBe(true);
+      return;
+    }
     socket.receive({ type: "room_reply", roomId: "first", requestId: stop.requestId, result: { type: "done" } });
     await starting;
     await vi.waitFor(() => expect(session.getSnapshot().pending.has("screen:first")).toBe(false));
@@ -4371,6 +4381,93 @@ test.each(["native", "obs"] as const)("committed %s capture retires only its roo
   } finally { session.close(); }
 });
 
+test.each(["accepted", "rejected", "replaced"] as const)("successor stop follows the captured Native lease when %s", async outcome => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  const { session, socket } = await setup();
+  const app = await startFixtureApp(session);
+  const target = { kind: "display" as const, sourceId: "1", title: "Monitor" };
+  const capture = async () => {
+    const prepare = nextSocketCommand(app, "prepare_capture");
+    const running = session.startNativeScreen("first", { target, audio: false, showCaptureBorder: false });
+    const command = await prepare;
+    const captureId = crypto.randomUUID();
+    const commit = nextSocketCommand(app, "commit_capture");
+    app.receive({ id: command.id, result: { captureId, sessionId: crypto.randomUUID(), codec: "h264" } });
+    app.receive({ id: (await commit).id, result: null });
+    await running;
+    return { id: command.publicationId as string, captureId };
+  };
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const send = socket.send.bind(socket);
+    vi.spyOn(socket, "send").mockImplementation(data => {
+      send(data);
+      const c = JSON.parse(data);
+      if (c.type === "subscribe") queueMicrotask(() => socket.receive({ type: "ack", requestId: c.requestId }));
+    });
+    const first = await capture();
+    const successor = crypto.randomUUID();
+    const stopping = session.stopScreen(first.id, successor);
+    const request = app.sent.at(-1)!;
+    expect(request).toMatchObject({ type: "stop_capture", captureId: first.captureId, publicationId: first.id, successorWatchId: successor });
+    expect(session.getSnapshot().ownedScreens.has(first.id)).toBe(true);
+    const result = outcome === "accepted" ? stopping : expect(stopping).rejects.toThrow();
+    if (outcome === "replaced") expect((await capture()).id).toBe(first.id);
+    app.receive({ id: request.id, ...(outcome === "rejected" ? { error: "watch_identity_conflict" } : { result: null }) });
+    await result;
+    expect(session.getSnapshot().ownedScreens.has(first.id)).toBe(outcome !== "accepted");
+    expect(app.sent.filter(c => c.type === "stop_capture")).toHaveLength(1);
+  } finally { session.close(); }
+});
+test("a rejected Native retirement rolls back the newly announced forwarding watch", async () => {
+  localProviderVideo();
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  const { session, socket } = await setup();
+  const app = await startFixtureApp(session);
+  const pageId = crypto.randomUUID(), candidateId = crypto.randomUUID(), captureId = crypto.randomUUID();
+  const resource = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" as const };
+  const choice = { id: crypto.randomUUID(), displayURL: "https://fixture.test/new.mp4", name: "New", format: "file" as const };
+  const dispose = vi.fn();
+  const page = new appLink.AppPage(pageId, "https://fixture.test/page", async command => {
+    if (command.type === "page_media_sources") return { choices: [choice], indexedCandidates: [], mpdCandidates: [], byteSource: null };
+    return { position: 0, paused: true, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] };
+  }, dispose, () => {});
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const preparing = nextSocketCommand(app, "prepare_capture");
+    const capture = session.startNativeScreen("first", { target: { kind: "display", sourceId: "1", title: "Display" }, audio: false, showCaptureBorder: false });
+    const prepare = await preparing;
+    const committing = nextSocketCommand(app, "commit_capture");
+    app.receive({ id: prepare.id, result: { captureId, sessionId: crypto.randomUUID(), codec: "h264" } });
+    const preview = nextSocketCommand(socket, "subscribe");
+    app.receive({ id: (await committing).id, result: null });
+    socket.receive({ type: "ack", requestId: (await preview).requestId });
+    await capture;
+    vi.spyOn(appLink.ChannelApp.prototype, "preparePage").mockResolvedValue(page);
+    vi.spyOn(page, "prepareMedia").mockResolvedValue(resource);
+    await session.prepareWatchPage("first", page.url);
+    page.receive({ type: "page_candidates", pageId, url: page.url, candidates: [{ id: candidateId, title: "Film", url: null, duration: 60 }] });
+    await session.selectWatchPage("first", candidateId, undefined, false, "choose-source");
+    const announcing = nextSocketCommand(socket, "start_watch");
+    const rejection = expect(session.selectWatchForwardSource("first", choice.id)).rejects.toThrow("watch_identity_conflict");
+    const start = await announcing;
+    expect(start.byteSource).toEqual(resource);
+    const retiring = nextSocketCommand(app, "stop_capture");
+    socket.receive({ type: "room_reply", roomId: "first", requestId: start.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+    const stop = await retiring;
+    expect(stop).toMatchObject({ publicationId: prepare.publicationId, captureId, successorWatchId: start.id });
+    app.receive({ id: stop.id, error: "watch_identity_conflict" });
+    await rejection;
+    expect(session.getSnapshot().ownedScreens.has(prepare.publicationId as string)).toBe(true);
+    expect(session.getSnapshot().watchPlayers.has(start.id as string)).toBe(false);
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(socket.sent.filter(c => c.type === "stop_watch").map(c => c.id)).toEqual([start.id]);
+  } finally { session.close(); }
+});
 test("stopping committed Native capture retires its pending automatic preview error", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
@@ -11505,6 +11602,68 @@ test('watch creator uses domain confirmation, keeps its element and retires with
   } finally { session.close(); }
 });
 
+test("viewers join the exact confirmed screen and watch successor through normal subscriptions", async () => {
+  const { session, socket } = await setup(1000, false);
+  vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
+  const base = session.getSnapshot().state!;
+  const watch = { id: "watch-one", roomId: "first", viewerSessionIds: [], sessionId: "other", userId: "other",
+    source: { kind: "media" as const, url: "https://media.test/one.mp4" },
+    playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 1000 } };
+  const screen = { id: "screen-two", userId: "other", sessionId: "app", roomId: "first", kind: "screen", paused: false,
+    audience: [], source: { kind: "screen", name: "Display" }, title: null };
+  const reply = (type: string) => socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.findLast(c => c.type === type)!.requestId,
+    result: type === "join_watch" ? { type: "watch_ready", serverTime: 1000 } : { type: "done" } });
+  try {
+    socket.receive({ type: "state", state: { ...base, watchActivities: [watch] } });
+    const joined = session.joinWatch(watch.id);
+    reply("join_watch"); await joined;
+    socket.receive({ type: "state", state: { ...base, publications: [screen], watchActivities: [watch], watchSubscriptions: [{ id: watch.id, mode: "direct" }] } });
+    expect(socket.sent.some(c => c.type === "subscribe" && c.publicationId === screen.id)).toBe(false);
+    socket.receive({ type: "state", state: { ...base, publications: [{ ...screen, replaceWatchId: watch.id }], watchActivities: [], watchSubscriptions: [] } });
+    await vi.waitFor(() => expect(socket.sent.findLast(c => c.type === "subscribe")).toMatchObject({ publicationId: screen.id, enabled: true }));
+    reply("subscribe");
+    socket.receive({ type: "state", state: { ...base, publications: [screen], subscriptions: [screen.id] } });
+    const next = { ...watch, id: "watch-three", replaceScreenId: screen.id };
+    socket.receive({ type: "state", state: { ...base, publications: [], subscriptions: [], watchActivities: [next] } });
+    await vi.waitFor(() => expect(socket.sent.findLast(c => c.type === "join_watch")).toMatchObject({ id: next.id, mode: "direct" }));
+    reply("join_watch");
+  } finally { session.close(); }
+});
+test.each(["watching", "left", "revoked"] as const)("watch replacement obtains a new ordinary subscription for a %s viewer", async status => {
+  const { session, socket } = await setup(1000, false);
+  const first = new WatchTestVideo(), next = new WatchTestVideo();
+  vi.stubGlobal("document", { createElement: vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(next) });
+  const activity = { id: "watch-one", roomId: "first", viewerSessionIds: [], sessionId: "other", userId: "other",
+    source: { kind: "media" as const, url: "https://media.test/one.mp4" },
+    playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 1000 } };
+  const reply = () => socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.findLast(c => c.type === "join_watch")!.requestId,
+    result: { type: "watch_ready", serverTime: 1000 } });
+  try {
+    const snapshot = session.getSnapshot().state!;
+    socket.receive({ type: "state", state: { ...snapshot, watchActivities: [activity] } });
+    const joined = session.joinWatch(activity.id);
+    reply();
+    await joined;
+    socket.receive({ type: "state", state: { ...snapshot, watchActivities: [activity], watchSubscriptions: [{ id: activity.id, mode: "direct" }] } });
+    if (status === "left") {
+      const left = session.leaveWatch(activity.id);
+      reply();
+      await left;
+    }
+    const successor = { ...activity, id: "watch-two", replaceId: activity.id, source: { kind: "media", url: "https://media.test/two.mp4" } };
+    const channel = { ...snapshot.channel, rooms: snapshot.channel.rooms.map(room => status === "revoked" && room.id === "first" ? { ...room, authorized: false } : room) };
+    socket.receive({ type: "state", state: { ...snapshot, channel, watchActivities: [successor], watchSubscriptions: [] } });
+    const joins = socket.sent.filter(c => c.type === "join_watch" && c.id === successor.id);
+    expect(joins).toHaveLength(status === "watching" ? 1 : 0);
+    expect(first.src).toBe("");
+    if (status === "watching") {
+      expect(joins[0]).toMatchObject({ mode: "direct" });
+      reply();
+      await vi.waitFor(() => expect(session.getSnapshot().watchPlayers.get(successor.id)?.mode).toBe("direct"));
+      expect(next.src).toBe(successor.source.url);
+    }
+  } finally { session.close(); }
+});
 test('watch candidate cancellation preserves an existing activity and creates no screen owner', async () => {
   const { session, socket } = await setup(1000, false);
   const first = new WatchTestVideo(), candidate = new WatchTestVideo(); candidate.readyState = 0;
@@ -11802,6 +11961,7 @@ test.each(['cancel', 'stop'] as const)('watch replacement commit ignores %s canc
     const cancelled = operation === 'stop' ? expect(opening).rejects.toMatchObject({ name: 'AbortError' }) : undefined;
     await vi.waitFor(() => expect(socket.sent.filter(command => command.type === 'start_watch')).toHaveLength(2));
     const b = socket.sent.findLast(command => command.type === 'start_watch')!;
+    expect(b.replaceId).toBe(a.id);
     authority(b); // Core has atomically retired A; its confirmation is delayed.
     expect(first.src).toBe('');
     expect(session.sourceSelectionCommitting('first')).toBe(true);
@@ -15072,5 +15232,51 @@ test.each(['direct', 'fallback'] as const)('late original-page confirmation afte
     expect(dispose).toHaveBeenCalledOnce();
     expect(disposeNext).not.toHaveBeenCalled();
     expect(session.watchPage('second')?.url).toBe(next.url);
+  } finally { session.close(); }
+});
+
+test.each(["forward", "original"] as const)("caption Host replaces %s through explicit opposite mode", async prior => {
+  localProviderVideo();
+  const choice = { id: crypto.randomUUID(), displayURL: "https://fixture.test/new.mp4", name: "New", format: "file" as const };
+  const { session, socket, page, candidateId, commit, request } = await websiteSourceSelection(async () => ({ choices: [choice], indexedCandidates: [], byteSource: null }));
+  const bytes = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" as const };
+  commit.mockRestore();
+  async function select(mode: "forward" | "original", current: appLink.AppPage, id: string) {
+    if (mode === "original") return session.selectWatchPage("first", id, undefined, false, "original-page");
+    vi.spyOn(current, "prepareMedia").mockResolvedValue(bytes);
+    expect(await session.selectWatchPage("first", id, undefined, false, "choose-source")).toBe(false);
+    return session.selectWatchForwardSource("first", choice.id);
+  }
+  async function confirm(count: number) {
+    await vi.waitFor(() => expect(socket.sent.filter(c => c.type === "start_watch")).toHaveLength(count));
+    const start = socket.sent.findLast(c => c.type === "start_watch")!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: start.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+    {
+      await vi.waitFor(() => expect(socket.sent.some(c => c.type === "update_watch" && c.id === start.id)).toBe(true));
+      const update = socket.sent.findLast(c => c.type === "update_watch" && c.id === start.id)!;
+      socket.receive({ type: "room_reply", roomId: "first", requestId: update.requestId, result: { type: "done" } });
+    }
+    return start;
+  }
+  try {
+    const initial = select(prior, page, candidateId);
+    const old = await confirm(1);
+    await initial;
+    socket.receive({ type: "state", state: { ...session.getSnapshot().state!, sessions: [...session.getSnapshot().state!.sessions, { ...session.getSnapshot().state!.sessions[0], id: bytes.sessionId }], watchActivities: [{
+      id: old.id, roomId: "first", sessionId: "endpoint", userId: "self", viewerSessionIds: [],
+      source: old.source, playback: old.playback, ...(old.byteSource ? { byteSource: old.byteSource } : {}),
+    }] } });
+    const next = new appLink.AppPage(crypto.randomUUID(), "https://video.test/second", request, vi.fn(), vi.fn());
+    const app = (session as unknown as { app: appLink.ChannelApp }).app;
+    vi.mocked(app.preparePage).mockResolvedValueOnce(next);
+    await session.prepareWatchPage("first", next.url);
+    next.receive({ type: "page_candidates", pageId: next.id, url: next.url, candidates: [{ id: candidateId, title: "Next", url: null, duration: 60 }] });
+    expect(session.watchPage("first")?.pageId).toBe(next.id);
+    expect(session.watchPage("first", old.id as string)?.pageId).toBeUndefined();
+    const replacement = select(prior === "original" ? "forward" : "original", next, candidateId);
+    const start = await confirm(2);
+    await replacement;
+    expect(start.replaceId).toBe(old.id);
+    expect(start.byteSource).toEqual(prior === "original" ? bytes : undefined);
   } finally { session.close(); }
 });

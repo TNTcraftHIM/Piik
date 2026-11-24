@@ -25,6 +25,10 @@ the feedback period; they do not delay that delivery.
   replacement or temporary source absence, release old media and permissions,
   and end retained viewing on explicit exit. Define replacement ownership
   before changing the activity contract.
+- [ ] **Native video picture-in-picture during source replacement.** Keep the
+  selected presentation window while retiring the old media and authorizing its
+  successor. Complete failure, cancellation and normal-unmount checks before
+  adopting a stable display-element handoff.
 - [ ] **Webpage viewer readiness.** Reproduce reports of a loading viewer shown
   as already watching, including Native original-page playback. Keep membership
   distinct from proved playable media in the viewer surface and participant list.

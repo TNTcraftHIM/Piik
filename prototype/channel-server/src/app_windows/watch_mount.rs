@@ -17,6 +17,8 @@ pub(super) const SCRIPT: &str = r#"(() => {
 #[derive(Clone, Deserialize)]
 #[serde(tag = "kind")]
 pub(super) enum Request {
+    #[serde(rename = "watchSharePicker", rename_all = "camelCase")]
+    Picker { page_id: Uuid, open: bool },
     #[serde(rename = "mountWatchPage", rename_all = "camelCase")]
     Mount {
         id: Uuid,
@@ -68,11 +70,6 @@ fn current_site(
 
 impl Request {
     pub(super) fn apply(self, main: &MainWindow, pages: &mut Pages, source: &str, generation: u64) {
-        let Self::Mount {
-            id,
-            page_id,
-            bounds,
-        } = self;
         let Some(site) = current_site(
             source,
             main.content.url().ok().as_deref(),
@@ -80,6 +77,13 @@ impl Request {
             main.document.get(),
         ) else {
             return;
+        };
+        let (id, page_id, bounds) = match self {
+            Self::Picker { page_id, open } => {
+                pages.share_picker(page_id, &site, open.then_some(generation));
+                return;
+            }
+            Self::Mount { id, page_id, bounds } => (id, page_id, bounds),
         };
         let result = match bounds {
             None => pages.mount(page_id, &site, &main.window, None),

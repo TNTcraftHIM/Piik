@@ -267,11 +267,20 @@ viewer timelines retain their existing paths.
 
 Preparing another source preserves the current one. Cancellation during
 preparation releases only the candidate; submitting the prepared source commits
-the replacement. A new synchronized-video activity atomically replaces the same
-sharer's previous activity in that room, ending its subscriptions. Viewers choose
-whether to join the new source. Cross-kind replacement stops the previous screen
-or synchronized video after the new source is confirmed. Explicitly stopping an
-activity also prevents a pending confirmation from restoring its player.
+the replacement. The sharer identifies the prior activity when switching sources.
+The room validates the replacement and captures the old source's subscribed
+viewers when it commits retirement. Those viewers receive the handoff through
+the existing ordered response path and join the new source with ordinary room
+authorization. Old byte grants, media and input permission are not transferred.
+Native capture retirement uses the App's current capture lease and releases it
+after room confirmation; a refusal preserves that capture. Ordinary stop remains
+immediate and prevents a pending confirmation from restoring the player.
+
+A viewer's selected stage window can outlive its media. When a source stops,
+the window retains its title and sharer while playback resources retire.
+Explicitly closing the window or losing room access ends this local selection.
+Browsing another room preserves it. A confirmed successor reuses that window;
+an unrelated later share does not automatically acquire its audience.
 
 For explicit MP4, WebM and Ogg video links the Browser's own player verifies
 playability. HLS uses a supported playlist player and its timeline checks.

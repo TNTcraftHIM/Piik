@@ -32,6 +32,10 @@ keeps existing shares, watched pictures and voice running, including playback so
 The main area shows only the selected room's pictures. The activity strip lists
 pictures in other rooms: **Return** opens their room, while **Stop watching** or
 **Stop sharing** ends only the selected activity.
+
+Switching sources keeps existing viewers' picture tiles in the room while they
+connect to the replacement. If a share ends, its tile remains until the viewer
+closes it. A separately started share still appears as a new source to choose.
 Hiding a picture releases its remote control; return to that room and request control again when needed.
 
 Send the site address or a public-room link for ordinary access. Private rooms

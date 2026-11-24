@@ -73,7 +73,9 @@ export function useVoiceShortcuts(roomId: string | undefined, toggle: (action: V
     const binding = voiceShortcutFromEvent(event);
     if (!binding) return;
     const action = voiceShortcutActions.find(action => matchesVoiceShortcut(bindings[action], binding));
-    if (action && background.report?.[action] !== "registered" && toggle(action)) event.preventDefault();
+    if (!action) return;
+    // Windows can start delivering this chord before its registration reply reaches the page.
+    if (background.pending || background.report?.[action] === "registered" || toggle(action)) event.preventDefault();
   });
   useEffect(() => {
     if (!roomId || !surface) return;

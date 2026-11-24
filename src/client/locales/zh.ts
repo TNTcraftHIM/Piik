@@ -287,6 +287,7 @@ export const zh = {
   "screen.returnToGrid": "返回平铺",
   "screen.sharingControls": "{title}的分享控制",
   "screen.stopSharing": "停止分享 {title}",
+  "screen.shareEnded": "{name} 已停止这路分享",
   "screen.stopWatching": "停止观看 {title}",
   "screen.availableScreens": "可观看的画面",
   "screen.availableToWatch": "正在分享",

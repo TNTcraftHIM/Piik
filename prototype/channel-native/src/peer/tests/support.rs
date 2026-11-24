@@ -90,6 +90,7 @@ impl Fixture {
         };
         let publication = PublicationInfo {
             screen: Some(piik_channel_core::wire::ScreenInfo {
+                replace_watch_id: None,
                 direct_limit: None,
                 source: Default::default(),
                 title: None,

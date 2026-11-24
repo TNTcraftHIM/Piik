@@ -216,6 +216,7 @@ export const ko = {
   "screen.returnToGrid": "격자 보기로 돌아가기",
   "screen.sharingControls": "공유 제어: {title}",
   "screen.stopSharing": "{title} 공유 중지",
+  "screen.shareEnded": "{name} 님이 이 공유를 종료했어요",
   "screen.stopWatching": "{title} 시청 중지",
   "screen.availableScreens": "시청 가능한 화면",
   "screen.availableToWatch": "시청 가능",

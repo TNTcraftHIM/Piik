@@ -21,7 +21,7 @@ import { debugEvent, debugOperation } from "../lib/debug";
 import { nativeVoiceShortcutEventSchema, nativeVoiceShortcutsReportSchema, type NativeVoiceShortcutsReport } from "../native/wire";
 import type { VoiceShortcutAction, VoiceShortcuts } from "./voice-shortcut-binding";
 
-export const APP_PROTOCOL = 25;
+export const APP_PROTOCOL = 26;
 const APP_REQUEST_BYTES = 256 * 1024;
 const SOURCE_LIST_TIMEOUT_MS = 8_000;
 const SHORTCUT_ACTION_MAX_AGE_MS = 1_000;
@@ -738,7 +738,17 @@ export class ChannelApp {
     if (this.connected) await this.request({ type: prepared === "external" ? "cancel_external_input" : "cancel_capture", publicationId });
   }
 
-  async stopCapture(publicationId: string): Promise<void> {
+  async stopCapture(publicationId: string, successorWatchId?: string): Promise<void> {
+    if (successorWatchId) {
+      const captureId = this.captures.get(publicationId)?.id;
+      if (!captureId) throw new Error("capture_unavailable");
+      await this.request({ type: "stop_capture", publicationId, captureId, successorWatchId });
+      if (this.captures.get(publicationId)?.id !== captureId) throw new DOMException("Capture replaced", "AbortError");
+      this.captures.delete(publicationId);
+      if (!this.prepared.has(publicationId)) this.externalInputs.delete(publicationId);
+      this.audioStates.delete(publicationId);
+      return;
+    }
     const active = this.captures.delete(publicationId);
     const external = this.externalInputs.delete(publicationId);
     this.audioStates.delete(publicationId);
