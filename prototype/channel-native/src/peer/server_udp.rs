@@ -1,12 +1,27 @@
 //! A Server service owns its fixed sockets across all physical peer leases.
 use anyhow::{ensure, Context, Result};
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    net::SocketAddr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 use str0m::{net::Protocol, Candidate, CandidateKind};
 
 pub struct ServerUdp {
     pub(super) sockets: Vec<Arc<super::transport::UdpIo>>,
-    pub(super) leased: std::sync::atomic::AtomicBool,
+    leased: AtomicBool,
     mappings: Vec<(SocketAddr, SocketAddr)>,
+}
+
+/// One transport runtime reads the fixed sockets at a time. Dropping the guard
+/// releases them however that runtime ends: return, panic or abort.
+pub(super) struct Lease<'a>(&'a ServerUdp);
+impl Drop for Lease<'_> {
+    fn drop(&mut self) {
+        self.0.leased.store(false, Ordering::Release);
+    }
 }
 
 impl ServerUdp {
@@ -54,6 +69,15 @@ impl ServerUdp {
             mappings,
             leased: false.into(),
         }))
+    }
+
+    /// None while another runtime holds the lease.
+    pub(super) fn lease(&self) -> Option<Lease<'_>> {
+        // Build the guard only after winning the swap: dropping one releases the lease.
+        if self.leased.swap(true, Ordering::AcqRel) {
+            return None;
+        }
+        Some(Lease(self))
     }
 
     pub(super) fn mapped_candidate(&self, base: &Candidate) -> Result<Option<Candidate>> {

@@ -569,5 +569,27 @@ async fn close_cancels_a_full_command_output() -> Result<()> {
     tokio::time::timeout(Duration::from_secs(3), native.close()).await??;
     Ok(())
 }
+
+#[tokio::test]
+async fn driver_ends_with_an_error_when_its_transport_runtime_stops() -> Result<()> {
+    let fixed = server_udp::ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
+    let holder = transport::Runtime::new(Some(fixed.clone()));
+    // The round trip proves the holder owns the lease, so the Driver's runtime stops at once.
+    let (held, _) = support::endpoint(&holder, Uuid::new_v4(), None).await?;
+    let (tx, _commands) = mpsc::channel(8);
+    let mut native =
+        NativePeers::with_input(Uuid::nil(), vec![], tx, watch::channel(None).1, None, Some(fixed));
+    let result = tokio::time::timeout(Duration::from_secs(3), &mut native.task)
+        .await
+        .context("Driver outlived its transport runtime")??;
+    let error = result.expect_err("a stopped runtime is a Driver failure");
+    ensure!(
+        format!("{error:#}").contains("native transport runtime stopped"),
+        "unexpected Driver failure: {error:#}"
+    );
+    held.close().await?;
+    holder.close().await;
+    Ok(())
+}
 #[path = "tests/watch.rs"]
 mod watch_bytes;

@@ -893,6 +893,8 @@ impl NativePeers {
             let result = loop {
                 let turn = tokio::select! {
                     _=cancelled.changed()=>break Ok(()),
+                    // A clean exit stops the runtime only in close(), after this loop.
+                    _=d.transport.stopped()=>break Err(anyhow!("native transport runtime stopped")),
                     request=inputs.recv()=>match request {Some(request)=>Turn::Input(request),None=>break Ok(())},
                     Some(event)=event_rx.recv()=>Turn::Event(event),
                     Some(source)=ready_rx.recv()=>Turn::SourceReady(source),
@@ -1058,14 +1060,14 @@ impl NativePeers {
                 };
                 tokio::select! {
                     biased;
-                    Some(error) = failure.recv() => break Err(error),
+                    Some(error) = failure.recv() => break Err(anyhow::Error::new(error).context("pair retirement task failed")),
                     _ = cancelled.changed() => break Ok(()),
                     _ = work => {}
                 }
             };
-            result
-                .and(d.close().await)
-                .context("pair retirement task failed")
+            // Every exit, including a failed child, retires through the same close.
+            let closed = d.close().await.context("pair retirement task failed");
+            result.and(closed)
         });
         Self {
             cancel,
