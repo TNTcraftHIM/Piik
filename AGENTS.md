@@ -15,6 +15,11 @@ coherent design that meets those needs. Simplicity must not discard requested
 functionality, visual quality or necessary safety. Design and verify at the
 scale of the change; routine design choices within an authorized task need no
 separate design document or approval.
+No design is protected by its age or its author. When a defect, a repeated
+repair or an awkward boundary traces to the shape of a design, question it and
+propose the one that would be chosen today, then supersede the record that
+accepted it. Path dependence and sunk cost are not reasons; evidence, published
+promises and the owner's decisions are.
 Detailed criteria stay in [visual language](./docs/standards/visual-language.md)
 and [engineering](./docs/standards/engineering.md).
 

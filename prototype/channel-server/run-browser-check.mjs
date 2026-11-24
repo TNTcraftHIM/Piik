@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
+import { createSocket } from "node:dgram";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, relative, resolve } from "node:path";
@@ -10,6 +11,14 @@ import { basename, join, relative, resolve } from "node:path";
 async function freePort() {
   const socket = createServer();
   await new Promise(resolve => socket.listen(0, "127.0.0.1", resolve));
+  const port = socket.address().port;
+  await new Promise(resolve => socket.close(resolve));
+  return port;
+}
+// Windows reserves port ranges per protocol, so UDP allocates the Server's UDP port.
+async function freeUdpPort() {
+  const socket = createSocket("udp4");
+  await new Promise(resolve => socket.bind(0, "127.0.0.1", resolve));
   const port = socket.address().port;
   await new Promise(resolve => socket.close(resolve));
   return port;
@@ -33,8 +42,8 @@ const services = [];
 function redact(value) {
   return value.replaceAll(env.PIIK_CHANNEL_OWNER_KEY, "[owner key]");
 }
-function start(command, args) {
-  const child = spawn(command, args, { env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+function start(command, args, own = {}) {
+  const child = spawn(command, args, { env: { ...env, ...own }, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
   const append = chunk => { output = (output + chunk).slice(-65536); };
   child.stdout.on("data", append);
@@ -55,7 +64,8 @@ async function ready(process, url) {
   throw new Error(`Acceptance service did not become ready: ${process.output()}`);
 }
 try {
-  const core = start(resolve(process.env.CHANNEL_EXECUTABLE ?? `prototype/channel-server/target/debug/piik-channel-prototype${process.platform === "win32" ? ".exe" : ""}`), []);
+  const core = start(resolve(process.env.CHANNEL_EXECUTABLE ?? `prototype/channel-server/target/debug/piik-channel-prototype${process.platform === "win32" ? ".exe" : ""}`), [],
+    { PIIK_CHANNEL_UDP_PORT: String(await freeUdpPort()) });
   await ready(core, `http://127.0.0.1:${corePort}/healthz`);
   if (!protocolOnly) {
     const web = start(process.execPath, ["node_modules/vite/bin/vite.js", "--config", "prototype/channel-server/vite.config.ts"]);
