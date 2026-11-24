@@ -113,6 +113,7 @@ export interface ScreenStageSource {
 }
 
 export interface WatchStageSource {
+  awaitingSource?: boolean;
   kind: "watch";
   id: string; userId: string; name: string; title: string; roomName: string; avatar?: string;
   owned: boolean; subscribed: boolean; hidden?: boolean; paused: boolean; pending?: boolean; available?: boolean;
@@ -471,7 +472,7 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
         }
         source.onResume();
       }} />
-      : <div className="c3-monitor-wait" role="status">{source.website && !source.pending ? <><Glyph name="globe" size={25} /><span>{t("watch.browserFailed")}</span>
+      : <div className="c3-monitor-wait" role="status">{source.website && !source.pending ? <><Glyph name="globe" size={25} /><span>{t(source.awaitingSource ? "watch.waiting" : "watch.browserFailed")}</span>
         {!source.owned && (source.onAppWatch
           ? <Btn icon="window" title="watch.openPage" cap="watch.openPage" disabled={source.available === false} onClick={source.onAppWatch} />
           : !(source.receiving?.peerAvailable && source.receiving.peerSupported) && (source.originalPageUnavailable

@@ -11629,6 +11629,83 @@ test("viewers join the exact confirmed screen and watch successor through normal
     reply("join_watch");
   } finally { session.close(); }
 });
+test.each(["only grant", "left", "revoked", "App page", "direct failure"] as const)("original page successor keeps the confirmed watch until %s", async route => {
+  const { session, socket } = await setup(1000, false);
+  vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
+  const base = session.getSnapshot().state!;
+  const old = { id: "old", roomId: "first", sessionId: "other", userId: "other", viewerSessionIds: [],
+    source: { kind: "media", url: "https://media.test/old.mp4" }, playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } };
+  const next = { ...old, id: "new", replaceId: old.id, source: { kind: "website", url: "https://www.example.test/page", ...(route === "direct failure" ? { mediaUrl: "https://media.test/failing.mp4" } : {}) } };
+  const reply = () => socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.findLast(c => c.type === "join_watch")!.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+  try {
+    socket.receive({ type: "state", state: { ...base, watchActivities: [old] } });
+    const joining = session.joinWatch(old.id); reply(); await joining;
+    socket.receive({ type: "state", state: { ...base, watchActivities: [old], watchSubscriptions: [{ id: old.id, mode: "direct" }] } });
+    socket.receive({ type: "state", state: { ...base, watchActivities: [next] } });
+    expect(socket.sent.findLast(c => c.type === "join_watch")).toMatchObject({ id: next.id, mode: "direct" });
+    if (route !== "direct failure") expect(session.getSnapshot().waitingWatchPages?.has(next.id)).toBe(true);
+    reply();
+    const joined = { ...base, watchActivities: [next], watchSubscriptions: [{ id: next.id, mode: "direct" }] };
+    socket.receive({ type: "state", state: joined });
+    expect(session.getSnapshot().state!.watchSubscriptions).toEqual(joined.watchSubscriptions);
+    if (route === "direct failure") {
+      const player = session.getSnapshot().watchPlayers.get(next.id)!;
+      player.video!.dispatchEvent(new Event("error"));
+      await vi.waitFor(() => expect(player.error).toBeTruthy());
+    } else expect(session.getSnapshot().watchPlayers.has(next.id)).toBe(false);
+    if (route === "left") { const leaving = session.leaveWatch(next.id); reply(); await leaving; }
+    if (route === "revoked") socket.receive({ type: "state", state: { ...base, watchActivities: [] } });
+    if (route === "App page") Object.assign(session, { app: { pagePlayer: true, connected: true, close() {}, stopCaptures() {} } });
+    const grant = { ...joined, watchActivities: [{ ...next, byteSource: { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" } }] };
+    const receiver = vi.spyOn(watchMedia, "createResourceWatchMedia").mockImplementation(() => new HTMLVideoMedia("https://media.test/fixture.mp4"));
+    socket.receive({ type: "state", state: grant });
+    socket.receive({ type: "state", state: grant });
+    expect(receiver).toHaveBeenCalledTimes(route === "only grant" ? 1 : 0);
+    if (route === "only grant") {
+      expect(socket.sent.findLast(c => c.type === "join_watch")).toMatchObject({ id: next.id, mode: "peer" });
+      reply();
+      await vi.waitFor(() => expect(session.getSnapshot().waitingWatchPages?.has(next.id)).toBe(false));
+    }
+  } finally { session.close(); }
+});
+test("two waiting successors retain a viewer's peer choice when the App can open the page", async () => {
+  const { session, socket } = await setup(1000, false);
+  vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
+  const base = session.getSnapshot().state!;
+  const grant = () => ({ sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" as const });
+  const old = { id: "old", roomId: "first", sessionId: "publisher", userId: "other", viewerSessionIds: [],
+    source: { kind: "website", url: "https://fixture.test/page" }, playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } };
+  const first = { ...old, id: "first-page", replaceId: old.id };
+  const second = { ...old, id: "second-page", replaceId: first.id };
+  const reply = (id: string, mode: "peer" | "direct") => {
+    const join = socket.sent.findLast(c => c.type === "join_watch")!;
+    expect(join).toMatchObject({ id, mode });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: join.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+  };
+  const reader = vi.spyOn(watchMedia, "createResourceWatchMedia").mockImplementation(() => new HTMLVideoMedia("https://media.test/fixture.mp4"));
+  try {
+    const initial = { ...old, byteSource: grant() };
+    socket.receive({ type: "state", state: { ...base, watchActivities: [initial] } });
+    const joining = session.joinWatch(old.id, "peer");
+    reply(old.id, "peer");
+    await joining;
+    socket.receive({ type: "state", state: { ...base, watchActivities: [initial], watchSubscriptions: [{ id: old.id, mode: "peer" }] } });
+    for (const successor of [first, second]) {
+      socket.receive({ type: "state", state: { ...base, watchActivities: [successor] } });
+      reply(successor.id, "direct");
+      socket.receive({ type: "state", state: { ...base, watchActivities: [successor], watchSubscriptions: [{ id: successor.id, mode: "direct" }] } });
+      expect(session.getSnapshot().waitingWatchPages?.has(successor.id)).toBe(true);
+    }
+    Object.assign(session, { app: { pagePlayer: true, connected: true, close() {}, stopCaptures() {} } });
+    const fresh = grant();
+    socket.receive({ type: "state", state: { ...base, watchActivities: [{ ...second, byteSource: fresh }], watchSubscriptions: [{ id: second.id, mode: "direct" }] } });
+    expect(session.getSnapshot().pagePlayer).toBe(true);
+    expect(reader.mock.lastCall?.[0]).toEqual(fresh);
+    reply(second.id, "peer");
+    await vi.waitFor(() => expect(session.getSnapshot().waitingWatchPages?.size).toBe(0));
+    expect(session.getSnapshot().watchPlayers.get(second.id)?.mode).toBe("peer");
+  } finally { session.close(); }
+});
 test.each(["watching", "left", "revoked"] as const)("watch replacement obtains a new ordinary subscription for a %s viewer", async status => {
   const { session, socket } = await setup(1000, false);
   const first = new WatchTestVideo(), next = new WatchTestVideo();

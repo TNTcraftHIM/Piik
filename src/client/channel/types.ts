@@ -61,6 +61,7 @@ export type ScreenPresentation = "prepared" | "waiting" | "failed";
 export type ScreenBufferStatus = "supported" | "unsupported" | "failed" | null;
 
 export interface ChannelView {
+  waitingWatchPages?: ReadonlySet<string>;
   watchPlayers: ReadonlyMap<string, WatchPlayer>;
   pagePlayer: boolean;
   externalScreenInputAvailable: boolean;

@@ -282,6 +282,13 @@ Explicitly closing the window or losing room access ends this local selection.
 Browsing another room preserves it. A confirmed successor reuses that window;
 an unrelated later share does not automatically acquire its audience.
 
+When a confirmed successor has no Browser-playable source, its viewer retains
+ordinary participation while choosing a player or awaiting an offered source.
+A previously selected peer route, or the sole playable route on a Browser-only
+endpoint, can resume when the sharer offers a new byte source. Failure of an
+available direct URL still leaves the receiving-method choice to the viewer.
+Leaving or losing room access retires the waiting intent.
+
 For explicit MP4, WebM and Ogg video links the Browser's own player verifies
 playability. HLS uses a supported playlist player and its timeline checks.
 Explicit static, unencrypted DASH links use the existing DASH player and the

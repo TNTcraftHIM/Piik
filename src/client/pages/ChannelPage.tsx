@@ -132,7 +132,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   }>({ focus: null, snapshot: state, sessionId, waiting: [] });
   function setSourceView(focus: typeof sourceView.focus) { setView(previous => ({ ...previous, focus })); }
   function closeWaiting(id: string) {
-    if (channel.watchPlayers.has(id)) run(channel.leaveWatch(id));
+    if (channel.watchPlayers.has(id) || channel.waitingWatchPages?.has(id)) run(channel.leaveWatch(id));
     else if (state?.publications.some(p => p.id === id && p.kind === "screen") && channel.pending.has(`watch:${id}`)) run(channel.unwatch(id));
     setView(previous => ({ ...previous, waiting: previous.waiting.filter(source => source.id !== id) }));
   }
@@ -142,7 +142,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     const waiting = sameSession ? sourceView.waiting.filter(source =>
       state.channel.rooms.some(room => room.id === source.roomId && room.authorized)
       && !(state.publications.some(live => live.id === source.id && live.roomId === source.roomId) && state.subscriptions.includes(source.id))
-      && !(state.watchActivities.some(live => live.id === source.id && live.roomId === source.roomId) && state.watchSubscriptions.some(sub => sub.id === source.id))) : [];
+      && !(state.watchActivities.some(live => live.id === source.id && live.roomId === source.roomId) && (state.watchSubscriptions.some(sub => sub.id === source.id) || channel.waitingWatchPages?.has(source.id)))) : [];
     if (sameSession) {
       const viewed = [...old.publications.filter(p => p.kind === "screen").filter(p => old.subscriptions.includes(p.id)),
         ...old.watchActivities.filter(w => old.watchSubscriptions.some(s => s.id === w.id))];
@@ -151,7 +151,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         if (!room || source.sessionId === sessionId || [...state.publications, ...state.watchActivities].some(live => live.id === source.id)) continue;
         const next = state.watchActivities.find(activity => activity.roomId === room.id && ("playback" in source ? activity.replaceId : activity.replaceScreenId) === source.id)
           ?? ("playback" in source ? state.publications.find(p => p.kind === "screen" && p.roomId === room.id && p.replaceWatchId === source.id) : undefined);
-        if (next && (state.watchSubscriptions.some(sub => sub.id === next.id) || state.subscriptions.includes(next.id))) continue;
+        if (next && (channel.waitingWatchPages?.has(next.id) || state.watchSubscriptions.some(sub => sub.id === next.id) || state.subscriptions.includes(next.id))) continue;
         waiting.push({ kind: "waiting", id: next?.id ?? source.id, userId: source.userId, roomId: room.id, roomName: room.name,
           name: old.users.find(u => u.id === source.userId)?.name ?? t("channel.previewPage.user"),
           title: "playback" in source ? watchTitle(source.source.url) : screenTitle(source, t),
@@ -239,8 +239,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const activeScreens = [...mine, ...watched];
   const watches = state?.watchActivities ?? [];
   const ownsWatch = (id: string) => watches.some(activity => activity.id === id && activity.sessionId === sessionId);
-  const activeWatches = watches.filter(activity => ownsWatch(activity.id) || state?.watchSubscriptions.some(value => value.id === activity.id));
-  const activeSources = [...activeScreens, ...activeWatches, ...sourceView.waiting];
+  const activeWatches = watches.filter(activity => ownsWatch(activity.id) || channel.waitingWatchPages?.has(activity.id) || state?.watchSubscriptions.some(value => value.id === activity.id));
+  const activeSources = [...activeScreens, ...activeWatches, ...sourceView.waiting.filter(source => !channel.waitingWatchPages?.has(source.id))];
   const visibleScreens = activeSources.filter(source => source.roomId === roomId);
   const otherScreens = activeSources.filter(source => source.roomId !== roomId);
   const focusedScreen = sourceView.focus?.roomId === roomId ? sourceView.focus.focusedId : null;
@@ -347,7 +347,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         setAppWatchId(activity.id);
       } : undefined,
       roomName: nameOfRoom(activity.roomId), avatar: userProfile(state, channel.profiles, activity.userId)?.avatar ?? undefined,
-      owned, subscribed: !!subscription, audience: state ? watchAudience(state, activity, channel.profiles) : [],
+      owned, awaitingSource: channel.waitingWatchPages?.has(activity.id), subscribed: !!subscription || !!channel.waitingWatchPages?.has(activity.id), audience: state ? watchAudience(state, activity, channel.profiles) : [],
       receiving: !owned ? { peerAvailable: !!activity.byteSource, peerSupported: canReceivePeerWatch(activity.byteSource?.format, hlsSupported),
         failed: !!player?.error, mode: player?.mode ?? subscription?.mode ?? "direct",
         browserSource, pending: busy("watch-video", activity.id), disabled: !connected,
@@ -566,7 +566,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
                 name: nameOfUser(state?.sessions.find(session => session.id === request.peerId)?.userId ?? request.peerId) })) };
             })(),
             pending: busy(channel.ownedScreens.has(publication.id) ? "stop" : "watch", publication.id) || busy("retry-picture", publication.id),
-          })), ...watchSources, ...sourceView.waiting.map(source => ({ ...source, hidden: source.roomId !== roomId, onClose: () => closeWaiting(source.id) }))]} focusedId={focusedScreen} onFocus={id => setSourceView({ roomId, focusedId: id })} canSubscribe={connected}
+          })), ...watchSources, ...sourceView.waiting.filter(source => !channel.waitingWatchPages?.has(source.id)).map(source => ({ ...source, hidden: source.roomId !== roomId, onClose: () => closeWaiting(source.id) }))]} focusedId={focusedScreen} onFocus={id => setSourceView({ roomId, focusedId: id })} canSubscribe={connected}
             onWatch={id => { showSource(roomId, id); run(channel.watch(id)); }} onUnwatch={id => run(channel.unwatch(id))}
             onRetryPicture={id => run(channel.retryPicture(id))}
             onPause={(id, paused) => run(channel.setScreenPaused(id, paused))}
