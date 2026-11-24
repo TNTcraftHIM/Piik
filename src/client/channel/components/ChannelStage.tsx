@@ -1,3 +1,4 @@
+import { useStagePicture, type StagePictureSource } from "./use-stage-picture";
 import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { Glyph } from "../../ui/icons";
@@ -73,7 +74,7 @@ function SourceSound({ sound, title }: { sound: SourceAudioControl; title: strin
   </span>;
 }
 
-export interface ScreenStageSource {
+export interface ScreenStageSource extends StagePictureSource {
   kind: "screen";
   id: string;
   userId: string;
@@ -112,7 +113,7 @@ export interface ScreenStageSource {
   available?: boolean;
 }
 
-export interface WatchStageSource {
+export interface WatchStageSource extends StagePictureSource {
   awaitingSource?: boolean;
   kind: "watch";
   id: string; userId: string; name: string; title: string; roomName: string; avatar?: string;
@@ -127,6 +128,7 @@ export interface WatchStageSource {
   onPlayback(patch: Partial<Pick<import("../protocol").WatchPlayback, "paused" | "position" | "rate">>): void;
 }
 export interface WaitingStageSource {
+  roomId?: string;
   kind: "waiting"; id: string; userId: string; name: string; title: string; roomName: string; avatar?: string;
   hidden?: boolean; onClose(): void;
 }
@@ -222,6 +224,7 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
     : active.find(source => source.kind === "watch" && source.player?.presentation.kind === "embed"))?.id;
   const layoutSources = JSON.stringify([active.map(source => source.id), available.map(source => source.id)]);
   const stage = useRef<HTMLElement>(null), grid = useRef<HTMLDivElement>(null);
+  useStagePicture(stage, sources);
   const pendingFocus = useRef<{ id: string; trigger: Element | null } | null>(null);
   const onFocus = (id: string | null) => {
     pendingFocus.current = id && id !== focused?.id

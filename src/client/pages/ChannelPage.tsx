@@ -347,7 +347,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     const subscription = state?.watchSubscriptions.find(value => value.id === activity.id);
     const available = connected && !!rooms.find(room => room.id === activity.roomId)?.available;
     return {
-      kind: "watch", id: activity.id, userId: activity.userId, name: nameOfUser(activity.userId), title: watchTitle(activity.source.url),
+      kind: "watch", id: activity.id, roomId: activity.roomId, predecessor: activity.predecessor, pictureAdmitted: rooms.some(room => room.id === activity.roomId && room.authorized), userId: activity.userId, name: nameOfUser(activity.userId), title: watchTitle(activity.source.url),
       website: activity.source.kind === "website", originalPageAvailable: activity.playback.timeline === "media" && (!channel.appConnected || channel.pagePlayer), onFocusWindow: () => run(channel.focusWatch(activity.id)),
       originalPageUnavailable: activity.source.kind === "website" && activity.playback.timeline === "media" && channel.appConnected && !channel.pagePlayer
         ? t("watch.pageUnsupported") : undefined,
@@ -536,7 +536,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               openRequested={pickerRoom === roomId} onPickerOpened={() => setPickerRoom(null)} /></div>
           </StageTv></div>}
           <ChannelStage theaterMode={theaterMode} buffering={{ target: channel.screenBufferTargetMs, status: channel.screenBufferStatus, onChange: channel.setScreenBufferTarget }} sources={[...[...activeScreens, ...availableScreens].map(publication => ({
-            kind: "screen" as const, id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
+            kind: "screen" as const, id: publication.id, roomId: publication.roomId, predecessor: publication.predecessor, pictureAdmitted: rooms.some(room => room.id === publication.roomId && room.authorized), userId: publication.userId, name: nameOfUser(publication.userId),
             hidden: !displayedSources.has(publication.id),
             source: publication.source, title: publication.title, onRoom: () => selectRoom(publication.roomId),
             avatar: userProfile(state, channel.profiles, publication.userId)?.avatar ?? undefined,

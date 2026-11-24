@@ -17,6 +17,7 @@ function player(native = false) {
     pictureInPictureElement: null as object | null,
     exitPictureInPicture: vi.fn<() => Promise<void>>().mockResolvedValue(),
   };
+  Object.assign(video, { ownerDocument: page });
   vi.stubGlobal("document", page);
   return { screen, video, page, element: video as unknown as FullscreenVideo };
 }
@@ -26,6 +27,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("Video fullscreen", () => {
   it("requests page fullscreen in the click stack before leaving PiP, and exits only its own stage", async () => {
     const { screen, video, page, element } = player();
+    vi.stubGlobal("document", { fullscreenEnabled: false });
     page.pictureInPictureElement = video;
     const entering = toggleVideoFullscreen(element);
     expect(screen.requestFullscreen).toHaveBeenCalledOnce();

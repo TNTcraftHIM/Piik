@@ -11,6 +11,7 @@ export type FullscreenVideo = HTMLVideoElement & {
 };
 
 export function videoFullscreenState(video: FullscreenVideo) {
+  const document = video.ownerDocument;
   const screen = video.parentElement;
   const pageSupported = Boolean(document.fullscreenEnabled && screen?.requestFullscreen);
   const nativeSupported = typeof (video.webkitEnterFullscreen ?? video.webkitEnterFullScreen) === "function";
@@ -27,6 +28,7 @@ export function videoFullscreenState(video: FullscreenVideo) {
 // Request in the original click stack: fullscreen consumes user activation.
 // Native events, rather than a successful method call, confirm Safari entry.
 export async function toggleVideoFullscreen(video: FullscreenVideo): Promise<void> {
+  const document = video.ownerDocument;
   const screen = video.parentElement;
   const state = videoFullscreenState(video);
   if (screen && document.fullscreenElement === screen) {
