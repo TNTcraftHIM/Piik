@@ -83,6 +83,7 @@ export function Btn({
   hintVars,
   hintTone,
   hintMotion,
+  hintDisabled,
   draw,
   iconOverlay,
 }: {
@@ -110,6 +111,7 @@ export function Btn({
   hintVars?: Record<string, string>;
   hintTone?: ComicTone;
   hintMotion?: ComicMotion;
+  hintDisabled?: boolean;
   /** Draw-in spot id for state-beat toggle icons (see Glyph). */
   draw?: string;
   /** Noninteractive artwork that moves with the icon, such as its input meter. */
@@ -117,7 +119,7 @@ export function Btn({
 }) {
   const { t, vis } = useCopy();
   const label = t(title);
-  const wrapped = Boolean(hint);
+  const wrapped = Boolean(hint) && !hintDisabled;
   const softDisabled = Boolean(wrapped && disabled);
   const activeTone = tone ?? (pressed ? "on" : undefined);
   const button = (
@@ -158,7 +160,7 @@ export function Btn({
     </button>
   );
   return hint ? (
-    <Tooltip kind={hint} disabled={expanded} tone={hintTone} motion={hintMotion} text={vis ? undefined : hintText ? t(hintText, hintVars) : label}>{button}</Tooltip>
+    <Tooltip kind={hint} disabled={expanded || hintDisabled} tone={hintTone} motion={hintMotion} text={vis ? undefined : hintText ? t(hintText, hintVars) : label}>{button}</Tooltip>
   ) : (
     button
   );

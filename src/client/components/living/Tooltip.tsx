@@ -138,7 +138,7 @@ export function Tooltip({
     };
     measure();
     // A clipped label can change its focus wrapper; measure outside resize delivery.
-    const observer = new ResizeObserver(() => {
+    const observer = new view.ResizeObserver(() => {
       view.cancelAnimationFrame(frame);
       frame = view.requestAnimationFrame(measure);
     });
@@ -370,7 +370,7 @@ export function Tooltip({
     const surface = wrapRef.current?.closest<HTMLElement>("[popover]");
     // A pawn can move on focus or hover without changing its layout box.
     trigger?.addEventListener("transitionend", schedulePick);
-    const observer = new ResizeObserver(schedulePick);
+    const observer = new view.ResizeObserver(schedulePick);
     for (const element of [wrapRef.current, wrapRef.current?.firstElementChild, tipRef.current, surface]) if (element) observer.observe(element);
     const movement = new MutationObserver(schedulePick);
     if (surface) movement.observe(surface, { attributes: true, attributeFilter: ["style"] });

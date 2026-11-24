@@ -42,6 +42,7 @@ export function RoomVoiceControls({ session }: Props) {
   const me = state.room?.members.find(member => member.peerId === state.peerId);
   const levels = useVoiceLevels(session, state.microphone, true);
   const microphoneUnavailable = !state.microphone && !state.capturePending && !navigator.mediaDevices?.getUserMedia;
+  const cancelRequest = state.capturePending && !state.microphone;
   const joined = Boolean(me?.joined);
   const host = state.role === "host";
   const voiceClosed = !host && state.room?.enabled === false;
@@ -54,11 +55,11 @@ export function RoomVoiceControls({ session }: Props) {
       {joined && <div className="lr-voice-quick-controls">
         <AudioVolumeMenu volume={state.input.volume} onVolume={volume => session.setVolume(volume)}
           label="host.microphone.volume" icon="microphone" disabled={microphoneUnavailable || state.capturePending}>
-        <Btn icon={state.microphone ? "microphone" : "microphoneOff"} title="host.device.microphone"
-          size="compact" draw="voice-microphone" hint={microphoneUnavailable ? host ? "hint-voice-host-microphone-unavailable" : "hint-voice-microphone-unavailable"
-            : state.capturePending ? "hint-close" : undefined}
+        <Btn icon={state.microphone ? "microphone" : "microphoneOff"} title={cancelRequest ? "voice.captureCancel" : "host.device.microphone"}
+          size="compact" draw="voice-microphone" hintDisabled={!microphoneUnavailable && !state.capturePending} hint={microphoneUnavailable ? host ? "hint-voice-host-microphone-unavailable" : "hint-voice-microphone-unavailable"
+            : "hint-close"}
           hintText={microphoneUnavailable ? "voice.error.microphoneUnavailable" : "voice.captureCancel"}
-          pressed={state.microphone} busy={state.capturePending} disabled={!state.connected || microphoneUnavailable}
+          pressed={cancelRequest ? undefined : state.microphone} busy={state.capturePending} disabled={!state.connected || microphoneUnavailable}
           iconOverlay={state.microphone && !state.capturePending && <MicrophoneLevel level={levels.get(state.peerId) ?? 0} />}
           onClick={() => {
             session.resumeAudio();
