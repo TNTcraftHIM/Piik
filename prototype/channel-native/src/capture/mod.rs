@@ -348,6 +348,39 @@ impl VideoCodecMode {
     }
 }
 
+#[derive(Debug)]
+pub(crate) enum AudioScope {
+    Off,
+    Source,
+    ExcludeProcessTree(Target),
+    RenderEndpoint(String),
+}
+
+impl AudioScope {
+    pub(crate) fn from_request(
+        target: &Target,
+        enabled: bool,
+        excluded: Option<Target>,
+        endpoint: Option<String>,
+    ) -> anyhow::Result<Self> {
+        let explicit = cfg!(target_os = "windows") && enabled && target.kind == TargetKind::Display;
+        if let Some(window) = excluded {
+            anyhow::ensure!(explicit && window.kind == TargetKind::Window, "audio exclusion unavailable");
+            anyhow::ensure!(endpoint.is_none(), "render endpoint unavailable");
+            return Ok(Self::ExcludeProcessTree(window));
+        }
+        if let Some(id) = endpoint {
+            anyhow::ensure!(explicit && !id.is_empty() && id.len() <= 1024, "render endpoint unavailable");
+            return Ok(Self::RenderEndpoint(id));
+        }
+        Ok(if enabled { Self::Source } else { Self::Off })
+    }
+
+    pub(crate) fn required(&self) -> bool {
+        matches!(self, Self::ExcludeProcessTree(_) | Self::RenderEndpoint(_))
+    }
+}
+
 /// The existing picker identity. Window handles are fenced by process creation.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]

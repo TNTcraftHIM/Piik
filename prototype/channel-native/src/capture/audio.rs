@@ -105,30 +105,16 @@ impl AudioCapture {
         ))
     }
     pub fn start(target: Target) -> Result<Self> {
-        Self::start_with_exclusion(target, None, None)
+        Self::spawn(Input::System(target, true))
     }
-    pub(crate) fn start_with_exclusion(
-        target: Target,
-        exclude: Option<Target>,
-        render_endpoint_id: Option<String>,
-    ) -> Result<Self> {
-        ensure!(
-            exclude
-                .as_ref()
-                .is_none_or(|excluded| target.kind == TargetKind::Display
-                    && excluded.kind == TargetKind::Window),
-            "audio exclusion requires a display and a window process"
-        );
-        if let Some(id) = render_endpoint_id {
-            ensure!(
-                target.kind == TargetKind::Display && exclude.is_none(),
-                "conflicting audio source"
-            );
-            return Self::spawn(Input::RenderEndpoint(id));
+    pub(crate) fn start_scoped(target: Target, scope: super::AudioScope) -> Result<Option<Self>> {
+        use super::AudioScope;
+        match scope {
+            AudioScope::Off => Ok(None),
+            AudioScope::Source => Self::start(target).map(Some),
+            AudioScope::ExcludeProcessTree(window) => Self::spawn(Input::System(window, false)).map(Some),
+            AudioScope::RenderEndpoint(id) => Self::spawn(Input::RenderEndpoint(id)).map(Some),
         }
-        let include_tree = exclude.is_none();
-        let target = exclude.unwrap_or(target);
-        Self::spawn(Input::System(target, include_tree))
     }
     pub fn microphone(device_id: String) -> Result<Self> {
         Self::spawn(Input::Microphone(device_id))

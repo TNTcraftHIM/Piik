@@ -1540,21 +1540,9 @@ impl Driver {
         let publication = scope.publication_id;
         self.cancelled_audio().await;
         self.check_local_preparation(&scope, replaces)?;
-        anyhow::ensure!(
-            exclude_audio
-                .as_ref()
-                .is_none_or(|excluded| cfg!(target_os = "windows")
-                    && audio
-                    && target.kind == crate::capture::TargetKind::Display
-                    && excluded.kind == crate::capture::TargetKind::Window),
-            "audio exclusion unavailable"
-        );
-        anyhow::ensure!(
-            render_endpoint_id.as_ref().is_none_or(|id| cfg!(target_os = "windows") && audio
-                && target.kind == crate::capture::TargetKind::Display && exclude_audio.is_none()
-                && !id.is_empty() && id.len() <= 1024),
-            "render endpoint unavailable"
-        );
+        let audio = crate::capture::AudioScope::from_request(
+            &target, audio, exclude_audio, render_endpoint_id,
+        )?;
         if self
             .capture_audio
             .get(&publication)
@@ -1609,7 +1597,7 @@ impl Driver {
                 .unwrap();
             let (control, ready, audio_error) = capture
                 .producer
-                .prepare_audio(target, audio, exclude_audio, render_endpoint_id, &mixer)
+                .prepare_audio(target, audio, &mixer)
                 .await?;
             let id = Uuid::new_v4();
             capture.pending_audio = Some((id, control.clone()));
@@ -1631,10 +1619,10 @@ impl Driver {
                 mixer,
             });
         }
-        if exclude_audio.is_some() || render_endpoint_id.is_some() {
+        let audio_required = audio.required();
+        if audio_required {
             mixer.stop_system().await?;
         }
-        let audio_required = exclude_audio.is_some() || render_endpoint_id.is_some();
         let (producer, ready, audio_error, required_audio) = crate::media::local::Producer::start(
             publication,
             target.clone(),
@@ -1643,8 +1631,6 @@ impl Driver {
             execution,
             mixer.clone(),
             audio,
-            exclude_audio,
-            render_endpoint_id,
             show_capture_border,
             self.ready_sources.clone(),
             self.events.clone(),

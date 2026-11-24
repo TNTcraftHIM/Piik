@@ -9,6 +9,47 @@ mod transit;
 
 #[cfg(feature = "capture")]
 #[tokio::test]
+async fn stale_capture_lease_precedes_invalid_audio_endpoint() -> Result<()> {
+    use crate::capture::{EncodingExecution, Settings, Target, TargetKind, VideoCodecMode};
+
+    let (mut driver, _events, _commands, _stop) = driver();
+    let result = driver.prepare_capture(
+        CaptureScope {
+            publication_id: Uuid::new_v4(),
+            room_id: "room".into(),
+            binding_id: Uuid::new_v4(),
+        },
+        Some(Uuid::new_v4()),
+        Target {
+            kind: TargetKind::Display,
+            source_id: "display".into(),
+            title: String::new(),
+            pid: 0,
+            creation_time: None,
+        },
+        Settings {
+            degradation_preference: crate::capture::DegradationPreference::Balanced,
+            width: 640,
+            height: 360,
+            fps: 30,
+            bitrate: 1_000_000,
+        },
+        VideoCodecMode::Auto,
+        EncodingExecution::Auto,
+        true,
+        None,
+        Some(String::new()),
+        false,
+    ).await;
+    driver.files.close().await;
+    driver.watches.close().await;
+    driver.transport.close().await;
+    assert_eq!(result.err().expect("stale replacement").to_string(), "capture_not_owned");
+    Ok(())
+}
+
+#[cfg(feature = "capture")]
+#[tokio::test]
 async fn cancelled_audio_retirement_keeps_the_worker_join_owned() -> Result<()> {
     let (mut driver, _events, _commands, _stop) = driver();
     let publication = Uuid::new_v4();

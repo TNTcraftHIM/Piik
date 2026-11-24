@@ -167,9 +167,7 @@ impl Producer {
         mode: VideoCodecMode,
         execution: EncodingExecution,
         audio_control: AudioControl,
-        audio: bool,
-        exclude_audio: Option<Target>,
-        render_endpoint_id: Option<String>,
+        scope: crate::capture::AudioScope,
         show_capture_border: bool,
         ready_sources: mpsc::Sender<SourceReady>,
         events: mpsc::Sender<Event>,
@@ -181,6 +179,7 @@ impl Producer {
         Option<oneshot::Receiver<String>>,
         oneshot::Receiver<Result<()>>,
     )> {
+        let audio = !matches!(scope, crate::capture::AudioScope::Off);
         // The picture and the retained audio clock both project capture PTS to NTP.
         let now = Instant::now();
         let clock = SystemInstant::now(now);
@@ -208,22 +207,14 @@ impl Producer {
             log::warn!(target: "piik.capture", "Capture startup failed: {error:#}");
         })?;
         let video_control = capture.control();
-        let input = if audio {
-            #[cfg(target_os = "windows")]
-            let input = AudioCapture::start_with_exclusion(
-                target,
-                exclude_audio.clone(),
-                render_endpoint_id.clone(),
-            );
-            #[cfg(not(target_os = "windows"))]
-            let input = if exclude_audio.is_some() || render_endpoint_id.is_some() {
-                Err(anyhow!("audio exclusion unavailable"))
-            } else {
-                capture.audio(target)
-            };
-            input.map(Some)
-        } else {
-            Ok(None)
+        let required = scope.required();
+        #[cfg(target_os = "windows")]
+        let input = AudioCapture::start_scoped(target, scope);
+        #[cfg(not(target_os = "windows"))]
+        let input = match scope {
+            crate::capture::AudioScope::Off => Ok(None),
+            crate::capture::AudioScope::Source => capture.audio(target).map(Some),
+            _ => Err(anyhow!("audio exclusion unavailable")),
         };
         let (input, failure) = match input {
             Ok(input) => (input, None),
@@ -235,7 +226,7 @@ impl Producer {
             let (failed, received) = oneshot::channel();
             let _ = failed.send(error.clone());
             warning = Some(received);
-            if exclude_audio.is_some() || render_endpoint_id.is_some() {
+            if required {
                 let (failed, received) = oneshot::channel();
                 let _ = failed.send(Err(anyhow!(error)));
                 audio_ready = received;
@@ -318,22 +309,18 @@ impl Producer {
     pub async fn prepare_audio(
         &mut self,
         target: Target,
-        enabled: bool,
-        exclude: Option<Target>,
-        render_endpoint_id: Option<String>,
+        scope: crate::capture::AudioScope,
         mixer: &AudioControl,
     ) -> Result<(
         AudioLeaseControl,
         oneshot::Receiver<Result<()>>,
         Option<oneshot::Receiver<String>>,
     )> {
-        if exclude.is_some() || render_endpoint_id.is_some() {
+        if scope.required() {
             mixer.stop_system().await?;
         }
         anyhow::ensure!(!self.control.is_stopped(), "capture_unavailable");
-        let capture = enabled
-            .then(|| AudioCapture::start_with_exclusion(target, exclude, render_endpoint_id))
-            .transpose()?;
+        let capture = AudioCapture::start_scoped(target, scope)?;
         mixer.prepare_system(capture).await
     }
 }
