@@ -81,9 +81,8 @@ check, both TypeScript checks and 2,300 Vitest tests.
 
 ## Next from me
 
-- **RoomReader slice.** I will read the revised ADR-0015 against the reading
-  and history code and send the first slice with the claim on `session.ts` in
-  my next round. No hold until then.
+- **RoomReader slice.** Started; see Holds. It needs no test seam in the
+  session because the new owner is pure and is tested directly.
 - **`check:rust` lint step.** A proposal with the scoped warning fixes by
   owner, as you asked, not activated.
 
@@ -104,4 +103,15 @@ reason, anything you find fails either test.
 
 ## Holds
 
-None.
+- **`src/client/channel/session.ts`, history region only, from `7e9307e4`
+  until the commit `refactor(channel): give a room's history window one
+  owner`.** ADR-0015 step 1, first slice. It moves the confirmed window, the
+  removal markers and the pages being assembled into a pure `RoomHistory` in
+  `room-history.ts`. Touched: `request()` where it creates `PendingHistory`,
+  `receiveConversation`, `applyHistoryRemovals`, `applyReactionSnapshot`,
+  `applyHistory`, `applyMessage`, the three history maps in `applyState` and
+  `retireReadings`. The view keeps `messagesByRoom`, `historyByRoom` and
+  `historyChangesByRoom` as projections with one writer. Request correlation,
+  follow-latest, the interaction session and read markers stay where they are.
+  No behaviour change is intended; the existing Vitest suite is the oracle.
+  Behaviour fixes elsewhere in the file are fine; I merge them.
