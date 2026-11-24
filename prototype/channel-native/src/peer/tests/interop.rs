@@ -40,6 +40,10 @@ async fn video_bootstrap_retries_a_missed_keyframe_request() -> Result<()> {
 async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
     let mut f = Fixture::new(vp8()).await?;
     let sink = f.sink;
+    // Warm-output identity, not trial admission against the loopback
+    // estimate, is under test here. Give both flows room to carry video.
+    f.driver.pairs.get_mut(&sink).unwrap().bandwidth =
+        watch::channel(transport::Estimate::Feedback(10_000_000.0)).1;
     let old_flow = f.plans.last().unwrap().outgoing[0].id;
     let warm_flow = f.plans.last().unwrap().outgoing[1].id;
     f.until(|f| {

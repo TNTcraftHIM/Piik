@@ -666,6 +666,18 @@ async fn repeated_media_leases_keep_sibling_av_and_use_fresh_rtp() -> Result<()>
         let pc = fixture.driver.pairs[&sink].pc.clone();
         let sibling = fixture.plans.last().unwrap().outgoing[0].id;
         let mut binding = fixture.plans.last().unwrap().outgoing[1];
+        // Both leases are required media. Optional-trial admission is covered
+        // by the allocator's own tests.
+        binding.selected = true;
+        fixture.plans.last_mut().unwrap().outgoing[1] = binding;
+        fixture
+            .driver
+            .update(
+                fixture.plans.clone(),
+                vec![fixture.publication.clone()],
+                vec![],
+            )
+            .await;
         fixture
             .until(|f| {
                 [sibling, binding.id].iter().all(|flow| {

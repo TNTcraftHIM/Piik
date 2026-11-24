@@ -2,7 +2,7 @@
 //! independently when its finite queue cannot keep up.
 use super::{clock::SourceTime, Rate, RtpCodec};
 use crate::EncodedFrame;
-use anyhow::{ensure, Result};
+use anyhow::{ensure, Context, Result};
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex, OnceLock, Weak},
@@ -11,7 +11,7 @@ use std::{
 use tokio::sync::{watch, Notify};
 
 mod temporal;
-use temporal::{Decision, Rates, Temporal};
+use temporal::{Decision, Rates, Selection, Temporal};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum EncodingDemand {
@@ -103,6 +103,18 @@ impl Layers {
         }
         (highest, present.then_some(aggregate).flatten())
     }
+    /// Cost of the cheapest representation any measured feed can deliver.
+    /// Idle feeds cost nothing only while no measured feed is flowing.
+    pub fn floor(&self, now: Instant) -> Option<u64> {
+        let layers = self.0.lock().unwrap();
+        layers
+            .iter()
+            .filter_map(|(_, video)| video.as_ref()?.floor(now))
+            .reduce(|a, b| match (a, b) {
+                (0, bps) | (bps, 0) => bps,
+                (a, b) => a.min(b),
+            })
+    }
     pub fn supply(
         &self,
         inputs: &[(String, Arc<Input>)],
@@ -122,11 +134,12 @@ impl Layers {
         let active = rates
             .iter()
             .any(|rate| rate.full.is_some_and(|bps| bps > 0));
-        let mut remaining = match demand {
+        let budget = match demand {
             EncodingDemand::Original => u64::MAX,
             EncodingDemand::Limited(bps) => u64::from(bps),
             EncodingDemand::Paused => 0,
         };
+        let mut remaining = budget;
         for ((rid, video), rate) in layers.iter().zip(rates) {
             let Some((_, input)) = inputs.iter().find(|(id, _)| id == rid) else {
                 continue;
@@ -135,7 +148,13 @@ impl Layers {
                 input.set_active(false);
                 continue;
             };
-            let selection = rate.fit(remaining);
+            // The allocator owns admission. A grant it no longer fits after
+            // planning still carries the cheapest representation, not nothing.
+            let selection = rate.fit(remaining).or_else(|| {
+                (remaining > 0 && remaining == budget)
+                    .then(|| rate.fit(rate.floor()?))
+                    .flatten()
+            });
             let temporal = if demand == EncodingDemand::Original {
                 None
             } else if let Some(selection) = selection {
@@ -170,7 +189,7 @@ impl Layers {
                 }
                 if let Some(selection) = selection {
                     input.set_active(true);
-                    remaining -= selection.bps;
+                    remaining = remaining.saturating_sub(selection.bps);
                 } else {
                     input.set_active(false);
                     remaining = 0;
@@ -232,6 +251,10 @@ impl Video {
     }
     pub fn bitrate(&self, now: Instant) -> Option<u64> {
         self.rates(now).full
+    }
+    /// Cost of the cheapest full or temporal representation of this feed.
+    pub fn floor(&self, now: Instant) -> Option<u64> {
+        self.rates(now).floor()
     }
     pub(super) fn observe_rate(&self, active: bool, now: Instant) {
         self.0.rate.lock().unwrap().observing(active, now);
@@ -404,6 +427,7 @@ impl Input {
         let mut incumbent = None;
         let mut pending_feed = None;
         let mut active = false;
+        let mut cheapest: Option<(&Video, Selection)> = None;
         let selected = videos.find_map(|video| {
             first.get_or_insert(video);
             if current.as_ref().is_some_and(|current| current.same(video)) {
@@ -414,6 +438,11 @@ impl Input {
             }
             let rates = video.rates(now);
             active |= rates.full.is_some_and(|bps| bps > 0);
+            if let Some(floor) = rates.floor().and_then(|bps| rates.fit(bps)) {
+                if cheapest.is_none_or(|(_, cheapest)| floor.bps < cheapest.bps) {
+                    cheapest = Some((video, floor));
+                }
+            }
             rates.fit(budget).map(|selection| (video, selection))
         });
         if !active {
@@ -435,10 +464,11 @@ impl Input {
             self.set_active(true);
             return Ok(());
         }
-        let Some((video, selection)) = selected else {
-            self.set_active(false);
-            return Ok(());
-        };
+        // The allocator owns admission. A grant it no longer fits after
+        // planning keeps the cheapest flowing representation until the next plan.
+        let (video, selection) = selected
+            .or(cheapest)
+            .context("a flowing feed has no selectable representation")?;
         let required = if matches!(demand, EncodingDemand::Limited(_)) {
             let mut state = self.state.lock().unwrap();
             let incumbent = state
@@ -1067,8 +1097,20 @@ mod tests {
             Some(0)
         );
         assert!(qi.state.lock().unwrap().active && hi.state.lock().unwrap().active);
+        // The allocator owns admission: a positive grant that fits nothing
+        // still carries the cheapest representation instead of no video.
         layers.supply(&inputs, EncodingDemand::Limited(1), now)?;
-        assert!(!qi.state.lock().unwrap().active && !hi.state.lock().unwrap().active);
+        assert_eq!(
+            qi.state.lock().unwrap().pending.as_ref().unwrap().temporal,
+            Some(0)
+        );
+        assert!(qi.state.lock().unwrap().active && !hi.state.lock().unwrap().active);
+        layers.select(&terminal, EncodingDemand::Limited(1), now)?;
+        {
+            let state = terminal.state.lock().unwrap();
+            assert!(state.active && state.current.as_ref().unwrap().same(&q));
+            assert_eq!(state.temporal.target, Some(0));
+        }
         // Idle samples preserve selection; resumption reopens the shared window.
         let idle = now + Duration::from_secs(2);
         q.rates(idle);
