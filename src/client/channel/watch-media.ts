@@ -30,7 +30,6 @@ export type WatchPresentation = { kind: "video"; element: HTMLVideoElement }
 export interface WatchMedia {
   readonly page?: AppPagePort | null;
   readonly retainedByteSource?: WatchByteSource;
-  readonly outputFailed?: boolean;
   audioAvailable?(): boolean | undefined;
   readonly presentation?: WatchPresentation;
   readonly seekTolerance?: number;
@@ -94,7 +93,6 @@ export class HTMLVideoMedia implements WatchMedia {
   readonly video = document.createElement("video");
   private pendingOutputPlay?: object;
   private readonly detachOutput = playbackOutput.attach(this.video);
-  get outputFailed() { return this.detachOutput.getFailed(); }
   readonly presentation = { kind: "video" as const, element: this.video };
   private lifetime = new AbortController();
   private setup: Promise<void>;

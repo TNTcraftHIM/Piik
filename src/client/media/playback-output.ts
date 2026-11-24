@@ -10,6 +10,9 @@ let pending = Promise.resolve();
 export const playbackOutput = {
   get selected() { return selected; },
   get failed() { return changeFailed || failedTargets.size > 0; },
+  failedFor(target: HTMLMediaElement | AudioContext | null | undefined) {
+    return !!target && failedTargets.has(target as Sink);
+  },
   subscribe(listener: () => void) {
     events.addEventListener("change", listener);
     return () => events.removeEventListener("change", listener);
@@ -25,7 +28,7 @@ export const playbackOutput = {
       const wasFailed = failedTargets.has(sink);
       applied();
       if (wasFailed) events.dispatchEvent(new Event("change"));
-    }, { ready, getWaiting: () => waiting, getFailed: () => failedTargets.has(sink) });
+    }, { ready, getWaiting: () => waiting });
     if (!waiting) resolve();
     if (!sink.setSinkId) return detach;
     targets.set(sink, applied);
