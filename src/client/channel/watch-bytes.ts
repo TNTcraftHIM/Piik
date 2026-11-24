@@ -29,14 +29,18 @@ export class WatchBytes {
   constructor(private send: (peer: string, kind: "control" | "chunk", data: string | Uint8Array, allowed: () => boolean) => Promise<void>) {}
   private ensure(): Promise<Runtime> {
     if (!this.sessionId) return Promise.reject(new Error("disconnected"));
+    if (this.runtime) return this.runtime;
     const sessionId = this.sessionId, lifetime = this.lifetime;
-    return this.runtime ??= loadRoomHosting().then(async module => {
+    const runtime = loadRoomHosting().then(async module => {
       await module.initializeRuntime();
       lifetime.signal.throwIfAborted();
       const runtime = { module, delivery: new module.WatchDelivery(sessionId), lifetime };
       this.effects(runtime, runtime.delivery.update(JSON.stringify(this.plans), JSON.stringify(this.roomPeers)));
       return runtime;
     });
+    // A failed load is not a runtime; the next demand loads again.
+    runtime.catch(() => { if (this.runtime === runtime) this.runtime = null; });
+    return this.runtime = runtime;
   }
   private current(runtime: Runtime): boolean { return runtime.lifetime === this.lifetime && !runtime.lifetime.signal.aborted; }
   update(sessionId: string, plans: WatchBytePlan[], pairs: Pick<ChannelPair, "peerId" | "rooms">[]): void {
