@@ -21,11 +21,10 @@ the feedback period; they do not delay that delivery.
   history owner toward follow-latest, interaction lifetime and operation feedback.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
-- [ ] **Native video admission.** Give the bandwidth allocator each output's
-  smallest currently deliverable representation. A positive optional grant that
-  cannot carry video must report waiting or rejection, rather than silently
-  disabling the input. Preserve required selected delivery and SDK congestion
-  control; verify local encoding and opaque Server relays separately.
+- [ ] **Native optional-flow probing.** Measure an optional trial arriving beside
+  steady selected media on a controlled link. Record the SDK estimate, media,
+  padding and minimum/desired demand before changing probe policy. Distinguish
+  insufficient observed capacity from a trial that has not prompted new probing.
 - [ ] **Current-attempt route feedback.** Project known rejected or exhausted
   route attempts through the existing status owner, with a specific recovery
   action. New peers, access or forwarding changes may enable a later attempt.
@@ -38,10 +37,6 @@ the feedback period; they do not delay that delivery.
   replacement or temporary source absence, release old media and permissions,
   and end retained viewing on explicit exit. Complete matching-package checks
   for same-page candidates and reconnection across consecutive source replacements.
-- [ ] **Native video picture-in-picture during source replacement.** Keep the
-  selected presentation window across a source replacement in Windows WebView
-  and verify the system window's close control. Reuse the final package's tested
-  entry/exit and the standard-Browser replacement, waiting and revocation checks.
 - [ ] **Webpage viewer readiness.** Reproduce reports of a loading viewer shown
   as already watching, including Native original-page playback. Keep membership
   distinct from proved playable media in the viewer surface and participant list.
@@ -68,6 +63,8 @@ the feedback period; they do not delay that delivery.
   revocation while giving an online requester a useful outcome if its already
   committed reply arrives before the covering permission projection. Ordinary
   route changes and unrelated participants leaving must not block that reply.
+  Agree how direct replies differ from observer fanout before changing request
+  correlation or adding an authority-side pending-request owner.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
@@ -221,14 +218,10 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **Shared participant rules and decoding.** Extract a demonstrated common
-  Browser/Native rule before introducing a stateful Core participant. Measure
-  remaining WASM snapshot parsing and prove a per-connection decoder
+- [ ] **Shared participant boundaries and decoding.** Measure remaining WASM
+  snapshot parsing and prove a per-connection decoder
   preserves image restoration. Any generated types must replace their old owner
   and retain runtime validation, omission and null semantics.
-- [ ] **Capture operation cohesion.** Compare a single local preparation-phase
-  owner with the current pending fields. Preserve room acknowledgement, active
-  capture and platform-resource lifetimes before replacing command machinery.
 - [ ] **Routing authority placement.** Measure the writer turn and storage
   validation cost before proposing domain-owned repair. Decide the revocable
   grant and writer-disconnect semantics separately from physical pair reuse.
@@ -239,10 +232,6 @@ the feedback period; they do not delay that delivery.
 - [ ] **Physical keyframe acceptance.** Check Android codec initialization,
   requested keyframes and rebuilding with the longer interval. Extend the
   Windows hardware control beyond the tested NVIDIA encoder and short sequence.
-- [ ] **Native media identity regression.** Keep the repeated-lease SSRC test
-  on selected flows so it does not depend on optional-trial admission. Verify
-  its sibling media and fresh RTP assertions independently from the admission
-  defect above; retain failure diagnostics and the existing deadline.
 - [ ] **Rust formatting and diagnostics.** At an agreed file handoff, apply a
   separate mechanical format pass and review actionable Clippy findings by owner.
   Keep style-only changes separate from behavior fixes and new lint gates.

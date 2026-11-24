@@ -34,6 +34,9 @@ saved file and receipt. Cancelling the native download reported cancellation.
   file and retry succeeded. The Browser transfer exceeded 16 MiB. The 256 MiB
   result used a WASM range-buffer control. Device storage determines writable
   capacity. [Relay workload](./research/network-lab.md#file-forwarding-during-a-room-call)
+  Windows WebView retained picture-in-picture across a source replacement.
+  Closing its system window kept the viewer joined, and the next source played
+  inside the page without reopening picture-in-picture.
 - **Synchronized viewing.** Independent local Browsers exercised direct playback,
   late join, autoplay refusal and trusted-click recovery. Windows App fixtures
   covered source selection, direct HLS, forwarded MP4, HLS VOD and clear static

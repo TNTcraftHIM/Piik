@@ -105,9 +105,11 @@ avoid a major justifies mislabeling an incompatible release.
 
 Published 2.x command/event contracts reject unknown keys, with an explicit
 [receive-side exception](./rooms-access.md#room-interactions) for the bounded
-display-only reaction identifier. Current 3.0 Domain and App command variants
-also reject unknown keys, but its event readers differ: Native accepts extra
-Domain-event fields; Browser generally strips them, while passing room-host
+display-only reaction identifier. Current 3.0 Domain and App senders use the
+fields defined for each command. Most command variants reject unknown keys.
+A few parameterless commands, including Domain `leave` and App `targets`,
+ignore extra keys and execute the ordinary operation. Native accepts extra
+Domain-event fields. Browser generally strips them and passes room-host
 payloads through to Core. Nested schemas retain their own checks. The
 [Core wire types](../../prototype/channel-core/src/wire.rs) and
 [Browser decoder](../../src/client/channel/protocol.ts) own these distinctions.
