@@ -23,6 +23,7 @@ sibling callers of that owner. Correct that boundary instead of adding a guard
 to each symptom. A shared guard is useful only if it restores the real contract.
 
 When a transition needs another repair, trace its writers and retirement.
+Make the same trace when a flag only distinguishes callers.
 Extract an owner when the trace shows competing authority or a distinct lifetime
 with independent cleanup.
 

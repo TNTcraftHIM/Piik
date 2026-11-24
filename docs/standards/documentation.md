@@ -21,7 +21,8 @@ verification procedures stay in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 | Status projection | [Media status](./media-status.md) | Which facts each display surface may express |
 | Release identity and compatibility | [Versioning](./versioning.md) | Version roles, protected interfaces and public-readiness boundary |
 | Published 2.x behavior | [Rooms](./rooms-access.md), [routing](./routing-transport.md), [media](./media-quality.md), [lifecycle](./presentation-lifecycle.md) | One owner per domain; promises, boundaries and non-obvious invariants |
-| Current 3.0 prototype architecture | [Site/network model](../research/channel-network-design.md), [room-data model](../research/channel-storage-and-identity.md) | Implemented authority, runtime, routing and persistence boundaries |
+| 3.0 architecture | [ADR-0016](../adr/0016-shared-rust-core.md) | Shared core, runtime adapters and version scope |
+| Current 3.0 domain models | [Site/network model](../research/channel-network-design.md), [room-data model](../research/channel-storage-and-identity.md) | Detailed authority, runtime, routing and persistence boundaries |
 | 3.0 forwarding design | [Channel, room and activity forwarding](../research/channel-forwarding-plan.md) | Target forwarding model and candidate delivery details |
 | 3.0 hosting design | [Server hosting design](../research/server-hosting-plan.md) | Target channel modes, authority and moderation |
 | Architecture decisions | `docs/adr/` | Decision status, rationale and consequences; explicitly supersede changed clauses |

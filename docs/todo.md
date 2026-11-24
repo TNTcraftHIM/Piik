@@ -20,9 +20,6 @@ the feedback period; they do not delay that delivery.
   around binding-scoped history and operation-local feedback. Agree the first
   RoomReader test and file handoff before extracting it; retain request
   correlation and local playback choices at their existing owners.
-- [ ] **Peer event backpressure.** Reproduce a full peer-event queue while
-  `CaptureEnded` handling awaits `capture_publications` on that same actor.
-  Preserve replacement validation while keeping the event consumer live.
 - [ ] **Native task exit observation.** Route track-reader termination through
   its pair owner, including panic, and surface non-cancellation join failures.
   Evaluate task grouping at that boundary before replacing existing cancellation.
@@ -36,9 +33,9 @@ the feedback period; they do not delay that delivery.
   and end retained viewing on explicit exit. Complete matching-package checks
   for same-page candidates and reconnection across consecutive source replacements.
 - [ ] **Native video picture-in-picture during source replacement.** Keep the
-  selected presentation window while retiring the old media and authorizing its
-  successor. Complete failure, cancellation and normal-unmount checks before
-  adopting a stable display-element handoff.
+  selected presentation window in the matched Windows WebView package and
+  verify the system window's close control. Reuse the completed standard-Browser
+  replacement, waiting, floating-document and room-revocation checks.
 - [ ] **Webpage viewer readiness.** Reproduce reports of a loading viewer shown
   as already watching, including Native original-page playback. Keep membership
   distinct from proved playable media in the viewer surface and participant list.
@@ -59,9 +56,8 @@ the feedback period; they do not delay that delivery.
   [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise)
   against actual readers, writers and stored samples. Keep API/Bot capabilities
-  within existing actions and authority. Record the adopted Rust/shared-core
-  architecture in a short ADR; keep current model ownership distinct from dated
-  research evidence and explicitly scope the replaced 2.x decisions.
+  within existing actions and authority. [ADR-0016](./adr/0016-shared-rust-core.md)
+  records the adopted architecture separately from public release acceptance.
 - [ ] **Conversation during room permission changes.** Preserve immediate Read
   revocation while giving an online requester a useful outcome if its already
   committed reply arrives before the covering permission projection. Ordinary
@@ -220,14 +216,14 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **Native capture scope type.** At the next capture-boundary change,
-  normalize ordinary, endpoint-selected and process-excluding audio into one
-  internal scope. Preserve the current wire inputs and explicit selection errors.
 - [ ] **Physical keyframe acceptance.** Check Android codec initialization,
   requested keyframes and rebuilding with the longer interval. Extend the
   Windows hardware control beyond the tested NVIDIA encoder and short sequence.
 - [ ] **Native media test scheduling.** Reproduce the reported reused-output
-  and warm-switch failures with phase-specific errors before changing deadlines.
+  failure on the cross-review machine with its new per-output MID, SSRC and
+  sender/receiver counters. The observed phase is fresh audio/video SSRC reuse
+  after several lease cycles. Keep the existing deadlines; local controls have
+  not reproduced the intermittent failure.
 - [ ] **Rust formatting and diagnostics.** At an agreed file handoff, apply a
   separate mechanical format pass and review actionable Clippy findings by owner.
   Keep style-only changes separate from behavior fixes and new lint gates.
