@@ -602,8 +602,7 @@ fn screen_pause_is_authoritative_and_retains_voice_and_transport() {
 }
 
 #[test]
-fn required_repair_wakes_the_existing_host_and_renews_only_retired_transport() {
-    use piik_channel_core::host::HostAction;
+fn required_physical_repair_renews_only_retired_transport() {
     {
         let mut network = RoomNetwork::new();
         let host = Uuid::new_v4();
@@ -638,10 +637,12 @@ fn required_repair_wakes_the_existing_host_and_renews_only_retired_transport() {
             .all(|edge| edge.id != old.id));
         assert!(network.authority.expire(5_199).events.is_empty());
         let wake = network.authority.expire(5_200);
-        assert!(wake.events.iter().any(|(_, event)| matches!(event, Event::HostInput { input, .. } if matches!(input.action, HostAction::RouteWake))));
+        assert!(wake.events.iter().any(|(_, event)| matches!(event,
+            Event::State { state } if state.pairs.iter().any(|p| p.peer_id == source && p.id != old.id))));
+        assert!(!wake.events.iter().any(|(_, event)| matches!(event, Event::HostInput { .. })));
         assert!(
             network.authority.expire(5_200).events.is_empty(),
-            "only one wake may be outstanding"
+            "physical retry is admitted once without a room wake"
         );
         network.deliver(wake);
         assert!(

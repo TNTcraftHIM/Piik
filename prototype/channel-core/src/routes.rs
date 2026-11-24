@@ -41,7 +41,8 @@ pub struct Plan {
     pub source: Uuid,
     pub parents: BTreeMap<Uuid, Uuid>,
     ready: BTreeMap<Uuid, Readiness>,
-    failed_parents: BTreeMap<Uuid, BTreeSet<Uuid>>,
+    // A refused parent retains the physical edge whose media attempt failed.
+    failed_parents: BTreeMap<Uuid, BTreeMap<Uuid, (Uuid, Uuid)>>,
 }
 
 pub(crate) struct ScreenDemand<'a> {
@@ -134,7 +135,7 @@ impl Plan {
                     || self
                         .failed_parents
                         .get(&child)
-                        .is_some_and(|failed| failed.contains(&parent))
+                        .is_some_and(|failed| failed.contains_key(&parent))
                     || !self.admitted_output(parent, child, helpers, limits)
                 {
                     break;
@@ -272,7 +273,7 @@ impl Plan {
                     || self
                         .failed_parents
                         .get(&viewer)
-                        .is_some_and(|failed| failed.contains(relay))
+                        .is_some_and(|failed| failed.contains_key(relay))
                 {
                     continue;
                 }
@@ -540,7 +541,7 @@ impl Plan {
                     && !self
                         .failed_parents
                         .get(&child)
-                        .is_some_and(|failed| failed.contains(parent))
+                        .is_some_and(|failed| failed.contains_key(parent))
             })
             .filter(|parent| self.admitted_output(*parent, child, helpers, limits))
             // Readiness changes must not revoke a valid equal-depth reservation.
@@ -585,7 +586,7 @@ impl Plan {
         !self
             .failed_parents
             .get(&child)
-            .is_some_and(|refused| refused.contains(&parent))
+            .is_some_and(|refused| refused.contains_key(&parent))
             && self.admitted_output(parent, child, helpers, limits)
     }
 
@@ -642,7 +643,7 @@ impl Plan {
             || self
                 .failed_parents
                 .get(&viewer)
-                .is_some_and(|parents| parents.contains(&helper))
+                .is_some_and(|parents| parents.contains_key(&helper))
         {
             return None;
         }
@@ -685,7 +686,20 @@ impl Plan {
     }
 
     pub fn reject_parent(&mut self, child: Uuid, parent: Uuid) {
-        self.failed_parents.entry(child).or_default().insert(parent);
+        self.reject_path(child, parent, (parent, child));
+    }
+
+    pub fn reject_path(&mut self, child: Uuid, parent: Uuid, failed: (Uuid, Uuid)) {
+        self.failed_parents.entry(child).or_default().insert(parent, failed);
+    }
+
+    pub fn retain_refusals(&mut self, neighbors: &BTreeMap<Uuid, BTreeSet<Uuid>>) {
+        self.failed_parents.retain(|_, parents| {
+            parents.retain(|_, (sender, receiver)| {
+                neighbors.get(sender).is_some_and(|peers| peers.contains(receiver))
+            });
+            !parents.is_empty()
+        });
     }
     pub fn retry_parent(&mut self, parent: Uuid) {
         self.failed_parents.retain(|_, parents| {
@@ -736,7 +750,7 @@ impl Plan {
             && self.failed_parents.iter().any(|(child, parents)| {
                 !self.parents.contains_key(child)
                     && connected.contains(child)
-                    && parents.iter().any(|parent| connected.contains(parent))
+                    && parents.keys().any(|parent| connected.contains(parent))
             })
     }
 
@@ -748,7 +762,7 @@ impl Plan {
         // parent's failure memory, including a healthy relay's failed shortcut.
         self.failed_parents.retain(|child, parents| {
             if !self.parents.contains_key(child) && connected.contains(child) {
-                parents.retain(|parent| !connected.contains(parent));
+                parents.retain(|parent, _| !connected.contains(parent));
             }
             !parents.is_empty()
         });
@@ -769,7 +783,7 @@ impl Plan {
             && !self
                 .failed_parents
                 .get(&child)
-                .is_some_and(|failed| failed.contains(&self.source))
+                .is_some_and(|failed| failed.contains_key(&self.source))
     }
 
     pub fn subtree(&self, root: Uuid) -> Vec<Uuid> {
@@ -832,23 +846,23 @@ impl Plan {
             None
         };
         if let Some(child) = child {
-            self.failed_parents
-                .entry(child)
-                .or_default()
-                .insert(self.parents[&child]);
+            self.reject_parent(child, self.parents[&child]);
             self.detach(child);
         }
     }
 
     pub fn failed_pair(&mut self, first: Uuid, second: Uuid) {
-        // Physical failure also applies to candidates used by another tree or
-        // a prepared branch. Only this plan's current nodes consume that fact.
+        // Physical admission belongs to TransportBook. Retire this instance's
+        // media refusal and proof; a confirmed replacement may carry new media.
+        self.failed_parents.retain(|_, parents| {
+            parents.retain(|_, edge| *edge != (first, second) && *edge != (second, first));
+            !parents.is_empty()
+        });
         for (child, parent) in [(first, second), (second, first)] {
-            if self.parents.contains_key(&child) {
-                self.failed_parents.entry(child).or_default().insert(parent);
+            if self.parents.get(&child) == Some(&parent) {
+                self.detach(child);
             }
         }
-        self.failed(first, second);
     }
 
     pub(crate) fn detach(&mut self, child: Uuid) {
@@ -1584,11 +1598,11 @@ mod tests {
         );
         assert_eq!(plan.parents[&id(4)], id(2));
         plan.failed(id(1), id(2));
-        assert!(plan.failed_parents[&id(2)].contains(&id(1)));
+        assert!(plan.failed_parents[&id(2)].contains_key(&id(1)));
         assert!(plan
             .failed_parents
             .get(&id(4))
-            .is_none_or(BTreeSet::is_empty));
+            .is_none_or(BTreeMap::is_empty));
         plan.mark_ready(id(3), id(1), Readiness::Forwardable);
         route(
             &mut plan,
@@ -1617,6 +1631,6 @@ mod tests {
         route(&mut plan, &set(&[2, 3, 4, 5]), &edges);
         assert_eq!(plan.parents[&id(4)], id(5));
         plan.retry_parent(id(2));
-        assert!(!plan.failed_parents[&id(4)].contains(&id(2)));
+        assert!(!plan.failed_parents[&id(4)].contains_key(&id(2)));
     }
 }

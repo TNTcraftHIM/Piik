@@ -620,11 +620,13 @@ do not add an all-pairs probe, full mesh or periodic topology rebalance.
 The room can propose a missing connection across an activity's directed paths
 even when the physical graph is connected. The channel owns its admission and
 retention under the [forwarding procedure](./channel-forwarding-plan.md#version-boundary).
-With unchanged authority and demand, an exhausted required path becomes eligible
-again after the room's five-second repair cooldown. The existing room wake-up
-schedules missing paths while retaining healthy branches, their failed-shortcut
-history and running screen-operation deadlines. Required leases on a retired
-physical pair receive a new pair identity.
+With unchanged endpoint signaling generations, a failed required physical pair
+becomes eligible again after the channel's five-second cooldown. The room's
+five-second repair wake reconsiders publication-local media refusals while
+retaining healthy branches and running screen-operation deadlines. A media
+refusal belongs to the physical edge that produced it; replacement of that edge
+permits a new media attempt. Required leases on a retired physical pair receive
+a new pair identity.
 Each admitted physical pair acquires its connection resources once. Terminal
 failure releases those resources; if signaling is interrupted, the still-current
 lease reports that failure when signaling resumes instead of recreating the pair.
@@ -632,7 +634,7 @@ A complete path on confirmed edges
 can replace an unproved screen fallback; proved media branches remain installed.
 Confirmed physical-pair failure informs both directions in every affected plan,
 including candidates first tried by another activity. A publication's media
-failure remains local to that publication. Required UDP failures become eligible for retry after five seconds. Optional
+failure remains local to that publication. Optional
 and idle failures do not schedule retries. A prepared replacement has its own
 physical ID and twenty-second deadline.
 An affected watch retains the selected path's delivery failure while replacement

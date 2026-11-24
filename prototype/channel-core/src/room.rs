@@ -2106,7 +2106,7 @@ mod tests {
     #[test]
     fn assisted_viewing_failure_preserves_the_incumbent_without_repeating_the_choice() {
         let id = Uuid::from_u128;
-        for failure in 0..3 {
+        for failure in 0..2 {
             let (mut room, mut endpoints) = screen_room();
             let viewer = endpoints[&id(2)].member;
             endpoints.insert(
@@ -2146,7 +2146,7 @@ mod tests {
                 1 => {
                     assert!(room.expire_media(20_002));
                 }
-                _ => room.failed_pair(local.sender, local.receiver),
+                _ => unreachable!(),
             }
             for now in [20_003, 25_003, 30_003] {
                 room.reconcile_with_pairs(&endpoints, now, &pairs);
@@ -2157,6 +2157,76 @@ mod tests {
                     .flows()
                     .any(|flow| flow.sender == id(5) || flow.receiver == id(5)));
             }
+        }
+    }
+
+    #[test]
+    fn assisted_media_refusal_retires_with_its_failed_upstream_pair() {
+        let id = Uuid::from_u128;
+        for media_first in [false, true] {
+            let (mut room, mut endpoints) = screen_room();
+            let viewer = endpoints[&id(2)].member;
+            endpoints.insert(
+                id(5),
+                Endpoint {
+                    signing_key: [5; 32],
+                    member: viewer,
+                    can_use_peer_transport: true,
+                    connected: true,
+                },
+            );
+            room.subscribe(viewer, id(2), id(10), true, None).unwrap();
+            for flow in room.flows().collect::<Vec<_>>() {
+                room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
+                    .unwrap();
+            }
+            let incumbent: BTreeSet<_> = room.flows().map(|flow| flow.id).collect();
+            room.subscribe(
+                viewer,
+                id(2),
+                id(10),
+                true,
+                Some((id(5), &endpoints[&id(5)])),
+            )
+            .unwrap();
+            let mut pairs = confirmed_pairs(&[(1, 3), (1, 2), (2, 4), (3, 5), (2, 5), (4, 5)]);
+            room.reconcile_with_pairs(&endpoints, 2, &pairs);
+            let upstream = room
+                .flows()
+                .find(|flow| !flow.selected && flow.receiver == id(5))
+                .unwrap();
+            assert_eq!(upstream.sender, id(3));
+            if media_first {
+                room.flow_state(
+                    upstream.id,
+                    upstream.receiver,
+                    upstream.sender,
+                    FlowState::Failed,
+                    3,
+                )
+                .unwrap();
+                room.reconcile_with_pairs(&endpoints, 4, &pairs);
+                assert!(!room.flows().any(|flow| !flow.selected));
+            }
+            room.failed_pair(upstream.sender, upstream.receiver);
+            pairs.remove(&(id(3), id(5)));
+            room.reconcile_with_pairs(&endpoints, 5, &pairs);
+            assert!(incumbent
+                .iter()
+                .all(|id| room.flows().any(|flow| flow.id == *id && flow.selected)));
+            assert!(!room.flows().any(|flow| !flow.selected));
+            pairs.insert((id(3), id(5)));
+            room.reconcile_with_pairs(&endpoints, 6, &pairs);
+            let replacement = room
+                .flows()
+                .find(|flow| !flow.selected && flow.receiver == id(5))
+                .expect(
+                    "the replaced upstream no longer rejects the helper's separate display edge",
+                );
+            assert_ne!(replacement.id, upstream.id);
+            assert!(incumbent
+                .iter()
+                .all(|id| room.flows().any(|flow| flow.id == *id && flow.selected)));
         }
     }
 
@@ -3982,7 +4052,8 @@ mod tests {
             .flows()
             .any(|flow| flow.receiver == viewer || flow.receiver == service));
         let connected = endpoints.keys().copied().collect();
-        assert!(denied.publications[&publication].needs_repair(&[viewer].into(), &connected));
+        assert!(!denied.publications[&publication].needs_repair(&[viewer].into(), &connected));
+        assert!(denied.delivery_frontiers.iter().any(|f| f.source == source && f.waiting.contains(&viewer)));
         denied.set_service_relay_preference(true);
         denied.reconcile_with_pairs(&endpoints, 4, &pairs);
         assert!(denied
@@ -4141,7 +4212,7 @@ mod tests {
     }
 
     #[test]
-    fn required_routes_recover_without_replacing_healthy_flows_or_endpoint_authority() {
+    fn physical_recovery_uses_confirmed_pairs_without_a_room_retry_timer() {
         let id = Uuid::from_u128;
         for count in [2, 3] {
             let mut endpoints: BTreeMap<_, _> = (1..=count)
@@ -4233,19 +4304,14 @@ mod tests {
                 pairs.remove(&(id(2), id(3)));
             }
             room.reconcile_with_pairs(&endpoints, 3, &pairs);
-            let deadline = room
-                .next_route_deadline()
-                .expect("required failed paths must have a repair wake");
-            assert_eq!(deadline, if count == 2 { 5_002 } else { 5_003 });
+            let independent_deadline = preparing.as_ref().map(|_| 1 + SCREEN_PREPARE_MS);
+            assert_eq!(room.next_route_deadline(), independent_deadline);
             room.reconcile_with_pairs(&endpoints, 1_000, &pairs);
-            assert_eq!(room.next_route_deadline(), Some(deadline));
-            room.reconcile_with_pairs(&endpoints, deadline - 1, &pairs);
+            assert_eq!(room.next_route_deadline(), independent_deadline);
             assert!(!room.flows().any(|flow| flow.receiver == id(2)));
-            room.reconcile_with_pairs(&endpoints, deadline, &pairs);
-
-            assert!(!room.flows().any(|flow| flow.receiver == id(2)));
+            let restored_at = 1_001;
             pairs.insert((id(1), id(2)));
-            room.reconcile_with_pairs(&endpoints, deadline, &pairs);
+            room.reconcile_with_pairs(&endpoints, restored_at, &pairs);
             let restored = room.flows().find(|flow| flow.receiver == id(2)).unwrap();
             assert_ne!(restored.id, old.id);
             assert_eq!(
@@ -4253,7 +4319,7 @@ mod tests {
                 Some(if preparing.is_some() {
                     1 + SCREEN_PREPARE_MS
                 } else {
-                    deadline + SCREEN_PREPARE_MS
+                    restored_at + SCREEN_PREPARE_MS
                 })
             );
             if let Some(healthy) = healthy {
@@ -4268,10 +4334,10 @@ mod tests {
                 .iter()
                 .any(|p| p.id == id(10) && p.session_id == id(1)));
             assert_eq!(
-                room.flow_state(old.id, id(2), id(1), FlowState::Decoded, deadline),
+                room.flow_state(old.id, id(2), id(1), FlowState::Decoded, restored_at),
                 Err("unassigned_flow")
             );
-            room.flow_state(restored.id, id(2), id(1), FlowState::Decoded, deadline + 1)
+            room.flow_state(restored.id, id(2), id(1), FlowState::Decoded, restored_at + 1)
                 .unwrap();
             if let Some(preparing) = preparing {
                 assert!(room.flows().any(|flow| flow.id == preparing.id));
@@ -4280,23 +4346,23 @@ mod tests {
                     preparing.receiver,
                     preparing.sender,
                     FlowState::Decoded,
-                    deadline + 1,
+                    restored_at + 1,
                 )
                 .unwrap();
             }
-            room.reconcile_with_pairs(&endpoints, deadline + 1, &pairs);
+            room.reconcile_with_pairs(&endpoints, restored_at + 1, &pairs);
             assert_eq!(room.next_route_deadline(), None);
             if count == 2 {
                 room.failed_pair(id(1), id(2));
                 pairs.remove(&(id(1), id(2)));
                 room.reconcile_with_pairs(&endpoints, 10_000, &pairs);
-                assert_eq!(room.next_route_deadline(), Some(15_000));
+                assert_eq!(room.next_route_deadline(), None);
                 endpoints.get_mut(&id(2)).unwrap().connected = false;
                 room.reconcile_with_pairs(&endpoints, 10_001, &pairs);
                 assert_eq!(room.next_route_deadline(), None);
                 endpoints.get_mut(&id(2)).unwrap().connected = true;
                 room.reconcile_with_pairs(&endpoints, 10_002, &pairs);
-                assert_eq!(room.next_route_deadline(), Some(15_002));
+                assert_eq!(room.next_route_deadline(), None);
                 room.subscribe(endpoints[&id(2)].member, id(2), id(10), false, None)
                     .unwrap();
                 room.browse(endpoints[&id(2)].member, id(2), false).unwrap();

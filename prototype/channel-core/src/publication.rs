@@ -238,6 +238,7 @@ impl Publication {
     ) {
         self.watch_order.retain(|viewer| requested.contains(viewer));
         self.expire(now);
+        self.plan.retain_refusals(neighbors);
         self.failed_receivers
             .retain(|receiver| requested.contains(receiver));
         let confirmed = |parent, child| {
@@ -698,21 +699,9 @@ impl Publication {
         }) {
             match self.operation.take().unwrap() {
                 RouteOperation {
-                    kind:
-                        OperationKind::Switch {
-                            root,
-                            helper: Some(helper),
-                            ..
-                        },
-                    ..
-                } => self.plan.reject_parent(root, helper),
-                RouteOperation {
                     deadline,
-                    kind: OperationKind::Reduce { root, legs },
+                    kind: OperationKind::Reduce { root, .. },
                 } => {
-                    if let Some(leg) = legs.get(&root) {
-                        self.plan.reject_parent(root, leg.flow.sender);
-                    }
                     self.operation = Some(RouteOperation {
                         deadline,
                         kind: OperationKind::Reduce {
@@ -750,7 +739,7 @@ impl Publication {
             {
                 if state == FlowState::Failed {
                     if let Some(candidate) = legs.get(root) {
-                        self.plan.reject_parent(*root, candidate.flow.sender);
+                        self.plan.reject_path(*root, candidate.flow.sender, (sender, receiver));
                     }
                     legs.clear();
                     return true;
@@ -788,7 +777,7 @@ impl Publication {
             if let Some(leg) = legs.get_mut(&receiver).filter(|leg| leg.flow.id == id) {
                 if state == FlowState::Failed {
                     if let Some(helper) = helper {
-                        self.plan.reject_parent(*root, *helper);
+                        self.plan.reject_path(*root, *helper, (sender, receiver));
                     }
                     self.operation = None;
                     return true;
