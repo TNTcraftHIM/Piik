@@ -120,6 +120,19 @@ observed 255 losing sockets released, the original winner retained, and all owne
 sockets released on pair withdrawal while the participant/signaling stayed alive.
 These establish mechanism and ownership, not a population success rate.
 
+At `6f98d93c`, the stable peer searched up to 512 distinct ports within the
+520-request budget. In one natural Linux kernel NAT trial, it sent 186 requests
+to 186 ports before the original pair completed preparation and connected.
+With both routers dropping incoming peer traffic, the WAN capture recorded
+512 requests to 512 distinct ports from the stable peer and 512 requests to
+one port from the pool peer. In a separate withdrawal at pool readiness, the
+reader stayed alive as its namespace UDP socket count fell from 256 to zero.
+One natural trial cannot estimate a field success rate.
+
+The frozen source archive had SHA-256
+`4371aafbe865676fe30d5cee7d21af781720a3ce664129c3d4c6cc4204ebdda2`
+and pinned str0m at `2d0d6eaaf4d19d7530588f695cd631eedf42acf5`.
+
 Native-to-Browser controls distinguish extra sockets from useful hypotheses:
 
 | Controlled model | Observation and limit |
