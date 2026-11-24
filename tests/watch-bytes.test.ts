@@ -38,14 +38,14 @@ function setup() {
   const bytes = new WatchBytes(send); bytes.update(sessionId, [plan], [{ peerId: peer, rooms: [roomId] }]);
   return { bytes, delivery, send };
 }
-test("range waits for Core effects without polling and clears its deadline after receipt", async () => {
+test("range waits for Core effects without polling and accepts a slow origin response", async () => {
   vi.useFakeTimers();
   const { bytes, delivery } = setup();
   try {
     const reading = bytes.read(roomId, activityId, source, source.resourceId, 0, 1024, new AbortController().signal);
     await vi.waitFor(() => expect(delivery.reads.length).toBeGreaterThan(0));
     const count = delivery.reads.length, id = delivery.reads.at(-1)!;
-    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(20000);
     expect(delivery.reads).toHaveLength(count);
 
     bytes.data(peer, "control", JSON.stringify([{ type: "received", requestId: id, result: { mimeType: "video/mp4", totalSize: 3, bytes: [1, 2, 3], eof: true } }]));
@@ -53,18 +53,24 @@ test("range waits for Core effects without polling and clears its deadline after
     expect(vi.getTimerCount()).toBe(0);
   } finally { bytes.reset(); }
 });
-test("waiting range cancels on deadline and cannot revive after reset", async () => {
-  vi.useFakeTimers();
+test("a silent range can be cancelled while another range completes", async () => {
   const { bytes, delivery } = setup();
-  const reading = bytes.read(roomId, activityId, source, source.resourceId, 0, 1024, new AbortController().signal);
-  const rejected = expect(reading).rejects.toThrow("watch_read_timeout");
-  await vi.waitFor(() => expect(delivery.reads.length).toBeGreaterThan(0));
-  await vi.advanceTimersByTimeAsync(10000); await rejected;
-  expect(delivery.cancels).toContain(delivery.reads.at(-1));
-  bytes.reset(); await Promise.resolve();
-  expect(delivery.free).toHaveBeenCalledTimes(1);
-  expect(vi.getTimerCount()).toBe(0);
+  const controller = new AbortController();
+  try {
+    const waiting = bytes.read(roomId, activityId, source, source.resourceId, 0, 1, controller.signal);
+    const rejected = expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+    const healthy = bytes.read(roomId, activityId, source, source.resourceId, 1, 1, new AbortController().signal);
+    await vi.waitFor(() => expect(delivery.reads).toHaveLength(2));
+    const [silentId, healthyId] = delivery.reads;
+    bytes.data(peer, "control", JSON.stringify([{ type: "received", requestId: healthyId,
+      result: { mimeType: "video/mp4", totalSize: 2, bytes: [7], eof: true } }]));
+    await expect(healthy).resolves.toMatchObject({ bytes: Uint8Array.of(7) });
+    controller.abort();
+    await rejected;
+    expect(delivery.cancels).toEqual([silentId]);
+  } finally { bytes.reset(); }
 });
+
 test("queued range rejects a replaced byte source and abort releases a waiting read", async () => {
   const { bytes, delivery } = setup();
   try {
@@ -95,7 +101,7 @@ test("a local media fetch waits for its join's receiving plan before sending its
   bytes.reset();
 });
 
-test.each(["response", "timeout", "cancel"] as const)("HLS waits beyond the old manifest deadline before %s", async outcome => {
+test.each(["response", "source failure", "cancel"] as const)("HLS waits beyond the old manifest deadline before %s", async outcome => {
   vi.useFakeTimers();
   const { bytes, delivery, send } = setup();
   const hlsSource = { ...source, format: "hls" as const };
@@ -142,12 +148,10 @@ test.each(["response", "timeout", "cancel"] as const)("HLS waits beyond the old 
         expect(callbacks.onSuccess).toHaveBeenCalledOnce();
         expect(callbacks.onSuccess.mock.calls[0][0].data).toBe(manifest);
       } else {
-        await vi.advanceTimersByTimeAsync(9999);
-        expect(callbacks.onError).not.toHaveBeenCalled();
-        await vi.advanceTimersByTimeAsync(1);
+        bytes.data(peer, "control", JSON.stringify([{ type: "failed", requestId, code: "watch_media_timeout" }]));
+        await vi.advanceTimersByTimeAsync(0);
         expect(callbacks.onError).toHaveBeenCalledOnce();
-        expect(callbacks.onError.mock.calls[0][0].text).toBe("watch_read_timeout");
-        expect(delivery.cancels).toContain(requestId);
+        expect(callbacks.onError.mock.calls[0][0].text).toBe("watch_media_timeout");
       }
     }
     expect(callbacks.onTimeout).not.toHaveBeenCalled();

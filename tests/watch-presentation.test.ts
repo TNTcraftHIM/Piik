@@ -231,7 +231,7 @@ describe("Webpage watch presentation", () => {
     [["watch_page_unavailable", "watch_page_closed", "page_player_closed"], "watch.forward.sourceUnavailable", false],
     [["watch_invalid_manifest", "watch_media_credentials_unavailable", "watch_media_unavailable", "watch_media_changed", "watch_media_truncated", "invalid_watch_range_response", "watch_resource_unavailable", "watch_source_unavailable", "watch_source_failed", "watch_source_changed", "watch_source_retired"], "watch.forward.sourceUnavailable", false],
     [["watch_source_busy", "watch_read_busy"], "watch.forward.busy", false],
-    [["watch_media_timeout", "watch_read_timeout"], "watch.forward.readTimeout", false],
+    [["watch_media_timeout"], "watch.forward.readTimeout", false],
     [["watch_source_already_active"], "watch.forward.active", false],
     [["watch_peer_requires_secure_context"], "watch.forward.secure", false],
     [["watch_peer_unavailable"], "watch.forward.failed", false],

@@ -43,7 +43,7 @@ export function createWatchHlsLoader(sourceRead: WatchByteReader, lifetime: Abor
       const { maxTimeToFirstByteMs, maxLoadTimeMs } = config.loadPolicy;
       const arm = (duration: number) => {
         clearTimeout(this.timer);
-        // Room readers can wait for a route before sending the first Pull and own their response deadline.
+        // Room reads include route setup and source I/O. Their lifetime follows the player and room path.
         if (deadlineOwner === "loader" && Number.isFinite(duration)) this.timer = setTimeout(timeout, Math.max(0, duration));
       };
       arm(Math.min(maxTimeToFirstByteMs, maxLoadTimeMs));

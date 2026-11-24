@@ -93,7 +93,7 @@ export async function openWatchResource(resourceId: string, read: WatchByteReade
       if (pendingReads >= 4 || !Number.isSafeInteger(data?.id) || !["stat", "read"].includes(data?.type) || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 1 || length > 65536) { close(); return; }
       pendingReads++;
       try {
-        // The reader owns route readiness and its response deadline; the port owns cancellation.
+        // The reader owns route readiness and source I/O; the port owns cancellation.
         const result = await readBounded(id, offset, length, request.signal);
         request.signal.throwIfAborted();
         if (result.bytes.byteLength > length || (result.totalSize !== null && (!Number.isSafeInteger(result.totalSize) || result.totalSize < 0))) throw new Error("watch_media_failed");

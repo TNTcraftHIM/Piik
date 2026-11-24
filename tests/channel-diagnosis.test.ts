@@ -26,9 +26,7 @@ describe("diagnosis using the current operation", () => {
 
   it("keeps source permissions, failed reads and incompatible storage tied to their own operations", () => {
     expect(diagnoseChannelFact({ area: "error", code: "watch_media_access_denied" })?.message).toBe("watch.mediaAccessDenied");
-    for (const code of ["watch_media_timeout", "watch_read_timeout"]) {
-      expect(diagnoseChannelFact({ area: "error", code })).toMatchObject({ message: "watch.forward.readTimeout", topic: "webpage" });
-    }
+    expect(diagnoseChannelFact({ area: "error", code: "watch_media_timeout" })).toMatchObject({ message: "watch.forward.readTimeout", topic: "webpage" });
     expect(diagnoseChannelFact({ area: "error", code: "capture_targets_failed" })?.topic).toBe("capture");
     expect(diagnoseChannelFact({ area: "error", code: "unsupported_storage_version" })?.topic).toBe("storage");
     expect(diagnoseChannelFact({ area: "error", code: "unsupported_backup_version" })).toBeNull();

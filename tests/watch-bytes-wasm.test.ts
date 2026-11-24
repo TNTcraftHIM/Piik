@@ -59,7 +59,7 @@ async function actualRuntime() {
   return rust;
 }
 
-test("response deadline starts after the real Pull send, excluding plan and transport waits", async () => {
+test("pending reads survive source latency and retire when the peer closes", async () => {
   await actualRuntime(); vi.useFakeTimers();
   const [viewer, peer, activityId, resourceId] = Array.from({ length: 4 }, () => crypto.randomUUID());
   const source = { sessionId: peer, resourceId, format: "file" as const };
@@ -75,19 +75,19 @@ test("response deadline starts after the real Pull send, excluding plan and tran
     bytes.update(viewer, [plan], []);
     const reading = bytes.read(plan.roomId, activityId, source, resourceId, 0, 1024, new AbortController().signal);
     void reading.then(() => { settled = true; }, () => { settled = true; });
-    const timedOut = expect(reading).rejects.toThrow("watch_read_timeout");
+    const retired = expect(reading).rejects.toThrow("watch_path_unavailable");
     await vi.advanceTimersByTimeAsync(15000);
     expect(settled).toBe(false); expect(send).not.toHaveBeenCalled();
     bytes.update(viewer, [{ ...plan, upstream: peer }], [{ peerId: peer, rooms: [plan.roomId] }]);
     await vi.advanceTimersByTimeAsync(0); expect(send).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(15000); expect(settled).toBe(false);
-    sent(); await vi.advanceTimersByTimeAsync(9999); expect(settled).toBe(false);
-    await vi.advanceTimersByTimeAsync(1); await timedOut;
+    sent(); await vi.advanceTimersByTimeAsync(60000); expect(settled).toBe(false);
+    bytes.peerClosed(peer); await retired;
     expect(settled).toBe(true); expect(vi.getTimerCount()).toBe(0);
   } finally { sent(); bytes.reset(); }
 });
 
-test("cancelling a queued Pull prevents late transmission and a late response timer", async () => {
+test("cancelling a queued Pull prevents late transmission after cancellation", async () => {
   await actualRuntime(); vi.useFakeTimers();
   const [viewer, peer, activityId, resourceId] = Array.from({ length: 4 }, () => crypto.randomUUID());
   const source = { sessionId: peer, resourceId, format: "file" as const };

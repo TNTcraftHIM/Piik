@@ -152,7 +152,7 @@ test("HLS can receive through the Reader when Service Workers are unavailable", 
 });
 
 test("peer HLS preserves controlled Reader failure boundaries without publishing arbitrary response text", () => {
-  for (const code of ["watch_path_unavailable", "watch_read_timeout", "watch_source_failed"]) {
+  for (const code of ["watch_path_unavailable", "watch_media_timeout", "watch_source_failed"]) {
     const error = { type: Hls.ErrorTypes.NETWORK_ERROR, details: Hls.ErrorDetails.MANIFEST_LOAD_ERROR,
       response: { url: "https://watch-media.invalid/resource", code: 0, data: undefined, text: code } };
     expect(watchHlsFailure(error, true)).toBe(code);

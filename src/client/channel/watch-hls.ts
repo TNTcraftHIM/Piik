@@ -4,7 +4,7 @@ export function watchHlsFailure(error: Pick<ErrorData, "type" | "details" | "res
   if (error.type === Hls.ErrorTypes.NETWORK_ERROR && (error.response?.code === 401 || error.response?.code === 403)) return "watch_media_access_denied";
   const readCode = error.response?.text;
   if (fromReader && error.type === Hls.ErrorTypes.NETWORK_ERROR && error.response?.code === 0 && readCode
-    && /^watch_(?:path_unavailable|read_(?:timeout|busy)|source_(?:failed|unavailable|changed|retired)|resource_limit)$/.test(readCode)) return readCode;
+    && /^watch_(?:path_unavailable|read_busy|media_timeout|source_(?:failed|unavailable|changed|retired)|resource_limit)$/.test(readCode)) return readCode;
   if (error.details === Hls.ErrorDetails.MANIFEST_INCOMPATIBLE_CODECS_ERROR
     || error.details === Hls.ErrorDetails.BUFFER_INCOMPATIBLE_CODECS_ERROR)
     return "watch_media_unsupported";

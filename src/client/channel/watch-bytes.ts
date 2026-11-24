@@ -13,7 +13,7 @@ type Effect =
   | { type: "read" | "cancel_read"; requestId: string };
 interface Pending {
   key: Key; source: WatchByteSource; offset: number; length: number; started: boolean;
-  resolve(value: WatchByteResult): void; reject(error: Error): void; sent(): void; cleanup(): void;
+  resolve(value: WatchByteResult): void; reject(error: Error): void; cleanup(): void;
 }
 interface Runtime { delivery: WatchDelivery; module: Awaited<ReturnType<typeof loadRoomHosting>>; lifetime: AbortController }
 export const sameWatchByteSource = (a: WatchByteSource, b: WatchByteSource | null | undefined) => a.sessionId === b?.sessionId && a.resourceId === b.resourceId && a.format === b.format;
@@ -68,17 +68,12 @@ export class WatchBytes {
     if (!this.current(runtime)) throw new Error("disconnected");
     const id = crypto.randomUUID();
     return new Promise((resolve, reject) => {
-      let timer: ReturnType<typeof setTimeout> | undefined;
       const cancel = () => {
         if (this.current(runtime)) this.effects(runtime, runtime.delivery.cancel(id));
         this.finish(id, new DOMException("Cancelled", "AbortError"));
       };
       const pending: Pending = { key: { roomId, activityId, resourceId }, source, offset, length, started: false, resolve, reject,
-        sent: () => { timer = setTimeout(() => {
-          if (this.current(runtime)) this.effects(runtime, runtime.delivery.cancel(id));
-          this.finish(id, new Error("watch_read_timeout"));
-        }, 10000); },
-        cleanup: () => { clearTimeout(timer); signal.removeEventListener("abort", cancel); } };
+        cleanup: () => signal.removeEventListener("abort", cancel) };
       this.pending.set(id, pending);
       signal.addEventListener("abort", cancel, { once: true });
       this.start(runtime, id, pending);
@@ -124,7 +119,6 @@ export class WatchBytes {
         const data = effect.type === "send_chunk" ? Uint8Array.from(effect.frame)
           : this.controlFrame(runtime, effect.control);
         void this.send(effect.peer, effect.type === "send_chunk" ? "chunk" : "control", data, terminal ? terminalAllowed : allowed)
-          .then(() => { if (pending && current()) pending.sent(); })
           .catch(() => {
             if (!current() || terminal) return;
             if (effect.type === "send_chunk") {

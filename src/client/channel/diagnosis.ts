@@ -72,8 +72,7 @@ export function diagnoseChannelFact(fact: ChannelFact): ChannelDiagnosis | null 
     case "watch_media_access_denied": return { message: "watch.mediaAccessDenied", topic: "webpage" };
     case "watch_source_inspection_unavailable": return { message: "watch.sourceAccessRequired", topic: "webpage" };
     case "watch_media_unplayable": return { message: "watch.sourceUnplayable", topic: "webpage" };
-    case "watch_media_timeout":
-    case "watch_read_timeout": return { message: "watch.forward.readTimeout", topic: "webpage" };
+    case "watch_media_timeout": return { message: "watch.forward.readTimeout", topic: "webpage" };
     case "watch_page_closed":
     case "page_player_closed":
     case "watch_mpd_invalid":

@@ -13,7 +13,7 @@ function dashFailure(error: unknown): Error {
   // Never expose Shaka's data array, which can contain resource URLs or platform diagnostics.
   if (
     error instanceof Error &&
-    /^watch_(?:source_(?:unavailable|changed|retired)|path_unavailable|read_(?:timeout|busy)|media_(?:unsupported|encryption_unsupported|failed)|invalid_manifest|live_timeline_unsupported)$/.test(
+    /^watch_(?:source_(?:unavailable|changed|retired)|path_unavailable|read_busy|media_(?:timeout|unsupported|encryption_unsupported|failed)|invalid_manifest|live_timeline_unsupported)$/.test(
       error.message,
     )
   )
