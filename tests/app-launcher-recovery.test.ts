@@ -55,7 +55,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { startup = 
   let nextTimer = 0;
   const actions = runInNewContext(executable, {
     ...setters, z, fetch, window, URLSearchParams,
-    stateChanges: { current: { revision: 0, pending: 0 } },
+    stateRead: { current: null }, pendingStateChanges: { current: 0 },
     siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, manualSite, openOnApproval: false,
     mode: "link", lang: "en", vis: false, debug: false, appDebug: false, localAccessPassword: "",
     consoleLanguage: () => "en", clientLaunchURL, currentThemePreference: () => null, hasCopyPreference: () => false, controlPort: undefined, t: (key: string) => key,
@@ -328,9 +328,11 @@ describe("App launcher state recovery", () => {
 
   it("ignores an in-flight response and future focus after retirement", async () => {
     let complete!: (value: ReturnType<typeof response>) => void;
-    const fetch = vi.fn(() => new Promise<ReturnType<typeof response>>(resolve => { complete = resolve; }));
+    const fetch = vi.fn((_url: string, _options?: { signal?: AbortSignal }) => new Promise<ReturnType<typeof response>>(resolve => { complete = resolve; }));
     const page = mount(fetch);
+    const signal = fetch.mock.calls[0]?.[1]?.signal;
     page.cleanup();
+    expect(signal?.aborted).toBe(true);
     complete(response());
     await settle();
     page.focus();
@@ -339,32 +341,38 @@ describe("App launcher state recovery", () => {
     for (const setter of Object.values(page.setters)) expect(setter).not.toHaveBeenCalled();
   });
 
-  it.each(["site", "startup-site", "debug", "launch"] as const)("rejects stale read success and failure around a %s command", async (operation) => {
+  it.each(["site", "startup-site", "debug", "launch"] as const)("retires stale reads as soon as a %s command starts", async (operation) => {
     for (const failedRead of [false, true]) {
+      let obsoleteSignal: AbortSignal | undefined;
       let resolveRead!: (value: ReturnType<typeof response>) => void;
       let rejectRead!: (error: Error) => void;
-      const fetch = vi.fn(async (_url: string, options?: { method?: string }) => options?.method === "POST"
+      const fetch = vi.fn(async (_url: string, options?: { method?: string; signal?: AbortSignal }) => options?.method === "POST"
         ? { ok: true, status: 200, json: async () => ({ sites: [], startupSite: "", target: "https://room.example" }) }
         : response());
       const page = mount(fetch);
       await settle();
-      fetch.mockImplementationOnce(() => new Promise((resolve, reject) => { resolveRead = resolve; rejectRead = reject; }));
+      fetch.mockImplementationOnce((_url, options) => new Promise((resolve, reject) => {
+        obsoleteSignal = options?.signal;
+        resolveRead = resolve;
+        rejectRead = reject;
+      }));
       page.focus();
       if (operation === "site") await page.changeSite(saved.sites[0]!, "site", false, false);
       if (operation === "startup-site") await page.changeSite(saved.sites[0]!, "startup-site");
       if (operation === "debug") await page.enableDebug();
       if (operation === "launch") await page.launch({ preventDefault() {} });
+      expect(obsoleteSignal?.aborted).toBe(true);
+      page.state.LocalAccessPassword = "unsaved";
+      fetch.mockResolvedValueOnce(response({ ...saved, sites: [], debug: true }));
+      // Focus can start a current read while the old promise is still pending.
+      page.focus();
+      await settle();
+      expect(page.state).toMatchObject({ Sites: [], Debug: true, LocalAccessPassword: "unsaved" });
       const committed = { ...page.state };
       if (failedRead) rejectRead(new Error("old read failed"));
       else resolveRead(response());
       await settle();
       expect(page.state).toEqual(committed);
-      // One existing poll recovers the current App fact without restoring user edits.
-      page.state.LocalAccessPassword = "unsaved";
-      fetch.mockResolvedValueOnce(response({ ...saved, sites: [], debug: true }));
-      page.retry();
-      await settle();
-      expect(page.state).toMatchObject({ Sites: [], Debug: true, LocalAccessPassword: "unsaved" });
       page.cleanup();
     }
   });
