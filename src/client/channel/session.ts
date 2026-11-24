@@ -2711,6 +2711,10 @@ export class ChannelSession {
       const pageId = player.media.page?.id;
       debugEvent("channel", "watch-owner-retired", { activityId: id, reason, ...(pageId && { pageId }) });
     }
+    if (player?.owner) {
+      const selection = this.sourceSelections.get(player.roomId);
+      if (selection?.replaceWatchId === id) delete selection.replaceWatchId;
+    }
     this.watchPlayers.delete(id);
     player?.close();
   }

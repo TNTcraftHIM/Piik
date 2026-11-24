@@ -15415,3 +15415,40 @@ test("page owner and borrowed player each release their page at most once", () =
   releaseSecond();
   expect(dispose).toHaveBeenCalledOnce();
 });
+
+test('a watch that ends during source selection does not block the new share', async () => {
+  const { session, socket } = await setup(1000, false);
+  const incumbentVideo = new WatchTestVideo();
+  const candidateVideo = new WatchTestVideo();
+  vi.stubGlobal('document', { createElement: vi.fn().mockReturnValueOnce(incumbentVideo).mockReturnValue(candidateVideo) });
+  const id = 'ended-watch';
+  const incumbent = new WatchPlayer('first', true, new HTMLVideoMedia('https://media.test/old.mp4', 'file'), () => {});
+  incumbent.mode = 'direct';
+  (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set(id, incumbent);
+  let releaseReady!: () => void;
+  const readiness = new Promise<void>(resolve => { releaseReady = resolve; });
+  const ready = vi.spyOn(HTMLVideoMedia.prototype, 'ready').mockImplementation(() => readiness);
+  try {
+    const opening = session.startWatch('first', 'https://media.test/new.mp4').catch(error => error);
+    await vi.waitFor(() => expect(ready).toHaveBeenCalled());
+    const stopping = session.stopWatch(id, 'media-closed');
+    const stop = socket.sent.findLast(command => command.type === 'stop_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: stop.requestId, result: { type: 'done' } });
+    await stopping;
+
+    releaseReady();
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
+    const start = socket.sent.findLast(command => command.type === 'start_watch')!;
+    if (start.replaceId) {
+      socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'error', code: 'watch_identity_conflict' } });
+    } else {
+      socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+      await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch' && command.id === start.id)).toBe(true));
+      const update = socket.sent.findLast(command => command.type === 'update_watch' && command.id === start.id)!;
+      socket.receive({ type: 'room_reply', roomId: 'first', requestId: update.requestId, result: { type: 'done' } });
+    }
+    expect(await opening).toBeUndefined();
+    expect(start.replaceId).toBeUndefined();
+    expect(session.getSnapshot().watchPlayers.get(start.id as string)?.owner).toBe(true);
+  } finally { releaseReady(); session.close(); }
+});
