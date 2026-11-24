@@ -16,13 +16,21 @@ the feedback period; they do not delay that delivery.
 
 ### Active work
 
-- [ ] **Browser session ownership.** Refine [ADR-0015](./adr/0015-browser-session-lifetime-owners.md)
-  around binding-scoped history and operation-local feedback. Agree the first
-  RoomReader test and file handoff before extracting it; retain request
-  correlation and local playback choices at their existing owners.
-- [ ] **Native task exit observation.** Route track-reader termination through
-  its pair owner, including panic, and surface non-cancellation join failures.
-  Evaluate task grouping at that boundary before replacing existing cancellation.
+- [ ] **Browser session ownership.** Continue accepted
+  [ADR-0015](./adr/0015-browser-session-lifetime-owners.md) from the confirmed
+  history owner toward follow-latest, interaction lifetime and operation feedback.
+  Agree the next file handoff first; retain request correlation and local playback
+  choices at their existing owners.
+- [ ] **Native video admission.** Give the bandwidth allocator each output's
+  smallest currently deliverable representation. A positive optional grant that
+  cannot carry video must report waiting or rejection, rather than silently
+  disabling the input. Preserve required selected delivery and SDK congestion
+  control; verify local encoding and opaque Server relays separately.
+- [ ] **Windows foreground and read intent.** A different foreground window
+  can leave WebView reporting document focus. In beta.53 this suppresses message
+  cues and advances the read cursor while the App is covered. Project the native
+  window's activation through the shared document-activity owner; verify both
+  consumers with a real foreground-window transition.
 - [ ] **Audio device acceptance.** Verify physical output selection, unplugging
   and recovery across shared players. Keep failures actionable without silently
   changing the selected device. Room microphones, source audio inputs and
@@ -33,9 +41,9 @@ the feedback period; they do not delay that delivery.
   and end retained viewing on explicit exit. Complete matching-package checks
   for same-page candidates and reconnection across consecutive source replacements.
 - [ ] **Native video picture-in-picture during source replacement.** Keep the
-  selected presentation window in the matched Windows WebView package and
-  verify the system window's close control. Reuse the completed standard-Browser
-  replacement, waiting, floating-document and room-revocation checks.
+  selected presentation window across a source replacement in Windows WebView
+  and verify the system window's close control. Reuse the final package's tested
+  entry/exit and the standard-Browser replacement, waiting and revocation checks.
 - [ ] **Webpage viewer readiness.** Reproduce reports of a loading viewer shown
   as already watching, including Native original-page playback. Keep membership
   distinct from proved playable media in the viewer surface and participant list.
@@ -219,11 +227,10 @@ the feedback period; they do not delay that delivery.
 - [ ] **Physical keyframe acceptance.** Check Android codec initialization,
   requested keyframes and rebuilding with the longer interval. Extend the
   Windows hardware control beyond the tested NVIDIA encoder and short sequence.
-- [ ] **Native media test scheduling.** Reproduce the reported reused-output
-  failure on the cross-review machine with its new per-output MID, SSRC and
-  sender/receiver counters. The observed phase is fresh audio/video SSRC reuse
-  after several lease cycles. Keep the existing deadlines; local controls have
-  not reproduced the intermittent failure.
+- [ ] **Native media identity regression.** Keep the repeated-lease SSRC test
+  on selected flows so it does not depend on optional-trial admission. Verify
+  its sibling media and fresh RTP assertions independently from the admission
+  defect above; retain failure diagnostics and the existing deadline.
 - [ ] **Rust formatting and diagnostics.** At an agreed file handoff, apply a
   separate mechanical format pass and review actionable Clippy findings by owner.
   Keep style-only changes separate from behavior fixes and new lint gates.
