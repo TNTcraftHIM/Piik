@@ -22,7 +22,7 @@ export interface RoomInteraction {
   payload: InteractionPayload;
   contentTarget?: ContentReactionTarget;
 }
-type Rejection = "rate-limited" | "target-unavailable" | "not-subscribed" | "busy";
+export type Rejection = "rate-limited" | "target-unavailable" | "not-subscribed" | "busy";
 type InteractionCommand =
   | { type: "subscribe-room-interactions" }
   | { type: "send-room-interaction"; requestId: string; payload: InteractionPayload; contentTarget?: ContentReactionTarget; nonce?: number };
@@ -215,7 +215,7 @@ export class RoomInteractionSession {
     // A late result may settle it until another submission or connection replaces it.
     this.request = request;
     this.update({ pending: request, error: null });
-    this.pendingTimer = setTimeout(() => this.update({ pending: null, error: "unconfirmed" }), 5000);
+    this.pendingTimer = setTimeout(() => this.unconfirmed(), 5000);
     this.startCooldown();
     return true;
   }
@@ -227,6 +227,15 @@ export class RoomInteractionSession {
     clearTimeout(this.pendingTimer);
     this.startCooldown();
     this.update({ pending: null, error: null });
+  }
+
+  /** The Server did not deliver this request's reply. It may have committed, so a retry keeps its nonce. */
+  undelivered(requestId: string): void {
+    if (this.state.pending?.requestId === requestId) this.unconfirmed();
+  }
+  private unconfirmed() {
+    clearTimeout(this.pendingTimer);
+    this.update({ pending: null, error: "unconfirmed" });
   }
 
   setOverlayEnabled(enabled: boolean) {

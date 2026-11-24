@@ -71,6 +71,33 @@ test("an unconfirmed content retry keeps its nonce and a replay acknowledgement 
   session.close();
 });
 
+test("an undelivered reply is unconfirmed at once and its retry keeps the request and nonce", () => {
+  vi.useFakeTimers();
+  let nonce = 0;
+  const send = vi.fn<ConstructorParameters<typeof RoomInteractionSession>[0]>(command =>
+    command.type === "send-room-interaction" ? { nonce: command.nonce ?? ++nonce } : true);
+  const session = new RoomInteractionSession(send, Date.now);
+  session.authenticated("self_peer_1234");
+  session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
+  expect(session.send({ kind: "reaction", reaction: "heart" })).toBe(true);
+  const first = session.getSnapshot().pending!;
+  session.undelivered("another_request");
+  expect(session.getSnapshot().pending).toBe(first);
+  session.undelivered(first.requestId);
+  expect(session.getSnapshot()).toMatchObject({ pending: null, error: "unconfirmed" });
+  vi.advanceTimersByTime(800);
+  expect(session.send({ kind: "reaction", reaction: "heart" })).toBe(true);
+  expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ requestId: first.requestId, nonce: 1 }));
+  session.confirm(first.requestId, 1);
+  expect(session.getSnapshot()).toMatchObject({ pending: null, error: null });
+  vi.advanceTimersByTime(800);
+  expect(session.send({ kind: "reaction", reaction: "heart" })).toBe(true);
+  const next = session.getSnapshot().pending!;
+  session.close();
+  session.undelivered(next.requestId);
+  expect(session.getSnapshot()).toMatchObject({ pending: null, error: null });
+});
+
 test.each([
   { advertised: undefined, expected: [...REACTION_IDS] },
   { advertised: ["heart", "thumbsup", "future-effect"], expected: ["thumbsup", "heart"] },
