@@ -59,12 +59,11 @@ the feedback period; they do not delay that delivery.
   against actual readers, writers and stored samples. Keep API/Bot capabilities
   within existing actions and authority. [ADR-0016](./adr/0016-shared-rust-core.md)
   records the adopted architecture separately from public release acceptance.
-- [ ] **Conversation during room permission changes.** Preserve immediate Read
-  revocation while giving an online requester a useful outcome if its already
-  committed reply arrives before the covering permission projection. Ordinary
-  route changes and unrelated participants leaving must not block that reply.
-  Agree how direct replies differ from observer fanout before changing request
-  correlation or adding an authority-side pending-request owner.
+- [ ] **Interaction replies during room permission changes.** Let Browser
+  interaction readiness and reaction sends consume their own room-scoped delivery
+  refusals. Preserve immediate Read revocation and the nonce of an unconfirmed
+  operation whose reply was refused after a possible commit. Keep unrelated
+  requests and observer fanout independent.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
@@ -218,10 +217,11 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **Shared participant boundaries and decoding.** Measure remaining WASM
-  snapshot parsing and prove a per-connection decoder
-  preserves image restoration. Any generated types must replace their old owner
-  and retain runtime validation, omission and null semantics.
+- [ ] **Shared participant boundaries and decoding.** Measure avoidable WASM
+  projection crossings and unused return data before changing their boundaries.
+  Keep image restoration owned by each physical connection. Any generated types
+  must replace their old owner and retain runtime validation, omission and null
+  semantics.
 - [ ] **Routing authority placement.** Measure the writer turn and storage
   validation cost before proposing domain-owned repair. Decide the revocable
   grant and writer-disconnect semantics separately from physical pair reuse.
