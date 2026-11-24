@@ -19,7 +19,7 @@ import { selectedRoom } from "./navigation";
 import { RoomReadMarkers } from "./read-markers";
 import { historyProfileIds, mergeMessage, mergeMessages, readingWindow, redactReply } from "./message-history";
 import { userProfile } from "./presentation";
-import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
+import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
 import { messageRemoved, type ChannelActions, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
@@ -1759,18 +1759,11 @@ export class ChannelSession {
   updateDomain = (settings: Partial<DomainSettings>, reportError = true): Promise<void> => this.action("domain", () => this.request({ type: "update_domain", ...settings }), reportError);
   setRoomCreationPolicy = (policy: Extract<ChannelCommand, { type: "set_room_creation_policy" }>["policy"], reportError = true): Promise<void> =>
     this.action("domain", () => this.request({ type: "set_room_creation_policy", policy }), reportError);
-  private roomCreationCommand(settings: RoomSettings): Extract<ChannelCommand, { type: "create_room" }> {
-    const serverHosted = this.view.state!.channel.hostingMode === "hosted";
-    const password = settings.access === "private" && settings.password ? settings.password : undefined;
-    return { type: "create_room", room: roomSummarySchema.parse({ ...settings, id: "new", creatorId: this.view.self!.id, hasPassword: Boolean(password) }),
-      ...(serverHosted ? { picture: settings.picture ?? undefined, password, allowServiceRelay: settings.allowServiceRelay } : {}) };
-  }
-
   private async allocateRoom(settings: RoomSettings) {
     const current = this.sessionContext(), socket = this.socket;
     const serverHosted = this.view.state!.channel.hostingMode === "hosted";
     let room: RoomSummary | undefined;
-    await this.request(this.roomCreationCommand(settings), event => {
+    await this.request(createRoomCommand(settings, this.view.self!.id, serverHosted), event => {
       if (event.type === "room_created") room = event.room;
     });
     try { current(); } catch (error) {
@@ -2167,7 +2160,7 @@ export class ChannelSession {
   private async importHostedRoomCopy(archive: Blob, settings: RoomSettings, current: () => void): Promise<{ roomId: string; cached: boolean }> {
     const credential = this.credential, sessionId = this.view.sessionId;
     if (!credential || !sessionId) throw new Error("disconnected");
-    const command = this.roomCreationCommand(settings);
+    const command = createRoomCommand(settings, this.view.self!.id, this.view.state!.channel.hostingMode === "hosted");
     const { metadata, archive: writerArchive, contents } = await prepareHostedRoomArchive(archive, { kind: "room_copy", settings: command }, current);
     const hosted = new NativeRoomHosting("/prototype/channel/rooms", { Authorization: `Bearer ${credential}` });
     const room = await hosted.importCopy(writerArchive, command.room.creatorId, sessionId);

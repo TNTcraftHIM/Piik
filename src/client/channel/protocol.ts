@@ -291,6 +291,15 @@ export interface RoomSettings extends DomainSettings {
   relayCapacity?: number;
   allowServiceRelay?: boolean;
 }
+export function createRoomCommand(settings: RoomSettings, creatorId: string, serverHosted: boolean): Extract<ChannelCommand, { type: "create_room" }> {
+  const password = settings.access === "private" && settings.password ? settings.password : undefined;
+  return {
+    type: "create_room",
+    room: roomSummarySchema.parse({ ...settings, id: "new", creatorId, hasPassword: Boolean(password) }),
+    ...(serverHosted ? { picture: settings.picture ?? undefined, password, allowServiceRelay: settings.allowServiceRelay } : {}),
+  };
+}
+
 export type ChannelCommand =
   | { type: "start_watch"; replaceId?: string; roomId: string; id: string; source: WatchSource; playback: WatchPlayback; byteSource?: WatchByteSource }
   | { type: "update_watch"; roomId: string; id: string; playback: WatchPlayback }

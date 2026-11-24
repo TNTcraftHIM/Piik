@@ -6,7 +6,7 @@ import WebSocket from 'ws';
 import { z } from 'zod';
 import type { MessageReactionSnapshot, ReactionEvent, ReactionTarget } from '../../../src/client/channel/protocol';
 import init, { history_page_size, SessionSigner, verify_conversation } from '../pkg/piik_channel_browser.js';
-import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, requireConversationDelivery, roomSchema, roomSummarySchema, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationAddress, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary } from '../../../src/client/channel/protocol';
+import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, requireConversationDelivery, roomSchema, createRoomCommand, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationAddress, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary } from '../../../src/client/channel/protocol';
 await init({ module_or_path: readFileSync(new URL('../pkg/piik_channel_browser_bg.wasm', import.meta.url)) });
 type ConversationCommand = Extract<ChannelCommand, {
   type: 'chat' | 'history' | 'interaction_ready' | 'react' | 'delete_message';
@@ -161,10 +161,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     this.checkSocket(this.socket);
     if (!this.state || !this.userId) throw new Error('disconnected');
     if (this.state.channel.hostingMode !== 'hosted') throw new Error('room_writer_required');
-    const password = settings.access === 'private' && settings.password ? settings.password : undefined;
-    const room = roomSummarySchema.parse({ ...settings, id: 'new', creatorId: this.userId, hasPassword: Boolean(password) });
-    return await this.request({ type: 'create_room', room, password, picture: settings.picture ?? undefined,
-      allowServiceRelay: settings.allowServiceRelay }, 'room_created') as RoomSummary;
+    return await this.request(createRoomCommand(settings, this.userId, true), 'room_created') as RoomSummary;
   }
 
   async setProfile({ name, avatar }: { name?: string; avatar?: string | null }): Promise<void> {
