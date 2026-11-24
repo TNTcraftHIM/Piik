@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserEncodingPool } from "../src/client/media/browser-encoding-pool";
 import { BrowserEncodingProducer } from "../src/client/media/browser-encoding-producer";
 import type { BrowserEncodingOutput } from "../src/client/media/browser-encoding-output";
+import { negotiatedCodec, videoOutbound } from "../src/client/media/browser-encoding-stats";
 import { QUALITY_PROFILES } from "../src/client/media/quality";
 
 const codec = { mimeType: "video/VP8", clockRate: 90_000 };
@@ -20,7 +21,7 @@ function stats(row: Record<string, unknown>, negotiated: RTCRtpCodec = codec): R
 }
 
 function member(budget = 2_000_000, configureCarrier = async () => true, sharedConnection?: RTCPeerConnection) {
-  const demand = { budget, codec: { ...codec } as RTCRtpCodec };
+  const demand = { budget, active: true, codec: { ...codec } as RTCRtpCodec };
   let producerId: string | null = null;
   const select = vi.fn((id: string, _requestKey: () => Promise<void>, selected: () => void,
     accept: (metadata: RTCEncodedVideoFrameMetadata) => boolean) => {
@@ -34,7 +35,7 @@ function member(budget = 2_000_000, configureCarrier = async () => true, sharedC
     select, cancelSelection, push: vi.fn(), passthrough: vi.fn(() => { producerId = null; }), setPaused: vi.fn(),
     snapshot: () => ({ frames: producerId ? 30 : 0, width: 1920, height: 1080, timestamp: Date.now(), lastProducerId: producerId }),
   } as unknown as BrowserEncodingOutput;
-  const getStats = vi.fn(async () => stats({ targetBitrate: demand.budget }, demand.codec));
+  const getStats = vi.fn(async () => stats({ active: demand.active, targetBitrate: demand.budget }, demand.codec));
   const sender = { getStats } as unknown as RTCRtpSender;
   const connection = sharedConnection ?? { connectionState: "connected", getStats } as unknown as RTCPeerConnection;
   const fatal = vi.fn();
@@ -88,6 +89,19 @@ afterEach(() => {
 });
 
 describe("Browser encoding pool ownership", () => {
+  it("reads a paused sender's codec without borrowing inactive history or allocation", () => {
+    const report = stats({ active: false, targetBitrate: 2_000_000 });
+    expect(negotiatedCodec(report)).toEqual(codec);
+    expect(videoOutbound(report)).toBeUndefined();
+    const rows = report as unknown as Map<string, object>;
+    rows.set("retired", { id: "retired", type: "outbound-rtp", kind: "video", active: false, codecId: "old-codec" });
+    rows.set("old-codec", { id: "old-codec", type: "codec", mimeType: "video/H264", clockRate: 90_000 });
+    expect(negotiatedCodec(report)).toBeUndefined();
+    Object.assign(rows.get("video")!, { active: true });
+    expect(negotiatedCodec(report)).toEqual(codec);
+    expect(videoOutbound(report)?.targetBitrate).toBe(2_000_000);
+  });
+
   it.each(["accepted", "rejected"])("acknowledges shared picture settings only after the producer %s them", async outcome => {
     const first = member(), second = member();
     await sample(4);
@@ -294,6 +308,37 @@ describe("Browser encoding pool ownership", () => {
     ready();
     await vi.advanceTimersByTimeAsync(0);
     expect(first.producerId()).toBe([...producers.keys()][0]!.id);
+  });
+
+  it("retains negotiated sharing while inactive senders pause, resume and leave", async () => {
+    const first = member(), second = member();
+    await sample(4);
+    const producer = [...producers.keys()][0]!;
+    first.handle.setPaused(true);
+    first.demand.active = false;
+    await sample(2);
+    expect(first.producerId()).toBe(producer.id);
+    expect(second.producerId()).toBe(producer.id);
+    expect(first.encoded.passthrough).not.toHaveBeenCalled();
+    expect(producer.setPaused).toHaveBeenLastCalledWith(false);
+
+    second.handle.setPaused(true);
+    second.demand.active = false;
+    await sample(2);
+    expect(producer.setPaused).toHaveBeenLastCalledWith(true);
+    expect(producer.dispose).not.toHaveBeenCalled();
+    first.handle.setPaused(false);
+    first.demand.active = true;
+    await sample(2);
+    second.handle.dispose();
+    await sample(2);
+    expect(first.producerId()).toBe(producer.id);
+    expect(first.encoded.passthrough).not.toHaveBeenCalled();
+    expect(producer.setPaused).toHaveBeenLastCalledWith(false);
+    expect(producers.size).toBe(1);
+    expect(producer.dispose).not.toHaveBeenCalled();
+    first.handle.dispose();
+    expect(producer.dispose).toHaveBeenCalledOnce();
   });
 
   it("keeps a shared encoder through a bitrate spike with unchanged native demand", async () => {

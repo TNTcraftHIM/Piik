@@ -43,7 +43,8 @@ export function useWatchPageSlot(pageId: string | undefined) {
         && !document.querySelector("dialog[open], :popover-open");
       const bounds = visible && right > left && bottom > top
         ? { x: left, y: top, width: right - left, height: bottom - top } : null;
-      const key = JSON.stringify(bounds);
+      // Native placement also depends on the current CSS-to-device pixel scale.
+      const key = JSON.stringify([bounds, window.devicePixelRatio]);
       if (key === previous) return;
       previous = key;
       if (!bounds && revision === 0) return;
@@ -59,7 +60,7 @@ export function useWatchPageSlot(pageId: string | undefined) {
     const options = { capture: true, signal: listeners.signal };
     for (const event of ["scroll", "resize", "toggle", "visibilitychange", "fullscreenchange"]) window.addEventListener(event, update, options);
     const resize = new ResizeObserver(update);
-    resize.observe(node);
+    resize.observe(node, { box: "device-pixel-content-box" });
     const intersection = new IntersectionObserver(update);
     intersection.observe(node);
     const mutation = new MutationObserver(records => {

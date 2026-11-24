@@ -134,7 +134,7 @@
     for (const [source, child] of children) if (!child.element.isConnected) { children.delete(source); send({ kind: 'removed', removed: child.frame }); }
     report();
   };
-  new MutationObserver(discover).observe(document, { childList: true, subtree: true });
+  new MutationObserver(discover).observe(document, { childList: true, subtree: true, attributeFilter: ['title', 'aria-label'] });
   addEventListener('DOMContentLoaded', discover, { once: true });
   addEventListener('pagehide', () => {
     clearTimeout(timer);

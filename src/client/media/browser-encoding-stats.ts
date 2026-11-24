@@ -8,16 +8,19 @@ type Output = ReturnType<BrowserEncodingOutput["snapshot"]>;
 const normalizeFmtp = (value = "") => value.split(";").map((part) => part.trim().toLowerCase()).filter(Boolean).sort().join(";");
 export const codecIdentity = (codec: RTCRtpCodec) => `${codec.mimeType.toLowerCase()}/${codec.clockRate}/${normalizeFmtp(codec.sdpFmtpLine)}`;
 
-export function videoOutbound(report: RTCStatsReport): RTCOutboundRtpStreamStats | undefined {
+export function videoOutbound(report: RTCStatsReport, activeOnly = true): RTCOutboundRtpStreamStats | undefined {
   const videos: RTCOutboundRtpStreamStats[] = [];
   report.forEach((row) => {
-    if (row.type === "outbound-rtp" && row.kind === "video" && row.active !== false) videos.push(row);
+    if (row.type === "outbound-rtp" && row.kind === "video" && (!activeOnly || row.active !== false)) videos.push(row);
   });
   return videos.length === 1 ? videos[0] : undefined;
 }
 
 export function negotiatedCodec(report: RTCStatsReport): RTCRtpCodec | undefined {
-  const outbound = videoOutbound(report), codec = outbound?.codecId ? report.get(outbound.codecId) : undefined;
+  // A paused sender retains its codec. Prefer its active stream, or the only
+  // reported stream; multiple inactive histories cannot identify that codec.
+  const outbound = videoOutbound(report) ?? videoOutbound(report, false);
+  const codec = outbound?.codecId ? report.get(outbound.codecId) : undefined;
   if (!codec || !["video/vp8", "video/h264"].includes(codec.mimeType?.toLowerCase())) return;
   if (codec.mimeType.toLowerCase() === "video/h264" && !normalizeFmtp(codec.sdpFmtpLine).split(";").includes("packetization-mode=1")) return;
   return RTCRtpSender.getCapabilities("video")?.codecs.find((candidate) => codecIdentity(candidate) === codecIdentity(codec));
