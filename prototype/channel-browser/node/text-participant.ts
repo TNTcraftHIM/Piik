@@ -57,6 +57,7 @@ export interface TextParticipantOptions {
 }
 type ConversationResult = 'confirmed' | 'history_end' | 'interaction_ready' | 'reaction' | 'message_deleted';
 type Pending = {
+  roomId?: string;
   expects: 'ack' | 'room_created' | ConversationResult;
   records: ChannelMessage[];
   resolve(value: unknown): void;
@@ -230,7 +231,8 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
         this.pending.delete(requestId);
         reject(new Error('request_timeout'));
       }, expects === 'ack' || expects === 'room_created' ? 10_000 : 30_000);
-      this.pending.set(requestId, { expects, records: [], resolve, reject, timer });
+      const roomId = command.type === 'conversation' ? this.roomId : 'roomId' in command ? command.roomId : undefined;
+      this.pending.set(requestId, { roomId, expects, records: [], resolve, reject, timer });
       try {
         this.write(command, requestId);
       }
@@ -336,9 +338,11 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       return;
     }
     if (event.type === 'room_reply' && event.requestId) {
+      const pending = this.pending.get(event.requestId);
+      if (!pending || pending.roomId !== event.roomId) return;
       if (event.result.type === 'error')
         this.complete(event.requestId, undefined, Error(event.result.code));
-      else if (this.pending.get(event.requestId)?.expects === 'ack')
+      else if (pending.expects === 'ack')
         this.complete(event.requestId, event.result);
       return;
     }

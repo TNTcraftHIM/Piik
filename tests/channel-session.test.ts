@@ -5992,6 +5992,28 @@ test.each(["timeout", "cancel"])("same draft retries its prepared attachment aft
   } finally { session.close(); }
 });
 
+test("a room permission check settles only the chat with the signed request id", async () => {
+  const { session, socket, peer } = await setup();
+  try {
+    const sending = session.sendMessage("first", "same draft");
+    const request = await peer.next();
+    if (request.type !== "chat") throw new Error("expected chat");
+    const busy = { type: "error", code: "room_busy" };
+    socket.receive({ type: "room_reply", roomId: "first", requestId: "another-readers-chat", result: busy });
+    socket.receive({ type: "room_reply", roomId: "second", requestId: request.requestId, result: busy });
+    expect(session.getSnapshot().pending.has("chat:first")).toBe(true);
+    expect(session.getSnapshot().error).toBeNull();
+    const rejected = expect(sending).rejects.toThrow("room_busy");
+    socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: busy });
+    await rejected;
+    const retry = session.sendMessage("first", "same draft");
+    const command = await peer.next();
+    expect(command).toMatchObject({ type: "chat", nonce: request.nonce });
+    peer.reply(command, { type: "confirmed", inserted: false, message: message(1) });
+    await retry;
+  } finally { session.close(); }
+});
+
 test("discarding an unconfirmed attachment send gives the same draft a new nonce only for its binding", async () => {
   const { session, peer } = await setup();
   const file = new File(["synthetic note"], "note.txt"), id = crypto.randomUUID();

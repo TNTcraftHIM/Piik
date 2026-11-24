@@ -53,17 +53,22 @@ fn relay(
         .expect("domain forwards to the intended endpoint")
 }
 
-fn rejected(network: &mut RoomNetwork, connection: Uuid, packet: &SignedPacket, code: &str) {
+fn refused(network: &mut RoomNetwork, connection: Uuid, target: Uuid, packet: &SignedPacket, code: &str) {
     let effects = network.command(
         connection,
         json!({"type":"conversation","packet":packet,"requestId":"chat"}),
     );
-    assert!(effects.events.iter().any(|(recipient, event)| *recipient == connection && matches!(event,
-        Event::Error { code: actual, request_id } if actual == code && request_id.as_deref() == Some("chat"))));
-    assert!(!effects
-        .events
-        .iter()
-        .any(|(_, event)| matches!(event, Event::Conversation { .. })));
+    let [(recipient, event)] = effects.events.as_slice() else { panic!("expected one refusal") };
+    assert_eq!(*recipient, target);
+    if target == connection {
+        assert!(matches!(event, Event::Error {code: actual, request_id: Some(id)} if actual == code && id == "chat"));
+    } else {
+        assert!(matches!(event, Event::RoomReply {result: piik_channel_core::host::RoomResult::Error { code: actual }, request_id: Some(id), ..} if actual == code && id == "chat"));
+    }
+}
+
+fn rejected(network: &mut RoomNetwork, connection: Uuid, packet: &SignedPacket, code: &str) {
+    refused(network, connection, connection, packet, code);
 }
 
 #[test]
@@ -260,7 +265,7 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
         &json!({"type":"host_register","room":summary,"resumeBinding":address.binding_id}).to_string(),
     ).unwrap();
     let resume = network.authority.handle(owner, register, 108);
-    rejected(&mut network, owner, &private_reply, "room_access_required");
+    refused(&mut network, owner, reader, &private_reply, "room_busy");
     network.deliver(resume);
     relay(&mut network, owner, reader, &private_reply);
 
@@ -290,9 +295,9 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
     ).unwrap();
     let stale = network.authority.handle(owner, output, 112);
     assert!(!stale.events.iter().any(|(_, event)| matches!(event, Event::Error { .. })));
-    rejected(&mut network, owner, &private_reply, "room_access_required");
+    refused(&mut network, owner, reader, &private_reply, "room_busy");
     network.deliver(cover);
-    rejected(&mut network, owner, &private_reply, "room_access_required");
+    refused(&mut network, owner, reader, &private_reply, "room_access_required");
     rejected(&mut network, reader, &packet, "room_access_required");
     network.command(
         reader,
@@ -302,6 +307,92 @@ fn signed_conversation_uses_domain_carriage_without_payload_grants_or_a_second_c
     network.restore_room(owner, policy);
     rejected(&mut network, reader, &packet, "invalid_conversation_scope");
     assert!(verify_delivery(&packet, owner_session, network.state(owner)).is_err());
+}
+
+#[test]
+fn committed_chat_crossing_read_revalidation_reaches_its_online_requester() {
+    let mut network = RoomNetwork::new();
+    let owner = Uuid::new_v4();
+    let reader = Uuid::new_v4();
+    let observer = Uuid::new_v4();
+    let observer_session = join(&mut network, observer);
+    let owner_session = join(&mut network, owner);
+    let reader_session = join(&mut network, reader);
+    let room = network.create(owner, RoomAccess::Public, false);
+    for connection in [owner, reader, observer] {
+        network.command(connection, json!({"type":"browse","roomId":room,"active":true}));
+    }
+    let state = network.state(reader);
+    let view = state.channel.rooms.iter().find(|value| value.id == room).unwrap();
+    let pair = state.pairs.iter().find(|pair| pair.peer_id == owner_session).unwrap().id;
+    let owner_user = state.sessions.iter().find(|s| s.id == owner_session).unwrap().user_id;
+    let signer = SessionSigner::from_seed([1; 32]);
+    let address = ConversationAddress {
+        room_id: room.clone(),
+        binding_id: view.delivery.as_ref().unwrap().binding_id,
+        sender: reader_session,
+        recipient: owner_session,
+        request_id: "online-chat".into(),
+    };
+    let packet = signer.sign(reader_session, &ConversationRequest {
+        address: address.clone(),
+        command: ConversationCommand::Chat {
+            text: "committed before permission check".into(),
+            nonce: "stable-nonce".into(),
+            mentions: vec![], reply: None, inline_images: Default::default(), attachments: vec![],
+        },
+    }).unwrap();
+    let forwarded = relay(&mut network, reader, owner, &packet);
+    let replies = network.conversation(&room, &forwarded).replies().unwrap();
+    assert!(matches!(&replies[0].record, ConversationRecord::Confirmed { message, inserted: true } if message.seq == 1));
+    let confirmed = signer.sign(owner_session, &replies[0]).unwrap();
+
+    let live = ConversationReply {
+        address: ConversationAddress { recipient: observer_session, ..replies[0].address.clone() },
+        record: replies[0].record.broadcast().unwrap(),
+    };
+    let live = signer.sign(owner_session, &live).unwrap();
+
+    // Confirming the transport changes the room's routes while its writer still holds this reply.
+    let link = json!({"type":"link_state","pairId":pair,"state":"connected"});
+    network.command(owner, link.clone());
+    let route = network.authority.handle(reader, piik_channel_core::wire::Request::parse(&link.to_string()).unwrap(), 101);
+    assert!(route.events.iter().any(|(_, event)| matches!(event, Event::HostInput { .. })));
+    relay(&mut network, owner, reader, &confirmed);
+    network.deliver(route);
+
+    // A retry of this committed write produces the same idempotent confirmation.
+    let mut retry: ConversationRequest = verify(&packet, signer.signing_key()).unwrap();
+    retry.address.request_id = "retry-chat".into();
+    let packet = signer.sign(reader_session, &retry).unwrap();
+    let forwarded = relay(&mut network, reader, owner, &packet);
+    let replies = network.conversation(&room, &forwarded).replies().unwrap();
+    assert!(matches!(&replies[0].record, ConversationRecord::Confirmed { message, inserted: false } if message.seq == 1));
+    let confirmed = signer.sign(owner_session, &replies[0]).unwrap();
+    // This real permission check will fail. Read remains available after the writer answers.
+    let change = json!({"type":"revoke_room_access","roomId":room,"userId":owner_user});
+    let covering = network.authority.handle(owner, piik_channel_core::wire::Request::parse(&change.to_string()).unwrap(), 102);
+    assert!(covering.events.iter().any(|(_, event)| matches!(event, Event::HostInput { .. })));
+    let blocked = network.command(owner, json!({"type":"conversation","packet":confirmed,"requestId":"writer-send"}));
+    assert!(!blocked.events.iter().any(|(_, event)| matches!(event, Event::Conversation { .. })));
+    let mut forged = confirmed.clone();
+    forged.signature[0] ^= 1;
+    rejected(&mut network, owner, &forged, "invalid_conversation_signature");
+    rejected(&mut network, observer, &confirmed, "invalid_conversation_sender");
+    let mut stale = replies[0].clone();
+    stale.address.binding_id = Uuid::new_v4();
+    rejected(&mut network, owner, &signer.sign(owner_session, &stale).unwrap(), "invalid_conversation_scope");
+    let fanout = network.command(owner, json!({"type":"conversation","packet":live}));
+    assert!(matches!(fanout.events.as_slice(),
+        [(target, Event::RoomReply { room_id, result: piik_channel_core::host::RoomResult::Error { code }, request_id: Some(id) })]
+            if *target == observer && room_id == &room && code == "room_busy" && id == &address.request_id));
+    let after = network.deliver(covering);
+    assert!(after.events.iter().any(|(connection, event)| *connection == owner && matches!(event,
+        Event::RoomReply { result: piik_channel_core::host::RoomResult::Error { code }, .. } if code == "forbidden")));
+    assert!(network.state(reader).channel.rooms.iter().any(|r| r.id == room && r.authorized && r.available));
+    assert!(matches!(blocked.events.as_slice(),
+        [(target, Event::RoomReply { room_id, result: piik_channel_core::host::RoomResult::Error { code }, request_id: Some(id) })]
+            if *target == reader && room_id == &room && code == "room_busy" && id == &retry.address.request_id));
 }
 
 #[test]

@@ -98,6 +98,8 @@ test.each(['revoked', 'rebound'] as const)('a %s room retires signed requests wh
   await connected;
 
   const history = client.history().catch((error: Error) => error.message);
+  receive({ type: 'room_reply', roomId: 'other', requestId: socket.sent.at(-1)!.requestId,
+    result: { type: 'error', code: 'room_busy' } });
   const observed = vi.fn();
   void history.then(observed);
   const browse = client.browse(room.id);

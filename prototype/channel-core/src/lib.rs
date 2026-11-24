@@ -319,9 +319,9 @@ impl Authority {
             return effects;
         }
         if let Command::Conversation { packet } = request.command {
-            match self.channel.relay_conversation(session_id, &packet) {
-                Ok((recipient, changed)) => {
-                    self.deliver(recipient, Event::Conversation { packet }, &mut effects);
+            match self.channel.relay_conversation(session_id, packet) {
+                Ok((recipient, event, changed)) => {
+                    self.deliver(recipient, event, &mut effects);
                     if changed {
                         self.broadcast(None, &mut effects);
                     }

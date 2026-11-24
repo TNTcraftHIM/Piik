@@ -1059,8 +1059,8 @@ impl Channel {
     pub(crate) fn relay_conversation(
         &mut self,
         session: Uuid,
-        packet: &crate::conversation::SignedPacket,
-    ) -> Result<(Uuid, bool), &'static str> {
+        packet: crate::conversation::SignedPacket,
+    ) -> Result<(Uuid, Event, bool), &'static str> {
         if packet.sender != session {
             return Err("invalid_conversation_sender");
         }
@@ -1069,7 +1069,7 @@ impl Channel {
             .sessions
             .get(&session)
             .ok_or("session_expired")?;
-        let address = crate::conversation::verify_address(packet, sender.signing_key)?;
+        let address = crate::conversation::verify_address(&packet, sender.signing_key)?;
         let room = self
             .remote
             .get(&address.room_id)
@@ -1102,35 +1102,47 @@ impl Channel {
             .get(&participant)
             .ok_or("session_expired")?;
         let member = self.identity.member(endpoint.user_id)?;
-        let view = room
-            .snapshot(member, participant, true)
-            .ok_or("room_access_required")?;
-        if !view.room.authorized || binding.applied_revision < binding.read_floor {
-            return Err("room_access_required");
+        let reply = if address.sender == binding.session {
+            serde_json::from_str::<crate::conversation::ConversationReply>(&packet.payload).ok()
+        } else {
+            None
+        };
+        let view = room.snapshot(member, participant, true).ok_or("room_access_required")?;
+        let denial = if !view.room.authorized {
+            Some("room_access_required")
+        } else if binding.applied_revision < binding.read_floor {
+            Some("room_busy")
+        } else {
+            None
+        };
+        if let Some(code) = denial {
+            if reply.is_some() {
+                let error = Event::RoomReply {
+                    room_id: address.room_id,
+                    request_id: Some(address.request_id),
+                    result: RoomResult::Error { code: code.into() },
+                };
+                return Ok((address.recipient, error, false));
+            }
+            return Err(code);
         }
         let mut changed = false;
-        if address.sender == binding.session {
-            if let Ok(reply) =
-                serde_json::from_str::<crate::conversation::ConversationReply>(&packet.payload)
+        if let Some(crate::conversation::ConversationRecord::Confirmed { message, .. }) =
+            reply.map(|reply| reply.record)
+        {
+            if message.seq == 0 || message.seq > i64::MAX as u64 {
+                return Err("invalid_message");
+            }
+            if let Some(projection) = self
+                .remote
+                .get_mut(&address.room_id)
+                .and_then(|room| room.projection.as_mut())
             {
-                if let crate::conversation::ConversationRecord::Confirmed { message, .. } =
-                    reply.record
-                {
-                    if message.seq == 0 || message.seq > i64::MAX as u64 {
-                        return Err("invalid_message");
-                    }
-                    if let Some(projection) = self
-                        .remote
-                        .get_mut(&address.room_id)
-                        .and_then(|room| room.projection.as_mut())
-                    {
-                        changed = message.seq > projection.last_message_seq;
-                        projection.last_message_seq = projection.last_message_seq.max(message.seq);
-                    }
-                }
+                changed = message.seq > projection.last_message_seq;
+                projection.last_message_seq = projection.last_message_seq.max(message.seq);
             }
         }
-        Ok((address.recipient, changed))
+        Ok((address.recipient, Event::Conversation { packet }, changed))
     }
 
     pub(crate) fn remove_room(&mut self, id: &str, actor: Uuid) -> Vec<RetiredRoomReply> {
