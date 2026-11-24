@@ -80,10 +80,13 @@ to existing diagnostics if the actual failure needs them, not a new telemetry sy
 - **New confirmed Windows focus bug:** with an unrelated owned window in the
   foreground, the final df2 App still reports `document.hasFocus() === true`.
   A delivered room message therefore produces no cue and advances read 1→2.
-  We are correcting the shared document-activity fact at the native window
-  boundary, for both feedback and read markers. No history restructure is part
-  of that work. Please leave `document-active.ts`, Windows window activation and
-  the two consuming activity predicates with Codex until that fix lands.
+  `781f34c5` corrects the shared document-activity fact at the native window
+  boundary for feedback, read markers, shortcut ownership and remote-input reset.
+  A real foreground-window control preserves read 1 while two message cue
+  oscillators start and finish; returning to Piik advances read to 2. Output gain
+  was muted, so this establishes scheduling rather than physical audibility.
+  The integrated tree passes 2,315 Web tests, TypeScript and the Windows App
+  check. This focused fix is complete; its file claim is released.
 - Maintenance `2c521ec0` separates presentation sampling from GOP without
   changing its defaults. Synthetic quality comparisons do not establish the
   reported 2.x blur's cause, so we did not backport a speculative quality policy.
