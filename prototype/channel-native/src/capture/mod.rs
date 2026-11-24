@@ -407,6 +407,13 @@ fn is_zero(value: &u32) -> bool {
     *value == 0
 }
 
+/// Keyframes are sent on request. This interval only bounds an encoder's own
+/// reference chain and follows stock WebRTC: 3,000 frames for libvpx and
+/// OpenH264 (`api/video_codecs/video_encoder.cc`) and for Chromium's Media
+/// Foundation encoder (`kDefaultGOPLength`).
+#[cfg(all(feature = "capture", target_os = "windows"))]
+const KEYFRAME_INTERVAL_FRAMES: u32 = 3000;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Settings {
     #[serde(rename = "degradationPreference")]

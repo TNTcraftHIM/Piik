@@ -282,6 +282,30 @@ pub(super) fn run(
 mod tests {
     use super::*;
 
+    // A timer-driven keyframe re-sends a static screen and resets its quality.
+    #[test]
+    fn cpu_codecs_emit_keyframes_only_on_request() -> Result<()> {
+        for codec in [VideoCodec::H264, VideoCodec::Vp8] {
+            let settings = Settings {
+                width: 160,
+                height: 110,
+                fps: 10,
+                bitrate: 300_000,
+                degradation_preference: super::super::DegradationPreference::Balanced,
+            };
+            let mut encoder = Encoder::new(codec, settings)?;
+            let pixels = vec![128; 192 * 110 * 3 / 2];
+            // Three seconds, past the two-second period these encoders once forced.
+            for index in 0..30 {
+                let unit = encoder
+                    .encode(&pixels, 192, index * 1_000_000, 1_000_000, index == 0)?
+                    .unwrap();
+                assert_eq!(unit.keyframe, index == 0, "{codec:?} frame {index}");
+            }
+        }
+        Ok(())
+    }
+
     #[test]
     fn cpu_codecs_keep_controls_metadata_and_quality_feedback() -> Result<()> {
         for codec in [VideoCodec::H264, VideoCodec::Vp8] {
