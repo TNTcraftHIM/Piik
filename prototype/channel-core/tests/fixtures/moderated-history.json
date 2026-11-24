@@ -1,0 +1,12 @@
+[
+  {"request":{"type":"send","draft":{"userId":"00000000-0000-4000-8000-000000000001","nonce":"original","text":"original","time":1,"attachments":[]}},"expect":{"type":"sent","seq":1}},
+  {"request":{"type":"send","draft":{"userId":"00000000-0000-4000-8000-000000000002","nonce":"reply","text":"reply","time":1,"attachments":[],"reply":{"seq":1,"messageId":"$original","notify":false}}},"expect":{"type":"sent","seq":2,"replySeq":1}},
+  {"request":{"type":"send","draft":{"userId":"00000000-0000-4000-8000-000000000001","nonce":"later","text":"later","time":1,"attachments":[]}},"expect":{"type":"sent","seq":3}},
+  {"request":{"type":"delete_message","messageSeq":1,"messageId":"$original","authorId":"00000000-0000-4000-8000-000000000002"},"expect":{"error":"forbidden"}},
+  {"request":{"type":"seek","after":0,"excludeAuthor":"00000000-0000-4000-8000-000000000002"},"expect":{"type":"seek","after":0,"seq":1}},
+  {"request":{"type":"delete_message","messageSeq":1,"messageId":"$original","authorId":"00000000-0000-4000-8000-000000000001"},"expect":{"type":"message_deleted","messageSeq":1}},
+  {"request":{"type":"send","draft":{"userId":"00000000-0000-4000-8000-000000000001","nonce":"original","text":"original","time":1,"attachments":[]}},"expect":{"error":"message_unavailable"}},
+  {"request":{"type":"seek","after":0,"excludeAuthor":"00000000-0000-4000-8000-000000000002"},"expect":{"type":"seek","after":0,"seq":3}},
+  {"request":{"type":"seek","after":3,"excludeAuthor":"00000000-0000-4000-8000-000000000002"},"expect":{"type":"seek","after":3,"seq":null}},
+  {"request":{"type":"read","before":null},"expect":{"type":"page","messages":[{"seq":2},{"seq":3}]}}
+]

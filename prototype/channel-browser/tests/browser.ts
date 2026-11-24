@@ -1,3 +1,4 @@
+import moderatedHistory from "../../channel-core/tests/fixtures/moderated-history.json";
 import { FileStore } from "../../../src/client/channel/file-store";
 import { checkTransferStorage } from "./transfer-storage";
 import { BrowserRoomHost, attachment_limits, conversation_broadcast, createRoomPolicy, createSessionSigner, initializeRuntime, decode_control, encode_control, verify_conversation, type SentResult } from "../src/room-host";
@@ -109,6 +110,26 @@ window.runBrowserRoomCheck = async () => {
       check(crossRoom.type === "error" && crossRoom.code === "message_unavailable", "reply lookup is scoped to the same room's IndexedDB key");
       const wrong = (await chat(current, { text: "Wrong target", nonce: "wrong-target", reply: { seq: 1, messageId: crypto.randomUUID(), notify: true } }))[0].record;
       check(wrong.type === "error" && wrong.code === "message_unavailable", "same sequence with a different message ID cannot be quoted");
+      // Run the same storage requests and expected results as the SQLite test.
+      let original = "";
+      const summary = (message: SentResult["message"]) => ({
+        seq: message.seq, ...(message.reply ? { replySeq: message.reply.seq } : {}),
+      });
+      for (const step of moderatedHistory) {
+        const request = JSON.parse(JSON.stringify(step.request).replaceAll("$original", original));
+        let actual: unknown;
+        try {
+          const result = await other["executeHistory"]({ ...request, roomId: other.roomId }, null);
+          if (result.type === "sent") {
+            if (result.message.seq === 1) original = result.message.id;
+            actual = { type: "sent", ...summary(result.message) };
+          } else if (result.type === "page") {
+            actual = { type: "page", messages: result.messages.map(summary) };
+          } else actual = result;
+        } catch (error) { actual = { error: error instanceof Error ? error.message : String(error) }; }
+        check(JSON.stringify(actual) === JSON.stringify(step.expect),
+          `shared history ${request.type}: expected ${JSON.stringify(step.expect)}, got ${JSON.stringify(actual)}`);
+      }
       const mentions = [{ userId: owner.userId, start: 3, end: 9 }];
       const replied = (await chat(current, { text: "Hi @Owner", nonce: "reply", mentions, reply: { seq: 1, messageId: first.message.id, notify: true } }))[0].record;
       check(replied.type === "confirmed" && replied.message.reply?.seq === 1 && replied.message.reply.userId === peerMember.userId

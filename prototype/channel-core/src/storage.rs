@@ -801,6 +801,45 @@ mod tests {
     }
 
     #[test]
+    fn shared_moderated_history() {
+        use serde_json::json;
+        let mut store = Storage::open(Path::new(":memory:")).unwrap();
+        let steps: Vec<Value> =
+            serde_json::from_str(include_str!("../tests/fixtures/moderated-history.json")).unwrap();
+        let mut original = String::new();
+        let summary = |message: &ChatMessage| {
+            let mut row = json!({ "seq": message.seq });
+            if let Some(reply) = &message.reply {
+                row["replySeq"] = json!(reply.seq);
+            }
+            row
+        };
+        for step in steps {
+            let mut request = step["request"].clone();
+            request["roomId"] = json!("room");
+            let request =
+                serde_json::from_str(&request.to_string().replace("$original", &original)).unwrap();
+            let actual = match store.history(&request) {
+                Ok(HistoryResult::Sent(sent)) => {
+                    let message = sent.message.message;
+                    if message.seq == 1 {
+                        original = message.id.to_string();
+                    }
+                    let mut result = summary(&message);
+                    result["type"] = json!("sent");
+                    result
+                }
+                Ok(HistoryResult::Page { messages, .. }) => json!({
+                    "type": "page", "messages": messages.iter().map(|row| summary(&row.message)).collect::<Vec<_>>()
+                }),
+                Ok(result) => serde_json::to_value(result).unwrap(),
+                Err(code) => json!({ "error": code }),
+            };
+            assert_eq!(actual, step["expect"], "{}", step["request"]);
+        }
+    }
+
+    #[test]
     fn history_seek_returns_first_live_message_from_another_author() {
         let mut store = Storage::open(Path::new(":memory:")).unwrap();
         let requester = Uuid::new_v4();
