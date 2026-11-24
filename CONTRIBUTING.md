@@ -137,6 +137,21 @@ and the project owner decides what merges.
   before adding to it and never rewrites pushed history. A finding names the
   revision it was verified against; recheck it before acting on a later one.
 
+When told that the queue changed, the implementer runs:
+
+```sh
+git fetch origin
+git show origin/refactor/claude-review:.agents/handoff/to-codex.md
+git log --oneline HEAD..origin/refactor/claude-review
+```
+
+It then merges the queue or cherry-picks from it, answers in `to-claude.md`
+and pushes. When asked to check the line, the reviewer fetches, reads
+`to-claude.md` on the active line, merges that line into the queue and
+resolves any conflict there, reviews the commits after the revision recorded
+at the top of `to-codex.md`, records the new revision and pushes. A change in
+the queue cites the specification, source or measurement it rests on.
+
 ## Research Standard
 
 The [engineering reference](./docs/standards/engineering.md) owns module and
