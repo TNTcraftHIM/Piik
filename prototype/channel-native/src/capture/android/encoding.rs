@@ -205,7 +205,9 @@ impl Codec {
             ("frame-rate", settings.fps as i32),
             ("bitrate", settings.bitrate as i32),
             ("color-format", 0x7F000789),
-            ("i-frame-interval", 2),
+            // Match libwebrtc's long periodic interval while keeping MediaCodec initialization
+            // compatible with encoders that reject a negative interval.
+            ("i-frame-interval", 3600),
             ("priority", 0),
         ] {
             format.set_i32(key, value);

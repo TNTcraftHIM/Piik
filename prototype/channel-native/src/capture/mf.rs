@@ -144,6 +144,11 @@ impl Encoder {
                     &CODECAPI_AVEncCommonMeanBitRate,
                     &VARIANT::from(settings.bitrate),
                 )?;
+                // Keep the driver default when this optional GOP setting is rejected.
+                let _ = api.SetValue(
+                    &CODECAPI_AVEncMPVGOPSize,
+                    &VARIANT::from(super::KEYFRAME_INTERVAL_FRAMES),
+                );
                 let info = set_format(&transform, settings)?;
                 let events = transform.cast::<IMFMediaEventGenerator>()?;
                 let callback: IMFAsyncCallback = Events {

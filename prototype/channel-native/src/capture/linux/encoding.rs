@@ -4,7 +4,7 @@ use crate::capture::{
     adaptation::{Input, QualityPolicy},
     cadence::{AdmissionRate, Cadence},
     frame_dropper::FrameDropper,
-    qp, FrameTiming, Settings, VideoCodec,
+    qp, FrameTiming, Settings, VideoCodec, KEYFRAME_INTERVAL_FRAMES,
 };
 use crate::EncodedFrame;
 use anyhow::{anyhow, bail, ensure, Context as _, Result};
@@ -221,8 +221,14 @@ fn access_unit(sample: &gst::Sample, clock: &Clock) -> Result<EncodedFrame> {
     })
 }
 
+#[derive(Clone, Copy)]
+enum NumericRange {
+    Strict,
+    CapAtMaximum,
+}
+
 /// The encoder plugin owns its numeric property types and legal range.
-fn numeric(element: &gst::Element, name: &str, value: u64) -> Result<bool> {
+fn numeric(element: &gst::Element, name: &str, value: u64, range: NumericRange) -> Result<bool> {
     let Some(property) = element.find_property(name) else {
         return Ok(false);
     };
@@ -230,38 +236,30 @@ fn numeric(element: &gst::Element, name: &str, value: u64) -> Result<bool> {
         property.flags().contains(glib::ParamFlags::WRITABLE),
         "{name} is read-only"
     );
+    let bounded = |minimum: i128, maximum: i128| -> Result<i128> {
+        let value = i128::from(value);
+        let value = match range {
+            NumericRange::Strict => value,
+            NumericRange::CapAtMaximum => value.min(maximum),
+        };
+        ensure!((minimum..=maximum).contains(&value), "{name} out of range");
+        Ok(value)
+    };
     let setting = if let Some(p) = property.downcast_ref::<glib::ParamSpecUInt>() {
-        ensure!(
-            value >= u64::from(p.minimum()) && value <= u64::from(p.maximum()),
-            "{name} out of range"
-        );
-        (value as u32).to_value()
+        (bounded(p.minimum().into(), p.maximum().into())? as u32).to_value()
     } else if let Some(p) = property.downcast_ref::<glib::ParamSpecInt>() {
-        ensure!(
-            i128::from(value) >= i128::from(p.minimum())
-                && i128::from(value) <= i128::from(p.maximum()),
-            "{name} out of range"
-        );
-        (value as i32).to_value()
+        (bounded(p.minimum().into(), p.maximum().into())? as i32).to_value()
     } else if let Some(p) = property.downcast_ref::<glib::ParamSpecUInt64>() {
-        ensure!(
-            value >= p.minimum() && value <= p.maximum(),
-            "{name} out of range"
-        );
-        value.to_value()
+        (bounded(p.minimum().into(), p.maximum().into())? as u64).to_value()
     } else if let Some(p) = property.downcast_ref::<glib::ParamSpecInt64>() {
-        ensure!(
-            i128::from(value) >= i128::from(p.minimum())
-                && i128::from(value) <= i128::from(p.maximum()),
-            "{name} out of range"
-        );
-        (value as i64).to_value()
+        (bounded(p.minimum().into(), p.maximum().into())? as i64).to_value()
     } else {
         bail!("unsupported numeric property {name}");
     };
     element.set_property_from_value(name, &setting);
     Ok(true)
 }
+
 fn boolean(element: &gst::Element, name: &str, value: bool) {
     if element.find_property(name).is_some_and(|p| {
         p.value_type() == bool::static_type() && p.flags().contains(glib::ParamFlags::WRITABLE)
@@ -461,10 +459,15 @@ impl Codec {
         };
         codec.bitrate(settings.bitrate)?;
         for property in ["key-int-max", "gop-size"] {
-            numeric(&codec.encoder, property, u64::from(settings.fps) * 2)?;
+            numeric(
+                &codec.encoder,
+                property,
+                u64::from(KEYFRAME_INTERVAL_FRAMES),
+                NumericRange::CapAtMaximum,
+            )?;
         }
         for property in ["b-frames", "bframes"] {
-            numeric(&codec.encoder, property, 0)?;
+            numeric(&codec.encoder, property, 0, NumericRange::Strict)?;
         }
         boolean(&codec.encoder, "cabac", false);
         boolean(&codec.encoder, "aud", true);
@@ -486,7 +489,12 @@ impl Codec {
         Ok((codec, messages))
     }
     fn bitrate(&self, bitrate: u32) -> Result<()> {
-        numeric(&self.encoder, "bitrate", u64::from(bitrate).div_ceil(1_000))?;
+        numeric(
+            &self.encoder,
+            "bitrate",
+            u64::from(bitrate).div_ceil(1_000),
+            NumericRange::Strict,
+        )?;
         Ok(())
     }
     fn sample(
