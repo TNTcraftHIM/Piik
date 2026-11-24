@@ -112,7 +112,7 @@ interface ScreenWatch {
 }
 
 interface SourceSelection {
-  replaceWatchId?: string;
+  readonly replaceWatchId?: string;
   replaceScreenId?: string;
   controller: AbortController;
   committing: boolean;
@@ -2510,6 +2510,10 @@ export class ChannelSession {
     this.sourceSelections.set(roomId, selection);
     return selection;
   }
+  private ownedReplacementWatchId(selection?: SourceSelection): string | undefined {
+    const id = selection?.replaceWatchId;
+    return id && this.watchPlayers.get(id)?.owner ? id : undefined;
+  }
   private finishSourceSelection(roomId: string, selection: SourceSelection): void {
     if (this.sourceSelections.get(roomId) !== selection) return;
     this.sourceSelections.delete(roomId);
@@ -2720,10 +2724,6 @@ export class ChannelSession {
     if (player?.owner && reason) {
       const pageId = player.media.page?.id;
       debugEvent("channel", "watch-owner-retired", { activityId: id, reason, ...(pageId && { pageId }) });
-    }
-    if (player?.owner) {
-      const selection = this.sourceSelections.get(player.roomId);
-      if (selection?.replaceWatchId === id) delete selection.replaceWatchId;
     }
     this.watchPlayers.delete(id);
     player?.close();
@@ -3088,7 +3088,8 @@ export class ChannelSession {
       this.patch({});
       const start = performance.now();
       startSocket = this.socket;
-      await this.request({ type: "start_watch", roomId, id, source, ...(selection.replaceWatchId ? { replaceId: selection.replaceWatchId } : {}), ...(byteSource ? { byteSource } : {}),
+      const replaceId = this.ownedReplacementWatchId(selection);
+      await this.request({ type: "start_watch", roomId, id, source, ...(replaceId ? { replaceId } : {}), ...(byteSource ? { byteSource } : {}),
         playback: { timeline: initial.live ? "program" : "media", position: initial.position, paused: true, rate: initial.rate, anchorTime: 0 } }, event => {
         if (event.type === "room_reply" && event.result.type === "watch_ready" && typeof event.result.serverTime === "number")
           player.calibrate(event.result.serverTime, start);
@@ -3231,9 +3232,9 @@ export class ChannelSession {
     if (this.view.connection === "connected") await this.request({ type: "stop_watch", roomId: player.roomId, id }, undefined, player.roomId);
   };
   private async finishScreenSelection(roomId: string, screenId: string): Promise<void> {
-    const watchId = this.sourceSelections.get(roomId)?.replaceWatchId;
+    const selection = this.sourceSelections.get(roomId);
+    const watchId = this.ownedReplacementWatchId(selection);
     if (watchId) {
-      const selection = this.sourceSelections.get(roomId);
       const local = this.local.get(screenId);
       const captureId = this.app?.captureId(screenId);
       try {
