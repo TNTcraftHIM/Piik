@@ -101,7 +101,8 @@ interface SourceSelection {
   watchCandidate?: { player: WatchPlayer; stopping: boolean };
   browserCaptureGranted?: boolean;
   releaseSharedPage?: () => void;
-  candidateId?: string;
+  // Scopes Native media preparation and cancellation on a borrowed page until confirmation.
+  pendingCandidateId?: string;
   page?: AppPage;
   embed?: WatchMedia & { readonly sourceURL: string };
   watchSources?: { candidateId: string } & WatchMediaSources;
@@ -2413,8 +2414,8 @@ export class ChannelSession {
   private finishSourceSelection(roomId: string, selection: SourceSelection): void {
     if (this.sourceSelections.get(roomId) !== selection) return;
     this.sourceSelections.delete(roomId);
-    const candidateId = selection.candidateId;
-    delete selection.candidateId;
+    const candidateId = selection.pendingCandidateId;
+    delete selection.pendingCandidateId;
     if (candidateId) void selection.page?.stopMedia(candidateId).catch(() => {});
     selection.controller.abort();
     if (selection.releaseSharedPage) selection.releaseSharedPage();
@@ -2728,8 +2729,8 @@ export class ChannelSession {
         return true;
       }
       if (selection.releaseSharedPage) {
-        if (selection.candidateId && selection.candidateId !== candidateId) await page.stopMedia(selection.candidateId);
-        selection.candidateId = candidateId;
+        if (selection.pendingCandidateId && selection.pendingCandidateId !== candidateId) await page.stopMedia(selection.pendingCandidateId);
+        selection.pendingCandidateId = candidateId;
       } else await page.select(candidateId, mode === "original-page");
       selection.controller.signal.throwIfAborted();
       const selected = page.candidates.find(value => value.id === candidateId);
@@ -2742,13 +2743,13 @@ export class ChannelSession {
       const watchSources: NonNullable<SourceSelection["watchSources"]> = selection.watchSources = { candidateId, choices: [], indexed: [], mpd: [] };
       this.patch({});
       const discover = async () => {
-        await waitForWatchMedia({ read: () => page.read(selection.candidateId), listen: listener => page.listen(listener) }, selection.controller.signal);
+        await waitForWatchMedia({ read: () => page.read(selection.pendingCandidateId), listen: listener => page.listen(listener) }, selection.controller.signal);
         selection.controller.signal.throwIfAborted();
         const discovery = selection.discovery = observeWatchSources(page, selection.controller.signal, sources => {
           Object.assign(watchSources, sources);
           if (!sources.error) delete watchSources.error;
           this.patch({});
-        }, selection.candidateId);
+        }, selection.pendingCandidateId);
         await discovery.ready;
       };
       if (!selected.url || mode === "choose-source") { await discover(); return false; }
@@ -2782,7 +2783,7 @@ export class ChannelSession {
     }
   }, reportError);
   private async commitPortableWatch(roomId: string, page: AppPage, selection: SourceSelection, url: string, format?: WatchFormat): Promise<void> {
-    const media = await preparePortableWatchMedia(page, url, selection.controller.signal, format, selection.candidateId);
+    const media = await preparePortableWatchMedia(page, url, selection.controller.signal, format, selection.pendingCandidateId);
     try { await this.commitWatch(roomId, { kind: "website", url: page.url, mediaUrl: url }, media, selection); }
     finally { if (!selection.releaseSharedPage) page.close(); }
   }
@@ -2790,7 +2791,7 @@ export class ChannelSession {
     const selection = this.sourceSelections.get(roomId), page = selection?.page;
     const choice = selection?.watchSources?.choices.find(value => value.id === choiceId);
     if (!selection || !page || !choice) throw new Error("watch_page_unavailable");
-    const source = await page.prepareMedia(choiceId, selection.controller.signal, selection.candidateId);
+    const source = await page.prepareMedia(choiceId, selection.controller.signal, selection.pendingCandidateId);
     const mediaUrl = source.format === choice.format ? directForwardMediaURL(choice) : undefined;
     await this.commitPageSuppliedWatch(roomId, page, selection, source, mediaUrl);
   }, reportError);
@@ -2801,7 +2802,7 @@ export class ChannelSession {
     const video = sources.indexed.find(value => value.candidate.id === videoId)?.inspection;
     const audio = audioId ? sources.indexed.find(value => value.candidate.id === audioId)?.inspection : undefined;
     if (!video || audioId && !audio) throw new Error("watch_indexed_unsupported");
-    const byteSource = await page.prepareIndexedMedia(indexedMediaSelection(video, audio), selection.controller.signal, selection.candidateId);
+    const byteSource = await page.prepareIndexedMedia(indexedMediaSelection(video, audio), selection.controller.signal, selection.pendingCandidateId);
     await this.commitPageSuppliedWatch(roomId, page, selection, byteSource);
   }, reportError);
   inspectWatchMpdSource = (roomId: string, choiceId: string, signal: AbortSignal, activityId?: string): Promise<NativePageMpdCatalog> => this.action(activityId ? `watch-source:${activityId}` : `screen:${roomId}`, async () => {
@@ -2810,7 +2811,7 @@ export class ChannelSession {
     const choice = selection?.watchSources?.mpd.find(value => value.candidate.id === choiceId);
     if (!(page instanceof AppPage) || !activityId && !choice) throw new Error("watch_page_unavailable");
     const lifetime = AbortSignal.any([signal, ...(!activityId && selection ? [selection.controller.signal] : [])]);
-    const catalog = await page.inspectMpd(choiceId, lifetime, selection?.candidateId);
+    const catalog = await page.inspectMpd(choiceId, lifetime, selection?.pendingCandidateId);
     lifetime.throwIfAborted();
     if (activityId ? this.watchPlayers.get(activityId) !== player : this.sourceSelections.get(roomId) !== selection) throw new DOMException("Cancelled", "AbortError");
     if (!activityId && choice && selection?.watchSources) {
@@ -2822,15 +2823,15 @@ export class ChannelSession {
   selectWatchMpdSource = (roomId: string, selected: NativePageMpdSelection, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const selection = this.sourceSelections.get(roomId), page = selection?.page;
     if (!selection || !page || !selection.watchSources?.mpd.some(choice => choice.catalog?.sourceId === selected.sourceId)) throw new Error("watch_page_unavailable");
-    const byteSource = await page.prepareMpdMedia(selected, selection.controller.signal, selection.candidateId);
+    const byteSource = await page.prepareMpdMedia(selected, selection.controller.signal, selection.pendingCandidateId);
     await this.commitPageSuppliedWatch(roomId, page, selection, byteSource);
   }, reportError);
   private async commitPageSuppliedWatch(roomId: string, page: AppPage, selection: SourceSelection, byteSource: WatchByteSource, mediaUrl?: string): Promise<void> {
-    const candidateId = selection.candidateId;
+    const candidateId = selection.pendingCandidateId;
     const media = await preparePageSuppliedWatchMedia(page, byteSource, selection.controller.signal, candidateId);
     const confirmPage = candidateId ? async () => {
       await page.select(candidateId, false, byteSource.resourceId);
-      delete selection.candidateId;
+      delete selection.pendingCandidateId;
       await page.patch({ paused: true });
     } : undefined;
     if (selection.releaseSharedPage) media.usePageLease(page.hold());

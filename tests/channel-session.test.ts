@@ -15369,7 +15369,7 @@ test.each(["forward", "original"] as const)("caption Host replaces %s through ex
     expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: "page_patch", patch: { position: 5 } }), expect.any(AbortSignal));
     expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: "page_media_stop", candidateId: otherId }), expect.any(AbortSignal));
     expect(request.mock.calls.some(([cmd]) => cmd.type === "page_media_stop" && !("candidateId" in cmd))).toBe(false);
-    const manager = session as unknown as { sourceSelections: Map<string, { candidateId?: string }>; finishSourceSelection(room: string, selection: { candidateId?: string }): void };
+    const manager = session as unknown as { sourceSelections: Map<string, { pendingCandidateId?: string }>; finishSourceSelection(room: string, selection: { pendingCandidateId?: string }): void };
     const stale = manager.sourceSelections.get("first")!;
     await session.selectWatchPage("first", otherId, undefined, false, "choose-source");
     await session.cancelScreenSelection("first");
@@ -15379,7 +15379,7 @@ test.each(["forward", "original"] as const)("caption Host replaces %s through ex
     const stopped = stops();
     manager.finishSourceSelection("first", stale);
     expect(stops()).toBe(stopped);
-    expect(manager.sourceSelections.get("first")?.candidateId).toBe(otherId);
+    expect(manager.sourceSelections.get("first")?.pendingCandidateId).toBe(otherId);
     const mode = prior === "forward" ? "original" : "forward";
     const denied = select(mode, next, otherId);
     const failure = expect(denied).rejects.toThrow();
