@@ -288,6 +288,7 @@ export const zhHant = {
   "channel.identity.remove": "移除",
   "channel.identity.imageOpenFailed": "這張圖片無法開啟，請換一張。",
   "channel.identity.changeIconOrImage": "更改圖示或圖片",
+  "channel.imageDialog.loadFailed": "無法開啟這張圖片。",
   "channel.imageDialog.cancelOriginalImage": "取消載入原圖",
   "channel.imageDialog.viewOriginal": "查看原圖",
   "channel.interfaceControl.fullWorkspace": "完整工作區",

@@ -17,7 +17,7 @@ async function loadPage() {
   if (location.pathname === "/client" || location.pathname === "/client/") {
     return (await import("./pages/AppLauncherPage")).AppLauncherPage;
   }
-  return (await import("./pages/ChannelPreviewPage")).ChannelPreviewPage;
+  return (await import("./pages/ChannelPage")).ChannelPage;
 }
 
 void mountApp(loadPage);

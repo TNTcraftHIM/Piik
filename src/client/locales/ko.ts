@@ -289,6 +289,7 @@ export const ko = {
   "channel.identity.remove": "제거",
   "channel.identity.imageOpenFailed": "이미지를 열지 못했어요. 다른 이미지를 선택해 주세요.",
   "channel.identity.changeIconOrImage": "아이콘 또는 이미지 변경",
+  "channel.imageDialog.loadFailed": "이 이미지를 열 수 없습니다.",
   "channel.imageDialog.cancelOriginalImage": "원본 이미지 취소",
   "channel.imageDialog.viewOriginal": "원본 보기",
   "channel.interfaceControl.fullWorkspace": "전체 작업 공간",

@@ -835,7 +835,7 @@ describe("initial App discovery", () => {
   });
 
   it("late automatic App readiness preserves a failed site's WebAssembly guidance", async () => {
-    const pageSource = ts.createSourceFile("ChannelPreviewPage.tsx", readFileSync("src/client/pages/ChannelPreviewPage.tsx", "utf8"),
+    const pageSource = ts.createSourceFile("ChannelPage.tsx", readFileSync("src/client/pages/ChannelPage.tsx", "utf8"),
       ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     let callback = "";
     const visit = (node: ts.Node) => {
@@ -975,7 +975,7 @@ it("keeps forwarding settings reachable for main playback with a retained Page s
   const activity = { id: "watch", roomId: "room", sessionId: "self", byteSource: source as typeof source | null };
   const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: true, sessionId: "self",
     pending: new Set(), browserCapturePreparation: () => undefined, nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined,
-    state: { publications: [], voice: [], watchActivities: [activity] },
+    state: { channel: { rooms: [] }, publications: [], voice: [], watchActivities: [activity] },
     watchPlayers: new Map([["watch", { video: {}, media: { page: {}, retainedByteSource: source } }]]),
   } as unknown as ChannelController;
   const render = () => {

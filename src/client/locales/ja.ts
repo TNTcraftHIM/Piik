@@ -288,6 +288,7 @@ export const ja = {
   "channel.identity.remove": "削除",
   "channel.identity.imageOpenFailed": "画像を開けませんでした。別の画像をお試しください。",
   "channel.identity.changeIconOrImage": "アイコンまたは画像を変更",
+  "channel.imageDialog.loadFailed": "この画像を開けませんでした。",
   "channel.imageDialog.cancelOriginalImage": "元の画像の読み込みをキャンセル",
   "channel.imageDialog.viewOriginal": "元の画像を表示",
   "channel.interfaceControl.fullWorkspace": "全機能の画面",

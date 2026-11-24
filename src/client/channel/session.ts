@@ -156,6 +156,10 @@ async function waitForDisplaySurface(track: MediaStreamTrack, signal: AbortSigna
   } finally { listeners.abort(); }
 }
 
+function withReactionSnapshot(message: ChannelMessage, snapshot: MessageReactionSnapshot): ChannelMessage {
+  return { ...message, reactions: { revision: snapshot.revision, counts: snapshot.counts } };
+}
+
 function captureSource(track: MediaStreamTrack | undefined, camera = false): ScreenSource {
   const label = track?.label?.trim() ?? "";
   // Chromium DeviceName exposes DesktopMediaID or a generated tab token, not a content title.
@@ -986,7 +990,7 @@ export class ChannelSession {
         this.receive({ type: "error", requestId: reply.requestId, code: "incomplete_history" });
         return;
       }
-      const page = entries.map(({ message, snapshot }) => ({ ...message!, reactions: { revision: snapshot!.revision, counts: snapshot!.counts } }));
+      const page = entries.map(({ message, snapshot }) => withReactionSnapshot(message!, snapshot!));
       this.applyHistory(reply.roomId, page.sort((a, b) => a.seq - b.seq), record, request.history);
     } else if (record.type === "confirmed" && !messageRemoved(this.view.historyChangesByRoom[reply.roomId], record.message.seq)) {
       request.result?.(record);
@@ -1035,7 +1039,7 @@ export class ChannelSession {
     const project = (messages: ChannelMessage[]) => {
       const index = messages.findIndex(message => message.id === snapshot.messageId && message.seq === snapshot.messageSeq);
       if (index < 0 || (messages[index].reactions?.revision ?? -1) >= snapshot.revision) return messages;
-      return messages.with(index, { ...messages[index], reactions: { revision: snapshot.revision, counts: snapshot.counts } });
+      return messages.with(index, withReactionSnapshot(messages[index], snapshot));
     };
     for (const [requestId, request] of this.requests) {
       if (request.roomId !== roomId || request.bindingId !== bindingId || !request.history) continue;
@@ -1136,7 +1140,7 @@ export class ChannelSession {
       if (request.roomId !== roomId || !page) continue;
       const snapshot = page.entries.get(message.seq)?.snapshot;
       if (snapshot?.messageId === message.id) projected = mergeMessage(projected,
-        { ...message, reactions: { revision: snapshot.revision, counts: snapshot.counts } });
+        withReactionSnapshot(message, snapshot));
       if (page.replace || (page.before !== undefined && history?.atLatest === false)) continue;
       const merged = mergeMessages([...page.window, projected]);
       page.window = readingWindow(merged, state.channel.historyWindow, page.before === undefined);
@@ -3874,7 +3878,6 @@ export class ChannelSession {
     this.captureLifetime.abort();
     this.captureLifetime = new AbortController();
     for (const [roomId, selection] of this.sourceSelections) this.finishSourceSelection(roomId, selection);
-    this.sourceSelections.clear();
     this.screenShares.clear();
     for (const id of this.pendingWatchPlayers.keys()) this.retirePendingWatchPlayer(id);
     for (const id of this.watchPlayers.keys()) this.retireWatchPlayer(id, "session-released");

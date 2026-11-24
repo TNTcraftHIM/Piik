@@ -11,6 +11,8 @@
 .c3-image-viewport[data-zoomed] .c3-image-view { display: block; width: max-content; height: max-content; cursor: zoom-out; }
 .c3-image-viewport[data-zoomed] img { position: static; width: auto; height: auto; max-width: none; max-height: none; }
 .c3-image-view:focus-visible { outline: 2px solid var(--action); outline-offset: -2px; }
+.c3-image-unavailable { display: grid; place-items: center; min-height: 100%; margin: 0; text-align: center; }
+.c3-image-detail:empty { display: none; }
 .c3-image-detail { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 8px 16px; min-width: 0; padding: 8px 16px 12px; border-top: 1px solid rgb(255 255 255 / .18); }
 .c3-image-detail p { margin: 0; color: inherit; }
 .c3-image-detail > .c3-attachment-progress { flex: 1 1 100%; }

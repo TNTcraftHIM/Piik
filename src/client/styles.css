@@ -468,7 +468,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   min-width: 0;
   gap: 2px;
 }
-.lr-source-picker-copy { flex: 1; }
+.lr-source-picker-copy { flex: 1; overflow-wrap: anywhere; }
 .lr-source-picker-copy strong { font-size: 15px; }
 .lr-source-picker-copy small,
 .lr-source-option-copy small,

@@ -383,6 +383,7 @@ export const zh = {
   "channel.identity.imageOpenFailed": "这张图片无法打开，请换一张。",
   "channel.identity.changeIconOrImage": "更改图标或图片",
   "channel.imageDialog.cancelOriginalImage": "取消加载原图",
+  "channel.imageDialog.loadFailed": "无法打开这张图片。",
   "channel.imageDialog.fit": "适应窗口",
   "channel.imageDialog.actualSize": "实际大小",
   "channel.imageDialog.viewOriginal": "查看原图",

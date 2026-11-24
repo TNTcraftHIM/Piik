@@ -120,9 +120,9 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     (!publicationId || publication.id === publicationId) && publication.roomId === roomId && channel.ownedScreens.has(publication.id));
   const watching = channel.state?.watchActivities.find(activity => activity.roomId === roomId && activity.sessionId === channel.sessionId);
   const pageWatch = watching && !!channel.watchPlayers.get(watching.id)?.media.page;
-  const room = sharing ? channel.state?.channel.rooms.find(room => room.id === roomId) : undefined;
+  const room = channel.state?.channel.rooms.find(room => room.id === roomId);
   const roomName = room?.name;
-  const settingsTitle = roomName
+  const settingsTitle = sharing && roomName
     ? t("screen.shareSettingsInRoom", { room: roomName })
     : settingsLabel;
   const currentCamera = sharing ? channel.streams.get(sharing.id)?.getVideoTracks()
@@ -163,7 +163,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const directLimit = settingsOpen && sharing?.kind === "screen" ? <ScreenDirectLimit key={sharing.id} sharing={sharing} channel={channel}
     roomLimit={room?.relayCapacity ?? DEFAULT_RELAY_CAPACITY} disabled={disabled || busy} /> : undefined;
   const label = t(sharing || watching ? "host.switchSource" : "host.start");
-  const sourceTitle = roomName
+  const sourceTitle = sharing && roomName
     ? t("screen.switchRoomSource", { room: roomName })
     : label;
   // The inner grid scrolls independently, so its clipped outer scrollHeight cannot size placement.
@@ -301,7 +301,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     </div>
     <div ref={panel} id={id} popover="auto" className="lr-anchored-card c3-share-picker"
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
-      {open && <CaptureSourcePicker nativeSources={pickerSources} browserSupported={browserSupported} cameraSupported={cameraSupported}
+      {open && <CaptureSourcePicker roomName={roomName} nativeSources={pickerSources} browserSupported={browserSupported} cameraSupported={cameraSupported}
         loadCameras={channel.cameraPreviews} initialCamera={currentCamera}
         initialTab="window" selectionDisabled={disabled || busy || qualityPending || microphonePending}
         initialAudio={selectedNative?.audio} initialExcludeAudio={selectedNative?.excludeAudio} initialShowCaptureBorder={selectedNative?.showCaptureBorder}

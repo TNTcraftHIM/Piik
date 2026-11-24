@@ -385,6 +385,7 @@ export const en: Record<CopyKey, string> = {
   "channel.identity.imageOpenFailed": "Couldn't open this image. Try another.",
   "channel.identity.changeIconOrImage": "Change icon or image",
   "channel.imageDialog.cancelOriginalImage": "Cancel original image",
+  "channel.imageDialog.loadFailed": "Couldn't open this image.",
   "channel.imageDialog.fit": "Fit to window",
   "channel.imageDialog.actualSize": "Actual size",
   "channel.imageDialog.viewOriginal": "View original",

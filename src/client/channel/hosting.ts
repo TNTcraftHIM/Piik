@@ -1,3 +1,5 @@
+import { isDeferredModuleFailure } from "../lib/deferred-module-failure";
+
 type RoomHosting = typeof import("../../../prototype/channel-browser/src/room-host");
 
 const roomHostingModules = import.meta.glob<RoomHosting>("../../../prototype/channel-browser/src/room-host.ts");
@@ -6,7 +8,10 @@ const roomHostingModules = import.meta.glob<RoomHosting>("../../../prototype/cha
 export async function loadRoomHosting(): Promise<RoomHosting> {
   if (typeof WebAssembly === "undefined") throw new Error("webassembly_unavailable");
   try { return await roomHostingModules["../../../prototype/channel-browser/src/room-host.ts"](); }
-  catch { throw new Error("room_runtime_unavailable"); }
+  catch (error) {
+    if (isDeferredModuleFailure(error)) throw error;
+    throw new Error("room_runtime_unavailable");
+  }
 }
 
 export function roomDatabaseName(channelId: string, userId: string): string {

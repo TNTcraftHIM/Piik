@@ -26,7 +26,9 @@ the feedback period; they do not delay that delivery.
   Host capture and encoding continue during the observed cycle.
 - [ ] **Original webpage closes when a viewer joins.** On the reporting Windows
   setup, correlate the stop reason with the activity, selected page and App
-  control connection. [Original-page controls](./verification-status.md#current-evidence)
+  control connection. Preserve original-page playback when the selected video
+  element changes its resource URL; keep media-byte grants bound to the selected
+  resource. [Original-page controls](./verification-status.md#current-evidence)
 - [ ] **Freeze the first public 3.0 contract.** Confirm the
   [module and connection-pool owners](./standards/engineering.md#architecture-baseline)
   and [public compatibility boundary](./standards/versioning.md#public-compatibility-promise)
@@ -227,10 +229,10 @@ the feedback period; they do not delay that delivery.
   AV1/HEVC product integration remains a separate decision. Review the
   [codec interoperability proposal](./research/webrtc-encoder-pool.md#proposed-codec-interoperability-boundary)
   before extending codec or conversion implementations.
-- [ ] **Native send-consent lifetime.** Verify send-consent expiry separately
-  from ICE candidate viability against RFC 7675, including delayed processing
-  and the SDK's Chrome interoperability correction. Check actual application
-  output through the Native driver; a connected ICE state alone is insufficient.
+- [ ] **Native send-consent lifetime.** Integrate the SDK's RFC 7675 correction
+  and verify actual Native output with Chrome and WebView in both negotiation
+  roles. Preserve permitted paths during ICE restart and reject retired
+  credentials independently of candidate viability.
   Keep transport consent and Piik route recovery with their existing owners.
 - [ ] **Shared-link website coverage.** Extend actual website and official
   embedded-player coverage toward VideoTogether's playback coverage. Verify

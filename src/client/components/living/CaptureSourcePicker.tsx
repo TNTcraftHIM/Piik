@@ -49,6 +49,7 @@ export function nativeAppDetected(sources: NativeSourceList | null): boolean {
 
 export function CaptureSourcePicker({
   nativeSources,
+  roomName,
   onBrowser,
   onWatch,
   onCamera,
@@ -71,6 +72,7 @@ export function CaptureSourcePicker({
   selectionDisabled = false,
 }: {
   nativeSources: NativeSourceList;
+  roomName?: string;
   onBrowser: () => void;
   onWatch?: () => void;
   onCamera?: (deviceId: string) => void;
@@ -186,7 +188,8 @@ export function CaptureSourcePicker({
       ref={panelRef}
       className="lr-tv-overlay lr-source-picker"
       role="dialog"
-      aria-label={t("host.sourcePicker.title")}
+      aria-labelledby={`${pickerId}-title`}
+      aria-describedby={roomName ? `${pickerId}-room` : undefined}
       onKeyDown={event => {
         if (event.key !== "Tab" || event.defaultPrevented || event.nativeEvent.isComposing) return;
         // This TV-local task keeps its keyboard loop without making the room
@@ -205,7 +208,8 @@ export function CaptureSourcePicker({
             <Glyph name="window" size={22} draw="capture-source" />
           </span>
             <span className="lr-source-picker-copy">
-              <strong>{t("host.sourcePicker.title")}</strong>
+              <strong id={`${pickerId}-title`}>{t("host.sourcePicker.title")}</strong>
+              {roomName && <small id={`${pickerId}-room`}>{roomName}</small>}
             </span>
           {activeTab === "camera" || nativeTab || retryNativeTab ? <Btn
             icon="refresh" size="dense" className="lr-source-picker-refresh" title={{ text: refreshLabel }}

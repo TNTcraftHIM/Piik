@@ -14,13 +14,16 @@ export function ChannelImageDialog({ src, name, description, progress, original,
 }) {
   const { t } = useCopy();
   const [zoomed, setZoomed] = useState(false);
+  const [failedSource, setFailedSource] = useState<string>();
+  const failed = failedSource === src;
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const moved = useRef(false);
-  useEffect(() => { setZoomed(false); drag.current = null; moved.current = false; }, [src]);
+  useEffect(() => { setZoomed(false); setFailedSource(undefined); drag.current = null; moved.current = false; }, [src]);
   const zoomLabel = t(zoomed ? "channel.imageDialog.fit" : "channel.imageDialog.actualSize");
   return <ChannelSettingsDialog title={name} className="c3-image-dialog" material="image" dismissOnBackdrop onClose={onClose}>
     <div className="c3-image-viewport" data-zoomed={zoomed || undefined}>
-      <button type="button" className="c3-image-view" aria-label={`${zoomLabel}: ${name}`} onPointerDown={event => {
+      {failed ? <p className="c3-image-unavailable" role="alert">{t("channel.imageDialog.loadFailed")}</p>
+        : <button type="button" className="c3-image-view" aria-label={`${zoomLabel}: ${name}`} onPointerDown={event => {
           moved.current = false;
           if (!zoomed || event.pointerType !== "mouse" || event.button !== 0) return;
           const viewport = event.currentTarget.parentElement!;
@@ -39,11 +42,11 @@ export function ChannelImageDialog({ src, name, description, progress, original,
         onClick={event => {
           if (!event.detail || !moved.current) setZoomed(value => !value);
         }}>
-        <img src={src} alt={name} draggable={false} />
-      </button>
+        <img key={src} src={src} alt={name} draggable={false} onError={() => setFailedSource(src)} />
+      </button>}
     </div>
     <div className="c3-image-detail">
-      <ChannelAction icon="expand" quiet label={zoomLabel} onClick={() => setZoomed(value => !value)} />
+      {!failed && <ChannelAction icon="expand" quiet label={zoomLabel} onClick={() => setZoomed(value => !value)} />}
       {description && <p role="status">{description}</p>}
       {original && <ChannelAction icon={original.busy ? "x" : "eye"} quiet
         disabled={original.disabled && !original.busy}

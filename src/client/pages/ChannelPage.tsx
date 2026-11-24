@@ -55,7 +55,7 @@ import { canReceivePeerWatch } from "../channel/watch-media";
 import "../channel/bootstrap";
 import "./channel-preview.css";
 
-export function ChannelPreviewPage() {
+export function ChannelPage() {
   const [selected, setSelected] = useState(selectedRoom);
   // Capture incoming hashes before the session's admission listener can consume them.
   const targetURL = useClientNavigationTarget(selected);

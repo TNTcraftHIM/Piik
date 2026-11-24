@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { ChannelRoomPage } from "./ChannelPreviewPage";
+import { ChannelRoomPage } from "./ChannelPage";
 import { sampleRoomTopology, useChannelGuideSample } from "./ChannelGuidePreview";
 import { Btn, Chip } from "../components/living/primitives";
 import { participantColor } from "../components/living/participant-color";
