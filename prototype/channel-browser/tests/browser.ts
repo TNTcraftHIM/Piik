@@ -111,18 +111,23 @@ window.runBrowserRoomCheck = async () => {
       const wrong = (await chat(current, { text: "Wrong target", nonce: "wrong-target", reply: { seq: 1, messageId: crypto.randomUUID(), notify: true } }))[0].record;
       check(wrong.type === "error" && wrong.code === "message_unavailable", "same sequence with a different message ID cannot be quoted");
       // Run the same storage requests and expected results as the SQLite test.
-      let original = "";
+      const messageIds = new Map<string, string>();
       const summary = (message: SentResult["message"]) => ({
         seq: message.seq, ...(message.reply ? { replySeq: message.reply.seq } : {}),
       });
       for (const step of moderatedHistory) {
-        const request = JSON.parse(JSON.stringify(step.request).replaceAll("$original", original));
+        let serialized = JSON.stringify(step.request);
+        for (const [placeholder, id] of messageIds) serialized = serialized.replaceAll(placeholder, id);
+        const request = JSON.parse(serialized);
         let actual: unknown;
         try {
           const result = await other["executeHistory"]({ ...request, roomId: other.roomId }, null);
           if (result.type === "sent") {
-            if (result.message.seq === 1) original = result.message.id;
-            actual = { type: "sent", ...summary(result.message) };
+            const placeholder = "$" + result.message.seq;
+            const previous = messageIds.get(placeholder);
+            check(previous === undefined || previous === result.message.id, "shared history retry preserves message identity");
+            messageIds.set(placeholder, result.message.id);
+            actual = { type: "sent", inserted: result.inserted, text: result.message.text, ...summary(result.message) };
           } else if (result.type === "page") {
             actual = { type: "page", messages: result.messages.map(summary) };
           } else actual = result;
