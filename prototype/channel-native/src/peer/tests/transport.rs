@@ -280,12 +280,24 @@ async fn source_ended_before_ready_fails_only_its_current_flow() -> Result<()> {
         let next_reader = driver.pairs[&pair].latest[&key];
         driver.event(old_end).await?;
         ensure!(driver.pairs[&pair].latest[&key] == next_reader && driver.pairs[&pair].tasks.contains_key(&next_reader));
+        let previous_reports: Vec<_> = std::iter::from_fn(|| reports.try_recv().ok()).collect();
+        let current = driver.pairs.get_mut(&pair).unwrap().tasks.get_mut(&next_reader).unwrap();
+        current.task.abort();
+        let _ = (&mut current.task).await;
+        current.task = crate::peer::spawn_reader(driver.events.clone(), pair, key, next_reader, async {
+            panic!("synthetic current video reader panic");
+        });
+        driver.event(events.recv().await.context("panicked reader end")?).await?;
+        ensure!(!driver.pairs[&pair].tasks.contains_key(&next_reader));
+        ensure!(matches!(reports.try_recv(), Ok(NativeEvent::Command(WireCommand::FlowState {
+            pair_id, flow_id, state: FlowState::Failed,
+        })) if pair_id == pair && flow_id == key.0));
+        ensure!(reports.try_recv().is_err());
         let (received, mut packets) = mpsc::channel(1);
         driver.relay.set(audio_id, vec![received]);
         audio_packets.send(TrackEvent::Rtp(packet(vec![0xf8, 0xff, 0xfe].into(), 2, true), 2, 3960, crate::peer::codec())).await?;
         ensure!(packets.recv().await.is_some(), "sibling voice reader stopped");
-        let reports: Vec<_> = std::iter::from_fn(|| reports.try_recv().ok()).collect();
-        ensure!(matches!(reports.as_slice(), [NativeEvent::Command(WireCommand::FlowState {
+        ensure!(matches!(previous_reports.as_slice(), [NativeEvent::Command(WireCommand::FlowState {
             pair_id, flow_id, state: FlowState::Failed,
         })] if *pair_id == pair && *flow_id == key.0), "ended current video must report one scoped failure before Ready");
         Ok(())

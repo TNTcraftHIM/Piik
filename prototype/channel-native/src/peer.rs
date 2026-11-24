@@ -3215,7 +3215,7 @@ impl Driver {
         let relay = self.relay.clone();
         let events = self.events.clone();
         // A finished reader still owns its queued terminal event until Driver handles it.
-        let task = tokio::spawn(async move {
+        let task = spawn_reader(events, id, key, reader, async move {
             let mut first = true;
             let mut input_codec = codec;
             let framed = crate::media::incoming::Incoming::supports(&input_codec.mime_type);
@@ -3463,13 +3463,6 @@ impl Driver {
                     }
                 }
             }
-            let _ = events
-                .send(Event::SourceEnded {
-                    pair: id,
-                    key,
-                    reader,
-                })
-                .await;
         });
         p.tasks.insert(
             reader,
@@ -3832,6 +3825,20 @@ fn prepared_candidate(remote: std::net::SocketAddrV4) -> Result<Candidate> {
     let candidate = IceCandidate::host(remote.into(), "udp")?;
     Ok(signal_candidate(candidate, None))
 }
+fn spawn_reader(
+    events: mpsc::Sender<Event>,
+    pair: Uuid,
+    key: TrackKey,
+    reader: Uuid,
+    read: impl std::future::Future<Output = ()> + Send + 'static,
+) -> JoinHandle<()> {
+    use futures_util::FutureExt;
+    tokio::spawn(async move {
+        let _ = std::panic::AssertUnwindSafe(read).catch_unwind().await;
+        let _ = events.send(Event::SourceEnded { pair, key, reader }).await;
+    })
+}
+
 fn close_pair(mut pair: Pair, reason: RetirementReason) -> impl std::future::Future<Output = ()> {
     crate::diagnostics::rtc_pair(
         pair.plan.id,
