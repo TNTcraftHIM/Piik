@@ -36,20 +36,11 @@ impl Binding {
 }
 
 #[derive(Clone)]
-pub(crate) struct SourceRetirement {
-    pub old: Uuid,
-    pub next: Uuid,
-    pub to_screen: bool,
-    pub viewers: Vec<Uuid>,
-}
-
-#[derive(Clone)]
 pub(crate) enum ReplyOwner {
     Request {
         context: RequestContext,
         member: Member,
         completion: Option<RoomResult>,
-        retirement: Option<SourceRetirement>,
         delete: bool,
     },
     RouteWake,
@@ -337,11 +328,6 @@ impl RemoteRoom {
         binding.failed_pairs.retain(|(first, second), _| {
             endpoints.contains_key(first) && endpoints.contains_key(second)
         });
-        let retirement = match &action {
-            HostAction::Command { command: crate::wire::Command::StopWatch { id, successor_screen_id: Some(next), .. }, .. } => Some((*id, *next, true)),
-            HostAction::Command { command: crate::wire::Command::Unpublish { publication_id, successor_watch_id: Some(next) }, .. } => Some((*publication_id, *next, false)),
-            _ => None,
-        }.map(|(old, next, to_screen)| SourceRetirement { old, next, to_screen, viewers: Vec::new() });
         let owner = match &action {
             HostAction::Command { context, .. }
             | HostAction::RemoveHostedRoom { context }
@@ -351,7 +337,6 @@ impl RemoteRoom {
                 context: context.clone(),
                 member: endpoints[&context.session_id].member,
                 completion: None,
-                retirement,
                 delete: matches!(
                     &action,
                     HostAction::RemoveHostedRoom { .. }

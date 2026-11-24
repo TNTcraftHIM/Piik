@@ -11619,11 +11619,11 @@ test("viewers join the exact confirmed screen and watch successor through normal
     reply("join_watch"); await joined;
     socket.receive({ type: "state", state: { ...base, publications: [screen], watchActivities: [watch], watchSubscriptions: [{ id: watch.id, mode: "direct" }] } });
     expect(socket.sent.some(c => c.type === "subscribe" && c.publicationId === screen.id)).toBe(false);
-    socket.receive({ type: "state", state: { ...base, publications: [{ ...screen, replaceWatchId: watch.id }], watchActivities: [], watchSubscriptions: [] } });
+    socket.receive({ type: "state", state: { ...base, publications: [{ ...screen, predecessor: { kind: "watch", id: watch.id } }], watchActivities: [], watchSubscriptions: [] } });
     await vi.waitFor(() => expect(socket.sent.findLast(c => c.type === "subscribe")).toMatchObject({ publicationId: screen.id, enabled: true }));
     reply("subscribe");
     socket.receive({ type: "state", state: { ...base, publications: [screen], subscriptions: [screen.id] } });
-    const next = { ...watch, id: "watch-three", replaceScreenId: screen.id };
+    const next = { ...watch, id: "watch-three", predecessor: { kind: "screen", id: screen.id } };
     socket.receive({ type: "state", state: { ...base, publications: [], subscriptions: [], watchActivities: [next] } });
     await vi.waitFor(() => expect(socket.sent.findLast(c => c.type === "join_watch")).toMatchObject({ id: next.id, mode: "direct" }));
     reply("join_watch");
@@ -11635,7 +11635,7 @@ test.each(["only grant", "left", "revoked", "App page", "direct failure"] as con
   const base = session.getSnapshot().state!;
   const old = { id: "old", roomId: "first", sessionId: "other", userId: "other", viewerSessionIds: [],
     source: { kind: "media", url: "https://media.test/old.mp4" }, playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } };
-  const next = { ...old, id: "new", replaceId: old.id, source: { kind: "website", url: "https://www.example.test/page", ...(route === "direct failure" ? { mediaUrl: "https://media.test/failing.mp4" } : {}) } };
+  const next = { ...old, id: "new", predecessor: { kind: "watch", id: old.id }, source: { kind: "website", url: "https://www.example.test/page", ...(route === "direct failure" ? { mediaUrl: "https://media.test/failing.mp4" } : {}) } };
   const reply = () => socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.findLast(c => c.type === "join_watch")!.requestId, result: { type: "watch_ready", serverTime: 1000 } });
   try {
     socket.receive({ type: "state", state: { ...base, watchActivities: [old] } });
@@ -11675,8 +11675,8 @@ test("two waiting successors retain a viewer's peer choice when the App can open
   const grant = () => ({ sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "file" as const });
   const old = { id: "old", roomId: "first", sessionId: "publisher", userId: "other", viewerSessionIds: [],
     source: { kind: "website", url: "https://fixture.test/page" }, playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } };
-  const first = { ...old, id: "first-page", replaceId: old.id };
-  const second = { ...old, id: "second-page", replaceId: first.id };
+  const first = { ...old, id: "first-page", predecessor: { kind: "watch", id: old.id } };
+  const second = { ...old, id: "second-page", predecessor: { kind: "watch", id: first.id } };
   const reply = (id: string, mode: "peer" | "direct") => {
     const join = socket.sent.findLast(c => c.type === "join_watch")!;
     expect(join).toMatchObject({ id, mode });
@@ -11727,7 +11727,7 @@ test.each(["watching", "left", "revoked"] as const)("watch replacement obtains a
       reply();
       await left;
     }
-    const successor = { ...activity, id: "watch-two", replaceId: activity.id, source: { kind: "media", url: "https://media.test/two.mp4" } };
+    const successor = { ...activity, id: "watch-two", predecessor: { kind: "watch", id: activity.id }, source: { kind: "media", url: "https://media.test/two.mp4" } };
     const channel = { ...snapshot.channel, rooms: snapshot.channel.rooms.map(room => status === "revoked" && room.id === "first" ? { ...room, authorized: false } : room) };
     socket.receive({ type: "state", state: { ...snapshot, channel, watchActivities: [successor], watchSubscriptions: [] } });
     const joins = socket.sent.filter(c => c.type === "join_watch" && c.id === successor.id);

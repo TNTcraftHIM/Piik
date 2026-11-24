@@ -718,9 +718,25 @@ export class ChannelSession {
       && previousState?.subscriptions.includes(oldId)
       && previousState.publications.some(old => old.kind === "screen" && old.id === oldId && old.roomId === roomId);
     const canFollow = (roomId: string) => state.channel.rooms.some(room => room.id === roomId && room.authorized && room.available);
+    const follows = (source: { kind: "watch" | "screen"; id: string } | undefined, roomId: string) =>
+      source?.kind === "watch" ? followingWatch(source.id, roomId) : followingScreen(source?.id, roomId);
     const nextWatches = state.watchActivities.filter(next => canFollow(next.roomId)
-      && (followingWatch(next.replaceId, next.roomId) || followingScreen(next.replaceScreenId, next.roomId)));
-    const nextScreens = state.publications.filter(next => next.kind === "screen" && canFollow(next.roomId) && followingWatch(next.replaceWatchId, next.roomId));
+      && follows(next.predecessor, next.roomId));
+    const nextScreens = state.publications.filter(next => next.kind === "screen" && canFollow(next.roomId) && follows(next.predecessor, next.roomId));
+    if (restoring) {
+      // Closing a viewer offline removes its local player before the room can see the leave.
+      for (const next of state.watchActivities) {
+        if (next.predecessor && canFollow(next.roomId) && !nextWatches.includes(next)
+          && !this.watchPlayers.has(next.id) && !this.pendingWatchPlayers.has(next.id) && !this.waitingWatchPages.has(next.id)) {
+          this.write({ type: "join_watch", roomId: next.roomId, id: next.id, mode: null });
+        }
+      }
+      for (const next of state.publications) {
+        if (next.kind === "screen" && next.predecessor && canFollow(next.roomId) && !nextScreens.includes(next) && !this.watching.has(next.id)) {
+          this.write({ type: "subscribe", publicationId: next.id, enabled: false });
+        }
+      }
+    }
     for (const [id, watch] of this.watching) {
       const publication = state.publications.find(value => value.id === id);
       if (!publication && (watch.query || !this.view.pending.has(`watch:${id}`))) this.retireWatch(id);
@@ -799,7 +815,8 @@ export class ChannelSession {
     for (const next of nextWatches) {
       if (canWatchInBrowser(next.source)) void this.joinWatch(next.id).catch(() => {});
       else {
-        const priorMode = (next.replaceId ? this.waitingWatchPages.get(next.replaceId)?.priorMode : undefined) ?? previousState?.watchSubscriptions.find(sub => sub.id === next.replaceId)?.mode ?? "direct";
+        const priorWatch = next.predecessor?.kind === "watch" ? next.predecessor.id : undefined;
+        const priorMode = (priorWatch ? this.waitingWatchPages.get(priorWatch)?.priorMode : undefined) ?? previousState?.watchSubscriptions.find(sub => sub.id === priorWatch)?.mode ?? "direct";
         const waiting = { roomId: next.roomId, priorMode };
         this.waitingWatchPages.set(next.id, waiting);
         this.patch({});

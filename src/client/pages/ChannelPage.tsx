@@ -158,8 +158,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       for (const source of viewed) {
         const room = state.channel.rooms.find(r => r.id === source.roomId && r.authorized);
         if (!room || source.sessionId === sessionId || [...state.publications, ...state.watchActivities].some(live => live.id === source.id)) continue;
-        const next = state.watchActivities.find(activity => activity.roomId === room.id && ("playback" in source ? activity.replaceId : activity.replaceScreenId) === source.id)
-          ?? ("playback" in source ? state.publications.find(p => p.kind === "screen" && p.roomId === room.id && p.replaceWatchId === source.id) : undefined);
+        const kind = "playback" in source ? "watch" : "screen";
+        const next = state.watchActivities.find(a => a.roomId === room.id && a.predecessor?.kind === kind && a.predecessor.id === source.id)
+          ?? state.publications.find(p => p.kind === "screen" && p.roomId === room.id && p.predecessor?.kind === kind && p.predecessor.id === source.id);
         if (next && (channel.waitingWatchPages?.has(next.id) || state.watchSubscriptions.some(sub => sub.id === next.id) || state.subscriptions.includes(next.id))) continue;
         waiting.push({ kind: "waiting", id: next?.id ?? source.id, userId: source.userId, roomId: room.id, roomName: room.name,
           name: old.users.find(u => u.id === source.userId)?.name ?? t("channel.previewPage.user"),
@@ -168,8 +169,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       }
     }
     const focus = sourceView.focus;
-    const successor = focus?.focusedId && (state?.watchActivities.find(a => a.roomId === focus.roomId && (a.replaceId === focus.focusedId || a.replaceScreenId === focus.focusedId))
-      ?? state?.publications.find(p => p.kind === "screen" && p.roomId === focus.roomId && p.replaceWatchId === focus.focusedId));
+    const successor = focus?.focusedId && (state?.watchActivities.find(a => a.roomId === focus.roomId && a.predecessor?.id === focus.focusedId)
+      ?? state?.publications.find(p => p.kind === "screen" && p.roomId === focus.roomId && p.predecessor?.id === focus.focusedId));
     setView({ ...sourceView, focus: successor ? { roomId: successor.roomId, focusedId: successor.id } : sourceView.focus, snapshot: state, sessionId, waiting });
   }
   const previousOwnedScreens = useRef<ReadonlySet<string>>(new Set(channel.ownedScreens));

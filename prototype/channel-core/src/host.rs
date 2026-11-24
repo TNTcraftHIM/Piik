@@ -146,7 +146,6 @@ pub struct HostInput {
     rename_all_fields = "camelCase"
 )]
 pub enum RoomResult {
-    SourceRetired { viewers: Vec<Uuid> },
     WatchReady {
         server_time: u64,
     },
@@ -473,7 +472,7 @@ impl RoomProjection {
         if !view.authorized && (view.transit_endpoint.is_some() || self.summary.hidden) {
             return None;
         }
-        Some(RoomSnapshot {
+        let mut snapshot = RoomSnapshot {
             watch_activities: if view.authorized {
                 self.watch_activities.clone()
             } else {
@@ -545,7 +544,22 @@ impl RoomProjection {
             files: view.files.clone(),
             subscriptions: view.subscriptions.clone(),
             failed_subscriptions: view.failed_subscriptions.clone(),
-        })
+        };
+        for pending in &view.handoffs {
+            match pending.target {
+                crate::wire::ViewSource::Screen(id) => {
+                    if let Some(screen) = snapshot.publications.iter_mut().find(|p| p.id == id).and_then(|p| p.screen.as_mut()) {
+                        screen.predecessor = Some(pending.predecessor);
+                    }
+                }
+                crate::wire::ViewSource::Watch(id) => {
+                    if let Some(watch) = snapshot.watch_activities.iter_mut().find(|w| w.id == id) {
+                        watch.predecessor = Some(pending.predecessor);
+                    }
+                }
+            }
+        }
+        Some(snapshot)
     }
 }
 
@@ -768,7 +782,9 @@ impl RoomRuntime {
                     if !self.publication(next).is_some_and(|p| p.kind == crate::wire::Kind::Screen && p.user_id == member.user_id) {
                         return Err("publication_unavailable");
                     }
-                    op.result = RoomResult::SourceRetired { viewers: self.source_viewers(id, true) };
+                    if self.watch_owner(id) == Some(session) {
+                        self.handoff(crate::wire::ViewSource::Watch(id), crate::wire::ViewSource::Screen(next));
+                    }
                 }
                 self.stop_watch(member, session, id)?;
             }
@@ -786,7 +802,9 @@ impl RoomRuntime {
                     if self.watch_user(next) != Some(member.user_id) || !self.publication(publication_id).is_some_and(|p| p.kind == crate::wire::Kind::Screen) {
                         return Err("watch_identity_conflict");
                     }
-                    op.result = RoomResult::SourceRetired { viewers: self.source_viewers(publication_id, false) };
+                    if self.publication(publication_id).is_some_and(|p| p.session_id == session) {
+                        self.handoff(crate::wire::ViewSource::Screen(publication_id), crate::wire::ViewSource::Watch(next));
+                    }
                 }
                 self.unpublish(session, publication_id)?;
             }

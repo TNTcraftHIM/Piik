@@ -6,7 +6,7 @@ use crate::{
     routes::{ByteTree, RelayLimits},
     transport::Flow,
     wire::{
-        validate_video_settings, AudienceState, FlowState, Kind, PublicationAudience,
+        ViewSource, validate_video_settings, AudienceState, FlowState, Kind, PublicationAudience,
         PublicationInfo, Room, RoomAccess, VideoSettings, VoiceInfo,
     },
 };
@@ -21,6 +21,7 @@ const REQUIRED_REPAIR_MS: u64 = 5_000;
 
 #[derive(Clone, Default)]
 struct Activity {
+    handoffs: Vec<SourceHandoff>,
     reading: bool,
     file_observation: Option<FileObservation>,
     watch_subscriptions: BTreeMap<Uuid, crate::wire::WatchMode>,
@@ -28,6 +29,12 @@ struct Activity {
     voice: Option<VoiceInfo>,
     relay_capacity: Option<u8>,
     next_interaction_at: u64,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+pub struct SourceHandoff {
+    pub predecessor: ViewSource,
+    pub target: ViewSource,
 }
 
 #[derive(Clone)]
@@ -83,6 +90,8 @@ pub struct RoomSnapshot {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomRecipient {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub handoffs: Vec<SourceHandoff>,
     pub screen_helpers: BTreeMap<Uuid, Uuid>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transit_endpoint: Option<crate::host::ServiceEndpoint>,
@@ -256,6 +265,7 @@ impl RoomRuntime {
             vec![]
         };
         Some(RoomRecipient {
+            handoffs: self.activity.get(&session).filter(|_| authorized).map(|a| a.handoffs.clone()).unwrap_or_default(),
             screen_helpers: self
                 .activity
                 .get(&session)
@@ -329,8 +339,7 @@ impl RoomRuntime {
                 .watch_activities
                 .iter()
                 .map(|(id, activity)| crate::wire::WatchActivity {
-                    replace_id: activity.replace_id,
-                    replace_screen_id: None,
+                    predecessor: None,
                     id: *id,
                     room_id: self.policy.id.clone(),
                     user_id: activity.user_id,
@@ -884,6 +893,9 @@ impl RoomRuntime {
             return Err("watch_identity_conflict");
         }
         if let Some(previous) = previous {
+            if replace_id.is_some() {
+                self.handoff(ViewSource::Watch(previous), ViewSource::Watch(id));
+            }
             self.stop_watch(member, session, previous)?;
         }
         self.watch_activities.insert(
@@ -900,11 +912,28 @@ impl RoomRuntime {
         );
         Ok(())
     }
-    pub(crate) fn source_viewers(&self, id: Uuid, watch: bool) -> Vec<Uuid> {
-        self.activity.iter().filter_map(|(viewer, activity)| {
-            let subscribed = if watch { activity.watch_subscriptions.contains_key(&id) } else { activity.watching.contains_key(&id) };
-            subscribed.then_some(*viewer)
-        }).collect()
+    pub(crate) fn handoff(&mut self, old: ViewSource, target: ViewSource) {
+        for activity in self.activity.values_mut() {
+            if activity.handoffs.iter().any(|pending| pending.target == target) {
+                activity.handoffs.retain(|pending| pending.target != old);
+                continue;
+            }
+            if let Some(pending) = activity.handoffs.iter_mut().find(|p| p.target == old) {
+                pending.target = target;
+            } else {
+                let subscribed = match old {
+                    ViewSource::Screen(id) => activity.watching.contains_key(&id),
+                    ViewSource::Watch(id) => activity.watch_subscriptions.contains_key(&id),
+                };
+                if subscribed {
+                    activity.handoffs.push(SourceHandoff { predecessor: old, target });
+                }
+            }
+        }
+    }
+
+    pub(crate) fn watch_owner(&self, id: Uuid) -> Option<Uuid> {
+        self.watch_activities.get(&id).map(|watch| watch.session_id)
     }
 
     pub(crate) fn watch_user(&self, id: Uuid) -> Option<Uuid> {
@@ -1025,6 +1054,10 @@ impl RoomRuntime {
         } else if let Some(activity) = self.activity.get_mut(&session) {
             activity.watch_subscriptions.remove(&id);
         }
+        if let Some(activity) = self.activity.get_mut(&session) {
+            let source = ViewSource::Watch(id);
+            activity.handoffs.retain(|p| p.target != source && (mode.is_some() || p.predecessor != source));
+        }
         Ok(())
     }
     pub(crate) fn stop_watch(
@@ -1109,7 +1142,7 @@ impl RoomRuntime {
                 Publication::new(PublicationInfo {
                     screen: if kind == Kind::Screen {
                         Some(crate::wire::ScreenInfo {
-                            replace_watch_id: None,
+                            predecessor: None,
                             direct_limit: None,
                             source: source.ok_or("invalid_screen_source")?,
                             title: None,
@@ -1259,10 +1292,17 @@ impl RoomRuntime {
         helper: Option<(Uuid, &Endpoint)>,
     ) -> Result<bool, &'static str> {
         self.authorize(member, RoomPermission::Read)?;
-        let publication = self
-            .publications
-            .get(&id)
-            .ok_or("publication_unavailable")?;
+        let Some(publication) = self.publications.get(&id) else {
+            if !enabled {
+                if let Some(activity) = self.activity.get_mut(&session) {
+                    if let Some(index) = activity.handoffs.iter().position(|p| p.predecessor == ViewSource::Screen(id)) {
+                        activity.handoffs.remove(index);
+                        return Ok(true);
+                    }
+                }
+            }
+            return Err("publication_unavailable");
+        };
         if publication.info.kind != Kind::Screen || publication.info.session_id == session {
             return Err("invalid_subscription");
         }
@@ -1286,6 +1326,8 @@ impl RoomRuntime {
             None
         };
         let activity = self.activity.entry(session).or_default();
+        let source = ViewSource::Screen(id);
+        activity.handoffs.retain(|p| p.target != source && (enabled || p.predecessor != source));
         let publication = self.publications.get_mut(&id).unwrap();
         if enabled && !activity.watching.contains_key(&id) {
             publication.watch_order.push(session);
@@ -1422,6 +1464,10 @@ impl RoomRuntime {
         self.activity
             .retain(|session, _| readable.contains(session));
         for (session, activity) in &mut self.activity {
+            activity.handoffs.retain(|p| match p.target {
+                ViewSource::Screen(id) => self.publications.contains_key(&id),
+                ViewSource::Watch(id) => self.watch_activities.contains_key(&id),
+            });
             if !peers.contains(session) {
                 activity.voice = None;
                 activity.watching.clear();
@@ -3380,7 +3426,7 @@ mod tests {
             };
             let mut picture = Publication::new(PublicationInfo {
                 screen: Some(crate::wire::ScreenInfo {
-                    replace_watch_id: None,
+                    predecessor: None,
                     direct_limit: None,
                     source: Default::default(),
                     title: None,

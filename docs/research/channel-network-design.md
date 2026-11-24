@@ -268,10 +268,13 @@ viewer timelines retain their existing paths.
 Preparing another source preserves the current one. Cancellation during
 preparation releases only the candidate; submitting the prepared source commits
 the replacement. The sharer identifies the prior activity when switching sources.
-The room validates the replacement and captures the old source's subscribed
-viewers when it commits retirement. Those viewers receive the handoff through
-the existing ordered response path and join the new source with ordinary room
-authorization. Old byte grants, media and input permission are not transferred.
+The room validates the replacement and retains its subscribed viewers' pending
+handoffs in their session activity. Ordinary snapshots carry the original source
+and current successor across reconnection and consecutive replacements. Joining
+the successor, explicitly leaving, losing room access or retiring the session
+clears that intent. The Browser owns local playback and receiving-method choice;
+the successor requires ordinary room authorization. Old byte grants, media and
+input permission are not transferred.
 Native capture retirement uses the App's current capture lease and releases it
 after room confirmation; a refusal preserves that capture. Ordinary stop remains
 immediate and prevents a pending confirmation from restoring the player.

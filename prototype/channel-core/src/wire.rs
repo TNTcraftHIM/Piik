@@ -1169,11 +1169,18 @@ pub enum Event {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", content = "id", rename_all = "snake_case")]
+pub enum ViewSource {
+    Screen(Uuid),
+    Watch(Uuid),
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScreenInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub replace_watch_id: Option<Uuid>,
+    pub predecessor: Option<ViewSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub direct_limit: Option<u8>,
     pub source: ScreenSource,
@@ -1225,9 +1232,7 @@ impl WatchPlayback {
 #[serde(rename_all = "camelCase")]
 pub struct WatchActivity {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub replace_screen_id: Option<Uuid>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub replace_id: Option<Uuid>,
+    pub predecessor: Option<ViewSource>,
     pub id: Uuid,
     pub room_id: String,
     pub user_id: Uuid,

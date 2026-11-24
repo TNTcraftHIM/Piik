@@ -528,7 +528,7 @@ impl Authority {
             }
             _ => {}
         }
-        if let Some(room) = self.channel.command_room(&request.command) {
+        if let Some(room) = self.channel.command_room(session_id, &request.command) {
             match self.channel.forward_room(&room, context, request.command) {
                 Ok((session, event)) => self.deliver(session, event, &mut effects),
                 Err(code) => Self::error(connection, request.request_id, code, &mut effects),
@@ -762,30 +762,8 @@ impl Authority {
         if let Some((session, event)) = accepted.repair_input {
             self.deliver(session, event, effects);
         }
-        let first = effects.events.len();
         if accepted.projection_applied {
             self.broadcast(None, effects);
-        }
-        for retirement in accepted.retirements {
-            for viewer in retirement.viewers {
-                let Some(connection) = self.channel.identity.sessions.get(&viewer).and_then(|s| s.connection) else { continue; };
-                let index = effects.events[first..].iter().position(|(c, e)| *c == connection && matches!(e, Event::State { .. }));
-                let index = match index {
-                    Some(index) => first + index,
-                    None => {
-                        effects.events.push((connection, Event::State { state: self.channel.snapshot(viewer) }));
-                        effects.events.len() - 1
-                    }
-                };
-                let Event::State { state } = &mut effects.events[index].1 else { unreachable!() };
-                if retirement.to_screen {
-                    if let Some(screen) = state.publications.iter_mut().find(|p| p.room_id == room_id && p.id == retirement.next).and_then(|p| p.screen.as_mut()) {
-                        screen.replace_watch_id = Some(retirement.old);
-                    }
-                } else if let Some(watch) = state.watch_activities.iter_mut().find(|w| w.room_id == room_id && w.id == retirement.next) {
-                    watch.replace_screen_id = Some(retirement.old);
-                }
-            }
         }
         for reply in accepted.replies {
             self.room_reply(room_id, reply, effects);

@@ -42,7 +42,6 @@ pub struct Channel {
 }
 
 pub(crate) struct HostAcceptance {
-    pub retirements: Vec<crate::remote::SourceRetirement>,
     pub projection_applied: bool,
     pub repair_input: Option<(Uuid, Event)>,
     pub replies: Vec<RoomReply>,
@@ -730,7 +729,7 @@ impl Channel {
         self.transports.peer(endpoint, pair_id)
     }
 
-    pub(crate) fn command_room(&self, command: &Command) -> Option<String> {
+    pub(crate) fn command_room(&self, session: Uuid, command: &Command) -> Option<String> {
         match command {
             Command::StartWatch { room_id, .. }
             | Command::SetWatchByteSource { room_id, .. }
@@ -752,6 +751,16 @@ impl Channel {
             | Command::Voice { room_id, .. } => Some(room_id.clone()),
             Command::RelayCapacity { room_id, .. } => Some(room_id.clone()),
             Command::Publish { publication } => Some(publication.room_id.clone()),
+            Command::Subscribe { publication_id, enabled: false, .. } => {
+                self.publication_room_id(*publication_id).or_else(|| {
+                    let old = crate::wire::ViewSource::Screen(*publication_id);
+                    self.remote.iter().find_map(|(id, room)| {
+                        let view = room.projection.as_ref()?.views.get(&session)?;
+                        (view.authorized && view.handoffs.iter().any(|p| p.predecessor == old))
+                            .then(|| id.clone())
+                    })
+                })
+            }
             Command::Unpublish { publication_id, .. }
             | Command::SetScreenDirectLimit { publication_id, .. }
             | Command::SetTitle { publication_id, .. }
@@ -1365,11 +1374,6 @@ impl Channel {
         if output.revision > binding.revision {
             return Err("invalid_room_revision");
         }
-        if let Some(RoomResult::SourceRetired { viewers }) = output.reply.as_ref().map(|reply| &reply.result) {
-            if viewers.len() > MAX_SESSIONS || !matches!(binding.replies.get(&output.revision), Some(ReplyOwner::Request { retirement: Some(_), .. })) {
-                return Err("invalid_room_reply");
-            }
-        }
         let reply_valid = match binding.replies.get(&output.revision) {
             Some(ReplyOwner::Request {
                 context,
@@ -1413,7 +1417,6 @@ impl Channel {
                 unreachable!()
             };
             return Ok(HostAcceptance {
-                retirements: Vec::new(),
                 deleted_by: Some(member.user_id),
                 projection_applied: false,
                 repair_input: None,
@@ -1566,6 +1569,11 @@ impl Channel {
                 || view
                     .relay_override
                     .is_some_and(|capacity| capacity > crate::MAX_RELAY_CAPACITY)
+                || view.handoffs.len() > MAX_SESSIONS + MAX_PUBLICATIONS
+                || view.handoffs.iter().any(|p| !view.authorized || match p.target {
+                    crate::wire::ViewSource::Screen(id) => !projection.publications.iter().any(|publication| publication.kind == Kind::Screen && publication.id == id),
+                    crate::wire::ViewSource::Watch(id) => !watch_ids.contains(&id),
+                })
                 || view.watch_subscriptions.len() > MAX_SESSIONS
                 || view
                     .watch_subscriptions
@@ -2013,25 +2021,17 @@ impl Channel {
                 .then_some((*revision, current))
             })
             .collect();
-        let mut retirements = Vec::new();
         let replies = ready
             .into_iter()
             .map(|(revision, current)| {
                 let ReplyOwner::Request {
                     context,
                     completion,
-                    retirement,
                     ..
                 } = binding.replies.remove(&revision).unwrap()
                 else {
                     unreachable!()
                 };
-                if current {
-                    if let (Some(mut retirement), Some(RoomResult::SourceRetired { viewers })) = (retirement, &completion) {
-                        retirement.viewers.clone_from(viewers);
-                        retirements.push(retirement);
-                    }
-                }
                 RoomReply {
                     context,
                     result: if current {
@@ -2045,7 +2045,6 @@ impl Channel {
             })
             .collect();
         HostAcceptance {
-            retirements,
             deleted_by: None,
             projection_applied,
             repair_input: None,

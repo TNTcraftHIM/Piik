@@ -406,7 +406,7 @@ mod tests {
                 audience: vec![],
                 video_settings: None,
                 screen: Some(piik_channel_core::wire::ScreenInfo {
-                    replace_watch_id: None,
+                    predecessor: None,
                     direct_limit: None,
                     source: Default::default(),
                     title: None,
@@ -707,7 +707,7 @@ mod tests {
             driver.publications.insert(scope.publication_id, PublicationInfo {
                 id: scope.publication_id, room_id: scope.room_id.clone(), session_id: driver.session,
                 user_id: Uuid::new_v4(), kind: piik_channel_core::wire::Kind::Screen,
-                paused: false, audience: vec![], screen: Some(piik_channel_core::wire::ScreenInfo { replace_watch_id: None, direct_limit: None, source: Default::default(), title: None }),
+                paused: false, audience: vec![], screen: Some(piik_channel_core::wire::ScreenInfo { predecessor: None, direct_limit: None, source: Default::default(), title: None }),
                 video_settings: None,
             });
             let input = driver.commit_capture(prepared.lease.id).await?;

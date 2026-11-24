@@ -2,7 +2,7 @@
 mod support;
 use piik_channel_core::{
     host::RoomResult,
-    wire::{Event, RoomAccess},
+    wire::{Event, RoomAccess, ViewSource},
 };
 use serde_json::{json, Value};
 use support::RoomNetwork;
@@ -298,7 +298,7 @@ fn replacing_watch_validates_before_retiring_source_and_viewers() {
     );
     assert!(net.state(viewer).watch_subscriptions.is_empty());
     assert_eq!(net.state(viewer).watch_activities.len(), 1);
-    assert_eq!(net.state(viewer).watch_activities[0].replace_id, Some(old));
+    assert_eq!(net.state(viewer).watch_activities[0].predecessor, Some(ViewSource::Watch(old)));
     assert_eq!(net.state(viewer).watch_activities[0].id, next);
     net.command(owner, json!({"type":"stop_watch","roomId":room,"id":old}));
     assert_eq!(net.state(viewer).watch_activities[0].id, next);
@@ -873,17 +873,17 @@ fn confirmed_exit_links_once_to_an_existing_source_in_the_same_room() {
     error(net.command(viewer, stop.clone()), "publication_unavailable");
     net.command(owner, stop);
     assert!(net.state(viewer).watch_subscriptions.is_empty());
-    assert_eq!(net.state(viewer).publications[0].screen.as_ref().unwrap().replace_watch_id, Some(old));
+    assert_eq!(net.state(viewer).publications[0].screen.as_ref().unwrap().predecessor, Some(ViewSource::Watch(old)));
     net.command(viewer, json!({"type":"subscribe","publicationId":screen,"enabled":true}));
     assert!(net.state(viewer).subscriptions.contains(&screen));
-    assert_eq!(net.state(viewer).publications[0].screen.as_ref().unwrap().replace_watch_id, None);
+    assert_eq!(net.state(viewer).publications[0].screen.as_ref().unwrap().predecessor, None);
     net.command(owner, start(&room, next));
     error(net.command(viewer, unpublish.clone()), "watch_identity_conflict");
     net.command(owner, unpublish);
     assert!(net.state(viewer).subscriptions.is_empty());
     assert!(net.state(viewer).publications.is_empty());
     assert!(net.state(viewer).watch_subscriptions.is_empty());
-    assert_eq!(net.state(viewer).watch_activities[0].replace_screen_id, Some(screen));
+    assert_eq!(net.state(viewer).watch_activities[0].predecessor, Some(ViewSource::Screen(screen)));
 }
 
 #[test]
@@ -923,7 +923,7 @@ fn queued_joins_and_batched_retirements_preserve_both_windows() {
         let effects = net.command(host, output);
         for (target, event) in effects.events {
             if let Event::State { state } = event {
-                let markers: Vec<_> = state.publications.iter().filter_map(|p| Some((p.id, p.screen.as_ref()?.replace_watch_id?))).collect();
+                let markers: Vec<_> = state.publications.iter().filter_map(|p| Some((p.id, p.screen.as_ref()?.predecessor?))).collect();
                 if !markers.is_empty() {
                     assert_eq!(target, viewer);
                     marked.push(markers);
@@ -933,5 +933,77 @@ fn queued_joins_and_batched_retirements_preserve_both_windows() {
     }
     assert_eq!(marked.len(), 1);
     assert_eq!(marked[0].len(), 2);
-    for (_, watch, screen) in sources { assert!(marked[0].contains(&(screen,watch))); }
+    for (_, watch, screen) in sources { assert!(marked[0].contains(&(screen,ViewSource::Watch(watch)))); }
+}
+
+#[test]
+fn resumed_viewer_follows_retired_source() {
+    let (mut net, owner, _, room) = setup();
+    let viewer = Uuid::new_v4();
+    let welcome = net.command(viewer,json!({"type":"join","name":"Viewer"}));
+    let credential = welcome.events.iter().find_map(|(_,e)| match e {Event::Welcome {credential,..} => Some(credential.clone()), _ => None}).unwrap();
+    let old = Uuid::new_v4();
+    let screen = Uuid::new_v4();
+    net.command(owner, start(&room, old));
+    net.command(viewer, json!({"type":"join_watch","roomId":room,"id":old,"mode":"direct"}));
+    let session = net.state(owner).watch_activities[0].viewer_session_ids[0];
+    let effects = net.authority.disconnect(viewer, 1000);
+    net.deliver(effects);
+    net.command(owner,json!({"type":"publish","publication":{"id":screen,"roomId":room,"kind":"screen","source":{"kind":"screen","name":"Desktop"}}}));
+    net.command(owner,json!({"type":"stop_watch","roomId":room,"id":old,"successorScreenId":screen}));
+    let next = Uuid::new_v4();
+    net.command(owner, start(&room, next));
+    net.command(owner,json!({"type":"unpublish","publicationId":screen,"successorWatchId":next}));
+    let fresh = Uuid::new_v4();
+    net.command(fresh, json!({"type":"join","name":"Viewer","credential":credential}));
+    assert_eq!(net.state(fresh).watch_activities[0].predecessor, None);
+    let resumed = Uuid::new_v4();
+    let effects = net.command_at(resumed,json!({"type":"join","name":"Viewer","sessionId":session,"credential":credential}),1200);
+    assert!(effects.events.iter().any(|(_,e)| matches!(e, Event::Welcome {session_id,..} if *session_id == session)));
+    assert_eq!(net.state(resumed).watch_activities[0].predecessor, Some(ViewSource::Watch(old)));
+    net.command(resumed, json!({"type":"join_watch","roomId":room,"id":old,"mode":null}));
+    assert_eq!(net.state(resumed).watch_activities[0].predecessor, None);
+}
+
+#[test]
+fn revoked_screen_viewer_does_not_inherit_the_pending_successor_after_readmission() {
+    let (mut net, owner, viewer, _) = setup();
+    let room = net.create(owner, RoomAccess::Private, false);
+    net.command(owner, json!({"type":"update_room","roomId":room,"name":"Private","icon":"couch","access":"private","hidden":false,"password":"secret"}));
+    net.command(viewer, json!({"type":"enter_room","roomId":room,"password":"secret"}));
+    let a = Uuid::new_v4();
+    let b = Uuid::new_v4();
+    let c = Uuid::new_v4();
+    let publish = |id| json!({"type":"publish","publication":{"id":id,"roomId":room,"kind":"screen","source":{"kind":"screen","name":"Desktop"}}});
+    net.command(owner, publish(a));
+    net.command(viewer, json!({"type":"subscribe","publicationId":a,"enabled":true}));
+    let session = net.state(owner).publications[0].audience[0].session_id;
+    let user = net.state(owner).sessions.iter().find(|s| s.id == session).unwrap().user_id;
+    net.command(owner, start(&room, b));
+    net.command(owner, json!({"type":"unpublish","publicationId":a,"successorWatchId":b}));
+    net.command(owner, publish(c));
+    net.command(owner, json!({"type":"stop_watch","roomId":room,"id":b,"successorScreenId":c}));
+    assert_eq!(net.state(viewer).publications[0].screen.as_ref().unwrap().predecessor, Some(ViewSource::Screen(a)));
+    net.command(owner, json!({"type":"revoke_room_access","roomId":room,"userId":user}));
+    assert!(net.state(viewer).publications.is_empty());
+    net.command(viewer, json!({"type":"enter_room","roomId":room,"password":"secret"}));
+    assert_eq!(net.state(viewer).publications[0].screen.as_ref().unwrap().predecessor, None);
+}
+
+#[test]
+fn leaving_retired_screen_cancels_only_the_callers_pending_handoff() {
+    let (mut net, owner, viewer, room) = setup();
+    let other = Uuid::new_v4();
+    net.command(other, json!({"type":"join","name":"Other"}));
+    let screen = Uuid::new_v4();
+    let watch = Uuid::new_v4();
+    net.command(owner, json!({"type":"publish","publication":{"id":screen,"roomId":room,"kind":"screen","source":{"kind":"screen","name":"Desktop"}}}));
+    for connection in [viewer, other] {
+        net.command(connection, json!({"type":"subscribe","publicationId":screen,"enabled":true}));
+    }
+    net.command(owner, start(&room, watch));
+    net.command(owner, json!({"type":"unpublish","publicationId":screen,"successorWatchId":watch}));
+    net.command(viewer, json!({"type":"subscribe","publicationId":screen,"enabled":false}));
+    assert_eq!(net.state(viewer).watch_activities[0].predecessor, None);
+    assert_eq!(net.state(other).watch_activities[0].predecessor, Some(ViewSource::Screen(screen)));
 }

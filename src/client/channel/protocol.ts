@@ -56,13 +56,14 @@ export const roomSchema = z.object({
 export const roomSummarySchema = roomSchema.pick({ id: true, name: true, icon: true, creatorId: true, access: true, hidden: true, hasPassword: true, voiceBitrate: true, relayCapacity: true });
 export const screenSourceSchema = z.object({ kind: z.enum(["screen", "camera"]), name: identityNameSchema.nullable() });
 export type ScreenSource = z.infer<typeof screenSourceSchema>;
+const viewSourceSchema = z.object({ kind: z.enum(["screen", "watch"]), id }).strict();
 const publicationBaseSchema = z.object({
   id, roomId: id, sessionId: id, userId: id,
   paused: z.boolean(),
   audience: z.array(z.object({ sessionId: id, state: z.enum(["preparing", "active", "failed"]) })).max(CHANNEL_SESSION_LIMIT),
 });
 export const publicationSchema = z.discriminatedUnion("kind", [
-  publicationBaseSchema.extend({ kind: z.literal("screen"), replaceWatchId: id.optional(), directLimit: z.number().int().min(1).max(MAX_RELAY_CAPACITY).optional(), videoSettings: videoSettingsSchema.optional(), source: screenSourceSchema, title: identityNameSchema.nullable() }),
+  publicationBaseSchema.extend({ kind: z.literal("screen"), predecessor: viewSourceSchema.optional(), directLimit: z.number().int().min(1).max(MAX_RELAY_CAPACITY).optional(), videoSettings: videoSettingsSchema.optional(), source: screenSourceSchema, title: identityNameSchema.nullable() }),
   publicationBaseSchema.extend({ kind: z.literal("voice"), directLimit: z.never().optional(), videoSettings: z.never().optional(), source: z.never().optional(), title: z.never().optional(), audience: z.array(z.never()).max(0) }),
 ]);
 export const attachmentSchema = z.object({
@@ -108,7 +109,7 @@ export type WatchByteSource = z.infer<typeof watchByteSourceSchema>;
 export type WatchMode = "direct" | "peer";
 export const watchBytePlanSchema = z.object({ roomId: id, activityId: z.uuid(), source: watchByteSourceSchema, upstream: z.uuid().nullable(), downstream: z.array(z.uuid()), receiving: z.boolean() }).strict();
 export type WatchBytePlan = z.infer<typeof watchBytePlanSchema>;
-export const watchActivitySchema = z.object({ id, replaceId: id.optional(), replaceScreenId: id.optional(), roomId: id, userId: id, sessionId: id, source: watchSourceSchema, playback: watchPlaybackSchema, viewerSessionIds: z.array(id).max(CHANNEL_SESSION_LIMIT), byteSource: watchByteSourceSchema.optional() }).strict();
+export const watchActivitySchema = z.object({ id, predecessor: viewSourceSchema.optional(), roomId: id, userId: id, sessionId: id, source: watchSourceSchema, playback: watchPlaybackSchema, viewerSessionIds: z.array(id).max(CHANNEL_SESSION_LIMIT), byteSource: watchByteSourceSchema.optional() }).strict();
 export type WatchActivity = z.infer<typeof watchActivitySchema>;
 const flowBindingSchema = z.object({ id, publicationId: id, selected: z.boolean(), inputFlowId: id.nullable(), presentation: z.boolean().optional() });
 export const snapshotSchema = z.object({

@@ -385,7 +385,7 @@ pub(super) mod tests {
             }],
             publications: vec![PublicationInfo {
                 screen: Some(piik_channel_core::wire::ScreenInfo {
-                    replace_watch_id: None,
+                    predecessor: None,
                     direct_limit: None,
                     source: Default::default(),
                     title: None,
