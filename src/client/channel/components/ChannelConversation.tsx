@@ -712,8 +712,8 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
     {unread && <div className="c3-message-date c3-unread-divider">{t("conversation.newMessages")}</div>}
     <article ref={row} tabIndex={0} className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}${mentioned ? " is-mentioned" : ""}`} data-message-id={message.id} data-message-seq={message.seq}>
     {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} avatar={avatar} />}
-    <div className="c3-message-body"><div className={grouped ? "visually-hidden" : "c3-message-meta"}><strong>{name}</strong>
-      <time dateTime={iso} title={tooltip} aria-label={tooltip}>{formats.clock(date, today)}</time>
+    <div className="c3-message-body" title={grouped ? tooltip : undefined}><div className={grouped ? "visually-hidden" : "c3-message-meta"}><strong>{name}</strong>
+      <time dateTime={iso} title={grouped ? undefined : tooltip} aria-label={tooltip}>{formats.clock(date, today)}</time>
     </div><div className="c3-message-content-body">
     {message.reply && <button type="button" className="c3-message-reference" disabled={!onMessage} onClick={() => onMessage?.(message.reply!.seq)}>
       <Glyph name="reply" size={14} /><strong>{replyName ?? t("conversation.user")}</strong>

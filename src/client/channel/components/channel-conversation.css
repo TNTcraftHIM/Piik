@@ -33,7 +33,7 @@
   .c3-conversation { padding: 16px 14px; gap: 12px; }
   .c3-room-start h3 { font-size: 19px; }
 }
-.c3-message { display: flex; align-items: flex-start; gap: 11px; margin: 16px 0 0; }
+.c3-message { display: flex; align-items: flex-start; gap: 11px; margin: 16px 0 0; width: fit-content; max-width: 100%; }
 .c3-message:first-child { margin-top: 8px; }
 .c3-message > svg { width: 29px; height: 36px; flex: none; }
 .c3-message-content-body { display: flow-root; font-size: 14px; line-height: 1.65; margin-top: 3px; }
