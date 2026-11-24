@@ -394,6 +394,16 @@ pub(crate) mod tests {
     use super::*;
     use std::time::Duration;
 
+    pub(crate) fn active_audio_fixture() -> AudioProducer {
+        let (control, _, requests) = AudioControl::fixture_with_receiver();
+        let (joining, joined) = oneshot::channel();
+        let task = tokio::spawn(async move {
+            let _ = joined.await;
+            drop(requests);
+        });
+        AudioProducer { control, task, joining: Some(joining) }
+    }
+
     pub(crate) fn controlled_audio_retirement(
         started: oneshot::Sender<()>,
         release: std::sync::mpsc::Receiver<()>,

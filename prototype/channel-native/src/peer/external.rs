@@ -11,6 +11,16 @@ pub(super) struct Producer {
     joining: Option<oneshot::Sender<()>>,
 }
 impl Producer {
+    #[cfg(test)]
+    pub(super) fn fixture(video: Uuid) -> Self {
+        Self {
+            control: ExternalControl(watch::channel(None).0, Default::default()),
+            video,
+            audio: None,
+            task: None,
+            joining: None,
+        }
+    }
     pub fn owns(&self, id: Uuid, kind: MediaKind) -> bool {
         match kind {
             MediaKind::Video => self.video == id,
