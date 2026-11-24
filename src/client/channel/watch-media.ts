@@ -91,6 +91,7 @@ interface WatchResourceSource {
 
 export class HTMLVideoMedia implements WatchMedia {
   readonly video = document.createElement("video");
+  private pendingOutputPlay?: object;
   private readonly detachOutput = playbackOutput.attach(this.video);
   readonly presentation = { kind: "video" as const, element: this.video };
   private lifetime = new AbortController();
@@ -204,9 +205,20 @@ export class HTMLVideoMedia implements WatchMedia {
     this.lifetime.signal.throwIfAborted();
     if (value.position !== undefined) this.video.currentTime = this.hlsTimeline?.localPosition(value.position) ?? value.position;
     if (value.rate !== undefined) this.video.playbackRate = value.rate;
+    if (value.paused !== undefined) this.pendingOutputPlay = undefined;
     if (value.paused === true) this.video.pause();
     // An unresolved play must not block a later seek or pause in the control owner.
-    else if (value.paused === false) void this.video.play().catch(error => {
+    else if (value.paused === false) {
+      if (this.detachOutput.getWaiting()) {
+        const request = this.pendingOutputPlay = {};
+        void this.detachOutput.ready.then(() => {
+          if (this.pendingOutputPlay === request && !this.lifetime.signal.aborted) this.playVideo();
+        });
+      } else this.playVideo();
+    }
+  }
+  private playVideo(): void {
+    void this.video.play().catch(error => {
       if (this.lifetime.signal.aborted || error instanceof DOMException && error.name === "AbortError") return;
       if (error instanceof DOMException && error.name === "NotAllowedError") this.video.dispatchEvent(new Event("blocked"));
       else {

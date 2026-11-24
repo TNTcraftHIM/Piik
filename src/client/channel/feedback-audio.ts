@@ -32,7 +32,7 @@ export function scheduleFeedbackCue(context: BaseAudioContext, cue: FeedbackCue,
 /** One page owns activation and one short cue; suspended events are never queued. */
 export class FeedbackAudio {
   private context: AudioContext | null = null;
-  private detach?: () => void;
+  private detach?: ReturnType<typeof playbackOutput.attach>;
   private gain: GainNode | null = null;
   private activation: AbortController | null = null;
   private active: { cue: FeedbackCue; stop: () => void } | null = null;
@@ -90,6 +90,7 @@ export class FeedbackAudio {
         };
       }
       await context.resume();
+      if (this.detach?.getWaiting()) await this.detach.ready;
       if (this.context !== context || !this.enabled) return false;
       this.prepareClips(context);
       this.activation?.abort(); this.activation = null;
@@ -115,7 +116,7 @@ export class FeedbackAudio {
 
   play(cue: FeedbackCue): void {
     const context = this.context, gain = this.gain;
-    if (!this.enabled || this.volume === 0 || context?.state !== "running" || !gain || this.active || this.muted[cue]) return;
+    if (this.detach?.getWaiting() || !this.enabled || this.volume === 0 || context?.state !== "running" || !gain || this.active || this.muted[cue]) return;
     const custom = this.clips[cue];
     const buffer = this.decoded.get(cue)?.buffer;
     if (custom && !buffer) return;

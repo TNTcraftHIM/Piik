@@ -1,3 +1,4 @@
+import { playbackOutput } from "../src/client/media/playback-output";
 import { HTMLVideoMedia, AppPageMedia, type AppPagePort, type WatchMediaEvent, type WatchMedia, type WatchMediaState } from "../src/client/channel/watch-media";
 import { afterEach, expect, test, vi } from "vitest";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
@@ -548,4 +549,28 @@ test("HTML viewer drops the blocked play when the host pauses and retries once o
     expect(video.play).toHaveBeenCalledOnce();
     expect(player.blocked).toBe(true);
   } finally { player.close(); }
+});
+
+test.each(["pause", "close", "play"])("waits for the selected output before first play with %s pending", async action => {
+  let complete: (() => void) | undefined;
+  const video = Object.assign(new Video(), {
+    setSinkId: () => complete ? Promise.resolve() : new Promise<void>(resolve => { complete = resolve; }),
+  });
+  vi.stubGlobal("document", { createElement: () => video });
+  let release!: () => void;
+  const blocker = playbackOutput.attach({ setSinkId: () => new Promise<void>(resolve => { release = resolve; }) } as unknown as HTMLMediaElement);
+  const choosing = playbackOutput.choose("headphones");
+  await vi.waitFor(() => expect(release).toBeDefined());
+  const media = new HTMLVideoMedia("https://media.test/video.mp4", "file");
+  try {
+    await media.patch({ paused: false });
+    expect(video.play).not.toHaveBeenCalled();
+    if (action === "pause") await media.patch({ paused: true });
+    release();
+    await vi.waitFor(() => expect(complete).toBeDefined());
+    if (action === "close") media.close();
+    complete!();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(video.play).toHaveBeenCalledTimes(action === "play" ? 1 : 0);
+  } finally { blocker(); release(); complete?.(); media.close(); await choosing; await playbackOutput.choose(""); }
 });
