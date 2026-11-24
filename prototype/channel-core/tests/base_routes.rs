@@ -5651,46 +5651,96 @@ fn watch_uses_an_alternate_while_a_file_keeps_the_relays_only_slot() {
     let late=net.command(relay,refuse);
     assert!(late.events.iter().any(|(_,event)| matches!(event, Event::RoomReply { result:piik_channel_core::host::RoomResult::Error{code}, .. } if code=="unassigned_watch_branch")));
     let members = [(source, s), (relay, r), (alternate, a), (viewer, v)];
-    let check_tree = |net: &RoomNetwork, live: &[(Uuid, Uuid)]| {
-        let mut parents = std::collections::BTreeMap::new();
-        let mut children = std::collections::BTreeMap::new();
+    use std::collections::{BTreeMap, BTreeSet, VecDeque};
+    let mut links = vec![(s, r), (s, a), (r, v), (a, v)];
+    let mut peer_receivers = BTreeSet::from([v]);
+    let check_tree = |net: &RoomNetwork, live: &[(Uuid, Uuid)], links: &[(Uuid, Uuid)],
+                      peer_receivers: &BTreeSet<Uuid>| {
+        let mut parents = BTreeMap::new();
+        let mut children = BTreeMap::new();
+        let mut spare = BTreeMap::new();
         for &(socket, member) in live {
-            for plan in net.state(socket).watch_bytes.iter().filter(|p| p.activity_id == watch) {
+            let state = net.state(socket);
+            let room = state.channel.rooms.iter().find(|entry| entry.id == room).unwrap();
+            let limit = usize::from(room.relay_override.unwrap_or(room.relay_capacity));
+            let mut used = 0;
+            for plan in state.watch_bytes.iter().filter(|p| p.activity_id == watch) {
                 if let Some(parent) = plan.upstream {
                     assert!(parents.insert(member, parent).is_none());
                 }
+                assert_eq!(plan.receiving, peer_receivers.contains(&member));
+                used += plan.downstream.len();
                 for &child in &plan.downstream {
                     assert!(children.insert(child, member).is_none());
                 }
             }
+            assert!(used <= limit);
+            spare.insert(member, limit - used);
         }
         assert_eq!(parents, children);
         for &child in parents.keys() {
-            let mut seen = std::collections::BTreeSet::new();
+            let mut seen = BTreeSet::new();
             let mut current = child;
             while let Some(&parent) = parents.get(&current) {
                 assert!(seen.insert(current), "watch delivery cycle");
+                assert!(links.contains(&(current, parent)) || links.contains(&(parent, current)));
                 current = parent;
             }
             assert_eq!(current, s);
         }
+        // Extend existing assignments only where the fixture has a free forwarding slot.
+        let mut reachable = BTreeSet::from([s]);
+        let mut queue = VecDeque::from([s]);
+        while let Some(sender) = queue.pop_front() {
+            if ![s, r, a].contains(&sender) {
+                continue;
+            }
+            for &(left, right) in links {
+                let receiver = if left == sender { right } else if right == sender { left } else {
+                    continue;
+                };
+                let can_forward = match parents.get(&receiver) {
+                    Some(parent) => *parent == sender,
+                    None => spare[&sender] > 0,
+                };
+                if can_forward && reachable.insert(receiver) {
+                    queue.push_back(receiver);
+                }
+            }
+        }
+        for receiver in peer_receivers.intersection(&reachable) {
+            assert!(parents.contains_key(receiver), "reachable watch receiver {receiver} has no parent");
+        }
     };
+    check_tree(&net, &members, &links, &peer_receivers);
     let mut seed = 41_u32;
     for _ in 0..16 {
         seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
-        let subscriber = members[1 + (seed >> 16) as usize % 3].0;
-        let mode = if seed & 1 == 0 { "peer" } else { "direct" };
+        let (subscriber, receiver) = members[1 + ((seed >> 16) as usize & 0x7fff) % 3];
+        let mode = if seed >> 31 == 0 {
+            peer_receivers.insert(receiver);
+            "peer"
+        } else {
+            peer_receivers.remove(&receiver);
+            "direct"
+        };
         command(&mut net, subscriber, json!({"type":"join_watch","roomId":room,"id":watch,"mode":mode}));
-        check_tree(&net, &members);
+        check_tree(&net, &members, &links, &peer_receivers);
     }
+    command(&mut net, viewer, json!({"type":"join_watch","roomId":room,"id":watch,"mode":"peer"}));
+    peer_receivers.insert(v);
+    check_tree(&net, &members, &links, &peer_receivers);
     let edge = pair(&net, viewer, a).id;
     command(&mut net, viewer, json!({"type":"link_state","pairId":edge,"state":"failed"}));
-    check_tree(&net, &members);
+    links.retain(|&link| link != (a, v));
+    check_tree(&net, &members, &links, &peer_receivers);
     let effects = net.authority.disconnect(viewer, 200);
     net.deliver(effects);
     let effects = net.authority.expire(200 + piik_channel_core::RECOVERY_MS);
     net.deliver(effects);
-    check_tree(&net, &members[..3]);
+    links.retain(|&(_, receiver)| receiver != v);
+    peer_receivers.remove(&v);
+    check_tree(&net, &members[..3], &links, &peer_receivers);
 }
 
 #[test]
