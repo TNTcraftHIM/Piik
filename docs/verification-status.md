@@ -97,7 +97,7 @@ macOS CI built Server/App, compiled the capture path and Native tests, and
 verified synthetic VideoToolbox H264 encode/decode and quality feedback.
 Earlier checks exercised LaunchServices startup and startup-error cleanup.
 System Quit, Dock/Finder return, permissions, physical capture, sound and input
-require device acceptance. [Build and codec run](https://github.com/TNTcraftHIM/Piik/actions/runs/44926014635) ·
+require device acceptance. [Build and codec run](https://github.com/TNTcraftHIM/Piik/actions/runs/45341981837) ·
 [Feedback control](https://github.com/TNTcraftHIM/Piik/actions/runs/42697708222)
 
 Linux VM evidence covers software encoding, decoded picture and Opus, picker

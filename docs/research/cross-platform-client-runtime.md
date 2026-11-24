@@ -186,22 +186,9 @@ The [App reference](../../prototype/channel-server/README.md#local-app-link) own
 the window entry and explicit Browser alternative. Integrated-package acceptance
 remains separate from the earlier proof above.
 
-Client-side site bookmarks would own navigation only. They must remain separate
-from `app_site`, which grants capture and Native room hosting. Save a clean site
-URL and optional label; opening or removing a bookmark does not grant or revoke
-device access. Ordinary HTTP(S) invitations remain valid in either surface and
-retain their complete path, query and fragment until the existing consumer uses
-them. Invitation secrets are not bookmark metadata. A changed public address
-still needs a new address; bookmarks do not provide discovery or identity transfer.
-
-The owner has deferred the former main-UI site rail until client feasibility is
-established. One current site would avoid background session management, but is
-not yet an accepted switching design. Real navigation ends the old page's voice,
-shares, watches and Browser-hosted rooms under their existing owners; App-hosted
-rooms retain the App lifetime. Any later design must make that consequence
-explicit or deliberately retain the affected page. Opening a bookmark list or
-switching full/screen-centred views is presentation only. Cross-surface identity
-transfer is not part of this evaluation.
+Client site navigation follows the [accepted single-site model](#client-site-navigation).
+Bookmarks, device approval and startup preferences remain separate, as documented
+in the [App reference](../../prototype/channel-server/README.md#local-app-link).
 
 ## Historical Package Evidence
 

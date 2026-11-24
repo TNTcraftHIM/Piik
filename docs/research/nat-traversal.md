@@ -128,12 +128,19 @@ Native-to-Browser controls distinguish extra sockets from useful hypotheses:
 | Linear mapping; eight sockets in both arms | Ordinary ICE failed; 16 experimental targets from ordered STUN observations delivered SCTP after 1.49 seconds. Native released seven losers at 5 seconds; Browser ICE continued to the 10-second observation. This was not media or random-mapping evidence. |
 | Production one-base linear extension, matched Core24 | Real Domain/Native/Browser admission: suppressing generated hypotheses left the target disconnected; accepting them delivered moving video, Opus and reverse RTCP on the original socket. Browser closure retired the target. |
 | Address-dependent mapping, current one-base producer | Three ports on one IP appeared stable and emitted no hypotheses. Three IPs exposed the sequence; the same 16-target budget delivered bidirectional DataChannel in about 1.5 seconds with either SDP offerer. This tests SDP roles, not every media-sharing direction. |
+| Domain45 media directions, sequential Native mapping and stable Browser mapping, both APDF | The original predicted socket carried decoded H.264, advancing Opus samples and reverse RTCP in both Native-to-Browser and Browser-to-Native directions. Suppressing hypotheses left both controls disconnected after 10 seconds. The Native-output positive/negative pair had the same initial SDP role; the reverse pair did not, so their timings are not a directional comparison. |
 
 The production media runner retained two overbroad failures: demanding media in
 the negative control without viewer demand, and treating an unselected source
 convergence pair as a Native retry. Saved pair identities, decode counters and
 packet capture independently establish the reported media result. They do not
 establish every cancellation path.
+
+The Domain45 direction control preserved a failed final assertion that expected
+retirement within 10 seconds of abrupt Browser closure, shorter than the session
+resume window. Its media result is supported by the same run's selected tuple,
+packet capture and decoded frames. Explicit participant Leave retired the other
+direction's target. These controls do not measure physical-network success rates.
 
 Current App-to-Browser production uses one existing IPv4 base and its concurrent
 STUN work. The later eight-socket pool and resource experiments remain isolated
