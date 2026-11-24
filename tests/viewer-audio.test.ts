@@ -1,3 +1,4 @@
+import { playbackOutput } from "../src/client/media/playback-output";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ViewerAudio, VoicePlaybackContext } from "../src/client/media/viewer-audio.ts";
@@ -304,4 +305,25 @@ describe("Viewer local audio", () => {
     expect(video.muted).toBe(true);
     audio.dispose();
   });
+});
+
+it("waits for the selected output before enabling playback gain", async () => {
+  let complete!: () => void;
+  class DelayedContext extends PlaybackContext {
+    setSinkId() { return new Promise<void>(resolve => { complete = resolve; }); }
+  }
+  vi.stubGlobal("AudioContext", DelayedContext);
+  vi.stubGlobal("MediaStream", AudioStream);
+  await playbackOutput.choose("headphones");
+  const audio = new ViewerAudio(new PlaybackVideo() as unknown as HTMLVideoElement, vi.fn());
+  try {
+    audio.bind(new AudioStream([audioTrack()]) as unknown as MediaStream);
+    audio.setLevel(1.5);
+    const context = PlaybackContext.instances.at(-1)!;
+    context.start();
+    await vi.waitFor(() => expect(complete).toBeDefined());
+    expect(context.gain.gain.value).toBe(0);
+    complete();
+    await vi.waitFor(() => expect(context.gain.gain.value).toBe(1.5));
+  } finally { complete?.(); audio.dispose(); await playbackOutput.choose(""); vi.unstubAllGlobals(); }
 });

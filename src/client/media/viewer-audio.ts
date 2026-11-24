@@ -12,7 +12,8 @@ export interface ViewerAudioSnapshot {
 export class VoicePlaybackContext {
   private context: AudioContext | null = null;
   private outputs = 0;
-  private detach?: () => void;
+  private detach?: ReturnType<typeof playbackOutput.attach>;
+  get output() { return this.detach; }
 
   acquire(): AudioContext {
     if (!this.context) {
@@ -41,8 +42,8 @@ export class ViewerAudio {
   private source: MediaStreamAudioSourceNode | null = null;
   private track: MediaStreamTrack | null = null;
   private disposed = false;
-  private detachElement: () => void;
-  private detachContext?: () => void;
+  private detachElement: ReturnType<typeof playbackOutput.attach>;
+  private detachContext?: ReturnType<typeof playbackOutput.attach>;
   private nativeVolume: number;
   private nativeMuted: boolean;
   private readonly releaseDebug: () => void;
@@ -72,6 +73,10 @@ export class ViewerAudio {
     video.addEventListener("volumechange", this.onNativeVolume);
     for (const event of ["pause", "ended"]) {
       video.addEventListener(event, this.sync);
+    }
+    if (this.detachElement.getWaiting()) {
+      this.sync();
+      void this.detachElement.ready.then(this.sync);
     }
     onChange(this.snapshot);
   }
@@ -104,6 +109,8 @@ export class ViewerAudio {
       try {
         this.context = this.voiceContext?.acquire() ?? new AudioContext();
         if (!this.voiceContext) this.detachContext = playbackOutput.attach(this.context);
+        const output = this.detachContext ?? this.voiceContext?.output;
+        if (output?.getWaiting()) void output.ready.then(this.sync);
         this.gain = this.context.createGain();
         this.gain.gain.value = 0;
         this.gain.connect(this.context.destination);
@@ -179,7 +186,8 @@ export class ViewerAudio {
 
   private readonly sync = (): void => {
     if (this.disposed) return;
-    const boosted = this.context?.state === "running" && this.source !== null;
+    const output = this.detachContext ?? this.voiceContext?.output;
+    const boosted = !output?.getWaiting() && this.context?.state === "running" && this.source !== null;
     if (this.gain) {
       this.gain.gain.value =
         boosted && !this.muted && !this.video.paused && !this.video.ended
@@ -187,7 +195,7 @@ export class ViewerAudio {
           : 0;
     }
     this.video.volume = Math.min(this.level, 1);
-    this.video.muted = this.muted || this.level === 0 || boosted;
+    this.video.muted = this.detachElement.getWaiting() || this.muted || this.level === 0 || boosted;
     // iPhone may ignore volume writes; echoes must match actual native state,
     // while the requested listening level stays owned by the gain graph.
     this.nativeVolume = this.video.volume;

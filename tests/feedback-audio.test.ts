@@ -1,3 +1,4 @@
+import { playbackOutput } from "../src/client/media/playback-output";
 import { afterEach, expect, test, vi } from "vitest";
 import { FeedbackAudio } from "../src/client/channel/feedback-audio";
 import { validateCustomFeedbackClip } from "../src/client/channel/feedback-clip";
@@ -166,4 +167,33 @@ test("muting a cue stops only that cue and cancels its pending preview", async (
   audio.play("message");
   expect(context.oscillators).toHaveLength(3);
   audio.close();
+});
+
+test("drops notifications until the selected output is ready", async () => {
+  let complete: (() => void) | undefined;
+  class DelayedContext extends AudioBoundary {
+    setSinkId() { return complete ? Promise.resolve() : new Promise<void>(resolve => { complete = resolve; }); }
+  }
+  vi.stubGlobal("document", new EventTarget());
+  vi.stubGlobal("AudioContext", DelayedContext);
+  let release!: () => void;
+  const blocker = playbackOutput.attach({ setSinkId: () => new Promise<void>(resolve => { release = resolve; }) } as unknown as HTMLMediaElement);
+  const choosing = playbackOutput.choose("headphones");
+  await vi.waitFor(() => expect(release).toBeDefined());
+  const audio = new FeedbackAudio();
+  try {
+    audio.configure({ enabled: true, volume: 1 });
+    audio.activate();
+    await Promise.resolve();
+    const { oscillators } = AudioBoundary.instances[0];
+    audio.play("message");
+    expect(oscillators).toHaveLength(0);
+    release();
+    await vi.waitFor(() => expect(complete).toBeDefined());
+    complete!();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(oscillators).toHaveLength(0);
+    audio.play("message");
+    expect(oscillators[0].start).toHaveBeenCalledOnce();
+  } finally { blocker(); release(); complete?.(); audio.close(); await choosing; await playbackOutput.choose(""); }
 });

@@ -40,3 +40,20 @@ it("keeps healthy outputs on the chosen device when a retiring output rejects la
   stopHealthy();
   await playbackOutput.choose("");
 });
+
+it("recovers a rejected initial output on default selection while other outputs become ready", async () => {
+  await playbackOutput.choose("headphones");
+  const refused = playbackOutput.attach({ setSinkId: async (id: string) => {
+    if (id) throw Error("unavailable");
+  } } as unknown as HTMLMediaElement);
+  const healthy = playbackOutput.attach({ setSinkId: async () => {} } as unknown as HTMLMediaElement);
+  try {
+    await healthy.ready;
+    expect(refused.getWaiting()).toBe(true);
+    expect(playbackOutput.failed).toBe(true);
+    await playbackOutput.choose("");
+    await refused.ready;
+    expect(refused.getWaiting()).toBe(false);
+    expect(playbackOutput.failed).toBe(false);
+  } finally { refused(); healthy(); await playbackOutput.choose(""); }
+});
