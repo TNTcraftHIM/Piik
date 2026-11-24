@@ -98,7 +98,7 @@ constexpr LONGLONG kFastCaptureUpdateInterval100ns = 40'000;
 #ifdef PIIK_H264_FIXTURE
 constexpr UINT32 kFrameRate = kDefaultVideoProfile.frame_rate;
 constexpr UINT32 kBitRate = kDefaultVideoProfile.bit_rate;
-constexpr UINT32 kGopFrames = kFrameRate * 2;
+constexpr UINT32 kFixtureRecoveryRequestFrames = kFrameRate * 2;
 constexpr UINT32 kMaxEventsPerPump = 64;
 constexpr UINT32 kFrameCount = 360;
 constexpr UINT32 kRateProbeBitRate = kBitRate / 2;
@@ -364,7 +364,7 @@ struct RunEvidence final {
 
 #ifdef PIIK_H264_FIXTURE
 bool IsRecoveryFrame(UINT32 frame) {
-  return frame % kGopFrames == 0;
+  return frame % kFixtureRecoveryRequestFrames == 0;
 }
 
 double Percentile95(std::vector<double> values) {
@@ -2142,6 +2142,7 @@ void RunVideoCapture(ProductArguments arguments) {
     UINT64 minimum_capture_timestamp = 0;
     bool window_minimized = false;
     UINT64 next_output_timestamp = 0;
+    const UINT32 presentation_sample_frames = arguments.profile.frame_rate * 2;
     UINT64 source_frames = 0;
     auto pool_size = initial_size;
     std::shared_ptr<const CaptureInput> latest_input;
@@ -2266,7 +2267,7 @@ void RunVideoCapture(ProductArguments arguments) {
       input->timestamp = *presentation_timestamp;
       input->capture_timestamp = timestamp;
       input->presentation = presentation.Resolve(content_width, content_height,
-          source_frames % arguments.profile.gop_frames() == 0);
+          source_frames % presentation_sample_frames == 0);
       latest.Close();
       latest = nullptr;
       previous_capture_timestamp = timestamp;
