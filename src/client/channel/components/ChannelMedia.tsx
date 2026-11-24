@@ -1,7 +1,7 @@
 import { playbackOutput } from "../../media/playback-output";
 import { PlaybackDeviceSelect } from "./PlaybackDeviceSelect";
 import { useWatchPageSlot } from "./use-watch-page-slot";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type CSSProperties, type ReactNode } from "react";
 import { Btn } from "../../components/living/primitives";
 import { BrandMark } from "../../components/living/BrandMark";
 import { PlaybackControlsReveal } from "../../components/living/PlaybackControlsReveal";
@@ -258,7 +258,8 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       : player.blocked && <div className="c3-mini-message"><Btn icon={localSeek ? "refresh" : "play"} title={resumeLabel} cap={resumeLabel} onClick={onResume} /></div>}
     {hasControls && <div ref={controls} className={`c3-mini-controls c3-watch-controls lr-media-toolbar lr-media-controls lr-media-overlay`} role="group" aria-label={t("playback.controls")}>
       {showTimeline && <div className="c3-watch-timeline">
-        {owned ? <input type="range" min={seekStart} max={seekEnd} step="0.1" value={position}
+        {owned ? <input className="lr-range" type="range" min={seekStart} max={seekEnd} step="0.1" value={position}
+          style={{ "--range-fill": `${100 * (position - seekStart) / (seekEnd - seekStart)}%` } as CSSProperties}
           aria-label={t("watch.seek")} disabled={disabled}
           aria-valuetext={timeLabel} onPointerDown={() => { draggingSeek.current = true; }}
           onInput={event => {
@@ -268,7 +269,8 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
           }}
           onPointerUp={event => { draggingSeek.current = false; onPlayback({ position: Number(event.currentTarget.value) }); setSeekPreview(null); }}
           onPointerCancel={() => { draggingSeek.current = false; setSeekPreview(null); }} />
-          : <progress max={seekEnd - seekStart} value={position - seekStart} aria-label={t("watch.following")} />}
+          : <progress className="lr-range" max={seekEnd - seekStart} value={position - seekStart}
+            aria-label={t("watch.following")} aria-valuetext={timeLabel} />}
       </div>}
       <div className="c3-watch-actions">
         {!embedded && <div className="c3-watch-shared" role="group" aria-label={t(owned ? "watch.sharedControls" : "watch.following")}>

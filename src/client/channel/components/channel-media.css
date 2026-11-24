@@ -61,14 +61,16 @@
   > .c3-mini-message { position: relative; inset: auto; padding: 4px 8px; }
   > .c3-watch-controls { position: relative; inset: auto; margin-block-end: 10px; }
 }
-.c3-watch-timeline { display: grid; align-items: center; min-height: 18px; }
+.c3-watch-timeline {
+  --range-track: color-mix(in srgb, var(--control-edge) 65%, transparent);
+  display: grid;
+  align-items: center;
+  min-height: 24px;
+  padding-inline: 2px;
+}
 .c3-watch-timeline :is(input, progress) { min-width: 0; width: 100%; margin: 0; accent-color: var(--action); }
-.c3-watch-timeline input { height: 28px; cursor: pointer; touch-action: pan-y; }
+.c3-watch-timeline input { height: 32px; border-radius: 6px; cursor: pointer; touch-action: pan-y; }
 .c3-watch-timeline input:disabled { cursor: default; }
-.c3-watch-timeline progress { appearance: none; height: 6px; border: 0; border-radius: 999px; overflow: hidden; background: var(--control-edge); }
-.c3-watch-timeline progress::-webkit-progress-bar { background: var(--control-edge); }
-.c3-watch-timeline progress::-webkit-progress-value { background: var(--action); }
-.c3-watch-timeline progress::-moz-progress-bar { background: var(--action); }
 .c3-watch-position { display: flex; align-items: center; gap: 6px; min-width: 0; padding-inline: 2px; font-size: 12px; line-height: 1.2; }
 .c3-watch-status { flex: none; white-space: nowrap; font-weight: 650; }
 .c3-watch-time { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -131,7 +133,6 @@
   width: calc(100% - 2 * var(--mini-controls-inset));
   padding: 2px clamp(6px, 1.5cqi, 12px) 5px;
 }
-.c3-watch-timeline { padding-inline: 2px; }
 .c3-watch-actions { gap: clamp(3px, 1cqi, 10px); }
 .c3-watch-time strong { color: var(--ink); font-weight: 650; }
 .c3-watch-position[data-seeking] .c3-watch-time strong { color: var(--action); }
@@ -142,7 +143,7 @@
   .c3-watch-actions { gap: 2px; }
 }
 .c3-watch-receiving .lr-btn:has(> .lr-cap) { width: fit-content; min-height: var(--control-compact-size); padding-inline: 8px; }
-@media (pointer: coarse) {
+@media (any-pointer: coarse) {
   .c3-watch-controls .lr-btn:not(:where(.c3-watch-controls [popover] *)) { --button-size: clamp(28px, 11.5cqi, var(--control-compact-size)); }
   .c3-watch-timeline input, .c3-watch-inline-volume input { height: 36px; }
 }
