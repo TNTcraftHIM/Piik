@@ -18,6 +18,7 @@ interface Endpoint { pairId: string; flowId: string; channel: EncryptedInput }
 
 /** Page-owned encrypted endpoints; shared Rust owns every committed hop. */
 export class ChannelInput {
+  private serialized?: { state: ChannelSnapshot; sessionId: string; json: string };
   private channels = new Map<string, { channel: RTCDataChannel; remove(): void }>();
   private endpoints = new Map<string, Endpoint>();
   private bindings = new Map<string, Binding>();
@@ -60,7 +61,7 @@ export class ChannelInput {
     for (const [key, binding] of this.bindings) {
       const hops = [binding.upstream, binding.downstream].filter((hop): hop is Hop => hop !== null);
       if (!hops.some(hop => hop.pairId === pairId)) continue;
-      if (sessionId && state && this.runtime?.input_binding_current(JSON.stringify(binding), sessionId, JSON.stringify(state))) {
+      if (sessionId && state && this.runtime?.input_binding_current(JSON.stringify(binding), sessionId, this.stateJson(state, sessionId))) {
         for (const hop of hops) if (hop.pairId !== pairId && this.channels.get(hop.pairId)?.channel.readyState === "open") {
           this.options.send(hop.peerId, JSON.stringify({ publicationId: binding.publicationId,
             controllerSessionId: binding.controllerSessionId, routeId: binding.routeId, flowId: hop.flowId, closed: true } satisfies Frame));
@@ -73,6 +74,9 @@ export class ChannelInput {
 
   update(): void {
     const { sessionId, state, connected } = this.options.context();
+    if (this.serialized && (this.serialized.state !== state || this.serialized.sessionId !== sessionId)) {
+      this.serialized = undefined;
+    }
     let changed = false;
     const selected = new Map<string, { pairId: string; flowId: string }>();
     if (sessionId && state) for (const pair of state.pairs) {
@@ -111,9 +115,16 @@ export class ChannelInput {
       changed = true;
     }
     if (sessionId && state && this.runtime) for (const [key, binding] of this.bindings) {
-      if (!this.runtime.input_binding_current(JSON.stringify(binding), sessionId, JSON.stringify(state))) this.bindings.delete(key);
+      if (!this.runtime.input_binding_current(JSON.stringify(binding), sessionId, this.stateJson(state, sessionId))) this.bindings.delete(key);
     }
     if (changed) this.options.changed(new Map([...this.endpoints].map(([id, endpoint]) => [id, endpoint.channel])));
+  }
+
+  private stateJson(state: ChannelSnapshot, sessionId: string): string {
+    if (this.serialized?.state !== state || this.serialized.sessionId !== sessionId) {
+      this.serialized = { state, sessionId, json: JSON.stringify(state) };
+    }
+    return this.serialized.json;
   }
 
   private async ready(): Promise<Runtime> {
@@ -127,7 +138,7 @@ export class ChannelInput {
     const { sessionId, state } = this.options.context();
     if (!sessionId || !state) return null;
     const key = this.key(frame), binding = this.bindings.get(key);
-    const routed = JSON.parse(runtime.route_input(JSON.stringify(frame), sessionId, JSON.stringify(state), from,
+    const routed = JSON.parse(runtime.route_input(JSON.stringify(frame), sessionId, this.stateJson(state, sessionId), from,
       binding === undefined ? undefined : JSON.stringify(binding))) as Routed;
     if (routed.route.binding) this.bindings.set(key, routed.route.binding);
     if (frame.closed) this.bindings.delete(key);
@@ -157,7 +168,7 @@ export class ChannelInput {
     if (!routed || this.channels.get(pairId)?.channel !== channel) return;
     if (routed.route.nextHop) {
       const current = this.options.context();
-      if (current.sessionId && current.state && runtime.input_binding_current(JSON.stringify(routed.route.binding), current.sessionId, JSON.stringify(current.state))) {
+      if (current.sessionId && current.state && runtime.input_binding_current(JSON.stringify(routed.route.binding), current.sessionId, this.stateJson(current.state, current.sessionId))) {
         this.options.send(routed.route.nextHop, JSON.stringify(routed.frame));
       }
       return;
@@ -182,6 +193,7 @@ export class ChannelInput {
     for (const channel of this.channels.values()) channel.remove();
     this.channels.clear();
     this.bindings.clear();
+    this.serialized = undefined;
     this.options.changed(new Map());
   }
 }

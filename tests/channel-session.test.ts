@@ -6466,6 +6466,61 @@ test("stopping a watch during signaling recovery closes its input before retirin
   } finally { control?.dispose(); session.close(); }
 });
 
+test("relayed input uses the current snapshot across rerouting, revocation and reset", async () => {
+  const { session } = await setup();
+  const [local, viewer, source, alternate, userId, publicationId, pairId, routeId] =
+    Array.from({ length: 8 }, () => crypto.randomUUID());
+  const base = session.getSnapshot().state!;
+  const channel = { ...base.channel, id: crypto.randomUUID(), ownerId: userId,
+    rooms: base.channel.rooms.map(room => ({ ...room, creatorId: userId, participantSessionIds: [viewer],
+      delivery: { hostSessionId: source, bindingId: crypto.randomUUID() } })) };
+  const upstream = (peerId: string) => ({ id: crypto.randomUUID(), peerId, canReceiveVideoLayers: false, rooms: ["first"],
+    outgoing: [], incoming: [{ id: crypto.randomUUID(), publicationId, selected: true, inputFlowId: null }] });
+  const first = upstream(source), second = upstream(alternate);
+  const downstream = (inputFlowId: string, selected = true) => ({ id: pairId, peerId: viewer, canReceiveVideoLayers: false,
+    rooms: ["first"], incoming: [], outgoing: [{ id: routeId, publicationId, selected, inputFlowId }] });
+  let state = { ...base, channel, users: [{ id: userId, name: "Viewer", version: profileVersion }],
+    sessions: [local, viewer, source, alternate].map(id => ({ id, userId, online: true, signingKey: testSigningKey })),
+    publications: [{ id: publicationId, roomId: "first", sessionId: source, userId, kind: "screen" as const,
+      source: { kind: "screen" as const, name: null }, title: null, audience: [], paused: false,
+      videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]) }],
+    pairs: [first, second, downstream(first.incoming[0].id)] };
+  const send = vi.fn(() => true);
+  const input = new ChannelInput({ context: () => ({ sessionId: local, state, connected: true }),
+    register: async () => {}, send, changed: () => {} });
+  const carrier = new RoomDataChannel("piik-input", {});
+  const attach = () => input.setChannel(pairId, carrier as unknown as RTCDataChannel);
+  const data = JSON.stringify({ publicationId, controllerSessionId: viewer, routeId, flowId: routeId, ready: true });
+  const receive = async () => {
+    carrier.dispatchEvent(new MessageEvent("message", { data }));
+    await new Promise(resolve => setTimeout(resolve, 0));
+  };
+  try {
+    const runtime = await hosting.loadRoomHosting();
+    vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue(runtime);
+    const stringify = vi.spyOn(JSON, "stringify");
+    const encodes = () => stringify.mock.calls.filter(([value]) => value === state).length;
+    attach();
+    await receive();
+    await receive();
+    expect(send.mock.calls).toEqual([[source, expect.any(String)], [source, expect.any(String)]]);
+    expect(encodes()).toBe(1);
+    state = { ...state, pairs: [first, second, downstream(second.incoming[0].id)] };
+    await receive();
+    expect(send).toHaveBeenLastCalledWith(alternate, expect.any(String));
+    expect(encodes()).toBe(1);
+    input.reset();
+    attach();
+    await receive();
+    expect(encodes()).toBe(2);
+    expect(send).toHaveBeenCalledTimes(4);
+    state = { ...state, pairs: [first, second, downstream(second.incoming[0].id, false)] };
+    await receive();
+    expect(encodes()).toBe(1);
+    expect(send).toHaveBeenCalledTimes(4);
+  } finally { input.reset(); session.close(); }
+});
+
 test("screen input shares its existing pair and retains only the committed flow's control session", async () => {
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   RoomPeerConnection.instances = [];
