@@ -223,7 +223,7 @@ the feedback period; they do not delay that delivery.
 
 - [ ] **Shared participant rules and decoding.** Extract a demonstrated common
   Browser/Native rule before introducing a stateful Core participant. Measure
-  repeated input-frame snapshot serialization and prove a per-connection decoder
+  remaining WASM snapshot parsing and prove a per-connection decoder
   preserves image restoration. Any generated types must replace their old owner
   and retain runtime validation, omission and null semantics.
 - [ ] **Capture operation cohesion.** Compare a single local preparation-phase
