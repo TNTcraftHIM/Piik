@@ -27,12 +27,12 @@ const emptyDraft: Draft = { text: "", mentions: [], files: [] };
 type FailedSend = { bindingId?: string; draft: Draft; reason: "failed" | "cancelled" | "replyUnavailable" };
 
 /** Browsing owns the conversation; drafts and reading position belong to this pane. */
-export function ChannelConversation({ domainId, roomId, bindingId, roomName, roomIcon, roomPicture, entry, messages, users, profiles, queryProfiles, selfUserId, canSend, sending, onSend, onDiscardSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, onMessage, findUnreadMessage, unreadAfter, lastMessageSeq, onRead, interaction, onBack, onDeleteMessage, canModerate, pending, historyChanges }: {
+export function ChannelConversation({ domainId, roomId, bindingId, roomName, roomIcon, roomPicture, entry, messages, users, profiles, queryProfiles, selfUserId, authorized, canSend, sending, onSend, onDiscardSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, onMessage, findUnreadMessage, unreadAfter, lastMessageSeq, onRead, interaction, onBack, onDeleteMessage, canModerate, pending, historyChanges }: {
   domainId: string | undefined; roomId: string; bindingId?: string; roomName: string; roomIcon?: string; roomPicture?: string; messages: ChannelMessage[]; users: ChannelUserSummary[];
   profiles: ReadonlyMap<string, ChannelUser>; queryProfiles: ChannelController["queryProfiles"];
   entry?: ChannelEntry;
   selfUserId?: string | null;
-  canSend: boolean; sending: boolean; hidden: boolean; available: boolean;
+  authorized: boolean | undefined; canSend: boolean; sending: boolean; hidden: boolean; available: boolean;
   floating?: boolean;
   attachments: ChannelAttachments; attachmentsAvailable?: boolean; history?: ChannelController["historyByRoom"][string]; loadingHistory: boolean;
   onHistory: (roomId: string) => Promise<void>;
@@ -166,9 +166,9 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
   useLayoutEffect(() => { editingDrafts.current = drafts; editingScope.current = conversationScope; }, [drafts, conversationScope]);
   const quote = draft.reply;
   const projectedTarget = quote && messages.find(message => message.seq === quote.seq);
-  const quoteUnavailable = !!quote && (messageRemoved(historyChanges, quote.seq)
+  const quoteUnavailable = !!quote && (authorized === false || messageRemoved(historyChanges, quote.seq)
     || !!projectedTarget && projectedTarget.id !== quote.messageId);
-  const draftReply = quoteUnavailable ? undefined : quote;
+  const draftReply = authorized && !quoteUnavailable ? quote : undefined;
   const clearReply = useCallback((messageId: string) => {
     setDrafts(previous => {
       const value = previous[conversationScope];
@@ -591,7 +591,7 @@ export function ChannelConversation({ domainId, roomId, bindingId, roomName, roo
           else void loadMentions(mentionPage.next ?? undefined);
         }} />}
       <div className="c3-compose-input">
-      {attachmentsAvailable && <><input ref={chooser} type="file" multiple hidden onChange={event => { addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ""; }} />
+      {attachmentsAvailable && <><input key={conversationScope} ref={chooser} type="file" multiple hidden onChange={event => { addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ""; }} />
         <ChannelAction icon="plus" label={t("conversation.addFiles")} iconOnly quiet hint="hint-file-add"
           disabled={!canSend || !limits} onClick={() => chooser.current?.click()} /></>}
       <textarea ref={input} rows={1} enterKeyHint="enter" aria-label={t("conversation.message")} value={draft.text}

@@ -210,10 +210,11 @@ export function ChannelRoomSettingsDialog({ channel, room, onClose }: {
 }
 type RoomSettingsTask = "room" | "relay" | "data";
 
-function RoomCopyExport({ channel, roomId, includeFiles, disabled, busy, run }: {
-  channel: ChannelController; roomId: string; includeFiles: boolean; disabled: boolean; busy: boolean; run: SettingsAction;
+function RoomCopyExport({ channel, roomId, includeFiles, disabled, busy }: {
+  channel: ChannelController; roomId: string; includeFiles: boolean; disabled: boolean; busy: boolean;
 }) {
   const { t } = useCopy();
+  const { error, run } = useSettingsAction();
   const [includeRoomInfo, setIncludeRoomInfo] = useState(true);
   const [exporting, setExporting] = useState(false);
   return <section className="c3-backup-controls">
@@ -225,6 +226,7 @@ function RoomCopyExport({ channel, roomId, includeFiles, disabled, busy, run }: 
     <ChannelAction icon="save" quiet label={t("room.copy.export")} disabled={disabled || busy} busy={exporting}
       onClick={() => { setExporting(true); void run(signal => channel.exportRoomCopy(roomId, includeRoomInfo, includeFiles, signal), blob => downloadBlob(blob, "piik-room-copy.zip"))
         .finally(() => setExporting(false)); }} />
+    <ChannelSettingsError error={error} />
   </section>;
 }
 
@@ -251,6 +253,8 @@ function RoomSettings({ channel, room, onClose }: {
   const { t } = useCopy();
   const id = useId();
   const { error, run } = useSettingsAction();
+  const cacheAction = useSettingsAction();
+  const historyAction = useSettingsAction();
   const [draft, setDraft] = useState<Partial<RoomDraft>>({});
   const [task, setTask] = useState<RoomSettingsTask>(room.canManage ? "room" : "relay");
   const [backupAvailable, setBackupAvailable] = useState(false);
@@ -332,15 +336,17 @@ function RoomSettings({ channel, room, onClose }: {
             <ChannelAction icon="x" quiet label={t("room.settings.clearLocalCache")} busy={clearingCache} disabled={working || purging || clearingCache}
               onClick={() => {
                 if (window.confirm(t("room.settings.confirmClearLocalCache", { name: room.name })))
-                  void run(() => channel.clearLocalRoomCache(room.id));
+                  void cacheAction.run(() => channel.clearLocalRoomCache(room.id));
               }} />
+            <ChannelSettingsError error={cacheAction.error} />
           </section>}
           {canPurge && <div>
             <ChannelAction icon="x" quiet danger label={t("room.chat.purgeHistory")} busy={purging} disabled={!available || working}
               onClick={() => {
                 if (window.confirm(t("room.chat.confirmPurgeHistory", { name: room.name })))
-                  void run(() => channel.purgeRoomHistory(room.id));
+                  void historyAction.run(() => channel.purgeRoomHistory(room.id));
               }} />
+            <ChannelSettingsError error={historyAction.error} />
           </div>}
           {room.canManage && backupAvailable && <section className="c3-backup-controls">
             <label className="c3-check"><input type="checkbox" checked={includeFiles} disabled={!available || working}
@@ -348,7 +354,7 @@ function RoomSettings({ channel, room, onClose }: {
             <p>{t("room.backup.fileScope")}</p>
             {fileLimits && <p>{t("room.backup.fileLimits", { count: String(fileLimits.maxRetainedFiles), size: fileSize(fileLimits.maxRetainedBytes) })}</p>}
           </section>}
-          {room.canManage && backupAvailable && <RoomCopyExport channel={channel} roomId={room.id} includeFiles={includeFiles} run={run}
+          {room.canManage && backupAvailable && <RoomCopyExport channel={channel} roomId={room.id} includeFiles={includeFiles}
             disabled={!available || busy || removing} busy={backupBusy} />}
           {room.canManage && backupAvailable && <h3>{t("room.backup.title")}</h3>}
           {room.canManage && backupAvailable && inviteOnly && <p>{t("room.backup.inviteOnlyNote")}</p>}

@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-23
+Last updated: 2026-11-24
 
 Internal 3.0 evidence spans several revisions. Each package receipt identifies the
 build and workload it covers. Delivery readiness and published 2.x verification
@@ -62,6 +62,11 @@ from users' networks remain open. [Website and field checks](./todo.md)
 ## Device Evidence Boundary
 
 ### Windows And Android
+
+The beta.50 Android APK opened its system-browser interface on an isolated API 35
+x86_64 emulator. Local room chat, an independent matching text participant,
+image preview and system Back from sharing settings and image preview passed.
+That package's live MediaProjection/MediaCodec path remains unverified.
 
 The matched beta.39 Windows WebView2 and Android Chrome endpoints exchanged
 chat, video and synthetic audio on local P2P UDP. The Android endpoint ran on an

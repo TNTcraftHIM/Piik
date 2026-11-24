@@ -375,7 +375,7 @@ with the codec comparison. If both codecs fail, also check
 
 ### When video will not connect
 
-1. **Viewer.** If the picture says **Waiting for a video route**, ask the person sharing to check their preview. If the affected picture shows **Retry picture**, select it. If the preview works but you still have no picture, try another network such as a phone hotspot.
+1. **Viewer.** If the picture says **Waiting for a video route**, ask the person sharing to check their preview. If the affected picture shows **Retry picture**, select it. If the preview works but you still have no picture, try another network such as a phone hotspot for a **public invitation**. For a **local or virtual-LAN invitation**, stay connected to that network and [check local access and UDP firewall rules](#local-invitation-will-not-open).
 2. **Person sharing.** Check that the preview for that share is playing. If the preview is blank, check the selected window or screen.
 3. **Site operator and room manager.** The site operator makes the forwarding service available. A room manager opens **Room settings → Connection** and enables **Allow site forwarding** for that room. Once both are in place, Piik can use the service automatically when the route needs it.
 

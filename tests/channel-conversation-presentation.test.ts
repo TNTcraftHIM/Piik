@@ -11,7 +11,7 @@ function historyMarkup(times: number[]) {
     userId: "author", text: `Message ${index + 1}`, time, attachments: [] }));
   return renderToStaticMarkup(createElement(ConversationView, {
     domainId: "site", roomId: "room", roomName: "Room", messages, users: [], profiles: new Map(),
-    queryProfiles: async () => ({ profiles: [], total: 0, nextCursor: null }), selfUserId: "self", canSend: true,
+    queryProfiles: async () => ({ profiles: [], total: 0, nextCursor: null }), selfUserId: "self", authorized: true, canSend: true,
     sending: false, hidden: false, available: true, attachments: {} as never, attachmentsAvailable: false,
     history: { hasMore: false, atLatest: true }, loadingHistory: false, onHistory: async () => {},
     onLatest: async () => {}, onSend: async () => {}, interaction: null,

@@ -224,7 +224,7 @@ fn render(state: &Value, notice: Option<&str>, error: Option<&str>, width: usize
     } else if state["target"].is_string() {
         "Site ready / 站点已就绪"
     } else {
-        "Standby · choose a site in the launcher / 待命，请在启动页选择站点"
+        "Standby / 待命"
     };
     lines.push(status.into());
     if let Some(notice) = notice.filter(|v| !v.is_empty()) {
@@ -261,7 +261,7 @@ fn render(state: &Value, notice: Option<&str>, error: Option<&str>, width: usize
     lines.push(if state["debug"].as_bool() == Some(true) {
         "D + Enter  Export App report / 导出 App 报告".into()
     } else {
-        "D + Enter  App report · enable Debug in launcher first / App 报告，请先在启动页启用调试"
+        "D + Enter  App report / App 报告\n  Enable Debug in launcher first / 请先在启动页启用调试"
             .into()
     });
     lines.push("Q + Enter  Quit normally / 正常退出   ·   Ctrl+C".into());
@@ -351,6 +351,6 @@ mod tests {
     fn diagnostics_are_an_explicit_export_without_a_second_enabled_state() {
         assert!(render(&json!({"debug":true}), None, None, 44).contains("Export App report"));
         assert!(render(&json!({"debug":false}), None, None, 44)
-            .contains("enable Debug in launcher first"));
+            .contains("Enable Debug in launcher first"));
     }
 }
