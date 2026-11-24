@@ -2,7 +2,7 @@
 use crate::{
     attachment::AttachmentDescriptor,
     identity::Endpoint,
-    routes::{activity_parents, RelayLimits},
+    routes::{ByteTree, RelayLimits},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -38,9 +38,7 @@ struct File {
     attachment: AttachmentDescriptor,
     holders: BTreeSet<Uuid>,
     receivers: BTreeSet<Uuid>,
-    source: Option<Uuid>,
-    parents: BTreeMap<Uuid, Uuid>,
-    refused: BTreeSet<(Uuid, Uuid)>,
+    bytes: ByteTree,
 }
 impl File {
     fn source_limit(&self, session: Uuid, endpoint: &Endpoint, limits: &RelayLimits) -> usize {
@@ -87,9 +85,7 @@ impl FileRoom {
             attachment,
             holders: BTreeSet::new(),
             receivers: BTreeSet::new(),
-            source: None,
-            parents: BTreeMap::new(),
-            refused: BTreeSet::new(),
+            bytes: ByteTree::default(),
         });
         if offer {
             file.holders.insert(session);
@@ -128,15 +124,13 @@ impl FileRoom {
         for file in self.files.values_mut() {
             file.holders.retain(|id| admitted.contains(id));
             file.receivers.retain(|id| admitted.contains(id));
-            file.refused.retain(|(sender, peer)| {
-                !file.receivers.is_empty() && routable(sender) && routable(peer)
-            });
+            file.bytes.retain_refused(&file.receivers, routable);
             if file
-                .source
+                .bytes
+                .source()
                 .is_none_or(|source| !file.holders.contains(&source))
             {
-                file.source = file.holders.first().copied();
-                file.parents.clear();
+                file.bytes.commit(file.holders.first().copied(), BTreeMap::new());
             }
         }
         self.prune();
@@ -153,47 +147,34 @@ impl FileRoom {
             .files
             .get_mut(&(seq, id))
             .ok_or("unassigned_file_branch")?;
-        if file.source != Some(source) || file.parents.get(&downstream) != Some(&sender) {
+        if !file.bytes.refuse(source, sender, downstream) {
             return Err("unassigned_file_branch");
         }
-        file.refused.insert((sender, downstream));
         Ok(())
     }
     pub fn reset_routes(&mut self) {
         for file in self.files.values_mut() {
-            file.parents.clear();
-            file.refused.clear();
+            file.bytes.clear_branches();
         }
     }
     pub fn failed_pair(&mut self, first: Uuid, second: Uuid) {
         for file in self.files.values_mut() {
-            for (child, parent) in [(first, second), (second, first)] {
-                if file.parents.get(&child) == Some(&parent) {
-                    file.parents.remove(&child);
-                }
-            }
+            file.bytes.retire_pair(first, second);
         }
     }
     pub fn forwarding_available(&mut self, sender: Uuid) {
         for file in self.files.values_mut() {
-            file.refused.retain(|(from, _)| *from != sender);
+            file.bytes.forwarding_available(sender);
         }
     }
     pub fn waiting(&self) -> bool {
-        self.files.values().any(|file| {
-            file.source.is_some_and(|source| {
-                file.receivers
-                    .iter()
-                    .any(|peer| *peer != source && !file.parents.contains_key(peer))
-            })
-        })
+        self.files.values().any(|file| file.bytes.waiting(&file.receivers))
     }
     pub fn demand(&self) -> BTreeSet<Uuid> {
         self.files
             .values()
             .filter(|file| !file.receivers.is_empty())
-            .flat_map(|file| file.source.iter().chain(file.receivers.iter()))
-            .copied()
+            .flat_map(|file| file.bytes.source().into_iter().chain(file.receivers.iter().copied()))
             .collect()
     }
     pub fn route(
@@ -205,12 +186,12 @@ impl FileRoom {
     ) {
         for file in self.files.values_mut() {
             let mut selected = None;
-            let empty = BTreeMap::new();
-            for source in file.source.into_iter().chain(
+            let current = file.bytes.source();
+            for source in current.into_iter().chain(
                 file.holders
                     .iter()
                     .copied()
-                    .filter(|id| Some(*id) != file.source),
+                    .filter(|id| Some(*id) != current),
             ) {
                 let Some(endpoint) = endpoints.get(&source) else {
                     continue;
@@ -221,19 +202,9 @@ impl FileRoom {
                 }
                 let mut grants = limits.clone();
                 grants.source_direct_limit = Some(limit);
-                let parents = activity_parents(
-                    source,
-                    &file.receivers,
-                    if Some(source) == file.source {
-                        &file.parents
-                    } else {
-                        &empty
-                    },
-                    neighbors,
-                    relays,
-                    &grants,
-                    &file.refused,
-                );
+                let parents = file
+                    .bytes
+                    .branches(source, &file.receivers, neighbors, relays, &grants);
                 let serving = !parents.is_empty();
                 if !serving && !endpoint.connected {
                     continue;
@@ -245,13 +216,8 @@ impl FileRoom {
                     break;
                 }
             }
-            if let Some((source, parents)) = selected {
-                file.source = Some(source);
-                file.parents = parents;
-            } else {
-                file.source = None;
-                file.parents.clear();
-            }
+            let (source, parents) = selected.unzip();
+            file.bytes.commit(source, parents.unwrap_or_default());
         }
     }
     pub(crate) fn collect_frontiers(
@@ -264,52 +230,28 @@ impl FileRoom {
         frontiers: &mut Vec<crate::host::DeliveryFrontier>,
     ) {
         for file in self.files.values() {
-            let Some((source, endpoint)) = file.source.and_then(|s| Some((s, endpoints.get(&s)?)))
+            let Some((source, endpoint)) = file.bytes.source().and_then(|s| Some((s, endpoints.get(&s)?)))
             else {
                 continue;
             };
             let mut limits = limits.clone();
             limits.source_direct_limit = Some(file.source_limit(source, endpoint, &limits));
-            crate::routes::Plan::byte_frontiers(
-                source,
-                &file.receivers,
-                &file.parents,
-                &file.refused,
-                unavailable,
-                neighbors,
-                relays,
-                &limits,
-                frontiers,
-            );
+            file.bytes
+                .collect_frontiers(&file.receivers, unavailable, neighbors, relays, &limits, frontiers);
         }
     }
     pub fn plans(&self, room_id: &str, session: Uuid) -> Vec<FilePlan> {
         self.files
             .iter()
             .filter_map(|((seq, _), file)| {
-                if file.receivers.is_empty() {
-                    return None;
-                }
-                let upstream = file.parents.get(&session).copied();
-                let downstream: Vec<_> = file
-                    .parents
-                    .iter()
-                    .filter_map(|(child, parent)| (*parent == session).then_some(*child))
-                    .collect();
-                let receiving = file.receivers.contains(&session);
-                if !receiving
-                    && file.source != Some(session)
-                    && upstream.is_none()
-                    && downstream.is_empty()
-                {
-                    return None;
-                }
+                let (upstream, downstream, receiving) =
+                    file.bytes.branch(file.bytes.source(), &file.receivers, session)?;
                 Some(FilePlan {
                     author_id: file.author_id,
                     room_id: room_id.into(),
                     message_seq: *seq,
                     attachment: file.attachment.clone(),
-                    source_id: file.source,
+                    source_id: file.bytes.source(),
                     upstream,
                     downstream,
                     receiving,

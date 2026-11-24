@@ -3,7 +3,7 @@ use crate::{
     history::{HistoryRequest, MessageDraft},
     identity::{Endpoint, Member},
     publication::Publication,
-    routes::{activity_parents, RelayLimits},
+    routes::{ByteTree, RelayLimits},
     transport::Flow,
     wire::{
         validate_video_settings, AudienceState, FlowState, Kind, PublicationAudience,
@@ -38,12 +38,13 @@ struct FileObservation {
 
 #[derive(Clone)]
 struct Watch {
-    refused: BTreeSet<(Uuid, Uuid)>,
-    parents: BTreeMap<Uuid, Uuid>,
+    bytes: ByteTree,
     user_id: Uuid,
     session_id: Uuid,
     source: crate::wire::WatchSource,
     playback: crate::wire::WatchPlayback,
+    // The requested provider; `bytes` holds the root its branches grew from.
+    // Changing this clears those branches or routes again in the same reconcile.
     byte_source: Option<crate::wire::WatchByteSource>,
 }
 
@@ -131,8 +132,7 @@ impl RoomRuntime {
         self.failed_data_pairs.clear();
         self.files.reset_routes();
         for watch in self.watch_activities.values_mut() {
-            watch.parents.clear();
-            watch.refused.clear();
+            watch.bytes.clear_branches();
         }
         for publication in self.publications.values_mut() {
             publication.reset_routes();
@@ -468,7 +468,7 @@ impl RoomRuntime {
         if kind.is_none_or(|kind| kind == ForwardingKind::File) {
             self.files.forwarding_available(sender);
             for watch in self.watch_activities.values_mut() {
-                watch.refused.retain(|(from, _)| *from != sender);
+                watch.bytes.forwarding_available(sender);
             }
         }
         for publication in self.publications.values_mut() {
@@ -494,10 +494,9 @@ impl RoomRuntime {
             crate::wire::ByteBranchTarget::Watch { activity_id, source } => {
                 let watch = self.watch_activities.get_mut(&activity_id).ok_or("unassigned_watch_branch")?;
                 if watch.byte_source.as_ref() != Some(&source) || sender == source.session_id
-                    || watch.parents.get(&downstream) != Some(&sender) {
+                    || !watch.bytes.refuse(source.session_id, sender, downstream) {
                     return Err("unassigned_watch_branch");
                 }
-                watch.refused.insert((sender, downstream));
                 Ok(())
             }
         }
@@ -882,8 +881,7 @@ impl RoomRuntime {
         self.watch_activities.insert(
             id,
             Watch {
-                refused: BTreeSet::new(),
-                parents: BTreeMap::new(),
+                bytes: ByteTree::default(),
                 user_id: member.user_id,
                 session_id: session,
                 source,
@@ -931,8 +929,7 @@ impl RoomRuntime {
         self.validate_watch_byte_source(member, source.as_ref(), endpoints)?;
         let activity = self.watch_activities.get_mut(&id).unwrap();
         if activity.byte_source != source {
-            activity.parents.clear();
-            activity.refused.clear();
+            activity.bytes.clear_branches();
             activity.byte_source = source;
         }
         Ok(())
@@ -954,8 +951,8 @@ impl RoomRuntime {
         }
         Ok(())
     }
-    fn watch_receivers(&self, id: Uuid) -> impl Iterator<Item = Uuid> + '_ {
-        self.activity.iter().filter_map(move |(session, activity)| {
+    fn watch_receivers(activities: &BTreeMap<Uuid, Activity>, id: Uuid) -> impl Iterator<Item = Uuid> + '_ {
+        activities.iter().filter_map(move |(session, activity)| {
             (activity.watch_subscriptions.get(&id) == Some(&crate::wire::WatchMode::Peer))
                 .then_some(*session)
         })
@@ -965,7 +962,7 @@ impl RoomRuntime {
             .iter()
             .filter_map(|(&id, activity)| Some((id, activity.byte_source.as_ref()?.session_id)))
             .flat_map(|(id, source)| {
-                self.watch_receivers(id)
+                Self::watch_receivers(&self.activity, id)
                     .map(move |receiver| (source, receiver))
             })
     }
@@ -974,24 +971,9 @@ impl RoomRuntime {
             .iter()
             .filter_map(|(id, activity)| {
                 let source = activity.byte_source.as_ref()?;
-                let receivers: BTreeSet<_> = self.watch_receivers(*id).collect();
-                if receivers.is_empty() {
-                    return None;
-                }
-                let upstream = activity.parents.get(&session).copied();
-                let downstream: Vec<_> = activity
-                    .parents
-                    .iter()
-                    .filter_map(|(child, parent)| (*parent == session).then_some(*child))
-                    .collect();
-                let receiving = receivers.contains(&session);
-                if !receiving
-                    && source.session_id != session
-                    && upstream.is_none()
-                    && downstream.is_empty()
-                {
-                    return None;
-                }
+                let receivers: BTreeSet<_> = Self::watch_receivers(&self.activity, *id).collect();
+                let (upstream, downstream, receiving) =
+                    activity.bytes.branch(Some(source.session_id), &receivers, session)?;
                 Some(crate::watch_delivery::WatchBytePlan {
                     room_id: self.policy.id.clone(),
                     activity_id: *id,
@@ -1498,41 +1480,16 @@ impl RoomRuntime {
         self.files.collect_frontiers(endpoints, &byte_neighbors, &new_relays, &limits, &self.failed_data_pairs, &mut self.delivery_frontiers);
         let mut waiting_bytes = self.files.waiting();
         for (id, watch) in &mut self.watch_activities {
-            let receivers: BTreeSet<_> = self
-                .activity
-                .iter()
-                .filter_map(|(session, activity)| {
-                    (activity.watch_subscriptions.get(id) == Some(&crate::wire::WatchMode::Peer))
-                        .then_some(*session)
-                })
-                .collect();
-            watch.refused.retain(|(from, to)| {
-                !receivers.is_empty() && routable.contains(from) && routable.contains(to)
-            });
-            watch.parents = watch
-                .byte_source
-                .as_ref()
-                .map(|source| {
-                    activity_parents(
-                        source.session_id,
-                        &receivers,
-                        &watch.parents,
-                        &byte_neighbors,
-                        &new_relays,
-                        &limits,
-                        &watch.refused,
-                    )
-                })
+            let receivers: BTreeSet<_> = Self::watch_receivers(&self.activity, *id).collect();
+            watch.bytes.retain_refused(&receivers, |peer| routable.contains(peer));
+            let source = watch.byte_source.as_ref().map(|source| source.session_id);
+            let parents = source
+                .map(|source| watch.bytes.branches(source, &receivers, &byte_neighbors, &new_relays, &limits))
                 .unwrap_or_default();
-            if let Some(source) = &watch.byte_source {
-                crate::routes::Plan::byte_frontiers(source.session_id, &receivers, &watch.parents,
-                    &watch.refused, &self.failed_data_pairs, &byte_neighbors, &new_relays, &limits, &mut self.delivery_frontiers);
-            }
-            waiting_bytes |= watch.byte_source.as_ref().is_some_and(|source| {
-                receivers
-                    .iter()
-                    .any(|peer| *peer != source.session_id && !watch.parents.contains_key(peer))
-            });
+            watch.bytes.commit(source, parents);
+            watch.bytes.collect_frontiers(&receivers, &self.failed_data_pairs, &byte_neighbors, &new_relays,
+                &limits, &mut self.delivery_frontiers);
+            waiting_bytes |= watch.bytes.waiting(&receivers);
         }
         let mut reserved = BTreeMap::<(Uuid, Uuid), usize>::new();
         for flow in self.flows().filter(|flow| {
@@ -1681,11 +1638,7 @@ impl RoomRuntime {
     fn retire_byte_pair(&mut self, first: Uuid, second: Uuid) {
         self.files.failed_pair(first, second);
         for watch in self.watch_activities.values_mut() {
-            for (child, parent) in [(first, second), (second, first)] {
-                if watch.parents.get(&child) == Some(&parent) {
-                    watch.parents.remove(&child);
-                }
-            }
+            watch.bytes.retire_pair(first, second);
         }
     }
 
