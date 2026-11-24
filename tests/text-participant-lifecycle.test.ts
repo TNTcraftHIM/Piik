@@ -32,9 +32,12 @@ test.each([
   socket.readyState = 1; socket.emit('open');
   socket.emit('message', Buffer.from(JSON.stringify({ type: 'welcome', protocol, credential: 'fixture' })));
   try {
-    await expect(connected).rejects.toMatchObject(expected);
+    const rejected = expect(connected).rejects.toMatchObject(expected);
+    await Promise.resolve();
     expect(credential).not.toHaveBeenCalled();
     expect(socket.terminate).toHaveBeenCalledOnce();
+    socket.readyState = 3; socket.emit('close');
+    await rejected;
   } finally {
     socket.readyState = 3; socket.emit('close');
     await client.stop();
@@ -254,4 +257,28 @@ test.each(['hosted', 'lightweight'] as const)('Node room creation respects %s wr
   socket.readyState = 3; socket.emit('close');
   await stopping;
   expect(vi.getTimerCount()).toBe(0);
+});
+
+test('failed initial browse retires the welcomed socket before connect rejects', async () => {
+  const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
+  const client = new TextParticipant({ url: 'ws://fixture.invalid', origin: 'http://fixture.invalid', name: 'Fixture', roomId: 'missing' });
+  const settled = vi.fn();
+  const connected = client.connect().catch((error: Error) => { settled(); return error; });
+  const socket = boundary.socket;
+  const receive = (event: object) => socket.emit('message', Buffer.from(JSON.stringify(event)));
+  socket.readyState = 1; socket.emit('open');
+  receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture', sessionId: randomUUID(),
+    selfProfile: { id: randomUUID() }, state: { channel: { hostingMode: 'hosted', rooms: [] }, sessions: [] } });
+  await Promise.resolve();
+  receive({ type: 'error', code: 'room_unavailable', requestId: socket.sent.at(-1)!.requestId });
+  try {
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(socket.terminate).toHaveBeenCalledOnce();
+    expect(settled).not.toHaveBeenCalled();
+  } finally {
+    socket.readyState = 3; socket.emit('close');
+    await client.stop();
+  }
+  expect(await connected).toMatchObject({ message: 'room_unavailable' });
+  expect(socket.eventNames()).toEqual([]);
 });

@@ -97,64 +97,75 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     if (this.socket)
       throw new Error('already_connected');
     const socket = this.socket = new WebSocket(this.options.url, { origin: this.options.origin, maxPayload: CHANNEL_EVENT_BYTES });
-    await new Promise<void>((resolve, reject) => {
-      let settled = false, welcomed = false;
-      const settle = (error?: Error) => {
-        if (settled)
-          return;
-        settled = true;
-        clearTimeout(timer);
-        socket.off('open', join);
-        if (error)
-          reject(error);
-        else
-          resolve();
-      };
-      const fail = (error: Error) => {
-        if (welcomed)
-          this.emit('failure', error);
-        settle(error);
-        socket.terminate();
-      };
-      const join = () => {
-        try {
-          this.write({ type: 'join', protocol: CHANNEL_PROTOCOL, canUsePeerTransport: false, name: this.options.name, credential: this.credential,
-            sessionId: this.sessionId, signingKey: Array.from(this.signer.signing_key()) });
-        }
-        catch (error) {
-          fail(error as Error);
-        }
-      };
-      const timer = setTimeout(() => fail(new Error('welcome_timeout')), 10000);
-      socket.once('open', join);
-      socket.on('error', fail);
-      socket.on('message', raw => {
-        try {
-          const event = decodeTextEvent(JSON.parse(raw.toString()), (raw as Buffer).byteLength);
-          if (!event) return;
-          if (!welcomed && event.type === 'error') throw new Error(event.code);
-          this.receive(event);
-          if (event.type === 'welcome') {
-            welcomed = true;
-            settle();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        let settled = false, welcomed = false;
+        const settle = (error?: Error) => {
+          if (settled)
+            return;
+          settled = true;
+          clearTimeout(timer);
+          socket.off('open', join);
+          if (error)
+            reject(error);
+          else
+            resolve();
+        };
+        const fail = (error: Error) => {
+          settle(error);
+          if (welcomed) {
+            this.emit('failure', error);
+            socket.terminate();
           }
-        }
-        catch (error) {
-          fail(error instanceof Error ? error : new Error(String(error)));
-        }
+        };
+        const join = () => {
+          try {
+            this.write({ type: 'join', protocol: CHANNEL_PROTOCOL, canUsePeerTransport: false, name: this.options.name, credential: this.credential,
+              sessionId: this.sessionId, signingKey: Array.from(this.signer.signing_key()) });
+          }
+          catch (error) {
+            fail(error as Error);
+          }
+        };
+        const timer = setTimeout(() => fail(new Error('welcome_timeout')), 10000);
+        socket.once('open', join);
+        socket.on('error', fail);
+        socket.on('message', raw => {
+          try {
+            const event = decodeTextEvent(JSON.parse(raw.toString()), (raw as Buffer).byteLength);
+            if (!event) return;
+            if (!welcomed && event.type === 'error') throw new Error(event.code);
+            this.receive(event);
+            if (event.type === 'welcome') {
+              welcomed = true;
+              settle();
+            }
+          }
+          catch (error) {
+            fail(error instanceof Error ? error : new Error(String(error)));
+          }
+        });
+        socket.once('close', () => {
+          this.socket = undefined;
+          this.state = undefined;
+          this.rejectPending();
+          settle(new Error('disconnected'));
+          socket.removeAllListeners();
+          this.emit('disconnected');
+        });
       });
-      socket.once('close', () => {
-        this.socket = undefined;
-        this.state = undefined;
-        this.rejectPending();
-        settle(new Error('disconnected'));
-        socket.removeAllListeners();
-        this.emit('disconnected');
-      });
-    });
-    this.checkSocket(socket);
-    const roomId = this.roomId ?? this.options.roomId;
-    if (roomId !== undefined) await this.browse(roomId);
+      this.checkSocket(socket);
+      const roomId = this.roomId ?? this.options.roomId;
+      if (roomId !== undefined) await this.browse(roomId);
+    } catch (error) {
+      if (!this.stopped && this.socket === socket && socket.readyState !== WebSocket.CLOSED) {
+        await new Promise<void>(resolve => {
+          socket.once('close', () => resolve());
+          socket.terminate();
+        });
+      }
+      throw error;
+    }
   }
 
   async createRoom(settings: RoomSettings): Promise<RoomSummary> {
