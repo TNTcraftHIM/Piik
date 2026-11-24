@@ -307,7 +307,7 @@ impl Drop for Core {
 struct WorkspaceOrigins {
     launcher: Option<url::Origin>,
     site: Option<url::Origin>,
-    opening: Option<url::Origin>,
+    opening: Option<(url::Origin, bool)>,
     local_room: Option<url::Origin>,
 }
 impl WorkspaceOrigins {
@@ -346,6 +346,15 @@ impl WorkspaceOrigins {
         Some(current)
     }
 
+    fn commit_opening(&mut self, loaded: Option<&url::Origin>) -> bool {
+        let Some((origin, local)) = self.opening.as_ref() else { return false };
+        if loaded != Some(origin) { return false; }
+        self.local_room = local.then(|| origin.clone());
+        self.site = Some(origin.clone());
+        self.opening = None;
+        true
+    }
+
     fn overlay_document(&self, address: &str) -> bool {
         url::Url::parse(address).is_ok_and(|url| {
             let origin = Some(url.origin());
@@ -359,7 +368,7 @@ impl WorkspaceOrigins {
         let Ok(url) = url::Url::parse(address) else { return false };
         let origin = url.origin();
         if matches!(url.scheme(), "http" | "https" | "blob")
-            && (self.launcher.as_ref() == Some(&origin) || self.site.as_ref() == Some(&origin) || self.opening.as_ref() == Some(&origin))
+            && (self.launcher.as_ref() == Some(&origin) || self.site.as_ref() == Some(&origin) || self.opening.as_ref().is_some_and(|(pending, _)| pending == &origin))
         {
             return true;
         }
@@ -395,8 +404,25 @@ fn workspace_room_navigation_ignores_launch_metadata_but_preserves_routing() {
     ] {
         assert!(origins.room_navigation(current, &target).is_none());
     }
-    origins.opening = origins.site.take();
+    origins.opening = origins.site.take().map(|origin| (origin, false));
     assert!(origins.room_navigation(current, target).is_none());
+}
+
+#[cfg(test)]
+#[test]
+fn pending_site_keeps_current_local_overlay_until_commit() {
+    let local = url::Url::parse("http://localhost:9800/").unwrap();
+    let next = url::Url::parse("http://localhost:9801/").unwrap();
+    let mut origins = WorkspaceOrigins {
+        site: Some(local.origin()),
+        local_room: Some(local.origin()),
+        opening: Some((next.origin(), false)),
+        ..WorkspaceOrigins::default()
+    };
+    assert!(!origins.commit_opening(Some(&local.origin())));
+    assert!(origins.overlay_document(local.as_str()));
+    assert!(origins.commit_opening(Some(&next.origin())));
+    assert!(!origins.overlay_document(local.as_str()));
 }
 
 fn workspace_navigation(view: &WebView, origins: Rc<RefCell<WorkspaceOrigins>>) -> Result<()> {
@@ -866,9 +892,8 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                     if prompt.as_ref().is_some_and(|dialog| dialog.stale(main)) { prompt.take(); }
                     let origin = url::Url::parse(&url).ok().map(|page| page.origin());
                     let mut origins = main.origins.borrow_mut();
-                    let switch_site = origins.opening.is_some() && origins.opening == origin;
+                    let switch_site = origins.commit_opening(origin.as_ref());
                     if switch_site {
-                        origins.site = origins.opening.take();
                         slot = None;
                         main.window.set_fullscreen(None);
                         main.position_caption(&controls, None);
@@ -1047,8 +1072,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                         else { main.content.load_url(room.as_str()) }
                     } else {
                         let origin = url::Url::parse(&url).ok().map(|u| u.origin());
-                        main.origins.borrow_mut().local_room = local.then(|| origin.clone()).flatten();
-                        main.origins.borrow_mut().opening = origin;
+                        main.origins.borrow_mut().opening = origin.map(|origin| (origin, local));
                         main.content.load_url(&url)
                     };
                     match result {
