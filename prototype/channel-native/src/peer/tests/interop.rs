@@ -72,6 +72,8 @@ async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
     .await
     .context("two actual outgoing SRs for warm A/V")?;
     let original_pc = f.driver.pairs[&sink].pc.clone();
+    let audio_at_switch = f.observed(&warm_audio.1, MediaKind::Audio).unwrap().2;
+    let video_at_switch = f.observed(&warm_video.1, MediaKind::Video).unwrap().2;
     f.plans
         .last_mut()
         .unwrap()
@@ -90,12 +92,12 @@ async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
         .await;
     f.until(|f| {
         f.observed(&warm_audio.1, MediaKind::Audio)
-            .is_some_and(|p| p.2.wrapping_sub(before_audio.2) > 9600)
+            .is_some_and(|p| (p.2.wrapping_sub(audio_at_switch) as i32) > 9600)
             && f.observed(&warm_video.1, MediaKind::Video)
-                .is_some_and(|p| p.2.wrapping_sub(before_video.2) > 18000)
+                .is_some_and(|p| (p.2.wrapping_sub(video_at_switch) as i32) > 18000)
     })
     .await
-    .context("selected candidate keeps emitting")?;
+    .context("selected candidate advances both RTP clocks after warm commit")?;
     anyhow::ensure!(
         f.output(warm_flow, MediaKind::Audio) == warm_audio
             && f.output(warm_flow, MediaKind::Video) == warm_video,

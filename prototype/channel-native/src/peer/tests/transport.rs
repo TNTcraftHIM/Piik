@@ -424,6 +424,7 @@ async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()>
     drop(retirement); // Driver's stop select cancels this exact work future.
     assert!(driver.pairs.is_empty());
     driver.retire_pair(id, crate::diagnostics::RetirementReason::PeerFailed).await;
+    log::warn!(target: "piik.rtc", "synthetic unrelated UDP warning");
     let mut bytes = Vec::new();
     crate::diagnostics::snapshot().unwrap().write_archive(&mut bytes, "test", "test", "test")?;
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))?;
@@ -433,7 +434,9 @@ async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()>
     let mut retirements = Vec::new();
     for line in lines.lines() {
         let record: serde_json::Value = serde_json::from_str(line)?;
-        if record["target"] != "piik.rtc" { continue; }
+        if record["target"] != "piik.rtc" || record["level"] != "INFO" {
+            continue;
+        }
         let detail: serde_json::Value = serde_json::from_str(record["message"].as_str().unwrap())?;
         if detail["pair"] == alias && detail["event"]["stage"] == "retirement_started" {
             retirements.push(detail);

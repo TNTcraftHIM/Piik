@@ -16,6 +16,7 @@ use ring::{
 use std::{
     fs,
     io::Write,
+    ops::RangeInclusive,
     sync::atomic::{AtomicUsize, Ordering},
     time::Duration,
 };
@@ -95,7 +96,8 @@ struct Provider {
     signature: Vec<u8>,
     body: Vec<u8>,
     corrupt: bool,
-    delay: Duration,
+    blocked_requests: Option<RangeInclusive<usize>>,
+    first_requests: Option<Arc<tokio::sync::Barrier>>,
     requests: Arc<AtomicUsize>,
     disconnected: Arc<AtomicUsize>,
 }
@@ -113,19 +115,30 @@ async fn provider_signature(AxumState(provider): AxumState<Provider>) -> Vec<u8>
     provider.signature
 }
 async fn provider_body(AxumState(provider): AxumState<Provider>) -> Response {
-    provider.requests.fetch_add(1, Ordering::SeqCst);
+    let request = provider.requests.fetch_add(1, Ordering::SeqCst);
+    let lease = BodyLease(provider.disconnected);
+    // Both providers must start before either can win prefix selection.
+    if request == 0 {
+        if let Some(barrier) = provider.first_requests {
+            barrier.wait().await;
+        }
+    }
+    let blocked = provider
+        .blocked_requests
+        .is_some_and(|range| range.contains(&request));
     let mut bytes = provider.body;
     if provider.corrupt {
         bytes[0] ^= 1;
     }
-    let lease = BodyLease(provider.disconnected);
     let stream = futures_util::stream::unfold(
         (bytes, 0, lease),
         move |(bytes, offset, lease)| async move {
             if offset == bytes.len() {
                 return None;
             }
-            tokio::time::sleep(provider.delay).await;
+            if blocked {
+                std::future::pending::<()>().await;
+            }
             let end = (offset + 4096).min(bytes.len());
             let chunk = Bytes::copy_from_slice(&bytes[offset..end]);
             Some((Ok::<_, std::io::Error>(chunk), (bytes, end, lease)))
@@ -148,7 +161,10 @@ impl Drop for Fixture {
     }
 }
 
-async fn fixture(delays: [Duration; 2], corrupt: [bool; 2]) -> Fixture {
+async fn fixture(
+    blocked_requests: [Option<RangeInclusive<usize>>; 2],
+    corrupt: [bool; 2],
+) -> Fixture {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path().join("app");
     let data_root = directory.path().join("data");
@@ -179,12 +195,17 @@ async fn fixture(delays: [Duration; 2], corrupt: [bool; 2]) -> Fixture {
     let index = serde_json::to_vec(&serde_json::json!({"schema":1,"version":"v3.0.1","revision":SOURCE,
         "targets":{"windows-amd64":{"artifact":"piik-app-windows-amd64.zip","size":body.len(),"sha256":hash}}})).unwrap();
     let signature = key.sign(&index).as_ref().to_vec();
+    let first_requests = blocked_requests
+        .iter()
+        .any(Option::is_some)
+        .then(|| Arc::new(tokio::sync::Barrier::new(2)));
     let providers = [0, 1].map(|index_number| Provider {
         index: index.clone(),
         signature: signature.clone(),
         body: body.clone(),
         corrupt: corrupt[index_number],
-        delay: delays[index_number],
+        blocked_requests: blocked_requests[index_number].clone(),
+        first_requests: first_requests.clone(),
         requests: Default::default(),
         disconnected: Default::default(),
     });
@@ -289,11 +310,8 @@ async fn wait_state(client: &reqwest::Client, origin: &str, expected: &str) -> s
 #[tokio::test]
 #[cfg(windows)]
 async fn local_http_owns_signed_download_and_cancel_without_retiring_the_app() {
-    let fixture = fixture(
-        [Duration::from_millis(12), Duration::from_millis(1)],
-        [false, false],
-    )
-    .await;
+    // The first operation chooses AtomGit. Later responses stay open for cancel and shutdown.
+    let fixture = fixture([Some(0..=usize::MAX), Some(1..=usize::MAX)], [false; 2]).await;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let (stop, stopped) = oneshot::channel();
@@ -433,7 +451,7 @@ async fn local_http_owns_signed_download_and_cancel_without_retiring_the_app() {
 #[tokio::test]
 #[cfg(windows)]
 async fn failed_optional_download_keeps_app_running_and_can_be_dismissed() {
-    let fixture = fixture([Duration::ZERO; 2], [true; 2]).await;
+    let fixture = fixture([None, None], [true; 2]).await;
     let (closing, observer) = watch::channel(false);
     let owner = Owner::new(&fixture.config, closing.clone());
     let download = || Request::Download {
@@ -470,11 +488,7 @@ async fn failed_optional_download_keeps_app_running_and_can_be_dismissed() {
 
 #[tokio::test]
 async fn corrupted_winner_uses_only_one_fallback_and_never_accepts_bad_signatures() {
-    let fixture = fixture(
-        [Duration::from_millis(1), Duration::from_millis(12)],
-        [true, false],
-    )
-    .await;
+    let fixture = fixture([None, Some(0..=0)], [true, false]).await;
     let Config::Enabled(options) = &fixture.config.update else {
         unreachable!()
     };
@@ -510,8 +524,11 @@ async fn corrupted_winner_uses_only_one_fallback_and_never_accepts_bad_signature
     .await
     .is_err());
     assert_eq!(
-        fixture.providers[0].requests.load(Ordering::SeqCst),
-        1,
+        fixture
+            .providers
+            .each_ref()
+            .map(|provider| provider.requests.load(Ordering::SeqCst)),
+        [1, 2],
         "Invalid signatures never start package downloads"
     );
 }
@@ -550,11 +567,7 @@ fn complete_bundle_extraction_rejects_traversal() {
 #[cfg(windows)]
 #[tokio::test]
 async fn local_archive_write_error_does_not_retry_the_mirror() {
-    let fixture = fixture(
-        [Duration::from_millis(1), Duration::from_millis(12)],
-        [false; 2],
-    )
-    .await;
+    let fixture = fixture([None, Some(0..=0)], [false; 2]).await;
     let Config::Enabled(options) = &fixture.config.update else {
         unreachable!()
     };
@@ -595,7 +608,7 @@ async fn local_archive_write_error_does_not_retry_the_mirror() {
 #[tokio::test]
 #[cfg(windows)]
 async fn unmanaged_directories_and_data_inside_the_bundle_stay_manual() {
-    let mut fixture = fixture([Duration::ZERO; 2], [false; 2]).await;
+    let mut fixture = fixture([None, None], [false; 2]).await;
     let closing = watch::channel(false).0;
     fs::write(fixture.config.assets.join("personal.txt"), b"user content").unwrap();
     assert_eq!(

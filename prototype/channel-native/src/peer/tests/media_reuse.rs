@@ -677,7 +677,8 @@ async fn repeated_media_leases_keep_sibling_av_and_use_fresh_rtp() -> Result<()>
                     })
                 })
             })
-            .await?;
+            .await
+            .context("initial sibling and replaceable flows emit audio and video")?;
         let sibling_audio = fixture.output(sibling, MediaKind::Audio);
         let sibling_video = fixture.output(sibling, MediaKind::Video);
         let stream = fixture.output(binding.id, MediaKind::Video).1;
@@ -693,7 +694,7 @@ async fn repeated_media_leases_keep_sibling_av_and_use_fresh_rtp() -> Result<()>
             .lines()
             .filter(|line| line.starts_with("m="))
             .count();
-        for _ in 0..8 {
+        for cycle in 1..=8 {
             fixture
                 .plans
                 .last_mut()
@@ -719,7 +720,8 @@ async fn repeated_media_leases_keep_sibling_av_and_use_fresh_rtp() -> Result<()>
                 }
                 Ok::<_, anyhow::Error>(())
             })
-            .await??;
+            .await
+            .with_context(|| format!("cycle {cycle}: retired audio/video outputs become reusable"))??;
             binding.id = Uuid::new_v4();
             fixture.plans.last_mut().unwrap().outgoing.push(binding);
             fixture
@@ -742,7 +744,8 @@ async fn repeated_media_leases_keep_sibling_av_and_use_fresh_rtp() -> Result<()>
                         && f.observed(&stream, MediaKind::Video)
                             .is_some_and(|packet| packet.1 != previous_video.1)
                 })
-                .await?;
+                .await
+                .with_context(|| format!("cycle {cycle}: reused stream emits fresh audio/video SSRCs"))?;
             previous_audio = fixture.observed(&stream, MediaKind::Audio).unwrap();
             previous_video = fixture.observed(&stream, MediaKind::Video).unwrap();
             ensure!(

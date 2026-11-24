@@ -2,7 +2,7 @@ use futures_util::{SinkExt, StreamExt};
 use piik_channel_core::{conversation::SessionSigner, wire::CHANNEL_PROTOCOL};
 use piik_channel_prototype::domain::Domain;
 use serde_json::{json, Value};
-use std::{path::Path, process::Stdio, time::Duration};
+use std::{net::UdpSocket, path::Path, process::Stdio, time::Duration};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     net::TcpStream,
@@ -34,7 +34,6 @@ fn server(data: &Path, frontend: &Path) -> Command {
         .env("PIIK_CHANNEL_SERVICE_TRANSIT", "false")
         .env("PIIK_CHANNEL_DATA_DIR", data)
         .env("PIIK_CHANNEL_WEB_DIR", frontend)
-        .env_remove("PIIK_CHANNEL_UDP_PORT")
         .env_remove("PIIK_CHANNEL_UDP_PUBLIC_ADDRESS")
         .env_remove("PIIK_CHANNEL_INVITATION_ORIGIN")
         .env_remove("PIIK_CHANNEL_WEB_ORIGIN")
@@ -45,6 +44,10 @@ fn server(data: &Path, frontend: &Path) -> Command {
 }
 
 async fn launch(mut command: Command) -> (Child, String) {
+    let udp = UdpSocket::bind("127.0.0.1:0").expect("Allocate a test UDP port");
+    let udp_port = udp.local_addr().unwrap().port();
+    command.env("PIIK_CHANNEL_UDP_PORT", udp_port.to_string());
+    drop(udp);
     let mut process = command.spawn().unwrap();
     let mut lines = BufReader::new(process.stdout.take().unwrap()).lines();
     let line = timeout(DEADLINE, async {
