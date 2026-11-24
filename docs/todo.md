@@ -26,6 +26,9 @@ the feedback period; they do not delay that delivery.
   cannot carry video must report waiting or rejection, rather than silently
   disabling the input. Preserve required selected delivery and SDK congestion
   control; verify local encoding and opaque Server relays separately.
+- [ ] **Current-attempt route feedback.** Project known rejected or exhausted
+  route attempts through the existing status owner, with a specific recovery
+  action. New peers, access or forwarding changes may enable a later attempt.
 - [ ] **Audio device acceptance.** Verify physical output selection, unplugging
   and recovery across shared players. Keep failures actionable without silently
   changing the selected device. Room microphones, source audio inputs and
@@ -201,11 +204,10 @@ the feedback period; they do not delay that delivery.
   verify an official release containing the repair.
   [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
   owns the temporary pin and removal procedure.
-- [ ] **Refresh the MPD script runtime.** Follow the supported QuickJS-NG update
-  in [rquickjs #793](https://github.com/DelSkayn/rquickjs/pull/793), including
-  allocation-failure cleanup fixes. Verify the parser and binding behavior before
-  replacing the current released pin; the proposed update still fails upstream
-  compatibility checks.
+- [ ] **Refresh the MPD script runtime.** QuickJS-NG 0.18.0, including
+  allocation-failure cleanup fixes, merged in [rquickjs #793](https://github.com/DelSkayn/rquickjs/pull/793)
+  on 2026-11-24. Verify MPD parser and Rust binding behavior when a published
+  crate includes the update, before replacing the 0.14.0 pin.
 - [ ] **GNOME cancellation cleanup submission.** Submit the independently
   verified Mutter repair when GitLab authentication is available, under the upstream
   contribution rules. The
@@ -219,6 +221,21 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **Shared participant rules and decoding.** Extract a demonstrated common
+  Browser/Native rule before introducing a stateful Core participant. Measure
+  repeated input-frame snapshot serialization and prove a per-connection decoder
+  preserves image restoration. Any generated types must replace their old owner
+  and retain runtime validation, omission and null semantics.
+- [ ] **Capture operation cohesion.** Compare a single local preparation-phase
+  owner with the current pending fields. Preserve room acknowledgement, active
+  capture and platform-resource lifetimes before replacing command machinery.
+- [ ] **Routing authority placement.** Measure the writer turn and storage
+  validation cost before proposing domain-owned repair. Decide the revocable
+  grant and writer-disconnect semantics separately from physical pair reuse.
+- [ ] **Prepared socket adoption.** Verify that an active ICE engine can adopt
+  an enhanced-discovery socket while keeping the physical pair and deadline.
+  Retain bounded cross-peer coordination and cancellation; complete the existing
+  kernel-NAT control before replacing the current preparation transition.
 - [ ] **Physical keyframe acceptance.** Check Android codec initialization,
   requested keyframes and rebuilding with the longer interval. Extend the
   Windows hardware control beyond the tested NVIDIA encoder and short sequence.
@@ -252,6 +269,8 @@ the feedback period; they do not delay that delivery.
   for overlap and strict-benefit proof through the current switch owner. Account
   for disruption on a rejected trial and delayed natural recovery.
   [Controlled switch evidence](./research/network-lab.md#playable-route-improvement)
+  Separately compare stable downstream senders during input replacement, measuring
+  SDP, keyframes and visible gaps while retaining generation and access fencing.
 - [ ] **Field-test same-room screen recovery.** On restricted networks,
   compare [on-demand relay](./research/channel-network-design.md#idle-room-peers-for-delivery-recovery)
   under the [layered-forwarding validation plan](./research/channel-forwarding-plan.md#review-and-validation-plan)
@@ -259,6 +278,9 @@ the feedback period; they do not delay that delivery.
   on an existing call and the cost of finding a path through two idle peers.
 - [ ] **NAT field coverage.** Measure difficult physical networks and sustained
   concurrent use. [Random-mapping and linear-extension controls](./research/nat-traversal.md#random-mapping-collision-control)
+  Verify interface-scoped mDNS candidate resolution before adding a resolver.
+  Define optional Server-port STUN exposure and authenticated ICE dispatch before
+  adding a discovery responder to its existing socket owner.
 - [ ] **Codec capability and efficiency comparison.** Measure actual platform
   encoder/decoder and Browser capabilities, then compare one available codec
   with H.264 using synthetic text and motion. Compare hardware and software
@@ -269,6 +291,15 @@ the feedback period; they do not delay that delivery.
   AV1/HEVC product integration remains a separate decision. Review the
   [codec interoperability proposal](./research/webrtc-encoder-pool.md#proposed-codec-interoperability-boundary)
   before extending codec or conversion implementations.
+- [ ] **Browser content and pool tradeoffs.** Compare text/motion hints through
+  the actual startup, clone and pool paths before changing persistent content
+  policy. Compare pooled and ordinary Host/relay delivery at matching quality,
+  separating sender encoding from receiver and measurement cost. Keep the current
+  pool until measured delivery tradeoffs justify narrowing or removing it.
+- [ ] **Native representation selection.** Compare forwarding an available
+  lower layer with encoding full-size output at the granted rate. Reuse existing
+  encoder grants and prove readability, cadence and resource cost before changing
+  layer preference.
 - [ ] **Native send-consent lifetime.** Complete the Windows WebView control of
   the integrated SDK's RFC 7675 correction in both negotiation roles. Preserve
   permitted paths during ICE restart and reject retired credentials independently
