@@ -1388,12 +1388,32 @@ enum SourceKind {
     External,
 }
 struct PendingCapture {
-    // A submitted switch keeps its host result even if the source ends first.
-    committing: bool,
     kind: SourceKind,
     request: AbortHandle,
-    lease: Option<SourceLease>,
-    producer: Option<Uuid>,
+    phase: CapturePhase,
+}
+enum CapturePhase {
+    Preparing,
+    WaitingForExternal(Uuid),
+    Prepared(SourceLease),
+    // The host result owns a submitted switch even if the source ends first.
+    Committing(Uuid),
+}
+impl CapturePhase {
+    fn candidate_id(&self) -> Option<Uuid> {
+        match self {
+            Self::Preparing => None,
+            Self::WaitingForExternal(id) | Self::Committing(id) => Some(*id),
+            Self::Prepared(lease) => Some(lease.id()),
+        }
+    }
+
+    fn prepared(&self) -> Option<&SourceLease> {
+        match self {
+            Self::Prepared(lease) => Some(lease),
+            _ => None,
+        }
+    }
 }
 enum CaptureResult {
     Prepared {
@@ -1406,7 +1426,7 @@ impl Capture {
     fn pending_for(&mut self, producer: Uuid) -> Option<&mut PendingCapture> {
         self.pending
             .as_mut()
-            .filter(|pending| pending.producer == Some(producer))
+            .filter(|pending| pending.phase.candidate_id() == Some(producer))
     }
     fn retire_producer(&mut self, producer: Uuid) -> bool {
         let active = self
@@ -1438,7 +1458,7 @@ impl Capture {
                 .then(|| {
                     self.pending
                         .as_ref()
-                        .and_then(|pending| pending.lease.as_ref())
+                        .and_then(|pending| pending.phase.prepared())
                         .and_then(SourceLease::external_identity)
                 })
                 .flatten(),
@@ -1464,11 +1484,9 @@ impl Capture {
         }
         let (request, registration) = AbortHandle::new_pair();
         self.pending = Some(PendingCapture {
-            committing: false,
             kind,
             request: request.clone(),
-            lease: None,
-            producer: None,
+            phase: CapturePhase::Preparing,
         });
         Ok((request, registration))
     }
@@ -1498,8 +1516,7 @@ impl Capture {
             .pending
             .as_mut()
             .ok_or_else(|| anyhow!("capture_cancelled"))?;
-        pending.producer = Some(lease.id);
-        pending.lease = Some(SourceLease::Capture(lease));
+        pending.phase = CapturePhase::Prepared(SourceLease::Capture(lease));
         Ok(())
     }
 }
@@ -1793,7 +1810,7 @@ async fn connection(
                                 let (cancel, registration) = AbortHandle::new_pair();
                                 let pending = captures.get_mut(&publication_id).unwrap().pending.as_mut().unwrap();
                                 pending.request = cancel.clone();
-                                pending.producer = Some(generation);
+                                pending.phase = CapturePhase::WaitingForExternal(generation);
                                 let ended = prepared.lease.ended.take().expect("external generation owns completion");
                                 let ended: whip::Ended = async move { ended.await.unwrap_or_else(|_| Err("external_input_stopped".into())) }.boxed().shared();
                                 external_page.resources.insert(generation, whip::Resource { permit: permit.id, control: prepared.lease.control(), ended: ended.clone(), deleting: false });
@@ -1834,7 +1851,7 @@ async fn connection(
                         }
                         let event = match result {
                             Ok(lease) if !lease.is_stopped() => {
-                                pending.lease = Some(SourceLease::External(lease));
+                                pending.phase = CapturePhase::Prepared(SourceLease::External(lease));
                                 capture.external_event(publication_id, true, false, None)
                             }
                             // The producer ended after reporting readiness. Its terminal
@@ -1856,7 +1873,7 @@ async fn connection(
                         continue;
                     }
                     Some((publication_id, generation, ended)) = external_ends.next(), if !external_ends.is_empty() => {
-                        if captures.get_mut(&publication_id).and_then(|capture| capture.pending_for(generation)).is_some_and(|pending| pending.committing) {
+                        if captures.get_mut(&publication_id).and_then(|capture| capture.pending_for(generation)).is_some_and(|pending| matches!(pending.phase, CapturePhase::Committing(_))) {
                             continue;
                         }
                         if let Some(event) = retire_external(&mut captures, &mut external_page, publication_id, generation, ended) {
@@ -1971,8 +1988,8 @@ async fn connection(
                         let result: Result<CaptureResult> = result;
                         let ended = (!request.is_aborted()).then(|| {
                             let pending = captures.get(&publication_id)?.pending.as_ref()?;
-                            if !pending.committing || pending.kind != SourceKind::External { return None; }
-                            let generation = pending.producer?;
+                            if pending.kind != SourceKind::External { return None; }
+                            let CapturePhase::Committing(generation) = pending.phase else { return None; };
                             Some((generation, external_page.resources.get(&generation)?.ended.peek()?.clone()))
                         }).flatten();
                         let mut initial_input = None;
@@ -2514,51 +2531,44 @@ async fn connection(
                                 publication_id,
                                 capture_id,
                             } => {
-                                let lease = captures
-                                    .get_mut(&publication_id)
-                                    .and_then(|capture| capture.pending.as_mut())
-                                    .and_then(|pending| pending.lease.as_mut())
-                                    .filter(|lease| {
-                                        lease.id() == capture_id && !lease.is_stopped()
-                                    });
-                                if lease.is_none() {
-                                    Err(anyhow!("capture_unavailable"))
-                                } else if let Some(commands) = &host {
-                                    let capture = captures.get_mut(&publication_id).unwrap();
-                                    let lease =
-                                        capture.pending.as_mut().unwrap().lease.take().unwrap();
-                                    let replacing = capture.active.is_some();
-                                    let (cancel, registration) = AbortHandle::new_pair();
-                                    let kind = capture.pending.as_ref().unwrap().kind;
-                                    capture.pending = Some(PendingCapture {
-                                        committing: true,
-                                        kind,
-                                        request: cancel.clone(),
-                                        lease: None,
-                                        producer: Some(lease.id()),
-                                    });
-                                    let commands = commands.clone();
-                                    capture_starts.push(
-                                        async move {
-                                            let result = Abortable::new(
-                                                commit_capture(&commands, lease, replacing),
-                                                registration,
-                                            )
-                                            .await
-                                            .unwrap_or_else(|_| Err(anyhow!("capture_cancelled")))
-                                            .map(CaptureResult::Committed);
-                                            (request.id, publication_id, cancel, result)
-                                        }
-                                        .boxed(),
-                                    );
-                                    continue;
-                                } else {
-                                    Err(anyhow!("hello_required"))
+                                let candidate = captures.get_mut(&publication_id).and_then(|capture| {
+                                    let pending = capture.pending.as_mut()?;
+                                    let lease = pending.phase.prepared()?;
+                                    (lease.id() == capture_id && !lease.is_stopped())
+                                        .then_some((pending, capture.active.is_some()))
+                                });
+                                match (candidate, &host) {
+                                    (None, _) => Err(anyhow!("capture_unavailable")),
+                                    (Some(_), None) => Err(anyhow!("hello_required")),
+                                    (Some((pending, replacing)), Some(commands)) => {
+                                        let (cancel, registration) = AbortHandle::new_pair();
+                                        let previous = std::mem::replace(
+                                            &mut pending.phase, CapturePhase::Committing(capture_id),
+                                        );
+                                        let CapturePhase::Prepared(lease) = previous else { unreachable!("candidate was prepared") };
+                                        pending.request.abort();
+                                        pending.request = cancel.clone();
+                                        let commands = commands.clone();
+                                        capture_starts.push(
+                                            async move {
+                                                let result = Abortable::new(
+                                                    commit_capture(&commands, lease, replacing),
+                                                    registration,
+                                                )
+                                                .await
+                                                .unwrap_or_else(|_| Err(anyhow!("capture_cancelled")))
+                                                .map(CaptureResult::Committed);
+                                                (request.id, publication_id, cancel, result)
+                                            }
+                                            .boxed(),
+                                        );
+                                        continue;
+                                    }
                                 }
                             }
                             Operation::CancelCapture { publication_id } | Operation::CancelExternalInput { publication_id }
                                 if captures.get(&publication_id).and_then(|capture| capture.pending.as_ref())
-                                    .is_some_and(|pending| pending.committing) =>
+                                    .is_some_and(|pending| matches!(pending.phase, CapturePhase::Committing(_))) =>
                             {
                                 Err(anyhow!("capture_pending"))
                             }
@@ -2647,9 +2657,9 @@ async fn connection(
                                     .await??;
                                 }
                                 if let Some(capture) = captures.remove(&publication_id) {
-                                    if let Some(generation) = capture.pending.as_ref().filter(|p| p.committing).and_then(|p| p.producer) {
-                                        if external_page.resources.get(&generation).is_some_and(|resource| resource.ended.peek().is_some()) {
-                                            external_page.resources.remove(&generation);
+                                    if let Some(CapturePhase::Committing(generation)) = capture.pending.as_ref().map(|p| &p.phase) {
+                                        if external_page.resources.get(generation).is_some_and(|resource| resource.ended.peek().is_some()) {
+                                            external_page.resources.remove(generation);
                                         }
                                     }
                                 }
@@ -4838,14 +4848,14 @@ mod tests {
         let first = Uuid::new_v4();
         let second = Uuid::new_v4();
         let (old, _) = capture.prepare(SourceKind::External, SourceAudioSettings::default()).unwrap();
-        capture.pending.as_mut().unwrap().producer = Some(first);
+        capture.pending.as_mut().unwrap().phase = CapturePhase::WaitingForExternal(first);
         capture.pending = None;
         let (current, _) = capture.prepare(SourceKind::External, SourceAudioSettings::default()).unwrap();
-        capture.pending.as_mut().unwrap().producer = Some(second);
+        capture.pending.as_mut().unwrap().phase = CapturePhase::WaitingForExternal(second);
         assert!(old.is_aborted());
         assert!(capture.pending_for(first).is_none());
         assert!(!capture.retire_producer(first));
-        assert_eq!(capture.pending.as_ref().unwrap().producer, Some(second));
+        assert_eq!(capture.pending.as_ref().unwrap().phase.candidate_id(), Some(second));
         assert!(!current.is_aborted());
         assert!(capture.retire_producer(second));
         assert!(current.is_aborted());

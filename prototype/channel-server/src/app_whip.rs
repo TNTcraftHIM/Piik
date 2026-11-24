@@ -437,7 +437,7 @@ mod tests {
                 let (cancelled, _) = capture
                     .prepare(SourceKind::External, SourceAudioSettings::default())
                     .unwrap();
-                capture.pending.as_mut().unwrap().producer = Some(previous);
+                capture.pending.as_mut().unwrap().phase = CapturePhase::WaitingForExternal(previous);
                 cancelled
             });
             let audio_settings = SourceAudioSettings {
@@ -463,7 +463,7 @@ mod tests {
             let (current, _) = capture
                 .prepare(SourceKind::External, audio_settings)
                 .unwrap();
-            capture.pending.as_mut().unwrap().producer = Some(next);
+            capture.pending.as_mut().unwrap().phase = CapturePhase::WaitingForExternal(next);
             assert!(
                 capture.pending_for(previous).is_none(),
                 "late readiness cannot install the cancelled source"
@@ -473,7 +473,7 @@ mod tests {
                 "late end cannot retire the successor"
             );
             assert!(!current.is_aborted());
-            assert_eq!(capture.pending.as_ref().unwrap().producer, Some(next));
+            assert_eq!(capture.pending.as_ref().unwrap().phase.candidate_id(), Some(next));
         }
     }
 
