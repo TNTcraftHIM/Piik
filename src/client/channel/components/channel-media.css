@@ -115,6 +115,7 @@
 .c3-mini-controls .lr-playback-window::before { display: none; }
 @container (max-width: 360px) {
   .c3-mini-controls { --mini-controls-inset: 4px; gap: 2px; padding: 3px; }
+  .c3-mini-controls .lr-btn:not(:where(.c3-mini-controls [popover] *)):focus-visible { outline-offset: -3px; }
 }
 @container (max-width: 280px) {
   .c3-mini-controls { --mini-controls-inset: 2px; width: calc(100% - 2 * var(--mini-controls-inset)); gap: 0; padding: 2px; }

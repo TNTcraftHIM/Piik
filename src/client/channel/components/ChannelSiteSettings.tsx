@@ -108,11 +108,8 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
 function ChannelRoomDirectory({ channel, disabled }: { channel: ChannelController; disabled: boolean }) {
   const { t, lang } = useCopy();
   const heading = useId();
-  const { error, run } = useSettingsAction();
   const directory = channel.state?.channel;
   const deleteData = directory?.hostingMode === "hosted";
-  const deletionError = channel.error === "room_data_removal_unconfirmed" || channel.error === "hosted_room_deletion_failed"
-    ? channel.error : null;
   const titledRooms = new Map(directory?.rooms.map(room => [room.id, room.name]));
   const rooms = (directory?.managedRoomIds ?? []).map(id => ({ id, name: titledRooms.get(id) }));
   rooms.sort((a, b) => Number(!a.name) - Number(!b.name) ||
@@ -125,18 +122,30 @@ function ChannelRoomDirectory({ channel, disabled }: { channel: ChannelControlle
           const idLabel = t("channel.siteSettings.roomId", { id });
           const duplicateName = name && rooms.some(room => room.id !== id && room.name === name);
           const label = duplicateName ? `${name} · ${idLabel}` : name ?? idLabel;
-          const removing = channel.pending.has(`delete:${id}`);
-          return <li key={id}>
-            <span>{label}</span>
-            <Btn icon="x" quiet tone="danger" size="compact" busy={removing} disabled={disabled || removing}
-              title={{ text: t(deleteData ? "channel.siteSettings.deleteNamedRoom" : "channel.siteSettings.removeNamedRoom", { name: label }) }}
-              cap={{ text: t(deleteData ? "room.action.delete" : "room.action.remove") }} onClick={() => {
-                if (window.confirm(t(deleteData ? "room.settings.confirmHostedDelete" : "room.settings.confirmRemove", { name: label })))
-                  void run(() => channel.deleteRoom(id, deleteData, false));
-              }} />
-          </li>;
+          return <DirectoryRoom key={id} id={id} label={label} channel={channel} deleteData={deleteData} disabled={disabled} />;
         })}
       </ul>}
-    <ChannelSettingsError error={error ?? deletionError} />
+    {channel.errorRoomId && !rooms.some(room => room.id === channel.errorRoomId) && <div>
+      <span>{t("channel.siteSettings.roomId", { id: channel.errorRoomId })}</span>
+      <ChannelSettingsError error={channel.error} />
+    </div>}
   </section>;
+}
+
+function DirectoryRoom({ id, label, channel, deleteData, disabled }: {
+  id: string; label: string; channel: ChannelController; deleteData: boolean; disabled: boolean;
+}) {
+  const { t } = useCopy();
+  const { error, run } = useSettingsAction();
+  const removing = channel.pending.has(`delete:${id}`);
+  return <li>
+    <span>{label}</span>
+    <Btn icon="x" quiet tone="danger" size="compact" busy={removing} disabled={disabled || removing}
+      title={{ text: t(deleteData ? "channel.siteSettings.deleteNamedRoom" : "channel.siteSettings.removeNamedRoom", { name: label }) }}
+      cap={{ text: t(deleteData ? "room.action.delete" : "room.action.remove") }} onClick={() => {
+        if (window.confirm(t(deleteData ? "room.settings.confirmHostedDelete" : "room.settings.confirmRemove", { name: label })))
+          void run(signal => channel.deleteRoom(id, deleteData, signal));
+      }} />
+    <ChannelSettingsError error={error ?? (channel.errorRoomId === id ? channel.error : null)} />
+  </li>;
 }

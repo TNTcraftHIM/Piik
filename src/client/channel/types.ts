@@ -95,6 +95,7 @@ export interface ChannelView {
   inputChannels: ReadonlyMap<string, InputTransport>;
   remoteControls: ReadonlyMap<string, ChannelRemoteControlState>;
   error: string | null;
+  errorRoomId?: string;
   siteURL: string | null;
   pending: ReadonlySet<string>;
 }
@@ -183,7 +184,7 @@ export interface ChannelActions {
   restoreDomainBackup(archive: Blob): Promise<DomainSettings>;
   createRoom(settings: RoomSettings, reportError?: boolean): Promise<string>;
   updateRoom(roomId: string, settings: Partial<RoomSettings>, reportError?: boolean): Promise<void>;
-  deleteRoom(roomId: string, deleteData: boolean, reportError?: boolean): Promise<{ dataRemoved: boolean }>;
+  deleteRoom(roomId: string, deleteData: boolean, localResult?: AbortSignal): Promise<{ dataRemoved: boolean }>;
   setRoomVoiceBitrate(roomId: string, bitrate: number): Promise<void>;
   setForwardingLimit(capacity: number): void;
   appRelayCapacity(signal?: AbortSignal): Promise<NativeRelayCapacity>;

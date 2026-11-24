@@ -61,7 +61,11 @@ export class WatchPlayer {
       if (event === "closed") { this.close(); this.closed(); return; }
       if (event === "error") void this.mediaError();
       if (event === "playing") { this.blocked = false; this.changed(); }
-      if (event === "blocked") { this.blocked = true; this.changed(); }
+      if (event === "blocked") {
+        const video = this.video;
+        if (video && (!video.paused || !owner && this.playback?.paused)) return;
+        this.blocked = true; this.changed();
+      }
       if (["audiotracks", "waiting", "loadeddata", "pause", "ended"].includes(event)) this.changed();
       if (event === "loadedmetadata") void this.align(true);
       if (event === "visibility-resumed" && !owner) {
@@ -150,6 +154,9 @@ export class WatchPlayer {
     const changed = !this.playback || Object.entries(playback).some(([key, value]) => this.playback![key as keyof WatchPlayback] !== value);
     if (!changed) return;
     this.playback = playback;
+    if (!this.owner && this.video && playback.paused && this.blocked) {
+      this.blocked = false; this.changed();
+    }
     if (!this.owner) void this.align(true);
   }
   activate(publish: (playback: WatchPlayback) => Promise<void>): void { this.publishPlayback = publish; }

@@ -324,6 +324,26 @@ mod tests {
                     usage.completed(id, input, epoch.elapsed().as_micros() as i64, &mut policy);
                     assert_eq!(unit.keyframe, index == 0 || index == 6);
                     assert_eq!(unit.vp8.is_some(), codec == VideoCodec::Vp8);
+                    if codec == VideoCodec::H264 && unit.keyframe {
+                        use h264_reader::nal::{sps::SeqParameterSet, Nal, RefNal};
+                        let nal = crate::media::h264::nals(&unit.bytes)?
+                            .find(|nal| nal[0] & 31 == 7)
+                            .expect("software H264 keyframe SPS");
+                        let sps =
+                            SeqParameterSet::from_bits(RefNal::new(nal, &[], true).rbsp_bits())
+                                .expect("software H264 SPS");
+                        let signal = sps.vui_parameters.unwrap().video_signal_type.unwrap();
+                        let color = signal.colour_description.unwrap();
+                        assert!(!signal.video_full_range_flag);
+                        assert_eq!(
+                            (
+                                color.colour_primaries,
+                                color.transfer_characteristics,
+                                color.matrix_coefficients
+                            ),
+                            (6, 1, 6)
+                        );
+                    }
                     assert!(unit.qp.is_some(), "{codec:?} lacks quality feedback");
                 }
             }

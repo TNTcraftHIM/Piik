@@ -317,7 +317,7 @@ function RoomSettings({ channel, room, onClose }: {
               onClick={() => {
                 const question = t(serverHosted ? "room.settings.confirmHostedDelete" :
                   deleteData ? "room.settings.confirmDelete" : "room.settings.confirmRemove", { name: room.name });
-                if (window.confirm(question)) void run(() => channel.deleteRoom(room.id, deleteData, false), onClose);
+                if (window.confirm(question)) void run(signal => channel.deleteRoom(room.id, deleteData, signal), onClose);
               }} />
           </section>
         </section>}

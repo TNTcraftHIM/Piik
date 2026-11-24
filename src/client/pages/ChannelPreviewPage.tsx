@@ -9,7 +9,7 @@ import { PawnSvg } from "../components/living/Pawn";
 import { participantColor } from "../components/living/participant-color";
 import { Tooltip } from "../components/living/Tooltip";
 import { Glyph } from "../ui/icons";
-import { useCopy } from "../ui/copy";
+import { joinItems, useCopy } from "../ui/copy";
 import { useChannel } from "../channel/use-channel";
 import { channelErrorPresentation } from "../channel/error-presentation";
 import { rememberRoom, selectedRoom } from "../channel/navigation";
@@ -77,7 +77,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   onLayoutChange?: (value: InterfaceLayout) => void;
   previewOptions?: ReactNode;
 }) {
-  const { t } = useCopy();
+  const { t, lang } = useCopy();
   const [pickerRoom, setPickerRoom] = useState<string | null>(null);
   const [appWatchId, setAppWatchId] = useState<string | null>(null);
   const [watchRoomId, setWatchRoomId] = useState<string | null>(null);
@@ -339,7 +339,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     {watchRoomId && <WatchSourceDialog key={`source:${watchRoomId}`} channel={channel} roomId={watchRoomId} onClose={() => setWatchRoomId(null)} />}
     {watches.filter(activity => activity.id === appWatchId).map(activity => <WatchSourceDialog key={activity.id} channel={channel}
       roomId={activity.roomId} activityId={activity.id} initialURL={activity.source.url} onClose={() => setAppWatchId(null)} />)}
-    {state && failure.message && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span className="c3-notice-message">{failure.message}</span>
+    {state && failure.message && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span className="c3-notice-message">{channel.errorRoomId
+      ? joinItems(lang, [t("channel.siteSettings.roomId", { id: channel.errorRoomId }), failure.message]) : failure.message}</span>
       <Btn icon="x" title="notice.dismiss" hint="hint-close" size="compact" quiet onClick={channel.clearError} />
     </div>}
     {managedRoom && <ChannelRoomSettingsDialog key={managedRoom.id} channel={channel} room={managedRoom}

@@ -3400,6 +3400,7 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
         captureId: firstCaptureId, mode: "room" });
       app.receive({ id: app.sent.at(-1)!.id, error: "input_source_unavailable" });
       await staleResult;
+      expect(session.getSnapshot().error).toBeNull();
     }
     app.receive({ id: replacementCommit.id, result: null }); await nativeAgain;
     if (outcome === "live") {
@@ -5140,7 +5141,7 @@ test("room replies settle only the request belonging to that room", async () => 
     await saving;
     expect(settled).toBe(true);
     for (const [deleteData, dataRemoved] of [[false, false], [true, false], [true, true]]) {
-      const deleting = session.deleteRoom("first", deleteData, false);
+      const deleting = session.deleteRoom("first", deleteData);
       const request = socket.sent.at(-1)!;
       expect(request).toMatchObject({ type: "delete_room", roomId: "first", deleteData });
       socket.receive({ type: "room_reply", roomId: "second", requestId: request.requestId, result: { type: "deleted", dataRemoved: true } });
@@ -5157,26 +5158,47 @@ test("room replies settle only the request belonging to that room", async () => 
   } finally { session.close(); }
 });
 
+test("a rejected deletion identifies its room after the settings surface closes", async () => {
+  const { session, socket } = await setup();
+  try {
+    const surface = new AbortController();
+    const deleting = session.deleteRoom("first", true, surface.signal);
+    const rejected = expect(deleting).rejects.toThrow("forbidden");
+    surface.abort();
+    socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "forbidden" });
+    await rejected;
+    expect(session.getSnapshot()).toMatchObject({ error: "forbidden", errorRoomId: "first" });
+  } finally { session.close(); }
+});
+
 test("hosted storage failure preserves directory access for a deletion retry", async () => {
   const { session, socket } = await setup();
   try {
     const state = session.getSnapshot().state!;
-    const channel = { ...state.channel, hostingMode: "hosted" as const };
+    const channel = { ...state.channel, hostingMode: "hosted" as const, managedRoomIds: ["first", "second"] };
     socket.receive({ type: "state", state: { ...state, channel } });
 
-    const deleting = session.deleteRoom("first", true, false);
+    const surface = new AbortController();
+    const deleting = session.deleteRoom("first", true, surface.signal);
     const failure = expect(deleting).rejects.toThrow("hosted_room_deletion_failed");
     const request = socket.sent.at(-1)!;
     const hidden = { ...channel, rooms: channel.rooms.filter(room => room.id !== "first") };
     socket.receive({ type: "state", state: { ...state, channel: hidden } });
+    surface.abort();
     socket.receive({ type: "error", requestId: request.requestId, code: "storage_failed" });
     await failure;
     expect(session.getSnapshot()).toMatchObject({
-      error: "hosted_room_deletion_failed", state: { channel: { managedRoomIds: expect.arrayContaining(["first"]) } },
+      error: "hosted_room_deletion_failed", errorRoomId: "first", state: { channel: { managedRoomIds: expect.arrayContaining(["first"]) } },
     });
     expect(session.getSnapshot().pending.has("delete:first")).toBe(false);
 
-    const retry = session.deleteRoom("first", true, false);
+    const other = session.deleteRoom("second", true, new AbortController().signal);
+    const otherFailure = expect(other).rejects.toThrow("hosted_room_deletion_failed");
+    socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "storage_failed" });
+    await otherFailure;
+    expect(session.getSnapshot()).toMatchObject({ error: "hosted_room_deletion_failed", errorRoomId: "first" });
+
+    const retry = session.deleteRoom("first", true);
     const retryRequest = socket.sent.at(-1)!;
     expect(retryRequest).toMatchObject({ type: "delete_room", roomId: "first", deleteData: true });
     socket.receive({ type: "state", state: { ...state, channel: { ...hidden, managedRoomIds: hidden.managedRoomIds.filter(id => id !== "first") } } });

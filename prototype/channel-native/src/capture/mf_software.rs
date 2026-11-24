@@ -279,6 +279,7 @@ impl Encoder {
                 "software H264 did not emit Annex B"
             );
             normalize_level_1b(&mut bytes);
+            declare_sdr_color(&mut bytes)?;
             Ok((
                 Some(AccessUnit {
                     bytes,
@@ -289,4 +290,47 @@ impl Encoder {
             ))
         }
     }
+}
+
+// The synchronous MFT can omit colour information from the SPS despite both
+// negotiated media types declaring the converter's limited-range BT.601.
+fn declare_sdr_color(bytes: &mut Vec<u8>) -> Result<()> {
+    use h264_reader::nal::{
+        sps::{ColourDescription, SeqParameterSet, VideoFormat, VideoSignalType},
+        Nal, RefNal, WritableNal,
+    };
+
+    let mut replacements = Vec::new();
+    for nal in crate::media::h264::nals(bytes)?.filter(|nal| nal[0] & 31 == 7) {
+        let source = RefNal::new(nal, &[], true);
+        let mut sps = SeqParameterSet::from_bits(source.rbsp_bits())
+            .map_err(|error| anyhow!("invalid software H264 SPS: {error:?}"))?;
+        let vui = sps.vui_parameters.get_or_insert_default();
+        let color = vui
+            .video_signal_type
+            .get_or_insert_with(|| VideoSignalType {
+                video_format: VideoFormat::Unspecified,
+                ..Default::default()
+            });
+        let description = ColourDescription {
+            colour_primaries: 6,         // SMPTE 170M
+            transfer_characteristics: 1, // BT.709
+            matrix_coefficients: 6,      // BT.601
+        };
+        if !color.video_full_range_flag && color.colour_description.as_ref() == Some(&description) {
+            continue;
+        }
+        color.video_full_range_flag = false;
+        color.colour_description = Some(description);
+        let start = nal.as_ptr() as usize - bytes.as_ptr() as usize;
+        let header = source
+            .header()
+            .map_err(|error| anyhow!("invalid software H264 NAL header: {error:?}"))?;
+        replacements.push((start..start + nal.len(), sps.to_vec_with_header(header)));
+    }
+    for (range, sps) in replacements.into_iter().rev() {
+        bytes.splice(range, sps);
+    }
+    ensure!(bytes.len() <= MAX_AU, "software H264 AU exceeds bound");
+    Ok(())
 }

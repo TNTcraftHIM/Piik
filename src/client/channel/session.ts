@@ -383,7 +383,8 @@ export class ChannelSession {
       if (watch) delete watch.playbackError;
     }
     const remoteControls = new Map([...(patch.remoteControls ?? this.view.remoteControls)].filter(([id]) => ownedScreens.has(id)));
-    this.view = { ...this.view, ...patch, watchPlayers: new Map(this.watchPlayers), pagePlayer: this.app?.pagePlayer ?? false, appConnected: this.app?.connected ?? false,
+    const errorRoomId = "error" in patch ? patch.errorRoomId : this.view.errorRoomId;
+    this.view = { ...this.view, ...patch, errorRoomId, watchPlayers: new Map(this.watchPlayers), pagePlayer: this.app?.pagePlayer ?? false, appConnected: this.app?.connected ?? false,
       appPort: this.app?.connected ? this.app.port : undefined,
       backgroundVoiceShortcuts: this.app?.connected ? this.app.backgroundVoiceShortcuts : undefined,
       externalScreenInputAvailable: this.app?.connected === true && this.app.externalScreenInputAvailable, ownedScreens, localScreens, remoteControls };
@@ -1253,21 +1254,21 @@ export class ChannelSession {
     this.action(`input:${publicationId}`, async () => {
       if (!this.app?.screens.has(publicationId)) throw new Error("capture_unavailable");
       await this.app.inputPolicy(publicationId, { mode, password });
-    });
+    }, false);
 
   inputDecide = (publicationId: string, requestId: string, allow: boolean): Promise<void> =>
     this.action(`input:${publicationId}:${requestId}`, async () => {
       const request = this.view.remoteControls.get(publicationId)?.requests.find(request => request.id === requestId);
       if (!this.app?.screens.has(publicationId) || !request) throw new Error("input_unavailable");
       await this.app.inputDecide(publicationId, request.peerId, request.id, allow);
-    });
+    }, false);
 
   inputSimultaneous = (publicationId: string, enabled: boolean): Promise<void> =>
     this.action(`input:${publicationId}`, async () => {
       const state = this.view.remoteControls.get(publicationId);
       if (!this.app?.screens.has(publicationId) || !state) throw new Error("input_unavailable");
       await this.app.inputPolicy(publicationId, { mode: state.mode, simultaneous: enabled });
-    });
+    }, false);
 
   inputShortcut = async (publicationId: string, key?: number): Promise<ChannelStopShortcut> => {
     const app = this.app, state = this.view.remoteControls.get(publicationId);
@@ -2267,28 +2268,30 @@ export class ChannelSession {
       if (this.app !== app || !app.connected || result.sessionId !== previous.sessionId) throw new Error("app_disconnected");
       return result;
     }, reportError);
-  deleteRoom = (roomId: string, deleteData: boolean, reportError = true): Promise<{ dataRemoved: boolean }> => this.action(`delete:${roomId}`, async () => {
+  deleteRoom = (roomId: string, deleteData: boolean, localResult?: AbortSignal): Promise<{ dataRemoved: boolean }> => this.action(`delete:${roomId}`, async () => {
     const socket = this.socket;
     const hosted = this.view.state?.channel.hostingMode === "hosted";
-    if (this.view.error === "room_data_removal_unconfirmed" || this.view.error === "hosted_room_deletion_failed") this.clearError();
+    if (this.view.errorRoomId === roomId) this.clearError();
     let dataRemoved: boolean | undefined;
     try {
       await this.request({ type: "delete_room", roomId, deleteData }, event => {
         if (event.type !== "room_reply" || event.result.type !== "deleted" || typeof event.result.dataRemoved !== "boolean") throw new Error("invalid_response");
         dataRemoved = event.result.dataRemoved;
       });
+      if (dataRemoved === undefined) throw new Error("invalid_response");
     } catch (error) {
-      if (!hosted || !(error instanceof Error) || error.message !== "storage_failed") throw error;
-      // The room can leave the lobby before the failure reaches the requester.
-      if (this.socket === socket) this.patch({ error: "hosted_room_deletion_failed" });
-      throw new Error("hosted_room_deletion_failed");
+      const failure = hosted && error instanceof Error && error.message === "storage_failed"
+        ? new Error("hosted_room_deletion_failed") : error;
+      if (this.socket === socket && (!localResult || localResult.aborted)) {
+        this.patch({ error: failure instanceof Error ? failure.message : "operation_failed", errorRoomId: roomId });
+      }
+      throw failure;
     }
-    if (dataRemoved === undefined) throw new Error("invalid_response");
     if (this.roomId === roomId) this.browse("");
     // The directory projection can close Room settings before the deletion result arrives.
-    if (deleteData && !dataRemoved && this.socket === socket) this.patch({ error: "room_data_removal_unconfirmed" });
+    if (deleteData && !dataRemoved && this.socket === socket) this.patch({ error: "room_data_removal_unconfirmed", errorRoomId: roomId });
     return { dataRemoved };
-  }, reportError);
+  }, false);
 
   setRoomVoiceBitrate = (roomId: string, voiceBitrate: number): Promise<void> => {
     const room = this.view.state?.channel.rooms.find(room => room.id === roomId);

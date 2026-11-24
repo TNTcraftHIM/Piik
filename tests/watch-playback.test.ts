@@ -523,3 +523,29 @@ test("a persistent decoder failure publishes one room change until the player re
   } finally { player.close(); }
   expect(vi.getTimerCount()).toBe(0);
 });
+
+test("HTML viewer drops the blocked play when the host pauses and retries once on a new play", async () => {
+  vi.useFakeTimers();
+  const video = new Video();
+  video.readyState = 2; video.denied = true;
+  vi.stubGlobal("document", { createElement: () => video });
+  const player = new WatchPlayer("room", false, new HTMLVideoMedia("https://media.test/video.mp4", "file"), vi.fn());
+  const anchor = { timeline: "media" as const, position: 0, anchorTime: 0, rate: 1, paused: false };
+  try {
+    player.calibrate(0, 0, 0);
+    player.update(anchor);
+    await player.ready();
+    expect(player.blocked).toBe(true);
+    player.update({ ...anchor, paused: true });
+    expect(player.blocked).toBe(false);
+    video.dispatchEvent(new Event("blocked"));
+    expect(player.blocked).toBe(false);
+    await player.serialize(async () => {});
+    video.play.mockClear();
+    player.update(anchor);
+    await player.serialize(async () => {});
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(video.play).toHaveBeenCalledOnce();
+    expect(player.blocked).toBe(true);
+  } finally { player.close(); }
+});

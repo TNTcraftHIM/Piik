@@ -16,11 +16,10 @@
 .c3-site-creation-options label { min-height: var(--control-size); }
 .c3-site-room-directory { display: grid; gap: 12px; border-top: 1px solid var(--line); padding-top: 16px; }
 .c3-site-room-directory ul { margin: 0; padding: 0; list-style: none; }
-.c3-site-room-directory li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 8px; font-size: 13px; }
+.c3-site-room-directory li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding-block: 8px; font-size: 13px; }
 .c3-site-room-directory li + li { border-top: 1px solid var(--line); }
 .c3-site-room-directory li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-.c3-site-room-directory li > .lr-btn { flex: none; }
-.c3-site-room-directory > .c3-settings-error { color: var(--danger); }
+.c3-site-room-directory li > .c3-settings-error { grid-column: 1 / -1; }
 .c3-check { display: flex; align-items: center; gap: 8px; cursor: pointer; line-height: 1.5; }
 .c3-check input { flex: none; accent-color: var(--action); cursor: pointer; }
 .c3-room-removal { display: flex; justify-content: flex-end; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }

@@ -396,8 +396,6 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     finally {
       if (socket && socket.readyState !== WebSocket.CLOSED)
         await new Promise<void>(resolve => { socket.once('close', () => resolve()); socket.terminate(); });
-      this.state = undefined;
-      this.rejectPending();
       this.signer.free();
     }
   }
