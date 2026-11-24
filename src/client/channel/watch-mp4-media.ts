@@ -82,6 +82,7 @@ export class WatchMp4Media {
     const mediaSource = this.mediaSource = new MediaSource();
     this.url = URL.createObjectURL(mediaSource);
     await waitEvent(mediaSource, "sourceopen", this.signal, () => { this.video.src = this.url!; });
+    this.signal.throwIfAborted();
     this.parser = this.mp4box.createFile(false);
     this.parser.onError = (module, message) => this.fail(new Error("watch_mp4_parse_failed", { cause: new Error(`${module}: ${message}`) }));
     this.parser.onReady = info => this.metadata(info);

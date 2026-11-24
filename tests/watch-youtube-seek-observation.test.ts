@@ -1,4 +1,4 @@
-﻿import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 
 class Element {
@@ -171,4 +171,54 @@ test("platform denial remains visible and cancelling an unmounted source leaves 
   await vi.advanceTimersByTimeAsync(0);
   expect(player.error).toBe("watch_media_unavailable");
   player.close();
+});
+
+test("iframe autoplay denial expires on a host pause while a local scrub needs explicit resynchronization", async () => {
+  vi.useFakeTimers();
+  const { media, sdk } = await setup();
+  sdk.pauseVideo();
+  const player = new WatchPlayer("room", false, media, () => {});
+  const anchor = { timeline: "media" as const, position: 0, rate: 1, paused: false, anchorTime: 0 };
+  try {
+    await player.ready();
+    player.calibrate(0, performance.now());
+    sdk.playVideo = () => sdk.fire("onAutoplayBlocked");
+    player.update(anchor);
+    await player.serialize(async () => {});
+    expect(player.blocked).toBe(true);
+    player.update({ ...anchor, paused: true });
+    await player.serialize(async () => {});
+    sdk.fire("onAutoplayBlocked");
+    expect(player.blocked).toBe(false);
+    sdk.position = 40;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.blocked).toBe(true);
+    sdk.state = 1; sdk.fire("onStateChange", 1);
+    expect(player.blocked).toBe(true);
+    await player.resume();
+    expect(sdk.seeks.at(-1)).toBe(0);
+    expect(player.blocked).toBe(false);
+  } finally { player.close(); }
+});
+
+test("resyncing a local seek while the host is playing retains a new platform denial", async () => {
+  vi.useFakeTimers();
+  const { media, sdk } = await setup();
+  const player = new WatchPlayer("room", false, media, () => {});
+  try {
+    await player.ready();
+    player.calibrate(0, performance.now());
+    player.update({ timeline: "media", position: 0, rate: 1, paused: false, anchorTime: 0 });
+    await player.serialize(async () => {});
+    sdk.position = 40;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.blockedReason).toBe("local-seek");
+    sdk.pauseVideo();
+    sdk.playVideo = vi.fn(() => sdk.fire("onAutoplayBlocked"));
+    await player.resume();
+    expect(sdk.playVideo).toHaveBeenCalledOnce();
+    expect(player.blockedReason).toBe("autoplay");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(sdk.playVideo).toHaveBeenCalledOnce();
+  } finally { player.close(); }
 });

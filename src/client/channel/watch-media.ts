@@ -178,6 +178,7 @@ export class HTMLVideoMedia implements WatchMedia {
     } else {
       if (this.timeline === "program") throw new Error("watch_live_timeline_unsupported");
       if (detected === "hls" && this.timeline === undefined) await requireNativeHlsVod(url, this.lifetime.signal);
+      this.lifetime.signal.throwIfAborted();
       this.video.src = url;
     }
   }

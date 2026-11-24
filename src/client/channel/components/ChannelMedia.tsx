@@ -106,6 +106,8 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const audioTracks = player.media.audioTracks?.() ?? [];
   const audioOptions = audioTracks.map(track => ({ ...track, label: [mediaLanguageLabel(track.language, lang) || track.name,
     track.channels ? t("watch.forward.channels", { count: track.channels }) : undefined].filter(Boolean).join(" · ") }));
+  const localSeek = player.blockedReason === "local-seek";
+  const resumeLabel = localSeek ? "watch.resync" : "watch.resume";
   const waiting = player.waitingForPicture && !player.error && !player.blocked;
   const ownerPaused = player.video?.paused ?? mediaState?.paused ?? paused;
   const audioAvailable = player.media.audioAvailable?.() !== false;
@@ -249,7 +251,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
           details={owned && player.media.page && player.error === "watch_media_access_denied" ? ["diagnosis.sourcePageOpen"] : undefined} />}
       </>}
     </div></div>
-      : player.blocked && <div className="c3-mini-message"><Btn icon="play" title="watch.resume" cap="watch.resume" onClick={onResume} /></div>}
+      : player.blocked && <div className="c3-mini-message"><Btn icon={localSeek ? "refresh" : "play"} title={resumeLabel} cap={resumeLabel} onClick={onResume} /></div>}
     {hasControls && <div ref={controls} className={`c3-mini-controls c3-watch-controls lr-media-toolbar lr-media-controls${showTimeline ? "" : " lr-media-overlay"}`} role="group" aria-label={t("playback.controls")}>
       {showTimeline && <div className={`c3-watch-timeline${owned ? "" : " lr-media-overlay"}`}>
         {owned ? <input type="range" min={seekStart} max={seekEnd} step="0.1" value={position}

@@ -1,7 +1,7 @@
 import Hls from "hls.js";
 import { afterEach, expect, test, vi } from "vitest";
 import { AppPageMedia, canReceivePeerWatch, createResourceWatchMedia, HTMLVideoMedia, type WatchMediaEvent, type WatchMediaState } from "../src/client/channel/watch-media";
-import { watchHlsFailure } from "../src/client/channel/watch-hls";
+import { M3U8Parser, watchHlsFailure } from "../src/client/channel/watch-hls";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 import { t } from "../src/client/ui/copy";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
@@ -27,6 +27,24 @@ test("a native-only HLS creator requires an ended media playlist and keeps prove
   fetcher.mockImplementation(async () => new Response("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000\nvariant.m3u8\n"));
   const master = new HTMLVideoMedia("https://media.test/master.m3u8", "hls");
   await expect(master.read()).rejects.toThrow("watch_source_inspection_unavailable"); master.close();
+});
+
+test("closing after native HLS inspection prevents assigning a retired source", async () => {
+  vi.spyOn(Hls, "isSupported").mockReturnValue(false);
+  const v = video();
+  vi.stubGlobal("document", { createElement: () => v });
+  vi.stubGlobal("fetch", async () => new Response("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2,\nsegment.ts\n#EXT-X-ENDLIST\n"));
+  const parse = M3U8Parser.parseLevelPlaylist;
+  const validation = vi.spyOn(M3U8Parser, "parseLevelPlaylist").mockImplementation((...args) => {
+    const details = parse.apply(M3U8Parser, args);
+    queueMicrotask(() => media.close());
+    return details;
+  });
+  const media = new HTMLVideoMedia("https://media.test/vod.m3u8", "hls");
+  await media.read();
+  expect(validation).toHaveBeenCalledOnce();
+  expect(v.remove).toHaveBeenCalledOnce();
+  expect(v.src).toBe("");
 });
 
 test("an opaque manifest accepts a normal GET and cancels its body after inspecting the prefix", async () => {

@@ -15,7 +15,8 @@ export class WatchPlayer {
   get presentation() { return this.media.presentation ?? { kind: "external" as const }; }
   get video(): HTMLVideoElement | null { return this.presentation.kind === "video" ? this.presentation.element : null; }
   mode: WatchMode | null = null;
-  blocked = false;
+  blockedReason: "autoplay" | "local-seek" | null = null;
+  get blocked(): boolean { return this.blockedReason !== null; }
   private failure: string | typeof unsupportedRate | null = null;
   get error(): string | null { return this.failure === unsupportedRate ? "watch_media_unsupported" : this.failure; }
   set error(value: string | null) { this.failure = value; }
@@ -60,11 +61,14 @@ export class WatchPlayer {
     this.unlisten = media.listen(event => {
       if (event === "closed") { this.close(); this.closed(); return; }
       if (event === "error") void this.mediaError();
-      if (event === "playing") { this.blocked = false; this.changed(); }
+      if (event === "playing") {
+        if (this.blockedReason === "autoplay") this.blockedReason = null;
+        this.changed();
+      }
       if (event === "blocked") {
         const video = this.video;
-        if (video && (!video.paused || !owner && this.playback?.paused)) return;
-        this.blocked = true; this.changed();
+        if (video && !video.paused || !owner && this.playback?.paused) return;
+        this.blockedReason ??= "autoplay"; this.changed();
       }
       if (["audiotracks", "waiting", "loadeddata", "pause", "ended"].includes(event)) this.changed();
       if (event === "loadedmetadata") void this.align(true);
@@ -154,8 +158,8 @@ export class WatchPlayer {
     const changed = !this.playback || Object.entries(playback).some(([key, value]) => this.playback![key as keyof WatchPlayback] !== value);
     if (!changed) return;
     this.playback = playback;
-    if (!this.owner && this.video && playback.paused && this.blocked) {
-      this.blocked = false; this.changed();
+    if (!this.owner && playback.paused && this.blockedReason === "autoplay") {
+      this.blockedReason = null; this.changed();
     }
     if (!this.owner) void this.align(true);
   }
@@ -222,7 +226,7 @@ export class WatchPlayer {
     // An iframe can report a shared seek one observation after dispatch.
     if (!force && displaced && this.media.seekEvents === false && previous && (state.readyState >= HAVE_FUTURE_DATA && previous.readyState >= HAVE_FUTURE_DATA || state.paused && previous.paused)
       && Math.abs(state.position - (previous.position + (previous.paused ? 0 : (now - previousAt) / 1000 * previous.rate))) > (this.media.seekTolerance ?? 0.35)) {
-      this.blocked = true; this.changed();
+      this.blockedReason = "local-seek"; this.changed();
     }
     if (state.live && displaced && !buffered && !state.live.seekable.some(([start, end]) => start <= target && target <= end)) {
       await this.apply({ paused: true });
@@ -264,7 +268,9 @@ export class WatchPlayer {
       if (this.media.seekEvents === false && Object.keys(patch).length) this.observe(await this.media.read());
     } catch (error) {
       if (!this.signal.aborted) {
-        if (error instanceof Error && (error.name === "NotAllowedError" || error.message === "watch_autoplay_blocked")) this.blocked = true;
+        if (error instanceof Error && (error.name === "NotAllowedError" || error.message === "watch_autoplay_blocked")) {
+          if (this.owner || !this.playback?.paused) this.blockedReason ??= "autoplay";
+        }
         else { this.failMedia(error); return; }
       }
     }
@@ -274,8 +280,10 @@ export class WatchPlayer {
   play(): Promise<void> { return this.patch({ paused: false }); }
   async resume(): Promise<void> {
     if (!await this.align(true, true)) return;
+    if (this.blockedReason === "local-seek" || this.playback?.paused && !this.owner) {
+      this.blockedReason = null; this.changed();
+    }
     if (this.owner || !this.playback?.paused) await this.play();
-    else if (this.blocked) { this.blocked = false; this.changed(); }
   }
   serialize(operation: () => Promise<void>): Promise<void> {
     const result = this.operations.then(() => { if (!this.signal.aborted) return operation(); });

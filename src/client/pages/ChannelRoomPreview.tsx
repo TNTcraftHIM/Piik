@@ -29,6 +29,7 @@ const mpdTracks: WatchMpdChoice[] = [{ candidate: {"id":"10000000-0000-4000-8000
 const watchSamples = [
   ["off", "关闭", "Off"], ["owner", "分享者", "Sharer"], ["viewer", "观看者", "Viewer"],
   ["available", "尚未加入", "Available"], ["blocked", "等待手动播放", "Playback blocked"],
+  ["local-seek", "本地进度偏移", "Local seek"],
   ["native-owner", "同步网页里的视频", "Sync video on its webpage"], ["native-viewer", "观看网页视频", "Watch webpage video"],
   ["native-owner-thumbnail", "原网页与共享画面", "Original page and shared screen"],
   ["website-failed", "浏览器播放失败", "Browser playback failed"],
@@ -44,7 +45,7 @@ function sampleWatch(mode: string): WatchActivity | null {
     source: website ? { kind: "website", url: "https://video.example/watch/evening?private=not-in-title" }
       : { kind: "media", url: live ? "https://media.example/live.m3u8?private=not-in-title" : "https://media.example/evening.mp4?private=not-in-title" },
     playback: { timeline: live ? "program" : "media", position: live ? sampleProgramStart + (mode === "live-expired" ? -120 : mode === "live-ended" ? 120 : 100) : native ? 42 : 0,
-      paused: true, rate: 1, anchorTime: 0 } };
+      paused: mode !== "local-seek", rate: 1, anchorTime: 0 } };
 }
 const previewAppDiscovery: AppDiscovery = {
   health: async () => null, connect: async () => null, isIncompatible: () => false,
@@ -196,9 +197,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     player.mode = receiveMode;
     if (liveMedia || native) { player.calibrate(0, performance.now()); player.update(watchActivity.playback); }
     void player.ready(new AbortController().signal).catch(() => {});
-    player.blocked = watchMode === "blocked";
+    player.blockedReason = watchMode === "blocked" ? "autoplay" : watchMode === "local-seek" ? "local-seek" : null;
     if (watchMode === "website-failed") player.error = "watch_media_failed";
-    if (!recorded && !native && !player.blocked)
+    if (!recorded && !native)
       void media.ready(new AbortController().signal).then(() => media.video.play()).catch(() => {});
     setWatchPlayers(new Map([[watchActivity.id, player]]));
     return () => player.close();
@@ -336,7 +337,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     joinWatch: async (_id, mode = "direct") => { setReceiveMode(mode); setWatchMode(watchActivity?.playback.timeline === "program" ? "live-viewer" : "viewer"); },
     watchEmbedPreparation: () => undefined, cancelWatchPage: () => setPageSample(undefined),
     leaveWatch: async () => { setWatchMode("available"); setPageSample(undefined); }, stopWatch: async () => setWatchActivity(null),
-    resumeWatch: async id => { const player = watchPlayers.get(id); if (player) { player.blocked = false; await player.play(); setWatchPlayers(new Map(watchPlayers)); } },
+    resumeWatch: async id => { const player = watchPlayers.get(id); if (player) { player.blockedReason = null; await player.play(); setWatchPlayers(new Map(watchPlayers)); } },
     setWatchPlayback: async (_id, patch) => {
       setWatchActivity(previous => previous && ({ ...previous, playback: { ...previous.playback, ...patch } }));
       await watchPlayers.values().next().value?.patch(patch);

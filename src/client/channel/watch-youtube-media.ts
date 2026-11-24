@@ -129,6 +129,7 @@ export class YouTubeMedia implements WatchMedia {
 
   private async mount(): Promise<void> {
     await abortable(this.sdk, this.lifetime.signal);
+    this.lifetime.signal.throwIfAborted();
     const frame = document.createElement("iframe");
     const url = new URL(youtubeEmbedURL(this.id));
     url.search = new URLSearchParams({ enablejsapi: "1", origin: location.origin, playsinline: "1", autoplay: "0", controls: "1" }).toString();

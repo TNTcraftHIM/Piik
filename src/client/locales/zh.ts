@@ -554,6 +554,7 @@ export const zh = {
   "watch.failed": "无法播放此视频。请检查直链是否可用，或重新加入。",
   "watch.waiting": "正在准备视频",
   "watch.audioTrack": "我听的音轨",
+  "watch.resync": "回到共享进度",
   "watch.resume": "开始本地播放",
   "watch.live": "直播中",
   "watch.ended": "已结束",

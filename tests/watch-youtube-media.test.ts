@@ -180,3 +180,11 @@ test("share links preserve seconds and ordered time units on the selected video"
     expect(youtubeStartSeconds("https://youtu.be/M7lc1UVf-VE?" + query)).toBeUndefined();
   expect(youtubeStartSeconds("https://www.youtube.com/embed/M7lc1UVf-VE?t=90")).toBeUndefined();
 });
+
+test('closing between SDK resolution and mount does not create a player', async () => {
+  const { media, mount } = await setup();
+  const mounting = mount();
+  queueMicrotask(() => media.close());
+  await mounting;
+  expect(players).toHaveLength(0);
+});

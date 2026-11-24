@@ -73,7 +73,7 @@ test("a pending platform play never prevents a later Creator seek and playback i
   const player = new WatchPlayer("owned", true, media, () => {});
   try {
     await player.ready();
-    player.blocked = true;
+    player.blockedReason = "autoplay";
     await player.play();
     expect(player.blocked).toBe(true);
     expect(video.currentTime).toBe(0);

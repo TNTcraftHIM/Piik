@@ -227,11 +227,11 @@ the feedback period; they do not delay that delivery.
   AV1/HEVC product integration remains a separate decision. Review the
   [codec interoperability proposal](./research/webrtc-encoder-pool.md#proposed-codec-interoperability-boundary)
   before extending codec or conversion implementations.
-- [ ] **Native send-consent lifetime.** Review the RTC owner's response-based
-  expiry against RFC 7675, including delayed processing and its existing Chrome
-  interoperability correction. Keep transport consent and Piik route recovery
-  with their existing owners; validate the SDK driving contract before relying
-  on an isolated timeout reproduction.
+- [ ] **Native send-consent lifetime.** Verify send-consent expiry separately
+  from ICE candidate viability against RFC 7675, including delayed processing
+  and the SDK's Chrome interoperability correction. Check actual application
+  output through the Native driver; a connected ICE state alone is insufficient.
+  Keep transport consent and Piik route recovery with their existing owners.
 - [ ] **Shared-link website coverage.** Extend actual website and official
   embedded-player coverage toward VideoTogether's playback coverage. Verify
   source-issued media grants, supported commercial live sources, target Browsers

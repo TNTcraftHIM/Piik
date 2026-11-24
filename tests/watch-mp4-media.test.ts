@@ -92,6 +92,22 @@ function worker() {
 }
 afterEach(() => { runtime.parsers.length = 0; runtime.malformed = false; runtime.oversized = false; Source.isTypeSupported.mockReturnValue(true); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+test("closing as MSE opens prevents late parser and listener acquisition", async () => {
+  const video = setup(), lifetime = new AbortController();
+  const failed = vi.fn(), read = vi.fn<WatchByteReader>();
+  Object.defineProperty(video, "src", { set: () => queueMicrotask(() => {
+    Source.last.dispatchEvent(new Event("sourceopen"));
+    lifetime.abort();
+  }) });
+  const media = new WatchMp4Media(video as unknown as HTMLVideoElement, id, read, first, lifetime.signal, failed);
+  const result = media.open();
+  void result.catch(() => {});
+  await vi.waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:owned-mp4"));
+  expect(runtime.parsers).toHaveLength(0);
+  await expect(result).rejects.toMatchObject({ name: "AbortError" });
+  expect(read).not.toHaveBeenCalled();
+});
+
 test("actual MP4 MIME/ftyp facts are separate from generic file and container support", () => {
   setup(); expect(canReadWatchMp4()).toBe(true);
   expect(isWatchMp4(first)).toBe(true);

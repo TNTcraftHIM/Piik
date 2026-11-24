@@ -2481,11 +2481,6 @@ export class ChannelSession {
     return { share, selection, current: () => this.screenShares.get(roomId) === selected && this.sourceSelections.get(roomId) === selection };
   }
 
-  private finishScreenSelection(roomId: string, share: ScreenShare, selection: SourceSelection): void {
-    this.finishSourceSelection(roomId, selection);
-    if (this.screenShares.get(roomId) === share) this.forgetInactiveScreen(share.id);
-  }
-
   private forgetInactiveScreen(publicationId: string): void {
     if (this.local.has(publicationId) || this.app?.screens.has(publicationId)) return;
     for (const [roomId, share] of this.screenShares) {
@@ -2653,7 +2648,7 @@ export class ChannelSession {
       const unownedTracks = audio ? candidate?.getVideoTracks() : candidate?.getTracks();
       audio?.dispose();
       unownedTracks?.forEach(track => track.stop());
-      this.finishScreenSelection(roomId, share, selection);
+      this.finishSourceSelection(roomId, selection);
     }
   });
   private retireWatchPlayer(id: string, reason?: string): void {
@@ -3225,7 +3220,7 @@ export class ChannelSession {
       await app.prepareExternalInput(share.id, roomId);
       if (!current()) throw new DOMException("Input cancelled", "AbortError");
       this.patch({});
-    } finally { this.finishScreenSelection(roomId, share, selection); }
+    } finally { this.finishSourceSelection(roomId, selection); }
   });
   private async commitExternalScreen(app: ChannelApp, event: Extract<NativeExternalInputState, { state: "prepared" | "live" }>): Promise<void> {
     const entry = [...this.screenShares].find(([, share]) => share.id === event.publicationId);
@@ -3512,7 +3507,7 @@ export class ChannelSession {
     } catch (error) {
       if (ownsPreparation) await app?.cancelCapture(share.id).catch(() => {});
       throw error;
-    } finally { this.finishScreenSelection(roomId, share, selection); }
+    } finally { this.finishSourceSelection(roomId, selection); }
   });
   setScreenDirectLimit = async (publicationId: string, limit: number | null): Promise<void> => {
     const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");

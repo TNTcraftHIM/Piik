@@ -556,6 +556,7 @@ export const en: Record<CopyKey, string> = {
   "watch.failed": "This video could not play. Check the direct URL or leave and rejoin.",
   "watch.waiting": "Preparing video",
   "watch.audioTrack": "Audio track for me",
+  "watch.resync": "Sync playback",
   "watch.resume": "Start local playback",
   "watch.live": "Live",
   "watch.ended": "Ended",
