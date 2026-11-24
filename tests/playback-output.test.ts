@@ -43,22 +43,24 @@ it("keeps healthy outputs on the chosen device when a retiring output rejects la
 
 it.each(["reselect", "close"])("clears one failed initial output on %s while keeping healthy outputs ready", async action => {
   await playbackOutput.choose("headphones");
-  const refused = playbackOutput.attach({ setSinkId: async (id: string) => {
+  const refusedElement = { setSinkId: async (id: string) => {
     if (id === "headphones") throw Error("unavailable");
-  } } as unknown as HTMLMediaElement);
-  const healthy = playbackOutput.attach({ setSinkId: async () => {} } as unknown as HTMLMediaElement);
+  } } as unknown as HTMLMediaElement;
+  const healthyElement = { setSinkId: async () => {} } as unknown as HTMLMediaElement;
+  const refused = playbackOutput.attach(refusedElement);
+  const healthy = playbackOutput.attach(healthyElement);
   try {
     await healthy.ready;
     expect(refused.getWaiting()).toBe(true);
     expect(playbackOutput.failed).toBe(true);
-    expect(refused.getFailed()).toBe(true);
+    expect(playbackOutput.failedFor(refusedElement)).toBe(true);
     expect(healthy.getWaiting()).toBe(false);
-    expect(healthy.getFailed()).toBe(false);
+    expect(playbackOutput.failedFor(healthyElement)).toBe(false);
     if (action === "reselect") await playbackOutput.choose("alternate");
     else refused();
     await refused.ready;
     expect(refused.getWaiting()).toBe(false);
-    expect(refused.getFailed()).toBe(false);
+    expect(playbackOutput.failedFor(refusedElement)).toBe(false);
     expect(healthy.getWaiting()).toBe(false);
     expect(playbackOutput.selected).toBe(action === "reselect" ? "alternate" : "headphones");
     expect(playbackOutput.failed).toBe(false);

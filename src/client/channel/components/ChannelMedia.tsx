@@ -110,7 +110,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     track.channels ? t("watch.forward.channels", { count: track.channels }) : undefined].filter(Boolean).join(" · ") }));
   const localSeek = player.blockedReason === "local-seek";
   const resumeLabel = localSeek ? "watch.resync" : "watch.resume";
-  const outputFailed = useSyncExternalStore(playbackOutput.subscribe, () => Boolean(player.media.outputFailed), () => false);
+  const outputFailed = useSyncExternalStore(playbackOutput.subscribe, () => playbackOutput.failedFor(player.video), () => false);
   const waiting = player.waitingForPicture && !player.error && !player.blocked;
   const ownerPaused = player.video?.paused ?? mediaState?.paused ?? paused;
   const audioAvailable = player.media.audioAvailable?.() !== false;
