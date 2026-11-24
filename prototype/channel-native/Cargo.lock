@@ -1961,8 +1961,7 @@ dependencies = [
 [[package]]
 name = "is"
 version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04258fe9dc0a6452010c36db2fd2bb63ab98554aaaac46bd9daa3696ccbfbc00"
+source = "git+https://github.com/TNTcraftHIM/str0m?rev=2d0d6eaaf4d19d7530588f695cd631eedf42acf5#2d0d6eaaf4d19d7530588f695cd631eedf42acf5"
 dependencies = [
  "crc",
  "serde",
@@ -3935,8 +3934,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83d8ae460e1e5b327b60abc80ac8ef9c97f0ed8148d92df4c6e1294d9b8a58e0"
+source = "git+https://github.com/TNTcraftHIM/str0m?rev=2d0d6eaaf4d19d7530588f695cd631eedf42acf5#2d0d6eaaf4d19d7530588f695cd631eedf42acf5"
 dependencies = [
  "arrayvec",
  "base64ct",
@@ -3956,8 +3954,7 @@ dependencies = [
 [[package]]
 name = "str0m-proto"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6a9a46a0f013add7a1d0d53d9bc92c85c1ac95243140fe0d073fb6e57c99b63"
+source = "git+https://github.com/TNTcraftHIM/str0m?rev=2d0d6eaaf4d19d7530588f695cd631eedf42acf5#2d0d6eaaf4d19d7530588f695cd631eedf42acf5"
 dependencies = [
  "base64ct",
  "dimpl",
@@ -3970,8 +3967,7 @@ dependencies = [
 [[package]]
 name = "str0m-rust-crypto"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "298554811ee24adbfee0bf8628c2e220989543c83c55c3869437dc1f3a43e340"
+source = "git+https://github.com/TNTcraftHIM/str0m?rev=2d0d6eaaf4d19d7530588f695cd631eedf42acf5#2d0d6eaaf4d19d7530588f695cd631eedf42acf5"
 dependencies = [
  "aes 0.9.4",
  "aes-gcm 0.11.1",
