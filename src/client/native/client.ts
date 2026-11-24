@@ -310,20 +310,20 @@ export class NativeClient {
     await this.request("ping", {}, pongResponseSchema);
   }
 
-  async captureOptions(): Promise<NativeAdapter[]> {
+  async captureOptions(signal?: AbortSignal): Promise<NativeAdapter[]> {
     const response = await this.request(
       "capture-options",
       {},
-      captureOptionsResponseSchema,
+      captureOptionsResponseSchema, undefined, undefined, signal,
     );
     return response.adapters;
   }
 
-  async sources(): Promise<NativeCaptureTarget[]> {
+  async sources(signal?: AbortSignal): Promise<NativeCaptureTarget[]> {
     const response = await this.request(
       "list-sources",
       {},
-      sourceListResponseSchema,
+      sourceListResponseSchema, undefined, undefined, signal,
     );
     return response.sources;
   }

@@ -630,6 +630,11 @@ describe("native App private wire", () => {
     window.setTimeout = globalThis.setTimeout;
     window.clearTimeout = globalThis.clearTimeout;
     const timedOut = expect(client!.sources()).rejects.toMatchObject({ reason: "timeout", operation: "list-sources" });
+    const reader = new AbortController();
+    const cancelled = expect(client!.sources(reader.signal)).rejects.toMatchObject({ name: "AbortError" });
+    reader.abort();
+    expect(vi.getTimerCount()).toBe(1);
+    await cancelled;
     await vi.advanceTimersByTimeAsync(8_000);
     await timedOut;
     expect(sockets[0]!.close).not.toHaveBeenCalled();
