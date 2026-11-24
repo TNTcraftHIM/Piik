@@ -999,7 +999,12 @@ impl Session {
                                     reply_to_request(result, registered)?;
                                 },
                                 HostCommand::RevokeWatchReader { resource_id } => {
-                                    if let Some(live) = &self.live { live.peers.revoke_watch_reader(resource_id).await?; }
+                                    if let Some(live) = &mut self.live {
+                                        await_peer(
+                                            live.peers.revoke_watch_reader(resource_id),
+                                            &mut live.commands, &live.pairs, &mut live.room, &live.peers, socket,
+                                        ).await?;
+                                    }
                                 },
                                 HostCommand::Describe(result) => {
                                     let _ = result.send(self.hosting_description());
