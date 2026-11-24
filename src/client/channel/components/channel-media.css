@@ -254,3 +254,4 @@
 .c3-watch-native-slot { flex: 1 0 180px; min-width: 0; aspect-ratio: 16 / 9; }
 .c3-watch-player[data-native-page] > .c3-mini-message { position: absolute; inset: 0 0 auto; pointer-events: none; }
 .c3-watch-player[data-native-page] > .c3-mini-message button { pointer-events: auto; }
+.c3-watch-output .lr-capture-device { width: 100%; padding: 0; pointer-events: auto; }
