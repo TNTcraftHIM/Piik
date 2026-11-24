@@ -34,11 +34,10 @@ and [engineering](./docs/standards/engineering.md).
 - Model recovery from the smallest underlying authority and connection state.
   Restart, crash, timeout, and network loss do not justify parallel states or
   case-specific fallbacks when their required action is the same.
-- Ordinary scoped work uses the lean path: inspect the affected owner and code,
-  make the smallest coherent change, run focused checks, inspect the diff, and
-  stage the requested files. Use the full integration/release path only for an
-  explicitly requested release or a material contract, route/security,
-  infrastructure, persistence, or irreversible change.
+- Ordinary scoped work uses the [lean workflow](./CONTRIBUTING.md#lean-workflow).
+  Use the full integration/release path only for an explicitly requested release
+  or a material contract, route/security, infrastructure, persistence, or
+  irreversible change.
 
 ## Required Skills
 
