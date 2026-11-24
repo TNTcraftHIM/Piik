@@ -944,6 +944,71 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
 }
 
 #[tokio::test]
+async fn resumed_session_releases_stopped_driver_and_accepts_fresh_generation() -> Result<()> {
+    let (mut session, mut socket, _remote, mut state) = capture_projection_session().await;
+    let live = session.live.as_mut().unwrap();
+    let old = live.session;
+    let fixed = crate::peer::server_udp::ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
+    let held = crate::peer::hold_udp_for_test(&fixed);
+    live.peers.close().await?;
+    let (commands, receiver) = mpsc::channel(64);
+    live.commands = receiver;
+    live.peers = NativePeers::with_input(
+        old, vec![], commands, live.room.snapshot.subscribe(), None, Some(fixed.clone()),
+    );
+    time::timeout(Duration::from_secs(3), async {
+        while live.commands.recv().await.is_some() {}
+    }).await?;
+    drop(held);
+    session.config.server_udp = Some(fixed);
+    session.recovery = Some(Instant::now() + Duration::from_millis(RECOVERY_MS));
+
+    let welcome = |session_id, state: Snapshot| Event::Welcome {
+        connection_id: Uuid::new_v4(),
+        protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+        self_profile: self_profile(&state, session_id),
+        credential: "resumed-fixture".into(),
+        session_id,
+        state,
+        invitation_origin: None,
+    };
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    session.config.url = format!("ws://{}", listener.local_addr()?);
+    let resumed = welcome(old, state.clone());
+    let domain = async {
+        let mut remote = tokio_tungstenite::accept_async(listener.accept().await?.0).await?;
+        let join = remote.next().await.unwrap()?.into_text()?;
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&join)?["sessionId"], old.to_string());
+        let text = piik_channel_core::wire_images::StateImageEncoder::default().encode(&resumed)?;
+        remote.send(Message::Text(text.into())).await?;
+        while let Some(frame) = remote.next().await {
+            let value: serde_json::Value = serde_json::from_str(&frame?.into_text()?)?;
+            if value["requestId"] == "native-leave" {
+                remote.close(None).await?;
+                return Ok::<(), anyhow::Error>(());
+            }
+        }
+        anyhow::bail!("session did not leave after the failed resume")
+    };
+    let mut stop = std::future::pending();
+    let (terminal, domain_result) = time::timeout(Duration::from_secs(8), async {
+        tokio::join!(session.drive(&mut stop), domain)
+    }).await?;
+    domain_result?;
+    assert!(terminal.is_err());
+    assert_eq!(session.config.credential.as_deref(), Some("resumed-fixture"));
+    assert!(session.live.is_none() && session.recovery.is_none());
+
+    let fresh = Uuid::new_v4();
+    state.sessions.iter_mut().find(|s| s.id == old).unwrap().id = fresh;
+    session.event(welcome(fresh, state), &mut socket).await?;
+    let live = session.live.as_ref().unwrap();
+    assert_eq!(live.session, fresh);
+    live.peers.resync().await?;
+    session.release().await
+}
+
+#[tokio::test]
 async fn release_keeps_peer_shutdown_owned_when_cancelled() {
     use futures_util::FutureExt;
 

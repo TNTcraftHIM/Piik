@@ -3848,6 +3848,10 @@ mod input;
 pub(crate) use input::tests::share_pause_projection;
 mod mapping;
 mod preparation;
+#[cfg(all(test, feature = "capture"))]
+pub(crate) fn hold_udp_for_test(udp: &server_udp::ServerUdp) -> impl Drop + '_ {
+    udp.lease().expect("fixed sockets are available")
+}
 pub mod server_udp;
 pub(crate) mod transport;
 
