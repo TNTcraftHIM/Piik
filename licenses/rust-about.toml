@@ -50,3 +50,19 @@ license = "MIT"
 [[dlopen2.clarify.git]]
 path = "LICENSE"
 checksum = "39fa265207450e77c62e90c5594a06c085b655d8374c7ced4bf7894b6bd95dd2"
+
+# These Git workspace crates keep their complete license at the repository root.
+
+[netwatch.clarify]
+license = "MIT OR Apache-2.0"
+[[netwatch.clarify.git]]
+path = "LICENSE-APACHE"
+license = "Apache-2.0"
+checksum = "7986218ec4ea89de3511a843ae27fea2584a525036c220ff7b26589179f07888"
+
+[portmapper.clarify]
+license = "MIT OR Apache-2.0"
+[[portmapper.clarify.git]]
+path = "LICENSE-APACHE"
+license = "Apache-2.0"
+checksum = "7986218ec4ea89de3511a843ae27fea2584a525036c220ff7b26589179f07888"

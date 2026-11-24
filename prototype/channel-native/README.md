@@ -227,7 +227,7 @@ for the remaining temporary forks below; it prepares review candidates without
 changing their current pins.
 
 Native pins `netwatch` and `portmapper` 0.20.0, and Server pins `netwatch`, to the same
-[net-tools revision](https://github.com/TNTcraftHIM/net-tools/commit/fac75a3ab554df1edecec353920ec7af673f533a).
+[net-tools revision](https://github.com/TNTcraftHIM/net-tools/commit/d13e83360e917a63dfad6ed6254757542f7a45f9).
 On desktop, interface address and IPv6 DAD changes reach the existing monitor.
 A connecting Native pair can then advertise a newly usable address on its
 original UDP socket until ICE selects its first path. Android takes an interface snapshot when creating the pair.
@@ -235,7 +235,10 @@ original UDP socket until ICE selects its first path. Android takes an interface
 The socket-owned mapping worker delegates synchronous gateway discovery to Tokio's
 blocking pool. When a gateway advertises NAT-PMP and explicitly reports that
 PCP mapping is unsupported, the worker can create a NAT-PMP lease and renew it
-if the gateway changes the external port. Both crates retain their upstream
+if the gateway changes the external port. PCP renewal reuses the active lease's
+nonce, as required by [RFC 6887](https://www.rfc-editor.org/rfc/rfc6887.html#section-11.2.1).
+An expired availability probe does not change the active lease's protocol.
+Both crates retain their upstream
 MIT/Apache-2.0 licensing. [Upstream PR #268](https://github.com/n0-computer/net-tools/pull/268)
 covers the scheduling fix requested in [issue #266](https://github.com/n0-computer/net-tools/issues/266).
 Return both dependencies to an upstream release once it covers the scheduling,
