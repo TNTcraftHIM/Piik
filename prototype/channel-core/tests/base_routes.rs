@@ -5650,6 +5650,47 @@ fn watch_uses_an_alternate_while_a_file_keeps_the_relays_only_slot() {
     command(&mut net,source,json!({"type":"set_watch_byte_source","roomId":room,"id":watch,"byteSource":replacement}));
     let late=net.command(relay,refuse);
     assert!(late.events.iter().any(|(_,event)| matches!(event, Event::RoomReply { result:piik_channel_core::host::RoomResult::Error{code}, .. } if code=="unassigned_watch_branch")));
+    let members = [(source, s), (relay, r), (alternate, a), (viewer, v)];
+    let check_tree = |net: &RoomNetwork, live: &[(Uuid, Uuid)]| {
+        let mut parents = std::collections::BTreeMap::new();
+        let mut children = std::collections::BTreeMap::new();
+        for &(socket, member) in live {
+            for plan in net.state(socket).watch_bytes.iter().filter(|p| p.activity_id == watch) {
+                if let Some(parent) = plan.upstream {
+                    assert!(parents.insert(member, parent).is_none());
+                }
+                for &child in &plan.downstream {
+                    assert!(children.insert(child, member).is_none());
+                }
+            }
+        }
+        assert_eq!(parents, children);
+        for &child in parents.keys() {
+            let mut seen = std::collections::BTreeSet::new();
+            let mut current = child;
+            while let Some(&parent) = parents.get(&current) {
+                assert!(seen.insert(current), "watch delivery cycle");
+                current = parent;
+            }
+            assert_eq!(current, s);
+        }
+    };
+    let mut seed = 41_u32;
+    for _ in 0..16 {
+        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+        let subscriber = members[1 + (seed >> 16) as usize % 3].0;
+        let mode = if seed & 1 == 0 { "peer" } else { "direct" };
+        command(&mut net, subscriber, json!({"type":"join_watch","roomId":room,"id":watch,"mode":mode}));
+        check_tree(&net, &members);
+    }
+    let edge = pair(&net, viewer, a).id;
+    command(&mut net, viewer, json!({"type":"link_state","pairId":edge,"state":"failed"}));
+    check_tree(&net, &members);
+    let effects = net.authority.disconnect(viewer, 200);
+    net.deliver(effects);
+    let effects = net.authority.expire(200 + piik_channel_core::RECOVERY_MS);
+    net.deliver(effects);
+    check_tree(&net, &members[..3]);
 }
 
 #[test]
