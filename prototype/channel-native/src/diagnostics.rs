@@ -69,6 +69,20 @@ pub(crate) enum PreparationOutcome {
     CommitFailed,
 }
 #[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RetirementReason {
+    ProjectionRemoved,
+    SetupFailed,
+    ConnectionDeadline,
+    PeerFailed,
+    PeerClosed,
+    TerminalDataChannel,
+    SignalingFailed,
+    EventFailed,
+    NegotiationFailed,
+    DriverShutdown,
+}
+#[derive(Clone, Copy, Serialize)]
 #[serde(tag = "stage", rename_all = "snake_case")]
 pub(crate) enum RtcPairEvent {
     PreparationStarted {
@@ -93,6 +107,9 @@ pub(crate) enum RtcPairEvent {
         prepared: bool,
     },
     PairSetupFailed,
+    RetirementStarted {
+        reason: RetirementReason,
+    },
     GatewayProbe {
         upnp: bool,
         pcp: bool,
@@ -529,6 +546,12 @@ mod tests {
                 outcome: PreparationOutcome::Succeeded,
             },
         );
+        recorder.rtc_pair(
+            first,
+            RtcPairEvent::RetirementStarted {
+                reason: RetirementReason::ProjectionRemoved,
+            },
+        );
         let state = recorder.0.lock().unwrap();
         let buffer = state.buffer.as_ref().unwrap();
         let snapshot = Snapshot {
@@ -553,7 +576,7 @@ mod tests {
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect();
-        assert_eq!(events.len(), 9);
+        assert_eq!(events.len(), 10);
         assert!(events
             .iter()
             .all(|event| event["level"] == "INFO" && event["target"] == "piik.rtc"));
@@ -588,6 +611,10 @@ mod tests {
         );
         assert_eq!(details[7]["event"]["stage"], "transport_connected");
         assert_eq!(details[8]["event"]["stage"], "preparation_finished");
+        assert_eq!(
+            details[9],
+            serde_json::json!({"pair":pair_alias(first),"event":{"stage":"retirement_started","reason":"projection_removed"}})
+        );
         for raw in [first.to_string(), second.to_string()] {
             assert!(!text.contains(&raw));
         }

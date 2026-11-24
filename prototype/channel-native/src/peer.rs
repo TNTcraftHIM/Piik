@@ -1,4 +1,5 @@
 //! Native transport for authorized adjacent pairs. The domain supplies all leases.
+use crate::diagnostics::RetirementReason;
 use crate::{
     data::{self, DataLink, Lane},
     file::Files,
@@ -1001,7 +1002,7 @@ impl NativePeers {
                         Turn::Input(Input::Signal(id, signal, done)) => {
                             if let Err(error) = d.signal(id, signal).await {
                                 eprintln!("Native pair signaling failed: {error}");
-                                d.fail(id).await;
+                                d.fail(id, RetirementReason::SignalingFailed).await;
                             }
                             let _ = done.send(Ok(()));
                         }
@@ -1031,7 +1032,7 @@ impl NativePeers {
                             if let Err(error) = d.event(event).await {
                                 eprintln!("Native pair event failed: {error}");
                                 if let Some(id) = id.filter(|id| d.pairs.contains_key(id)) {
-                                    d.fail(id).await;
+                                    d.fail(id, RetirementReason::EventFailed).await;
                                 }
                             }
                         }
@@ -1257,7 +1258,7 @@ impl Driver {
         }
         let result = self.finish_pair_retirement().await;
         for (_, pair) in self.pairs.drain() {
-            close_pair(pair).await;
+            close_pair(pair, RetirementReason::DriverShutdown).await;
         }
         self.files.close().await;
         self.watches.close().await;
@@ -1991,7 +1992,9 @@ impl Driver {
             .collect();
         let mut released = false;
         for id in removed {
-            released |= self.retire_pair(id).await;
+            released |= self
+                .retire_pair(id, RetirementReason::ProjectionRemoved)
+                .await;
         }
         for plan in plans {
             let id = plan.id;
@@ -2041,7 +2044,7 @@ impl Driver {
             if let Err(error) = result {
                 eprintln!("Native pair update failed: {error}");
                 crate::diagnostics::rtc_pair(id, crate::diagnostics::RtcPairEvent::PairSetupFailed);
-                self.fail(id).await;
+                self.fail(id, RetirementReason::SetupFailed).await;
             }
         }
         self.refresh_media(released).await;
@@ -2252,7 +2255,7 @@ impl Driver {
         if let Err(error) = result {
             eprintln!("Native UDP preparation failed: {error}");
             rtc_pair(id, RtcPairEvent::PairSetupFailed);
-            self.fail(id).await;
+            self.fail(id, RetirementReason::SetupFailed).await;
         }
     }
 
@@ -2735,7 +2738,7 @@ impl Driver {
         }
         Ok(())
     }
-    async fn retire_pair(&mut self, id: Uuid) -> bool {
+    async fn retire_pair(&mut self, id: Uuid, reason: RetirementReason) -> bool {
         if let Some(pending) = self.preparings.remove(&id) {
             pending.close().await;
         }
@@ -2745,7 +2748,7 @@ impl Driver {
         let released = !pair.outputs.is_empty();
         let peer = pair.plan.peer_id;
         // Cleanup progresses even when a detach queue is full. Shutdown joins the same task.
-        self.retiring_pair = Some(tokio::spawn(close_pair(pair)));
+        self.retiring_pair = Some(tokio::spawn(close_pair(pair, reason)));
         for message in self.inputs.disconnected(id) {
             self.send_input(message).await;
         }
@@ -2762,8 +2765,8 @@ impl Driver {
         }
         released
     }
-    async fn fail(&mut self, id: Uuid) {
-        self.retire_pair(id).await;
+    async fn fail(&mut self, id: Uuid, reason: RetirementReason) {
+        self.retire_pair(id, reason).await;
         self.refresh_outputs().await;
         self.send(Command::LinkState {
             pair_id: id,
@@ -2790,7 +2793,7 @@ impl Driver {
             if connected {
                 self.fail_room_data(id).await;
             } else {
-                self.fail(id).await;
+                self.fail(id, RetirementReason::ConnectionDeadline).await;
             }
         }
     }
@@ -3034,7 +3037,15 @@ impl Driver {
                         .await;
                         self.report_room_data_ready(id).await;
                     } else if matches!(state, PeerState::Failed | PeerState::Closed) {
-                        self.fail(id).await;
+                        self.fail(
+                            id,
+                            if state == PeerState::Closed {
+                                RetirementReason::PeerClosed
+                            } else {
+                                RetirementReason::PeerFailed
+                            },
+                        )
+                        .await;
                     }
                 }
             }
@@ -3059,7 +3070,7 @@ impl Driver {
                             let _ = task.await;
                             let _ = dc.close().await;
                             if terminal {
-                                self.fail(id).await;
+                                self.fail(id, RetirementReason::TerminalDataChannel).await;
                             } else {
                                 self.fail_room_data(id).await;
                             }
@@ -3634,7 +3645,7 @@ impl Driver {
         for id in retry {
             if let Err(error) = self.offer(id).await {
                 eprintln!("Native pair negotiation failed: {error}");
-                self.fail(id).await;
+                self.fail(id, RetirementReason::NegotiationFailed).await;
             }
         }
     }
@@ -3779,7 +3790,11 @@ fn prepared_candidate(remote: std::net::SocketAddrV4) -> Result<Candidate> {
     let candidate = IceCandidate::host(remote.into(), "udp")?;
     Ok(signal_candidate(candidate, None))
 }
-fn close_pair(mut pair: Pair) -> impl std::future::Future<Output = ()> {
+fn close_pair(mut pair: Pair, reason: RetirementReason) -> impl std::future::Future<Output = ()> {
+    crate::diagnostics::rtc_pair(
+        pair.plan.id,
+        crate::diagnostics::RtcPairEvent::RetirementStarted { reason },
+    );
     pair.state.store(PeerState::Closed as u8, Ordering::Release);
     if let Some(mapping) = &pair.mapping {
         mapping.cancel();

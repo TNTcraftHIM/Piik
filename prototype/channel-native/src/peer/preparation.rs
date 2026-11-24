@@ -1154,7 +1154,9 @@ mod tests {
             unreachable!()
         };
         if driver.signal(pair, payload).await.is_err() {
-            driver.fail(pair).await;
+            driver
+                .fail(pair, crate::diagnostics::RetirementReason::PeerFailed)
+                .await;
         }
         ensure!(
             driver.preparings.contains_key(&pair),
@@ -1193,8 +1195,18 @@ mod tests {
                 "late preparation signal reported a physical pair failure"
             );
         }
-        driver.retire_pair(pair).await;
-        driver.retire_pair(sibling.id).await;
+        driver
+            .retire_pair(
+                pair,
+                crate::diagnostics::RetirementReason::ProjectionRemoved,
+            )
+            .await;
+        driver
+            .retire_pair(
+                sibling.id,
+                crate::diagnostics::RetirementReason::ProjectionRemoved,
+            )
+            .await;
         driver.files.close().await;
         driver.watches.close().await;
         driver.transport.close().await;
@@ -1328,7 +1340,12 @@ mod tests {
             .await
             .context("refused prepared socket retained")?;
         drop(rebound);
-        driver.retire_pair(pair).await;
+        driver
+            .retire_pair(
+                pair,
+                crate::diagnostics::RetirementReason::ProjectionRemoved,
+            )
+            .await;
         driver.files.close().await;
         driver.watches.close().await;
         driver.transport.close().await;

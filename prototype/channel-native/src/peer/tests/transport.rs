@@ -290,7 +290,11 @@ async fn source_ended_before_ready_fails_only_its_current_flow() -> Result<()> {
         Ok(())
     }).await.unwrap_or_else(|error| Err(error.into()));
     for (_, pair) in std::mem::take(&mut driver.pairs) {
-        crate::peer::close_pair(pair).await;
+        crate::peer::close_pair(
+            pair,
+            crate::diagnostics::RetirementReason::ProjectionRemoved,
+        )
+        .await;
     }
     driver.files.close().await;
     driver.watches.close().await;
@@ -400,10 +404,12 @@ async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()>
     use crate::peer::tests::driver;
     use std::future::Future;
 
+    crate::diagnostics::enable()?;
     let (mut driver, _events, _commands, _stop) = driver();
     let (id, instance, mut requests, observer, dropped) =
         install_retirement_pair(&mut driver).await;
-    let mut retirement = Box::pin(driver.retire_pair(id));
+    let mut retirement =
+        Box::pin(driver.retire_pair(id, crate::diagnostics::RetirementReason::ProjectionRemoved));
     let done = tokio::select! {
         result = &mut retirement => panic!("retirement completed before transport removal: {result}"),
         request = requests.recv() => match request {
@@ -416,6 +422,25 @@ async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()>
     };
     drop(retirement); // Driver's stop select cancels this exact work future.
     assert!(driver.pairs.is_empty());
+    driver.retire_pair(id, crate::diagnostics::RetirementReason::PeerFailed).await;
+    let mut bytes = Vec::new();
+    crate::diagnostics::snapshot().unwrap().write_archive(&mut bytes, "test", "test", "test")?;
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))?;
+    let mut lines = String::new();
+    std::io::Read::read_to_string(&mut archive.by_name("events.ndjson")?, &mut lines)?;
+    let alias = crate::diagnostics::pair_alias(id);
+    let mut retirements = Vec::new();
+    for line in lines.lines() {
+        let record: serde_json::Value = serde_json::from_str(line)?;
+        if record["target"] != "piik.rtc" { continue; }
+        let detail: serde_json::Value = serde_json::from_str(record["message"].as_str().unwrap())?;
+        if detail["pair"] == alias && detail["event"]["stage"] == "retirement_started" {
+            retirements.push(detail);
+        }
+    }
+    assert_eq!(retirements, [serde_json::json!({
+        "pair": alias, "event": {"stage": "retirement_started", "reason": "projection_removed"}
+    })]);
     dropped.await?;
     assert!(observer.is_finished());
     let mut shutdown = Box::pin(driver.finish_pair_retirement());

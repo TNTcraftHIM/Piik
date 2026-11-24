@@ -393,7 +393,7 @@ async fn physical_failure_retires_only_that_source_and_keeps_other_flow_leases()
             .iter()
             .map(|flow| flow.id)
             .collect();
-        f.driver.fail(failed).await;
+        f.driver.fail(failed, crate::diagnostics::RetirementReason::PeerFailed).await;
         f.parents.retain(|parent| parent.pair != failed);
         ensure!(
             !f.driver.pairs.contains_key(&failed)

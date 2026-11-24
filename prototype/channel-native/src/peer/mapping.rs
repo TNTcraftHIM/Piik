@@ -250,7 +250,12 @@ mod tests {
         )?;
         let wildcard = SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, local.port());
         ensure!(std::net::UdpSocket::bind(wildcard).is_err());
-        driver.retire_pair(first.id).await;
+        driver
+            .retire_pair(
+                first.id,
+                crate::diagnostics::RetirementReason::ProjectionRemoved,
+            )
+            .await;
         ensure!(updates.receiver_count() == 1 && a.connection_metrics().await.is_err());
         ensure!(std::net::UdpSocket::bind(wildcard).is_err());
         exchange(&tx2, &dc2, "survivor").await?;
@@ -335,7 +340,9 @@ mod tests {
             watcher: tokio::spawn(forward(base, addresses, retired.clone())),
         });
         let held = driver.files.hold_queue_capacity().await;
-        let mut retirement = Box::pin(driver.retire_pair(id));
+        let mut retirement = Box::pin(
+            driver.retire_pair(id, crate::diagnostics::RetirementReason::ProjectionRemoved),
+        );
         tokio::select! {
             result = &mut retirement => panic!("file detach unexpectedly completed: {result}"),
             result = tokio::time::timeout(Duration::from_secs(2), updates.closed()) => result?,
@@ -356,7 +363,12 @@ mod tests {
         }
         drop(held);
         tokio::time::timeout(Duration::from_secs(2), retirement).await?;
-        driver.retire_pair(sibling).await;
+        driver
+            .retire_pair(
+                sibling,
+                crate::diagnostics::RetirementReason::ProjectionRemoved,
+            )
+            .await;
         driver.files.close().await;
         driver.watches.close().await;
         driver.transport.close().await;

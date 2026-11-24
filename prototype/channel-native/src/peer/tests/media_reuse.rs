@@ -316,7 +316,12 @@ async fn polite_collision_reoffers_a_reused_sender_without_losing_its_live_conne
         Ok::<_, anyhow::Error>(())
     }
     .await;
-    driver.retire_pair(pair).await;
+    driver
+        .retire_pair(
+            pair,
+            crate::diagnostics::RetirementReason::ProjectionRemoved,
+        )
+        .await;
     driver.files.close().await;
     driver.watches.close().await;
     driver.transport.close().await;
