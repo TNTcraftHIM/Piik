@@ -67,12 +67,9 @@ pub(crate) fn demands(
             .any(|negotiated| super::compatible(codec, &negotiated.rtp_codec))
     };
     let can_encode = super::encoding_codec(source.codec()).is_some_and(|codec| accepts(&codec));
-    let layers = source
-        .layers
-        .as_ref()
-        .map(|layers| layers.snapshot())
-        .unwrap_or_else(|| vec![(String::new(), source.video().cloned())]);
-    let feeds: Vec<_> = layers
+    let supply = source.video_supply(|codec| can_encode || accepts(codec));
+    let feeds: Vec<_> = supply
+        .0
         .iter()
         .filter_map(|(rid, video)| video.as_ref().map(|video| (rid, video, video.bitrate(now))))
         .collect();
@@ -84,6 +81,14 @@ pub(crate) fn demands(
         .map(|(_, video, _)| *video);
     let mut remaining = match grant {
         EncodingDemand::Original => u64::MAX,
+        EncodingDemand::Limited(bps) if bps > 0 && !can_encode => {
+            let floor = feeds
+                .iter()
+                .filter_map(|(_, _, rate)| *rate)
+                .filter(|bps| *bps > 0)
+                .min();
+            u64::from(bps).max(floor.unwrap_or(0))
+        }
         EncodingDemand::Limited(bps) => u64::from(bps),
         EncodingDemand::Paused => 0,
     };
@@ -122,6 +127,7 @@ pub(crate) fn demands(
                             remaining -= cost;
                             EncodingDemand::Original
                         }
+                        Some(cost) if cost > 0 && !can_encode => EncodingDemand::Paused,
                         Some(cost) if cost > 0 => {
                             selected = highest.cloned();
                             let budget = remaining as u32;
@@ -704,13 +710,74 @@ mod tests {
             vec![(String::new(), Arc::downgrade(&direct))],
             allocation,
             &[RtpCodecParameters {
-                rtp_codec: original_codec,
+                rtp_codec: original_codec.clone(),
                 payload_type: 114,
             }],
             epoch,
         );
         assert_eq!(original[0].encoding, EncodingRequest::Forward);
         assert!(original[0].source.as_ref().unwrap().same(&high));
+        // This receiver accepts only the supplied High profile. Its encoder
+        // cannot make a smaller compatible representation from the first RID.
+        low.write(frame(240_000));
+        high.write(frame(12_000));
+        let now = epoch + Duration::from_secs(2);
+        let floor = source.video_supply(|_| true).floor(now).unwrap() as u32;
+        assert_eq!(Some(u64::from(floor)), high.bitrate(now));
+        assert!(low.bitrate(now).unwrap() > u64::from(floor));
+        for budget in [floor, 1] {
+            let next = super::demands(
+                &source,
+                Uuid::new_v4(),
+                vec![
+                    ("q".into(), Arc::downgrade(&q)),
+                    ("h".into(), Arc::downgrade(&h)),
+                ],
+                VideoAllocation {
+                    forwarding: EncodingDemand::Limited(budget),
+                    encoder_bps: budget,
+                },
+                &[RtpCodecParameters {
+                    rtp_codec: original_codec.clone(),
+                    payload_type: 114,
+                }],
+                now,
+            );
+            assert_eq!(next[0].encoding, EncodingRequest::Paused);
+            assert_eq!(next[1].encoding, EncodingRequest::Forward);
+            assert!(next[1].source.as_ref().unwrap().same(&high));
+        }
+        let incompatible = Video::new(high.time(), high.changed());
+        incompatible.set_codec(RtpCodec::h264([0x42, 0xe0, 0x1f]))?;
+        incompatible.write(frame(1_000));
+        source
+            .layers
+            .as_ref()
+            .unwrap()
+            .insert("h".into(), incompatible);
+        let supply = source.video_supply(|codec| crate::media::compatible(codec, &original_codec));
+        let cost = low.bitrate(now);
+        assert_eq!(supply.floor(now), cost);
+        assert_eq!(supply.rates(now), (cost, cost));
+        let only_high = super::demands(
+            &source,
+            Uuid::nil(),
+            vec![
+                ("q".into(), Arc::downgrade(&q)),
+                ("h".into(), Arc::downgrade(&h)),
+            ],
+            VideoAllocation {
+                forwarding: EncodingDemand::Limited(cost.unwrap() as u32),
+                encoder_bps: 0,
+            },
+            &[RtpCodecParameters {
+                rtp_codec: original_codec,
+                payload_type: 114,
+            }],
+            now,
+        );
+        assert_eq!(only_high[0].encoding, EncodingRequest::Forward);
+        assert_eq!(only_high[1].encoding, EncodingRequest::Paused);
         Ok(())
     }
 

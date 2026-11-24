@@ -356,7 +356,7 @@ mod tests {
         let new_inventory = layers.snapshot();
         assert_eq!(new_inventory[0].0, old_inventory[0].0);
         assert!(new_inventory[0].1.as_ref().unwrap().same(&low));
-        layers.supply(
+        crate::media::video::Supply(layers.snapshot()).supply(
             &[("q".into(), incumbent.clone())],
             crate::media::video::EncodingDemand::Original,
             now,

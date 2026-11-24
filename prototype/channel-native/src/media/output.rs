@@ -390,6 +390,9 @@ impl Output {
         demand: video::EncodingDemand,
         now: std::time::Instant,
     ) -> Result<()> {
+        let layers = video::Supply::new(layers.snapshot(), |video| {
+            self.can_forward(video.codec().unwrap_or(&self.source_codec))
+        });
         if let Some(input) = self.video_input().and_then(|input| input.upgrade()) {
             layers.select(&input, demand, now)
         } else {
@@ -408,11 +411,14 @@ impl Output {
         self.negotiated.borrow().clone().unwrap_or_default()
     }
     pub fn can_forward(&self, codec: &RtpCodec) -> bool {
-        self.negotiated.borrow().as_ref().is_some_and(|formats| {
-            formats
-                .iter()
-                .any(|format| super::compatible(codec, &format.rtp_codec))
-        })
+        self.negotiated.borrow().as_ref().map_or_else(
+            || super::compatible(codec, &self.source_codec),
+            |formats| {
+                formats
+                    .iter()
+                    .any(|format| super::compatible(codec, &format.rtp_codec))
+            },
+        )
     }
     pub fn confirm(&self, codecs: Option<Vec<RtpCodecParameters>>) -> Result<bool> {
         let codecs = codecs

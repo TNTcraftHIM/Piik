@@ -34,6 +34,21 @@ impl Rates {
         }
         Self { full, temporal }
     }
+    /// Cost of the cheapest representation `fit` can select: unknown before a
+    /// complete observation, zero while the feed is idle.
+    pub fn floor(&self) -> Option<u64> {
+        let full = self.full?;
+        Some(
+            self.temporal
+                .iter()
+                .flatten()
+                .chain([&full])
+                .copied()
+                .filter(|bps| *bps > 0)
+                .min()
+                .unwrap_or(0),
+        )
+    }
     pub fn fit(&self, budget: u64) -> Option<Selection> {
         let full = self.full?;
         if full > 0 && full <= budget {

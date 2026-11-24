@@ -94,6 +94,9 @@ async fn declared_source_withdrawal_remaps_the_same_flow_without_failing_its_pai
         let input = f.plans[0].incoming[0].id;
         let flow = f.plans.last().unwrap().outgoing[0].id;
         let sibling = f.plans.last().unwrap().outgoing[1].id;
+        // The sibling is retained media, not an optional trial admitted
+        // against the remapped flow's bandwidth.
+        f.plans.last_mut().unwrap().outgoing[1].selected = true;
         f.plans[0].rooms.clear();
         f.driver
             .update(f.plans.clone(), vec![f.publication.clone()], vec![])
@@ -372,6 +375,12 @@ async fn physical_failure_retires_only_that_source_and_keeps_other_flow_leases()
     let mut f = Fixture::new(vp8()).await?;
     let result = async {
         let sink = f.sink;
+        // The survivor is retained media, not an optional trial admitted
+        // against the failing flow's bandwidth.
+        f.plans.last_mut().unwrap().outgoing[1].selected = true;
+        f.driver
+            .update(f.plans.clone(), vec![f.publication.clone()], vec![])
+            .await;
         let flow = f.plans.iter().find(|p| p.id == sink).unwrap().outgoing[1].id;
         f.until(|f| {
             f.driver.pairs[&sink]

@@ -2,7 +2,7 @@
 //! independently when its finite queue cannot keep up.
 use super::{clock::SourceTime, Rate, RtpCodec};
 use crate::EncodedFrame;
-use anyhow::{ensure, Result};
+use anyhow::{ensure, Context, Result};
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex, OnceLock, Weak},
@@ -11,7 +11,7 @@ use std::{
 use tokio::sync::{watch, Notify};
 
 mod temporal;
-use temporal::{Decision, Rates, Temporal};
+use temporal::{Decision, Rates, Selection, Temporal};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum EncodingDemand {
@@ -85,9 +85,21 @@ impl Layers {
             .iter()
             .any(|(_, video)| video.is_some())
     }
-    /// Highest active representation and the cost of retaining the whole supply.
+}
+
+/// The declared RIDs and the feeds this output can currently use.
+pub(crate) struct Supply(pub Vec<(String, Option<Video>)>);
+impl Supply {
+    pub fn new(mut layers: Vec<(String, Option<Video>)>, accepts: impl Fn(&Video) -> bool) -> Self {
+        for (_, video) in &mut layers {
+            if video.as_ref().is_some_and(|feed| !accepts(feed)) {
+                *video = None;
+            }
+        }
+        Self(layers)
+    }
     pub fn rates(&self, now: Instant) -> (Option<u64>, Option<u64>) {
-        let layers = self.0.lock().unwrap();
+        let layers = &self.0;
         let mut highest = None;
         let mut aggregate = Some(0);
         let mut present = false;
@@ -103,13 +115,25 @@ impl Layers {
         }
         (highest, present.then_some(aggregate).flatten())
     }
+    /// Cost of the cheapest representation any measured feed can deliver.
+    /// Idle feeds cost nothing only while no measured feed is flowing.
+    pub fn floor(&self, now: Instant) -> Option<u64> {
+        let layers = &self.0;
+        layers
+            .iter()
+            .filter_map(|(_, video)| video.as_ref()?.floor(now))
+            .reduce(|a, b| match (a, b) {
+                (0, bps) | (bps, 0) => bps,
+                (a, b) => a.min(b),
+            })
+    }
     pub fn supply(
         &self,
         inputs: &[(String, Arc<Input>)],
         demand: EncodingDemand,
         now: Instant,
     ) -> Result<()> {
-        let layers = self.snapshot();
+        let layers = &self.0;
         let rates: Vec<_> = layers
             .iter()
             .map(|(_, video)| {
@@ -122,10 +146,20 @@ impl Layers {
         let active = rates
             .iter()
             .any(|rate| rate.full.is_some_and(|bps| bps > 0));
-        let mut remaining = match demand {
+        let budget = match demand {
             EncodingDemand::Original => u64::MAX,
             EncodingDemand::Limited(bps) => u64::from(bps),
             EncodingDemand::Paused => 0,
+        };
+        let measured_floor = rates
+            .iter()
+            .filter_map(Rates::floor)
+            .filter(|bps| *bps > 0)
+            .min();
+        let mut remaining = if budget > 0 {
+            budget.max(measured_floor.unwrap_or(0))
+        } else {
+            0
         };
         for ((rid, video), rate) in layers.iter().zip(rates) {
             let Some((_, input)) = inputs.iter().find(|(id, _)| id == rid) else {
@@ -170,17 +204,16 @@ impl Layers {
                 }
                 if let Some(selection) = selection {
                     input.set_active(true);
-                    remaining -= selection.bps;
+                    remaining = remaining.saturating_sub(selection.bps);
                 } else {
                     input.set_active(false);
-                    remaining = 0;
                 }
             }
         }
         Ok(())
     }
     pub fn select(&self, input: &Arc<Input>, demand: EncodingDemand, now: Instant) -> Result<()> {
-        let layers = self.0.lock().unwrap();
+        let layers = &self.0;
         input.select_available(
             layers.iter().rev().filter_map(|(_, video)| video.as_ref()),
             demand,
@@ -232,6 +265,10 @@ impl Video {
     }
     pub fn bitrate(&self, now: Instant) -> Option<u64> {
         self.rates(now).full
+    }
+    /// Cost of the cheapest full or temporal representation of this feed.
+    pub fn floor(&self, now: Instant) -> Option<u64> {
+        self.rates(now).floor()
     }
     pub(super) fn observe_rate(&self, active: bool, now: Instant) {
         self.0.rate.lock().unwrap().observing(active, now);
@@ -404,6 +441,7 @@ impl Input {
         let mut incumbent = None;
         let mut pending_feed = None;
         let mut active = false;
+        let mut cheapest: Option<(&Video, Selection)> = None;
         let selected = videos.find_map(|video| {
             first.get_or_insert(video);
             if current.as_ref().is_some_and(|current| current.same(video)) {
@@ -414,6 +452,11 @@ impl Input {
             }
             let rates = video.rates(now);
             active |= rates.full.is_some_and(|bps| bps > 0);
+            if let Some(floor) = rates.floor().and_then(|bps| rates.fit(bps)) {
+                if cheapest.is_none_or(|(_, cheapest)| floor.bps < cheapest.bps) {
+                    cheapest = Some((video, floor));
+                }
+            }
             rates.fit(budget).map(|selection| (video, selection))
         });
         if !active {
@@ -435,10 +478,11 @@ impl Input {
             self.set_active(true);
             return Ok(());
         }
-        let Some((video, selection)) = selected else {
-            self.set_active(false);
-            return Ok(());
-        };
+        // The allocator owns admission. A grant it no longer fits after
+        // planning keeps the cheapest flowing representation until the next plan.
+        let (video, selection) = selected
+            .or(cheapest)
+            .context("a flowing feed has no selectable representation")?;
         let required = if matches!(demand, EncodingDemand::Limited(_)) {
             let mut state = self.state.lock().unwrap();
             let incumbent = state
@@ -1041,7 +1085,7 @@ mod tests {
         layers.insert("q".into(), q.clone());
         layers.insert("h".into(), h.clone());
         let terminal = h.subscribe();
-        layers.select(&terminal, EncodingDemand::Limited(25_000), now)?;
+        Supply(layers.snapshot()).select(&terminal, EncodingDemand::Limited(25_000), now)?;
         q.write(temporal_frame(epoch, 10, Some(0), false, true, 10));
         assert_eq!(terminal.recv().await.unwrap().bytes[0], 10);
         assert_eq!(terminal.state.lock().unwrap().temporal.target, Some(1));
@@ -1050,13 +1094,13 @@ mod tests {
         let qi = q.subscribe();
         let hi = h.subscribe();
         let inputs = vec![("q".into(), qi.clone()), ("h".into(), hi.clone())];
-        layers.supply(&inputs, EncodingDemand::Limited(25_000), now)?;
+        Supply(layers.snapshot()).supply(&inputs, EncodingDemand::Limited(25_000), now)?;
         assert_eq!(
             qi.state.lock().unwrap().pending.as_ref().unwrap().temporal,
             Some(1)
         );
         assert!(!hi.state.lock().unwrap().active);
-        layers.supply(&inputs, EncodingDemand::Limited(170_000), now)?;
+        Supply(layers.snapshot()).supply(&inputs, EncodingDemand::Limited(170_000), now)?;
         // Full q leaves 89,040; only h T0 (80,864) fits that remainder.
         assert_eq!(
             qi.state.lock().unwrap().pending.as_ref().unwrap().temporal,
@@ -1067,8 +1111,37 @@ mod tests {
             Some(0)
         );
         assert!(qi.state.lock().unwrap().active && hi.state.lock().unwrap().active);
-        layers.supply(&inputs, EncodingDemand::Limited(1), now)?;
-        assert!(!qi.state.lock().unwrap().active && !hi.state.lock().unwrap().active);
+        // The allocator owns admission: a positive grant that fits nothing
+        // still carries the cheapest representation instead of no video.
+        Supply(layers.snapshot()).supply(&inputs, EncodingDemand::Limited(1), now)?;
+        assert_eq!(
+            qi.state.lock().unwrap().pending.as_ref().unwrap().temporal,
+            Some(0)
+        );
+        assert!(qi.state.lock().unwrap().active && !hi.state.lock().unwrap().active);
+        // Quality order does not constrain the observed bitrate of each RID.
+        let inverted = Layers::new(vec!["q".into(), "h".into()]);
+        inverted.insert("q".into(), h.clone());
+        inverted.insert("h".into(), q.clone());
+        let expensive = h.subscribe();
+        let cheap = q.subscribe();
+        let inverted_inputs = vec![("q".into(), expensive.clone()), ("h".into(), cheap.clone())];
+        let inverted = Supply(inverted.snapshot());
+        let floor = inverted.floor(now).unwrap() as u32;
+        assert_eq!(floor, 8096);
+        for budget in [floor, 1] {
+            inverted.supply(&inverted_inputs, EncodingDemand::Limited(budget), now)?;
+            assert!(!expensive.state.lock().unwrap().active);
+            let state = cheap.state.lock().unwrap();
+            assert!(state.active);
+            assert_eq!(state.pending.as_ref().unwrap().temporal, Some(0));
+        }
+        Supply(layers.snapshot()).select(&terminal, EncodingDemand::Limited(1), now)?;
+        {
+            let state = terminal.state.lock().unwrap();
+            assert!(state.active && state.current.as_ref().unwrap().same(&q));
+            assert_eq!(state.temporal.target, Some(0));
+        }
         // Idle samples preserve selection; resumption reopens the shared window.
         let idle = now + Duration::from_secs(2);
         q.rates(idle);
@@ -1076,14 +1149,14 @@ mod tests {
         let idle = idle + Duration::from_secs(2);
         assert_eq!(q.rates(idle).full, Some(0));
         assert_eq!(h.rates(idle).full, Some(0));
-        layers.supply(&inputs, EncodingDemand::Limited(25_000), idle)?;
+        Supply(layers.snapshot()).supply(&inputs, EncodingDemand::Limited(25_000), idle)?;
         assert!(
             qi.state.lock().unwrap().active && !hi.state.lock().unwrap().active,
             "an unread static feed gets one bootstrap grant, not every RID at once"
         );
         let late = Video::new(h.time(), Arc::new(Notify::new()));
         layers.insert("h".into(), late.clone());
-        layers.supply(&inputs, EncodingDemand::Limited(25_000), idle)?;
+        Supply(layers.snapshot()).supply(&inputs, EncodingDemand::Limited(25_000), idle)?;
         assert!(hi
             .state
             .lock()

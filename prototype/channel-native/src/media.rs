@@ -330,6 +330,16 @@ pub(crate) struct Source {
     pub layers: Option<video::Layers>,
 }
 impl Source {
+    pub fn video_supply(&self, accepts: impl Fn(&RtpCodec) -> bool) -> video::Supply {
+        let layers = self
+            .layers
+            .as_ref()
+            .map(video::Layers::snapshot)
+            .unwrap_or_else(|| vec![(String::new(), self.video().cloned())]);
+        video::Supply::new(layers, |video| {
+            accepts(video.codec().unwrap_or(self.codec()))
+        })
+    }
     pub fn codec(&self) -> &RtpCodec {
         match &self.feed {
             SourceFeed::Rtp { codec, .. } => codec,
