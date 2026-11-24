@@ -35,6 +35,8 @@ type Views = Rc<RefCell<BTreeMap<Uuid, PageView>>>;
 type Reply = oneshot::Sender<Result<Value, String>>;
 const MAX_PAGE_VIEWS: usize = 64;
 const MAX_PENDING_POPUPS: usize = 64;
+const MAX_PAGE_CANDIDATES: usize = 64;
+const MAX_CANDIDATE_RESOURCE_BYTES: usize = 4096;
 #[derive(Deserialize)]
 struct Message {
     document: Uuid,
@@ -107,8 +109,15 @@ struct Pending {
     reply: Reply,
     frame: Uuid,
     selecting: bool,
-    promote: Option<Uuid>,
+    promote: Option<(Uuid, tokio::sync::watch::Receiver<bool>)>,
     patch: bool,
+}
+impl Pending {
+    fn take_reply(requests: &mut BTreeMap<Uuid, Self>, request: Uuid, view: Uuid, frame: Uuid) -> Option<Self> {
+        let pending = requests.get(&request)?;
+        if pending.view != view || pending.frame != frame { return None; }
+        requests.remove(&request).filter(|pending| !pending.reply.is_closed())
+    }
 }
 struct Popup {
     args: ICoreWebView2NewWindowRequestedEventArgs,
@@ -225,6 +234,15 @@ impl Page {
             let _ = reply.send(Err("page_player_busy".into()));
             return;
         }
+        let promote = if let Some(id) = candidate_id.filter(|_| selecting) {
+            let Some(lifetime) = self.views.borrow()[&candidate.view].media.borrow().candidate_lifetime(id) else {
+                let _ = reply.send(Err("watch_source_retired".into()));
+                return;
+            };
+            Some((id, lifetime))
+        } else {
+            None
+        };
         let request = Uuid::new_v4();
         let command = json!({"bridge":"piik-page-command","kind":if patch.is_some(){"patch"}else{"read"},
             "originalPage":self.original_page,"frame":candidate.frame,"media":candidate.source.media,"revision":candidate.source.revision,"request":request,"patch":patch});
@@ -244,7 +262,7 @@ impl Page {
                         reply,
                         frame: candidate.frame,
                         selecting,
-                        promote: candidate_id.filter(|_| selecting),
+                        promote,
                         patch: patch.is_some(),
                     },
                 );
@@ -854,6 +872,7 @@ impl Pages {
             }
             view.media.clone()
         };
+        retire_changed_candidate(&mut media.borrow_mut(), &mut page.candidates, page.selected, message.frame, &message.event);
         match message.event {
             PageEvent::Resources { urls } => {
                 let changed = media
@@ -882,13 +901,13 @@ impl Pages {
                 candidates,
                 removed,
             } => {
-                if candidates.len() > 64 || removed.len() > 64 {
+                if candidates.len() > MAX_PAGE_CANDIDATES || removed.len() > MAX_PAGE_CANDIDATES {
                     return;
                 }
                 if let Some(selected) = page.selected.and_then(|id| page.candidates.get_mut(&id))
                     .filter(|c| c.view == view_key && c.frame == message.frame)
                 {
-                    if let Some(next) = candidates.iter().find(|c| c.media == selected.source.media && c.resource.len() <= 4096) {
+                    if let Some(next) = candidates.iter().find(|c| c.media == selected.source.media && c.resource.len() <= MAX_CANDIDATE_RESOURCE_BYTES) {
                         if !selected.source.observe_resource(next.revision, &next.resource, page.original_page, || {
                             page.views.borrow()[&view_key].media.borrow_mut().clear_selection();
                         }) {
@@ -926,7 +945,7 @@ impl Pages {
                 else {
                     return;
                 };
-                if resource.len() > 4096 {
+                if resource.len() > MAX_CANDIDATE_RESOURCE_BYTES {
                     return;
                 }
                 if !candidate.source.observe_resource(revision, &resource, page.original_page, || {
@@ -953,12 +972,7 @@ impl Pages {
                 state,
                 error,
             } => {
-                if !page.pending.get(&request).is_some_and(|pending| {
-                    pending.view == view_key && pending.frame == message.frame
-                }) {
-                    return;
-                }
-                let pending = page.pending.remove(&request).unwrap();
+                let Some(pending) = Pending::take_reply(&mut page.pending, request, view_key, message.frame) else { return };
                 let result = if let Some(error) = error {
                     Err(anyhow!(if error == "watch_autoplay_blocked" {
                         "watch_autoplay_blocked"
@@ -978,7 +992,9 @@ impl Pages {
                         })
                 };
                 let result = result.and_then(|value| {
-                    if let Some(id) = pending.promote {
+                    if let Some((id, lifetime)) = &pending.promote {
+                        if *lifetime.borrow() { bail!("watch_source_retired"); }
+                        let id = *id;
                         let candidate = page.candidates.get(&id).ok_or_else(|| anyhow!("page_candidate_unavailable"))?;
                         let new_view = candidate.view;
                         let old_view = page.selected_view();
@@ -1007,12 +1023,42 @@ impl Pages {
     }
 }
 
+fn retire_changed_candidate(
+    media: &mut media::Media,
+    candidates: &mut BTreeMap<Uuid, Candidate>,
+    selected: Option<Uuid>,
+    frame: Uuid,
+    event: &PageEvent,
+) {
+    let Some(id) = media.pending_candidate() else { return };
+    let Some(candidate) = candidates.get_mut(&id).filter(|candidate| candidate.frame == frame) else { return };
+    let source = &mut candidate.source;
+    let changed = match event {
+        PageEvent::Candidates { candidates, removed } if candidates.len() <= MAX_PAGE_CANDIDATES && removed.len() <= MAX_PAGE_CANDIDATES =>
+            removed.contains(&source.media) || candidates.iter().any(|next| next.media == source.media &&
+                next.resource.len() <= MAX_CANDIDATE_RESOURCE_BYTES && source.replaces_resource(next.revision, &next.resource)),
+        PageEvent::Sample { media, resource, revision, .. } if *media == source.media && resource.len() <= MAX_CANDIDATE_RESOURCE_BYTES => {
+            let changed = source.replaces_resource(*revision, resource);
+            if selected != Some(id) {
+                source.revision = *revision;
+                source.resource.clone_from(resource);
+            }
+            changed
+        }
+        _ => false,
+    };
+    if changed { media.cancel_candidate(id); }
+}
+
 impl ReportedCandidate {
+    fn replaces_resource(&self, revision: u64, resource: &str) -> bool {
+        self.revision != revision || !self.resource.is_empty() && self.resource != resource
+    }
     fn observe_resource(&mut self, revision: u64, resource: &str, original_page: bool, revoke: impl FnOnce()) -> bool {
         if self.revision == revision && self.resource == resource {
             return true;
         }
-        if self.revision != revision || !self.resource.is_empty() {
+        if self.replaces_resource(revision, resource) {
             if !original_page {
                 return false;
             }
@@ -1051,7 +1097,7 @@ fn update_candidates(
         if source.duration.is_some_and(|v| !v.is_finite() || v < 0.) {
             source.duration = None;
         }
-        if source.resource.len() > 4096 {
+        if source.resource.len() > MAX_CANDIDATE_RESOURCE_BYTES {
             continue;
         }
         let previous = current.iter().find(|(_, candidate)| {
@@ -1061,14 +1107,13 @@ fn update_candidates(
         });
         if previous.is_some_and(|(id, old)| {
             selected == Some(*id)
-                && (old.source.revision != source.revision
-                    || !old.source.resource.is_empty() && old.source.resource != source.resource)
+                && old.source.replaces_resource(source.revision, &source.resource)
         }) {
             return false;
         }
         let id = match previous {
             Some((id, _)) => *id,
-            None if current.len() < 64 => Uuid::new_v4(),
+            None if current.len() < MAX_PAGE_CANDIDATES => Uuid::new_v4(),
             None => continue,
         };
         current.insert(
@@ -1517,6 +1562,56 @@ mod candidate_tests {
         assert_eq!(revoked, 1);
         assert_eq!(source.resource, "B");
         assert!(!source.observe_resource(2, "C", false, || panic!("provider retires its page")));
+    }
+    #[test]
+    fn staged_candidate_reader_follows_resource_and_element_lifetime() {
+        let (id, element, frame) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let mut candidates = BTreeMap::from([(id, Candidate {
+            view: Uuid::new_v4(), frame, ancestors: vec![], source: report(element, "first"),
+        })]);
+        let mut media = media::Media::default();
+        let current_reader = media.retired.subscribe();
+        let reports = |candidates, removed| PageEvent::Candidates { candidates, removed };
+        for event in [
+            reports(vec![report(element, "second")], vec![]),
+            PageEvent::Sample { media: element, resource: "second".into(), revision: 1, event: MediaEvent::Loadedmetadata },
+            reports(vec![], vec![element]),
+        ] {
+            media.candidate_sources(id, frame, "first");
+            let pending = media.candidate_lifetime(id).unwrap();
+            retire_changed_candidate(&mut media, &mut candidates, None, frame, &reports(vec![], vec![Uuid::new_v4()]));
+            assert!(!*pending.borrow());
+            retire_changed_candidate(&mut media, &mut candidates, None, frame, &event);
+            assert!(*pending.borrow());
+            assert!(media.candidate_lifetime(id).is_none());
+            assert!(!*current_reader.borrow());
+        }
+    }
+    #[test]
+    fn cancelled_selection_reply_preserves_active_grant() {
+        let (view, frame, candidate) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let mut media = media::Media::default();
+        let active = media.retired.subscribe();
+        media.candidate_sources(candidate, frame, "second");
+        let staged = media.candidate_lifetime(candidate).unwrap();
+        let mut requests = BTreeMap::new();
+        for cancelled in [true, false] {
+            let request = Uuid::new_v4();
+            let (reply, receiver) = oneshot::channel();
+            let mut receiver = Some(receiver);
+            requests.insert(request, Pending {
+                view, frame, reply, selecting: true, promote: Some((candidate, staged.clone())), patch: false,
+            });
+            if cancelled { drop(receiver.take()); }
+            if let Some(pending) = Pending::take_reply(&mut requests, request, view, frame) {
+                media.commit_candidate(pending.promote.unwrap().0);
+                pending.reply.send(Ok(Value::Null)).unwrap();
+            }
+            assert!(requests.is_empty());
+            assert_eq!(*active.borrow(), !cancelled);
+            assert!(!*staged.borrow());
+            if let Some(mut receiver) = receiver { assert!(receiver.try_recv().unwrap().is_ok()); }
+        }
     }
     #[test]
     fn same_media_resource_replacement_retires_selected_but_sibling_update_does_not() {

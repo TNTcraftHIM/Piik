@@ -106,6 +106,13 @@ impl Media {
     pub fn cancel_candidate(&mut self, id: Uuid) {
         if self.pending.as_ref().is_some_and(|(key, _)| *key == id) { self.pending = None; }
     }
+    pub fn pending_candidate(&self) -> Option<Uuid> {
+        self.pending.as_ref().map(|(id, _)| *id)
+    }
+    pub fn candidate_lifetime(&self, id: Uuid) -> Option<watch::Receiver<bool>> {
+        self.pending.as_ref().filter(|(key, _)| *key == id)
+            .map(|(_, projection)| projection.retired.subscribe())
+    }
     pub fn commit_candidate(&mut self, id: Uuid) {
         if self.pending.as_ref().is_some_and(|(key, _)| *key == id) {
             self.active = self.pending.take().unwrap().1;
