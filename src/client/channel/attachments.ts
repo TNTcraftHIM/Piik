@@ -132,13 +132,17 @@ export class ChannelAttachments {
   };
   private ensure(): Promise<Runtime> {
     if (!this.sessionId) return Promise.reject(new Error("disconnected"));
+    if (this.runtime) return this.runtime;
     const lifetime = this.lifetime, session = this.sessionId;
-    return this.runtime ??= this.module().then(module => {
+    const runtime = this.module().then(module => {
       lifetime.signal.throwIfAborted();
       const runtime = { module, delivery: new module.FileDelivery(session), lifetime };
       this.invoke(runtime, () => this.project(runtime));
       return runtime;
     });
+    // A failed load is not a runtime; the next demand loads again.
+    runtime.catch(() => { if (this.runtime === runtime) this.runtime = null; });
+    return this.runtime = runtime;
   }
   private current(runtime: Runtime): boolean { return this.lifetime === runtime.lifetime && !runtime.lifetime.signal.aborted; }
   private project(runtime: Runtime): string { return runtime.delivery.update(JSON.stringify(this.plans), JSON.stringify(this.roomPeers), BigInt(Date.now())); }

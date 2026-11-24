@@ -33,7 +33,10 @@ use uuid::Uuid;
 
 const CHECK_PACKET_BUDGET: usize = 64;
 const RANDOM_PORTS: usize = 256;
-const RANDOM_REQUEST_BUDGET: usize = RANDOM_PORTS * 2 + 8;
+// The searching side spends its requests on distinct ports: a repeated target
+// adds no coverage, and coverage is what the hit probability depends on.
+const RANDOM_TARGETS: usize = RANDOM_PORTS * 2;
+const RANDOM_REQUEST_BUDGET: usize = RANDOM_TARGETS + 8;
 const RANDOM_REPLY_BUDGET: usize = 16;
 const RANDOM_PACKET_INTERVAL: Duration = Duration::from_millis(2);
 // Shared across every site and Driver in this process. Busy peers fall back;
@@ -420,10 +423,10 @@ impl ProbePlan {
 }
 
 fn random_targets(address: Ipv4Addr) -> Result<Vec<SocketAddrV4>> {
-    let mut seen = HashSet::with_capacity(RANDOM_PORTS);
-    let mut targets = Vec::with_capacity(RANDOM_PORTS);
-    while targets.len() < RANDOM_PORTS {
-        let mut bytes = [0; RANDOM_PORTS * 2];
+    let mut seen = HashSet::with_capacity(RANDOM_TARGETS);
+    let mut targets = Vec::with_capacity(RANDOM_TARGETS);
+    while targets.len() < RANDOM_TARGETS {
+        let mut bytes = [0; RANDOM_TARGETS * 2];
         getrandom::fill(&mut bytes)
             .map_err(|error| anyhow::anyhow!("preparation ports: {error}"))?;
         for value in bytes.chunks_exact(2) {
@@ -431,7 +434,7 @@ fn random_targets(address: Ipv4Addr) -> Result<Vec<SocketAddrV4>> {
             // Rejection preserves uniform choice over the allowed port range.
             if port >= 1024 && seen.insert(port) {
                 targets.push(SocketAddrV4::new(address, port));
-                if targets.len() == RANDOM_PORTS {
+                if targets.len() == RANDOM_TARGETS {
                     break;
                 }
             }
@@ -554,7 +557,7 @@ impl Survey {
             let start = Instant::now();
             let mut round = 0;
             let mut probe = 0;
-            let probe_limit = if plan.random == Some(RandomRole::Search) { RANDOM_PORTS * 2 } else { RANDOM_PORTS };
+            let probe_limit = if plan.random == Some(RandomRole::Search) { plan.targets.len() } else { RANDOM_PORTS };
             let mut replies_left = if random { RANDOM_REPLY_BUDGET } else { CHECK_PACKET_BUDGET };
             let mut triggered_left = if random { 8 } else { CHECK_PACKET_BUDGET };
             let mut outgoing: VecDeque<(usize, SocketAddrV4, Vec<u8>)> = VecDeque::new();
@@ -1363,10 +1366,11 @@ mod tests {
             address: "203.0.113.2".parse()?,
         };
         let generated = ProbePlan::new(stable, irregular)?;
-        assert_eq!(generated.targets.len(), RANDOM_PORTS);
+        // Every request of the search reaches a different port.
+        assert_eq!(generated.targets.len(), RANDOM_TARGETS);
         assert_eq!(
             generated.targets.iter().collect::<HashSet<_>>().len(),
-            RANDOM_PORTS
+            RANDOM_TARGETS
         );
         assert!(generated
             .targets

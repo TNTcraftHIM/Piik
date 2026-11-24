@@ -704,8 +704,8 @@ socket alternates between two predicted targets. Authenticated traffic fixes one
 target before replies; both peers complete within the preparation's shared limits.
 One stable and one irregular observation can instead use random-port preparation:
 the irregular side opens 256 sockets toward the stable side's retained tuple;
-the stable side checks 256 distinct ports on the authorized peer address. Both
-passes reuse that set. Each endpoint permits at most 520 requests and 16 replies,
+the stable side checks 512 distinct ports on the authorized peer address, each
+once. Each endpoint permits at most 520 requests and 16 replies,
 with at least 2 ms between sends, within the same five-second preparation lifetime.
 At most two random preparations run per process across all sites and Drivers.
 Capacity refusal does not queue work or extend the deadline; a pair-scoped refusal

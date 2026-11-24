@@ -34,11 +34,10 @@ and [engineering](./docs/standards/engineering.md).
 - Model recovery from the smallest underlying authority and connection state.
   Restart, crash, timeout, and network loss do not justify parallel states or
   case-specific fallbacks when their required action is the same.
-- Ordinary scoped work uses the lean path: inspect the affected owner and code,
-  make the smallest coherent change, run focused checks, inspect the diff, and
-  stage the requested files. Use the full integration/release path only for an
-  explicitly requested release or a material contract, route/security,
-  infrastructure, persistence, or irreversible change.
+- Ordinary scoped work uses the [lean workflow](./CONTRIBUTING.md#lean-workflow).
+  Use the full integration/release path only for an explicitly requested release
+  or a material contract, route/security, infrastructure, persistence, or
+  irreversible change.
 
 ## Required Skills
 
@@ -56,6 +55,7 @@ invocation; follow their relevant guidance without importing unrelated workflows
 | Writing or reviewing requirement levels in specifications, API contracts or project rules | [RFC 2119](./.agents/skills/rfc2119/SKILL.md): precise obligations, recommendations and options; preserve the rule owner's intent |
 | Material UI visual design, redesign or polish | [Unslop](./.agents/skills/unslop/SKILL.md): product-specific hierarchy, semantic grouping, shared visual consistency and rendered review |
 | Browser APIs, accessibility, responsive interaction or Web performance | [Modern Web Guidance](./.agents/skills/modern-web-guidance/SKILL.md): current platform patterns, supported-browser behavior and focused verification; complements Unslop |
+| The review queue or a mailbox changed, or you want the other agent's review | [Cross review](./.agents/skills/cross-review/SKILL.md): sync, judge each item on the code, answer in your own mailbox |
 
 ## Product Contract
 
@@ -81,7 +81,9 @@ and [status](https://github.com/TNTcraftHIM/Piik/blob/main/docs/status.md).
 - Start substantial work by reading [project memory](./docs/project-memory.md),
   [status](./docs/status.md), [TODO](./docs/todo.md), and only the relevant
   product module, ADR, research, or operations document. Then inspect branch,
-  HEAD, status, staged diff, and worktrees.
+  HEAD, status, staged diff, and worktrees, and fetch the
+  [review queue](./CONTRIBUTING.md#working-with-a-second-agent) to see whether
+  it moved.
 - Use the [standards index](./docs/standards/README.md) and
   [documentation owner map](./docs/standards/documentation.md#owners): product
   behavior, engineering, visual language, versions, evidence and operations each

@@ -500,6 +500,48 @@ async fn failed_pair_retirement_reports_child_panic_after_sibling_closes() -> Re
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn aborted_runtimes_release_their_sockets_and_server_udp_lease() -> Result<()> {
+    use crate::peer::tests::support::{endpoint, exchange, open};
+    let fixed = ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
+    let leased = Runtime::new(Some(fixed.clone()));
+    let ordinary = Runtime::new(None);
+    let prepared = std::net::UdpSocket::bind("127.0.0.1:0")?;
+    let prepared_address = prepared.local_addr()?;
+    // Pairs hold command senders, so neither pump ends on its own.
+    let (_leased_pair, _) = endpoint(&leased, Uuid::new_v4(), None).await?;
+    let (_prepared_pair, _) = endpoint(&ordinary, Uuid::new_v4(), Some(prepared)).await?;
+    for mut aborted in [leased, ordinary] {
+        aborted.task.abort();
+        ensure!((&mut aborted.task).await.is_err_and(|error| error.is_cancelled()));
+        tokio::time::timeout(Duration::from_secs(1), aborted.stopped()).await?;
+    }
+    // The pair's idle reader is aborted with its pump rather than holding the port.
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while std::net::UdpSocket::bind(prepared_address).is_err() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .context("aborted pump left its reader holding the prepared socket")?;
+
+    let successor = Runtime::new(Some(fixed));
+    let remote = Runtime::new(None);
+    let (server, _) = endpoint(&successor, Uuid::new_v4(), None)
+        .await
+        .context("successor runtime did not acquire the released lease")?;
+    let loopback = Some(std::net::UdpSocket::bind("127.0.0.1:0")?);
+    let (client, mut events) = endpoint(&remote, Uuid::new_v4(), loopback).await?;
+    let (sent, received) = open(&server, &client, &mut events).await?;
+    exchange(&sent, &received, "successor-out").await?;
+    exchange(&received, &sent, "successor-in").await?;
+    server.close().await?;
+    client.close().await?;
+    successor.close().await;
+    remote.close().await;
+    Ok(())
+}
+
 #[tokio::test]
 async fn source_checks_preserve_current_paths_and_shared_socket_siblings() -> Result<()> {
     use crate::peer::tests::support::{endpoint, exchange, open};

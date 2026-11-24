@@ -77,6 +77,106 @@ pub(crate) fn activity_parents(
     plan.select_activity_paths(selected, &graph, &BTreeMap::new(), limits, |_| true)
 }
 
+/// One byte activity's distribution tree: the root its branches were selected
+/// from, child-to-parent branches, and directed outputs refused by forwarders.
+/// Files and watch bytes each own one; their owners supply receivers and policy.
+#[derive(Clone, Default)]
+pub(crate) struct ByteTree {
+    source: Option<Uuid>,
+    parents: BTreeMap<Uuid, Uuid>,
+    refused: BTreeSet<(Uuid, Uuid)>,
+}
+impl ByteTree {
+    pub fn source(&self) -> Option<Uuid> {
+        self.source
+    }
+    /// Current branches are extended only when they grew from the same root.
+    pub fn branches(
+        &self,
+        source: Uuid,
+        receivers: &BTreeSet<Uuid>,
+        neighbors: &BTreeMap<Uuid, BTreeSet<Uuid>>,
+        relays: &BTreeSet<Uuid>,
+        limits: &RelayLimits,
+    ) -> BTreeMap<Uuid, Uuid> {
+        let empty = BTreeMap::new();
+        let selected = if self.source == Some(source) { &self.parents } else { &empty };
+        activity_parents(source, receivers, selected, neighbors, relays, limits, &self.refused)
+    }
+    pub fn commit(&mut self, source: Option<Uuid>, parents: BTreeMap<Uuid, Uuid>) {
+        self.source = source;
+        self.parents = parents;
+    }
+    pub fn clear_branches(&mut self) {
+        self.parents.clear();
+        self.refused.clear();
+    }
+    /// Records a forwarder refusing a branch this tree assigned to it from `source`.
+    pub fn refuse(&mut self, source: Uuid, sender: Uuid, downstream: Uuid) -> bool {
+        let assigned = self.source == Some(source) && self.parents.get(&downstream) == Some(&sender);
+        if assigned {
+            self.refused.insert((sender, downstream));
+        }
+        assigned
+    }
+    pub fn retain_refused(&mut self, receivers: &BTreeSet<Uuid>, routable: impl Fn(&Uuid) -> bool) {
+        self.refused
+            .retain(|(sender, peer)| !receivers.is_empty() && routable(sender) && routable(peer));
+    }
+    pub fn forwarding_available(&mut self, sender: Uuid) {
+        self.refused.retain(|(from, _)| *from != sender);
+    }
+    pub fn retire_pair(&mut self, first: Uuid, second: Uuid) {
+        for (child, parent) in [(first, second), (second, first)] {
+            if self.parents.get(&child) == Some(&parent) {
+                self.parents.remove(&child);
+            }
+        }
+    }
+    pub fn waiting(&self, receivers: &BTreeSet<Uuid>) -> bool {
+        self.source.is_some_and(|source| {
+            receivers
+                .iter()
+                .any(|peer| *peer != source && !self.parents.contains_key(peer))
+        })
+    }
+    pub fn collect_frontiers(
+        &self,
+        receivers: &BTreeSet<Uuid>,
+        unavailable: &BTreeSet<(Uuid, Uuid)>,
+        neighbors: &BTreeMap<Uuid, BTreeSet<Uuid>>,
+        relays: &BTreeSet<Uuid>,
+        limits: &RelayLimits,
+        frontiers: &mut Vec<crate::host::DeliveryFrontier>,
+    ) {
+        if let Some(source) = self.source {
+            Plan::byte_frontiers(source, receivers, &self.parents, &self.refused, unavailable,
+                neighbors, relays, limits, frontiers);
+        }
+    }
+    /// `session`'s (upstream, downstream, receiving) place under the root its
+    /// owner announces, or `None` when it takes no part in this activity.
+    pub fn branch(
+        &self,
+        source: Option<Uuid>,
+        receivers: &BTreeSet<Uuid>,
+        session: Uuid,
+    ) -> Option<(Option<Uuid>, Vec<Uuid>, bool)> {
+        if receivers.is_empty() {
+            return None;
+        }
+        let upstream = self.parents.get(&session).copied();
+        let downstream: Vec<_> = self
+            .parents
+            .iter()
+            .filter_map(|(child, parent)| (*parent == session).then_some(*child))
+            .collect();
+        let receiving = receivers.contains(&session);
+        (receiving || source == Some(session) || upstream.is_some() || !downstream.is_empty())
+            .then_some((upstream, downstream, receiving))
+    }
+}
+
 impl Plan {
     pub(crate) fn activity_parents(
         &self,

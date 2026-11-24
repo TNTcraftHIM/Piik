@@ -251,34 +251,34 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
   at that boundary. Recreating resources does not replay user commands or renew
   expired authority. Failure of an independently owned resource does not retire
   healthy siblings.
-- The operation that acquires a connection, clone, listener or queue owns its
-  retirement. After an await/callback, and inside cleanup, validate the original
-  operation/resource identity before changing current state. Cancellation,
-  failure, missing observation and success must retain distinct meanings.
-  Queued events retain physical-owner validity until the final serialized write;
-  readiness commits also require the resource's current state. Reused logical
-  IDs do not identify a replacement instance. A child's attachment failure does
-  not retire its shared producer. Replacing an exclusive subscription waits for
-  the current owner's retirement; repeated cleanup callers await that same work.
-  For shared leases, the owning controller confirms the replacement before
-  releasing a healthy lease.
-  Closing a Browser connection may leave its API promises pending. Its owner
-  cancels the corresponding waits so a serialized successor never depends on
-  completion from a retired connection; late results still need identity checks.
-  Failure effects need the same final identity check as successful results,
-  serialized with replacement; an earlier input check alone is insufficient.
-  Later cancellation must not erase a failure already accepted by its current
-  owner. Perform blocking retirement after releasing that owner's state lock.
-  A caller deadline does not cancel a dependency that ignores it. Keep late
-  work bounded and serialize its cleanup; verify the dependency's actual lifetime.
-  Construction is part of acquisition: if it throws, release resources created
-  before the failure and report through the existing operation owner. A failed
-  allocation does not erase the operation's authoritative identity.
-  Initialize callback-visible state before registration or binding; library
-  constructors can start background work before returning.
-  Ordered shutdown may require a ready auxiliary transport to outlive the stop
-  request; its owner closes it after dependants retire. External convenience
-  actions must not block lifecycle handling, and repeated attempts stay bounded.
+- Give each lifetime one owner. A lifetime is anything acquired and later
+  retired: a connection, binding, capture, player, lease, task or pending
+  operation. Its owner holds the resources and retires them once.
+  Choose cancellation and currency checks that fit the resource and operation.
+- Identity is the instance, not a reusable logical ID. Check it at the final
+  serialized write, for failures as well as results; a readiness commit also
+  needs the resource's current state. Cancellation, failure, missing observation
+  and success keep distinct meanings, and a later cancellation does not erase a
+  failure its owner already accepted.
+- A parent observes its children. Whoever spawns a task or process learns of its
+  exit by any cause, including a panic, without relying on the child to report
+  it. A mandatory child's exit ends the parent. An optional child's exit, or a
+  consumer's failure to attach, retires only itself. A release that must happen
+  on every exit lives in a drop guard, not at the end of the normal path.
+- Retirement is ordered and bounded. Dependants retire first, so a transport
+  needed for shutdown outlives the stop request. Replacing an exclusive resource
+  awaits its predecessor's retirement, shared by repeated callers; a shared
+  lease is released only after its replacement is confirmed. Blocking retirement
+  runs outside the owner's state lock. Some dependencies never settle once
+  closed, as a Browser connection can leave its promises pending: abort the
+  owner's waits instead of awaiting them, and bound late work. Convenience
+  actions never block lifecycle handling.
+- Construction is acquisition. On failure release what it created and report
+  through the operation's owner, which keeps its identity. Initialize
+  callback-visible state before registering; constructors can start background
+  work before returning.
+- When a transition fails again, trace its writers and retirement. Extract an
+  owner when multiple writers decide the same fact or resources retire independently.
 - Keep decisions separate from effects. Respect documented lock ordering and
   revalidate after unlocked work. Local native capability never grants room
   authority; the shared core retains that responsibility.

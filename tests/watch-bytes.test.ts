@@ -53,6 +53,18 @@ test("range waits for Core effects without polling and accepts a slow origin res
     expect(vi.getTimerCount()).toBe(0);
   } finally { bytes.reset(); }
 });
+test("a failed runtime load is retried by the next read", async () => {
+  const { bytes, delivery } = setup();
+  bytes.reset();
+  vi.mocked(hosting.loadRoomHosting).mockRejectedValueOnce(new Error("room_runtime_unavailable"));
+  bytes.update(sessionId, [plan], [{ peerId: peer, rooms: [roomId] }]);
+  try {
+    await expect(bytes.read(roomId, activityId, source, source.resourceId, 0, 1, new AbortController().signal))
+      .rejects.toThrow("room_runtime_unavailable");
+    void bytes.read(roomId, activityId, source, source.resourceId, 0, 1, new AbortController().signal).catch(() => {});
+    await vi.waitFor(() => expect(delivery.reads).toHaveLength(1));
+  } finally { bytes.reset(); }
+});
 test("a silent range can be cancelled while another range completes", async () => {
   const { bytes, delivery } = setup();
   const controller = new AbortController();

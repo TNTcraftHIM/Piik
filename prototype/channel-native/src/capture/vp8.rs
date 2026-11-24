@@ -54,7 +54,7 @@ impl Encoder {
             config.rc_buf_initial_sz = 500;
             config.rc_buf_optimal_sz = 600;
             config.rc_buf_sz = 1000;
-            config.kf_max_dist = settings.fps.saturating_mul(2);
+            config.kf_max_dist = super::KEYFRAME_INTERVAL_FRAMES;
             let mut context = mem::MaybeUninit::<vpx_codec_ctx_t>::zeroed();
             check(vpx_codec_enc_init_ver(
                 context.as_mut_ptr(),

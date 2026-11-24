@@ -104,7 +104,7 @@ impl Encoder {
                 ),
                 (CODECAPI_AVEncCommonMeanBitRate, settings.bitrate),
                 (CODECAPI_AVEncMPVDefaultBPictureCount, 0),
-                (CODECAPI_AVEncMPVGOPSize, settings.fps.saturating_mul(2)),
+                (CODECAPI_AVEncMPVGOPSize, super::KEYFRAME_INTERVAL_FRAMES),
                 (CODECAPI_AVEncCommonQualityVsSpeed, 0),
             ] {
                 api.SetValue(&key, &VARIANT::from(value))?;

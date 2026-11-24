@@ -138,6 +138,12 @@ struct Socket {
     owner: Option<(Uuid, Uuid)>,
     task: JoinHandle<()>,
 }
+// An idle reader would otherwise keep its socket bound after an aborted pump.
+impl Drop for Socket {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
 pub(super) struct UdpIo {
     socket: UdpSocket,
     state: noq_udp::UdpSocketState,
@@ -476,15 +482,21 @@ impl Runtime {
         let (tx, mut commands) = mpsc::channel::<Command>(64);
         let fixed_run = fixed.clone();
         let task = tokio::spawn(async move {
+            // Held for the task's whole life; declared first so that it drops last.
+            let _lease = if let Some(fixed) = &fixed_run {
+                let Some(lease) = fixed.lease() else {
+                    return;
+                };
+                Some(lease)
+            } else {
+                None
+            };
             let (network, mut incoming) = mpsc::channel::<Datagram>(256);
             let mut gateway: Option<super::mapping::Mapping> = None;
             let mut mapped: Option<Candidate> = None;
             let mut sockets: Vec<Socket> = vec![];
             let mut engines: HashMap<Uuid, Box<Engine>> = HashMap::new();
             if let Some(fixed) = &fixed_run {
-                if fixed.leased.swap(true, Ordering::AcqRel) {
-                    return;
-                }
                 for socket in &fixed.sockets {
                     add_reader(&mut sockets, socket.clone(), None, network.clone());
                 }
@@ -624,9 +636,6 @@ impl Runtime {
             for mut socket in sockets {
                 socket.task.abort();
                 let _ = (&mut socket.task).await;
-            }
-            if let Some(fixed) = fixed_run {
-                fixed.leased.store(false, Ordering::Release);
             }
         });
         Self {
@@ -1029,9 +1038,20 @@ impl Runtime {
         }
         Ok((handle, rx))
     }
-    pub async fn close(self) {
+    pub async fn close(mut self) {
         let _ = self.tx.send(Command::Stop).await;
-        let _ = self.task.await;
+        let _ = (&mut self.task).await;
+    }
+    /// Resolves once the pump task has ended for any reason, including panic
+    /// and abort: that task owns the only command receiver.
+    pub async fn stopped(&self) {
+        self.tx.closed().await;
+    }
+}
+// Engines hold command senders, so the pump would never see its channel close.
+impl Drop for Runtime {
+    fn drop(&mut self) {
+        self.task.abort();
     }
 }
 fn add_reader(

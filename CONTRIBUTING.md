@@ -55,7 +55,7 @@ do not maintain a separate thanks list or manufacture empty credit commits.
 
 This is the default for an ordinary scoped implementation or bug fix.
 
-1. Start a new phase from clean, current canonical `main`; continue scoped work in that phase's existing worktree. Preserve unrelated user work.
+1. Start a new phase from clean, current canonical `main`; continue scoped work in that phase's existing worktree. Until cutover, the authorized isolated 3.0 prototype starts its phases from the current `feat/channel-prototype` commit. Preserve unrelated user work.
    Temporary source preparation must stop on failure. Before checkout or edits,
    verify the intended directory and Git root, then use that explicit working
    directory; a failed directory change must not redirect work into the caller's checkout.
@@ -112,6 +112,48 @@ For owner-managed manual deletion, collect permitted retired artifacts in
 `Desktop/Piik-cleanup` with their original paths. Keep worktrees under Git's cleanup
 workflow. Targets of a policy-rejected cleanup stay in place and go in that path
 index; do not substitute a move for the rejected deletion.
+
+## Working With A Second Agent
+
+The implementing agent owns the active line, currently `feat/channel-prototype`
+for isolated 3.0. A reviewing agent keeps `refactor/claude-review` as a short
+patch queue on top of that line. Neither agent commits to the other's branch,
+and the project owner decides what merges.
+
+- **One behaviour per commit.** A queue commit carries one change, its
+  regression check and, in its body, the structural reason. The implementer
+  takes it by merge or cherry-pick, or declines it with a reason.
+- **One writer per mailbox.** Mailboxes are named for their reader. Only the
+  reviewer writes [`to-codex.md`](./.agents/handoff/to-codex.md) and only the
+  implementer writes [`to-claude.md`](./.agents/handoff/to-claude.md), so
+  synchronizing never conflicts. Read the one addressed to you before
+  substantial work.
+- **A queue, not a log.** A mailbox holds what its reader still has to take or
+  decide: pending commits, open findings with file and line, questions and
+  holds. Its writer deletes an item once it is merged, declined or moved to
+  [TODO](./docs/todo.md). Commits own what changed and why, standards and skills
+  own lessons, and Git owns history.
+- **Holds.** While one agent restructures a file, its mailbox names the file,
+  the reason and the commit that ends the hold. Until then the other agent
+  limits its changes there to behaviour fixes.
+- **Staying current.** The reviewer merges the active line into the queue
+  before adding to it and never rewrites pushed history. A finding names the
+  revision it was verified against; recheck it before acting on a later one.
+
+When told that the queue changed, the implementer runs:
+
+```sh
+git fetch origin
+git show origin/refactor/claude-review:.agents/handoff/to-codex.md
+git log --oneline HEAD..origin/refactor/claude-review
+```
+
+It then merges the queue or cherry-picks from it, answers in `to-claude.md`
+and pushes. When asked to check the line, the reviewer fetches, reads
+`to-claude.md` on the active line, merges that line into the queue and
+resolves any conflict there, reviews the commits after the revision recorded
+at the top of `to-codex.md`, records the new revision and pushes. A change in
+the queue cites the specification, source or measurement it rests on.
 
 ## Research Standard
 
