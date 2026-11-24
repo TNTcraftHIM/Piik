@@ -2243,6 +2243,7 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
     };
 
     for damage in [
+        "locked",
         "empty",
         "corrupt",
         "unsupported",
@@ -2308,7 +2309,12 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
         drop(domain);
         let damaged = rooms.join("damaged.sqlite");
         let original = std::fs::read(&damaged).unwrap();
-        if damage == "empty" {
+        let mut room_lock = None;
+        if damage == "locked" {
+            let lock = std::fs::File::create(damaged.with_added_extension("lock")).unwrap();
+            lock.try_lock().unwrap();
+            room_lock = Some(lock);
+        } else if damage == "empty" {
             std::fs::write(&damaged, b"").unwrap();
         } else if damage == "corrupt" {
             std::fs::write(&damaged, b"not a SQLite database").unwrap();
@@ -2335,7 +2341,11 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
         let rejected_bytes = std::fs::read(&damaged).unwrap();
         for repaired in [false, true] {
             if repaired {
-                std::fs::write(&damaged, &original).unwrap();
+                if damage == "locked" {
+                    drop(room_lock.take());
+                } else {
+                    std::fs::write(&damaged, &original).unwrap();
+                }
             }
             let (address, stop, task, hub) = start_server(folder.path()).await;
             let (mut socket, session, initial, credential) =
@@ -2437,64 +2447,15 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
 }
 
 #[tokio::test]
-async fn native_hosting_failure_stops_the_http_service() {
-    use piik_channel_core::{wire::RoomAccess, RoomState, StoredRoomHost};
-    let folder = std::env::temp_dir().join(format!("piik-server-failure-{}", Uuid::new_v4()));
-    let domain = Domain::open(&folder, "owner", "http://localhost".into(), None, vec![]).unwrap();
-    let identity = domain.identity();
-    let rooms = crate::room_directory(&folder, identity);
-    std::fs::create_dir_all(&rooms).unwrap();
-    drop(
-        StoredRoomHost::create(
-            &rooms.join("living.sqlite"),
-            RoomState::new(
-                "living".into(),
-                "Living".into(),
-                Default::default(),
-                identity.1,
-                RoomAccess::Public,
-                false,
-                None,
-            )
-            .unwrap(),
-        )
-        .unwrap(),
-    );
-    {
-        let mut hub = domain.hub.lock().unwrap();
-        let owner = Endpoint::join(&mut hub, "owner");
-        let room = StoredRoomHost::open(&rooms.join("living.sqlite"))
-            .unwrap()
-            .summary();
-        owner.request(&mut hub, json!({"type":"admit_room", "room":room}));
-    }
-    drop(domain);
-    let lock = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .open(rooms.join("living.sqlite.lock"))
-        .unwrap();
-    lock.try_lock().unwrap();
-    let (address, _stop, task, hub) = start_server(&folder).await;
-    let error = tokio::time::timeout(Duration::from_secs(10), task)
-        .await
-        .unwrap()
-        .unwrap()
-        .unwrap_err();
-    assert!(error.to_string().contains("room_storage_in_use"));
-    let listener = TcpListener::bind(address)
-        .await
-        .expect("a failed Native host cannot leave a healthy HTTP shell");
-    drop(listener);
-    drop(lock);
-    drop(hub);
-    let unscoped = folder.join("rooms/legacy.sqlite");
+async fn unsupported_room_storage_layout_stops_the_http_service() {
+    let folder = tempfile::tempdir().unwrap();
+    std::fs::create_dir(folder.path().join("rooms")).unwrap();
+    let unscoped = folder.path().join("rooms/legacy.sqlite");
     std::fs::write(&unscoped, b"preserved private layout").unwrap();
-    let (_, _, rejected, hub) = start_server(&folder).await;
-    assert!(rejected
+    let (address, _stop, rejected, hub) = start_server(folder.path()).await;
+    assert!(tokio::time::timeout(Duration::from_secs(10), rejected)
         .await
+        .unwrap()
         .unwrap()
         .unwrap_err()
         .to_string()
@@ -2503,8 +2464,8 @@ async fn native_hosting_failure_stops_the_http_service() {
         std::fs::read(&unscoped).unwrap(),
         b"preserved private layout"
     );
+    TcpListener::bind(address).await.expect("failed hosting releases HTTP listener");
     drop(hub);
-    std::fs::remove_dir_all(folder).unwrap();
 }
 
 #[tokio::test]

@@ -1494,3 +1494,43 @@ async fn app_forwarding_limit_follows_the_admitted_identity_across_rooms_and_res
         assert_eq!(session.hosting.as_ref().unwrap().forwarding_limit().unwrap(), None);
     }
 }
+
+#[tokio::test]
+async fn room_file_failures_keep_the_sibling_on_the_same_session() -> Result<()> {
+    let (mut session, mut socket, _remote, state) = capture_projection_session().await;
+    let session_id = session.live.as_ref().unwrap().session;
+    let profile = self_profile(&state, session_id);
+    session.release().await?;
+    let dir = tempfile::tempdir()?;
+    let mut locked = None;
+    for id in ["target", "offline"] {
+        let path = dir.path().join(format!("{id}.sqlite"));
+        let policy = RoomState::new(id.into(), id.into(), Default::default(), profile.id,
+            RoomAccess::Public, false, None).map_err(anyhow::Error::msg)?;
+        let host = HostedRoom::create(&path, policy)?;
+        if id == "target" { locked = Some(host); }
+        session.files.push(RoomFile { path, id: id.into(), name: String::new(), bootstrap: false });
+    }
+    session.files.push(RoomFile {
+        path: dir.path().join("missing").join("create.sqlite"),
+        id: "pending".into(), name: "New room".into(), bootstrap: false,
+    });
+    session.event(Event::Welcome {
+        connection_id: Uuid::new_v4(), protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+        self_profile: profile, credential: "fixture".into(), session_id, state,
+        invitation_origin: None,
+    }, &mut socket).await?;
+    let binding_id = Uuid::new_v4();
+    session.event(Event::HostBound { room_id: "offline".into(), binding_id }, &mut socket).await?;
+    let request_id = session.opening["pending"].request_id.clone();
+    let mut room = session.live.as_ref().unwrap().room.rooms["offline"].summary();
+    room.id = "domain-created".into();
+    session.event(Event::RoomCreated { room, request_id: Some(request_id) }, &mut socket).await?;
+    let live = session.live.as_ref().unwrap();
+    assert_eq!(live.session, session_id);
+    assert_eq!(live.room.rooms.len(), 1);
+    assert_eq!(live.room.rooms["offline"].binding(), Some(binding_id));
+    assert!(session.opening.is_empty());
+    drop(locked);
+    session.release().await
+}

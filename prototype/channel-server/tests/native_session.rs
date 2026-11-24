@@ -732,11 +732,15 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
     // A second real process cannot steal the database during the first process's
     // recovery window, even though the domain could admit its new endpoint.
     let contender_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let contender = std::process::Command::new(executable)
+    let mut contender = tokio::process::Command::new(executable)
+        .kill_on_drop(true)
         .args([
             "--room",
             folder.join("one.sqlite").to_str().unwrap(),
             "stolen",
+            "--room",
+            folder.join("contender.sqlite").to_str().unwrap(),
+            "Contender room",
         ])
         .env(
             "CHANNEL_WS_URL",
@@ -753,14 +757,36 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
         .unwrap();
     let mut contender_domain = Domain::accept(&contender_listener).await;
     contender_domain.authority = domain.authority.clone();
-    contender_domain
-        .until(
-            |_, event| matches!(event, Event::Ack { request_id } if request_id == "native-leave"),
-        )
+    let created = contender_domain
+        .until(|_, event| matches!(event, Event::RoomCreated { .. }))
         .await;
-    let output = contender.wait_with_output().unwrap();
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("room_storage_in_use"));
+    let Event::RoomCreated { room, .. } = created else { unreachable!() };
+    contender_domain.bound(&room.id).await;
+    assert!(contender.try_wait().unwrap().is_none());
+    assert!(!contender_domain.commands.iter().any(|command| {
+        matches!(command, Command::HostRegister { room, .. } if room.id == "one")
+    }));
+
+    // End this fixture's admission explicitly on reconnect.
+    contender_domain.reconnect(&contender_listener, 1).await;
+    let join = tokio::time::timeout(Duration::from_secs(5), contender_domain.socket.next())
+        .await.expect("contender reconnects").unwrap().unwrap();
+    assert!(matches!(Request::parse(join.to_text().unwrap()).unwrap().command, Command::Join { .. }));
+    contender_domain.socket.send(Message::Text(serde_json::to_string(&Event::Error {
+        code: "admission_revoked".into(), request_id: None,
+    }).unwrap().into())).await.unwrap();
+    if let Some(Ok(Message::Text(text))) = tokio::time::timeout(
+        Duration::from_secs(5), contender_domain.socket.next(),
+    ).await.expect("contender ends the rejected admission") {
+        let leave = Request::parse(&text).unwrap();
+        assert!(matches!(leave.command, Command::Leave));
+        contender_domain.socket.send(Message::Text(serde_json::to_string(&Event::Ack {
+            request_id: leave.request_id.unwrap(),
+        }).unwrap().into())).await.unwrap();
+    }
+    let output = tokio::time::timeout(Duration::from_secs(5), contender.wait_with_output()).await.unwrap().unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("room_storage_in_use") && stderr.contains("admission_revoked"), "{stderr}");
     assert_eq!(
         StoredRoomHost::open(&folder.join("one.sqlite"))
             .unwrap()

@@ -1202,7 +1202,10 @@ impl Session {
                     // No local room is opened until the actual domain admission agrees.
                     std::fs::create_dir_all(&hosting.directory)?;
                     self.forwarding_limit = hosting.forwarding_limit()?;
-                    for file in stored_rooms(&hosting.directory)? {
+                    for file in discover_rooms(&hosting.directory, |path, error| {
+                        eprintln!("Native room data unavailable: {}: {error}", path.display());
+                        Ok(())
+                    })? {
                         if !self.files.iter().any(|known| known.path == file.path) {
                             self.files.push(file);
                         }
@@ -1223,10 +1226,10 @@ impl Session {
                                 let policy = match stored_room_policy(&file.path) {
                                     Ok(Some(policy)) => policy,
                                     Ok(None) => continue,
-                                    Err(error) if room_data_unavailable(&file.path, &error) => {
-                                        continue
+                                    Err(error) => {
+                                        eprintln!("Native room {} unavailable: {error}", file.id);
+                                        continue;
                                     }
-                                    Err(error) => return Err(error),
                                 };
                                 file.id = policy.id;
                                 if !file.bootstrap
@@ -1250,7 +1253,7 @@ impl Session {
                                 if error.kind() == std::io::ErrorKind::NotFound
                                     && !file.name.is_empty() =>
                             {
-                                let policy = RoomState::new(
+                                let policy = match RoomState::new(
                                     file.id.clone(),
                                     file.name.clone(),
                                     Default::default(),
@@ -1258,8 +1261,13 @@ impl Session {
                                     RoomAccess::Public,
                                     false,
                                     None,
-                                )
-                                .map_err(anyhow::Error::msg)?;
+                                ) {
+                                    Ok(policy) => policy,
+                                    Err(error) => {
+                                        eprintln!("Native room {} unavailable: {error}", file.id);
+                                        continue;
+                                    }
+                                };
                                 if !file.bootstrap {
                                     let request_id = Uuid::new_v4().to_string();
                                     creating.push((
@@ -1282,9 +1290,10 @@ impl Session {
                         };
                         let host = match host {
                             Ok(host) => host,
-                            Err(error) if error.to_string() == "room_not_found" => continue,
-                            Err(error) if room_data_unavailable(&file.path, &error) => continue,
-                            Err(error) => return Err(error),
+                            Err(error) => {
+                                eprintln!("Native room {} unavailable: {error}", file.id);
+                                continue;
+                            }
                         };
                         if rooms.insert(file.id.clone(), host).is_some() {
                             bail!("duplicate room id");
@@ -1493,7 +1502,7 @@ impl Session {
                     else {
                         unreachable!()
                     };
-                    let mut policy = RoomState::new(
+                    let installed = RoomState::new(
                         room.id.clone(),
                         room.name.clone(),
                         room.icon.clone(),
@@ -1502,9 +1511,18 @@ impl Session {
                         room.hidden,
                         None,
                     )
-                    .map_err(anyhow::Error::msg)?;
-                    policy.relay_capacity = room.relay_capacity;
-                    let host = HostedRoom::create(&file.path, policy)?;
+                    .map_err(anyhow::Error::msg)
+                    .and_then(|mut policy| {
+                        policy.relay_capacity = room.relay_capacity;
+                        HostedRoom::create(&file.path, policy)
+                    });
+                    let host = match installed {
+                        Ok(host) => host,
+                        Err(error) => {
+                            eprintln!("Native room {} installation failed: {error}", room.id);
+                            return Ok(());
+                        }
+                    };
                     file.id = room.id.clone();
                     self.files.push(file);
                     if let Some(live) = &mut self.live {
@@ -1664,14 +1682,10 @@ impl Session {
                             unpublished_copy: true,
                             ..
                         } => {
-                            self.live
-                                .as_mut()
-                                .unwrap()
-                                .room
-                                .rooms
-                                .remove(id)
-                                .unwrap()
-                                .discard_unpublished()?;
+                            let host = self.live.as_mut().unwrap().room.rooms.remove(id).unwrap();
+                            if let Err(error) = host.discard_unpublished() {
+                                eprintln!("Native room {id} cleanup failed: {error}");
+                            }
                             self.files.retain(|file| &file.id != id);
                             if let OpeningWork::Register { replies, .. } =
                                 self.opening.remove(id).unwrap().work
@@ -2818,6 +2832,15 @@ impl Session {
 /// Physical names are local storage, not room identities. Imported named rooms
 /// use random filenames; the durable policy remains their one identity owner.
 fn stored_rooms(directory: &std::path::Path) -> Result<Vec<RoomFile>> {
+    discover_rooms(directory, |path, error| {
+        if room_data_unavailable(path, &error) { Ok(()) } else { Err(error) }
+    })
+}
+
+fn discover_rooms(
+    directory: &std::path::Path,
+    on_file_error: impl Fn(&std::path::Path, anyhow::Error) -> Result<()>,
+) -> Result<Vec<RoomFile>> {
     let mut paths = std::fs::read_dir(directory)?
         .map(|entry| entry.map(|entry| entry.path()))
         .collect::<std::io::Result<Vec<_>>>()?;
@@ -2833,8 +2856,10 @@ fn stored_rooms(directory: &std::path::Path) -> Result<Vec<RoomFile>> {
         let policy = match stored_room_policy(&path) {
             Ok(Some(policy)) => policy,
             Ok(None) => continue,
-            Err(error) if room_data_unavailable(&path, &error) => continue,
-            Err(error) => return Err(error),
+            Err(error) => {
+                on_file_error(&path, error)?;
+                continue;
+            }
         };
         files.push(RoomFile {
             path,
