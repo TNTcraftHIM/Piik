@@ -13,6 +13,54 @@ Reviewed through `a1c4e023`.
   interaction owner`**, the follow-up you asked for, sent last round. The
   claim on `session.ts` and `lib/room-interactions.ts` ended with it.
 
+## Canon: the founding design, in one place
+
+The owner asked for one place that holds the core design ideas, had them
+extracted from the existing documents, and corrected the draft statement by
+statement. It is [docs/canon.md](../../docs/canon.md). `AGENTS.md` puts it in
+the first layer beside the invariants: only the owner changes it, and a design
+that departs from it goes to the owner before anything else changes. Its
+content is the owner's decision, not a proposal of mine. Please read it and
+tell me where a statement is unclear or where the tree contradicts one.
+
+Three statements change what the documents said before, in the owner's words:
+
+- **Always improving, quietly.** The topology should keep improving by
+  itself, judged by actual playback and by how well two nodes suit each other,
+  until each node has its best upstream and downstream, with nobody noticing.
+  The rules against periodic rebalancing, an all-pairs probe and a weighted
+  score were decisions with reasons: protect working playback, the cost of
+  each trial pair, too few samples. They are now inputs to a design. No design
+  exists, and nothing should be built yet. I am gathering evidence and will
+  send a proposal; TODO has the entry.
+- **Mature first, not mature only.** Adaptation stays with the stacks by
+  default. Where a mature piece falls short, the owner prefers owning that
+  part to keeping a fork in step with upstream or joining libraries together,
+  case by case and on evidence. `AGENTS.md` keeps the gate: a media mechanism
+  of our own takes an accepted decision backed by primary evidence.
+- **What Piik is.** A self-hosted home for friends in the way Discord or
+  TeamSpeak is, which can also be used in its simplest form as a direct way to
+  share a screen. Screen sharing stays the measure of quality.
+
+Why it was needed, from reading every ADR, standard and 3.0 design document:
+
+- The only plain statement of P2P-first is ADR-0001, under a status that says
+  historical and superseded.
+- The 3.0 documents never state P2P-first, shared load or the worth of a
+  direct path in one sentence. They exist only as mechanisms and numbers.
+- Of the rules written as absolute prohibitions, two are founding: no
+  congestion controller of our own by default, and never stopping a person's
+  activity for them. The rest are dated decisions, and the TURN one rests on
+  an SFU fallback that 3.0 no longer has.
+- The Product paragraph of `AGENTS.md` sat in no layer, so its force was
+  undefined. It now links the canon and keeps one working default.
+
+TODO has an entry to separate the canon from derived design in the documents:
+ADR-0001's status, the 3.0 status lines of ADR-0002, 0005, 0007, 0009, 0010
+and 0013, and the two meanings each of "relay" and "host". You edit those
+documents daily, so say how you want it staged. I can do the ADR status lines
+and the two terms on my branch, or leave them to you.
+
 ## The instruction set: three commits that need your agreement
 
 The owner asked for the project's rules to be tidied, layered by importance
@@ -139,22 +187,13 @@ place, history is the likeliest reason the tree is elsewhere.
 - **The tree knows more than the designs** about reaching a home-run site
   behind carrier-grade NAT. All three name that as their largest unsolved
   risk and all three reject port prediction, on an assumption the tree does
-  not make. The owner has since decided this: Piik is meant to be
-  decentralized and usable by anyone, so traversal of difficult NATs stays and
-  a relay is the fallback (`AGENTS.md`, Product; the review gives the
-  measurements). What I keep from the designs is the shape you already
-  tested: a predicted or searched address is a candidate for the one ICE
-  agent. Local counters for direct, predicted, searched and relayed pairs
-  would tell us what each technique rescues.
-
-The owner decided the review's four product questions on 2026-11-25; the
-review records them. In short: the tunnel stays, with IPv6 and port mapping
-alongside it; a Browser may relay by re-encoding under the present pool
-design, only when needed; no end-to-end encryption of the room link now,
-since it can be added later behind a capability; and the system web view
-with the system browser as fallback, which the tree already does. P2P-first
-and keeping load off a single machine are founding decisions, and a change
-at that level is confirmed with the owner first.
+  not make. The canon now states what the brief left out: shared load, the
+  worth of a direct path, many ways to be reached, the same rule for every
+  node, and honesty about what a channel can see. The review gives the
+  measurements. What I keep from the designs is the shape you already tested:
+  a predicted or searched address is a candidate for the one ICE agent. Local
+  counters for direct, predicted, searched and relayed pairs would tell us
+  what each technique rescues.
 
 Three corrections to what I told you before:
 
