@@ -1,5 +1,5 @@
 import { isDocumentActive, onDocumentInactive } from "../ui/document-active";
-import { useEffect, useEffectEvent, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preferences";
 import { panelWindowAPI, useSurfaceDocument } from "../ui/panel-window";
 import { isComposingOrAltGraph } from "../ui/shortcut-key";
@@ -7,7 +7,7 @@ import type { BackgroundVoiceShortcuts } from "./app-link";
 import { useBackgroundVoiceShortcuts } from "./use-background-voice-shortcuts";
 import {
   matchesVoiceShortcut, releasesVoiceShortcut, voiceShortcutDefaults, voiceShortcutFromEvent, voiceShortcutsWithDefaults,
-  voiceToggleActions, type VoiceShortcutAction, type VoiceShortcuts, type VoiceToggleAction,
+  voiceToggleActions, type VoiceShortcutAction, type VoiceShortcutBinding, type VoiceShortcuts, type VoiceToggleAction,
 } from "./voice-shortcut-binding";
 
 function ownsKeyboard(target: EventTarget): boolean {
@@ -65,6 +65,7 @@ export function useVoiceShortcuts(roomId: string | undefined, toggle: (action: V
   const [bindings, setBindings] = useState<VoiceShortcuts>(() => voiceShortcutsWithDefaults(mac, readRoomPreferences().voiceShortcuts));
   const [recording, setRecording] = useState<VoiceShortcutAction | null>(null);
   const [talking, setTalking] = useState(false);
+  const held = useRef<{ binding: VoiceShortcutBinding; talk: (pressed: boolean) => void } | null>(null);
   const pushToTalk = Boolean(talk);
   const owned = useSyncExternalStore(native && roomId ? observeInputFocus : idle, focusedInputOwnsKeyboard, () => false);
   // The App registers only the toggles, so a talk change does not re-register them.
@@ -84,7 +85,11 @@ export function useVoiceShortcuts(roomId: string | undefined, toggle: (action: V
     if (!binding) return;
     if (talk && matchesVoiceShortcut(bindings.talk, binding)) {
       event.preventDefault();
-      if (!talking) { setTalking(true); talk(true); }
+      if (!held.current) {
+        held.current = { binding, talk };
+        setTalking(true);
+        talk(true);
+      }
       return;
     }
     const action = voiceToggleActions.find(action => matchesVoiceShortcut(bindings[action], binding));
@@ -94,9 +99,11 @@ export function useVoiceShortcuts(roomId: string | undefined, toggle: (action: V
   });
   // Key-ups count wherever focus moved, editors included: nothing may keep the microphone open.
   const onRelease = useEffectEvent((event?: KeyboardEvent) => {
-    if (!talking || event && !(bindings.talk && releasesVoiceShortcut(bindings.talk, event))) return;
+    const press = held.current;
+    if (!press || event && !releasesVoiceShortcut(press.binding, event)) return;
+    held.current = null;
     setTalking(false);
-    talk?.(false);
+    press.talk(false);
   });
   useEffect(() => {
     if (!roomId || !surface) return;
@@ -111,9 +118,9 @@ export function useVoiceShortcuts(roomId: string | undefined, toggle: (action: V
     const keyup = (event: KeyboardEvent) => onRelease(event);
     const release = () => onRelease();
     const inactive = owners.map(owner => onDocumentInactive(owner, release));
-    owners.forEach(owner => { owner.addEventListener("keyup", keyup); owner.addEventListener("freeze", release); });
+    owners.forEach(owner => { owner.addEventListener("keyup", keyup, true); owner.addEventListener("freeze", release); });
     return () => {
-      owners.forEach(owner => { owner.removeEventListener("keyup", keyup); owner.removeEventListener("freeze", release); });
+      owners.forEach(owner => { owner.removeEventListener("keyup", keyup, true); owner.removeEventListener("freeze", release); });
       inactive.forEach(stop => stop());
       release();
     };

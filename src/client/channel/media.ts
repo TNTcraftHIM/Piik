@@ -5,14 +5,11 @@ import { VIEWER_QUALITY_EVIDENCE_INTERVAL_MS } from "../../shared/protocol";
 import type { ChannelCommand, ChannelPair, ChannelSignal, ChannelSnapshot } from "./protocol";
 import type { ChannelMediaMetric, ChannelMediaMetrics, ChannelScreenInput, ScreenPresentation, ScreenBufferStatus } from "./types";
 import { ChannelTransport, type OutgoingMedia } from "./transport";
-import { applyCaptureProfile, screenAudioBitrate, type QualityProfile } from "../media/quality";
+import { applyCaptureProfile, screenAudioBitrate, screenContentHint, type QualityProfile } from "../media/quality";
 import { automaticVideoCodecPreference, VP8_ONLY_VIDEO_CODEC, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
 import { preferredVideoCodecForTrack } from "../webrtc/video-codec-preflight";
 import { BrowserEncodingPool } from "../media/browser-encoding-pool";
 import { browserDebugEnabled, debugEvent } from "../lib/debug";
-
-// The connections panel samples at this cadence, so a replay compares the same seconds.
-const CONNECTION_SAMPLE_MS = 1_000;
 
 interface Peer {
   plan: ChannelPair;
@@ -51,7 +48,6 @@ export class ChannelMedia {
   private screenInputs = new Map<string, ChannelScreenInput[]>();
   private relayMedia = new Map<string, { tracks: MediaStreamTrack[]; player: HTMLMediaElement }>();
   private videoPool = new BrowserEncodingPool();
-  private sampling: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private send: (command: ChannelCommand) => void,
     private changed: (streams: ReadonlyMap<string, MediaStream>, screenInputs: ReadonlyMap<string, readonly ChannelScreenInput[]>) => void,
@@ -264,30 +260,6 @@ export class ChannelMedia {
       }
     }
     this.refresh(released);
-    this.syncSampling();
-  }
-
-  /** With debug on, one compact sample per second while any pair exists. */
-  private syncSampling(): void {
-    if (!browserDebugEnabled) return;
-    if (!this.peers.size) {
-      if (this.sampling !== null) clearTimeout(this.sampling);
-      this.sampling = null;
-      return;
-    }
-    if (this.sampling !== null) return;
-    const timer = setTimeout(async () => {
-      const peers = [...this.peers.values()];
-      const samples = await Promise.allSettled(peers.map(async peer => {
-        const report = await peer.transport.pc.getStats();
-        return this.peers.get(peer.plan.id) === peer ? [peer.transport.connectionSample(report)] : [];
-      }));
-      if (this.sampling !== timer) return;
-      debugEvent("channel", "connection-sample", { connections: samples.flatMap(result => result.status === "fulfilled" ? result.value : []) });
-      this.sampling = null;
-      this.syncSampling();
-    }, CONNECTION_SAMPLE_MS);
-    this.sampling = timer;
   }
 
   private reportRoomData(peer: Peer, ready: boolean): void {
@@ -557,6 +529,8 @@ export class ChannelMedia {
         const publication = this.publications.find(publication => publication.id === flow.publicationId);
         if (!publication) continue;
         const local = flow.inputFlowId === null ? this.local.get(flow.publicationId) : undefined;
+        const settings = local?.profile ?? (publication.videoSettings && { ...publication.videoSettings.ceiling, degradationPreference: publication.videoSettings.degradationPreference });
+        const profile = settings && { ...settings, displaySource: publication.source?.kind === "screen" };
         let stream = local?.stream;
         let codec = local?.codec ?? VP8_ONLY_VIDEO_CODEC;
         if (flow.inputFlowId !== null) for (const source of this.peers.values()) {
@@ -568,7 +542,7 @@ export class ChannelMedia {
             stream = publication.kind !== "screen" || input.codec ? input.stream : undefined;
             if (publication.kind === "screen" && input.ready && !publication.paused && input.video && !input.codec && !input.codecProbe) {
               const probe = input.codecProbe = new AbortController();
-              void preferredVideoCodecForTrack(input.video, probe.signal).then(value => {
+              void preferredVideoCodecForTrack(input.video, probe.signal, screenContentHint(profile?.degradationPreference, profile?.displaySource)).then(value => {
                 if (input.codecProbe !== probe || probe.signal.aborted || !this.ownsInput(source, flow.inputFlowId!, input)) return;
                 input.codec = automaticVideoCodecPreference(value);
                 this.refresh();
@@ -579,7 +553,7 @@ export class ChannelMedia {
           break;
         }
         outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null,
-          profile: local?.profile ?? (publication.videoSettings && { ...publication.videoSettings.ceiling, degradationPreference: publication.videoSettings.degradationPreference }),
+          profile,
           audioBitrate: local?.profile?.maxAudioBitrate, codec, paused: local?.paused ?? publication.paused,
           voiceBitrate: this.rooms.find(room => room.id === publication.roomId)?.voiceBitrate });
       }
@@ -748,7 +722,6 @@ export class ChannelMedia {
   reset(): void {
     for (const peer of this.peers.values()) this.closePeer(peer);
     this.peers.clear();
-    this.syncSampling();
     this.videoPool.dispose();
     this.videoPool = new BrowserEncodingPool();
     for (const id of [...this.local.keys()]) this.removeLocal(id);

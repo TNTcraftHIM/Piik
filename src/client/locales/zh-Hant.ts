@@ -210,7 +210,6 @@ export const zhHant = {
   "screen.decodeFailed": "瀏覽器無法解碼分享畫面。",
   "screen.unplayable": "瀏覽器無法播放分享畫面。",
   "screen.deliveryRetry": "畫面傳輸失敗，正在重試。",
-  "screen.forwardingOff": "本房間未開啟站點轉發。",
   "screen.pictureHelp": "畫面說明",
   "screen.pictureHelpViewer": "選擇「重新連線畫面」。如果仍然失敗，請試試其他網路。",
   "screen.pictureHelpPublisher": "請分享者檢查本機預覽，必要時重新選擇分享來源。",

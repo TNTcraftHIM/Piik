@@ -210,7 +210,7 @@ describe("Browser encoding producer startup", () => {
       return { sender: Object.assign(this.sender, { track: args[0] }), setCodecPreferences() {} };
     });
     const producer = new BrowserEncodingProducer(source as unknown as MediaStreamTrack,
-      { ...QUALITY_PROFILES["1080p30"], degradationPreference }, { mimeType: "video/VP8", clockRate: 90000 }, vi.fn(), vi.fn());
+      { ...QUALITY_PROFILES["1080p30"], degradationPreference, displaySource: true }, { mimeType: "video/VP8", clockRate: 90000 }, vi.fn(), vi.fn());
     producers.push(producer);
     await producer.start();
     expect(producer.track!.contentHint).toBe(hint);

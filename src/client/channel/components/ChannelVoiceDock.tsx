@@ -7,8 +7,7 @@ import { useCopy } from "../../ui/copy";
 import { VoiceListeningButton, VoiceMicrophoneButton } from "../../room-voice/VoiceAudioButtons";
 import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
 import type { ChannelController } from "../types";
-import type { ChannelPublication } from "../protocol";
-import { roomVoiceStatus } from "../use-voice-playback";
+import { roomVoiceStatus, type VoiceRendering } from "../use-voice-playback";
 import { profileAvatar, roomVoicePeople } from "../presentation";
 import { ChannelVoiceSettings } from "./ChannelVoiceSettings";
 import { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
@@ -25,8 +24,8 @@ import { voiceShortcutAria, voiceShortcutLabel } from "../voice-shortcut-binding
 import { SPEAKING_LEVEL } from "../../media/voice-gate";
 
 /** One persistent control surface for this endpoint's independently joined rooms. */
-export function ChannelVoiceDock({ channel, selected, playing, onSelect, onBrowse }: {
-  channel: ChannelController; selected: string; playing: readonly ChannelPublication[];
+export function ChannelVoiceDock({ channel, selected, renderingBySpeaker, onSelect, onBrowse }: {
+  channel: ChannelController; selected: string; renderingBySpeaker: ReadonlyMap<string, VoiceRendering>;
   onSelect: (id: string) => void; onBrowse: (id: string) => void;
 }) {
   const { t } = useCopy();
@@ -52,13 +51,13 @@ export function ChannelVoiceDock({ channel, selected, playing, onSelect, onBrows
   const available = channel.connection === "connected" && !!state.channel.rooms.find(room => room.id === roomId)?.available;
   const appearances = overlay?.target ? roomVoicePeople(state, roomId, levels) : null;
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
-  const status = roomVoiceStatus(state, channel.sessionId, roomId, playing);
+  const status = roomVoiceStatus(state, channel.sessionId, roomId, renderingBySpeaker);
   const speaking = appearances ? state.users.filter(user => (appearances.get(user.id)?.level ?? 0) > SPEAKING_LEVEL) : [];
   return <section className="c3-voice-dock" aria-label={t("channel.voiceDock.voiceControls")}>
     <Glyph name="headphones" size={22} />
     <div className="c3-voice-destination">
       <div className="c3-voice-room-info">
-        <small data-status={status}>{t(VOICE_STATUS_LABEL[status])}</small>
+        <small data-status={status} role="status">{t(VOICE_STATUS_LABEL[status])}</small>
         <div className="c3-voice-room-choice">
           <Tooltip className="c3-voice-room" overflow={{ text: roomName, selector: "button, select" }}>
             {multipleRooms ? <select className="lr-select" aria-label={t("channel.voiceDock.selectRoom")} value={roomId}

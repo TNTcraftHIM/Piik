@@ -18,18 +18,20 @@ export function voicePlaybackPublications(state: ChannelSnapshot | null, session
 }
 
 export type RoomVoiceStatus = "joining" | "connected" | "joined";
+export type VoiceRendering = "playing" | "blocked";
 
-/**
- * What one joined room's voice can claim from membership and the audio this page plays.
- * One microphone may play through a sibling room's publication, so playing is matched by speaker.
- */
+/** One microphone can render through its publication in a sibling room. */
 export function roomVoiceStatus(state: ChannelSnapshot, sessionId: string | null, roomId: string,
-  playing: readonly ChannelPublication[]): RoomVoiceStatus {
+  renderingBySpeaker: ReadonlyMap<string, VoiceRendering>): RoomVoiceStatus {
   const members = state.voice.filter(voice => voice.roomId === roomId);
-  if (members.some(voice => voice.sessionId === sessionId && voice.deafened)) return "joined";
-  const speakers = members.filter(voice => voice.sessionId !== sessionId && !voice.muted);
-  if (speakers.some(voice => playing.some(publication => publication.sessionId === voice.sessionId))) return "connected";
-  return speakers.length ? "joining" : "joined";
+  const self = members.find(voice => voice.sessionId === sessionId);
+  if (!self || self.deafened) return "joined";
+  const speakers = new Set(members.filter(voice => voice.sessionId !== sessionId && !voice.muted).map(voice => voice.sessionId));
+  const candidates = state.publications.filter(publication => publication.kind === "voice" && publication.roomId === roomId
+    && !publication.paused && speakers.has(publication.sessionId));
+  if (candidates.some(publication => renderingBySpeaker.get(publication.sessionId) === "playing")) return "connected";
+  return candidates.some(publication => state.subscriptions.includes(publication.id)
+    && renderingBySpeaker.get(publication.sessionId) !== "blocked") ? "joining" : "joined";
 }
 
 /** Retain the current audible publication without choosing or changing any route. */

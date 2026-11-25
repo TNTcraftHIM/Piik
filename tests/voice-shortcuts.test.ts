@@ -95,6 +95,22 @@ describe("push-to-talk shortcut", () => {
     } finally { await unmount(); }
   });
 
+  it("releases the original press even when React has not rendered or the binding was cleared", async () => {
+    const talk = vi.fn();
+    const fixture = await dock({ talk });
+    try {
+      await act(async () => {
+        fixture.doc.dispatchEvent(key("keydown", "V"));
+        fixture.doc.dispatchEvent(key("keyup", "V"));
+      });
+      expect(talk.mock.calls).toEqual([[true], [false]]);
+      await fixture.press(key("keydown", "V"));
+      await act(async () => fixture.current().save({ talk: null }));
+      await fixture.press(key("keyup", "V"));
+      expect(talk.mock.calls.slice(2)).toEqual([[true], [false]]);
+    } finally { await fixture.unmount(); }
+  });
+
   it.each([
     ["the window loses focus", ({ view }: { view: EventTarget }) => view.dispatchEvent(new Event("blur"))],
     ["the page becomes hidden", ({ doc }: { doc: EventTarget & { hidden: boolean } }) => { doc.hidden = true; doc.dispatchEvent(new Event("visibilitychange")); }],
@@ -138,7 +154,7 @@ describe("push-to-talk shortcut", () => {
       await fixture.render({ talk });
       await fixture.press(key("keydown", "V"));
       await fixture.render({ talk, room: "other" });
-      expect(talk.mock.calls).toEqual([[true], [true], [false]]);
+      expect(talk.mock.calls).toEqual([[true], [false], [true], [false]]);
       expect(fixture.current().talking).toBe(false);
     } finally { await fixture.unmount(); }
   });

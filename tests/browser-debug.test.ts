@@ -314,25 +314,6 @@ describe("opt-in Browser diagnostics", () => {
     expect(report.collectorErrors).toContainEqual(expect.objectContaining({ collector: "getStats", connectionId: "edge" }));
   });
 
-  it("keeps a whole record past the per-event caps and refuses one larger than the history", async () => {
-    browser();
-    const debug = await import("../src/client/lib/debug");
-    const pairs = Array.from({ length: 500 }, (_, index) => [`first-${index}`, `second-${index}`]);
-    debug.debugEvent("room-host", "capped", { pairs });
-    debug.debugRecord("room-host", "whole", { pairs, nested: { a: { b: { c: { d: { e: { f: 1 } } } } } }, password: "secret-password" });
-    debug.debugRecord("room-host", "oversized", { rows: Array.from({ length: 2_000 }, () => "x".repeat(8_192)) });
-    const report = JSON.parse(await debug.exportBrowserDebug());
-    const [capped, whole] = report.events;
-    expect(capped.truncated).toBe(true);
-    expect(capped.details.pairs).toHaveLength(64);
-    expect(whole.truncated).toBeUndefined();
-    expect(whole.details.pairs).toEqual(pairs);
-    expect(whole.details.nested.a.b.c.d.e.f).toBe(1);
-    expect(JSON.stringify(whole)).not.toContain("secret-password");
-    expect(report.events).toHaveLength(2);
-    expect(report.history.evictedEvents).toBe(1);
-  });
-
   it("returns retained evidence when optional Browser metadata never completes", async () => {
     browser();
     vi.useFakeTimers();

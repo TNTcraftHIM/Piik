@@ -636,20 +636,24 @@ test("a generated preview cannot replace the original in the download content pa
   } finally { files.reset(); }
 });
 
-test("a late retained copy cannot replace a successor source for the same attachment", async () => {
-  const files = setup();
-  const old = new File(["GIF89a"], attachment.name), next = new File(["GIF89a"], attachment.name);
+test.each(["confirmed", "restored"])("a late %s source cannot retain over its successor", async origin => {
+  const files = setup(), old = new File(["GIF89a"], attachment.name), next = new File(["second"], attachment.name);
+  const successor = { ...attachment, sha256: "b".repeat(64) };
   let complete!: (result: { file: File; evicted: [] }) => void;
   const retain = vi.spyOn(FileStore.prototype, "retain")
     .mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }))
     .mockRejectedValue(new Error("optional_cache_unavailable"));
   try {
-    files.confirmed(key.roomId, message, [{ id: attachment.id, attachment, file: old }]);
+    if (origin === "confirmed") files.confirmed(key.roomId, message, [{ id: attachment.id, attachment, file: old }]);
+    else void files.restoreRetained(key.roomId, [{ key, attachment, file: old }]);
     await vi.waitFor(() => expect(retain).toHaveBeenCalledOnce());
-    files.confirmed(key.roomId, message, [{ id: attachment.id, attachment, file: next }]);
-    complete({ file: new File(["GIF89a"], attachment.name), evicted: [] });
+    const allowed = retain.mock.calls[0][2]!;
+    expect(allowed()).toBe(true);
+    files.confirmed(key.roomId, { ...message, attachments: [successor] }, [{ id: successor.id, attachment: successor, file: next }]);
+    expect(allowed()).toBe(false);
+    complete({ file: old, evicted: [] });
     await vi.waitFor(() => expect(retain).toHaveBeenCalledTimes(2));
-    expect(await files.content(key, attachment, new AbortController().signal)).toBe(next);
+    expect(await files.content(key, successor, new AbortController().signal)).toBe(next);
   } finally { files.reset(); }
 });
 

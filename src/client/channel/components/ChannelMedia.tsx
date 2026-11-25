@@ -36,6 +36,7 @@ import type { WatchPlayback } from "../protocol";
 import { channelErrorPresentation } from "../error-presentation";
 import { diagnoseChannelFact } from "../diagnosis";
 import { ChannelDiagnosisHelp } from "./ChannelDiagnosisHelp";
+import type { VoiceRendering } from "../use-voice-playback";
 import { formatMediaTime } from "../../media/media-time";
 import { mediaLanguageLabel } from "../../media/media-language";
 
@@ -635,8 +636,9 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
   </div>;
 }
 
-export function ChannelAudio({ stream, muted, volume, voiceContext, label }: {
-  stream: MediaStream; muted: boolean; volume: number; voiceContext: VoicePlaybackContext; label: string;
+export function ChannelAudio({ publicationId, stream, muted, volume, voiceContext, label, onRendering }: {
+  publicationId: string; stream: MediaStream; muted: boolean; volume: number; voiceContext: VoicePlaybackContext; label: string;
+  onRendering(publicationId: string, stream: MediaStream, state: VoiceRendering | undefined): void;
 }) {
   const ref = useRef<HTMLAudioElement>(null);
   const output = useRef<ViewerAudio | null>(null);
@@ -652,11 +654,25 @@ export function ChannelAudio({ stream, muted, volume, voiceContext, label }: {
     playback.bind(stream);
     let current = true;
     setBlocked(false);
-    void element.play().catch(error => { if (current && error?.name !== "AbortError") setBlocked(true); });
-    return () => { current = false; playback.dispose(); output.current = null; element.pause(); element.srcObject = null; };
-  }, [stream, track, voiceContext]);
+    void element.play().catch(error => {
+      if (!current || error?.name === "AbortError") return;
+      setBlocked(true);
+      onRendering(publicationId, stream, "blocked");
+    });
+    return () => {
+      current = false;
+      onRendering(publicationId, stream, undefined);
+      playback.dispose();
+      output.current = null;
+      element.pause();
+      element.srcObject = null;
+    };
+  }, [publicationId, stream, track, voiceContext, onRendering]);
   useEffect(() => { output.current?.setLevel(volume); output.current?.setMuted(muted); }, [stream, track, volume, muted]);
-  return <><audio ref={ref} aria-label={label} onPlay={() => setBlocked(false)} />
+  const stopRendering = () => onRendering(publicationId, stream, undefined);
+  return <><audio ref={ref} aria-label={label} onPlay={() => setBlocked(false)}
+    onPlaying={() => onRendering(publicationId, stream, "playing")} onWaiting={stopRendering}
+    onPause={stopRendering} onEnded={stopRendering} onEmptied={stopRendering} />
     {blocked && <ChannelAction icon="speaker" label={t("screen.playNamed", { label })}
       onClick={() => { void ref.current?.play().then(() => setBlocked(false)).catch(() => {}); }} />}</>;
 }

@@ -84,6 +84,7 @@ export class VoiceParticipation {
   private readonly rooms = new Map<string, VoiceIntent>();
   private microphone: MicrophoneInput | null = null;
   private microphoneRequest: MicrophoneRequest | null = null;
+  private talkPressed = false;
 
   constructor(private readonly session: VoiceSession) {}
 
@@ -236,8 +237,8 @@ export class VoiceParticipation {
   };
 
   talk = (pressed: boolean): void => {
+    this.talkPressed = pressed;
     this.microphone?.press(pressed);
-    this.microphoneRequest?.input?.press(pressed);
   };
 
   inputLevel = (): number | undefined => this.microphone?.level();
@@ -333,6 +334,7 @@ export class VoiceParticipation {
   }
 
   close(): void {
+    this.talkPressed = false;
     this.rooms.clear();
     this.release();
   }
@@ -405,6 +407,7 @@ export class VoiceParticipation {
         requestSignal.throwIfAborted();
         if (!started || !captured.stream.active) throw new Error("microphone_unavailable");
         captured.volume(this.preference.volume);
+        if (this.transmission.mode === "push") captured.press(this.talkPressed);
         this.microphone = captured;
         request.input = null;
         return captured;

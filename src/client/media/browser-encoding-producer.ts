@@ -57,7 +57,7 @@ export class BrowserEncodingProducer {
     this.budget = initialBudget;
     try {
       if (this.source.readyState !== "live") throw new Error("Browser encoding source ended");
-      const hint = screenContentHint(this.desiredProfile.degradationPreference, !!this.source.getSettings?.().displaySurface);
+      const hint = screenContentHint(this.desiredProfile.degradationPreference, this.desiredProfile.displaySource);
       const track = this.input = cloneSenderVideoTrack(this.source, hint, () => this.fail());
       track.enabled = !this.paused;
       this.source.addEventListener("ended", this.fail);

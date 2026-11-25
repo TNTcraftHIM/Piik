@@ -51,16 +51,11 @@ function safeText(value: string): string {
     .replace(/data:[^\s]+/gi, "[redacted data URL]");
 }
 
-// An ordinary event is bounded on its own. A whole record is one its caller
-// has already projected, and only the retained total bounds it.
-const EVENT_LIMITS = { bytes: 32_768, nodes: 2_048, depth: 6, items: 64, keys: 128, text: 8_192 };
-const WHOLE_RECORD = { bytes: Infinity, nodes: Infinity, depth: Infinity, items: Infinity, keys: Infinity, text: Infinity };
-
-function sanitize(value: unknown, limits = EVENT_LIMITS): { value: DebugValue; truncated: boolean } {
-  let remaining = limits.bytes, nodes = 0, truncated = false;
+function sanitize(value: unknown): { value: DebugValue; truncated: boolean } {
+  let remaining = 32_768, nodes = 0, truncated = false;
   const seen = new WeakSet<object>();
   const visit = (input: unknown, depth: number): DebugValue => {
-    if (++nodes > limits.nodes || depth > limits.depth || remaining <= 0) {
+    if (++nodes > 2_048 || depth > 6 || remaining <= 0) {
       truncated = true;
       return "[truncated]";
     }
@@ -68,7 +63,7 @@ function sanitize(value: unknown, limits = EVENT_LIMITS): { value: DebugValue; t
     if (typeof input === "number") return Number.isFinite(input) ? input : null;
     if (typeof input === "string") {
       const text = safeText(input);
-      const length = Math.min(text.length, limits.text, remaining);
+      const length = Math.min(text.length, 8_192, remaining);
       remaining -= length;
       if (length < text.length) truncated = true;
       return text.slice(0, length);
@@ -78,13 +73,13 @@ function sanitize(value: unknown, limits = EVENT_LIMITS): { value: DebugValue; t
     seen.add(input);
     try {
       if (Array.isArray(input)) {
-        if (input.length > limits.items) truncated = true;
-        return input.slice(0, limits.items).map((item) => visit(item, depth + 1));
+        if (input.length > 64) truncated = true;
+        return input.slice(0, 64).map((item) => visit(item, depth + 1));
       }
       const output: { [key: string]: DebugValue } = {};
       const keys = Object.keys(input);
-      if (keys.length > limits.keys) truncated = true;
-      for (const key of keys.slice(0, limits.keys)) {
+      if (keys.length > 128) truncated = true;
+      for (const key of keys.slice(0, 128)) {
         // Codec fmtp parameters are not an SDP description or credential.
         if ((key !== "sdpFmtpLine" && secretKey.test(key)) || /^(?:data|payload|body|__proto__|constructor)$/i.test(key)) continue;
         const name = safeText(key).slice(0, 128);
@@ -109,18 +104,16 @@ function errorDetails(error: unknown, depth = 0): object {
   } catch { return { message: "Error details unavailable" }; }
 }
 
-function retain(scope: string, event: string, details: DebugDetails, limits: typeof EVENT_LIMITS): void {
+export function debugEvent(scope: string, event: string, details: DebugDetails = {}): void {
   if (!browserDebugEnabled || !/^[a-z][a-z-]{0,47}$/.test(scope) || !/^[a-z][a-z-]{0,47}$/.test(event)) return;
   try {
-    const safe = sanitize(details, limits);
+    const safe = sanitize(details);
     const record: BrowserDebugEvent = {
       sequence: ++sequence, at: new Date().toISOString(), elapsedMs: performance.now() - started,
       scope, event, details: safe.value as BrowserDebugEvent["details"],
       ...(safe.truncated ? { truncated: true } : {}),
     };
     const bytes = new TextEncoder().encode(JSON.stringify(record)).byteLength;
-    // A record larger than the whole history would only evict everything, itself included.
-    if (bytes > MAX_BYTES) { evictedEvents++; return; }
     events.push({ record, bytes });
     retainedBytes += bytes;
     if (safe.truncated) truncatedEvents++;
@@ -130,15 +123,6 @@ function retain(scope: string, event: string, details: DebugDetails, limits: typ
     }
     console.info("[piik]", record);
   } catch { /* Diagnostics must not interrupt the operation being observed. */ }
-}
-
-export function debugEvent(scope: string, event: string, details: DebugDetails = {}): void {
-  retain(scope, event, details, EVENT_LIMITS);
-}
-
-/** Keeps a record whole for offline replay. The caller has already removed free text and addresses. */
-export function debugRecord(scope: string, event: string, details: DebugDetails): void {
-  retain(scope, event, details, WHOLE_RECORD);
 }
 
 export function debugError(scope: string, event: string, error: unknown, details: DebugDetails = {}): void {

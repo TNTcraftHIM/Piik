@@ -26,7 +26,7 @@ export type {
 } from "../../shared/protocol";
 
 export type QualityProfile = QualitySettings;
-export type VideoSenderProfile = VideoCeiling & { degradationPreference?: DegradationPreference };
+export type VideoSenderProfile = VideoCeiling & { degradationPreference?: DegradationPreference; displaySource?: boolean };
 
 export function screenVideoCeiling(profile: VideoCeiling): VideoCeiling {
   return { resolution: profile.resolution, maxFramerate: profile.maxFramerate, maxBitrate: profile.maxBitrate };
@@ -181,9 +181,9 @@ export const OPUS_RECEIVE_MAX_BITRATE = MAX_AUDIO_BITRATE;
  * The content hint of a sender's video track, from the person's stored picture
  * preference. "detail" makes Chromium encode a display as screen content and
  * turns an explicit "balanced" into maintain-resolution, so only Clarity asks
- * for it. A camera or received track has no screen content to keep.
+ * for it. A screen publication retains this meaning across relay hops.
  */
-export function screenContentHint(preference: DegradationPreference | undefined, isDisplay: boolean): "detail" | "motion" {
+export function screenContentHint(preference: DegradationPreference | undefined, isDisplay?: boolean): "detail" | "motion" {
   return isDisplay && preference === "maintain-resolution" ? "detail" : "motion";
 }
 
@@ -235,7 +235,8 @@ export function videoQualitySettingsEqual(
     qualityResolutionEqual(left.resolution, right.resolution) &&
     left.maxFramerate === right.maxFramerate &&
     left.maxBitrate === right.maxBitrate &&
-    left.degradationPreference === right.degradationPreference
+    left.degradationPreference === right.degradationPreference &&
+    left.displaySource === right.displaySource
   );
 }
 
@@ -463,8 +464,7 @@ export async function configureVideoSender(
   // The carrier keeps its own transport hint. Otherwise the stored preference
   // owns the hint, so a live edit and its rollback both restore it.
   if (carrierScale === undefined && sender.track) {
-    sender.track.contentHint = screenContentHint(profile.degradationPreference,
-      !!senderCaptureTrack(sender.track).getSettings().displaySurface);
+    sender.track.contentHint = screenContentHint(profile.degradationPreference, profile.displaySource);
   }
   const parameters = sender.getParameters();
   if (parameters.encodings.length === 0) {

@@ -240,7 +240,7 @@ describe("realtime quality controls", () => {
       getParameters: () => applied,
       setParameters: async (parameters: RTCRtpSendParameters) => { applied = parameters; },
     } as unknown as RTCRtpSender;
-    const clarity = { ...QUALITY_PROFILES["1080p30"], degradationPreference: "maintain-resolution" } as const;
+    const clarity = { ...QUALITY_PROFILES["1080p30"], degradationPreference: "maintain-resolution", displaySource: true } as const;
     const fluency = { ...QUALITY_PROFILES["1080p30"], degradationPreference: "maintain-framerate" } as const;
 
     await configureVideoSender(sender, clarity);
@@ -263,7 +263,7 @@ describe("realtime quality controls", () => {
     expect(track.contentHint).toBe("detail");
 
     const camera = { contentHint: "motion", getSettings: () => ({ width: 1280, height: 720 }) } as unknown as MediaStreamTrack;
-    await configureVideoSender({ ...sender, track: camera } as unknown as RTCRtpSender, clarity);
+    await configureVideoSender({ ...sender, track: camera } as unknown as RTCRtpSender, { ...clarity, displaySource: false });
     expect(camera.contentHint).toBe("motion");
   });
 

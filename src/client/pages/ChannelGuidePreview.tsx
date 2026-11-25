@@ -316,7 +316,7 @@ export function ChannelGuidePreview() {
         authorized canSend sending={false} hidden={false} available attachments={channel.attachments} attachmentsAvailable
         history={{ hasMore: false, atLatest: true }} loadingHistory={false} onHistory={async () => {}} onLatest={async () => {}}
         interaction={channel.interactionsByRoom.get("friday") ?? null} onSend={onSend} />
-      <ChannelVoiceDock channel={channel} selected="friday" playing={[]} onSelect={received} onBrowse={received} />
+      <ChannelVoiceDock channel={channel} selected="friday" renderingBySpeaker={new Map()} onSelect={received} onBrowse={received} />
       </div>
     </div>
     {settingsOpen && <ChannelRoomSettingsDialog channel={channel} room={state.channel.rooms[0]} onClose={() => setSettingsOpen(false)} />}

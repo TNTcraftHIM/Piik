@@ -69,18 +69,17 @@ test("selection requires the current live audio track rather than a retained or 
   expect(ids()).toEqual(["voice-a"]);
 });
 
-test("the dock claims connected voice only from played audio, and connecting only while someone speaks", () => {
-  const { state, streams, tracks } = fixture();
-  const status = (roomId: string) => roomVoiceStatus(state, "listener", roomId, voicePlaybackPublications(state, "listener", streams));
-  // The speaker's one microphone plays through room a and is heard in room b as well.
-  expect([status("a"), status("b")]).toEqual(["connected", "connected"]);
-  Object.defineProperty(tracks.get("voice-a"), "muted", { configurable: true, value: true });
-  Object.defineProperty(tracks.get("voice-b"), "muted", { configurable: true, value: true });
+test("voice rendering is independent of room membership and subscription", () => {
+  const { state } = fixture();
+  const rendering = new Map<string, "playing" | "blocked">();
+  const status = (roomId: string) => roomVoiceStatus(state, "listener", roomId, rendering);
   expect([status("a"), status("b")]).toEqual(["joining", "joining"]);
+  rendering.set("speaker", "playing");
+  expect([status("a"), status("b")]).toEqual(["connected", "connected"]);
+  rendering.set("speaker", "blocked");
+  expect(status("a")).toBe("joined");
+  rendering.clear();
   state.voice.find(voice => voice.sessionId === "listener" && voice.roomId === "a")!.deafened = true;
-  state.voice.find(voice => voice.sessionId === "speaker" && voice.roomId === "b")!.muted = true;
-  // Paused listening and a room where nobody speaks show membership only.
+  state.subscriptions = state.subscriptions.filter(id => id !== "voice-b");
   expect([status("a"), status("b")]).toEqual(["joined", "joined"]);
-  state.voice = state.voice.filter(voice => voice.sessionId === "listener");
-  expect(status("b")).toBe("joined");
 });
