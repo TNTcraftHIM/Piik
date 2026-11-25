@@ -26,7 +26,7 @@ export type {
 } from "../../shared/protocol";
 
 export type QualityProfile = QualitySettings;
-export type VideoSenderProfile = VideoCeiling & { degradationPreference?: DegradationPreference };
+export type VideoSenderProfile = VideoCeiling & { degradationPreference?: DegradationPreference; displaySource?: boolean };
 
 export function screenVideoCeiling(profile: VideoCeiling): VideoCeiling {
   return { resolution: profile.resolution, maxFramerate: profile.maxFramerate, maxBitrate: profile.maxBitrate };
@@ -177,10 +177,14 @@ export type ScreenAudioPreset = keyof typeof SCREEN_AUDIO_BITRATES;
 export const MAX_AUDIO_SEND_BITRATE = 320_000;
 export const OPUS_RECEIVE_MAX_BITRATE = MAX_AUDIO_BITRATE;
 
-export function startupVideoProfile<T extends VideoSenderProfile>(
-  profile: T,
-): Omit<T, "degradationPreference"> & { degradationPreference: "maintain-resolution" } {
-  return { ...profile, degradationPreference: "maintain-resolution" };
+/**
+ * The content hint of a sender's video track, from the person's stored picture
+ * preference. "detail" makes Chromium encode a display as screen content and
+ * turns an explicit "balanced" into maintain-resolution, so only Clarity asks
+ * for it. A screen publication retains this meaning across relay hops.
+ */
+export function screenContentHint(preference: DegradationPreference | undefined, isDisplay?: boolean): "detail" | "motion" {
+  return isDisplay && preference === "maintain-resolution" ? "detail" : "motion";
 }
 
 export function needsStartupVideoProfile(profile: VideoSenderProfile): boolean {
@@ -231,7 +235,8 @@ export function videoQualitySettingsEqual(
     qualityResolutionEqual(left.resolution, right.resolution) &&
     left.maxFramerate === right.maxFramerate &&
     left.maxBitrate === right.maxBitrate &&
-    left.degradationPreference === right.degradationPreference
+    left.degradationPreference === right.degradationPreference &&
+    left.displaySource === right.displaySource
   );
 }
 
@@ -298,7 +303,6 @@ export async function captureDisplay(profile: QualityProfile, signal?: AbortSign
     complete("failed", { reason: "no-video-track" });
     throw new Error("display capture produced no video track");
   }
-  videoTrack.contentHint = "motion";
   for (const audioTrack of stream.getAudioTracks()) {
     audioTrack.contentHint = "music";
   }
@@ -455,7 +459,13 @@ export async function configureVideoSender(
   sender: RTCRtpSender,
   profile: VideoSenderProfile,
   carrierScale?: number,
+  startup = false,
 ): Promise<VideoSenderParameterReadback> {
+  // The carrier keeps its own transport hint. Otherwise the stored preference
+  // owns the hint, so a live edit and its rollback both restore it.
+  if (carrierScale === undefined && sender.track) {
+    sender.track.contentHint = screenContentHint(profile.degradationPreference, profile.displaySource);
+  }
   const parameters = sender.getParameters();
   if (parameters.encodings.length === 0) {
     parameters.encodings = [{}];
@@ -481,7 +491,9 @@ export async function configureVideoSender(
   }
   // The carrier transports already-adapted frames. Native FPS adaptation on
   // that clock would discard them a second time and repeatedly break the queue.
+  // Start-up holds resolution for the first frames without touching the hint.
   if (carrierScale !== undefined) parameters.degradationPreference = "maintain-framerate";
+  else if (startup) parameters.degradationPreference = "maintain-resolution";
   else if (profile.degradationPreference !== undefined) parameters.degradationPreference = profile.degradationPreference;
   else delete parameters.degradationPreference;
 

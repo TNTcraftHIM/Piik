@@ -35,9 +35,9 @@ import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "
 import { MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
 import type { MicrophoneInput } from "../media/microphone-input";
 import { VoiceParticipation } from "./voice-participation";
-import { debugEvent, debugOperation, registerDebugCollector } from "../lib/debug";
+import { browserDebugEnabled, debugEvent, debugOperation, registerDebugCollector } from "../lib/debug";
 import { HostAudio, type CommentaryInput } from "../media/host-audio";
-import { readPreferredQuality, savePreferredQuality, screenVideoSettings, supportsCaptureProfile, type QualityProfile } from "../media/quality";
+import { readPreferredQuality, savePreferredQuality, screenContentHint, screenVideoSettings, supportsCaptureProfile, type QualityProfile } from "../media/quality";
 import type { ScreenPlaybackError } from "../media/viewer-playback";
 import { browserCaptureDevices } from "../media/capture-devices";
 import { RoomInteractionSession, type Rejection, type RoomInteraction } from "../lib/room-interactions";
@@ -187,6 +187,7 @@ export class ChannelSession {
     interactionsByRoom: new Map(),
     publicationReactions: new Map(),
     voiceInput: readRoomPreferences().voiceInput,
+    voiceTransmission: readRoomPreferences().voiceTransmission,
     voicePlaybackByUser: new Map(),
     listeningVolume: readRoomPreferences().voiceListeningVolume,
     feedbackSound: readRoomPreferences().feedbackSound,
@@ -252,7 +253,7 @@ export class ChannelSession {
     view: () => this.view,
     snapshot: () => this.roomSnapshot,
     lifetime: () => this.captureLifetime.signal,
-    action: (key, work) => this.action(key, work),
+    action: (key, work, reportError) => this.action(key, work, reportError),
     request: command => this.request(command),
     send: command => this.send(command),
     write: command => this.write(command),
@@ -262,6 +263,7 @@ export class ChannelSession {
     refresh: () => this.refreshActivity(),
     levels: roomId => this.media.voiceActivity(roomId),
     saveInput: voiceInput => { this.patch({ voiceInput }); saveRoomPreferences({ voiceInput }); },
+    saveTransmission: voiceTransmission => { this.patch({ voiceTransmission }); saveRoomPreferences({ voiceTransmission }); },
     report: error => this.patch({ error }),
   });
   private conversation = new ChannelConversation({
@@ -942,6 +944,8 @@ export class ChannelSession {
     if (command.type === "flow_state") {
       const { pairId, flowId, state } = command;
       debugEvent("channel", "flow-state-sent", { pairId, flowId, state });
+    } else if (command.type === "link_state" && browserDebugEnabled) {
+      debugEvent("channel", "link-state-sent", { pairId: command.pairId, state: command.state });
     }
   }
 
@@ -2605,7 +2609,8 @@ export class ChannelSession {
         const complete = debugOperation("capture", "codec-selection", { mode: share.codecMode });
         try {
           codec = share.codecMode === "auto"
-            ? automaticVideoCodecPreference(await preferredVideoCodecForTrack(video, selection.controller.signal))
+            ? automaticVideoCodecPreference(await preferredVideoCodecForTrack(video, selection.controller.signal,
+              screenContentHint(share.profile.degradationPreference, metadata.kind === "screen")))
             : manualVideoCodecPreference(share.codecMode);
           complete("selected", { codec });
         } catch (error) {
@@ -3760,6 +3765,10 @@ export class ChannelSession {
   voiceActivity = this.voice.activity;
   setInputVolume = this.voice.setInputVolume;
   configureVoiceInput = this.voice.configureInput;
+  setMicrophoneMode = this.voice.setMicrophoneMode;
+  setActivationThreshold = this.voice.setActivationThreshold;
+  talk = this.voice.talk;
+  microphoneLevel = this.voice.inputLevel;
   microphones = () => browserCaptureDevices("audioinput");
 
   setListeningVolume = (volume: number): void => {

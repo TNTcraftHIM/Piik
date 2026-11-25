@@ -15,6 +15,7 @@ import { readBackup } from "../channel/backup-archive";
 import { FeedbackAudio, type FeedbackCue } from "../channel/feedback-audio";
 import { validateCustomFeedbackClip } from "../channel/feedback-clip";
 import { QUALITY_PROFILES, type QualityProfile } from "../media/quality";
+import { SPEAKING_LEVEL_DBFS } from "../media/voice-gate";
 import { usePreviewInteractions } from "./use-preview-interactions";
 import { useCopy } from "../ui/copy";
 import type { NativeCaptureSources } from "../channel/app-link";
@@ -90,6 +91,7 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
     ["sample-ada-session", voiceLevel], ["sample-bo-session", voiceLevel / 2],
   ]), [voiceLevel]);
   const [voiceInput, setVoiceInput] = useState({ deviceId: "", voiceProcessing: true, volume: 1 });
+  const [voiceTransmission, setVoiceTransmission] = useState<ChannelController["voiceTransmission"]>({ mode: "open", activationThreshold: SPEAKING_LEVEL_DBFS });
   const [listeningVolume, setListeningVolume] = useState(1);
   const [invites, setInvites] = useState<Record<string, string>>({ friday: invitation });
   const [notice, setNotice] = useState("");
@@ -239,7 +241,7 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
     nativeSources: async () => sources, nativePreview: previewSource, cameraPreviews: previewCameras,
     setScreenTitle: async () => received(),
     sourceMicrophones: async () => [], startScreen: async () => received(), startNativeScreen: async () => received(),
-    voiceInput, listeningVolume, voiceActivity,
+    voiceInput, voiceTransmission, listeningVolume, voiceActivity,
     roomTopology: async (roomId: string, publicationId?: string) => sampleRoomTopology(state, roomId, publicationId),
     connectionMetrics: async () => ({ samples: [], unavailable: false }),
     appConnectionMetrics: async roomId => ({ sessionId: appSessionId, bindingId: `sample-binding-${roomId}`, connections: [] }),
@@ -255,6 +257,9 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
     setInputVolume: (volume: number) => setVoiceInput(previous => ({ ...previous, volume })), setListeningVolume,
     microphones: async () => [{ id: "sample-microphone", label: zh ? "示例麦克风" : "Sample microphone" }],
     configureVoiceInput: async (next: Partial<typeof voiceInput>) => setVoiceInput(previous => ({ ...previous, ...next })),
+    setMicrophoneMode: async (mode: ChannelController["voiceTransmission"]["mode"]) => setVoiceTransmission(previous => ({ ...previous, mode })),
+    setActivationThreshold: (activationThreshold: number) => setVoiceTransmission(previous => ({ ...previous, activationThreshold })),
+    talk: () => {}, microphoneLevel: () => voiceLevel,
     setRoomVoiceBitrate: async (roomId: string, voiceBitrate: number) => setSettingsByRoom(previous => ({ ...previous, [roomId]: { ...previous[roomId], voiceBitrate } })),
   } satisfies Partial<ChannelController> as unknown as ChannelController;
   return { channel, roomName, sampleMessages, messageReactions, settingsByRoom, notice, received, onSend, voiceLevel, setVoiceLevel };
@@ -311,7 +316,7 @@ export function ChannelGuidePreview() {
         authorized canSend sending={false} hidden={false} available attachments={channel.attachments} attachmentsAvailable
         history={{ hasMore: false, atLatest: true }} loadingHistory={false} onHistory={async () => {}} onLatest={async () => {}}
         interaction={channel.interactionsByRoom.get("friday") ?? null} onSend={onSend} />
-      <ChannelVoiceDock channel={channel} selected="friday" onSelect={received} onBrowse={received} />
+      <ChannelVoiceDock channel={channel} selected="friday" renderingBySpeaker={new Map()} onSelect={received} onBrowse={received} />
       </div>
     </div>
     {settingsOpen && <ChannelRoomSettingsDialog channel={channel} room={state.channel.rooms[0]} onClose={() => setSettingsOpen(false)} />}

@@ -2094,6 +2094,19 @@ test("voice microphone permission denial keeps listen-only available and reports
   } finally { session.close(); }
 });
 
+test("a voice join owned by its control returns the failure without the page banner", async () => {
+  const { session, socket } = await setup(3, false);
+  microphoneMixer([]);
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: vi.fn().mockRejectedValue(new DOMException("Microphone declined", "NotAllowedError")) } });
+  try {
+    const denied = expect(session.joinVoice("first", false, false)).rejects.toThrow("voice_microphone_permission_denied");
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "voice", roomId: "first", joined: false }));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await denied;
+    expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
 test("recovery mute stops only this room's retained voice immediately", async () => {
   vi.spyOn(MicrophoneInput.prototype, "level").mockReturnValue(.3);
   const { session, socket } = await setup(3, false);
@@ -2349,6 +2362,77 @@ test.each(["failed", "cancelled"])("initial microphone worklet preparation %s cl
     }
     expect(raw.stop).toHaveBeenCalledOnce();
     expect(contexts[0].close).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test("push to talk gates the shared microphone before publishing and sends nothing per press", async () => {
+  const key = "piik:room-preferences:v1";
+  const preferences = new Map([[key, JSON.stringify({ voiceTransmission: { mode: "push", activationThreshold: -40 } })]]);
+  vi.stubGlobal("window", { localStorage: { getItem: (name: string) => preferences.get(name) ?? null,
+    setItem: (name: string, value: string) => preferences.set(name, value) } });
+  vi.spyOn(MicrophoneInput.prototype, "level").mockReturnValue(.3);
+  const { session, socket } = await setup(3, false);
+  const roomTrack = remoteTrack("audio");
+  const contexts = microphoneMixer([remoteStream("room", [roomTrack])]);
+  const addModule = vi.fn(async () => {});
+  Object.assign(AudioContext.prototype, { sampleRate: 48000, audioWorklet: { addModule } });
+  const gates: Array<{ port: { postMessage: ReturnType<typeof vi.fn>; onmessage: ((event: { data: unknown }) => void) | null } }> = [];
+  vi.stubGlobal("AudioWorkletNode", class {
+    port = { postMessage: vi.fn(), close: vi.fn(), onmessage: null };
+    connect = vi.fn(); disconnect = vi.fn(); onprocessorerror = null;
+    constructor() { gates.push(this); }
+  });
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: async () => remoteStream("raw", [remoteTrack("audio")]) } });
+  const state = structuredClone(session.getSnapshot().state!);
+  const level = () => session.voiceActivity("first", true);
+  try {
+    const joining = session.joinVoice("first");
+    session.talk(true); // Pressed while capture and worklet setup are pending.
+    await vi.waitFor(() => expect(gates[0]?.port.onmessage).toBeTypeOf("function"));
+    expect(socket.sent.some(command => command.type === "voice" || command.type === "publish")).toBe(false);
+    gates[0]!.port.onmessage!({ data: "ready" });
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "voice", roomId: "first", muted: false }));
+    state.voice.push({ roomId: "first", sessionId: "endpoint", muted: false, deafened: false });
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const publishing = socket.sent.at(-1)!;
+    state.publications.push({ audience: [], ...(publishing.publication as { id: string; roomId: string; kind: "voice" }), sessionId: "endpoint", userId: "self", paused: false });
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "ack", requestId: publishing.requestId });
+    await joining;
+    const gate = gates[0]!.port;
+    expect(contexts[0].gain.disconnect).toHaveBeenCalledWith(contexts[0].createMediaStreamDestination.mock.results[0].value);
+    expect(gate.postMessage).toHaveBeenLastCalledWith({ mode: "push", threshold: .01, pressed: true });
+    session.talk(false);
+    expect(session.getSnapshot().state?.voice[0].muted).toBe(false);
+    expect(await level()).toEqual(new Map());
+
+    const commands = socket.sent.length;
+    session.talk(true);
+    expect(gate.postMessage).toHaveBeenLastCalledWith({ mode: "push", threshold: .01, pressed: true });
+    gate.onmessage!({ data: true });
+    expect(await level()).toEqual(new Map([["endpoint", .3]]));
+    session.talk(false);
+    gate.onmessage!({ data: false });
+    expect(await level()).toEqual(new Map());
+    expect(socket.sent).toHaveLength(commands);
+
+    // Mute keeps its own path and overrides a held key.
+    const muting = session.setMuted("first", true);
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "voice", muted: true }));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await muting;
+    session.talk(true);
+    gate.onmessage!({ data: true });
+    expect(roomTrack.enabled).toBe(false);
+    expect(await level()).toEqual(new Map());
+
+    await session.setMicrophoneMode("open");
+    expect(gate.postMessage).toHaveBeenLastCalledWith("close");
+    expect(contexts[0].gain.connect).toHaveBeenLastCalledWith(contexts[0].createMediaStreamDestination.mock.results[0].value);
+    expect(JSON.parse(preferences.get(key)!).voiceTransmission).toEqual({ mode: "open", activationThreshold: -40 });
+    expect(addModule).toHaveBeenCalledOnce();
   } finally { session.close(); }
 });
 
@@ -2656,6 +2740,21 @@ test("codec selection cancellation releases capture without publishing or stoppi
     expect(video.stop).toHaveBeenCalledOnce();
     expect(socket.sent.some(command => command.type === "publish")).toBe(false);
     expect(session.getSnapshot().ownedScreens.size).toBe(0);
+  } finally { session.close(); }
+});
+
+test.each([
+  ["maintain-resolution", "monitor", "detail"], ["balanced", "monitor", "motion"],
+  ["maintain-framerate", "monitor", "motion"], ["maintain-resolution", undefined, "detail"],
+] as const)("the automatic codec probe encodes with the share's mapped hint (%s, %s)", async (degradationPreference, displaySurface, hint) => {
+  const { session } = await setup();
+  const video = Object.assign(remoteTrack("video"), { getSettings: () => ({ displaySurface }) });
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: async () => remoteStream("hint-source", [video]) } });
+  const probe = vi.spyOn(codecPreflight, "preferredVideoCodecForTrack").mockRejectedValue(new DOMException("cancelled", "AbortError"));
+  session.setQuality({ ...QUALITY_PROFILES["1080p30"], degradationPreference });
+  try {
+    await expect(session.startScreen("first")).rejects.toMatchObject({ name: "AbortError" });
+    expect(probe).toHaveBeenCalledWith(video, expect.any(AbortSignal), hint);
   } finally { session.close(); }
 });
 
@@ -7771,7 +7870,7 @@ test("a relay shares one video consumer across children and releases only its ow
   } finally { media.reset(); session.close(); }
 });
 
-test("a relay waits for decoded input and Auto proof before creating its original flow sender", async () => {
+test.each([["screen", "detail"], ["camera", "motion"]] as const)("a relay probes and forwards a decoded %s with its published Clarity intent", async (sourceKind, hint) => {
   const fixture = await screenFixture();
   const { media, session, state, pc } = fixture;
   let resolve!: (codec: "h264") => void, signal!: AbortSignal;
@@ -7780,6 +7879,10 @@ test("a relay waits for decoded input and Auto proof before creating its origina
     return new Promise(done => { resolve = done; });
   });
   const apply = vi.spyOn(videoCodec, "applyVideoCodecPreference").mockReturnValue(true);
+  const publication = state.publications[0];
+  if (publication.kind !== "screen") throw new Error("Expected screen publication");
+  publication.source.kind = sourceKind;
+  publication.videoSettings = screenVideoSettings({ ...QUALITY_PROFILES["1080p30"], degradationPreference: "maintain-resolution" });
   const video = remoteTrack("video"), stream = remoteStream("relay-codec", [video]);
   let frames = 0;
   pc.receivers = [{ track: video, getStats: async () => decodedReport(frames) } as RTCRtpReceiver];
@@ -7795,10 +7898,12 @@ test("a relay waits for decoded input and Auto proof before creating its origina
     expect(RoomAudio.instances[0].play).toHaveBeenCalledOnce();
     frames = 1;
     await vi.waitFor(() => expect(probe).toHaveBeenCalledOnce());
+    expect(probe).toHaveBeenCalledWith(video, signal, hint);
     expect(downstream.senders).toEqual([]);
     expect(apply).not.toHaveBeenCalled();
     resolve("h264"); await Promise.resolve();
     const sender = downstream.senders[0];
+    expect(sender.track.contentHint).toBe(hint);
     expect(sender.track).toBe(lastClone(video));
     expect(apply).toHaveBeenLastCalledWith(expect.anything(), { primary: "h264", vp8Fallback: true });
     state.publications[0].paused = true; media.update("a", state);
@@ -8011,6 +8116,38 @@ test("channel publications share one pool across Browser children, while Native 
     expect(pool.members.at(-1)!.source).toBe(fresh);
     expect(sent.some(command => command.type === "flow_state" && command.state === "failed")).toBe(false);
   } finally { media.reset(); session.close(); }
+});
+
+test("a display sender's hint follows the stored picture preference through an edit and its rollback", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const transport = new ChannelTransport({ polite: true, iceServers: [], send() {}, receive() {}, connected() {}, roomData() {}, failed() {} });
+  const pc = RoomPeerConnection.instances[0];
+  const display = Object.assign(remoteTrack("video"), { getSettings: () => ({ displaySurface: "monitor", width: 1920, height: 1080 }) });
+  const camera = remoteTrack("video");
+  const clarity = { ...QUALITY_PROFILES["1080p30"], degradationPreference: "maintain-resolution" as const };
+  // The clone carries its hint before the sender first encodes it.
+  const added: string[] = [], add = pc.addTransceiver.bind(pc);
+  vi.spyOn(pc, "addTransceiver").mockImplementation((track, init) => { added.push(track.contentHint); return add(track, init); });
+  try {
+    transport.setOutgoing(new Map([
+      ["screen", { kind: "screen", stream: remoteStream("display", [display]), profile: { ...clarity, displaySource: true } }],
+      ["camera", { kind: "screen", stream: remoteStream("camera", [camera]), profile: { ...clarity, displaySource: false } }],
+    ]));
+    await vi.waitFor(() => expect(pc.senders).toHaveLength(2));
+    expect(added).toEqual(["detail", "motion"]);
+    const [screen, cameraSender] = pc.senders;
+    expect(screen.track).toBe(lastClone(display));
+    expect(screen.track.contentHint).toBe("detail");
+    expect(cameraSender.track.contentHint).toBe("motion");
+    await transport.configureVideo("screen", QUALITY_PROFILES["1080p30"]);
+    expect([screen.track.contentHint, screen.getParameters().degradationPreference]).toEqual(["motion", "balanced"]);
+    // Media rollback reapplies the previous profile through the same call.
+    await transport.configureVideo("screen", clarity);
+    expect([screen.track.contentHint, screen.getParameters().degradationPreference]).toEqual(["detail", "maintain-resolution"]);
+    await transport.configureVideo("camera", clarity);
+    expect(cameraSender.track.contentHint).toBe("motion");
+  } finally { transport.close(); }
 });
 
 test("an explicit picture edit leaves the sender queue available to its pool handoff", async () => {
@@ -10356,7 +10493,7 @@ async function startBackupActivities({ session, socket, state }: Awaited<ReturnT
   for (const roomId of rooms) {
     const screen = remoteTrack("video"), voice = remoteTrack("audio");
     const screenId = await publish(session.publish("screen", roomId, new RoomMediaStream([screen]) as unknown as MediaStream));
-    const joining = session.joinVoice(roomId, false, new RoomMediaStream([voice]) as unknown as MediaStream);
+    const joining = session.joinVoice(roomId, false, true, new RoomMediaStream([voice]) as unknown as MediaStream);
     const join = await next("voice");
     state.voice.push({ roomId, sessionId: "endpoint", muted: false, deafened: false });
     socket.receive({ type: "state", state });
@@ -15628,6 +15765,59 @@ test.each([false, true])("exports flow reports and plan retirement only with Bro
       { event: "flow-state-sent", details: { pairId, flowId, state: "decoded" } },
       { event: "flow-state-sent", details: { pairId, flowId, state: "failed" } },
       { event: "flow-assignment-removed", details: { pairId, flowId, direction: "incoming" } },
+    ] : []);
+  } finally { session.close(); }
+});
+
+async function debugChannelSession(enabled: boolean) {
+  vi.resetModules();
+  vi.stubGlobal("window", Object.assign(new EventTarget(), {
+    location: new URL(enabled ? "https://channel.test/?debug=1" : "https://channel.test/"),
+    setTimeout, clearTimeout,
+  }));
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  const { ChannelSession: DebugSession } = await import("../src/client/channel/session");
+  const { ChannelConversation: DebugConversation } = await import("../src/client/channel/conversation");
+  vi.spyOn(DebugConversation.prototype, "initialize").mockResolvedValue(testSigningKey);
+  const { exportBrowserDebug } = await import("../src/client/lib/debug");
+  const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const { readFile } = await import("node:fs/promises");
+  await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  return { ...await setup(1000, false, "room=first", true, ["first"], "saved", DebugSession), exportBrowserDebug };
+}
+
+test.each([false, true])("logs flow assignments, selections and link states only with Browser debug enabled (%s)", async enabled => {
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  vi.stubGlobal("document", { body: { append: vi.fn() }, createElement: (tag: string) => new RoomAudio(tag.toUpperCase()) });
+  const { session, socket, exportBrowserDebug } = await debugChannelSession(enabled);
+  const [pairId, incomingId, outgoingId, publicationId] = Array.from({ length: 4 }, () => crypto.randomUUID());
+  const peerId = "source";
+  const base = session.getSnapshot().state!;
+  const state = (selected: boolean, outgoing: boolean) => ({ ...base, subscriptions: [publicationId],
+    publications: [{ audience: [], id: publicationId, roomId: "first", sessionId: peerId, userId: "self", kind: "screen" as const,
+      source: { kind: "screen" as const, name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }],
+    pairs: [{ id: pairId, peerId, canReceiveVideoLayers: false, rooms: ["first"],
+      outgoing: outgoing ? [{ id: outgoingId, publicationId, selected: false, inputFlowId: incomingId }] : [],
+      incoming: [{ id: incomingId, publicationId, selected, inputFlowId: null }] }],
+  });
+  try {
+    socket.receive({ type: "state", state: state(false, false) });
+    socket.receive({ type: "state", state: state(true, true) });
+    RoomPeerConnection.instances.at(-1)!.connected();
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "link_state")).toBe(true));
+    socket.receive({ type: "state", state: { ...state(true, true), pairs: [] } });
+    const { events } = JSON.parse(await exportBrowserDebug());
+    const logged = events.filter((event: { event: string }) => event.event.startsWith("flow-assignment-") || event.event === "link-state-sent")
+      .map(({ event, details }: { event: string; details: unknown }) => ({ event, details }));
+    const incoming = { pairId, peerId, flowId: incomingId, publicationId, inputFlowId: null, direction: "incoming" };
+    const outgoing = { pairId, peerId, flowId: outgoingId, publicationId, inputFlowId: incomingId, direction: "outgoing" };
+    expect(logged).toEqual(enabled ? [
+      { event: "flow-assignment-added", details: incoming },
+      { event: "flow-assignment-selected", details: incoming },
+      { event: "flow-assignment-added", details: outgoing },
+      { event: "link-state-sent", details: { pairId, state: "connected" } },
+      { event: "flow-assignment-removed", details: { pairId, flowId: incomingId, direction: "incoming" } },
+      { event: "flow-assignment-removed", details: { pairId, flowId: outgoingId, direction: "outgoing" } },
     ] : []);
   } finally { session.close(); }
 });

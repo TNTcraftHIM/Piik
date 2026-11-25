@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { voicePlaybackPublications } from "../src/client/channel/use-voice-playback";
+import { roomVoiceStatus, voicePlaybackPublications } from "../src/client/channel/use-voice-playback";
 import { listeningVoicePublications } from "../src/client/channel/presentation";
 import type { ChannelPublication, ChannelSnapshot } from "../src/client/channel/protocol";
 
@@ -67,4 +67,19 @@ test("selection requires the current live audio track rather than a retained or 
   expect(ids()).toEqual([]);
   state.publications[0].paused = false;
   expect(ids()).toEqual(["voice-a"]);
+});
+
+test("voice rendering is independent of room membership and subscription", () => {
+  const { state } = fixture();
+  const rendering = new Map<string, "playing" | "blocked">();
+  const status = (roomId: string) => roomVoiceStatus(state, "listener", roomId, rendering);
+  expect([status("a"), status("b")]).toEqual(["joining", "joining"]);
+  rendering.set("speaker", "playing");
+  expect([status("a"), status("b")]).toEqual(["connected", "connected"]);
+  rendering.set("speaker", "blocked");
+  expect(status("a")).toBe("joined");
+  rendering.clear();
+  state.voice.find(voice => voice.sessionId === "listener" && voice.roomId === "a")!.deafened = true;
+  state.subscriptions = state.subscriptions.filter(id => id !== "voice-b");
+  expect([status("a"), status("b")]).toEqual(["joined", "joined"]);
 });

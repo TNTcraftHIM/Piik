@@ -24,13 +24,22 @@ multiply. Per-person levels belong to the current participant identity and retir
 with it. Listening gain, deafen and per-person mute affect only local playback,
 never forwarding or the picture's source audio.
 
-Room voice defaults to 64 kbps mono, with Saver/Standard/Clear shortcuts at
+Published 2.x room voice defaults to 64 kbps mono, with Saver/Standard/Clear shortcuts at
 32/64/96 kbps and a custom 6..320 kbps sender ceiling in the Host's voice settings.
 Microphone and Peer-relay voice senders use the same room ceiling; WebRTC may send
 less as speech or network conditions change. Receive SDP accepts Opus's full 6..510 kbps
 range independently of that sender setting. Published older pages can join
 without the optional bitrate extension; their senders and negotiated receive
 limits may retain the earlier 32 kbps bound.
+
+3.0 room voice keeps a 64 kbps default ceiling. With voice processing off it
+requests stereo input; actual device channels remain platform-owned.
+[Microphone fidelity](../research/media-fidelity.md#30-room-microphone) owns the
+measured platform scope. Its local microphone modes are open, push to talk and
+voice activation. Open mode adds no gate; the optional gate acts after processing
+and gain on the audio thread. Mute overrides every mode. A held talk action ends
+on key release, window inactivity or owner disposal, even if its binding changes.
+Threshold and mode preferences do not join voice or open a microphone.
 
 The Host may enable **Sharing settings → Sound → Include my microphone** to mix
 commentary into the picture's audio. It starts off for each new share and retires
@@ -179,8 +188,13 @@ Derived outputs must stay within their source bitrate ceiling, including when
 that ceiling is below a usual lower-output floor. Codec preflight must observe
 real encoded progress; cadence tolerance alone cannot make zero output pass.
 Frame rate, bitrate, and `maintain-resolution | balanced |
-maintain-framerate` retain their controls. Display video uses the standard
-`contentHint = "motion"` for game motion.
+maintain-framerate` retain their controls. A Browser display sender's
+`contentHint` follows the stored preference: `detail` for `maintain-resolution`,
+`motion` otherwise, because Chromium turns an explicit `balanced` into
+`maintain-resolution` for screen content. Browser relays use the publication's source kind, and
+camera senders use `motion`. Startup protection changes only the sender preference, the
+automatic codec preflight encodes with the share's mapped hint, and the
+encoding pool's carrier keeps its own transport hint.
 Native H264 retains Constrained Baseline. Capture validates the coding-tool subset under
 RFC 6184, including equivalent Constrained Baseline constraint bytes, and reports
 the actual SPS profile/level; one vendor's byte spelling is not the contract.

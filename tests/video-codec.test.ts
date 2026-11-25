@@ -29,6 +29,19 @@ it.each(["deadline", "cancel"] as const)("releases the probe clone and both PCs 
   expect(vi.getTimerCount()).toBe(0);
 });
 
+it("encodes the probe clone with the share's hint and leaves the source's alone", async () => {
+  const clone = { contentHint: "", stop: vi.fn() };
+  vi.stubGlobal("RTCRtpSender", { getCapabilities: () => ({ codecs: [] }) });
+  vi.stubGlobal("RTCPeerConnection", class {
+    close() {}
+    addTransceiver() { return { setCodecPreferences() {}, sender: {} }; }
+  });
+  const track = { kind: "video", readyState: "live", contentHint: "", clone: () => clone } as unknown as MediaStreamTrack;
+  await expect(preferredVideoCodecForTrack(track, new AbortController().signal, "detail")).resolves.toBe("vp8");
+  expect(clone.contentHint).toBe("detail");
+  expect(track.contentHint).toBe("");
+});
+
 it("recognizes a Browser-rejected video answer without inferring codec support", () => {
   const offer = (sdp: string): RTCSessionDescriptionInit => ({ type: "offer", sdp });
   const answer = (sdp: string): RTCSessionDescriptionInit => ({ type: "answer", sdp });

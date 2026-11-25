@@ -116,6 +116,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.error.captureAudioFailed");
   if (error === "voice_noise_processing_failed") return display("voice.noise.failed");
   if (error === "voice_noise_processing_unsupported") return display("voice.noise.unsupported");
+  if (error === "voice_gate_failed") return display("voice.mode.failed");
   if (error === "voice_microphone_permission_denied")
     return display("voice.error.microphoneDenied");
   if (error === "unsupported_encoding_execution")

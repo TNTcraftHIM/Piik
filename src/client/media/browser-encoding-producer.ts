@@ -6,8 +6,8 @@ import { addRemoteIceCandidate } from "../webrtc/remote-ice-candidate";
 import { normalizeVideoOfferSdp, withoutVideoOrientation } from "../webrtc/video-codec";
 import { encodedStreams } from "./browser-encoding-output";
 import {
-  applyVideoCaptureProfile, configureVideoSender,
-  needsStartupVideoProfile, startupVideoProfile, STARTUP_VIDEO_ENCODED_FRAMES,
+  applyVideoCaptureProfile, configureVideoSender, needsStartupVideoProfile,
+  screenContentHint, STARTUP_VIDEO_ENCODED_FRAMES,
   videoQualitySettingsEqual, type VideoSenderProfile,
 } from "./quality";
 import { cloneSenderVideoTrack, senderCaptureTrack, stopSenderVideoTrack } from "./sender-video-track";
@@ -34,7 +34,7 @@ export class BrowserEncodingProducer {
   private startupPending: boolean;
   private startupFrames: number | undefined;
   private startupTimer: ReturnType<typeof setTimeout> | undefined;
-  private applied: { capture: VideoSenderProfile; sender: VideoSenderProfile } | null = null;
+  private applied: { capture: VideoSenderProfile; sender: VideoSenderProfile; startup: boolean } | null = null;
 
   constructor(
     readonly source: MediaStreamTrack,
@@ -57,7 +57,8 @@ export class BrowserEncodingProducer {
     this.budget = initialBudget;
     try {
       if (this.source.readyState !== "live") throw new Error("Browser encoding source ended");
-      const track = this.input = cloneSenderVideoTrack(this.source, () => this.fail());
+      const hint = screenContentHint(this.desiredProfile.degradationPreference, this.desiredProfile.displaySource);
+      const track = this.input = cloneSenderVideoTrack(this.source, hint, () => this.fail());
       track.enabled = !this.paused;
       this.source.addEventListener("ended", this.fail);
       track.addEventListener("ended", this.fail);
@@ -252,24 +253,24 @@ export class BrowserEncodingProducer {
     const sender = this.requireSender(), track = this.input!;
     const profile = this.desiredProfile;
     const previous = this.applied;
-    const effective = this.startupPending ? startupVideoProfile(profile) : profile;
-    const parameters = { ...effective, maxBitrate: Math.min(profile.maxBitrate, this.budget) };
+    const startup = this.startupPending;
+    const parameters = { ...profile, maxBitrate: Math.min(profile.maxBitrate, this.budget) };
     const captureChanged = !previous || !videoQualitySettingsEqual(previous.capture, profile);
-    const senderChanged = !previous || !videoQualitySettingsEqual(previous.sender, parameters);
+    const senderChanged = !previous || previous.startup !== startup || !videoQualitySettingsEqual(previous.sender, parameters);
     if (!captureChanged && !senderChanged) return;
     try {
       if (captureChanged) await applyVideoCaptureProfile(track, profile);
       this.checkAlive();
       if (senderChanged) {
-        const applied = await configureVideoSender(sender, parameters);
+        const applied = await configureVideoSender(sender, parameters, undefined, startup);
         if (applied.mismatches.length) throw new Error("capture_quality_unsupported");
       }
       this.checkAlive();
-      this.applied = { capture: profile, sender: parameters };
-      debugEvent("encoding-pool", "producer-configured", { producerId: this.id, profile, parameters });
+      this.applied = { capture: profile, sender: parameters, startup };
+      debugEvent("encoding-pool", "producer-configured", { producerId: this.id, profile, parameters, startup });
       if (captureChanged) debugTrack(track, { producerId: this.id });
     } catch (error) {
-      debugError("encoding-pool", "producer-settings-failed", error, { producerId: this.id, requested: profile, parameters });
+      debugError("encoding-pool", "producer-settings-failed", error, { producerId: this.id, requested: profile, parameters, startup });
       if (captureChanged && previous && !this.disposed) {
         await applyVideoCaptureProfile(track, previous.capture).catch(this.fail);
       }

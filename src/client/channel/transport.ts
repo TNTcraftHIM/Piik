@@ -7,7 +7,7 @@ import type { ConnectionMetrics } from "../types";
 import { preferOpusStereoReceive } from "../webrtc/opus-receive-sdp";
 import { applyVideoCodecPreference, normalizeVideoOfferSdp, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
 import type { ChannelPublication, ChannelSignal } from "./protocol";
-import { applyVideoCaptureProfile, configureAudioSender, configureVideoSender, DEFAULT_ROOM_VOICE_BITRATE, screenAudioBitrate, screenShareEncodings, videoQualitySettingsEqual, type VideoSenderProfile } from "../media/quality";
+import { applyVideoCaptureProfile, configureAudioSender, configureVideoSender, DEFAULT_ROOM_VOICE_BITRATE, screenAudioBitrate, screenContentHint, screenShareEncodings, videoQualitySettingsEqual, type VideoSenderProfile } from "../media/quality";
 import { BrowserEncodingOutput, supportsBrowserEncoding } from "../media/browser-encoding-output";
 import type { BrowserEncodingPool, BrowserPooledSender } from "../media/browser-encoding-pool";
 import { cloneSenderVideoTrack, senderCaptureTrack, stopSenderVideoTrack } from "../media/sender-video-track";
@@ -519,7 +519,8 @@ export class ChannelTransport {
   }
 
   private cloneVideo(id: string, owner: OutgoingBinding, source: MediaStreamTrack): MediaStreamTrack {
-    const track = cloneSenderVideoTrack(source, ended => {
+    const hint = screenContentHint(owner.profile?.degradationPreference, owner.profile?.displaySource);
+    const track = cloneSenderVideoTrack(source, hint, ended => {
       if (owner.senders.some(binding => binding.sender.track === ended)) this.failOutput(id, owner);
     });
     track.enabled = !owner.paused;
@@ -769,8 +770,9 @@ export class ChannelTransport {
   }
 
   /** An explicit source edit shares the negotiation queue, but cannot fail the pair. */
-  async configureVideo(id: string, profile: VideoSenderProfile): Promise<void> {
+  async configureVideo(id: string, settings: VideoSenderProfile): Promise<void> {
     const owner = this.sending.get(id);
+    const profile = { ...settings, displaySource: owner?.profile?.displaySource };
     const bindings = await this.senderOperation(async () => {
       if (this.closed || !owner || this.sending.get(id) !== owner || owner.failed) return [];
       return owner.senders.filter(binding => binding.source.kind === "video" && binding.sender.getParameters().encodings.length);

@@ -103,15 +103,15 @@ export function ChannelSettingsError({ error }: { error: string | null }) {
 
 export type SettingsAction = <T>(work: (signal: AbortSignal) => Promise<T>, onSuccess?: (value: T) => void) => Promise<void>;
 
-/** Pending stays in Session; only this open surface receives its action result. */
-export function useSettingsAction(open = true): { error: string | null; run: SettingsAction; clearError(): void } {
+/** Pending stays in Session; only this open surface, for its current owner, receives its action result. */
+export function useSettingsAction(open = true, owner?: string): { error: string | null; run: SettingsAction; clearError(): void } {
   const [error, setError] = useState<string | null>(null);
   const lifetime = useRef<AbortController | null>(null);
   useLayoutEffect(() => {
     lifetime.current = open ? new AbortController() : null;
     setError(null);
     return () => { lifetime.current?.abort(); lifetime.current = null; };
-  }, [open]);
+  }, [open, owner]);
   const run: SettingsAction = useCallback(async (work, onSuccess) => {
     const current = lifetime.current;
     if (!current) return;
@@ -122,7 +122,8 @@ export function useSettingsAction(open = true): { error: string | null; run: Set
     } catch (error) {
       if (lifetime.current !== current || (error instanceof DOMException && error.name === "AbortError")) return;
       if (isDeferredModuleFailure(error)) setError("deferred_module_load_failed");
-      else setError(error instanceof Error ? error.message : "operation_failed");
+      // The same failure code the session's banner would show.
+      else setError(error instanceof DOMException ? error.name : error instanceof Error ? error.message : "operation_failed");
     }
   }, []);
   return { error, run, clearError: () => setError(null) };

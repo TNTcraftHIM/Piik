@@ -18,6 +18,7 @@ import type { QualityProfile } from "../media/quality";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomPreferences } from "../lib/room-preferences";
 import type { CaptureDevice } from "../media/capture-devices";
+import type { MicrophoneMode } from "../media/voice-gate";
 import type { BrowserCaptureSource } from "../media/quality";
 import type { loadCameraPreviews } from "../media/camera-previews";
 import type { CommentaryInput } from "../media/host-audio";
@@ -74,6 +75,8 @@ export interface ChannelView {
   interactionsByRoom: ReadonlyMap<string, RoomInteractionSession>;
   publicationReactions: ReadonlyMap<string, PublicationReactionSnapshot>;
   voiceInput: RoomPreferences["voiceInput"];
+  /** When the shared voice microphone transmits; mute overrides it. */
+  voiceTransmission: RoomPreferences["voiceTransmission"];
   voicePlaybackByUser: ReadonlyMap<string, { volume: number; muted: boolean }>;
   listeningVolume: number;
   appConnected: boolean;
@@ -225,7 +228,7 @@ export interface ChannelActions {
   inputDecide(publicationId: string, requestId: string, allow: boolean): Promise<void>;
   inputSimultaneous(publicationId: string, enabled: boolean): Promise<void>;
   inputShortcut(publicationId: string, key?: number): Promise<RemoteStopShortcut>;
-  joinVoice(roomId: string, listenOnly?: boolean): Promise<void>;
+  joinVoice(roomId: string, listenOnly?: boolean, reportError?: boolean): Promise<void>;
   leaveVoice(roomId: string): Promise<void>;
   setMuted(roomId: string, muted: boolean): Promise<void>;
   canUnmute(roomId: string): boolean;
@@ -238,6 +241,13 @@ export interface ChannelActions {
   setInputVolume(volume: number): void;
   microphones(): Promise<CaptureDevice[]>;
   configureVoiceInput(settings: Partial<Pick<RoomPreferences["voiceInput"], "deviceId" | "voiceProcessing" | "strongerSuppression">>): Promise<void>;
+  setMicrophoneMode(mode: MicrophoneMode): Promise<void>;
+  /** Voice activation's threshold, in dBFS. */
+  setActivationThreshold(dbfs: number): void;
+  /** The talk key is held; only push to talk transmits on it, and mute still overrides it. */
+  talk(pressed: boolean): void;
+  /** The shared voice microphone's linear level before any gate, while one is captured. */
+  microphoneLevel(): number | undefined;
   setListeningVolume(volume: number): void;
   setVoiceVolume(userId: string, volume: number): void;
   setVoiceMuted(userId: string, muted: boolean): void;

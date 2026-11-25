@@ -5,7 +5,7 @@ import { VIEWER_QUALITY_EVIDENCE_INTERVAL_MS } from "../../shared/protocol";
 import type { ChannelCommand, ChannelPair, ChannelSignal, ChannelSnapshot } from "./protocol";
 import type { ChannelMediaMetric, ChannelMediaMetrics, ChannelScreenInput, ScreenPresentation, ScreenBufferStatus } from "./types";
 import { ChannelTransport, type OutgoingMedia } from "./transport";
-import { applyCaptureProfile, screenAudioBitrate, type QualityProfile } from "../media/quality";
+import { applyCaptureProfile, screenAudioBitrate, screenContentHint, type QualityProfile } from "../media/quality";
 import { automaticVideoCodecPreference, VP8_ONLY_VIDEO_CODEC, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
 import { preferredVideoCodecForTrack } from "../webrtc/video-codec-preflight";
 import { BrowserEncodingPool } from "../media/browser-encoding-pool";
@@ -173,7 +173,7 @@ export class ChannelMedia {
     for (const [id, peer] of this.peers) {
       if (!plans.has(id)) {
         this.peers.delete(id);
-        this.recordRemovedAssignments(peer.plan);
+        this.recordAssignments(peer.plan);
         released = this.closePeer(peer) || released;
       }
     }
@@ -226,8 +226,9 @@ export class ChannelMedia {
         }
         peer = { plan, transport, inputs: new Map(), roomDataReady: new Set() };
         this.peers.set(plan.id, peer);
+        this.recordAssignments(undefined, plan);
       } else {
-        this.recordRemovedAssignments(peer.plan, plan);
+        this.recordAssignments(peer.plan, plan);
         peer.plan = plan;
       }
       for (const room of peer.roomDataReady) if (!plan.rooms.includes(room)) peer.roomDataReady.delete(room);
@@ -528,6 +529,8 @@ export class ChannelMedia {
         const publication = this.publications.find(publication => publication.id === flow.publicationId);
         if (!publication) continue;
         const local = flow.inputFlowId === null ? this.local.get(flow.publicationId) : undefined;
+        const settings = local?.profile ?? (publication.videoSettings && { ...publication.videoSettings.ceiling, degradationPreference: publication.videoSettings.degradationPreference });
+        const profile = settings && { ...settings, displaySource: publication.source?.kind === "screen" };
         let stream = local?.stream;
         let codec = local?.codec ?? VP8_ONLY_VIDEO_CODEC;
         if (flow.inputFlowId !== null) for (const source of this.peers.values()) {
@@ -539,7 +542,7 @@ export class ChannelMedia {
             stream = publication.kind !== "screen" || input.codec ? input.stream : undefined;
             if (publication.kind === "screen" && input.ready && !publication.paused && input.video && !input.codec && !input.codecProbe) {
               const probe = input.codecProbe = new AbortController();
-              void preferredVideoCodecForTrack(input.video, probe.signal).then(value => {
+              void preferredVideoCodecForTrack(input.video, probe.signal, screenContentHint(profile?.degradationPreference, profile?.displaySource)).then(value => {
                 if (input.codecProbe !== probe || probe.signal.aborted || !this.ownsInput(source, flow.inputFlowId!, input)) return;
                 input.codec = automaticVideoCodecPreference(value);
                 this.refresh();
@@ -550,7 +553,7 @@ export class ChannelMedia {
           break;
         }
         outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null,
-          profile: local?.profile ?? (publication.videoSettings && { ...publication.videoSettings.ceiling, degradationPreference: publication.videoSettings.degradationPreference }),
+          profile,
           audioBitrate: local?.profile?.maxAudioBitrate, codec, paused: local?.paused ?? publication.paused,
           voiceBitrate: this.rooms.find(room => room.id === publication.roomId)?.voiceBitrate });
       }
@@ -692,13 +695,20 @@ export class ChannelMedia {
       unavailable: samples.some(result => result.status === "rejected") };
   }
 
-  private recordRemovedAssignments(previous: ChannelPair, next?: ChannelPair): void {
+  private recordAssignments(previous: ChannelPair | undefined, next?: ChannelPair): void {
     if (!browserDebugEnabled) return;
     for (const direction of ["incoming", "outgoing"] as const) {
-      for (const flow of previous[direction]) {
+      for (const flow of previous?.[direction] ?? []) {
         if (!next?.[direction].some(current => current.id === flow.id)) {
-          debugEvent("channel", "flow-assignment-removed", { pairId: previous.id, flowId: flow.id, direction });
+          debugEvent("channel", "flow-assignment-removed", { pairId: previous!.id, flowId: flow.id, direction });
         }
+      }
+      for (const flow of next?.[direction] ?? []) {
+        const before = previous?.[direction].find(current => current.id === flow.id);
+        const details = { pairId: next!.id, peerId: next!.peerId, flowId: flow.id, publicationId: flow.publicationId,
+          inputFlowId: flow.inputFlowId, direction };
+        if (!before) debugEvent("channel", "flow-assignment-added", details);
+        if (flow.selected && !before?.selected) debugEvent("channel", "flow-assignment-selected", details);
       }
     }
   }

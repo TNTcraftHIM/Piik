@@ -64,6 +64,10 @@
 .c3-voice-entry small { display: block; font-size: 10px; color: var(--muted); margin-bottom: 4px; }
 .c3-voice-entry strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .c3-voice-entry > .lr-comic-tip-wrap { flex: none; }
+/* A join failure takes its own line under the row it belongs to. */
+:is(.c3-voice-entry, .c3-room-tool-entry):has(> .c3-settings-error) { flex-wrap: wrap; }
+:is(.c3-voice-entry, .c3-room-tool-entry) > .c3-settings-error { flex-basis: 100%; margin: 0; font-size: 12px; }
+.c3-room-tool-entry > .c3-settings-error { text-align: center; }
 .c3-main { display: contents; }
 .c3-room-heading { grid-column: 2 / 4; grid-row: 2; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; min-width: 0; min-height: var(--c3-heading-height); padding: 10px 20px; }
 .c3-room-name { min-width: 0; display: flex; align-items: center; gap: 10px; flex: 1 1 16ch; }
@@ -114,6 +118,7 @@
 .c3-voice-destination { min-width: 0; flex: 1 1 8ch; display: flex; align-items: center; gap: 8px; }
 .c3-voice-room-info { min-width: 0; flex: 1; }
 .c3-voice-destination small { display: block; color: var(--live-ink); font-size: 11px; margin-bottom: 2px; white-space: nowrap; }
+.c3-voice-destination small[data-status="joining"] { color: var(--busy); }
 .c3-voice-room-choice { display: flex; align-items: center; gap: 4px; }
 .c3-voice-room { display: block; min-width: 0; max-width: 100%; }
 .c3-voice-room-choice > .c3-voice-room { flex: 1; }
@@ -121,6 +126,8 @@
 .c3-voice-room > button:hover { text-decoration: underline; text-underline-offset: 3px; }
 .c3-voice-room > select { width: 100%; min-width: 0; }
 .c3-voice-controls { display: inline-flex; flex-wrap: nowrap; align-items: center; flex: none; max-width: 100%; gap: 4px; margin-inline-start: auto; }
+.lr-anchored-card.c3-voice-talk-muted { width: max-content; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.c3-voice-talk-muted:is(:popover-open, .\:popover-open) { display: flex; align-items: center; gap: 6px; }
 .c3-personal .c3-voice-dock > svg { display: none; }
 .c3-personal .c3-voice-destination { flex-basis: 100%; display: flex; align-items: center; gap: 8px; }
 .c3-personal .c3-voice-destination small { margin: 0; }
@@ -331,6 +338,9 @@
 .c3-quick-entry-tv { margin-bottom: 8px; }
 .c3-quick-entry-tv .lr-tv { width: 100%; }
 .c3-quick-start { display: grid; place-items: center; padding: 24px; }
+/* The failure hangs below the button so the centred button does not move. */
+.c3-quick-start-action { position: relative; }
+.c3-quick-start-action > .c3-settings-error { position: absolute; top: calc(100% + 8px); left: 50%; translate: -50% 0; width: max-content; max-width: min(48ch, 80vw); margin: 0; font-size: 12px; text-align: center; }
 .c3-shell[data-layout="quick"] .c3-workspace:has(.c3-monitor-directory) > .c3-quick-entry-tv {
   .lr-tv, .lr-tv-screen.has-entry { display: contents; }
   .lr-tv-chin { display: none; }

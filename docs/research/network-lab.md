@@ -496,6 +496,18 @@ flow failure or route wake was observed. This run locates the main wait at the
 Browser's terminal RTC report; the 20-second identity expiry had not elapsed.
 It does not justify treating every transient disconnect as a failed path.
 
+A leaf-only experiment compared the same four-browser workload with early
+candidate preparation when the selected parent's signaling was offline and its
+RTC connection was disconnected. Default recovery took 16.127 s and the
+experiment 7.284 s, one sample each. The candidate used an already confirmed
+sibling connection and spare forwarding capacity; source output stayed at two.
+The old flow stayed selected until the candidate both decoded and presented.
+Core controls retained a healthy path on signaling-only loss, cancelled the
+candidate when the old path recovered, and respected zero forwarding capacity.
+Those controls were simulated. The experiment used a private fixture envelope,
+not a production wire change; Native, subtrees and other network conditions
+remain outside this measurement.
+
 ### File forwarding during a room call
 
 In a four-browser loopback run, both file recipients could reach the sender

@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-24
+Last updated: 2026-11-25
 
 Internal 3.0 evidence spans several revisions. Each package receipt identifies the
 build and workload it covers. Delivery readiness and published 2.x verification
@@ -17,6 +17,10 @@ Settings accepted pointer input, Escape dismissed settings before pinning, and
 the underlying desktop window received clicks and scrolling through the pinned
 overlay. A native file save continued after the panel closed and reported the verified
 saved file and receipt. Cancelling the native download reported cancellation.
+The matching protocol-47 Windows review also exercised single-use owner entry
+through WebView and an external Browser, storage-denied same-page reconnection,
+and narrow-window controls. Its Android APK passed two-ABI compilation and
+static package checks; device behavior was not inferred from that build.
 
 - **Room access and data.** On Alpine x64 the packaged Server accepted signed
   chat after the creator left, restored the invitee's grant and history on restart
@@ -26,6 +30,9 @@ saved file and receipt. Cancelling the native download reported cancellation.
   acceptance remains open. Earlier Browser, App and Server controls covered
   offline identities, unread state, history paging, mentions, replies, thumbnail
   access with an offline holder, archive restoration and invalid-archive rejection.
+  Protocol-47 packaged Linux restart retained history lineage; restoring a room
+  archive replaced it atomically while serving the archived rows through signed
+  history replies.
   [Room data](./research/channel-storage-and-identity.md) · [Field checks](./todo.md#now)
 - **Concurrent activities.** Local Browser and App controls covered source
   replacement and cancellation with the viewer still receiving, voice and drafts
@@ -37,6 +44,15 @@ saved file and receipt. Cancelling the native download reported cancellation.
   Windows WebView retained picture-in-picture across a source replacement.
   Closing its system window kept the viewer joined, and the next source played
   inside the page without reopening picture-in-picture.
+  Protocol-48 Server/Browser loopback controls exercised master-off, voice-only
+  Hosted and files-only Browser-hosted forwarding with direct signaling blocked.
+  Writer and chat operation survived every setting; allowed audio progressed and
+  the allowed file completed with a matching digest.
+- **Microphone modes.** Real Chrome AudioWorklet/WebRTC loopback with synthetic
+  PCM verified push-to-talk release, changed bindings, detached room-tool focus
+  and voice-activation threshold/hold. Open mode loaded no gate worklet.
+  Physical microphone sensitivity and background native talk-key capture remain
+  outside these checks.
 - **Synchronized viewing.** Independent local Browsers exercised direct playback,
   late join, autoplay refusal and trusted-click recovery. Windows App fixtures
   covered source selection, direct HLS, forwarded MP4, HLS VOD and clear static

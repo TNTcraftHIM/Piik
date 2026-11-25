@@ -1,5 +1,5 @@
 import type { ChannelController } from "./types";
-import type { VoiceShortcutAction } from "./voice-shortcut-binding";
+import type { VoiceToggleAction } from "./voice-shortcut-binding";
 
 export function resolveVoiceDockControls(channel: Pick<ChannelController,
   "state" | "sessionId" | "voiceMicrophonePending" | "canUnmute" | "setMuted" | "setDeafened">, selected: string) {
@@ -7,7 +7,7 @@ export function resolveVoiceDockControls(channel: Pick<ChannelController,
   const activity = joined.find(value => value.roomId === selected) ?? joined[0];
   const microphonePending = Boolean(activity?.muted && channel.voiceMicrophonePending(activity.roomId));
   const microphoneDisabled = Boolean(activity?.muted && !microphonePending && !channel.canUnmute(activity.roomId));
-  const toggle = (action: VoiceShortcutAction): boolean => {
+  const toggle = (action: VoiceToggleAction): boolean => {
     if (!activity) return false;
     const { roomId, muted, deafened } = activity;
     if (action === "microphone" && microphoneDisabled) return false;

@@ -18,8 +18,8 @@ import {
   screenAudioBitrate,
   screenVideoCeiling,
   audioSenderCeiling,
+  screenContentHint,
   setMediaPaused,
-  startupVideoProfile,
 } from "../src/client/media/quality.ts";
 
 function createVideoStream() {
@@ -160,7 +160,8 @@ describe("realtime quality controls", () => {
       systemAudio: "include",
       windowAudio: "window",
     });
-    expect(videoTrack.contentHint).toBe("motion");
+    // The sender owns the video hint from the picture preference.
+    expect(videoTrack.contentHint).toBe("");
     expect(audioTrack.contentHint).toBe("music");
   });
 
@@ -213,17 +214,57 @@ describe("realtime quality controls", () => {
 
   it("holds resolution only while a scaling preference starts", () => {
     expect(needsStartupVideoProfile(QUALITY_PROFILES["1080p30"])).toBe(true);
-    expect(startupVideoProfile(QUALITY_PROFILES["1080p30"])).toMatchObject({
-      degradationPreference: "maintain-resolution",
-      maxBitrate: 5_000_000,
-      maxFramerate: 30,
-    });
     const clarity = {
       ...QUALITY_PROFILES["1080p30"],
       degradationPreference: "maintain-resolution",
     } as const;
     expect(needsStartupVideoProfile(clarity)).toBe(false);
-    expect(startupVideoProfile(clarity)).toEqual(clarity);
+  });
+
+  it("asks for screen content only when a display share keeps clarity", () => {
+    expect(screenContentHint("maintain-resolution", true)).toBe("detail");
+    expect(screenContentHint("balanced", true)).toBe("motion");
+    expect(screenContentHint("maintain-framerate", true)).toBe("motion");
+    expect(screenContentHint(undefined, true)).toBe("motion");
+    for (const preference of ["maintain-resolution", "balanced", "maintain-framerate", undefined] as const) {
+      expect(screenContentHint(preference, false)).toBe("motion");
+    }
+  });
+
+  it("sets the sender hint from the stored preference through edits, rollback and start-up", async () => {
+    const display = { displaySurface: "monitor", width: 1920, height: 1080 };
+    let applied = { encodings: [{}] } as RTCRtpSendParameters;
+    const track = { contentHint: "", getSettings: () => display } as unknown as MediaStreamTrack;
+    const sender = {
+      track,
+      getParameters: () => applied,
+      setParameters: async (parameters: RTCRtpSendParameters) => { applied = parameters; },
+    } as unknown as RTCRtpSender;
+    const clarity = { ...QUALITY_PROFILES["1080p30"], degradationPreference: "maintain-resolution", displaySource: true } as const;
+    const fluency = { ...QUALITY_PROFILES["1080p30"], degradationPreference: "maintain-framerate" } as const;
+
+    await configureVideoSender(sender, clarity);
+    expect([track.contentHint, applied.degradationPreference]).toEqual(["detail", "maintain-resolution"]);
+    await configureVideoSender(sender, fluency);
+    expect([track.contentHint, applied.degradationPreference]).toEqual(["motion", "maintain-framerate"]);
+    // A refused edit reapplies the previous profile through the same owner.
+    await configureVideoSender(sender, clarity);
+    expect([track.contentHint, applied.degradationPreference]).toEqual(["detail", "maintain-resolution"]);
+
+    // Start-up holds resolution on the sender only; the hint keeps Balanced.
+    await configureVideoSender(sender, QUALITY_PROFILES["1080p30"], undefined, true);
+    expect([track.contentHint, applied.degradationPreference]).toEqual(["motion", "maintain-resolution"]);
+    await configureVideoSender(sender, QUALITY_PROFILES["1080p30"]);
+    expect([track.contentHint, applied.degradationPreference]).toEqual(["motion", "balanced"]);
+
+    // The carrier's hint belongs to transport.
+    track.contentHint = "detail";
+    await configureVideoSender(sender, fluency, 1);
+    expect(track.contentHint).toBe("detail");
+
+    const camera = { contentHint: "motion", getSettings: () => ({ width: 1280, height: 720 }) } as unknown as MediaStreamTrack;
+    await configureVideoSender({ ...sender, track: camera } as unknown as RTCRtpSender, { ...clarity, displaySource: false });
+    expect(camera.contentHint).toBe("motion");
   });
 
   it("keeps audio selection orthogonal while defaulting missing settings to music", () => {
@@ -343,7 +384,7 @@ describe("realtime quality controls", () => {
       degradationPreference: "maintain-framerate" }, mismatches: [] });
     const ceiling = screenVideoCeiling(QUALITY_PROFILES["1080p60"]);
     for (const carrierScale of [1, undefined]) {
-      await configureVideoSender(sender, startupVideoProfile(QUALITY_PROFILES["1080p60"]), carrierScale);
+      await configureVideoSender(sender, QUALITY_PROFILES["1080p60"], carrierScale, true);
       const restored = await configureVideoSender(sender, ceiling);
       expect(applied).not.toHaveProperty("degradationPreference");
       expect(applied.encodings[0]!.maxFramerate).toBe(ceiling.maxFramerate);

@@ -18,7 +18,7 @@ import { LayerHistory } from "../ui/layer-history";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelStage, type WaitingStageSource, type WatchStageSource } from "../channel/components/ChannelStage";
 import { useTheaterMode } from "../components/living/use-theater-mode";
-import { ChannelSettingsDialog } from "../channel/components/ChannelSettingsDialog";
+import { ChannelSettingsDialog, ChannelSettingsError, useSettingsAction } from "../channel/components/ChannelSettingsDialog";
 import { WatchEmbedPreview } from "../channel/components/WatchEmbedPreview";
 import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
@@ -43,7 +43,7 @@ import { ChannelCouch } from "../channel/components/ChannelCouch";
 import { ChannelRoomTool, type RoomToolSurface } from "../channel/components/ChannelRoomTool";
 import { ChannelConnections } from "../channel/components/ChannelConnections";
 import { roomHasUnread, roomPeople, screenAudience, screenTitle, userProfile, watchAudience } from "../channel/presentation";
-import { useVoicePlayback } from "../channel/use-voice-playback";
+import { useVoicePlayback, type VoiceRendering } from "../channel/use-voice-playback";
 import { VoicePlaybackContext } from "../media/viewer-audio";
 import { resolveVoiceDockControls } from "../channel/voice-dock-controls";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
@@ -229,8 +229,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   };
   const busy = (action: string, id?: string) => pending.has(action) || pending.has(`${action}:${id}`);
   const simpleShareKey = simpleShareRoomKey(state?.channel.id, self?.id);
+  // The quick-start button shows its own failure; another site retires it.
+  const quickStart = useSettingsAction(true, simpleShareKey ?? state?.channel.id);
   const prepareShare = async () => {
     if (!canCreateRoom || preparingShare.current || pending.has("create-room")) return;
+    quickStart.clearError();
     const existing = self && simpleShareRoom(rooms, self.id, readSimpleShareRoom(simpleShareKey));
     if (existing) {
       selectRoom(existing.id);
@@ -238,19 +241,20 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       return;
     }
     const operation = preparingShare.current = {};
-    try {
-      const id = await channel.createRoom(roomSettings({ ...roomDraft(), name: t("channel.previewPage.screenSharing") }, creationPolicy === "invite_only"));
-      rememberSimpleShareRoom(simpleShareKey, id);
-      if (preparingShare.current !== operation) return;
-      selectRoom(id); setPickerRoom(id);
-    } catch (error) {
-      if (!(error instanceof RoomCreationInterrupted)) return;
-      if (error.committed && error.roomId) rememberSimpleShareRoom(simpleShareKey, error.roomId);
-      if (preparingShare.current !== operation) return;
-      channel.clearError();
-      setNewRoom(error);
-    }
-    finally { if (preparingShare.current === operation) preparingShare.current = null; }
+    await quickStart.run(async () => {
+      try {
+        const id = await channel.createRoom(roomSettings({ ...roomDraft(), name: t("channel.previewPage.screenSharing") }, creationPolicy === "invite_only"), false);
+        rememberSimpleShareRoom(simpleShareKey, id);
+        if (preparingShare.current !== operation) return;
+        selectRoom(id); setPickerRoom(id);
+      } catch (error) {
+        if (error instanceof RoomCreationInterrupted && error.committed && error.roomId) rememberSimpleShareRoom(simpleShareKey, error.roomId);
+        if (preparingShare.current !== operation) return;
+        if (!(error instanceof RoomCreationInterrupted)) throw error;
+        setNewRoom(error);
+      }
+    });
+    if (preparingShare.current === operation) preparingShare.current = null;
   };
   const publications = state?.publications ?? [];
   const screens = publications.filter(value => value.kind === "screen");
@@ -298,11 +302,30 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const displayedSources = new Set([...visibleScreens, ...availableScreens].map(source => source.id));
   const myVoice = state?.voice.filter(value => value.sessionId === sessionId) ?? [];
   const joined = myVoice.some(value => value.roomId === roomId);
-  const joinVoice = room?.authorized && !joined ? <ChannelJoinVoice joined={false} disabled={!connected || !room.available} busy={busy("voice", roomId)}
-    onJoin={listenOnly => run(channel.joinVoice(roomId, listenOnly).then(() => setVoiceFocus(roomId)))} /> : null;
+  // A join reports here, not in a slot: membership arrives before the join settles and the slot moves with the room tool.
+  const voiceJoin = useSettingsAction(true, JSON.stringify([state?.channel.id, sessionId, roomId]));
+  const joinVoice = room?.authorized && (!joined || busy("voice", roomId) || voiceJoin.error) ? <ChannelJoinVoice joined={joined && !busy("voice", roomId)}
+    disabled={joined || !connected || !room.available} busy={busy("voice", roomId)}
+    error={voiceJoin.error} onJoin={listenOnly => { void voiceJoin.run(() => channel.joinVoice(roomId, listenOnly, false), () => setVoiceFocus(roomId)); }} /> : null;
   const nameOfRoom = (id: string) => rooms.find(value => value.id === id)?.name ?? id;
   const nameOfUser = (id: string) => state?.users.find(value => value.id === id)?.name ?? t("channel.previewPage.user");
   const voiceStreams = useVoicePlayback(state, sessionId, streams);
+  const [voiceRendering, setVoiceRendering] = useState(new Map<string, { stream: MediaStream; state: VoiceRendering }>());
+  const reportVoiceRendering = useCallback((id: string, stream: MediaStream, state: VoiceRendering | undefined) => {
+    setVoiceRendering(previous => {
+      const current = previous.get(id);
+      if ((state === undefined && current?.stream !== stream) || (current?.stream === stream && current.state === state)) return previous;
+      const next = new Map(previous);
+      if (state === undefined) next.delete(id);
+      else next.set(id, { stream, state });
+      return next;
+    });
+  }, []);
+  const renderingBySpeaker = new Map<string, VoiceRendering>();
+  for (const publication of voiceStreams) {
+    const rendering = voiceRendering.get(publication.id);
+    if (rendering && rendering.stream === streams.get(publication.id)) renderingBySpeaker.set(publication.sessionId, rendering.state);
+  }
   const [voiceContext] = useState(() => new VoicePlaybackContext());
   const failure = channelErrorPresentation(channel.error, t);
   // Name the failed room only when it is not the one on screen; a removed room has no name left to show.
@@ -528,8 +551,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             : overview && <section className="c3-site-overview">
             {layout === "quick" && canCreateRoom ? <StageTv hasEntry label={t("channel.previewPage.startSharing")}><div className="c3-quick-start">
               <p>{t(creationPolicy === "invite_only" ? "channel.previewPage.quickInviteOnlyHint" : "channel.previewPage.quickStartHint")}</p>
-              <Btn id="c3-first-action" icon="cast" tone="primary" title={{ text: t("channel.previewPage.startSharing") }} cap={{ text: t("channel.previewPage.startSharing") }}
+              <div className="c3-quick-start-action"><Btn id="c3-first-action" icon="cast" tone="primary" title={{ text: t("channel.previewPage.startSharing") }} cap={{ text: t("channel.previewPage.startSharing") }}
                 disabled={!connected || busy("create-room")} busy={busy("create-room")} onClick={() => { void prepareShare(); }} />
+                <ChannelSettingsError error={quickStart.error} /></div>
             </div></StageTv> : rooms.length ? <><h2><BrandMark size={30} motion="once" />{state.channel.name}</h2><div className="c3-overview-rooms">{rooms.map(value => <ChannelRoomItem key={value.id}
               room={value} selected={false} sourceCount={screens.filter(source => source.roomId === value.id).length + watches.filter(source => source.roomId === value.id).length}
               unread={roomHasUnread(value, channel.readByRoom[value.id])}
@@ -599,7 +623,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           <div ref={mainConversationHome} className="c3-room-slot" />
         </div>
         </div>
-        {voiceStreams.map(publication => <ChannelAudio key={publication.sessionId} stream={streams.get(publication.id)!}
+        {voiceStreams.map(publication => <ChannelAudio key={publication.sessionId} publicationId={publication.id} stream={streams.get(publication.id)!}
+          onRendering={reportVoiceRendering}
           volume={channel.listeningVolume * (channel.voicePlaybackByUser.get(publication.userId)?.volume ?? 1)} voiceContext={voiceContext}
           muted={(myVoice.find(value => value.roomId === publication.roomId)?.deafened ?? true) || (channel.voicePlaybackByUser.get(publication.userId)?.muted ?? false)}
           label={`${nameOfUser(publication.userId)} — ${nameOfRoom(publication.roomId)}`} />)}
@@ -633,7 +658,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             onSend={channel.sendMessage} onDiscardSend={channel.discardMessageRetry} floating={roomToolOpen} hidden={conversationHidden} /></>}
           voice={<><section className="c3-voice-entry" aria-label={t("channel.previewPage.voiceInThisRoom")}>
             {(layout !== "quick" || roomToolOpen) && joinVoice && <><div><small>{t("channel.previewPage.currentRoom")}</small><strong>{room?.name}</strong></div>{joinVoice}</>}
-          </section><ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={selectRoom} /></>} />
+          </section><ChannelVoiceDock channel={channel} selected={voiceFocus} renderingBySpeaker={renderingBySpeaker} onSelect={setVoiceFocus} onBrowse={selectRoom} /></>} />
       </div>
     </main>
   </div></LayerHistory.Provider>;

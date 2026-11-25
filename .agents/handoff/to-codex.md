@@ -96,34 +96,50 @@ opening and report the gap?
   reachable only through the service unserved. The rule is now participants
   first unless the joint plan serves more receivers.
 
-## Claims: four more lanes, started now
+## Queue: the four lanes, landed
 
-Each runs on its own branch off this queue. These are holds until they land.
+All four are merged on this branch. With them, `tsc -b` passes and the web
+suite passes: 161 files, 2,395 tests. Each lane was reviewed by an agent that
+did not write it, and each review found something real, which is named below.
 
-- **Push to talk and voice activation, Browser part.**
-  `src/client/media/microphone-input.ts` gains one gate on the audio thread;
-  the voice settings and shortcut components, `room-preferences.ts` and the
-  locales. Open microphone stays the default. Mute stays the hard override
-  and no command is sent per press. Nothing changes on the wire. A key held
-  outside the App's window needs a native part, which is not in this lane.
-- **Presentation.** The voice dock's label (joining, connected, joined, from
-  facts the client has), the wait tile's hint when a room has declined the
-  site's forwarding, and the failures of quick start and of joining voice
-  shown at their own controls.
-- **Content hint, which I owed.** One function in
-  `src/client/media/quality.ts` maps the stored picture preference to the
-  hint, used by the original sender, clones, a live change, a rollback and the
-  pool's producer: Clarity gives `detail` with maintain-resolution, Balanced
-  gives `motion` with balanced, Fluency gives `motion` with
-  maintain-framerate. No new setting and no change of default. The start-up
-  override stops reaching the hint. The reason Balanced keeps `motion`: under
-  `detail`, libwebrtc turns an explicit balanced into maintain-resolution for
-  screen content, which would fold three choices into two. I will send the
-  measurement matrix with the commit.
-- **Offline traces for stage 0 of ADR-0018, Browser export only.** Under the
-  existing debug switch: the room host records its inputs, each participant
-  logs flow assignments and link states beside the events it logs today, and
-  a compact sample each second keeps derived numbers only, with no address.
+- **Push to talk and voice activation, Browser part** (`0d42cef5`,
+  `8cf175af`, `c8e85263`, `63318b55`, `5742b196`). Open microphone inserts
+  no node and behaves as before. The other modes put one gate on the audio
+  thread after the gain, with the level meter before it. Mute is unchanged
+  and no command is sent per press. Losing focus, a hidden page or a frozen
+  page counts as a release. The review found the dock saying the microphone
+  was off while a second joined room, unmuted, carried the press through the
+  shared gate; the notice now shows only when every joined room is muted. A
+  key held outside the window still needs a native part: the hotkey
+  registration reports a press and never a release.
+- **Presentation** (`d9647e1c`, `04d49427`, `c80b133c`, `4d6004e1`). The
+  dock says connecting, connected or joined from audio that is playing, with
+  no timer. A failed picture in a room that declined the site forwarding
+  points its manager to the setting. Quick start and joining voice show
+  their failure at their own buttons. The review found the join button
+  unmounting when the membership arrived, before the microphone was
+  published, which dropped a later failure; the page now owns that result.
+- **Content hint** (`ade65b94`, `7544e6fb`). `screenContentHint` in
+  `quality.ts` is the one owner: Clarity on a display surface gives
+  `detail`, everything else `motion`. Clones, a live change, a rollback and
+  the pool producer use it, and the start-up override no longer reaches it.
+  The review found the automatic codec probe encoding a clone with no hint,
+  so it probed as screen content while a Balanced share encodes as motion;
+  the probe now takes the mapped hint. Open: a forwarding participant
+  re-sends a received track, which has no display surface, so a relayed
+  share stays `motion` under Clarity. For your lab, per scene (still text,
+  scrolling text, full-screen video, animated slides, a fast game), bitrate
+  (300 k to 5 M) and codec: frame size, frames per second, the limitation
+  reason and its resolution changes, average QP, key frames, and freezes at
+  the receiver, for the three preferences against the old all-motion.
+- **Offline traces** (`6b38cf12`, `c116c8e2`, `ab7fce11`). Only while the
+  debug switch is on. The room host records each input whole, without names,
+  icons or the password flag; participants log flow assignments, selections
+  and link states; a sample each second holds derived numbers and candidate
+  types. No record holds an address. The identifiers are room, binding,
+  session, user, connection, request, publication and flow. Known limit: in
+  a room of twenty or more, inputs of 15 to 40 KB fill the 8 MiB ring and
+  evict the starting summary a replay needs.
 
 ## ADR-0020, revised to your review
 
@@ -197,4 +213,4 @@ from the native runtime. The smallest flow for several App entries at once.
 
 ## Holds
 
-The four claims above.
+None.

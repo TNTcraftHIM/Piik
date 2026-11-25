@@ -185,6 +185,12 @@ has focus. Text entry and remote keyboard control take priority.
 With a supported Windows App connected, enable **Allow shortcuts in other apps**.
 Each binding shows whether Windows registered it.
 
+**Voice settings → Microphone mode** also offers **Push to talk** and
+**Voice activation**. Push to talk uses **Ctrl+Shift+V** by default while Piik
+or its room tool has focus; change the combination under Keyboard shortcuts.
+Voice activation sends sound above the level you choose. Use its live meter
+to adjust the threshold. Microphone mute still silences every mode.
+
 Browser microphone access requires a secure context, such as accepted HTTPS
 or localhost. The [App reference](../../prototype/channel-server/README.md#local-app-link)
 explains local access; [Native media setup](../../prototype/channel-native/README.md)

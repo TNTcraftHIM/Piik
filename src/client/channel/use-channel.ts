@@ -91,6 +91,8 @@ export function useChannel(): ChannelController {
     voiceActivity: session.voiceActivity,
     setInputVolume: session.setInputVolume, setListeningVolume: session.setListeningVolume,
     microphones: session.microphones, configureVoiceInput: session.configureVoiceInput,
+    setMicrophoneMode: session.setMicrophoneMode, setActivationThreshold: session.setActivationThreshold,
+    talk: session.talk, microphoneLevel: session.microphoneLevel,
     setVoiceVolume: session.setVoiceVolume, setVoiceMuted: session.setVoiceMuted,
     setDeafened: session.setDeafened, clearError: session.clearError, reconnect: session.reconnect, joinAsNewIdentity: session.joinAsNewIdentity,
   };
