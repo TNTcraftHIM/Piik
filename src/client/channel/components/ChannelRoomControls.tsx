@@ -13,6 +13,7 @@ import { ChannelAction } from "./ChannelAction";
 import { ChannelSettingsDialog, ChannelSettingsError, ChannelSettingsTabs, useSettingsAction, type SettingsAction } from "./ChannelSettingsDialog";
 import { ChannelIdentityFields } from "./ChannelIdentity";
 import { ChannelDiagnosisHelp } from "./ChannelDiagnosisHelp";
+import { diagnoseChannelFact } from "../diagnosis";
 import "./channel-room-controls.css";
 import { BackupControls, RoomRestoreResult } from "./BackupControls";
 import { roomRestoreRecovery, type RoomRestoreRecovery } from "../hosting-api";
@@ -288,6 +289,8 @@ function RoomSettings({ channel, room, onClose }: {
   const serverHosted = site?.hostingMode === "hosted";
   const browserHostsRoom = room.canManage && !!channel.sessionId && room.delivery?.hostSessionId === channel.sessionId;
   const deleteData = serverHosted || room.available;
+  const failure = channel.roomOpenFailures.get(room.id);
+  const openFailure = failure ? diagnoseChannelFact({ area: "roomOpen", failure }) : null;
   const canPurge = room.authorized && (room.canManage || (!!channel.self && channel.self.id === site?.ownerId));
   const inviteOnly = !!site && roomCreationPolicyFor(site, room.creatorId) === "invite_only";
   const available = connected && room.available;
@@ -314,7 +317,8 @@ function RoomSettings({ channel, room, onClose }: {
     <div className="c3-settings-body">
       <ChannelSettingsTabs<RoomSettingsTask> id={id} label={t("room.settings.title")} tasks={tasks} selected={selected ?? "room"} onSelect={setTask} />
       <div className="c3-settings-panels">
-        {!room.available && <p className="c3-settings-offline">{room.canManage ? t(serverHosted ? "room.settings.offlineHostedManager" : "room.settings.offlineManager")
+        {!room.available && <p className="c3-settings-offline">{openFailure ? t(openFailure.message)
+          : room.canManage ? t(serverHosted ? "room.settings.offlineHostedManager" : "room.settings.offlineManager")
           : t("room.settings.offlineRelay")}</p>}
         {room.canManage && <section id={`${id}-room`} role="tabpanel" aria-labelledby={`${id}-room-tab`} hidden={selected !== "room"}>
           <RoomForm room={room} value={{ ...roomDraft(room), ...draft }} onChange={fields => setDraft(previous => ({ ...previous, ...fields }))}
