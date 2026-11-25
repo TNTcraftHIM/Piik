@@ -137,6 +137,50 @@ earlier rules were right in substance.
 | Silent parent | About two seconds, from frame counters | Connection failure, up to the consent timeout |
 | Proof before a switch | The overlap, both paths loaded | The same, already present |
 
+## Offline Placement Study
+
+A test-only harness drives the real planner on synthetic sessions: one sharer,
+N viewers who arrive, leave and sometimes leave while relaying, with pair
+connectivity drawn from an assumed mix of NAT classes. It compares each tree
+with the best one attainable on the same confirmed pairs and limits, solved
+exactly. The harness is on the branch `test/placement-study` at `84b46474`,
+excluded from the ordinary suite. It measures placement only: it has no
+latency, bandwidth or picture quality, every move and every pair attempt is
+free and instant, and the NAT shares are invented.
+
+At the default limit of two, as the median over seeds:
+
+| Viewers | Extra hops per viewer | Deepest viewer, planner and attainable | Instants not optimal |
+| --- | --- | --- | --- |
+| 4 | 0.00 | 1.50 and 1.43 | 0% |
+| 8 | 0.13 | 2.40 and 2.00 | 45% |
+| 16 | 0.33 | 3.68 and 2.77 | 75% |
+| 32 | 0.51 | 5.31 and 3.78 | 88% |
+
+- **Coverage is already right.** The planner places as many viewers as the
+  attainable tree and never left one waiting while a linked parent had a free
+  place.
+- **What it loses is depth, and it grows with the room.** A room of four is
+  optimal. The loss is lower before the first departure, which suggests that
+  repairs add most of it: orphans are placed again by fewest hops on whatever
+  pairs exist, and nothing improves them afterwards.
+- **A leaf move over existing pairs is worth little.** An opportunity that
+  recurs appears in 59% of sessions of 16 and 96% of 32, and the rule never
+  cycled. It recovers 9 to 14% of the loss. The shallow places are free; the
+  confirmed pairs to them are missing.
+- **A leaf move that may try one pair recovers most of it**: 93 to 98% of the
+  distance to the optimum on every connectable pair, by arithmetic on the
+  observed trees, at about 20 pair attempts per session of 16 and 72 of 32.
+  A leaf that moves can leave its parent childless, and that parent becomes a
+  movable leaf, so single moves add up to the rearrangement the optimum needs.
+- **A refused viewer whose linked parents are all full is rare** at a limit
+  of two or more. "Placed deeper while a parent was full" is true of almost
+  every viewer and cannot serve as evidence.
+
+The loss in depth, the small value of plain leaf moves and the absence of
+cycles hold under a pessimistic and an optimistic connectivity setting. The
+number of pair attempts and the count of refusals do not.
+
 ## Measurements That Decide
 
 1. The share of bad viewer-time caused by a parent or an edge, as opposed to
