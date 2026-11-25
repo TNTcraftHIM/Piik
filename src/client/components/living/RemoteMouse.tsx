@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
+import { useCallback, useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
 import { RemoteDirectionPad } from "./RemoteDirectionPad";
 import { REMOTE_TOUCH_HOLD_MS, type RemoteTouchpad } from "../../remote-control/touchpad";
 import type { PicturePoint } from "../../media/video-geometry";
@@ -124,13 +124,17 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode, mapping 
     if (mode === "mini") park();
     return clearIdle;
   }, [mode, owner, park, clearIdle]);
+  const onInactive = useEffectEvent(() => {
+    release();
+    if (mode === "mini") park();
+  });
   useEffect(() => {
     if (!owner) return;
-    const hidden = () => { if (owner.hidden) release(); };
-    owner.defaultView?.addEventListener("blur", release);
+    const hidden = () => { if (owner.hidden) onInactive(); };
+    owner.defaultView?.addEventListener("blur", onInactive);
     owner.addEventListener("visibilitychange", hidden);
     return () => {
-      owner.defaultView?.removeEventListener("blur", release);
+      owner.defaultView?.removeEventListener("blur", onInactive);
       owner.removeEventListener("visibilitychange", hidden);
       release();
     };
