@@ -1,7 +1,7 @@
 # Routing And Transport
 
 This file owns the user-visible routing and transport contract.
-[ADR-0005](../adr/0005-automatic-hybrid-media-routing.md) owns the controller
+[ADR-0005](https://github.com/TNTcraftHIM/Piik/blob/main/docs/adr/0005-automatic-hybrid-media-routing.md) owns the controller
 algorithm and resource invariants; [configuration](./configuration.md)
 owns ports and [self-hosting](../operations/self-hosting.md) owns service setup.
 

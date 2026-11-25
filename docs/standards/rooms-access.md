@@ -1,7 +1,7 @@
 # Rooms And Access
 
 This file owns the current room, admission, invitation, interaction, and persistence
-contract. [ADR-0002](../adr/0002-memory-resident-protected-rooms.md) explains
+contract. [ADR-0002](https://github.com/TNTcraftHIM/Piik/blob/main/docs/adr/0002-memory-resident-protected-rooms.md) explains
 the storage decision; implementation detail belongs in code and tests.
 
 ## Room Authority

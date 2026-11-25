@@ -4,7 +4,7 @@
 - Scope: Browser game capture, codecs, startup adaptation, relay, and LiveKit
 - Status: historical Browser/LiveKit SDK measurements and subsequent implementation evidence; current product behavior is owned by
   [media quality](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/media-quality.md) and
-  [ADR-0007](../adr/0007-path-isolated-representation-quality.md)
+  [ADR-0007](https://github.com/TNTcraftHIM/Piik/blob/main/docs/adr/0007-path-isolated-representation-quality.md)
 
 ## Findings
 
@@ -716,7 +716,7 @@ capture, an ancestor, the exact sender, the child decoder, or presentation. It
 also cannot prove an unconnected path is better. A route decision therefore
 needs exact sender evidence and real candidate media; combining current loss,
 RTT, bitrate, FPS, resolution, and freezes into a score would not repair either
-information gap. [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md) owns
+information gap. [ADR-0005](https://github.com/TNTcraftHIM/Piik/blob/main/docs/adr/0005-automatic-hybrid-media-routing.md) owns
 the accepted local-convergence algorithm.
 
 W3C `qualityLimitationReason` is only the most limiting factor at one instant.

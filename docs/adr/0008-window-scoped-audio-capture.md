@@ -37,7 +37,7 @@ platform probe and physical gate report it.
 6. Windows process-tree audio for a selected window, and default render-device
    loopback for a selected display, are App capabilities when the platform
    probe and physical gate pass. WGC/MF video and the App media boundary are owned by
-   [ADR-0010](./0010-cross-platform-client-runtime.md); measurements are in
+   [ADR-0010](https://github.com/TNTcraftHIM/Piik/blob/main/docs/adr/0010-cross-platform-client-runtime.md); measurements are in
    [Native App media](../research/native-client-media.md).
 7. Windows App screen sharing can optionally exclude one selected process tree
    through WASAPI's exclusion mode after successful activation of that mode.

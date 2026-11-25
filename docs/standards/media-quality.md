@@ -2,12 +2,12 @@
 
 This file owns the 3.0 Browser and App media contract; published 2.x follows
 its [media standard on main](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/media-quality.md).
-Detailed measurements and platform limits live in [realtime quality research](../research/realtime-quality-adaptation.md)
-and [screen-audio research](../research/browser-screen-audio-quality.md).
-[ADR-0007](../adr/0007-path-isolated-representation-quality.md) owns Browser
-source intent and codec selection, [ADR-0008](../adr/0008-window-scoped-audio-capture.md)
-owns screen-audio scope, and [ADR-0013](../adr/0013-embedded-node-local-media.md)
-owns sharing one encoding among children. This file describes that product
+Detailed measurements and platform limits live in
+[realtime quality research](../research/realtime-quality-adaptation.md) and
+[screen-audio research](../research/browser-screen-audio-quality.md).
+[ADR-0008](../adr/0008-window-scoped-audio-capture.md) owns screen-audio scope,
+and [ADR-0013](../adr/0013-embedded-node-local-media.md) owns sharing one
+encoding among children. This file describes that product
 contract. [Status](../status.md) indexes delivery and remaining acceptance.
 
 ## Capture And Controls
@@ -247,8 +247,9 @@ allowlist. A proved sender prefers H.264 with VP8 fallback; unsupported, failed,
 or inconclusive probes use VP8. Manual VP8 or H264 strictly selects that codec.
 The probe deadline covers setup, negotiation and statistics; cancellation retires
 its resources even when a Browser operation remains pending. The result stays
-fixed for the current share and is reconsidered for a new share.
-ADR-0007 owns probe and negotiation mechanics.
+fixed for the current share and is reconsidered for a new share. The
+[codec preflight](../../src/client/webrtc/video-codec-preflight.ts) owns probe
+mechanics.
 
 Codec selection preserves the negotiated repair stream associated with the
 selected primary codec. Codec restrictions must not strip recovery or disable
