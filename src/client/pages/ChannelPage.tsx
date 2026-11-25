@@ -299,8 +299,10 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const displayedSources = new Set([...visibleScreens, ...availableScreens].map(source => source.id));
   const myVoice = state?.voice.filter(value => value.sessionId === sessionId) ?? [];
   const joined = myVoice.some(value => value.roomId === roomId);
-  const joinVoice = room?.authorized && !joined ? <ChannelJoinVoice key={roomId} joined={false} disabled={!connected || !room.available} busy={busy("voice", roomId)}
-    onJoin={listenOnly => channel.joinVoice(roomId, listenOnly, false).then(() => setVoiceFocus(roomId))} /> : null;
+  // A join reports here, not in a slot: membership arrives before the join settles and the slot moves with the room tool.
+  const voiceJoin = useSettingsAction(true, roomId);
+  const joinVoice = room?.authorized && (!joined || busy("voice", roomId)) ? <ChannelJoinVoice joined={false} disabled={!connected || !room.available} busy={busy("voice", roomId)}
+    error={voiceJoin.error} onJoin={listenOnly => { void voiceJoin.run(() => channel.joinVoice(roomId, listenOnly, false).then(() => setVoiceFocus(roomId))); }} /> : null;
   const nameOfRoom = (id: string) => rooms.find(value => value.id === id)?.name ?? id;
   // A manager's room that turned down the site's available forwarding can still turn it on.
   const forwardingDeclined = (id: string) => {
