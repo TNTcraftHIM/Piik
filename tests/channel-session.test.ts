@@ -5146,8 +5146,39 @@ test.each(["open", "summary", "removed", "creator"])("Welcome restores the next 
   try {
     await vi.waitFor(() => expect(socket.sent.find(command => command.type === "host_register")?.room).toMatchObject({ id: "second" }));
     socket.receive({ type: "ack", requestId: socket.sent.find(command => command.type === "host_register")!.requestId });
-    await vi.waitFor(() => expect(session.getSnapshot().error).toBe(stage === "removed" ? null : "storage_failed"));
+    await vi.waitFor(() => expect(session.getSnapshot().roomOpenFailures).toEqual(new Map(stage === "removed" ? [] : [["first", "unreadable"]])));
+    expect(session.getSnapshot().error).toBeNull();
     expect(damaged.close).toHaveBeenCalledTimes(stage === "summary" || stage === "creator" ? 1 : 0);
+  } finally { session.close(); }
+});
+
+test("a Browser room that could not open is named until it opens or leaves the channel", async () => {
+  const policy = (id: string) => ({ id, creatorId: "self", name: id, icon: "couch", access: "public", hidden: false });
+  const host = (id: string) => ({ roomId: id, summary: () => policy(id), close: vi.fn(async () => {}), bind: vi.fn(async () => {}) });
+  let failure: Error | undefined = new Error("unsupported_storage_version");
+  vi.stubGlobal("indexedDB", {});
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: {
+    storedRoomIds: async () => ["first", "second"],
+    openExisting: async (_database: string, id: string) => {
+      if (id === "second") throw new DOMException("Unreadable", "UnknownError");
+      if (failure) throw failure;
+      return host(id);
+    },
+  } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const { session } = await setup();
+  try {
+    await vi.waitFor(() => expect(session.getSnapshot().roomOpenFailures).toEqual(new Map([["first", "unsupported_version"], ["second", "unreadable"]])));
+    expect(session.getSnapshot().error).toBeNull();
+    const state = structuredClone(session.getSnapshot().state!);
+    failure = undefined;
+    session.reconnect();
+    const resumed = ChannelSocket.current; await resumed.onopen?.();
+    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    await vi.waitFor(() => expect(resumed.sent.find(command => command.type === "host_register")?.room).toMatchObject({ id: "first" }));
+    expect(session.getSnapshot().roomOpenFailures).toEqual(new Map([["second", "unreadable"]]));
+    state.channel.rooms = state.channel.rooms.filter(room => room.id !== "second");
+    resumed.receive({ type: "state", state });
+    expect(session.getSnapshot().roomOpenFailures).toEqual(new Map());
   } finally { session.close(); }
 });
 

@@ -149,6 +149,8 @@ export const ko = {
   "room.item.hideParticipants": "참여자 숨기기 ({count})",
   "room.item.showParticipants": "참여자 보기 ({count})",
   "room.item.unread": "읽지 않은 메시지",
+  "room.item.unopened": "이 기기에서 열 수 없음",
+  "room.unopened.unreadable": "이 기기에서 이 방의 저장된 데이터를 읽을 수 없어 여기서 열 수 없어요.",
   "room.entry.password": "방 비밀번호",
   "room.entry.enter": "방 입장",
   "room.entry.privateTitle": "비공개 방이에요",

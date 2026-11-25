@@ -198,6 +198,8 @@ export const en: Record<CopyKey, string> = {
   "invite.room.resetNote": "Resetting invalidates all old password-free invitation links. Users who already have access keep it, and the room password stays unchanged.",
   "invite.room.accessSettings": "Access settings",
   "room.item.offline": "Offline",
+  "room.item.unopened": "Can’t open here",
+  "room.unopened.unreadable": "This device can’t read this room’s saved data, so the room can’t open here.",
   "room.order.edit": "Reorder rooms",
   "room.order.done": "Finish reordering",
   "room.order.help": "Only your order changes. Within a group, drag the handle, press its arrow keys, or use the up and down buttons.",

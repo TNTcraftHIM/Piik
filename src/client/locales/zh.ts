@@ -196,6 +196,8 @@ export const zh = {
   "invite.room.resetNote": "重置后，所有旧免密邀请链接将失效。已获准的用户保留访问，房间密码不变。",
   "invite.room.accessSettings": "访问设置",
   "room.item.offline": "离线",
+  "room.item.unopened": "此设备无法打开",
+  "room.unopened.unreadable": "这台设备无法读取这间房间保存的数据，所以无法在这里打开。",
   "room.order.edit": "调整房间顺序",
   "room.order.done": "完成排序",
   "room.order.help": "各组内的排序只对你生效。可拖动手柄、在手柄上按上下键，或使用上移和下移按钮。",

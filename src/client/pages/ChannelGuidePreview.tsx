@@ -202,7 +202,7 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
       return { profiles: page, total: matches.length, nextCursor: rows.length > page.length ? page.at(-1)!.id : null };
     },
     sessionId: "sample-ada-session", connection: "connected", appConnected: true, pending, attachments, sendMessage: onSend,
-    readByRoom: {}, markRead: () => {}, loadMessage: async () => {},
+    readByRoom: {}, roomOpenFailures: new Map(), markRead: () => {}, loadMessage: async () => {},
     quality, setQuality, encodingExecution, setEncodingExecution, screenEncodingExecution: () => undefined, videoCodecMode: codec, setVideoCodecMode: setCodec, ownedScreens: new Set<string>(), localScreens: new Set<string>(), streams: new Map<string, MediaStream>(),
     messagesByRoom: { ...Object.fromEntries(Object.entries(messagesByRoom).map(([roomId, messages]) => [roomId, visibleMessages(roomId, messages)])),
       friday: sampleMessages.map(message => ({ ...message, reactions: messageReactions[message.id] })) },

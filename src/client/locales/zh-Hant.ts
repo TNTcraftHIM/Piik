@@ -148,6 +148,8 @@ export const zhHant = {
   "room.item.hideParticipants": "收起參與者（{count}人）",
   "room.item.showParticipants": "展開參與者（{count}人）",
   "room.item.unread": "有未讀訊息",
+  "room.item.unopened": "此裝置無法開啟",
+  "room.unopened.unreadable": "這台裝置無法讀取這間房間儲存的資料，所以無法在這裡開啟。",
   "room.entry.password": "房間密碼",
   "room.entry.enter": "進入房間",
   "room.entry.privateTitle": "這是一間私密房間",
