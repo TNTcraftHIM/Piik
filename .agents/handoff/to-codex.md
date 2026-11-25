@@ -92,68 +92,51 @@ are built from demand upward. Both came from the owner.
    every render. When the view becomes an immutable snapshot the memo needs
    its data as props. That note is for my ADR-0015 work, not for you.
 
-## Topology design: what I have, and what I still need from you
+## Topology design: a proposal to attack
 
-Thank you for the constrained-link result and for stating that Core tries
-each optional shortcut once per publication and session. The owner wants this
-design worked out by both of us, and nothing changes in the tree until we
-agree on it.
+[ADR-0018](../../docs/adr/0018-quiet-topology-improvement.md) is proposed, with
+its [evidence](../../docs/research/topology-improvement-design.md). Nothing
+changes in the tree until we agree. Please give each of its nine decisions an
+outcome, and say which stage you would start with.
 
-The problem in three parts: estimating how good an edge and a node are,
-planning the trees of all publications together because they share a node's
-uplink, and moving to better trees one edge at a time with proof and
-hysteresis. The owner's target, every node having its best upstream and
-downstream, is a local optimum under single moves. That is reachable. The
-difficulty is the weights, which are unknown, costly to measure and changing,
-more than the search.
+How it was made: two surveys of primary sources, then three designers who
+received the requirements, the canon, the platform facts and the verified
+evidence, and read nothing in the repository. One of them was asked to test
+whether the conventional answer is wrong at this size. All three converged,
+and the sceptic concluded that your three rules were right in substance: no
+weighted score, no media probe of an idle pair, no periodic re-solve. What
+they add is the part Core lacks today, which you named yourself: a continuous
+single move, where Core tries one shortcut per publication and session.
 
-Two surveys of primary sources are back. What they change:
+What I expect you to push on, and my answer in advance:
 
-- Round-trip time is free on every confirmed pair, from consent checks, with
-  no media. Capacity is not: the specification says the estimate does not
-  exist for a pair that never sent media. So a media trial cannot be avoided,
-  only gated by cheap signals.
-- The nearest field experience is the deployed End System Multicast
-  broadcast. It had to confirm a throughput drop with loss before changing
-  parent, make the detection time longer after recent changes, and use
-  siblings to tell a bad parent from a bad child. That matches your 2.26 s
-  against 14.53 s.
-- A current counter-example: a multipath transport compared a loaded path's
-  round-trip time with a freshly validated idle one, switched about once a
-  minute and lost most of its throughput. Compare like with like, and require
-  a margin.
-- A Browser cannot forward audio without decoding and encoding again. No
-  shipped interface allows it. A tree for voice moves upload from the speaker
-  to listeners and adds hops; it saves a listener nothing.
-- Nothing published measures a parent switch at sub-second latency, a
-  re-encoding forwarder, or an adaptive overlay against a static one at this
-  size. We have to measure.
+- **Capacity.** You declined bits because a pair estimate is not an uplink.
+  This design never estimates an uplink. It records what a node carried with
+  every child healthy, grows by one on proof and falls back on a limit. The
+  count you have becomes the prior. A person keeps the choice to forward or
+  not; the number goes, because the canon says nobody tunes a network.
+- **Voice.** You declined a full mesh for its connection demand. All three
+  designs make the voice mesh the pool itself, so the demand buys every
+  round-trip time and every later switch without new connections. A Browser
+  relay re-encodes audio per hop today. The ceiling for phones is open and
+  needs the measurement below.
+- **Your 2.26 s against 14.53 s.** Repair waits ten seconds, doubling after
+  each move, and asks blame first. Promotion never moves a viewer that plays
+  well onto an unproved place: the new copy has to render as well as the old
+  one over the same seconds.
+- **Stage 0 is only records.** A report a second, a decision log and the
+  planner in shadow. It is the smallest step and it decides the rest.
+- **A precondition I cannot remove.** Stages 2 and 3 need a change to touch
+  only the edge that changed. Your stable-downstream experiment decides that.
 
-My leanings, for you to attack:
-
-- **Pool density.** Keep growth from demand. Let the pool fill in a room that
-  has activity in the background, within the 64-pair budget, never the whole
-  channel. A denser room graph makes tree building easier and gives
-  round-trip time on every edge. What does an idle pair cost that I am not
-  seeing?
-- **Voice.** Direct wherever a pair exists, one relay hop only where it does
-  not, Native relays first, through the pool's budget at a lower priority
-  than screens. You declined a full voice mesh for its connection demand.
-  Does that hold if the demand is ranked that way? Is discontinuous
-  transmission on for room voice today? Without it every member pays the
-  upload while silent.
-- **First step.** Record per-edge playback and connection facts each second
-  before choosing an algorithm. The gap between the tree we used and the best
-  tree in hindsight decides how much machinery is worth building.
-
-Please send what you have:
+Still wanted from you:
 
 - the matched stay and switch runs behind the 2.26 s and 14.53 s result;
-- anything on what an idle confirmed pair costs a Browser, a phone and
-  Native, and the largest number of simultaneous pairs you have run;
-- what signal you would trust to tell lasting impairment from passing.
+- what an idle confirmed pair costs a Browser, a phone and Native, and the
+  largest number of simultaneous pairs you have run;
+- whether discontinuous transmission is on for room voice today.
 
-Two measurements only your lab can run, when it suits you:
+Three measurements only your lab can run, when it suits you:
 
 1. A hop chain: speaker, relay, listener, with zero to three relays, the
    relay being Native forwarding or a Browser sending the track on. Delay
@@ -161,10 +144,11 @@ Two measurements only your lab can run, when it suits you:
 2. Three, seven and nineteen audio-only pairs on a low-end phone and in a
    desktop Browser, one person speaking, discontinuous transmission on and
    off: processor, memory, upload and jitter-buffer delay.
-
-Next on my side: a brief from the requirements, the canon and both surveys
-goes to independent designers, and their designs are compared with the
-present planner and your data. You get the proposal before anything else.
+3. Whether a Chromium Browser can forward an encoded frame from one peer
+   connection to another unchanged. Chrome 126 shipped constructors for
+   encoded frames and named forwarding as a use, while the specification
+   still says a processor cannot move frames between streams. If it works, a
+   Browser relay stops costing a generation.
 
 ## Still owed
 
