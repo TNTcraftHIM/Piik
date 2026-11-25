@@ -676,7 +676,6 @@ struct Pair {
     polite: bool,
     pending_offer: Option<PendingOffer>,
     stable_outputs: Option<HashSet<Uuid>>,
-    failed_offer: Option<OfferWork>,
     answer: Option<Signal>,
     negotiate: bool,
     ignore_offer: bool,
@@ -726,16 +725,6 @@ struct PendingOffer {
     outputs: HashSet<Uuid>,
 }
 
-#[derive(PartialEq, Eq)]
-struct OfferWork {
-    outputs: HashSet<Uuid>,
-    flows: HashSet<Uuid>,
-    rooms: Vec<String>,
-    control: Option<Uuid>,
-    bulk: Option<Uuid>,
-    input: Option<Uuid>,
-}
-
 impl Pair {
     fn connected(&self) -> bool {
         self.state.load(Ordering::Acquire) == PeerState::Connected as u8
@@ -745,26 +734,6 @@ impl Pair {
         self.outputs.values().map(|output| output.id).collect()
     }
 
-    fn offer_work(&self) -> OfferWork {
-        OfferWork {
-            outputs: self.output_ids(),
-            flows: self
-                .plan
-                .outgoing
-                .iter()
-                .chain(&self.plan.incoming)
-                .map(|flow| flow.id)
-                .collect(),
-            rooms: self.plan.rooms.clone(),
-            control: self.dc.as_ref().map(|(token, _, _)| *token),
-            bulk: self.bulk.as_ref().map(|(token, _, _)| *token),
-            input: self.input.as_ref().map(|(token, _, _)| *token),
-        }
-    }
-
-    async fn stable(&self) -> bool {
-        self.pc.stable().await
-    }
     async fn confirm_outputs(&mut self, offered: HashSet<Uuid>) -> Result<()> {
         let mut stable = HashSet::new();
         for output in self
@@ -2134,7 +2103,6 @@ impl Driver {
                 mapping: None,
                 pending_offer: None,
                 stable_outputs: None,
-                failed_offer: None,
                 answer: None,
                 negotiate: false,
                 ignore_offer: false,
@@ -2426,76 +2394,13 @@ impl Driver {
             p.negotiate = true;
             return Ok(());
         }
-        let outputs = p.output_ids();
-        if p.failed_offer.as_ref() == Some(&p.offer_work()) {
-            return Ok(());
-        }
         p.negotiate = false;
-        let stable = p.stable_outputs.is_some() && p.stable().await;
-        let result = async { p.pc.offer().await }.await;
-        if matches!(result, Ok(false)) {
+        if !p.pc.offer().await? {
             return Ok(());
         }
-        self.finish_offer(id, stable, outputs, result.map(|_| ()))
-            .await
-    }
-
-    async fn finish_offer(
-        &mut self,
-        id: Uuid,
-        was_stable: bool,
-        outputs: HashSet<Uuid>,
-        result: Result<()>,
-    ) -> Result<()> {
-        if let Err(error) = result {
-            let p = self.pairs.get_mut(&id).unwrap();
-            if !was_stable || p.pending_offer.is_some() || !p.stable().await {
-                return Err(error);
-            }
-            let stable = p.stable_outputs.as_ref().unwrap();
-            let added: Vec<_> = p
-                .outputs
-                .iter()
-                .filter_map(|(key, output)| {
-                    (outputs.contains(&output.id) && !stable.contains(&output.id)).then_some(*key)
-                })
-                .collect();
-            let mut affected = HashSet::new();
-            for key in added {
-                let output = p.outputs.remove(&key).unwrap();
-                p.rejected_outputs.insert(key, output.source);
-                affected.insert(key.0);
-                output.close(&p.pc).await;
-            }
-            let failed: Vec<_> = affected
-                .into_iter()
-                .filter(|flow| {
-                    let binding = p
-                        .plan
-                        .outgoing
-                        .iter()
-                        .find(|binding| binding.id == *flow)
-                        .expect("an allocated output owns a current flow");
-                    let primary = if self.publications[&binding.publication_id].kind
-                        == piik_channel_core::wire::Kind::Screen
-                    {
-                        MediaKind::Video
-                    } else {
-                        MediaKind::Audio
-                    };
-                    !binding.selected || !p.outputs.contains_key(&(*flow, primary))
-                })
-                .collect();
-            p.failed_offer = Some(p.offer_work());
-            eprintln!("Native local offer failed before signaling: {error}");
-            for flow_id in failed {
-                self.fail_flow(id, flow_id).await;
-            }
-            return Ok(());
-        }
+        let outputs = p.output_ids();
         let offer = self.local_signal(id, Uuid::new_v4()).await?;
         let p = self.pairs.get_mut(&id).unwrap();
-        p.failed_offer = None;
         p.pending_offer = Some(PendingOffer {
             signal: offer.clone(),
             outputs,
@@ -3646,16 +3551,11 @@ impl Driver {
     }
     async fn refresh_media(&mut self, released: bool) {
         let released = self.refresh_outputs().await || released;
+        if !released {
+            return;
+        }
         let mut retry = Vec::new();
-        let mut partial = false;
         for (id, pair) in &mut self.pairs {
-            let changed = pair
-                .failed_offer
-                .as_ref()
-                .is_some_and(|previous| *previous != pair.offer_work());
-            if !released && !changed {
-                continue;
-            }
             let before = pair.rejected_outputs.len();
             // Normal retirement on any pair permits one companion-audio retry.
             // Failed primary/candidate flows still belong to the route owner.
@@ -3668,13 +3568,11 @@ impl Driver {
                         .iter()
                         .any(|binding| binding.id == *flow && binding.selected)
             });
-            let retry_audio = pair.rejected_outputs.len() != before;
-            partial |= retry_audio;
-            if changed || retry_audio {
+            if pair.rejected_outputs.len() != before {
                 retry.push(*id);
             }
         }
-        if partial {
+        if !retry.is_empty() {
             self.refresh_outputs().await;
         }
         for id in retry {

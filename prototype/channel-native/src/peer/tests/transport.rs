@@ -140,7 +140,6 @@ async fn source_ended_before_ready_fails_only_its_current_flow() -> Result<()> {
             polite: true,
             pending_offer: None,
             stable_outputs: None,
-            failed_offer: None,
             answer: None,
             negotiate: false,
             ignore_offer: false,
@@ -376,7 +375,6 @@ async fn install_retirement_pair(
             polite: false,
             pending_offer: None,
             stable_outputs: None,
-            failed_offer: None,
             answer: None,
             negotiate: false,
             ignore_offer: false,
@@ -1233,6 +1231,10 @@ async fn local_input_rejects_direction_codec_and_extra_media() -> Result<()> {
     );
     let accepted = runtime.accept_local_input(&orientation_offer).await?;
     ensure!(!accepted.answer.contains("urn:3gpp:video-orientation"));
+    ensure!(accepted.transport.stable().await);
+    let error = accepted.transport.offer().await.unwrap_err();
+    ensure!(error.to_string() == "local input is receive-only", "{error}");
+    ensure!(accepted.transport.stable().await);
     sender.accept("answer".into(), accepted.answer).await?;
     accepted.transport.close().await?;
     sender.create_channel("not-local-media").await?;
@@ -1554,6 +1556,47 @@ async fn receive_buffer_request_raises_small_and_retains_larger_supplied_values(
         );
     }
     Ok(())
+}
+
+#[tokio::test]
+async fn room_transport_offer_distinguishes_no_change_pending_and_retired() -> Result<()> {
+    use crate::peer::tests::support::endpoint;
+
+    let runtime = Runtime::new(None);
+    let id = Uuid::new_v4();
+    let (left, _left_events) = endpoint(&runtime, id, None).await?;
+    let (right, _right_events) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+    let result = async {
+        ensure!(!left.offer().await?);
+        let _channel = left.create_channel("first").await?;
+        ensure!(left.offer().await?);
+        ensure!(!left.stable().await);
+        let (kind, offer) = left.local_description().await?;
+        let error = left.offer().await.unwrap_err();
+        ensure!(error.to_string() == "pending transport offer", "{error}");
+        ensure!(!left.stable().await);
+        ensure!(left.local_description().await? == (kind.clone(), offer.clone()));
+
+        right.accept(kind, offer).await?;
+        let (kind, answer) = right.local_description().await?;
+        left.accept(kind.clone(), answer.clone()).await?;
+        ensure!(left.stable().await);
+        ensure!(!left.offer().await?);
+        ensure!(left.stable().await);
+
+        left.close().await?;
+        let (replacement, _replacement_events) = endpoint(&runtime, id, None).await?;
+        let error = left.offer().await.unwrap_err();
+        ensure!(error.to_string() == "transport retired", "{error}");
+        ensure!(!left.stable().await);
+        ensure!(!replacement.offer().await?);
+        let error = left.accept(kind, answer).await.unwrap_err();
+        ensure!(error.to_string() == "transport retired", "{error}");
+        Ok(())
+    }
+    .await;
+    runtime.close().await;
+    result
 }
 
 #[tokio::test]
