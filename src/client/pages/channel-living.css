@@ -91,6 +91,8 @@
 }
 .c3-living[data-stage="empty"] > :is(.c3-living-tabs, .c3-chat-panel, .c3-living-people) { border-inline-start: 0; background: var(--paper); }
 .c3-living[data-stage="empty"] .c3-people-panel { background: var(--paper); }
+/* Conversation folded with no picture: the couch takes the middle of the column. */
+.c3-shell.c3-living[data-stage="empty"][data-companion="none"] .c3-room-presence .c3-couch { grid-area: panel; align-self: center; }
 /* Messages and composer in a column of readable width, left-aligned with the tab row. */
 .c3-living[data-stage="empty"] .c3-chat-panel .c3-conversation { max-width: 744px; }
 .c3-living[data-stage="empty"] .c3-living-people > .c3-people-panel { flex: 0 1 744px; }
@@ -205,9 +207,10 @@
 .c3-living .lr-pawn-name { font-size: 12px; }
 
 /* ---------- My bar: me, microphone, listening, sharing, leave ---------- */
-.c3-shell.c3-living > .c3-personal { grid-area: me; display: flex; align-items: center; gap: 4px; container: living-bar / inline-size; min-width: 0; min-height: 64px; padding: 8px 16px; background: var(--wall); border-top: 1px solid var(--line); }
+.c3-shell.c3-living > .c3-personal { grid-area: me; display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; container: living-bar / inline-size; min-width: 0; min-height: 64px; padding: 8px 16px; background: var(--wall); border-top: 1px solid var(--line); }
 .c3-shell.c3-living > .c3-personal::after { content: ""; order: 99; flex: 1 1 0; }
-.c3-shell.c3-living .c3-personal .c3-identity { order: 0; flex: 1 1 0; min-width: fit-content; display: flex; padding: 0; gap: 8px; }
+/* My name yields first when the bar is tight; the controls keep one line. */
+.c3-shell.c3-living .c3-personal .c3-identity { order: 0; flex: 1 1 0; min-width: 5em; display: flex; padding: 0; gap: 8px; }
 .c3-living .c3-personal .c3-identity > div { flex: 0 1 auto; max-width: 9em; }
 .c3-living .c3-personal .c3-identity > svg { width: 24px; height: 30px; }
 .c3-living .c3-personal .c3-identity strong { font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -333,7 +336,7 @@
 .c3-living[data-sidebars="phone"] .c3-room-invitation-entry { display: none; }
 .c3-living.c3-living[data-sidebars="phone"] > .c3-sidebar { display: none; }
 /* The room-list drawer carries the site: its identity, menu and home take the top row, my profile the bar. */
-.c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] > .c3-sidebar { display: block; grid-area: 2 / 1 / 5 / -1; z-index: 4; translate: none; pointer-events: auto; border: 0; }
+.c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] > .c3-sidebar { display: block; grid-area: 2 / 1 / -2 / -1; z-index: 4; translate: none; pointer-events: auto; border: 0; }
 .c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] .c3-site-identity { display: grid; grid-area: room; }
 .c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] .c3-room-heading { display: none; }
 .c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] .c3-personal :is(.c3-room-slot, .c3-living-share, .c3-living-chat) { display: none; }
