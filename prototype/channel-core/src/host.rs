@@ -1957,7 +1957,7 @@ impl RoomHost {
                     {
                         return Err("unassigned_flow");
                     }
-                    self.room.flow_state_observed(
+                    self.room.flow_state(
                         *flow_id,
                         *receiver,
                         *sender,
