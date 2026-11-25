@@ -8,7 +8,7 @@ import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
 import { ChannelRoomInvitation } from "../channel/components/ChannelRoomInvitation";
 import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
 import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
-import { snapshotSchema, type ChannelMessage, type ChannelSnapshot, type ChannelTopology, type DomainSettings, type RoomSettings } from "../channel/protocol";
+import { snapshotSchema, type ChannelMessage, type ChannelSnapshot, type ChannelTopology, type DomainSettings, type ProfileUpdate, type RoomSettings } from "../channel/protocol";
 import { messageRemoved, type ChannelController } from "../channel/types";
 import { ChannelAttachments } from "../channel/attachments";
 import { readBackup } from "../channel/backup-archive";
@@ -189,7 +189,7 @@ export function useChannelGuideSample({ multiRoom = false, multiVoice = false, s
     updateDomain: async (changes: Partial<DomainSettings>) => setSite(previous => ({
       name: changes.name ?? previous.name, icon: changes.icon ?? previous.icon,
     })),
-    updateProfile: async (value: { name?: string; avatar?: string | null }) => setProfile(previous => ({
+    updateProfile: async (value: ProfileUpdate) => setProfile(previous => ({
       name: value.name ?? previous.name, avatar: value.avatar === undefined ? previous.avatar : value.avatar,
     })),
     state, self: users[0], profiles: new Map(users.map(user => [user.id, user])),

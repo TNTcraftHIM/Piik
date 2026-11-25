@@ -4,14 +4,14 @@ import { PawnSvg } from "../../components/living/Pawn";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useCopy } from "../../ui/copy";
 import { ChannelIdentityImageInput } from "./ChannelIdentity";
-import { MAX_USER_NAME_UNITS } from "../protocol";
+import { MAX_USER_NAME_UNITS, type ProfileUpdate } from "../protocol";
 import { channelErrorPresentation } from "../error-presentation";
 import { useSettingsAction } from "./ChannelSettingsDialog";
 import "./channel-profile-editor.css";
 
 export function ChannelProfileEditor({ name, avatar, color, disabled, profileReady, busy, onSave }: {
   name: string; avatar: string | null; color: string; disabled: boolean; profileReady: boolean; busy: boolean;
-  onSave(profile: { name?: string; avatar?: string | null }): Promise<void>;
+  onSave(profile: ProfileUpdate): Promise<void>;
 }) {
   const { t } = useCopy();
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);

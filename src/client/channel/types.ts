@@ -4,7 +4,7 @@ import type { NativePageCandidate, NativePageIndexedSelection, NativePageMpdCata
 import type { WatchMedia } from "./watch-media";
 import type { WatchPlayer } from "./watch-playback";
 import type { WatchPlayback, WatchMode } from "./protocol";
-import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomCreationPolicy, RoomInvitationState, RoomSettings, PublicationReactionSnapshot, ChatOptions, ProfilePage } from "./protocol";
+import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomCreationPolicy, RoomInvitationState, RoomSettings, PublicationReactionSnapshot, ChatOptions, ProfilePage, ProfileUpdate } from "./protocol";
 export type { ChatOptions } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
 import type { FeedbackCue } from "./feedback-audio";
@@ -179,7 +179,7 @@ export interface ChannelActions {
   loadHistory(roomId: string): Promise<void>;
   loadLatestHistory(roomId: string): Promise<void>;
   attachments: ChannelAttachments;
-  updateProfile(profile: { name?: string; avatar?: string | null }): Promise<void>;
+  updateProfile(profile: ProfileUpdate): Promise<void>;
   updateDomain(settings: Partial<DomainSettings>, reportError?: boolean): Promise<void>;
   setRoomCreationPolicy(policy: RoomCreationPolicy, reportError?: boolean): Promise<void>;
   exportDomainBackup(signal?: AbortSignal): Promise<Blob>;

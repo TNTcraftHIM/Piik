@@ -21,7 +21,7 @@ import { RoomReadMarkers } from "./read-markers";
 import { historyProfileIds } from "./message-history";
 import { RoomHistory, type CompletedPage, type HistoryRefresh } from "./room-history";
 import { userProfile } from "./presentation";
-import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
+import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ProfileUpdate, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
 import { messageRemoved, type ChannelActions, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
@@ -1685,7 +1685,7 @@ export class ChannelSession {
     if (reading && !pending) reading.history = loading;
     return loading;
   }
-  updateProfile = ({ name, avatar }: { name?: string; avatar?: string | null }): Promise<void> => this.action("profile", async () => {
+  updateProfile = ({ name, avatar }: ProfileUpdate): Promise<void> => this.action("profile", async () => {
     await this.request({ type: "set_profile", name, avatar });
     if (name !== undefined) stored(nameKey, name.trim());
   }, false);
