@@ -2596,6 +2596,21 @@ test("codec selection cancellation releases capture without publishing or stoppi
 });
 
 test.each([
+  ["maintain-resolution", "monitor", "detail"], ["balanced", "monitor", "motion"],
+  ["maintain-framerate", "monitor", "motion"], ["maintain-resolution", undefined, "motion"],
+] as const)("the automatic codec probe encodes with the share's mapped hint (%s, %s)", async (degradationPreference, displaySurface, hint) => {
+  const { session } = await setup();
+  const video = Object.assign(remoteTrack("video"), { getSettings: () => ({ displaySurface }) });
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: async () => remoteStream("hint-source", [video]) } });
+  const probe = vi.spyOn(codecPreflight, "preferredVideoCodecForTrack").mockRejectedValue(new DOMException("cancelled", "AbortError"));
+  session.setQuality({ ...QUALITY_PROFILES["1080p30"], degradationPreference });
+  try {
+    await expect(session.startScreen("first")).rejects.toMatchObject({ name: "AbortError" });
+    expect(probe).toHaveBeenCalledWith(video, expect.any(AbortSignal), hint);
+  } finally { session.close(); }
+});
+
+test.each([
   ["vp8", true, ["h264", "vp8"], "vp8"], ["h264", false, ["h264", "vp8"], "h264"],
   ["auto", false, ["h264"], "auto"], ["auto", false, ["h264", "vp8"], "vp8"], ["auto", true, ["h264", "vp8"], "auto"],
 ] as const)("Native codec selection uses advertised encoders and preserves manual intent (%s, H264 receive=%s, Native=%s)", async (mode, receivingH264, codecs, expected) => {
@@ -7947,6 +7962,38 @@ test("channel publications share one pool across Browser children, while Native 
     expect(pool.members.at(-1)!.source).toBe(fresh);
     expect(sent.some(command => command.type === "flow_state" && command.state === "failed")).toBe(false);
   } finally { media.reset(); session.close(); }
+});
+
+test("a display sender's hint follows the stored picture preference through an edit and its rollback", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const transport = new ChannelTransport({ polite: true, iceServers: [], send() {}, receive() {}, connected() {}, roomData() {}, failed() {} });
+  const pc = RoomPeerConnection.instances[0];
+  const display = Object.assign(remoteTrack("video"), { getSettings: () => ({ displaySurface: "monitor", width: 1920, height: 1080 }) });
+  const camera = remoteTrack("video");
+  const clarity = { ...QUALITY_PROFILES["1080p30"], degradationPreference: "maintain-resolution" as const };
+  // The clone carries its hint before the sender first encodes it.
+  const added: string[] = [], add = pc.addTransceiver.bind(pc);
+  vi.spyOn(pc, "addTransceiver").mockImplementation((track, init) => { added.push(track.contentHint); return add(track, init); });
+  try {
+    transport.setOutgoing(new Map([
+      ["screen", { kind: "screen", stream: remoteStream("display", [display]), profile: clarity }],
+      ["camera", { kind: "screen", stream: remoteStream("camera", [camera]), profile: clarity }],
+    ]));
+    await vi.waitFor(() => expect(pc.senders).toHaveLength(2));
+    expect(added).toEqual(["detail", "motion"]);
+    const [screen, cameraSender] = pc.senders;
+    expect(screen.track).toBe(lastClone(display));
+    expect(screen.track.contentHint).toBe("detail");
+    expect(cameraSender.track.contentHint).toBe("motion");
+    await transport.configureVideo("screen", QUALITY_PROFILES["1080p30"]);
+    expect([screen.track.contentHint, screen.getParameters().degradationPreference]).toEqual(["motion", "balanced"]);
+    // Media rollback reapplies the previous profile through the same call.
+    await transport.configureVideo("screen", clarity);
+    expect([screen.track.contentHint, screen.getParameters().degradationPreference]).toEqual(["detail", "maintain-resolution"]);
+    await transport.configureVideo("camera", clarity);
+    expect(cameraSender.track.contentHint).toBe("motion");
+  } finally { transport.close(); }
 });
 
 test("an explicit picture edit leaves the sender queue available to its pool handoff", async () => {

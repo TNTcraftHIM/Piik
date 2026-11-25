@@ -200,6 +200,25 @@ describe("Browser encoding producer startup", () => {
     expect(send.sender.getParameters().encodings[0]).toMatchObject({ maxFramerate: profile.maxFramerate, maxBitrate: profile.maxBitrate });
   });
 
+  it.each([
+    ["maintain-resolution", "detail"], ["balanced", "motion"], ["maintain-framerate", "motion"],
+  ] as const)("clones a display with the hint of %s and keeps it through start-up", async (degradationPreference, hint) => {
+    const getSettings = () => ({ displaySurface: "monitor" });
+    const source = Object.assign(new Track(), { getSettings, clone: () => Object.assign(new Track(), { getSettings }) });
+    // Let the producer's own sender configuration reach the cloned track.
+    vi.spyOn(Connection.prototype, "addTransceiver").mockImplementation(function (this: Connection, ...args: unknown[]) {
+      return { sender: Object.assign(this.sender, { track: args[0] }), setCodecPreferences() {} };
+    });
+    const producer = new BrowserEncodingProducer(source as unknown as MediaStreamTrack,
+      { ...QUALITY_PROFILES["1080p30"], degradationPreference }, { mimeType: "video/VP8", clockRate: 90000 }, vi.fn(), vi.fn());
+    producers.push(producer);
+    await producer.start();
+    expect(producer.track!.contentHint).toBe(hint);
+    // Start-up protection holds resolution on the sender, never on the hint.
+    expect(Connection.instances[0].sender.getParameters().degradationPreference).toBe("maintain-resolution");
+    expect(source.contentHint).toBe("motion");
+  });
+
   it.each(["queued", "active"])("keeps the producer after a %s candidate rejection", async (phase) => {
     const { producer, failed } = createProducer();
     const starting = producer.start();

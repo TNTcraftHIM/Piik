@@ -46,8 +46,8 @@ function platform() {
   vi.stubGlobal("MediaStreamTrackGenerator", Generator);
   return { cancel, write, processor, frames: () => frames, Generator };
 }
-function clone(source: Track, onEnded = vi.fn()) {
-  const track = cloneSenderVideoTrack(asTrack(source), onEnded);owned.push(track);return track;
+function clone(source: Track, onEnded = vi.fn(), hint = "motion") {
+  const track = cloneSenderVideoTrack(asTrack(source), hint, onEnded);owned.push(track);return track;
 }
 
 describe("sender display-frame ownership", () => {
@@ -118,6 +118,18 @@ describe("sender display-frame ownership", () => {
     expect(source.clone.mock.results[0]!.value.readyState).toBe("ended");
     expect(source.readyState).toBe("live");
     expect(ended).toHaveBeenCalledExactlyOnceWith(track);
+  });
+
+  it("gives the supplied hint to the clone and its forwarded frames", () => {
+    platform();
+    const source = new Track(), track = clone(source, vi.fn(), "detail");
+    expect(source.clone.mock.results[0]!.value.contentHint).toBe("detail");
+    expect(track.contentHint).toBe("detail");
+    expect(source.contentHint).toBe("motion");
+    vi.stubGlobal("MediaStreamTrackProcessor", undefined);
+    const empty = new Track();
+    empty.contentHint = "";
+    expect(clone(empty, vi.fn(), "detail").contentHint).toBe("detail");
   });
 
   it("keeps camera and received tracks on the ordinary clone path", () => {

@@ -10,13 +10,17 @@ type FrameAPIs = {
 };
 const inputs = new WeakMap<MediaStreamTrack, { track: MediaStreamTrack; abort: AbortController }>();
 
-/** The sender owns this track, including its optional display-capture input. */
+/**
+ * The sender owns this track, including its optional display-capture input.
+ * The caller supplies the hint so the first configure need not rebuild the codec.
+ */
 export function cloneSenderVideoTrack(
   source: MediaStreamTrack,
+  contentHint: string,
   onEnded: (track: MediaStreamTrack) => void,
 ): MediaStreamTrack {
   const input = source.clone();
-  input.contentHint = source.contentHint || "motion";
+  input.contentHint = contentHint;
   input.enabled = source.enabled;
   const { MediaStreamTrackProcessor: Processor, MediaStreamTrackGenerator: Generator } = globalThis as typeof globalThis & FrameAPIs;
   if (!Processor || !Generator || !source.getSettings().displaySurface || input.readyState !== "live") return input;

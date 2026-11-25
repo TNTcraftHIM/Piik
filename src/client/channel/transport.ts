@@ -7,7 +7,7 @@ import type { ConnectionMetrics } from "../types";
 import { preferOpusStereoReceive } from "../webrtc/opus-receive-sdp";
 import { applyVideoCodecPreference, normalizeVideoOfferSdp, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
 import type { ChannelPublication, ChannelSignal } from "./protocol";
-import { applyVideoCaptureProfile, configureAudioSender, configureVideoSender, DEFAULT_ROOM_VOICE_BITRATE, screenAudioBitrate, screenShareEncodings, videoQualitySettingsEqual, type VideoSenderProfile } from "../media/quality";
+import { applyVideoCaptureProfile, configureAudioSender, configureVideoSender, DEFAULT_ROOM_VOICE_BITRATE, screenAudioBitrate, screenContentHint, screenShareEncodings, videoQualitySettingsEqual, type VideoSenderProfile } from "../media/quality";
 import { BrowserEncodingOutput, supportsBrowserEncoding } from "../media/browser-encoding-output";
 import type { BrowserEncodingPool, BrowserPooledSender } from "../media/browser-encoding-pool";
 import { cloneSenderVideoTrack, senderCaptureTrack, stopSenderVideoTrack } from "../media/sender-video-track";
@@ -519,7 +519,8 @@ export class ChannelTransport {
   }
 
   private cloneVideo(id: string, owner: OutgoingBinding, source: MediaStreamTrack): MediaStreamTrack {
-    const track = cloneSenderVideoTrack(source, ended => {
+    const hint = screenContentHint(owner.profile?.degradationPreference, !!source.getSettings().displaySurface);
+    const track = cloneSenderVideoTrack(source, hint, ended => {
       if (owner.senders.some(binding => binding.sender.track === ended)) this.failOutput(id, owner);
     });
     track.enabled = !owner.paused;
