@@ -54,6 +54,14 @@ pub struct Driver {
     pub unsettled: usize,
     pub pair_attempts: usize,
     pub pair_failures: usize,
+    /// Physical pairs each side has answered as connected.
+    connected: BTreeSet<(usize, Uuid)>,
+    /// Every participant pair confirmed at any moment of the session: both
+    /// sides answered the same physical pair as connected, which is when the
+    /// core's pair book confirms it (`TransportBook::connected`). Tracked here
+    /// rather than from observations so a pair confirmed and released within
+    /// one settle loop still counts.
+    pub ever_confirmed: BTreeSet<(usize, usize)>,
 }
 
 impl Driver {
@@ -106,6 +114,8 @@ impl Driver {
             unsettled: 0,
             pair_attempts: 0,
             pair_failures: 0,
+            connected: BTreeSet::new(),
+            ever_confirmed: BTreeSet::new(),
         };
         let room = driver.room.clone();
         driver.send(
@@ -202,6 +212,11 @@ impl Driver {
                         self.pair_attempts += 1;
                     }
                     if self.connectable[person][peer] {
+                        self.connected.insert((person, pair.id));
+                        if self.connected.contains(&(peer, pair.id)) {
+                            self.ever_confirmed
+                                .insert((person.min(peer), person.max(peer)));
+                        }
                         self.send(
                             person,
                             json!({"type":"link_state","pairId":pair.id,"state":"connected"}),

@@ -8,7 +8,9 @@
 //! `cargo test --locked --features sqlite --test topology_study -- --ignored --nocapture`.
 //! `STUDY_SCALE` multiplies the seed counts (default 1), `STUDY_SEEDS` replaces
 //! them for a quick look. `STUDY_PART` selects
-//! `base`, `sensitivity` or `all` (default).
+//! `base`, `sensitivity` or `all` (default). `released_pairs` asks whether
+//! keeping every pair confirmed earlier would give leaf moves what attempting
+//! one pair does; the published tables used `STUDY_SCALE=2`.
 //!
 //! The core is driven through the same public command path as the other
 //! integration tests; nothing under `src/` is touched. Inputs are drawn from a
@@ -442,6 +444,86 @@ fn stage1_table(model: &Connectivity, rows: &[(usize, u8, Row)]) {
     }
 }
 
+/// Pooled share of `part` in `whole`, in percent.
+fn pooled(row: &Row, part: impl Fn(&Session) -> u32, whole: impl Fn(&Session) -> u32) -> String {
+    let base = row.sum(whole);
+    if base == 0 {
+        "n/a".into()
+    } else {
+        format!("{:.0}", 100.0 * ratio(row.sum(part), base))
+    }
+}
+
+/// Median, 90th percentile and maximum over every endpoint-instant of a row.
+fn degrees(row: &Row, f: impl Fn(&Session) -> &Vec<u32>) -> String {
+    let mut all: Vec<u32> = row
+        .sessions
+        .iter()
+        .flat_map(|s| f(s).iter().copied())
+        .collect();
+    if all.is_empty() {
+        return "n/a".into();
+    }
+    all.sort_unstable();
+    let at = |q: f64| all[((all.len() - 1) as f64 * q).round() as usize];
+    format!("{} [{}] max {}", at(0.5), at(0.9), all[all.len() - 1])
+}
+
+fn released_table(model: &Connectivity, rows: &[(usize, u8, Row)]) {
+    header(
+        &format!(
+            "Leaf moves over released pairs: pairs confirmed earlier whose endpoints are still present ({} connectivity)",
+            model.name
+        ),
+        &[
+            "N",
+            "L",
+            "seeds",
+            "released pairs per instant",
+            "released / confirmed now %",
+            "released pairs an earlier observation saw %",
+            "untracked",
+            "gap to confirmed optimum (hops)",
+            "existing pairs: closed % of it",
+            "existing + released: closed % of it",
+            "gap to connectable optimum (hops)",
+            "existing pairs: closed % of it",
+            "existing + released: closed % of it",
+            "one attempt: closed % of it",
+            "existing + released / one attempt %",
+            "successful attempts that were released pairs %",
+            "pairs per endpoint now: median [p90] max",
+            "pairs per endpoint keeping all: median [p90] max",
+            "max depth: leaf moves / + released / attempting / attainable",
+        ],
+    );
+    for (viewers, limit, row) in rows {
+        println!(
+            "| {viewers} | {limit} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} / {} / {} / {} |",
+            row.sessions.len(),
+            spread(row.per(|s| ratio(s.released, s.instants)), 1),
+            spread(row.per(|s| 100.0 * ratio(s.released, s.member_confirmed)), 0),
+            pooled(row, |s| s.released_observed, |s| s.released),
+            row.sum(|s| s.untracked),
+            row.sum(|s| s.depth_gap),
+            closed(row, |s| s.s1_closed),
+            closed(row, |s| s.kept_closed),
+            row.sum(|s| s.all_gap),
+            pooled(row, |s| s.s1_closed_all, |s| s.all_gap),
+            pooled(row, |s| s.kept_closed_all, |s| s.all_gap),
+            pooled(row, |s| s.pairs_closed, |s| s.all_gap),
+            pooled(row, |s| s.kept_closed_all, |s| s.pairs_closed),
+            pooled(row, |s| s.attempts_released, |s| s.attempts_ok),
+            degrees(row, |s| &s.degree_now),
+            degrees(row, |s| &s.degree_kept),
+            spread(row.per(|s| ratio(s.s1_max_sum, s.instants)), 2),
+            spread(row.per(|s| ratio(s.kept_max_sum, s.instants)), 2),
+            spread(row.per(|s| ratio(s.pairs_max_sum, s.instants)), 2),
+            spread(row.per(|s| ratio(s.opt_max_sum, s.instants)), 2),
+        );
+    }
+}
+
 fn executed_table(model: &Connectivity, rows: &[(usize, u8, Row)], executed: &[(usize, u8, Row)]) {
     header(
         &format!("Stage 1 executed by the core's planner, one leaf re-placed at a time ({} connectivity)", model.name),
@@ -673,6 +755,41 @@ fn trace() {
     );
     for note in &session.notes {
         println!("note: {note}");
+    }
+}
+
+/// Would keeping every confirmed pair do what attempting one pair does? The
+/// stage 1 rows at L = 2 with the same options as `study`, so its two
+/// existing columns must reproduce, beside the released-pairs counterfactual.
+#[test]
+#[ignore = "study: released pairs, a few minutes"]
+fn released_pairs() {
+    for model in [PESSIMISTIC, BASE, OPTIMISTIC] {
+        let rows: Vec<_> = [8, 16, 32]
+            .into_iter()
+            .map(|viewers| {
+                let options = Options {
+                    limit: 2,
+                    budget: budget(viewers),
+                    all_pairs: true,
+                    execute_stage1: false,
+                    verbose: false,
+                };
+                (viewers, 2, run_row(&model, viewers, options))
+            })
+            .collect();
+        println!(
+            "\n## {} connectivity (expected connectable pairs {:.0}%)",
+            model.name,
+            100.0 * model.expected_pair_success()
+        );
+        stage1_table(&model, &rows);
+        released_table(&model, &rows);
+        let harness: u32 = rows
+            .iter()
+            .map(|(_, _, row)| row.sum(|s| s.errors + s.unsettled + s.infeasible + s.transit))
+            .sum();
+        println!("\nharness errors / unsettled / infeasible / transit, all rows: {harness}");
     }
 }
 

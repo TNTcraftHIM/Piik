@@ -69,6 +69,35 @@ pub struct Session {
     /// Distinct pairs the attempting rule tried in the session, and failed.
     pub whatif_attempted: BTreeSet<(usize, usize)>,
     pub whatif_failed: BTreeSet<(usize, usize)>,
+    /// `s1_closed` counted at the instants `pairs_closed` is, against `all_gap`.
+    pub s1_closed_all: u32,
+    // Retention what-if. A released pair was confirmed at some earlier moment
+    // of the session, is not confirmed now, and both endpoints are present
+    // (the source or a watching viewer) with their original sessions.
+    pub released: u32,
+    /// Released pairs that an earlier observation had also seen confirmed.
+    pub released_observed: u32,
+    /// Confirmed pairs with both endpoints present, the base of `released`.
+    pub member_confirmed: u32,
+    /// Observed confirmed pairs the driver never saw both sides confirm
+    /// (should be zero: the tracking would be incomplete).
+    pub untracked: u32,
+    /// The stage 1 leaf rule on confirmed plus released pairs, no attempts.
+    pub kept_moves: u32,
+    pub kept_max_sum: u32,
+    /// Its depth reduction at the instants `s1_closed` and `pairs_closed` count.
+    pub kept_closed: u32,
+    pub kept_closed_all: u32,
+    /// Successful attempts of the attempting rule, per instant, and how many
+    /// of them were released pairs.
+    pub attempts_ok: u32,
+    pub attempts_released: u32,
+    /// Pairs per present endpoint at every instant: confirmed now, and
+    /// confirmed plus released (what keeping every pair would hold).
+    pub degree_now: Vec<u32>,
+    pub degree_kept: Vec<u32>,
+    /// Pairs seen confirmed at any observation so far.
+    pub observed: BTreeSet<(usize, usize)>,
     /// Placed viewers at instants of equal coverage, the base of `depth_gap`.
     pub equal_cover_placed: u32,
     /// The same two sums before the first departure of the session only.
@@ -495,6 +524,43 @@ fn record(
     if attainable.cover == placed {
         session.s1_closed += total - s1_total;
     }
+    // Retention what-if: the same leaf rule on confirmed plus released pairs.
+    let present = |&(a, b): &(usize, usize)| members.contains(&a) && members.contains(&b);
+    let current: BTreeSet<(usize, usize)> = now.confirmed.iter().copied().filter(present).collect();
+    session.untracked += now
+        .confirmed
+        .iter()
+        .filter(|key| !driver.ever_confirmed.contains(key))
+        .count() as u32;
+    let released: BTreeSet<(usize, usize)> = driver
+        .ever_confirmed
+        .iter()
+        .copied()
+        .filter(|key| present(key) && !current.contains(key))
+        .collect();
+    session.released += released.len() as u32;
+    session.released_observed += released.intersection(&session.observed).count() as u32;
+    session.member_confirmed += current.len() as u32;
+    session.observed.extend(now.confirmed.iter().copied());
+    let mut kept = now.clone();
+    kept.confirmed.extend(released.iter().copied());
+    let (kept_after, kept_moves) = kept.stage1_fixpoint();
+    let (_, kept_total, kept_max) = kept_after.placement();
+    session.kept_moves += kept_moves.len() as u32;
+    session.kept_max_sum += kept_max;
+    if attainable.cover == placed {
+        session.kept_closed += total - kept_total;
+    }
+    for &m in &members {
+        let degree = |pairs: &BTreeSet<(usize, usize)>| {
+            pairs.iter().filter(|&&(a, b)| a == m || b == m).count() as u32
+        };
+        session.degree_now.push(degree(&current));
+        session
+            .degree_kept
+            .push(degree(&current) + degree(&released));
+    }
+
     let connectable = &script.connectable;
     let (after, _, attempts) = now.stage1_with_attempts(&|a, b| connectable[a][b]);
     let (_, pairs_total, pairs_max) = after.placement();
@@ -504,6 +570,9 @@ fn record(
         session.whatif_attempted.insert(key);
         if !ok {
             session.whatif_failed.insert(key);
+        } else {
+            session.attempts_ok += 1;
+            session.attempts_released += u32::from(released.contains(&key));
         }
     }
     let (after, moves) = now.branch_fixpoint();
@@ -540,6 +609,8 @@ fn record(
         if all.cover == placed {
             session.all_gap += total.saturating_sub(all.total);
             session.pairs_closed += total - pairs_total;
+            session.s1_closed_all += total - s1_total;
+            session.kept_closed_all += total - kept_total;
         }
     }
 }
