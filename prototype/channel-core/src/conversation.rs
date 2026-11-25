@@ -822,6 +822,7 @@ mod room_tests {
             host_session_id: host_session,
             revision: 1,
             confirmed_pairs: Default::default(),
+            disconnected_pairs: Default::default(),
             failed_pairs: Vec::new(),
             endpoints: endpoints.clone(),
             action,

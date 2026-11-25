@@ -203,8 +203,15 @@ pub struct IceServer {
 pub(crate) enum PeerState {
     New,
     Connected,
+    Disconnected,
     Failed,
     Closed,
+}
+
+impl PeerState {
+    fn established(state: u8) -> bool {
+        state == Self::Connected as u8 || state == Self::Disconnected as u8
+    }
 }
 
 pub struct NativePeers {
@@ -728,6 +735,10 @@ struct PendingOffer {
 impl Pair {
     fn connected(&self) -> bool {
         self.state.load(Ordering::Acquire) == PeerState::Connected as u8
+    }
+
+    fn established(&self) -> bool {
+        PeerState::established(self.state.load(Ordering::Acquire))
     }
 
     fn output_ids(&self) -> HashSet<Uuid> {
@@ -2326,12 +2337,13 @@ impl Driver {
                 }
                 continue;
             };
-            if pair.connected() {
-                self.send(Command::LinkState {
-                    pair_id: id,
-                    state: LinkState::Connected,
-                })
-                .await;
+            let state = match pair.state.load(Ordering::Acquire) {
+                state if state == PeerState::Connected as u8 => Some(LinkState::Connected),
+                state if state == PeerState::Disconnected as u8 => Some(LinkState::Disconnected),
+                _ => None,
+            };
+            if let Some(state) = state {
+                self.send(Command::LinkState { pair_id: id, state }).await;
             }
             if pair.room_data_failed || (pair.connected() && pair.dc_open) {
                 for room_id in &pair.plan.rooms {
@@ -2626,7 +2638,14 @@ impl Driver {
         let Some(p) = self.pairs.get_mut(&id) else {
             return;
         };
-        if p.connected() && p.dc_open && !p.room_data_failed {
+        if !p.established() {
+            return;
+        }
+        if p.dc_open && !p.room_data_failed {
+            p.deadline = None;
+            if !p.connected() {
+                return;
+            }
             let rooms: Vec<_> = p
                 .plan
                 .rooms
@@ -2635,7 +2654,6 @@ impl Driver {
                 .cloned()
                 .collect();
             p.reported.extend(rooms.clone());
-            p.deadline = None;
             for room_id in rooms {
                 self.send(Command::RoomDataState {
                     room_id,
@@ -2644,9 +2662,9 @@ impl Driver {
                 })
                 .await;
             }
-        } else if p.connected() && (p.plan.rooms.is_empty() || p.room_data_failed) {
+        } else if p.plan.rooms.is_empty() || p.room_data_failed {
             p.deadline = None;
-        } else if p.connected() && !matches!(p.deadline, Some(Deadline::Control(_))) {
+        } else if !matches!(p.deadline, Some(Deadline::Control(_))) {
             p.deadline = Some(Deadline::Control(Instant::now() + Duration::from_secs(20)));
         }
     }
@@ -2724,6 +2742,11 @@ impl Driver {
     async fn deadlines(&mut self) {
         // The callback's atomic connection fact can precede the queued State event.
         for id in self.pairs.keys().copied().collect::<Vec<_>>() {
+            if !self.pairs[&id].connected() {
+                for message in self.inputs.disconnected(id) {
+                    self.send_input(message).await;
+                }
+            }
             self.report_room_data_ready(id).await;
         }
         let expired: Vec<_> = self
@@ -2733,7 +2756,7 @@ impl Driver {
                 p.overflow.swap(false, Ordering::AcqRel)
                     || p.deadline.is_some_and(|d| Instant::now() >= d.expires())
             })
-            .map(|(id, p)| (*id, p.connected()))
+            .map(|(id, p)| (*id, p.established()))
             .collect();
         for (id, connected) in expired {
             self.pairs.get_mut(&id).unwrap().deadline = None;
@@ -2976,6 +2999,12 @@ impl Driver {
                         })
                         .await;
                         self.report_room_data_ready(id).await;
+                    } else if state == PeerState::Disconnected {
+                        self.send(Command::LinkState {
+                            pair_id: id,
+                            state: LinkState::Disconnected,
+                        })
+                        .await;
                     } else if matches!(state, PeerState::Failed | PeerState::Closed) {
                         self.fail(
                             id,

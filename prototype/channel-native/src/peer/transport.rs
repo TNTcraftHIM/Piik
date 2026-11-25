@@ -426,6 +426,12 @@ impl HostRefresh {
     }
 }
 pub(crate) struct Engine {
+    #[cfg(test)]
+    test_drop_stun: bool,
+    #[cfg(test)]
+    test_drop_stun_responses: bool,
+    #[cfg(test)]
+    test_ice_states: Option<Arc<Mutex<Vec<str0m::IceConnectionState>>>>,
     udp_send_failures: udp_diagnostics::UdpSendFailures,
     source_error: Option<SocketAddr>,
     stats_origin: Instant,
@@ -955,6 +961,12 @@ impl Runtime {
         });
         let shared_hosts = bases.iter().filter(|b| handle.shares(&b.socket)).map(|b| b.local).collect();
         let engine = Engine {
+            #[cfg(test)]
+            test_drop_stun: false,
+            #[cfg(test)]
+            test_drop_stun_responses: false,
+            #[cfg(test)]
+            test_ice_states: None,
             shared_hosts,
             udp_send_failures: udp_diagnostics::UdpSendFailures::default(),
             source_error: None,
@@ -1617,7 +1629,7 @@ impl Transport {
             e.drain();
             e.rtc.handle_input(Input::Timeout(Instant::now()))?;
             e.drain();
-            let connected = e.rtc.is_connected();
+            let can_send = e.can_send_media();
             let out = e.outputs.get_mut(&id).context("output retired")?;
             ensure!(!out.retired, "output retired");
             let mid = out.mid.context("output not negotiated")?;
@@ -1643,7 +1655,7 @@ impl Transport {
             );
             // The representation limit above is not a paced backlog budget.
             // Keep at most one whole AU in this stream's unsent queue.
-            if !connected || stream.queue_info().is_none_or(|q| q.packet_count() != 0) {
+            if !can_send || stream.queue_info().is_none_or(|q| q.packet_count() != 0) {
                 out.waiting.insert(rid);
                 return Ok(Some(packets));
             }
@@ -1695,7 +1707,9 @@ impl Channel {
         let token = self.token;
         self.transport
             .call(move |e| {
-                if !scope.allowed() {
+                if !scope.allowed()
+                    || input && e.state.load(Ordering::Acquire) != PeerState::Connected as u8
+                {
                     return Ok(true);
                 }
                 let state = e.channels.get(&token).context("channel retired")?;
@@ -1922,6 +1936,14 @@ impl Engine {
         if !self.rtc.accepts(&input) {
             return false;
         }
+        #[cfg(test)]
+        if bytes.len() >= 20
+            && bytes[0] & 0xc0 == 0
+            && bytes[4..8] == [0x21, 0x12, 0xa4, 0x42]
+            && (self.test_drop_stun || self.test_drop_stun_responses && bytes[0] == 1)
+        {
+            return true;
+        }
         if let Err(error) = self.rtc.handle_input(input) {
             eprintln!("Native str0m input: {error}");
         }
@@ -1947,11 +1969,16 @@ impl Engine {
         }
     }
 
+    fn can_send_media(&self) -> bool {
+        PeerState::established(self.state.load(Ordering::Acquire))
+            && self.rtc.has_send_consent()
+    }
+
     fn check_source(&mut self) {
         let Some(mut source) = self.source_error else {
             return;
         };
-        if self.state.load(Ordering::Acquire) != PeerState::Connected as u8 {
+        if !PeerState::established(self.state.load(Ordering::Acquire)) {
             return;
         }
         // A local bind also recognizes usable addresses outside interface enumeration
@@ -2048,6 +2075,12 @@ impl Engine {
         loop {
             match self.rtc.poll_output() {
                 Ok(Output::Timeout(at)) => {
+                    if PeerState::established(self.state.load(Ordering::Acquire))
+                        && !self.rtc.has_send_consent()
+                    {
+                        self.fail();
+                        continue;
+                    }
                     self.deadline = at;
                     self.drain_turn();
                     for endpoint in self.turn.values_mut() {
@@ -2055,7 +2088,7 @@ impl Engine {
                             self.deadline = self.deadline.min(at);
                         }
                     }
-                    let connected = self.rtc.is_connected();
+                    let can_send = self.can_send_media();
                     for out in self.outputs.values_mut() {
                         let before = out.waiting.len();
                         out.waiting.retain(|rid| {
@@ -2067,7 +2100,7 @@ impl Engine {
                                         (!rid.is_empty()).then(|| Rid::from(rid.as_str())),
                                     )
                                     .is_some_and(|stream| {
-                                        !connected
+                                        !can_send
                                             || stream
                                                 .queue_info()
                                                 .is_none_or(|queue| queue.packet_count() != 0)
@@ -2143,6 +2176,10 @@ impl Engine {
     fn event(&mut self, event: RtcEvent) {
         match event {
             RtcEvent::IceConnectionStateChange(state) => {
+                #[cfg(test)]
+                if let Some(states) = &self.test_ice_states {
+                    states.lock().unwrap().push(state);
+                }
                 if state.is_connected() {
                     self.linear_enabled = false;
                     self.nat64.take();
@@ -2153,9 +2190,13 @@ impl Engine {
                     self.trace_pair(RtcPairEvent::IceDisconnected);
                 }
                 if state.is_disconnected() {
-                    // str0m has exhausted its current candidate pairs and has no
-                    // later Failed state. Reuse the owned pair replacement.
-                    self.fail();
+                    if !self.rtc.has_send_consent() {
+                        self.fail();
+                    } else if PeerState::established(self.state.load(Ordering::Acquire)) {
+                        self.state
+                            .store(PeerState::Disconnected as u8, Ordering::Release);
+                        self.emit(Event::State(self.handle.pair, PeerState::Disconnected));
+                    }
                 } else if state.is_connected() && self.rtc.is_connected() {
                     self.state
                         .store(PeerState::Connected as u8, Ordering::Release);

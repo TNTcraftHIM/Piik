@@ -461,6 +461,16 @@ that assistance. Each viewer has one selected input per publication. A
 replacement may receive frames within the same forwarding budget to prove it
 can take over before the old input is released.
 
+Temporary disconnection is an endpoint's current-socket observation; it does not
+erase the pair's earlier bilateral confirmation. The room can prepare an
+already confirmed alternate through the existing branch-switch owner. Recovery
+uses fresh decoded or forwarding proof and checks every candidate edge before
+commit. If the original path recovers first, its usable branch stays selected.
+An independent candidate can survive terminal loss of the old ancestor while
+retaining its input identities and original deadline. Native distinguishes
+recoverable disconnection from expired send consent using the SDK's own state
+and wakeups; remote input stops on disconnection.
+
 ### App-Assisted Viewing
 
 A Browser may attach its currently approved App's live endpoint to its own

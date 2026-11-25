@@ -622,10 +622,21 @@ old candidates produced no application output or STUN reply on the retired path.
 Fresh ICE credentials or another tuple restored delivery, retaining the
 [RFC 7675 consent boundary](https://www.rfc-editor.org/rfc/rfc7675.html#section-5.1).
 The control used a read-only SDK query of its existing output authorization gate.
-Native's current immediate close on `Disconnected` cuts off the earlier recovery
-window. Its adapter still needs to preserve that window and handle actual expiry
-through the SDK's own wakeups. Browser decoding and independent-network acceptance
-remain open; these packet controls do not identify a field incident's cause.
+Native now preserves that recovery window and retires an established path when
+the SDK no longer permits sending, including while ICE is checking an alternate.
+A real Native regression preserved valid consent through ICE restart, and
+expired consent released the connection and held remote input. The existing
+SDK wakeups own expiry; no application timer was added.
+
+A matching G50 Browser → Native → Native → Browser control retained the middle
+pair and input identities through short STUN loss while the final viewer kept
+decoding. After prolonged loss, the middle pair retired 30.023 seconds after its
+last observed valid response and a fresh path resumed video. Separate mixed
+controls adopted an actually decoded candidate on an already confirmed spare,
+ignored its late proof after the original recovered, and respected a spare's
+zero forwarding limit. These local controls used synthetic capture and owned UDP
+bridges; cold three-hop discovery, Native GUI and independent-network acceptance
+remain separate. They do not identify a field incident's cause or a NAT success rate.
 
 ## Primary Sources
 

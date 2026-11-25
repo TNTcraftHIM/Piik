@@ -183,6 +183,8 @@ pub struct HostInput {
     pub failed_pairs: Vec<PairFailure>,
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub confirmed_pairs: BTreeSet<(Uuid, Uuid)>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub disconnected_pairs: BTreeSet<(Uuid, Uuid)>,
     pub endpoints: BTreeMap<Uuid, Endpoint>,
     #[serde(default)]
     pub service_endpoint: Option<ServiceTransit>,
@@ -992,6 +994,7 @@ mod tests {
                 host_session_id: writer,
                 revision: 1,
                 confirmed_pairs: Default::default(),
+                disconnected_pairs: Default::default(),
                 failed_pairs: vec![],
                 endpoints: endpoints.clone(),
                 action: HostAction::Sync,
@@ -1127,6 +1130,7 @@ mod tests {
             revision: 1,
             endpoints,
             confirmed_pairs: Default::default(),
+            disconnected_pairs: Default::default(),
             failed_pairs: vec![],
             action: HostAction::Sync,
         })
@@ -1361,6 +1365,7 @@ mod tests {
                 host_session_id: host_session,
                 revision,
                 confirmed_pairs: Default::default(),
+                disconnected_pairs: Default::default(),
                 failed_pairs: Vec::new(),
                 endpoints,
                 action: HostAction::Command {
@@ -1436,6 +1441,7 @@ mod tests {
                 host_session_id: session,
                 revision: 1,
                 confirmed_pairs: Default::default(),
+                disconnected_pairs: Default::default(),
                 failed_pairs: Vec::new(),
                 endpoints: BTreeMap::from([(
                     session,
@@ -1823,6 +1829,9 @@ impl RoomHost {
         {
             self.room.reset_routes();
         }
+        self.room
+            .disconnected_pairs
+            .clone_from(&input.disconnected_pairs);
         self.room.service_endpoint(
             input.service_endpoint,
             &input.endpoints,
@@ -1852,6 +1861,10 @@ impl RoomHost {
             .set_writer(input.host_session_id, input.hosting_mode);
         self.room
             .reconcile_with_pairs(&input.endpoints, input.now, &input.confirmed_pairs);
+        if matches!(&input.action, HostAction::Sync) {
+            self.room
+                .commit_ready_switches(input.now, &input.disconnected_pairs);
+        }
         let before = self.room.clone();
         let mut reply = None;
         let mut work = HostWork {
@@ -1944,8 +1957,14 @@ impl RoomHost {
                     {
                         return Err("unassigned_flow");
                     }
-                    self.room
-                        .flow_state(*flow_id, *receiver, *sender, *state, input.now)?;
+                    self.room.flow_state_observed(
+                        *flow_id,
+                        *receiver,
+                        *sender,
+                        *state,
+                        input.now,
+                        &input.disconnected_pairs,
+                    )?;
                 }
             }
             Ok(RoomResult::Done)

@@ -68,6 +68,7 @@ pub struct RoomRuntime {
     watch_activities: BTreeMap<Uuid, Watch>,
     writer: Option<(Uuid, crate::wire::HostingMode)>,
     transit: Option<crate::host::ServiceTransit>,
+    pub(crate) disconnected_pairs: BTreeSet<(Uuid, Uuid)>,
     delivery_frontiers: Vec<crate::host::DeliveryFrontier>,
     repair_at: Option<u64>,
     failed_data_pairs: BTreeSet<(Uuid, Uuid)>,
@@ -120,6 +121,7 @@ impl RoomRuntime {
             watch_activities: BTreeMap::new(),
             writer: None,
             transit: None,
+            disconnected_pairs: Default::default(),
             delivery_frontiers: Vec::new(),
             repair_at: None,
             failed_data_pairs: BTreeSet::new(),
@@ -1612,7 +1614,8 @@ impl RoomRuntime {
                 }
             }
             let carried = kinds.media(publication.info.kind);
-            publication.reconcile(
+            publication.reconcile_observed(
+                &self.disconnected_pairs,
                 &subscribers,
                 &connected,
                 &offered(&relays, carried),
@@ -1727,6 +1730,22 @@ impl RoomRuntime {
         state: FlowState,
         now: u64,
     ) -> Result<bool, &'static str> {
+        self.flow_state_observed(flow_id, receiver, sender, state, now, &BTreeSet::new())
+    }
+    pub(crate) fn commit_ready_switches(&mut self, now: u64, down: &BTreeSet<(Uuid, Uuid)>) {
+        for publication in self.publications.values_mut() {
+            publication.commit_ready_switch(now, down);
+        }
+    }
+    pub(crate) fn flow_state_observed(
+        &mut self,
+        flow_id: Uuid,
+        receiver: Uuid,
+        sender: Uuid,
+        state: FlowState,
+        now: u64,
+        down: &BTreeSet<(Uuid, Uuid)>,
+    ) -> Result<bool, &'static str> {
         let publication = self
             .publications
             .values_mut()
@@ -1736,7 +1755,7 @@ impl RoomRuntime {
                 })
             })
             .ok_or("unassigned_flow")?;
-        Ok(publication.flow_state(flow_id, receiver, sender, state, now))
+        Ok(publication.flow_state_observed(flow_id, receiver, sender, state, now, down))
     }
 }
 
@@ -3458,9 +3477,25 @@ mod tests {
                 [id(2), id(3), id(4)].into_iter().collect(),
                 requested.clone(),
             ] {
-                picture.reconcile(&requested, &all, &all, &helpers, &limits, &neighbors, 0);
+                picture.reconcile_observed(
+                    &BTreeSet::new(),
+                    &requested,
+                    &all,
+                    &all,
+                    &helpers,
+                    &limits,
+                    &neighbors,
+                    0,
+                );
                 for flow in picture.flows().collect::<Vec<_>>() {
-                    picture.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1);
+                    picture.flow_state_observed(
+                        flow.id,
+                        flow.receiver,
+                        flow.sender,
+                        FlowState::Decoded,
+                        1,
+                        &BTreeSet::new(),
+                    );
                 }
             }
             let old: BTreeMap<_, _> = picture
@@ -3475,33 +3510,62 @@ mod tests {
             };
             neighbors.entry(expected.0).or_default().insert(expected.1);
             neighbors.entry(expected.1).or_default().insert(expected.0);
-            picture.reconcile(&requested, &all, &all, &helpers, &limits, &neighbors, 10);
+            picture.reconcile_observed(
+                &BTreeSet::new(),
+                &requested,
+                &all,
+                &all,
+                &helpers,
+                &limits,
+                &neighbors,
+                10,
+            );
             let candidate = picture.flows().find(|flow| !flow.selected).unwrap();
             assert_eq!((candidate.sender, candidate.receiver), expected);
             let deadline = picture.deadline();
-            picture.reconcile(&requested, &all, &all, &helpers, &limits, &neighbors, 1_000);
+            picture.reconcile_observed(
+                &BTreeSet::new(),
+                &requested,
+                &all,
+                &all,
+                &helpers,
+                &limits,
+                &neighbors,
+                1_000,
+            );
             assert_eq!(picture.deadline(), deadline);
             assert!(picture
                 .flows()
                 .any(|flow| flow.id == candidate.id && !flow.selected));
-            picture.flow_state(
+            picture.flow_state_observed(
                 candidate.id,
                 candidate.receiver,
                 candidate.sender,
                 FlowState::Decoded,
                 1_001,
+                &BTreeSet::new(),
             );
             assert!(picture
                 .flows()
                 .any(|flow| flow.id == old[&candidate.receiver] && flow.selected));
-            picture.flow_state(
+            picture.flow_state_observed(
                 candidate.id,
                 candidate.receiver,
                 candidate.sender,
                 FlowState::SwitchReady,
                 1_002,
+                &BTreeSet::new(),
             );
-            picture.reconcile(&requested, &all, &all, &helpers, &limits, &neighbors, 1_003);
+            picture.reconcile_observed(
+                &BTreeSet::new(),
+                &requested,
+                &all,
+                &all,
+                &helpers,
+                &limits,
+                &neighbors,
+                1_003,
+            );
             assert!(picture
                 .flows()
                 .any(|flow| flow.id == candidate.id && flow.selected));

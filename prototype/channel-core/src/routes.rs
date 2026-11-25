@@ -644,6 +644,16 @@ impl Plan {
         helpers: &BTreeMap<Uuid, Uuid>,
         limits: &RelayLimits,
     ) -> Option<Uuid> {
+        self.candidate_parent_where(child, connected, helpers, limits, |_| true)
+    }
+    pub(crate) fn candidate_parent_where(
+        &self,
+        child: Uuid,
+        connected: &BTreeSet<Uuid>,
+        helpers: &BTreeMap<Uuid, Uuid>,
+        limits: &RelayLimits,
+        allowed: impl Fn(Uuid) -> bool,
+    ) -> Option<Uuid> {
         if !connected.contains(&self.source) || !connected.contains(&child) {
             return None;
         }
@@ -651,7 +661,7 @@ impl Plan {
         let descendants = self.subtree(child);
         self.subtree(self.source)
             .into_iter()
-            .filter(|parent| self.rooted_ready(*parent))
+            .filter(|parent| self.rooted_ready(*parent) && allowed(*parent))
             .filter(|parent| {
                 *parent != child
                     && !descendants.contains(parent)

@@ -358,7 +358,7 @@ pub(super) mod tests {
     fn id(value: u128) -> Uuid {
         Uuid::from_u128(value)
     }
-    fn state() -> Snapshot {
+    pub(in crate::peer) fn state() -> Snapshot {
         Snapshot {
             watch_bytes: vec![],
             watch_activities: vec![],
@@ -506,6 +506,64 @@ pub(super) mod tests {
             2,
             "input retirement does not edit media routes"
         );
+    }
+
+    #[tokio::test]
+    async fn lost_disconnected_notification_releases_input_holds_before_control_retirement(
+    ) -> Result<()> {
+        use crate::peer::tests::support::{vp8, Fixture};
+        let mut f = Fixture::new(vp8()).await?;
+        let result = async {
+            let pair = f.sink;
+            f.until(|f| f.driver.pairs.values().all(|p| p.connected() && p.dc_open)).await?;
+            let plan = f.driver.pairs[&pair].plan.clone();
+            let instance = f.driver.pairs[&pair].pc.connection_metrics().await?.connection_id;
+            let outputs = f.driver.pairs[&pair].output_ids();
+            let (input, _snapshot, mut verify_release) = held_source(f.driver.session, f.publication.clone(), plan);
+            verify_release(false);
+            f.driver.inputs = input;
+            // The bounded event queue can lose the notification after Engine stores this fact.
+            f.driver.pairs[&pair].state.store(PeerState::Disconnected as u8, Ordering::Release);
+            f.driver.pairs[&pair].overflow.store(true, Ordering::Release);
+            f.driver.deadlines().await;
+            verify_release(true);
+            let retained = &f.driver.pairs[&pair];
+            assert_eq!(retained.pc.connection_metrics().await?.connection_id, instance);
+            assert_eq!(retained.output_ids(), outputs);
+            assert!(retained.room_data_failed);
+            assert!(f.driver.pairs.iter().filter(|(id, _)| **id != pair).all(|(_, p)| p.connected() && p.dc_open));
+            f.driver.deadlines().await;
+            verify_release(true);
+            Ok(())
+        }.await;
+        f.close().await;
+        result
+    }
+
+    pub(in crate::peer) fn held_source(
+        local: Uuid, publication: PublicationInfo, plan: PairInfo,
+    ) -> (Inputs, watch::Sender<Option<Snapshot>>, impl FnMut(bool)) {
+        let flow = plan.outgoing[0].id;
+        let controller = plan.peer_id;
+        let (source, sync, mut verify) = crate::input::held_input_fixture(publication.id, controller, flow);
+        let mut snapshot = state();
+        snapshot.publications = vec![publication];
+        snapshot.publications[0].session_id = local;
+        snapshot.sessions[0].id = controller;
+        snapshot.pairs = vec![plan];
+        snapshot.pairs[0].outgoing[0].input_flow_id = None;
+        let (saved, current) = watch::channel(Some(snapshot));
+        let mut input = Inputs::new(local, current, None);
+        let publication_id = source.publication();
+        input.sources.insert(publication_id, source);
+        assert!(input.receive(controller, InputFrame {
+            publication_id, controller_session_id: controller, route_id: flow, flow_id: flow,
+            data: Some(serde_json::json!({"id":controller.simple().to_string(), "epoch":flow.simple().to_string(), "data":sync})),
+            closed: None, ready: None,
+        }).is_none());
+        assert_eq!(input.bindings.len(), 1);
+        verify(false);
+        (input, saved, verify)
     }
 
     #[cfg(target_os = "windows")]

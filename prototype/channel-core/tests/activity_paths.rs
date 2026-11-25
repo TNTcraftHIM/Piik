@@ -30,12 +30,16 @@ fn command(net: &mut RoomNetwork, socket: Uuid, request: Value) {
     }
 }
 
-fn join(net: &mut RoomNetwork, socket: Uuid) -> Uuid {
+fn join(net: &mut RoomNetwork, socket: Uuid) -> (Uuid, String) {
     net.command(socket, json!({"type":"join","name":"Route test"}))
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::Welcome { session_id, .. } => Some(session_id),
+            Event::Welcome {
+                session_id,
+                credential,
+                ..
+            } => Some((session_id, credential)),
             _ => None,
         })
         .unwrap()
@@ -73,7 +77,7 @@ fn file_and_watch_use_the_confirmed_shortcut_while_voice_keeps_its_relay() {
     let mut net = RoomNetwork::new();
     net.authority.set_hosting_mode(HostingMode::Hosted);
     let [writer, a, b, c] = [(); 4].map(|_| Uuid::new_v4());
-    let [writer_session, a_session, b_session, c_session] =
+    let [(writer_session, _), (a_session, _), (b_session, b_credential), (c_session, _)] =
         [writer, a, b, c].map(|socket| join(&mut net, socket));
     net.authority
         .set_room_writer(ServiceEndpoint {
@@ -135,6 +139,26 @@ fn file_and_watch_use_the_confirmed_shortcut_while_voice_keeps_its_relay() {
         );
         let edge = pair(&net, socket, b_session).id;
         confirm_pair(&mut net, [socket, b], edge);
+        let bad = net.command(
+            Uuid::new_v4(),
+            json!({"type":"link_state","pairId":edge,"state":"disconnected"}),
+        );
+        assert!(bad
+            .events
+            .iter()
+            .any(|(_, e)| matches!(e, Event::Error { .. })));
+        for (reporter, state) in [
+            (socket, "disconnected"),
+            (b, "connected"),
+            (socket, "connected"),
+        ] {
+            command(
+                &mut net,
+                reporter,
+                json!({"type":"link_state","pairId":edge,"state":state}),
+            );
+        }
+        assert_eq!(pair(&net, socket, b_session).id, edge);
     }
     let mic = Uuid::new_v4();
     command(
@@ -264,4 +288,26 @@ fn file_and_watch_use_the_confirmed_shortcut_while_voice_keeps_its_relay() {
     assert!(net.state(c).watch_bytes.is_empty());
     assert_eq!(pair(&net, b, a_session).id, ab);
     assert_eq!(selected_voice(&net, c, mic), voice);
+    let replacement = Uuid::new_v4();
+    let resumed = net.command(
+        replacement,
+        json!({"type":"join","name":"Route test","credential":b_credential,"sessionId":b_session}),
+    );
+    assert!(resumed.close.contains(&b));
+    let stale = net.command(
+        b,
+        json!({"type":"link_state","pairId":ab,"state":"disconnected"}),
+    );
+    assert!(stale.close.contains(&b));
+    let current = pair(&net, replacement, a_session).id;
+    command(
+        &mut net,
+        replacement,
+        json!({"type":"link_state","pairId":current,"state":"disconnected"}),
+    );
+    command(
+        &mut net,
+        replacement,
+        json!({"type":"link_state","pairId":current,"state":"connected"}),
+    );
 }

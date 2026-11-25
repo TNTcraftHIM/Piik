@@ -245,9 +245,9 @@ the feedback period; they do not delay that delivery.
   The [evidence](./research/topology-improvement-design.md) lists the
   remaining comparisons. Extend relay-exit controls to media-only loss while
   signaling stays connected, and preserve healthy paths during control recovery.
-  Complete Browser candidate presentation after incumbent retirement and verify
-  ancestor reconnection against delayed proofs. Keep short-disconnect observations
-  separate from the confirmed-pair graph and retain the existing operation owner.
+  Reuse the matching-runtime recovery and late-proof controls when extending
+  current operation ownership. Calibrate on independent networks before tuning
+  candidate budgets or measured-benefit policy.
 - [ ] **The life of a message.** Decide
   [ADR-0019](./adr/0019-the-life-of-a-message.md): author editing, writer-owned
   search, quote behavior and the merge rule for text and reaction changes.
@@ -356,11 +356,10 @@ the feedback period; they do not delay that delivery.
   lower layer with encoding full-size output at the granted rate. Reuse existing
   encoder grants and prove readability, cadence and resource cost before changing
   layer preference.
-- [ ] **Native send-consent lifetime.** Preserve recoverable ICE disconnection
-  and retire unauthorized paths from the SDK's own permission and wakeups
-  ([packet control](./research/nat-traversal.md#native-ice-disconnection-and-send-consent)).
-  Complete Native adapter and Windows WebView checks in both negotiation roles.
-  Keep consent expiry separate from candidate viability and Piik route recovery.
+- [ ] **Native GUI recovery acceptance.** Complete Windows WebView checks in
+  both negotiation roles with the matching App. Reuse the
+  [SDK and runtime controls](./research/nat-traversal.md#native-ice-disconnection-and-send-consent)
+  for send-consent expiry, input release and branch recovery.
 - [ ] **Shared-link website coverage.** Extend actual website and official
   embedded-player coverage toward VideoTogether's playback coverage. Verify
   source-issued media grants, supported commercial live sources, target Browsers
