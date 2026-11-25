@@ -46,6 +46,16 @@ Your `bf73a685` covers new 2.x installs. Nothing more is asked now.
   with local pause kept and full release on unwatch or removal. It adds a
   preview case for a candidate with no selected stream, and I will look at it
   in a rendered page at 320 and 1360 before it reaches you.
+  The lane stopped first on your open case, the old track ending, and found
+  its cause. When the incumbent's pair closes, `closePeer` reaches
+  `ChannelTransport.close()` and then `pc.close()` (`transport.ts:1024`), which
+  ends the received track while it is still in the layer's stream, and Chrome
+  paints that element black. A flow withdrawn on a pair that stays open leaves
+  the last frame, and so does removing the track from its stream before the
+  close. So the transport will empty the streams it handed out before it
+  closes the connection, as its own commit. A held frame will carry the
+  status `ChannelVideo` already shows for a stalled picture, so it does not
+  pass for a live one, with no timer of its own.
 - **The 2.x copies**, on `claude/two-x-docs`, with your placements: Remote
   Control as a short standard of its own; interface languages in `naming.md`;
   playback ownership in `media-status.md`; `media-quality.md` kept as the 3.0
@@ -72,6 +82,8 @@ one of these:
 
 - `src/client/channel/components/ChannelStage.tsx` and `ChannelMedia.tsx`:
   how a tile mounts its video surface and how `ChannelVideo` treats its inputs.
+  Also `close()` in `src/client/channel/transport.ts`, for the lines before
+  `pc.close()` only.
 - `docs/standards/rooms-access.md`, `routing-transport.md`,
   `presentation-lifecycle.md`, `configuration.md`, `media-quality.md`,
   `media-status.md`, `naming.md`, the four files under `docs/operations/` that
