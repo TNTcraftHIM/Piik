@@ -30,19 +30,24 @@ corrected by the records of stage 0.
    90% of the frames the source sent over a window and loss or a freeze
    confirms it. A static screen sends nothing and proves nothing, so only
    active content counts toward a verdict.
-3. **Voice goes direct.** A speaker sends to every listener it has a
-   connection with, with discontinuous transmission on. A pair that cannot
-   connect takes one relay hop through a node that forwards unchanged. Voice
-   ranks above screens. In a room with voice this mesh is the pool.
+3. **Voice takes the shortest way that exists.** A speaker sends directly to
+   every listener it already has a connection with, with discontinuous
+   transmission on, and the room fanout does not limit it. A listener with no
+   connection to the speaker is reached through relays as today, through a
+   node that forwards unchanged where there is one. Voice ranks above screens.
+   Whether a room with voice should also connect every pair, so that the voice
+   mesh becomes the pool, waits for the measurements on phones and on relay
+   hops.
 4. **The pool grows from demand.** Nothing is connected in advance across a
-   site. A viewer in a room without voice keeps one spare connection to an
-   eligible parent. A pair's last result is remembered, and an idle pair is
+   site. A viewer with no other connection to an eligible parent keeps one
+   spare. A pair's last result is remembered, and an idle pair is
    retired after a minute.
 5. **Capacity is learned.** A node starts from a prior, the present default of
    two. It gains one when every child has stayed healthy under real load, and
    falls back when its sender reports a limit or its children suffer together.
-   What it proved is remembered for that device and network. No person sets or
-   sees the number. Whether a person forwards at all stays their choice.
+   What it proved is remembered for that device and network. Automatic is the
+   default and nobody has to set a number. A person may still set a limit of
+   their own, or decline to forward.
 6. **Placement is an order over proved facts.** Among eligible parents with
    room: fewest re-encode generations, then fewest hops, then proved room
    before a prior, then least load. Whether a node forwards unchanged is a
@@ -76,11 +81,12 @@ Each stage after the first needs the record named beside it.
 | Stage | Adds | Justified by |
 | --- | --- | --- |
 | 0 | Reports, decision log, shadow planner | Nothing; it produces the evidence |
-| 1 | Direct voice, learned capacity, placement order, repair after failure | Removes the setting and the voice hops |
+| 1 | Voice on every existing connection, learned capacity, placement order, repair after failure | Serves strong uplinks without a setting and removes voice hops where a connection exists |
 | 2 | Repair moves with blame | Parent or edge faults that outlast the trigger in a real share of unwell time |
 | 3 | Promotions | Viewers deeper, or behind more generations, than proved capacity requires |
 | 4 | Memory across days | Proved capacity that repeats from day to day |
 | 5 | Moves for delay alone, relays for a speaker short of upload | Logs that show the gap |
+| 6 | Every pair connected in a room with voice | The cost of idle connections on a phone and of a relay hop |
 
 Stages 2 and 3 need a change to touch only the edge that changed. Today a
 change of a relay's input gives every flow below it a new identity.
@@ -97,16 +103,17 @@ asks a person how much to forward.
 The [evidence](../research/topology-improvement-design.md#measurements-that-decide)
 lists them. Three decide parts of this record: the cost of one re-encoding
 hop sets how hard decision 6 avoids a generation, idle audio connections on a
-phone set whether decision 3 needs a ceiling, and whether a Chromium Browser
+phone decide stage 6, and whether a Chromium Browser
 can forward encoded frames unchanged decides how many nodes count as
 forwarders.
 
 ## Consequences
 
-- The forwarding limit a person sets becomes a choice to forward or not. The
-  room default becomes the prior.
-- Voice no longer depends on the room fanout, and a room with voice needs no
-  separate standby connections.
+- Forwarding capacity becomes automatic by default. It grows where an uplink
+  proves strong, which is what the manual limit was added for. The room
+  default becomes the prior, and a person can still set a limit or decline to
+  forward.
+- Voice no longer depends on the room fanout.
 - The single shortcut per viewer is replaced by decision 7.
 - [ADR-0005](./0005-automatic-hybrid-media-routing.md) and the
   [forwarding design](../research/channel-forwarding-plan.md) keep their

@@ -113,13 +113,17 @@ What I expect you to push on, and my answer in advance:
 - **Capacity.** You declined bits because a pair estimate is not an uplink.
   This design never estimates an uplink. It records what a node carried with
   every child healthy, grows by one on proof and falls back on a limit. The
-  count you have becomes the prior. A person keeps the choice to forward or
-  not; the number goes, because the canon says nobody tunes a network.
-- **Voice.** You declined a full mesh for its connection demand. All three
-  designs make the voice mesh the pool itself, so the demand buys every
-  round-trip time and every later switch without new connections. A Browser
-  relay re-encodes audio per hop today. The ceiling for phones is open and
-  needs the measurement below.
+  count you have becomes the prior. Automatic is the default, so nobody has
+  to tune; a person can still set a limit or decline to forward. The owner
+  recalled why the manual limit exists: two was too conservative on strong
+  uplinks. Learned capacity answers that without a setting.
+- **Voice.** You declined a full mesh for its connection demand, and the
+  owner prefers the present shape until it is measured. So the proposal is
+  staged. First, a speaker sends directly to every listener it is already
+  connected to, without the fanout limit, and relays cover the rest as today:
+  no new connections. Connecting every pair in a room with voice, which all
+  three designs chose, is the last stage and waits for the phone and hop
+  measurements. A Browser relay re-encodes audio per hop today.
 - **Your 2.26 s against 14.53 s.** Repair waits ten seconds, doubling after
   each move, and asks blame first. Promotion never moves a viewer that plays
   well onto an unproved place: the new copy has to render as well as the old
