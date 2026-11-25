@@ -11,6 +11,7 @@ use std::{
     path::PathBuf,
 };
 
+mod owner_link;
 mod release;
 
 fn switch(key: &str, default: bool) -> anyhow::Result<bool> {
@@ -33,6 +34,15 @@ fn first_start_setting<T: DeserializeOwned>(key: &str, default: T) -> anyhow::Re
 
 #[tokio::main]
 async fn main() -> anyhow::Result<std::process::ExitCode> {
+    let executable = std::env::current_exe().context("Locate the Server executable")?;
+    let resources = executable.parent().context("Locate the Server directory")?;
+    let directory = std::env::var_os("PIIK_CHANNEL_DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| resources.join("data"));
+    if std::env::args().skip(1).eq(["owner-link"]) {
+        println!("{}", owner_link::request(&directory).await?);
+        return Ok(std::process::ExitCode::SUCCESS);
+    }
     if let Some(endpoint) = release::check_argument(std::env::args().skip(1))? {
         let result = release::check_build(&endpoint).await;
         println!("{}", serde_json::to_string(&result)?);
@@ -67,11 +77,6 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
     // Existing domain data owns its keys; environment values seed a new domain.
     let owner = std::env::var("PIIK_CHANNEL_OWNER_KEY").unwrap_or_default();
     let ice_servers = piik_channel_prototype::ice_servers_from_environment()?;
-    let executable = std::env::current_exe().context("Locate the Server executable")?;
-    let resources = executable.parent().context("Locate the Server directory")?;
-    let directory = std::env::var_os("PIIK_CHANNEL_DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| resources.join("data"));
     let frontend = std::env::var_os("PIIK_CHANNEL_WEB_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| resources.join("web"));
@@ -145,18 +150,22 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
         room_creation_policy,
         Some(hosting_mode),
     )?;
+    let operator = owner_link::Listener::bind(&directory)?;
     println!("Piik Server: http://{bound}");
     println!("Web interface: {origin}/__channel-preview");
     release::startup_notice();
-    serve_server(
-        listener,
-        state,
-        directory,
-        routes,
-        udp,
-        transit,
-        stop,
-    )
-    .await?;
+    let operator_domain = state.clone();
+    tokio::select! {
+        result = owner_link::serve(operator, &operator_domain) => result?,
+        result = serve_server(
+            listener,
+            state,
+            directory,
+            routes,
+            udp,
+            transit,
+            stop,
+        ) => result?,
+    }
     Ok(std::process::ExitCode::SUCCESS)
 }

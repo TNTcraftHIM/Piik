@@ -56,12 +56,12 @@ window.runBrowserRoomCheck = async () => {
   let host = await BrowserRoomHost.open(database, policy);
   check((await host.summary()).icon === "future-room_7", "unknown valid decorative key survives the shared policy and summary");
   const dispatch = async (command: object, signal?: AbortSignal, target = host): Promise<Output> => target.dispatch({
-    now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
+    now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
     action: { type: "command", context: { connection, sessionId: session, requestId: crypto.randomUUID(), now: Date.now() }, command },
   }, signal) as Promise<Output>;
   const bindHost = async () => {
     await host.bind(bindingId);
-    await host.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints, action: { type: "sync" } });
+    await host.dispatch({ now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints, action: { type: "sync" } });
   };
   const peerPacket = (command: object, binding = bindingId): SignedConversationPacket => JSON.parse(peerSigner.sign(peerSession, JSON.stringify({
     roomId: host.roomId, bindingId: binding, sender: peerSession, recipient: session, requestId: crypto.randomUUID(), command,
@@ -95,7 +95,7 @@ window.runBrowserRoomCheck = async () => {
     const binding = crypto.randomUUID(); let turn = 0;
     const sync = async (target = current) => {
       await target.bind(binding);
-      return await target.dispatch({ now: Date.now(), bindingId: binding, channelOwnerId: owner.userId, hostSessionId: session, revision: ++turn, endpoints, action: { type: "sync" } }) as Output;
+      return await target.dispatch({ now: Date.now(), bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++turn, endpoints, action: { type: "sync" } }) as Output;
     };
     const chat = (target: BrowserRoomHost, body: object, signal?: AbortSignal) => target.dispatchPeer(JSON.parse(peerSigner.sign(peerSession, JSON.stringify({
       roomId: target.roomId, bindingId: binding, sender: peerSession, recipient: session, requestId: crypto.randomUUID(),
@@ -162,7 +162,7 @@ window.runBrowserRoomCheck = async () => {
       const records = await run({ type: "history", before: null });
       check(records.some(({ record }) => record.type === "history_message" && record.message.seq === 2
         && JSON.stringify(record.message.reply) === JSON.stringify(replied.message.reply)), "reopened history preserves the confirmed reply");
-      const offered = await current.dispatch({ now: Date.now(), bindingId: binding, channelOwnerId: owner.userId,
+      const offered = await current.dispatch({ now: Date.now(), bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner.userId,
         hostSessionId: session, revision: ++turn, endpoints, action: { type: "command", context: { connection,
           sessionId: session, requestId: crypto.randomUUID(), now: Date.now() }, command: { type: "file_offer",
           roomId: current.roomId, messageSeq: 1, attachmentId: attachment.id, sha256: attachment.sha256, available: true } } }) as Output;
@@ -322,7 +322,7 @@ window.runBrowserRoomCheck = async () => {
       bindingId: binding, sender: peerSession, recipient: session, requestId: crypto.randomUUID(), command })));
     try {
       await imageHost.bind(binding);
-      await imageHost.dispatch({ now: Date.now(), bindingId: binding, channelOwnerId: owner.userId, hostSessionId: session, revision: 1, endpoints, action: { type: "sync" } });
+      await imageHost.dispatch({ now: Date.now(), bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: 1, endpoints, action: { type: "sync" } });
       const bytes = new Uint8Array(65536); bytes.set(new TextEncoder().encode("GIF89a"));
       const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
       const image = { id: crypto.randomUUID(), name: "image.gif", size: bytes.length, mediaType: "image/gif",
@@ -380,7 +380,7 @@ window.runBrowserRoomCheck = async () => {
   try {
     const previousDatabase = `${database}-schema-6`;
     const old = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(previousDatabase, 6);
+      const request = indexedDB.open(previousDatabase, 8);
       request.onupgradeneeded = () => { request.result.createObjectStore("retained").put("original", "marker"); };
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
@@ -389,7 +389,7 @@ window.runBrowserRoomCheck = async () => {
       try { await BrowserRoomHost.storedRoomIds(previousDatabase); throw new Error("old schema accepted"); }
       catch (error) { check(String(error).includes("unsupported_storage_version"), "previous private schema is explicitly rejected"); }
       const saved = await new Promise<IDBDatabase>((resolve, reject) => {
-        const request = indexedDB.open(previousDatabase, 6);
+        const request = indexedDB.open(previousDatabase, 8);
         request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
       });
       try {
@@ -407,7 +407,7 @@ window.runBrowserRoomCheck = async () => {
     }
     const newerDatabase = `${database}-schema-newer`;
     await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open(newerDatabase, 9);
+      const request = indexedDB.open(newerDatabase, 10);
       request.onsuccess = () => { request.result.close(); resolve(); }; request.onerror = () => reject(request.error);
     });
     try {
@@ -444,7 +444,7 @@ window.runBrowserRoomCheck = async () => {
     check(imageSaved.reply?.result.type === "done" && imageSaved.projection.summary.icon === "future-room_7" && !("picture" in imageSaved.projection.summary),
       "the room directory keeps only the preset after the picture is saved");
     const imageAbort = new AbortController(), originalRoomPut = IDBObjectStore.prototype.put;
-    await host.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
+    await host.dispatch({ now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
       action: { type: "command", context: { connection, sessionId: peerSession, requestId: "guest-browse", now: Date.now() },
         command: { type: "browse", roomId: host.roomId, active: true } } });
     let pendingSummary: ReturnType<BrowserRoomHost["summary"]> | undefined;
@@ -498,7 +498,7 @@ window.runBrowserRoomCheck = async () => {
     await privateHost.bind(bindingId);
     try {
       const guestSession = crypto.randomUUID();
-      const output = await privateHost.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision,
+      const output = await privateHost.dispatch({ now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision,
         endpoints: { ...endpoints, [guestSession]: { member: { ...owner, userId: crypto.randomUUID() }, connected: true, canUsePeerTransport: true, signingKey: peerSigningKey } },
         action: { type: "command", context: { connection, sessionId: guestSession, requestId: "hidden", now: Date.now() },
           command: { type: "browse", roomId: privateHost.roomId, active: true } },
@@ -514,7 +514,7 @@ window.runBrowserRoomCheck = async () => {
       }
       const guest = { ...owner, userId: crypto.randomUUID() };
       const guestEndpoints = { ...endpoints, [guestSession]: { member: guest, connected: true, canUsePeerTransport: true, signingKey: peerSigningKey } };
-      const granted = await privateHost.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints,
+      const granted = await privateHost.dispatch({ now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints,
         action: { type: "command", context: { connection, sessionId: guestSession, requestId: null, now: Date.now() },
           command: { type: "enter_room", roomId: privateHost.roomId, inviteKey: invitation.reply!.result.key } },
       }) as Output;
@@ -523,7 +523,7 @@ window.runBrowserRoomCheck = async () => {
       const reopened = await BrowserRoomHost.open(database, privatePolicy);
       await reopened.bind(bindingId);
       try {
-        const restored = await reopened.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
+        const restored = await reopened.dispatch({ now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
         check(restored.projection.views[guestSession], "private invitation grant survives runtime reopen");
         const read = await dispatch({ type: "get_room_invite", roomId: reopened.roomId }, undefined, reopened);
         check(read.reply?.result.invitation?.key === invitation.reply!.result.key, "IndexedDB reopen preserves the readable invitation");
@@ -537,7 +537,7 @@ window.runBrowserRoomCheck = async () => {
         const afterReset = await reopened.dispatchPeer(privatePacket({ type: "history", before: null }), Date.now());
         check(afterReset.some(reply => reply.record.type === "history_message" && reply.record.message.text === "Before invitation reset"),
           "resetting an invitation preserves committed IndexedDB history");
-        const grantedAgain = await reopened.dispatch({ now: Date.now(), bindingId, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
+        const grantedAgain = await reopened.dispatch({ now: Date.now(), bindingId, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
         check(grantedAgain.projection.views[guestSession], "resetting an invitation preserves an existing user's grant");
       } finally { await reopened.close(); }
     } finally { await privateHost.close(); }
@@ -666,7 +666,7 @@ window.runBrowserRoomCheck = async () => {
       catch (error) { check(error instanceof Error && error.message === "room_host_conflict", "late claim cannot replace new owner"); }
       try { await lateClaim.dispatch({ bindingId: previousBinding }); throw new Error("failed claim dispatched"); }
       catch (error) { check(error instanceof Error && error.message === "stale_room_host", "failed claim disables dispatch"); }
-      const stale = await previousHost.dispatch({ now: Date.now(), bindingId: previousBinding, channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
+      const stale = await previousHost.dispatch({ now: Date.now(), bindingId: previousBinding, hostingMode: "lightweight", channelOwnerId: owner.userId, hostSessionId: session, revision: ++revision, endpoints,
         action: { type: "command", context: { connection, sessionId: session, requestId: null, now: Date.now() },
           command: { type: "update_room", roomId: previousHost.roomId, name: "Stale policy", icon: "future-room_7", access: "public", hidden: false } },
       }) as Output;
@@ -891,7 +891,7 @@ window.runBrowserRoomCheck = async () => {
     const legacyId = legacyHost.roomId;
     await legacyHost.close();
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(database, 8);
+      const request = indexedDB.open(database, 9);
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     try {
@@ -923,7 +923,7 @@ window.runBrowserRoomCheck = async () => {
 
       for (const [field, value, expected] of [["icon", undefined, "invalid_request"], ["icon", png, "invalid_request"], ["voiceBitrate", 0, "invalid_room_policy"],
         ["relayCapacity", 0, "invalid_room_policy"], ["passwordHash", "invalid", "invalid_room_policy"],
-        ["inviteHash", Array(32).fill(7), "invalid_room_policy"]] as const) {
+        ["inviteKey", "", "invalid_room_policy"]] as const) {
         const invalid = { ...JSON.parse(legacyPolicy), id: crypto.randomUUID(), [field]: value };
         const before = await storedPolicies(database);
         let opened: BrowserRoomHost | undefined, error: string | undefined;

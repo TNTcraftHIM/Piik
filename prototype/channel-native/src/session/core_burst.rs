@@ -141,7 +141,6 @@ impl CoreBurst {
                 Command::Browse {
                     room_id,
                     active: true,
-                    relay_capacity: None,
                 },
                 None,
             );

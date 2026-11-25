@@ -173,7 +173,6 @@ pub struct ServiceTransit {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostInput {
-    #[serde(default)]
     pub hosting_mode: crate::wire::HostingMode,
     pub channel_owner_id: Uuid,
     pub now: u64,
@@ -561,14 +560,7 @@ impl RoomProjection {
                 available,
                 delivery: None,
                 members: view.members.clone(),
-                capabilities: RoomCapabilities {
-                    history_seek: self.capabilities.history_seek && view.authorized && available,
-                    file_availability_limit: self
-                        .capabilities
-                        .file_availability_limit
-                        .filter(|_| view.authorized && available),
-                    ..self.capabilities.clone()
-                },
+                capabilities: self.capabilities.clone(),
                 file_availability: view
                     .file_availability
                     .clone()
@@ -706,18 +698,7 @@ impl RoomRuntime {
             return Err("peer_transport_unavailable");
         }
         match command {
-            Command::Browse {
-                active,
-                relay_capacity,
-                ..
-            } => {
-                if active {
-                    if let Some(capacity) = relay_capacity {
-                        self.set_relay_capacity(member, session, Some(capacity))?;
-                    }
-                }
-                self.browse(member, session, active)?;
-            }
+            Command::Browse { active, .. } => self.browse(member, session, active)?,
             Command::ObserveFiles {
                 observation_id,
                 keys,

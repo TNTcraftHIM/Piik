@@ -362,8 +362,6 @@ impl RoomRuntime {
             },
             capabilities: crate::wire::RoomCapabilities {
                 attachments: self.attachments_available(),
-                history_seek: true,
-                file_availability_limit: Some(crate::wire::FILE_AVAILABILITY_LIMIT),
             },
             participant_session_ids: self
                 .media_sessions()
@@ -5267,18 +5265,18 @@ mod tests {
 
         let admitted = room.snapshot(viewer, viewer_session).unwrap();
         assert!(admitted.room.authorized);
-        assert!(admitted.room.capabilities.history_seek);
+        assert!(admitted.room.history_lineage.is_some());
         let projection = room.project(BTreeMap::from([(
             viewer_session,
             room.recipient(viewer, viewer_session, true, |_| false).unwrap(),
         )]));
         assert!(
-            !projection
+            projection
                 .snapshot(viewer_session, false)
                 .unwrap()
                 .room
-                .capabilities
-                .history_seek
+                .history_lineage
+                .is_none()
         );
         assert_eq!(
             admitted
@@ -5332,7 +5330,7 @@ mod tests {
         );
         let locked = room.snapshot(viewer, viewer_session).unwrap();
         assert!(!locked.room.authorized);
-        assert!(!locked.room.capabilities.history_seek);
+        assert!(locked.room.history_lineage.is_none());
         assert!(!locked.room.can_manage);
         assert!(locked.room.participant_session_ids.is_empty());
         assert!(locked.room.file_activity.is_empty());

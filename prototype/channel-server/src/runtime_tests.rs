@@ -596,8 +596,8 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
     let invitation = operator
         .drain()
         .into_iter()
-        .find(|event| event["type"] == "room_invite")
-        .unwrap()["key"]
+        .find(|event| event["type"] == "room_reply" && event["result"]["type"] == "invite")
+        .unwrap()["result"]["key"]
         .clone();
     let mut failed = Endpoint::connect(&mut hub);
     failed.request(
@@ -1935,7 +1935,7 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
     let invite = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             match event(&mut creator).await {
-                Event::RoomInvite { key, .. } => break key,
+                Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => break key,
                 Event::Error { code, .. } => panic!("invite failed: {code}"),
                 _ => {}
             }
@@ -3176,7 +3176,7 @@ async fn hosted_room_copy_installs_history_under_fresh_authority() {
     let invite = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             match event(&mut creator).await {
-                Event::RoomInvite { key, .. } => break key,
+                Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => break key,
                 Event::Error { code, .. } => panic!("invite failed: {code}"),
                 _ => {}
             }

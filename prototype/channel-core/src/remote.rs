@@ -448,8 +448,6 @@ impl RemoteRoom {
                 file_availability: None,
                 capabilities: RoomCapabilities {
                     attachments: false,
-                    history_seek: false,
-                    file_availability_limit: None,
                 },
                 members: None,
             },

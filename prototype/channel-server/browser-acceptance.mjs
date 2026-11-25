@@ -60,7 +60,7 @@ async function browser(index, ...args) {
   assert(result.success, result.error ?? `agent-browser ${args[0]} failed`);
   return result.data;
 }
-const { evaluate, until, captureProbe, hook, action, view, picture, playing, progressing, publishScreen, capturedScreen, sample, audioProgressing, assertNoError } = fixture(browser);
+const { evaluate, until, captureProbe, hook, action, view, picture, playing, progressing, publishScreen, capturedScreen, sample, audioProgressing, audioReceiving, assertNoError } = fixture(browser);
 const voicePlayback = (index, publications, retain = false) => evaluate(index,
   `${JSON.stringify(publications)}.map(id => window.__channelProbe.voicePlayback(id, ${retain}))`);
 const nativeVoicePlaying = values => values.length > 0 && values.every(value =>
@@ -578,7 +578,7 @@ async function roomBase(initial) {
   const voicePairIds = (await view(0)).state.pairs.map(pair => pair.id).sort();
   await action(0, `setDeafened(${JSON.stringify(room)}, true)`);
   await until("deafen retires the retained local voice players", () => voicePlayback(0, listenedVoices), voicePlayersRetired);
-  await Promise.all([audioProgressing(0, dVoice), audioProgressing(0, localVoice), audioProgressing(1, dVoice), audioProgressing(3, localVoice)]);
+  await Promise.all([audioReceiving(0, dVoice), audioReceiving(0, localVoice), audioProgressing(1, dVoice), audioProgressing(3, localVoice)]);
   const deafenedPicture = await screenSound();
   assert.equal(deafenedPicture.elementId, soundingPicture.elementId, "deafen keeps the other room's actual picture player");
   assert.deepEqual(deafenedPicture.audioObjects, soundingPicture.audioObjects, "deafen keeps the other room's sound track");
@@ -1560,7 +1560,8 @@ try {
   const voicePairs = (await view(4)).state.pairs.map(pair => pair.id).sort();
   await action(4, `setDeafened(${JSON.stringify(roomId)}, true)`);
   await until("deafen retires the actual local voice players", () => voicePlayback(4, playedVoices), voicePlayersRetired);
-  await Promise.all(playedVoices.map(publication => audioProgressing(4, publication)));
+  // Deafen can stop leaf decoding while RTP and forwarding remain active.
+  await Promise.all(playedVoices.map(publication => audioReceiving(4, publication)));
   assert.deepEqual((await view(4)).state.pairs.map(pair => pair.id).sort(), voicePairs, "local deafen must retain routing transports");
   await action(4, `setDeafened(${JSON.stringify(roomId)}, false)`);
   await until("undeafen restores actual native voice playback", () => voicePlayback(4, playedVoices), nativeVoicePlaying);

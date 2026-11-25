@@ -64,12 +64,14 @@ over a reused comic's default; localized tooltips retain that context.
 - On the 2.x Viewer couch, pawns have no round lamps. While awaiting media
   readiness, a pawn's body breathes gently and becomes still when ready. The
   motion expresses the scope of the roster evidence, which is readiness.
-- The 3.0 couch shows room presence and activities.
+- The 3.0 couch shows presence, voice, sharing, watching and file activity.
+  Remote-control grants belong to the controls for the selected share.
   [3.0 Room Workspace](./visual-language.md#30-room-workspace)
 - Integrated pawn accessories describe participation: headphones mean voice
   membership, worn on the head while listening and around the neck when listening
   is paused. The microphone boom extends when input is on and folds up when muted.
-  A mouse on the body identifies an approved remote controller regardless of device.
+  On the 2.x couch, a mouse on the body identifies an approved remote controller
+  regardless of device.
   Shared glyphs use the cast's ink and
   existing pawn motion. Their facts come from voice membership/publication,
   local listening and native grants; leaving an activity removes its marker.

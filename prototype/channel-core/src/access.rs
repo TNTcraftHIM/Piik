@@ -56,7 +56,6 @@ pub struct RoomState {
     #[serde(default)]
     pub allow_service_relay: bool,
     password_hash: Option<String>,
-    invite_hash: Option<[u8; 32]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     invite_key: Option<String>,
     pub grants: BTreeSet<Uuid>,
@@ -112,10 +111,10 @@ impl RoomState {
                 .password_hash
                 .as_ref()
                 .is_some_and(|hash| PasswordHash::new(hash).is_err())
-            || self.invite_hash.is_some() != self.invite_key.is_some()
-            || self.invite_key.as_ref().is_some_and(|key| {
-                !crate::wire::valid_id(key) || self.invite_hash != Some(digest(key))
-            })
+            || self
+                .invite_key
+                .as_ref()
+                .is_some_and(|key| !crate::wire::valid_id(key))
         {
             return Err("invalid_room_policy");
         }
@@ -143,7 +142,6 @@ impl RoomState {
             // A room uses the site's forwarding once offered; its manager may decline.
             allow_service_relay: true,
             password_hash: None,
-            invite_hash: None,
             invite_key: None,
             grants: BTreeSet::new(),
         };
@@ -204,7 +202,7 @@ impl RoomState {
     }
 
     pub fn accepts_invite(&self, key: &str) -> bool {
-        self.invite_hash == Some(digest(key))
+        self.invite_key.as_deref().map(digest) == Some(digest(key))
     }
 
     pub fn enter(
@@ -231,7 +229,6 @@ impl RoomState {
 
     pub fn invite(&mut self) -> Result<String, &'static str> {
         let key = Uuid::new_v4().to_string();
-        self.invite_hash = Some(digest(&key));
         self.invite_key = Some(key.clone());
         Ok(key)
     }
@@ -273,11 +270,7 @@ impl RoomState {
             last_message_seq: 0,
             file_activity: Vec::new(),
             file_availability: None,
-            capabilities: crate::wire::RoomCapabilities {
-                attachments: false,
-                history_seek: false,
-                file_availability_limit: None,
-            },
+            capabilities: crate::wire::RoomCapabilities { attachments: false },
             members: can_manage.then(|| self.grants.iter().copied().collect()),
         })
     }

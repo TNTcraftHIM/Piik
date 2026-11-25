@@ -599,8 +599,8 @@ fn invite(core: &mut RoomNetwork, connection: Uuid, room: &str) -> String {
     .events
     .into_iter()
     .find_map(|(_, e)| match e {
-        Event::RoomInvite {
-            key, request_id, ..
+        Event::RoomReply {
+            result: RoomResult::Invite { key }, request_id, ..
         } => {
             assert_eq!(request_id.as_deref(), Some("invite"));
             Some(key)
@@ -647,9 +647,9 @@ fn room_invitation_reads_are_manager_only_and_never_rotate_the_current_link() {
         .events
         .into_iter()
         .find_map(|(recipient, event)| match event {
-            Event::RoomInviteState {
+            Event::RoomReply {
                 room_id,
-                invitation,
+                result: RoomResult::InviteState { invitation },
                 request_id,
             } => {
                 assert_eq!(recipient, connection);
@@ -689,7 +689,7 @@ fn room_invitation_reads_are_manager_only_and_never_rotate_the_current_link() {
     assert!(!denied
         .events
         .iter()
-        .any(|(_, event)| matches!(event, Event::RoomInviteState { .. })));
+        .any(|(_, event)| matches!(event, Event::RoomReply { result: RoomResult::InviteState { .. }, .. })));
     rejected(denied);
     for connection in [owner, creator, reader] {
         let snapshot = serde_json::to_string(network.state(connection)).unwrap();
@@ -1383,7 +1383,8 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     assert!(!checkpoint.contains(&owner_credential));
     assert!(!checkpoint.contains(&key));
     let room_policy = serde_json::to_value(&policy).unwrap();
-    assert!(!checkpoint.contains(&serde_json::to_string(&room_policy["inviteHash"]).unwrap()));
+    assert_eq!(room_policy["inviteKey"], key);
+    assert!(room_policy.get("inviteHash").is_none());
     let mut restored = core();
     let backup: piik_channel_core::backup::DomainMetadata =
         serde_json::from_str(&checkpoint).unwrap();

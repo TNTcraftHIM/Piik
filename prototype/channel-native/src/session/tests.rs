@@ -388,7 +388,7 @@ async fn missing_room_restore_waits_for_domain_admission_and_drops_denied_or_ret
         let room = RoomBackup::stage(
             &path.join("room.sqlite"),
             RoomMetadata {
-                version: 3,
+                version: RoomMetadata::VERSION,
                 domain_id: state.channel.id,
                 policy,
                 own_credential: None,
@@ -519,7 +519,7 @@ async fn hosted_private_backup_checks_creator_and_policy_before_replacing_bound_
         let room = RoomBackup::stage(
             &directory.path().join("room.sqlite"),
             RoomMetadata {
-                version: 3,
+                version: RoomMetadata::VERSION,
                 domain_id: state.channel.id,
                 policy: replacement,
                 own_credential: None,
@@ -675,7 +675,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
         let room = RoomBackup::stage(
             &stage_path.join("room.sqlite"),
             RoomMetadata {
-                version: 3,
+                version: RoomMetadata::VERSION,
                 domain_id: state.channel.id,
                 policy: replacement,
                 own_credential: None,

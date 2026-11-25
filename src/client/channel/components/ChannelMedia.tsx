@@ -22,7 +22,7 @@ import { observeDebugPlayback } from "../../lib/debug-webrtc";
 import { observeCompositedVideoFrame } from "../../media/video-frame-proof";
 import { elementPlaybackError, playbackFailure, type ScreenPlaybackError } from "../../media/viewer-playback";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
-import type { VideoFit, VideoRotation } from "../../media/video-geometry";
+import type { VideoFit, VideoRotation, VideoSize } from "../../media/video-geometry";
 import type { ChannelActions, ChannelScreenInput } from "../types";
 import { watchSeekPosition } from "../watch-media";
 import { useCopy } from "../../ui/copy";
@@ -332,8 +332,8 @@ export function observeChannelInputFrame(element: HTMLVideoElement, stream: Medi
   });
 }
 
-function ChannelVideoInput({ input, negotiatedFlowId, visible, held, interactive, label, fit, register, frame, issue, playing, fullscreen }: {
-  input: ChannelScreenInput; negotiatedFlowId?: string; visible: boolean; interactive: boolean; label: string; fit: VideoFit;
+function ChannelVideoInput({ input, negotiatedFlowId, visible, held, interactive, label, fit, rotation, register, frame, issue, playing, fullscreen }: {
+  input: ChannelScreenInput; negotiatedFlowId?: string; visible: boolean; interactive: boolean; label: string; fit: VideoFit; rotation: VideoRotation;
   /** This layer left the live inputs and holds its last frame. */
   held: boolean;
   register(input: ChannelScreenInput, element: HTMLVideoElement | null): void;
@@ -346,8 +346,9 @@ function ChannelVideoInput({ input, negotiatedFlowId, visible, held, interactive
   const [composited, setComposited] = useState(false);
   // A removed track's last frame loses its natural size, and object-fit then stretches it to the box.
   // The element reports no event for that loss, so the held layer takes the picture's last shape as its own box.
-  const [shape, setShape] = useState<string>();
-  const heldFit = held && shape && fit !== "fill" ? fit : undefined;
+  const [naturalSize, setNaturalSize] = useState<VideoSize>();
+  const heldSize = held && fit !== "fill" ? naturalSize : undefined;
+  useVideoRotation(ref, fit, rotation, heldSize);
   const attach = useCallback((element: HTMLVideoElement | null) => {
     ref.current = element; register(input, element);
   }, [input.flowId, input.stream, register]);
@@ -355,7 +356,7 @@ function ChannelVideoInput({ input, negotiatedFlowId, visible, held, interactive
     const element = ref.current!;
     element.muted = true;
     element.srcObject = input.stream;
-    setComposited(false); setShape(undefined);
+    setComposited(false); setNaturalSize(undefined);
     const stop = observeChannelInputFrame(element, input.stream, negotiatedFlowId, () => {
       setComposited(true); frame(input, element);
     });
@@ -367,11 +368,11 @@ function ChannelVideoInput({ input, negotiatedFlowId, visible, held, interactive
     void element.play().catch(error => { if (active) issue(input, element, error); });
     return () => { active = false; stop(); stopDebug(); element.muted = true; element.pause(); element.srcObject = null; };
   }, [input.flowId, input.stream, negotiatedFlowId, frame, issue]);
-  return <video ref={attach} playsInline muted inert={!interactive} style={{ objectFit: fit, aspectRatio: heldFit && shape }} aria-label={visible ? label : undefined} aria-hidden={!visible}
-    data-flow-id={input.flowId} data-selected={visible} data-composited={composited} data-switch-ready={input.switchReady} data-held-fit={heldFit}
+  return <video ref={attach} playsInline muted inert={!interactive} style={{ objectFit: fit, aspectRatio: heldSize && `${heldSize.width} / ${heldSize.height}` }} aria-label={visible ? label : undefined} aria-hidden={!visible}
+    data-flow-id={input.flowId} data-selected={visible} data-composited={composited} data-switch-ready={input.switchReady} data-held-fit={heldSize && fit}
     tabIndex={visible ? 0 : -1} onResize={event => {
       const { videoWidth: width, videoHeight: height } = event.currentTarget;
-      if (width && height) setShape(`${width} / ${height}`);
+      if (width && height) setNaturalSize({ width, height });
     }} onPlay={() => playing(input, false)} onPause={() => playing(input, true)}
     onEnded={() => playing(input, true)} onError={event => {
       const element = event.currentTarget;
@@ -452,7 +453,6 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
   const playbackRef = useMemo(() => ({ current: activeVideo }), [activeVideo]);
   const picture = usePictureInPicture(playbackRef);
   const previewPlayback = useHostPreviewPlayback(playbackRef, owned ? displayed?.stream ?? null : null, previewAutoPause, localSource);
-  useVideoRotation(playbackRef, pictureFit, pictureRotation);
   useAnchoredPopover(pictureTrigger, picturePanel, { side: "above", align: "center" });
   useLayoutEffect(() => { if (presentation === "background") picturePanel.current?.hidePopover(); }, [presentation]);
   const visibility = usePlaybackControlsVisibility(playbackRef, controls, blocked || !ready);
@@ -594,7 +594,7 @@ export function ChannelVideo({ stream, owned, localSource, sourcePaused = false,
   return <div className="c3-video c3-mini-player" data-controls-hidden={visibility.hidden} data-thumbnail={thumbnail || undefined} inert={presentation === "background"}>
     {rendered.map(input => <ChannelVideoInput key={`${input.flowId}:${input.stream.id}`} input={input} visible={shown(input)} held={held && shown(input)}
       negotiatedFlowId={"localDisplayKey" in input ? undefined : input.flowId}
-      interactive={interactive} label={label} fit={pictureFit} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
+      interactive={interactive} label={label} fit={pictureFit} rotation={pictureRotation} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
     <RoomChatOverlay session={interaction} visible={interactive && ready && !blocked && !paused && !sourcePaused} />
     {(sourcePaused || !blocked && (!ready || held || failure)) && <div className="c3-mini-message" data-source-paused={sourcePaused || undefined}>
       {(sourcePaused || !ready || held) && <span className="c3-frame-wait" role="status">{sourcePaused ? <Glyph name="pause" size={24} /> : <BrandMark size={32} motion="loop" />}

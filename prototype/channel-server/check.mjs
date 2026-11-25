@@ -57,7 +57,9 @@ async function connect(t, join = {}) {
   const client = { socket, wait,
     async request(command) {
       const requestId = randomUUID();
-      const response = wait(event => event.requestId === requestId && ["ack", "error", "room_reply", "profiles", "room_created"].includes(event.type), command.type);
+      const response = wait(event => event.requestId === requestId
+        && ["ack", "error", "room_reply", "profiles", "room_created"].includes(event.type)
+        && !(event.type === "ack" && ["room_invite", "get_room_invite"].includes(command.type)), command.type);
       socket.send(JSON.stringify({ ...command, requestId }));
       const result = await response;
       if (result.type === "error" || result.result?.type === "error") {
@@ -230,8 +232,8 @@ test("Server-owned private invitations admit new users, conceal content and revo
   assert(!concealed.state.publications.some(p => p.roomId === roomId));
   assert.equal((await outsider.request({ type: "browse", roomId, active: true })).type, "error");
   assert.equal((await outsider.request({ type: "enter_room", roomId, password: "wrong" })).type, "error");
-  assert.equal((await creator.request({ type: "room_invite", roomId })).type, "ack");
-  const invitation = await creator.wait(event => event.type === "room_invite" && event.roomId === roomId, "room invitation");
+  const invitation = await creator.request({ type: "room_invite", roomId });
+  assert.equal(invitation.type, "ack");
   assert.equal(typeof invitation.requestId, "string");
   const guest = await connect(t);
   assert.equal(guest.welcome.type, "welcome");

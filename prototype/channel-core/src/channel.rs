@@ -1448,12 +1448,9 @@ impl Channel {
         }
         let projection = &output.projection;
         self.check_room_policy(&projection.summary)?;
-        let file_availability_limit = projection.capabilities.file_availability_limit;
         if projection.summary.validate().is_err()
             || projection.history_lineage.is_nil()
             || projection.last_message_seq > i64::MAX as u64
-            || file_availability_limit
-                .is_some_and(|limit| !(1..=crate::wire::FILE_AVAILABILITY_LIMIT).contains(&limit))
             || projection.summary.id != id
             || projection.summary.creator_id != room.summary.creator_id
         {
@@ -1566,8 +1563,7 @@ impl Channel {
             if view.file_availability.as_ref().is_some_and(|observation| {
                 !ordinary
                     || !view.reading
-                    || !file_availability_limit
-                        .is_some_and(|limit| observation.available.len() <= limit)
+                    || observation.available.len() > crate::wire::FILE_AVAILABILITY_LIMIT
             }) || view.transit_endpoint.is_some_and(|endpoint| {
                 !projection.allow_service_relay
                     || Some(endpoint) != self.service_endpoint

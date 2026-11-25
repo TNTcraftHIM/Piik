@@ -438,6 +438,11 @@ pub fn data_queue_frames(bulk: bool) -> usize {
 }
 
 #[wasm_bindgen]
+pub fn file_availability_limit() -> usize {
+    piik_channel_core::wire::FILE_AVAILABILITY_LIMIT
+}
+
+#[wasm_bindgen]
 pub fn attachment_limits() -> Result<String, JsValue> {
     encode(&piik_channel_core::ATTACHMENT_LIMITS)
 }

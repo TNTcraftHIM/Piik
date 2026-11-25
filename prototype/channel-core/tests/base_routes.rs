@@ -129,7 +129,7 @@ fn warm_pair(network: &mut RoomNetwork, source: Uuid, viewer: Uuid, source_sessi
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomInvite { key, .. } => Some(key),
+            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .unwrap();
@@ -1013,7 +1013,7 @@ fn revoking_a_private_transit_retires_its_branch_and_keeps_its_public_pair() {
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomInvite { key, .. } => Some(key),
+            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .unwrap();
@@ -1706,7 +1706,7 @@ fn file_copy_selection_uses_the_last_link_confirmation_without_an_extra_sync() {
         .events
         .into_iter()
         .find_map(|(_, event)| match event {
-            Event::RoomInvite { key, .. } => Some(key),
+            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .unwrap();
@@ -2942,15 +2942,12 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
         if outcome == "pending" {
             use piik_channel_core::wire::{FileAvailability, FILE_AVAILABILITY_LIMIT};
 
-            for (limit, count, authorized, reading) in [
-                (Some(FILE_AVAILABILITY_LIMIT + 1), 1, true, true),
-                (Some(1), 2, true, true),
-                (Some(1), 1, true, false),
-                (Some(1), 1, false, true),
-                (None, 1, true, true),
+            for (count, authorized, reading) in [
+                (FILE_AVAILABILITY_LIMIT + 1, true, true),
+                (1, true, false),
+                (1, false, true),
             ] {
                 let mut invalid = output.clone();
-                invalid.projection.capabilities.file_availability_limit = limit;
                 let view = invalid
                     .projection
                     .views
@@ -2970,7 +2967,7 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
                     rejected.events.iter().any(|(_, event)| matches!(
                         event, Event::Error { code, .. } if code == "invalid_room_projection"
                     )),
-                    "accepted invalid observation ({limit:?}, {count}, {authorized}, {reading})"
+                    "accepted invalid observation ({count}, {authorized}, {reading})"
                 );
             }
         }

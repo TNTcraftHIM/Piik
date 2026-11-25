@@ -323,7 +323,7 @@ mod tests {
         let backup = RoomBackup::stage(
             &folder.join("staged.sqlite"),
             RoomMetadata {
-                version: 3,
+                version: RoomMetadata::VERSION,
                 domain_id: domain,
                 policy: room.clone(),
                 own_credential: None,

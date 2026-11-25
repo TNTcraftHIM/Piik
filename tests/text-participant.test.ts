@@ -200,7 +200,7 @@ test('text pagination, replies and mentions use signed Core commands and host co
     try {
       const command = JSON.parse(raw.toString());
       if (command.type === 'join') {
-        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, channelOwnerId: owner, hostSessionId: host, revision: 1,
+        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner, hostSessionId: host, revision: 1,
           endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true, canUsePeerTransport: false } }, action: { type: 'sync' } }));
         room.finish();
         socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
@@ -307,7 +307,7 @@ test('text retries keep one nonce across a lost confirmation and sign the curren
       const command = JSON.parse(raw.toString());
       if (command.type === 'join') {
         room?.free(); room = new rust.RoomHost(policy); binding = randomUUID();
-        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, channelOwnerId: owner, hostSessionId: host, revision: 1,
+        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner, hostSessionId: host, revision: 1,
           endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true, canUsePeerTransport: false } }, action: { type: 'sync' } }));
         room.finish();
         socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
@@ -408,7 +408,7 @@ test('text message reactions use advertised support and Core counted-history non
     try {
       const command = JSON.parse(raw.toString());
       if (command.type === 'join') {
-        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, channelOwnerId: owner, hostSessionId: host, revision: ++revision,
+        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, hostingMode: "lightweight", channelOwnerId: owner, hostSessionId: host, revision: ++revision,
           endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true, canUsePeerTransport: false } }, action: { type: 'sync' } }));
         room.finish();
         socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,

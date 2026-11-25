@@ -61,10 +61,12 @@ export function useStagePicture(stage: RefObject<HTMLElement | null>, sources: C
         if (!waiting) cancel();
         return;
       }
-      if (!next || !(next.owned || next.subscribed)) return;
-      const tile = root?.querySelector<HTMLElement>(`[data-publication-id="${CSS.escape(next.id)}"]`);
-      const video = next.kind === "watch" ? next.player?.video : tile?.querySelector<HTMLVideoElement>('video[data-selected="true"]');
-      if (!video || !tile?.contains(video) || video.readyState < 2 || attempt === video) return;
+      // A screen can change its selected video while keeping the same publication.
+      const target = next ?? (same?.kind === "screen" ? same : undefined);
+      if (!target || !(target.owned || target.subscribed)) return;
+      const tile = root?.querySelector<HTMLElement>(`[data-publication-id="${CSS.escape(target.id)}"]`);
+      const video = target.kind === "watch" ? target.player?.video : tile?.querySelector<HTMLVideoElement>('video[data-selected="true"]');
+      if (!video || !tile?.contains(video) || video === owner.video || video.readyState < 2 || attempt === video) return;
       attempt = video;
       void video.requestPictureInPicture().catch(() => { if (attempt === video) attempt = undefined; });
     }

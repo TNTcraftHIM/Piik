@@ -21,13 +21,13 @@ the feedback period; they do not delay that delivery.
   history owner toward follow-latest, interaction lifetime and operation feedback.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
-- [ ] **Private contract subtraction.** Remove duplicate delivery-failure
-  projections, the unused Browse capacity argument and constant room limits.
-  Return invitation results in the correlated reply and require an explicit
-  HostInput hosting mode. Set attachment-entry semantics before removing its
-  capability, and settle archive validity before deriving the invitation hash
-  solely from its key. Name each private format at its owner and batch the
-  private protocol change with its consumers.
+- [ ] **Browser relay stalls after local activity ends.** On Chrome 152, a
+  four-participant control with two downstream viewers can stop decoding at the
+  relay after it stops its own screen and local watching. Received frames keep
+  advancing while decoded frames, jitter-buffer output and downstream pictures
+  stop. Reproduce through the receiver and sender consumers before changing
+  forwarding; separately bypassing either encoding pool did not resolve it.
+  [Controlled evidence](./research/network-lab.md#browser-relay-after-local-unwatch)
 - [ ] **Native companion-audio retry.** Identify the released resource before
   narrowing the existing cross-pair retry.
 - [ ] **Native optional-flow probing.** Measure an optional trial arriving beside
@@ -85,10 +85,6 @@ the feedback period; they do not delay that delivery.
   against actual readers, writers and stored samples. Keep API/Bot capabilities
   within existing actions and authority. [ADR-0016](./adr/0016-shared-rust-core.md)
   records the adopted architecture separately from public release acceptance.
-- [ ] **Standalone Server owner entry.** Replace the documented durable-key URL
-  with a local operator bootstrap flow using the existing owner identity.
-  Keep ticket issuance at an authenticated local maintenance boundary; App
-  launch tickets do not supply a remote Server administration entry.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
@@ -371,11 +367,11 @@ the feedback period; they do not delay that delivery.
   lower layer with encoding full-size output at the granted rate. Reuse existing
   encoder grants and prove readability, cadence and resource cost before changing
   layer preference.
-- [ ] **Native send-consent lifetime.** Complete the Windows WebView control of
-  the integrated SDK's RFC 7675 correction in both negotiation roles. Preserve
-  permitted paths during ICE restart and reject retired credentials independently
-  of candidate viability. Reuse the completed Native/Chrome controls.
-  Keep transport consent and Piik route recovery with their existing owners.
+- [ ] **Native send-consent lifetime.** Preserve recoverable ICE disconnection
+  and retire unauthorized paths from the SDK's own permission and wakeups
+  ([packet control](./research/nat-traversal.md#native-ice-disconnection-and-send-consent)).
+  Complete Native adapter and Windows WebView checks in both negotiation roles.
+  Keep consent expiry separate from candidate viability and Piik route recovery.
 - [ ] **Shared-link website coverage.** Extend actual website and official
   embedded-player coverage toward VideoTogether's playback coverage. Verify
   source-issued media grants, supported commercial live sources, target Browsers
@@ -467,6 +463,6 @@ the feedback period; they do not delay that delivery.
 - **Managed Demo hosting.** Keep the existing P2P-only Demo pending a concrete
   option. [Provider assessment](./operations/website.md#managed-hosting-assessment)
 - **Phone as a Host microphone.** Revisit only for a concrete use case that
-  justifies the [pairing and input boundary](./research/camera-and-microphone.md#phone-microphone-assessment).
+  justifies the [pairing and input boundary](https://github.com/TNTcraftHIM/Piik/blob/e79e658d5f2430e2b40534b1dfe20b2d20d344b0/docs/research/camera-and-microphone.md#phone-microphone-assessment).
 - **Mobile controlled endpoints.** Separate scope from desktop keyboard/mouse
   control and desktop co-play.

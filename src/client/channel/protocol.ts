@@ -6,7 +6,7 @@ import { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../../shared/relay-c
 export { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
 
 // This is the experimental channel wire boundary; production room contracts stay separate.
-const id = z.string().min(1).max(128);
+export const id = z.string().min(1).max(128);
 const identityNameSchema = z.string().refine(name => name.length <= 64, "Name exceeds 64 UTF-16 units");
 export const IDENTITY_IMAGE_URL_BYTES = 24 * 1024;
 export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
@@ -14,7 +14,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
 export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 48;
+export const CHANNEL_PROTOCOL = 49;
 export function isIncompatibleProtocol(code: string): boolean {
   return code === "incompatible_protocol" || code.endsWith(": incompatible_protocol");
 }
@@ -23,7 +23,7 @@ export const CHANNEL_ROOM_LIMIT = 64;
 export const roomCreationPolicySchema = z.enum(["ordinary", "invite_only", "owner_only"]);
 export type RoomCreationPolicy = z.infer<typeof roomCreationPolicySchema>;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
-const roomInvitationSchema = z.discriminatedUnion("state", [
+export const roomInvitationSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("missing") }),
   z.object({ state: z.literal("available"), key: id }),
 ]);
@@ -48,8 +48,6 @@ export const roomSchema = z.object({
   serviceRelay: z.object({ enabled: z.boolean(), available: z.boolean() }).optional(),
   capabilities: z.object({
     attachments: z.boolean(),
-    historySeek: z.boolean().optional(),
-    fileAvailabilityLimit: z.number().int().positive().optional(),
   }),
   fileAvailability: z.object({ observationId: z.uuid(), available: z.array(z.boolean()) }).optional(),
   delivery: z.object({ hostSessionId: id, bindingId: id }).optional(),
@@ -182,8 +180,6 @@ export const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("conversation"), packet: signedConversationPacketSchema }),
   z.object({ type: z.literal("state"), state: snapshotSchema }),
   z.object({ type: z.literal("input_state"), registrations: z.array(z.object({ publicationId: id, controllerSessionId: id, flowId: id, secret: signingKey })) }),
-  z.object({ type: z.literal("room_invite"), roomId: id, key: id, requestId: id.optional() }),
-  z.object({ type: z.literal("room_invite_state"), roomId: id, invitation: roomInvitationSchema, requestId: id.optional() }),
   z.object({ type: z.literal("host_bound"), roomId: id, bindingId: id }),
   z.object({ type: z.literal("room_created"), room: roomSummarySchema, requestId: id.optional() }),
   z.object({ type: z.literal("host_input"), roomId: id, input: z.object({ bindingId: id }).passthrough() }),
@@ -267,7 +263,7 @@ export class ChannelEventDecoder {
     return event;
   }
 }
-export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" | "room_invite_state" | "room_reply" | "room_created" | "profiles" }> | Extract<ConversationReply["record"], { type: "confirmed" | "history_seek_result" }>;
+export type ChannelReply = Extract<ChannelEvent, { type: "room_reply" | "room_created" | "profiles" }> | Extract<ConversationReply["record"], { type: "confirmed" | "history_seek_result" }>;
 export type SignedConversationPacket = z.infer<typeof signedConversationPacketSchema>;
 export type RoomInvitationState = { state: "available"; url: string } | { state: "missing" };
 export interface ConversationAddress { roomId: string; bindingId: string; sender: string; recipient: string; requestId: string }
@@ -320,7 +316,7 @@ export type ChannelCommand =
   | { type: "delete_room"; roomId: string; deleteData: boolean }
   | { type: "host_output"; roomId: string; output: unknown }
   | { type: "host_stop"; roomId: string; bindingId: string }
-  | { type: "browse"; roomId: string; active: boolean; relayCapacity?: number }
+  | { type: "browse"; roomId: string; active: boolean }
   | { type: "relay_capacity"; roomId: string; capacity: number | null }
   | { type: "interaction_ready"; roomId: string }
   | { type: "react"; roomId: string; reaction: string; target: ReactionTarget; nonce: number }

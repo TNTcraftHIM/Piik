@@ -607,6 +607,26 @@ MSS to 1240 delivered the script in about 8 ms. This reproduces
 unmatched field loading report. Compression and endpoint MTU below 1500 alone
 do not exclude that failure.
 
+## Native ICE Disconnection And Send Consent
+
+An in-process control at pinned SDK revision
+[`2d0d6eaa`](https://github.com/TNTcraftHIM/str0m/tree/2d0d6eaaf4d19d7530588f695cd631eedf42acf5)
+used two RTCs, real DTLS/SRTP and SCTP, and the SDK's virtual-time deadlines.
+Suppressing both STUN directions produced `Disconnected` about 21.5 seconds
+after the last successful response while the selected path still had permission
+to send. Restoring STUN recovered the same RTC and credentials; the following
+observation delivered 200 authenticated RTP packets and 200 SCTP messages.
+
+Send permission expired at 30 seconds. Late authenticated STUN and re-adding the
+old candidates produced no application output or STUN reply on the retired path.
+Fresh ICE credentials or another tuple restored delivery, retaining the
+[RFC 7675 consent boundary](https://www.rfc-editor.org/rfc/rfc7675.html#section-5.1).
+The control used a read-only SDK query of its existing output authorization gate.
+Native's current immediate close on `Disconnected` cuts off the earlier recovery
+window. Its adapter still needs to preserve that window and handle actual expiry
+through the SDK's own wakeups. Browser decoding and independent-network acceptance
+remain open; these packet controls do not identify a field incident's cause.
+
 ## Primary Sources
 
 - [RFC 8445: ICE](https://datatracker.ietf.org/doc/html/rfc8445)

@@ -114,7 +114,7 @@ fn guest_policy_applies_at_every_directory_write_and_survives_restart() {
         .events
         .into_iter()
         .find_map(|(_, e)| match e {
-            Event::RoomInvite { key, .. } => Some(key),
+            Event::RoomReply { result: piik_channel_core::host::RoomResult::Invite { key }, .. } => Some(key),
             _ => None,
         })
         .unwrap();
