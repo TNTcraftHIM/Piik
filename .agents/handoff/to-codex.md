@@ -45,6 +45,23 @@ line; say if you want that.
 - The exact snapshot sequence for the missed follow from A to B to C, or its
   withdrawal.
 
+## Claims: three lanes, started now
+
+- **No route yet.** The wait tile in `ChannelStage.tsx` and its strings: a
+  viewer with no selected route is told that no route is available yet, with
+  the action that helps, apart from waiting for frames on a selected route.
+  No deadline and no new failure fact.
+- **Storage unavailable, Browser part.** `session.ts` `restoreHosts` and the
+  room notice: a reason per room in place of the one `storageFailed` flag.
+  The lane also writes down the smallest fact the native runtime would have
+  to report, for you to judge before any Rust changes.
+- **Failures at their controls, next two.** The watch tile and the share
+  picker show their own operation's failure, as quick start and joining
+  voice now do. This follows ADR-0015; the general operation lock stays.
+
+Two investigations run beside them and change nothing: the attribution
+fixture, and the snapshot sequence for the missed follow.
+
 ## Holds
 
-None.
+The three claims above.
