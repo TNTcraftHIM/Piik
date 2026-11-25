@@ -660,6 +660,16 @@ the constrained trial probed but lacked capacity. Full Native Driver admission
 and decoded-picture quality were outside this control; these timings are not
 field performance guarantees.
 
+A Windows Driver control on `86980991` kept injected feedback at 180 kbps and
+forwarded decodable synthetic VP8 and Opus silence. With selected video held at 10 fps,
+reducing the optional source from 10 to 2 fps lowered desired demand from
+269,727 to 159,099 bps. The Driver admitted optional picture and sound together
+after 2.018 seconds. Selected output identities stayed unchanged, and the
+received selected and optional media decoded through the existing Windows VP8
+and Opus decoders. This used the original-forwarding Driver without capture;
+received data was decoded offline. Capture-enabled derivation, physical audio,
+presented cadence and Internet performance remain separate checks.
+
 ### Duplicate NACK Feedback
 
 A controlled Windows UDP comparison uses Piik's `Transport.write_au`, real

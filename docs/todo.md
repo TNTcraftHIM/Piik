@@ -21,10 +21,20 @@ the feedback period; they do not delay that delivery.
   history owner toward follow-latest, interaction lifetime and operation feedback.
   Agree the next file handoff first; retain request correlation and local playback
   choices at their existing owners.
-- [ ] **Native optional-flow acceptance.** Exercise optional admission through
-  the actual Driver with selected picture and sound, changing source costs and
-  decoded playback. Reuse the [SDK demand control](./research/network-lab.md#native-desired-capacity);
+- [ ] **Native optional-flow acceptance.** Complete capture-enabled admission
+  with the actual encoder worker and presented playback. Reuse the
+  [Driver and SDK controls](./research/network-lab.md#native-desired-capacity);
   keep cross-flow allocation separate from SDK congestion control and frame admission.
+- [ ] **Room-writer progress.** Bound unanswered host work at the binding owner.
+  A controlled unresponsive writer leaves requests and route wakes outstanding
+  while its room remains available. Set the progress budget and recovery scope
+  before adding a deadline; compare the existing fresh-binding handshake with
+  connection recovery, including an unacknowledged initial Sync and healthy sibling rooms.
+- [ ] **Host synchronization under concurrent admission.** Measure actual writer
+  draining at the supported room scale before changing the outbound queue.
+  Deterministic queue controls reproduce pressure and show that replacing an old
+  Sync in place can reverse room revisions. Preserve intervening actions and
+  their order when considering coalescing.
 - [ ] **Current-attempt route feedback.** Project known rejected or exhausted
   route attempts through the existing status owner, with a specific recovery
   action. New peers, access or forwarding changes may enable a later attempt.
@@ -243,7 +253,8 @@ the feedback period; they do not delay that delivery.
   recurs. The first production step is one leaf moved to a strictly better
   place with the present proof, then one more child tried on unmet demand.
   The [evidence](./research/topology-improvement-design.md) lists the
-  remaining comparisons. Extend relay-exit controls to media-only loss while
+  remaining comparisons. Compare voice-source fanout against explicit room
+  limits and Browser hop cost, including higher audio bitrates. Extend relay-exit controls to media-only loss while
   signaling stays connected, and preserve healthy paths during control recovery.
   Reuse the matching-runtime recovery and late-proof controls when extending
   current operation ownership. Calibrate on independent networks before tuning
@@ -266,11 +277,9 @@ the feedback period; they do not delay that delivery.
 - [ ] **Room record fan-out.** Share broadcast eligibility and recipient
   expansion through the conversation outcome. Keep the Browser's current-binding
   check and the Native request processor's local-session filter in their adapters.
-- [ ] **App configuration ownership.** Use one startup representation in both
-  readers and writers. Move owner-seed initialization into the Domain before
-  removing the App copy; retain consent scope and cache namespaces. Remove the
-  unused limits route and replace preview-alias callers together with the alias.
-  Consolidate startup environment reads and control reply writers at their owners.
+- [ ] **App configuration ownership.** Move owner-seed initialization into the
+  Domain before removing the App copy; retain consent scope and cache namespaces.
+  Consolidate startup environment reads where their meanings and lifetimes match.
 - [ ] **Routing authority placement.** Measure the writer turn and storage
   validation cost before proposing domain-owned repair. Decide the revocable
   grant and writer-disconnect semantics separately from physical pair reuse.
@@ -303,7 +312,8 @@ the feedback period; they do not delay that delivery.
   entry and native dialogs before offering page-only control.
 - [ ] **App update distribution.** Configure the production signing identity and
   decide the beta-feed policy before distributing updater-capable packages;
-  retain manual download. The
+  retain manual download. Reclaim an abandoned download through its update owner,
+  preserving active installations and the retained handoff record. The
   [delivery proposal](./research/cross-platform-client-runtime.md#30-app-update-delivery)
   keeps authority, active sessions and data outside the download operation.
 - [ ] **Managed one-click deployment.** Validate an ordinary Piik room and data
@@ -334,6 +344,8 @@ the feedback period; they do not delay that delivery.
   on an existing call and the cost of finding a path through two idle peers.
 - [ ] **NAT field coverage.** Measure difficult physical networks and sustained
   concurrent use. [Random-mapping and linear-extension controls](./research/nat-traversal.md#random-mapping-collision-control)
+  Compare parallel surveys and search budgets under the same preparation deadline
+  before changing the accepted limits.
   Verify interface-scoped mDNS candidate resolution before adding a resolver.
   Define optional Server-port STUN exposure and authenticated ICE dispatch before
   adding a discovery responder to its existing socket owner.
