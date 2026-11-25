@@ -115,6 +115,26 @@ Checked against the canon, for your judgement:
   changed meaning, host and relay, in the naming standard. ADR-0008 and 0011
   need your statement of what applies to 3.0; I could not tell.
 
+## ADR-0019: the life of a message
+
+The owner wants sending, editing, deleting and searching decided for 3.0, and
+kept simple. [ADR-0019](../../docs/adr/0019-the-life-of-a-message.md) is
+proposed. It rests on a map of the present model and on how Matrix, XMPP and
+two chat services define the same things. In short: edit by the author only,
+one row with no earlier version and no time limit; delete as today; one
+revision per message covering text and reactions; search at the writer as a
+plain match in the core, with an index as a later optimisation; edit and
+search announced as capabilities so either can ship after release.
+
+What I would settle before the stored format is first published, since each
+touches a row: the time of the last edit, the meaning of the one revision, the
+record for a changed message, the marker a reply keeps when its target is
+deleted (today the reply field is dropped, `storage.rs:560`), and unknown
+fields in a backup's rows, which are dropped on import without notice today
+(`backup.rs:430-436`). Two facts from the map that an edit has to respect: a
+reply stores a 160-unit copy of the quoted text (`history.rs:281-300`), and
+mention offsets point into the text. Please give its six decisions an outcome.
+
 ## ADR-0018
 
 I take eight of your outcomes as written. They are better than what I sent:

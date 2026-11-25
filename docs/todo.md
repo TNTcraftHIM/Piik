@@ -237,6 +237,11 @@ the feedback period; they do not delay that delivery.
   The [evidence](./research/topology-improvement-design.md) lists the
   measurements still missing, first of them the wait after a silent parent
   death.
+- [ ] **The life of a message.** Decide
+  [ADR-0019](./adr/0019-the-life-of-a-message.md): edit by the author with no
+  earlier version kept, delete as today, one revision per message, and search
+  at the writer. Five points of the stored format are settled before it is
+  first published.
 - [ ] **Separate the canon from derived design in the documents.** Where a
   record states a founding idea beside defaults, numbers or mechanisms, link
   the [canon](./canon.md) and keep the derived design. Start with
