@@ -179,8 +179,12 @@ Derived outputs must stay within their source bitrate ceiling, including when
 that ceiling is below a usual lower-output floor. Codec preflight must observe
 real encoded progress; cadence tolerance alone cannot make zero output pass.
 Frame rate, bitrate, and `maintain-resolution | balanced |
-maintain-framerate` retain their controls. Display video uses the standard
-`contentHint = "motion"` for game motion.
+maintain-framerate` retain their controls. A Browser display sender's
+`contentHint` follows the stored preference: `detail` for `maintain-resolution`,
+`motion` otherwise, because Chromium turns an explicit `balanced` into
+`maintain-resolution` for screen content. Cameras and received tracks keep
+`motion`, startup protection changes only the sender preference, and the
+encoding pool's carrier keeps its own transport hint.
 Native H264 retains Constrained Baseline. Capture validates the coding-tool subset under
 RFC 6184, including equivalent Constrained Baseline constraint bytes, and reports
 the actual SPS profile/level; one vendor's byte spelling is not the contract.

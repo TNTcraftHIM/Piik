@@ -7949,6 +7949,38 @@ test("channel publications share one pool across Browser children, while Native 
   } finally { media.reset(); session.close(); }
 });
 
+test("a display sender's hint follows the stored picture preference through an edit and its rollback", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const transport = new ChannelTransport({ polite: true, iceServers: [], send() {}, receive() {}, connected() {}, roomData() {}, failed() {} });
+  const pc = RoomPeerConnection.instances[0];
+  const display = Object.assign(remoteTrack("video"), { getSettings: () => ({ displaySurface: "monitor", width: 1920, height: 1080 }) });
+  const camera = remoteTrack("video");
+  const clarity = { ...QUALITY_PROFILES["1080p30"], degradationPreference: "maintain-resolution" as const };
+  // The clone carries its hint before the sender first encodes it.
+  const added: string[] = [], add = pc.addTransceiver.bind(pc);
+  vi.spyOn(pc, "addTransceiver").mockImplementation((track, init) => { added.push(track.contentHint); return add(track, init); });
+  try {
+    transport.setOutgoing(new Map([
+      ["screen", { kind: "screen", stream: remoteStream("display", [display]), profile: clarity }],
+      ["camera", { kind: "screen", stream: remoteStream("camera", [camera]), profile: clarity }],
+    ]));
+    await vi.waitFor(() => expect(pc.senders).toHaveLength(2));
+    expect(added).toEqual(["detail", "motion"]);
+    const [screen, cameraSender] = pc.senders;
+    expect(screen.track).toBe(lastClone(display));
+    expect(screen.track.contentHint).toBe("detail");
+    expect(cameraSender.track.contentHint).toBe("motion");
+    await transport.configureVideo("screen", QUALITY_PROFILES["1080p30"]);
+    expect([screen.track.contentHint, screen.getParameters().degradationPreference]).toEqual(["motion", "balanced"]);
+    // Media rollback reapplies the previous profile through the same call.
+    await transport.configureVideo("screen", clarity);
+    expect([screen.track.contentHint, screen.getParameters().degradationPreference]).toEqual(["detail", "maintain-resolution"]);
+    await transport.configureVideo("camera", clarity);
+    expect(cameraSender.track.contentHint).toBe("motion");
+  } finally { transport.close(); }
+});
+
 test("an explicit picture edit leaves the sender queue available to its pool handoff", async () => {
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
