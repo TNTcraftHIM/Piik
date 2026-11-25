@@ -151,6 +151,14 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   }
   if (sourceView.snapshot !== state || sourceView.sessionId !== sessionId || sourceView.waitingWatches !== channel.waitingWatchPages) {
     const old = sourceView.snapshot;
+    // Until this viewer joins a successor, the room names the source it last joined, so the
+    // replacement of a pending successor names the same predecessor as that successor did.
+    const successorOf = (roomId: string, id: string) => {
+      const prior = [...old?.watchActivities ?? [], ...old?.publications.filter(p => p.kind === "screen") ?? []].find(s => s.id === id)?.predecessor?.id;
+      const names = (live: { id: string; roomId: string; predecessor?: { id: string } }) => live.id !== id && live.roomId === roomId
+        && !!live.predecessor && (live.predecessor.id === id || live.predecessor.id === prior);
+      return state?.watchActivities.find(names) ?? state?.publications.find(p => p.kind === "screen" && names(p));
+    };
     const sameSession = old && state && old.channel.id === state.channel.id && sourceView.sessionId === sessionId;
     const waiting = sameSession ? sourceView.waiting.filter(source =>
       state.channel.rooms.some(room => room.id === source.roomId && room.authorized)
@@ -162,9 +170,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       for (const source of viewed) {
         const room = state.channel.rooms.find(r => r.id === source.roomId && r.authorized);
         if (!room || source.sessionId === sessionId || [...state.publications, ...state.watchActivities].some(live => live.id === source.id)) continue;
-        const kind = "playback" in source ? "watch" : "screen";
-        const next = state.watchActivities.find(a => a.roomId === room.id && a.predecessor?.kind === kind && a.predecessor.id === source.id)
-          ?? state.publications.find(p => p.kind === "screen" && p.roomId === room.id && p.predecessor?.kind === kind && p.predecessor.id === source.id);
+        const next = successorOf(room.id, source.id);
         if (next && (channel.waitingWatchPages?.has(next.id) || state.watchSubscriptions.some(sub => sub.id === next.id) || state.subscriptions.includes(next.id))) continue;
         waiting.push({ kind: "waiting", id: next?.id ?? source.id, userId: source.userId, roomId: room.id, roomName: room.name,
           name: old.users.find(u => u.id === source.userId)?.name ?? t("channel.previewPage.user"),
@@ -173,8 +179,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       }
     }
     const focus = sourceView.focus;
-    const successor = focus?.focusedId && (state?.watchActivities.find(a => a.roomId === focus.roomId && a.predecessor?.id === focus.focusedId)
-      ?? state?.publications.find(p => p.kind === "screen" && p.roomId === focus.roomId && p.predecessor?.id === focus.focusedId));
+    const successor = focus?.focusedId && successorOf(focus.roomId, focus.focusedId);
     setView({ ...sourceView, focus: successor ? { roomId: successor.roomId, focusedId: successor.id } : sourceView.focus, snapshot: state, sessionId, waitingWatches: channel.waitingWatchPages, waiting });
   }
   const previousOwnedScreens = useRef<ReadonlySet<string>>(new Set(channel.ownedScreens));

@@ -12254,7 +12254,7 @@ test.each([
         expect(session.getSnapshot().waitingWatchPages?.size).toBe(0);
         return;
       }
-      expect(session.getSnapshot().state?.publications.find(publication => publication.kind === "screen")?.predecessor).toEqual({ kind: "watch", id: middle.id });
+      expect(session.getSnapshot().state?.publications.find(publication => publication.kind === "screen")?.predecessor).toEqual({ kind: "watch", id: original.id });
       await vi.waitFor(() => expect(subscriptions()).toHaveLength(1));
       current.receive({ type: "room_reply", roomId: screen.roomId, requestId: subscriptions()[0].requestId, result: { type: "done" } });
       current.receive({ type: "state", state: { ...final, subscriptions: [latest.id] } });
@@ -12268,11 +12268,48 @@ test.each([
       return;
     }
     expect(joins).toHaveLength(1);
-    expect(session.getSnapshot().state?.watchActivities[0].predecessor).toEqual({ kind: "watch", id: middle.id });
+    expect(session.getSnapshot().state?.watchActivities[0].predecessor).toEqual({ kind: "watch", id: original.id });
     expect(session.getSnapshot().waitingWatchPages?.has(latest.id)).toBe(true);
     confirmWatchJoinOrLeave(current);
     current.receive({ type: "state", state: { ...base, watchActivities: [latest], watchSubscriptions: [{ id: latest.id, mode: "direct" }] } });
     expect(session.getSnapshot().watchPlayers.get(latest.id)?.mode).toBe("direct");
+    expect(session.getSnapshot().waitingWatchPages?.size).toBe(0);
+  } finally { session.close(); }
+});
+test("a successor the room names after the pending join failed is still followed", async () => {
+  const { session, socket } = await setup(1000, false);
+  vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
+  const base = session.getSnapshot().state!;
+  const original = { id: "old", roomId: "first", sessionId: "publisher", userId: "other", viewerSessionIds: [],
+    source: { kind: "media" as const, url: "https://fixture.test/old.mp4" },
+    playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } };
+  const middle = { ...original, id: "middle", predecessor: { kind: "watch", id: original.id } };
+  // The room moved the pending handoff from middle to latest and kept the original predecessor.
+  const latest = { ...middle, id: "latest" };
+  const joins = (id: string, mode: "direct" | null) => socket.sent.filter(c => c.type === "join_watch" && c.id === id && c.mode === mode);
+  try {
+    socket.receive({ type: "state", state: { ...base, watchActivities: [original] } });
+    const initial = session.joinWatch(original.id);
+    confirmWatchJoinOrLeave(socket);
+    await initial;
+    socket.receive({ type: "state", state: { ...base, watchActivities: [original], watchSubscriptions: [{ id: original.id, mode: "direct" }] } });
+    socket.receive({ type: "state", state: { ...base, watchActivities: [middle] } });
+    const join = joins(middle.id, "direct");
+    expect(join).toHaveLength(1);
+    // A raised projection floor withholds the snapshot naming latest while the error is released at once.
+    socket.receive({ type: "room_reply", roomId: "first", requestId: join[0].requestId, result: { type: "error", code: "watch_unavailable" } });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    socket.receive({ type: "state", state: { ...base, watchActivities: [middle] } });
+    expect(joins(middle.id, "direct")).toHaveLength(1);
+    expect(joins(middle.id, null)).toHaveLength(1);
+    socket.receive({ type: "state", state: { ...base, watchActivities: [latest] } });
+    await vi.waitFor(() => expect(joins(latest.id, "direct")).toHaveLength(1));
+    expect(session.getSnapshot().state?.watchActivities[0].predecessor).toEqual({ kind: "watch", id: original.id });
+    expect(session.getSnapshot().waitingWatchPages?.has(latest.id)).toBe(true);
+    const next = joins(latest.id, "direct")[0];
+    socket.receive({ type: "room_reply", roomId: "first", requestId: next.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+    socket.receive({ type: "state", state: { ...base, watchActivities: [{ ...latest, predecessor: undefined }], watchSubscriptions: [{ id: latest.id, mode: "direct" }] } });
+    await vi.waitFor(() => expect(session.getSnapshot().watchPlayers.get(latest.id)?.mode).toBe("direct"));
     expect(session.getSnapshot().waitingWatchPages?.size).toBe(0);
   } finally { session.close(); }
 });
