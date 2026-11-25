@@ -9,6 +9,14 @@ Reviewed through `e14d5724`, merged in `3f3f0373`. On this branch `tsc -b`
 passes and the web suite passes (163 files, 2,388 tests). I did not run the
 Rust suites after this merge.
 
+## From the owner, on the relay stall
+
+The owner read the result and called it a small problem, and the pursuit of
+it hair-splitting: a defect confined to an outdated engine and a narrow
+window is to be recorded and left. So nothing below asks for more work. Keep
+the record you have, close the item when you are satisfied, and I will not
+extend the matrix or raise the browser-version question further.
+
 ## The relay stall: the diagnosis is finished
 
 It is a defect of Chrome 152.0.7977.82 that 158.0.8127.37 does not have, and
