@@ -129,6 +129,9 @@ pub async fn start(
     }
     #[cfg(windows)]
     command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    #[cfg(windows)]
+    let job = piik_channel_native::windows_job::Job::new()
+        .map_err(|error| Failure::new("tunnel-start", error))?;
     let mut child = command.spawn().map_err(|error| {
         Failure::new(
             if matches!(
@@ -142,11 +145,25 @@ pub async fn start(
             error,
         )
     })?;
+    #[cfg(windows)]
+    if let Err(error) = child
+        .raw_handle()
+        .context("missing tunnel process handle")
+        .and_then(|process| job.assign(process))
+    {
+        child
+            .kill()
+            .await
+            .map_err(|error| Failure::new("tunnel-start", error))?;
+        return Err(Failure::new("tunnel-start", error));
+    }
     let stdout = child.stdout.take().expect("piped stdout");
     let stderr = child.stderr.take().expect("piped stderr");
     let (ready, registered) = oneshot::channel();
     let (stop, stopped) = oneshot::channel();
     let task = tokio::spawn(async move {
+        #[cfg(windows)]
+        let _job = job;
         let _config = config;
         let result = supervise(&mut child, stdout, stderr, ready, stopped).await;
         // Every exit (including malformed output and a dropped startup future)

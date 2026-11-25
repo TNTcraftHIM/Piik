@@ -366,7 +366,7 @@ async fn child(
     codec: VideoCodec,
     execution: EncodingExecution,
 ) -> Result<()> {
-    let job = super::job::Job::new()?;
+    let job = crate::windows_job::Job::new()?;
     let mut child = tokio::process::Command::new(std::env::current_exe()?)
         .arg(worker::ARG)
         .stdin(Stdio::piped())
