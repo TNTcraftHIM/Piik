@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { z } from 'zod';
-import type { MessageReactionSnapshot, ReactionEvent, ReactionTarget } from '../../../src/client/channel/protocol';
+import type { MessageReactionSnapshot, ProfileUpdate, ReactionEvent, ReactionTarget } from '../../../src/client/channel/protocol';
 import init, { history_page_size, SessionSigner, verify_conversation } from '../pkg/piik_channel_browser.js';
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, requireConversationDelivery, roomSchema, createRoomCommand, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationAddress, type ConversationReply, type ChannelMessage, type ChatOptions, type RoomSettings, type RoomSummary } from '../../../src/client/channel/protocol';
 await init({ module_or_path: readFileSync(new URL('../pkg/piik_channel_browser_bg.wasm', import.meta.url)) });
@@ -176,7 +176,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     return await this.request(createRoomCommand(settings, this.userId, true), 'room_created') as RoomSummary;
   }
 
-  async setProfile({ name, avatar }: { name?: string; avatar?: string | null }): Promise<void> {
+  async setProfile({ name, avatar }: ProfileUpdate): Promise<void> {
     this.checkSocket(this.socket);
     await this.request({ type: 'set_profile', name, avatar });
   }
@@ -342,8 +342,9 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       if (!pending || pending.roomId !== event.roomId) return;
       if (event.result.type === 'error')
         this.complete(event.requestId, undefined, Error(event.result.code));
-      else if (pending.expects === 'ack')
+      else if (pending.expects === 'ack' && event.result.type === 'done')
         this.complete(event.requestId, event.result);
+      else this.complete(event.requestId, undefined, Error('invalid_response'));
       return;
     }
     if (event.type === 'ack') {

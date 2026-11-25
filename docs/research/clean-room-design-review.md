@@ -28,7 +28,7 @@ family. Where they agree with the tree, the choice follows from the product.
    and the revision model, and the internal interfaces. Each finding was
    checked against the cited lines.
 
-Limits: nothing was built or measured. A design from a brief does not know
+The requirements-only designs were not built or measured. A design from a brief does not know
 what the project learned by running. The designers are instances of one model
 family, so their agreement is weaker evidence than three human architects
 agreeing would be.
@@ -70,7 +70,7 @@ audits reached the same point from the code in every row marked †.
 | Capacity | A budget in bits, 70 to 80% of an uplink learned from sustained aggregate send. Two links degrading together mean the shared uplink. Depth is bounded. | A fanout peer count, 2 by default, set per room from 1 to 20 and per session from 0 to 20. Capacity is not measured in bits, and depth is unbounded. |
 | Picture † | Two modes. Sharp uses the `text` hint, never downscales and refines a still frame. Smooth uses `motion` ([content hints](https://www.w3.org/TR/mst-content-hint/)). | Every share is hinted `motion`. |
 | Connectivity † | The site's own endpoint answers STUN and offers a passive TCP candidate ([RFC 6544](https://www.rfc-editor.org/rfc/rfc6544)). | No TCP path; third-party STUN. |
-| Revocation | A lease: an endpoint that cannot hear the room authority for 6 to 10 s closes its links and stops capture. | None. |
+| Revocation | A lease: an endpoint that cannot hear the room authority for 6 to 10 s closes its links and stops capture. | Explicit room revocation, connection and binding retirement, bounded recovery and WebRTC consent. There is no separate room-authority heartbeat lease. |
 | Extension † | Every activity, built-in ones included, implements one trait. A whiteboard is a schema, a reducer, a panel and two registry lines. | About eleven non-interface files per new kind. |
 | Verification | A whole room runs in one process on virtual time with injected faults ([simulation testing](https://apple.github.io/foundationdb/testing.html)). | Control-plane tests run on explicit time with scripted pair and media failures. No seeded simulation of whole runtimes. |
 
@@ -99,14 +99,15 @@ audits reached the same point from the code in every row marked †.
   carrier-grade NAT: sequential in 22 to 26% and random in 36 to 45%.
   [Guha and Francis, 2005](https://www.usenix.org/legacy/event/imc05/tech/full_papers/guha/guha_html/)
   estimate TCP hole punching over the NAT pairings they sampled at 44.6%
-  without port prediction and 84.3% with it. A port search succeeds about 64%
-  of the time after 256 probes and 98% after 1,024 when one side keeps a stable
-  mapping and the hard side opens 256 ports; with destination-dependent
-  mappings on both sides the chance is small but not zero
+  without port prediction and 84.3% with it. A UDP model gives about a 64%
+  chance of hitting a mapping after 256 distinct probes and 98% after 1,024,
+  given one known stable endpoint and 256 distinct live mappings toward it.
+  With independent random mappings and exact return-tuple filtering on both
+  sides, a reverse-tuple collision is small but not impossible
   ([Tailscale](https://tailscale.com/blog/how-nat-traversal-works)). None of
-  these is a field measurement of UDP traversal for this product. Mesh VPNs
-  that skip these techniques have a funded relay network to fall back on.
-  Piik does not, so they are how it replaces relay capacity.
+  these is a field measurement of UDP traversal for this product. Piik has no
+  project-operated relay network, so improving direct connectivity can reduce
+  the forwarding work participants or their own servers must provide.
 
   What the designs do contribute is the shape: a predicted or searched address
   is a candidate for the one ICE agent, not a second traversal procedure

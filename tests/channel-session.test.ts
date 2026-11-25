@@ -8449,7 +8449,7 @@ test.each(["revoked", "source ended"] as const)("Watch Cancel checks the room gr
     if (outcome === "source ended") {
       // The recipient gets the Pull before its own room projection arrives.
       expect(wire().map(body => body.type)).toEqual(["pull"]);
-      expect(JSON.parse(remote.control(viewer, JSON.stringify(wire()[0])))).toEqual([]);
+      expect(remote.control(viewer, JSON.stringify(wire()[0]))).toEqual([]);
     } else {
       expect(control.send).not.toHaveBeenCalled();
       state.pairs[0].rooms = ["second"];
@@ -8466,7 +8466,7 @@ test.each(["revoked", "source ended"] as const)("Watch Cancel checks the room gr
       expect(wire().map(body => body.type)).toEqual(["pull", "cancel", "other_room"]);
       expect(wire()[1]).toMatchObject({ key, requestId: wire()[0].requestId });
       remote.control(viewer, JSON.stringify(wire()[1]));
-      expect(JSON.parse(remote.update(JSON.stringify([providerPlan]), JSON.stringify([[viewer, ["first"]]])))).toEqual([]);
+      expect(remote.update(JSON.stringify([providerPlan]), JSON.stringify([[viewer, ["first"]]]))).toEqual([]);
     }
     expect(pc.close).not.toHaveBeenCalled();
   } finally { watch.reset(); remote.free(); media.reset(); session.close(); }
@@ -8484,10 +8484,10 @@ test.each([true, false])("Watch bulk failure only writes Error with its room gra
   upstream.update(JSON.stringify([{ ...plan, upstream: null, downstream: [relay] }]), JSON.stringify([[relay, ["first"]]]));
   const send = vi.fn<ConstructorParameters<typeof WatchBytes>[0]>(async (peer, kind, data, allowed) => {
     if (peer === viewer) return media.sendData("z", kind, data, allowed);
-    const [read] = JSON.parse(upstream.control(relay, JSON.stringify(JSON.parse(data as string).body)));
-    for (const effect of JSON.parse(upstream.read_result(read.requestId, JSON.stringify({
+    const [read] = upstream.control(relay, JSON.stringify(JSON.parse(data as string).body));
+    for (const effect of upstream.read_result(read.requestId, JSON.stringify({
       mimeType: "video/mp4", totalSize: 131072, bytes: Array(65536).fill(read.offset ? 2 : 1), eof: read.offset === 65536,
-    })))) {
+    }))) {
       watch.data(provider, "chunk", Uint8Array.from(effect.frame));
     }
   });
@@ -8666,10 +8666,10 @@ test("a connecting bulk channel has a bounded frame queue and releases admission
 });
 
 test("rejected file admission cancels its shared-core consumer and releases the temporary sink", async () => {
-  const cancel = vi.fn(() => "[]"), abort = vi.fn(async () => {}), removeEntry = vi.fn(async () => {});
+  const cancel = vi.fn(() => []), abort = vi.fn(async () => {}), removeEntry = vi.fn(async () => {});
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
     initializeRuntime: async () => {},
-    FileDelivery: class { start() { return "[]"; } update() { return "[]"; } next_deadline() { return undefined; } cancel = cancel; free() {} },
+    FileDelivery: class { start() { return []; } update() { return []; } next_deadline() { return undefined; } cancel = cancel; free() {} },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   stubTransferStorage({
     getFileHandle: async () => ({ createWritable: async () => ({ abort }) }), removeEntry,
@@ -8742,9 +8742,9 @@ test.each(["initial", "resume"])("a stale %s file admission cannot retire a repl
     expect(aborts[1]).not.toHaveBeenCalled();
     // The real shared Rust source generates the response and the receiver
     // must write and verify it; the fixture does not synthesize delivery effects.
-    const reads = JSON.parse(upstream.control(receiver, pulls.at(-1)!, 0n));
+    const reads = upstream.control(receiver, pulls.at(-1)!, 0n);
     for (const read of reads) if (read.type === "read") {
-      const chunks = JSON.parse(upstream.read_result(JSON.stringify(read.key), BigInt(read.offset), read.requestId, bytes));
+      const chunks = upstream.read_result(JSON.stringify(read.key), BigInt(read.offset), read.requestId, bytes);
       for (const chunk of chunks) if (chunk.type === "send_chunk") files.data(source, "chunk", Uint8Array.from(chunk.frame));
     }
     await expect(next).resolves.toMatchObject({ size: bytes.length });
@@ -8767,8 +8767,8 @@ test.each([true, false])("a verified download survives optional retention (store
   else retain.mockRejectedValue(new DOMException("Full", "QuotaExceededError"));
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ initializeRuntime: async () => {},
     FileDelivery: class {
-      start() { return "[]"; } update() { return "[]"; } next_deadline() { return undefined; } cancel() { return "[]"; } free() {}
-      control() { return JSON.stringify([{ type: "complete", key }]); }
+      start() { return []; } update() { return []; } next_deadline() { return undefined; } cancel() { return []; } free() {}
+      control() { return [{ type: "complete", key }]; }
     },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   stubTransferStorage({
@@ -11120,9 +11120,9 @@ test.each(["tail", "first"])("late bulk %s fragments from a cancelled file canno
   const upstream = new rust.FileDelivery(source);
   upstream.update(JSON.stringify([{ ...plan, upstream: null, downstream: [receiver], receiving: false }]), JSON.stringify([[receiver, ["room"]]]), 0n);
   const chunksFor = (pull: string): Uint8Array[] => {
-    const effects = JSON.parse(upstream.control(receiver, pull, 0n));
+    const effects = upstream.control(receiver, pull, 0n);
     return effects.flatMap((effect: { type: string; key: typeof key; offset: number; requestId: string; frame: number[] }) => {
-      const output = effect.type === "read" ? JSON.parse(upstream.read_result(JSON.stringify(effect.key), BigInt(effect.offset), effect.requestId, bytes)) : [effect];
+      const output = effect.type === "read" ? upstream.read_result(JSON.stringify(effect.key), BigInt(effect.offset), effect.requestId, bytes) : [effect];
       return output.filter((next: { type: string }) => next.type === "send_chunk").map((next: { frame: number[] }) => Uint8Array.from(next.frame));
     });
   };
@@ -11167,7 +11167,7 @@ test("a delayed source busy error cannot fail a cancelled file's successful retr
   const blockerRequests = blockers.map(() => crypto.randomUUID());
   const blockerKeys = blockers.map(blocker => ({ roomId: blocker.roomId, messageSeq: blocker.messageSeq, attachmentId: blocker.attachment.id }));
   for (const [index, blocked] of blockerKeys.entries()) {
-    const reads = JSON.parse(upstream.control(receiver, JSON.stringify({ type: "pull", key: blocked, offset: 0, requestId: blockerRequests[index] }), 0n));
+    const reads = upstream.control(receiver, JSON.stringify({ type: "pull", key: blocked, offset: 0, requestId: blockerRequests[index] }), 0n);
     expect(reads.map((effect: { type: string }) => effect.type)).toEqual(["read"]);
   }
   const written = new Uint8Array(bytes.length);
@@ -11182,17 +11182,17 @@ test("a delayed source busy error cannot fail a cancelled file's successful retr
   const first = files.content(key, attachment, old.signal); void first.catch(() => {});
   try {
     await vi.waitFor(() => expect(pulls).toHaveLength(1));
-    const rejected = JSON.parse(upstream.control(receiver, pulls[0], 0n));
+    const rejected = upstream.control(receiver, pulls[0], 0n);
     expect(rejected).toEqual([{ type: "send_control", peer: receiver, control: { type: "error", key, requestId: JSON.parse(pulls[0]).requestId, code: "file_transfer_busy" } }]);
     old.abort(); await expect(first).rejects.toMatchObject({ name: "AbortError" });
     upstream.control(receiver, JSON.stringify({ type: "cancel", key: blockerKeys[0], offset: 0, requestId: blockerRequests[0] }), 0n);
     const retry = files.content(key, attachment, next.signal); void retry.catch(() => {});
     await vi.waitFor(() => expect(pulls).toHaveLength(2));
-    const reads = JSON.parse(upstream.control(receiver, pulls[1], 0n));
+    const reads = upstream.control(receiver, pulls[1], 0n);
     expect(reads.map((effect: { type: string }) => effect.type)).toEqual(["read"]);
     files.data(source, "control", JSON.stringify(rejected[0].control));
     for (const read of reads) {
-      const chunks = JSON.parse(upstream.read_result(JSON.stringify(read.key), BigInt(read.offset), read.requestId, bytes));
+      const chunks = upstream.read_result(JSON.stringify(read.key), BigInt(read.offset), read.requestId, bytes);
       for (const chunk of chunks) if (chunk.type === "send_chunk") files.data(source, "chunk", Uint8Array.from(chunk.frame));
     }
     expect(new Uint8Array(await (await retry).arrayBuffer())).toEqual(bytes);
@@ -11769,6 +11769,12 @@ test("viewers join the exact confirmed screen and watch successor through normal
     reply("join_watch");
   } finally { session.close(); }
 });
+function confirmWatchJoinOrLeave(socket: ChannelSocket) {
+  const command = socket.sent.findLast(c => c.type === "join_watch")!;
+  socket.receive({ type: "room_reply", roomId: command.roomId, requestId: command.requestId,
+    result: command.mode === null ? { type: "done" } : { type: "watch_ready", serverTime: 1000 } });
+}
+
 test.each(["only grant", "left", "revoked", "App page", "direct failure"] as const)("original page successor keeps the confirmed watch until %s", async route => {
   const { session, socket } = await setup(1000, false);
   vi.stubGlobal("document", { createElement: () => new WatchTestVideo() });
@@ -11776,7 +11782,7 @@ test.each(["only grant", "left", "revoked", "App page", "direct failure"] as con
   const old = { id: "old", roomId: "first", sessionId: "other", userId: "other", viewerSessionIds: [],
     source: { kind: "media", url: "https://media.test/old.mp4" }, playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 1000 } };
   const next = { ...old, id: "new", predecessor: { kind: "watch", id: old.id }, source: { kind: "website", url: "https://www.example.test/page", ...(route === "direct failure" ? { mediaUrl: "https://media.test/failing.mp4" } : {}) } };
-  const reply = () => socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.findLast(c => c.type === "join_watch")!.requestId, result: { type: "watch_ready", serverTime: 1000 } });
+  const reply = () => confirmWatchJoinOrLeave(socket);
   try {
     socket.receive({ type: "state", state: { ...base, watchActivities: [old] } });
     const joining = session.joinWatch(old.id); reply(); await joining;
@@ -11853,8 +11859,7 @@ test.each(["watching", "left", "revoked"] as const)("watch replacement obtains a
   const activity = { id: "watch-one", roomId: "first", viewerSessionIds: [], sessionId: "other", userId: "other",
     source: { kind: "media" as const, url: "https://media.test/one.mp4" },
     playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 1000 } };
-  const reply = () => socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.findLast(c => c.type === "join_watch")!.requestId,
-    result: { type: "watch_ready", serverTime: 1000 } });
+  const reply = () => confirmWatchJoinOrLeave(socket);
   try {
     const snapshot = session.getSnapshot().state!;
     socket.receive({ type: "state", state: { ...snapshot, watchActivities: [activity] } });
@@ -14053,14 +14058,14 @@ test("one admitted Watch aggregate fits the shared bulk queue while control stay
   source.update(JSON.stringify([{ roomId: "first", activityId, source: { sessionId: sourceId, resourceId, format: "file" },
     upstream: null, downstream: [peer], receiving: false }]), JSON.stringify([[peer, ["first"]]]));
   const ids = Array.from({ length: 20 * 4 }, () => crypto.randomUUID());
-  for (const requestId of ids) expect(JSON.parse(source.control(peer, JSON.stringify({ type: "pull", key, requestId, offset: 0, length: 65536 })))[0].type).toBe("read");
+  for (const requestId of ids) expect(source.control(peer, JSON.stringify({ type: "pull", key, requestId, offset: 0, length: 65536 }))[0].type).toBe("read");
   const { session, media, pc } = await setupRoomMedia();
   const pending: Promise<void>[] = [], rejected: string[] = [], sizes: number[] = [];
   try {
     pc.connected(); pc.channels[0].open(); pc.channels[1].open(); pc.channels[1].bufferedAmount = 65536;
-    for (const id of ids) for (const effect of JSON.parse(source.read_result(id, JSON.stringify({
+    for (const id of ids) for (const effect of source.read_result(id, JSON.stringify({
       mimeType: '"'.repeat(128), totalSize: 65536, bytes: Array(65536).fill(7), eof: true,
-    })))) if (effect.type === "send_chunk") {
+    }))) if (effect.type === "send_chunk") {
       const frame = Uint8Array.from(effect.frame as number[]); sizes.push(frame.length);
       pending.push(media.sendData("z", "chunk", frame).catch(error => { rejected.push(error.message); }));
     }
@@ -15011,10 +15016,7 @@ test.each([{ volume: 0.35, muted: true }, { volume: 0.35, muted: false }, { volu
       byteSource: { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "dash" as const },
       playback: { timeline: "media" as const, position: 0, paused: false, rate: 1, anchorTime: 1000 } };
     const other = { ...activity, id: "other-audio-watch" };
-    const confirm = () => {
-      const command = socket.sent.findLast(value => value.type === "join_watch")!;
-      socket.receive({ type: "room_reply", roomId: "first", requestId: command.requestId, result: { type: "watch_ready", serverTime: 1000 } });
-    };
+    const confirm = () => confirmWatchJoinOrLeave(socket);
     const join = async (id: string, mode: "direct" | "peer", expected: { volume: number; muted: boolean }) => {
       const playStart = played.length;
       const joining = session.joinWatch(id, mode);
@@ -15273,7 +15275,7 @@ test("a full upstream control queue preserves an admitted sibling file range", a
     source.update(JSON.stringify([{ ...plan, upstream: null, downstream: [relay] }]), JSON.stringify([[relay, ["first"]]]), 0n);
     pull(fast, 65536);
     await vi.waitFor(() => expect(control.send).toHaveBeenCalledTimes(1));
-    const [read] = JSON.parse(source.control(relay, control.send.mock.calls[0][0], 0n));
+    const [read] = source.control(relay, control.send.mock.calls[0][0], 0n);
     control.bufferedAmount = 65536;
     const pending = Array.from({ length: rust.data_queue_frames(false) }, () => media.sendData("z", "control", "{}"));
     pull(slow, 0);
@@ -15281,7 +15283,7 @@ test("a full upstream control queue preserves an admitted sibling file range", a
     control.bufferedAmount = 0;
     control.dispatchEvent(new Event("bufferedamountlow"));
     await Promise.all(pending);
-    const [chunk] = JSON.parse(source.read_result(JSON.stringify(key), 65536n, read.requestId, Uint8Array.of(42)));
+    const [chunk] = source.read_result(JSON.stringify(key), 65536n, read.requestId, Uint8Array.of(42));
     files.data(holder, "chunk", Uint8Array.from(chunk.frame));
     await vi.waitFor(() => expect(replies.map(reply => [reply.peer, reply.kind])).toEqual([[slow, "control"], [fast, "chunk"]]));
     expect(JSON.parse(replies[0].data as string).code).toBe("file_transfer_busy");
@@ -15604,4 +15606,38 @@ test('a watch that ends during source selection does not block the new share', a
     expect(start.replaceId).toBeUndefined();
     expect(session.getSnapshot().watchPlayers.get(start.id as string)?.owner).toBe(true);
   } finally { releaseReady(); session.close(); }
+});
+
+test("terminal candidate preserves invitation payload before done", async () => {
+  const { session, socket } = await setup();
+  try {
+    const finished = vi.fn();
+    const reading = session.getRoomInvite("first").then(finished);
+    const requestId = socket.sent.at(-1)!.requestId;
+    socket.receive({ type: "room_invite_state", roomId: "first", requestId, invitation: { state: "missing" } });
+    await Promise.resolve();
+    expect(finished).not.toHaveBeenCalled();
+    socket.receive({ type: "room_reply", roomId: "first", requestId, result: { type: "done" } });
+    await reading;
+    expect(finished).toHaveBeenCalledExactlyOnceWith({ state: "missing" });
+  } finally { session.close(); }
+});
+
+test("terminal candidate rejects unsupported room results only for their caller", async () => {
+  const { session, socket } = await setup();
+  try {
+    const saving = session.updateRoom("first", { name: "updated" }, false);
+    const requestId = socket.sent.at(-1)!.requestId;
+    const received = (roomId: string, id: unknown, type: string) => socket.receive({ type: "room_reply", roomId, requestId: id, result: { type } });
+    received("first", "observer", "unknown");
+    received("second", requestId, "unknown");
+    expect(session.getSnapshot().pending.has("room:first")).toBe(true);
+    received("first", requestId, "unknown");
+    await expect(saving).rejects.toThrow("invalid_response");
+    expect(session.getSnapshot().connection).toBe("connected");
+    expect(session.getSnapshot().error).toBeNull();
+    const retry = session.updateRoom("first", { name: "updated" }, false);
+    received("first", socket.sent.at(-1)!.requestId, "done");
+    await retry;
+  } finally { session.close(); }
 });

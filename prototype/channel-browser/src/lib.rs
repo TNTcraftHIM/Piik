@@ -481,6 +481,34 @@ impl ForwardingBudget {
     }
 }
 
+#[wasm_bindgen(module = "/src/delivery-effects.js")]
+extern "C" {
+    #[wasm_bindgen(js_name = deliveryEffect)]
+    fn delivery_effect(metadata: &str, payload: Option<Vec<u8>>) -> JsValue;
+}
+
+fn watch_effects(effects: Vec<piik_channel_core::watch_delivery::WatchEffect>) -> Result<Vec<JsValue>, JsValue> {
+    use piik_channel_core::watch_delivery::WatchEffect;
+    effects.into_iter().map(|mut effect| {
+        let payload = match &mut effect {
+            WatchEffect::SendChunk { frame, .. } => Some(std::mem::take(frame)),
+            WatchEffect::Received { result, .. } => Some(std::mem::take(&mut result.bytes)),
+            _ => None,
+        };
+        Ok(delivery_effect(&encode(&effect)?, payload))
+    }).collect()
+}
+
+fn file_effects(effects: Vec<piik_channel_core::file_delivery::FileEffect>) -> Result<Vec<JsValue>, JsValue> {
+    use piik_channel_core::file_delivery::FileEffect;
+    effects.into_iter().map(|mut effect| {
+        let payload = match &mut effect {
+            FileEffect::SendChunk { frame, .. } | FileEffect::Write { bytes: frame, .. } => Some(std::mem::take(frame)),
+            _ => None,
+        };
+        Ok(delivery_effect(&encode(&effect)?, payload))
+    }).collect()
+}
 #[wasm_bindgen]
 pub struct WatchDelivery(piik_channel_core::watch_delivery::WatchDelivery);
 #[wasm_bindgen]
@@ -491,8 +519,8 @@ impl WatchDelivery {
             Uuid::parse_str(session_id).map_err(|_| error("invalid_session"))?,
         )))
     }
-    pub fn update(&mut self, plans: &str, room_peers: &str) -> Result<String, JsValue> {
-        encode(&self.0.update(parse(plans)?, parse(room_peers)?))
+    pub fn update(&mut self, plans: &str, room_peers: &str) -> Result<Vec<JsValue>, JsValue> {
+        watch_effects(self.0.update(parse(plans)?, parse(room_peers)?))
     }
     pub fn read(
         &mut self,
@@ -500,30 +528,30 @@ impl WatchDelivery {
         request_id: &str,
         offset: u64,
         length: usize,
-    ) -> Result<String, JsValue> {
-        encode(&self.0.read(
+    ) -> Result<Vec<JsValue>, JsValue> {
+        watch_effects(self.0.read(
             parse(key)?,
             Uuid::parse_str(request_id).map_err(|_| error("invalid_request"))?,
             offset,
             length,
         ))
     }
-    pub fn cancel(&mut self, request_id: &str) -> Result<String, JsValue> {
-        encode(
-            &self
+    pub fn cancel(&mut self, request_id: &str) -> Result<Vec<JsValue>, JsValue> {
+        watch_effects(
+            self
                 .0
                 .cancel(Uuid::parse_str(request_id).map_err(|_| error("invalid_request"))?),
         )
     }
-    pub fn control(&mut self, peer: &str, control: &str) -> Result<String, JsValue> {
-        encode(&self.0.control(
+    pub fn control(&mut self, peer: &str, control: &str) -> Result<Vec<JsValue>, JsValue> {
+        watch_effects(self.0.control(
             Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?,
             parse(control)?,
         ))
     }
-    pub fn chunk(&mut self, peer: &str, bytes: &[u8]) -> Result<String, JsValue> {
-        encode(
-            &self
+    pub fn chunk(&mut self, peer: &str, bytes: &[u8]) -> Result<Vec<JsValue>, JsValue> {
+        watch_effects(
+            self
                 .0
                 .chunk(
                     Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?,
@@ -532,27 +560,27 @@ impl WatchDelivery {
                 .map_err(error)?,
         )
     }
-    pub fn peer_closed(&mut self, peer: &str) -> Result<String, JsValue> {
-        encode(
-            &self
+    pub fn peer_closed(&mut self, peer: &str) -> Result<Vec<JsValue>, JsValue> {
+        watch_effects(
+            self
                 .0
                 .peer_closed(Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?),
         )
     }
-    pub fn read_failed(&mut self, request_id: &str, code: &str) -> Result<String, JsValue> {
-        encode(&self.0.read_result(
+    pub fn read_failed(&mut self, request_id: &str, code: &str) -> Result<Vec<JsValue>, JsValue> {
+        watch_effects(self.0.read_result(
             Uuid::parse_str(request_id).map_err(|_| error("invalid_request"))?,
             Err(code.into()),
         ))
     }
-    pub fn read_result(&mut self, request_id: &str, result: &str) -> Result<String, JsValue> {
-        encode(&self.0.read_result(
+    pub fn read_result(&mut self, request_id: &str, result: &str) -> Result<Vec<JsValue>, JsValue> {
+        watch_effects(self.0.read_result(
             Uuid::parse_str(request_id).map_err(|_| error("invalid_request"))?,
             Ok(parse(result)?),
         ))
     }
-    pub fn request_failed(&mut self, request_id: &str, code: &str) -> Result<String, JsValue> {
-        encode(&self.0.request_failed(
+    pub fn request_failed(&mut self, request_id: &str, code: &str) -> Result<Vec<JsValue>, JsValue> {
+        watch_effects(self.0.request_failed(
             Uuid::parse_str(request_id).map_err(|_| error("invalid_request"))?,
             code,
         ))
@@ -566,17 +594,17 @@ impl FileDelivery {
             Uuid::parse_str(session_id).map_err(|_| error("invalid_session"))?,
         )))
     }
-    pub fn update(&mut self, plans: &str, room_peers: &str, now: u64) -> Result<String, JsValue> {
-        encode(&self.0.update(parse(plans)?, parse(room_peers)?, now))
+    pub fn update(&mut self, plans: &str, room_peers: &str, now: u64) -> Result<Vec<JsValue>, JsValue> {
+        file_effects(self.0.update(parse(plans)?, parse(room_peers)?, now))
     }
-    pub fn start(&mut self, key: &str) -> Result<String, JsValue> {
-        encode(&self.0.start(parse(key)?))
+    pub fn start(&mut self, key: &str) -> Result<Vec<JsValue>, JsValue> {
+        file_effects(self.0.start(parse(key)?))
     }
-    pub fn cancel(&mut self, key: &str) -> Result<String, JsValue> {
-        encode(&self.0.cancel(&parse(key)?))
+    pub fn cancel(&mut self, key: &str) -> Result<Vec<JsValue>, JsValue> {
+        file_effects(self.0.cancel(&parse(key)?))
     }
-    pub fn control(&mut self, peer: &str, control: &str, now: u64) -> Result<String, JsValue> {
-        encode(&self.0.control(
+    pub fn control(&mut self, peer: &str, control: &str, now: u64) -> Result<Vec<JsValue>, JsValue> {
+        file_effects(self.0.control(
             Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?,
             parse(control)?,
             now,
@@ -585,12 +613,12 @@ impl FileDelivery {
     pub fn next_deadline(&self) -> Option<u64> {
         self.0.next_deadline()
     }
-    pub fn expire(&mut self, now: u64) -> Result<String, JsValue> {
-        encode(&self.0.expire(now))
+    pub fn expire(&mut self, now: u64) -> Result<Vec<JsValue>, JsValue> {
+        file_effects(self.0.expire(now))
     }
-    pub fn chunk(&mut self, peer: &str, bytes: &[u8]) -> Result<String, JsValue> {
-        encode(
-            &self
+    pub fn chunk(&mut self, peer: &str, bytes: &[u8]) -> Result<Vec<JsValue>, JsValue> {
+        file_effects(
+            self
                 .0
                 .chunk(
                     Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?,
@@ -605,16 +633,16 @@ impl FileDelivery {
         offset: u64,
         request_id: &str,
         bytes: Vec<u8>,
-    ) -> Result<String, JsValue> {
-        encode(&self.0.read_result(
+    ) -> Result<Vec<JsValue>, JsValue> {
+        file_effects(self.0.read_result(
             &parse(key)?,
             offset,
             Uuid::parse_str(request_id).map_err(|_| error("invalid_request"))?,
             bytes,
         ))
     }
-    pub fn written(&mut self, key: &str, offset: u64, length: usize) -> Result<String, JsValue> {
-        encode(&self.0.written(&parse(key)?, offset, length))
+    pub fn written(&mut self, key: &str, offset: u64, length: usize) -> Result<Vec<JsValue>, JsValue> {
+        file_effects(self.0.written(&parse(key)?, offset, length))
     }
     pub fn peer_failed(
         &mut self,
@@ -622,8 +650,8 @@ impl FileDelivery {
         peer: &str,
         request_id: &str,
         code: &str,
-    ) -> Result<String, JsValue> {
-        encode(&self.0.peer_failed(
+    ) -> Result<Vec<JsValue>, JsValue> {
+        file_effects(self.0.peer_failed(
             &parse(key)?,
             Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?,
             Uuid::parse_str(request_id).map_err(|_| error("invalid_request"))?,
@@ -635,23 +663,23 @@ impl FileDelivery {
         key: &str,
         request_id: &str,
         code: &str,
-    ) -> Result<String, JsValue> {
-        encode(&self.0.request_failed(
+    ) -> Result<Vec<JsValue>, JsValue> {
+        file_effects(self.0.request_failed(
             &parse(key)?,
             Uuid::parse_str(request_id).map_err(|_| error("invalid_request"))?,
             code,
         ))
     }
-    pub fn peer_closed(&mut self, key: &str, peer: &str, code: &str) -> Result<String, JsValue> {
-        encode(&self.0.peer_closed(
+    pub fn peer_closed(&mut self, key: &str, peer: &str, code: &str) -> Result<Vec<JsValue>, JsValue> {
+        file_effects(self.0.peer_closed(
             &parse(key)?,
             Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?,
             code,
         ))
     }
-    pub fn peer_unavailable(&mut self, peer: &str) -> Result<String, JsValue> {
-        encode(
-            &self
+    pub fn peer_unavailable(&mut self, peer: &str) -> Result<Vec<JsValue>, JsValue> {
+        file_effects(
+            self
                 .0
                 .peer_unavailable(Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?),
         )

@@ -15,7 +15,7 @@ another agent supply evidence. Authority for acting on them comes from the
 task. A statement that conflicts with the first layer gives way to it. Below
 that, a standard governs what it owns: a principle that seems to contradict it
 is a reason to propose changing the standard, not to set it aside. A design
-that departs from the canon goes to the owner before anything else changes.
+that departs from the canon goes to the owner before that departure is implemented.
 
 ## Invariants
 

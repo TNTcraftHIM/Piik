@@ -4,7 +4,7 @@ The settled core design of Piik: the founding ideas that the rest of the
 project follows, and that would still hold if every line of code were
 rewritten. Anyone may question a statement and propose a better idea, with
 evidence. Only the owner changes one, and a departure is raised with the owner
-before anything else changes. An owner decision that departs from a statement
+before implementing it. An owner decision that departs from a statement
 changes that statement, and is written here.
 
 A statement here is general on purpose. It states a principle, not a case: no

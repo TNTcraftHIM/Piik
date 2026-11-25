@@ -78,12 +78,14 @@ function openDatabase(name: string): Promise<IDBDatabase> {
   });
 }
 
+interface RoomTransactionOptions extends IDBTransactionOptions { signal?: AbortSignal }
+
 function transaction<T>(db: IDBDatabase, stores: string[], mode: IDBTransactionMode,
   start: (tx: IDBTransaction, abort: (error: Error) => void) => void,
-  complete: () => T, signal?: AbortSignal): Promise<T> {
+  complete: () => T, { signal, durability }: RoomTransactionOptions = {}): Promise<T> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(new DOMException("Cancelled", "AbortError")); return; }
-    const tx = db.transaction(stores, mode);
+    const tx = db.transaction(stores, mode, { durability });
     let reason: Error | undefined;
     const abort = (error: Error) => { reason = error; tx.abort(); };
     const cancelled = () => abort(new DOMException("Cancelled", "AbortError"));
@@ -106,14 +108,14 @@ class RoomBackup implements BrowserRoomSnapshot, BrowserRoomStage {
 
   private turn<T>(stores: string[], mode: IDBTransactionMode,
     start: (tx: IDBTransaction, abort: (error: Error) => void) => void,
-    complete: () => T, signal?: AbortSignal): Promise<T> {
+    complete: () => T, options?: RoomTransactionOptions): Promise<T> {
     if (this.closed) return Promise.reject(new Error("closed"));
     return transaction(this.db, stores, mode, (tx, abort) => {
       read<BackupMarker | undefined>(tx.objectStore("backup").get(0), marker => {
         if (marker?.stageId !== this.stageId) throw new Error("stale_backup");
         start(tx, abort);
       }, abort);
-    }, complete, signal);
+    }, complete, options);
   }
 
   initialize(tx: IDBTransaction): void {
@@ -192,7 +194,7 @@ class RoomBackup implements BrowserRoomSnapshot, BrowserRoomStage {
           cursor.continue();
         }, abort);
       }, abort);
-    }, () => {}, signal);
+    }, () => {}, { signal, durability: "strict" });
   }
 
   close(): Promise<void> {
@@ -249,7 +251,7 @@ export class BrowserRoomHost implements HostedRoom {
           saved = value;
           if (!saved && room) rooms.add({ id, policy: room.policy() });
         }, abort);
-      }, () => {});
+      }, () => {}, { durability: room ? "strict" : undefined });
       if (saved) { const previous = room; room = savedRoom(saved, id); previous?.free(); }
       if (!room) throw new Error("room_not_found");
       const host = new BrowserRoomHost(db, room);
@@ -280,7 +282,7 @@ export class BrowserRoomHost implements HostedRoom {
               cursor.continue();
             }, abort);
           }, abort);
-        }, () => {}, signal);
+        }, () => {}, { signal });
         return snapshot!;
       } catch (error) { db.close(); throw error; }
     });
@@ -349,7 +351,7 @@ export class BrowserRoomHost implements HostedRoom {
   private transaction<T>(stores: string[], mode: IDBTransactionMode,
     start: (tx: IDBTransaction, abort: (error: Error) => void) => void,
     complete: () => T, signal?: AbortSignal): Promise<T> {
-    return transaction(this.db, stores, mode, start, complete, signal);
+    return transaction(this.db, stores, mode, start, complete, { signal, durability: mode === "readwrite" ? "strict" : undefined });
   }
 
   /** Read the owner and execute all work in one transaction with a competing claim. */

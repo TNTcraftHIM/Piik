@@ -197,11 +197,11 @@ test("a pending peer read follows the committed copy when the original disappear
   vi.spyOn(FileStore.prototype, "retain").mockImplementation(() => new Promise(resolve => {
     commit = () => resolve({ file: copy, evicted: [] });
   }));
-  const readResult = vi.fn(() => "[]"), failed = vi.fn(() => JSON.stringify([{ type: "failed", key, code: "file_source_unavailable" }]));
+  const readResult = vi.fn(() => []), failed = vi.fn(() => [{ type: "failed", key, code: "file_source_unavailable" }]);
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({
     ...await hosting.loadRoomHosting(), FileDelivery: class {
-      update() { return "[]"; } next_deadline() {} free() {}
-      control(_peer: string, requestId: string) { return JSON.stringify([{ type: "read", key, offset: 2, length: 3, requestId }]); }
+      update() { return []; } next_deadline() {} free() {}
+      control(_peer: string, requestId: string) { return [{ type: "read", key, offset: 2, length: 3, requestId }]; }
       read_result = readResult; request_failed = failed;
     },
   } as never);
@@ -247,10 +247,10 @@ test("confirmed message removal discards its retained copy and blocks stale atta
 
 test("background downloads follow the removed message sequence and room", async () => {
   const command = vi.fn(async (_command: ChannelCommand) => {});
-  const files = setup(command), cancel = vi.fn(() => "[]");
+  const files = setup(command), cancel = vi.fn(() => []);
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ initializeRuntime: async () => {},
     FileDelivery: class {
-      start() { return "[]"; } update() { return "[]"; } next_deadline() { return undefined; }
+      start() { return []; } update() { return []; } next_deadline() { return undefined; }
       cancel = cancel; free() {}
     },
   } as never);
@@ -350,8 +350,8 @@ test("clearing a room retires its completed OPFS download and preserves a select
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({
     ...await hosting.loadRoomHosting(),
     FileDelivery: class {
-      start() { return "[]"; } update() { return "[]"; } next_deadline() {} free() {}
-      control() { return JSON.stringify([{ type: "complete", key }]); }
+      start() { return []; } update() { return []; } next_deadline() {} free() {}
+      control() { return [{ type: "complete", key }]; }
     },
   } as never);
   try {
@@ -412,9 +412,9 @@ test.each(["resolve", "reject"])("cancelling runtime preparation permits an imme
   const files = setup();
   let finish!: () => void, fail!: (error: Error) => void;
   const initialization = new Promise<void>((resolve, reject) => { finish = resolve; fail = reject; });
-  const initializeRuntime = vi.fn(() => initialization), start = vi.fn(() => "[]"), free = vi.fn();
+  const initializeRuntime = vi.fn(() => initialization), start = vi.fn(() => []), free = vi.fn();
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ initializeRuntime,
-    FileDelivery: class { update() { return "[]"; } next_deadline() { return undefined; } start = start; free = free; },
+    FileDelivery: class { update() { return []; } next_deadline() { return undefined; } start = start; free = free; },
   } as never);
   const save = vi.spyOn(downloads, "downloadBlob").mockImplementation((_file, _name, options) => options?.outcome?.("dispatched"));
   const first = files.download(key, attachment);
@@ -632,13 +632,13 @@ test.each(["before", "after"])("a new room writer completes a pending download w
   stubTransferStorage({
     getFileHandle: open, removeEntry,
   });
-  const start = vi.fn(() => "[]"), cancel = vi.fn(() => "[]");
+  const start = vi.fn(() => []), cancel = vi.fn(() => []);
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({
     ...await hosting.loadRoomHosting(),
     FileDelivery: class {
-      start = start; cancel = cancel; update() { return "[]"; } next_deadline() {} free() {}
-      control() { return JSON.stringify([{ type: "write", key, offset: 0, bytes: [...new TextEncoder().encode("GIF89a")] }]); }
-      written() { return JSON.stringify([{ type: "complete", key }]); }
+      start = start; cancel = cancel; update() { return []; } next_deadline() {} free() {}
+      control() { return [{ type: "write", key, offset: 0, bytes: new TextEncoder().encode("GIF89a") }]; }
+      written() { return [{ type: "complete", key }]; }
     },
   } as never);
   const retain = vi.spyOn(FileStore.prototype, "retain");
@@ -684,9 +684,9 @@ test.each(["write", "peer"] as const)("a %s failure reports its cause and remove
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({
     ...await hosting.loadRoomHosting(),
     FileDelivery: class {
-      start() { return "[]"; } update() { return "[]"; } cancel() { return "[]"; } next_deadline() {} free() {}
-      control() { return JSON.stringify([failure === "write" ? { type: "write", key, offset: 0, bytes: [1] }
-        : { type: "failed", key, code: "file_transfer_interrupted" }]); }
+      start() { return []; } update() { return []; } cancel() { return []; } next_deadline() {} free() {}
+      control() { return [failure === "write" ? { type: "write", key, offset: 0, bytes: Uint8Array.of(1) }
+        : { type: "failed", key, code: "file_transfer_interrupted" }]; }
     },
   } as never);
   try {
@@ -713,10 +713,10 @@ test("cancel while waiting for a source permits retry before the old receive com
     if (command.type === "file_receive" && command.enabled && ++starts === 1) await oldReceive;
   });
   const files = setup(command);
-  const cancel = vi.fn(() => "[]"), removeEntry = vi.fn(async (_name: string) => {});
+  const cancel = vi.fn(() => []), removeEntry = vi.fn(async (_name: string) => {});
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ initializeRuntime: async () => {},
     FileDelivery: class {
-      start() { return "[]"; } update() { return "[]"; } next_deadline() { return undefined; }
+      start() { return []; } update() { return []; } next_deadline() { return undefined; }
       cancel = cancel; free() {}
     },
   } as never);
@@ -756,20 +756,20 @@ test.each(["cancel", "revoke", "identity switch"])("shared file progress survive
   const file = new File(["GIF89a"], attachment.name);
   const save = vi.spyOn(downloads, "downloadBlob").mockImplementation((_file, _name, options) => options?.outcome?.("dispatched"));
   let finishWrite!: () => void;
-  const written = vi.fn((_key: string, _offset: bigint, size: number) => JSON.stringify(size === file.size ? [{ type: "complete", key }] : []));
-  const cancel = vi.fn(() => "[]"), remove = vi.fn(async () => {});
+  const written = vi.fn((_key: string, _offset: bigint, size: number) => size === file.size ? [{ type: "complete", key }] : []);
+  const cancel = vi.fn(() => []), remove = vi.fn(async () => {});
   const removeSession = vi.fn(async (_name: string) => {});
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ initializeRuntime: async () => {},
     FileDelivery: class {
-      start() { return "[]"; } update() { return "[]"; } next_deadline() { return undefined; }
-      peer_unavailable() { return "[]"; }
+      start() { return []; } update() { return []; } next_deadline() { return undefined; }
+      peer_unavailable() { return []; }
       written = written; cancel = cancel; free() {}
       control(_peer: string, data: string) {
         if (data === "queued-write" || data === "resumed-write") {
-          return JSON.stringify([{ type: "write", key, offset: data === "queued-write" ? 3 : 4, bytes: [4] }]);
+          return [{ type: "write", key, offset: data === "queued-write" ? 3 : 4, bytes: Uint8Array.of(4) }];
         }
-        const bytes = data === "retry-write" ? [...new TextEncoder().encode("GIF89a")] : [1, 2, 3];
-        return JSON.stringify([{ type: "write", key, offset: 0, bytes }]);
+        const bytes = data === "retry-write" ? new TextEncoder().encode("GIF89a") : Uint8Array.of(1, 2, 3);
+        return [{ type: "write", key, offset: 0, bytes }];
       }
     },
   } as never);
@@ -883,9 +883,9 @@ test.each(["cancel", "revoke"])("a retired download cannot retain its OPFS file 
   vi.mocked(hosting.loadRoomHosting).mockResolvedValue({
     ...await vi.mocked(hosting.loadRoomHosting)(),
     FileDelivery: class {
-      start() { return "[]"; } update() { return "[]"; } cancel() { return "[]"; } free() {}
+      start() { return []; } update() { return []; } cancel() { return []; } free() {}
       next_deadline() { return undefined; }
-      control() { return JSON.stringify([{ type: "complete", key }]); }
+      control() { return [{ type: "complete", key }]; }
     },
   } as never);
   stubTransferStorage({ getFileHandle, removeEntry });

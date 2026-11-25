@@ -355,4 +355,5 @@ export type ChannelCommand =
   | { type: "flow_state"; flowId: string; pairId: string; state: "failed" | "forwardable" | "decoded" | "switch_ready" }
   | { type: "room_data_state"; roomId: string; pairId: string; ready: boolean }
   | { type: "leave" };
+export type ProfileUpdate = Omit<Extract<ChannelCommand, { type: "set_profile" }>, "type">;
 export type ChannelRequest = ChannelCommand & { requestId?: string };

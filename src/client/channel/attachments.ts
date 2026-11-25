@@ -15,10 +15,10 @@ export interface PreparedFile extends DraftFile { attachment: ChannelAttachment;
 type Hosting = Awaited<ReturnType<typeof loadRoomHosting>>;
 type Effect =
   | { type: "send_control"; peer: string; control: { type: string; key: ChannelFileKey; requestId: string } }
-  | { type: "send_chunk"; peer: string; key: ChannelFileKey; requestId: string; offset: number; frame: number[] }
+  | { type: "send_chunk"; peer: string; key: ChannelFileKey; requestId: string; offset: number; frame: Uint8Array<ArrayBuffer> }
   | { type: "cancel_chunks"; peer: string; key: ChannelFileKey; requestId: string; offset: number }
   | { type: "read"; key: ChannelFileKey; requestId: string; offset: number; length: number }
-  | { type: "write"; key: ChannelFileKey; offset: number; bytes: number[] }
+  | { type: "write"; key: ChannelFileKey; offset: number; bytes: Uint8Array<ArrayBuffer> }
   | { type: "complete"; key: ChannelFileKey }
   | { type: "failed"; key: ChannelFileKey; code: string };
 interface Runtime { module: Hosting; delivery: FileDelivery; lifetime: AbortController }
@@ -150,10 +150,10 @@ export class ChannelAttachments {
     return this.runtime = runtime;
   }
   private current(runtime: Runtime): boolean { return this.lifetime === runtime.lifetime && !runtime.lifetime.signal.aborted; }
-  private project(runtime: Runtime): string { return runtime.delivery.update(JSON.stringify(this.plans), JSON.stringify(this.roomPeers), BigInt(Date.now())); }
-  private invoke(runtime: Runtime, work: () => string): void {
+  private project(runtime: Runtime): Effect[] { return runtime.delivery.update(JSON.stringify(this.plans), JSON.stringify(this.roomPeers), BigInt(Date.now())); }
+  private invoke(runtime: Runtime, work: () => Effect[]): void {
     if (!this.current(runtime)) return;
-    this.effects(runtime, JSON.parse(work()) as Effect[]);
+    this.effects(runtime, work());
     clearTimeout(this.expiry);
     const deadline = runtime.delivery.next_deadline();
     this.expiry = deadline === undefined ? undefined : setTimeout(() => this.invoke(runtime,
@@ -637,7 +637,7 @@ export class ChannelAttachments {
         const peer = effect.peer, isError = effect.type === "send_control" && effect.control.type === "error";
         const terminal = isError || (effect.type === "send_control" && effect.control.type === "cancel");
         const kind = effect.type === "send_control" ? "control" : "chunk";
-        const data = effect.type === "send_control" ? JSON.stringify(effect.control) : new Uint8Array(effect.frame);
+        const data = effect.type === "send_control" ? JSON.stringify(effect.control) : effect.frame;
         const allowed = () => this.current(runtime) && (request === undefined || !failedResponses.has(request))
           && this.rooms.some(room => room.id === key.roomId && room.authorized && room.available)
           && this.roomPeers.some(([id, rooms]) => id === peer && rooms.includes(key.roomId))
@@ -659,7 +659,7 @@ export class ChannelAttachments {
         const id = fileKeyString(key), source = this.sources.get(id);
         const failed = () => {
           if (!this.current(runtime)) return;
-          const effects = JSON.parse(runtime.delivery.request_failed(JSON.stringify(key), effect.requestId, "file_source_unavailable")) as Effect[];
+          const effects = runtime.delivery.request_failed(JSON.stringify(key), effect.requestId, "file_source_unavailable") as Effect[];
           if (effects.length && source) this.withdraw(source);
           this.effects(runtime, effects);
         };
@@ -685,7 +685,7 @@ export class ChannelAttachments {
             if (this.sinks.get(fileKeyString(key)) !== entry || !entry.progress) return;
             sink.lifetime.signal.throwIfAborted();
             if (effect.type === "write") {
-              const bytes = new Uint8Array(effect.bytes);
+              const bytes = effect.bytes;
               await sink.writer.write({ type: "write", position: effect.offset, data: bytes }).catch(throwStorageError);
               sink.lifetime.signal.throwIfAborted();
               if (!this.current(runtime) || this.sinks.get(fileKeyString(key)) !== entry) return;

@@ -21,7 +21,7 @@ import { RoomReadMarkers } from "./read-markers";
 import { historyProfileIds } from "./message-history";
 import { RoomHistory, type CompletedPage, type HistoryRefresh } from "./room-history";
 import { userProfile } from "./presentation";
-import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
+import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, createRoomCommand, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ProfileUpdate, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { ChannelAttachments, type DraftFile, type PreparedFile } from "./attachments";
 import { messageRemoved, type ChannelActions, type ChannelView, type ChatAttachmentPreparation, type ChatOptions, type SourceMicrophoneConfiguration, type SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName } from "./hosting";
@@ -937,13 +937,25 @@ export class ChannelSession {
       // Conversation includes image upload and its host-confirmed response.
       timer = setTimeout(() => { this.retireRequest(requestId); reject(new Error("request_timeout")); }, conversation || command.type === "profiles" ? 30000 : 10000);
       this.requests.set(requestId, { resolve, reject, roomId,
-        result: result && (event => {
-          try { result(event); }
+        result: event => {
+          try {
+            if (event.type === "room_reply") {
+              const kind = event.result.type;
+              const needsClock = command.type === "start_watch" || command.type === "join_watch" && command.mode !== null;
+              if (needsClock) {
+                const time = event.result.serverTime;
+                if (kind !== "watch_ready" || typeof time !== "number" || !Number.isSafeInteger(time) || time < 0) throw new Error("invalid_response");
+              } else if (command.type !== "delete_room" && command.type !== "room_topology" && (conversation || kind !== "done")) {
+                throw new Error("invalid_response");
+              }
+            }
+            result?.(event);
+          }
           catch (error) {
             this.retireRequest(requestId);
             reject(error instanceof Error ? error : new Error("invalid_response"));
           }
-        }),
+        },
         ...(replyBinding ? { bindingId: replyBinding } : {}),
         ...(command.type === "history_seek" ? { seekAfter: command.after } : {}) });
       if (command.type === "history") this.roomHistory(command.roomId).openPage(requestId, { bindingId: replyBinding, before: command.before, replace: replaceHistory,
@@ -1673,7 +1685,7 @@ export class ChannelSession {
     if (reading && !pending) reading.history = loading;
     return loading;
   }
-  updateProfile = ({ name, avatar }: { name?: string; avatar?: string | null }): Promise<void> => this.action("profile", async () => {
+  updateProfile = ({ name, avatar }: ProfileUpdate): Promise<void> => this.action("profile", async () => {
     await this.request({ type: "set_profile", name, avatar });
     if (name !== undefined) stored(nameKey, name.trim());
   }, false);

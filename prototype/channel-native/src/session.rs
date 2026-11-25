@@ -855,7 +855,7 @@ impl Session {
                     session_id: self.live.as_ref().map(|live| live.session.to_string()),
                     signing_key: self.signer.signing_key(),
                 };
-                let result = self.connected(&mut socket, join, stop).await;
+                let result = Box::pin(self.connected(&mut socket, join, stop)).await;
                 for opening in self.opening.values_mut() {
                     if let OpeningWork::Register {
                         unpublished_copy, ..

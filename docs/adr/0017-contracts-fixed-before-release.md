@@ -16,7 +16,7 @@ upgrades preserve durable authority. The code does not yet say how:
 - `Join` requires the protocol number to equal 46
   (`prototype/channel-core/src/lib.rs`). One outer watch-activity metadata
   reader accepts additions; no rule says which additions a reader may ignore.
-- The Browser accepts any `room_reply.result.type`
+- The review at `35034f34` found that Browser accepts any `room_reply.result.type`
   (`src/client/channel/protocol.ts`) and rejects only `"error"`
   (`src/client/channel/session.ts`), so with a version mismatch or a bug an
   unknown type resolves most room requests as success.
@@ -89,8 +89,8 @@ upgrades preserve durable authority. The code does not yet say how:
 
 ## Consequences
 
-- The wire and both stores change shape once more before release, under the
-  present rule for private experiments.
+- Any concrete incompatible wire or storage correction lands before release
+  under the present rule for private experiments.
 - [Versioning](../standards/versioning.md) states the compatibility matrix the
   code implements, and a feature added after release is an extension the
   recipient selects, not a new major version.
