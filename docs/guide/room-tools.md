@@ -41,7 +41,9 @@ in place. The tabs show the tasks available to you:
 - **Room:** Change the name, image or access, then **Save**. **Hide from users
   without access** hides a private room from people who have not been admitted.
   Under **Users with access**, **Remove room access** ends that user's access and
-  activities in this room; they need a new grant to return.
+  activities in this room. Someone who still has the room's invitation link or
+  password can enter again. To keep them out, reset the invitation and change
+  the password.
 - **Connection:** Choose how many people this device helps forward to in this room.
 - **Records:** Export loaded chat text. Room owners can also export a full backup
   or a copy that someone else can use to create a new room.
