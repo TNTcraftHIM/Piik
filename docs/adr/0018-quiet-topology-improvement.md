@@ -30,14 +30,13 @@ corrected by the records of stage 0.
    90% of the frames the source sent over a window and loss or a freeze
    confirms it. A static screen sends nothing and proves nothing, so only
    active content counts toward a verdict.
-3. **Voice takes the shortest way that exists.** A speaker sends directly to
-   every listener it already has a connection with, with discontinuous
-   transmission on, and the room fanout does not limit it. A listener with no
-   connection to the speaker is reached through relays as today, through a
-   node that forwards unchanged where there is one. Voice ranks above screens.
-   Whether a room with voice should also connect every pair, so that the voice
-   mesh becomes the pool, waits for the measurements on phones and on relay
-   hops.
+3. **Voice has no shape of its own.** It uses the same planner, the same
+   pool and the same learned capacity as a screen. A voice stream is light, so
+   a speaker's proved capacity for it rises quickly and more listeners are
+   reached directly, over connections that already exist. Discontinuous
+   transmission is on, and voice ranks above screens. Connecting every pair in
+   a room with voice is a separate question, and it waits for the measurements
+   on phones and on relay hops.
 4. **The pool grows from demand.** Nothing is connected in advance across a
    site. A viewer with no other connection to an eligible parent keeps one
    spare. A pair's last result is remembered, and an idle pair is
@@ -81,7 +80,7 @@ Each stage after the first needs the record named beside it.
 | Stage | Adds | Justified by |
 | --- | --- | --- |
 | 0 | Reports, decision log, shadow planner | Nothing; it produces the evidence |
-| 1 | Voice on every existing connection, learned capacity, placement order, repair after failure | Serves strong uplinks without a setting and removes voice hops where a connection exists |
+| 1 | Learned capacity for every kind, placement order, repair after failure | Serves strong uplinks without a setting; voice gains direct listeners as capacity is proved |
 | 2 | Repair moves with blame | Parent or edge faults that outlast the trigger in a real share of unwell time |
 | 3 | Promotions | Viewers deeper, or behind more generations, than proved capacity requires |
 | 4 | Memory across days | Proved capacity that repeats from day to day |
@@ -113,7 +112,8 @@ forwarders.
   proves strong, which is what the manual limit was added for. The room
   default becomes the prior, and a person can still set a limit or decline to
   forward.
-- Voice no longer depends on the room fanout.
+- Voice keeps its present shape and follows learned capacity like any other
+  stream. Nothing is built for voice alone.
 - The single shortcut per viewer is replaced by decision 7.
 - [ADR-0005](./0005-automatic-hybrid-media-routing.md) and the
   [forwarding design](../research/channel-forwarding-plan.md) keep their

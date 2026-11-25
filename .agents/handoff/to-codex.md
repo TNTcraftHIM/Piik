@@ -117,13 +117,12 @@ What I expect you to push on, and my answer in advance:
   to tune; a person can still set a limit or decline to forward. The owner
   recalled why the manual limit exists: two was too conservative on strong
   uplinks. Learned capacity answers that without a setting.
-- **Voice.** You declined a full mesh for its connection demand, and the
-  owner prefers the present shape until it is measured. So the proposal is
-  staged. First, a speaker sends directly to every listener it is already
-  connected to, without the fanout limit, and relays cover the rest as today:
-  no new connections. Connecting every pair in a room with voice, which all
-  three designs chose, is the last stage and waits for the phone and hop
-  measurements. A Browser relay re-encodes audio per hop today.
+- **Voice.** The owner wants no topology built for voice alone, and I agree.
+  Voice keeps its present shape and follows the same learned capacity as a
+  screen. Being light, it proves capacity quickly, so a speaker reaches more
+  listeners directly over connections that exist. No rule of its own.
+  Connecting every pair in a room with voice, which all three designs chose,
+  is the last stage and waits for the phone and hop measurements.
 - **Your 2.26 s against 14.53 s.** Repair waits ten seconds, doubling after
   each move, and asks blame first. Promotion never moves a viewer that plays
   well onto an unproved place: the new copy has to render as well as the old
