@@ -1043,11 +1043,7 @@ export class ChannelSession {
       return;
     }
     const history = this.histories.get(reply.roomId);
-    if (record.type === "history_message") {
-      if (!history?.addMessage(reply.requestId, record.message)) this.receive({ type: "error", requestId: reply.requestId, code: "incomplete_history" });
-      return;
-    }
-    if (record.type === "history_end" && history?.hasPage(reply.requestId)) {
+    if (record.type === "history_page" && history?.hasPage(reply.requestId)) {
       const page = history.completePage(reply.requestId, record);
       if (!page) {
         this.receive({ type: "error", requestId: reply.requestId, code: "incomplete_history" });

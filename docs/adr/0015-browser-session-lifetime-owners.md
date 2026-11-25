@@ -72,7 +72,7 @@ owner per lifetime. This decision applies that rule to the Browser session.
 
 Each step is a few commits that keep `npm test` passing, and the line can merge
 between steps. Step 0 adds only the dependency needed by the first RoomReader test.
-Request correlation stays with the session. RoomReader assembles confirmed pages
+Request correlation stays with the session. RoomReader projects confirmed pages
 and applies live changes within the binding. Optimistic updates keep their
 operation identity until confirmation or failure.
 Room voice and share commentary capture separate microphones. The voice rooms
@@ -93,9 +93,9 @@ them through one interface.
   that `useChannel` creates once.
 - While a step is in progress the file it restructures is on
   [hold](../../CONTRIBUTING.md#working-with-a-second-agent).
-- Two questions stay open: whether WASM should return validated history pages
-  instead of the session reassembling `history_message`, `message_reactions`
-  and `history_end`, and the shape of the per-operation result surface.
+- Core returns one bounded, validated history page per reply. RoomHistory merges
+  it with live changes received during the read. The shape of the per-operation
+  result surface remains open.
 
 ## References
 

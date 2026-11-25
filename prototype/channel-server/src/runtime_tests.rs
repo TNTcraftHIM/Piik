@@ -1522,7 +1522,7 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
         )
         .unwrap();
     send_request(&mut socket, json!({"type":"conversation", "packet":packet})).await;
-    let (mut messages, mut reactions, mut frames) = (0, 0, 0);
+    let (mut messages, mut frames) = (0, 0);
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             match event(&mut socket).await {
@@ -1533,10 +1533,9 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
                     }
                     frames += 1;
                     match reply.record {
-                        ConversationRecord::HistoryMessage { .. } => messages += 1,
-                        ConversationRecord::MessageReactions { .. } => reactions += 1,
-                        ConversationRecord::HistoryEnd { count, .. } => {
-                            assert_eq!(count, 50);
+                        ConversationRecord::HistoryPage { messages: rows, .. } => {
+                            messages = rows.len();
+                            assert_eq!(messages, 50);
                             break;
                         }
                         _ => panic!("unexpected history record"),
@@ -1549,7 +1548,7 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
     })
     .await
     .unwrap();
-    assert_eq!((frames, messages, reactions), (101, 50, 50));
+    assert_eq!((frames, messages), (1, 50));
     send_request(
         &mut socket,
         json!({"type":"set_profile","avatar":null, "name":"Still connected"}),
@@ -1877,7 +1876,7 @@ async fn room_conversation(
                     let finished = matches!(
                         reply.record,
                         ConversationRecord::Confirmed { .. }
-                            | ConversationRecord::HistoryEnd { .. }
+                            | ConversationRecord::HistoryPage { .. }
                     );
                     records.push(reply.record);
                     if finished {
@@ -2126,7 +2125,7 @@ async fn hosted_private_room_keeps_its_manager_grants_and_history_on_service_res
         ConversationCommand::History { before: None },
     )
     .await;
-    assert!(history.iter().any(|r| matches!(r, ConversationRecord::HistoryMessage {message} if message.text == "After manager left")));
+    assert!(history.iter().any(|r| matches!(r, ConversationRecord::HistoryPage {messages, ..} if messages.iter().any(|message| message.message.text == "After manager left"))));
     let (_, _, stranger) = connect(address, "invite", "Stranger").await;
     assert!(!stranger.channel.rooms.iter().any(|r| r.id == room.id));
     let (mut operator, _, state) = connect(address, "owner", "Operator").await;
@@ -2466,9 +2465,9 @@ async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers
                 ConversationCommand::History { before: None },
             )
             .await;
-            assert!(history.iter().any(|record| matches!(record, ConversationRecord::HistoryMessage { message } if message.text == "Retained history")));
+            assert!(history.iter().any(|record| matches!(record, ConversationRecord::HistoryPage { messages, .. } if messages.iter().any(|message| message.message.text == "Retained history"))));
             assert!(
-                matches!(history.last(), Some(ConversationRecord::HistoryEnd { count, .. }) if *count == expected as usize)
+                matches!(history.last(), Some(ConversationRecord::HistoryPage { messages, .. }) if messages.len() == expected as usize)
             );
             assert!(
                 !task.is_finished(),
@@ -3220,19 +3219,16 @@ async fn hosted_room_copy_installs_history_under_fresh_authority() {
         ConversationCommand::History { before: None },
     )
     .await;
-    assert!(matches!(history.as_slice(), [
-        ConversationRecord::HistoryMessage { message },
-        ConversationRecord::MessageReactions { snapshot },
-        ConversationRecord::HistoryMessage { message: response },
-        ConversationRecord::MessageReactions { .. },
-        ConversationRecord::HistoryEnd { count: 2, .. },
-    ] if message.id != message_id && message.user_id != source_author && message.user_id != room.creator_id
+    let [ConversationRecord::HistoryPage { messages, .. }] = history.as_slice() else { panic!("one history page expected") };
+    let [stored, response] = messages.as_slice() else { panic!("two retained messages expected") };
+    let message = &stored.message;
+    assert!(message.id != message_id && message.user_id != source_author && message.user_id != room.creator_id
         && message.archived_author_name.as_deref() == Some("Source author")
-        && response.reply.as_ref().is_some_and(|reply| reply.user_id == message.user_id
+        && response.message.reply.as_ref().is_some_and(|reply| reply.user_id == message.user_id
             && reply.archived_author_name.as_deref() == Some("Source author"))
         && message.text == "Copied history"
         && message.inline_images.get(&image_id).is_some_and(|image| image.data == thumbnail)
-        && snapshot.message_id == message.id && snapshot.reactions.counts.get("wave") == Some(&1)));
+        && stored.reactions.counts.get("wave") == Some(&1));
     stop.send(()).unwrap();
     task.await.unwrap().unwrap();
 }
