@@ -744,7 +744,7 @@ One stable and one irregular observation can instead use random-port preparation
 the irregular side opens 256 sockets toward the stable side's retained tuple;
 the stable side checks 512 distinct ports on the authorized peer address, each
 once. Each endpoint permits at most 520 requests and 16 replies,
-with at least 2 ms between sends, within the same five-second preparation lifetime.
+at a mean of one send per 2 ms, within the same five-second preparation lifetime.
 At most two random preparations run per process across all sites and Drivers.
 Capacity refusal does not queue work or extend the deadline; a pair-scoped refusal
 ends the other endpoint's preparation and both continue ordinary ICE. Other
