@@ -159,6 +159,18 @@ it("adds the microphone mode to stored preferences that predate it, as open micr
   expect(readRoomPreferences()).toMatchObject({ ...previous, voiceTransmission: { mode: "open", activationThreshold: -40 } });
 });
 
+it("keeps voice shortcuts stored before the talk binding existed, and stores it once chosen", () => {
+  const values = storage();
+  const key = "piik:room-preferences:v1";
+  const microphone = { key: "Q", ctrl: true, alt: false, shift: true, meta: false };
+  values.set(key, JSON.stringify({ voiceShortcuts: { microphone, listening: null } }));
+  expect(readRoomPreferences().voiceShortcuts).toEqual({ microphone, listening: null });
+  expect(saveRoomPreferences({ voiceShortcuts: { microphone, listening: null, talk: { ...microphone, key: "T" } } })).toBe(true);
+  expect(readRoomPreferences().voiceShortcuts.talk).toEqual({ ...microphone, key: "T" });
+  expect(saveRoomPreferences({ voiceShortcuts: { microphone, listening: null, talk: null } })).toBe(true);
+  expect(readRoomPreferences().voiceShortcuts.talk).toBeNull();
+});
+
 it("persists the total screen buffer target independently, including zero and automatic", () => {
   storage();
   expect(readRoomPreferences().screenBufferTargetMs).toBeNull();

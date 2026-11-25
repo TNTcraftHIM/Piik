@@ -1,12 +1,12 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { NativeVoiceShortcutsReport } from "../native/wire";
 import type { BackgroundVoiceShortcuts } from "./app-link";
-import type { VoiceShortcutAction, VoiceShortcuts } from "./voice-shortcut-binding";
+import type { VoiceToggleAction, VoiceToggleShortcuts } from "./voice-shortcut-binding";
 
-const unbound: VoiceShortcuts = { microphone: null, listening: null };
+const unbound: VoiceToggleShortcuts = { microphone: null, listening: null };
 
-export function useBackgroundVoiceShortcuts(port: BackgroundVoiceShortcuts | undefined, bindings: VoiceShortcuts,
-  roomId: string | undefined, recording: boolean, onShortcut: (action: VoiceShortcutAction) => void) {
+export function useBackgroundVoiceShortcuts(port: BackgroundVoiceShortcuts | undefined, bindings: VoiceToggleShortcuts,
+  roomId: string | undefined, recording: boolean, onShortcut: (action: VoiceToggleAction) => void) {
   const [claim, setClaim] = useState<BackgroundVoiceShortcuts>();
   const [lifecycle, setLifecycle] = useState({ frozen: false });
   const awaitingResume = useRef(false);
@@ -17,7 +17,7 @@ export function useBackgroundVoiceShortcuts(port: BackgroundVoiceShortcuts | und
   const [response, setResponse] = useState<{ request: typeof request; report?: NativeVoiceShortcutsReport; error?: "in_use" | "failed" }>();
   const current = enabled && response?.request === request ? response : undefined;
   const report = current?.report;
-  const onNativeShortcut = useEffectEvent((action: VoiceShortcutAction) => {
+  const onNativeShortcut = useEffectEvent((action: VoiceToggleAction) => {
     if (!awaitingResume.current && !recording && report?.[action] === "registered") onShortcut(action);
   });
 

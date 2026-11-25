@@ -9,7 +9,8 @@ import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
 import type { ChannelController } from "../types";
 import { profileAvatar, roomVoicePeople } from "../presentation";
 import { ChannelVoiceSettings } from "./ChannelVoiceSettings";
-import { useCallback, useContext, useEffect, useId, useState } from "react";
+import { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { createPortal } from "react-dom";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../../lib/room-interactions";
@@ -29,7 +30,9 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
   const state = channel.state;
   const { joined, activity, microphoneDisabled, microphonePending, toggle } = resolveVoiceDockControls(channel, selected);
   const shortcuts = useVoiceShortcuts(activity?.roomId, toggle,
-    channel.connection === "connected" ? channel.backgroundVoiceShortcuts : undefined);
+    channel.connection === "connected" ? channel.backgroundVoiceShortcuts : undefined,
+    channel.voiceTransmission.mode === "push" ? channel.talk : undefined);
+  const controls = useRef<HTMLDivElement>(null);
   const roomId = activity?.roomId ?? "";
   const overlay = useContext(VoiceOverlay);
   const readRemote = !!overlay?.target && !activity?.deafened;
@@ -92,7 +95,8 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
         </div>
       </div>
     </SurfaceDocument.Provider>, overlay.target)}
-    <div className="c3-voice-controls">
+    <MutedTalkNotice anchor={controls} shown={shortcuts.talking && muted} />
+    <div ref={controls} className="c3-voice-controls">
       <AudioVolumeMenu volume={channel.voiceInput.volume} onVolume={channel.setInputVolume} label="host.microphone.volume">
         <VoiceMicrophoneButton active={!muted} level={levels.get(channel.sessionId ?? "")} disabled={microphoneDisabled}
           cancelPending={microphonePending} quiet keyShortcuts={microphoneDisabled ? undefined : voiceShortcutAria(microphone)}
@@ -112,6 +116,22 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
         onClick={() => run(channel.leaveVoice(roomId))} />
     </div>
   </section>;
+}
+
+/** Holding the talk key on a muted microphone sends nothing; this says so above the microphone without moving the controls. */
+function MutedTalkNotice({ anchor, shown }: { anchor: RefObject<HTMLElement | null>; shown: boolean }) {
+  const { t } = useCopy();
+  const notice = useRef<HTMLParagraphElement>(null);
+  useAnchoredPopover(anchor, notice, { side: "above", align: "start" });
+  useLayoutEffect(() => {
+    const element = notice.current;
+    if (!element) return;
+    if (shown) element.showPopover();
+    else if (element.matches(":popover-open")) element.hidePopover();
+  }, [shown]);
+  return <p ref={notice} popover="manual" role="status" className="lr-anchored-card c3-voice-talk-muted">
+    {shown && <><Glyph name="microphoneOff" size={16} /><span>{t("voice.microphoneInactive")}</span></>}
+  </p>;
 }
 
 function VoiceOverlayChatSettings({ session }: { session: RoomInteractionSession }) {

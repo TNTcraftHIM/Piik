@@ -30,7 +30,7 @@ export function ChannelVoiceSettings({ channel, roomId, available, shortcuts }: 
     </span>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={t("voice.settings")} className="lr-anchored-card c3-voice-settings"
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
-      <ChannelVoiceShortcutSettings open={open} {...shortcuts} />
+      <ChannelVoiceShortcutSettings open={open} pushToTalk={channel.voiceTransmission.mode === "push"} {...shortcuts} />
       <strong>{t("voice.settings.sharedMicrophone")}</strong>
       {open && <MicrophoneSettings host={false} enabled={enabled} disabled={!available || busy}
         loadDevices={channel.microphones} deviceId={channel.voiceInput.deviceId} onDevice={deviceId => configure({ deviceId })}

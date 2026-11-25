@@ -121,6 +121,8 @@
 .c3-voice-room > button:hover { text-decoration: underline; text-underline-offset: 3px; }
 .c3-voice-room > select { width: 100%; min-width: 0; }
 .c3-voice-controls { display: inline-flex; flex-wrap: nowrap; align-items: center; flex: none; max-width: 100%; gap: 4px; margin-inline-start: auto; }
+.lr-anchored-card.c3-voice-talk-muted { width: max-content; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.c3-voice-talk-muted:is(:popover-open, .\:popover-open) { display: flex; align-items: center; gap: 6px; }
 .c3-personal .c3-voice-dock > svg { display: none; }
 .c3-personal .c3-voice-destination { flex-basis: 100%; display: flex; align-items: center; gap: 8px; }
 .c3-personal .c3-voice-destination small { margin: 0; }

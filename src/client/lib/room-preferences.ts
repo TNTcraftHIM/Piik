@@ -43,6 +43,7 @@ const roomPreferencesSchema = z.object({
   voiceShortcuts: z.object({
     microphone: voiceShortcutBindingSchema.nullable().optional(),
     listening: voiceShortcutBindingSchema.nullable().optional(),
+    talk: voiceShortcutBindingSchema.nullable().optional(),
   }).catch({}).default({}),
   keyboardPage: z.enum(REMOTE_KEYBOARD_PAGES).default("letters"),
   combineKeys: z.boolean().default(false),

@@ -19,7 +19,7 @@ import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 import { debugEvent, debugOperation } from "../lib/debug";
 import { nativeVoiceShortcutEventSchema, nativeVoiceShortcutsReportSchema, type NativeVoiceShortcutsReport } from "../native/wire";
-import type { VoiceShortcutAction, VoiceShortcuts } from "./voice-shortcut-binding";
+import type { VoiceToggleAction, VoiceToggleShortcuts } from "./voice-shortcut-binding";
 
 export const APP_PROTOCOL = 26;
 const APP_REQUEST_BYTES = 256 * 1024;
@@ -268,8 +268,8 @@ export const channelAppDiscovery: AppDiscovery = {
 };
 
 export interface BackgroundVoiceShortcuts {
-  configure(bindings: VoiceShortcuts | null): Promise<NativeVoiceShortcutsReport>;
-  subscribe(listener: (action: VoiceShortcutAction) => void): () => void;
+  configure(bindings: VoiceToggleShortcuts | null): Promise<NativeVoiceShortcutsReport>;
+  subscribe(listener: (action: VoiceToggleAction) => void): () => void;
 }
 
 /** Hosting survives this link; captures selected through it belong to this page. */
@@ -337,11 +337,12 @@ export class ChannelApp {
     this.port = health.port;
     this.pagePlayer = health.pagePlayer === true;
     this.externalScreenInputAvailable = health.externalScreenInputAvailable === true;
-    const voiceShortcutListeners = new Set<(action: VoiceShortcutAction) => void>();
+    const voiceShortcutListeners = new Set<(action: VoiceToggleAction) => void>();
     if (health.backgroundVoiceShortcuts === true) this.backgroundVoiceShortcuts = {
       configure: async bindings => {
         if (!this.connected) throw new Error("app_disconnected");
-        const fields = bindings ?? { microphone: null, listening: null };
+        // The App rejects unknown fields; a held talk binding never reaches it.
+        const fields = { microphone: bindings?.microphone ?? null, listening: bindings?.listening ?? null };
         return nativeVoiceShortcutsReportSchema.parse(await this.request({ type: "voice_shortcuts", enabled: bindings !== null, ...fields }));
       },
       subscribe: listener => {
