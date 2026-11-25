@@ -31,7 +31,7 @@ import { ChannelFeedbackSounds } from "../channel/components/ChannelFeedbackSoun
 import { ChannelForwardingSettings } from "../channel/components/ChannelForwardingSettings";
 import { ChannelInterfaceControl, ChannelInterfaceSuggestion } from "../channel/components/ChannelInterfaceControl";
 import { ChannelRoomCreateDialog, ChannelRoomSettingsDialog } from "../channel/components/ChannelRoomControls";
-import { RoomCreationInterrupted, roomCreationPolicyFor, roomDraft, roomSettings } from "../channel/room-creation";
+import { RoomCreationInterrupted, roomCreationPolicyFor, roomDraft, roomSettings, simpleShareRoom } from "../channel/room-creation";
 import { ChannelRoomEntry, ChannelUnlistedRoomEntry } from "../channel/components/ChannelRoomEntry";
 import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
 import { ChannelSiteSettings } from "../channel/components/ChannelSiteSettings";
@@ -229,6 +229,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const busy = (action: string, id?: string) => pending.has(action) || pending.has(`${action}:${id}`);
   const prepareShare = async () => {
     if (!canCreateRoom || preparingShare.current || pending.has("create-room")) return;
+    const existing = self && simpleShareRoom(rooms, self.id);
+    if (existing) { selectRoom(existing.id); setPickerRoom(existing.id); return; }
     const operation = preparingShare.current = {};
     try {
       const id = await channel.createRoom(roomSettings({ ...roomDraft(), name: t("channel.previewPage.screenSharing") }, creationPolicy === "invite_only"));

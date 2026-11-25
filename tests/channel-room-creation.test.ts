@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 import { roomCreationPolicySchema } from "../src/client/channel/protocol";
-import { roomCreationPolicyFor, roomDraft, roomSettings, roomSettingsPatch } from "../src/client/channel/room-creation";
+import { roomCreationPolicyFor, roomDraft, roomSettings, roomSettingsPatch, simpleShareRoom } from "../src/client/channel/room-creation";
 
 test("room capacity points to recovery from both room creation entries", () => {
   expect(channelErrorPresentation("room_limit", key => key)).toEqual({
@@ -44,4 +44,11 @@ test("policy changes discard admission drafts and send only necessary invitation
   const oldRoom = { access: "public", hidden: false, hasPassword: true } as const;
   expect(roomSettingsPatch(stale, oldRoom, true)).toEqual({ name: "Renamed", access: "private", hidden: true, password: null });
   expect(roomSettingsPatch({ password: "old draft" }, oldRoom, true)).toEqual({});
+});
+
+test("simple sharing returns to a room the person created and can share in before creating another", () => {
+  const room = (id: string, creatorId: string, authorized = true, available = true) => ({ id, creatorId, authorized, available });
+  const rooms = [room("friend", "friend"), room("offline", "me", true, false), room("locked", "me", false), room("mine", "me"), room("later", "me")];
+  expect(simpleShareRoom(rooms, "me")?.id).toBe("mine");
+  expect(simpleShareRoom(rooms.slice(0, 3), "me")).toBeUndefined();
 });

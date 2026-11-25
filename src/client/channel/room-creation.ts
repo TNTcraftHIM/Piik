@@ -10,7 +10,12 @@ export function roomCreationPolicyFor(channel: Pick<ChannelSnapshot["channel"], 
   return channel.ownerId === userId ? "ordinary" : channel.roomCreationPolicy;
 }
 
-export type RoomDraft = Pick<RoomSettings, "name" | "icon" | "picture" | "access" | "hidden" | "voiceBitrate"> & { password: string; removePassword: boolean; relayCapacity: number };
+/** Simple sharing returns to a room this person created and can share in, so repeated or cancelled starts add no rooms. */
+export function simpleShareRoom<T extends Pick<ChannelRoom, "creatorId" | "authorized" | "available">>(rooms: readonly T[], userId: string): T | undefined {
+  return rooms.find(room => room.creatorId === userId && room.authorized && room.available);
+}
+
+export type RoomDraft =Pick<RoomSettings, "name" | "icon" | "picture" | "access" | "hidden" | "voiceBitrate"> & { password: string; removePassword: boolean; relayCapacity: number };
 
 export function roomDraft(room?: ChannelRoom): RoomDraft {
   return { name: room?.name ?? "", icon: room?.icon ?? "couch", access: room?.access ?? "public", hidden: room?.hidden ?? false,
