@@ -130,6 +130,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const activeCodec = sharing ? channel.screenCodec(sharing.id) : undefined;
   const codecMode = activeCodec?.mode ?? channel.videoCodecMode;
   const sourceCodec = activeCodec?.primary ?? codecMode;
+  const encoderLocked = sharing ? t("host.advanced.lockedWhileSharing") : undefined;
   const encodingExecution = (sharing ? channel.screenEncodingExecution(sharing.id) : undefined) ?? channel.encodingExecution;
   const canChooseExecution = sources.kind === "ready" && sources.softwareEncodingCodecs.includes("h264")
     && (sourceCodec === "auto" || sourceCodec === "h264")
@@ -267,10 +268,10 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
             maxFramerate: Math.min(quality.maxFramerate, captureFramerateCeiling(resolution, VIDEO_CAPTURE_LIMITS)) })} />
           <VideoRateControls value={quality} limits={VIDEO_CAPTURE_LIMITS} disabled={busy}
             onChange={next => setQuality({ ...quality, ...next })} />
-          <VideoCodecControl value={codecMode}
-            disabled={disabled || busy || !!sharing || !!captureRequest} onChange={channel.setVideoCodecMode} />
-          {canChooseExecution && <EncodingExecutionControl value={encodingExecution}
-            disabled={disabled || busy || !!sharing || !!captureRequest} onChange={channel.setEncodingExecution} />}</>}
+          <VideoCodecControl value={codecMode} lockedReason={encoderLocked}
+            disabled={disabled || busy || !!captureRequest} onChange={channel.setVideoCodecMode} />
+          {canChooseExecution && <EncodingExecutionControl value={encodingExecution} lockedReason={encoderLocked}
+            disabled={disabled || busy || !!captureRequest} onChange={channel.setEncodingExecution} />}</>}
         audio={<>
           {sharing && selectedNative?.current && selectedNative.target.kind === "display" && sources.kind === "ready" && sources.systemAudio &&
             <div className="lr-door-group lr-source-audio-settings">

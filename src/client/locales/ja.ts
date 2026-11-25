@@ -1322,6 +1322,7 @@ export const ja = {
   "host.advanced.execution.softwareHint": "この共有でソフトウェアエンコードを使用します。",
   "channel.error.captureEncodingUnsupported": "接続中の App は選択したエンコード方式を使用できません。",
   "host.advanced.codec.h264Hint": "H.264 映像形式",
+  "host.advanced.lockedWhileSharing": "共有中は変更できません。共有を停止すると変更できます。",
   "host.details": "接続の詳細",
   "connection.room": "ルームの接続",
   "connection.roomDetails": "{room}の接続の詳細",

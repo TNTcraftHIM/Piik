@@ -1322,6 +1322,7 @@ export const zhHant = {
   "host.advanced.execution.softwareHint": "本次分享使用軟體編碼。",
   "channel.error.captureEncodingUnsupported": "目前 App 無法使用所選編碼方式。",
   "host.advanced.codec.h264Hint": "H.264 視訊格式",
+  "host.advanced.lockedWhileSharing": "分享中無法更改，停止分享後即可調整。",
   "host.details": "連線詳細資訊",
   "connection.room": "房間連線",
   "connection.roomDetails": "{room}的連線詳細資訊",

@@ -1500,6 +1500,7 @@ export const en: Record<CopyKey, string> = {
   "host.advanced.execution.softwareHint": "Use software encoding for this share.",
   "channel.error.captureEncodingUnsupported": "The connected App cannot use the selected encoding method.",
   "host.advanced.codec.h264Hint": "H.264 video format",
+  "host.advanced.lockedWhileSharing": "Fixed while sharing. Stop sharing to change it.",
 
   "host.details": "Connection details",
   "connection.room": "Room connections",

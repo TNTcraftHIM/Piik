@@ -5,7 +5,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
-import { VideoRateControls } from "../src/client/components/living/QualityPresets";
+import { VideoCodecControl, VideoRateControls } from "../src/client/components/living/QualityPresets";
 import { QUALITY_PROFILES, VIDEO_CAPTURE_LIMITS } from "../src/client/media/quality";
 
 // Exercise the shared draft owner without adding a DOM runtime to unit tests.
@@ -148,5 +148,17 @@ describe("Numeric quality editing group", () => {
     current.choose(128);
     expect(current.input.value).toBe("128");
     expect(current.setInvalid).toHaveBeenLastCalledWith(false);
+  });
+});
+
+describe("Encoder choices locked by a running share", () => {
+  it("announce why the codec cannot change instead of its usual hint", () => {
+    const html = renderToStaticMarkup(createElement(VideoCodecControl, { value: "auto", lockedReason: "Fixed while sharing.", onChange: vi.fn() }));
+    const chips = html.match(/<button\b[^>]*>/g)!;
+    expect(chips).toHaveLength(3);
+    for (const chip of chips) {
+      expect(chip).toContain('aria-disabled="true"');
+      expect(chip).toContain("Fixed while sharing.");
+    }
   });
 });
