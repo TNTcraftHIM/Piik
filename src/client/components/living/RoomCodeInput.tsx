@@ -1,5 +1,4 @@
 import { useCopy } from "../../ui/copy";
-import { Comic } from "./Comic";
 
 export function RoomCodeInput({ value, onChange, rejectedAttempt = 0, autoFocus = false }: {
   value: string;
@@ -19,14 +18,4 @@ export function RoomCodeInput({ value, onChange, rejectedAttempt = 0, autoFocus 
       autoFocus={autoFocus} aria-label={t("join.field")} aria-invalid={rejectedAttempt > 0}
       onChange={event => onChange(event.target.value.replace(/\D/g, "").slice(0, 4))} />
   </div>;
-}
-
-export function RoomCodeError({ attempt, theme = "paper" }: { attempt: number; theme?: "paper" | "stage" }) {
-  const { t } = useCopy();
-  if (!attempt) return null;
-  // The message is inside the live region; another rejection re-announces it.
-  return <span key={attempt} role="alert" style={{ display: "grid", justifyItems: "center", gap: 8 }}>
-    <Comic kind="room-code-invalid" theme={theme} size={240} />
-    <span className="lr-cap" style={{ color: "var(--danger)" }}>{t("join.invalid")}</span>
-  </span>;
 }

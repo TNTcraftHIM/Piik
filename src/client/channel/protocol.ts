@@ -357,4 +357,3 @@ export type ChannelCommand =
   | { type: "room_data_state"; roomId: string; pairId: string; ready: boolean }
   | { type: "leave" };
 export type ProfileUpdate = Omit<Extract<ChannelCommand, { type: "set_profile" }>, "type">;
-export type ChannelRequest = ChannelCommand & { requestId?: string };
