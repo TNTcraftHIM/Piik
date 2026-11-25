@@ -1,18 +1,25 @@
 # Container Tags Across A Breaking Major
 
-Evidence for one decision at the 3.0 cutover: what the container image's
-`latest` tag means afterwards. It is not decided, and the owner will decide it
-when the release is prepared. Researched on 2026-11-25 from each project's own
-documentation, registry page or issue tracker. Items marked "reported" come
-from a secondary source.
+Evidence about one channel at the 3.0 cutover: the container image's `latest`
+tag. The rules are already set by [versioning](../standards/versioning.md): a
+major is an incompatible public contract and nothing is promised across it,
+`latest` moves when a version becomes the latest release, and a deliberate
+break needs clear upgrade instructions and mismatches that
+[fail clearly](../standards/versioning.md#major-upgrade-guidance). This note
+shows what those rules have meant in practice for other projects. Whether
+anything about the container channel should differ is for the owner when the
+release is prepared. Researched on 2026-11-25 from each project's own
+documentation, registry page or issue tracker.
 
 ## The Situation
 
 The published 2.x Compose file defaults to the `latest` image, and the 2.x
 first-install guide does not tell an operator to pin a version. 3.0 reads
 different environment variables and a different data layout, and has no
-in-place migration. If `latest` moves to 3.0, a routine pull replaces a working
-2.x server with a build that cannot read its configuration or its data.
+in-place migration, which the rules allow. When `latest` moves to 3.0, a
+routine pull replaces a working 2.x server with a build that cannot read its
+configuration or its data. An App crosses a major behind a visible notice and
+the person's own act. A container that follows `latest` crosses it on a pull.
 
 ## What The Ecosystem Says
 
@@ -68,7 +75,8 @@ silently ignores.
 | A new image name for the new major | No clean case found | Splits documentation and discovery |
 
 The options combine. Every case without a startup refusal surfaced as
-confusion, whatever its tag policy.
+confusion, whatever its tag policy. The second row is what the present rules
+already describe.
 
 ## Not Verified
 
