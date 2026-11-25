@@ -95,7 +95,7 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
         </div>
       </div>
     </SurfaceDocument.Provider>, overlay.target)}
-    <MutedTalkNotice anchor={controls} shown={shortcuts.talking && muted} />
+    <MutedTalkNotice anchor={controls} shown={shortcuts.talking && joined.every(value => value.muted)} />
     <div ref={controls} className="c3-voice-controls">
       <AudioVolumeMenu volume={channel.voiceInput.volume} onVolume={channel.setInputVolume} label="host.microphone.volume">
         <VoiceMicrophoneButton active={!muted} level={levels.get(channel.sessionId ?? "")} disabled={microphoneDisabled}
@@ -118,7 +118,8 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
   </section>;
 }
 
-/** Holding the talk key on a muted microphone sends nothing; this says so above the microphone without moving the controls. */
+/** Holding the talk key while every joined room is muted sends nothing; this says so above the microphone without moving the controls.
+ * The gate is shared, so one unmuted room carries the press and the notice stays hidden. */
 function MutedTalkNotice({ anchor, shown }: { anchor: RefObject<HTMLElement | null>; shown: boolean }) {
   const { t } = useCopy();
   const notice = useRef<HTMLParagraphElement>(null);
