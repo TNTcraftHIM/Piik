@@ -15609,6 +15609,206 @@ test.each([false, true])("exports flow reports and plan retirement only with Bro
   } finally { session.close(); }
 });
 
+async function debugChannelSession(enabled: boolean) {
+  vi.resetModules();
+  vi.stubGlobal("window", Object.assign(new EventTarget(), {
+    location: new URL(enabled ? "https://channel.test/?debug=1" : "https://channel.test/"),
+    setTimeout, clearTimeout,
+  }));
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  const { ChannelSession: DebugSession } = await import("../src/client/channel/session");
+  const { ChannelConversation: DebugConversation } = await import("../src/client/channel/conversation");
+  vi.spyOn(DebugConversation.prototype, "initialize").mockResolvedValue(testSigningKey);
+  const { exportBrowserDebug } = await import("../src/client/lib/debug");
+  const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const { readFile } = await import("node:fs/promises");
+  await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  return { ...await setup(1000, false, "room=first", true, ["first"], "saved", DebugSession), exportBrowserDebug };
+}
+
+test.each([false, true])("records the Browser room host's summary and inputs whole, without free text, only with debug enabled (%s)", async enabled => {
+  const { session, socket, exportBrowserDebug } = await debugChannelSession(enabled);
+  const host = {
+    summary: async () => ({ id: "first", name: "Private room name", icon: "couch", creatorId: "self", access: "public" as const,
+      hidden: false, hasPassword: true, voiceBitrate: 64_000, relayCapacity: 2 }),
+    bind: vi.fn(async (_binding: string) => {}),
+    dispatch: vi.fn(async (_input: unknown) => ({ bindingId: "binding" })),
+    close: vi.fn(async () => {}),
+  };
+  // Thirty endpoints confirm 435 pairs, far past the 64 items an ordinary event keeps.
+  const sessions = Array.from({ length: 30 }, () => crypto.randomUUID());
+  const confirmedPairs = sessions.flatMap((first, index) => sessions.slice(index + 1).map(second => [first, second]));
+  const endpoints = Object.fromEntries(sessions.map(id => [id, { signingKey: Array(32).fill(7), member: { userId: id },
+    connected: true, canUsePeerTransport: true }]));
+  const context = { connection: crypto.randomUUID(), sessionId: sessions[1], requestId: "request", now: 1_000 };
+  const publicationId = crypto.randomUUID();
+  const commands = [
+    { type: "publish", publication: { id: publicationId, roomId: "first", kind: "screen", source: { kind: "screen", name: "Private window" } } },
+    { type: "set_title", publicationId, title: "Private title" },
+    { type: "start_watch", roomId: "first", id: crypto.randomUUID(), source: { type: "media", url: "https://media.example/private.mp4" },
+      playback: { timeline: "media", position: 0, paused: true, rate: 1, anchorTime: 0 },
+      byteSource: { sessionId: sessions[1], resourceId: "private-resource", format: "file" } },
+    { type: "conversation", packet: { sender: sessions[1], payload: "Private message body", signature: [1, 2, 3] } },
+    { type: "enter_room", roomId: "first", password: "private-password", inviteKey: "private-invite" },
+  ];
+  try {
+    const registering = (session as unknown as { registerBrowserHost(id: string, value: typeof host, current: () => void): Promise<void> })
+      .registerBrowserHost("first", host, () => {});
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "host_register")).toBe(true));
+    socket.receive({ type: "ack", requestId: socket.sent.findLast(command => command.type === "host_register")!.requestId });
+    await registering;
+    socket.receive({ type: "host_bound", roomId: "first", bindingId: "binding" });
+    const inputs = commands.map((command, index) => ({ hostingMode: "lightweight", channelOwnerId: "self", now: 1_000 + index,
+      bindingId: "binding", hostSessionId: sessions[0], revision: 7 + index, confirmedPairs,
+      failedPairs: [{ first: sessions[0], second: sessions[1], revision: 6 }], endpoints, action: { type: "command", context, command } }));
+    for (const input of inputs) socket.receive({ type: "host_input", roomId: "first", input });
+    await vi.waitFor(() => expect(host.dispatch).toHaveBeenCalledTimes(inputs.length));
+    expect(host.dispatch.mock.calls.map(([input]) => input)).toEqual(inputs);
+    const report = await exportBrowserDebug();
+    const records = JSON.parse(report).events.filter((event: { scope: string }) => event.scope === "room-host");
+    if (!enabled) { expect(records).toEqual([]); return; }
+    expect(records.map((record: { event: string }) => record.event)).toEqual(["registered", ...inputs.map(() => "input")]);
+    expect(records.some((record: { truncated?: boolean }) => record.truncated)).toBe(false);
+    // The shared secret-key filter also removes hasPassword, which routing never reads.
+    expect(records[0].details).toEqual({ resumeBinding: null, summary: { id: "first", creatorId: "self", access: "public",
+      hidden: false, voiceBitrate: 64_000, relayCapacity: 2 } });
+    const [published] = records.slice(1).map((record: { details: { roomId: string; input: typeof inputs[number] } }) => record.details);
+    expect(published.roomId).toBe("first");
+    expect(published.input).toEqual({ ...inputs[0], endpoints: Object.fromEntries(sessions.map(id => [id, { member: { userId: id },
+      connected: true, canUsePeerTransport: true }])), action: { type: "command", context,
+      command: { type: "publish", publication: { id: publicationId, roomId: "first", kind: "screen", source: { kind: "screen" } } } } });
+    expect(published.input.confirmedPairs).toHaveLength(435);
+    expect(records[3].details.input.action.command.byteSource).toEqual({ sessionId: sessions[1], format: "file" });
+    for (const text of ["Private", "private", "media.example", "signingKey", "signature"]) expect(report).not.toContain(text);
+  } finally { session.close(); }
+});
+
+test.each([false, true])("logs flow assignments, selections and link states only with Browser debug enabled (%s)", async enabled => {
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  vi.stubGlobal("document", { body: { append: vi.fn() }, createElement: (tag: string) => new RoomAudio(tag.toUpperCase()) });
+  const { session, socket, exportBrowserDebug } = await debugChannelSession(enabled);
+  const [pairId, incomingId, outgoingId, publicationId] = Array.from({ length: 4 }, () => crypto.randomUUID());
+  const peerId = "source";
+  const base = session.getSnapshot().state!;
+  const state = (selected: boolean, outgoing: boolean) => ({ ...base, subscriptions: [publicationId],
+    publications: [{ audience: [], id: publicationId, roomId: "first", sessionId: peerId, userId: "self", kind: "screen" as const,
+      source: { kind: "screen" as const, name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }],
+    pairs: [{ id: pairId, peerId, canReceiveVideoLayers: false, rooms: ["first"],
+      outgoing: outgoing ? [{ id: outgoingId, publicationId, selected: false, inputFlowId: incomingId }] : [],
+      incoming: [{ id: incomingId, publicationId, selected, inputFlowId: null }] }],
+  });
+  try {
+    socket.receive({ type: "state", state: state(false, false) });
+    socket.receive({ type: "state", state: state(true, true) });
+    RoomPeerConnection.instances.at(-1)!.connected();
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "link_state")).toBe(true));
+    socket.receive({ type: "state", state: { ...state(true, true), pairs: [] } });
+    const { events } = JSON.parse(await exportBrowserDebug());
+    const logged = events.filter((event: { event: string }) => event.event.startsWith("flow-assignment-") || event.event === "link-state-sent")
+      .map(({ event, details }: { event: string; details: unknown }) => ({ event, details }));
+    const incoming = { pairId, peerId, flowId: incomingId, publicationId, inputFlowId: null, direction: "incoming" };
+    const outgoing = { pairId, peerId, flowId: outgoingId, publicationId, inputFlowId: incomingId, direction: "outgoing" };
+    expect(logged).toEqual(enabled ? [
+      { event: "flow-assignment-added", details: incoming },
+      { event: "flow-assignment-selected", details: incoming },
+      { event: "flow-assignment-added", details: outgoing },
+      { event: "link-state-sent", details: { pairId, state: "connected" } },
+      { event: "flow-assignment-removed", details: { pairId, flowId: incomingId, direction: "incoming" } },
+      { event: "flow-assignment-removed", details: { pairId, flowId: outgoingId, direction: "outgoing" } },
+    ] : []);
+  } finally { session.close(); }
+});
+
+const pathReport = (records: Array<[string, object]>) => new Map<string, object>([
+  ...records,
+  ["transport", { id: "transport", type: "transport", selectedCandidatePairId: "candidate-pair" }],
+  ["candidate-pair", { id: "candidate-pair", type: "candidate-pair", transportId: "transport", state: "succeeded",
+    localCandidateId: "local", remoteCandidateId: "remote", currentRoundTripTime: 0.042, availableOutgoingBitrate: 2_500_000 }],
+  ["local", { id: "local", type: "local-candidate", candidateType: "srflx", address: "192.0.2.10", port: 50_000, protocol: "udp" }],
+  ["remote", { id: "remote", type: "remote-candidate", candidateType: "host", address: "198.51.100.20", port: 60_000, protocol: "udp" }],
+]) as unknown as RTCStatsReport;
+
+test.each([false, true])("samples derived connection numbers once a second without addresses only with Browser debug enabled (%s)", async enabled => {
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  vi.stubGlobal("document", { body: { append: vi.fn() }, createElement: (tag: string) => new RoomAudio(tag.toUpperCase()) });
+  const { session, socket, exportBrowserDebug } = await debugChannelSession(enabled);
+  const [pairId, flowId, publicationId] = Array.from({ length: 3 }, () => crypto.randomUUID());
+  const source = "source";
+  const state = { ...session.getSnapshot().state!, subscriptions: [publicationId],
+    publications: [{ audience: [], id: publicationId, roomId: "first", sessionId: source, userId: "self", kind: "screen" as const,
+      source: { kind: "screen" as const, name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }],
+    pairs: [{ id: pairId, peerId: source, canReceiveVideoLayers: false, rooms: ["first"], outgoing: [],
+      incoming: [{ id: flowId, publicationId, selected: true, inputFlowId: null }] }],
+  };
+  vi.useFakeTimers();
+  try {
+    socket.receive({ type: "state", state });
+    const pc = RoomPeerConnection.instances.at(-1)!;
+    const video = remoteTrack("video"), stream = remoteStream("remote-stream", [video]);
+    socket.receive({ type: "signal", pairId, fromSessionId: source, payload: { exchangeId: crypto.randomUUID(),
+      description: { type: "offer", sdp: "remote-sdp" }, tracks: [{ flowId, streamId: stream.id }] } });
+    await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("remote-sdp"));
+    pc.ontrack?.({ streams: [stream] });
+    let second = 0;
+    pc.getStats.mockImplementation(async () => {
+      second++;
+      return pathReport([["inbound", { id: "inbound", type: "inbound-rtp", kind: "video", trackIdentifier: video.id,
+        transportId: "transport", timestamp: second * 1_000, framesDecoded: second * 30, framesDropped: second,
+        freezeCount: second, totalFreezesDuration: second * 0.1, pauseCount: 0, totalPausesDuration: 0,
+        jitterBufferDelay: second * 1.5, jitterBufferEmittedCount: second * 30, packetsReceived: second * 100, packetsLost: second * 2 }]]);
+    });
+    const calls = pc.getStats.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(3_000);
+    const samples = JSON.parse(await exportBrowserDebug()).events.filter((event: { event: string }) => event.event === "connection-sample");
+    if (!enabled) {
+      expect(samples).toEqual([]);
+      expect(pc.getStats.mock.calls.length).toBe(calls);
+      return;
+    }
+    expect(samples).toHaveLength(3);
+    const path = { pairId, peerId: source, rttMs: 42, availableOutgoingKbps: 2_500, localCandidateType: "srflx", remoteCandidateType: "host" };
+    expect(samples[0].details).toEqual({ connections: [{ ...path, outgoing: [], incoming: [{ flowId, sampleWindowMs: null,
+      intervalFramesDecoded: null, intervalFramesDropped: null, intervalFreezeDurationMs: null, intervalPauseDurationMs: null,
+      videoJitterBufferDelayMs: null, audioJitterBufferDelayMs: null, packetLossPercent: null }] }] });
+    expect(samples[2].details.connections[0].incoming[0]).toMatchObject({ flowId, sampleWindowMs: 1_000, intervalFramesDecoded: 30,
+      intervalFramesDropped: 1, intervalPauseDurationMs: 0, videoJitterBufferDelayMs: 50 });
+    const records = JSON.stringify(samples);
+    for (const address of ["192.0.2.10", "198.51.100.20", "50000", "60000", "candidate-pair", video.id]) expect(records).not.toContain(address);
+    // One record per second for one received screen on one connection, as the ring retains it.
+    const bytes = samples.map((sample: object) => new TextEncoder().encode(JSON.stringify(sample)).byteLength);
+    for (const size of bytes) expect(size).toBeLessThan(1_024);
+    session.close();
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { vi.useRealTimers(); session.close(); }
+});
+
+test("a connection sample reports each outgoing flow's limitation and loss without addresses", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const transport = new ChannelTransport({ identity: { sessionId: "self", pairId: "pair", peerId: "viewer" }, polite: true, iceServers: [],
+    send() {}, receive() {}, connected() {}, roomData() {}, failed() {} });
+  const pc = RoomPeerConnection.instances[0];
+  try {
+    transport.setOutgoing(new Map([["screen-flow", { kind: "screen", stream: remoteStream("local", [remoteTrack("video")]),
+      profile: QUALITY_PROFILES["1080p30"] }]]));
+    await vi.waitFor(() => expect(pc.senders[0]?.track).toBeTruthy());
+    const report = (second: number) => pathReport([
+      ["outbound", { id: "outbound", type: "outbound-rtp", kind: "video", mediaSourceId: "source", transportId: "transport",
+        timestamp: second * 1_000, framesEncoded: second * 30, qualityLimitationReason: "bandwidth", remoteId: "remote-inbound" }],
+      ["source", { id: "source", type: "media-source", kind: "video", trackIdentifier: pc.senders[0].track.id }],
+      ["remote-inbound", { id: "remote-inbound", type: "remote-inbound-rtp", kind: "video", timestamp: second * 1_000,
+        fractionLost: 0.05, packetsLost: second * 5 }],
+    ]);
+    transport.connectionSample(report(1));
+    const sample = transport.connectionSample(report(2));
+    expect(sample).toEqual({ pairId: "pair", peerId: "viewer", rttMs: 42, availableOutgoingKbps: 2_500, localCandidateType: "srflx",
+      remoteCandidateType: "host", incoming: [], outgoing: [{ flowId: "screen-flow", rtpRid: null, qualityLimitationReason: "bandwidth",
+        packetLossPercent: 5, pooled: false }] });
+    expect(JSON.stringify(sample)).not.toMatch(/192\.0\.2|198\.51\.100/);
+  } finally { transport.close(); }
+});
+
 test.each(["ack", "error"] as const)("a retired publish %s cannot admit or remove the pending replacement", async reply => {
   const { session, socket } = await setup();
   const id = crypto.randomUUID();

@@ -1,7 +1,7 @@
 import { data_queue_frames } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
 import { LinearCandidateAdmission } from "../webrtc/linear-ice-candidate";
 import { addRemoteIceCandidate } from "../webrtc/remote-ice-candidate";
-import { collectTrackConnectionMetrics, decodedVideoFrameSamples, type StatsAccumulator } from "../webrtc/stats";
+import { collectTrackConnectionMetrics, decodedVideoFrameSamples, selectedPathMetrics, type StatsAccumulator, type StatsMediaSelector } from "../webrtc/stats";
 import { debugTrack, observeDebugConnection } from "../lib/debug-webrtc";
 import type { ConnectionMetrics } from "../types";
 import { preferOpusStereoReceive } from "../webrtc/opus-receive-sdp";
@@ -102,6 +102,7 @@ export class ChannelTransport {
   private deadline: ReturnType<typeof setTimeout> | null;
   private closed = false;
   private releaseDebug: () => void;
+  private sampleMetrics = new Map<string, Map<string, StatsAccumulator>>();
   private rooms = new Set<string>();
   private channel: RTCDataChannel | null = null;
   private bulk: RTCDataChannel | null = null;
@@ -113,21 +114,53 @@ export class ChannelTransport {
 
   outgoingMetrics(report: RTCStatsReport, flowIds: ReadonlySet<string>): Array<{ flowId: string; metrics: ConnectionMetrics }> {
     return [...this.sending].flatMap(([flowId, binding]) => {
-      if (!flowIds.has(flowId)) return [];
-      const video = binding.senders.find(value => value.source.kind === "video");
-      const track = binding.senders.find(value => value.source.kind === (binding.kind === "screen" ? "video" : "audio"))?.sender.track;
-      if (!track) return [];
+      const sender = flowIds.has(flowId) ? senderSelector(binding) : null;
+      if (!sender) return [];
+      const { video, track, selector } = sender;
       // Picture counters belong to the producer while this sender uses its clock.
       if (video && track !== video.encoded?.track) {
         debugTrack(video.source, { flowId, role: "source", senderTrackId: track.id });
         debugTrack(senderCaptureTrack(track), { flowId, role: "sender-input", senderTrackId: track.id });
       }
-      const audio = binding.senders.find(value => value.source.kind === "audio")?.sender.track;
-      return collectTrackConnectionMetrics(report, "send", binding.metrics ??= new Map(), {
-        kind: binding.kind === "screen" ? "video" : "audio", trackIdentifier: track.id,
-        audioTrackIdentifier: audio?.id ?? null,
-      }, this.pc).map(metrics => ({ flowId, metrics: video?.pooled?.metrics(metrics) ?? metrics }));
+      return collectTrackConnectionMetrics(report, "send", binding.metrics ??= new Map(), selector, this.pc)
+        .map(metrics => ({ flowId, metrics: video?.pooled?.metrics(metrics) ?? metrics }));
     });
+  }
+
+  /**
+   * Derived numbers for an offline replay, from baselines of its own so the
+   * connections panel keeps its intervals. It holds no address or raw report.
+   * A pooled sender's encoder reports its limitation in the pool's own sample.
+   */
+  connectionSample(report: RTCStatsReport): object {
+    const current = new Set<string>();
+    const metrics = (flowId: string, direction: "send" | "receive", selector: StatsMediaSelector) => {
+      current.add(flowId);
+      let previous = this.sampleMetrics.get(flowId);
+      if (!previous) this.sampleMetrics.set(flowId, previous = new Map());
+      return collectTrackConnectionMetrics(report, direction, previous, selector, this.pc);
+    };
+    const incoming = [...this.receiving].flatMap(([streamId, stream]) => {
+      const flowId = this.remoteIds.get(streamId), audio = stream.getAudioTracks()[0];
+      const track = stream.getVideoTracks()[0] ?? audio;
+      if (!flowId || !track) return [];
+      return metrics(flowId, "receive", { kind: track.kind === "video" ? "video" : "audio", trackIdentifier: track.id,
+        audioTrackIdentifier: audio?.id ?? null }).map(value => ({ flowId,
+        sampleWindowMs: value.sampleWindowMs, intervalFramesDecoded: value.intervalFramesDecoded,
+        intervalFramesDropped: value.intervalFramesDropped, intervalFreezeDurationMs: value.intervalFreezeDurationMs,
+        intervalPauseDurationMs: value.intervalPauseDurationMs, videoJitterBufferDelayMs: value.videoJitterBufferDelayMs,
+        audioJitterBufferDelayMs: value.audioJitterBufferDelayMs, packetLossPercent: value.packetLossPercent }));
+    });
+    const outgoing = [...this.sending].flatMap(([flowId, binding]) => {
+      const sender = senderSelector(binding);
+      if (!sender) return [];
+      return metrics(flowId, "send", sender.selector).map(value => ({ flowId, rtpRid: value.rtpRid,
+        qualityLimitationReason: value.qualityLimitationReason, packetLossPercent: value.packetLossPercent,
+        pooled: !!sender.video?.pooled }));
+    });
+    for (const flowId of this.sampleMetrics.keys()) if (!current.has(flowId)) this.sampleMetrics.delete(flowId);
+    return { pairId: this.options.identity?.pairId ?? null, peerId: this.options.identity?.peerId ?? null,
+      ...selectedPathMetrics(report), incoming, outgoing };
   }
 
   constructor(private options: TransportOptions) {
@@ -1024,11 +1057,21 @@ export class ChannelTransport {
     this.sending.clear();
     this.receiving.clear();
     this.frameBaselines.clear();
+    this.sampleMetrics.clear();
     this.pendingOffer = null;
     this.stableSenders = null;
     this.answer = null;
     return released;
   }
+}
+
+function senderSelector(binding: OutgoingBinding): { video?: SenderBinding; track: MediaStreamTrack; selector: StatsMediaSelector } | null {
+  const kind = binding.kind === "screen" ? "video" : "audio";
+  const track = binding.senders.find(value => value.source.kind === kind)?.sender.track;
+  if (!track) return null;
+  const audio = binding.senders.find(value => value.source.kind === "audio")?.sender.track;
+  return { video: binding.senders.find(value => value.source.kind === "video"), track,
+    selector: { kind, trackIdentifier: track.id, audioTrackIdentifier: audio?.id ?? null } };
 }
 
 /** One bounded writer per SCTP stream; producers own their application work. */

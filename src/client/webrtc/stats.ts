@@ -434,6 +434,28 @@ function selectedCandidatePair(
   return selected.length === 1 ? selected[0]! : null;
 }
 
+/** The selected ICE path of a bundled connection, by candidate type and never by address. */
+export function selectedPathMetrics(report: RTCStatsReport):
+  Pick<ConnectionMetrics, "rttMs" | "availableOutgoingKbps" | "localCandidateType" | "remoteCandidateType"> {
+  for (const raw of report.values()) {
+    const transport = raw as StatsRecord;
+    if (transport.type !== "transport") continue;
+    const pair = selectedCandidatePair(report, transport);
+    const local = getRecord(report, stringValue(pair, "localCandidateId"));
+    const remote = getRecord(report, stringValue(pair, "remoteCandidateId"));
+    if (local?.type !== "local-candidate" || remote?.type !== "remote-candidate") continue;
+    const rtt = numberValue(pair, "currentRoundTripTime");
+    const available = numberValue(pair, "availableOutgoingBitrate");
+    return {
+      rttMs: rtt === null ? null : rtt * 1_000,
+      availableOutgoingKbps: available === null ? null : available / 1_000,
+      localCandidateType: stringValue(local, "candidateType"),
+      remoteCandidateType: stringValue(remote, "candidateType"),
+    };
+  }
+  return { rttMs: null, availableOutgoingKbps: null, localCandidateType: null, remoteCandidateType: null };
+}
+
 function linkedRemoteInbound(
   report: RTCStatsReport,
   outbound: StatsRecord | null,
