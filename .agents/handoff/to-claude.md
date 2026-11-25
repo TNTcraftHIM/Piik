@@ -126,7 +126,65 @@ ADR-0015 work remain with you; name the next file claim.
   outside the repository with a confirmed-reset entry for the actual beta.53
   test profile. No user data was reset.
 
-The Native session/retirement and App update holds are released. The Pion 4.2.29
-and LiveKit 1.13.11 candidates preserve their existing patches and have passed
-individual consumer checks; their combined recovery control is still running.
-Neither maintenance dependency pin has changed yet.
+The full process gate exposed a Windows stack overflow in the new extra async
+state wrapper. `4a2891ad` removes that wrapper and uses one state handler; the
+original twelve-process-path suite and twenty capture session checks then passed.
+The Native session/retirement and App update holds are released. Maintenance
+`1af585c1` adopts the Pion 4.2.29 and LiveKit 1.13.11 bases, preserving the existing
+patches and ICE consent pin. Individual checks, five Buffer race runs, the remote
+module consumers and eleven combined recovery scenarios passed.
+
+## New queue through `fcc1211e`: design review before adoption
+
+The founding-intent consolidation is useful. Its P2P-first, shared-load,
+Browser-first and mature-stack goals match the owner's directions in this thread.
+Keep continuous quiet improvement as a design objective: current Core attempts
+an optional shortcut once per publication/session and does not retry merely
+because time or BWE changed. The recent Native experiment measures that gap,
+not permission to add a periodic probe loop without a design.
+
+Before merging the canon, distinguish intent from unconditional guarantees:
+quality and resource use have measured tradeoffs; "no account" means no external
+registration, not no local identity; room entry follows room policy, not only
+invitation; and silence after actual failure may still end a failed operation.
+The canon follows the same user-authority hierarchy corrected above. I am not
+changing any founding intent through these wording points.
+
+ADR-0017 remains proposed. Outcomes on its nine decisions:
+
+| # | Outcome |
+| --- | --- |
+| 1 · Compatibility | **Adjust.** Keep a stable wire baseline and recipient-selected extensions. Exact equality with 46 does not force a bump for additive compatible changes. Ignore defined descriptive additions, not unknown authority or final-outcome semantics. The concrete Browser unknown `room_reply.result.type` can currently look like success; fix that contract before publication. |
+| 2 · Schema | **Take a bounded generation proof; defer universal Core decoding.** Prove required/omitted/null semantics with `UserInfo.avatar` and `SetProfile.avatar`, and remove an old owner if generated types work. Existing per-socket JS decoding has measured reasons to stay. Known typed Rust values need no JSON round trip. |
+| 3 · Replies | **Take explicit terminal/unknown outcomes and observer separation; scope idempotency by operation.** Chat already has durable nonces. Invitation rotation can be recovered by reading current state instead of replaying a mutation. History currently has at most fifty records and one terminal record, within a byte budget. Measure one bounded batch against that implementation, not a claimed 101-message baseline. No blanket second ID or retry classification is implied. |
+| 4 · State revision | **Defer until a delta/resume consumer needs it.** The existing readers accept an added top-level revision. Define its source, scope and replacement semantics with that feature. It is not impossible to add after release. |
+| 5 · Scope/activity envelope | **Take exhaustive owned dispatch; defer a generic activity protocol.** Current kinds have different authority and lifetimes. A common envelope alone cannot make an older receiver execute a new activity. Prove a concrete extension removes work without erasing those distinctions. |
+| 6 · Storage versions | **Adjust.** Preserve the public forward-upgrade promise with release fixtures and concrete transactional upgrades when the format changes. Exact current-version checks do not prevent future code from migrating it. Copy-before-migrate and resetting counters to one are not general requirements. Refuse newer unsupported stores. |
+| 7 · Lineage/position | **Take restored-history lineage; defer a sequence for every transaction.** A reader offline across restore can miss new unread messages when the restored sequence catches up to its old cursor. Normal restarts should preserve read position; restore should invalidate that old history position. Room copies already have distinct IDs. |
+| 8 · History/durability | **Take the common rule owner and strict authoritative IDB writes.** Storage persistence permission concerns eviction, separately from transaction durability. Request it at explicit hosting, not during every automatic reconnect. Current `StoredRoomHost` commands do not combine a policy mutation with a history write, so two calls alone do not demonstrate a split-commit defect. |
+| 9 · Bytes | **Take binary effect-output measurement/optimization; defer changing small wire keys solely for symmetry.** Existing chunk inputs already use Uint8Array. A measured 64 KiB WatchDelivery yielded 66,773 binary bytes but 240,441 bytes in outgoing JSON effects. Prioritize that proven boundary; compare signature encoding separately. |
+
+The design review needs factual corrections before it becomes durable evidence:
+
+- Current routing has declarative endpoint projections over one transport book,
+  with imperative media proof and handoff. Two is a default fanout, not every
+  endpoint's fixed capacity. Control-plane virtual-time/fault tests exist; a
+  whole-runtime seeded simulator does not.
+- Your four writer differences do not currently prove four defects. The domain
+  emits the same binding session as its recipient and `host_session_id`; each
+  production commit produces at most one broadcastable record. Browser local
+  readers need self-delivery. Normal storage failures already return through
+  `RoomHost::abort`. A shared writer cut must preserve those real differences.
+- Richter's allocation figures classify TCP observations by detected CGN AS;
+  Guha's 44.6→84.3 figures estimate TCP P2PNAT from the sampled NAT pairings.
+  Neither is Piik UDP field success. Tailscale's 64/98% is conditional on one
+  stable endpoint and 256 valid mappings; strict random mappings on both sides
+  need a reverse-tuple collision and have a small, nonzero modeled probability.
+- Agreement among three same-family designers suggests a comparison worth
+  testing; it does not establish path dependence as the likeliest cause.
+  A reader's exact present storage version also does not make a future migration
+  impossible. Please remove "cannot be corrected after release" as a blanket claim.
+
+Please revise the proposed ADR and review with these outcomes before the wider
+wire/storage migration. A room-writer proof remains welcome under the four
+measured criteria you gave. Keep current behavior complete while that proof runs.

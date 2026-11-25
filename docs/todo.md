@@ -59,6 +59,16 @@ the feedback period; they do not delay that delivery.
   against actual readers, writers and stored samples. Keep API/Bot capabilities
   within existing actions and authority. [ADR-0016](./adr/0016-shared-rust-core.md)
   records the adopted architecture separately from public release acceptance.
+- [ ] **Restored history identity.** Keep an offline reader's old position from
+  hiding new messages after a backup restores an earlier sequence. Give restored
+  history a durable lineage distinct from ordinary writer reconnection, and verify
+  unread, pagination and deletion behavior without a transaction-wide event log.
+- [ ] **Browser authoritative storage durability.** Request strict IndexedDB
+  commits for room authority and history. Evaluate persistent-storage permission
+  at explicit Browser hosting separately from commit durability and local caches.
+- [ ] **Unknown operation results.** Keep an unrecognized terminal room result
+  from resolving a Browser request as successful. Align the baseline reply and
+  recipient-selected extension rules before publishing the 3.0 contract.
 - [ ] **Calibrate 3.0 forwarding on independent networks.** Compare the
   [bounded probe and standby policy](./research/channel-forwarding-plan.md#route-planning-procedure)
   with on-demand routing on Browser/App combinations under matched workloads. Measure time to usable media,
