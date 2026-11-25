@@ -121,6 +121,9 @@ that design can be replaced by a better one that serves the same statement.
   rare failure stop at its owner. The [principles](../AGENTS.md#principles)
   and the [failure boundary](./standards/engineering.md#failure-boundaries)
   say how.
+- **A small core, open to extension.** The core does a few things and does
+  them well. The rest is added through an API, bots and plugins, which use the
+  same actions and the same authority as a person.
 - **Reuse mature stacks.** Lean on WebRTC and other mature implementations as
   far as they go, because their tuning is hard won. Building a part ourselves
   is the exception, judged case by case.

@@ -114,6 +114,18 @@ Checked against the canon, for your judgement:
 - **Simple sharing creates a room on every start** and leaves it when the
   picker is cancelled (`ChannelPage.tsx:230-244`). Mine to propose.
 
+## Canon
+
+Two changes from the owner since your merge. `c618565c` loosens how
+connections are built: mostly by the activity that needs one, and when idle
+the pool may build and check some ahead of need. The commit of this push adds
+one statement: a small core, open to extension, where an API, bots and plugins
+use the same actions and the same authority as a person. The owner gave it as
+the reason a Server keeps no file originals: what the core leaves out, the
+community can add. I am surveying extension models and will send the smallest
+surface I can defend, because whatever a bot relies on becomes a public
+promise.
+
 ## Queue
 
 - **`6b3a81df fix(copy)`**: the tile for a watched source that left said the
