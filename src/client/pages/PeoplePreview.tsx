@@ -1,18 +1,9 @@
 import { useMemo, useState } from "react";
-import type { RoomVoiceSnapshot } from "../room-voice/participant-presentation";
-import type { RoomVoiceView } from "../room-voice/RoomVoicePanel";
-import { voiceConnectionDetails, type VoiceConnectionMetric } from "../room-voice/VoiceConnectionDetails";
-import { EMPTY_METRICS } from "../types";
-import { PREVIEW_METRICS } from "./preview-metrics";
-import { CaptureMetricCells } from "../components/living/Metrics";
-import { ConnectionDetails } from "../components/living/ConnectionDetails";
+import type { RoomVoiceState } from "../../shared/protocol";
 import { Couch } from "../components/living/Couch";
 import { participantConnection } from "../lib/participant-connection";
 import { PawnSvg } from "../components/living/Pawn";
-import { PawnDetail } from "../components/living/PawnDetail";
-import { RouteTree } from "../components/living/RouteTree";
-import { ViewerOverview } from "../components/living/ViewerOverview";
-import { Chip, Row, SwitchItem } from "../components/living/primitives";
+import { Chip, SwitchItem } from "../components/living/primitives";
 import { participantColor } from "../components/living/participant-color";
 import { labelParticipantSnapshot } from "../lib/viewer-presence";
 import { deriveParticipantStatus } from "../ui/media-status";
@@ -38,7 +29,7 @@ export function PeoplePreview() {
   const { t, lang } = useCopy();
   const en = lang === "en";
   const sample = new URLSearchParams(location.search).get("people");
-  const initialMode = sample && ["room", "voice", "stopped", "both", "voice-failed", "relay-voice"].includes(sample) ? sample : "mixed";
+  const initialMode = sample && ["room", "voice", "stopped", "both", "relay-voice"].includes(sample) ? sample : "mixed";
   const [count, setCount] = useState(initialMode === "mixed" ? 20 : 3);
   const [mode, setMode] = useState(initialMode);
   const [view, setView] = useState<"host" | "viewer">(initialMode === "relay-voice" ? "viewer" : "host");
@@ -47,7 +38,6 @@ export function PeoplePreview() {
   const [picture, setPicture] = useState(!["room", "voice", "stopped"].includes(initialMode));
   const [voiceEnabled, setVoice] = useState(true);
   const [selected, setSelected] = useState<string | null>(["voice", "both", "stopped"].includes(initialMode) ? VIEWER_IDS[0]! : null);
-  const [overviewOpen, setOverviewOpen] = useState(initialMode !== "mixed");
   const [guides, setGuides] = useState(false);
   const hostName = en ? "Amu" : "阿沐";
   const peerCount = Math.max(1, Math.floor(count * .6));
@@ -67,52 +57,13 @@ export function PeoplePreview() {
   })));
   const self = VIEWER_IDS[0]!;
   const viewers = sourceActive ? routedViewers : routedViewers.map(viewer => ({ ...viewer, upstream: { kind: "none" as const }, mediaReady: undefined }));
-  const voice = useMemo<Pick<RoomVoiceView, "getSnapshot" | "subscribe"> | undefined>(() => {
-    if (!voiceActive) return undefined;
-    const state: RoomVoiceSnapshot = {
-      peerId: view === "host" ? HOST_ID : self, role: view, connected: true,
-      room: { type: "room-voice-state", revision: 1, enabled: true, hostPeerId: HOST_ID, bitrate: 96_000,
-        members: [{ peerId: HOST_ID, connected: true, joined: true, upstream: { kind: "none" } },
-          ...routedViewers.map((viewer, index) => ({ peerId: viewer.peerId, connected: true, joined: index % 5 !== 4, upstream: viewer.upstream, deafened: index % 4 >= 2, publicationId: index % 4 === 0 || index % 4 === 3 ? `preview-voice-${index}` : undefined }))],
-        publications: [], connections: [], unavailable: [] },
-      capturePending: false, microphone: false, deafened: false, autoplayBlocked: false, muted: new Set(), error: mode === "voice-failed" ? "transport" : null,
-      input: { deviceId: "", volume: 1, voiceProcessing: true }, listeningVolume: 1, peerVolumes: new Map(),
-    };
-    return { getSnapshot: () => state, subscribe: () => () => {} };
-  }, [voiceActive, count, view, self, mode]);
-  const roomVoice = voice?.getSnapshot().room;
-  const localPeerId = view === "host" ? HOST_ID : self;
-  const remotePeers = (view === "host" ? routedViewers.map(viewer => viewer.peerId) : [HOST_ID, ...routedViewers.map(viewer => viewer.peerId)])
-    .filter(id => id !== localPeerId);
-  const receivedVoice = voiceActive && mode !== "voice-failed" ? remotePeers.map((peerId, index): VoiceConnectionMetric => {
-    const viaPeerId = deepChain ? view === "host" ? VIEWER_IDS[0]! : peerId === HOST_ID ? HOST_ID : VIEWER_IDS[1]!
-      : view === "viewer" ? HOST_ID : index < peerCount ? peerId : null;
-    return { connectionId: `voice-example-${viaPeerId ?? "sfu"}`, peerId, viaPeerId,
-      direction: "receive", route: viaPeerId ? "p2p" : "sfu",
-      metrics: { ...EMPTY_METRICS, bitrateKbps: 82 - index * 2, packetLossPercent: index * .2,
-        sampleWindowMs: 1000, intervalPacketsReceived: 1000 - index * 2, intervalPacketsLost: index * 2,
-        jitterMs: 2.1 + index * .4, rttMs: viaPeerId ? viaPeerId === HOST_ID || viaPeerId === VIEWER_IDS[0] ? 32 : 40 : 48,
-        audioCodec: "audio/opus", audioJitterBufferDelayMs: 24 },
-    };
-  }) : [];
-  const voiceConnections = [...new Map(receivedVoice.map(item => [item.connectionId, item])).values()];
-  const voiceMetrics: readonly VoiceConnectionMetric[] = [...receivedVoice,
-    ...voiceConnections.map((item, index): VoiceConnectionMetric => ({ ...item, peerId: localPeerId, direction: "send",
-      metrics: { ...item.metrics, bitrateKbps: 88 - index * 2, packetLossPercent: .1 + index * .2, jitterMs: 1.8,
-        intervalPacketsReceived: null, intervalPacketsLost: null },
-    })),
-    ...(voiceConnections.length > 1 ? [{ ...receivedVoice.find(item => item.connectionId !== voiceConnections[0]!.connectionId)!,
-      connectionId: voiceConnections[0]!.connectionId, viaPeerId: voiceConnections[0]!.viaPeerId, route: voiceConnections[0]!.route,
-      direction: "send" as const, metrics: { ...voiceConnections[0]!.metrics, bitrateKbps: 80, packetLossPercent: .2,
-        intervalPacketsReceived: null, intervalPacketsLost: null },
-    }] : []),
-  ];
-  const pictureMetrics = sourceActive ? PREVIEW_METRICS : null;
+  const roomVoice = useMemo<RoomVoiceState | undefined>(() => voiceActive ? {
+    type: "room-voice-state", revision: 1, enabled: true, hostPeerId: HOST_ID, bitrate: 96_000,
+    members: [{ peerId: HOST_ID, connected: true, joined: true, upstream: { kind: "none" } },
+      ...routedViewers.map((viewer, index) => ({ peerId: viewer.peerId, connected: true, joined: index % 5 !== 4, upstream: viewer.upstream, deafened: index % 4 >= 2, publicationId: index % 4 === 0 || index % 4 === 3 ? `preview-voice-${index}` : undefined }))],
+    publications: [], connections: [], unavailable: [],
+  } : undefined, [voiceActive, count, mode]);
   const connectionFor = (viewer: (typeof viewers)[number]) => participantConnection(viewer, sourceActive, roomVoice);
-  const routeFor = (viewer: (typeof viewers)[number]) => {
-    const upstream = viewer.upstream;
-    return upstream.kind === "none" ? null : upstream.kind === "sfu" ? "sfu" as const : "p2p" as const;
-  };
   const selectable = viewers.filter((viewer) => {
     const upstream = connectionFor(viewer).upstream;
     return view === "host" || upstream.kind === "peer" && upstream.peerId === self;
@@ -124,15 +75,12 @@ export function PeoplePreview() {
     collaboration: picture && collaboration && mode !== "pending" && index < 2,
   }));
   const selectedViewer = viewers.find((viewer) => viewer.peerId === selected && selectable.includes(viewer.peerId));
-  const select = (key: string) => {
-    setSelected((current) => current === key ? null : key);
-    setOverviewOpen(true);
-  };
+  const select = (key: string) => setSelected((current) => current === key ? null : key);
   return <section id="people-preview" className="cp-section">
     <header className="cp-section-head"><span className="cp-number">05</span><div>
       <h2>{en ? "A seat for everyone" : "人多，也坐得下。"}</h2>
-      <p>{en ? "Try the full room, long names and relay depth. Click a person to inspect the same identity in each view."
-        : "试试满员、长名字和多层转发。点击小人，沙发、连接图和详情会选中同一个人。"}</p>
+      <p>{en ? "Try the full room, long names and relay depth. Click a person to select them."
+        : "试试满员、长名字和多层转发。点击小人可以选中。"}</p>
     </div></header>
     <PawnAppearancePreview guides={guides} onGuides={setGuides} />
     <div id="pawn-study-couch" className="cp-tools">
@@ -162,7 +110,6 @@ export function PeoplePreview() {
         { id: "stopped", label: en ? "Picture stopped, voice stays" : "停播 · 语音继续" },
         { id: "both", label: en ? "Picture + voice" : "画面与语音" },
         { id: "relay-voice", label: en ? "Relay + voice" : "接力与语音" },
-        { id: "voice-failed", label: en ? "Picture ready, voice failed" : "画面正常 · 语音失败" },
         { id: "mixed", label: en ? "Peers + SFU" : "P2P + SFU" },
         { id: "relay", label: en ? "Deep relay chain" : "多层接力" },
         { id: "pending", label: en ? "Waiting for a route" : "等待连接" }].map(item =>
@@ -171,36 +118,7 @@ export function PeoplePreview() {
         }}>{item.label}</Chip>)}
     </div>
     {!sourceActive && <p className="cp-note">{en
-      ? voiceActive ? "Voice routes stay visible without a picture. Select a person to inspect their route." : "Everyone is in the room. Media connections begin when sharing or voice starts."
-      : voiceActive ? "没有分享画面时，语音线路仍会显示。点击小人查看对应连接。" : "大家都在房间里。开始分享或加入语音后，再建立媒体连接。"}</p>}
-    <details className="cp-disclosure" open={overviewOpen} onToggle={event => setOverviewOpen(event.currentTarget.open)}>
-      <summary>{t("host.details")}</summary>
-      {overviewOpen && (sourceActive || voice) && <Row sub><ConnectionDetails rows={[
-        ...(sourceActive ? [{ key: "picture", media: "video" as const, label: t(view === "host" ? "stats.localCapture" : "stats.sharedMedia"),
-          icon: view === "host" ? "share" as const : "arrowDown" as const,
-          cells: view === "host" ? <CaptureMetricCells resolution="2560x1440" frameRate={60} codec="h264" hasSourceAudio /> : undefined,
-          route: view === "viewer" ? "p2p" as const : null, metrics: view === "viewer" ? pictureMetrics : null,
-          direction: view === "viewer" ? "receive" as const : "send" as const,
-        }] : []),
-        ...(sourceActive && view === "viewer" && viewers.some(viewer => viewer.upstream.kind === "peer" && viewer.upstream.peerId === self)
-          ? [{ key: "relay", media: "video" as const, label: t("stats.relay"), direction: "send" as const, route: "p2p" as const, metrics: pictureMetrics }] : []),
-        ...voiceConnectionDetails({ voice: voice?.getSnapshot(), metrics: voiceMetrics, t,
-          peerName: id => viewers.find(viewer => viewer.peerId === id)?.label ?? hostName }),
-      ]} /></Row>}
-      {overviewOpen && view === "host" && count > 0 ? <ViewerOverview entries={entries.map((entry, index) => ({ ...entry, metrics: pictureMetrics,
-        route: sourceActive ? routeFor(viewers[index]!) : null,
-      }))} pictureActive={sourceActive} voice={voice?.getSnapshot()} voiceMetrics={voiceMetrics} selectedKey={selectedViewer?.peerId ?? null} onSelect={select} /> : null}
-      {overviewOpen && selectedViewer ? <PawnDetail pawnKey={selectedViewer.peerId} name={selectedViewer.label}
-        route={sourceActive ? routeFor(selectedViewer) : null}
-        metrics={pictureMetrics} direction={view === "host" ? "send" : "receive"} onClose={() => setSelected(null)}
-        voiceDetails={voiceConnectionDetails({ voice: voice?.getSnapshot(), peerId: selectedViewer.peerId, metrics: voiceMetrics, t,
-          peerName: id => viewers.find(viewer => viewer.peerId === id)?.label ?? hostName })}
-      /> : null}
-    </details>
-    <div className="cp-connection-panel">
-      <RouteTree hostPeerId={HOST_ID} hostLabel={hostName} viewers={viewers} pictureActive={sourceActive} voice={roomVoice}
-        selfPeerId={view === "viewer" ? self : HOST_ID} selectedPeerId={selectedViewer?.peerId}
-        selectablePeerIds={selectable} onSelectPeer={select} />
-    </div>
+      ? voiceActive ? "Voice stays connected without a picture." : "Everyone is in the room. Media connections begin when sharing or voice starts."
+      : voiceActive ? "没有分享画面时，语音仍然连着。" : "大家都在房间里。开始分享或加入语音后，再建立媒体连接。"}</p>}
   </section>;
 }
