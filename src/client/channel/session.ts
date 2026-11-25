@@ -535,7 +535,9 @@ export class ChannelSession {
       const state = this.view.state;
       this.patch({ connection: "reconnecting", state: state ? withoutRoomPictures(state) : null });
       this.beginRecovery();
-      this.retry = setTimeout(() => { this.retry = null; this.connect(acceptWelcome); }, 1000);
+      // Spread the retries of everyone a restarting site dropped at the same instant
+      // (RFC 6455 section 7.2.3). No later than the second it has always been.
+      this.retry = setTimeout(() => { this.retry = null; this.connect(acceptWelcome); }, 500 + Math.random() * 500);
     };
     socket.onerror = () => { /* The close event owns retry. */ };
   }
