@@ -31,3 +31,34 @@ test("hosts released by an ended session finish closing before the next session 
   expect(owner.host(room.id)).toBe(reopened);
   expect(request).toHaveBeenLastCalledWith({ type: "host_register", room, resumeBinding: undefined });
 });
+
+test("a room has one host: a host registered over another closes the one it replaces", async () => {
+  const room = { id: "first", creatorId: "self" };
+  const host = () => ({ roomId: room.id, summary: () => room, close: vi.fn(async () => {}) });
+  const first = host(), second = host();
+  const owner = new BrowserHosting({
+    view: () => ({}) as unknown as ChannelView, socket: () => null, request: async () => {}, write: () => {}, report: () => {}, failures: () => {},
+  });
+  await owner.register(room.id, first as never, () => {});
+  await owner.register(room.id, second as never, () => {});
+  expect(owner.host(room.id)).toBe(second);
+  expect(first.close).toHaveBeenCalledOnce();
+  expect(second.close).not.toHaveBeenCalled();
+});
+
+test("a close that fails does not stop hosting from being restored", async () => {
+  const room = { id: "first", creatorId: "self" };
+  const failing = { roomId: room.id, summary: () => room, close: vi.fn(async () => { throw new Error("close_failed"); }) };
+  const reopened = { roomId: room.id, summary: () => room, close: vi.fn(async () => {}) };
+  vi.stubGlobal("indexedDB", {});
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: { storedRoomIds: async () => [room.id],
+    openExisting: vi.fn().mockResolvedValueOnce(failing).mockResolvedValueOnce(reopened) } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const owner = new BrowserHosting({
+    view: () => ({ state: { channel: { id: "channel", rooms: [room] } }, self: { id: "self" } }) as unknown as ChannelView,
+    socket: () => null, request: async () => {}, write: () => {}, report: () => {}, failures: () => {},
+  });
+  await owner.restore("ended", () => true);
+  owner.release();
+  await owner.restore("next", () => true);
+  expect(owner.host(room.id)).toBe(reopened);
+});

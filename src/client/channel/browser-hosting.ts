@@ -117,6 +117,8 @@ export class BrowserHosting {
         if (!hosted) {
           const host = await storage.openExisting(id);
           if (!current()) { await host.close(); return; }
+          // A room has one host: another writer took the slot while the store opened, and it registers its own.
+          if (this.rooms.has(id)) { await host.close(); continue; }
           hosted = { host };
           this.rooms.set(id, hosted);
         }
@@ -155,7 +157,9 @@ export class BrowserHosting {
   /** Holds a host the session just opened and registers it. `current` throws once the session that opened it is gone. */
   async register(roomId: string, host: HostedRoom, current: () => void): Promise<void> {
     try { current(); } catch (error) { await host.close(); throw error; }
+    const replaced = this.rooms.get(roomId);
     this.rooms.set(roomId, { host });
+    if (replaced) this.retire(replaced.host);
     this.fail(roomId);
     const summary = await host.summary();
     current();
@@ -197,6 +201,7 @@ export class BrowserHosting {
   }
 
   private retire(...hosts: HostedRoom[]): void {
-    this.cleanup = Promise.all([this.cleanup, ...hosts.map(host => host.close())]).then(() => {});
+    // The chain says when closing has finished, whatever each close returned.
+    this.cleanup = Promise.allSettled([this.cleanup, ...hosts.map(host => host.close())]).then(() => {});
   }
 }
