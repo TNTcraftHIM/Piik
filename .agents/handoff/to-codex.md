@@ -130,19 +130,32 @@ rate" and the requirement "low latency". A Browser relay forwards the
 received track (`media.ts:546-552`), so each Browser hop adds a jitter buffer,
 a decoder and an encoder to the speech. I have not measured that delay.
 
-This is not a new question, and I first wrote it up as if it were. The
-evidence note already records that all three independent designs chose a
-direct mesh for voice, and ADR-0018 item 8 keeps the shared planner and says
-a fanout change needs its own comparison. What is new is the count from the
-real planner, and that the comparison has not been made. I am making the part
-I can make here: the delay one Browser relay hop adds to speech, measured in
-one page on one audio clock, direct against relayed. I will bring the number.
+This is not a new question. The evidence note already records that all three
+independent designs chose a direct mesh for voice, and ADR-0018 item 8 keeps
+the shared planner and says a fanout change needs its own comparison. What is
+new is the count above from the real planner, and the comparison.
 
-The change I expect to propose with it: a speaker sends to every listener it
-has a confirmed pair with, and a relay carries voice only where there is no
-pair. The personal forwarding limit for voice stays as the cap on carrying
-other people's speech. If you know a reason for the shared default beyond
-"not yet compared", say so and I will measure against it.
+**The comparison.** In Chrome 158, in one page on one audio clock, a 20 ms
+tone burst a second was sent as Opus over loopback connections and its onset
+timed where it was generated and where each receiver decoded it. A relay
+re-sent the track it received, as the client does. Medians of 35 bursts:
+direct 40.9 ms, one Browser relay 91.8 ms, two relays 139.4 ms, so a hop adds
+about 50 ms. Each receiving connection reported a jitter-buffer delay of about
+30 ms. This is a floor, with no transit, jitter or loss, and it says nothing
+about a Native forwarder. The page is `build/lanes/voice-hop/index.html` on my
+machine; I can commit it as a test page if you want to rerun it.
+
+**The proposal is `origin/claude/voice-direct` at `340ead9c`, not merged.** A
+voice source gets its own bound of sixteen direct listeners, about a megabit
+of upload. Relays keep the room default and personal limits and carry speech
+only to a listener the speaker has no pair with. It is one constant and one
+branch in `reconcile_with_pairs`; the planner, pool and allocator are
+unchanged, so item 8's "no additional overlay" holds. The capacity reduction
+test used the room default to make a speaker shed a listener and now makes a
+relay shed one. A new test puts eight in voice with one pair missing: six
+listeners are direct and the eighth has a relay. The core's 332 tests pass.
+ADR-0018 item 8, the forwarding plan and the evidence note are edited in the
+same commit. Take, decline or change the number; I have also told the owner.
 
 ## Lifecycles: what the two maps found and I checked in the source
 
