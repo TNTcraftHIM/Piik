@@ -13,6 +13,7 @@ import { useCopy } from "../ui/copy";
 import { Glyph } from "../ui/icons";
 import type { RoomVoiceCommand } from "../../shared/protocol";
 import type { CaptureDevice } from "../media/capture-devices";
+import { SPEAKING_LEVEL } from "../media/voice-gate";
 import { MicrophoneLevel } from "./MicrophoneLevel";
 import { VoiceListeningButton, VoiceMicrophoneButton } from "./VoiceAudioButtons";
 import { describeVoiceParticipant, type RoomVoiceSnapshot } from "./participant-presentation";
@@ -126,7 +127,7 @@ export function RoomVoicePanel({ session, names, onSelectParticipant }: Props & 
     <div className="lr-voice-members">
       {members.map(member => {
         const status = describeVoiceParticipant(member);
-        const speaking = !!member.publicationId && (levels.get(member.peerId) ?? 0) > .01;
+        const speaking = !!member.publicationId && (levels.get(member.peerId) ?? 0) > SPEAKING_LEVEL;
         return <article className="lr-voice-member" key={member.peerId} data-room-peer={member.peerId}>
           <div className="lr-voice-identity">
             {onSelectParticipant ? <Tooltip kind="hint-reaction-picker"

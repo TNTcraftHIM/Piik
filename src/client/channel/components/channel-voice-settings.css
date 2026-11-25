@@ -14,3 +14,15 @@
 .c3-voice-shortcut-row kbd { padding: 2px 5px; border: 1px solid var(--control-edge); border-radius: 4px; font: 11px var(--mono); }
 .c3-voice-shortcut-row > p { flex-basis: 100%; margin: 0; }
 .c3-voice-shortcut-row > p:empty { position: absolute; }
+.c3-voice-mode { display: grid; gap: 8px; margin-bottom: 14px; }
+.c3-voice-mode > span { color: var(--muted); font-size: 12px; }
+/* Mode names differ widely in length between languages, so the choices stack. */
+.c3-voice-mode > .lr-toggle { --selection-item-min-width: 100%; }
+.c3-voice-mode > .lr-toggle > label > span { justify-content: flex-start; }
+.c3-voice-mode > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+/* The meter shares the slider's scale; the inset keeps it under the thumb's travel. */
+.c3-voice-activation-meter { display: block; height: 6px; margin-inline: 8px; border-radius: 999px; background: var(--wall-2); overflow: hidden; }
+.c3-voice-activation-meter > span { display: block; height: 100%; background: var(--muted); }
+.c3-voice-activation-meter[data-passing] > span { background: var(--live); }
+:where(html:not([data-reduced-motion])) .c3-voice-activation-meter > span { transition: width 140ms linear; }
+@media (prefers-reduced-motion: reduce) { .c3-voice-activation-meter > span { transition: none; } }

@@ -11,7 +11,8 @@ import type { ChannelPublication } from "../protocol";
 import { roomVoiceStatus } from "../use-voice-playback";
 import { profileAvatar, roomVoicePeople } from "../presentation";
 import { ChannelVoiceSettings } from "./ChannelVoiceSettings";
-import { useCallback, useContext, useEffect, useId, useState } from "react";
+import { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { createPortal } from "react-dom";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../../lib/room-interactions";
@@ -21,6 +22,7 @@ import { useVoiceLevels } from "../../room-voice/use-voice-levels";
 import { resolveVoiceDockControls } from "../voice-dock-controls";
 import { useVoiceShortcuts } from "../use-voice-shortcuts";
 import { voiceShortcutAria, voiceShortcutLabel } from "../voice-shortcut-binding";
+import { SPEAKING_LEVEL } from "../../media/voice-gate";
 
 /** One persistent control surface for this endpoint's independently joined rooms. */
 export function ChannelVoiceDock({ channel, selected, playing, onSelect, onBrowse }: {
@@ -31,7 +33,9 @@ export function ChannelVoiceDock({ channel, selected, playing, onSelect, onBrows
   const state = channel.state;
   const { joined, activity, microphoneDisabled, microphonePending, toggle } = resolveVoiceDockControls(channel, selected);
   const shortcuts = useVoiceShortcuts(activity?.roomId, toggle,
-    channel.connection === "connected" ? channel.backgroundVoiceShortcuts : undefined);
+    channel.connection === "connected" ? channel.backgroundVoiceShortcuts : undefined,
+    channel.voiceTransmission.mode === "push" ? channel.talk : undefined);
+  const controls = useRef<HTMLDivElement>(null);
   const roomId = activity?.roomId ?? "";
   const overlay = useContext(VoiceOverlay);
   const readRemote = !!overlay?.target && !activity?.deafened;
@@ -49,7 +53,7 @@ export function ChannelVoiceDock({ channel, selected, playing, onSelect, onBrows
   const appearances = overlay?.target ? roomVoicePeople(state, roomId, levels) : null;
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
   const status = roomVoiceStatus(state, channel.sessionId, roomId, playing);
-  const speaking = appearances ? state.users.filter(user => (appearances.get(user.id)?.level ?? 0) > .01) : [];
+  const speaking = appearances ? state.users.filter(user => (appearances.get(user.id)?.level ?? 0) > SPEAKING_LEVEL) : [];
   return <section className="c3-voice-dock" aria-label={t("channel.voiceDock.voiceControls")}>
     <Glyph name="headphones" size={22} />
     <div className="c3-voice-destination">
@@ -95,7 +99,8 @@ export function ChannelVoiceDock({ channel, selected, playing, onSelect, onBrows
         </div>
       </div>
     </SurfaceDocument.Provider>, overlay.target)}
-    <div className="c3-voice-controls">
+    <MutedTalkNotice anchor={controls} shown={shortcuts.talking && joined.every(value => value.muted)} />
+    <div ref={controls} className="c3-voice-controls">
       <AudioVolumeMenu volume={channel.voiceInput.volume} onVolume={channel.setInputVolume} label="host.microphone.volume">
         <VoiceMicrophoneButton active={!muted} level={levels.get(channel.sessionId ?? "")} disabled={microphoneDisabled}
           cancelPending={microphonePending} quiet keyShortcuts={microphoneDisabled ? undefined : voiceShortcutAria(microphone)}
@@ -122,6 +127,23 @@ const VOICE_STATUS_LABEL = {
   connected: "channel.voiceDock.voiceConnected",
   joined: "channel.voiceDock.voiceJoined",
 } as const;
+
+/** Holding the talk key while every joined room is muted sends nothing; this says so above the microphone without moving the controls.
+ * The gate is shared, so one unmuted room carries the press and the notice stays hidden. */
+function MutedTalkNotice({ anchor, shown }: { anchor: RefObject<HTMLElement | null>; shown: boolean }) {
+  const { t } = useCopy();
+  const notice = useRef<HTMLParagraphElement>(null);
+  useAnchoredPopover(anchor, notice, { side: "above", align: "start" });
+  useLayoutEffect(() => {
+    const element = notice.current;
+    if (!element) return;
+    if (shown) element.showPopover();
+    else if (element.matches(":popover-open")) element.hidePopover();
+  }, [shown]);
+  return <p ref={notice} popover="manual" role="status" className="lr-anchored-card c3-voice-talk-muted">
+    {shown && <><Glyph name="microphoneOff" size={16} /><span>{t("voice.microphoneInactive")}</span></>}
+  </p>;
+}
 
 function VoiceOverlayChatSettings({ session }: { session: RoomInteractionSession }) {
   const { t } = useCopy();

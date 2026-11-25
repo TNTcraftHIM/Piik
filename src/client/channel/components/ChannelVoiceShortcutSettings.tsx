@@ -12,12 +12,14 @@ import {
 
 const modifiers = new Set(["Control", "Alt", "Shift", "Meta"]);
 
-export function ChannelVoiceShortcutSettings({ open, bindings, mac, save, reset, recording, setRecording, background }:
-  { open: boolean } & ReturnType<typeof useVoiceShortcuts>) {
+export function ChannelVoiceShortcutSettings({ open, pushToTalk, bindings, mac, save, reset, recording, setRecording, background }:
+  { open: boolean; pushToTalk: boolean } & ReturnType<typeof useVoiceShortcuts>) {
   const { t } = useCopy();
   const surface = useSurfaceDocument();
   const id = useId();
-  const [feedback, setFeedback] = useState<"duplicate" | "unsupported" | null>(null);
+  const [feedback, setFeedback] = useState<{ duplicate: VoiceShortcutAction } | "unsupported" | null>(null);
+  const actionName = (action: VoiceShortcutAction) =>
+    t(action === "microphone" ? "host.device.microphone" : action === "listening" ? "voice.listening" : "voice.mode.push");
   const finish = () => { setRecording(null); setFeedback(null); };
   useEffect(() => {
     if (!open) finish();
@@ -34,9 +36,9 @@ export function ChannelVoiceShortcutSettings({ open, bindings, mac, save, reset,
     if (!background.recordReady) return;
     const binding = voiceShortcutFromEvent(event.nativeEvent);
     if (!binding) { setFeedback("unsupported"); return; }
-    if (voiceShortcutActions.some(other => other !== action && matchesVoiceShortcut(bindings[other], binding))) {
-      setFeedback("duplicate"); return;
-    }
+    // A hidden talk binding still owns its chord, so the message names it.
+    const duplicate = voiceShortcutActions.find(other => other !== action && matchesVoiceShortcut(bindings[other], binding));
+    if (duplicate) { setFeedback({ duplicate }); return; }
     save({ [action]: binding });
     finish();
   };
@@ -53,9 +55,10 @@ export function ChannelVoiceShortcutSettings({ open, bindings, mac, save, reset,
           : background.report && (background.report.microphone === "registered" || background.report.listening === "registered")
             ? "voice.shortcuts.backgroundEnabled" : "voice.shortcuts.scope")}</p>
     </> : <p>{t("voice.shortcuts.scope")}</p>}
-    {voiceShortcutActions.map(action => {
-      const name = t(action === "microphone" ? "host.device.microphone" : "voice.listening");
+    {voiceShortcutActions.filter(action => action !== "talk" || pushToTalk).map(action => {
+      const name = actionName(action);
       const binding = bindings[action];
+      const native = action === "talk" ? undefined : background.report?.[action];
       const editing = open && recording === action;
       const current = binding ? voiceShortcutLabel(binding, mac) : t("voice.shortcuts.unbound");
       const editLabel = t("voice.shortcuts.edit", { action: name, shortcut: current });
@@ -75,12 +78,15 @@ export function ChannelVoiceShortcutSettings({ open, bindings, mac, save, reset,
           <Btn icon="x" title={{ text: t("voice.shortcuts.clear", { action: name }) }} textTooltip quiet size="compact"
             disabled={!binding} onClick={() => save({ [action]: null })} />
         </div>
-        <p role="status">{editing ? t(!background.recordReady
-          ? background.error ? "voice.shortcuts.backgroundPauseFailed" : "voice.shortcuts.backgroundPausing"
-          : feedback === "duplicate" ? "voice.shortcuts.duplicate"
-            : feedback === "unsupported" ? "voice.shortcuts.unsupported" : "voice.shortcuts.record")
-          : !recording && background.report?.[action] === "unavailable" ? t("voice.shortcuts.backgroundBindingUnavailable")
-            : !recording && background.report?.[action] === "registered" ? t("voice.shortcuts.backgroundBindingRegistered") : ""}</p>
+        <p role="status">{editing ? !background.recordReady
+          ? t(background.error ? "voice.shortcuts.backgroundPauseFailed" : "voice.shortcuts.backgroundPausing")
+          : feedback === "unsupported" ? t("voice.shortcuts.unsupported")
+            : feedback ? t("voice.shortcuts.duplicate", { action: actionName(feedback.duplicate) }) : t("voice.shortcuts.record")
+          : recording ? ""
+            : native === "unavailable" ? t("voice.shortcuts.backgroundBindingUnavailable")
+              : native === "registered" ? t("voice.shortcuts.backgroundBindingRegistered")
+                // The App registers toggles only; holding to talk stays with the focused page.
+                : action === "talk" && background.enabled ? t("voice.shortcuts.scope") : ""}</p>
       </div>;
     })}
   </section>;

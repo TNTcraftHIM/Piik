@@ -2301,6 +2301,75 @@ test.each(["failed", "cancelled"])("initial microphone worklet preparation %s cl
   } finally { session.close(); }
 });
 
+test("push to talk gates the shared microphone before publishing and sends nothing per press", async () => {
+  const key = "piik:room-preferences:v1";
+  const preferences = new Map([[key, JSON.stringify({ voiceTransmission: { mode: "push", activationThreshold: -40 } })]]);
+  vi.stubGlobal("window", { localStorage: { getItem: (name: string) => preferences.get(name) ?? null,
+    setItem: (name: string, value: string) => preferences.set(name, value) } });
+  vi.spyOn(MicrophoneInput.prototype, "level").mockReturnValue(.3);
+  const { session, socket } = await setup(3, false);
+  const roomTrack = remoteTrack("audio");
+  const contexts = microphoneMixer([remoteStream("room", [roomTrack])]);
+  const addModule = vi.fn(async () => {});
+  Object.assign(AudioContext.prototype, { sampleRate: 48000, audioWorklet: { addModule } });
+  const gates: Array<{ port: { postMessage: ReturnType<typeof vi.fn>; onmessage: ((event: { data: unknown }) => void) | null } }> = [];
+  vi.stubGlobal("AudioWorkletNode", class {
+    port = { postMessage: vi.fn(), close: vi.fn(), onmessage: null };
+    connect = vi.fn(); disconnect = vi.fn(); onprocessorerror = null;
+    constructor() { gates.push(this); }
+  });
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: async () => remoteStream("raw", [remoteTrack("audio")]) } });
+  const state = structuredClone(session.getSnapshot().state!);
+  const level = () => session.voiceActivity("first", true);
+  try {
+    const joining = session.joinVoice("first");
+    await vi.waitFor(() => expect(gates[0]?.port.onmessage).toBeTypeOf("function"));
+    expect(socket.sent.some(command => command.type === "voice" || command.type === "publish")).toBe(false);
+    gates[0]!.port.onmessage!({ data: "ready" });
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "voice", roomId: "first", muted: false }));
+    state.voice.push({ roomId: "first", sessionId: "endpoint", muted: false, deafened: false });
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const publishing = socket.sent.at(-1)!;
+    state.publications.push({ audience: [], ...(publishing.publication as { id: string; roomId: string; kind: "voice" }), sessionId: "endpoint", userId: "self", paused: false });
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "ack", requestId: publishing.requestId });
+    await joining;
+    const gate = gates[0]!.port;
+    expect(contexts[0].gain.disconnect).toHaveBeenCalledWith(contexts[0].createMediaStreamDestination.mock.results[0].value);
+    expect(gate.postMessage).toHaveBeenLastCalledWith({ mode: "push", threshold: .01, pressed: false });
+    expect(session.getSnapshot().state?.voice[0].muted).toBe(false);
+    expect(await level()).toEqual(new Map());
+
+    const commands = socket.sent.length;
+    session.talk(true);
+    expect(gate.postMessage).toHaveBeenLastCalledWith({ mode: "push", threshold: .01, pressed: true });
+    gate.onmessage!({ data: true });
+    expect(await level()).toEqual(new Map([["endpoint", .3]]));
+    session.talk(false);
+    gate.onmessage!({ data: false });
+    expect(await level()).toEqual(new Map());
+    expect(socket.sent).toHaveLength(commands);
+
+    // Mute keeps its own path and overrides a held key.
+    const muting = session.setMuted("first", true);
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "voice", muted: true }));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await muting;
+    session.talk(true);
+    gate.onmessage!({ data: true });
+    expect(roomTrack.enabled).toBe(false);
+    expect(await level()).toEqual(new Map());
+
+    await session.setMicrophoneMode("open");
+    expect(gate.postMessage).toHaveBeenLastCalledWith("close");
+    expect(contexts[0].gain.connect).toHaveBeenLastCalledWith(contexts[0].createMediaStreamDestination.mock.results[0].value);
+    expect(JSON.parse(preferences.get(key)!).voiceTransmission).toEqual({ mode: "open", activationThreshold: -40 });
+    expect(addModule).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
 test("closing during microphone permission releases the pending context and late capture", async () => {
   const { session } = await setup();
   const contexts = microphoneMixer([]), raw = remoteTrack("audio");

@@ -3,10 +3,12 @@ import type { RoomPreferences } from "../lib/room-preferences";
 import { audioInputConstraints } from "../media/audio-capture";
 import { acquireMediaStream } from "../media/capture-stream";
 import { MicrophoneInput } from "../media/microphone-input";
+import type { MicrophoneMode } from "../media/voice-gate";
 import type { ChannelCommand, ChannelSnapshot } from "./protocol";
 import type { ChannelView } from "./types";
 
 type VoiceInput = RoomPreferences["voiceInput"];
+type VoiceTransmission = RoomPreferences["voiceTransmission"];
 
 /** This endpoint's voice in one room: what it asked for, and the publication carrying it. */
 interface VoiceIntent {
@@ -44,6 +46,7 @@ export interface VoiceSession {
   refresh(): void;
   levels(roomId: string): Promise<ReadonlyMap<string, number>>;
   saveInput(voiceInput: VoiceInput): void;
+  saveTransmission(voiceTransmission: VoiceTransmission): void;
   report(error: string): void;
 }
 
@@ -85,6 +88,7 @@ export class VoiceParticipation {
   constructor(private readonly session: VoiceSession) {}
 
   private get preference(): VoiceInput { return this.session.view().voiceInput; }
+  private get transmission(): VoiceTransmission { return this.session.view().voiceTransmission; }
 
   /** In this room, or in any room when none is given. */
   joined(roomId?: string): boolean { return roomId === undefined ? this.rooms.size > 0 : this.rooms.has(roomId); }
@@ -163,7 +167,7 @@ export class VoiceParticipation {
     for (const id of levels.keys()) if (id === sessionId || intent.deafened
       || !view.state.voice.some(voice => voice.roomId === roomId && voice.sessionId === id && !voice.muted)) levels.delete(id);
     const capture = intent.publicationId ? this.session.local.get(intent.publicationId) : undefined;
-    if (!intent.muted && capture?.roomId === roomId && capture.kind === "voice" && capture.microphone
+    if (!intent.muted && capture?.roomId === roomId && capture.kind === "voice" && capture.microphone?.transmitting
       && capture.stream.getAudioTracks().some(track => track.readyState === "live" && track.enabled)) {
       levels.set(sessionId, capture.microphone.level());
     }
@@ -214,6 +218,29 @@ export class VoiceParticipation {
     this.microphoneRequest?.input?.volume(volume);
     this.session.saveInput({ ...this.preference, volume });
   };
+
+  /** A capture in progress applies the mode before it publishes, so this waits for it. */
+  setMicrophoneMode = (mode: MicrophoneMode): Promise<void> => this.session.action(inputKey, async () => {
+    const signal = this.session.lifetime();
+    // The pending capture reports its own failure.
+    await this.microphoneRequest?.promise?.catch(() => {});
+    signal.throwIfAborted();
+    await this.microphone?.gate(mode);
+    this.session.saveTransmission({ ...this.transmission, mode });
+  });
+
+  setActivationThreshold = (activationThreshold: number): void => {
+    this.microphone?.threshold(activationThreshold);
+    this.microphoneRequest?.input?.threshold(activationThreshold);
+    this.session.saveTransmission({ ...this.transmission, activationThreshold });
+  };
+
+  talk = (pressed: boolean): void => {
+    this.microphone?.press(pressed);
+    this.microphoneRequest?.input?.press(pressed);
+  };
+
+  inputLevel = (): number | undefined => this.microphone?.level();
 
   configureInput = (settings: Partial<Pick<VoiceInput, "deviceId" | "voiceProcessing" | "strongerSuppression">>): Promise<void> => this.session.action(inputKey, async () => {
     const signal = this.session.lifetime();
@@ -369,8 +396,11 @@ export class VoiceParticipation {
         });
         request.input = captured;
         request.context = null;
-        captured.onProcessingError = () => { captured.close(); this.microphone = null; for (const [id, capture] of [...this.session.local]) if (capture.microphone === captured) this.captureEnded(id, capture.stream); this.session.report("voice_noise_processing_failed"); };
+        captured.onProcessingError = error => { captured.close(); this.microphone = null; for (const [id, capture] of [...this.session.local]) if (capture.microphone === captured) this.captureEnded(id, capture.stream); this.session.report(error); };
         await captured.configure(stream, Boolean(this.preference.voiceProcessing && this.preference.strongerSuppression));
+        // Push to talk and voice activation must hold before the first packet; a gate that fails stops the capture.
+        captured.threshold(this.transmission.activationThreshold);
+        await captured.gate(this.transmission.mode);
         const started = await resumed;
         requestSignal.throwIfAborted();
         if (!started || !captured.stream.active) throw new Error("microphone_unavailable");

@@ -57,6 +57,18 @@ test("background voice shortcuts accept small clock differences and discard dela
   } finally { clock.mockRestore(); unsubscribe(); app.close(); }
 });
 
+test("background voice shortcuts send the App only the toggles it registers", async () => {
+  const { app, socket } = await setup(true);
+  try {
+    const binding = (key: string) => ({ key, ctrl: true, alt: false, shift: true, meta: false });
+    const bindings = { microphone: binding("M"), listening: null, talk: binding("V") };
+    const configured = app.backgroundVoiceShortcuts!.configure(bindings);
+    expect(socket.sent.at(-1)).toEqual({ type: "voice_shortcuts", id: socket.sent.at(-1)!.id, enabled: true, microphone: binding("M"), listening: null });
+    socket.reply({ microphone: "registered", listening: "unbound" });
+    await configured;
+  } finally { app.close(); }
+});
+
 test("native voice bindings yield to text and remote input in the focused page or PiP window", async () => {
   const surface = () => {
     const view = Object.assign(new EventTarget(), { HTMLIFrameElement: class {} });

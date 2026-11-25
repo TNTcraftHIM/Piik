@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-export const voiceShortcutActions = ["microphone", "listening"] as const;
+/** Actions a press toggles. The App can also register these outside the window. */
+export const voiceToggleActions = ["microphone", "listening"] as const;
+export type VoiceToggleAction = typeof voiceToggleActions[number];
+/** Every bound voice action. Talk is held, and only a focused page sees it. */
+export const voiceShortcutActions = [...voiceToggleActions, "talk"] as const;
 export type VoiceShortcutAction = typeof voiceShortcutActions[number];
 
 export const voiceShortcutBindingSchema = z.object({
@@ -13,10 +17,19 @@ export const voiceShortcutBindingSchema = z.object({
 
 export type VoiceShortcutBinding = z.infer<typeof voiceShortcutBindingSchema>;
 export type VoiceShortcuts = Record<VoiceShortcutAction, VoiceShortcutBinding | null>;
+export type VoiceToggleShortcuts = Pick<VoiceShortcuts, VoiceToggleAction>;
 
 export function voiceShortcutDefaults(mac: boolean): VoiceShortcuts {
   const modifiers = { ctrl: !mac, alt: false, shift: true, meta: mac };
-  return { microphone: { ...modifiers, key: "M" }, listening: { ...modifiers, key: "D" } };
+  return { microphone: { ...modifiers, key: "M" }, listening: { ...modifiers, key: "D" }, talk: { ...modifiers, key: "V" } };
+}
+
+/** Stored choices over the defaults. A default never takes a chord already stored for another action. */
+export function voiceShortcutsWithDefaults(mac: boolean, stored: Partial<VoiceShortcuts>): VoiceShortcuts {
+  const defaults = voiceShortcutDefaults(mac);
+  const taken = voiceShortcutActions.flatMap(action => stored[action] ?? []);
+  return Object.fromEntries(voiceShortcutActions.map(action => [action, stored[action] !== undefined ? stored[action]
+    : taken.some(binding => matchesVoiceShortcut(binding, defaults[action]!)) ? null : defaults[action]])) as VoiceShortcuts;
 }
 
 export function voiceShortcutFromEvent(event: KeyboardEvent): VoiceShortcutBinding | null {
@@ -30,6 +43,15 @@ export function voiceShortcutFromEvent(event: KeyboardEvent): VoiceShortcutBindi
 export function matchesVoiceShortcut(binding: VoiceShortcutBinding | null, candidate: VoiceShortcutBinding): boolean {
   return binding?.key === candidate.key && binding.ctrl === candidate.ctrl && binding.alt === candidate.alt
     && binding.shift === candidate.shift && binding.meta === candidate.meta;
+}
+
+/**
+ * A held chord ends when its key or one of its modifiers comes up. macOS sends
+ * no key-up for a letter released while Command is down, so the modifier counts too.
+ */
+export function releasesVoiceShortcut(binding: VoiceShortcutBinding, event: Pick<KeyboardEvent, "key">): boolean {
+  const modifiers: Record<string, boolean> = { Control: binding.ctrl, Alt: binding.alt, Shift: binding.shift, Meta: binding.meta };
+  return modifiers[event.key] === true || event.key.toUpperCase() === binding.key;
 }
 
 export function voiceShortcutLabel(binding: VoiceShortcutBinding, mac: boolean): string {
