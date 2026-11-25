@@ -699,6 +699,8 @@ async fn source_checks_preserve_current_paths_and_shared_socket_siblings() -> Re
 
 #[path = "admission.rs"]
 mod admission;
+#[path = "disconnect.rs"]
+mod disconnect;
 #[path = "bulk.rs"]
 mod bulk;
 #[path = "codec_change.rs"]

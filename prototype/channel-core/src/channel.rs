@@ -230,6 +230,7 @@ impl Channel {
         let mut events = Vec::new();
         let mut broadcast = false;
         let mut confirmed_peer = None;
+        let mut observed_peer = None;
         let mut leave = false;
         let mut replies = Vec::new();
         match command {
@@ -331,10 +332,27 @@ impl Channel {
             }
             Command::LinkState { pair_id, state } => {
                 let peer = self.peer(session_id, pair_id).ok_or("unassigned_pair")?;
-                if matches!(state, LinkState::Connected) {
+                if matches!(state, LinkState::Disconnected) {
+                    let socket = self.identity.sessions[&session_id]
+                        .connection
+                        .ok_or("disconnected")?;
+                    broadcast = self
+                        .transports
+                        .observe_disconnected(session_id, socket, pair_id, true);
+                    if broadcast {
+                        observed_peer = Some(peer);
+                    }
+                } else if matches!(state, LinkState::Connected) {
                     let connection = self.identity.sessions[&session_id]
                         .connection
                         .ok_or("disconnected")?;
+                    if self
+                        .transports
+                        .observe_disconnected(session_id, connection, pair_id, false)
+                    {
+                        broadcast = true;
+                        observed_peer = Some(peer);
+                    }
                     let peer_connection =
                         self.identity.sessions.get(&peer).and_then(|s| s.connection);
                     if self
@@ -381,13 +399,23 @@ impl Channel {
         if broadcast {
             self.reconcile();
         }
-        if let Some(peer) = confirmed_peer {
+        if let Some(peer) = confirmed_peer.or(observed_peer) {
             let rooms: Vec<_> = self
                 .remote
                 .iter()
                 .filter(|(_, room)| {
                     let scope = room.planning_sessions(self.service_endpoint, None);
-                    scope.contains(&session_id) && scope.contains(&peer)
+                    scope.contains(&session_id)
+                        && scope.contains(&peer)
+                        && (confirmed_peer.is_some()
+                            || room.projection.as_ref().is_some_and(|p| {
+                                p.flows.iter().any(|f| {
+                                    (f.receiver == session_id && f.sender == peer)
+                                        || (!f.selected
+                                            && f.sender == session_id
+                                            && f.receiver == peer)
+                                })
+                            }))
                 })
                 .map(|(id, _)| id.clone())
                 .collect();
@@ -1184,6 +1212,7 @@ impl Channel {
                 kinds: self.service_kinds,
             }),
             self.transports.confirmed_pairs(&self.identity),
+            self.transports.disconnected_pairs(&self.identity),
             action,
             self.now,
         )?;
@@ -1896,6 +1925,13 @@ impl Channel {
             // attaches to the same unchanged input (or the publication source).
             if !flow.selected
                 && ((!inputs.contains(&(flow.publication_id, flow.receiver, true))
+                    && !previous.get(&flow.id).is_some_and(|old| {
+                        !old.selected
+                            && old.sender == flow.sender
+                            && old.receiver == flow.receiver
+                            && old.publication_id == flow.publication_id
+                            && old.input_flow_id == flow.input_flow_id
+                    })
                     && !projection
                         .flows
                         .iter()

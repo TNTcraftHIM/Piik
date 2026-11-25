@@ -1624,8 +1624,11 @@ try {
   console.log("Relay exit recovers its downstream subscription");
 
   const layoutIndex = relay === 4 ? 0 : 4;
-  assert.equal(await evaluate(layoutIndex, "document.querySelector('#c3-people').checkVisibility()"), true,
-    "the desktop roster is always available");
+  await browser(layoutIndex, "set", "viewport", "1440", "900");
+  await browser(layoutIndex, "wait", '.c3-shell[data-sidebars="inline"][data-companion="chat"] .c3-chat-panel .c3-composer textarea');
+  assert.equal(await evaluate(layoutIndex, "document.querySelector('.c3-chat-panel .c3-composer textarea').checkVisibility()"), true,
+    "chat is available in the desktop side panel while viewing");
+  await browser(layoutIndex, "screenshot", join(output, "chat-desktop.png"), "--full");
   await evaluate(layoutIndex, "(() => { window.__panePlayers = [...document.querySelectorAll('video')]; return true; })()");
   await browser(layoutIndex, "set", "viewport", "390", "844");
   for (const lang of ["zh", "en"]) for (const theme of ["light", "dark"]) {
@@ -1642,26 +1645,44 @@ try {
     assert(layout.scroll <= layout.width, `${lang}/${theme} page overflows at 390px: ${JSON.stringify(layout)}`);
     await browser(layoutIndex, "screenshot", join(output, `${lang}-${theme}-390.png`), "--full");
   }
+  const chatBack = ".c3-chat-panel .c3-chat-heading button";
+  const companion = "#c3-companion-trigger";
+  await browser(layoutIndex, "click", companion);
+  await browser(layoutIndex, "wait", '.c3-shell[data-pane="chat"] .c3-chat-panel .c3-composer textarea');
+  await until("chat drawer focuses its Back button", () => evaluate(layoutIndex,
+    `document.activeElement === document.querySelector(${JSON.stringify(chatBack)})`), Boolean);
   await browser(layoutIndex, "fill", ".c3-composer textarea", "A draft while checking the room");
   const beforePanes = await view(layoutIndex);
+  await browser(layoutIndex, "click", chatBack);
+  await until("chat dismissal restores the trigger focus", () => evaluate(layoutIndex, "document.activeElement.id"),
+    value => value === "c3-companion-trigger");
   await showRoomList(layoutIndex);
-  await browser(layoutIndex, "click", ".c3-domain-name button");
-  await browser(layoutIndex, "click", ".c3-domain-menu-actions > button");
-  assert.equal(await evaluate(layoutIndex, "document.activeElement.id"), "c3-people-heading");
+  await until("room list focuses its heading", () => evaluate(layoutIndex, "document.activeElement.id"),
+    value => value === "c3-room-list-heading");
+  await browser(layoutIndex, "screenshot", join(output, "rooms-mobile.png"), "--full");
+  await browser(layoutIndex, "find", "role", "button", "click", "--name", "Back", "--exact");
+  await until("room list dismissal restores the trigger focus", () => evaluate(layoutIndex, "document.activeElement.id"),
+    value => value === "c3-rooms-trigger");
+  await showRoomList(layoutIndex);
+  await browser(layoutIndex, "click", `.c3-room-link[aria-label=${JSON.stringify(initial[0].state.channel.rooms[1].name)}]`);
+  await browser(layoutIndex, "click", companion);
+  await until("people drawer focuses its heading", () => evaluate(layoutIndex, "document.activeElement.id"),
+    value => value === "c3-people-heading");
   await browser(layoutIndex, "screenshot", join(output, "people-mobile.png"), "--full");
   await browser(layoutIndex, "click", "#c3-people .c3-pane-back button");
-  await browser(layoutIndex, "click", "#c3-rooms-trigger");
-  assert.equal(await evaluate(layoutIndex, "document.activeElement.id"), "c3-room-list-heading");
-  await browser(layoutIndex, "screenshot", join(output, "rooms-mobile.png"), "--full");
-  await browser(layoutIndex, "click", ".c3-room-list-actions button[aria-controls=\"c3-room-list\"]");
+  await showRoomList(layoutIndex);
+  await browser(layoutIndex, "click", sharedRoomLink);
+  await browser(layoutIndex, "click", companion);
+  await browser(layoutIndex, "wait", '.c3-shell[data-pane="chat"] .c3-chat-panel .c3-composer textarea');
   assert.equal(await evaluate(layoutIndex, "document.querySelector('.c3-composer textarea').value"), "A draft while checking the room");
+  await browser(layoutIndex, "click", chatBack);
   assert.equal(await evaluate(layoutIndex, "window.__panePlayers.every(video => video.isConnected)"), true);
   const afterPanes = await view(layoutIndex);
   assert.equal(afterPanes.sessionId, beforePanes.sessionId);
   assert(afterPanes.state.subscriptions.includes(primaryPublication), "pane navigation retains the watched screen");
   await progressing(layoutIndex, primaryPublication);
   await writeFile(join(output, "result.json"), JSON.stringify({ scenarios: ["two sources", "selective watching", "voice", "fanout relay",
-    "independent source stop", "transit without local watching", "room browsing", "signaling reconnect", "relay recovery", "bilingual themes at 390px", "room/people panes retain drafts and playback"],
+    "independent source stop", "transit without local watching", "room browsing", "signaling reconnect", "relay recovery", "bilingual themes at 390px", "chat, room and people drawers retain drafts and playback"],
     sourceCopies, relay, downstreamIndex }, null, 2));
   console.log(`Browser acceptance passed; evidence: ${output}`);
   }

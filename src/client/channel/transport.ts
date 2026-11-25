@@ -73,6 +73,7 @@ interface TransportOptions {
   retire?(flowId: string): void;
   outgoingFailed?(flowId: string): void;
   connected(): void;
+  disconnected?(): void;
   roomData(ready: boolean): void;
   failed(resourcesReleased: boolean): void;
   data?(kind: "control" | "chunk", data: string | Uint8Array): void;
@@ -160,7 +161,10 @@ export class ChannelTransport {
         this.reportRoomDataReady();
         this.syncDeadline();
       } else if (this.pc.connectionState === "failed") this.fail();
-      else if (["disconnected", "closed"].includes(this.pc.connectionState)) options.input?.(null);
+      else if (this.pc.connectionState === "disconnected") {
+        options.input?.(null);
+        options.disconnected?.();
+      } else if (this.pc.connectionState === "closed") options.input?.(null);
     };
     this.pc.ondatachannel = ({ channel }) => {
       if (this.closed || ["failed", "closed"].includes(this.pc.connectionState)) { channel.close(); return; }

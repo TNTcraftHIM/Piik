@@ -245,6 +245,7 @@ async fn resumed_endpoint_retires_its_missing_host_after_a_deleted_output_cannot
         host_session_id: native,
         revision: 1,
         confirmed_pairs: Default::default(),
+        disconnected_pairs: Default::default(),
         failed_pairs: Vec::new(),
         endpoints: [(
             native,
@@ -825,6 +826,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
                             host_session_id: native,
                             revision: 1,
                             confirmed_pairs: Default::default(),
+                            disconnected_pairs: Default::default(),
                             failed_pairs: Vec::new(),
                             endpoints: [(
                                 native,

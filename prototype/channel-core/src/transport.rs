@@ -73,6 +73,7 @@ struct Pair {
     interest: Interest,
     attempt: Attempt,
     confirmed_by: [Option<Uuid>; 2],
+    disconnected_by: [Option<Uuid>; 2],
     was_confirmed: bool,
 }
 
@@ -644,6 +645,7 @@ impl TransportBook {
                 interest: priority,
                 attempt: Attempt::Ordinary,
                 confirmed_by: [None; 2],
+                disconnected_by: [None; 2],
                 was_confirmed: false,
             },
         );
@@ -695,6 +697,28 @@ impl TransportBook {
             .any(|pair| pair.id == id && pair.flows.rooms.contains(room))
     }
 
+    /// Records a temporary disconnection from the caller's authenticated socket.
+    pub(crate) fn observe_disconnected(
+        &mut self,
+        endpoint: Uuid,
+        socket: Uuid,
+        id: Uuid,
+        disconnected: bool,
+    ) -> bool {
+        let Some((&(a, b), pair)) = self.pairs.iter_mut().find(|(_, p)| p.id == id) else {
+            return false;
+        };
+        let side = if a == endpoint {
+            0
+        } else if b == endpoint {
+            1
+        } else {
+            return false;
+        };
+        let value = disconnected.then_some(socket);
+        std::mem::replace(&mut pair.disconnected_by[side], value) != value
+    }
+
     /// A new socket report may complete the evidence for this pair.
     pub fn connected(
         &mut self,
@@ -726,6 +750,20 @@ impl TransportBook {
         confirmed
     }
 
+    pub(crate) fn disconnected_pairs<'a>(
+        &'a self,
+        identity: &'a crate::identity::Identity,
+    ) -> impl Iterator<Item = (Uuid, Uuid)> + 'a {
+        self.pairs.iter().flat_map(move |(&(a, b), p)| {
+            [(a, b, p.disconnected_by[0]), (b, a, p.disconnected_by[1])]
+                .into_iter()
+                .filter_map(move |(from, to, socket)| {
+                    (socket.is_some()
+                        && identity.sessions.get(&from).and_then(|s| s.connection) == socket)
+                        .then_some((from, to))
+                })
+        })
+    }
     pub(crate) fn confirmed_pairs<'a>(
         &'a self,
         identity: &'a crate::identity::Identity,
@@ -749,6 +787,7 @@ impl TransportBook {
             return false;
         }
         pair.id = Uuid::new_v4();
+        pair.disconnected_by = [None; 2];
         pair.attempt = Attempt::Prepared;
         if let Some(pending) = self.discovery.get_mut(key) {
             pending.deadline = now.saturating_add(DISCOVERY_TIMEOUT_MS);
@@ -857,6 +896,52 @@ mod tests {
         assert!(!book.connected(a, sa, Some(sb), id));
         assert!(book.connected(b, sb, Some(sa), id));
         id
+    }
+
+    #[test]
+    fn disconnection_reports_are_fenced_by_current_endpoint_socket() {
+        let mut book = TransportBook::default();
+        let e = edge(1, 2);
+        book.reconcile_with_standby(
+            [],
+            [],
+            &BTreeMap::from([(e.clone(), Interest::Channel)]),
+            &[],
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+            0,
+            |_| 2,
+        );
+        let id = confirm(&mut book, &e);
+        let (a, b) = e.endpoints;
+        let (sa, sb) = e.sockets;
+        let mut identity = crate::identity::Identity::new(String::new());
+        for (id, socket) in [(e.endpoints.0, e.sockets.0), (e.endpoints.1, e.sockets.1)] {
+            identity.sessions.insert(
+                id,
+                crate::identity::Session {
+                    id,
+                    user_id: id,
+                    connection: Some(socket),
+                    disconnected_at: None,
+                    signing_key: [0; 32],
+                    can_use_peer_transport: true,
+                    can_prepare_udp: false,
+                    can_receive_video_layers: false,
+                },
+            );
+        }
+        assert!(book.observe_disconnected(a, sa, id, true));
+        assert_eq!(
+            book.confirmed_pairs(&identity).collect::<Vec<_>>(),
+            vec![(a, b)]
+        );
+        assert!(!book.observe_disconnected(b, sb, id, false));
+        assert!(!book.observe_disconnected(a, sa, id, true));
+        assert_eq!(book.pairs[&e.endpoints].disconnected_by, [Some(sa), None]);
+        assert!(book.observe_disconnected(a, sa, id, false));
+        assert!(!book.connected(a, sa, None, id));
+        assert!(!book.observe_disconnected(a, sa, Uuid::nil(), true));
     }
 
     #[test]

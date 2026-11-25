@@ -14,7 +14,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
 export const roomIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 export const identityIconSchema = z.union([roomIconSchema, identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 49;
+export const CHANNEL_PROTOCOL = 50;
 export function isIncompatibleProtocol(code: string): boolean {
   return code === "incompatible_protocol" || code.endsWith(": incompatible_protocol");
 }
@@ -347,7 +347,7 @@ export type ChannelCommand =
   | { type: "subscribe"; publicationId: string; enabled: boolean; helperSessionId?: string }
   | { type: "voice"; roomId: string; joined: boolean; muted: boolean; deafened: boolean }
   | { type: "signal"; pairId: string; payload: ChannelSignal }
-  | { type: "link_state"; pairId: string; state: "connected" | "failed" }
+  | { type: "link_state"; pairId: string; state: "connected" | "disconnected" | "failed" }
   | { type: "flow_state"; flowId: string; pairId: string; state: "failed" | "forwardable" | "decoded" | "switch_ready" }
   | { type: "room_data_state"; roomId: string; pairId: string; ready: boolean }
   | { type: "leave" };

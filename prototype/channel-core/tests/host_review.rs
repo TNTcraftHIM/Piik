@@ -65,6 +65,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
         host_session_id: publisher,
         revision: 1,
         confirmed_pairs: Default::default(),
+        disconnected_pairs: Default::default(),
         failed_pairs: Vec::new(),
         endpoints: endpoints.clone(),
         action: HostAction::Command {
@@ -104,6 +105,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
             host_session_id: publisher,
             revision: 2,
             confirmed_pairs: Default::default(),
+            disconnected_pairs: Default::default(),
             failed_pairs: Vec::new(),
             endpoints,
             action: HostAction::Command {

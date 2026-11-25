@@ -11,6 +11,8 @@ mod linux_shortcut;
 mod macos;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+pub(crate) use tests::held_input_fixture;
 #[cfg(all(test, feature = "capture"))]
 pub(crate) use tests::lifecycle_fixture_desktop;
 #[cfg(target_os = "windows")]

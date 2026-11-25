@@ -205,7 +205,12 @@ export class ChannelMedia {
             input: channel => this.input?.(plan.id, channel),
             connected: () => {
               const current = this.peers.get(plan.id);
-              if (current) this.reportConnected(current);
+              if (current?.transport === transport) this.reportConnected(current);
+            },
+            disconnected: () => {
+              if (this.peers.get(plan.id)?.transport === transport) {
+                this.send({ type: "link_state", pairId: plan.id, state: "disconnected" });
+              }
             },
             failed: released => {
               const current = this.peers.get(plan.id);
@@ -281,7 +286,12 @@ export class ChannelMedia {
       } else {
         peer.roomDataReady.clear();
         if (peer.transport.pc.connectionState === "connected") this.reportConnected(peer);
-        else for (const [id, input] of peer.inputs) this.reportInput(peer, id, input);
+        else {
+          if (peer.transport.pc.connectionState === "disconnected") {
+            this.send({ type: "link_state", pairId: peer.plan.id, state: "disconnected" });
+          }
+          for (const [id, input] of peer.inputs) this.reportInput(peer, id, input);
+        }
         peer.transport.resync();
       }
     }

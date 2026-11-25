@@ -307,6 +307,7 @@ impl RemoteRoom {
         endpoints: BTreeMap<Uuid, Endpoint>,
         service_endpoint: Option<ServiceTransit>,
         pairs: impl Iterator<Item = (Uuid, Uuid)>,
+        observations: impl Iterator<Item = (Uuid, Uuid)>,
         action: HostAction,
         now: u64,
     ) -> Result<(Uuid, HostInput), &'static str> {
@@ -322,6 +323,9 @@ impl RemoteRoom {
             _ => BTreeSet::new(),
         };
         let confirmed_pairs = pairs
+            .filter(|(a, b)| sessions.contains(a) && sessions.contains(b))
+            .collect();
+        let disconnected_pairs = observations
             .filter(|(a, b)| sessions.contains(a) && sessions.contains(b))
             .collect();
         let binding = self.binding.as_mut().ok_or("room_host_offline")?;
@@ -382,6 +386,7 @@ impl RemoteRoom {
                 host_session_id: binding.session,
                 revision: binding.revision,
                 confirmed_pairs,
+                disconnected_pairs,
                 failed_pairs: binding
                     .failed_pairs
                     .iter()

@@ -9688,6 +9688,36 @@ test("an empty pair starts SCTP and reports physical connectivity without enabli
   expect(pc.close).toHaveBeenCalledOnce();
 });
 
+test("a remote data channel cannot report connectivity and a retired socket cannot remove the active pair", async () => {
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const { session, socket } = await setup();
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.pairs = [{ id: "pair", peerId: "a", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [] }];
+    socket.receive({ type: "state", state });
+    const pc = RoomPeerConnection.instances.at(-1)!;
+    const remote = new RoomDataChannel("piik-room", { ordered: true });
+    pc.ondatachannel?.({ channel: remote });
+    remote.open();
+    expect(socket.sent.filter(command => command.type === "link_state")).toEqual([]);
+    pc.connected();
+    const oldMessage = socket.onmessage!;
+    session.reconnect();
+    pc.connectionState = "disconnected"; pc.onconnectionstatechange?.();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    expect(resumed.sent.filter(command => command.type === "link_state")).toEqual([]);
+    resumed.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    expect(resumed.sent.filter(command => command.type === "link_state")).toEqual([
+      expect.objectContaining({ pairId: "pair", state: "disconnected" }),
+    ]);
+    oldMessage({ data: JSON.stringify({ type: "state", state: { ...state, pairs: [] } }) });
+    expect(pc.close).not.toHaveBeenCalled();
+    pc.connected();
+    expect(resumed.sent.filter(command => command.type === "link_state").at(-1)).toMatchObject({ pairId: "pair", state: "connected" });
+  } finally { session.close(); }
+});
+
 test("physical data channels can precede room leases without admitting retired work", async () => {
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const roomData = vi.fn(), data = vi.fn(), failed = vi.fn(), dataState = vi.fn();
@@ -9828,9 +9858,11 @@ test("transient transport loss retains base leases and proves new leases after r
     pc.connectionState = "disconnected"; pc.onconnectionstatechange?.();
     state.pairs[0].rooms.push("second");
     media.update("a", state);
-    expect(sent).toEqual([]);
+    expect(sent).toEqual([{ type: "link_state", pairId: "pair", state: "disconnected" }]);
+    expect(pc.channels[0].readyState).toBe("open");
     expect(pc.close).not.toHaveBeenCalled();
     pc.connected();
+    expect(sent.filter(command => command.type === "link_state").map(command => command.state)).toEqual(["disconnected", "connected"]);
     expect(sent.filter(command => command.type === "room_data_state")).toEqual([
       { type: "room_data_state", pairId: "pair", roomId: "second", ready: true },
     ]);
