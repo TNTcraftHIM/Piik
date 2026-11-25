@@ -192,6 +192,53 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
 | Independent Android tunnel helper | [Cloudflared owner](../../mobile/cloudflared/README.md), [builder](../../scripts/build-android.mjs) |
 | Public website, film and guides | [site](../../site), [website builder](../../scripts/build-website.mjs), [documentation ownership](./documentation.md) |
 
+## Failure Boundaries
+
+A condition the product gives a correct outcome for is behaviour: a user
+cancels, input is malformed, access is denied. Write it as an ordinary typed
+result. A condition with no specified correct outcome is an error. Whatever
+detects it stops the operation and reports the truth to the owner of the
+operation that is waiting. That owner recovers by the path it already has:
+retire and recreate, restart, or the requester asking again. Restart, crash, timeout and network loss share one
+path when the action they need is the same. Armstrong's
+[error-handling philosophy](https://erlang.org/download/armstrong_thesis_2003.pdf)
+and [fail fast](https://martinfowler.com/ieeeSoftware/failFast.pdf) give the
+reasoning.
+
+Some responses are cheap and stable, and need no justification: checking that
+a result is still current before applying it, ordering acquisition and release
+at the owner, removing a limit that turns valid work away, removing a duplicate
+copy, and routing a failure to the party that is waiting.
+
+New state, a timer or deadline, a retry, a fallback path, a queue, or a second
+copy of a rule in another layer has to earn its place. One of these warrants it:
+
+- a trust boundary, where unknown input is validated once as it enters;
+- authority or privacy, which fail closed;
+- a durable or irreversible effect, or a loss the requester cannot repeat;
+- no existing path gives the waiting party a truthful outcome;
+- an observed failure, frequent enough that the general recovery is not
+  acceptable. Observed means a report, a measurement or a reproduction through
+  the real producers. A constructed interleaving shows that something is
+  possible, not that it happens.
+
+Reachability, symmetry with another case, completeness, a consequence that
+heals by itself and tolerance of a faulty peer are not reasons by themselves.
+
+Before adding such a mechanism, ask in order whether the case can be made
+impossible by giving the fact one writer or the lifetime one owner, whether it
+can join a failure path that already exists, and whether a truthful error to
+the waiting party is enough. Recover at one owner, the endpoint that owns the
+outcome or the owner of the lifetime, and retry at one layer, idempotent and
+bounded, as the [end-to-end argument](https://web.mit.edu/Saltzer/www/publications/endtoend/endtoend.pdf)
+places it. A rule that two runtimes need lives in the core.
+
+A commit that adds such a mechanism handles one case. Its body names the case,
+what happens without it, the evidence, and why no existing path covers it. In
+review, a mechanism that does not meet this section is a finding, including
+one already in the tree. When the answer is unclear, fail fast and record in
+[TODO](../todo.md) the observation that would change it.
+
 ## Implementation Rules
 
 - Reuse a current owner or standard API before adding a mechanism. Prefer
@@ -277,8 +324,6 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
   through the operation's owner, which keeps its identity. Initialize
   callback-visible state before registering; constructors can start background
   work before returning.
-- When a transition fails again, trace its writers and retirement. Extract an
-  owner when multiple writers decide the same fact or resources retire independently.
 - Keep decisions separate from effects. Respect documented lock ordering and
   revalidate after unlocked work. Local native capability never grants room
   authority; the shared core retains that responsibility.
