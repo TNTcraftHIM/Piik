@@ -458,7 +458,6 @@ pub(crate) struct Engine {
     local: Option<(String, String)>,
     remote: bool,
     remote_media: HashMap<Mid, (String, String, Option<Uuid>)>,
-    negotiated: bool,
     linear_enabled: bool,
     bandwidth: watch::Sender<Estimate>,
     demand: watch::Receiver<BandwidthDemand>,
@@ -989,7 +988,6 @@ impl Runtime {
             local: None,
             remote: false,
             remote_media: HashMap::new(),
-            negotiated: false,
             linear_enabled: linear,
             bandwidth,
             demand,
@@ -1182,8 +1180,9 @@ impl Transport {
             .map_err(|_| anyhow!("transport closed"))?;
         reply.await.context("transport retired")?
     }
+    #[cfg(test)]
     pub async fn stable(&self) -> bool {
-        self.call(|e| Ok(e.negotiated && e.pending.is_none()))
+        self.call(|e| Ok(e.remote && e.pending.is_none()))
             .await
             .unwrap_or(false)
     }
@@ -1325,7 +1324,6 @@ impl Transport {
             e.remote_media = remote_media;
             e.prune_stats();
             e.remote = true;
-            e.negotiated = true;
             e.outputs.retain(|_, out| {
                 !out.retired
                     || out
