@@ -180,6 +180,7 @@ pub fn time_tables(rows: &[TimedRow]) {
             "max depth planner",
             "summed depth, all instants and seeds",
             "excess hops over the confirmed optimum (all seeds)",
+            "extra hops per viewer at equal coverage",
             "unplaced % of viewer-instants",
             "harness: errors / unsettled / early observations",
         ],
@@ -201,13 +202,14 @@ pub fn time_tables(rows: &[TimedRow]) {
             lag(&|l| l >= 1_000)
         );
         println!(
-            "{} {} | {alternatives} | {lags} | {unnecessary} | {} | {} | {} | {} | {:.1} | {} / {} / {} |",
+            "{} {} | {alternatives} | {lags} | {unnecessary} | {} | {} | {} | {} | {} | {:.1} | {} / {} / {} |",
             r.key(),
             spread(row.per(|s| f64::from(s.pairs_started)), 0),
             spread(row.per(|s| ratio(s.total, s.placed)), 2),
             spread(row.per(|s| ratio(s.max_sum, s.instants)), 2),
             row.sum(|s| s.total),
             row.sum(|s| s.depth_gap),
+            spread(row.per(|s| ratio(s.depth_gap, s.equal_cover_placed)), 2),
             100.0
                 * ratio(
                     row.sum(|s| s.viewer_instants - s.placed),
@@ -243,6 +245,7 @@ fn timed_runs_are_deterministic() {
                     proof_ms: 500,
                 }),
                 race_ms: cfg!(feature = "study").then_some(1_000),
+                depth_first: cfg!(feature = "study") && index % 2 == 1,
                 cold,
             };
             let first = super::study::run(&script, options);
@@ -292,11 +295,16 @@ fn time_model() {
         .into_iter()
         .filter(|m| wanted.is_empty() || wanted.split(',').any(|w| w == m.name))
         .collect();
-    let mut policies: Vec<(&'static str, Option<u64>)> = vec![("present", None)];
+    let mut policies: Vec<(&'static str, Option<u64>, bool)> = vec![("present", None, false)];
     if cfg!(feature = "study") {
-        policies.push(("P1 H=1s", Some(1_000)));
-        policies.push(("P1 H=2s", Some(2_000)));
+        policies.push(("P1 H=1s", Some(1_000), false));
+        policies.push(("P1 H=2s", Some(2_000), false));
+        policies.push(("P2", None, true));
     }
+    // `STUDY_POLICIES`: comma-separated names to run (default: present and P1).
+    let wanted_policies =
+        std::env::var("STUDY_POLICIES").unwrap_or_else(|_| "present,P1 H=1s,P1 H=2s".into());
+    policies.retain(|(name, ..)| wanted_policies.split(',').any(|w| w.trim() == *name));
     println!(
         "time model: success {success_ms} ms, proof {proof_ms} ms, failures {failures:?} ms, expiry every {EXPIRE_EVERY_MS} ms"
     );
@@ -310,7 +318,7 @@ fn time_model() {
         for &model in &models {
             for &failure_ms in &failures {
                 for &viewers in &sizes {
-                    for &(policy, race_ms) in &policies {
+                    for &(policy, race_ms, depth_first) in &policies {
                         jobs.push((
                             arrival,
                             model,
@@ -318,6 +326,7 @@ fn time_model() {
                             viewers as usize,
                             policy,
                             race_ms,
+                            depth_first,
                         ));
                     }
                 }
@@ -331,7 +340,8 @@ fn time_model() {
         for _ in 0..threads {
             scope.spawn(|| loop {
                 let i = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                let Some(&(arrival, model, failure_ms, viewers, policy, race_ms)) = jobs.get(i)
+                let Some(&(arrival, model, failure_ms, viewers, policy, race_ms, depth_first)) =
+                    jobs.get(i)
                 else {
                     return;
                 };
@@ -347,6 +357,7 @@ fn time_model() {
                         proof_ms,
                     }),
                     race_ms,
+                    depth_first,
                     cold: arrival == "cold",
                 };
                 let row = run_row(&model, viewers, options);

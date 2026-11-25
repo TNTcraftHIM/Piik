@@ -23,6 +23,9 @@ pub struct Options {
     /// Policy P1: race one alternative once the direct pair has been pending
     /// this long. Needs the crate feature `study`.
     pub race_ms: Option<u64>,
+    /// Policy P2: crossings and reductions rank the offered parent's depth
+    /// before identifiers. Needs the crate feature `study`.
+    pub depth_first: bool,
     /// Viewers enable peer transport only on arrival (see `Driver::cold`).
     pub cold: bool,
 }
@@ -36,11 +39,17 @@ const DRAIN_MS: u64 = 60_000;
 struct Policy;
 
 impl Policy {
-    fn set(race_ms: Option<u64>) -> Self {
+    fn set(race_ms: Option<u64>, depth_first: bool) -> Self {
         #[cfg(feature = "study")]
-        piik_channel_core::study::RACE_DIRECT_AFTER_MS.with(|c| c.set(race_ms));
+        {
+            piik_channel_core::study::RACE_DIRECT_AFTER_MS.with(|c| c.set(race_ms));
+            piik_channel_core::study::DEPTH_BEFORE_ID.with(|c| c.set(depth_first));
+        }
         #[cfg(not(feature = "study"))]
-        assert!(race_ms.is_none(), "policy P1 needs --features sqlite,study");
+        assert!(
+            race_ms.is_none() && !depth_first,
+            "policies P1 and P2 need --features sqlite,study"
+        );
         Policy
     }
 }
@@ -48,7 +57,10 @@ impl Policy {
 impl Drop for Policy {
     fn drop(&mut self) {
         #[cfg(feature = "study")]
-        piik_channel_core::study::RACE_DIRECT_AFTER_MS.with(|c| c.set(None));
+        {
+            piik_channel_core::study::RACE_DIRECT_AFTER_MS.with(|c| c.set(None));
+            piik_channel_core::study::DEPTH_BEFORE_ID.with(|c| c.set(false));
+        }
     }
 }
 
@@ -207,7 +219,7 @@ fn instant(driver: &Driver, observation: &Observation, limit: u8) -> Instant {
 }
 
 pub fn run(script: &Script, options: Options) -> Session {
-    let _policy = Policy::set(options.race_ms);
+    let _policy = Policy::set(options.race_ms, options.depth_first);
     let mut driver = Driver::new(script, options.limit, options.timing, options.cold);
     let mut waits = Waits::default();
     let timed = options.timing.is_some();

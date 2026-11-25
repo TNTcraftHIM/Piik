@@ -73,7 +73,20 @@ type Pair = (Uuid, Uuid);
 fn pair(a: Uuid, b: Uuid) -> Pair {
     (a.min(b), a.max(b))
 }
-type CrossingRank = (bool, bool, Option<u64>, Pair);
+// The depth term is the offered parent's depth under study P2, else 0.
+type CrossingRank = (bool, bool, Option<u64>, usize, Pair);
+#[cfg(feature = "study")]
+fn depth_term(depth: usize) -> usize {
+    if crate::study::depth_before_id() {
+        depth
+    } else {
+        0
+    }
+}
+#[cfg(not(feature = "study"))]
+fn depth_term(_: usize) -> usize {
+    0
+}
 fn path_segments(
     prefix: &BTreeSet<Pair>,
     mut at: Uuid,
@@ -227,11 +240,12 @@ impl Discovery<'_> {
         })
     }
 
-    fn rank(&self, edge: &DiscoveryEdge) -> CrossingRank {
+    fn rank(&self, edge: &DiscoveryEdge, depth: usize) -> CrossingRank {
         (
             !self.confirmed.contains(&edge.endpoints),
             !self.transports.pending(edge),
             self.transports.retry_after(edge),
+            depth_term(depth),
             edge.endpoints,
         )
     }
@@ -263,7 +277,6 @@ impl Discovery<'_> {
             }
             let key = pair(from, to);
             let edge = DiscoveryEdge::current(key, self.identity)?;
-            let rank = self.rank(&edge);
             if self.transports.has_pair(key)
                 && !self.transports.pending(&edge)
                 && !self.confirmed.contains(&key)
@@ -276,6 +289,8 @@ impl Discovery<'_> {
                     confirmed_prefix(&self.confirmed, scope, frontier, from).map(Rc::new)
                 })
                 .as_ref()?;
+            // The offered parent `from` is `prefix.len()` hops below the source.
+            let rank = self.rank(&edge, prefix.len());
             Some((rank, edge, prefix.clone(), to, terminal))
         })
     }
@@ -384,6 +399,7 @@ impl Discovery<'_> {
         requested: &BTreeMap<Pair, bool>,
     ) -> BTreeMap<Pair, (DiscoveryEdge, BTreeSet<Pair>)> {
         let mut suggestions = BTreeMap::new();
+        let mut chosen = BTreeMap::<Pair, CrossingRank>::new();
         for frontier in &projection.delivery_frontiers {
             let source = frontier.source;
             if !scope.contains(&source) {
@@ -429,13 +445,11 @@ impl Discovery<'_> {
                     })
                     .min_by_key(|(r, _, _, _)| **r);
                 if let Some((r, edge, prefix, at)) = best {
-                    if suggestions
-                        .get(&direct)
-                        .is_some_and(|(old, _)| self.rank(old) <= *r)
-                    {
+                    if chosen.get(&direct).is_some_and(|old| old <= r) {
                         continue;
                     }
                     let segments = path_segments(prefix, at, &tail);
+                    chosen.insert(direct, *r);
                     suggestions.insert(direct, (edge.clone(), segments));
                 }
             }

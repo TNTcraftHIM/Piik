@@ -605,6 +605,19 @@ impl Publication {
         let feasible = retained_root
             .and_then(|root| candidate(root).map(|parent| (root, parent)))
             .or_else(|| {
+                #[cfg(feature = "study")]
+                if crate::study::depth_before_id() {
+                    // Study P2: the child whose offered parent is shallowest.
+                    let depth = |node| {
+                        std::iter::successors(Some(node), |n| self.plan.parents.get(n).copied())
+                            .count()
+                    };
+                    return excess
+                        .iter()
+                        .filter_map(|&root| candidate(root).map(|parent| (depth(parent), root, parent)))
+                        .min()
+                        .map(|(_, root, parent)| (root, parent));
+                }
                 excess
                     .into_iter()
                     .find_map(|root| candidate(root).map(|parent| (root, parent)))

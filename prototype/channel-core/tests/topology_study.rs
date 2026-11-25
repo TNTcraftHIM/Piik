@@ -172,6 +172,7 @@ fn runs_are_deterministic() {
                 verbose: false,
                 timing: None,
                 race_ms: None,
+                depth_first: false,
                 cold: false,
             };
             let first = study::run(&script, options);
@@ -696,6 +697,7 @@ fn grid(model: &Connectivity, sizes: &[usize], limits: &[u8], execute_up_to: usi
                 verbose: false,
                 timing: None,
                 race_ms: None,
+                depth_first: false,
                 cold: false,
             };
             rows.push((viewers, limit, run_row(model, viewers, options)));
@@ -771,6 +773,7 @@ fn trace() {
             race_ms: std::env::var("STUDY_TRACE_RACE")
                 .ok()
                 .map(|h| h.parse().unwrap()),
+            depth_first: std::env::var_os("STUDY_TRACE_DEPTH").is_some(),
             cold: std::env::var_os("STUDY_TRACE_COLD").is_some(),
         },
     );
@@ -797,6 +800,7 @@ fn released_pairs() {
                     verbose: false,
                     timing: None,
                     race_ms: None,
+                    depth_first: false,
                     cold: false,
                 };
                 (viewers, 2, run_row(&model, viewers, options))

@@ -9,8 +9,16 @@ thread_local! {
     /// source has been pending this many milliseconds, repair may also choose
     /// and admit one alternative trial for it, as after a rejection.
     pub static RACE_DIRECT_AFTER_MS: Cell<Option<u64>> = const { Cell::new(None) };
+    /// P2 "cost before identifier": rank frontier crossings, and the child a
+    /// reduction moves, by the depth of the parent offered (shallower first)
+    /// before identifiers.
+    pub static DEPTH_BEFORE_ID: Cell<bool> = const { Cell::new(false) };
 }
 
 pub(crate) fn race_direct_after() -> Option<u64> {
     RACE_DIRECT_AFTER_MS.with(Cell::get)
+}
+
+pub(crate) fn depth_before_id() -> bool {
+    DEPTH_BEFORE_ID.with(Cell::get)
 }
