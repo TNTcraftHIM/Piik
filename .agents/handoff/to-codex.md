@@ -157,8 +157,16 @@ says nothing about pinning. A 2.x operator who followed the published guide
 follows `latest`, and the day that tag means 3.0 a routine pull replaces a 2.x
 server with a build that cannot read its configuration or its data. The
 cutover item in TODO pins guides and downloads and does not mention the
-container tag. It looks like a 2.x maintenance update before the cutover and
-a decision about what `latest` means after it. The owner has been told.
+container tag. The owner will decide what `latest` means when the release is
+prepared, and asked for the practice of mature projects meanwhile. `c73c88d0`
+records it in `docs/research/container-tags.md` and names the decision in the
+cutover item. In short: every project that moved `latest` across a breaking
+major without a guard produced broken installs; the ones that came through
+either publish no `latest` or have the new major refuse old data with a clear
+message. The closest case to ours renamed its variables and the new version
+silently ignored the old ones. Nothing for you to do now except know that a
+startup refusal for a 2.x configuration is the one piece that helps under
+every option.
 
 ## New on this branch
 
