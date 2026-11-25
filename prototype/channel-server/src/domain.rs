@@ -15,10 +15,9 @@ pub(crate) use backup::RestoreDomain;
 use futures_util::{stream::FuturesUnordered, FutureExt, Sink, SinkExt, StreamExt};
 use piik_channel_core::{
     backup::DomainMetadata,
-    host::RoomSummary,
     storage,
     wire::{Event, HostingMode, Request, RoomCreationPolicy},
-    Authority, Effects, RoomState,
+    Authority, Effects,
 };
 use std::{
     collections::BTreeMap,
@@ -325,7 +324,7 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
     let result = async {
         let commands = commands.ok_or_else(|| "hosting_unavailable".to_owned())?;
         let policy = tokio::task::spawn_blocking(move || {
-            hosted_room_policy(room, password, picture, allow_service_relay)
+            room.new_policy(password, picture, allow_service_relay)
         })
         .await
         .map_err(|_| "hosting_unavailable")??;
@@ -348,31 +347,6 @@ async fn create_room(state: &Domain, connection: Uuid, mut request: Request) {
             hub.send(connection, Event::Error { code, request_id });
         }
     }
-}
-
-fn hosted_room_policy(
-    room: RoomSummary,
-    password: Option<String>,
-    picture: Option<String>,
-    allow_service_relay: Option<bool>,
-) -> Result<RoomState, &'static str> {
-    let mut policy = RoomState::new(
-        room.id,
-        room.name,
-        room.icon,
-        room.creator_id,
-        room.access,
-        room.hidden,
-        password,
-    )?;
-    policy.appearance.picture = picture;
-    policy.voice_bitrate = room.voice_bitrate;
-    policy.relay_capacity = room.relay_capacity;
-    if let Some(allowed) = allow_service_relay {
-        policy.allow_service_relay = allowed;
-    }
-    policy.validate()?;
-    Ok(policy)
 }
 
 async fn delete_room(state: &Domain, connection: Uuid, request: Request, id: String) {

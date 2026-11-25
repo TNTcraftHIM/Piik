@@ -187,13 +187,10 @@ pub(super) async fn create_copy(
                 .map_err(creation_error)?;
             (hub.authority.identity().0, creation)
         };
-        let policy = super::hosted_room_policy(
-            creation.summary().clone(),
-            password,
-            picture,
-            allow_service_relay,
-        )
-        .map_err(creation_error)?;
+        let policy = creation
+            .summary()
+            .new_policy(password, picture, allow_service_relay)
+            .map_err(creation_error)?;
         let metadata = RoomMetadata {
             version: 3,
             domain_id,

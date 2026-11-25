@@ -1545,20 +1545,10 @@ impl Session {
                     else {
                         unreachable!()
                     };
-                    let installed = RoomState::new(
-                        room.id.clone(),
-                        room.name.clone(),
-                        room.icon.clone(),
-                        room.creator_id,
-                        room.access,
-                        room.hidden,
-                        None,
-                    )
-                    .map_err(anyhow::Error::msg)
-                    .and_then(|mut policy| {
-                        policy.relay_capacity = room.relay_capacity;
-                        HostedRoom::create(&file.path, policy)
-                    });
+                    let installed = room
+                        .new_policy(None, None, None)
+                        .map_err(anyhow::Error::msg)
+                        .and_then(|policy| HostedRoom::create(&file.path, policy));
                     let host = match installed {
                         Ok(host) => host,
                         Err(error) => {

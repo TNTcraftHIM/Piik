@@ -1,5 +1,6 @@
 use super::*;
 use crate::serve_server as serve;
+use piik_channel_core::RoomState;
 use serde_json::{json, Value};
 
 struct Endpoint {
