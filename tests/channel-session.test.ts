@@ -3245,6 +3245,40 @@ test("Browser replacement cannot cancel preparation after transferring source au
   } finally { session.close(); }
 });
 
+test("stopping the publication releases both Browser replacement streams before the transfer reply", async () => {
+  const { session, socket } = await setup(3, false);
+  const old = remoteTrack("video"), candidate = remoteTrack("video"), sound = remoteTrack("audio");
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn()
+    .mockResolvedValueOnce(remoteStream("incumbent", [old]))
+    .mockResolvedValueOnce(remoteStream("candidate", [candidate, sound])) } });
+  session.setVideoCodecMode("vp8");
+  try {
+    const published = nextSocketCommand(socket, "publish");
+    const initial = session.startScreen("first");
+    const publication = await published;
+    const id = (publication.publication as { id: string }).id;
+    socket.receive({ type: "ack", requestId: publication.requestId });
+    await initial;
+    const transferring = nextSocketCommand(socket, "transfer_source");
+    const replacement = session.startScreen("first").catch(error => error);
+    const transfer = await transferring;
+    const stopping = session.stopScreen(id);
+    expect.soft(old.stop).toHaveBeenCalledOnce();
+    expect.soft(candidate.stop).toHaveBeenCalledOnce();
+    expect.soft(sound.stop).toHaveBeenCalledOnce();
+    const unpublish = socket.sent.at(-1)!;
+    expect(unpublish.type).toBe("unpublish");
+    socket.receive({ type: "ack", requestId: unpublish.requestId });
+    await stopping;
+    expect(await replacement).toMatchObject({ name: "AbortError" });
+    expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
+    socket.receive({ type: "ack", requestId: transfer.requestId });
+    expect(candidate.stop).toHaveBeenCalledOnce();
+    expect(sound.stop).toHaveBeenCalledOnce();
+    expect(socket.sent.filter(command => command.type === "publish")).toHaveLength(1);
+  } finally { session.close(); }
+});
+
 test.each(["transfer", "commit", "stop"] as const)("Native selection retains its commit boundary during %s", async stage => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app",
     protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });

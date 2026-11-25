@@ -102,6 +102,7 @@ interface SourceSelection {
   committing: boolean;
   watchCandidate?: { player: WatchPlayer; stopping: boolean };
   browserCaptureGranted?: boolean;
+  releaseBrowserCandidate?: () => void;
   releaseSharedPage?: () => void;
   // Scopes Native media preparation and cancellation on a borrowed page until confirmation.
   pendingCandidateId?: string;
@@ -2454,6 +2455,7 @@ export class ChannelSession {
     delete selection.pendingCandidateId;
     if (candidateId) void selection.page?.stopMedia(candidateId).catch(() => {});
     selection.controller.abort();
+    selection.releaseBrowserCandidate?.();
     if (selection.releaseSharedPage) selection.releaseSharedPage();
     else if (!selection.committing) selection.page?.close();
     if (!selection.committing) selection.embed?.close();
@@ -2521,6 +2523,16 @@ export class ChannelSession {
     let context = this.local.get(share.id)?.audio?.outputGainAvailable ? null : HostAudio.activate();
     let candidate: MediaStream | undefined;
     let audio: HostAudio | undefined;
+    const releaseCandidate = () => {
+      void context?.close().catch(() => {});
+      context = null;
+      const unownedTracks = audio ? candidate?.getVideoTracks() : candidate?.getTracks();
+      audio?.dispose();
+      unownedTracks?.forEach(track => track.stop());
+      audio = undefined;
+      candidate = undefined;
+    };
+    selection.releaseBrowserCandidate = releaseCandidate;
     try {
       if (source === "browser") { selection.browserCaptureGranted = false; this.patch({}); }
       candidate = await captureBrowserSource(share.profile, source, deviceId, selection.controller.signal);
@@ -2572,8 +2584,8 @@ export class ChannelSession {
         if (!sessionId) throw new Error("disconnected");
         const reportSource = (source = metadata) => this.request({ type: "publish", publication: {
           id: share.id, roomId, kind: "screen", videoSettings: screenVideoSettings(share.profile), source,
-        } }, undefined, roomId);
-        if (previous) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: sessionId }, undefined, roomId);
+        } }, undefined, roomId, { signal: selection.controller.signal });
+        if (previous) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: sessionId }, undefined, roomId, { signal: selection.controller.signal });
         else {
           try { await app!.transferSource(share.id, sessionId); }
           catch (error) {
@@ -2646,10 +2658,8 @@ export class ChannelSession {
         await stopping;
       }
     } finally {
-      void context?.close().catch(() => {});
-      const unownedTracks = audio ? candidate?.getVideoTracks() : candidate?.getTracks();
-      audio?.dispose();
-      unownedTracks?.forEach(track => track.stop());
+      delete selection.releaseBrowserCandidate;
+      releaseCandidate();
       this.finishSourceSelection(roomId, selection);
     }
   });
@@ -3658,7 +3668,7 @@ export class ChannelSession {
     }
     for (const [roomId, share] of this.screenShares) if (share.id === publicationId) {
       const selection = this.sourceSelections.get(roomId);
-      if (selection && !selection.committing) this.finishSourceSelection(roomId, selection);
+      if (selection && (!selection.committing || selection.releaseBrowserCandidate)) this.finishSourceSelection(roomId, selection);
       this.screenShares.delete(roomId);
     }
     // stop_capture also retires a pending Native candidate for a Browser incumbent.
