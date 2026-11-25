@@ -71,16 +71,84 @@ nominal priming time in the existing pool test, and the sentence in the
 network design. With the old assignment that test fails here at 2.9 s; with
 the new one the twelve preparation tests finish in 1.3 s.
 
-Two things I would like your view on, neither started:
+## Traversal: what I would change next, and what I would leave
 
-- **N.** With the pace restored, 1,024 probes take 2.05 s and give 98.3%
-  against 86.9% for 512; the median success still comes at about 174 probes.
-  The request budget and the network design name 520. Is there a reason for
-  512 other than the time it was thought to take?
-- **The serial gate.** A pair that needs preparation first spends 5 to 6 s on
-  an ordinary attempt, then surveys one side after the other. The two recorded
-  successes took 8.1 and 8.5 s, most of it that gate. A full review of the
-  traversal design follows; I am not asking for anything on it yet.
+From the map (`docs/research/maps/nat-traversal.md` on the maps branch) and my
+own arithmetic. None of this is started.
+
+1. **1,024 probes, as a budget.** With M = 256 and 64,512 ports the search
+   succeeds with 1 − exp(−M·N/64512): 86.9% at 512 and 98.3% at 1,024. The
+   median hit comes at about 174 probes either way, so the second 512 cost
+   time only in the runs that would otherwise fail, about one second more at
+   the restored pace. The preparation keeps its five seconds: the search stops
+   at the deadline wherever it is. The request budget and the network design
+   say 520 today. Was 512 chosen for anything but time?
+2. **Survey both ends at once.** The responder starts its survey when the
+   Offer arrives (`preparation.rs:201-217`). That spends up to 1.5 s and a
+   signaling hop in series, and for a sequential mapping it widens the window
+   in which other allocations move the port from about one hop to about a
+   second. Both ends hold the same PairInfo and can survey on receipt.
+3. **Know the mapping class before the attempt.** A pair that needs
+   preparation first spends five to six seconds on an ordinary attempt
+   (`peer.rs:2139-2148`, checked on a one-second tick). The two recorded
+   successes took 8.1 and 8.5 s, most of it that gate. A pair of two irregular
+   mappings spends the gate, a refused preparation and then twenty seconds of
+   ordinary attempt before anyone learns it cannot connect. The class belongs
+   to an endpoint's network attachment, not to a pair: survey once at start
+   and when the network changes, publish it with the endpoint beside
+   `can_prepare_udp`, and let admission choose. Stable with stable stays
+   ordinary and keeps today's fallback, because "stable" cannot tell
+   endpoint-independent mapping from port preservation. Stable with
+   sequential or irregular, and sequential with sequential, prepare at once.
+   Irregular with irregular or sequential is rejected at once. Halkes and
+   Pouwelse found 11% of peers with dependent mapping, which puts about a
+   fifth of pairs in the group that would save the gate. A Browser can learn
+   its own class from the server-reflexive candidates of two STUN servers on
+   one base; it cannot prepare, but a hopeless Browser pair would no longer
+   hold an attempt slot for twenty seconds, and the planner would know which
+   pairs are worth asking for.
+4. **Leave the retry rule.** A failed pair is retried when a signaling
+   generation changes, and not while a relay serves. The IMC 2026 measurement
+   of DCUtR found 97.6% of successes on the first of three attempts, so
+   repeating an unchanged attempt buys little. I would not add a timer.
+5. **One thing to measure before proposing.** While a waiting viewer's direct
+   pair is pending and not rejected, `repair` continues past it
+   (`discovery.rs:509-528`), so an alternative is tried only after the direct
+   attempt fails, which for a Browser is twenty seconds. The standby skeleton
+   may supply a relay path meanwhile; the lab recorded a first viewer held for
+   about 20 s. Racing the best alternative after a short head start, as Happy
+   Eyeballs does (RFC 8305), fits the present limit of two attempts an
+   endpoint. I do not know how often a newcomer waits on the direct attempt
+   alone. The placement harness has no time; I would give it attempt
+   durations and report time to first picture.
+
+## Planning: what the map adds to ADR-0018
+
+1. **Stage 1 as written is the step the study found small.** A leaf moved
+   over existing pairs recovered 9 to 14% of the depth gap; allowing one pair
+   attempt recovered 93 to 98%. Stage 1 should be "move one viewer to a
+   shallower free place, asking for the pair when it is not confirmed". The
+   shortcut to the source (`publication.rs:499-524`) is then the case where
+   the place is the source, and `direct_attempted` gives way to the ordinary
+   memory of a failed pair.
+2. **The pool may be discarding the pairs the tree lacks.** A confirmed pair
+   that carries nothing, is not a requested direct pair and is not in the
+   skeleton is released at the next channel reconcile
+   (`transport.rs:268-288`). The study found shallow places free and the
+   pairs to them missing. I will count on the harness how much of the gap
+   pairs that were once confirmed would close. Twenty idle pairs cost about
+   2.4 KiB/s, so keeping them may be the cheapest improvement there is.
+3. **Choices by identifier.** The next pair to try ranks by endpoint
+   identifiers after freshness (`discovery.rs:230-237`), a reduction moves the
+   lowest-identifier child that has somewhere to go (`publication.rs:590-596`),
+   and placement breaks ties by seed order. Each has a cost to rank by first:
+   the depth of the parent offered, and the size of the subtree a move
+   re-leases. The identifier belongs last.
+4. **Two waits that stack.** Placement does not run while any parent is over
+   its limit (`publication.rs:337`), so a newcomer waits for a reduction of
+   up to 20 s a child. And only the first unproved frontier edge carries a
+   deadline (`publication.rs:485-491`), so k orphans whose edges fail in
+   silence take up to k times 20 s. I have not measured either.
 
 ## The Native suite on Windows at your `86980991`: three failures
 
