@@ -114,16 +114,66 @@ or change nothing.
 - A commit-message check for mechanism-adding commits would make the rule
   bite. I left it out until the rule has been used.
 
-## Coming
+## Framework: one ADR to decide, and what the review found
 
-**Framework, interface and schema design.** Three audits are in: the wire and
-its copies, storage and revisions, and the internal interfaces. Three designs
-written from the requirements alone, without sight of the code, are still
-running. I will send the comparison when it is whole. Two findings are worth
-knowing now because they cannot be fixed after a release. Join requires the
-protocol number to equal 46 exactly while readers reject unknown fields, so
-every later wire change breaks every installed App. And a room store opens only
-at one exact schema version, with no upgrade path.
+**`7f1de094 docs(adr): propose the contracts that must be fixed before
+release`** adds [ADR-0017](../../docs/adr/0017-contracts-fixed-before-release.md),
+proposed, and the evidence behind it in
+[the design review](../../docs/research/clean-room-design-review.md). Please
+give the ADR's nine decisions an outcome each.
+
+The method was the owner's suggestion. Three designers received only the
+product's requirements, read nothing in the repository, and designed the
+system. Three audits read the tree. Where both routes arrive at the same
+place, history is the likeliest reason the tree is elsewhere.
+
+- **All three designs agree with the tree** on the site, the single-writer
+  room authority that runs on a device or the server, the sans-I/O Rust core,
+  WebRTC with str0m, rows instead of a log, and the planner belonging to the
+  room authority. I withdraw the earlier suggestion to move routing to the
+  domain: none of the three put it there.
+- **All three differ from the tree in the same way** on thirteen points. Six
+  of them are in ADR-0017 because they freeze at release: the compatibility
+  rule, one schema source, one reply and error shape, a state revision, the
+  activity envelope, and storage versions with a store's lineage.
+- **The tree knows more than the designs** about reaching a home-run site
+  behind carrier-grade NAT. All three name that as their largest unsolved
+  risk and all three reject port prediction, on an assumption the tree does
+  not make. So I do not conclude that preparation should go. That depends on
+  how a home site is reached, which the owner decides.
+
+Three corrections to what I told you before:
+
+- **Replies and observer copies.** I said no marker was needed, and for the
+  defect you fixed that was right. For the wire as it will be frozen, the
+  audit is right instead: an observer copy should carry no request id, and a
+  history page should be one signed packet, not 101. This is decision 3.
+- **The WASM boundary.** I called it about sixty stateless helpers. Most
+  exports are methods on stateful classes. The problem is the few free
+  functions that take the whole snapshot.
+- **The participant.** The interface audit found four places where Browser and
+  Native already differ as a room's writer: Native checks
+  `host_session_id` and the Browser does not (`session.rs:1615`,
+  `session.ts:582`); Native broadcasts the first broadcastable record and the
+  Browser one per reply (`session.rs:174`, `conversation.ts:105`); Native
+  skips replies addressed to itself (`session.rs:188`); and a dispatch error
+  ends Native's loop (`session.rs:1618`) but only shows a banner in the
+  Browser. Your one-rule extraction could not show a gain, because the rule
+  was stateless and both sides already held its state. The smallest fair
+  test is the room-writer role with its state. I will write that cut and
+  measure it against four criteria: fewer production lines across both
+  runtimes, the four differences gone, no more crossings per event, and more
+  exports deleted than added. If it fails, the participant stays deferred.
+
+Storage findings you can act on without waiting for the ADR:
+
+- The Browser writer confirms before the commit is durable. IndexedDB
+  transactions are relaxed by default, and `room-host.ts:86` passes no
+  durability and never requests persistent storage.
+- `StoredRoomHost::dispatch` saves the policy and the history request in two
+  transactions (`stored_room.rs:189`); IndexedDB does both in one.
+- Restoring an archive rewinds the sequence and brings back deleted messages
+  and revoked grants, and an archive carries no integrity field.
 
 ## Still owed
 
