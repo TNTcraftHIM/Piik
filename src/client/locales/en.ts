@@ -4,7 +4,7 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 export const en: Record<CopyKey, string> = {
   "room.transit.title": "Site forwarding assistance",
   "room.transit.allow": "Use site forwarding",
-  "room.transit.note": "On by default. When no participant can carry this room's media or files, this site can forward the kinds its operator offers, without chat or history access. Turn it off to decline for this room; the choice is saved with the room.",
+  "room.transit.note": "Your room allows fallback forwarding by default when the site offers it. Turn this off to keep the site from forwarding this room's picture, voice or files.",
   "room.transit.unavailable": "Site forwarding is currently unavailable. Your room preference is kept.",
   "connection.siteForwarding": "Site forwarding",
   "connection.webpage": "Webpage",

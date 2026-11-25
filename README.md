@@ -104,7 +104,8 @@ standalone default is `http://127.0.0.1:8791`. The
 
 The [3.0 deployment steps](./prototype/channel-server/README.md#public-origin-and-udp)
 cover HTTPS, fixed media UDP and public address mapping. Rust reads the process
-environment; it does not load `.env` automatically.
+environment; it does not load `.env` automatically. Site forwarding is optional
+and off by default. [Site forwarding settings](./prototype/channel-server/README.md#site-forwarding)
 
 [**3.0 Server setup →**](./prototype/channel-server/README.md#run) · [Environment template](./deploy/container/.env.example) · [Run from source](./docs/README.md#run-from-source)
 

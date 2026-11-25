@@ -42,20 +42,21 @@ holds what survived both.
    | A participant process | A bot or API client | More than a person can do on the wire |
    | The operator's machine | Providers | Decide admission or order |
 
-2. **One outer form for every room record.** Every record the writer orders
+2. **One outer form for durable room history.** Every history record the writer orders
    carries a namespaced type, a version, typed content, and the references the
    writer has to see: the files it carries and the record it relates to.
    Built-in records are the types the core reserves. The writer checks their
    content by schema, as it does today, and a short reserved name keeps their
    cost small. A community type carries opaque content and a required
-   fallback text. A record of an unknown type is ordered, stored and shown as
-   its fallback. Deleting a record strips its content and withdraws the files
-   and quotes its references name, and a skeleton stays. Every system that
-   lets others define stored record types has one outer form from its first
-   release, and those that added it later carry two forms for good. A first
-   draft cost about sixty bytes on a short signed message; reserving short
-   names and asking no fallback of core types should reduce that, and the
-   form joins the contract of
+   fallback text. Whether a writer accepts an unknown type, and how an unknown
+   type is copied into another room, must be settled before admitting those
+   writes. A shared outer form does not itself require accepting unknown types.
+   Deleting a record removes its content, fallback and derived images, retires
+   its attachment deliveries and clears automatic quotations in later replies.
+   Keep only the sequence and retry digest needed to prevent resurrection.
+   Active screens, synchronized playback and transport control retain their
+   own lifetimes. Validate deletion, purge, restore and identity-remapping copy
+   on the typed draft before changing the contract in
    [ADR-0017](./0017-contracts-fixed-before-release.md).
 3. **Each owner undoes its own registrations.** A lifetime owner releases its
    listeners and the leases it borrowed when it ends, as
@@ -68,9 +69,9 @@ holds what survived both.
    error. There is no loader, dependency solver or reload at run time.
 5. **A program is a participant.** A program is marked when it is enrolled
    through an authenticated act; an ordinary credential cannot show whether a
-   person or software holds it. One gap stands in the way of saying that
-   nothing reads a room unseen: an authorized history read does not require
-   presence today.
+   person or software holds it. Current history reads require an admitted
+   session and room access; they do not require the separate Browse state.
+   Any stronger visible-reading rule needs its own product decision.
 6. **Providers stay on the operator's side, compiled in**, behind internal
    contracts where interchangeable implementations really exist. Planner and
    transport interfaces are not published without a consumer.
@@ -126,9 +127,11 @@ definition and no second provider or consumer.
   form for every type, a reserved namespace, and redaction that strips content
   and keeps a skeleton.
 - [XEP-0424, Message Retraction](https://xmpp.org/extensions/xep-0424.html):
-  the archive keeps a tombstone in place of the retracted message.
-- [Mattermost post model](https://raw.githubusercontent.com/mattermost/mattermost/master/server/public/model/post.go):
-  one post form with reserved system types and prefixed custom types.
+  archives may keep a tombstone in place of the retracted message.
+- [Mattermost v1.0 post validation](https://github.com/mattermost/mattermost/blob/v1.0.0/model/post.go#L99-L101)
+  and [v10.11 post model](https://github.com/mattermost/mattermost/blob/v10.11.0/server/public/model/post.go):
+  one post form whose early validator accepted only built-in types, later extended
+  with prefixed custom types.
 - [Extensions over Any](https://protobuf.dev/design-decisions/extensions-over-any/):
   what a string type name costs on every record.
 - [Discord message resource](https://docs.discord.com/developers/resources/message):

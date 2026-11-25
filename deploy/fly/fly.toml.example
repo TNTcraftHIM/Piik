@@ -18,7 +18,10 @@ kill_timeout = 20
   PIIK_CHANNEL_UDP_PORT = "8787"
   PIIK_CHANNEL_UDP_PUBLIC_ADDRESS = "203.0.113.10:8787"
   PIIK_CHANNEL_SERVICE_TRANSIT = "false"
-  # With forwarding on, set PIIK_CHANNEL_SERVICE_TRANSIT_SCREEN, _VOICE or _FILES to "false" to turn one kind off.
+  # With forwarding on, each kind defaults to true.
+  # PIIK_CHANNEL_SERVICE_TRANSIT_SCREEN = "false"
+  # PIIK_CHANNEL_SERVICE_TRANSIT_VOICE = "false"
+  # PIIK_CHANNEL_SERVICE_TRANSIT_FILES = "false"
   # Supply PIIK_CHANNEL_OWNER_KEY through Fly secrets before first startup.
 
 [mounts]

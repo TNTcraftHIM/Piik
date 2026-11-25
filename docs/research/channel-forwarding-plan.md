@@ -339,8 +339,8 @@ retention nor a download source after all valid holders leave. An external
 storage link is opened through its provider.
 [File delivery](../../prototype/channel-core/src/file_delivery.rs) · [WebRTC Data Channels](https://www.rfc-editor.org/rfc/rfc8831.html)
 
-The operator's transit switch (`PIIK_CHANNEL_SERVICE_TRANSIT`, off by default)
-offers screen, voice and files together, and a switch per kind turns one off.
+The [site forwarding settings](../../prototype/channel-server/README.md#site-forwarding)
+determine which traffic the operator offers.
 A room uses the offer unless its manager declines it. Eligibility is the
 intersection of the offered kinds, the service's actual capabilities and the
 room's grant. The service ranks after every participant path when a route is

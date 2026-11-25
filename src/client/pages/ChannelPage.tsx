@@ -236,8 +236,12 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const prepareShare = async () => {
     if (!canCreateRoom || preparingShare.current || pending.has("create-room")) return;
     quickStart.clearError();
-    const existing = self && simpleShareRoom(rooms, self.id, readSimpleShareRoom(simpleShareKey), sharesIn);
-    if (existing) { selectRoom(existing.id); setPickerRoom(existing.id); return; }
+    const existing = self && simpleShareRoom(rooms, self.id, readSimpleShareRoom(simpleShareKey));
+    if (existing) {
+      selectRoom(existing.id);
+      if (existing.available && !sharesIn(existing.id)) setPickerRoom(existing.id);
+      return;
+    }
     const operation = preparingShare.current = {};
     await quickStart.run(async () => {
       try {
@@ -246,8 +250,12 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         if (preparingShare.current !== operation) return;
         selectRoom(id); setPickerRoom(id);
       } catch (error) {
+        if (!(error instanceof RoomCreationInterrupted)) {
+          if (preparingShare.current !== operation) return;
+          throw error;
+        }
+        if (error.committed && error.roomId) rememberSimpleShareRoom(simpleShareKey, error.roomId);
         if (preparingShare.current !== operation) return;
-        if (!(error instanceof RoomCreationInterrupted)) throw error;
         setNewRoom(error);
       }
     });
@@ -495,7 +503,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           <div className="c3-room-toolbar"><div className="c3-room-actions">
             {(layout !== "quick" || visibleScreens.length > 0) && room?.authorized && !sharesIn(roomId) &&
               <ChannelShareControl channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)} disabled={!connected || !room.available}
-                openRequested={pickerRoom === roomId} onPickerOpened={() => setPickerRoom(null)} />}
+                openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} />}
           </div>
           <div className="c3-room-tools" role="group" aria-label={t("channel.previewPage.viewTools")}>
             {room?.authorized && <ChannelConnections key={`connections:${roomId}`} channel={channel} roomId={roomId} />}
@@ -556,7 +564,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         <div className={`c3-workspace${visibleScreens.length ? " has-screens" : ""}${inlineChatOpen && !roomToolOpen ? "" : " chat-collapsed"}`} hidden={overview}>
           {layout === "quick" && room?.authorized && room.available && !visibleScreens.length && <div className="c3-quick-entry-tv"><StageTv hasEntry label={t("channel.previewPage.shareAScreen")}>
             <div className="c3-quick-start"><ChannelShareControl channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)} disabled={!connected || !room.available}
-              openRequested={pickerRoom === roomId} onPickerOpened={() => setPickerRoom(null)} /></div>
+              openRequested={pickerRoom === roomId} onPickerRequestHandled={() => setPickerRoom(null)} /></div>
           </StageTv></div>}
           <ChannelStage theaterMode={theaterMode} buffering={{ target: channel.screenBufferTargetMs, status: channel.screenBufferStatus, onChange: channel.setScreenBufferTarget }} sources={[...[...activeScreens, ...availableScreens].map(publication => ({
             kind: "screen" as const, id: publication.id, roomId: publication.roomId, predecessor: publication.predecessor, pictureAdmitted: rooms.some(room => room.id === publication.roomId && room.authorized), userId: publication.userId, name: nameOfUser(publication.userId),

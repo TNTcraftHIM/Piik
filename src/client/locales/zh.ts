@@ -2,7 +2,7 @@
 export const zh = {
   "room.transit.title": "站点转发协助",
   "room.transit.allow": "使用站点转发",
-  "room.transit.note": "默认开启。没有参与者能转发本房间的媒体或文件时，此站点可在运营者开放的范围内代为转发，不授予聊天或历史读取权限。关闭即为本房间拒绝站点转发，此选择保存在房间设置中。",
+  "room.transit.note": "站点提供转发时，本房间默认允许用它兜底。关闭后，站点不会代转本房间的画面、语音或文件。",
   "room.transit.unavailable": "站点暂未提供转发；房间设置已保留。",
   "connection.siteForwarding": "站点转发",
   "connection.webpage": "网页",

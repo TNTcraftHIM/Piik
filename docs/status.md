@@ -18,8 +18,9 @@ Conversation reaches the room writer through the site WebSocket. Each screen,
 voice source, file holder and forwarded webpage source uses its own delivery
 paths on authorized connections. Optional site forwarding uses the Server's
 Native endpoint for the kinds its operator offers, in rooms that have not
-declined it. A route is assigned to it only for a receiver no participant path
-can serve then, and that receiver keeps it until it fails or demand ends.
+declined it. New assignments prefer participant paths without sacrificing
+reachable viewers. Existing routes keep their normal recovery and proved
+direct-path improvement rules.
 [Network model](./research/channel-network-design.md) ·
 [Data model](./research/channel-storage-and-identity.md)
 

@@ -24,7 +24,7 @@
 - 用默认 WebRTC 设置的浏览器对照，具体步骤见下节。
 - 朋友们能使用同一个组网工具时，可按[虚拟局域网步骤](#可选虚拟局域网)尝试。
 - 受管理的网络可请网络管理员检查 UDP 限制，或换用其他网络。
-- 如果站点运行在 Piik Server 上，先问站点管理员是否提供站点转发。房间默认使用站点转发，可在 **房间设置 → 连接** 中确认 **使用站点转发** 已开启。
+- 如果加入的是 Piik Server 站点，请问站点管理员是否为连不上的画面、语音或文件提供转发。有这项服务时，Piik 可以用它兜底。如果你管理房间，请在 **房间设置 → 连接** 中确认 **使用站点转发** 已开启。
 
 线路由 Piik 自动选择。App 的自动 **公网邀请** 通过 Cloudflare Tunnel 提供邀请网页和信令，画面、语音和文件内容仍需可用的 WebRTC 线路。
 [Cloudflare Tunnel 路由说明](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/protocols/)（英文）

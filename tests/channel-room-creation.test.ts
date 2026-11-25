@@ -46,17 +46,13 @@ test("policy changes discard admission drafts and send only necessary invitation
   expect(roomSettingsPatch({ password: "old draft" }, oldRoom, true)).toEqual({});
 });
 
-test("simple sharing returns only to the room it made and creates another when that room cannot take the share", () => {
+test("simple sharing returns to its own authorized room even while its host is offline", () => {
   const room = (id: string, creatorId: string, authorized = true, available = true) => ({ id, creatorId, authorized, available });
   const rooms = [room("work", "me"), room("friend", "friend"), room("offline", "me", true, false), room("locked", "me", false), room("shared", "me")];
-  const sharesIn = (...ids: string[]) => (id: string) => ids.includes(id);
-  // A room the person made for another audience never receives a simple share.
-  expect(simpleShareRoom(rooms, "me", null, sharesIn())).toBeUndefined();
-  expect(simpleShareRoom(rooms, "me", "shared", sharesIn())?.id).toBe("shared");
-  expect(simpleShareRoom(rooms.filter(value => value.id !== "shared"), "me", "shared", sharesIn())).toBeUndefined();
-  for (const id of ["friend", "offline", "locked"]) expect(simpleShareRoom(rooms, "me", id, sharesIn())).toBeUndefined();
-  // A room that already holds this person's share offers no picker, so a new start makes a new room.
-  expect(simpleShareRoom(rooms, "me", "shared", sharesIn("shared"))).toBeUndefined();
+  expect(simpleShareRoom(rooms, "me", null)).toBeUndefined();
+  expect(simpleShareRoom(rooms, "me", "shared")?.id).toBe("shared");
+  expect(simpleShareRoom(rooms, "me", "offline")?.id).toBe("offline");
+  for (const id of ["deleted", "friend", "locked"]) expect(simpleShareRoom(rooms, "me", id)).toBeUndefined();
 });
 
 test("simple sharing remembers its room per site and person on this device", () => {

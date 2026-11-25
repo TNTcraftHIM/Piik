@@ -43,29 +43,6 @@ describes a different runtime and its SFU controls.
 
 ### Packaged Server
 
-Site forwarding assistance is off by default, because its bandwidth is the
-operator's cost. A Server operator offers it with
-`PIIK_CHANNEL_SERVICE_TRANSIT=true` at startup, which turns on screen, voice and
-files together. `PIIK_CHANNEL_SERVICE_TRANSIT_SCREEN`,
-`PIIK_CHANNEL_SERVICE_TRANSIT_VOICE` and `PIIK_CHANNEL_SERVICE_TRANSIT_FILES`
-accept `true` or `false`, default to `true`, and let the operator turn one kind
-off; files include original video forwarded for watching together. With the
-first switch off, nothing is forwarded whatever the others say.
-
-Once offered, every room uses it unless its owner turns off **Use site
-forwarding** under **Room settings → Connection**. The rule applies when a route
-is assigned: the service gets a receiver only when no participant path can serve
-it then. A receiver already served through the service keeps that route until it
-fails or demand ends, even if a participant path appears later; a screen viewer
-can still move to a direct path from the person sharing, as any relayed viewer
-can. This preference stays with the room across
-host/service reconnections; a room copied as a new room starts with the default.
-Each active lease still belongs to the current service socket. This does
-not transfer room hosting or grant ordinary room Read,
-chat or history access to the service. Assigned picture, sound, file and shared
-playback bytes use the existing peer plans; a reachable service media path is
-still required. Availability is not a bandwidth guarantee.
-
 Use a matching 3.0 Server package and keep its bundled `web/` directory beside
 the executable. For a new site, replace the placeholder below with a private
 random owner seed and save it securely. On Linux, run from the extracted directory:
@@ -100,11 +77,38 @@ The selected mode belongs to the saved channel and survives restarts.
 Restore a hosted channel backup on a standalone Server. App starts and restores
 lightweight channels.
 
-The first startup creates Living room, Studio and Quiet corner under the Server's
-Native endpoint. Enter one of those rooms and share/watch normally to use its
-server media path. The channel's mode assigns the host for rooms created in the
-page. Browser/App-hosted rooms can use the optional Server forwarding assistance
-with automatic routing.
+A new Server site starts with Living room, Studio and Quiet corner hosted on
+the Server. The channel's hosting mode assigns the host for rooms created in
+the page. Hosting determines where room settings and history are stored.
+
+### Site forwarding
+
+Site forwarding is off by default. To offer a fallback when participants
+cannot deliver media or files to one another, start or restart Piik Server with
+`PIIK_CHANNEL_SERVICE_TRANSIT=true`. The operator pays for the traffic that
+uses this fallback. All four switches accept lowercase `true` or `false`.
+
+| Optional switch | What it controls |
+| --- | --- |
+| `PIIK_CHANNEL_SERVICE_TRANSIT_SCREEN` | Live screen, window and camera shares, including share audio |
+| `PIIK_CHANNEL_SERVICE_TRANSIT_VOICE` | Room voice |
+| `PIIK_CHANNEL_SERVICE_TRANSIT_FILES` | Attachments and original video sent as data when watching together |
+
+Each optional switch defaults to `true` and takes effect only with the main
+switch on. Set a kind to `false` to disable it. Set all three to `false` to
+offer no forwarding.
+
+This policy applies to both Server-hosted rooms and rooms hosted by a Browser
+or App on the site. A site started from Piik App uses participant connections.
+Room managers can turn off **Use site forwarding** under **Room settings →
+Connection**. The setting defaults to on, stays with the room across
+reconnections, and returns to the default when copied to a new room.
+
+Piik uses an offered kind when assigning a route that participants cannot carry.
+An assigned route stays in use while it works and is needed. Screen viewers can
+still move to a direct connection to the sharer. Forwarding needs a reachable
+Server media path and enough bandwidth. Room hosting and chat or history access
+continue to follow their own permissions.
 
 ### Development Server
 
@@ -626,14 +630,14 @@ room commits that branch together, keeping its prepared inputs and outputs.
 Players adopt their existing candidate elements and source sound, preserving
 volume and pause. Candidate failure, changed viewing demand or expiry keeps the
 required old paths; view toggles do not restart spent attempts.
-Server-owned default rooms use the same plans through their real Native endpoint.
 Compatible data and media flows reuse physical peer connections. A relay can stop
 watching while continuing to serve downstream viewers; its transit ends when that
 demand ends. A failed DataChannel repairs its room paths without closing healthy
 media on the same connection. Stopping one share keeps unrelated received and
 forwarded media alive. Browser relays can decode and re-encode. The Native
 participant forwards encoded Opus, VP8 and H264, and publishes App capture through
-those same plans. Server-hosted rooms can carry media through their authorized Native endpoint; the same publication plan repairs failed direct paths.
+those same plans. When available, [site forwarding](#site-forwarding) uses the
+same publication plan to repair failed participant paths.
 The 2.x-specific SFU-only and peer-only operator policies are not implemented.
 WebRTC owns ICE and congestion control.
 

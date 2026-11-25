@@ -52,6 +52,6 @@
 另建一条 UDP 隧道，记录服务商分配的公网 IP 和 UDP 端口。网页隧道继续使用原来的地址。
 
 - **2.x Server** 将隧道的本地端口和 `SFU_UDP_PORT` 都设为分配的公网 UDP 端口，`SFU_PUBLIC_IP` 填该节点的公网 IPv4。[2.x 媒体转发配置](../operations/self-hosting.zh-CN.md#使用托管-frp-服务)
-- **3.0 Server** 将隧道转发到 `PIIK_CHANNEL_UDP_PORT`，`PIIK_CHANNEL_UDP_PUBLIC_ADDRESS` 填实际的公网 `IP:端口`。服务端启用 `PIIK_CHANNEL_SERVICE_TRANSIT=true` 后，房间默认使用站点转发，房主可在房间设置中关闭 **使用站点转发**。
+- **3.0 Server** 将隧道转发到 `PIIK_CHANNEL_UDP_PORT`，`PIIK_CHANNEL_UDP_PUBLIC_ADDRESS` 填实际的公网 `IP:端口`。然后在 Server 上启用[站点转发](../../prototype/channel-server/README.md#site-forwarding)。
 
 </details>

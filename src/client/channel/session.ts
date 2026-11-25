@@ -155,6 +155,16 @@ function stored(key: string, value?: string): string | null {
   } catch { return null; }
 }
 
+type OwnerBootstrap = { key: string; parameter?: "launch" | "owner" };
+
+function ownerBootstrapFromLocation(): OwnerBootstrap | undefined {
+  const parameters = new URLSearchParams(location.hash.slice(1));
+  const launch = parameters.get("launch");
+  if (launch !== null) return { key: launch, parameter: "launch" };
+  const owner = parameters.get("owner");
+  return owner === null ? undefined : { key: owner, parameter: "owner" };
+}
+
 function withoutRoomPictures(state: ChannelSnapshot): ChannelSnapshot {
   if (!state.channel.rooms.some(room => room.picture)) return state;
   const rooms = state.channel.rooms.map(room => {
@@ -215,11 +225,10 @@ export class ChannelSession {
   private reactionNonce = 0;
   private credential = stored(credentialKey) ?? undefined;
   private invitationOrigin = location.origin;
-  private ownerKey = new URLSearchParams(location.hash.slice(1)).get("launch")
-    ?? new URLSearchParams(location.hash.slice(1)).get("owner") ?? undefined;
+  private ownerBootstrap = ownerBootstrapFromLocation();
   private roomId = selectedRoom();
   private requests = new Map<string, {
-    roomId?: string; bindingId?: string;
+    kind: ChannelCommand["type"]; roomId?: string; bindingId?: string;
     seekAfter?: number;
     resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void;
   }>();
@@ -481,14 +490,15 @@ export class ChannelSession {
     const socket = new WebSocket(url);
     const decoder = new ChannelEventDecoder();
     const credential = newIdentity ? undefined : this.credential;
-    const ownerKey = newIdentity ? undefined : this.ownerKey;
+    let sentBootstrap: OwnerBootstrap | undefined;
     this.socket = socket;
     this.patch({ connection: this.view.sessionId ? "reconnecting" : "connecting" });
     socket.onopen = async () => {
       try {
         const signingKey = await this.conversation.initialize();
         if (this.socket !== socket || this.closed) return;
-        this.write({ type: "join", protocol: CHANNEL_PROTOCOL, canUsePeerTransport: typeof RTCPeerConnection === "function", signingKey, name: stored(nameKey) ?? "Guest", credential, ownerKey, sessionId: this.view.sessionId ?? undefined });
+        sentBootstrap = newIdentity ? undefined : this.ownerBootstrap;
+        this.write({ type: "join", protocol: CHANNEL_PROTOCOL, canUsePeerTransport: typeof RTCPeerConnection === "function", signingKey, name: stored(nameKey) ?? "Guest", credential, ownerKey: sentBootstrap?.key, sessionId: this.view.sessionId ?? undefined });
       } catch (error) {
         if (this.socket === socket && !this.closed) {
           this.closeConnection();
@@ -506,9 +516,13 @@ export class ChannelSession {
           this.closeConnection(); this.patch({ error: "incompatible_protocol" }); return;
         }
         const event = decoder.decode(raw, wireBytes);
-        const skipRoom = event.type === "welcome" ? acceptWelcome?.(event) : undefined;
-        if (event.type === "welcome") acceptWelcome = undefined;
-        this.receive(event, skipRoom);
+        if (event.type === "welcome") {
+          const skipRoom = acceptWelcome?.(event);
+          const bootstrap = sentBootstrap;
+          acceptWelcome = undefined;
+          sentBootstrap = undefined;
+          this.receive(event, skipRoom, bootstrap);
+        } else this.receive(event);
       } catch {
         this.patch({ error: "invalid_response" });
         // Later frames may omit pictures; recovery must start with a complete Welcome.
@@ -528,7 +542,7 @@ export class ChannelSession {
     socket.onerror = () => { /* The close event owns retry. */ };
   }
 
-  private receive(event: ChannelEvent, skipRestoreRoom?: string): void {
+  private receive(event: ChannelEvent, skipRestoreRoom?: string, bootstrap?: OwnerBootstrap): void {
     if (event.type === "welcome") {
       this.endRecovery();
       const resumed = this.view.sessionId === event.sessionId;
@@ -536,16 +550,21 @@ export class ChannelSession {
       if (!resumed) this.releaseHosts();
       this.credential = event.credential;
       const saved = stored(credentialKey, event.credential) === event.credential;
-      const parameters = new URLSearchParams(location.hash.slice(1));
       const owner = event.state.sessions.find(session => session.id === event.sessionId)?.userId === event.state.channel.ownerId;
-      const bootstrap = parameters.has("launch") ? "launch" : "owner";
-      if ((saved || bootstrap === "launch") && owner && parameters.get(bootstrap) === this.ownerKey) {
-        this.ownerKey = undefined;
-        parameters.delete(bootstrap);
-        const hash = parameters.toString();
-        try {
-          history.replaceState(history.state, "", location.pathname + location.search + (hash ? `#${hash}` : ""));
-        } catch { /* The welcome credential owns reconnect even if URL editing is unavailable. */ }
+      if (bootstrap && owner) {
+        this.ownerBootstrap = undefined;
+        const parameter = bootstrap.parameter;
+        // A manual Server link still provides admission on reload if storage failed.
+        if (parameter && (saved || parameter === "launch")) {
+          const parameters = new URLSearchParams(location.hash.slice(1));
+          if (parameters.get(parameter) === bootstrap.key) {
+            const remaining = [...parameters].filter(([name, value]) => name !== parameter || value !== bootstrap.key);
+            const hash = new URLSearchParams(remaining).toString();
+            try {
+              history.replaceState(history.state, "", location.pathname + location.search + (hash ? `#${hash}` : ""));
+            } catch { /* The welcome credential owns reconnect even if URL editing is unavailable. */ }
+          }
+        }
       }
       this.invitationOrigin = event.invitationOrigin ?? location.origin;
       this.profileLoads.clear(); this.missingProfiles.clear();
@@ -979,7 +998,7 @@ export class ChannelSession {
     return new Promise<void>((resolve, reject) => {
       // Conversation includes image upload and its host-confirmed response.
       timer = setTimeout(() => { this.retireRequest(requestId); reject(new Error("request_timeout")); }, conversation || command.type === "profiles" ? 30000 : 10000);
-      this.requests.set(requestId, { resolve, reject, roomId,
+      this.requests.set(requestId, { resolve, reject, roomId, kind: command.type,
         result: event => {
           try {
             if (event.type === "room_reply") {
@@ -1011,6 +1030,7 @@ export class ChannelSession {
       else {
         if (command.type === "browse" && command.active) this.readingRooms.add(command.roomId);
         this.write({ ...command, requestId });
+        if (command.type === "room_invite") this.patch({});
       }
     }).finally(() => {
       this.retireRequest(requestId);
@@ -1175,9 +1195,12 @@ export class ChannelSession {
 
   /** Removes a request together with its page under assembly, so no page outlives its request. */
   private retireRequest(requestId: string): boolean {
-    const roomId = this.requests.get(requestId)?.roomId;
-    if (roomId) this.histories.get(roomId)?.dropPage(requestId);
-    return this.requests.delete(requestId);
+    const request = this.requests.get(requestId);
+    if (!request) return false;
+    this.requests.delete(requestId);
+    if (request.roomId) this.histories.get(request.roomId)?.dropPage(requestId);
+    if (request.kind === "room_invite") this.patch({});
+    return true;
   }
 
   private commandRoom(command: ChannelCommand): string | undefined {
@@ -1999,12 +2022,12 @@ export class ChannelSession {
     if (!response.ok) throw new Error("backup_identity_required");
     const identity = z.object({ domainId: z.string(), user: userSchema }).parse(await response.json()); check();
     if (identity.domainId !== metadata.domainId || identity.user.id !== archived.userId) throw new Error("backup_identity_required");
-    const previous = { credential: this.credential, ownerKey: this.ownerKey, roomId: this.roomId,
+    const previous = { credential: this.credential, ownerBootstrap: this.ownerBootstrap, roomId: this.roomId,
       hash: location.hash };
     const rollback = () => {
       this.close(); this.credential = previous.credential;
       if (previous.credential) stored(credentialKey, previous.credential);
-      this.ownerKey = previous.ownerKey; this.roomId = previous.roomId;
+      this.ownerBootstrap = previous.ownerBootstrap; this.roomId = previous.roomId;
       if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search + previous.hash);
       this.start();
     };
@@ -2016,7 +2039,8 @@ export class ChannelSession {
 
   private async connectBackupIdentity(domainId: string, userId: string, identity: { credential?: string; ownerKey?: string },
     skipRoom?: string, onFailure = this.close): Promise<number> {
-    this.close(); this.credential = identity.credential; this.ownerKey = identity.ownerKey; this.roomId = "";
+    this.close(); this.credential = identity.credential; this.roomId = "";
+    this.ownerBootstrap = identity.ownerKey === undefined ? undefined : { key: identity.ownerKey };
     const generation = this.identityGeneration;
     const lifetime = this.captureLifetime.signal;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -2075,7 +2099,6 @@ export class ChannelSession {
       if (!canResume()) throw new Error("disconnected");
       if (domainId !== metadata.state.id) throw new Error("backup_identity_required");
       await this.connectBackupIdentity(domainId, metadata.state.ownerId, { ownerKey: metadata.ownerKey });
-      if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search);
       const { name, icon } = this.view.state!.channel;
       return { name, icon };
     } catch (error) {
@@ -2350,12 +2373,17 @@ export class ChannelSession {
     if (!invitation) throw new Error("invalid_response");
     return invitation;
   };
-  createRoomInvite = (roomId: string, reportError = true): Promise<string> => this.action(`invite:${roomId}`, async () => {
+  invitationPending = (roomId: string): boolean => {
+    for (const request of this.requests.values()) if (request.kind === "room_invite" && request.roomId === roomId) return true;
+    return false;
+  };
+  createRoomInvite = async (roomId: string): Promise<string> => {
+    if (this.invitationPending(roomId)) throw new Error("operation_pending");
     let key: string | undefined;
     await this.request({ type: "room_invite", roomId }, event => { if (event.type === "room_invite") key = event.key; });
     if (!key) throw new Error("invalid_response");
     return this.roomInvitationURL(roomId, key);
-  }, reportError);
+  };
   revokeRoomAccess = (roomId: string, userId: string, reportError = true): Promise<void> => this.action(`revoke:${roomId}:${userId}`, () => this.request({ type: "revoke_room_access", roomId, userId }), reportError);
   watch = (publicationId: string, roomId?: string, signal?: AbortSignal): Promise<void> => {
     const watch: ScreenWatch = {};

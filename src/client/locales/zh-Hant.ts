@@ -85,7 +85,7 @@ export const zhHant = {
   "room.relay.default": "房間預設轉發",
   "room.transit.title": "站點轉發協助",
   "room.transit.allow": "使用站點轉發",
-  "room.transit.note": "預設開啟。沒有參與者能轉發本房間的媒體或檔案時，此站點可在營運者開放的範圍內代為轉發，不授予聊天或歷史記錄讀取權限。關閉即為本房間拒絕站點轉發，此選擇儲存在房間設定中。",
+  "room.transit.note": "站點提供轉發時，本房間預設允許用它作為備援。關閉後，站點不會代為轉發本房間的畫面、語音或檔案。",
   "room.transit.unavailable": "站點暫未提供轉發；房間設定已保留。",
   "room.action.cancel": "取消",
   "room.action.save": "儲存",

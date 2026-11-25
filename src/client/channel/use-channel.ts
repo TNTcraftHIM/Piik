@@ -74,7 +74,7 @@ export function useChannel(): ChannelController {
     appRelayCapacity: session.appRelayCapacity, setAppRelayOverride: session.setAppRelayOverride,
     roomBackupAvailable: session.roomBackupAvailable, exportRoomBackup: session.exportRoomBackup, restoreRoomBackup: session.restoreRoomBackup,
     exportRoomCopy: session.exportRoomCopy, inspectRoomCopy: session.inspectRoomCopy, importRoomCopy: session.importRoomCopy,
-    createRoomInvite: session.createRoomInvite, getRoomInvite: session.getRoomInvite, revokeRoomAccess: session.revokeRoomAccess,
+    invitationPending: session.invitationPending, createRoomInvite: session.createRoomInvite, getRoomInvite: session.getRoomInvite, revokeRoomAccess: session.revokeRoomAccess,
     attachments: session.attachments, loadHistory: session.loadHistory, loadLatestHistory: session.loadLatestHistory,
     startScreen: session.startScreen, cameraPreviews: session.cameraPreviews,
     nativeSources: session.nativeSources, nativePreview: session.nativePreview, startNativeScreen: session.startNativeScreen,

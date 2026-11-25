@@ -8,15 +8,17 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::{mpsc, oneshot};
-use wasapi::{AudioClient, DeviceEnumerator, Direction, SampleType, StreamMode, WaveFormat};
+use wasapi::{
+    AudioClient, BufferFlags, BufferInfo, DeviceEnumerator, Direction, SampleType, StreamMode,
+    WaveFormat,
+};
 use windows::core::{implement, Interface, Ref, HSTRING};
 use windows::Win32::{
     Foundation::{FILETIME, HANDLE, HWND, WAIT_FAILED, WAIT_OBJECT_0},
     Media::Audio::{
         ActivateAudioInterfaceAsync, IActivateAudioInterfaceAsyncOperation,
         IActivateAudioInterfaceCompletionHandler, IActivateAudioInterfaceCompletionHandler_Impl,
-        IAudioCaptureClient, IAudioClient, AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY,
-        AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR, DEVINTERFACE_AUDIO_RENDER,
+        IAudioClient, DEVINTERFACE_AUDIO_RENDER,
     },
     System::Threading::{
         CreateEventW, GetProcessTimes, OpenProcess, SetEvent, WaitForMultipleObjects,
@@ -250,14 +252,17 @@ fn client(process: Option<(u32, bool)>) -> Result<AudioClient> {
     initialize(client)
 }
 
+const BYTES_PER_FRAME: usize = 2 * std::mem::size_of::<f32>();
+
 fn initialize(mut client: AudioClient) -> Result<AudioClient> {
     client.initialize_client(
-        &WaveFormat::new(32, 32, &SampleType::Float, 48_000, 2, None),
-        &Direction::Capture,
-        &StreamMode::EventsShared {
+        &WaveFormat::new(32, 32, SampleType::Float, 48_000, 2, None),
+        Direction::Capture,
+        StreamMode::EventsShared {
             autoconvert: true,
             buffer_duration_hns: 0,
         },
+        None,
     )?;
     Ok(client)
 }
@@ -273,7 +278,7 @@ pub fn render_endpoints() -> Result<Vec<AudioDevice>> {
 fn devices(direction: Direction) -> Result<Vec<AudioDevice>> {
     let _com = Com::start()?;
     DeviceEnumerator::new()?
-        .get_device_collection(&direction)?
+        .get_device_collection(direction)?
         .into_iter()
         .map(|device| {
             let device = device?;
@@ -366,14 +371,12 @@ impl CaptureCounts {
     fn enabled() -> Option<Self> {
         crate::diagnostics::enabled().then(Self::default)
     }
-    fn packet(&mut self, frames: u32, flags: u32) {
+    fn packet(&mut self, frames: u32, flags: &BufferFlags) {
         self.packets += 1;
         self.input_frames += u64::from(frames);
-        self.silent_packets += u64::from(flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0);
-        self.discontinuity_packets +=
-            u64::from(flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32 != 0);
-        self.timestamp_error_packets +=
-            u64::from(flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32 != 0);
+        self.silent_packets += u64::from(flags.silent);
+        self.discontinuity_packets += u64::from(flags.data_discontinuity);
+        self.timestamp_error_packets += u64::from(flags.timestamp_error);
     }
     fn delivery(
         &mut self,
@@ -430,26 +433,22 @@ fn sample_duration(frames: usize) -> Duration {
 }
 
 impl PacketAssembly {
-    // The non-silent buffer must contain count stereo f32 sample pairs.
-    unsafe fn packet(
+    fn packet(
         &mut self,
         clock: &CaptureClock,
-        data: *const u8,
-        count: u32,
-        flags: u32,
-        timestamp: u64,
+        data: &[u8],
+        info: &BufferInfo,
         mut deliver: impl FnMut(AudioFrame) -> bool,
     ) -> bool {
-        if flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32 != 0 {
+        if info.flags.data_discontinuity {
             self.samples.clear();
             self.first = None;
             self.next_packet = None;
             self.position.discontinuity();
         }
-        let count = count as usize;
-        let duration = sample_duration(count);
-        let packet_time = if flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32 == 0 {
-            clock.instant(timestamp as i64)
+        let duration = sample_duration(data.len() / BYTES_PER_FRAME);
+        let packet_time = if !info.flags.timestamp_error {
+            clock.instant(info.timestamp as i64)
         } else {
             // Continue the sample clock. For an unanchored segment, estimate
             // the first sample from the current monotonic time and packet length.
@@ -458,21 +457,14 @@ impl PacketAssembly {
         };
         self.next_packet = Some(packet_time + duration);
 
-        for index in 0..count {
+        for (index, stereo) in data.chunks_exact(BYTES_PER_FRAME).enumerate() {
             if self.samples.is_empty() {
                 self.first = Some(packet_time + sample_duration(index));
             }
-            let sample = if flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0 {
-                [0.0, 0.0]
-            } else {
-                unsafe {
-                    [
-                        data.cast::<f32>().add(index * 2).read_unaligned(),
-                        data.cast::<f32>().add(index * 2 + 1).read_unaligned(),
-                    ]
-                }
-            };
-            self.samples.extend_from_slice(&sample);
+            self.samples.extend_from_slice(&[
+                f32::from_le_bytes(stereo[..4].try_into().unwrap()),
+                f32::from_le_bytes(stereo[4..].try_into().unwrap()),
+            ]);
             if self.samples.len() == 1920 {
                 let frame = self.position.frame(
                     std::mem::replace(&mut self.samples, Vec::with_capacity(1920)),
@@ -538,7 +530,7 @@ fn run_capture(
         Input::Microphone(id) => {
             let devices = DeviceEnumerator::new()?;
             let device = if id.is_empty() {
-                devices.get_default_device(&Direction::Capture)?
+                devices.get_default_device(Direction::Capture)?
             } else {
                 devices.get_device(&id)?
             };
@@ -559,9 +551,7 @@ fn run_capture(
         None
     };
     let event = capture_event(&client)?;
-    // wasapi 0.26's slice reader dereferences the buffer even when SILENT is set.
-    // GetBuffer's flags and timestamp belong to the original buffer, so handle it here.
-    let capture: IAudioCaptureClient = unsafe { client.as_iaudioclient().GetService()? };
+    let capture = client.get_audiocaptureclient()?;
     let clock = CaptureClock::new()?;
     let mut handles = vec![control.handle()];
     if let Some(process) = &process {
@@ -583,6 +573,7 @@ fn run_capture(
     }
     let result = (|| {
         let mut assembly = PacketAssembly::default();
+        let mut packet = Vec::new();
         loop {
             let signaled = unsafe { WaitForMultipleObjects(&handles, false, INFINITE) };
             if signaled == WAIT_FAILED {
@@ -601,34 +592,26 @@ fn run_capture(
                 signaled.0 == WAIT_OBJECT_0.0 + handles.len() as u32 - 1,
                 "audio process ended"
             );
-            while unsafe { capture.GetNextPacketSize()? } > 0 {
+            while let Some(next_frames @ 1..) = capture.get_next_packet_size()? {
                 if !capture_active(control, process.as_ref())? {
                     return Ok(());
                 }
-                let (mut data, mut count, mut flags, mut timestamp) =
-                    (std::ptr::null_mut(), 0, 0, 0);
-                unsafe {
-                    capture.GetBuffer(
-                        &mut data,
-                        &mut count,
-                        &mut flags,
-                        None,
-                        Some(&mut timestamp),
-                    )?
-                };
-                if let Some(counts) = counts {
-                    counts.packet(count, flags);
+                let next_bytes = next_frames as usize * BYTES_PER_FRAME;
+                if next_bytes > packet.len() {
+                    packet.resize(next_bytes, 0);
                 }
-                let closed = unsafe {
-                    assembly.packet(&clock, data, count, flags, timestamp, |frame| {
-                        let result = frames.try_send(frame);
-                        if let Some(counts) = counts {
-                            counts.delivery(&result);
-                        }
-                        matches!(result, Err(mpsc::error::TrySendError::Closed(_)))
-                    })
-                };
-                unsafe { capture.ReleaseBuffer(count)? };
+                let (count, info) = capture.read_from_device(&mut packet)?;
+                if let Some(counts) = counts {
+                    counts.packet(count, &info.flags);
+                }
+                let data = &packet[..count as usize * BYTES_PER_FRAME];
+                let closed = assembly.packet(&clock, data, &info, |frame| {
+                    let result = frames.try_send(frame);
+                    if let Some(counts) = counts {
+                        counts.delivery(&result);
+                    }
+                    matches!(result, Err(mpsc::error::TrySendError::Closed(_)))
+                });
                 if closed {
                     return Ok(());
                 }
@@ -684,7 +667,7 @@ mod tests {
         let _com = Com::start()?;
         let client = client(None)?;
         let _event = capture_event(&client)?;
-        let _capture: IAudioCaptureClient = unsafe { client.as_iaudioclient().GetService()? };
+        let _capture = client.get_audiocaptureclient()?;
         Ok(())
     }
 
@@ -692,33 +675,32 @@ mod tests {
     fn timestamp_errors_preserve_pcm_silence_and_sample_progression() -> Result<()> {
         let clock = CaptureClock::new()?;
         let qpc = clock.now()?;
+        use windows::Win32::Media::Audio::{
+            AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY, AUDCLNT_BUFFERFLAGS_SILENT,
+            AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR,
+        };
         let timestamp_error = AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32;
         let silent = AUDCLNT_BUFFERFLAGS_SILENT.0 as u32;
         let discontinuity = AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32;
         let mut assembly = PacketAssembly::default();
         let mut output = Vec::new();
-        let mut packet = |value: f32, count, flags, timestamp| {
-            let pcm = vec![value; count as usize * 2];
-            let data = if flags & silent != 0 {
-                std::ptr::null()
-            } else {
-                pcm.as_ptr().cast()
-            };
-            assert!(!unsafe {
-                assembly.packet(&clock, data, count, flags, timestamp, |frame| {
-                    output.push(frame);
-                    false
-                })
-            });
+        let mut packet = |stereo: [f32; 2], count, flags, timestamp| {
+            let frame = stereo.map(f32::to_le_bytes).concat();
+            let data = frame.repeat(count);
+            let info = BufferInfo::new(flags, 0, timestamp);
+            assert!(!assembly.packet(&clock, &data, &info, |frame| {
+                output.push(frame);
+                false
+            }));
         };
-        packet(0.25_f32, 480, 0, qpc as u64);
-        packet(0.5, 480, timestamp_error, u64::MAX);
-        packet(-0.5, 480, timestamp_error, u64::MAX);
-        packet(99.0, 480, timestamp_error | silent, u64::MAX);
-        packet(0.75, 960, 0, (qpc + 400_000) as u64);
-        packet(-0.25, 480, 0, (qpc + 600_000) as u64);
+        packet([0.25; 2], 480, 0, qpc as u64);
+        packet([0.5; 2], 480, timestamp_error, u64::MAX);
+        packet([-0.5; 2], 480, timestamp_error, u64::MAX);
+        packet([0.0; 2], 480, timestamp_error | silent, u64::MAX);
+        packet([0.75; 2], 960, 0, (qpc + 400_000) as u64);
+        packet([-0.25; 2], 480, 0, (qpc + 600_000) as u64);
         let earliest = Instant::now() - Duration::from_millis(20);
-        packet(1.0, 960, timestamp_error | discontinuity, u64::MAX);
+        packet([1.0, -1.0], 960, timestamp_error | discontinuity, u64::MAX);
         let latest = Instant::now() - Duration::from_millis(20);
 
         assert_eq!(output.len(), 4);
@@ -738,7 +720,7 @@ mod tests {
         }
         let reset = &output[3];
         assert_eq!((reset.segment, reset.sample_position), (1, 0));
-        assert_eq!(reset.samples, [1.0; 1920]);
+        assert!(reset.samples.chunks_exact(2).all(|stereo| stereo == [1.0, -1.0]));
         assert!((earliest..=latest).contains(&reset.presentation_time));
         Ok(())
     }

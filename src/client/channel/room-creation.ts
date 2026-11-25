@@ -27,15 +27,10 @@ export function rememberSimpleShareRoom(key: string | null, roomId: string): voi
   catch { /* Without storage the next start makes a new room rather than guessing one. */ }
 }
 
-/**
- * Simple sharing returns only to the room it made, so repeated or cancelled starts add no rooms and a screen never lands
- * in a room the person made for another audience. A room where they already share offers no share control, so it cannot
- * take a new share; any failed check leads to a new room.
- */
-export function simpleShareRoom<T extends Pick<ChannelRoom, "id" | "creatorId" | "authorized" | "available">>(rooms: readonly T[], userId: string,
-  rememberedId: string | null, sharesIn: (roomId: string) => boolean): T | undefined {
-  const room = rememberedId ? rooms.find(value => value.id === rememberedId) : undefined;
-  return room && room.creatorId === userId && room.authorized && room.available && !sharesIn(room.id) ? room : undefined;
+/** A temporarily offline host or an ongoing share still belongs to the same room. */
+export function simpleShareRoom<T extends Pick<ChannelRoom, "id" | "creatorId" | "authorized">>(rooms: readonly T[], userId: string,
+  rememberedId: string | null): T | undefined {
+  return rooms.find(room => room.id === rememberedId && room.creatorId === userId && room.authorized);
 }
 
 export type RoomDraft = Pick<RoomSettings, "name" | "icon" | "picture" | "access" | "hidden" | "voiceBitrate"> & { password: string; removePassword: boolean; relayCapacity: number };

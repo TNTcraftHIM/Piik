@@ -902,12 +902,33 @@ fn a_service_that_offers_no_kind_reads_as_unavailable() {
 }
 
 #[test]
+fn public_read_grants_the_registered_server_no_participant_role() {
+    let mut net = RoomNetwork::new();
+    let [host, service] = std::array::from_fn(|_| Uuid::new_v4());
+    join(&mut net, host, false);
+    let session_id = join(&mut net, service, true);
+    let room = net.create(host, RoomAccess::Public, false);
+    net.authority.set_room_writer(ServiceEndpoint { session_id, connection_id: service }).unwrap();
+
+    // The local room fixture generates an ordinary public reader's projection.
+    // The authority knows this socket belongs to the Server with forwarding off.
+    let reply = net.command(service, json!({"type":"browse","roomId":room,"active":true}));
+    assert!(reply.events.iter().any(|(_, event)| matches!(event,
+        Event::Error { code, .. } if code == "invalid_room_projection"
+    )));
+    let state = net.state(host);
+    let view = state.channel.rooms.iter().find(|view| view.id == room).unwrap();
+    assert!(!view.participant_session_ids.contains(&session_id));
+}
+
+#[test]
 fn public_read_alone_does_not_keep_withdrawn_service_work() {
     let mut net = RoomNetwork::new();
     let [host, viewer, service, operator_page] = std::array::from_fn(|_| Uuid::new_v4());
     let source = join(&mut net, host, false);
     join(&mut net, viewer, false);
     let relay = join(&mut net, service, true);
+    net.authority.set_room_writer(ServiceEndpoint { session_id: relay, connection_id: service }).unwrap();
     let person = join(&mut net, operator_page, true);
     let room = net.create(host, RoomAccess::Public, false);
     let effects = register_service(&mut net, Some(relay)).unwrap();

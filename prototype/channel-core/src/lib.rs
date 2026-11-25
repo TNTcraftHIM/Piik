@@ -249,6 +249,7 @@ impl Authority {
         }) {
             return Err("service_unavailable");
         }
+        let service = service.filter(|offer| offer.kinds != host::TransitKinds::default());
         self.channel.service_endpoint = service.map(|service| service.endpoint);
         self.channel.service_kinds = service.map(|service| service.kinds).unwrap_or_default();
         self.channel.reconcile();

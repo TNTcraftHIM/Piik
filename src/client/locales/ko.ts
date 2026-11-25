@@ -86,7 +86,7 @@ export const ko = {
   "room.relay.default": "방 기본 전달 한도",
   "room.transit.title": "사이트 전달 지원",
   "room.transit.allow": "사이트 전달 사용",
-  "room.transit.note": "기본으로 켜져 있어요. 이 방의 미디어나 파일을 전달할 수 있는 참가자가 없을 때 이 사이트가 운영자가 제공하는 범위에서 대신 전달할 수 있어요. 채팅이나 기록 읽기 권한은 주지 않아요. 끄면 이 방에서는 사이트 전달을 사용하지 않아요. 이 선택은 방에 저장돼요.",
+  "room.transit.note": "사이트가 전달을 제공하면 이 방은 기본으로 예비 경로를 사용할 수 있어요. 끄면 사이트를 통해 이 방의 화면, 음성, 파일을 전달하지 않아요.",
   "room.transit.unavailable": "지금은 사이트 전달을 사용할 수 없어요. 방 설정은 유지돼요.",
   "room.action.cancel": "취소",
   "room.action.save": "저장",
