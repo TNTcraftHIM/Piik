@@ -229,7 +229,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const busy = (action: string, id?: string) => pending.has(action) || pending.has(`${action}:${id}`);
   const prepareShare = async () => {
     if (!canCreateRoom || preparingShare.current || pending.has("create-room")) return;
-    const existing = self && simpleShareRoom(rooms, self.id);
+    const existing = self && simpleShareRoom(rooms, self.id, sharesIn);
     if (existing) { selectRoom(existing.id); setPickerRoom(existing.id); return; }
     const operation = preparingShare.current = {};
     try {
@@ -253,6 +253,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const watches = state?.watchActivities ?? [];
   const ownsWatch = (id: string) => watches.some(activity => activity.id === id && activity.sessionId === sessionId);
   const activeWatches = watches.filter(activity => ownsWatch(activity.id) || channel.waitingWatchPages?.has(activity.id) || state?.watchSubscriptions.some(value => value.id === activity.id));
+  const sharesIn = (id: string) => mine.some(source => source.roomId === id) || activeWatches.some(source => source.roomId === id && ownsWatch(source.id));
   const activeSources = [...activeScreens, ...activeWatches, ...sourceView.waiting.filter(source => !channel.waitingWatchPages?.has(source.id))];
   const visibleScreens = activeSources.filter(source => source.roomId === roomId);
   const otherScreens = activeSources.filter(source => source.roomId !== roomId);
@@ -476,9 +477,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             {room && <ChannelRoomInvitation key={room.id} channel={channel} room={room} onManageAccess={() => setManagedRoomId(room.id)} />}
           </div>
           <div className="c3-room-toolbar"><div className="c3-room-actions">
-            {(layout !== "quick" || visibleScreens.length > 0) && room?.authorized && !mine.some(source => source.roomId === roomId) && !activeWatches.some(source => source.roomId === roomId && ownsWatch(source.id)) &&
+            {(layout !== "quick" || visibleScreens.length > 0) && room?.authorized && !sharesIn(roomId) &&
               <ChannelShareControl channel={channel} roomId={roomId} onWatch={() => setWatchRoomId(roomId)} disabled={!connected || !room.available}
-                openRequested={layout !== "quick" && pickerRoom === roomId} onPickerOpened={() => setPickerRoom(null)} />}
+                openRequested={pickerRoom === roomId} onPickerOpened={() => setPickerRoom(null)} />}
           </div>
           <div className="c3-room-tools" role="group" aria-label={t("channel.previewPage.viewTools")}>
             {room?.authorized && <ChannelConnections key={`connections:${roomId}`} channel={channel} roomId={roomId} />}

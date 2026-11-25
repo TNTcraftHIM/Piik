@@ -49,6 +49,10 @@ test("policy changes discard admission drafts and send only necessary invitation
 test("simple sharing returns to a room the person created and can share in before creating another", () => {
   const room = (id: string, creatorId: string, authorized = true, available = true) => ({ id, creatorId, authorized, available });
   const rooms = [room("friend", "friend"), room("offline", "me", true, false), room("locked", "me", false), room("mine", "me"), room("later", "me")];
-  expect(simpleShareRoom(rooms, "me")?.id).toBe("mine");
-  expect(simpleShareRoom(rooms.slice(0, 3), "me")).toBeUndefined();
+  const sharesIn = (...ids: string[]) => (id: string) => ids.includes(id);
+  expect(simpleShareRoom(rooms, "me", sharesIn())?.id).toBe("mine");
+  expect(simpleShareRoom(rooms.slice(0, 3), "me", sharesIn())).toBeUndefined();
+  // A room that already holds this person's share offers no picker, so a new start goes to the next room or a new one.
+  expect(simpleShareRoom(rooms, "me", sharesIn("mine"))?.id).toBe("later");
+  expect(simpleShareRoom(rooms, "me", sharesIn("mine", "later"))).toBeUndefined();
 });
