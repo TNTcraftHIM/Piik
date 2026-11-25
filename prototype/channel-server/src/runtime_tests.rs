@@ -3351,3 +3351,78 @@ async fn hosted_creation_reservation_follows_writer_outcome() {
         "confirmed failure must clear the reservation after a session resumes");
 
 }
+
+#[tokio::test]
+async fn room_writer_work_does_not_spend_the_socket_read_timeout() {
+    use piik_channel_native::session::HostCommand;
+
+    let folder = tempfile::tempdir().unwrap();
+    let domain = Domain::open_with_options(
+        folder.path(), "owner", "http://localhost".into(), None, vec![],
+        RoomCreationPolicy::Ordinary, Some(HostingMode::Hosted),
+    ).unwrap();
+    let (writer, mut commands) = mpsc::channel(1);
+    domain.set_room_commands(Some(writer));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (stop, stopped) = oneshot::channel();
+    let service = tokio::spawn(domain.clone().serve(listener, Router::new(), async {
+        let _ = stopped.await;
+    }));
+    let (mut socket, _, _) = connect(address, "owner", "Owner").await;
+    socket.send(Message::Text(json!({
+        "type":"create_room", "requestId":"create", "room":{
+            "id":"delayed","name":"Living room","icon":"couch","creatorId":Uuid::nil(),
+            "access":"public","hidden":false,"hasPassword":false
+        }
+    }).to_string().into())).await.unwrap();
+    socket.send(Message::Text(json!({
+        "type":"set_profile", "requestId":"profile", "name":"After creation"
+    }).to_string().into())).await.unwrap();
+    let client = tokio::spawn(async move {
+        let mut pings = 0;
+        let mut outcomes = Vec::new();
+        loop {
+            match socket.next().await {
+                Some(Ok(Message::Ping(bytes))) => {
+                    pings += 1;
+                    if socket.send(Message::Pong(bytes)).await.is_err() {
+                        return (false, pings, outcomes);
+                    }
+                }
+                Some(Ok(Message::Text(text))) => {
+                    let event: Event = serde_json::from_str(&text).unwrap();
+                    match event {
+                        Event::Error { request_id: Some(id), code } if id == "create" => {
+                            assert_eq!(code, "room_busy");
+                            outcomes.push(id);
+                        }
+                        Event::Ack { request_id } if request_id == "profile" => {
+                            outcomes.push(request_id);
+                            let _ = socket.close(None).await;
+                            return (true, pings, outcomes);
+                        }
+                        _ => {}
+                    }
+                }
+                Some(Ok(Message::Pong(_))) => {}
+                _ => return (false, pings, outcomes),
+            }
+        }
+    });
+    let HostCommand::Open(open) = tokio::time::timeout(Duration::from_secs(5), commands.recv())
+        .await.unwrap().unwrap() else { panic!("expected room create"); };
+    // The server's own writer takes longer than the 20-second socket read timeout.
+    // The single client keeps answering Ping while its next command waits in order.
+    tokio::time::sleep(Duration::from_secs(21)).await;
+    assert_eq!(domain.hub.lock().unwrap().authority.owner_name().as_deref(), Some("Owner"));
+    assert!(open.result.send(Err("room_busy".into())).is_ok());
+    let outcome = tokio::time::timeout(Duration::from_secs(5), client).await;
+    let _ = stop.send(());
+    tokio::time::timeout(Duration::from_secs(5), service).await.unwrap().unwrap().unwrap();
+    let (alive, pings, outcomes) = outcome.unwrap().unwrap();
+    eprintln!("delayed writer: alive={alive}, answered_pings={pings}, outcomes={outcomes:?}");
+    assert!(pings >= 4, "client answered the server's heartbeats during the writer wait");
+    assert!(alive, "server work must not make the responsive client idle");
+    assert_eq!(outcomes, ["create", "profile"], "commands remain ordered");
+}
