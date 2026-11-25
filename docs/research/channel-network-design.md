@@ -1,7 +1,8 @@
 # Piik 3.0 Sites, Rooms And Networking
 
 This document describes the 3.0 runtime and its routing evidence.
-The [forwarding model](./channel-forwarding-plan.md) owns the architecture and
+[ADR-0016](../adr/0016-shared-rust-core.md) records the framework. The
+[forwarding model](./channel-forwarding-plan.md) owns forwarding behaviour and
 the [hosting plan](./server-hosting-plan.md) owns channel modes and directory authority. The [prototype README](../../prototype/channel-server/README.md)
 describes running behavior; [TODO](../todo.md) owns implementation and decisions.
 The [2.x routing contract](../standards/routing-transport.md) remains unchanged.
@@ -568,14 +569,17 @@ a branch; stopping viewing removes only demand that no downstream still needs;
 a departed relay repairs only affected paths. Preserve healthy unrelated branches.
 Each admitted session gets one direct attempt per publication. Viewing toggles
 and unrelated membership updates must not reset spent candidate opportunities.
-Once useful attempts finish, keep the working route rather than probing
-periodically for a mathematical global optimum.
+Once useful attempts finish, the present runtime keeps the working route: it
+reconciles on events and does not probe periodically. This describes current
+behaviour and not the intent. The [canon](../canon.md#media-and-network) asks
+that the topology keep improving quietly, and how it does so is undecided in
+[ADR-0018](../adr/0018-quiet-topology-improvement.md).
 A physical failure wakes the affected plans. Healthy independent branches keep their flows while room authority remains valid.
 
 Availability work takes priority over optional optimization. Without overlap
 capacity, leave healthy playback in place and defer or finish the optional
 attempt. A bounded-gap change belongs only to necessary availability repair,
-under the [existing transition rules](../adr/0005-automatic-hybrid-media-routing.md).
+under the forwarding model's rules for [changing a working path](./channel-forwarding-plan.md#improving-a-working-path).
 Source generation, current route and operation identity fence late callbacks;
 new work cannot inherit completion from a retired candidate.
 

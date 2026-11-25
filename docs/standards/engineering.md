@@ -62,11 +62,12 @@ sibling `web/` tree without Node.
 | `prototype/channel-android`, `mobile/android` | JNI runtime and Android permission/service ownership; reuse Native capture and shared App composition |
 | `mobile/cloudflared` | Overlay against its separately pinned upstream Go module; no Piik business core |
 
-The [forwarding model](../research/channel-forwarding-plan.md) and
-[hosting model](../research/server-hosting-plan.md) own the 3.0 architecture.
-The [network implementation](../research/channel-network-design.md) and
-[room-data model](../research/channel-storage-and-identity.md) locate their runtime
-and persistence contracts.
+[ADR-0016](../adr/0016-shared-rust-core.md) records the 3.0 framework. The
+[forwarding model](../research/channel-forwarding-plan.md),
+[hosting model](../research/server-hosting-plan.md) and
+[room-data model](../research/channel-storage-and-identity.md) own the behaviour
+built on it, and the [network implementation](../research/channel-network-design.md)
+describes the present runtime.
 Directory names locate responsibilities; they do not require another layer.
 
 ### Architecture baseline
