@@ -47,8 +47,9 @@ Windows 解压后，在该目录打开 PowerShell，运行 `./piik-server.exe`�
 在已安装 Docker Compose v2 的 Linux x64 或 ARM64 服务器上，将两个部署文件下载到空目录中：
 
 ```sh
-curl -fsSLo compose.yaml https://raw.githubusercontent.com/TNTcraftHIM/Piik/main/deploy/container/compose.yaml
-curl -fsSLo .env https://raw.githubusercontent.com/TNTcraftHIM/Piik/main/deploy/container/.env.example
+curl -fsSLo compose.yaml https://raw.githubusercontent.com/TNTcraftHIM/Piik/v2.8.0/deploy/container/compose.yaml
+curl -fsSLo .env https://raw.githubusercontent.com/TNTcraftHIM/Piik/v2.8.0/deploy/container/.env.example
+echo 'PIIK_IMAGE=ghcr.io/tntcrafthim/piik:v2.8.0' >> .env
 ```
 
 在 `.env` 中，将 `PUBLIC_BASE_URL` 设为参与者打开的 HTTPS 网址。在 `STUN_URLS` 中，将 `share.example.com` 换成直接解析到服务器的域名，以便接收 UDP 流量。先运行第一条命令检查配置，通过后再启动 Piik。
