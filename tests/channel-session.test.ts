@@ -5836,12 +5836,12 @@ test("room voice settings use the managed room update without changing local inp
     await saving;
     expect(session.getSnapshot().voiceInput).toEqual(previous.voiceInput);
     expect(session.getSnapshot().listeningVolume).toBe(previous.listeningVolume);
-    await expect(session.setRoomVoiceBitrate("first", 320_001)).rejects.toThrow("invalid_audio_bitrate");
-    const state = structuredClone(session.getSnapshot().state!);
-    state.channel.rooms[0].canManage = false;
-    socket.receive({ type: "state", state });
-    await expect(session.setRoomVoiceBitrate("first", 32_000)).rejects.toThrow("forbidden");
-    expect(socket.sent.filter(command => command.type === "update_room")).toHaveLength(1);
+    // The room authority validates the bitrate; its rejection reaches the caller.
+    const rejected = session.setRoomVoiceBitrate("first", 320_001);
+    const invalid = socket.sent.at(-1)!;
+    expect(invalid).toEqual({ type: "update_room", roomId: "first", voiceBitrate: 320_001, requestId: expect.any(String) });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: invalid.requestId, result: { type: "error", code: "invalid_audio_bitrate" } });
+    await expect(rejected).rejects.toThrow("invalid_audio_bitrate");
   } finally { session.close(); }
 });
 
@@ -11646,10 +11646,19 @@ test("Browser capture titles use original metadata and confirmed overrides witho
     let state = { ...session.getSnapshot().state!, publications: [{ ...publication, audience: [], paused: false, title: null as string | null, sessionId: "endpoint", userId: "self" }] };
     socket.receive({ type: "state", state });
     const bindings = bind.mock.calls.length;
-    await expect(session.setScreenTitle(publication.id, "x".repeat(65))).rejects.toThrow("invalid_title");
+    // The room authority validates the title and the limit; their rejections reach the caller.
+    const overlong = session.setScreenTitle(publication.id, "x".repeat(65));
+    const overlongTitle = socket.sent.at(-1)!;
+    expect(overlongTitle).toMatchObject({ type: "set_title", publicationId: publication.id, title: "x".repeat(65) });
+    socket.receive({ type: "error", requestId: overlongTitle.requestId, code: "invalid_title" });
+    await expect(overlong).rejects.toThrow("invalid_title");
     expect(channelErrorPresentation("invalid_title", key => en[key]).message).toBe("The title cannot exceed 64 characters.");
     expect(channelErrorPresentation("invalid_title", key => zh[key]).message).toBe("标题不能超过 64 个字符。");
-    await expect(session.setScreenDirectLimit(publication.id, 0)).rejects.toThrow("invalid_relay_capacity");
+    const outOfRange = session.setScreenDirectLimit(publication.id, 0);
+    const outOfRangeLimit = socket.sent.at(-1)!;
+    expect(outOfRangeLimit).toMatchObject({ type: "set_screen_direct_limit", publicationId: publication.id, limit: 0 });
+    socket.receive({ type: "error", requestId: outOfRangeLimit.requestId, code: "invalid_relay_capacity" });
+    await expect(outOfRange).rejects.toThrow("invalid_relay_capacity");
     for (const limit of [2, null]) {
       const limiting = session.setScreenDirectLimit(publication.id, limit);
       const command = socket.sent.at(-1)!;
