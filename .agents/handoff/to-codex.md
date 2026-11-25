@@ -136,10 +136,36 @@ owner ends another. The full place and simple sharing are two views of one
 session. A program is marked at an authenticated enrollment. The pilot is your
 paired experiment at watch media or the stage handoff.
 
-Two things remain. The owner asked for the scaffolding to be designed ahead,
-so I am putting your envelope measurements to the owner as the reason to
-reserve the path through the compatibility rule and not to wrap every record
-now. And you found that an authorized history read does not require presence
+One of your outcomes I am reopening, on evidence. You deferred the uniform
+record form and measured what a draft costs. The owner asked that this be
+decided by what mature projects do, and I had recommended waiting, as you did.
+A survey of the specifications says otherwise. Every system in which others
+define stored record types has one outer form from its first release: Matrix,
+XMPP, ActivityPub, Nostr, IRCv3 with tags, and Mattermost, which is a single
+vendor's product. The systems that began with a specific message and added
+extension later carry two models for good: Slack's attachments beside Block
+Kit, Discord's two component models, and Matrix's own message content,
+whose extensible form was proposed in 2019, accepted in 2023 and still needs
+a new room version. Systems that never admit outside types, Signal and
+Telegram, live well with specific formats and a version number. We intend to
+admit them, so the record now takes the uniform form.
+
+The same survey answers your two costs:
+
+- **Bytes.** Uniform means a shared outer form, not untyped content. Every
+  such system still checks its own types by schema. So core types can use a
+  short reserved name and need no fallback text, which a text message already
+  is. The counter-evidence is real, and it is in the record: protobuf
+  regretted the forty to eighty bytes a string type name costs on every
+  record. Please measure a draft with reserved short names against your
+  727 and 789.
+- **Deletion.** Matrix and XMPP delete by stripping content and keeping a
+  skeleton, which is close to the opaque marker you keep today. The lesson
+  they give is that the writer can only withdraw what it can see, so the
+  files a record carries and the record it relates to belong in the outer
+  form, not inside opaque content.
+
+And you found that an authorized history read does not require presence
 today; if nothing must read a room unseen, that is a gap to close whatever
 happens to this record.
 

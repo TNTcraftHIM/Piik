@@ -42,16 +42,21 @@ holds what survived both.
    | A participant process | A bot or API client | More than a person can do on the wire |
    | The operator's machine | Providers | Decide admission or order |
 
-2. **Built-in records keep their compiled forms.** A generic record for a
-   community kind, with a namespaced name, an opaque payload and a fallback
-   text, is added as a capability when the first extension needs it. Wrapping
-   every present record in one envelope was measured: a short signed message
-   grew from 727 to 789 bytes, a store of a thousand short messages grew by
-   about a fifth, and an append-only record conflicts with how deletion
-   removes a body, a thumbnail and a quote today. What has to hold before
-   release is the compatibility rule of
-   [ADR-0017](./0017-contracts-fixed-before-release.md), so that such a
-   capability can be added without breaking a released client.
+2. **One outer form for every room record.** Every record the writer orders
+   carries a namespaced type, a version, typed content, and the references the
+   writer has to see: the files it carries and the record it relates to.
+   Built-in records are the types the core reserves. The writer checks their
+   content by schema, as it does today, and a short reserved name keeps their
+   cost small. A community type carries opaque content and a required
+   fallback text. A record of an unknown type is ordered, stored and shown as
+   its fallback. Deleting a record strips its content and withdraws the files
+   and quotes its references name, and a skeleton stays. Every system that
+   lets others define stored record types has one outer form from its first
+   release, and those that added it later carry two forms for good. A first
+   draft cost about sixty bytes on a short signed message; reserving short
+   names and asking no fallback of core types should reduce that, and the
+   form joins the contract of
+   [ADR-0017](./0017-contracts-fixed-before-release.md).
 3. **Each owner undoes its own registrations.** A lifetime owner releases its
    listeners and the leases it borrowed when it ends, as
    [ADR-0015](./0015-browser-session-lifetime-owners.md) decided. Ending one
@@ -116,3 +121,15 @@ definition and no second provider or consumer.
   what complete access to internals cost.
 - [Extending Caddy](https://caddyserver.com/docs/extending-caddy): modules
   compiled in, with provision, validation and cleanup.
+- [Matrix client-server API](https://spec.matrix.org/latest/client-server-api/)
+  and [room version 11](https://spec.matrix.org/latest/rooms/v11/): one event
+  form for every type, a reserved namespace, and redaction that strips content
+  and keeps a skeleton.
+- [XEP-0424, Message Retraction](https://xmpp.org/extensions/xep-0424.html):
+  the archive keeps a tombstone in place of the retracted message.
+- [Mattermost post model](https://raw.githubusercontent.com/mattermost/mattermost/master/server/public/model/post.go):
+  one post form with reserved system types and prefixed custom types.
+- [Extensions over Any](https://protobuf.dev/design-decisions/extensions-over-any/):
+  what a string type name costs on every record.
+- [Discord message resource](https://docs.discord.com/developers/resources/message):
+  a closed set of types, with a second component model added beside the first.
