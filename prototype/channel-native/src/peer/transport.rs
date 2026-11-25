@@ -497,7 +497,7 @@ impl Runtime {
                 None
             };
             let (network, mut incoming) = mpsc::channel::<Datagram>(256);
-            let deadline = super::deadline::Deadline::new();
+            let mut deadline = crate::deadline::Deadline::new();
             let mut gateway: Option<super::mapping::Mapping> = None;
             let mut mapped: Option<Candidate> = None;
             let mut sockets: Vec<Socket> = vec![];
