@@ -476,6 +476,26 @@ per-track video statistics or presentation callbacks, so the duration of its
 visible interruption is unknown. An independent room voice connection kept
 the same receiver and SSRC, with increasing received samples and audio energy.
 
+A protocol-47 Windows control used four independent Chromium processes and a
+moving synthetic source at about 10 fps. Normal page departure gave a 1.491 s
+last-old-frame to first-new-frame gap; an earlier normal run gave 0.184 s.
+Terminating the owned relay process gave a 15.905 s gap. The publisher observed
+that relay offline at 88.6 ms, but the viewer first observed its old flow retired
+at 15.792 s. Source frames continued advancing. Each fully instrumented arm
+ran once and recovered to source-direct playback. These observations locate
+the delay between offline signaling and flow retirement; they do not identify
+a particular timer or establish a typical recovery time. Both arms lost the
+control connection. Media-only loss with signaling alive remains unmeasured.
+
+An additional instrumented hard exit measured a 16.119 s frame gap. The source
+and viewer observed RTC `disconnected` at 6.064 and 7.251 s. The first failure
+command came from the source-to-relay connection's RTC `failed` event at
+16.034 s. The room writer then synchronized that failed pair, retired the
+dependent branch and delivered a new direct frame 133.9 ms later. No earlier
+flow failure or route wake was observed. This run locates the main wait at the
+Browser's terminal RTC report; the 20-second identity expiry had not elapsed.
+It does not justify treating every transient disconnect as a failed path.
+
 ### File forwarding during a room call
 
 In a four-browser loopback run, both file recipients could reach the sender

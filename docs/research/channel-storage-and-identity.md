@@ -245,6 +245,10 @@ Do not silently evict the room's confirmed history as if it were a participant
 cache. If storage cannot accept a message, report that failed send and preserve
 existing data. Participants may reclaim their reading cache independently.
 The bound room writer is the sole source of live history and confirmations.
+After an explicit Browser room creation or installation, request persistent
+storage for the origin without blocking the room. The writer's Records panel
+reports the browser's actual protection state. This eviction policy is separate
+from transaction durability and participant attachment retention.
 
 ## File Sources And Reachability
 

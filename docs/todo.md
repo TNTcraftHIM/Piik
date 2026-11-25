@@ -68,11 +68,6 @@ the feedback period; they do not delay that delivery.
   against actual readers, writers and stored samples. Keep API/Bot capabilities
   within existing actions and authority. [ADR-0016](./adr/0016-shared-rust-core.md)
   records the adopted architecture separately from public release acceptance.
-- [ ] **Local owner launch credential.** Replace the App's long-lived owner
-  key in launch URLs with an operation-scoped credential through the existing
-  launcher and Join boundary. Chrome retains the original fragment URL in
-  persistent history after `replaceState`. Cover WebView, Browser fallback,
-  terminal reopening and startup without changing saved room authority.
 - [ ] **Restored message attribution.** Verify the Server-hosted backup path's
   acceptance of imported author identities. Decide the room creator's trust
   boundary before adding export proofs or changing historical attribution.
@@ -87,7 +82,9 @@ the feedback period; they do not delay that delivery.
   Compare capability-based relay ties and grandparent standby reuse before
   changing either policy; any remotely collected telemetry needs its own decision.
 - [ ] **Public Demo room acceptance.** Verify invite-only discovery and entry
-  on the deployed public Demo. [Local package control](./verification-status.md#current-evidence)
+  on the deployed public Demo. Check anonymous admission and persisted identity
+  growth at the service boundary before choosing additional resource controls.
+  [Local package control](./verification-status.md#current-evidence)
 - [ ] **Physical camera orientation.** Check portrait capture on a phone through
   Native and pooled Browser paths. Compare the orientation of the source and
   the decoded viewer picture after a device rotation.
@@ -230,25 +227,24 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **Concurrent App invitation entries.** Let local and public entries reach
+  the same running authority. Define their startup, advertised addresses and
+  stop behavior through the existing launcher and listener owners before
+  replacing the current exclusive launch choice.
+
 - [ ] **Quiet topology improvement.** Decide
   [ADR-0018](./adr/0018-quiet-topology-improvement.md). Stage 0 is offline:
   replay the planner on exported diagnostics and look for an opportunity that
   recurs. The first production step is one leaf moved to a strictly better
   place with the present proof, then one more child tried on unmet demand.
   The [evidence](./research/topology-improvement-design.md) lists the
-  measurements still missing, first of them the wait after a silent parent
-  death.
+  remaining comparisons. Extend relay-exit controls to media-only loss while
+  signaling stays connected, and preserve healthy paths during control recovery.
 - [ ] **The life of a message.** Decide
-  [ADR-0019](./adr/0019-the-life-of-a-message.md): edit by the author with no
-  earlier version kept, delete as today, one revision per message, and search
-  at the writer. Five points of the stored format are settled before it is
-  first published.
-- [ ] **Separate the canon from derived design in the documents.** Where a
-  record states a founding idea beside defaults, numbers or mechanisms, link
-  the [canon](./canon.md) and keep the derived design. Start with
-  [ADR-0001](./adr/0001-p2p-first-media-topology.md), whose rationale is still
-  current under a historical status, the status lines of ADR-0002, 0005, 0007,
-  0009, 0010 and 0013 for 3.0, and the two meanings each of "relay" and "host".
+  [ADR-0019](./adr/0019-the-life-of-a-message.md): author editing, writer-owned
+  search, quote behavior and the merge rule for text and reaction changes.
+  Set stored fields and capabilities with their consumers. Before publication,
+  verify that supported archive round trips preserve meaningful row data.
 - [ ] **Shared participant boundaries and decoding.** Measure avoidable WASM
   projection crossings and unused return data before changing their boundaries.
   Keep image restoration owned by each physical connection. Any generated types
@@ -340,7 +336,8 @@ the feedback period; they do not delay that delivery.
   admission, two-way chat, Android image preview and live audio/video on the
   matched packages. Verify physical Android capture and media-path recovery,
   and the Windows WebView entry with physical microphones
-  and cameras. Verify voice-overlay dismissal and pointer passthrough, and
+  and cameras. Check owner entry through the matching App's launcher, terminal
+  and automatic startup. Verify voice-overlay dismissal and pointer passthrough, and
   attachment saving across native panel closure. Investigate the observed WebView renderer exit during room
   navigation. Exercise macOS Quit, Dock/Finder return, permissions, physical
   capture, sound and input. Verify Linux hardware encoding and physical sound,
