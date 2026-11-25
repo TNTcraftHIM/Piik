@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ChannelVoiceSettings } from "../src/client/channel/components/ChannelVoiceSettings";
+import type { ChannelController } from "../src/client/channel/types";
 import { useVoiceShortcuts } from "../src/client/channel/use-voice-shortcuts";
+import { setCopy, t } from "../src/client/ui/copy";
 import {
   releasesVoiceShortcut, voiceShortcutDefaults, voiceShortcutsWithDefaults, type VoiceShortcutBinding,
 } from "../src/client/channel/voice-shortcut-binding";
@@ -137,5 +141,49 @@ describe("push-to-talk shortcut", () => {
       expect(talk.mock.calls).toEqual([[true], [true], [false]]);
       expect(fixture.current().talking).toBe(false);
     } finally { await fixture.unmount(); }
+  });
+});
+
+describe("microphone mode settings", () => {
+  const settings = (mode: "open" | "push" | "activity", talk: VoiceShortcutBinding | null, captured = false) => {
+    const channel = {
+      voiceBusy: () => false, sessionId: "me", pending: new Set(), microphones: async () => [], microphoneLevel: () => undefined,
+      state: { channel: { rooms: [] }, publications: captured ? [{ kind: "voice", sessionId: "me" }] : [] },
+      voiceTransmission: { mode, activationThreshold: -45 }, voiceInput: { deviceId: "", volume: 1, voiceProcessing: true },
+    } as unknown as ChannelController;
+    const shortcuts = {
+      bindings: { microphone: chord("M"), listening: chord("D"), talk }, mac: false, save: vi.fn(), reset: vi.fn(),
+      recording: null, setRecording: vi.fn(), talking: false,
+      background: { available: false, enabled: false, enable: vi.fn(), report: undefined, error: undefined, pending: false, recordReady: true },
+    } as ReturnType<typeof useVoiceShortcuts>;
+    setCopy({ lang: "en" });
+    return renderToStaticMarkup(createElement(ChannelVoiceSettings, { channel, roomId: "room", available: true, shortcuts }));
+  };
+  const talkRow = t("en", "voice.shortcuts.edit", { action: t("en", "voice.mode.push"), shortcut: "Ctrl + Shift + V" });
+
+  it("offers the three modes, open microphone selected by default", () => {
+    const html = settings("open", chord("V"));
+    for (const mode of ["open", "push", "activity"] as const) expect(html).toContain(`<span>${t("en", `voice.mode.${mode}`)}</span>`);
+    expect(html).toMatch(/<label class="is-selected"><input type="radio" [^>]*checked="" value="open"\/>/);
+    expect(html).toContain(t("en", "voice.mode.openHint"));
+    expect(html).not.toContain(talkRow);
+    expect(html).not.toContain(t("en", "voice.mode.sensitivity"));
+  });
+
+  it("shows the talk shortcut and where it works only in push to talk", () => {
+    const html = settings("push", chord("V"));
+    expect(html).toContain(talkRow);
+    expect(html).toContain(t("en", "voice.mode.pushHint", { shortcut: "Ctrl + Shift + V" }));
+    expect(settings("push", null)).toContain(t("en", "voice.mode.pushUnbound"));
+  });
+
+  it("shows sensitivity in voice activation, with a meter only while the microphone is captured", () => {
+    const html = settings("activity", chord("V"));
+    expect(html).toContain(t("en", "voice.mode.sensitivity"));
+    expect(html).toMatch(/type="range" min="-70" max="-10" step="1"[^>]*value="-45"/);
+    expect(html).toContain(t("en", "voice.mode.levelUnavailable"));
+    const captured = settings("activity", chord("V"), true);
+    expect(captured).toContain("c3-voice-activation-meter");
+    expect(captured).not.toContain(t("en", "voice.mode.levelUnavailable"));
   });
 });
