@@ -66,7 +66,7 @@
 .c3-living .c3-monitor-layout > .lr-toggle { --selection-item-size: 32px; font-size: 12px; }
 .c3-living .c3-monitor-grid { --stage-tile-min: 200px; gap: 12px; }
 .c3-living[data-sidebars="phone"] .c3-monitor-grid { --stage-tile-min: 150px; gap: 8px; }
-.c3-living .c3-monitor-grid[data-fitted] { grid-auto-rows: max-content; align-content: center; min-height: 0; }
+.c3-living .c3-monitor-grid[data-fitted] { grid-template-columns: repeat(calc(var(--stage-columns, 1) * 2), max-content); justify-content: center; grid-auto-rows: max-content; align-content: center; min-height: 0; }
 .c3-living .c3-monitor-grid[data-fitted].is-focused { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; justify-content: stretch; overflow: visible; }
 .c3-living .c3-monitor-grid[data-fitted] > .c3-monitor-tile { position: relative; width: var(--stage-picture-width); justify-self: center; align-self: center; border: 0; box-shadow: none; background: var(--wall); }
 .c3-living .c3-monitor-grid[data-fitted] > .c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) { flex: none; height: var(--stage-picture-height); min-height: 0; aspect-ratio: auto; }
@@ -101,7 +101,12 @@
 .c3-shell.c3-living .c3-personal :is(.c3-voice-dock, .c3-voice-controls, .c3-voice-destination) { display: contents; }
 .c3-living .c3-personal .c3-voice-dock > svg { display: none; }
 .c3-living .c3-personal .c3-voice-room-info { display: none; }
-.c3-living .c3-personal[data-voice-elsewhere] .c3-voice-room-info { display: block; order: 1; max-width: 16ch; }
+.c3-living .c3-personal[data-voice-elsewhere] .c3-voice-room-info { display: block; order: 1; flex: 0 1 auto; min-width: 6em; max-width: 10em; }
+/* My voice is in another room: its controls stay compact after its name; this room's join and share follow. */
+.c3-living .c3-personal[data-voice-elsewhere] .c3-voice-controls .lr-btn:not(:has(.lr-cap))::after { content: none; }
+.c3-living .c3-personal[data-voice-elsewhere] .c3-voice-controls .lr-btn { width: var(--control-compact-size); padding: 0; }
+.c3-shell.c3-living .c3-personal[data-voice-elsewhere] .c3-voice-entry { order: 8; margin-inline-start: 8px; }
+.c3-living .c3-personal[data-voice-elsewhere] .c3-living-share { order: 9; }
 .c3-living .c3-personal .c3-voice-room-info small { font-size: 12px; }
 .c3-living .c3-personal .c3-voice-room > button { font-size: 14px; }
 .c3-shell.c3-living .c3-personal .c3-voice-entry { order: 2; padding: 0; }
@@ -216,7 +221,7 @@
 .c3-living.c3-living[data-sidebars="phone"] > .c3-sidebar { display: none; }
 .c3-living.c3-living[data-sidebars="phone"][data-pane="rooms"] > .c3-sidebar { display: block; grid-area: 2 / 1 / -1 / -1; z-index: 4; translate: none; pointer-events: auto; }
 .c3-shell.c3-living[data-sidebars="phone"] .c3-main-body { container-type: inline-size; }
-.c3-shell.c3-living[data-sidebars="phone"] .c3-workspace.has-screens > .c3-monitor { container-type: inline-size; max-height: calc(100dvh - 370px); }
+.c3-shell.c3-living[data-sidebars="phone"] .c3-workspace.has-screens > .c3-monitor { container-type: inline-size; max-height: calc(100dvh - 420px); }
 .c3-living[data-sidebars="phone"] .c3-monitor { --stage-padding: 8px; }
 .c3-living[data-sidebars="phone"] .c3-living-tv { padding: 8px; }
 .c3-living[data-sidebars="phone"] .c3-living-tv .lr-tv { width: min(220px, 100%); }
@@ -242,7 +247,8 @@
 .c3-living[data-sidebars="phone"] .c3-personal .c3-identity { display: none; }
 .c3-living.c3-living[data-sidebars="phone"] .c3-personal :is(.c3-voice-controls, .c3-voice-entry) .lr-btn:not(:has(.lr-cap))::after { content: none; }
 .c3-living[data-sidebars="phone"] .c3-personal .lr-btn .lr-cap { display: none; }
-.c3-living.c3-living[data-sidebars="phone"] .c3-personal :is(.c3-voice-controls, .c3-voice-entry, .c3-living-share .c3-share-control:first-child) .lr-btn { width: var(--control-compact-size); padding: 0; }
+.c3-living.c3-living[data-sidebars="phone"] .c3-personal .c3-voice-controls .lr-btn,
+.c3-living.c3-living[data-sidebars="phone"] .c3-personal .c3-share-control:first-child .lr-btn { width: var(--control-compact-size); padding: 0; }
 .c3-living.c3-living.c3-living[data-sidebars="phone"] .c3-personal .c3-voice-entry .lr-btn { width: auto; padding-inline: 12px; }
 .c3-living[data-sidebars="phone"] .c3-personal .c3-voice-entry .lr-btn .lr-cap { display: inline; }
 .c3-shell.c3-living[data-sidebars="phone"] .c3-living-chat { display: inline-grid; width: var(--control-compact-size); padding: 0; }
