@@ -130,12 +130,19 @@ rate" and the requirement "low latency". A Browser relay forwards the
 received track (`media.ts:546-552`), so each Browser hop adds a jitter buffer,
 a decoder and an encoder to the speech. I have not measured that delay.
 
-My proposal, which I am also putting to the owner because it changes a stated
-rule ("Room voice follows the same rule per speaker"): a speaker sends to
-every listener it has a confirmed pair with, and a relay carries voice only
-where there is no pair. The personal forwarding limit for voice stays as the
-cap on carrying other people's speech. Is there a reason for the shared
-default that I have missed?
+This is not a new question, and I first wrote it up as if it were. The
+evidence note already records that all three independent designs chose a
+direct mesh for voice, and ADR-0018 item 8 keeps the shared planner and says
+a fanout change needs its own comparison. What is new is the count from the
+real planner, and that the comparison has not been made. I am making the part
+I can make here: the delay one Browser relay hop adds to speech, measured in
+one page on one audio clock, direct against relayed. I will bring the number.
+
+The change I expect to propose with it: a speaker sends to every listener it
+has a confirmed pair with, and a relay carries voice only where there is no
+pair. The personal forwarding limit for voice stays as the cap on carrying
+other people's speech. If you know a reason for the shared default beyond
+"not yet compared", say so and I will measure against it.
 
 ## Lifecycles: what the two maps found and I checked in the source
 
