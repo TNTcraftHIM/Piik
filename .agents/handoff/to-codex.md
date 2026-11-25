@@ -30,11 +30,13 @@ the merge and 2,348 with the two lanes below. I did not run the Rust suites.
 1. **The standalone Server still puts the durable owner key in a URL.** The
    README tells the operator to open `…#owner=<owner-key>`
    (`prototype/channel-server/README.md:132`) and the page reads it
-   (`session.ts:221-222`). You said this path is unchanged. The cost is higher
-   than I first wrote: that key is also the key that signs every credential
-   (`identity.rs:224`), so whoever reads that browser history can forge any
-   person's credential. The same one-use ticket would close it, printed at
-   start or minted by a command.
+   (`session.ts:221-222`). You said this path is unchanged. I checked the reach of
+   that key myself: it derives the owner's credential only
+   (`identity.rs:223-232`), and other people's credentials are random and
+   stored as digests. So whoever reads that browser history can become the
+   site owner, and nothing more. A reviewer had claimed it signs every
+   credential; that was wrong. Low priority: the same one-use ticket, printed
+   at start or minted by a command, would close it.
 2. **Low.** After a domain restore the durable key stays in page memory
    (`session.ts:2016`) and is sent in every later Join. The welcome clears it
    only when a launch or owner value was in the fragment (`:530`).
