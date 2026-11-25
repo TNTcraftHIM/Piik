@@ -1666,7 +1666,8 @@ impl RoomRuntime {
             .min()
     }
 
-    pub fn expire_media(&mut self, now: u64) -> bool {
+    #[cfg(test)]
+    pub(crate) fn expire_media(&mut self, now: u64) -> bool {
         self.publications
             .values_mut()
             .fold(false, |changed, publication| {

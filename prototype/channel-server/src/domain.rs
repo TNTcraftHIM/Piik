@@ -859,10 +859,6 @@ impl Domain {
             .route("/prototype/channel/rooms/backup", put(backup::restore))
             .route("/prototype/channel/rooms/copy", post(backup::create_copy))
             .route("/prototype/channel/hosting", get(backup::describe))
-            .route(
-                "/prototype/channel/limits",
-                get(|| async { axum::Json(piik_channel_core::ATTACHMENT_LIMITS) }),
-            )
             .with_state(self.clone())
             .merge(routes);
         let (stop_http, mut http_stopped) = watch::channel(false);

@@ -329,7 +329,8 @@ the feedback period; they do not delay that delivery.
   screen-centred view with the owner and repeat the first share on the release
   candidate. At integration, resolve main CI against the Rust release jobs and
   coordinate the Pages guides, latest downloads and Demo with the published
-  version. Pin historical 2.x references at the final 2.x revision.
+  version. Decide container tag semantics and publish the 2.x pinning guidance
+  before changing the default major. Pin historical 2.x references at the final 2.x revision.
   End separate 2.x maintenance at the accepted 3.0 cutover. Decide
   separately whether to offer a short room-code locator.
 - [ ] **3.0 playable-route improvement.** Define when a sustained limit warrants

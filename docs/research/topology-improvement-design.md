@@ -137,6 +137,63 @@ earlier rules were right in substance.
 | Silent parent | About two seconds, from frame counters | Connection failure, up to the consent timeout |
 | Proof before a switch | The overlap, both paths loaded | The same, already present |
 
+## Offline Placement Study
+
+A test-only harness drives the real planner on synthetic sessions: one sharer,
+N viewers who arrive, leave and sometimes leave while relaying, with pair
+connectivity drawn from an assumed mix of NAT classes. It compares each tree
+with a search over the same confirmed pairs and limits, maximizing coverage
+before minimizing summed depth. The harness is on the branch
+`test/placement-study` at `84b46474`,
+excluded from the ordinary suite. It measures placement only: it has no
+latency, bandwidth, picture quality or overlap reservations. Moves and pair
+attempts are free and instant, and the NAT shares are invented.
+
+At a limit of two, the confirmed-pair results are medians across seeds. Extra
+hops divide the summed depth gap by placed viewers across equal-coverage
+snapshots. Deepest depth averages snapshot maxima and has its own search
+objective at maximum coverage. A snapshot counts as improved if the search
+served more viewers or served as many at lower summed depth. These columns
+use the best trees found. The harness reports exactness separately.
+
+| Viewers | Extra hops per viewer | Deepest viewer, planner and search | Snapshots improved |
+| --- | --- | --- | --- |
+| 4 | 0.00 | 1.50 and 1.43 | 0% |
+| 8 | 0.13 | 2.40 and 2.00 | 45% |
+| 16 | 0.33 | 3.68 and 2.77 | 75% |
+| 32 | 0.51 | 5.31 and 3.78 | 88% |
+
+- Across sampled states, the confirmed-pair search found no tree serving
+  more viewers. No waiting viewer had a linked parent with a free place.
+- **Depth loss grows with the sampled room size.** At four viewers the median
+  gap rounds to zero. The loss is lower before the first departure, suggesting
+  repairs add most of it: orphans are placed again by fewest hops on whatever
+  pairs exist, and nothing improves them afterwards.
+- **A leaf move over existing pairs is worth little.** An opportunity that
+  recurs appears in 59% of sessions of 16 and 96% of 32, and the rule never
+  cycled. It recovers 9 to 14% of the loss. The shallow places are free; the
+  confirmed pairs to them are missing.
+- **One pair attempt closes more of the sampled depth gap**: 93 to 98% of the
+  summed depth gap to the best tree found on all connectable pairs. The
+  fraction pools hops across seeds and equal-coverage snapshots, with moves
+  simulated afresh on each observed tree. The median session tried about 20
+  distinct hypothetical pairs at 16 viewers and 72 at 32, deduplicated
+  across snapshots.
+  A leaf that moves can leave its parent childless, and that parent becomes a
+  movable leaf, permitting further rearrangement on the wider graph.
+- **A refused viewer whose linked parents are all full is rare** at a limit
+  of two or more. "Placed deeper while a parent was full" is true of almost
+  every viewer and cannot serve as evidence.
+
+The loss in depth, the small value of plain leaf moves and the absence of
+cycles hold under a pessimistic and an optimistic connectivity setting. The
+number of pair attempts and the count of refusals do not.
+
+Local saturation alone does not establish maximum coverage. With capacity one
+and undirected edges S–A, S–B, B–A and A–W, the tree S→A→B strands W, while
+S→B→A→W serves all three viewers. This is a static alternative; its transition
+must still respect the live operation's overlap and proof budget.
+
 ## Measurements That Decide
 
 1. The share of bad viewer-time caused by a parent or an edge, as opposed to

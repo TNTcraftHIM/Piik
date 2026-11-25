@@ -65,7 +65,7 @@ that design can be replaced by a better one that serves the same statement.
 
 - **P2P first.** Media travels between participants, directly or through
   other participants. Forwarding by a server is the fallback.
-  [ADR-0001](./adr/0001-p2p-first-media-topology.md)
+  [Forwarding](./research/channel-forwarding-plan.md)
 - **Load is shared.** No single machine should have to carry a room's media.
   Whoever is able carries a part.
 - **Direct paths are worth real effort.** Every pair that fails to connect
@@ -79,7 +79,7 @@ that design can be replaced by a better one that serves the same statement.
   only when it must.
 - **Automatic.** Routing and quality take care of themselves. Nobody chooses
   a topology or tunes a network.
-  [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md)
+  [Route planning](./research/channel-forwarding-plan.md#route-planning-procedure)
 - **Always improving, quietly.** The topology keeps improving by itself,
   judged by how playback actually goes, until every node has its best
   upstream and downstream. It never disturbs what works.
