@@ -24,6 +24,16 @@ describe("diagnosis using the current operation", () => {
     expect(diagnoseChannelFact({ area: "screen", paused: false, deliveryFailed: false })).toBeNull();
   });
 
+  it("explains a picture with no route yet without offering a retry, and lets failures and pause take precedence", () => {
+    expect(diagnoseChannelFact({ area: "screen", paused: false, awaitingRoute: true }))
+      .toEqual({ message: "diagnosis.noRoute", topic: "picture" });
+    expect(diagnoseChannelFact({ area: "screen", paused: false, awaitingRoute: true, deliveryFailed: true }))
+      .toMatchObject({ message: "diagnosis.noPicture", next: "screen.retryPicture" });
+    expect(diagnoseChannelFact({ area: "screen", paused: false, awaitingRoute: true, playbackError: 3 })?.message).toBe("screen.decodeFailed");
+    expect(diagnoseChannelFact({ area: "screen", paused: true, awaitingRoute: true })).toBeNull();
+    expect(diagnoseChannelFact({ area: "screen", paused: false, awaitingRoute: false })).toBeNull();
+  });
+
   it("keeps source permissions, failed reads and incompatible storage tied to their own operations", () => {
     expect(diagnoseChannelFact({ area: "error", code: "watch_media_access_denied" })?.message).toBe("watch.mediaAccessDenied");
     expect(diagnoseChannelFact({ area: "error", code: "watch_media_timeout" })).toMatchObject({ message: "watch.forward.readTimeout", topic: "webpage" });

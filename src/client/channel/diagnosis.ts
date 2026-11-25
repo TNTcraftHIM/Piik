@@ -40,7 +40,7 @@ export interface ChannelDiagnosis {
 export type AppConnectionState = "idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible";
 type ChannelFact =
   | { area: "app"; state: AppConnectionState }
-  | { area: "screen"; paused: boolean; deliveryFailed?: boolean; playbackError?: ScreenPlaybackError }
+  | { area: "screen"; paused: boolean; deliveryFailed?: boolean; awaitingRoute?: boolean; playbackError?: ScreenPlaybackError }
   | { area: "error"; code: string | null | undefined };
 
 /** Read the current operation or selected subscription. A peer transport event alone never diagnoses it. */
@@ -57,7 +57,9 @@ export function diagnoseChannelFact(fact: ChannelFact): ChannelDiagnosis | null 
     if (fact.paused) return null;
     const message = fact.playbackError === 3 ? "screen.decodeFailed" : fact.playbackError === 4 ? "screen.unplayable"
       : fact.deliveryFailed ? "diagnosis.noPicture" : null;
-    return message ? { message, next: "screen.retryPicture", topic: "picture" } : null;
+    if (message) return { message, next: "screen.retryPicture", topic: "picture" };
+    // An unplaced viewer has no failure and no deadline; retrying would not place it sooner.
+    return fact.awaitingRoute ? { message: "diagnosis.noRoute", topic: "picture" } : null;
   }
 
   switch (fact.code) {

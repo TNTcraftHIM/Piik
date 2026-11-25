@@ -31,8 +31,8 @@ import { ChannelDiagnosisHelp } from "./ChannelDiagnosisHelp";
 import { diagnoseChannelFact, type ChannelDiagnosis } from "../diagnosis";
 import { Comic } from "../../components/living/Comic";
 
-function PictureDeliveryHelp({ diagnosis, admitted, playbackFailed, onRetry }: {
-  diagnosis: ChannelDiagnosis; admitted: boolean | undefined; playbackFailed: boolean; onRetry?: () => void;
+function PictureDeliveryHelp({ diagnosis, admitted, playbackFailed, routeFailed, onRetry }: {
+  diagnosis: ChannelDiagnosis; admitted: boolean | undefined; playbackFailed: boolean; routeFailed: boolean; onRetry?: () => void;
 }) {
   const { t } = useCopy();
   const [open, setOpen] = useState(false);
@@ -40,7 +40,7 @@ function PictureDeliveryHelp({ diagnosis, admitted, playbackFailed, onRetry }: {
     <ChannelAction icon="help" label={t("screen.pictureHelp")} iconOnly quiet onClick={() => setOpen(true)} />
     {open && <ChannelSettingsDialog compact title={t("screen.pictureHelp")} onClose={() => setOpen(false)}>
       <div className="c3-settings-panels c3-diagnosis-result">
-        {!playbackFailed && <Comic kind="route-failed" theme="paper" />}
+        {routeFailed && <Comic kind="route-failed" theme="paper" />}
         <p className="c3-diagnosis-verdict">{t(diagnosis.message)}</p>
         {onRetry && diagnosis.next && <Btn icon="refresh" size="compact" tone="primary"
           title={diagnosis.next} cap={diagnosis.next}
@@ -344,7 +344,9 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
           const playbackFailed = !waiting && source.playbackError !== undefined;
           const failed = !waiting && !source.paused && (playbackFailed || source.deliveryFailed);
           const diagnosis = !waiting && diagnoseChannelFact({ area: "screen", paused: source.paused,
-            deliveryFailed: source.deliveryFailed, playbackError: source.playbackError });
+            deliveryFailed: source.deliveryFailed, awaitingRoute: source.awaitingRoute, playbackError: source.playbackError });
+          const retryable = failed || !waiting && !source.awaitingRoute;
+          const help = diagnosis && canSubscribe && !waiting && !source.pending && !source.hidden;
           return <article key={source.id} hidden={source.hidden} inert={source.hidden} tabIndex={isFocused ? -1 : undefined} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
             style={centeredStart ? { gridColumn: `${centeredStart} / span 2` } : undefined}
             data-publication-id={source.id} data-focusable={focusable || undefined} data-playback-controls-scope
@@ -365,13 +367,14 @@ export function ChannelStage({ theaterMode: [theater, setTheater], buffering, so
                 {source.paused || failed ? <Glyph name={source.paused ? "pause" : "x"} size={24} /> : <BrandLoader />}
                 <span role="status">{t(source.paused ? "host.pauseNotice" : playbackFailed && diagnosis ? diagnosis.message
                   : source.deliveryFailed ? "screen.deliveryRetry" : source.awaitingRoute ? "screen.waitingRoute" : "screen.connectingPicture")}</span>
-                {!source.paused && !source.owned && !source.localSource && (failed || !source.awaitingRoute) &&
+                {!source.paused && !source.owned && !source.localSource && (retryable || help) &&
                   <div className="c3-monitor-wait-actions">
-                    {onRetryPicture && <Btn icon="refresh" size="compact" quiet
+                    {onRetryPicture && retryable && <Btn icon="refresh" size="compact" quiet
                       title="screen.retryPicture" cap="screen.retryPicture" disabled={!canSubscribe || source.pending}
                       onClick={() => onRetryPicture(source.id)} />}
-                    {diagnosis && canSubscribe && !source.pending && !source.hidden && <PictureDeliveryHelp
+                    {help && <PictureDeliveryHelp
                       key={source.deliveryScope} diagnosis={diagnosis} admitted={source.roomAdmitted} playbackFailed={playbackFailed}
+                      routeFailed={!playbackFailed && !!source.deliveryFailed}
                       onRetry={onRetryPicture ? () => onRetryPicture(source.id) : undefined} />}
                   </div>}</div>}
             <footer>
