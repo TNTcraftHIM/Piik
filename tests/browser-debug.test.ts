@@ -520,7 +520,7 @@ it("exports current Core pair, flow and helper facts without borrowing a sibling
   for (const [i, plan] of state.pairs.entries()) {
     const transport = owner.media.peers.get(plan.id).transport;
     transport.remoteIds.set(`stream-${i}`, `flow-${i}`);
-    transport.receiving.set(`stream-${i}`, { getTracks: () => [{ id: `track-${i}` }] });
+    transport.receiving.set(`stream-${i}`, { getTracks: () => [{ id: `track-${i}` }], removeTrack() {} });
   }
   try {
     const read = async () => JSON.parse(await debug.exportBrowserDebug());

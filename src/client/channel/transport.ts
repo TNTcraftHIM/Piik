@@ -1021,6 +1021,9 @@ export class ChannelTransport {
     for (const owner of this.sending.values()) for (const binding of owner.senders) this.removeSender(binding);
     for (const slots of this.mediaSlots) for (const slot of slots.senders) slot.encoded?.dispose();
     this.mediaSlots.clear();
+    // Closing ends received tracks, and a video still showing an ended track paints a black frame.
+    // Emptied streams leave their consumers on the last frame, as a withdrawn remote track does.
+    for (const stream of this.receiving.values()) for (const track of stream.getTracks()) stream.removeTrack(track);
     this.pc.close();
     this.sending.clear();
     this.receiving.clear();
