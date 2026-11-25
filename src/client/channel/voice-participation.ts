@@ -36,6 +36,8 @@ export interface VoiceSession {
   request(command: ChannelCommand): Promise<void>;
   send(command: ChannelCommand): void;
   write(command: ChannelCommand): void;
+  /** Withdraws this endpoint's publications that no local capture carries, only in this room and kind. */
+  unpublishMissing(state: ChannelSnapshot, scope: { roomId: string; kind: "voice" }): void;
   publish(roomId: string, stream: MediaStream, microphone: MicrophoneInput | undefined, publicationId: string): Promise<string>;
   retire(publicationId: string): void;
   /** Republishes the local projection of the current snapshot. */
@@ -253,11 +255,7 @@ export class VoiceParticipation {
   /** A room's writer is back: a listen-only participation drops stale publications and re-sends its state. */
   resumed(state: ChannelSnapshot, roomId: string): void {
     if (this.rooms.get(roomId)?.publicationId !== null || this.busy(roomId)) return;
-    const { sessionId } = this.session.view();
-    for (const publication of state.publications) {
-      if (publication.sessionId === sessionId && publication.roomId === roomId && publication.kind === "voice"
-        && !this.session.local.has(publication.id)) this.session.write({ type: "unpublish", publicationId: publication.id });
-    }
+    this.session.unpublishMissing(state, { roomId, kind: "voice" });
     this.reconcile(state, roomId);
   }
 

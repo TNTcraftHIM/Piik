@@ -247,6 +247,7 @@ export class ChannelSession {
     request: command => this.request(command),
     send: command => this.send(command),
     write: command => this.write(command),
+    unpublishMissing: (state, scope) => this.unpublishMissing(state, scope),
     publish: (roomId, stream, microphone, publicationId) => this.publish("voice", roomId, stream, { microphone, publicationId }),
     retire: id => this.retireCapture(id),
     refresh: () => this.refreshActivity(),
@@ -876,17 +877,23 @@ export class ChannelSession {
   }
 
   private reconcileLocalMedia(state: ChannelSnapshot): void {
+    this.unpublishMissing(state);
     for (const publication of state.publications) {
-      if (publication.sessionId !== this.view.sessionId) continue;
-      if (!this.local.has(publication.id)) {
-        this.write({ type: "unpublish", publicationId: publication.id });
-      } else if (publication.kind === "screen") {
-        const share = this.screenShares.get(publication.roomId);
-        if (share?.id === publication.id && share.paused !== undefined && share.paused !== publication.paused)
-          this.write({ type: "set_paused", publicationId: publication.id, paused: share.paused });
-      }
+      if (publication.sessionId !== this.view.sessionId || publication.kind !== "screen" || !this.local.has(publication.id)) continue;
+      const share = this.screenShares.get(publication.roomId);
+      if (share?.id === publication.id && share.paused !== undefined && share.paused !== publication.paused)
+        this.write({ type: "set_paused", publicationId: publication.id, paused: share.paused });
     }
     this.voice.reconcile(state);
+  }
+
+  /** Withdraws this session's publications that no local capture carries, only in one room and kind when given. */
+  private unpublishMissing(state: ChannelSnapshot, scope?: { roomId: string; kind: "screen" | "voice" }): void {
+    for (const publication of state.publications) {
+      if (publication.sessionId !== this.view.sessionId || this.local.has(publication.id)
+        || scope && (publication.roomId !== scope.roomId || publication.kind !== scope.kind)) continue;
+      this.write({ type: "unpublish", publicationId: publication.id });
+    }
   }
 
   private applyForwarding(sessionId: string, state: ChannelSnapshot, userId: string | undefined): void {
