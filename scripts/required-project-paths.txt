@@ -32,7 +32,6 @@ docs/standards/documentation.md
 docs/standards/media-quality.md
 docs/standards/remote-control.md
 docs/deployment.md
-docs/operations/self-hosting.md
 docs/operations/github.md
 docs/standards/naming.md
 docs/standards/engineering.md

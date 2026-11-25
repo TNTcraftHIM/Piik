@@ -82,7 +82,7 @@ Piik App 可创建本地房间或临时公网邀请，也能在后台为已授�
 
 本分支开发内部测试的 **3.0 Rust Server**。请使用匹配的 Server 与网页程序包，
 按 [Rust 启动与部署说明](./prototype/channel-server/README.md#run)操作。
-已发布的 2.x 请继续使用 [2.x 部署指南](./docs/operations/self-hosting.zh-CN.md)。
+已发布的 2.x 请继续使用 [2.x 部署指南](https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.zh-CN.md)。
 
 <p><a href="./prototype/channel-server/README.md#public-origin-and-udp"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="使用 Docker Compose 部署 3.0 Rust Server"></a></p>
 

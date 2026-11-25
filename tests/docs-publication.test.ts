@@ -63,7 +63,8 @@ describe("reader documentation publication", () => {
     const guide = "docs/guide/getting-started.zh-CN.md";
     expect(documentLink("../../cmd/piik-app/README.zh-CN.md#诊断", guide)).toBe("./app.html#诊断");
     expect(documentLink("./getting-started.md#share-with-piik-app", guide)).toBe("./../getting-started.html#share-with-piik-app");
-    expect(documentLink("/docs/operations/self-hosting.zh-CN.md", guide)).toBe("./self-hosting.html");
+    expect(documentLink("/docs/guide/network.zh-CN.md", guide)).toBe("./network.html");
+    expect(documentLink("../deployment.md", guide)).toBe("./../deployment.html");
     expect(documentLink("../standards/configuration.md#diagnostics", guide))
       .toBe("https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/configuration.md#diagnostics");
     expect(documentLink("../todo.md", guide)).toBe("https://github.com/TNTcraftHIM/Piik/blob/main/docs/todo.md");

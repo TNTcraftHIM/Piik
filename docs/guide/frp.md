@@ -11,7 +11,7 @@ Use frp to give a desktop Piik App or a privately hosted Piik Server a fixed pub
 
 ## Get a public address
 
-This example uses **SakuraFrp (樱花映射)**. If you run frps or use another provider, forward the website and WebSocket traffic for the same public HTTPS address to Piik's local HTTP service, then continue to the Piik settings. [Self-hosted frps setup](../operations/self-hosting.md#optional-forward-an-existing-server-with-frp)
+This example uses **SakuraFrp (樱花映射)**. If you run frps or use another provider, forward the website and WebSocket traffic for the same public HTTPS address to Piik's local HTTP service, then continue to the Piik settings. [Self-hosted frps setup](https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.md#optional-forward-an-existing-server-with-frp)
 
 1. Open the SakuraFrp launcher on the Piik machine. Sign in with the access key on the **用户信息** (User information) page of your SakuraFrp dashboard. [Launcher walkthrough](https://doc.natfrp.com/launcher/usage.html)
 2. In **隧道列表** (Tunnels), create a **TCP** tunnel on a node that permits websites. Use `127.0.0.1` and Piik's local web port. Leave the remote port empty for SakuraFrp to assign it and set **自动 HTTPS** (Automatic HTTPS) to **自动** (Auto). Friends connect over HTTPS and Piik receives HTTP locally. [Web tunnel settings](https://doc.natfrp.com/app/http.html) · [Automatic HTTPS](https://doc.natfrp.com/frpc/auto-https.html)
@@ -51,7 +51,7 @@ Copy the **full invitation** from the room or show its QR code. Ask a friend to 
 
 Create a separate UDP tunnel and note the public IP and UDP port assigned by the provider. Keep the existing address for the web tunnel.
 
-- **2.x Server.** Set both the tunnel's local port and `SFU_UDP_PORT` to its assigned public UDP port. Set `SFU_PUBLIC_IP` to the node's public IPv4 address. [2.x media forwarding settings](../operations/self-hosting.md#using-a-managed-frp-provider)
+- **2.x Server.** Set both the tunnel's local port and `SFU_UDP_PORT` to its assigned public UDP port. Set `SFU_PUBLIC_IP` to the node's public IPv4 address. [2.x media forwarding settings](https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.md#using-a-managed-frp-provider)
 - **3.0 Server.** Forward the tunnel to `PIIK_CHANNEL_UDP_PORT` and set `PIIK_CHANNEL_UDP_PUBLIC_ADDRESS` to the actual public `IP:port`. Then enable [site forwarding](../../prototype/channel-server/README.md#site-forwarding) on the Server.
 
 </details>
