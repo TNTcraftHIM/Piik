@@ -92,7 +92,7 @@ networks, failed media connections or virtual LANs, see [Advanced network checks
 This branch develops the internal **3.0 Rust Server**. Use [its startup and
 deployment instructions](./prototype/channel-server/README.md#run) with a matching
 Server and Web package. Published 2.x users should follow the
-[2.x self-hosting guide](./docs/operations/self-hosting.md).
+[2.x self-hosting guide](https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.md).
 
 <p><a href="./prototype/channel-server/README.md#public-origin-and-udp"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="Deploy the 3.0 Rust Server with Docker Compose"></a></p>
 

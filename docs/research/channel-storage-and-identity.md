@@ -19,6 +19,9 @@ The table describes current prototype placement.
 | Live sessions, voice, pictures and route plans | Their active runtimes. Reconnection reconciles existing work; a runtime restart establishes new sessions and activities. Saved data does not restore a call. |
 | Drafts and display preferences | The local client, separate from domain/room authority. |
 
+Restoring local preferences never restores room admission, control grants,
+held input, passwords or message drafts, and never starts capture or remote control.
+
 A file sender owns its offered content, not the room's management or history.
 A local history copy grants no write authority. File forwarding and permanent
 storage are different work: an intermediate peer can relay bounded chunks

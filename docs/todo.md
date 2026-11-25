@@ -44,6 +44,11 @@ the feedback period; they do not delay that delivery.
   changing the selected device. Check audible message alerts with the App in
   the foreground and background. Room microphones, source audio inputs and
   system-output capture retain their separate scopes.
+- [ ] **Capture device loss.** On real hardware, validate what a Windows share
+  does when its graphics device is lost (`capture/gpu.rs`, `capture/frames.rs`),
+  then state the accepted behaviour in the
+  [media standard](./standards/media-quality.md). The published line states a
+  rule; 3.0 has the code path and no accepted description.
 - [ ] **Webpage source selection and watching continuity.** Reduce the steps
   to choose and replace a webpage video. Keep existing viewers' surfaces during
   replacement or temporary source absence, release old media and permissions,
@@ -453,7 +458,7 @@ the feedback period; they do not delay that delivery.
   physical game recognition. macOS virtual HID needs an entitled App and SDK/runtime
   checks. [Co-play assessment](./research/room-interactions.md#remote-co-play)
 - **Platform output.** A registered receiver may act as an ordinary Viewer after
-  the [platform-output gate](./research/platform-output.md) passes.
+  the [platform-output gate](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/platform-output.md) passes.
 - **Additional languages.** Review community catalogs and rendered UI through
   the [translation guide](./guide/translating.md).
 - **Windows code signing.** Revisit when a trusted signing service is available;

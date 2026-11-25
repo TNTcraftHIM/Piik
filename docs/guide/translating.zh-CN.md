@@ -37,7 +37,7 @@
 | 欢迎语、等待短句、浏览器标签页的轮换标题 | 各语言文件中的俏皮话及标题词库；官网欢迎语共用英文和简体中文词库 |
 | 官网 | [页面正文](../../site/index.html)和[交互文案](../../site/main.js)，按 `en`、`zh-CN` 成对组织 |
 | 宣传短片 | [短片源码说明](../../site/film/README.md)，字幕、插画和播放控件有各自的中英文内容 |
-| README 与读者文档 | [README](../../README.md)、[文档首页](./README.md)、[使用指南](./getting-started.md)、[问题排查](./troubleshooting.md)、[部署指南](../operations/self-hosting.md)，均有对应的 `.zh-CN.md` 文件 |
+| README 与读者文档 | [README](../../README.md)、[文档首页](./README.md)、[使用指南](./getting-started.md)、[问题排查](./troubleshooting.md)，均有对应的 `.zh-CN.md` 文件 |
 
 修改源码后，重新构建提供该内容的页面或程序：
 
@@ -94,7 +94,7 @@ App 启动错误需同步修改共用启动页与错误说明，保留 Rust 运�
    文件名和键名使用 ASCII，`name` 使用语言本名，`short` 使用一至三个易识别的字符，
    `tag` 使用对应语言标签；同时提供地区或文字变体时，简称应能区分。
    额外语言显示在简体中文、英文快捷按钮后的第三个共用下拉菜单中。
-   按[系统语言规则](../standards/presentation-lifecycle.md#visual-language)检查初始选择、偏好保存与 App 跳转。
+   按[系统语言规则](../standards/naming.md#interface-languages)检查初始选择、偏好保存与 App 跳转。
 3. 检查完整界面与启动流程，包括启动页、房间以及错误状态。3.0 站点和房间使用共用词库，
    中英文须完整覆盖，其他语言已提供的译文须保留对应占位符。相关位置见
    [模块地图](../standards/engineering.md#module-map)。

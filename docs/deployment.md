@@ -1,5 +1,7 @@
 # Server Release And Recovery
 
+English · [简体中文](./deployment.zh-CN.md)
+
 This file owns routine immutable Server releases. The Rust runtime's environment
 is described in [Server startup](../prototype/channel-server/README.md#run);
 [systemd](../deploy/systemd/piik.service.example) and

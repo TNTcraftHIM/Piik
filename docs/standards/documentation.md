@@ -16,19 +16,21 @@ verification procedures stay in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 | Branches, review, validation, PRs, releases and cleanup | `CONTRIBUTING.md` | Executable workflow |
 | Review in flight between agents | `.agents/handoff/` | One mailbox per reader, each with one writer: pending commits, open findings, questions and holds; items leave when absorbed |
 | Module boundaries, interface discipline and ablation | [Engineering](./engineering.md) | Module, contract, lifecycle and source navigation; shared coding rules |
-| Names, terminology and voice | [Naming and copy](./naming.md) | Product/tool names, role labels and Chinese/English writing conventions |
+| Names, terminology, voice and interface languages | [Naming and copy](./naming.md) | Product/tool names, role labels, Chinese/English writing conventions and UI language selection |
 | Translation contributions | [Translation guide](../guide/translating.md) and its Chinese counterpart | Catalog editing, new-language registration and translation review |
 | Action grouping, surfaces, accessible layout, illustration, palette and motion | [Visual language](./visual-language.md) | Shared Browser/App design grammar |
 | Status projection | [Media status](./media-status.md) | Which facts each display surface may express |
+| 3.0 media | [Media quality](./media-quality.md) | Browser and App capture, encoders, adaptation and audio |
+| 3.0 remote input | [Remote control](./remote-control.md) | Grants, targets and release; usage stays in the reader guide |
 | Release identity and compatibility | [Versioning](./versioning.md) | Version roles, protected interfaces and public-readiness boundary |
-| Published 2.x behavior | [Rooms](./rooms-access.md), [routing](./routing-transport.md), [media](./media-quality.md), [lifecycle](./presentation-lifecycle.md) | One owner per domain; promises, boundaries and non-obvious invariants |
+| Published 2.x behavior | [2.x standards on main](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/README.md) | Maintained on `main`; this tree links them instead of keeping copies |
 | 3.0 architecture | [ADR-0016](../adr/0016-shared-rust-core.md) | Shared core, runtime adapters and version scope |
 | Current 3.0 domain models | [Site/network model](../research/channel-network-design.md), [room-data model](../research/channel-storage-and-identity.md) | Detailed authority, runtime, routing and persistence boundaries |
 | 3.0 forwarding design | [Channel, room and activity forwarding](../research/channel-forwarding-plan.md) | Target forwarding model and candidate delivery details |
 | 3.0 hosting design | [Server hosting design](../research/server-hosting-plan.md) | Target channel modes, authority and moderation |
 | Architecture decisions | `docs/adr/` | Decision status, rationale and consequences; explicitly supersede changed clauses |
 | Measurements and external evidence | `docs/research/` | Date, sources, observations, inference, limits and license scope |
-| Deployment and configuration | `docs/deployment.md`, `docs/operations/`, `docs/standards/configuration.md` | Runnable operator reference; no per-release diary |
+| Deployment and configuration | `docs/deployment.md`, [Server and App runtime](../../prototype/channel-server/README.md#run), `docs/operations/` | Runnable operator reference; no per-release diary |
 | Compact product map | `docs/project-memory.md` | Stable summaries and domain navigation, not implementation inventories |
 | Current execution/deployment index | `docs/status.md` | Current boundaries and pointers; exact artifact identity stays in release metadata |
 | Remaining work and decisions | `docs/todo.md` | One task ledger, with executable work separated from parked ideas |

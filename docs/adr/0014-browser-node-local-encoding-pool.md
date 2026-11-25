@@ -19,10 +19,10 @@ by codec. The initial prototype established feasibility; the subsequent
 implementation evidence and its physical limits remain in the linked research
 and [verification status](../verification-status.md).
 
-This decision extends [ADR-0007](./0007-path-isolated-representation-quality.md)
+This decision extends [ADR-0007](https://github.com/TNTcraftHIM/Piik/blob/main/docs/adr/0007-path-isolated-representation-quality.md)
 and [ADR-0013](./0013-embedded-node-local-media.md) for eligible Browser outputs.
 Their ordinary Browser path remains available. The existing Native composition
-in [ADR-0011](./0011-browser-assisted-native-fanout.md) remains independently owned.
+in [ADR-0011](https://github.com/TNTcraftHIM/Piik/blob/main/docs/adr/0011-browser-assisted-native-fanout.md) remains independently owned.
 
 ## Decision
 

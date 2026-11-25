@@ -5,9 +5,9 @@ action ownership, grouping, layout, control/surface selection, illustration,
 semantic colour, motion and guidance. Start with [action ownership](#action-ownership-and-grouping),
 then choose the [control](#control-selection) and [surface](#surface-selection).
 New UI work follows this file and the local `/__tooltip-preview` catalogue.
-[Media status](./media-status.md) owns which facts justify each status;
-[presentation lifecycle](./presentation-lifecycle.md) owns interaction
-and playback. Neither an illustration nor its colour creates product state.
+[Media status](./media-status.md) owns which facts justify each status and
+[who owns playback](./media-status.md#playback-ownership). Neither an
+illustration nor its colour creates product state.
 
 Use one stroke language for single concepts, small panel comics for causes and
 sequences, and literal scene objects for people, rooms and media. Glyphs do not
@@ -650,8 +650,9 @@ joining. Use the shared media-control styling for both states. Missing browser
 microphone capability disables capture with a contextual explanation, without
 disabling listening.
 
-The following viewing rules apply to both versions; published 2.x playback
-lifecycle follows its [playback owner](./presentation-lifecycle.md#playback-ownership).
+The following viewing rules apply to both versions. [Media status](./media-status.md#playback-ownership)
+owns 3.0 playback; published 2.x follows its
+[playback owner](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/presentation-lifecycle.md#playback-ownership).
 Keep related controls together at the picture's lower edge: local playback and
 sound, remote input, viewing options, then window modes with fullscreen last.
 Common actions remain directly available; detailed preferences use an anchored
@@ -667,7 +668,9 @@ keeps them visible during focus, dragging or an open control menu. Pause and end
 state do not by themselves require permanent obstruction; pointer movement,
 keyboard focus and touch reveal must remain reliable. Grants, pause and source
 changes do not move the bar or resize the picture. An idle picture is clear of
-controls. While active remote input owns picture gestures, a small local handle
+controls: they hide after two idle seconds, following
+[Media Chrome's default](https://github.com/muxinc/media-chrome/blob/main/docs/src/pages/docs/en/components/media-controller.md#autohide).
+While active remote input owns picture gestures, a small local handle
 at the lower edge reveals the controls. This follows [content-first guidance](https://github.com/GoogleChrome/modern-web-guidance/blob/4dd968349e54ca45a05dd5c818fb035c9054b022/skills/modern-web-guidance/guides/user-experience/content-first-noise-reduction.md)
 and [container-based layout](https://github.com/GoogleChrome/modern-web-guidance/blob/4dd968349e54ca45a05dd5c818fb035c9054b022/skills/modern-web-guidance/guides/css/size-aware-styling.md).
 Playback settings own on-screen chat appearance and connection preferences;
@@ -1042,7 +1045,7 @@ adjusting volume or offering P2P stays neutral. Actual copy feedback can change
 that same hint to green or red, using the existing operation result.
 
 Review meaning at the call site. A current admission badge shows the credential
-accepted by [room access](./rooms-access.md). The private-mode control instead
+accepted by [room access](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/rooms-access.md). The private-mode control instead
 shows restricted code-only entry with a closed door; its meaning must not change
 to an invitation action merely because no room password is set. This room-entry
 rule is separate from media-route privacy. Password input is not proof of

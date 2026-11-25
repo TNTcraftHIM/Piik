@@ -14,14 +14,14 @@ This page indexes developer and maintainer references.
 | Find a module, interface, lifecycle or source entry point | [Engineering maps and source index](./standards/engineering.md#repository-layout) |
 | Find the shared product, design and lifecycle rules | [Standards index](./standards/README.md) |
 | Run or deploy the current 3.0 runtime | [Rust Server startup](../prototype/channel-server/README.md#run) · [Packaging and deployment](./deployment.md) |
-| Operate published 2.x | [Self-hosting](./operations/self-hosting.md) · [Configuration](./standards/configuration.md) · [Service management](./operations/service-management.md) |
+| Operate published 2.x | [Self-hosting](https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.md) · [Configuration](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/configuration.md) · [Service management](https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/service-management.md) |
 | Build App packages and native capture | [Rust App](../prototype/channel-server/README.md#local-app-link) · [Packaging](./deployment.md#build-host) |
 | Build, publish or recover a maintained release | [Maintainer release tooling](./deployment.md) |
 | Send a useful 3.0 bug report | [Diagnostics and export](./guide/troubleshooting.md#reporting-a-problem) |
 | Translate Piik or improve wording | [Translation guide](./guide/translating.md) · [中文翻译教程](./guide/translating.zh-CN.md) |
 | Check release and platform readiness | [Current status](./status.md) |
 
-The introduction, getting-started, App, self-hosting, service-management and translation guides are available in English and Chinese.
+The introduction, getting-started, App and translation guides are available in English and Chinese.
 Technical references keep one shared version.
 
 ## Run from source
@@ -77,10 +77,8 @@ and [website preview and publishing](./operations/website.md).
 | Topic | Its reference |
 | --- | --- |
 | The founding ideas everything else follows | [Canon](./canon.md) |
-| Published 2.x invitations, room codes and passwords | [Rooms and access](./standards/rooms-access.md) |
-| Published 2.x viewer connections | [Routing and transport](./standards/routing-transport.md) |
-| Published 2.x screen capture, quality controls and sound | [Media quality](./standards/media-quality.md) |
-| Published 2.x Host and Viewer behavior | [Presentation and lifecycle](./standards/presentation-lifecycle.md) |
+| Published 2.x rooms, routing, Host and Viewer behavior | [2.x standards on main](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/README.md) |
+| 3.0 screen capture, quality controls and sound | [Media quality](./standards/media-quality.md) |
 | Why a design was chosen | [Architecture decisions](./adr/) |
 | Measurements and platform limits | [Research](./research/) and [verification status](./verification-status.md) |
 | Published 2.x camera and Host microphone research | [Capture scope and limits](./research/camera-and-microphone.md) |

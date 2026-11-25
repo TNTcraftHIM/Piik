@@ -39,7 +39,7 @@ a complete cost comparison, and storage, UDP and restart verification.
 ## Public Demo Configuration
 
 The chosen demo allows entry without a site password and provides P2P sharing
-without SFU fallback. Use the [self-hosting runbook](./self-hosting.md) with:
+without SFU fallback. Use the [self-hosting runbook](https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.md) with:
 
 ```dotenv
 PIIK_ENV=production
@@ -60,10 +60,10 @@ Point both hostnames at the US server: proxy `demo.piik.tv` through Cloudflare,
 but leave `stun.piik.tv` DNS-only. Allow UDP 3478/3479/3480 directly to the server;
 Cloudflare's ordinary HTTP proxy does not carry STUN. Caddy terminates origin
 HTTPS/WSS. The demo uses the
-standard [systemd service](./service-management.md#systemd), with its release
+standard [systemd service](https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/service-management.md#systemd), with its release
 under `/opt/piik/current` and configuration at `/etc/piik/piik.env`. The service
 unit provides the SQLite state directory. Room ownership, invitations and private-room
-admission still apply. The [configuration reference](../standards/configuration.md)
+admission still apply. The [configuration reference](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/configuration.md)
 owns each setting and its bounds.
 
 The Demo's Caddy proxy compresses `/assets/*` with zstd/gzip. Successful

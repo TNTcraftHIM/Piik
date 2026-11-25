@@ -3,8 +3,8 @@
 - Initial review: 2026-08-30; dated follow-ups record subsequent evidence
 - Scope: Browser game capture, codecs, startup adaptation, relay, and LiveKit
 - Status: historical Browser/LiveKit SDK measurements and subsequent implementation evidence; current product behavior is owned by
-  [media quality](../standards/media-quality.md) and
-  [ADR-0007](../adr/0007-path-isolated-representation-quality.md)
+  [media quality](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/media-quality.md) and
+  [ADR-0007](https://github.com/TNTcraftHIM/Piik/blob/main/docs/adr/0007-path-isolated-representation-quality.md)
 
 ## Findings
 
@@ -402,7 +402,7 @@ Host page visibility, captured-surface visibility, capture production, encode,
 transport, Viewer decode, and local presentation are separate variables. Current
 code pauses only the hidden/unfocused local preview. Browser/OS capture muting,
 mobile suspension, page reclamation, and relay survival remain platform evidence
-in [background capture research](./browser-background-capture.md), not Web
+in [background capture research](https://github.com/TNTcraftHIM/Piik/blob/main/docs/research/browser-background-capture.md), not Web
 keepalive features.
 
 The Media Capture specification copies a track's constraints when it is cloned,
@@ -504,7 +504,7 @@ not media behavior or settings.
 
 The earlier Browser measurements above do not describe the current Native or
 pooled implementation. A 2026-10-15 producer-to-consumer review distinguishes
-these recovery owners; the [media-quality standard](../standards/media-quality.md)
+these recovery owners; the [media-quality standard](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/media-quality.md)
 owns their required behavior.
 
 | Path | Demand and recovery boundary |
@@ -716,7 +716,7 @@ capture, an ancestor, the exact sender, the child decoder, or presentation. It
 also cannot prove an unconnected path is better. A route decision therefore
 needs exact sender evidence and real candidate media; combining current loss,
 RTT, bitrate, FPS, resolution, and freezes into a score would not repair either
-information gap. [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md) owns
+information gap. [ADR-0005](https://github.com/TNTcraftHIM/Piik/blob/main/docs/adr/0005-automatic-hybrid-media-routing.md) owns
 the accepted local-convergence algorithm.
 
 W3C `qualityLimitationReason` is only the most limiting factor at one instant.

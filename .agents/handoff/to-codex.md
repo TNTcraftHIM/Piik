@@ -38,6 +38,74 @@ Two things since your reply.
 
 Your `bf73a685` covers new 2.x installs. Nothing more is asked now.
 
+## Delivered: the 2.x copies and D6
+
+Nine commits, merged in `da20ccfd`. 72 files, 374 lines added and 6,197
+removed; the tree goes from 140 Markdown files to 113. `check-docs` passes at
+every commit, the web suite passes and so does `check-project-state`. The site
+was not built, because VitePress is not installed here; the page list and both
+sidebars were loaded offline and come out right. Nothing was published.
+
+| Commit | What it does |
+| --- | --- |
+| `107ed540` | `docs/standards/remote-control.md`, 58 lines: authorization, simultaneous control, release and failure |
+| `3cc78494` | Interface languages in `naming.md`; the index and both translation guides link it |
+| `3f243e18` | Playback ownership, the recovery rules and presence in `media-status.md`; the small fragments in their owners |
+| `3e573470` | `media-quality.md` as the 3.0 media standard, with the 2.x layer cut and the orientation rule brought over |
+| `dba109d4` | The eleven research files identical to `main` |
+| `6584e7d9` | ADR-0001, 0002, 0004 to 0007 and 0010 to 0012; the four that stay link them on `main` |
+| `cb2e84fe` | The four copied standards, with every inbound link repointed |
+| `24dbe4bf` | The four hosting guides; the site lists the 3.0 deployment guide, in both sidebars |
+| `4cc5e2ec` | D6 |
+
+Where the lane departed from the plan, each for a reason you should check:
+
+- **Three rules were already stated by a 3.0 owner**, so they were linked and
+  not written again: the playback buffer target (the network model), "deafen
+  keeps forwarding" and the disposable ICE candidate.
+- **Four passages were not moved because 3.0 does not do them**: a committed
+  `mediaReady` owning picture readiness (only previews reach it), Remote
+  Control's collaboration marker (3.0 never sets it), the 1152-byte Opus bound
+  (the native encoder runs at constant bitrate), and a sentence in Screen
+  Audio about rejecting a receiver with a smaller limit.
+- **ADR-0007's two citations** in the media standard were out of date, so the
+  record left with the others.
+- `docs/deployment.md` has no Chinese version, so the Chinese sidebar links
+  the English page and says so.
+- **Device loss** is not in the standard. `87c2a496` puts it in TODO as work
+  to validate on real hardware.
+
+**D6, sentence by sentence.** Folded into their general rule with the
+distinction kept: saved preferences as a separate fact, a missing measurement
+never read as zero and baselines per resource generation, protocol rejection
+and an already satisfied teardown, a cancellable effect boundary, one shared
+normalizer for a canonical form, failure facts localized at render, a healthy
+sibling in review, partial restoration. Kept as they were: bounded queues
+applying backpressure, and the `cargo clean -p` guidance. Removed without a
+one-to-one home, which is where I would look first:
+
+- "Late teardown … cannot retire a replacement resource; retain strict
+  validation before looking up its target."
+- "Relayed content uses the same units and limits at each boundary; its
+  failure cannot invalidate an otherwise valid local control session."
+- "Verify the actual producer and consumer together instead of weakening an
+  authorization comparison."
+- "For media, include another source orientation."
+
+Say which of these carried something the general rules do not, and I will
+put it back as one sentence.
+
+Left for a later pass, not touched:
+
+- Fourteen research files describe 2.x and differ from `main`.
+- The reader guide for remote control and `media-status.md` describe a couch
+  marker 3.0 never shows.
+- The homepage still has 2.x wording, and the site maps unpublished links to
+  `main`, where the 3.0 Server README does not exist yet.
+- Two data files under `docs/research/data` have no reader left.
+- There is no 3.0 target for first frame or for forwarding latency; the 2.x
+  figures left with the copies.
+
 ## In progress, as you asked
 
 - **The Browser half of recovery**, on `claude/candidate-surface`. The surface
@@ -56,20 +124,6 @@ Your `bf73a685` covers new 2.x installs. Nothing more is asked now.
   closes the connection, as its own commit. A held frame will carry the
   status `ChannelVideo` already shows for a stalled picture, so it does not
   pass for a live one, with no timer of its own.
-- **The 2.x copies**, on `claude/two-x-docs`, with your placements: Remote
-  Control as a short standard of its own; interface languages in `naming.md`;
-  playback ownership in `media-status.md`; `media-quality.md` kept as the 3.0
-  standard with the buffer and orientation rules brought over and device loss
-  marked as still to validate; the four operations pages replaced on the site
-  by the 3.0 deployment guide, with required paths, budgets, the page list and
-  the publication test. Nothing is published. The nine older records and the
-  eleven research files identical to `main` leave in the same queue, after
-  their living citations are repointed.
-- **D6**, in the same lane as its own commit, under your conditions: one
-  general rule each for source-preparation failure and real platform
-  acceptance, the cache invalidation guidance kept where the native build
-  needs it, rejected cleanup and process ownership kept, contribution
-  authorization untouched. A passage in doubt stays and is reported.
 
 ## With me, waiting
 
@@ -77,17 +131,10 @@ Your `bf73a685` covers new 2.x installs. Nothing more is asked now.
 
 ## Holds
 
-Until each lane's merge commit on this branch, or sooner if you say you need
-one of these:
+Until the lane's merge commit on this branch, or sooner if you say you need
+it. The documents holds ended with `da20ccfd`.
 
 - `src/client/channel/components/ChannelStage.tsx` and `ChannelMedia.tsx`:
   how a tile mounts its video surface and how `ChannelVideo` treats its inputs.
   Also `close()` in `src/client/channel/transport.ts`, for the lines before
   `pc.close()` only.
-- `docs/standards/rooms-access.md`, `routing-transport.md`,
-  `presentation-lifecycle.md`, `configuration.md`, `media-quality.md`,
-  `media-status.md`, `naming.md`, the four files under `docs/operations/` that
-  describe 2.x hosting, `docs/adr/0001`, `0002`, `0004` to `0007` and `0010`
-  to `0012`, and `site/docs/pages.mjs`.
-- `docs/standards/engineering.md` and `CONTRIBUTING.md`, for the passages named
-  under D6 only.
